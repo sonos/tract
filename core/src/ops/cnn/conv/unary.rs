@@ -435,10 +435,27 @@ impl Op for ConvUnary {
             }
         }
         let input_fact = model.outlet_fact(node.inputs[0])?;
-        if let Some(axis) = (0..self.strides.len()).find(|&ax| {
+        let spatial_rank = self.full_input_shape.len() - 2;
+        let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
+        if kernel_spatial_shape.iter().product::<usize>() == 1
+            && self.dilations.iter().all(|&x| x == 1)
+            && self.strides.iter().all(|&x| x == 1)
+            && self.group == 1
+        {
+            if self.kernel_fmt == KernelFormat::HWIO && self.data_format == DataFormat::NHWC {
+                use crate::ops::math::mat_mul::MatMulUnaryA;
+                let kernel_shape = &self.kernel.shape()[spatial_rank..];
+                let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
+                return Ok(Some(TypedModelPatch::single_unary_op(
+                    model,
+                    node,
+                    MatMulUnaryA::new(kernel),
+                )?));
+            }
+        } else if let Some(axis) = (0..self.strides.len()).find(|&ax| {
             self.padding.valid_dim(ax)
                 && self.strides[ax] > 1
-                && (self.kernel.shape()[ax+ self.kernel_fmt.h_axis()] == 1 || (self.dilations[ax] % self.strides[ax] == 0))
+                && self.dilations[ax] % self.strides[ax] == 0
         }) {
             let downsample_factor = self.strides[axis];
             let mut new_op = self.clone();
@@ -471,51 +488,33 @@ impl Op for ConvUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let spatial_rank = self.full_input_shape.len() - 2;
-        let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
-        if kernel_spatial_shape.iter().product::<usize>() == 1
-            && self.dilations.iter().all(|&x| x == 1)
-            && self.strides.iter().all(|&x| x == 1)
-            && self.group == 1
-        {
-            if self.kernel_fmt == KernelFormat::HWIO && self.data_format == DataFormat::NHWC {
-                use crate::ops::math::mat_mul::MatMulUnaryA;
-                let kernel_shape = &self.kernel.shape()[spatial_rank..];
-                let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
+        if let Some(shape) = input_fact.shape.as_finite() {
+            let dt = input_fact.datum_type;
+            if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
+                && dt == f32::datum_type()
+                && self.group == 1
+            {
+                let op = self.to_direct(&*shape)?;
+                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+            } else if self.group != 1 && self.group == self.output_channels() {
                 return Ok(Some(TypedModelPatch::single_unary_op(
                     model,
                     node,
-                    MatMulUnaryA::new(kernel),
+                    dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
                 )?));
-            }
-        } else {
-            if let Some(shape) = input_fact.shape.as_finite() {
-                let dt = input_fact.datum_type;
-                if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
-                    && dt == f32::datum_type()
-                    && self.group == 1
-                {
-                    let op = self.to_direct(&*shape)?;
-                    return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-                } else if self.group != 1 && self.group == self.output_channels() {
-                    return Ok(Some(TypedModelPatch::single_unary_op(
-                        model,
-                        node,
-                        dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
-                    )?));
-                } else {
-                    let (op1, shape, op2) =
-                        dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
-                    let mut patch = TypedModelPatch::default();
-                    let _ = patch.tap_model(&model, node.inputs[0])?;
-                    patch.chain(
-                        format!("{}-im2col", node.name),
-                        op1,
-                        tvec!(TypedTensorInfo::dt_shape(dt, &*shape)?)
-                    )?;
-                    let mm = patch.chain(&*node.name, op2, tvec!(node.outputs[0].fact.clone()))?;
-                    patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
-                    return Ok(Some(patch));
-                }
+            } else {
+                let (op1, shape, op2) =
+                    dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
+                let mut patch = TypedModelPatch::default();
+                let _ = patch.tap_model(&model, node.inputs[0])?;
+                patch.chain(
+                    format!("{}-im2col", node.name),
+                    op1,
+                    tvec!(TypedTensorInfo::dt_shape(dt, &*shape)?),
+                )?;
+                let mm = patch.chain(&*node.name, op2, tvec!(node.outputs[0].fact.clone()))?;
+                patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
+                return Ok(Some(patch));
             }
         }
         Ok(None)
@@ -550,18 +549,11 @@ impl StatelessOp for ConvUnary {
     }
 }
 
-
 impl TypedOp for ConvUnary {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
-            inputs[0].datum_type,
-            &*self.full_output_shape
-        )?))
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
     }
 
     fn pulsify(
