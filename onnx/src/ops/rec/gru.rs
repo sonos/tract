@@ -41,8 +41,8 @@ pub struct GRU {
     pub optional_initial_h_input: Option<usize>,
     pub optional_y_output: Option<usize>,
     pub optional_y_h_output: Option<usize>,
-    pub f: Box<dyn StatelessOp>,
-    pub g: Box<dyn StatelessOp>,
+    pub f: Box<dyn TypedOp>,
+    pub g: Box<dyn TypedOp>,
     pub linear_before_reset: bool,
 }
 
@@ -70,7 +70,7 @@ impl Op for GRU {
         Validation::Rounding
     }
 
-    op_as_typed_op!();
+    not_a_typed_op!();
 }
 
 impl InferenceRulesOp for GRU {
@@ -133,36 +133,226 @@ impl InferenceRulesOp for GRU {
     }
 
     inference_op_as_op!();
-    to_typed!();
-}
 
-impl TypedOp for GRU {
-    typed_op_as_op!();
-
-    fn output_facts(
+    fn to_typed(
         &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
-        let dt = inputs[0].datum_type;
-        let seq_length = inputs[0].shape.dim(0);
-        let num_directions = inputs[1].shape.dim(0);
-        let batch_size = inputs[0].shape.dim(1);
-        let hidden_size = inputs[2].shape.dim(2);
-        let mut outputs = tvec!();
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        use tract_core::ops::{array, math, scan};
+
+        let x_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
+        let r_fact = target.outlet_fact(mapping[&node.inputs[2]])?;
+
+        let b_size = x_fact.shape.dim(1).to_integer().unwrap() as usize;
+        let h_size = r_fact.shape.dim(2).to_integer().unwrap() as usize;
+
+        // FIXME: bidi
+
+        let mut body = TypedModel::default();
+        let mut outer_inputs = vec![];
+        let mut input_mapping = vec![];
+        let mut output_mapping = vec![];
+
+        macro_rules! target_wire {
+            ($name: ident = $op: expr, $($param: expr),*) => {
+                let $name = target.wire_node(
+                    format!("{}-{}", node.name, stringify!($name)),
+                    $op, [$($param),*].as_ref())?[0];
+            }
+        };
+
+        macro_rules! wire {
+            ($name: ident = $op: expr, $($param: expr),*) => {
+                let $name = body.wire_node(
+                    format!("{}-{}", node.name, stringify!($name)),
+                    $op, [$($param),*].as_ref())?[0];
+            }
+        };
+
+        // X: onnx interface: [seq_length, batch_size, input_size]
+        // scan outer interface: idem
+        // scann inner interface: [chunk=1, batch_size, input_size]
+        // onnx inner interface: [batch_size, input_size]
+        outer_inputs.push(mapping[&node.inputs[0]]);
+        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk: 1.to_dim() });
+        let mut x_source_fact = x_fact.clone();
+        x_source_fact.shape.set_dim(0, 1.to_dim())?;
+        let x_source = body.add_source("x_source", x_source_fact)?.into();
+        wire!(x = array::RmDims::new(vec![0]), x_source);
+
+        // W: onnx interface: [num_directions, 3*hidden_size, input_size]
+        // scan interfaces: [3*hidden_size, input_size]
+        target_wire!(w = tract_core::ops::array::RmDims::new(vec![0]), mapping[&node.inputs[1]]);
+        outer_inputs.push(w);
+        input_mapping.push(scan::InputMapping::Full { slot: 1 });
+        let w = body.add_source("w", target.outlet_fact(w)?.clone())?.into();
+
+        // R: onnx interface: [num_directions, 3*hidden_size, hidden_size]
+        // scan interfaces: [3*hidden_size, hidden_size]
+        target_wire!(r = tract_core::ops::array::RmDims::new(vec![0]), mapping[&node.inputs[2]]);
+        outer_inputs.push(r);
+        input_mapping.push(scan::InputMapping::Full { slot: 2 });
+        let r = body.add_source("r", target.outlet_fact(r)?.clone())?.into();
+
+        // B: onnx interface: [num_directions, 6*hidden_size]
+        let b = if let Some(slot) = self.optional_bias_input {
+            target_wire!(
+                b = tract_core::ops::array::RmDims::new(vec![0]),
+                mapping[&node.inputs[slot]]
+            );
+            outer_inputs.push(b);
+            input_mapping.push(scan::InputMapping::Full { slot });
+            let b = body.add_source("b", target.outlet_fact(b)?.clone())?.into();
+            Some(b)
+        } else {
+            None
+        };
+
+        // FIXME: seqlength
+
+        // initial h, optional: onnx: [num_directions, batch_size, hidden_size]
+        // scan outer: [batch_size, hidden_size]
+        // scan inner: [chunk=1, batch_size, hidden_size]
+        // onnx inner: [batch_size, hidden_size]
+        let initializer = if let Some(initial_h_input) = self.optional_initial_h_input {
+            target_wire!(
+                h = tract_core::ops::array::RmDims::new(vec![0]),
+                mapping[&node.inputs[initial_h_input]]
+            );
+            outer_inputs.push(h);
+            scan::StateInitializer::FromInput(initial_h_input)
+        } else {
+            scan::StateInitializer::Value(
+                ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
+            )
+        };
+        input_mapping.push(scan::InputMapping::State { initializer });
+        let h_source = body.add_source("h_source",
+            TypedTensorInfo::dt_shape(
+                x_fact.datum_type,
+                [1, b_size, h_size].as_ref()
+            )?)?.into();
+
+        dbg!(&input_mapping);
+        dbg!(&body);
+
+        wire!(ht_prev = array::RmDims::new(vec!(0)), h_source);
+
+        wire!(rz = array::Slice::new(0, 0 * h_size, 1 * h_size), r);
+        wire!(rr = array::Slice::new(0, 1 * h_size, 2 * h_size), r);
+        wire!(rh = array::Slice::new(0, 2 * h_size, 3 * h_size), r);
+
+        wire!(rz_t = array::PermuteAxes::new(Some(vec!(1, 0))), rz);
+        wire!(rr_t = array::PermuteAxes::new(Some(vec!(1, 0))), rr);
+        wire!(rh_t = array::PermuteAxes::new(Some(vec!(1, 0))), rh);
+
+        wire!(ht_rz_t = math::MatMul::new(), ht_prev, rz_t);
+        wire!(ht_rr_t = math::MatMul::new(), ht_prev, rr_t);
+
+        wire!(wz = array::Slice::new(0, 0 * h_size, 1 * h_size), w);
+        wire!(wr = array::Slice::new(0, 1 * h_size, 2 * h_size), w);
+        wire!(wh = array::Slice::new(0, 2 * h_size, 3 * h_size), w);
+
+        wire!(wz_t = array::PermuteAxes::new(Some(vec!(1, 0))), wz);
+        wire!(wr_t = array::PermuteAxes::new(Some(vec!(1, 0))), wr);
+        wire!(wh_t = array::PermuteAxes::new(Some(vec!(1, 0))), wh);
+
+        wire!(xt_wz_t = math::MatMul::new(), x, wz_t);
+        wire!(xt_wr_t = math::MatMul::new(), x, wr_t);
+        wire!(xt_wh_t = math::MatMul::new(), x, wh_t);
+
+        wire!(zt0 = math::add::bin(), xt_wz_t, ht_rz_t);
+        let zt0 = if let Some(b) = b {
+            wire!(wbz = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
+            wire!(rbz = array::Slice::new(0, 3 * h_size, 4 * h_size), b);
+            wire!(wbz_rbz = math::add::bin(), wbz, rbz);
+            wire!(zt0_biased = math::add::bin(), zt0, wbz_rbz);
+            zt0_biased
+        } else {
+            zt0
+        };
+        wire!(zt = self.f.clone(), zt0);
+
+        wire!(rt0 = math::add::bin(), xt_wr_t, ht_rr_t);
+        let rt0 = if let Some(b) = b {
+            wire!(wbr = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
+            wire!(rbr = array::Slice::new(0, 4 * h_size, 5 * h_size), b);
+            wire!(wbr_rbr = math::add::bin(), wbr, rbr);
+            wire!(rt0_biased = math::add::bin(), rt0, wbr_rbr);
+            rt0_biased
+        } else {
+            rt0
+        };
+        wire!(rt = self.f.clone(), rt0);
+
+        let rt_ht_rht = if self.linear_before_reset {
+            wire!(ht_rht = math::MatMul::new(), ht_prev, rh_t);
+            wire!(rt_ht_rht = math::mul::bin(), rt, ht_rht);
+            rt_ht_rht
+        } else {
+            wire!(rt_ht = math::mul::bin(), rt, ht_prev);
+            wire!(rt_ht_rht = math::MatMul::new(), rt_ht, rh_t);
+            rt_ht_rht
+        };
+        wire!(ht0 = math::add::bin(), xt_wh_t, rt_ht_rht);
+        let ht0 = if let Some(b) = b {
+            wire!(wbh = array::Slice::new(0, 2 * h_size, 3 * h_size), b);
+            wire!(rbh = array::Slice::new(0, 5 * h_size, 6 * h_size), b);
+            wire!(wbh_rbh = math::add::bin(), wbh, rbh);
+            wire!(ht0_biased = math::add::bin(), ht0, wbh_rbh);
+            ht0_biased
+        } else {
+            ht0
+        };
+        wire!(ht = self.g.clone(), ht0);
+
+        let one: OutletId = body.add_const("one", tensor0(1f32))?.into();
+        wire!(one_sub_zt = math::sub::bin(), one, zt);
+
+        wire!(next_ht_left = math::mul::bin(), one_sub_zt, ht);
+        wire!(next_ht_right = math::mul::bin(), zt, ht_prev);
+        wire!(next_ht = math::add::bin(), next_ht_left, next_ht_right);
+
+        wire!(y_h = array::AddDims::new(vec!(0)), next_ht);
+        wire!(y_h_dup = tract_core::ops::identity::Identity::default(), y_h);
+
+        let mut output_outlets = vec![];
         if let Some(_) = self.optional_y_output {
-            outputs.push(TypedTensorInfo::dt_shape(
-                dt,
-                [seq_length, num_directions.clone(), batch_size.clone(), hidden_size.clone()]
-                    .as_ref(),
-            )?)
+            output_mapping.push(scan::OutputMapping::Scan {
+                slot: output_mapping.len(),
+                axis: 0,
+                chunk: 1.to_dim(),
+                full_dim_hint: None,
+            });
+            output_outlets.push(y_h);
         }
+
         if let Some(_) = self.optional_y_h_output {
-            outputs.push(TypedTensorInfo::dt_shape(
-                dt,
-                [num_directions, batch_size, hidden_size].as_ref(),
-            )?)
+            output_mapping.push(scan::OutputMapping::State { slot: Some(output_mapping.len()) });
+            output_outlets.push(y_h_dup);
         }
-        Ok(outputs)
+        body.set_output_outlets(&*output_outlets)?;
+
+        let scan_outputs = target.wire_node(
+            &*node.name,
+            scan::Typed::new(body, input_mapping, output_mapping),
+            &outer_inputs,
+        )?;
+
+        let mut result = tvec!();
+        if let Some(slot) = self.optional_y_output {
+            target_wire!(y = array::AddDims::new(vec!(0)), scan_outputs[slot]);
+            result.push(y);
+        }
+        if let Some(slot) = self.optional_y_h_output {
+            target_wire!(y_h = array::AddDims::new(vec!(0)), scan_outputs[slot]);
+            result.push(y_h);
+        }
+
+        Ok(result)
     }
 }
 
@@ -227,6 +417,8 @@ impl StatelessOp for GRU {
                 }
                 let zt: Array2<f32> = self
                     .f
+                    .as_stateless()
+                    .unwrap()
                     .eval(tvec!(zt.into_arc_tensor()))?
                     .remove(0)
                     .into_tensor()
@@ -239,6 +431,8 @@ impl StatelessOp for GRU {
                 }
                 let rt = self
                     .f
+                    .as_stateless()
+                    .unwrap()
                     .eval(tvec!(rt.into_arc_tensor()))?
                     .remove(0)
                     .into_tensor()
@@ -260,6 +454,8 @@ impl StatelessOp for GRU {
                 };
                 let ht1 = self
                     .g
+                    .as_stateless()
+                    .unwrap()
                     .eval(tvec!(ht1.into_arc_tensor()))?
                     .remove(0)
                     .into_tensor()
