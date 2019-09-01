@@ -134,6 +134,7 @@ impl InferenceRulesOp for GRU {
 
     inference_op_as_op!();
 
+    #[allow(non_snake_case)]
     fn to_typed(
         &self,
         _source: &InferenceModel,
@@ -180,21 +181,21 @@ impl InferenceRulesOp for GRU {
         let mut x_source_fact = x_fact.clone();
         x_source_fact.shape.set_dim(0, 1.to_dim())?;
         let x_source = body.add_source("x_source", x_source_fact)?.into();
-        wire!(x = array::RmDims::new(vec![0]), x_source);
+        wire!(Xt = array::RmDims::new(vec![0]), x_source);
 
         // W: onnx interface: [num_directions, 3*hidden_size, input_size]
         // scan interfaces: [3*hidden_size, input_size]
         target_wire!(w = tract_core::ops::array::RmDims::new(vec![0]), mapping[&node.inputs[1]]);
         outer_inputs.push(w);
         input_mapping.push(scan::InputMapping::Full { slot: 1 });
-        let w = body.add_source("w", target.outlet_fact(w)?.clone())?.into();
+        let W = body.add_source("w", target.outlet_fact(w)?.clone())?.into();
 
         // R: onnx interface: [num_directions, 3*hidden_size, hidden_size]
         // scan interfaces: [3*hidden_size, hidden_size]
         target_wire!(r = tract_core::ops::array::RmDims::new(vec![0]), mapping[&node.inputs[2]]);
         outer_inputs.push(r);
         input_mapping.push(scan::InputMapping::Full { slot: 2 });
-        let r = body.add_source("r", target.outlet_fact(r)?.clone())?.into();
+        let R = body.add_source("r", target.outlet_fact(r)?.clone())?.into();
 
         // B: onnx interface: [num_directions, 6*hidden_size]
         let b = if let Some(slot) = self.optional_bias_input {
@@ -210,7 +211,9 @@ impl InferenceRulesOp for GRU {
             None
         };
 
-        // FIXME: seqlength
+        if let Some(slot) = self.optional_sequence_lens_input {
+            outer_inputs.push(mapping[&node.inputs[slot]]);
+        }
 
         // initial h, optional: onnx: [num_directions, batch_size, hidden_size]
         // scan outer: [chunk=1, batch_size, hidden_size]
@@ -236,84 +239,83 @@ impl InferenceRulesOp for GRU {
                 [1, b_size, h_size].as_ref()
             )?)?.into();
 
-        wire!(ht_prev = array::RmDims::new(vec!(0)), h_source);
+        wire!(Ht_1 = array::RmDims::new(vec!(0)), h_source);
 
-        wire!(rz = array::Slice::new(0, 0 * h_size, 1 * h_size), r);
-        wire!(rr = array::Slice::new(0, 1 * h_size, 2 * h_size), r);
-        wire!(rh = array::Slice::new(0, 2 * h_size, 3 * h_size), r);
+        wire!(Rz = array::Slice::new(0, 0 * h_size, 1 * h_size), R);
+        wire!(Rr = array::Slice::new(0, 1 * h_size, 2 * h_size), R);
+        wire!(Rh = array::Slice::new(0, 2 * h_size, 3 * h_size), R);
 
-        wire!(rz_t = array::PermuteAxes::new(Some(vec!(1, 0))), rz);
-        wire!(rr_t = array::PermuteAxes::new(Some(vec!(1, 0))), rr);
-        wire!(rh_t = array::PermuteAxes::new(Some(vec!(1, 0))), rh);
+        wire!(RzT = array::PermuteAxes::new(Some(vec!(1, 0))), Rz);
+        wire!(RrT = array::PermuteAxes::new(Some(vec!(1, 0))), Rr);
+        wire!(RhT = array::PermuteAxes::new(Some(vec!(1, 0))), Rh);
 
-        wire!(ht_rz_t = math::MatMul::new(), ht_prev, rz_t);
-        wire!(ht_rr_t = math::MatMul::new(), ht_prev, rr_t);
+        wire!(Wz = array::Slice::new(0, 0 * h_size, 1 * h_size), W);
+        wire!(Wr = array::Slice::new(0, 1 * h_size, 2 * h_size), W);
+        wire!(Wh = array::Slice::new(0, 2 * h_size, 3 * h_size), W);
 
-        wire!(wz = array::Slice::new(0, 0 * h_size, 1 * h_size), w);
-        wire!(wr = array::Slice::new(0, 1 * h_size, 2 * h_size), w);
-        wire!(wh = array::Slice::new(0, 2 * h_size, 3 * h_size), w);
+        wire!(WzT = array::PermuteAxes::new(Some(vec!(1, 0))), Wz);
+        wire!(WrT = array::PermuteAxes::new(Some(vec!(1, 0))), Wr);
+        wire!(WhT = array::PermuteAxes::new(Some(vec!(1, 0))), Wh);
 
-        wire!(wz_t = array::PermuteAxes::new(Some(vec!(1, 0))), wz);
-        wire!(wr_t = array::PermuteAxes::new(Some(vec!(1, 0))), wr);
-        wire!(wh_t = array::PermuteAxes::new(Some(vec!(1, 0))), wh);
-
-        wire!(xt_wz_t = math::MatMul::new(), x, wz_t);
-        wire!(xt_wr_t = math::MatMul::new(), x, wr_t);
-        wire!(xt_wh_t = math::MatMul::new(), x, wh_t);
-
-        wire!(zt0 = math::add::bin(), xt_wz_t, ht_rz_t);
-        let zt0 = if let Some(b) = b {
-            wire!(wbz = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
-            wire!(rbz = array::Slice::new(0, 3 * h_size, 4 * h_size), b);
-            wire!(wbz_rbz = math::add::bin(), wbz, rbz);
-            wire!(zt0_biased = math::add::bin(), zt0, wbz_rbz);
-            zt0_biased
-        } else {
-            zt0
+        // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
+        wire!(Xt_WzT = math::MatMul::new(), Xt, WzT);
+        wire!(Ht_1_RzT = math::MatMul::new(), Ht_1, RzT);
+        wire!(zt0 = math::add::bin(), Xt_WzT, Ht_1_RzT);
+        let mut zt0 = zt0;
+        if let Some(b) = b {
+            wire!(Wbz = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
+            wire!(Rbz = array::Slice::new(0, 3 * h_size, 4 * h_size), b);
+            wire!(Wbz_Rbz = math::add::bin(), Wbz, Rbz);
+            wire!(zt0_biased = math::add::bin(), zt0, Wbz_Rbz);
+            zt0 = zt0_biased
         };
         wire!(zt = self.f.clone(), zt0);
 
-        wire!(rt0 = math::add::bin(), xt_wr_t, ht_rr_t);
-        let rt0 = if let Some(b) = b {
-            wire!(wbr = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
-            wire!(rbr = array::Slice::new(0, 4 * h_size, 5 * h_size), b);
-            wire!(wbr_rbr = math::add::bin(), wbr, rbr);
-            wire!(rt0_biased = math::add::bin(), rt0, wbr_rbr);
-            rt0_biased
-        } else {
-            rt0
+        // rt = f(Xt*(Wr^T) + Ht-1*(Rr^T) + Wbr + Rbr)
+        wire!(Xt_WrT = math::MatMul::new(), Xt, WrT);
+        wire!(Ht_1_RrT = math::MatMul::new(), Ht_1, RrT);
+        wire!(rt0 = math::add::bin(), Xt_WrT, Ht_1_RrT);
+        let mut rt0 = rt0;
+        if let Some(b) = b {
+            wire!(Wbr = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
+            wire!(Rbr = array::Slice::new(0, 4 * h_size, 5 * h_size), b);
+            wire!(Wbr_Rbr = math::add::bin(), Wbr, Rbr);
+            wire!(rt0_biased = math::add::bin(), rt0, Wbr_Rbr);
+            rt0 = rt0_biased
         };
         wire!(rt = self.f.clone(), rt0);
 
-        let rt_ht_rht = if self.linear_before_reset {
-            wire!(ht_rht = math::MatMul::new(), ht_prev, rh_t);
-            wire!(rt_ht_rht = math::mul::bin(), rt, ht_rht);
-            rt_ht_rht
+        // ht = g(Xt*(Wh^T) + (rt (.) Ht-1)*(Rh^T) + Rbh + Wbh) # default, when linear_before_reset = 0
+        // ht = g(Xt*(Wh^T) + (rt (.) (Ht-1*(Rh^T) + Rbh)) + Wbh) # when linear_before_reset != 0
+        wire!(Xt_WhT = math::MatMul::new(), Xt, WhT);
+        let rt_Ht_1_RhT = if self.linear_before_reset {
+            wire!(Ht_1_RhT = math::MatMul::new(), Ht_1, RhT);
+            wire!(rt_Ht_1_RhT = math::mul::bin(), rt, Ht_1_RhT);
+            rt_Ht_1_RhT
         } else {
-            wire!(rt_ht = math::mul::bin(), rt, ht_prev);
-            wire!(rt_ht_rht = math::MatMul::new(), rt_ht, rh_t);
-            rt_ht_rht
+            wire!(rt_Ht_1 = math::mul::bin(), rt, Ht_1);
+            wire!(rt_Ht_1_RhT = math::MatMul::new(), rt_Ht_1, RhT);
+            rt_Ht_1_RhT
         };
-        wire!(ht0 = math::add::bin(), xt_wh_t, rt_ht_rht);
-        let ht0 = if let Some(b) = b {
-            wire!(wbh = array::Slice::new(0, 2 * h_size, 3 * h_size), b);
-            wire!(rbh = array::Slice::new(0, 5 * h_size, 6 * h_size), b);
-            wire!(wbh_rbh = math::add::bin(), wbh, rbh);
-            wire!(ht0_biased = math::add::bin(), ht0, wbh_rbh);
-            ht0_biased
-        } else {
-            ht0
-        };
+        wire!(ht0 = math::add::bin(), Xt_WhT, rt_Ht_1_RhT);
+        let mut ht0 = ht0;
+        if let Some(b) = b {
+            wire!(Wbh = array::Slice::new(0, 2 * h_size, 3 * h_size), b);
+            wire!(Rbh = array::Slice::new(0, 5 * h_size, 6 * h_size), b);
+            wire!(Wbh_Rbh = math::add::bin(), Wbh, Rbh);
+            wire!(ht0_biased = math::add::bin(), ht0, Wbh_Rbh);
+            ht0 = ht0_biased
+        }
         wire!(ht = self.g.clone(), ht0);
 
+        // Ht = (1 - zt) (.) ht + zt (.) Ht-1
         let one: OutletId = body.add_const("one", tensor0(1f32))?.into();
         wire!(one_sub_zt = math::sub::bin(), one, zt);
+        wire!(one_sub_zt_ht = math::mul::bin(), one_sub_zt, ht);
+        wire!(zt_Ht_1 = math::mul::bin(), zt, Ht_1);
+        wire!(Ht = math::add::bin(), one_sub_zt_ht, zt_Ht_1);
 
-        wire!(next_ht_left = math::mul::bin(), one_sub_zt, ht);
-        wire!(next_ht_right = math::mul::bin(), zt, ht_prev);
-        wire!(next_ht = math::add::bin(), next_ht_left, next_ht_right);
-
-        wire!(y_h = array::AddDims::new(vec!(0)), next_ht);
+        wire!(y_h = array::AddDims::new(vec!(0)), Ht);
         body.set_output_outlets(&[y_h])?;
 
         let output_mapping = scan::OutputMapping {
