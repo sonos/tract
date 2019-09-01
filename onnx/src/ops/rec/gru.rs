@@ -328,7 +328,7 @@ impl InferenceRulesOp for GRU {
 
         let scan_outputs = target.wire_node(
             &*node.name,
-            scan::Typed::new(body, input_mapping, vec!(output_mapping)),
+            scan::Typed::new(body, input_mapping, vec!(output_mapping), self.optional_sequence_lens_input)?,
             &outer_inputs,
         )?;
 

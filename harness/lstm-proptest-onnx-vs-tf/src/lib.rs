@@ -7,11 +7,10 @@ use tract_core::ndarray::*;
 
 #[derive(Clone, Debug)]
 pub struct LstmProblem {
-    pub loops: usize,
-    pub chunk_length: usize,
+    pub length: usize,
     pub batch_size: usize,
     pub cell_size: usize,
-    pub x: Vec<Arc<Tensor>>,
+    pub x: Arc<Tensor>,
     pub w_xh_icfo: Array2<f32>,
     pub b_icfo: Array1<f32>,
     pub h0: Array2<f32>,
@@ -42,8 +41,8 @@ impl LstmProblem {
         let r_iofc = r_iofc.t().into_shape((1, 4 * s, s))?.to_owned();
         let b_iofc = b_iofc.into_shape((1, 8 * s))?;
 
-        let _x = model
-            .add_source("x", TensorFact::dt_shape(self.x[0].datum_type(), self.x[0].shape()))?;
+        let _x =
+            model.add_source("x", TensorFact::dt_shape(self.x.datum_type(), self.x.shape()))?;
         let mut op = tract_onnx::ops::rec::lstm::LSTM::default();
         op.optional_y_output = Some(0);
         op.optional_bias_input = Some(3);
@@ -53,8 +52,16 @@ impl LstmProblem {
         model.plug_const(InletId::new(lstm, 1), "w", w_iofc)?;
         model.plug_const(InletId::new(lstm, 2), "r", r_iofc)?;
         model.plug_const(InletId::new(lstm, 3), "b", b_iofc)?;
-        model.plug_const(InletId::new(lstm, 4), "initial_h", self.h0.clone().insert_axis(Axis(0)))?;
-        model.plug_const(InletId::new(lstm, 5), "initial_c", self.c0.clone().insert_axis(Axis(0)))?;
+        model.plug_const(
+            InletId::new(lstm, 4),
+            "initial_h",
+            self.h0.clone().insert_axis(Axis(0)),
+        )?;
+        model.plug_const(
+            InletId::new(lstm, 5),
+            "initial_c",
+            self.c0.clone().insert_axis(Axis(0)),
+        )?;
         model.set_output_outlets(&[OutletId::new(lstm, 0)])?;
         model.analyse(false)?;
         Ok(model.into_typed()?)
@@ -63,8 +70,7 @@ impl LstmProblem {
     pub fn tf_model(&self) -> TractResult<TypedModel> {
         let mut model = InferenceModel::default();
 
-        let x = model
-            .add_source("x", TensorFact::dt_shape(self.x[0].datum_type(), self.x[0].shape()))?;
+        let x = model.add_source("x", TensorFact::dt_shape(self.x.datum_type(), self.x.shape()))?;
         let lstm = model
             .add_node(
                 "lstm",
@@ -103,7 +109,7 @@ impl LstmProblem {
             ),
             tvec!(memory_fact),
         )?;
-        model.plug_const(InletId::new(lstm, 0), "seq_length", tensor0(self.chunk_length as i64))?;
+        model.plug_const(InletId::new(lstm, 0), "seq_length", tensor0(self.length as i64))?;
         model.add_edge(OutletId::new(x, 0), InletId::new(lstm, 1))?;
         model.add_edge(OutletId::new(cs, 0), InletId::new(lstm, 2))?;
         model.add_edge(OutletId::new(h, 0), InletId::new(lstm, 3))?;
@@ -115,7 +121,7 @@ impl LstmProblem {
 
         let last_h = model.add_node(
             "last_h",
-            ::tract_core::ops::array::Split::new(0, 2, Some(vec![self.chunk_length - 1, 1])),
+            ::tract_core::ops::array::Split::new(0, 2, Some(vec![self.length - 1, 1])),
             tvec!(TensorFact::default(), TensorFact::default()),
         )?;
         model.add_edge(OutletId::new(lstm, 6), InletId::new(last_h, 0))?;
@@ -128,7 +134,7 @@ impl LstmProblem {
 
         let last_cs = model.add_node(
             "last_cs",
-            ::tract_core::ops::array::Split::new(0, 2, Some(vec![self.chunk_length - 1, 1])),
+            ::tract_core::ops::array::Split::new(0, 2, Some(vec![self.length - 1, 1])),
             tvec!(TensorFact::default(), TensorFact::default()),
         )?;
         model.add_edge(OutletId::new(lstm, 1), InletId::new(last_cs, 0))?;
@@ -194,25 +200,20 @@ impl LstmProblem {
         Ok(model.into_typed()?)
     }
 
-    pub fn onnx_run(&self) -> TractResult<Vec<Arc<Tensor>>> {
+    pub fn onnx_run(&self) -> TractResult<Arc<Tensor>> {
         let model = self.onnx_model()?;
         let plan = SimplePlan::new(model)?;
         let mut state = SimpleState::new(plan)?;
-        let mut result = vec![];
-        for x in self.x.iter() {
-            let mut y = state
-                .run(tvec!(x.clone().into_tensor()))?
-                .remove(0)
-                .into_tensor()
-                .into_array::<f32>()?;
-            // println!("y: {:?}", y.shape());
-            y.index_axis_inplace(Axis(1), 0);
-            result.push(y.into_arc_tensor());
-        }
-        Ok(result)
+        let y = state
+            .run(tvec!(self.x.clone().into_tensor()))?
+            .remove(0)
+            .into_tensor()
+            .into_array::<f32>()?;
+        let y = y.into_shape((self.length, self.batch_size, self.cell_size)).unwrap();
+        Ok(y.into_arc_tensor())
     }
 
-    pub fn tf_run(&self) -> TractResult<Vec<Arc<Tensor>>> {
+    pub fn tf_run(&self) -> TractResult<Arc<Tensor>> {
         let model = self.tf_model()?;
         let init_id = model.node_by_name("init")?.id;
         let lstm_id = model.node_by_name("lstm")?.id;
@@ -224,22 +225,19 @@ impl LstmProblem {
         )?;
         let mut state = SimpleState::new_multiplan(vec![plan_init, plan_run])?;
         state.run_plan(tvec!(), 0)?;
-        let mut result = vec![];
-        for x in self.x.iter() {
-            result.push(state.run_plan(tvec!(x.clone().into_tensor()), 1)?.remove(0));
-        }
-        Ok(result)
+        let y = state.run_plan(tvec!(self.x.clone().into_tensor()), 1)?.remove(0);
+        Ok(y)
     }
 }
 
 fn strat() -> BoxedStrategy<LstmProblem> {
-    (1usize..=1, 1usize..4, 1usize..4, 1usize..4)
-        .prop_flat_map(|(loops, chunk_length, batch_size, cell_size)| {
+    (1usize..4, 1usize..4, 1usize..4)
+        .prop_flat_map(|(length, batch_size, cell_size)| {
             (
-                Just((loops, chunk_length, batch_size, cell_size)),
+                Just((length, batch_size, cell_size)),
                 proptest::collection::vec(
                     (-3..3).prop_map(|a| a as f32),
-                    loops * chunk_length * batch_size * cell_size,
+                    length * batch_size * cell_size,
                 ),
                 proptest::collection::vec(
                     (-3..3).prop_map(|a| a as f32),
@@ -250,24 +248,18 @@ fn strat() -> BoxedStrategy<LstmProblem> {
                 proptest::collection::vec((-3..3).prop_map(|a| a as f32), cell_size * batch_size),
             )
         })
-        .prop_map(|((loops, chunk_length, batch_size, cell_size), x, w_xh_icfo, b_icfo, h0, c0)| {
-            let x = (0..loops)
-                .map(|i| {
-                    let range = chunk_length * batch_size * cell_size;
-                    Array3::from_shape_vec(
-                        (chunk_length, batch_size, cell_size),
-                        x[i * range..(i + 1) * range].to_vec(),
-                    )
-                    .unwrap()
-                    .into_arc_tensor()
-                })
-                .collect();
+        .prop_map(|((length, batch_size, cell_size), x, w_xh_icfo, b_icfo, h0, c0)| {
+            let x = Array3::from_shape_vec(
+                (length, batch_size, cell_size), x
+            )
+            .unwrap()
+            .into_arc_tensor();
             let w_xh_icfo =
                 Array2::from_shape_vec((cell_size * 2, cell_size * 4), w_xh_icfo).unwrap();
             let b_icfo = Array1::from_shape_vec(cell_size * 4, b_icfo).unwrap();
             let h0 = Array2::from_shape_vec((batch_size, cell_size), h0).unwrap();
             let c0 = Array2::from_shape_vec((batch_size, cell_size), c0).unwrap();
-            LstmProblem { loops, chunk_length, batch_size, cell_size, x, w_xh_icfo, b_icfo, h0, c0 }
+            LstmProblem { length, batch_size, cell_size, x, w_xh_icfo, b_icfo, h0, c0 }
         })
         .boxed()
 }
@@ -277,22 +269,35 @@ proptest::proptest! {
     fn test(pb in strat()) {
         let o = pb.onnx_run().unwrap();
         let t = pb.tf_run().unwrap();
-        prop_assert_eq!(o.len(), t.len());
-        for (o,t) in o.iter().zip(t.iter()) {
-            prop_assert!(o.close_enough(&t, true).is_ok(), "\nonnx:{:?}\n tf :{:?}\n", o, t);
-        }
+        prop_assert!(o.close_enough(&t, true).is_ok(), "\nonnx:{:?}\n tf :{:?}\n", o, t);
     }
 }
 
 #[test]
 fn test_x() {
     let pb = LstmProblem {
-        loops: 1,
-        chunk_length: 1,
+        length: 1,
         batch_size: 1,
         cell_size: 1,
-        x: vec![rctensor3(&[[[-3f32]]])],
+        x: rctensor3(&[[[-3f32]]]),
         w_xh_icfo: arr2(&[[0.0f32, -1.0, 0.0, -6.0], [0.0, 0.0, 0.0, 0.0]]),
+        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
+        h0: arr2(&[[0.0f32]]),
+        c0: arr2(&[[0.0f32]]),
+    };
+    let o = pb.onnx_run().unwrap();
+    let t = pb.tf_run().unwrap();
+    assert_eq!(o, t)
+}
+
+#[test]
+fn test_seq() {
+    let pb = LstmProblem {
+        length: 2,
+        batch_size: 1,
+        cell_size: 1,
+        x: rctensor3(&[[[1f32]], [[2.0]]]),
+        w_xh_icfo: arr2(&[[0.0f32, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]),
         b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
         h0: arr2(&[[0.0f32]]),
         c0: arr2(&[[0.0f32]]),
@@ -305,11 +310,10 @@ fn test_x() {
 #[test]
 fn test_c0() {
     let pb = LstmProblem {
-        loops: 1,
-        chunk_length: 1,
+        length: 1,
         batch_size: 1,
         cell_size: 1,
-        x: vec![rctensor3(&[[[-0f32]]])],
+        x: rctensor3(&[[[-0f32]]]),
         w_xh_icfo: arr2(&[[0.0f32, -0.0, 0.0, -0.0], [0.0, 0.0, 0.0, 0.0]]),
         b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
         h0: arr2(&[[0.0f32]]),
@@ -323,11 +327,10 @@ fn test_c0() {
 #[test]
 fn test_b() {
     let pb = LstmProblem {
-        loops: 1,
-        chunk_length: 1,
+        length: 1,
         batch_size: 1,
         cell_size: 2,
-        x: vec![rctensor3(&[[[0f32, 0.0]]])],
+        x: rctensor3(&[[[0f32, 0.0]]]),
         w_xh_icfo: Array2::<f32>::zeros((4, 8)).into(),
         b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
         h0: arr2(&[[0.0f32, 0.0]]),
@@ -341,11 +344,10 @@ fn test_b() {
 #[test]
 fn test_w() {
     let pb = LstmProblem {
-        loops: 1,
-        chunk_length: 2,
+        length: 2,
         batch_size: 1,
         cell_size: 2,
-        x: vec![rctensor3(&[[[2.0f32, 1.0]], [[0.0, -3.0]]])],
+        x: rctensor3(&[[[2.0f32, 1.0]], [[0.0, -3.0]]]),
         w_xh_icfo: arr2(&[
             [0f32, -2.0, 0.0, 0.0, -2.0, -2.0, -3.0, -3.0],
             [0.0, -3.0, 2.0, 0.0, -2.0, 2.0, 1.0, -3.0],

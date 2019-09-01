@@ -5,6 +5,7 @@ pub struct Inference {
     pub body: InferenceModel,
     pub input_mapping: Vec<InputMapping<()>>,
     pub output_mapping: Vec<OutputMapping<(), TDim>>,
+    pub seq_length_input_slot: Option<usize>,
 }
 
 impl Op for Inference {
@@ -65,7 +66,7 @@ impl Inference {
                 })
             })
             .collect::<TractResult<_>>()?;
-        Ok(Box::new(Typed::new(typed_model, input_mapping, output_mapping)))
+        Ok(Box::new(Typed::new(typed_model, input_mapping, output_mapping, self.seq_length_input_slot)?))
     }
     fn unify_scanning_tensor_fact(
         outer: &mut TensorFact,

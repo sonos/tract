@@ -211,7 +211,7 @@ fn incorporate_memory_ops_as_scans(
 
         // prepare patch
         let scan =
-            tract_core::ops::scan::Inference::new(inner_model, mapped_inputs, mapped_outputs);
+            tract_core::ops::scan::Inference::new(inner_model, mapped_inputs, mapped_outputs, None);
 
         let mut output_facts = tvec!();
         /*

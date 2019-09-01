@@ -154,7 +154,8 @@ impl OpState for State {
             if let Some(slot) = output.full_slot {
                 let fact = op.plan.model().output_fact(ix)?;
                 let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
-                let scanning_dim = output.full_dim_hint
+                let scanning_dim = output
+                    .full_dim_hint
                     .as_ref()
                     .and_then(|d| d.to_integer().ok().map(|i| i as usize))
                     .unwrap_or(shape[output.axis] * iters);
@@ -181,20 +182,23 @@ impl OpState for State {
                 .iter()
                 .map(|m| {
                     Ok(match m {
-                        InputMapping::State { .. } => self.hidden_state.pop().unwrap(),
+                        InputMapping::State { .. } => Some(self.hidden_state.pop().unwrap()),
                         InputMapping::Scan { slot, axis, chunk } => {
-                            dispatch_datum!(Self::slice_input_t(inputs[*slot].datum_type())(
+                            Some(dispatch_datum!(Self::slice_input_t(inputs[*slot].datum_type())(
                                 self,
                                 inputs[*slot].as_ref(),
                                 *axis,
                                 i,
                                 *chunk
-                            ))?
+                            ))?)
                         }
-                        InputMapping::Full { slot } => inputs[*slot].clone().into_tensor(),
+                        InputMapping::Full { slot } => Some(inputs[*slot].clone().into_tensor()),
                     })
                 })
-                .collect::<TractResult<_>>()?;
+                .collect::<TractResult<Vec<_>>>()?
+                .into_iter()
+                .filter_map(|x| x)
+                .collect();
 
             trace!("iter_inputs: {:?}", iter_inputs);
             let iter_outputs =
@@ -229,10 +233,7 @@ impl OpState for State {
 impl TypedOp for Codegen {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let mut outputs = tvec!();
         let iters = {
             let (outside_slot, axis, chunk) = self
@@ -249,7 +250,8 @@ impl TypedOp for Codegen {
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;
             if let Some(slot) = output.last_value_slot {
-                outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+                outputs
+                    .push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
             }
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();

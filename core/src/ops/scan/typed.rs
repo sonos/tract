@@ -7,6 +7,7 @@ pub struct Typed {
     pub skip: usize,
     pub body: TypedModel,
     decluttered: bool,
+    pub seq_length_input_slot: Option<usize>,
     pub input_mapping: Vec<InputMapping<TDim>>,
     pub output_mapping: Vec<OutputMapping<TDim, TDim>>,
 }
@@ -56,8 +57,11 @@ impl Typed {
         body: TypedModel,
         input_mapping: Vec<InputMapping<TDim>>,
         output_mapping: Vec<OutputMapping<TDim, TDim>>,
-    ) -> Typed {
-        Typed { skip: 0, body, decluttered: false, input_mapping, output_mapping }
+        seq_length_input_slot: Option<usize>
+    ) -> TractResult<Typed> {
+        assert_eq!(input_mapping.len(), body.input_outlets()?.len());
+        assert_eq!(output_mapping.len(), body.output_outlets()?.len());
+        Ok(Typed { skip: 0, body, decluttered: false, input_mapping, output_mapping, seq_length_input_slot })
     }
 }
 
