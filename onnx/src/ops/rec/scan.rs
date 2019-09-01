@@ -25,7 +25,14 @@ pub fn scan(
         mapped_inputs.push(tract_core::ops::scan::InputMapping::State {
             initializer: tract_core::ops::scan::StateInitializer::FromInput(ix),
         });
-        mapped_outputs.push(tract_core::ops::scan::OutputMapping::State { slot: Some(ix) });
+        mapped_outputs.push(tract_core::ops::scan::OutputMapping {
+            state: true,
+            last_value_slot: Some(ix),
+            full_slot: None,
+            axis: 0,
+            chunk: (),
+            full_dim_hint: None,
+        });
     }
 
     for (ix, ax) in scan_input_axes.iter().enumerate() {
@@ -40,7 +47,11 @@ pub fn scan(
         )?
         .apply(&mut model)?;
         model.set_outlet_fact(outlet, TensorFact::default())?;
-        mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan { axis: *ax, slot: ix + num_hidden_state, chunk: () });
+        mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan {
+            axis: *ax,
+            slot: ix + num_hidden_state,
+            chunk: (),
+        });
     }
 
     for (ix, ax) in scan_output_axes.iter().enumerate() {
@@ -54,15 +65,15 @@ pub fn scan(
             TensorFact::default(),
         )?
         .apply(&mut model)?;
-        mapped_outputs.push(tract_core::ops::scan::OutputMapping::Scan { axis: *ax, slot: ix + num_hidden_state, chunk: (), full_dim_hint: None });
+        mapped_outputs.push(tract_core::ops::scan::OutputMapping {
+            state: false,
+            axis: *ax,
+            full_slot: Some(ix + num_hidden_state),
+            chunk: (),
+            full_dim_hint: None,
+            last_value_slot: None
+        });
     }
 
-    Ok((
-        Box::new(Inference::new(
-            model,
-            mapped_inputs,
-            mapped_outputs,
-        )),
-        unresolved_inputs,
-    ))
+    Ok((Box::new(Inference::new(model, mapped_inputs, mapped_outputs)), unresolved_inputs))
 }

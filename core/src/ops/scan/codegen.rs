@@ -19,6 +19,17 @@ impl Op for Codegen {
         vec![("loop".into(), self.plan.model())]
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        let mut lines = vec![];
+        for (ix, im) in self.input_mapping.iter().enumerate() {
+            lines.push(format!("Model input  #{}: {:?}", ix, im));
+        }
+        for (ix, om) in self.output_mapping.iter().enumerate() {
+            lines.push(format!("Model output #{}: {:?}", ix, om));
+        }
+        Ok(lines)
+    }
+
     op_as_typed_op!();
 }
 
@@ -140,23 +151,19 @@ impl OpState for State {
 
         let mut outputs = tvec!();
         for (ix, output) in op.output_mapping.iter().enumerate() {
-            match output {
-                OutputMapping::Scan { slot, axis, full_dim_hint, .. } => {
-                    let fact = op.plan.model().output_fact(ix)?;
-                    let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
-                    let scanning_dim = full_dim_hint
-                        .as_ref()
-                        .and_then(|d| d.to_integer().ok().map(|i| i as usize))
-                        .unwrap_or(shape[*axis] * iters);
-                    shape[*axis] = scanning_dim;
-                    let t = dispatch_datum!(Self::alloc_output_t(fact.datum_type)(self, &*shape))?;
-                    outputs.push((slot, t));
-                }
-                OutputMapping::State { slot } => {
-                    if let Some(slot) = slot {
-                        outputs.push((slot, Tensor::default()));
-                    }
-                }
+            if let Some(slot) = output.full_slot {
+                let fact = op.plan.model().output_fact(ix)?;
+                let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
+                let scanning_dim = output.full_dim_hint
+                    .as_ref()
+                    .and_then(|d| d.to_integer().ok().map(|i| i as usize))
+                    .unwrap_or(shape[output.axis] * iters);
+                shape[output.axis] = scanning_dim;
+                let t = dispatch_datum!(Self::alloc_output_t(fact.datum_type)(self, &*shape))?;
+                outputs.push((slot, t));
+            }
+            if let Some(slot) = output.last_value_slot {
+                outputs.push((slot, Tensor::default()));
             }
         }
         outputs.sort_by_key(|a| a.0);
@@ -192,28 +199,25 @@ impl OpState for State {
             trace!("iter_inputs: {:?}", iter_inputs);
             let iter_outputs =
                 self.model_state.run(iter_inputs).chain_err(|| "Evaluating inner body")?;
+            trace!("iter_outputs: {:?}", iter_outputs);
 
             for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
-                match mapping {
-                    OutputMapping::State { .. } => self.hidden_state.push(v.into_tensor()),
-                    OutputMapping::Scan { axis, slot, .. } => {
-                        dispatch_datum!(Self::assign_output_t(v.datum_type())(
-                            self,
-                            &mut outputs[*slot],
-                            *axis,
-                            v.as_ref(),
-                            i
-                        ))?;
+                if let Some(slot) = mapping.full_slot {
+                    dispatch_datum!(Self::assign_output_t(v.datum_type())(
+                        self,
+                        &mut outputs[slot],
+                        mapping.axis,
+                        v.as_ref(),
+                        i
+                    ))?;
+                }
+                if i == iters - 1 {
+                    if let Some(slot) = mapping.last_value_slot {
+                        outputs[slot] = v.clone().into_tensor();
                     }
                 }
-            }
-        }
-
-        for (ix, map) in op.output_mapping.iter().enumerate() {
-            if let OutputMapping::State { slot } = map {
-                let value = self.hidden_state[ix].clone();
-                if let Some(slot) = slot {
-                    outputs[*slot] = value;
+                if mapping.state {
+                    self.hidden_state.push(v.into_tensor());
                 }
             }
         }
@@ -244,19 +248,15 @@ impl TypedOp for Codegen {
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;
-            match output {
-                OutputMapping::Scan { slot, axis, full_dim_hint, .. } => {
-                    let mut shape = fact.shape.clone();
-                    let scanning_dim =
-                        full_dim_hint.clone().unwrap_or(shape.dim(*axis) * &iters);
-                    shape.set_dim(*axis, scanning_dim)?;
-                    outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
-                }
-                OutputMapping::State { slot } => {
-                    if let Some(slot) = slot {
-                        outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
-                    }
-                }
+            if let Some(slot) = output.last_value_slot {
+                outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+            }
+            if let Some(slot) = output.full_slot {
+                let mut shape = fact.shape.clone();
+                let scanning_dim =
+                    output.full_dim_hint.clone().unwrap_or(shape.dim(output.axis) * &iters);
+                shape.set_dim(output.axis, scanning_dim)?;
+                outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
             }
         }
         outputs.sort_by_key(|a| a.0);

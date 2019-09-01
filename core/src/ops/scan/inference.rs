@@ -55,16 +55,13 @@ impl Inference {
             .iter()
             .enumerate()
             .map(|(ix, im)| {
-                Ok(match im {
-                    OutputMapping::Scan { axis, slot, full_dim_hint, chunk: _ } => {
-                        OutputMapping::Scan {
-                            axis: *axis,
-                            slot: *slot,
-                            chunk: typed_model.input_fact(ix)?.shape.dim(*axis),
-                            full_dim_hint: full_dim_hint.clone(),
-                        }
-                    }
-                    OutputMapping::State { slot } => OutputMapping::State { slot: *slot },
+                Ok(OutputMapping {
+                    state: im.state,
+                    axis: im.axis,
+                    full_slot: im.full_slot,
+                    full_dim_hint: im.full_dim_hint.clone(),
+                    last_value_slot: im.last_value_slot,
+                    chunk: typed_model.input_fact(ix)?.shape.dim(im.axis),
                 })
             })
             .collect::<TractResult<_>>()?;
@@ -118,7 +115,7 @@ impl Inference {
                 .iter()
                 .enumerate()
                 .filter(
-                    |(_ix, map)| if let OutputMapping::State { .. } = map { true } else { false },
+                    |(_ix, map)| map.state
                 )
                 .nth(state_ix)
                 .unwrap()
@@ -153,13 +150,13 @@ impl Inference {
             }
         }
         for (ix, i) in self.output_mapping.iter().enumerate() {
-            match i {
-                OutputMapping::State { .. } => {}
-                OutputMapping::Scan { slot, axis, .. } => {
-                    let outgoing = &mut outputs[*slot];
-                    let inner = self.body.output_fact_mut(ix)?;
-                    Self::unify_scanning_tensor_fact(outgoing, inner, *axis)?;
-                }
+            if let Some(slot) = i.full_slot {
+                let outgoing = &mut outputs[slot];
+                let inner = self.body.output_fact_mut(ix)?;
+                Self::unify_scanning_tensor_fact(outgoing, inner, i.axis)?;
+            }
+            if let Some(slot) = i.last_value_slot {
+                outputs[slot].unify_with(self.body.output_fact_mut(ix)?)?;
             }
         }
         Ok(())

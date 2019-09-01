@@ -154,7 +154,6 @@ impl InferenceRulesOp for GRU {
         let mut body = TypedModel::default();
         let mut outer_inputs = vec![];
         let mut input_mapping = vec![];
-        let mut output_mapping = vec![];
 
         macro_rules! target_wire {
             ($name: ident = $op: expr, $($param: expr),*) => {
@@ -214,7 +213,7 @@ impl InferenceRulesOp for GRU {
         // FIXME: seqlength
 
         // initial h, optional: onnx: [num_directions, batch_size, hidden_size]
-        // scan outer: [batch_size, hidden_size]
+        // scan outer: [chunk=1, batch_size, hidden_size]
         // scan inner: [chunk=1, batch_size, hidden_size]
         // onnx inner: [batch_size, hidden_size]
         let initializer = if let Some(initial_h_input) = self.optional_initial_h_input {
@@ -222,7 +221,8 @@ impl InferenceRulesOp for GRU {
                 h = tract_core::ops::array::RmDims::new(vec![0]),
                 mapping[&node.inputs[initial_h_input]]
             );
-            outer_inputs.push(h);
+            target_wire!(h_chunk = tract_core::ops::array::AddDims::new(vec![0]), h);
+            outer_inputs.push(h_chunk);
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
             scan::StateInitializer::Value(
@@ -235,9 +235,6 @@ impl InferenceRulesOp for GRU {
                 x_fact.datum_type,
                 [1, b_size, h_size].as_ref()
             )?)?.into();
-
-        dbg!(&input_mapping);
-        dbg!(&body);
 
         wire!(ht_prev = array::RmDims::new(vec!(0)), h_source);
 
@@ -317,28 +314,21 @@ impl InferenceRulesOp for GRU {
         wire!(next_ht = math::add::bin(), next_ht_left, next_ht_right);
 
         wire!(y_h = array::AddDims::new(vec!(0)), next_ht);
-        wire!(y_h_dup = tract_core::ops::identity::Identity::default(), y_h);
+        body.set_output_outlets(&[y_h])?;
 
-        let mut output_outlets = vec![];
-        if let Some(_) = self.optional_y_output {
-            output_mapping.push(scan::OutputMapping::Scan {
-                slot: output_mapping.len(),
+        let output_mapping = scan::OutputMapping {
+            state: true,
                 axis: 0,
                 chunk: 1.to_dim(),
                 full_dim_hint: None,
-            });
-            output_outlets.push(y_h);
-        }
+                last_value_slot: self.optional_y_h_output,
+                full_slot: self.optional_y_output,
+            };
 
-        if let Some(_) = self.optional_y_h_output {
-            output_mapping.push(scan::OutputMapping::State { slot: Some(output_mapping.len()) });
-            output_outlets.push(y_h_dup);
-        }
-        body.set_output_outlets(&*output_outlets)?;
 
         let scan_outputs = target.wire_node(
             &*node.name,
-            scan::Typed::new(body, input_mapping, output_mapping),
+            scan::Typed::new(body, input_mapping, vec!(output_mapping)),
             &outer_inputs,
         )?;
 
@@ -348,8 +338,7 @@ impl InferenceRulesOp for GRU {
             result.push(y);
         }
         if let Some(slot) = self.optional_y_h_output {
-            target_wire!(y_h = array::AddDims::new(vec!(0)), scan_outputs[slot]);
-            result.push(y_h);
+            result.push(scan_outputs[slot]);
         }
 
         Ok(result)

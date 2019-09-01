@@ -46,6 +46,18 @@ where
             */
         }
     }
+    // do not drop inputs, even if they are useless, to maintain interface
+    for i in source.input_outlets()? {
+        if !mapping.contains_key(i) {
+            let node = source.node(i.node);
+            debug!("Translate useless source {}", node);
+            let outlets = node
+                .op
+                .translate(&source, node, &mut target, &mapping, ctx)
+                .chain_err(|| format!("Translating {}", node))?;
+            mapping.insert(*i, outlets[0]);
+        }
+    }
     // maintaining order of i/o interface
     target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
     target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
@@ -86,12 +98,20 @@ where
             model.node_mut(new_id).control_inputs.push(map[input]);
         }
     }
+    for i in old.input_outlets()? {
+        if !map.contains_key(&i.node) {
+            let node = old.node(i.node);
+            debug!("Translate useless source {}", node);
+            let new_id = model.add_node(
+                &*node.name,
+                O2::try_from(node.op.clone())?,
+                tvec!(TI2::try_from(node.outputs[0].fact.clone())?),
+            )?;
+            map.insert(i.node, new_id);
+        }
+    }
     // maintaining order of i/o interface
-    model.inputs = old
-        .input_outlets()?
-        .iter()
-        .filter_map(|i| map.get(&i.node).map(|&n| OutletId::new(n, i.slot)))
-        .collect();
+    model.inputs = old.input_outlets()?.iter().map(|i| OutletId::new(map[&i.node], 0)).collect();
     model.outputs =
         old.output_outlets()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
     Ok(model)

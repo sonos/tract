@@ -39,25 +39,18 @@ impl<C: Clone> InputMapping<C> {
 }
 
 #[derive(Debug, Clone, new)]
-pub enum OutputMapping<C: Clone, F: Clone> {
-    State { slot: Option<usize> },
-    Scan { slot: usize, axis: usize, chunk: C, full_dim_hint: Option<F> },
+pub struct OutputMapping<C: Clone, F: Clone> {
+    pub full_slot: Option<usize>,
+    pub axis: usize,
+    pub chunk: C,
+    pub full_dim_hint: Option<F>,
+    pub last_value_slot: Option<usize>,
+    pub state: bool,
 }
 
 impl<C: Clone, F: Clone> OutputMapping<C, F> {
     pub fn invisible(&self) -> bool {
-        if let OutputMapping::State { slot: None } = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn as_scan(&self) -> Option<(usize, usize, C)> {
-        match self {
-            OutputMapping::Scan { slot, axis, chunk, .. } => Some((*slot, *axis, chunk.clone())),
-            _ => None,
-        }
+        self.full_slot.is_none() && self.last_value_slot.is_none()
     }
 }
 
