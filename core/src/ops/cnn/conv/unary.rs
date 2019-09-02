@@ -443,13 +443,14 @@ impl Op for ConvUnary {
             && self.group == 1
         {
             if self.kernel_fmt == KernelFormat::HWIO && self.data_format == DataFormat::NHWC {
-                use crate::ops::math::mat_mul::MatMulUnaryA;
+                use crate::ops::math::mat_mul::MatMulUnary;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
+                let op = MatMulUnary::new(kernel, true, true, true);
                 return Ok(Some(TypedModelPatch::single_unary_op(
                     model,
                     node,
-                    MatMulUnaryA::new(kernel),
+                    op
                 )?));
             }
         } else if let Some(axis) = (0..self.strides.len()).find(|&ax| {

@@ -57,7 +57,7 @@ fi
 
 ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
      -O -i 49x10xf32 --partial \
-     --input-node Mfcc run > /dev/null
+     --input-node Mfcc run -q
 
 ./target/release/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
      -O -i 1x224x224x3xf32 \
