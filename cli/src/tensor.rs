@@ -108,6 +108,12 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, TensorFact)> {
     if value.starts_with("@") {
         for_data(&value[1..])
     } else {
+        let (name, value) = if value.contains(":") {
+            let mut splits = value.split(":");
+            (Some(splits.next().unwrap().to_string()), splits.next().unwrap())
+        } else {
+            (None, value)
+        };
         if value.contains("=") {
             let mut split = value.split("=");
             let spec = parse_spec(split.next().unwrap())?;
@@ -119,9 +125,9 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, TensorFact)> {
                 .as_concrete_finite()?
                 .ok_or("Must specify concrete shape when giving tensor value")?;
             let tensor = dispatch_datum!(parse_values(dt)(&*shape, value.collect()))?;
-            Ok((None, tensor.into()))
+            Ok((name, tensor.into()))
         } else {
-            Ok((None, parse_spec(value)?))
+            Ok((name, parse_spec(value)?))
         }
     }
 }

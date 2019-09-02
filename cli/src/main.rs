@@ -99,6 +99,9 @@ fn main() {
         (@arg output_node: --("output-node") +takes_value +multiple number_of_values(1)
             "Override output nodes name (auto-detects otherwise).")
 
+        (@arg override_fact: --("override-fact") +takes_value +multiple number_of_values(1)
+            "Override a fact.")
+
         (@arg analyse_fail_fast: --("analyse-fail-fast") "Stop analyse at first error.")
         (@arg recursive: --recursive "Apply to sub graphes")
 
@@ -430,6 +433,14 @@ impl Parameters {
 
         if let Some(outputs) = matches.values_of("output_node") {
             raw_model.set_output_names(outputs)?;
+        };
+
+        if let Some(override_facts) = matches.values_of("override_fact") {
+            for fact in override_facts {
+                let (name, fact) = tensor::for_string(fact)?;
+                let node = raw_model.node_by_name(name.unwrap())?.id;
+                raw_model.set_outlet_fact(OutletId::new(node, 0), fact)?;
+            }
         };
 
         let output_names = raw_model
