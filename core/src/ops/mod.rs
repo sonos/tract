@@ -332,6 +332,10 @@ pub trait InferenceOp:
         observed: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)>;
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(1)
+    }
+
     /// Reinterpret the InferenceOp as an Op.
     fn as_op(&self) -> &dyn Op;
 

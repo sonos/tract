@@ -103,6 +103,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
 
             let inferred = {
                 let (inputs, outputs) = self.model.borrow().node_facts(node)?;
+                debug_assert_eq!(outputs.len(), self.model.borrow().node(node).op.nboutputs().unwrap());
                 let inputs: TVec<TensorFact> = inputs.into_iter().cloned().collect();
                 let outputs: TVec<TensorFact> = outputs.into_iter().cloned().collect();
                 let observed: TVec<(OutletId, TensorFact)> = {

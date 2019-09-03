@@ -30,6 +30,7 @@ impl Op for ArgMaxMin {
     fn name(&self) -> Cow<str> {
         "ArgMaxMin".into()
     }
+
     op_as_typed_op!();
 }
 

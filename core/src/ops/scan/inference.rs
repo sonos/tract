@@ -224,5 +224,9 @@ impl InferenceOp for Inference {
         target.wire_node(&*node.name, self.to_typed_scan()? as Box<dyn TypedOp>, &*inputs)
     }
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(self.output_mapping.iter().filter(|om| !om.invisible()).count())
+    }
+
     inference_op_as_op!();
 }

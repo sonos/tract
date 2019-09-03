@@ -57,6 +57,11 @@ pub trait InferenceRulesOp {
     ) -> TractResult<TVec<OutletId>> {
         bail!("Node {} can not be typed", node)
     }
+
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(1)
+    }
+
 }
 
 impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
@@ -80,6 +85,9 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
         Ok((input, output, observed.into_iter().cloned().collect()))
     }
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        self.nboutputs()
+    }
 
     fn observe_outlets(
         &self,
