@@ -132,6 +132,10 @@ impl InferenceRulesOp for GRU {
         Ok(())
     }
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(self.optional_y_output.is_some() as usize + self.optional_y_h_output.is_some() as usize)
+    }
+
     inference_op_as_op!();
 
     #[allow(non_snake_case)]
@@ -245,21 +249,13 @@ impl InferenceRulesOp for GRU {
         wire!(Rr = array::Slice::new(0, 1 * h_size, 2 * h_size), R);
         wire!(Rh = array::Slice::new(0, 2 * h_size, 3 * h_size), R);
 
-        wire!(RzT = array::PermuteAxes::new(Some(vec!(1, 0))), Rz);
-        wire!(RrT = array::PermuteAxes::new(Some(vec!(1, 0))), Rr);
-        wire!(RhT = array::PermuteAxes::new(Some(vec!(1, 0))), Rh);
-
         wire!(Wz = array::Slice::new(0, 0 * h_size, 1 * h_size), W);
         wire!(Wr = array::Slice::new(0, 1 * h_size, 2 * h_size), W);
         wire!(Wh = array::Slice::new(0, 2 * h_size, 3 * h_size), W);
 
-        wire!(WzT = array::PermuteAxes::new(Some(vec!(1, 0))), Wz);
-        wire!(WrT = array::PermuteAxes::new(Some(vec!(1, 0))), Wr);
-        wire!(WhT = array::PermuteAxes::new(Some(vec!(1, 0))), Wh);
-
         // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
-        wire!(Xt_WzT = math::MatMul::new(), Xt, WzT);
-        wire!(Ht_1_RzT = math::MatMul::new(), Ht_1, RzT);
+        wire!(Xt_WzT = math::MatMul::new(false, true, false), Xt, Wz);
+        wire!(Ht_1_RzT = math::MatMul::new(false, true, false), Ht_1, Rz);
         wire!(zt0 = math::add::bin(), Xt_WzT, Ht_1_RzT);
         let mut zt0 = zt0;
         if let Some(b) = b {
@@ -272,8 +268,8 @@ impl InferenceRulesOp for GRU {
         wire!(zt = self.f.clone(), zt0);
 
         // rt = f(Xt*(Wr^T) + Ht-1*(Rr^T) + Wbr + Rbr)
-        wire!(Xt_WrT = math::MatMul::new(), Xt, WrT);
-        wire!(Ht_1_RrT = math::MatMul::new(), Ht_1, RrT);
+        wire!(Xt_WrT = math::MatMul::new(false, true, false), Xt, Wr);
+        wire!(Ht_1_RrT = math::MatMul::new(false, true, false), Ht_1, Rr);
         wire!(rt0 = math::add::bin(), Xt_WrT, Ht_1_RrT);
         let mut rt0 = rt0;
         if let Some(b) = b {
@@ -287,14 +283,14 @@ impl InferenceRulesOp for GRU {
 
         // ht = g(Xt*(Wh^T) + (rt (.) Ht-1)*(Rh^T) + Rbh + Wbh) # default, when linear_before_reset = 0
         // ht = g(Xt*(Wh^T) + (rt (.) (Ht-1*(Rh^T) + Rbh)) + Wbh) # when linear_before_reset != 0
-        wire!(Xt_WhT = math::MatMul::new(), Xt, WhT);
+        wire!(Xt_WhT = math::MatMul::new(false, true, false), Xt, Wh);
         let rt_Ht_1_RhT = if self.linear_before_reset {
-            wire!(Ht_1_RhT = math::MatMul::new(), Ht_1, RhT);
+            wire!(Ht_1_RhT = math::MatMul::new(false, true, false), Ht_1, Rh);
             wire!(rt_Ht_1_RhT = math::mul::bin(), rt, Ht_1_RhT);
             rt_Ht_1_RhT
         } else {
             wire!(rt_Ht_1 = math::mul::bin(), rt, Ht_1);
-            wire!(rt_Ht_1_RhT = math::MatMul::new(), rt_Ht_1, RhT);
+            wire!(rt_Ht_1_RhT = math::MatMul::new(false, true, false), rt_Ht_1, Rh);
             rt_Ht_1_RhT
         };
         wire!(ht0 = math::add::bin(), Xt_WhT, rt_Ht_1_RhT);

@@ -188,6 +188,10 @@ impl InferenceRulesOp for BlockLSTM {
         Ok(())
     }
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(7)
+    }
+
     inference_op_as_op!();
     to_typed!();
 }

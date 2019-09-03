@@ -286,16 +286,38 @@ impl ModelDslInfer for super::InferenceModel {
     }
 }
 
-pub trait ModelDslTyped: ModelDsl<TypedTensorInfo, Box<dyn TypedOp>> {
+pub trait ModelWireNode<TI, O>
+where
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
     fn wire_node(
         &mut self,
         name: impl Into<String>,
-        op: impl Into<Box<dyn TypedOp>>,
+        op: impl Into<O>,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>>;
 }
 
-impl ModelDslTyped for TypedModel {
+impl ModelWireNode<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
+    fn wire_node(
+        &mut self,
+        name: impl Into<String>,
+        op: impl Into<Box<dyn InferenceOp>>,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let op = op.into();
+        let output_facts:TVec<TensorFact> = (0..op.nboutputs()?).map(|_| TensorFact::default()).collect();
+        let id = self.add_node(name, op, output_facts)?;
+        inputs
+            .iter()
+            .enumerate()
+            .try_for_each(|(ix, i)| self.add_edge(*i, InletId::new(id, ix)))?;
+        Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
+    }
+}
+
+impl ModelWireNode<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
     fn wire_node(
         &mut self,
         name: impl Into<String>,
@@ -322,3 +344,4 @@ impl ModelDslTyped for TypedModel {
         Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
     }
 }
+
