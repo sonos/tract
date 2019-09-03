@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use libc::{getrusage, rusage, RUSAGE_SELF};
 use std::time::Instant as StdInstant;
 
 use crate::CliResult;
@@ -10,8 +11,8 @@ pub struct Instant(StdInstant, f64, f64);
 impl Instant {
     /// Returns the current instant.
     pub fn now() -> Instant {
-        let elapsed_user = get_memory_usage().unwrap().user_time;
-        let elapsed_sys = get_memory_usage().unwrap().system_time;
+        let elapsed_user = get_usage().unwrap().user_time;
+        let elapsed_sys = get_usage().unwrap().system_time;
 
         Instant(StdInstant::now(), elapsed_user, elapsed_sys)
     }
@@ -24,12 +25,12 @@ impl Instant {
 
     /// Returns the number of elapsed user seconds since the instant.
     pub fn elapsed_user(&self) -> f64 {
-        get_memory_usage().unwrap().user_time - self.1
+        get_usage().unwrap().user_time - self.1
     }
 
     /// Returns the number of elapsed system seconds since the instant.
     pub fn elapsed_sys(&self) -> f64 {
-        get_memory_usage().unwrap().system_time - self.2
+        get_usage().unwrap().system_time - self.2
     }
 }
 
@@ -108,8 +109,6 @@ impl std::ops::DivAssign<f64> for Duration {
     }
 }
 
-use libc::{getrusage, rusage, timeval, RUSAGE_SELF};
-
 #[derive(Debug)]
 pub struct ResourceUsage {
     pub virtual_size: u64,
@@ -175,7 +174,7 @@ mod darwin {
 }
 
 #[cfg(target_os = "macos")]
-pub fn get_memory_usage() -> CliResult<ResourceUsage> {
+pub fn get_usage() -> CliResult<ResourceUsage> {
     let info = darwin::task_info();
     let rusage = get_rusage();
     Ok(ResourceUsage {
@@ -190,7 +189,7 @@ pub fn get_memory_usage() -> CliResult<ResourceUsage> {
 }
 
 #[cfg(target_os = "linux")]
-pub fn get_memory_usage() -> CliResult<ResourceUsage> {
+pub fn get_usage() -> CliResult<ResourceUsage> {
     use std::fs::File;
     use std::io::Read;
     let mut proc_stat = String::new();
@@ -208,27 +207,10 @@ pub fn get_memory_usage() -> CliResult<ResourceUsage> {
     })
 }
 
-pub fn get_rusage() -> rusage {
-    let mut usage = rusage {
-        ru_idrss: 0,
-        ru_nvcsw: 0,
-        ru_ixrss: 0,
-        ru_isrss: 0,
-        ru_inblock: 0,
-        ru_minflt: 0,
-        ru_oublock: 0,
-        ru_nivcsw: 0,
-        ru_stime: timeval { tv_sec: 0, tv_usec: 0 },
-        ru_nswap: 0,
-        ru_maxrss: 0,
-        ru_majflt: 0,
-        ru_msgrcv: 0,
-        ru_msgsnd: 0,
-        ru_utime: timeval { tv_sec: 0, tv_usec: 0 },
-        ru_nsignals: 0,
-    };
+fn get_rusage() -> rusage {
     unsafe {
+        let mut usage: rusage = std::mem::zeroed();
         getrusage(RUSAGE_SELF, &mut usage);
+        usage
     }
-    usage
 }

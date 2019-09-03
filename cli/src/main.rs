@@ -52,6 +52,16 @@ mod utils;
 const DEFAULT_MAX_ITERS: u64 = 100_000;
 const DEFAULT_MAX_TIME: u64 = 5000;
 
+fn info_usage(stage: &str) {
+    if log::log_enabled!(log::Level::Info) {
+        let usage = rusage::get_usage().unwrap();
+        info!(
+            "Resource usage {}: vsz:{} rsz:{} rszmax:{}",
+            stage, usage.virtual_size, usage.resident_size, usage.resident_size_max
+        );
+    }
+}
+
 /// Entrypoint for the command-line interface.
 fn main() {
     use clap::*;
@@ -266,6 +276,7 @@ fn main() {
     let env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn");
 
     env_logger::Builder::from_env(env).default_format_timestamp_nanos(true).init();
+    info_usage("init");
 
     if let Err(e) = handle(matches) {
         use error_chain::ChainedError;
@@ -273,6 +284,8 @@ fn main() {
         eprintln!("{}", e.display_chain());
         process::exit(1)
     }
+
+    info_usage("done");
 }
 
 fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
@@ -359,6 +372,7 @@ impl Parameters {
             #[cfg(feature = "kaldi")]
             "kaldi" => {
                 let kaldi = tract_kaldi::kaldi();
+                info_usage("load framework (kaldi)");
                 let mut graph = kaldi.proto_model_for_path(&name)?;
                 if let Some(i) = matches.value_of("kaldi_adjust_final_offset") {
                     graph.adjust_final_offset = i.parse()?;
@@ -369,6 +383,7 @@ impl Parameters {
             #[cfg(feature = "onnx")]
             "onnx" => {
                 let onnx = tract_onnx::onnx();
+                info_usage("load framework (onnx)");
                 let graph = onnx.proto_model_for_path(&name)?;
                 let parsed = onnx.parse(&graph)?;
                 let tract = parsed.model.clone();
@@ -377,6 +392,7 @@ impl Parameters {
             #[cfg(feature = "tf")]
             "tf" => {
                 let tf = tract_tensorflow::tensorflow();
+                info_usage("load framework (tf)");
                 let mut graph = tf.proto_model_for_path(&name)?;
                 if matches.is_present("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
@@ -391,6 +407,7 @@ impl Parameters {
         };
 
         info!("Model {:?} loaded", name);
+        info_usage("model loaded");
 
         #[cfg(feature = "conform")]
         let tf_model = if format == "tf" {
@@ -585,6 +602,8 @@ impl Parameters {
             })()?
         };
 
+        info_usage("model preprocessed");
+
         if matches.is_present("optimize")
             || matches.is_present("declutter")
             || pulse.is_some()
@@ -617,6 +636,7 @@ impl Parameters {
         }
 
         info!("Model ready");
+        info_usage("model ready");
 
         Ok(Parameters {
             graph,
@@ -669,7 +689,7 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
         }),
         node_name: matches.value_of("node_name").map(String::from),
         op_name: matches.value_of("op_name").map(String::from),
-//        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
+        //        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
     })
 }
 
