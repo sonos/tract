@@ -612,7 +612,7 @@ impl Parameters {
             if let Some(typed) = tract_model.downcast_ref::<TypedModel>() {
                 tract_model = Box::new(typed.clone().codegen()?);
             } else if let Some(pulsed) = tract_model.downcast_ref::<PulsedModel>() {
-                tract_model = Box::new(pulsed.clone().into_typed()?.codegen()?);
+                tract_model = Box::new(pulsed.clone().into_typed()?.declutter()?.codegen()?);
             }
         }
 

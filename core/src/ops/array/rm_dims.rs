@@ -27,6 +27,10 @@ impl Op for RmDims {
         "RmDims".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axes: {:?}", self.axes)])
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,

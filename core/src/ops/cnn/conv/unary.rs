@@ -446,7 +446,7 @@ impl Op for ConvUnary {
                 use crate::ops::math::mat_mul::MatMulUnary;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
-                let op = MatMulUnary::new(kernel, true, true, true);
+                let op = MatMulUnary::new(kernel.into_arc_tensor(), true, true, true);
                 return Ok(Some(TypedModelPatch::single_unary_op(
                     model,
                     node,
