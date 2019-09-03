@@ -93,14 +93,6 @@ where
         facts: TVec<TI>,
     ) -> TractResult<usize>;
 
-    fn add_node_simple(
-        &mut self,
-        name: impl Into<String>,
-        op: impl Into<O>,
-        inputs: impl IntoIterator<Item = usize>,
-        fact: TI,
-    ) -> TractResult<usize>;
-
     /// Chain a node to an arbitrary node.
     ///
     /// * creates a node with name and op
@@ -128,22 +120,6 @@ where
         let previous_id = self.nodes().len() - 1;
         self.chain_after(OutletId::new(previous_id, 0), name, op.into(), facts)
     }
-
-    fn add_node_simple(
-        &mut self,
-        name: impl Into<String>,
-        op: impl Into<O>,
-        inputs: impl IntoIterator<Item = usize>,
-        fact: TI,
-    ) -> TractResult<usize> {
-        let node = self.add_node(name, op, tvec!(fact))?;
-        for (ix, input) in inputs.into_iter().enumerate() {
-            self.add_edge(OutletId::new(input, 0), InletId::new(node, ix))?;
-        }
-        Ok(node)
-
-    }
-
 
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>> {
         let node = &self.nodes()[id];

@@ -114,39 +114,8 @@ where
             && d.file_name().to_str().unwrap().starts_with("test_data_set_")
         {
             let (inputs, expected) = load_dataset(&d.path());
-            let inputs = inputs
-                .into_iter()
-                .enumerate()
-                .map(|(ix, i)| {
-                    let shape = plan
-                        .model()
-                        .input_fact(ix)
-                        .unwrap()
-                        .to_tensor_fact()
-                        .shape
-                        .as_concrete_finite()
-                        .unwrap()
-                        .unwrap();
-                    unsafe { i.into_shape(&shape).unwrap() }
-                })
-                .collect();
-            let expected: TVec<Tensor> = expected
-                .into_iter()
-                .enumerate()
-                .map(|(ix, i)| {
-                    let shape = plan
-                        .model()
-                        .output_fact(ix)
-                        .unwrap()
-                        .to_tensor_fact()
-                        .shape
-                        .as_concrete_finite()
-                        .unwrap()
-                        .unwrap();
-                    unsafe { i.into_shape(&shape).unwrap() }
-                })
-                .collect();
-            // println!("inputs: {:?}", inputs[0].dump(true));
+            trace!("Loaded inputs: {:?}", inputs);
+            trace!("Loaded output asserts: {:?}", expected);
             let computed = plan.run(inputs).unwrap();
             if computed.len() != expected.len() {
                 panic!(

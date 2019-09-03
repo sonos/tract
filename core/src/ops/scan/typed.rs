@@ -7,6 +7,7 @@ pub struct Typed {
     pub skip: usize,
     pub body: TypedModel,
     decluttered: bool,
+    pub seq_length_input_slot: Option<usize>,
     pub input_mapping: Vec<InputMapping<TDim>>,
     pub output_mapping: Vec<OutputMapping<TDim, TDim>>,
 }
@@ -38,16 +39,13 @@ impl Typed {
             .output_mapping
             .iter()
             .map(|im| {
-                Ok(match im {
-                    OutputMapping::Scan { axis, slot, chunk, full_dim_hint } => {
-                        OutputMapping::Scan {
-                            axis: *axis,
-                            slot: *slot,
-                            chunk: chunk.to_integer()? as usize,
-                            full_dim_hint: full_dim_hint.clone(),
-                        }
-                    }
-                    OutputMapping::State { slot } => OutputMapping::State { slot: *slot },
+                Ok(OutputMapping {
+                    state: im.state,
+                    axis: im.axis,
+                    full_slot: im.full_slot,
+                    full_dim_hint: im.full_dim_hint.clone(),
+                    last_value_slot: im.last_value_slot,
+                    chunk: im.chunk.to_integer()? as usize
                 })
             })
             .collect::<TractResult<_>>()?;
@@ -59,8 +57,11 @@ impl Typed {
         body: TypedModel,
         input_mapping: Vec<InputMapping<TDim>>,
         output_mapping: Vec<OutputMapping<TDim, TDim>>,
-    ) -> Typed {
-        Typed { skip: 0, body, decluttered: false, input_mapping, output_mapping }
+        seq_length_input_slot: Option<usize>
+    ) -> TractResult<Typed> {
+        assert_eq!(input_mapping.len(), body.input_outlets()?.len());
+        assert_eq!(output_mapping.len(), body.output_outlets()?.len());
+        Ok(Typed { skip: 0, body, decluttered: false, input_mapping, output_mapping, seq_length_input_slot })
     }
 }
 
@@ -146,19 +147,15 @@ impl TypedOp for Typed {
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.body.output_fact(ix)?;
-            match output {
-                OutputMapping::Scan { slot, axis, full_dim_hint, .. } => {
-                    let mut shape = fact.shape.clone();
-                    let scanning_dim =
-                        full_dim_hint.clone().unwrap_or(shape.dim(*axis) * &iters);
-                    shape.set_dim(*axis, scanning_dim)?;
-                    outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
-                }
-                OutputMapping::State { slot } => {
-                    if let Some(slot) = slot {
-                        outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
-                    }
-                }
+            if let Some(slot) = output.full_slot {
+                let mut shape = fact.shape.clone();
+                let scanning_dim =
+                    output.full_dim_hint.clone().unwrap_or(shape.dim(output.axis) * &iters);
+                shape.set_dim(output.axis, scanning_dim)?;
+                outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
+            }
+            if let Some(slot) = output.last_value_slot {
+                outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
             }
         }
         outputs.sort_by_key(|a| a.0);

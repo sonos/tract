@@ -27,7 +27,11 @@ impl Op for Memory {
 }
 
 impl StatefullOp for Memory {
-    fn state(&self, _session: &mut SessionState, _id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         unimplemented!()
     }
 }
@@ -134,7 +138,14 @@ fn incorporate_memory_ops_as_scans(
             mapped_inputs.push(tract_core::ops::scan::InputMapping::State {
                 initializer: tract_core::ops::scan::StateInitializer::Value(zeroes.into()),
             });
-            mapped_outputs.push(tract_core::ops::scan::OutputMapping::State { slot: None });
+            mapped_outputs.push(tract_core::ops::scan::OutputMapping {
+                state: true,
+                axis: 0,
+                chunk: (),
+                full_dim_hint: None,
+                full_slot: None,
+                last_value_slot: None,
+            });
         }
         for (ix, scan_input) in scan_inputs.iter().enumerate() {
             let old_node = model.node(scan_input.node);
@@ -151,10 +162,12 @@ fn incorporate_memory_ops_as_scans(
                 chunk: (),
                 slot: ix,
             });
-            mapped_outputs.push(tract_core::ops::scan::OutputMapping::Scan {
+            mapped_outputs.push(tract_core::ops::scan::OutputMapping {
+                state: false,
                 axis: 0,
                 chunk: (),
-                slot: ix,
+                full_slot: Some(ix),
+                last_value_slot: None,
                 full_dim_hint: old_node.outputs[0].fact.shape.dim(0).unwrap().concretize(),
             });
         }
@@ -194,15 +207,11 @@ fn incorporate_memory_ops_as_scans(
                 .push(OutletId::new(node_id_old_to_new[&old_outlet.node], old_outlet.slot));
         }
 
-
         inner_model.set_output_outlets(&inner_outputs)?;
 
         // prepare patch
-        let scan = tract_core::ops::scan::Inference::new(
-            inner_model,
-            mapped_inputs,
-            mapped_outputs,
-        );
+        let scan =
+            tract_core::ops::scan::Inference::new(inner_model, mapped_inputs, mapped_outputs, None);
 
         let mut output_facts = tvec!();
         /*
