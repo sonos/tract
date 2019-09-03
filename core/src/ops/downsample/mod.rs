@@ -52,6 +52,10 @@ impl Op for Downsample {
         "Downsample".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("axis:{} stride:{} modulo:{}", self.axis, self.stride, self.modulo)))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,

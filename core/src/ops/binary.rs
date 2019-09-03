@@ -1,5 +1,5 @@
-use downcast_rs::Downcast;
 use crate::internal::*;
+use downcast_rs::Downcast;
 use std::fmt;
 
 pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
@@ -26,6 +26,7 @@ pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downca
         self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
         Ok(tvec!(c.into_arc_tensor()))
     }
+    fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<UnaryOp>;
 }
 clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
@@ -114,10 +115,7 @@ impl InferenceRulesOp for InferenceBinOp {
 impl TypedOp for InferenceBinOp {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
@@ -143,20 +141,21 @@ impl Op for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
-        if let Some(b) = inputs[1].konst.clone() {
-            let op = UnaryAOp::new(self.0.clone(), b.clone());
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                &model,
-                &node,
-                &node.inputs[0..1],
-                op,
-            )?));
-        }
-        if inputs[0].shape == inputs[1].shape {
+        if let Some(a) = inputs[0].konst.clone() {
+            let op = UnaryOp::new(self.0.clone(), a.clone());
+            Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs[1..2], op)?))
+        } else if let Some(b) = inputs[1].konst.clone() {
+            if let Some(op) = self.0.unary_with_b_const(&b) {
+                Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs[0..1], op)?))
+            } else {
+                Ok(None)
+            }
+        } else if inputs[0].shape == inputs[1].shape {
             let op = MergeOp(self.0.clone());
-            return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs, op)?));
+            Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs, op)?))
+        } else {
+            Ok(None)
         }
-        Ok(None)
     }
 
     op_as_typed_op!();
@@ -171,10 +170,7 @@ impl StatelessOp for TypedBinOp {
 impl TypedOp for TypedBinOp {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
@@ -187,59 +183,57 @@ impl TypedOp for TypedBinOp {
 }
 
 #[derive(Debug, Clone, new)]
-pub struct UnaryAOp {
+pub struct UnaryOp {
     pub mini_op: Box<dyn BinMiniOp>,
-    pub b: Arc<Tensor>
+    pub a: Arc<Tensor>,
 }
 
-impl Op for UnaryAOp {
+impl Op for UnaryOp {
     fn name(&self) -> Cow<str> {
-        format!("{}UnaryA", self.mini_op.name()).into()
+        format!("{}Unary", self.mini_op.name()).into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("B: {:?}", self.b.shape())))
+        Ok(vec![format!("a: {:?}", self.a.shape())])
     }
 
-    fn translation_invariants(&self,
+    fn translation_invariants(
+        &self,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Vec<TranslationInvariant>> {
-        let a = model.outlet_fact(node.inputs[0])?;
-        if a.shape.rank() < self.b.shape().len() {
-            return Ok(vec!())
+        let b = model.outlet_fact(node.inputs[0])?;
+        if b.shape.rank() < self.a.shape().len() {
+            return Ok(vec![]);
         }
-        let mut invs = vec!();
-        for i in 0..a.shape.rank() - self.b.shape().len() {
+        let mut invs = vec![];
+        for i in 0..b.shape.rank() - self.a.shape().len() {
             invs.push(TranslationInvariant { period: 1, axis: i })
         }
-        for &d in self.b.shape() {
+        for &d in self.a.shape() {
             invs.push(TranslationInvariant { period: d, axis: invs.len() })
         }
-        return Ok(invs)
+        return Ok(invs);
     }
 
     op_as_typed_op!();
 }
 
-impl StatelessOp for UnaryAOp {
+impl StatelessOp for UnaryOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.mini_op.eval_broadcast(tvec!(inputs[0].clone(), self.b.clone()))
+        self.mini_op.eval_broadcast(tvec!(self.a.clone(), inputs[0].clone()))
     }
 }
 
-impl TypedOp for UnaryAOp {
+impl TypedOp for UnaryOp {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
-            self.mini_op.result_datum_type(inputs[0].datum_type, self.b.datum_type())?,
+            self.mini_op.result_datum_type(self.a.datum_type(), inputs[0].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
-                &*inputs[0].shape.to_tvec(),
-                &*self.b.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>()
+                &*self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+                &*inputs[0].shape.to_tvec()
             ])
             .unwrap()
         )?))
@@ -255,7 +249,7 @@ impl TypedOp for UnaryAOp {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let mut fact = target.outlet_fact(input)?.clone();
-        fact.dt = self.b.datum_type();
+        fact.dt = self.a.datum_type();
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
@@ -269,12 +263,16 @@ impl Op for MergeOp {
         format!("{}Merge", self.0.name()).into()
     }
 
-    fn translation_invariants(&self,
+    fn translation_invariants(
+        &self,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Vec<TranslationInvariant>> {
         let a = model.outlet_fact(node.inputs[0])?;
-        Ok((0..a.shape.rank()).into_iter().map(|axis| TranslationInvariant { period: 1, axis }).collect())
+        Ok((0..a.shape.rank())
+            .into_iter()
+            .map(|axis| TranslationInvariant { period: 1, axis })
+            .collect())
     }
 
     op_as_typed_op!();
@@ -289,10 +287,7 @@ impl StatelessOp for MergeOp {
 impl TypedOp for MergeOp {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
@@ -341,12 +336,14 @@ impl TypedOp for MergeOp {
         }
         Ok(tvec!(OutletId::new(id, 0)))
     }
-
 }
 
 #[macro_export]
 macro_rules! bin_to_super_type {
-    ($func:ident, $Op:ident, $( [$($typ:ident),*] => $cab:expr ),*) => {
+    ($func:ident, $Op:ident, $( [$($typ:ident),*] => $cab:expr),*) => {
+        bin_to_super_type!($func, $Op, flip: |_, _| None, $( [$($typ),*] => $cab),*);
+    };
+    ($func:ident, $Op:ident, flip: $flip:expr, $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone)]
         pub struct $Op;
         impl $crate::ops::binary::BinMiniOp for $Op {
@@ -375,6 +372,10 @@ macro_rules! bin_to_super_type {
             fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
                 self.operating_datum_type(a, b)
             }
+
+            fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
+                ($flip)(self, b)
+            }
         }
 
         pub mod $func {
@@ -387,6 +388,9 @@ macro_rules! bin_to_super_type {
 
 macro_rules! bin_to_bool {
     ($func:ident, $Op:ident, $( [$($typ:ident),*] => $cab:expr ),*) => {
+        bin_to_bool!($func, $Op, flip: |_, _| None, $( [$($typ),*] => $cab),*);
+    };
+    ($func:ident, $Op:ident, flip: $flip:expr, $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone)]
         pub struct $Op;
         impl $crate::ops::binary::BinMiniOp for $Op {
@@ -415,6 +419,10 @@ macro_rules! bin_to_bool {
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
                 Ok(bool::datum_type())
             }
+
+            fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
+                ($flip)(self, b)
+            }
         }
 
         pub mod $func {
@@ -425,33 +433,8 @@ macro_rules! bin_to_bool {
     };
 }
 
-bin_to_super_type!(add, Add,
-     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
-bin_to_super_type!(sub, Sub,
-     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
-bin_to_super_type!(mul, Mul,
-     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() * b);
-bin_to_super_type!(div, Div,
-     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() / b);
-bin_to_super_type!(rem, Rem,
-     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() % b);
-bin_to_super_type!(min, Min,
-     [f32, f64] => |c,a,b| *c = a.min(*b),
-     [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a.min(b));
-bin_to_super_type!(max, Max,
-     [f32, f64] => |c,a,b| *c = a.max(*b),
-     [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a.max(b));
-bin_to_super_type!(pow, Pow,
-     [f32, f64] => |c,a,b| *c = a.powf(*b));
-bin_to_super_type!(and, And,
-     [bool, u8, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
-bin_to_super_type!(or, Or,
-     [bool, u8, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
-bin_to_super_type!(xor, Xor, [bool] => |c, &a, &b| *c = a ^ b);
-bin_to_bool!(equals, Equals,
-     [bool, u8, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
-);
-bin_to_bool!(lesser, Lesser, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
-bin_to_bool!(lesser_equal, LesserEqual, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
-bin_to_bool!(greater, Greatser, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
-bin_to_bool!(greater_equal, GreaterEqual, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
+#[inline]
+pub fn commute(op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
+    Some(UnaryOp::new(objekt::clone_box(op), t.clone()))
+}
+

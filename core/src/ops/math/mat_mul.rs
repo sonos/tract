@@ -331,26 +331,6 @@ impl Op for MatMulUnary {
         ])
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let b = args_1!(model.node_input_facts(node.id)?);
-        if let Some(b_shape) = b.shape.as_finite() {
-            let op = dispatch_floatlike!(self::new_mat_mul_unary_finite(b.datum_type)(
-                self.a.clone(),
-                b_shape,
-                self.a_trans,
-                self.b_trans,
-                self.c_trans
-            ))?;
-            let patch = TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?;
-            return Ok(Some(patch));
-        }
-        Ok(None)
-    }
-
     fn translation_invariants(
         &self,
         model: &TypedModel,
@@ -370,12 +350,32 @@ impl Op for MatMulUnary {
             .map(|(axis, &period)| TranslationInvariant { axis, period })
             .collect::<Vec<_>>();
         if self.b_trans && self.c_trans {
-            invars.push(TranslationInvariant { axis: input_fact.shape.rank() - 1, period: 1 });
+            invars.push(TranslationInvariant { axis: input_fact.shape.rank() - 2, period: 1 });
         }
         if !self.b_trans && !self.c_trans {
-            invars.push(TranslationInvariant { axis: input_fact.shape.rank() - 2, period: 1 });
+            invars.push(TranslationInvariant { axis: input_fact.shape.rank() - 1, period: 1 });
         };
         Ok(invars)
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let b = args_1!(model.node_input_facts(node.id)?);
+        if let Some(b_shape) = b.shape.as_finite() {
+            let op = dispatch_floatlike!(self::new_mat_mul_unary_finite(b.datum_type)(
+                self.a.clone(),
+                b_shape,
+                self.a_trans,
+                self.b_trans,
+                self.c_trans
+            ))?;
+            let patch = TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?;
+            return Ok(Some(patch));
+        }
+        Ok(None)
     }
 
     op_as_typed_op!();
@@ -499,7 +499,10 @@ where
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        let mut infos = vec![format!("{:?}", self.geo)];
+        let mut infos = vec![format!(
+            "a: {:?} m:{} k:{} n:{}",
+            self.geo.a_shape, self.geo.m, self.geo.k, self.geo.n
+        )];
         if self.non_linear.len() > 0 {
             infos.push(format!("{:?}", self.non_linear))
         }
@@ -510,15 +513,15 @@ where
         use crate::ops;
         if let Some(succ) = model.single_succ(node.id)? {
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
-                if let Some(op) = succ.op_as::<ops::binary::UnaryAOp>() {
-                    if op.b.shape() == &[self.geo.m] && self.geo.c_trans {
+                if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
+                    if op.a.shape() == &[self.geo.m] && self.geo.c_trans {
                         if op.mini_op.is::<ops::math::Mul>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowMul(
-                                op.b.as_slice::<T>()?.to_vec(),
+                                op.a.as_slice::<T>()?.to_vec(),
                             ))));
                         } else if op.mini_op.is::<ops::math::Add>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowAdd(
-                                op.b.as_slice::<T>()?.to_vec(),
+                                op.a.as_slice::<T>()?.to_vec(),
                             ))));
                         }
                     }
