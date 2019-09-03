@@ -26,6 +26,10 @@ impl Op for AddDims {
         "AddDims".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("Axes: {:?}", self.axes)])
+    }
+
     op_as_typed_op!();
 }
 

@@ -54,9 +54,7 @@ impl InferenceRulesOp for Dropout {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_input_arity(&inputs, 1)?;
-        if outputs.len() > 2 || outputs.len() == 0 {
-            bail!("Dropout shoud have 1 or 2 outputs, found {}", outputs.len());
-        }
+        check_output_arity(&outputs, 1 + self.output_mask as usize)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         if outputs.len() == 2 {
@@ -64,6 +62,10 @@ impl InferenceRulesOp for Dropout {
             s.equals(&inputs[0].shape, &outputs[1].shape)?;
         }
         Ok(())
+    }
+
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(1 + self.output_mask as usize)
     }
 
     inference_op_as_op!();

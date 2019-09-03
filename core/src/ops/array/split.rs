@@ -78,6 +78,10 @@ impl InferenceRulesOp for Split {
         Ok(())
     }
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(self.outputs)
+    }
+
     inference_op_as_op!();
     to_typed!();
 }

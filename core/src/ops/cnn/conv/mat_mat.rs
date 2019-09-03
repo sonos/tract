@@ -129,15 +129,15 @@ where
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         if let Some(succ) = model.single_succ(node.id)? {
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
-                if let Some(op) = succ.op_as::<crate::ops::binary::UnaryAOp>() {
-                    if op.b.shape() == &[*self.output_shape.c()] {
+                if let Some(op) = succ.op_as::<crate::ops::binary::UnaryOp>() {
+                    if op.a.shape() == &[*self.output_shape.c()] {
                         if op.mini_op.is::<crate::ops::math::Mul>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowMul(
-                                op.b.as_slice::<T>()?.to_vec(),
+                                op.a.as_slice::<T>()?.to_vec(),
                             ))));
                         } else if op.mini_op.is::<crate::ops::math::Add>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowAdd(
-                                op.b.as_slice::<T>()?.to_vec(),
+                                op.a.as_slice::<T>()?.to_vec(),
                             ))));
                         }
                     }

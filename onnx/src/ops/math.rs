@@ -63,14 +63,6 @@ pub fn clip(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<dyn Inf
     Ok((op, vec!()))
 }
 
-pub fn gemm(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
-    let beta = node.get_attr_opt("beta")?.unwrap_or(1.);
-    let trans_a = node.get_attr_opt("transA")?.unwrap_or(false);
-    let trans_b = node.get_attr_opt("transB")?.unwrap_or(false);
-    Ok((Box::new(tractops::math::Gemm::new(alpha, beta, trans_a, trans_b, true)),vec!()))
-}
-
 element_map!(Erf, [f32], erf_f32);
 
 #[allow(non_upper_case_globals)]
@@ -93,4 +85,106 @@ fn erf_f32(x: f32) -> f32 {
     let y = 1.0 - (y + 1.0).powi(16).recip();
 
     y.copysign(signum)
+}
+
+pub fn gemm(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
+    let beta = node.get_attr_opt("beta")?.unwrap_or(1.);
+    let trans_a = node.get_attr_opt("transA")?.unwrap_or(false);
+    let trans_b = node.get_attr_opt("transB")?.unwrap_or(false);
+    Ok((Box::new(Gemm::new(alpha, beta, trans_a, trans_b)),vec!()))
+}
+
+
+#[derive(Debug, Clone, new)]
+pub struct Gemm {
+    alpha: f32,
+    beta: f32,
+    trans_a: bool,
+    trans_b: bool,
+}
+
+impl Op for Gemm {
+    fn name(&self) -> Cow<str> {
+        "Gemm".into()
+    }
+
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        use tract_core::ops;
+        let mut patch = InferenceModelPatch::default();
+        let a = patch.tap_model(model, node.inputs[0])?;
+        let b = patch.tap_model(model, node.inputs[1])?;
+        let mut result = patch.wire_node(
+            format!("{}-ab", node.name),
+            ops::math::MatMul::new(self.trans_a, self.trans_b, false),
+            &[a, b].as_ref(),
+        )?[0];
+        if self.alpha != 1.0 {
+            let alpha: OutletId =
+                patch.add_const(format!("{}-alpha", node.name), rctensor0(self.alpha))?.into();
+            result = patch.wire_node(
+                format!("{}-alpha_ab", node.name),
+                ops::math::mul::bin(),
+                &[alpha, result].as_ref(),
+            )?[0];
+        }
+        if self.beta != 0.0f32 {
+            let mut beta_c: OutletId = patch.tap_model(model, node.inputs[2])?.into();
+            if self.beta != 1.0f32 {
+                let beta: OutletId =
+                    patch.add_const(format!("{}-beta", node.name), rctensor0(self.beta))?.into();
+                beta_c = patch.wire_node(
+                    format!("{}-beta_c", node.name),
+                    ops::math::mul::bin(),
+                    &[beta, beta_c].as_ref(),
+                )?[0];
+            }
+            result = patch.wire_node(
+                format!("{}-gemm", node.name),
+                ops::math::add::bin(),
+                &[beta_c, result].as_ref(),
+            )?[0];
+        }
+        patch.node_mut(result.node).name = node.name.clone();
+        patch.shunt_outside(node.id.into(), result)?;
+        Ok(Some(patch))
+    }
+
+    not_a_typed_op!();
+}
+
+impl StatelessOp for Gemm {
+    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        unreachable!();
+    }
+}
+
+impl InferenceRulesOp for Gemm {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(&inputs, 3)?;
+        s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].rank, 2)?;
+        s.equals(&inputs[1].rank, 2)?;
+        check_output_arity(&outputs, 1)?;
+        s.equals(&outputs[0].rank, 2)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
+        let (ca, ra) = if self.trans_a { (0, 1) } else { (1, 0) };
+        let (cb, rb) = if self.trans_b { (0, 1) } else { (1, 0) };
+        s.equals(&inputs[0].shape[ra], &outputs[0].shape[0])?;
+        s.equals(&inputs[0].shape[ca], &inputs[1].shape[rb])?;
+        s.equals(&inputs[1].shape[cb], &outputs[0].shape[1])?;
+        Ok(())
+    }
+
+    inference_op_as_op!();
 }

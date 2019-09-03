@@ -81,9 +81,10 @@ pub trait StatelessOp: Op {
 }
 
 pub trait StatefullOp {
+    #[allow(unused_variables)]
     fn state(
         &self,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>>;
     fn as_stateless(&self) -> Option<&dyn StatelessOp> {
@@ -162,11 +163,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     }
 
     /// Fuse op after codegen to deal with local optimisations.
-    fn fuse(
-        &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
+    fn fuse(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
     }
 
@@ -239,7 +236,7 @@ pub trait TypedOp:
 
     /// Nested model multipliers, with label (for profiling).
     #[allow(unused_variables)]
-    fn nested_model_multipliers(&self, inputs:&[&TypedTensorInfo]) -> Vec<(Cow<str>, f32)> {
+    fn nested_model_multipliers(&self, inputs: &[&TypedTensorInfo]) -> Vec<(Cow<str>, f32)> {
         vec![]
     }
 }
@@ -296,12 +293,17 @@ pub trait InferenceOp:
                     .iter()
                     .map(|i| i.value.concretize().unwrap().clone().into())
                     .collect(); // checked
-                let output_values = stateless
-                    .eval(input_values)?
-                    .into_iter()
-                    .map(|t| t.into())
-                    .collect::<TVec<_>>();
-                return Ok((infered_inputs, output_values, observed));
+                match stateless.eval(input_values) {
+                    Ok(values) => {
+                        let output_values =
+                            values.into_iter().map(|t| t.into()).collect::<TVec<_>>();
+                        return Ok((infered_inputs, output_values, observed));
+                    }
+                    Err(e) => match e {
+                        TractError(TractErrorKind::StreamTensor, _) => (),
+                        e => return Err(e)
+                    }
+                }
             }
         }
 
@@ -329,6 +331,10 @@ pub trait InferenceOp:
         outputs: TVec<&TensorFact>,
         observed: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)>;
+
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(1)
+    }
 
     /// Reinterpret the InferenceOp as an Op.
     fn as_op(&self) -> &dyn Op;

@@ -14,6 +14,7 @@ error_chain! {
         AllocLayout(std::alloc::LayoutErr);
     }
     errors {
+        StreamTensor {}
         TFString {}
     }
 }

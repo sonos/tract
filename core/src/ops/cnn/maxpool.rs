@@ -69,6 +69,10 @@ impl InferenceRulesOp for MaxPool {
         self.pool_spec.rules_for_shape(s, inputs, outputs)
     }
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(1 +self.with_index_outputs.is_some() as usize)
+    }
+
     inference_op_as_op!();
     to_typed!();
 }

@@ -130,6 +130,10 @@ impl InferenceRulesOp for RNN {
         Ok(())
     }
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(self.optional_y_output.is_some() as usize + self.optional_y_h_output.is_some() as usize)
+    }
+
     inference_op_as_op!();
 
     #[allow(non_snake_case)]
@@ -239,9 +243,6 @@ impl InferenceRulesOp for RNN {
 
         wire!(Ht_1 = array::RmDims::new(vec!(0)), h_source);
 
-        wire!(WiT = array::PermuteAxes::new(Some(vec!(1, 0))), W);
-        wire!(RiT = array::PermuteAxes::new(Some(vec!(1, 0))), R);
-
         let bias = if let Some(b) = b {
             wire!(Wbi = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
             wire!(Rbi = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
@@ -252,8 +253,8 @@ impl InferenceRulesOp for RNN {
         };
 
         // Ht = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
-        wire!(Xt_WiT = math::MatMul::new(), Xt, WiT);
-        wire!(Ht_1_RiT = math::MatMul::new(), Ht_1, RiT);
+        wire!(Xt_WiT = math::MatMul::new(false, true, false), Xt, W);
+        wire!(Ht_1_RiT = math::MatMul::new(false, true, false), Ht_1, R);
 
         wire!(ht0 = math::add::bin(), Xt_WiT, Ht_1_RiT);
         let mut ht0 = ht0;

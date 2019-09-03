@@ -27,6 +27,40 @@ impl Op for RmDims {
         "RmDims".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axes: {:?}", self.axes)])
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let mut current = node;
+        while let Some(prec) = model.single_prec(current.id)? {
+            if let Some(add_dims) = prec.op_as::<super::AddDims>() {
+                if add_dims.axes == self.axes {
+                    let mut patch = TypedModelPatch::default();
+                    let mut wire:OutletId = patch.tap_model(model, prec.inputs[0])?.into();
+                    let mut next = model.single_succ(prec.id)?.unwrap();
+                    while next.id != node.id {
+                        wire = patch.wire_node(&*next.name, next.op.clone(), [wire].as_ref())?[0];
+                        next = model.single_succ(next.id)?.unwrap();
+                    }
+                    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                    return Ok(Some(patch))
+                }
+            }
+            let invariants = prec.op.translation_invariants(model, prec)?;
+            if self.axes.iter().all(|&axis| invariants.iter().any(|ti| ti.axis == axis && ti.period == 1)) {
+                current = prec;
+            } else {
+                return Ok(None)
+            }
+        }
+        Ok(None)
+    }
+
     op_as_typed_op!();
 }
 

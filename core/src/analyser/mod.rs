@@ -70,7 +70,9 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     }
                 }
                 Err(e) => {
-                    let e = e.chain_err(|| format!("Failed analyse for node {}", self.model.borrow().node(node))); 
+                    let e = e.chain_err(|| {
+                        format!("Failed analyse for node {}", self.model.borrow().node(node))
+                    });
                     if !obstinate {
                         return Err(e.into());
                     }
@@ -103,6 +105,12 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
 
             let inferred = {
                 let (inputs, outputs) = self.model.borrow().node_facts(node)?;
+                if outputs.len() != self.model.borrow().node(node).op.nboutputs().unwrap() {
+                    bail!("Wrong nnumber of outputs. Op says {}, node says {}.",
+                        self.model.borrow().node(node).op.nboutputs().unwrap(),
+                        outputs.len(),
+                    )
+                }
                 let inputs: TVec<TensorFact> = inputs.into_iter().cloned().collect();
                 let outputs: TVec<TensorFact> = outputs.into_iter().cloned().collect();
                 let observed: TVec<(OutletId, TensorFact)> = {
@@ -127,11 +135,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 let outputs: TVec<&TensorFact> = outputs.iter().collect();
                 let observed: TVec<&TensorFact> = observed.iter().map(|p| &p.1).collect();
 
-                self.model
-                    .borrow_mut()
-                    .node_mut(node)
-                    .op
-                    .infer(inputs, outputs, observed)?
+                self.model.borrow_mut().node_mut(node).op.infer(inputs, outputs, observed)?
             };
 
             let node = self.model.borrow().node(node);
