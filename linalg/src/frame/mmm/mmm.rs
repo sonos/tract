@@ -114,11 +114,23 @@ where
         cols_offsets: &[isize],
     ) -> StorageSpec<T>;
 
+    unsafe fn b_vec_from_ptr_stride(
+        &self,
+        data: *const T,
+        stride: isize,
+    ) -> StorageSpec<T>;
+
     unsafe fn c_from_data_and_strides(
         &self,
         data: *const T,
         row_stride: isize,
         col_stride: isize,
+    ) -> StorageSpec<T>;
+
+    unsafe fn c_vec_from_ptr_stride(
+        &self,
+        data: *mut T,
+        stride: isize,
     ) -> StorageSpec<T>;
 
     unsafe fn run(
@@ -209,6 +221,14 @@ where
         StorageSpec::OffsetsAndPtrs { col_ptrs, row_byte_offsets, nr: K::nr() }
     }
 
+    unsafe fn b_vec_from_ptr_stride(
+        &self,
+        data: *const T,
+        stride: isize,
+    ) -> StorageSpec<T> {
+        StorageSpec::VecStride { ptr: data, byte_stride: stride * std::mem::size_of::<T>() as isize }
+    }
+
     unsafe fn c_from_data_and_strides(
         &self,
         data: *const T,
@@ -222,6 +242,14 @@ where
             mr: K::mr(),
             nr: K::nr(),
         }
+    }
+
+    unsafe fn c_vec_from_ptr_stride(
+        &self,
+        data: *mut T,
+        stride: isize,
+    ) -> StorageSpec<T> {
+        StorageSpec::VecStride { ptr: data, byte_stride: stride * std::mem::size_of::<T>() as isize }
     }
 
     unsafe fn run(

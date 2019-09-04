@@ -70,6 +70,8 @@ fma_smmm16x6 proc
     je      {{L}}packed_packed
     cmp     rsi,  2
     je      {{L}}packed_tops_and_offsets
+    cmp     rsi,  3
+    je      {{L}}packed_vec
 
     jmp     {{L}}unimplemented
 
@@ -170,6 +172,26 @@ fma_smmm16x6 proc
     dec             rcx
     jnz             {{L}}main_loop_packed_packed
 
+    jmp             {{L}}non_linear
+
+{{L}}packed_vec:
+    mov     rax,   [rax + 8]    // A
+    mov     rsi,   [rbx + 16]   // B stride
+    mov     rbx,   [rbx + 8]    // B ptr
+
+{{L}}packed_vec_loop:
+    vbroadcastss    ymm14,  dword ptr [rbx]
+    vmovaps         ymm12,  [rax]
+    vmovaps         ymm13,  [rax + 32]
+
+    vfmadd231ps     ymm0,   ymm12, ymm14
+    vfmadd231ps     ymm1,   ymm13, ymm14
+
+    add             rbx,    rsi
+    add             rax,    64
+    dec             rcx
+    jnz             {{L}}packed_vec_loop
+
 {{L}}non_linear:
 
     mov     rcx,    [rdi + 32]          // non linear spec
@@ -178,8 +200,17 @@ fma_smmm16x6 proc
 
 {{L}}store:
     mov     rcx,    [rdi + 16]
+    mov     rsi,    [rcx]
 
-    // FIXME: assume Strides storage
+    cmp     rsi,  0
+    je      {{L}}store_strides
+    cmp     rsi,  3
+    je      {{L}}store_vec_strides
+    mov     rax, 1
+    jmp     {{L}}return
+
+{{L}}store_strides:
+
     mov     r8,     [rcx + 8]           // c ptr
     mov     rsi,    [rcx + 16]          // row stride
     mov     rbx,    [rcx + 24]          // col stride
@@ -206,6 +237,25 @@ fma_smmm16x6 proc
                 vextractps  dword ptr [r{{i | plus: 8}}], xmm{{i | times:2}}, {{row}}
                 add         r{{i | plus: 8}}, rsi
             {% endfor %}
+        {% endfor %}
+    {% endfor %}
+
+    mov     rax,    0
+    jmp     {{L}}return
+
+{{L}}store_vec_strides:
+
+    mov     r8,     [rcx + 8]           // c ptr
+    mov     rsi,    [rcx + 16]          // stride
+
+    {% for quarter in (0..3) %}
+        {% if quarter != 0 %}
+            // move next four rows at top (xmm0,2,..10)
+            vperm2f128  ymm0,   ymm0,   ymm1,  {{quarter}}
+        {% endif %}
+        {% for row in (0..3) %}
+            vextractps  dword ptr [r8], xmm0, {{row}}
+            add         r8, rsi
         {% endfor %}
     {% endfor %}
 

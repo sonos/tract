@@ -136,6 +136,27 @@ pub mod test {
                 }
 
                 #[test]
+                fn packed_vec_k1() {
+                    if $cond {
+                        test::packed_vec::<$ker, $t>(1)
+                    }
+                }
+
+                #[test]
+                fn packed_vec_k2() {
+                    if $cond {
+                        test::packed_vec::<$ker, $t>(2)
+                    }
+                }
+
+                #[test]
+                fn packed_vec_k13() {
+                    if $cond {
+                        test::packed_vec::<$ker, $t>(13)
+                    }
+                }
+
+                #[test]
                 fn packed_offsets_with_row_stride() {
                     if $cond {
                         test::packed_offsets::<$ker, $t>(2, <$ker>::nr() + 5)
@@ -308,5 +329,31 @@ pub mod test {
                 .fold(T::zero(), |s, a| s + a);
             v == s
         }));
+    }
+
+    pub fn packed_vec<K, T>(k: usize)
+    where
+        K: MatMatMulKer<T>,
+        T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
+    {
+        let pa = realign_vec(vec![T::one(); K::mr() * k], K::alignment_bytes_packed_a());
+        let b = vec![T::one(); k];
+        let c: Vec<T> = vec![T::zero(); K::mr()];
+        let err = K::kernel(&MatMatMulKerSpec {
+            a: &StorageKerSpec::Packed { ptr: pa.as_ptr() },
+            b: &StorageKerSpec::VecStride {
+                ptr: b.as_ptr(),
+                byte_stride: std::mem::size_of::<T>() as isize,
+            },
+            c: &StorageKerSpec::VecStride {
+                ptr: c.as_ptr(),
+                byte_stride: std::mem::size_of::<T>() as isize,
+            },
+            linear: &LinearSpec::Mul { k },
+            non_linear: std::ptr::null(),
+        });
+        assert_eq!(err, 0);
+        dbg!(&c);
+        assert!(c.iter().all(|&a| a == (k as f32).into()));
     }
 }
