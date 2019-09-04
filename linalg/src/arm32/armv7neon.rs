@@ -85,6 +85,8 @@ impl TanhKer<f32> for STanh4 {
 
 #[cfg(test)]
 mod test {
+    mmm_kernel_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SMatMatMul8x4, f32);
+    mmm_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SMatMatMul8x4);
     sigmoid_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SSigmoid4);
     tanh_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::STanh4);
 }
