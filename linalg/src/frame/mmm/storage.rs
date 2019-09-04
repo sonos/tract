@@ -12,7 +12,7 @@ where
     Strides { ptr: *const T, row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
     Packed { ptr: *const T, panel_len: usize },
     OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_ptrs: Vec<*const T>, nr: usize },
-    VecStride { ptr: *const T, byte_stride: isize },
+    VecStride { ptr: *const T, byte_stride: isize, mr: usize, nr: usize },
 }
 
 impl<T> StorageSpec<T>
@@ -28,10 +28,17 @@ where
         }
     }
 
-    pub(super) unsafe fn panel_b(&self, i: usize) -> StorageKerSpec<T> {
+    pub(super) unsafe fn panel_b(&self, nr: usize, i: usize, n: usize) -> StorageKerSpec<T> {
         match self {
             StorageSpec::Packed { ptr, panel_len } => {
-                StorageKerSpec::Packed { ptr: ptr.offset((panel_len * i) as isize) }
+                if nr * i + 1 == n {
+                    StorageKerSpec::VecStride {
+                        ptr: ptr.offset((panel_len * i) as isize),
+                        byte_stride: (panel_len * std::mem::size_of::<T>()) as isize,
+                    }
+                } else {
+                    StorageKerSpec::Packed { ptr: ptr.offset((panel_len * i) as isize) }
+                }
             }
             StorageSpec::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr } => {
                 StorageKerSpec::OffsetsAndPtrs {
@@ -39,7 +46,7 @@ where
                     col_ptrs: col_ptrs.as_ptr().offset((nr * i) as isize),
                 }
             }
-            StorageSpec::VecStride { ptr, byte_stride } => {
+            StorageSpec::VecStride { ptr, byte_stride, .. } => {
                 StorageKerSpec::VecStride { ptr: *ptr, byte_stride: *byte_stride }
             }
             _ => unimplemented!(),
@@ -81,6 +88,14 @@ where
                         let value = *mmm.get_unchecked(y * *nr + x);
                         *ptr = value;
                     }
+                }
+            }
+            StorageSpec::VecStride { ptr, byte_stride, mr, nr } => {
+                for y in 0..height {
+                    let ptr =
+                        ((*ptr as isize) + (*byte_stride * (down * *mr + y) as isize)) as *mut T;
+                    let value = *mmm.get_unchecked(y * *nr);
+                    *ptr = value;
                 }
             }
             _ => unimplemented!(),

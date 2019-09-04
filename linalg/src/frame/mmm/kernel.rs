@@ -353,7 +353,6 @@ pub mod test {
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
-        dbg!(&c);
         assert!(c.iter().all(|&a| a == (k as f32).into()));
     }
 }
