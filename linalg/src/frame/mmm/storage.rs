@@ -34,7 +34,7 @@ where
                 if nr * i + 1 == n {
                     StorageKerSpec::VecStride {
                         ptr: ptr.offset((panel_len * i) as isize),
-                        byte_stride: (panel_len * std::mem::size_of::<T>()) as isize,
+                        byte_stride: (nr * std::mem::size_of::<T>()) as isize,
                     }
                 } else {
                     StorageKerSpec::Packed { ptr: ptr.offset((panel_len * i) as isize) }
@@ -104,7 +104,7 @@ where
 }
 
 #[repr(C, usize)]
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum StorageKerSpec<T>
 where
     T: Copy + Clone + Debug + Add + Mul + Zero,
