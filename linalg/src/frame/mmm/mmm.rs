@@ -114,11 +114,7 @@ where
         cols_offsets: &[isize],
     ) -> StorageSpec<T>;
 
-    unsafe fn b_vec_from_ptr_stride(
-        &self,
-        data: *const T,
-        stride: isize,
-    ) -> StorageSpec<T>;
+    unsafe fn b_vec_from_data_and_stride(&self, data: *const T, stride: isize) -> StorageSpec<T>;
 
     unsafe fn c_from_data_and_strides(
         &self,
@@ -127,11 +123,7 @@ where
         col_stride: isize,
     ) -> StorageSpec<T>;
 
-    unsafe fn c_vec_from_ptr_stride(
-        &self,
-        data: *mut T,
-        stride: isize,
-    ) -> StorageSpec<T>;
+    unsafe fn c_vec_from_data_and_stride(&self, data: *mut T, stride: isize) -> StorageSpec<T>;
 
     unsafe fn run(
         &self,
@@ -221,12 +213,13 @@ where
         StorageSpec::OffsetsAndPtrs { col_ptrs, row_byte_offsets, nr: K::nr() }
     }
 
-    unsafe fn b_vec_from_ptr_stride(
-        &self,
-        data: *const T,
-        stride: isize,
-    ) -> StorageSpec<T> {
-        StorageSpec::VecStride { ptr: data, byte_stride: stride * std::mem::size_of::<T>() as isize }
+    unsafe fn b_vec_from_data_and_stride(&self, data: *const T, stride: isize) -> StorageSpec<T> {
+        StorageSpec::VecStride {
+            ptr: data,
+            byte_stride: stride * std::mem::size_of::<T>() as isize,
+            mr: K::mr(),
+            nr: K::nr(),
+        }
     }
 
     unsafe fn c_from_data_and_strides(
@@ -244,12 +237,13 @@ where
         }
     }
 
-    unsafe fn c_vec_from_ptr_stride(
-        &self,
-        data: *mut T,
-        stride: isize,
-    ) -> StorageSpec<T> {
-        StorageSpec::VecStride { ptr: data, byte_stride: stride * std::mem::size_of::<T>() as isize }
+    unsafe fn c_vec_from_data_and_stride(&self, data: *mut T, stride: isize) -> StorageSpec<T> {
+        StorageSpec::VecStride {
+            ptr: data,
+            byte_stride: stride * std::mem::size_of::<T>() as isize,
+            mr: K::mr(),
+            nr: K::nr(),
+        }
     }
 
     unsafe fn run(
@@ -272,7 +266,7 @@ where
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
-                let ref b = b.panel_b(ib);
+                let ref b = b.panel_b(nr, ib, nr);
                 let ref mmm_c = c.mmm(ia, ib);
                 let non_linear = scratch.non_linear::<K>(non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -285,7 +279,7 @@ where
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
             if n % nr != 0 {
-                let ref b = b.panel_b(n / nr);
+                let ref b = b.panel_b(nr, n / nr, n % nr);
                 let ref tmp_tile_c = tmp_tile.mmm(0, 0);
                 let non_linear = scratch.non_linear::<K>(non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -303,7 +297,7 @@ where
             let ref panel_a = a.panel_a(m / mr);
             let ref tmp_tile_c = tmp_tile.mmm(0, 0);
             for ib in 0..n / nr {
-                let ref b = b.panel_b(ib);
+                let ref b = b.panel_b(nr, ib, nr);
                 let non_linear = scratch.non_linear::<K>(non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
@@ -316,7 +310,7 @@ where
                 c.set_from_mmm(m / mr, ib, m % mr, nr, &*tmpc);
             }
             if n % nr != 0 {
-                let ref b = b.panel_b(n / nr);
+                let ref b = b.panel_b(nr, n / nr, n % nr);
                 let non_linear = scratch.non_linear::<K>(non_linear, m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
@@ -347,9 +341,16 @@ pub mod test {
                 use crate::frame::mmm::mmm::test::*;
                 proptest::proptest! {
                     #[test]
-                    fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
+                    fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mat_mul()) {
                         if $cond {
-                            test_mat_mul_prep_f32::<$ker>(m, k, n, a, b)?
+                            test_mat_mat_mul_prep_f32::<$ker>(m, k, n, a, b)?
+                        }
+                    }
+
+                    #[test]
+                    fn mat_vec_prepacked((m, k, ref a, ref b) in strat_mat_vec_mul()) {
+                        if $cond {
+                            test_mat_vec_mul_prep_f32::<$ker>(m, k, a, b)?
                         }
                     }
 
@@ -359,12 +360,13 @@ pub mod test {
                             crate::check_close(&*pb.run::<$ker>(), &*pb.expected())?;
                         }
                     }
+
                 }
 
                 #[test]
                 fn mat_mul_1() {
                     if $cond {
-                        test_mat_mul_prep_f32::<$ker>(
+                        test_mat_mat_mul_prep_f32::<$ker>(
                             3,
                             4,
                             2,
@@ -440,7 +442,7 @@ pub mod test {
         };
     }
 
-    pub fn strat_mat_mul() -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
+    pub fn strat_mat_mat_mul() -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
         (1usize..5, 1usize..5, 1usize..5)
             .prop_flat_map(move |(m, k, n)| {
                 (
@@ -454,7 +456,20 @@ pub mod test {
             .boxed()
     }
 
-    pub fn test_mat_mul_prep_f32<K: MatMatMulKer<f32>>(
+    pub fn strat_mat_vec_mul() -> BoxedStrategy<(usize, usize, Vec<f32>, Vec<f32>)> {
+        (1usize..5, 1usize..5)
+            .prop_flat_map(move |(m, k)| {
+                (
+                    Just(m),
+                    Just(k),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), m * k),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), k),
+                )
+            })
+            .boxed()
+    }
+
+    pub fn test_mat_mat_mul_prep_f32<K: MatMatMulKer<f32>>(
         m: usize,
         k: usize,
         n: usize,
@@ -486,6 +501,44 @@ pub mod test {
                     for i in 0..k {
                         expected[x + y * n] += a[i + k * y] * b[x + i * n]
                     }
+                }
+            }
+
+            proptest::prop_assert!(
+                found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
+                "found: {:?} expected: {:?}",
+                found,
+                expected
+            );
+        }
+        Ok(())
+    }
+
+    pub fn test_mat_vec_mul_prep_f32<K: MatMatMulKer<f32>>(
+        m: usize,
+        k: usize,
+        a: &[f32],
+        b: &[f32],
+    ) -> Result<(), proptest::test_runner::TestCaseError> {
+        let op = MatMatMulImpl::<K, f32>::new(m, k, 1);
+        unsafe {
+            let mut packed_a: Vec<f32> =
+                align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+            op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+
+            let mut found = vec![9999.0f32; m];
+
+            op.run(
+                &op.a_from_packed(packed_a.as_ptr()),
+                &op.b_vec_from_data_and_stride(b.as_ptr(), 1),
+                &mut op.c_vec_from_data_and_stride(found.as_mut_ptr(), 1),
+                &[],
+            );
+
+            let mut expected = vec![0.0f32; m];
+            for y in 0..m {
+                for i in 0..k {
+                    expected[y] += a[i + k * y] * b[i]
                 }
             }
 

@@ -562,44 +562,76 @@ where
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let b = args_1!(inputs);
         let b = b.to_array_view::<T>()?;
-        let b = b.into_shape(&*self.geo.bc_b_shape)?;
-        let b_pack = self.geo.mm.b_pack();
-        let mut pb =
-            unsafe { Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())? };
         let mut c = unsafe { Array::uninitialized(&*self.geo.c_shape) };
-
-        for prefix in indices(&*self.geo.c_shape_prefix).into_iter() {
-            let mut a = self.packed_as.view();
-            let mut b = b.view();
-            let mut c = c.view_mut();
-            for &dim in prefix.slice() {
-                let d = dim.min(a.shape()[0] - 1);
-                a.index_axis_inplace(Axis(0), d);
-                let d = dim.min(b.shape()[0] - 1);
-                b.index_axis_inplace(Axis(0), d);
-                c.index_axis_inplace(Axis(0), dim);
+        let b = b.into_shape(&*self.geo.bc_b_shape)?;
+        if self.geo.n == 1 {
+            for prefix in indices(&*self.geo.c_shape_prefix).into_iter() {
+                let mut a = self.packed_as.view();
+                let mut b = b.view();
+                for &dim in prefix.slice() {
+                    let d = dim.min(a.shape()[0] - 1);
+                    a.index_axis_inplace(Axis(0), d);
+                    let d = dim.min(b.shape()[0] - 1);
+                    b.index_axis_inplace(Axis(0), d);
+                    c.index_axis_inplace(Axis(0), dim);
+                }
+                debug_assert_eq!(a.ndim(), 0);
+                debug_assert_eq!(b.ndim(), 2);
+                debug_assert_eq!(c.ndim(), 2);
+                let pa: &Tensor = a.iter().next().unwrap();
+                unsafe {
+                    self.geo.mm.run(
+                        &self.geo.mm.a_from_packed(pa.as_ptr()?),
+                        &self.geo.mm.b_vec_from_data_and_stride(
+                            b.as_ptr(),
+                            b.strides()[self.geo.b_trans as usize],
+                        ),
+                        &mut self.geo.mm.c_vec_from_data_and_stride(
+                            c.as_mut_ptr(),
+                            c.strides()[self.geo.c_trans as usize],
+                        ),
+                        &self.non_linear,
+                    );
+                }
             }
-            debug_assert_eq!(a.ndim(), 0);
-            debug_assert_eq!(b.ndim(), 2);
-            debug_assert_eq!(c.ndim(), 2);
-            b_pack.pack(
-                pb.as_ptr_mut()?,
-                b.as_ptr(),
-                b.strides()[self.geo.b_trans as usize],
-                b.strides()[!self.geo.b_trans as usize],
-            );
-            let pa: &Tensor = a.iter().next().unwrap();
-            unsafe {
-                self.geo.mm.run(
-                    &self.geo.mm.a_from_packed(pa.as_ptr()?),
-                    &self.geo.mm.b_from_packed(pb.as_ptr()?),
-                    &mut self.geo.mm.c_from_data_and_strides(
-                        c.as_mut_ptr(),
-                        c.strides()[self.geo.c_trans as usize],
-                        c.strides()[!self.geo.c_trans as usize],
-                    ),
-                    &self.non_linear,
+        } else {
+            let b_pack = self.geo.mm.b_pack();
+            let mut pb =
+                unsafe { Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())? };
+
+            for prefix in indices(&*self.geo.c_shape_prefix).into_iter() {
+                let mut a = self.packed_as.view();
+                let mut b = b.view();
+                let mut c = c.view_mut();
+                for &dim in prefix.slice() {
+                    let d = dim.min(a.shape()[0] - 1);
+                    a.index_axis_inplace(Axis(0), d);
+                    let d = dim.min(b.shape()[0] - 1);
+                    b.index_axis_inplace(Axis(0), d);
+                    c.index_axis_inplace(Axis(0), dim);
+                }
+                debug_assert_eq!(a.ndim(), 0);
+                debug_assert_eq!(b.ndim(), 2);
+                debug_assert_eq!(c.ndim(), 2);
+                b_pack.pack(
+                    pb.as_ptr_mut()?,
+                    b.as_ptr(),
+                    b.strides()[self.geo.b_trans as usize],
+                    b.strides()[!self.geo.b_trans as usize],
                 );
+                let pa: &Tensor = a.iter().next().unwrap();
+                unsafe {
+                    self.geo.mm.run(
+                        &self.geo.mm.a_from_packed(pa.as_ptr()?),
+                        &self.geo.mm.b_from_packed(pb.as_ptr()?),
+                        &mut self.geo.mm.c_from_data_and_strides(
+                            c.as_mut_ptr(),
+                            c.strides()[self.geo.c_trans as usize],
+                            c.strides()[!self.geo.c_trans as usize],
+                        ),
+                        &self.non_linear,
+                    );
+                }
             }
         }
 
