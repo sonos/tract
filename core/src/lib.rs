@@ -47,8 +47,6 @@
 
 extern crate bit_set;
 #[macro_use]
-extern crate custom_debug_derive;
-#[macro_use]
 extern crate derive_new;
 #[macro_use]
 extern crate downcast_rs;

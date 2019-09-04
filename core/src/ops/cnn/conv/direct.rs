@@ -3,7 +3,7 @@ use crate::ops::nn::DataShape;
 use ndarray::prelude::*;
 use tract_linalg::mmm::*;
 
-#[derive(CustomDebug, Clone, new)]
+#[derive(Debug, Clone, new)]
 pub struct Direct {
     tile: Box<dyn MatMatMul<f32>>,
     data_offsets: Vec<isize>,

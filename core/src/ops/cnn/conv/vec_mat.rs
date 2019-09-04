@@ -10,7 +10,7 @@ use crate::ops::nn::{DataFormat, DataShape};
 
 use tract_linalg::vecmatmul::VecMatMul;
 
-#[derive(CustomDebug, Clone, new)]
+#[derive(Debug, Clone, new)]
 pub struct VecMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy,
@@ -20,7 +20,6 @@ where
     pub k: usize,
     pub n: usize,
     pub kernel_fmt: KernelFormat,
-    #[debug(skip)]
     pub packed_kernels: Vec<Tensor>,
     pub group: usize,
     pub vmm: Box<dyn VecMatMul<T>>,

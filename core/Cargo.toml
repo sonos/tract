@@ -15,7 +15,6 @@ travis-ci = { repository = "snipsco/tract" }
 
 [dependencies]
 bit-set="0.5"
-custom_debug_derive = "0.1"
 derive-new = "0.5"
 downcast-rs = "1.0"
 error-chain = "0.12"

@@ -36,7 +36,7 @@ use tract_linalg::frame::mmm::{FusedSpec, MatMatMul};
  *              +--------------+  +----------------+
  */
 
-#[derive(CustomDebug, Clone, new)]
+#[derive(Debug, Clone, new)]
 pub struct MatMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy,
@@ -48,7 +48,6 @@ where
     pub k: usize,
     pub n: usize,
     pub kernel_fmt: KernelFormat,
-    #[debug(skip)]
     pub packed_kernels: Vec<Tensor>,
     pub group: usize,
     pub tile: Box<dyn MatMatMul<T>>,
