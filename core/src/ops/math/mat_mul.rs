@@ -568,6 +568,7 @@ where
             for prefix in indices(&*self.geo.c_shape_prefix).into_iter() {
                 let mut a = self.packed_as.view();
                 let mut b = b.view();
+                let mut c = c.view_mut();
                 for &dim in prefix.slice() {
                     let d = dim.min(a.shape()[0] - 1);
                     a.index_axis_inplace(Axis(0), d);
