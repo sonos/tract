@@ -83,6 +83,16 @@ impl MatMatMulKer<f32> for SMmm4x4 {
                         ab[3][3] += a[3] * b3;
                     }
                 }
+                (Packed { ptr: a }, VecStride { ptr: b, byte_stride }, Mul { k }) => {
+                    for i in 0..k {
+                        let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
+                        let b = *b.offset(i as isize * byte_stride / 4);
+                        ab[0][0] += a[0] * b;
+                        ab[1][0] += a[1] * b;
+                        ab[2][0] += a[2] * b;
+                        ab[3][0] += a[3] * b;
+                    }
+                }
                 _ => return 1,
             }
             let mut pnl = spec.non_linear;
@@ -189,6 +199,14 @@ impl MatMatMulKer<f32> for SMmm4x4 {
                     c[2 * csc + 3 * rsc] = ab[3][2];
                     c[3 * csc + 3 * rsc] = ab[3][3];
                 }
+                VecStride { ptr: c, byte_stride } => {
+                    let stride = byte_stride / 4;
+                    let c: *mut f32 = c as _;
+                    *c.offset(0 * stride) = ab[0][0];
+                    *c.offset(1 * stride) = ab[1][0];
+                    *c.offset(2 * stride) = ab[2][0];
+                    *c.offset(3 * stride) = ab[3][0];
+                }
                 _ => return 1,
             }
         }
@@ -253,6 +271,15 @@ impl MatMatMulKer<f32> for SMmmTest3x2 {
                         ab[1][1] += a[1] * b1;
                         ab[2][0] += a[2] * b0;
                         ab[2][1] += a[2] * b1;
+                    }
+                }
+                (Packed { ptr: a }, VecStride { ptr: b, byte_stride }, Mul { k }) => {
+                    for i in 0..k {
+                        let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
+                        let b = *b.offset(i as isize * byte_stride / 4);
+                        ab[0][0] += a[0] * b;
+                        ab[1][0] += a[1] * b;
+                        ab[2][0] += a[2] * b;
                     }
                 }
                 _ => return 1,
@@ -334,6 +361,13 @@ impl MatMatMulKer<f32> for SMmmTest3x2 {
                     c[1 * csc + 1 * rsc] = ab[1][1];
                     c[0 * csc + 2 * rsc] = ab[2][0];
                     c[1 * csc + 2 * rsc] = ab[2][1];
+                }
+                VecStride { ptr: c, byte_stride } => {
+                    let stride = byte_stride / 4;
+                    let c: *mut f32 = c as _;
+                    *c.offset(0 * stride) = ab[0][0];
+                    *c.offset(1 * stride) = ab[1][0];
+                    *c.offset(2 * stride) = ab[2][0];
                 }
                 _ => return 1,
             }

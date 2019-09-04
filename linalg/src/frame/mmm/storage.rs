@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::ops::{ Add, Mul};
+use std::ops::{Add, Mul};
 
 use num_traits::Zero;
 
@@ -12,6 +12,7 @@ where
     Strides { ptr: *const T, row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
     Packed { ptr: *const T, panel_len: usize },
     OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_ptrs: Vec<*const T>, nr: usize },
+    VecStride { ptr: *const T, byte_stride: isize },
 }
 
 impl<T> StorageSpec<T>
@@ -37,6 +38,9 @@ where
                     row_byte_offsets: row_byte_offsets.as_ptr(),
                     col_ptrs: col_ptrs.as_ptr().offset((nr * i) as isize),
                 }
+            }
+            StorageSpec::VecStride { ptr, byte_stride } => {
+                StorageKerSpec::VecStride { ptr: *ptr, byte_stride: *byte_stride }
             }
             _ => unimplemented!(),
         }
@@ -93,5 +97,5 @@ where
     Strides { ptr: *mut T, row_byte_stride: isize, col_byte_stride: isize },
     Packed { ptr: *const T },
     OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const T },
+    VecStride { ptr: *const T, byte_stride: isize },
 }
-
