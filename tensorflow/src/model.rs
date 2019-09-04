@@ -2,7 +2,10 @@ use crate::tfpb::graph::GraphDef;
 use crate::tfpb::node_def::NodeDef;
 use tract_core::internal::*;
 
-pub struct ParsingContext;
+#[derive(Default)]
+pub struct ParsingContext {
+    pub node_output_arities: HashMap<String, usize>,
+}
 
 #[derive(Clone, Default)]
 pub struct TfOpRegister(pub HashMap<String, fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>>);
@@ -57,18 +60,18 @@ impl Framework<GraphDef> for Tensorflow {
         let mut model = InferenceModel::default();
         let mut inputs = tvec!();
         // compute min output arity for all nodes
-        let mut arities = HashMap::new();
+        let mut context = ParsingContext::default();
         for pbnode in graph.get_node().iter() {
             for i in pbnode.get_input().iter() {
                 let (node, slot) = Self::parse_input(i)?;
-                let arity = arities.entry(node).or_insert(1);
+                let arity = context.node_output_arities.entry(node.to_string()).or_insert(1);
                 *arity = (*arity).max(slot + 1);
             }
         }
 
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
-            let output_arity = arities.get(&*name).cloned().unwrap_or(1);
+            let output_arity = context.node_output_arities.get(&*name).cloned().unwrap_or(1);
             let facts = tvec!(TensorFact::default(); output_arity);
 
             if pbnode.get_op() == "NextIteration" {
@@ -80,7 +83,7 @@ impl Framework<GraphDef> for Tensorflow {
             }
 
             let op = match self.op_register.0.get(pbnode.get_op()) {
-                Some(builder) => (builder)(&ParsingContext, pbnode)?,
+                Some(builder) => (builder)(&context, pbnode)?,
                 None => tract_core::ops::unimpl::UnimplementedOp::new(pbnode.get_op(),
                             format!("{:?}", pbnode)).into(),
             };

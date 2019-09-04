@@ -13,11 +13,18 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::and::bin())));
     reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::or::bin())));
     reg.insert("Merge", merge);
-    reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
+    reg.insert("Switch", switch);
 }
 
-#[derive(Debug, Clone)]
-pub struct Switch;
+fn switch(ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
+    let arity = ctx.node_output_arities[pb.get_name()];
+    Ok(Box::new(Switch::new(arity)))
+}
+
+#[derive(Debug, Clone, new)]
+pub struct Switch {
+    output_arity: usize
+}
 
 impl Op for Switch {
     fn name(&self) -> Cow<str> {
@@ -47,6 +54,7 @@ impl InferenceRulesOp for Switch {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
+        check_output_arity(&outputs, self.output_arity)?;
         s.equals(&inputs[1].datum_type, DatumType::Bool)?;
         s.equals(&inputs[1].shape, shapefact!())?;
         for i in 0..outputs.len() {
@@ -54,6 +62,10 @@ impl InferenceRulesOp for Switch {
             s.equals(&inputs[0].shape, &outputs[i].shape)?;
         }
         Ok(())
+    }
+
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(self.output_arity)
     }
 
     inference_op_as_op!();
