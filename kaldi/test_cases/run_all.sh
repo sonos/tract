@@ -13,6 +13,8 @@ else
     TEST_CASES="$TEST_CASE_DIR/*"
 fi
 
+: ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
+
 for tc in $TEST_CASES
 do
     if [ ! -e "$tc/vars.sh" ]
@@ -25,7 +27,7 @@ do
         [[ "$pass" = "txt" ]] && suffix=.txt || suffix=""
         [[ "$pass" = "bin-opti" ]] && opti="-O" || opti=""
         echo -n "$tc ($pass) "
-        cmd="cargo run  -p tract $CARGO_OPTS -- \
+        cmd="$TRACT_RUN \
             -f kaldi $tc/model.raw$suffix \
             --output-node output \
             --input-bundle $tc/io.npz \

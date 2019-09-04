@@ -28,12 +28,6 @@ then
     exit 0
 fi
 
-if [ -z "$TRAVIS" ]
-then
-    sh .travis/debug-tests.sh
-    sh .travis/tf.sh
-fi
-
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
     GRU128KeywordSpotter-v2-10epochs.onnx \
@@ -81,7 +75,7 @@ fi
     [ -e kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ] \
         || ln -s `pwd`/$CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/
     cd kaldi/test_cases
-    CARGO_OPTS=--release ./run_all.sh
+    TRACT_RUN=../../target/release/tract ./run_all.sh
 )
 
 
@@ -103,3 +97,10 @@ then
     ./target/release/tract $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
         -O -i 200x10xf32 run > /dev/null
 fi
+
+if [ -z "$TRAVIS" ]
+then
+    sh .travis/debug-tests.sh
+    sh .travis/tf.sh
+fi
+
