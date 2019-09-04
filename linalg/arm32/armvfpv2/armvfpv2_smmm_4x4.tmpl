@@ -84,6 +84,9 @@ armvfpv2_smmm_4x4:
     cmp     r4, #2
     beq     .packed_tops_and_offsets
 
+    cmp     r4, #3
+    beq     .packed_vec_strides
+
     b       .unsupported
 
     .packed_tops_and_offsets:
@@ -135,7 +138,6 @@ armvfpv2_smmm_4x4:
     .packed_tops_and_offsets_end:
     pop             { r0 }
     b   .non_linear
-
 
     .packed_packed:
     cmp r3, #4
@@ -283,6 +285,26 @@ armvfpv2_smmm_4x4:
     subs r3, r3, #1
     bne .packed_packed_loop_1
 
+    b .non_linear
+
+    .packed_vec_strides:
+    // r5 -> b ptr
+    // r6 -> b strides
+
+    .packed_vec_strides_1:
+
+    vldmia          r1!, { s0, s1, s2, s3 }
+    vldr            s8, [ r5 ]
+    add             r5, r5, r6
+
+    vmla.f32        s16, s0, s8
+    vmla.f32        s17, s1, s8
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    subs r3, r3, #1
+    bne .packed_vec_strides_1
+
 .non_linear:
     ldr     r1, [r0, #16]
     cmp     r1, #0
@@ -292,10 +314,13 @@ armvfpv2_smmm_4x4:
     ldr     r3, [r0, #8]
     ldm     r3, { r4, r5, r6, r7 } // discr, ...
     cmp     r4, #0
+    beq     .store_strides
+    cmp     r4, #3
+    beq     .store_vec_strides
     bne     .unsupported
 
+.store_strides:
     // r5,r6,r7 are c,src,csc
-
     {% for col in (0..3) %}
         mov         r8, r5
         {% for reg in (0..3) %}
@@ -310,6 +335,19 @@ armvfpv2_smmm_4x4:
     {% endfor %}
 
     mov         r0,     #0
+    b   .return
+
+.store_vec_strides:
+    // r5,r6 are ptr, strides
+    fsts s16, [ r5 ]
+    add r5, r5, r6
+    fsts s17, [ r5 ]
+    add r5, r5, r6
+    fsts s18, [ r5 ]
+    add r5, r5, r6
+    fsts s19, [ r5 ]
+
+    mov r0, #0
 
 .return:
     vpop        { s16-s31 }
