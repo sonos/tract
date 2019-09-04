@@ -94,9 +94,9 @@ macro_rules! element_map {
             fn translation_invariants(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
-            ) -> TractResult<Vec<TranslationInvariant>> {
+            ) -> TractResult<AxesInfo> {
                 let rank = node.outputs[0].fact.shape.rank();
-                Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
+                Ok((0..rank).map(|axis| TranslationInvariant::simple(axis)).collect())
             }
             op_as_typed_op!();
         }
@@ -178,9 +178,9 @@ macro_rules! element_map_move {
             fn translation_invariants(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
-            ) -> TractResult<Vec<TranslationInvariant>> {
+            ) -> TractResult<AxesInfo> {
                 let rank = node.outputs[0].fact.shape.rank();
-                Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
+                Ok((0..rank).map(|axis| TranslationInvariant::simple(axis)).collect())
             }
 
             op_as_typed_op!();
@@ -272,9 +272,9 @@ macro_rules! element_map_inplace {
             fn translation_invariants(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
-            ) -> TractResult<Vec<TranslationInvariant>> {
+            ) -> TractResult<AxesInfo> {
                 let rank = node.outputs[0].fact.shape.rank();
-                Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
+                Ok((0..rank).map(|axis| TranslationInvariant::simple(axis)).collect())
             }
 
             op_as_typed_op!();
@@ -362,9 +362,9 @@ macro_rules! element_map_with_params {
             fn translation_invariants(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
-            ) -> TractResult<Vec<TranslationInvariant>> {
+            ) -> TractResult<AxesInfo> {
                 let rank = node.outputs[0].fact.shape.rank();
-                Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
+                Ok((0..rank).map(|axis| TranslationInvariant::simple(axis)).collect())
             }
 
             op_as_typed_op!();

@@ -210,12 +210,12 @@ impl Op for NormConcat {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
+    ) -> TractResult<AxesInfo> {
         if self.slices.iter().any(|s| s.as_const().is_some()) {
-            Ok(vec!())
+            Ok(AxesInfo::none())
         } else {
             let rank = model.outlet_fact(node.inputs[0])?.shape.rank();
-            Ok((0..rank).filter(|&ax| ax != self.axis).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
+            Ok((0..rank).filter(|&ax| ax != self.axis).map(|axis| TranslationInvariant::simple(axis)).collect())
         }
     }
 

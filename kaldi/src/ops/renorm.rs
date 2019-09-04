@@ -27,8 +27,8 @@ impl Op for Renorm {
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
-        Ok(vec![TranslationInvariant { axis: 0, period: 1 }])
+    ) -> TractResult<AxesInfo> {
+        Ok(vec![TranslationInvariant::simple(0)].into_iter().collect())
     }
 
     op_as_typed_op!();

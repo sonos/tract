@@ -10,6 +10,8 @@ pub mod macros;
 #[macro_use]
 pub mod binary;
 
+pub mod axis;
+
 pub mod array;
 pub mod cast;
 pub mod cnn;
@@ -24,6 +26,7 @@ pub mod scan;
 pub mod source;
 pub mod unimpl;
 
+pub use axis::{ AxesInfo, TranslationInvariant };
 pub use downsample::Downsample;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
@@ -51,13 +54,6 @@ pub enum Validation {
     Rounding,
     /// Implementation must be accurate
     Accurate,
-}
-
-/// Translation invariance property.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TranslationInvariant {
-    pub axis: usize,
-    pub period: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -189,8 +185,8 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
-        Ok(vec![])
+    ) -> TractResult<AxesInfo> {
+        Ok(tvec![].into())
     }
 
     /// Compare two ops.

@@ -148,18 +148,16 @@ fn pull_downsample_up(
     if let Some(prec) = model.single_prec(down_node.id)? {
         let invariants = prec.op().translation_invariants(model, prec)?;
         debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, invariants);
-        if invariants
-            .iter()
-            .find(|inv| inv.axis == down_op.axis && down_op.stride % inv.period == 0)
-            .is_some()
-        {
+        if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis) {
             let mut patch = TypedModelPatch::default();
             let mut inputs = vec![];
             for (ix, &oo) in prec.inputs.iter().enumerate() {
                 let source = patch.tap_model(model, oo)?;
+                let mut op = down_op.clone();
+                op.axis = above_axis;
                 let ds = patch.wire_node(
                     format!("{}-{}", prec.name, ix),
-                    down_op.clone(),
+                    op,
                     [source].as_ref(),
                 )?;
                 inputs.push(ds[0]);

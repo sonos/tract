@@ -36,26 +36,50 @@ impl Op for RmDims {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut current = node;
-        while let Some(prec) = model.single_prec(current.id)? {
-            if let Some(add_dims) = prec.op_as::<super::AddDims>() {
-                if add_dims.axes == self.axes {
-                    let mut patch = TypedModelPatch::default();
-                    let mut wire:OutletId = patch.tap_model(model, prec.inputs[0])?.into();
-                    let mut next = model.single_succ(prec.id)?.unwrap();
-                    while next.id != node.id {
-                        wire = patch.wire_node(&*next.name, next.op.clone(), [wire].as_ref())?[0];
-                        next = model.single_succ(next.id)?.unwrap();
+        use crate::ops::cnn::conv::ConvUnary;
+        'axis: for &rm_axis in &self.axes {
+            let mut current = node;
+            let mut axis = rm_axis;
+            while let Some(prec) = model.single_prec(current.id)? {
+                if let Some(add_dims) = prec.op_as::<super::AddDims>() {
+                    if add_dims.axes.contains(&axis) {
+                        let mut patch = TypedModelPatch::default();
+                        let mut wire:OutletId = patch.tap_model(model, prec.inputs[0])?.into();
+                        if add_dims.axes.len() > 1 {
+                            let mut add_dims = add_dims.clone();
+                            add_dims.axes.retain(|&a| a != axis);
+                            wire = patch.wire_node(&*prec.name, add_dims, [wire].as_ref())?[0];
+                        }
+                        let mut next = model.single_succ(prec.id)?.unwrap();
+                        while next.id != node.id {
+                            let op = if let Some(cv) = next.op_as::<ConvUnary>() {
+                                Box::new(cv.rm_dummy_axis(axis)?.unwrap())
+                            } else {
+                                next.op.clone()
+                            };
+                            wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
+                            axis = next.op.translation_invariants(model, next)?.unary_track_axis_down(axis).unwrap();
+                            next = model.single_succ(next.id)?.unwrap();
+                        }
+                        if self.axes.len() > 1 {
+                            let mut rm_dims = self.clone();
+                            rm_dims.axes.retain(|&a| a != rm_axis);
+                            wire = patch.wire_node(&*node.name, rm_dims, [wire].as_ref())?[0];
+                        }
+                        patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                        return Ok(Some(patch))
                     }
-                    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
-                    return Ok(Some(patch))
                 }
-            }
-            let invariants = prec.op.translation_invariants(model, prec)?;
-            if self.axes.iter().all(|&axis| invariants.iter().any(|ti| ti.axis == axis && ti.period == 1)) {
-                current = prec;
-            } else {
-                return Ok(None)
+                let invariants = prec.op.translation_invariants(model, prec)?;
+                println!("{:?}", invariants);
+                if axis == 0 && prec.op_is::<ConvUnary>() {
+                    continue 'axis;
+                } else if let Some(up_axis) = invariants.unary_track_axis_up(axis) {
+                    current = prec;
+                    axis = up_axis;
+                } else {
+                    continue 'axis;
+                }
             }
         }
         Ok(None)

@@ -36,11 +36,11 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
+    ) -> TractResult<AxesInfo> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let axes = (0..fact.shape.rank())
             .filter(|&ax| self.axis != ax)
-            .map(|axis| TranslationInvariant { axis, period: 1 })
+            .map(|axis| TranslationInvariant::simple(axis))
             .collect();
         Ok(axes)
     }

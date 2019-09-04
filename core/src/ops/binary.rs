@@ -201,19 +201,19 @@ impl Op for UnaryOp {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
+    ) -> TractResult<AxesInfo> {
         let b = model.outlet_fact(node.inputs[0])?;
         if b.shape.rank() < self.a.shape().len() {
-            return Ok(vec![]);
+            return Ok(AxesInfo::none());
         }
         let mut invs = vec![];
         for i in 0..b.shape.rank() - self.a.shape().len() {
-            invs.push(TranslationInvariant { period: 1, axis: i })
+            invs.push(TranslationInvariant::simple(i))
         }
         for &d in self.a.shape() {
-            invs.push(TranslationInvariant { period: d, axis: invs.len() })
+            invs.push(TranslationInvariant::simple(invs.len()).with_period(d))
         }
-        return Ok(invs);
+        return Ok(invs.into_iter().collect());
     }
 
     op_as_typed_op!();
@@ -267,11 +267,11 @@ impl Op for MergeOp {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
+    ) -> TractResult<AxesInfo> {
         let a = model.outlet_fact(node.inputs[0])?;
         Ok((0..a.shape.rank())
             .into_iter()
-            .map(|axis| TranslationInvariant { period: 1, axis })
+            .map(|axis| TranslationInvariant::simple(axis))
             .collect())
     }
 
