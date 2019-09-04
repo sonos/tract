@@ -38,8 +38,12 @@ pub struct Ops {
 
 pub fn generic() -> Ops {
     Ops {
-        svmm: Box::new(|k, n| Box::new(vecmatmul::PackedVecMatMul::<generic::SVecMatMul8, f32>::new(k, n))),
-        smmm: Box::new(|m, k, n| Box::new(mmm::MatMatMulImpl::<generic::SMmm4x4, f32>::new(m, k, n))),
+        svmm: Box::new(|k, n| {
+            Box::new(vecmatmul::PackedVecMatMul::<generic::SVecMatMul8, f32>::new(k, n))
+        }),
+        smmm: Box::new(|m, k, n| {
+            Box::new(mmm::MatMatMulImpl::<generic::SMmm4x4, f32>::new(m, k, n))
+        }),
         ssigmoid: Box::new(|| Box::new(sigmoid::SigmoidImpl::<generic::SSigmoid4, f32>::new())),
         stanh: Box::new(|| Box::new(tanh::TanhImpl::<generic::STanh4, f32>::new())),
     }
@@ -75,7 +79,10 @@ pub fn ops() -> &'static Ops {
 }
 
 #[cfg(test)]
-pub(crate) fn check_close(found: &[f32], expected: &[f32]) -> proptest::test_runner::TestCaseResult {
+pub(crate) fn check_close(
+    found: &[f32],
+    expected: &[f32],
+) -> proptest::test_runner::TestCaseResult {
     proptest::prop_assert!(
         found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
         "found: {:?} expected: {:?}",

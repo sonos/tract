@@ -5,15 +5,15 @@ use std::ops::{Add, Mul};
 use super::*;
 
 #[repr(C)]
-#[derive(PartialEq, Copy, Clone)]
-pub struct MatMatMulKerSpec<T>
+#[derive(PartialEq, Copy, Clone, Debug)]
+pub struct MatMatMulKerSpec<'a, T>
 where
     T: Copy + Clone + Debug + Add + Mul + Zero + Debug,
 {
-    pub a: *const StorageKerSpec<T>,
-    pub b: *const StorageKerSpec<T>,
-    pub c: *const StorageKerSpec<T>,
-    pub linear: *const LinearSpec,
+    pub a: &'a StorageKerSpec<T>,
+    pub b: &'a StorageKerSpec<T>,
+    pub c: &'a StorageKerSpec<T>,
+    pub linear: &'a LinearSpec,
     pub non_linear: *const FusedKerSpec<T>,
 }
 

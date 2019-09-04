@@ -261,8 +261,7 @@ where
         let mut scratch = ScratchSpace::default();
         let tmpc = vec![T::zero(); mr * nr];
         let ref mut tmp_tile = self.c_from_data_and_strides(tmpc.as_ptr(), nr as isize, 1);
-        let linear = LinearSpec::Mul { k };
-        let linear = (&linear) as *const LinearSpec;
+        let ref linear = LinearSpec::Mul { k };
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
@@ -372,6 +371,20 @@ pub mod test {
                             2,
                             &[-3.0, 3.0, 5.0, -5.0, 6.0, 0.0, -6.0, -5.0, 0.0, 0.0, 9.0, 7.0],
                             &[-8.0, 5.0, 5.0, -3.0, 5.0, 7.0, -8.0, -1.0],
+                        )
+                        .unwrap()
+                    }
+                }
+
+                #[test]
+                fn mat_mul_1_2_1() {
+                    if $cond {
+                        test_mat_mat_mul_prep_f32::<$ker>(
+                            1,
+                            2,
+                            1,
+                            &[0.0, 1.0],
+                            &[0.0, 1.0],
                         )
                         .unwrap()
                     }
