@@ -58,7 +58,7 @@ impl Op for RmDims {
                                 next.op.clone()
                             };
                             wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
-                            axis = next.op.translation_invariants(model, next)?.unary_track_axis_down(axis).unwrap();
+                            axis = next.op.axes_info(model, next)?.unary_track_axis_down(axis).unwrap();
                             next = model.single_succ(next.id)?.unwrap();
                         }
                         if self.axes.len() > 1 {
@@ -70,7 +70,7 @@ impl Op for RmDims {
                         return Ok(Some(patch))
                     }
                 }
-                let invariants = prec.op.translation_invariants(model, prec)?;
+                let invariants = prec.op.axes_info(model, prec)?;
                 println!("{:?}", invariants);
                 if axis == 0 && prec.op_is::<ConvUnary>() {
                     continue 'axis;

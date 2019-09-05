@@ -23,12 +23,12 @@ impl Op for Renorm {
         "kaldi.Renorm".into()
     }
 
-    fn translation_invariants(
+    fn axes_info(
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
     ) -> TractResult<AxesInfo> {
-        Ok(vec![TranslationInvariant::simple(0)].into_iter().collect())
+        Ok(vec![AxisInfo::simple(0)].into_iter().collect())
     }
 
     op_as_typed_op!();

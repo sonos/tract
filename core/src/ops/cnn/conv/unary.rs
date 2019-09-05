@@ -498,20 +498,20 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
-    fn translation_invariants(
+    fn axes_info(
         &self,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<AxesInfo> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
-        let mut axes = vec![TranslationInvariant::simple(0)];
+        let mut axes = vec![AxisInfo::simple(0)];
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let h_axis = shape.h_axis();
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
             if dim == 1 && self.strides[ix] == 1 {
-                axes.push(TranslationInvariant::simple(ix + h_axis))
+                axes.push(AxisInfo::simple(ix + h_axis))
             }
         }
         Ok(axes.into_iter().collect())

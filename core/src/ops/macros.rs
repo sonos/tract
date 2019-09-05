@@ -91,12 +91,12 @@ macro_rules! element_map {
                 stringify!($Name).into()
             }
 
-            fn translation_invariants(&self,
+            fn axes_info(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
             ) -> TractResult<AxesInfo> {
                 let rank = node.outputs[0].fact.shape.rank();
-                Ok((0..rank).map(|axis| TranslationInvariant::simple(axis)).collect())
+                Ok((0..rank).map(|axis| AxisInfo::simple(axis)).collect())
             }
             op_as_typed_op!();
         }
@@ -175,12 +175,12 @@ macro_rules! element_map_move {
                 stringify!($Name).into()
             }
 
-            fn translation_invariants(&self,
+            fn axes_info(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
             ) -> TractResult<AxesInfo> {
                 let rank = node.outputs[0].fact.shape.rank();
-                Ok((0..rank).map(|axis| TranslationInvariant::simple(axis)).collect())
+                Ok((0..rank).map(|axis| AxisInfo::simple(axis)).collect())
             }
 
             op_as_typed_op!();
@@ -269,12 +269,12 @@ macro_rules! element_map_inplace {
                 stringify!($Name).into()
             }
 
-            fn translation_invariants(&self,
+            fn axes_info(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
             ) -> TractResult<AxesInfo> {
                 let rank = node.outputs[0].fact.shape.rank();
-                Ok((0..rank).map(|axis| TranslationInvariant::simple(axis)).collect())
+                Ok((0..rank).map(|axis| AxisInfo::simple(axis)).collect())
             }
 
             op_as_typed_op!();
@@ -359,12 +359,12 @@ macro_rules! element_map_with_params {
                 stringify!($Name).into()
             }
 
-            fn translation_invariants(&self,
+            fn axes_info(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
             ) -> TractResult<AxesInfo> {
                 let rank = node.outputs[0].fact.shape.rank();
-                Ok((0..rank).map(|axis| TranslationInvariant::simple(axis)).collect())
+                Ok((0..rank).map(|axis| AxisInfo::simple(axis)).collect())
             }
 
             op_as_typed_op!();

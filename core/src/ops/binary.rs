@@ -197,7 +197,7 @@ impl Op for UnaryOp {
         Ok(vec![format!("a: {:?}", self.a.shape())])
     }
 
-    fn translation_invariants(
+    fn axes_info(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -208,10 +208,10 @@ impl Op for UnaryOp {
         }
         let mut invs = vec![];
         for i in 0..b.shape.rank() - self.a.shape().len() {
-            invs.push(TranslationInvariant::simple(i))
+            invs.push(AxisInfo::simple(i))
         }
         for &d in self.a.shape() {
-            invs.push(TranslationInvariant::simple(invs.len()).with_period(d))
+            invs.push(AxisInfo::simple(invs.len()).with_period(d))
         }
         return Ok(invs.into_iter().collect());
     }
@@ -263,7 +263,7 @@ impl Op for MergeOp {
         format!("{}Merge", self.0.name()).into()
     }
 
-    fn translation_invariants(
+    fn axes_info(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -271,7 +271,7 @@ impl Op for MergeOp {
         let a = model.outlet_fact(node.inputs[0])?;
         Ok((0..a.shape.rank())
             .into_iter()
-            .map(|axis| TranslationInvariant::simple(axis))
+            .map(|axis| AxisInfo::simple(axis))
             .collect())
     }
 

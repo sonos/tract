@@ -26,7 +26,7 @@ pub mod scan;
 pub mod source;
 pub mod unimpl;
 
-pub use axis::{ AxesInfo, TranslationInvariant };
+pub use axis::{ AxesInfo, AxisInfo };
 pub use downsample::Downsample;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
@@ -181,7 +181,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Validation::Accurate
     }
 
-    fn translation_invariants(
+    fn axes_info(
         &self,
         _model: &TypedModel,
         _node: &TypedNode,

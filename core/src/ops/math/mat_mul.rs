@@ -331,7 +331,7 @@ impl Op for MatMulUnary {
         ])
     }
 
-    fn translation_invariants(
+    fn axes_info(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -347,13 +347,13 @@ impl Op for MatMulUnary {
         let mut invars = broadcasted_a_shape[..broadcasted_a_shape.len() - 2]
             .into_iter()
             .enumerate()
-            .map(|(axis, &period)| TranslationInvariant::simple(axis).with_period(period))
+            .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
             .collect::<Vec<_>>();
         if self.b_trans && self.c_trans {
-            invars.push(TranslationInvariant::simple(input_fact.shape.rank() - 2))
+            invars.push(AxisInfo::simple(input_fact.shape.rank() - 2))
         }
         if !self.b_trans && !self.c_trans {
-            invars.push(TranslationInvariant::simple(input_fact.shape.rank() - 1))
+            invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
         };
         Ok(invars.into_iter().collect())
     }

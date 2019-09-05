@@ -32,7 +32,7 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
         Ok(vec![format!("axis: {}, {}..{}", self.axis, self.start, self.end)])
     }
 
-    fn translation_invariants(
+    fn axes_info(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -40,7 +40,7 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let axes = (0..fact.shape.rank())
             .filter(|&ax| self.axis != ax)
-            .map(|axis| TranslationInvariant::simple(axis))
+            .map(|axis| AxisInfo::simple(axis))
             .collect();
         Ok(axes)
     }

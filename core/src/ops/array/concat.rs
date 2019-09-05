@@ -206,7 +206,7 @@ impl Op for NormConcat {
         "NormConcat".into()
     }
 
-    fn translation_invariants(
+    fn axes_info(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -215,7 +215,7 @@ impl Op for NormConcat {
             Ok(AxesInfo::none())
         } else {
             let rank = model.outlet_fact(node.inputs[0])?.shape.rank();
-            Ok((0..rank).filter(|&ax| ax != self.axis).map(|axis| TranslationInvariant::simple(axis)).collect())
+            Ok((0..rank).filter(|&ax| ax != self.axis).map(|axis| AxisInfo::simple(axis)).collect())
         }
     }
 
