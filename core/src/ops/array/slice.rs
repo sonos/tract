@@ -93,6 +93,7 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
         Ok(None)
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 

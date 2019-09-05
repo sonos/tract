@@ -29,7 +29,7 @@ impl Op for Slice {
         "onnx.Slice".into()
     }
 
-    op_as_typed_op!();
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Slice {
@@ -88,34 +88,33 @@ impl InferenceRulesOp for Slice {
     }
 
     inference_op_as_op!();
-    to_typed!();
-}
-
-
-impl TypedOp for Slice {
-    typed_op_as_op!();
-
-    fn output_facts(
+    fn to_typed(
         &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
-        let mut shape = inputs[0].shape.to_tvec();
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
+        let mut wire = mapping[&node.inputs[0]];
         for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
             let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
-            let mut b = b;
-            let mut e = e;
-            if let Ok(end) = shape[axis].to_integer() {
-                if b < 0 {
-                    b += end as isize
+            let dim = input.shape.dim(axis);
+            if let Ok(dim) = dim.to_integer() {
+                let b = (if b >= 0 { b.min(dim as isize) } else { dim as isize + b }) as usize;
+                let e = (if e >= 0 { e.min(dim as isize) } else { dim as isize + e }) as usize;
+                if b > 0 || e < dim as usize {
+                    wire = target.wire_node(
+                        format!("{}-axis-{}", node.name, axis),
+                        tract_core::ops::array::Slice::new(axis, b, e),
+                        [wire].as_ref())?[0];
                 }
-                if e < 0 {
-                    e += end as isize
-                }
-                b = b.min(end as isize);
-                e = e.min(end as isize);
+            } else {
+                bail!("Can't translate slice: axis={} dim={} b={} e={}", axis, dim, b, e)
             }
-            shape[axis] = (e - b).to_dim();
         }
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
+        target.rename_node(wire.node, &*node.name)?;
+        Ok(tvec!(wire))
     }
 }
+
