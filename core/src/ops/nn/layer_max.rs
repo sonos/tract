@@ -38,6 +38,9 @@ impl Op for LayerHardmax {
     fn name(&self) -> Cow<str> {
         "LayerHardmax".into()
     }
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axis: {}", self.axis)])
+    }
     canonic!();
     op_as_typed_op!();
 }
@@ -68,6 +71,17 @@ impl TypedOp for LayerHardmax {
 
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        pulsify(self, self.axis, node, target, mapping)
     }
 }
 
@@ -106,6 +120,9 @@ impl Op for LayerLogSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerLogSoftmax".into()
     }
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axis: {}", self.axis)])
+    }
     canonic!();
     op_as_typed_op!();
 }
@@ -136,6 +153,17 @@ impl TypedOp for LayerLogSoftmax {
 
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        pulsify(self, self.axis, node, target, mapping)
     }
 }
 
@@ -173,6 +201,9 @@ impl LayerSoftmax {
 impl Op for LayerSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerSoftmax".into()
+    }
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axis: {}", self.axis)])
     }
     canonic!();
     op_as_typed_op!();
@@ -217,5 +248,33 @@ impl TypedOp for LayerSoftmax {
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        pulsify(self, self.axis, node, target, mapping)
+    }
 }
 
+fn pulsify(
+    op: &dyn TypedOp,
+    axis: isize,
+    node: &NormalizedNode,
+    target: &mut PulsedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+) -> TractResult<TVec<OutletId>> {
+    let input_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
+    let axis = if axis < 0 { input_fact.shape.len() as isize + axis } else { axis } as usize;
+    if input_fact.axis != axis {
+        let id = target.add_node(&*node.name, objekt::clone_box(op), tvec!(input_fact))?;
+        target.add_edge(mapping[&node.inputs[0]], InletId::new(id, 0))?;
+        return Ok(tvec!(OutletId::new(id, 0)));
+    } else {
+        bail!("No pulsification on max axis");
+    }
+}
