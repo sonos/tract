@@ -288,6 +288,7 @@ macro_rules! element_map_inplace {
                 Ok((0..rank).map(|axis| AxisInfo::simple(axis)).collect())
             }
 
+            canonic!();
             op_as_typed_op!();
         }
 
