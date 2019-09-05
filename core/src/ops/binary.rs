@@ -122,7 +122,7 @@ impl TypedOp for InferenceBinOp {
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
             ])
-            .unwrap()
+            .ok_or_else(|| format!("Can not broadcast {:?} and {:?}", inputs[0].shape, inputs[1].shape))?
         )?))
     }
 }
@@ -237,7 +237,8 @@ impl TypedOp for TypedBinOp {
         output_fact.shape = crate::broadcast::multi_broadcast(&[
             &target.outlet_fact(mapping[&node.inputs[0]])?.shape,
             &target.outlet_fact(mapping[&node.inputs[1]])?.shape,
-        ]).unwrap();
+        ])
+        .unwrap();
         output_fact.delay = delay;
 
         let id = target.add_node(&*node.name, self.clone(), tvec!(output_fact))?;
