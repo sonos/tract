@@ -71,7 +71,6 @@ impl Op for RmDims {
                     }
                 }
                 let invariants = prec.op.axes_info(model, prec)?;
-                println!("{:?}", invariants);
                 if axis == 0 && prec.op_is::<ConvUnary>() {
                     continue 'axis;
                 } else if let Some(up_axis) = invariants.unary_track_axis_up(axis) {
