@@ -83,6 +83,7 @@ impl Op for Delay {
         "Delay".into()
     }
 
+    canonic!();
     impl_op_same_as!();
     op_as_typed_op!();
 }

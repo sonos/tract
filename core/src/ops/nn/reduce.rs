@@ -360,7 +360,13 @@ impl TypedOp for TypedReduce {
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?.clone();
+        let mut fact = target.outlet_fact(input)?.clone();
+        if self.axes.contains(&fact.axis) {
+            bail!("Can not reduce over streaming axis");
+        }
+        for &ax in &self.axes {
+            fact.shape[ax] = 1;
+        }
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }

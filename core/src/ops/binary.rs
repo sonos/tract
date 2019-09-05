@@ -141,28 +141,40 @@ impl Op for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
+        for i in 0..2 {
+            use super::array::TypedMultiBroadcastTo;
+            let prec = model.node(node.inputs[i].node);
+            if prec.op_is::<TypedMultiBroadcastTo>() {
+                return Ok(Some(TypedModelPatch::shunt_one_op(model, prec)?));
+            }
+        }
         if let Some(a) = inputs[0].konst.clone() {
             let op = UnaryOp::new(self.0.clone(), a.clone());
-            Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs[1..2], op)?))
-        } else if let Some(b) = inputs[1].konst.clone() {
-            if let Some(op) = self.0.unary_with_b_const(&b) {
-                Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs[0..1], op)?))
-            } else {
-                Ok(None)
-            }
-        } else if inputs[0].shape == inputs[1].shape {
-            let op = MergeOp(self.0.clone());
-            Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs, op)?))
-        } else {
-            Ok(None)
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                &model,
+                &node,
+                &node.inputs[1..2],
+                op,
+            )?));
         }
+        if let Some(b) = inputs[1].konst.clone() {
+            if let Some(op) = self.0.unary_with_b_const(&b) {
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    &model,
+                    &node,
+                    &node.inputs[0..1],
+                    op,
+                )?));
+            }
+        }
+        if inputs[0].shape == inputs[1].shape {
+            let op = MergeOp(self.0.clone());
+            return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs, op)?));
+        }
+        Ok(None)
     }
 
-    fn axes_info(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let a = model.outlet_fact(node.inputs[0])?;
         let b = model.outlet_fact(node.inputs[1])?;
         let c = &self.output_facts(&[a, b])?[0];
@@ -171,11 +183,8 @@ impl Op for TypedBinOp {
         Ok((0..c.shape.rank())
             .into_iter()
             .map(|axis| {
-                let mut info = AxisInfo {
-                    inputs: tvec!(None, None),
-                    outputs: tvec!(Some(axis)),
-                    period: 1,
-                };
+                let mut info =
+                    AxisInfo { inputs: tvec!(None, None), outputs: tvec!(Some(axis)), period: 1 };
                 if axis >= a_pad || a.shape.dim(axis - a_pad) == 1.to_dim() {
                     info.inputs[0] = Some(axis - a_pad)
                 }
@@ -225,7 +234,12 @@ impl TypedOp for TypedBinOp {
             .max()
             .unwrap();
         let mut output_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
+        output_fact.shape = crate::broadcast::multi_broadcast(&[
+            &target.outlet_fact(mapping[&node.inputs[0]])?.shape,
+            &target.outlet_fact(mapping[&node.inputs[1]])?.shape,
+        ]).unwrap();
         output_fact.delay = delay;
+
         let id = target.add_node(&*node.name, self.clone(), tvec!(output_fact))?;
         for ix in 0..2 {
             let input = mapping[&node.inputs[ix]];
@@ -249,7 +263,6 @@ impl TypedOp for TypedBinOp {
         }
         Ok(tvec!(OutletId::new(id, 0)))
     }
-
 }
 
 #[derive(Debug, Clone, new)]
@@ -267,11 +280,7 @@ impl Op for UnaryOp {
         Ok(vec![format!("a: {:?}", self.a)])
     }
 
-    fn axes_info(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let b = model.outlet_fact(node.inputs[0])?;
         if b.shape.rank() < self.a.shape().len() {
             return Ok(AxesInfo::none());
@@ -306,7 +315,11 @@ impl TypedOp for UnaryOp {
                 &*self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
                 &*inputs[0].shape.to_tvec()
             ])
-            .ok_or_else(|| format!("Failed to broadcast {:?} and {:?}", self.a.shape(), inputs[0].shape))?
+            .ok_or_else(|| format!(
+                "Failed to broadcast {:?} and {:?}",
+                self.a.shape(),
+                inputs[0].shape
+            ))?
         )?))
     }
 
@@ -334,16 +347,9 @@ impl Op for MergeOp {
         format!("{}Merge", self.0.name()).into()
     }
 
-    fn axes_info(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let a = model.outlet_fact(node.inputs[0])?;
-        Ok((0..a.shape.rank())
-            .into_iter()
-            .map(|axis| AxisInfo::simple(axis))
-            .collect())
+        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
     }
 
     canonic!();
@@ -515,4 +521,3 @@ macro_rules! bin_to_bool {
 pub fn commute(op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     Some(UnaryOp::new(objekt::clone_box(op), t.clone()))
 }
-

@@ -62,7 +62,7 @@ mod squeeze;
 mod tile;
 
 pub use self::add_dims::AddDims;
-pub use self::broadcast::MultiBroadcastTo;
+pub use self::broadcast::{ TypedMultiBroadcastTo, MultiBroadcastTo};
 pub use self::concat::Concat;
 pub use self::constant_like::ConstantLike;
 pub use self::constant_like::EyeLike;
