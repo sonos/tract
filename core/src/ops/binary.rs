@@ -194,7 +194,7 @@ impl Op for UnaryOp {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("a: {:?}", self.a.shape())])
+        Ok(vec![format!("a: {:?}", self.a)])
     }
 
     fn axes_info(
@@ -236,7 +236,7 @@ impl TypedOp for UnaryOp {
                 &*self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
                 &*inputs[0].shape.to_tvec()
             ])
-            .unwrap()
+            .ok_or_else(|| format!("Failed to broadcast {:?} and {:?}", self.a.shape(), inputs[0].shape))?
         )?))
     }
 
@@ -384,6 +384,9 @@ macro_rules! bin_to_super_type {
             pub fn bin() -> $crate::ops::binary::InferenceBinOp {
                 $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
             }
+            pub fn unary(t: std::sync::Arc<$crate::prelude::Tensor>) -> $crate::ops::binary::UnaryOp {
+                $crate::ops::binary::UnaryOp::new(Box::new(super::$Op), t)
+            }
         }
     };
 }
@@ -430,6 +433,9 @@ macro_rules! bin_to_bool {
         pub mod $func {
             pub fn bin() -> $crate::ops::binary::InferenceBinOp {
                 $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
+            }
+            pub fn unary(t: std::sync::Arc<$crate::prelude::Tensor>) -> $crate::ops::binary::UnaryOp {
+                $crate::ops::binary::UnaryOp::new(Box::new(super::$Op), t)
             }
         }
     };
