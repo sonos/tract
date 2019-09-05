@@ -66,9 +66,9 @@ fn info_usage(stage: &str) {
 fn main() {
     use clap::*;
     let mut app = clap_app!(("tract") =>
-        (version: "1.0")
         (author: "Romain Liautaud <romain.liautaud@snips.ai>")
         (author: "Mathieu Poumeyrol <mathieu.poumeyrol@snips.ai>")
+        (version: crate_version!())
         (about: "Tract command line interface")
 
         (@setting DeriveDisplayOrder)
