@@ -210,6 +210,46 @@ impl TypedOp for TypedBinOp {
             .unwrap()
         )?))
     }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        use crate::pulse::delay::Delay;
+        let delay = (0..2)
+            .map(|ix| target.outlet_fact(mapping[&node.inputs[ix]]).unwrap().delay)
+            .max()
+            .unwrap();
+        let mut output_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
+        output_fact.delay = delay;
+        let id = target.add_node(&*node.name, self.clone(), tvec!(output_fact))?;
+        for ix in 0..2 {
+            let input = mapping[&node.inputs[ix]];
+            let input_delay = target.outlet_fact(input)?.delay;
+            let source = if input_delay < delay {
+                let add_delay = delay - input_delay;
+                let fact = target.outlet_fact(input)?.clone();
+                let mut fixed_fact = fact.clone();
+                fixed_fact.delay += add_delay;
+                let id = target.chain_after(
+                    mapping[&node.inputs[ix]],
+                    format!("{}/Delay", &*node.name),
+                    Delay::new(fact, add_delay, 0),
+                    tvec!(fixed_fact),
+                )?;
+                OutletId::new(id, 0)
+            } else {
+                input
+            };
+            target.add_edge(source, InletId::new(id, ix))?;
+        }
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
+
 }
 
 #[derive(Debug, Clone, new)]
