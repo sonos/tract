@@ -43,71 +43,61 @@ pub enum Reducer {
 }
 
 impl Reducer {
-    fn reduce(&self, reduce: &Reduce, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
+    fn reduce(&self, axes: &[usize], input: Arc<Tensor>) -> TractResult<Tensor> {
         let dt = input.datum_type();
         match self {
             Reducer::L1 => match dt {
-                DatumType::U8 => self.reduce_t::<u8, _>(reduce, input, l1u_t),
-                DatumType::U16 => self.reduce_t::<u16, _>(reduce, input, l1u_t),
-                DatumType::I8 => self.reduce_t::<i8, _>(reduce, input, l1s_t),
-                DatumType::I16 => self.reduce_t::<i16, _>(reduce, input, l1s_t),
-                DatumType::I32 => self.reduce_t::<i32, _>(reduce, input, l1s_t),
-                DatumType::I64 => self.reduce_t::<i64, _>(reduce, input, l1s_t),
-                DatumType::F32 => self.reduce_t::<f32, _>(reduce, input, l1s_t),
-                DatumType::F64 => self.reduce_t::<f64, _>(reduce, input, l1s_t),
+                DatumType::U8 => self.reduce_t::<u8, _>(axes, input, l1u_t),
+                DatumType::U16 => self.reduce_t::<u16, _>(axes, input, l1u_t),
+                DatumType::I8 => self.reduce_t::<i8, _>(axes, input, l1s_t),
+                DatumType::I16 => self.reduce_t::<i16, _>(axes, input, l1s_t),
+                DatumType::I32 => self.reduce_t::<i32, _>(axes, input, l1s_t),
+                DatumType::I64 => self.reduce_t::<i64, _>(axes, input, l1s_t),
+                DatumType::F32 => self.reduce_t::<f32, _>(axes, input, l1s_t),
+                DatumType::F64 => self.reduce_t::<f64, _>(axes, input, l1s_t),
                 _ => bail!("{:?} is not a number valid for L1 norm", dt),
             },
-            Reducer::L2 => reduce_numbers!(Self::reduce_t(dt)(self, reduce, input, l2_t)),
-            Reducer::LogSum => {
-                reduce_floatlike!(Self::reduce_t(dt)(self, reduce, input, log_sum_t))
-            }
+            Reducer::L2 => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, l2_t)),
+            Reducer::LogSum => reduce_floatlike!(Self::reduce_t(dt)(self, axes, input, log_sum_t)),
             Reducer::LogSumExp => {
-                reduce_floatlike!(Self::reduce_t(dt)(self, reduce, input, log_sum_exp_t))
+                reduce_floatlike!(Self::reduce_t(dt)(self, axes, input, log_sum_exp_t))
             }
-            Reducer::Mean => reduce_numbers!(Self::reduce_t(dt)(self, reduce, input, mean_t)),
-            Reducer::Min => reduce_numbers!(Self::reduce_t(dt)(self, reduce, input, min_t)),
-            Reducer::Max => reduce_numbers!(Self::reduce_t(dt)(self, reduce, input, max_t)),
-            Reducer::Prod => reduce_numbers!(Self::reduce_t(dt)(self, reduce, input, prod_t)),
-            Reducer::Sum => reduce_numbers!(Self::reduce_t(dt)(self, reduce, input, sum_t)),
+            Reducer::Mean => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, mean_t)),
+            Reducer::Min => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, min_t)),
+            Reducer::Max => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, max_t)),
+            Reducer::Prod => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, prod_t)),
+            Reducer::Sum => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, sum_t)),
             Reducer::SumSquare => {
-                reduce_numbers!(Self::reduce_t(dt)(self, reduce, input, sum_square_t))
+                reduce_numbers!(Self::reduce_t(dt)(self, axes, input, sum_square_t))
             }
         }
     }
 
-    fn reduce_t<T, F>(&self, reduce: &Reduce, input: Arc<Tensor>, f: F) -> TractResult<Arc<Tensor>>
+    fn reduce_t<T, F>(&self, axes: &[usize], input: Arc<Tensor>, f: F) -> TractResult<Tensor>
     where
         F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
         T: Copy + Datum,
     {
         use ndarray::*;
-        let rank = input.shape().len();
         let input = input.to_array_view::<T>()?;
         let full_output_shape: Vec<usize> = input
             .shape()
             .iter()
             .enumerate()
-            .map(|(ax, &d)| if reduce.must_reduce(ax, rank) { 1 } else { d })
+            .map(|(ax, &d)| if axes.contains(&ax) { 1 } else { d })
             .collect();
-        let mut result = Array::from_shape_fn(&*full_output_shape, |coords| {
+        let result = Array::from_shape_fn(&*full_output_shape, |coords| {
             let slice_spec: Vec<SliceOrIndex> = coords
                 .slice()
                 .iter()
                 .enumerate()
-                .map(|(ax, &d)| if reduce.must_reduce(ax, rank) { (..).into() } else { d.into() })
+                .map(|(ax, &d)| if axes.contains(&ax) { (..).into() } else { d.into() })
                 .collect();
             let slice_info = SliceInfo::new(&slice_spec).unwrap();
             let slice = input.slice(slice_info.as_ref());
             f(slice)
         });
-        if !reduce.keep_dims {
-            for ax in (0..full_output_shape.len()).rev() {
-                if reduce.must_reduce(ax, rank) {
-                    result = result.index_axis_move(Axis(ax), 0);
-                }
-            }
-        }
-        Ok(result.into_arc_tensor())
+        Ok(result.into_tensor())
     }
 }
 
@@ -206,7 +196,7 @@ impl Reduce {
             Some(original_axes) => {
                 let mut ans: Vec<usize> = vec![];
                 for or_ax in original_axes.iter() {
-                    ans.push(Self::resolve_axis(*or_ax, rank as i64).unwrap());
+                    ans.push(Self::resolve_axis(*or_ax, rank).unwrap());
                 }
                 Some(ans)
             }
@@ -233,14 +223,23 @@ impl Reduce {
             .collect()
     }
 
-    fn resolve_axis(axis: i64, rank: i64) -> TractResult<usize> {
-        if 0 <= axis && axis <= rank - 1 {
+    fn resolve_axis(axis: i64, rank: usize) -> TractResult<usize> {
+        if 0 <= axis && axis as usize <= rank - 1 {
             Ok(axis as usize)
-        } else if -rank <= axis && axis < 0 {
-            Ok((axis + rank) as usize)
+        } else if -(rank as i64) <= axis && axis < 0 {
+            Ok((axis + rank as i64) as usize)
         } else {
             bail!("Illegal combination of values for rank and axis: {} and {}", rank, axis)
         }
+    }
+
+    fn resolve_axes(&self, input_rank: usize) -> TractResult<TVec<usize>> {
+        let mut axes:TVec<usize> = match self.axes.as_ref() {
+            None => Ok((0..input_rank).collect()),
+            Some(axis) => axis.iter().map(|&a| Self::resolve_axis(a, input_rank)).collect(),
+        }?;
+        axes.sort();
+        Ok(axes)
     }
 }
 
@@ -248,13 +247,24 @@ impl Op for Reduce {
     fn name(&self) -> Cow<str> {
         format!("Reduce<{:?}>", self.reducer).into()
     }
-    canonic!();
-    op_as_typed_op!();
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axes: {:?} keep_dims: {}", self.axes, self.keep_dims)])
+    }
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Reduce {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec!(self.reducer.reduce(&self, args_1!(inputs))?))
+        let axes = self.resolve_axes(inputs[0].shape().len())?;
+        let mut result = self.reducer.reduce(&*axes, args_1!(inputs))?;
+        if !self.keep_dims {
+            let mut final_shape:TVec<usize> = result.shape().into();
+            for &ax in axes.iter().rev() {
+                final_shape.remove(ax);
+            }
+            result = unsafe { result.into_shape(&*final_shape)? };
+        }
+        Ok(tvec!(result.into_arc_tensor()))
     }
 }
 
@@ -267,10 +277,11 @@ impl InferenceRulesOp for Reduce {
     ) -> InferenceResult {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         if self.keep_dims {
             s.equals(&inputs[0].rank, &outputs[0].rank)?;
         } else if let Some(axes) = self.axes.as_ref() {
-            s.equals((&inputs[0].rank).bex() - axes.len() as i32, &outputs[0].rank)?;
+            s.equals(inputs[0].rank.bex() - axes.len() as i32, &outputs[0].rank)?;
         } else {
             s.equals(&outputs[0].rank, 0)?;
         }
@@ -281,16 +292,62 @@ impl InferenceRulesOp for Reduce {
     }
 
     inference_op_as_op!();
-    to_typed!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = target.outlet_fact(mapping[&node.inputs[0]])?;
+        let axes = self.resolve_axes(input.shape.rank())?;
+        let mut wire = target.wire_node(
+            &*node.name,
+            TypedReduce::new(axes.clone(), self.reducer.clone()),
+            [mapping[&node.inputs[0]]].as_ref(),
+        )?;
+        if !self.keep_dims {
+            wire = target.wire_node(
+                format!("{}-dispose-dims", node.name),
+                crate::ops::array::RmDims::new(axes.to_vec()),
+                &wire,
+            )?;
+        }
+        Ok(wire)
+    }
 }
 
-impl TypedOp for Reduce {
+#[derive(Clone, Debug, new)]
+pub struct TypedReduce {
+    axes: TVec<usize>,
+    reducer: Reducer,
+}
+
+impl Op for TypedReduce {
+    fn name(&self) -> Cow<str> {
+        format!("Reduce<{:?}>", self.reducer).into()
+    }
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axes: {:?}", self.axes)])
+    }
+    canonic!();
+    op_as_typed_op!();
+}
+
+impl StatelessOp for TypedReduce {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        Ok(tvec!(self.reducer.reduce(&*self.axes, args_1!(inputs))?.into_arc_tensor()))
+    }
+}
+
+impl TypedOp for TypedReduce {
     typed_op_as_op!();
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
-        let shape = self.output_shape(&*inputs[0].shape.to_tvec());
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let mut shape: TVec<_> = inputs[0].shape.to_tvec();
+        for &ax in &self.axes {
+            shape[ax] = 1.to_dim();
+        }
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
     }
 
@@ -307,5 +364,4 @@ impl TypedOp for Reduce {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
-
 }

@@ -8,6 +8,7 @@ use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
 mod dropout;
+mod batch_norm;
 
 macro_rules! reduce {
     ($id:ident) => {
@@ -117,7 +118,7 @@ pub fn batch_normalization(
     let epsilon = node.get_attr_opt("epsilon")?.unwrap_or(1e-5);
     let spatial = node.get_attr_opt("spatial")?.unwrap_or(0);
     assert_eq!(spatial, 0);
-    Ok((Box::new(tractops::nn::BatchNorm::new(DataFormat::NCHW, epsilon, spatial != 0)), vec![]))
+    Ok((Box::new(batch_norm::BatchNorm::new(DataFormat::NCHW, epsilon, spatial != 0)), vec![]))
 }
 
 pub fn conv(

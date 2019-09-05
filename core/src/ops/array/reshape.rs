@@ -76,19 +76,16 @@ impl InferenceRulesOp for Reshape {
 
     fn to_typed(
         &self,
-        source: &InferenceModel,
+        _source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(ref shape) = source.outlet_fact(node.inputs[1])?.value.concretize() {
+        if let Some(ref shape) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
             let shape: TVec<usize> =
                 shape.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
             let op = super::IntoShape::new(shape);
-            let facts = op.output_facts(&[target.outlet_fact(mapping[&node.inputs[0]])?])?;
-            let id = target.add_node(&*node.name, op, facts)?;
-            target.add_edge(mapping[&node.inputs[0]], InletId::new(id, 0))?;
-            return Ok(tvec!(OutletId::new(id, 0)))
+            return target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref());
         }
         bail!("shape input is variable")
     }

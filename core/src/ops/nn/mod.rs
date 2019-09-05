@@ -1,5 +1,4 @@
 mod arg_max_min;
-mod batch_norm;
 mod data_formats;
 mod global_pools;
 mod layer_max;
@@ -7,7 +6,6 @@ mod lrn;
 mod reduce;
 
 pub use self::arg_max_min::ArgMaxMin;
-pub use self::batch_norm::BatchNorm;
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape};
 pub use self::global_pools::{GlobalAvgPool, GlobalLpPool, GlobalMaxPool};
 pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};

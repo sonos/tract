@@ -742,6 +742,24 @@ macro_rules! dispatch_floatlike {
 }
 
 #[macro_export]
+macro_rules! dispatch_signed {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::datum::DatumType;
+        match $dt {
+            DatumType::F16  => $($path)::*::<f32>($($args),*), // FIXME !!!
+            DatumType::F32  => $($path)::*::<f32>($($args),*),
+            DatumType::F64  => $($path)::*::<f64>($($args),*),
+            DatumType::I8   => $($path)::*::<i8>($($args),*),
+            DatumType::I16  => $($path)::*::<i16>($($args),*),
+            DatumType::I32  => $($path)::*::<i32>($($args),*),
+            DatumType::I64  => $($path)::*::<i64>($($args),*),
+            DatumType::TDim => $($path)::*::<TDim>($($args),*),
+            _ => bail!("{:?} is not signed", $dt)
+        }
+    } }
+}
+
+#[macro_export]
 macro_rules! impl_op_same_as {
     () => {
         fn same_as(&self, other: &dyn Op) -> bool {

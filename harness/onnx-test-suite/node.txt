@@ -48,8 +48,8 @@ test_averagepool_2d_strides
 test_averagepool_3d_default
 test_basic_conv_with_padding
 test_basic_conv_without_padding
-test_batchnorm_epsilon
-test_batchnorm_example
+test_batchnorm_epsilon                                                              dynsize
+test_batchnorm_example                                                              dynsize
 test_cast_DOUBLE_to_FLOAT
 test_cast_DOUBLE_to_FLOAT
 test_cast_DOUBLE_to_FLOAT16

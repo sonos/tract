@@ -6,12 +6,13 @@ use num_traits::AsPrimitive;
 use num_traits::Float;
 use num_traits::Zero;
 
-use super::binary::commute;
+use super::binary::*;
 
 bin_to_super_type!(add, Add, flip:commute,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
-bin_to_super_type!(sub, Sub,
+bin_to_super_type!(sub, Sub, flip:flip_sub,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
+#[inline]
 bin_to_super_type!(mul, Mul, flip:commute,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() * b);
 bin_to_super_type!(div, Div,
@@ -26,6 +27,15 @@ bin_to_super_type!(max, Max, flip:commute,
      [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a.max(b));
 bin_to_super_type!(pow, Pow,
      [f32, f64] => |c,a,b| *c = a.powf(*b));
+
+fn flip_sub(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
+    let mut t = t.clone().into_tensor();
+    fn negate<T: Datum + std::ops::Neg<Output=T>>(t:&mut Tensor) {
+        t.as_slice_mut::<T>().unwrap().iter_mut().for_each(|p| *p = -p.clone());
+    }
+    (|t:&mut Tensor| -> TractResult<()> { dispatch_signed!(negate(t.datum_type())(t)); Ok(()) })(&mut t).unwrap();
+    Some(UnaryOp::new(Box::new(Add), Arc::new(t)))
+}
 
 element_map!(Abs, [f16, f32, i32], |x| x.abs());
 element_map!(Exp, [f16, f32, f64], |x| x.exp());
