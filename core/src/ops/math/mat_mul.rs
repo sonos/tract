@@ -331,14 +331,14 @@ impl Op for MatMulUnary {
         ])
     }
 
-    fn translation_invariants(
+    fn axes_info(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
+    ) -> TractResult<AxesInfo> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         if input_fact.shape.rank() != node.outputs[0].fact.shape.rank() {
-            return Ok(vec![]);
+            return Ok(AxesInfo::none());
         }
         let mut broadcasted_a_shape: TVec<_> = self.a.shape().into();
         while broadcasted_a_shape.len() < input_fact.shape.rank() {
@@ -347,15 +347,15 @@ impl Op for MatMulUnary {
         let mut invars = broadcasted_a_shape[..broadcasted_a_shape.len() - 2]
             .into_iter()
             .enumerate()
-            .map(|(axis, &period)| TranslationInvariant { axis, period })
+            .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
             .collect::<Vec<_>>();
         if self.b_trans && self.c_trans {
-            invars.push(TranslationInvariant { axis: input_fact.shape.rank() - 2, period: 1 });
+            invars.push(AxisInfo::simple(input_fact.shape.rank() - 2))
         }
         if !self.b_trans && !self.c_trans {
-            invars.push(TranslationInvariant { axis: input_fact.shape.rank() - 1, period: 1 });
+            invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
         };
-        Ok(invars)
+        Ok(invars.into_iter().collect())
     }
 
     fn codegen(

@@ -411,29 +411,6 @@ impl Op for ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::array::{AddDims, RmDims};
-        if let (Some(add_node), Some(rm_node)) =
-            (model.single_prec(node.id)?, model.single_succ(node.id)?)
-        {
-            if let (Some(add_op), Some(rm_op)) =
-                (add_node.op_as::<AddDims>(), rm_node.op_as::<RmDims>())
-            {
-                if add_op.axes.len() == 1 && rm_op.axes == add_op.axes {
-                    let axis = add_op.axes[0];
-                    if let Some(op) = self.rm_dummy_axis(axis)? {
-                        let mut patch = TypedModelPatch::default();
-                        patch.tap_model(&model, model.single_prec(node.id)?.unwrap().inputs[0])?;
-                        let out = patch.model.chain(
-                            &*node.name,
-                            op,
-                            tvec!(rm_node.outputs[0].fact.clone()),
-                        )?;
-                        patch.shunt_outside(OutletId::new(rm_node.id, 0), OutletId::new(out, 0))?;
-                        return Ok(Some(patch));
-                    }
-                }
-            }
-        }
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let spatial_rank = self.full_input_shape.len() - 2;
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
@@ -521,26 +498,25 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
-    /*
-    fn translation_invariants(
+    fn axes_info(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
+    ) -> TractResult<AxesInfo> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
-        let mut axes = vec![TranslationInvariant { axis: shape.n_axis(), period: 1 }];
+        let mut axes = vec![AxisInfo::simple(0)];
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let h_axis = shape.h_axis();
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
             if dim == 1 && self.strides[ix] == 1 {
-                axes.push(TranslationInvariant { axis: ix + h_axis, period: 1 });
+                axes.push(AxisInfo::simple(ix + h_axis))
             }
         }
-        Ok(axes)
+        Ok(axes.into_iter().collect())
     }
-    */
+
     op_as_typed_op!();
 }
 

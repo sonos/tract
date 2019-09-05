@@ -24,14 +24,6 @@ impl Op for LstmNonlin {
         "kaldi.LstmNonlin".into()
     }
 
-    fn translation_invariants(
-        &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
-        Ok(vec![TranslationInvariant { axis: 0, period: 1 }])
-    }
-
     op_as_typed_op!();
 }
 
