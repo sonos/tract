@@ -185,10 +185,10 @@ impl Op for TypedBinOp {
             .map(|axis| {
                 let mut info =
                     AxisInfo { inputs: tvec!(None, None), outputs: tvec!(Some(axis)), period: 1 };
-                if axis >= a_pad || a.shape.dim(axis - a_pad) == 1.to_dim() {
+                if axis >= a_pad && a.shape.dim(axis - a_pad) == 1.to_dim() {
                     info.inputs[0] = Some(axis - a_pad)
                 }
-                if axis >= b_pad || b.shape.dim(axis - b_pad) == 1.to_dim() {
+                if axis >= b_pad && b.shape.dim(axis - b_pad) == 1.to_dim() {
                     info.inputs[1] = Some(axis - b_pad)
                 }
                 info
