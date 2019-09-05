@@ -216,6 +216,7 @@ impl Op for UnaryOp {
         return Ok(invs.into_iter().collect());
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 
@@ -275,6 +276,7 @@ impl Op for MergeOp {
             .collect())
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 

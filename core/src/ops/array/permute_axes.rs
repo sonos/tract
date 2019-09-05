@@ -39,6 +39,7 @@ impl Op for PermuteAxes {
         "PermuteAxes".into()
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 

@@ -34,6 +34,15 @@ macro_rules! op_as_typed_op {
 }
 
 #[macro_export]
+macro_rules! canonic {
+    () => {
+        fn is_canonic(&self) -> bool {
+            true
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! not_a_typed_op {
     () => {
         fn as_typed(&self) -> Option<&dyn TypedOp> {
@@ -98,6 +107,7 @@ macro_rules! element_map {
                 let rank = node.outputs[0].fact.shape.rank();
                 Ok((0..rank).map(|axis| AxisInfo::simple(axis)).collect())
             }
+            canonic!();
             op_as_typed_op!();
         }
 
@@ -183,6 +193,7 @@ macro_rules! element_map_move {
                 Ok((0..rank).map(|axis| AxisInfo::simple(axis)).collect())
             }
 
+            canonic!();
             op_as_typed_op!();
         }
 
@@ -367,6 +378,7 @@ macro_rules! element_map_with_params {
                 Ok((0..rank).map(|axis| AxisInfo::simple(axis)).collect())
             }
 
+            canonic!();
             op_as_typed_op!();
         }
 

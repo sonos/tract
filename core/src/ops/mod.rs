@@ -202,6 +202,10 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     }
 
     fn as_typed(&self) -> Option<&dyn TypedOp>;
+
+    fn is_canonic(&self) -> bool {
+        false
+    }
 }
 
 pub trait TypedOp:

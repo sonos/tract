@@ -48,6 +48,7 @@ impl Op for AvgPool {
         Ok(None)
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 

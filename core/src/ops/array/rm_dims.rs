@@ -84,6 +84,7 @@ impl Op for RmDims {
         Ok(None)
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 

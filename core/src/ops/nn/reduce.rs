@@ -248,6 +248,7 @@ impl Op for Reduce {
     fn name(&self) -> Cow<str> {
         format!("Reduce<{:?}>", self.reducer).into()
     }
+    canonic!();
     op_as_typed_op!();
 }
 

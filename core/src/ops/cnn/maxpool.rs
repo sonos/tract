@@ -39,6 +39,7 @@ impl Op for MaxPool {
         Ok(None)
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 

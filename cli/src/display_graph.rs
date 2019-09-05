@@ -23,6 +23,7 @@ pub struct DisplayOptions {
     pub node_ids: Option<Vec<TVec<usize>>>,
     pub op_name: Option<String>,
     pub node_name: Option<String>,
+    pub expect_canonic: bool,
 //    pub successors: Option<TVec<usize>>,
 }
 
@@ -101,7 +102,7 @@ impl<'a> DisplayGraph<'a> {
             "{}{} {} {}",
             prefix,
             White.bold().paint(format!("{}", node_id)),
-            (if node_name == "UnimplementedOp" { Red.bold() } else { Blue.bold() })
+            (if node_name == "UnimplementedOp" { Red.bold() } else { if self.options.expect_canonic && !model.node_op(node_id).is_canonic() {Yellow.bold()}  else { Blue.bold() } })
                 .paint(node_op_name),
             name_color.italic().paint(node_name)
         );

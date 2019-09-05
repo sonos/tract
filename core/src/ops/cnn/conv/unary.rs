@@ -517,6 +517,7 @@ impl Op for ConvUnary {
         Ok(axes.into_iter().collect())
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 

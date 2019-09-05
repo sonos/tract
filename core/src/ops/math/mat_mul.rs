@@ -378,6 +378,7 @@ impl Op for MatMulUnary {
         Ok(None)
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 

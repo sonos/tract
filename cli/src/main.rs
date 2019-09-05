@@ -678,7 +678,10 @@ impl ProfilingMode {
     }
 }
 
-pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<DisplayOptions> {
+pub fn display_options_from_clap(
+    root_matches: &clap::ArgMatches,
+    matches: &clap::ArgMatches,
+) -> CliResult<DisplayOptions> {
     Ok(DisplayOptions {
         konst: matches.is_present("const"),
         quiet: matches.is_present("quiet"),
@@ -690,6 +693,8 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
         node_name: matches.value_of("node_name").map(String::from),
         op_name: matches.value_of("op_name").map(String::from),
         //        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
+        expect_canonic: root_matches.value_of("pass").unwrap() == "declutter"
+            && !root_matches.is_present("optimize"),
     })
 }
 
@@ -773,7 +778,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             m.is_present("cumulative"),
             m.value_of("npz").unwrap(),
             params,
-            display_options_from_clap(m)?,
+            display_options_from_clap(&matches, m)?,
         ),
 
         #[cfg(feature = "onnx")]
@@ -781,7 +786,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             m.is_present("cumulative"),
             m.value_of("pbdir").unwrap(),
             params,
-            display_options_from_clap(m)?,
+            display_options_from_clap(&matches, m)?,
         ),
 
         ("run", Some(m)) => {
@@ -790,15 +795,17 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         }
 
         ("optimize-check", Some(m)) => {
-            optimize_check::handle(params, display_options_from_clap(m)?)
+            optimize_check::handle(params, display_options_from_clap(&matches, m)?)
         }
 
-        ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
+        ("stream-check", Some(m)) => {
+            stream_check::handle(params, display_options_from_clap(&matches, m)?)
+        }
 
-        ("cost", Some(m)) => crate::cost::handle(params, display_options_from_clap(m)?),
+        ("cost", Some(m)) => crate::cost::handle(params, display_options_from_clap(&matches, m)?),
 
         ("draw", Some(m)) => {
-            crate::draw::render(&*params.tract_model, display_options_from_clap(m)?)
+            crate::draw::render(&*params.tract_model, display_options_from_clap(&matches, m)?)
         }
 
         ("dump", Some(m)) => {
@@ -807,14 +814,18 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
                 .values_of("inner")
                 .map(|ss| ss.map(|s| s.to_string()).collect())
                 .unwrap_or(vec![]);
-            dump::handle(params, display_options_from_clap(m)?, inner)
+            dump::handle(params, display_options_from_clap(&matches, m)?, inner)
         }
 
         ("profile", Some(m)) => {
             if !matches.is_present("optimize") {
                 warn!("Profiling un-optimized network. Consider adding -O.");
             }
-            profile::handle(params, ProfilingMode::from_clap(&m)?, display_options_from_clap(m)?)
+            profile::handle(
+                params,
+                ProfilingMode::from_clap(&m)?,
+                display_options_from_clap(&matches, m)?,
+            )
         }
 
         (s, _) => bail!("Unknown subcommand {}.", s),

@@ -38,6 +38,7 @@ impl Op for LayerHardmax {
     fn name(&self) -> Cow<str> {
         "LayerHardmax".into()
     }
+    canonic!();
     op_as_typed_op!();
 }
 
@@ -105,6 +106,7 @@ impl Op for LayerLogSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerLogSoftmax".into()
     }
+    canonic!();
     op_as_typed_op!();
 }
 
@@ -172,6 +174,7 @@ impl Op for LayerSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerSoftmax".into()
     }
+    canonic!();
     op_as_typed_op!();
 }
 

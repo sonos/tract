@@ -46,6 +46,7 @@ impl Op for AddDims {
         Ok(axes.into_iter().collect())
     }
 
+    canonic!();
     op_as_typed_op!();
 }
 

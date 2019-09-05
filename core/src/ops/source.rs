@@ -75,6 +75,7 @@ impl Op for TypedSource {
     fn name(&self) -> Cow<str> {
         "TypedSource".into()
     }
+    canonic!();
     op_as_typed_op!();
 }
 
