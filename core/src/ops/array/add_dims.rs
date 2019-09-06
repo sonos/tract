@@ -39,7 +39,7 @@ impl Op for AddDims {
         let mut axes = tvec!();
         for out in 0..node.outputs[0].fact.shape.rank() {
             if !self.axes.contains(&out) {
-                axes.push(AxisInfo { inputs: tvec!(Some(i)), outputs: tvec!(Some(out)), period: 1 });
+                axes.push(AxisInfo { inputs: tvec!(Some(i)), outputs: tvec!(Some(out)), period: 1, disposable: true });
                 i += 1;
             }
         }

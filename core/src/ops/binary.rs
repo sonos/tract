@@ -184,7 +184,7 @@ impl Op for TypedBinOp {
             .into_iter()
             .map(|axis| {
                 let mut info =
-                    AxisInfo { inputs: tvec!(None, None), outputs: tvec!(Some(axis)), period: 1 };
+                    AxisInfo { inputs: tvec!(None, None), outputs: tvec!(Some(axis)), period: 1, disposable: true };
                 if axis >= a_pad && a.shape.dim(axis - a_pad) == 1.to_dim() {
                     info.inputs[0] = Some(axis - a_pad)
                 }
@@ -322,6 +322,20 @@ impl TypedOp for UnaryOp {
                 inputs[0].shape
             ))?
         )?))
+    }
+
+    fn dispose_dummy_axis(&self, _model: &TypedModel, node: &TypedNode, axis: usize) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let a_pad = node.outputs[0].fact.shape.rank() - self.a.shape().len();
+        if axis > a_pad {
+            let a = self.a.clone().into_tensor();
+            let mut shape = a.shape().to_vec();
+            assert_eq!(shape[axis-a_pad], 1);
+            shape.remove(axis - a_pad);
+            let a = unsafe { a.into_shape(&*shape)? };
+            Ok(Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor()))))
+        } else {
+            Ok(None)
+        }
     }
 
     fn pulsify(

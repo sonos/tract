@@ -304,46 +304,6 @@ impl ConvUnary {
         conv_gemm.as_stateless().unwrap().eval(tvec!(mega.into()))
     }
 
-    pub fn rm_dummy_axis(&self, axis: usize) -> TractResult<Option<ConvUnary>> {
-        let shape = self.data_format.shape(&self.full_input_shape);
-        if axis < shape.h_axis() {
-            return Ok(None);
-        }
-        let geo_axis = axis - shape.h_axis();
-        if geo_axis >= shape.hw_rank() {
-            return Ok(None);
-        }
-        if self.dilations[geo_axis] != 1
-            || self.strides[geo_axis] != 1
-            || !self.padding.valid_dim(geo_axis)
-        {
-            return Ok(None);
-        }
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        if kernel_spatial_shape[geo_axis] != 1 {
-            return Ok(None);
-        }
-        fn copy_rm_nth<D: DimLike>(input: &[D], nth: usize) -> TVec<D> {
-            input.iter().enumerate().filter(|&(ax, _)| ax != nth).map(|(_, d)| d.clone()).collect()
-        }
-        let kernel_shape: TVec<usize> =
-            copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
-        let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
-        let new_op = ConvUnary {
-            data_format: self.data_format,
-            kernel_fmt: self.kernel_fmt,
-            padding: self.padding.rm_axis(geo_axis),
-            dilations: copy_rm_nth(&self.dilations, geo_axis),
-            strides: copy_rm_nth(&self.strides, geo_axis),
-            kernel,
-            full_input_shape: copy_rm_nth(&self.full_input_shape, axis),
-            full_output_shape: copy_rm_nth(&self.full_output_shape, axis),
-            group: self.group,
-        };
-        Ok(Some(new_op))
-    }
-
     pub fn to_depth_wise<T>(&self, shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq + Sum,
@@ -505,7 +465,7 @@ impl Op for ConvUnary {
     ) -> TractResult<AxesInfo> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
-        let mut axes = vec![AxisInfo::simple(0)];
+        let mut axes = vec![AxisInfo::simple(0).disposable(false)];
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let h_axis = shape.h_axis();
@@ -533,6 +493,47 @@ impl TypedOp for ConvUnary {
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
     }
+
+    fn dispose_dummy_axis(&self, _model: &TypedModel, _node: &TypedNode, axis: usize) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let shape = self.data_format.shape(&self.full_input_shape);
+        if axis < shape.h_axis() {
+            bail!("Only spatial axis can be disposed of.");
+        }
+        let geo_axis = axis - shape.h_axis();
+        if geo_axis >= shape.hw_rank() {
+            bail!("Only spatial axis can be disposed of.");
+        }
+        if self.dilations[geo_axis] != 1
+            || self.strides[geo_axis] != 1
+            || !self.padding.valid_dim(geo_axis)
+        {
+            bail!("Can not dispose of axis with dilation, stride or padding.");
+        }
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        if kernel_spatial_shape[geo_axis] != 1 {
+            bail!("Can not dispose of axis with actual convolution.");
+        }
+        fn copy_rm_nth<D: DimLike>(input: &[D], nth: usize) -> TVec<D> {
+            input.iter().enumerate().filter(|&(ax, _)| ax != nth).map(|(_, d)| d.clone()).collect()
+        }
+        let kernel_shape: TVec<usize> =
+            copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
+        let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
+        let new_op = ConvUnary {
+            data_format: self.data_format,
+            kernel_fmt: self.kernel_fmt,
+            padding: self.padding.rm_axis(geo_axis),
+            dilations: copy_rm_nth(&self.dilations, geo_axis),
+            strides: copy_rm_nth(&self.strides, geo_axis),
+            kernel,
+            full_input_shape: copy_rm_nth(&self.full_input_shape, axis),
+            full_output_shape: copy_rm_nth(&self.full_output_shape, axis),
+            group: self.group,
+        };
+        Ok(Some(Box::new(new_op)))
+    }
+
 
     fn pulsify(
         &self,
