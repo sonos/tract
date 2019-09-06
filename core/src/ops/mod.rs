@@ -26,7 +26,7 @@ pub mod scan;
 pub mod source;
 pub mod unimpl;
 
-pub use axis::{ AxesInfo, AxisInfo };
+pub use axis::{AxesInfo, AxisInfo};
 pub use downsample::Downsample;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
@@ -181,11 +181,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Validation::Accurate
     }
 
-    fn axes_info(
-        &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<AxesInfo> {
         Ok(tvec![].into())
     }
 
@@ -219,6 +215,20 @@ pub trait TypedOp:
 
     /// Deduce output facts from input facts.
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>>;
+
+    /// Transforms the op in an equivalent one, discarding one dummy axis (of dim
+    /// assumed to be 1).
+    ///
+    /// Returns None if the op can be kept as is.
+    #[allow(unused_variables)]
+    fn dispose_dummy_axis(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        axis: usize,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        Ok(None)
+    }
 
     /// Translate an op in a normalized network (no constants) to a pulsing
     /// form, if possible.
@@ -301,8 +311,8 @@ pub trait InferenceOp:
                     }
                     Err(e) => match e {
                         TractError(TractErrorKind::StreamTensor, _) => (),
-                        e => return Err(e)
-                    }
+                        e => return Err(e),
+                    },
                 }
             }
         }

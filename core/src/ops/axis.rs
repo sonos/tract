@@ -37,35 +37,42 @@ pub struct AxisInfo {
     pub inputs: TVec<Option<usize>>,
     pub outputs: TVec<Option<usize>>,
     pub period: usize,
+    pub disposable: bool,
 }
 
 impl AxisInfo {
     pub fn simple(axis: usize) -> AxisInfo {
-        AxisInfo { inputs: tvec!(Some(axis)), outputs: tvec!(Some(axis)), period: 1 }
+        AxisInfo { inputs: tvec!(Some(axis)), outputs: tvec!(Some(axis)), period: 1, disposable: true }
     }
 
     pub fn with_period(self, period: usize) -> AxisInfo {
         AxisInfo { period, ..self }
     }
+
+    pub fn disposable(self, disposable: bool) -> AxisInfo {
+        AxisInfo { disposable, ..self }
+    }
 }
 
 impl AxesInfo {
-    pub fn unary_track_axis_up(&self, axis: usize) -> Option<usize> {
+    pub fn unary_track_axis_up(&self, axis: usize, only_disposable: bool) -> Option<usize> {
         self.0
             .iter()
             .find(|connection| {
                 connection.outputs.get(0) == Some(&Some(axis)) && connection.period == 1
             })
+            .filter(|conn| conn.disposable || !only_disposable)
             .and_then(|connection| connection.inputs.get(0))
             .and_then(|d| *d)
     }
 
-    pub fn unary_track_axis_down(&self, axis: usize) -> Option<usize> {
+    pub fn unary_track_axis_down(&self, axis: usize, only_disposable: bool) -> Option<usize> {
         self.0
             .iter()
             .find(|connection| {
                 connection.inputs.get(0) == Some(&Some(axis)) && connection.period == 1
             })
+            .filter(|conn| conn.disposable || !only_disposable)
             .and_then(|connection| connection.outputs.get(0))
             .and_then(|d| *d)
     }

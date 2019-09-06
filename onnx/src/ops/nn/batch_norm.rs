@@ -115,6 +115,7 @@ impl InferenceRulesOp for BatchNorm {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let x = target.outlet_fact(mapping[&node.inputs[0]])?;
+        dbg!(&x);
         let params = (1..5)
             .map(|i| Ok(target.outlet_fact(mapping[&node.inputs[i]])?.konst.clone()))
             .collect::<TractResult<TVec<Option<Arc<Tensor>>>>>()?;

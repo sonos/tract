@@ -36,7 +36,6 @@ impl Op for RmDims {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::cnn::conv::ConvUnary;
         'axis: for &rm_axis in &self.axes {
             let mut current = node;
             let mut axis = rm_axis;
@@ -52,13 +51,9 @@ impl Op for RmDims {
                         }
                         let mut next = model.single_succ(prec.id)?.unwrap();
                         while next.id != node.id {
-                            let op = if let Some(cv) = next.op_as::<ConvUnary>() {
-                                Box::new(cv.rm_dummy_axis(axis)?.unwrap())
-                            } else {
-                                next.op.clone()
-                            };
+                            let op = next.op.dispose_dummy_axis(model, next, axis)?.unwrap_or_else(|| next.op.clone());
                             wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
-                            axis = next.op.axes_info(model, next)?.unary_track_axis_down(axis).unwrap();
+                            axis = next.op.axes_info(model, next)?.unary_track_axis_down(axis, true).unwrap();
                             next = model.single_succ(next.id)?.unwrap();
                         }
                         if self.axes.len() > 1 {
@@ -71,9 +66,7 @@ impl Op for RmDims {
                     }
                 }
                 let invariants = prec.op.axes_info(model, prec)?;
-                if axis == 0 && prec.op_is::<ConvUnary>() {
-                    continue 'axis;
-                } else if let Some(up_axis) = invariants.unary_track_axis_up(axis) {
+                if let Some(up_axis) = invariants.unary_track_axis_up(axis, true) {
                     current = prec;
                     axis = up_axis;
                 } else {
