@@ -118,11 +118,10 @@ fn conv_eval_2() {
 
 #[test]
 fn conv_eval_3() {
-    use ndarray_rand::RandomExt;
     use rand::distributions::Uniform;
 
-    let i: Tensor = Tensor::from(Array::random((1, 112, 112, 48), Uniform::new(0.0f32, 1.0)));
-    let k: Tensor = Tensor::from(Array::random((3, 3, 48, 1), Uniform::new(0.0f32, 1.0)));
+    let i: Tensor = Tensor::from(Array::from_shape_fn((1, 112, 112, 48), |_| rand::random::<f32>()));
+    let k: Tensor = Tensor::from(Array::from_shape_fn((3, 3, 48, 1), |_| rand::random::<f32>()));
     let conv = tfpb::node()
         .name("conv")
         .op("DepthwiseConv2dNative")

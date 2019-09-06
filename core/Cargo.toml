@@ -40,7 +40,7 @@ default = [ ]
 serialize = ["serde", "serde_derive", "smallvec/serde", "half/serde" ]
 
 [dev-dependencies]
-criterion = "0.2"
+criterion = "0.3"
 proptest = "0.9"
 
 [[bench]]

@@ -125,7 +125,7 @@ fn b(c: &mut Criterion, name: &str, pbs: Vec<Problem>) {
         .throughput(|pb| {
             let h = (pb.h - (pb.kh - 1) * pb.dil_h + 1) / pb.stride_h;
             let w = (pb.w - (pb.kw - 1) * pb.dil_w + 1) / pb.stride_w;
-            criterion::Throughput::Elements((h * w * pb.ci * pb.co * pb.kh * pb.kw) as u32)
+            criterion::Throughput::Elements((h * w * pb.ci * pb.co * pb.kh * pb.kw) as _)
         }),
     );
 }

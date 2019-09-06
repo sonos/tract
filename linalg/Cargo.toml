@@ -21,10 +21,10 @@ objekt = "0.1.1"
 
 [build-dependencies]
 cc = "1.0"
-liquid = "0.18"
+liquid = "0.19"
 
 [dev-dependencies]
-criterion = "0.2"
+criterion = "0.3"
 proptest = "0.9"
 
 [[bench]]

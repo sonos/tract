@@ -28,7 +28,7 @@ ndarray = "0.12"
 ndarray-npy = { version = "0.4", features = [ "compressed_npz" ] }
 pbr = "1.0"
 py_literal = "0.2"
-rand = "0.6.5"
+rand = "0.7"
 tract-core = { path = "../core" }
 tract-kaldi = { optional = true, path = "../kaldi" }
 tract-onnx = { optional = true, path = "../onnx" }
@@ -40,6 +40,3 @@ kaldi = [ "tract-kaldi" ]
 onnx = [ "tract-onnx" ]
 tf = [ "tract-tensorflow" ]
 conform = [ "tract-tensorflow/conform"  ]
-
-[dev-dependencies]
-criterion = "0.2"
