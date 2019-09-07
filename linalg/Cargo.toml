@@ -28,6 +28,10 @@ criterion = "0.3"
 proptest = "0.9"
 
 [[bench]]
+name = "mat_vec"
+harness = false
+
+[[bench]]
 name = "mm_for_wavenet_hw"
 harness = false
 
