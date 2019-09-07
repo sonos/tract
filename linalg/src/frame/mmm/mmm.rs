@@ -115,6 +115,7 @@ where
     ) -> StorageSpec<T>;
 
     unsafe fn b_vec_from_data_and_stride(&self, data: *const T, stride: isize) -> StorageSpec<T>;
+    unsafe fn b_vec_from_data(&self, data: *const T) -> StorageSpec<T>;
 
     unsafe fn c_from_data_and_strides(
         &self,
@@ -124,6 +125,7 @@ where
     ) -> StorageSpec<T>;
 
     unsafe fn c_vec_from_data_and_stride(&self, data: *mut T, stride: isize) -> StorageSpec<T>;
+    unsafe fn c_vec_from_data(&self, data: *mut T) -> StorageSpec<T>;
 
     unsafe fn run(
         &self,
@@ -222,6 +224,10 @@ where
         }
     }
 
+    unsafe fn b_vec_from_data(&self, data: *const T) -> StorageSpec<T> {
+        self.b_vec_from_data_and_stride(data, 1)
+    }
+
     unsafe fn c_from_data_and_strides(
         &self,
         data: *const T,
@@ -244,6 +250,10 @@ where
             mr: K::mr(),
             nr: K::nr(),
         }
+    }
+
+    unsafe fn c_vec_from_data(&self, data: *mut T) -> StorageSpec<T> {
+        self.c_vec_from_data_and_stride(data, 1)
     }
 
     unsafe fn run(

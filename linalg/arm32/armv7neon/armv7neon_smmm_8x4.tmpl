@@ -325,6 +325,76 @@ armv7neon_smmm_8x4:
     .packed_strides_vec:
     // r5 -> b ptr, r6 -> b stride
 
+    cmp r3, #4
+    blt .packed_strides_vec_loop_1
+
+    cmp r6, #4
+    bne .packed_strides_vec_loop_4
+
+    .packed_strides_vec_loop_4_contig:
+
+    vldmia          r1!, { q0, q1, q2, q3 }
+    vldmia          r5!, { q4 }
+
+    vmla.f32        q8, q0, d8[0]
+    vldmia          r1!, { q0 }
+    vmla.f32        q9, q1, d8[0]
+    vldmia          r1!, { q1 }
+    vmla.f32        q10, q2, d8[1]
+    vldmia          r1!, { q2 }
+    vmla.f32        q11, q3, d8[1]
+
+    vldmia          r1!, { q3 }
+
+    vmla.f32        q8, q0, d9[0]
+    vmla.f32        q9, q1, d9[0]
+    vmla.f32        q10, q2, d9[1]
+    vmla.f32        q11, q3, d9[1]
+
+    sub r3, r3, #4
+    cmp r3, #4
+    bge .packed_strides_vec_loop_4_contig
+    b .packed_strides_vec_loop_4_end
+
+    .packed_strides_vec_loop_4:
+
+    vldmia          r1!, { q0, q1 }
+    vld1.f32        d8[0], [r5]
+    add             r5, r5, r6
+    vld1.f32        d8[1], [r5]
+    add             r5, r5, r6
+    vld1.f32        d9[0], [r5]
+    add             r5, r5, r6
+    vld1.f32        d9[1], [r5]
+    add             r5, r5, r6
+    vldmia          r1!, { q2, q3 }
+
+    vmla.f32        q8, q0, d8[0]
+    vmla.f32        q9, q1, d8[0]
+    vldmia          r1!, { q0, q1 }
+    vmla.f32        q10, q2, d8[1]
+    vmla.f32        q11, q3, d8[1]
+
+    vldmia          r1!, { q2, q3 }
+
+    vmla.f32        q8, q0, d9[0]
+    vmla.f32        q9, q1, d9[0]
+    vmla.f32        q10, q2, d9[1]
+    vmla.f32        q11, q3, d9[1]
+
+    sub r3, r3, #4
+    cmp r3, #4
+    bge .packed_strides_vec_loop_4
+
+    .packed_strides_vec_loop_4_end:
+
+    vadd.f32        q8, q8, q10
+    vadd.f32        q9, q9, q11
+
+    cmp r3, #0
+    beq .non_linear
+
+    .packed_strides_vec_loop_1:
     vldmia          r1!, { q0, q1 }
     vldr            s16, [r5]
     add             r5, r5, r6
