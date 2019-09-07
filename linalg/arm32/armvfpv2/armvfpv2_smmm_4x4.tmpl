@@ -291,7 +291,96 @@ armvfpv2_smmm_4x4:
     // r5 -> b ptr
     // r6 -> b strides
 
-    .packed_vec_strides_1:
+    cmp r3, #4
+    blt .packed_vec_strides_loop_1
+
+    cmp r6, #4
+    bne .packed_vec_strides_loop_4
+
+    .packed_vec_strides_loop_4_contig:
+
+    vldmia          r5!, { s8, s9, s10, s11 }
+    vldmia          r1!, { s0, s1, s2, s3, s4, s5, s6, s7 }
+
+    vmla.f32        s16, s0, s8
+    vmla.f32        s17, s1, s8
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vldmia          r1!, { s0, s1, s2, s3 }
+
+    vmla.f32        s20, s4, s9
+    vmla.f32        s21, s5, s9
+    vmla.f32        s22, s6, s9
+    vmla.f32        s23, s7, s9
+
+    vldmia          r1!, { s4, s5, s6, s7 }
+
+    vmla.f32        s16, s0, s10
+    vmla.f32        s17, s1, s10
+    vmla.f32        s18, s2, s10
+    vmla.f32        s19, s3, s10
+
+    vmla.f32        s20, s4, s11
+    vmla.f32        s21, s5, s11
+    vmla.f32        s22, s6, s11
+    vmla.f32        s23, s7, s11
+
+    sub r3, r3, #4
+    cmp r3, #4
+    bge .packed_vec_strides_loop_4_contig
+    b .packed_vec_strides_loop_4_end
+
+    .packed_vec_strides_loop_4:
+
+    vldmia          r1!, { s0, s1, s2, s3, s4, s5, s6, s7 }
+    vldr            s8, [r5]
+    add             r5, r5, r6
+    vldr            s9, [r5]
+    add             r5, r5, r6
+    vldr            s10, [r5]
+    add             r5, r5, r6
+    vldr            s11, [r5]
+    add             r5, r5, r6
+
+    vmla.f32        s16, s0, s8
+    vmla.f32        s17, s1, s8
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vldmia          r1!, { s0, s1, s2, s3 }
+
+    vmla.f32        s20, s4, s9
+    vmla.f32        s21, s5, s9
+    vmla.f32        s22, s6, s9
+    vmla.f32        s23, s7, s9
+
+    vldmia          r1!, { s4, s5, s6, s7 }
+
+    vmla.f32        s16, s0, s10
+    vmla.f32        s17, s1, s10
+    vmla.f32        s18, s2, s10
+    vmla.f32        s19, s3, s10
+
+    vmla.f32        s20, s4, s11
+    vmla.f32        s21, s5, s11
+    vmla.f32        s22, s6, s11
+    vmla.f32        s23, s7, s11
+
+    sub r3, r3, #4
+    cmp r3, #4
+    bge .packed_vec_strides_loop_4
+
+    .packed_vec_strides_loop_4_end:
+    vadd.f32        s16, s16, s20
+    vadd.f32        s17, s17, s21
+    vadd.f32        s18, s18, s22
+    vadd.f32        s19, s19, s23
+
+    cmp r3, #0
+    beq .non_linear
+
+    .packed_vec_strides_loop_1:
 
     vldmia          r1!, { s0, s1, s2, s3 }
     vldr            s8, [ r5 ]
@@ -303,7 +392,7 @@ armvfpv2_smmm_4x4:
     vmla.f32        s19, s3, s8
 
     subs r3, r3, #1
-    bne .packed_vec_strides_1
+    bne .packed_vec_strides_loop_1
 
 .non_linear:
     ldr     r1, [r0, #16]
