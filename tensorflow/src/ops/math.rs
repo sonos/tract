@@ -31,10 +31,8 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Tanh", with_T!(tractops::math::Tanh));
 }
 
-pub fn add_n(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    let dtype = pb.get_attr_datum_type("T")?;
-    let n = pb.get_attr_int("N")?;
-    Ok(Box::new(tractops::math::AddN::new(dtype.into(), Some(n))))
+pub fn add_n(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
+    Ok(Box::new(tractops::binary::Nary(Box::new(tractops::math::Add), false)))
 }
 
 pub fn mat_mul(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

@@ -35,15 +35,15 @@ impl DatumType {
         match self {
             DatumType::Bool => &[DatumType::Bool],
             DatumType::U8 => {
-                &[DatumType::U8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim]
+                &[DatumType::U8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32]
             }
-            DatumType::U16 => &[DatumType::U16, DatumType::I32, DatumType::I64, DatumType::TDim],
+            DatumType::U16 => &[DatumType::U16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32],
             DatumType::I8 => {
-                &[DatumType::I8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim]
+                &[DatumType::I8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32]
             }
-            DatumType::I16 => &[DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim],
-            DatumType::I32 => &[DatumType::I32, DatumType::I64, DatumType::TDim],
-            DatumType::I64 => &[DatumType::I64, DatumType::TDim],
+            DatumType::I16 => &[DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32],
+            DatumType::I32 => &[DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32],
+            DatumType::I64 => &[DatumType::I64, DatumType::TDim, DatumType::F32],
             DatumType::F16 => &[DatumType::F16, DatumType::F32, DatumType::F64],
             DatumType::F32 => &[DatumType::F32, DatumType::F64],
             DatumType::F64 => &[DatumType::F64],

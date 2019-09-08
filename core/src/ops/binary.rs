@@ -132,6 +132,104 @@ impl TypedOp for InferenceBinOp {
 }
 
 #[derive(Debug, Clone)]
+pub struct Nary(pub Box<dyn BinMiniOp>, pub bool);
+
+impl Nary {
+    fn normalize_t<T>(t: &mut Tensor, n: usize) -> TractResult<()>
+    where
+        T: Datum + std::ops::DivAssign<T> + Copy,
+        usize: num_traits::AsPrimitive<T>,
+    {
+        use num_traits::AsPrimitive;
+        let mut t = t.to_array_view_mut::<T>()?;
+        let n: T = n.as_();
+        t /= &ndarray::arr0(n);
+        Ok(())
+    }
+}
+
+impl Op for Nary {
+    fn name(&self) -> Cow<str> {
+        format!("{}Nary", self.0.name()).into()
+    }
+
+    not_a_typed_op!();
+}
+
+impl StatelessOp for Nary {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let mut t = inputs[0].clone();
+        for i in inputs[1..].into_iter() {
+            t = self.0.eval_broadcast_and_typecast(tvec!(t.clone(), i.clone()))?.remove(0);
+        }
+        if self.1 {
+            let mut t = t.into_tensor();
+            dispatch_numbers!(Self::normalize_t(t.datum_type())(&mut t, inputs.len()))?;
+            Ok(tvec!(t.into_arc_tensor()))
+        } else {
+            Ok(tvec!(t))
+        }
+    }
+}
+
+impl InferenceRulesOp for Nary {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_output_arity(&outputs, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].rank, &outputs[0].rank)?;
+        let n = inputs.len();
+        s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
+        s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
+        s.given(&inputs[0].rank, move |s, rank: i32| {
+            for dim in 0..(rank as usize) {
+                s.equals(&inputs[0].shape[dim], &outputs[0].shape[dim])?;
+                s.equals_all((0..n as usize).map(|i| inputs[i].shape[dim].bex()).collect())?;
+            }
+            Ok(())
+        })
+    }
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<Vec<_>>();
+        let mut wire = inputs[0];
+        for (ix, i) in inputs[1..].iter().enumerate() {
+            wire = target.wire_node(
+                format!("{}-{}", node.name, ix),
+                TypedBinOp(self.0.clone()),
+                [wire, *i].as_ref(),
+            )?[0];
+        }
+        if self.1 {
+            let n = target.add_const(
+                format!("{}-n", node.name),
+                tensor0(inputs.len() as i32)
+                    .cast_to_dt(node.outputs[0].fact.datum_type.concretize().unwrap())?
+                    .into_owned(),
+            )?;
+            wire = target.wire_node(
+                format!("{}-norm", node.name),
+                crate::ops::math::div::bin(),
+                [wire, n.into()].as_ref(),
+            )?[0];
+        }
+        Ok(tvec!(wire))
+    }
+
+    inference_op_as_op!();
+}
+
+#[derive(Debug, Clone)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
 
 impl Op for TypedBinOp {

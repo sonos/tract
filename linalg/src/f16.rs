@@ -256,6 +256,12 @@ impl ops::Div<f16> for f16 {
     }
 }
 
+impl ops::DivAssign<f16> for f16 {
+    fn div_assign(&mut self, other: f16) {
+        self.0 = half::f16::from_f32(self.0.to_f32() / other.0.to_f32())
+    }
+}
+
 impl ops::Div<&f16> for f16 {
     type Output = f16;
     fn div(self, other: &f16) -> f16 {
