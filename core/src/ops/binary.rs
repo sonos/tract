@@ -6,6 +6,7 @@ pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downca
     fn name(&self) -> &'static str;
     fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
+    fn eval_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_broadcast_and_typecast(
         &self,
@@ -122,7 +123,10 @@ impl TypedOp for InferenceBinOp {
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
             ])
-            .ok_or_else(|| format!("Can not broadcast {:?} and {:?}", inputs[0].shape, inputs[1].shape))?
+            .ok_or_else(|| format!(
+                "Can not broadcast {:?} and {:?}",
+                inputs[0].shape, inputs[1].shape
+            ))?
         )?))
     }
 }
@@ -183,8 +187,12 @@ impl Op for TypedBinOp {
         Ok((0..c.shape.rank())
             .into_iter()
             .map(|axis| {
-                let mut info =
-                    AxisInfo { inputs: tvec!(None, None), outputs: tvec!(Some(axis)), period: 1, disposable: true };
+                let mut info = AxisInfo {
+                    inputs: tvec!(None, None),
+                    outputs: tvec!(Some(axis)),
+                    period: 1,
+                    disposable: true,
+                };
                 if axis >= a_pad && a.shape.dim(axis - a_pad) == 1.to_dim() {
                     info.inputs[0] = Some(axis - a_pad)
                 }
@@ -324,12 +332,17 @@ impl TypedOp for UnaryOp {
         )?))
     }
 
-    fn dispose_dummy_axis(&self, _model: &TypedModel, node: &TypedNode, axis: usize) -> TractResult<Option<Box<dyn TypedOp>>> {
+    fn dispose_dummy_axis(
+        &self,
+        _model: &TypedModel,
+        node: &TypedNode,
+        axis: usize,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
         let a_pad = node.outputs[0].fact.shape.rank() - self.a.shape().len();
         if axis > a_pad {
             let a = self.a.clone().into_tensor();
             let mut shape = a.shape().to_vec();
-            assert_eq!(shape[axis-a_pad], 1);
+            assert_eq!(shape[axis - a_pad], 1);
             shape.remove(axis - a_pad);
             let a = unsafe { a.into_shape(&*shape)? };
             Ok(Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor()))))
@@ -365,6 +378,27 @@ impl Op for MergeOp {
     fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let a = model.outlet_fact(node.inputs[0])?;
         Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        if self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?
+            == inputs[0].datum_type
+            && inputs[0] == inputs[1]
+        {
+            Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                MergeOpUnicast(self.0.clone()),
+            )?))
+        } else {
+            Ok(None)
+        }
     }
 
     canonic!();
@@ -431,6 +465,34 @@ impl TypedOp for MergeOp {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
+
+impl Op for MergeOpUnicast {
+    fn name(&self) -> Cow<str> {
+        format!("{}MergeUnicast", self.0.name()).into()
+    }
+
+    op_as_typed_op!();
+}
+
+impl StatelessOp for MergeOpUnicast {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let (a, b) = args_2!(inputs);
+        let mut b = b.into_tensor();
+        self.0.eval_in_place(a.as_ref(), &mut b)?;
+        Ok(tvec!(b.into_arc_tensor()))
+    }
+}
+
+impl TypedOp for MergeOpUnicast {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+}
+
 #[macro_export]
 macro_rules! bin_to_super_type {
     ($func:ident, $Op:ident, $( [$($typ:ident),*] => $cab:expr),*) => {
@@ -442,6 +504,24 @@ macro_rules! bin_to_super_type {
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
+            }
+
+            fn eval_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+                $(
+                    $(if a.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
+                        let a = a.as_slice::<$typ>()?;
+                        let b = b.as_slice_mut::<$typ>()?;
+                        for i in 0..a.len() {
+                            let mut c = $typ::default();
+                            cab(&mut c, &a[i], &b[i]);
+                            b[i] = c;
+                        }
+                        return Ok(())
+                    }
+                    )*
+                )*
+                bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
             fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
@@ -492,6 +572,25 @@ macro_rules! bin_to_bool {
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
+            }
+
+            #[allow(unreachable_code)]
+            fn eval_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+                $(
+                    $(if a.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut bool, &bool, &bool) -> () = $cab;
+                        let a = a.as_slice::<bool>()?;
+                        let b = b.as_slice_mut::<bool>()?;
+                        for i in 0..a.len() {
+                            let mut c = bool::default();
+                            cab(&mut c, &a[i], &b[i]);
+                            b[i] = c;
+                        }
+                        return Ok(())
+                    }
+                    )*
+                )*
+                bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
             fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
