@@ -32,8 +32,6 @@ fma_smmm16x6:
 
 {% elsif family == "windows" %}
 
-// FIXME: https://www.agner.org/optimize/calling_conventions.pdf xmm6-15 are not scratch
-
 _text segment
 fma_smmm16x6 proc
     mov         rdi,    rcx
@@ -41,6 +39,23 @@ fma_smmm16x6 proc
 {% endif %}
     push        rbp
     mov         rbp, rsp
+
+{% if family == "windows" %}
+// https://www.agner.org/optimize/calling_conventions.pdf xmm6-15 are not scratch
+// https://stackoverflow.com/questions/43358429/save-value-of-xmm-registers
+    and rsp,-16
+    lea rsp,[rsp-160]
+    vmovaps [rsp], xmm6
+    vmovaps [rsp+16*1],xmm7
+    vmovaps [rsp+16*2],xmm8
+    vmovaps [rsp+16*3],xmm9
+    vmovaps [rsp+16*4],xmm10
+    vmovaps [rsp+16*5],xmm11
+    vmovaps [rsp+16*6],xmm12
+    vmovaps [rsp+16*7],xmm13
+    vmovaps [rsp+16*8],xmm14
+    vmovaps [rsp+16*9],xmm15
+{% endif %}
 
     push        rbx
     push        r12
@@ -50,9 +65,14 @@ fma_smmm16x6 proc
 
     sub         rsp, 8
     stmxcsr     [rsp + 4]
+{% if family == "windows" %}
+    mov         rax, 1FC0h
+{% else %}
     mov         rax, 0x1FC0
+{% endif %}
     mov         [rsp], eax
     ldmxcsr     [rsp]
+    add         rsp, 8
 
     vzeroall
 
@@ -271,7 +291,20 @@ fma_smmm16x6 proc
     pop r12
     pop rbx
 
-    pop rbp
+{% if family == "windows" %}
+    vmovaps xmm15, dword ptr [rsp+16*9]
+    vmovaps xmm14, dword ptr [rsp+16*8]
+    vmovaps xmm13, dword ptr [rsp+16*7]
+    vmovaps xmm12, dword ptr [rsp+16*6]
+    vmovaps xmm11, dword ptr [rsp+16*5]
+    vmovaps xmm10, dword ptr [rsp+16*4]
+    vmovaps xmm9, dword ptr [rsp+16*3]
+    vmovaps xmm8, dword ptr [rsp+16*2]
+    vmovaps xmm7, dword ptr [rsp+16*1]
+    vmovaps xmm6, dword ptr [rsp]
+{% endif %}
+
+    mov rsp, rbp
     ret
 
 {{L}}unimplemented:
@@ -352,7 +385,7 @@ fma_smmm16x6 proc
 // NON LINEAR / MAX
 
 {{L}}max:
-    vbroadcastss    ymm12, [rcx + 8]
+    vbroadcastss    ymm12, dword ptr [rcx + 8]
 {% for i in (0..11) %}
     vmaxps          ymm{{i}}, ymm{{i}}, ymm12
 {% endfor %}
@@ -361,7 +394,7 @@ fma_smmm16x6 proc
 // NON LINEAR / MIN
 
 {{L}}min:
-    vbroadcastss    ymm12, [rcx + 8]
+    vbroadcastss    ymm12, dword ptr [rcx + 8]
 {% for i in (0..11) %}
     vminps          ymm{{i}}, ymm{{i}}, ymm12
 {% endfor %}
@@ -403,7 +436,7 @@ fma_smmm16x6 proc
     mov             rax, [ rcx + 8 ]
 
 {% for i in (0..5) %}
-    vbroadcastss    ymm12, [rax + {{i|times:4}}]
+    vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
     vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
     vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
 {% endfor %}
@@ -416,7 +449,7 @@ fma_smmm16x6 proc
     mov             rax, [ rcx + 8 ]
 
 {% for i in (0..5) %}
-    vbroadcastss    ymm12, [rax + {{i|times:4}}]
+    vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
     vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
     vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
 {% endfor %}
