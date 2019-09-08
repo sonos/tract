@@ -110,27 +110,6 @@ element_map_move!(IsNan, match
      f64 => bool { |a:f64| a.is_nan() }
 );
 
-fn fcmp<F: ::num_traits::Float>(a: &F, b: &F) -> ::std::cmp::Ordering {
-    a.partial_cmp(b).unwrap()
-}
-
-element_nary!(AddN, [f16, f32, f64] { |v:&[_]| v.iter().sum() });
-element_nary!(MaxN, match
-  f16 => f16 { |v:&[f16]| v.iter().cloned().max_by(fcmp).unwrap() },
-  f32 => f32 { |v:&[f32]| v.iter().cloned().max_by(fcmp).unwrap() },
-  f64 => f64 { |v:&[f64]| v.iter().cloned().max_by(fcmp).unwrap() }
-);
-element_nary!(MinN, match
-  f16 => f16 { |v:&[f16]| v.iter().cloned().min_by(fcmp).unwrap() },
-  f32 => f32 { |v:&[f32]| v.iter().cloned().min_by(fcmp).unwrap() },
-  f64 => f64 { |v:&[f64]| v.iter().cloned().min_by(fcmp).unwrap() }
-);
-element_nary!(MeanN, match
-  f16 => f16 { |v:&[f16]| v.iter().cloned().sum::<f16>() / f16::from(v.len() as f32) },
-  f32 => f32 { |v:&[f32]| v.iter().cloned().sum::<f32>() / v.len() as f32 },
-  f64 => f64 { |v:&[f64]| v.iter().cloned().sum::<f64>() / v.len() as f64 }
-);
-
 #[cfg(test)]
 mod tests {
     use ndarray::arr2;
