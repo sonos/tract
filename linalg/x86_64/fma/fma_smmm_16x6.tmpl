@@ -34,9 +34,10 @@ fma_smmm16x6:
 
 _text segment
 fma_smmm16x6 proc
-    mov         rdi,    rcx
+    mov         rdi, rcx
 
 {% endif %}
+
     push        rbp
     mov         rbp, rsp
 
@@ -72,7 +73,6 @@ fma_smmm16x6 proc
 {% endif %}
     mov         [rsp], eax
     ldmxcsr     [rsp]
-    add         rsp, 8
 
     vzeroall
 
@@ -305,6 +305,7 @@ fma_smmm16x6 proc
 {% endif %}
 
     mov rsp, rbp
+    pop rbp
     ret
 
 {{L}}unimplemented:
