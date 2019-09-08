@@ -9,12 +9,12 @@ if [ -z "$TRAVIS" -a `uname` = "Linux" ]
 then
     apt-get update
     apt-get -y upgrade
-    apt-get install -y unzip wget curl python awscli build-essential
+    apt-get install -y unzip wget curl python awscli build-essential sudo libssl-dev
 fi
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-( mkdir -p /tmp/cargo-dinghy
+[ which cargo-dinghy ] || ( mkdir -p /tmp/cargo-dinghy
 cd /tmp/cargo-dinghy
 if [ `uname` = "Darwin" ]
 then
