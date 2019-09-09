@@ -106,19 +106,6 @@ impl Op for Typed {
         Ok(None)
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(Some(TypedModelPatch::replace_single_op(
-            &model,
-            node,
-            &node.inputs,
-            self.to_codegen_op()?,
-        )?))
-    }
-
     op_as_typed_op!();
 }
 
@@ -200,5 +187,18 @@ impl TypedOp for Typed {
         op.skip = input_fact.delay;
         let id = target.chain_after(input, &*node.name, op, tvec!(output_fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(Some(TypedModelPatch::replace_single_op(
+            &model,
+            node,
+            &node.inputs,
+            self.to_codegen_op()?,
+        )?))
     }
 }

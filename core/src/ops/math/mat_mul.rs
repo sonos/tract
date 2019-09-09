@@ -331,26 +331,6 @@ impl Op for MatMulUnary {
         ])
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let b = args_1!(model.node_input_facts(node.id)?);
-        if let Some(b_shape) = b.shape.as_finite() {
-            let op = dispatch_floatlike!(self::new_mat_mul_unary_finite(b.datum_type)(
-                self.a.clone(),
-                b_shape,
-                self.a_trans,
-                self.b_trans,
-                self.c_trans
-            ))?;
-            let patch = TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?;
-            return Ok(Some(patch));
-        }
-        Ok(None)
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -436,6 +416,26 @@ impl TypedOp for MatMulUnary {
         fact.dim = cshape_full[fact.axis].clone();
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let b = args_1!(model.node_input_facts(node.id)?);
+        if let Some(b_shape) = b.shape.as_finite() {
+            let op = dispatch_floatlike!(self::new_mat_mul_unary_finite(b.datum_type)(
+                self.a.clone(),
+                b_shape,
+                self.a_trans,
+                self.b_trans,
+                self.c_trans
+            ))?;
+            let patch = TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?;
+            return Ok(Some(patch));
+        }
+        Ok(None)
     }
 }
 

@@ -29,20 +29,6 @@ impl Op for MaxPool {
         Ok(self.pool_spec.info())
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        if let Some(shape) = inputs[0].shape.as_finite() {
-            let dt = inputs[0].datum_type;
-            let op = dispatch_floatlike!(MaxPool::to_fixed(dt)(self, shape))?;
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-        }
-        Ok(None)
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -104,6 +90,21 @@ impl TypedOp for MaxPool {
     ) -> TractResult<TVec<OutletId>> {
         self.pool_spec.pulsify(source, node, target, mapping)
     }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        if let Some(shape) = inputs[0].shape.as_finite() {
+            let dt = inputs[0].datum_type;
+            let op = dispatch_floatlike!(MaxPool::to_fixed(dt)(self, shape))?;
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+        }
+        Ok(None)
+    }
+
 }
 
 #[derive(Debug, Clone, new)]

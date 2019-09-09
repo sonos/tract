@@ -38,20 +38,6 @@ impl Op for AvgPool {
         Ok(self.pool_spec.info())
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        if let Some(shape) = inputs[0].shape.as_finite() {
-            let dt = inputs[0].datum_type;
-            let op = dispatch_floatlike!(AvgPool::to_fixed(dt)(self, shape))?;
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-        }
-        Ok(None)
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -99,6 +85,20 @@ impl TypedOp for AvgPool {
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         self.pool_spec.pulsify(source, node, target, mapping)
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        if let Some(shape) = inputs[0].shape.as_finite() {
+            let dt = inputs[0].datum_type;
+            let op = dispatch_floatlike!(AvgPool::to_fixed(dt)(self, shape))?;
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+        }
+        Ok(None)
     }
 }
 
