@@ -5,7 +5,7 @@ use std::path;
 
 fn main() {
     let target = var("TARGET").unwrap();
-    let family = var("CARGO_CFG_TARGET_FAMILY").unwrap();
+    let family = var("CARGO_CFG_TARGET_FAMILY").unwrap_or("unknown".to_string());
     let arch = var("CARGO_CFG_TARGET_ARCH").unwrap();
     let os = var("CARGO_CFG_TARGET_OS").unwrap();
     let out_dir = path::PathBuf::from(var("OUT_DIR").unwrap());
