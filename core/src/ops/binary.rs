@@ -276,6 +276,30 @@ impl Op for TypedBinOp {
         Ok(None)
     }
 
+    canonic!();
+    op_as_typed_op!();
+}
+
+impl StatelessOp for TypedBinOp {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        self.0.eval_broadcast(inputs)
+    }
+}
+
+impl TypedOp for TypedBinOp {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
+            &*crate::broadcast::multi_broadcast(&[
+                &inputs[0].shape.to_tvec(),
+                &inputs[1].shape.to_tvec()
+            ])
+            .unwrap()
+        )?))
+    }
+
     fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let a = model.outlet_fact(node.inputs[0])?;
         let b = model.outlet_fact(node.inputs[1])?;
@@ -300,30 +324,6 @@ impl Op for TypedBinOp {
                 info
             })
             .collect())
-    }
-
-    canonic!();
-    op_as_typed_op!();
-}
-
-impl StatelessOp for TypedBinOp {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.0.eval_broadcast(inputs)
-    }
-}
-
-impl TypedOp for TypedBinOp {
-    typed_op_as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
-            self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
-            &*crate::broadcast::multi_broadcast(&[
-                &inputs[0].shape.to_tvec(),
-                &inputs[1].shape.to_tvec()
-            ])
-            .unwrap()
-        )?))
     }
 
     fn pulsify(
@@ -387,21 +387,6 @@ impl Op for UnaryOp {
         Ok(vec![format!("a: {:?}", self.a)])
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let b = model.outlet_fact(node.inputs[0])?;
-        if b.shape.rank() < self.a.shape().len() {
-            return Ok(AxesInfo::none());
-        }
-        let mut invs = vec![];
-        for i in 0..b.shape.rank() - self.a.shape().len() {
-            invs.push(AxisInfo::simple(i))
-        }
-        for &d in self.a.shape() {
-            invs.push(AxisInfo::simple(invs.len()).with_period(d))
-        }
-        return Ok(invs.into_iter().collect());
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -428,6 +413,21 @@ impl TypedOp for UnaryOp {
                 inputs[0].shape
             ))?
         )?))
+    }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let b = model.outlet_fact(node.inputs[0])?;
+        if b.shape.rank() < self.a.shape().len() {
+            return Ok(AxesInfo::none());
+        }
+        let mut invs = vec![];
+        for i in 0..b.shape.rank() - self.a.shape().len() {
+            invs.push(AxisInfo::simple(i))
+        }
+        for &d in self.a.shape() {
+            invs.push(AxisInfo::simple(invs.len()).with_period(d))
+        }
+        return Ok(invs.into_iter().collect());
     }
 
     fn dispose_dummy_axis(
@@ -473,11 +473,6 @@ impl Op for MergeOp {
         format!("{}Merge", self.0.name()).into()
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let a = model.outlet_fact(node.inputs[0])?;
-        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
-    }
-
     fn codegen(
         &self,
         model: &TypedModel,
@@ -521,6 +516,11 @@ impl TypedOp for MergeOp {
             ])
             .unwrap()
         )?))
+    }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let a = model.outlet_fact(node.inputs[0])?;
+        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
     }
 
     fn pulsify(

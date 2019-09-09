@@ -23,10 +23,6 @@ impl Op for Renorm {
         "kaldi.Renorm".into()
     }
 
-    fn axes_info(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<AxesInfo> {
-        Ok(vec![AxisInfo::simple(0)].into_iter().collect())
-    }
-
     op_as_typed_op!();
 }
 
@@ -68,6 +64,10 @@ impl TypedOp for Renorm {
 
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
+    }
+
+    fn axes_info(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<AxesInfo> {
+        Ok(vec![AxisInfo::simple(0)].into_iter().collect())
     }
 
     fn pulsify(

@@ -32,15 +32,6 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
         Ok(vec![format!("axis: {}, {}..{}", self.axis, self.start, self.end)])
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let fact = model.outlet_fact(node.inputs[0])?;
-        let axes = (0..fact.shape.rank())
-            .filter(|&ax| self.axis != ax)
-            .map(|axis| AxisInfo::simple(axis))
-            .collect();
-        Ok(axes)
-    }
-
     fn declutter(
         &self,
         model: &TypedModel,
@@ -134,6 +125,15 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
         let mut fact = inputs[0].clone();
         fact.shape.set_dim(self.axis, (self.end.clone() - &self.start).to_dim())?;
         Ok(tvec!(fact))
+    }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        let axes = (0..fact.shape.rank())
+            .filter(|&ax| self.axis != ax)
+            .map(|axis| AxisInfo::simple(axis))
+            .collect();
+        Ok(axes)
     }
 
     fn pulsify(

@@ -146,7 +146,7 @@ fn pull_downsample_up(
 ) -> TractResult<Option<TypedModelPatch>> {
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
-        let invariants = prec.op().axes_info(model, prec)?;
+        let invariants = prec.op.axes_info(model, prec)?;
         debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, invariants);
         if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis, true) {
             let mut patch = TypedModelPatch::default();
