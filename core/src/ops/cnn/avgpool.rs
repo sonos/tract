@@ -34,6 +34,10 @@ impl Op for AvgPool {
         "AvgPool".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(self.pool_spec.info())
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,

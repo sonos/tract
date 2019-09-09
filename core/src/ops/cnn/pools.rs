@@ -12,6 +12,16 @@ pub struct PoolSpec {
 }
 
 impl PoolSpec {
+    pub fn info(&self) -> Vec<String> {
+        vec![
+            format!("Data format: {:?}", self.data_format),
+            format!(
+                "Kernel shape:{:?} (strides:{:?}, padding:{:?})",
+                self.kernel_shape, self.strides, self.padding,
+            ),
+        ]
+    }
+
     pub fn compute_geo(&self, input_full_shape: &[usize]) -> (DataShape, Patch, DataShape) {
         let input_shape = self.data_format.shape(input_full_shape.into());
         let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)
