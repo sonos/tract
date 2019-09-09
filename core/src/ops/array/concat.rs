@@ -205,35 +205,6 @@ impl Op for NormConcat {
         "NormConcat".into()
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let dt = model.outlet_fact(node.inputs[0])?.datum_type;
-        let inputs = model.node_input_facts(node.id)?;
-
-        trace!("  Entering codegen for NormConcat");
-
-        if inputs.iter().any(|i| i.shape.as_finite().is_none()) {
-            return Ok(None);
-        }
-
-        trace!("  Input has concrete finite shape");
-        let shapes: TVec<&[usize]> = inputs.iter().map(|t| t.shape.as_finite().unwrap()).collect();
-
-        let op = dispatch_datum!(Self::to_codegen_op(dt)(self, &*shapes))?;
-
-        let mut patch = TypedModelPatch::default();
-        let node_id = patch.add_node(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?;
-        for (ix, _input) in inputs.iter().enumerate() {
-            let tap = patch.tap_model(model, node.inputs[ix])?;
-            patch.add_edge(tap, InletId::new(node_id, ix))?;
-        }
-        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
-        return Ok(Some(patch));
-    }
-
     op_as_typed_op!();
 }
 
@@ -284,6 +255,35 @@ impl TypedOp for NormConcat {
         } else {
             bail!("Pulsify for Concat on a separate axis is not implemented (but possible)");
         }
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let dt = model.outlet_fact(node.inputs[0])?.datum_type;
+        let inputs = model.node_input_facts(node.id)?;
+
+        trace!("  Entering codegen for NormConcat");
+
+        if inputs.iter().any(|i| i.shape.as_finite().is_none()) {
+            return Ok(None);
+        }
+
+        trace!("  Input has concrete finite shape");
+        let shapes: TVec<&[usize]> = inputs.iter().map(|t| t.shape.as_finite().unwrap()).collect();
+
+        let op = dispatch_datum!(Self::to_codegen_op(dt)(self, &*shapes))?;
+
+        let mut patch = TypedModelPatch::default();
+        let node_id = patch.add_node(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?;
+        for (ix, _input) in inputs.iter().enumerate() {
+            let tap = patch.tap_model(model, node.inputs[ix])?;
+            patch.add_edge(tap, InletId::new(node_id, ix))?;
+        }
+        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
+        return Ok(Some(patch));
     }
 }
 

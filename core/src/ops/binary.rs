@@ -473,27 +473,6 @@ impl Op for MergeOp {
         format!("{}Merge", self.0.name()).into()
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        if self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?
-            == inputs[0].datum_type
-            && inputs[0] == inputs[1]
-        {
-            Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs,
-                MergeOpUnicast(self.0.clone()),
-            )?))
-        } else {
-            Ok(None)
-        }
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -521,6 +500,27 @@ impl TypedOp for MergeOp {
     fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let a = model.outlet_fact(node.inputs[0])?;
         Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        if self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?
+            == inputs[0].datum_type
+            && inputs[0] == inputs[1]
+        {
+            Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                MergeOpUnicast(self.0.clone()),
+            )?))
+        } else {
+            Ok(None)
+        }
     }
 
     fn pulsify(

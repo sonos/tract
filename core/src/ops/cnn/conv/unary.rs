@@ -415,45 +415,6 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let input_fact = model.outlet_fact(node.inputs[0])?;
-        let spatial_rank = self.full_input_shape.len() - 2;
-        if let Some(shape) = input_fact.shape.as_finite() {
-            let dt = input_fact.datum_type;
-            if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
-                && dt == f32::datum_type()
-                && self.group == 1
-            {
-                let op = self.to_direct(&*shape)?;
-                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-            } else if self.group != 1 && self.group == self.output_channels() {
-                return Ok(Some(TypedModelPatch::single_unary_op(
-                    model,
-                    node,
-                    dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
-                )?));
-            } else {
-                let (op1, shape, op2) =
-                    dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
-                let mut patch = TypedModelPatch::default();
-                let _ = patch.tap_model(&model, node.inputs[0])?;
-                patch.chain(
-                    format!("{}-im2col", node.name),
-                    op1,
-                    tvec!(TypedTensorInfo::dt_shape(dt, &*shape)?),
-                )?;
-                let mm = patch.chain(&*node.name, op2, tvec!(node.outputs[0].fact.clone()))?;
-                patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
-                return Ok(Some(patch));
-            }
-        }
-        Ok(None)
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -469,6 +430,21 @@ impl TypedOp for ConvUnary {
 
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
+    }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
+        let mut axes = vec![AxisInfo::simple(0).disposable(false)];
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let h_axis = shape.h_axis();
+        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
+            if dim == 1 && self.strides[ix] == 1 {
+                axes.push(AxisInfo::simple(ix + h_axis))
+            }
+        }
+        Ok(axes.into_iter().collect())
     }
 
     fn dispose_dummy_axis(
@@ -516,20 +492,6 @@ impl TypedOp for ConvUnary {
         Ok(Some(Box::new(new_op)))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let fact = model.outlet_fact(node.inputs[0])?;
-        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
-        let mut axes = vec![AxisInfo::simple(0).disposable(false)];
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        let h_axis = shape.h_axis();
-        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
-            if dim == 1 && self.strides[ix] == 1 {
-                axes.push(AxisInfo::simple(ix + h_axis))
-            }
-        }
-        Ok(axes.into_iter().collect())
-    }
 
     fn pulsify(
         &self,
@@ -603,4 +565,44 @@ impl TypedOp for ConvUnary {
             Ok(tvec!(OutletId::new(id, 0)))
         }
     }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        let spatial_rank = self.full_input_shape.len() - 2;
+        if let Some(shape) = input_fact.shape.as_finite() {
+            let dt = input_fact.datum_type;
+            if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
+                && dt == f32::datum_type()
+                && self.group == 1
+            {
+                let op = self.to_direct(&*shape)?;
+                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+            } else if self.group != 1 && self.group == self.output_channels() {
+                return Ok(Some(TypedModelPatch::single_unary_op(
+                    model,
+                    node,
+                    dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
+                )?));
+            } else {
+                let (op1, shape, op2) =
+                    dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
+                let mut patch = TypedModelPatch::default();
+                let _ = patch.tap_model(&model, node.inputs[0])?;
+                patch.chain(
+                    format!("{}-im2col", node.name),
+                    op1,
+                    tvec!(TypedTensorInfo::dt_shape(dt, &*shape)?),
+                )?;
+                let mm = patch.chain(&*node.name, op2, tvec!(node.outputs[0].fact.clone()))?;
+                patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
+    }
+
 }

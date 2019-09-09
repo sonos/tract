@@ -148,18 +148,6 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Ok(None)
     }
 
-    /// Translate the op into the most efficient form possible for execution.
-    ///
-    /// This transformation is supposed to be final, no more pass are expected
-    /// to be run on the codegen networks.
-    fn codegen(
-        &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(None)
-    }
-
     /// Fuse op after codegen to deal with local optimisations.
     fn fuse(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
@@ -246,11 +234,24 @@ pub trait TypedOp:
         bail!("Operator {} do not support pulsification", self.name())
     }
 
+    /// Translate the op into the most efficient form possible for execution.
+    ///
+    /// This transformation is supposed to be final, no more pass are expected
+    /// to be run on the codegen networks.
+    fn codegen(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+
     /// Nested model multipliers, with label (for profiling).
     #[allow(unused_variables)]
     fn nested_model_multipliers(&self, inputs: &[&TypedTensorInfo]) -> Vec<(Cow<str>, f32)> {
         vec![]
     }
+
 }
 
 impl
