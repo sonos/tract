@@ -205,15 +205,6 @@ impl Op for NormConcat {
         "NormConcat".into()
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        if self.slices.iter().any(|s| s.as_const().is_some()) {
-            Ok(AxesInfo::none())
-        } else {
-            let rank = model.outlet_fact(node.inputs[0])?.shape.rank();
-            Ok((0..rank).filter(|&ax| ax != self.axis).map(|axis| AxisInfo::simple(axis)).collect())
-        }
-    }
-
     fn codegen(
         &self,
         model: &TypedModel,
@@ -260,6 +251,15 @@ impl TypedOp for NormConcat {
                 .sum::<usize>();
         fact.shape.set_dim(self.axis, dim)?;
         Ok(tvec!(fact))
+    }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        if self.slices.iter().any(|s| s.as_const().is_some()) {
+            Ok(AxesInfo::none())
+        } else {
+            let rank = model.outlet_fact(node.inputs[0])?.shape.rank();
+            Ok((0..rank).filter(|&ax| ax != self.axis).map(|axis| AxisInfo::simple(axis)).collect())
+        }
     }
 
     fn pulsify(

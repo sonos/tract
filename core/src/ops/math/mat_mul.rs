@@ -331,29 +331,6 @@ impl Op for MatMulUnary {
         ])
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let input_fact = model.outlet_fact(node.inputs[0])?;
-        if input_fact.shape.rank() != node.outputs[0].fact.shape.rank() {
-            return Ok(AxesInfo::none());
-        }
-        let mut broadcasted_a_shape: TVec<_> = self.a.shape().into();
-        while broadcasted_a_shape.len() < input_fact.shape.rank() {
-            broadcasted_a_shape.insert(0, 1);
-        }
-        let mut invars = broadcasted_a_shape[..broadcasted_a_shape.len() - 2]
-            .into_iter()
-            .enumerate()
-            .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
-            .collect::<Vec<_>>();
-        if self.b_trans && self.c_trans {
-            invars.push(AxisInfo::simple(input_fact.shape.rank() - 2))
-        }
-        if !self.b_trans && !self.c_trans {
-            invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
-        };
-        Ok(invars.into_iter().collect())
-    }
-
     fn codegen(
         &self,
         model: &TypedModel,
@@ -408,6 +385,30 @@ impl TypedOp for MatMulUnary {
             .2
         )?))
     }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        if input_fact.shape.rank() != node.outputs[0].fact.shape.rank() {
+            return Ok(AxesInfo::none());
+        }
+        let mut broadcasted_a_shape: TVec<_> = self.a.shape().into();
+        while broadcasted_a_shape.len() < input_fact.shape.rank() {
+            broadcasted_a_shape.insert(0, 1);
+        }
+        let mut invars = broadcasted_a_shape[..broadcasted_a_shape.len() - 2]
+            .into_iter()
+            .enumerate()
+            .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
+            .collect::<Vec<_>>();
+        if self.b_trans && self.c_trans {
+            invars.push(AxisInfo::simple(input_fact.shape.rank() - 2))
+        }
+        if !self.b_trans && !self.c_trans {
+            invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
+        };
+        Ok(invars.into_iter().collect())
+    }
+
 
     fn pulsify(
         &self,

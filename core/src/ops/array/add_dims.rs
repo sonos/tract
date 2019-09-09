@@ -30,23 +30,6 @@ impl Op for AddDims {
         Ok(vec![format!("Axes: {:?}", self.axes)])
     }
 
-    fn axes_info(&self, _model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let mut i = 0;
-        let mut axes = tvec!();
-        for out in 0..node.outputs[0].fact.shape.rank() {
-            if !self.axes.contains(&out) {
-                axes.push(AxisInfo {
-                    inputs: tvec!(Some(i)),
-                    outputs: tvec!(Some(out)),
-                    period: 1,
-                    disposable: true,
-                });
-                i += 1;
-            }
-        }
-        Ok(axes.into_iter().collect())
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -87,6 +70,23 @@ impl TypedOp for AddDims {
             inputs[0].datum_type,
             self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),
         )?))
+    }
+
+    fn axes_info(&self, _model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let mut i = 0;
+        let mut axes = tvec!();
+        for out in 0..node.outputs[0].fact.shape.rank() {
+            if !self.axes.contains(&out) {
+                axes.push(AxisInfo {
+                    inputs: tvec!(Some(i)),
+                    outputs: tvec!(Some(out)),
+                    period: 1,
+                    disposable: true,
+                });
+                i += 1;
+            }
+        }
+        Ok(axes.into_iter().collect())
     }
 
     fn pulsify(

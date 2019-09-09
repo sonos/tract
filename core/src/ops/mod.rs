@@ -183,10 +183,6 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Validation::Accurate
     }
 
-    fn axes_info(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<AxesInfo> {
-        Ok(tvec![].into())
-    }
-
     /// Compare two ops.
     // Should this one be and Eq or PartialEq impl instead ?
     fn same_as(&self, _other: &dyn Op) -> bool {
@@ -217,6 +213,10 @@ pub trait TypedOp:
 
     /// Deduce output facts from input facts.
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>>;
+
+    fn axes_info(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<AxesInfo> {
+        Ok(tvec![].into())
+    }
 
     /// Transforms the op in an equivalent one, discarding one dummy axis (of dim
     /// assumed to be 1).

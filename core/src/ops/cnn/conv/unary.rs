@@ -454,21 +454,6 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let fact = model.outlet_fact(node.inputs[0])?;
-        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
-        let mut axes = vec![AxisInfo::simple(0).disposable(false)];
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        let h_axis = shape.h_axis();
-        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
-            if dim == 1 && self.strides[ix] == 1 {
-                axes.push(AxisInfo::simple(ix + h_axis))
-            }
-        }
-        Ok(axes.into_iter().collect())
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -529,6 +514,21 @@ impl TypedOp for ConvUnary {
             group: self.group,
         };
         Ok(Some(Box::new(new_op)))
+    }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
+        let mut axes = vec![AxisInfo::simple(0).disposable(false)];
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let h_axis = shape.h_axis();
+        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
+            if dim == 1 && self.strides[ix] == 1 {
+                axes.push(AxisInfo::simple(ix + h_axis))
+            }
+        }
+        Ok(axes.into_iter().collect())
     }
 
     fn pulsify(
