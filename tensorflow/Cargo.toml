@@ -12,7 +12,7 @@ keywords = [
 license = "MIT/Apache-2.0"
 name = "tract-tensorflow"
 repository = "https://github.com/snipsco/tract"
-version = "0.4.1"
+version = "0.4.2-pre"
 
 [badges.travis-ci]
 repository = "snipsco/tract"
@@ -24,15 +24,19 @@ itertools = "0.8"
 log = "0.4"
 num-traits = "0.2"
 protobuf = "2.0"
-tract-core = "0.4.1"
-tract-linalg = "0.4.1"
 
 [dependencies.ndarray]
-version = "0.12"
+version = "0.4.2-pre"
 
 [dependencies.tensorflow]
 optional = true
-version = "0"
+version = "0.4.2-pre"
+
+[dependencies.tract-core]
+path = "../core"
+
+[dependencies.tract-linalg]
+path = "../linalg"
 
 [dev-dependencies]
 criterion = "0.3"

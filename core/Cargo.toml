@@ -11,7 +11,7 @@ keywords = [
 license = "MIT/Apache-2.0"
 name = "tract-core"
 repository = "https://github.com/snipsco/tract"
-version = "0.4.1"
+version = "0.4.2-pre"
 
 [[bench]]
 harness = false
@@ -38,19 +38,21 @@ num-integer = "0.1"
 num-traits = "0.2"
 objekt = "0.1.1"
 smallvec = "0.6"
-tract-linalg = "0.4.1"
 unsafe_unwrap = "0.1.0"
 
 [dependencies.ndarray]
-version = "0.12"
+version = "0.4.2-pre"
 
 [dependencies.serde]
 optional = true
-version = "1.0"
+version = "0.4.2-pre"
 
 [dependencies.serde_derive]
 optional = true
-version = "1.0"
+version = "0.4.2-pre"
+
+[dependencies.tract-linalg]
+path = "../linalg"
 
 [dev-dependencies]
 criterion = "0.3"

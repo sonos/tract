@@ -14,7 +14,7 @@ keywords = [
 license = "MIT/Apache-2.0"
 name = "tract"
 repository = "https://github.com/snipsco/tract"
-version = "0.4.1"
+version = "0.4.2-pre"
 
 [badges.travis-ci]
 repository = "snipsco/tract"
@@ -34,23 +34,25 @@ ndarray = "0.12"
 pbr = "1.0"
 py_literal = "0.2"
 rand = "0.7"
-tract-core = "0.4.1"
 
 [dependencies.ndarray-npy]
 features = ["compressed_npz"]
-version = "0.4"
+version = "0.4.2-pre"
+
+[dependencies.tract-core]
+path = "../core"
 
 [dependencies.tract-kaldi]
 optional = true
-version = "0.4.1"
+version = "0.4.2-pre"
 
 [dependencies.tract-onnx]
 optional = true
-version = "0.4.1"
+version = "0.4.2-pre"
 
 [dependencies.tract-tensorflow]
 optional = true
-version = "0.4.1"
+version = "0.4.2-pre"
 
 [features]
 conform = ["tract-tensorflow/conform"]
