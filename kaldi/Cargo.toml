@@ -1,22 +1,26 @@
 [package]
-name = "tract-kaldi"
-version = "0.4.1-pre"
 authors = [
     "Mathieu Poumeyrol <kali@zoy.org>",
-    "Theodore Bluche <theodore.bluche@snips.ai>"
+    "Theodore Bluche <theodore.bluche@snips.ai>",
+]
+categories = ["science"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+edition = "2018"
+keywords = [
+    "TensorFlow",
+    "NeuralNetworks",
+    "ONNX",
 ]
 license = "MIT/Apache-2.0"
-description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+name = "tract-kaldi"
 repository = "https://github.com/snipsco/tract"
-keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
-categories = [ "science" ]
-edition = "2018"
+version = "0.4.1"
 
-[badges]
-travis-ci = { repository = "snipsco/tract" }
+[badges.travis-ci]
+repository = "snipsco/tract"
 
 [dependencies]
-bit-set="0.5"
+bit-set = "0.5"
 derive-new = "0.5"
 error-chain = "0.12"
 itertools = "0.8"
@@ -25,5 +29,5 @@ log = "0.4"
 maplit = "1"
 nom = "5.0.0-beta3"
 num-traits = "0.2"
-tract-core = { path = "../core" }
-tract-linalg = { path = "../linalg" }
+tract-core = "0.4.1"
+tract-linalg = "0.4.1"
