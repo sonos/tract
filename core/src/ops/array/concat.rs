@@ -37,55 +37,6 @@ impl Op for Concat {
         "Concat".into()
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-
-        if let Some(super_type) = DatumType::super_type_for(inputs.iter().map(|x| x.datum_type)) {
-            let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
-
-            let mut slices: TVec<NormConcatSlice> = tvec![];
-            for input in inputs.iter() {
-                match &input.konst {
-                    Some(c_input) => {
-                        slices.push(NormConcatSlice::Const(
-                            c_input.cast_to_dt(super_type)?.into_owned(),
-                        ));
-                    }
-                    None => slices.push(NormConcatSlice::Var),
-                }
-            }
-            let op = NormConcat::new(axis, slices);
-
-            let mut patch = TypedModelPatch::default();
-            let node_id = patch.add_node(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?;
-            let mut inlet_slot = 0;
-            for (ix, input) in inputs.iter().enumerate() {
-                if input.konst.is_none() {
-                    let mut tap = patch.tap_model(model, node.inputs[ix])?;
-                    if model.outlet_fact(node.inputs[ix])?.datum_type != super_type {
-                        let mut fact = model.outlet_fact(node.inputs[ix])?.clone();
-                        fact.datum_type = super_type;
-                        let cast = patch.chain(
-                            format!("{}-Cast-{}", node.name, ix),
-                            crate::ops::cast::Cast::new(super_type),
-                            tvec!(fact),
-                        )?;
-                        tap = OutletId::new(cast, 0);
-                    }
-                    patch.add_edge(tap, InletId::new(node_id, inlet_slot))?;
-                    inlet_slot += 1;
-                }
-            }
-            patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
-            return Ok(Some(patch));
-        }
-        Ok(None)
-    }
-
     op_as_typed_op!();
 }
 
@@ -149,6 +100,55 @@ impl TypedOp for Concat {
         let dim = inputs.iter().map(|f| f.shape.dim(axis)).sum::<TDim>();
         shape.set_dim(axis, dim)?;
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, shape)?))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+
+        if let Some(super_type) = DatumType::super_type_for(inputs.iter().map(|x| x.datum_type)) {
+            let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
+
+            let mut slices: TVec<NormConcatSlice> = tvec![];
+            for input in inputs.iter() {
+                match &input.konst {
+                    Some(c_input) => {
+                        slices.push(NormConcatSlice::Const(
+                            c_input.cast_to_dt(super_type)?.into_owned(),
+                        ));
+                    }
+                    None => slices.push(NormConcatSlice::Var),
+                }
+            }
+            let op = NormConcat::new(axis, slices);
+
+            let mut patch = TypedModelPatch::default();
+            let node_id = patch.add_node(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?;
+            let mut inlet_slot = 0;
+            for (ix, input) in inputs.iter().enumerate() {
+                if input.konst.is_none() {
+                    let mut tap = patch.tap_model(model, node.inputs[ix])?;
+                    if model.outlet_fact(node.inputs[ix])?.datum_type != super_type {
+                        let mut fact = model.outlet_fact(node.inputs[ix])?.clone();
+                        fact.datum_type = super_type;
+                        let cast = patch.chain(
+                            format!("{}-Cast-{}", node.name, ix),
+                            crate::ops::cast::Cast::new(super_type),
+                            tvec!(fact),
+                        )?;
+                        tap = OutletId::new(cast, 0);
+                    }
+                    patch.add_edge(tap, InletId::new(node_id, inlet_slot))?;
+                    inlet_slot += 1;
+                }
+            }
+            patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
+            return Ok(Some(patch));
+        }
+        Ok(None)
     }
 }
 

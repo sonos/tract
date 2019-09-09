@@ -80,7 +80,7 @@ impl InferenceRulesOp for Fill {
                 tvec!(shape.clone(), value.clone())
             ))?;
             let id = target.add_const(&*node.name, value.remove(0))?;
-            Ok(tvec!(OutletId::new(id, 0)))
+            Ok(tvec!(id))
         } else {
             bail!("Can not type Fill op")
         }

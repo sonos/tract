@@ -40,7 +40,7 @@ impl<'a> ParsingContext<'a> {
             if let Some(init) = initializers.remove(input.get_name()) {
                 trace!("Input: {} initialized by {:?}", input.get_name(), init);
                 let id = model.add_const(input.get_name().to_owned(), init)?;
-                outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
+                outlets_by_name.insert(input.get_name().to_owned(), id);
             } else {
                 let fact = input.get_field_type().get_tensor_type().try_into()?;
                 trace!("Input: {} is a source ({:?})", input.get_name(), fact);
@@ -50,7 +50,7 @@ impl<'a> ParsingContext<'a> {
         }
         for (name, t) in initializers.into_iter() {
             let id = model.add_const(name, t)?;
-            outlets_by_name.insert(name.to_string(), OutletId::new(id, 0));
+            outlets_by_name.insert(name.to_string(), id);
         }
         let consts = model.nodes().len();
         for pbnode in graph.get_node().iter() {

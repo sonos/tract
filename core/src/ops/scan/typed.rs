@@ -92,20 +92,6 @@ impl Op for Typed {
         vec![("loop".into(), &self.body)]
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if !self.decluttered {
-            let mut new = self.clone();
-            new.body = self.body.clone().declutter()?;
-            new.decluttered = true;
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?));
-        }
-        Ok(None)
-    }
-
     op_as_typed_op!();
 }
 
@@ -153,6 +139,20 @@ impl TypedOp for Typed {
         outputs.sort_by_key(|a| a.0);
         let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
         Ok(outputs)
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if !self.decluttered {
+            let mut new = self.clone();
+            new.body = self.body.clone().declutter()?;
+            new.decluttered = true;
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?));
+        }
+        Ok(None)
     }
 
     fn pulsify(

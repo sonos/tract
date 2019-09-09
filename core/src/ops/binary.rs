@@ -40,41 +40,6 @@ impl Op for InferenceBinOp {
         format!("{}Inference", self.0.name()).into()
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let facts = model.node_input_facts(node.id)?;
-        let mut patch = TypedModelPatch::default();
-        let operating_datum_type =
-            self.0.operating_datum_type(facts[0].datum_type, facts[1].datum_type)?;
-        let bin = patch.add_node(
-            &*node.name,
-            TypedBinOp(self.0.clone()),
-            tvec!(node.outputs[0].fact.clone()),
-        )?;
-        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(bin, 0))?;
-        for i in 0..2 {
-            let fact = model.node_input_facts(node.id)?[i];
-            let tap = patch.tap_model(model, node.inputs[i])?;
-            if fact.datum_type != operating_datum_type {
-                let mut fact = fact.clone();
-                fact.datum_type = operating_datum_type;
-                let cast = patch.chain_after(
-                    tap,
-                    format!("{}Cast{}", &*node.name, i),
-                    super::cast::Cast::new(operating_datum_type),
-                    tvec!(fact),
-                )?;
-                patch.add_edge(OutletId::new(cast, 0), InletId::new(bin, i))?;
-            } else {
-                patch.add_edge(tap, InletId::new(bin, i))?;
-            }
-        }
-        Ok(Some(patch))
-    }
-
     op_as_typed_op!();
 }
 
@@ -128,6 +93,41 @@ impl TypedOp for InferenceBinOp {
                 inputs[0].shape, inputs[1].shape
             ))?
         )?))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let facts = model.node_input_facts(node.id)?;
+        let mut patch = TypedModelPatch::default();
+        let operating_datum_type =
+            self.0.operating_datum_type(facts[0].datum_type, facts[1].datum_type)?;
+        let bin = patch.add_node(
+            &*node.name,
+            TypedBinOp(self.0.clone()),
+            tvec!(node.outputs[0].fact.clone()),
+        )?;
+        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(bin, 0))?;
+        for i in 0..2 {
+            let fact = model.node_input_facts(node.id)?[i];
+            let tap = patch.tap_model(model, node.inputs[i])?;
+            if fact.datum_type != operating_datum_type {
+                let mut fact = fact.clone();
+                fact.datum_type = operating_datum_type;
+                let cast = patch.chain_after(
+                    tap,
+                    format!("{}Cast{}", &*node.name, i),
+                    super::cast::Cast::new(operating_datum_type),
+                    tvec!(fact),
+                )?;
+                patch.add_edge(OutletId::new(cast, 0), InletId::new(bin, i))?;
+            } else {
+                patch.add_edge(tap, InletId::new(bin, i))?;
+            }
+        }
+        Ok(Some(patch))
     }
 }
 
@@ -237,45 +237,6 @@ impl Op for TypedBinOp {
         format!("{}Typed", self.0.name()).into()
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        for i in 0..2 {
-            use super::array::TypedMultiBroadcastTo;
-            let prec = model.node(node.inputs[i].node);
-            if prec.op_is::<TypedMultiBroadcastTo>() {
-                return Ok(Some(TypedModelPatch::shunt_one_op(model, prec)?));
-            }
-        }
-        if let Some(a) = inputs[0].konst.clone() {
-            let op = UnaryOp::new(self.0.clone(), a.clone());
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                &model,
-                &node,
-                &node.inputs[1..2],
-                op,
-            )?));
-        }
-        if let Some(b) = inputs[1].konst.clone() {
-            if let Some(op) = self.0.unary_with_b_const(&b) {
-                return Ok(Some(TypedModelPatch::replace_single_op(
-                    &model,
-                    &node,
-                    &node.inputs[0..1],
-                    op,
-                )?));
-            }
-        }
-        if inputs[0].shape == inputs[1].shape {
-            let op = MergeOp(self.0.clone());
-            return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs, op)?));
-        }
-        Ok(None)
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -324,6 +285,45 @@ impl TypedOp for TypedBinOp {
                 info
             })
             .collect())
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        for i in 0..2 {
+            use super::array::TypedMultiBroadcastTo;
+            let prec = model.node(node.inputs[i].node);
+            if prec.op_is::<TypedMultiBroadcastTo>() {
+                return Ok(Some(TypedModelPatch::shunt_one_op(model, prec)?));
+            }
+        }
+        if let Some(a) = inputs[0].konst.clone() {
+            let op = UnaryOp::new(self.0.clone(), a.clone());
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                &model,
+                &node,
+                &node.inputs[1..2],
+                op,
+            )?));
+        }
+        if let Some(b) = inputs[1].konst.clone() {
+            if let Some(op) = self.0.unary_with_b_const(&b) {
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    &model,
+                    &node,
+                    &node.inputs[0..1],
+                    op,
+                )?));
+            }
+        }
+        if inputs[0].shape == inputs[1].shape {
+            let op = MergeOp(self.0.clone());
+            return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs, op)?));
+        }
+        Ok(None)
     }
 
     fn pulsify(
