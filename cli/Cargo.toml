@@ -1,17 +1,23 @@
 [package]
-name = "tract"
-version = "0.4.1-pre"
-authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
-license = "MIT/Apache-2.0"
-description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
-keywords = [ "TensorFlow", "NeuralNetworks" ]
-categories = [ "science" ]
+authors = [
+    "Romain Liautaud <romain.liautaud@snips.ai>",
+    "Mathieu Poumeyrol <kali@zoy.org>",
+]
 autobenches = false
+categories = ["science"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 edition = "2018"
+keywords = [
+    "TensorFlow",
+    "NeuralNetworks",
+]
+license = "MIT/Apache-2.0"
+name = "tract"
+repository = "https://github.com/snipsco/tract"
+version = "0.4.1"
 
-[badges]
-travis-ci = { repository = "snipsco/tract" }
+[badges.travis-ci]
+repository = "snipsco/tract"
 
 [dependencies]
 ansi_term = "0.12.0"
@@ -25,18 +31,34 @@ lazy_static = "1.0"
 libc = "0.2"
 log = "0.4"
 ndarray = "0.12"
-ndarray-npy = { version = "0.4", features = [ "compressed_npz" ] }
 pbr = "1.0"
 py_literal = "0.2"
 rand = "0.7"
-tract-core = { path = "../core" }
-tract-kaldi = { optional = true, path = "../kaldi" }
-tract-onnx = { optional = true, path = "../onnx" }
-tract-tensorflow = { optional = true, path = "../tensorflow" }
+tract-core = "0.4.1"
+
+[dependencies.ndarray-npy]
+features = ["compressed_npz"]
+version = "0.4"
+
+[dependencies.tract-kaldi]
+optional = true
+version = "0.4.1"
+
+[dependencies.tract-onnx]
+optional = true
+version = "0.4.1"
+
+[dependencies.tract-tensorflow]
+optional = true
+version = "0.4.1"
 
 [features]
-default = ["kaldi", "onnx", "tf"]
-kaldi = [ "tract-kaldi" ]
-onnx = [ "tract-onnx" ]
-tf = [ "tract-tensorflow" ]
-conform = [ "tract-tensorflow/conform"  ]
+conform = ["tract-tensorflow/conform"]
+default = [
+    "kaldi",
+    "onnx",
+    "tf",
+]
+kaldi = ["tract-kaldi"]
+onnx = ["tract-onnx"]
+tf = ["tract-tensorflow"]
