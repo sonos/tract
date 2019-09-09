@@ -64,23 +64,7 @@ impl Op for DepthwiseConv2d {
         )))
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        let input_shape = inputs[0].shape.to_tvec();
-        let kernel_shape = if let Some(s) = inputs[1].shape.as_finite() {
-            s
-        } else {
-            bail!("Do not expect streaming on kernel dims")
-        };
-        let conv = self.to_core(&*input_shape, kernel_shape)?;
-        Ok(Some(TypedModelPatch::replace_single_op(model, node, &*node.inputs, conv)?))
-    }
-
-    op_as_typed_op!(); // FIXME translate to core as to_fixed instead of declutter, get rid of typed op impl
+    not_a_typed_op!(); // FIXME translate to core as to_fixed instead of declutter, get rid of typed op impl
 }
 
 impl StatelessOp for DepthwiseConv2d {
@@ -130,31 +114,23 @@ impl InferenceRulesOp for DepthwiseConv2d {
     }
 
     inference_op_as_op!();
-    to_typed!();
-}
 
-impl TypedOp for DepthwiseConv2d {
-    typed_op_as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        let img = self.data_format.shape(inputs[0].shape.to_tvec());
-        let ker = &inputs[1].shape;
-        if ker.iter().all(|d| d.to_integer().is_ok()) {
-            let ker: TVec<usize> = ker.iter().map(|d| d.to_integer().unwrap() as usize).collect();
-            let output_shape = self.padding.compute(
-                img.hw_dims(),
-                &ker[0..2],
-                &self.dilations[img.hw_axes()],
-                &self.strides[img.hw_axes()],
-            );
-            let shape = self.data_format.from_n_c_hw(
-                img.n().clone(),
-                (ker[2] * ker[3]).into(),
-                &[output_shape[0].output.clone(), output_shape[1].output.clone()],
-            );
-            Ok(tvec!(TypedTensorInfo::dt_shape(f32::datum_type(), &*shape.shape)?))
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = target.outlet_fact(mapping[&node.inputs[0]])?;
+        let kernel = target.outlet_fact(mapping[&node.inputs[1]])?;
+        let input_shape = input.shape.to_tvec();
+        let kernel_shape = if let Some(s) = kernel.shape.as_finite() {
+            s
         } else {
-            bail!("Can not stream filters")
-        }
+            bail!("Do not expect streaming on kernel dims");
+        };
+        let conv = self.to_core(&*input_shape, kernel_shape)?;
+        target.wire_node(&*node.name, conv, [mapping[&node.inputs[0]], mapping[&node.inputs[1]]].as_ref())
     }
 }

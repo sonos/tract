@@ -88,8 +88,7 @@ impl InferenceRulesOp for Range {
                 self,
                 tvec!(start.clone(), limit.clone(), delta.clone())
             ))?;
-            let id = target.add_const(&*node.name, value.remove(0))?;
-            Ok(tvec!(OutletId::new(id, 0)))
+            Ok(tvec!(target.add_const(&*node.name, value.remove(0))?))
         } else {
             bail!("Can not type Fill op")
         }

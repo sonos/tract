@@ -225,31 +225,6 @@ impl Op for MatMul {
         Ok(tvec!((Cost::FMA(dt), (mul * m * k * n))))
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(ref a) = model.outlet_fact(node.inputs[0])?.konst {
-            let patch = TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs[1..2],
-                MatMulUnary::new(a.clone(), self.a_trans, self.b_trans, self.c_trans),
-            )?;
-            return Ok(Some(patch));
-        } else if let Some(ref b) = model.outlet_fact(node.inputs[1])?.konst {
-            let patch = TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs[0..1],
-                MatMulUnary::new(b.clone(), !self.b_trans, !self.a_trans, !self.c_trans),
-            )?;
-            return Ok(Some(patch));
-        }
-        Ok(None)
-    }
-
     op_as_typed_op!();
 }
 
@@ -306,6 +281,32 @@ impl TypedOp for MatMul {
             .2
         )?))
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(ref a) = model.outlet_fact(node.inputs[0])?.konst {
+            let patch = TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs[1..2],
+                MatMulUnary::new(a.clone(), self.a_trans, self.b_trans, self.c_trans),
+            )?;
+            return Ok(Some(patch));
+        } else if let Some(ref b) = model.outlet_fact(node.inputs[1])?.konst {
+            let patch = TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs[0..1],
+                MatMulUnary::new(b.clone(), !self.b_trans, !self.a_trans, !self.c_trans),
+            )?;
+            return Ok(Some(patch));
+        }
+        Ok(None)
+    }
+
 }
 
 #[derive(Debug, Clone, new)]

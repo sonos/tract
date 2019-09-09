@@ -21,18 +21,6 @@ impl Op for Dropout {
         "onnx.Dropout".into()
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if node.outputs.len() == 1 || node.outputs[1].successors.len() == 0 {
-            Ok(Some(TypedModelPatch::single_unary_op(model, node, Identity)?))
-        } else {
-            Ok(None)
-        }
-    }
-
     op_as_typed_op!();
 }
 
@@ -79,5 +67,17 @@ impl TypedOp for Dropout {
     typed_op_as_op!();
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if node.outputs.len() == 1 || node.outputs[1].successors.len() == 0 {
+            Ok(Some(TypedModelPatch::single_unary_op(model, node, Identity)?))
+        } else {
+            Ok(None)
+        }
     }
 }

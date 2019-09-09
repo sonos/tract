@@ -112,41 +112,6 @@ impl Op for Conv {
         unary.cost(&[inputs[0]])
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        if let Some(op) = self.to_unary(&*inputs)? {
-            let mut patch = TypedModelPatch::default();
-            patch.tap_model(model, node.inputs[0])?;
-            let mut output: OutletId =
-                patch.chain(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?.into();
-            if let Some(bias) = node.inputs.get(2) {
-                let mut tap = patch.tap_model(model, *bias)?;
-                if self.data_format == DataFormat::NCHW {
-                    let data_rank = node.outputs[0].fact.shape.rank();
-                    let add_dims = crate::ops::array::AddDims::new((1..data_rank - 1).collect());
-                    tap = patch.wire_node(
-                        format!("{}-reshaped-bias", node.name),
-                        add_dims,
-                        [tap].as_ref(),
-                    )?[0];
-                }
-                output = patch.wire_node(
-                    format!("{}-add-bias", node.name),
-                    crate::ops::math::add::bin(),
-                    [output, tap].as_ref(),
-                )?[0];
-            }
-            patch.shunt_outside(OutletId::new(node.id, 0), output)?;
-            return Ok(Some(patch));
-        } else {
-            Ok(None)
-        }
-    }
-
     op_as_typed_op!();
 }
 
@@ -237,6 +202,42 @@ impl TypedOp for Conv {
             bail!("Streaming on kernel is not typeable")
         }
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        if let Some(op) = self.to_unary(&*inputs)? {
+            let mut patch = TypedModelPatch::default();
+            patch.tap_model(model, node.inputs[0])?;
+            let mut output: OutletId =
+                patch.chain(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?.into();
+            if let Some(bias) = node.inputs.get(2) {
+                let mut tap = patch.tap_model(model, *bias)?;
+                if self.data_format == DataFormat::NCHW {
+                    let data_rank = node.outputs[0].fact.shape.rank();
+                    let add_dims = crate::ops::array::AddDims::new((1..data_rank - 1).collect());
+                    tap = patch.wire_node(
+                        format!("{}-reshaped-bias", node.name),
+                        add_dims,
+                        [tap].as_ref(),
+                    )?[0];
+                }
+                output = patch.wire_node(
+                    format!("{}-add-bias", node.name),
+                    crate::ops::math::add::bin(),
+                    [output, tap].as_ref(),
+                )?[0];
+            }
+            patch.shunt_outside(OutletId::new(node.id, 0), output)?;
+            return Ok(Some(patch));
+        } else {
+            Ok(None)
+        }
+    }
+
 }
 
 #[cfg(test)]

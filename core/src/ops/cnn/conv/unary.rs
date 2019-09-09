@@ -366,6 +366,38 @@ impl Op for ConvUnary {
         ])
     }
 
+    canonic!();
+    op_as_typed_op!();
+}
+
+impl StatelessOp for ConvUnary {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+    }
+}
+
+impl TypedOp for ConvUnary {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
+    }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
+        let mut axes = vec![AxisInfo::simple(0).disposable(false)];
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let h_axis = shape.h_axis();
+        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
+            if dim == 1 && self.strides[ix] == 1 {
+                axes.push(AxisInfo::simple(ix + h_axis))
+            }
+        }
+        Ok(axes.into_iter().collect())
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
@@ -415,37 +447,6 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
-    canonic!();
-    op_as_typed_op!();
-}
-
-impl StatelessOp for ConvUnary {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
-    }
-}
-
-impl TypedOp for ConvUnary {
-    typed_op_as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
-    }
-
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let fact = model.outlet_fact(node.inputs[0])?;
-        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
-        let mut axes = vec![AxisInfo::simple(0).disposable(false)];
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        let h_axis = shape.h_axis();
-        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
-            if dim == 1 && self.strides[ix] == 1 {
-                axes.push(AxisInfo::simple(ix + h_axis))
-            }
-        }
-        Ok(axes.into_iter().collect())
-    }
 
     fn dispose_dummy_axis(
         &self,

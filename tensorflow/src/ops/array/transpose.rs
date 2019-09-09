@@ -37,21 +37,6 @@ impl Op for Transpose {
         "tf.Transpose".into()
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        if let Some(ref perm) = inputs[1].konst {
-            let perm: Vec<usize> =
-                perm.cast_to::<i32>()?.as_slice::<i32>()?.iter().map(|&x| x as usize).collect();
-            let op = ::tract_core::ops::array::PermuteAxes::new(Some(perm));
-            return Ok(Some(TypedModelPatch::single_unary_op(&model, &node, op)?));
-        }
-        Ok(None)
-    }
-
     not_a_typed_op!();
 }
 

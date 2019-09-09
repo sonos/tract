@@ -34,22 +34,7 @@ impl Op for Squeeze {
         "Squeeze".into()
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(dims) = &self.axes {
-            return Ok(Some(TypedModelPatch::single_unary_op(
-                model,
-                node,
-                RmDims::new(dims.clone()),
-            )?));
-        }
-        Ok(None)
-    }
-
-    op_as_typed_op!();
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Squeeze {
@@ -78,17 +63,28 @@ impl InferenceRulesOp for Squeeze {
         })
     }
 
-    inference_op_as_op!();
-    to_typed!();
-}
-
-impl TypedOp for Squeeze {
-    typed_op_as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
-            inputs[0].datum_type,
-            &*self.compute_shape(&*inputs[0].shape.to_tvec())?,
-        )?))
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let axes = if let Some(axes) = &self.axes {
+            axes.clone()
+        } else {
+            let input_fact = target.outlet_fact(input)?;
+            input_fact
+                .shape
+                .iter()
+                .enumerate()
+                .filter(|(_ix, d)| d == &1.to_dim())
+                .map(|(ix, _d)| ix)
+                .collect()
+        };
+        target.wire_node(&*node.name, RmDims::new(axes), [input].as_ref())
     }
+
+    inference_op_as_op!();
 }

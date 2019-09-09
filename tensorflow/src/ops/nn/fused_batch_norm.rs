@@ -40,49 +40,7 @@ impl Op for FusedBatchNorm {
         Validation::Rounding
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let facts = model.node_input_facts(node.id)?;
-        if let (Some(scale), Some(offset), Some(mean), Some(variance)) =
-            (&facts[1].konst, &facts[2].konst, &facts[3].konst, &facts[4].konst)
-        {
-            let scale = scale.as_slice::<f32>()?;
-            let offset = offset.as_slice::<f32>()?;
-            let mean = mean.as_slice::<f32>()?;
-            let variance = variance.as_slice::<f32>()?;
-            let (alpha, beta) = self.coeffs(scale, offset, mean, variance)?;
-            let mut patch = TypedModelPatch::default();
-            patch.tap_model(&model, node.inputs[0])?;
-            let mul = patch.chain(
-                format!("{}-mul", node.name),
-                tract_core::ops::math::mul::bin(),
-                tvec!(node.outputs[0].fact.clone()),
-            )?;
-            let id = patch.chain(
-                format!("{}-add", node.name),
-                tract_core::ops::math::add::bin(),
-                tvec!(node.outputs[0].fact.clone()),
-            )?;
-            patch.plug_const(
-                InletId::new(mul, 1),
-                format!("{}-slope", node.name),
-                tensor1(&*alpha).into_arc_tensor(),
-            )?;
-            patch.plug_const(
-                InletId::new(id, 1),
-                format!("{}-offset", node.name),
-                tensor1(&*beta).into_arc_tensor(),
-            )?;
-            patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(id, 0))?;
-            return Ok(Some(patch));
-        };
-        Ok(None)
-    }
-
-    op_as_typed_op!(); // FIXME use to_fixed instead of declutter
+    not_a_typed_op!();
 }
 
 impl StatelessOp for FusedBatchNorm {
@@ -132,13 +90,45 @@ impl InferenceRulesOp for FusedBatchNorm {
     }
 
     inference_op_as_op!();
-    to_typed!();
-}
 
-impl TypedOp for FusedBatchNorm {
-    typed_op_as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(inputs[0].clone()))
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let scale = target.outlet_fact(mapping[&node.inputs[1]])?;
+        let offset = target.outlet_fact(mapping[&node.inputs[2]])?;
+        let mean = target.outlet_fact(mapping[&node.inputs[3]])?;
+        let variance = target.outlet_fact(mapping[&node.inputs[4]])?;
+        if let (Some(scale), Some(offset), Some(mean), Some(variance)) =
+            (&scale.konst, &offset.konst, &mean.konst, &variance.konst)
+        {
+            let scale = scale.as_slice::<f32>()?;
+            let offset = offset.as_slice::<f32>()?;
+            let mean = mean.as_slice::<f32>()?;
+            let variance = variance.as_slice::<f32>()?;
+            let (alpha, beta) = self.coeffs(scale, offset, mean, variance)?;
+            let slope = target.add_const(
+                format!("{}-slope", node.name),
+                tensor1(&*alpha).into_arc_tensor(),
+            )?;
+            let wire = target.wire_node(
+                format!("{}-mul", node.name),
+                tract_core::ops::math::mul::bin(),
+                [slope, mapping[&node.inputs[0]]].as_ref()
+            )?[0];
+            let offset = target.add_const(
+                format!("{}-offset", node.name),
+                tensor1(&*beta).into_arc_tensor(),
+            )?;
+            return target.wire_node(
+                format!("{}-add", node.name),
+                tract_core::ops::math::add::bin(),
+                [offset, wire].as_ref()
+            )
+        };
+        bail!("Batch norm parameters expected to be known")
     }
 }

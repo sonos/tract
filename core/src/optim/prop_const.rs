@@ -45,9 +45,9 @@ impl super::TypedPass for PropConst {
                             source
                         );
                         let id = model.add_const(format!("Const-{}", id), konst.clone())?;
-                        model.add_edge(OutletId::new(id, 0), InletId::new(node, ix))?;
+                        model.add_edge(id, InletId::new(node, ix))?;
                         model.check_edges()?;
-                        model.set_outlet_fact(OutletId::new(id, 0), konst.into())?;
+                        model.set_outlet_fact(id, konst.into())?;
                         replaced += 1;
                     } else {
                         needed.push(source.node);

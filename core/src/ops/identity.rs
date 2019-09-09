@@ -8,14 +8,6 @@ impl Op for Identity {
         "Identity".into()
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
-    }
-
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     }
@@ -53,5 +45,13 @@ impl TypedOp for Identity {
 
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     }
 }

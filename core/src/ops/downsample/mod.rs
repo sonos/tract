@@ -56,17 +56,6 @@ impl Op for Downsample {
         Ok(vec![format!("axis:{} stride:{} modulo:{}", self.axis, self.stride, self.modulo)])
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if self.stride == 1 {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
-        }
-        pull_downsample_up(model, node)
-    }
-
     impl_op_same_as!();
     op_as_typed_op!();
 }
@@ -118,6 +107,17 @@ impl TypedOp for Downsample {
         let down_len = self.transform_dim(&downed.shape.dim(self.axis));
         downed.shape.set_dim(self.axis, down_len.clone())?;
         Ok(tvec!(downed))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.stride == 1 {
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+        }
+        pull_downsample_up(model, node)
     }
 
     fn pulsify(

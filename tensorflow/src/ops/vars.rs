@@ -209,10 +209,10 @@ mod tests {
         let one = model.add_const("one".to_string(), tensor0(1f32)).unwrap();
         let reset = model.add_node_default("reset", Assign::new(Some("xxx".into()))).unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(reset, 0)).unwrap();
-        model.add_edge(OutletId::new(zero, 0), InletId::new(reset, 1)).unwrap();
+        model.add_edge(zero, InletId::new(reset, 1)).unwrap();
         let set = model.add_node_default("set", Assign::new(Some("xxx".into()))).unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(set, 0)).unwrap();
-        model.add_edge(OutletId::new(one, 0), InletId::new(set, 1)).unwrap();
+        model.add_edge(one, InletId::new(set, 1)).unwrap();
         model.auto_outputs().unwrap();
         let model = model.into_typed().unwrap();
         let model = std::rc::Rc::new(model);

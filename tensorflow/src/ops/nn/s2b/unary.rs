@@ -23,6 +23,39 @@ impl Op for SpaceToBatchUnary {
         "SpaceToBatchUnary".into()
     }
 
+    op_as_typed_op!();
+}
+
+impl StatelessOp for SpaceToBatchUnary {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let input = args_1!(inputs);
+        let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
+        for (ax, &strat) in self.pad.iter().enumerate() {
+            let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
+                - &self.space_shape[2 + ax])
+                .to_integer()? as usize;
+            let (bef, aft) = match strat {
+                PaddingStrat::FlexFixed(f) => (spread - f, f),
+                PaddingStrat::FixedFlex(f) => (f, spread - f),
+                PaddingStrat::FixedFixed(a, b) => (a, b),
+            };
+            paddings[(ax, 0)] = bef as i32;
+            paddings[(ax, 1)] = aft as i32;
+        }
+        let r = dispatch_numbers!(super::space_to_batch(input.datum_type())(
+            input,
+            &self.block_shape.view(),
+            &paddings.view()
+        ))?;
+        Ok(tvec!(r))
+    }
+}
+
+impl TypedOp for SpaceToBatchUnary {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.batch_shape)?))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
@@ -59,40 +92,7 @@ impl Op for SpaceToBatchUnary {
         Ok(None)
     }
 
-    op_as_typed_op!();
-}
-
-impl StatelessOp for SpaceToBatchUnary {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
-        for (ax, &strat) in self.pad.iter().enumerate() {
-            let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
-                - &self.space_shape[2 + ax])
-                .to_integer()? as usize;
-            let (bef, aft) = match strat {
-                PaddingStrat::FlexFixed(f) => (spread - f, f),
-                PaddingStrat::FixedFlex(f) => (f, spread - f),
-                PaddingStrat::FixedFixed(a, b) => (a, b),
-            };
-            paddings[(ax, 0)] = bef as i32;
-            paddings[(ax, 1)] = aft as i32;
-        }
-        let r = dispatch_numbers!(super::space_to_batch(input.datum_type())(
-            input,
-            &self.block_shape.view(),
-            &paddings.view()
-        ))?;
-        Ok(tvec!(r))
-    }
-}
-
-impl TypedOp for SpaceToBatchUnary {
     typed_op_as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.batch_shape)?))
-    }
 }
 
 #[derive(Debug, Clone, new)]

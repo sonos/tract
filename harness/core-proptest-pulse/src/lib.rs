@@ -128,7 +128,7 @@ fn test_simple_conv() {
         .unwrap();
 
     let conv = model.chain_default("conv", Conv::default()).unwrap();
-    model.add_edge(OutletId::new(ker, 0), InletId::new(conv, 1)).unwrap();
+    model.add_edge(ker, InletId::new(conv, 1)).unwrap();
     model.auto_outputs().unwrap();
 
     let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]);
