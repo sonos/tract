@@ -104,7 +104,9 @@ impl PaddingSpec {
         let output = input.div_ceil(stride);
         let kernel_field = (kernel - 1) * dilation + 1;
         let pad = if let Ok(input) = input.to_integer() {
-            let pad = (((output.clone() - 1) * stride + kernel_field).to_integer().unwrap() - input).max(0);
+            let pad = (((output.clone() - 1) * stride + kernel_field).to_integer().unwrap()
+                - input)
+                .max(0);
             (pad as usize).into()
         } else {
             (output.clone() - 1) * stride + kernel_field - input

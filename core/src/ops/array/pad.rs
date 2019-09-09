@@ -123,10 +123,7 @@ impl InferenceRulesOp for Pad {
 impl TypedOp for Pad {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let mut fact = inputs[0].clone();
         for (ix, (b, e)) in self.pads.iter().enumerate() {
             fact.shape.set_dim(ix, fact.shape.dim(ix).clone() + *b + *e)?
@@ -194,9 +191,7 @@ impl TypedOp for Pad {
 
         Ok(tvec!(OutletId::new(id, 0)))
     }
-
 }
-
 
 #[derive(Debug, Clone, Default, new)]
 struct PulsePadOpState<T: Datum + Copy> {
@@ -225,8 +220,9 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
             if op.after > 0 && pulse_begin < end_input {
                 let latest_valid_frame = (end_input - pulse_begin).min(op.pulse) - 1;
                 let data = inputs[0].to_array_view::<T>()?;
-                self.last_valid_frame =
-                    Some(data.index_axis(Axis(op.axis), latest_valid_frame).to_owned().into_tensor());
+                self.last_valid_frame = Some(
+                    data.index_axis(Axis(op.axis), latest_valid_frame).to_owned().into_tensor(),
+                );
             }
         }
 
@@ -270,7 +266,8 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
                 }
                 PadMode::Edge => {
                     let mut data = data.view_mut();
-                    let last_frame = self.last_valid_frame.as_ref().unwrap().to_array_view::<T>()?;
+                    let last_frame =
+                        self.last_valid_frame.as_ref().unwrap().to_array_view::<T>()?;
                     for i in fill_from..op.pulse {
                         data.index_axis_mut(Axis(op.axis), i).assign(&last_frame);
                     }
@@ -316,11 +313,7 @@ impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
 impl<T: Datum + Copy> TypedOp for PulsePad<T> {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
 }
-

@@ -23,7 +23,7 @@ impl Op for IntoShape {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("to shape: {}", self.shape.iter().join("x"))))
+        Ok(vec![format!("to shape: {}", self.shape.iter().join("x"))])
     }
 
     op_as_typed_op!();
@@ -39,10 +39,7 @@ impl StatelessOp for IntoShape {
 impl TypedOp for IntoShape {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.shape)?))
     }
 }

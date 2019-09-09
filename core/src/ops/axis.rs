@@ -42,7 +42,12 @@ pub struct AxisInfo {
 
 impl AxisInfo {
     pub fn simple(axis: usize) -> AxisInfo {
-        AxisInfo { inputs: tvec!(Some(axis)), outputs: tvec!(Some(axis)), period: 1, disposable: true }
+        AxisInfo {
+            inputs: tvec!(Some(axis)),
+            outputs: tvec!(Some(axis)),
+            period: 1,
+            disposable: true,
+        }
     }
 
     pub fn with_period(self, period: usize) -> AxisInfo {

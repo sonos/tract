@@ -40,12 +40,12 @@ impl StatelessOp for LstmNonlin {
         let t_len = input.shape()[0];
         let cell_dim = input.shape()[1] / 5;
         let mut output = Array2::<f32>::zeros((t_len, 2 * cell_dim));
-        let mut i_t = vec!(0f32; cell_dim);
-        let mut f_t = vec!(0f32; cell_dim);
-        let mut tanh_c_part = vec!(0f32; cell_dim);
-        let mut c_t = vec!(0f32; cell_dim);
-        let mut tanh_c_t = vec!(0f32; cell_dim);
-        let mut o_t = vec!(0f32; cell_dim);
+        let mut i_t = vec![0f32; cell_dim];
+        let mut f_t = vec![0f32; cell_dim];
+        let mut tanh_c_part = vec![0f32; cell_dim];
+        let mut c_t = vec![0f32; cell_dim];
+        let mut tanh_c_t = vec![0f32; cell_dim];
+        let mut o_t = vec![0f32; cell_dim];
         for t in 0..t_len {
             for x in 0..cell_dim {
                 let i_part = input[(t, 0 * cell_dim + x)];
@@ -118,12 +118,24 @@ impl InferenceRulesOp for LstmNonlin {
 
         let params =
             self.peepholes_params.to_array_view::<f32>()?.into_dimensionality::<ndarray::Ix2>()?;
-        let w_ic: OutletId =
-            target.add_const(format!("{})-w_ic", node.name), params.index_axis(ndarray::Axis(0), 0).to_owned())?.into();
-        let w_fc: OutletId =
-            target.add_const(format!("{}-w_fc", node.name), params.index_axis(ndarray::Axis(0), 1).to_owned())?.into();
-        let w_oc: OutletId =
-            target.add_const(format!("{}-w_oc", node.name), params.index_axis(ndarray::Axis(0), 2).to_owned())?.into();
+        let w_ic: OutletId = target
+            .add_const(
+                format!("{})-w_ic", node.name),
+                params.index_axis(ndarray::Axis(0), 0).to_owned(),
+            )?
+            .into();
+        let w_fc: OutletId = target
+            .add_const(
+                format!("{}-w_fc", node.name),
+                params.index_axis(ndarray::Axis(0), 1).to_owned(),
+            )?
+            .into();
+        let w_oc: OutletId = target
+            .add_const(
+                format!("{}-w_oc", node.name),
+                params.index_axis(ndarray::Axis(0), 2).to_owned(),
+            )?
+            .into();
 
         let cell_hidden_dim = params.shape()[1];
 
@@ -182,10 +194,7 @@ impl InferenceRulesOp for LstmNonlin {
 impl TypedOp for LstmNonlin {
     typed_op_as_op!();
 
-    fn output_facts(
-         &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
             [inputs[0].shape.dim(0), inputs[0].shape.dim(1) * 2 / 5].as_ref()

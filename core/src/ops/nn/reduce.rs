@@ -234,7 +234,7 @@ impl Reduce {
     }
 
     fn resolve_axes(&self, input_rank: usize) -> TractResult<TVec<usize>> {
-        let mut axes:TVec<usize> = match self.axes.as_ref() {
+        let mut axes: TVec<usize> = match self.axes.as_ref() {
             None => Ok((0..input_rank).collect()),
             Some(axis) => axis.iter().map(|&a| Self::resolve_axis(a, input_rank)).collect(),
         }?;
@@ -258,7 +258,7 @@ impl StatelessOp for Reduce {
         let axes = self.resolve_axes(inputs[0].shape().len())?;
         let mut result = self.reducer.reduce(&*axes, args_1!(inputs))?;
         if !self.keep_dims {
-            let mut final_shape:TVec<usize> = result.shape().into();
+            let mut final_shape: TVec<usize> = result.shape().into();
             for &ax in axes.iter().rev() {
                 final_shape.remove(ax);
             }

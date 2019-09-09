@@ -1,13 +1,14 @@
-use ndarray::*;
-use crate::TractResult;
 use crate::dim::TDim;
+use crate::TractResult;
+use ndarray::*;
 use tract_linalg::f16::f16;
 
 pub trait ArrayDatum: Sized {
-    fn stack_views(axis: usize, views:&[ArrayViewD<Self>]) -> TractResult<ArrayD<Self>>;
-    unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
+    fn stack_views(axis: usize, views: &[ArrayViewD<Self>]) -> TractResult<ArrayD<Self>>;
+    unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D>
+    where
         Sh: ShapeBuilder<Dim = D>,
-        S: DataOwned<Elem=Self>,
+        S: DataOwned<Elem = Self>,
         D: Dimension;
 }
 
@@ -64,4 +65,3 @@ impl_stack_views_by_copy!(i32);
 impl_stack_views_by_copy!(i64);
 impl_stack_views_by_clone!(String);
 impl_stack_views_by_clone!(TDim);
-

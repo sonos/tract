@@ -30,16 +30,17 @@ impl Op for AddDims {
         Ok(vec![format!("Axes: {:?}", self.axes)])
     }
 
-    fn axes_info(
-        &self,
-        _model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, _model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let mut i = 0;
         let mut axes = tvec!();
         for out in 0..node.outputs[0].fact.shape.rank() {
             if !self.axes.contains(&out) {
-                axes.push(AxisInfo { inputs: tvec!(Some(i)), outputs: tvec!(Some(out)), period: 1, disposable: true });
+                axes.push(AxisInfo {
+                    inputs: tvec!(Some(i)),
+                    outputs: tvec!(Some(out)),
+                    period: 1,
+                    disposable: true,
+                });
                 i += 1;
             }
         }
@@ -81,10 +82,7 @@ impl InferenceRulesOp for AddDims {
 impl TypedOp for AddDims {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
             self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),
@@ -106,5 +104,4 @@ impl TypedOp for AddDims {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
-
 }

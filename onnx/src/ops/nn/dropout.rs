@@ -1,11 +1,14 @@
+use crate::model::ParsingContext;
+use crate::pb::*;
 use ndarray::*;
 use tract_core::internal::*;
 use tract_core::ops::identity::Identity;
-use crate::model::ParsingContext;
-use crate::pb::*;
 
-pub fn dropout(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<dyn InferenceOp>,Vec<String>)> {
-    Ok((Box::new(Dropout::new(node.get_output().len() == 2)), vec!()))
+pub fn dropout(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    Ok((Box::new(Dropout::new(node.get_output().len() == 2)), vec![]))
 }
 
 #[derive(Debug, Clone, new, Default)]

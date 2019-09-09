@@ -126,7 +126,7 @@ impl GeneralDescriptor {
                 }
                 let id = model.add_node_default(
                     &*name,
-                    tract_core::ops::array::Crop::new(0, crop as usize, 0)
+                    tract_core::ops::array::Crop::new(0, crop as usize, 0),
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
                 n.wire(InletId::new(id, 0), &*name, model, deferred, adjust_final_offset)?;

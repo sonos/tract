@@ -87,8 +87,7 @@ pub mod test {
             #[test]
             fn tanh_4_magic() {
                 if $cond {
-                    crate::frame::tanh::test::test_tanh::<$ker>(&[0f32, -20.0, 20.0, 0.0])
-                        .unwrap()
+                    crate::frame::tanh::test::test_tanh::<$ker>(&[0f32, -20.0, 20.0, 0.0]).unwrap()
                 }
             }
 

@@ -71,7 +71,7 @@ pub fn scan(
             full_slot: Some(ix + num_hidden_state),
             chunk: (),
             full_dim_hint: None,
-            last_value_slot: None
+            last_value_slot: None,
         });
     }
 

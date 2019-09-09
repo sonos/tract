@@ -5,7 +5,10 @@ use std::fmt::{Debug, Display};
 
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
-pub fn eval_order<TI: TensorInfo + Clone + 'static, O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static>(
+pub fn eval_order<
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+>(
     model: &super::ModelImpl<TI, O>,
 ) -> TractResult<Vec<usize>> {
     let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
@@ -39,7 +42,8 @@ pub fn eval_order_for_nodes<TI: TensorInfo, O: Debug + Display + AsRef<dyn Op> +
                 let precursor = if current_input < nodes[current_node].inputs.len() {
                     nodes[current_node].inputs[current_input].node
                 } else {
-                    nodes[current_node].control_inputs[current_input- nodes[current_node].inputs.len()]
+                    nodes[current_node].control_inputs
+                        [current_input - nodes[current_node].inputs.len()]
                 };
                 if done.contains(precursor) {
                     current_stack.push((current_node, current_input + 1));

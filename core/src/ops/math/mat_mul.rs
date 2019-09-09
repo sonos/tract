@@ -331,11 +331,7 @@ impl Op for MatMulUnary {
         ])
     }
 
-    fn axes_info(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         if input_fact.shape.rank() != node.outputs[0].fact.shape.rank() {
             return Ok(AxesInfo::none());

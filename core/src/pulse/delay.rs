@@ -8,11 +8,7 @@ struct DelayState {
 }
 
 impl DelayState {
-    pub fn eval_t<T: Datum>(
-        &mut self,
-        op: &Delay,
-        input: Arc<Tensor>,
-    ) -> TractResult<Arc<Tensor>> {
+    pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         let axis = Axis(op.input_fact.axis);
         let input = input.to_array_view::<T>()?;
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
@@ -93,7 +89,11 @@ fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
 }
 
 impl StatefullOp for Delay {
-    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         let mut buffer_shape: TVec<_> = self.input_fact.shape.clone();
         buffer_shape[self.input_fact.axis] = self.delay + self.overlap;
         let buffer = dispatch_datum!(self::make_buffer(self.input_fact.dt)(&buffer_shape));

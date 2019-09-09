@@ -1,6 +1,6 @@
-use crate::frame::mmm::*;
 use crate::frame::mmm::LinearSpec::*;
 use crate::frame::mmm::StorageKerSpec::*;
+use crate::frame::mmm::*;
 
 #[derive(Copy, Clone, Debug)]
 pub struct SMmm4x4;
@@ -102,32 +102,30 @@ impl MatMatMulKer<f32> for SMmm4x4 {
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::AddC => {
-                        match *spec.c {
-                            Strides { ptr: c, row_byte_stride, col_byte_stride } => {
-                                let rsc = row_byte_stride as usize / 4;
-                                let csc = col_byte_stride as usize / 4;
-                                let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
-                                ab[0][0] += c[0 * csc + 0 * rsc];
-                                ab[0][1] += c[1 * csc + 0 * rsc];
-                                ab[0][2] += c[2 * csc + 0 * rsc];
-                                ab[0][3] += c[3 * csc + 0 * rsc];
-                                ab[1][0] += c[0 * csc + 1 * rsc];
-                                ab[1][1] += c[1 * csc + 1 * rsc];
-                                ab[1][2] += c[2 * csc + 1 * rsc];
-                                ab[1][3] += c[3 * csc + 1 * rsc];
-                                ab[2][0] += c[0 * csc + 2 * rsc];
-                                ab[2][1] += c[1 * csc + 2 * rsc];
-                                ab[2][2] += c[2 * csc + 2 * rsc];
-                                ab[2][3] += c[3 * csc + 2 * rsc];
-                                ab[3][0] += c[0 * csc + 3 * rsc];
-                                ab[3][1] += c[1 * csc + 3 * rsc];
-                                ab[3][2] += c[2 * csc + 3 * rsc];
-                                ab[3][3] += c[3 * csc + 3 * rsc];
-                            }
-                            _ => return 1
+                    FusedKerSpec::AddC => match *spec.c {
+                        Strides { ptr: c, row_byte_stride, col_byte_stride } => {
+                            let rsc = row_byte_stride as usize / 4;
+                            let csc = col_byte_stride as usize / 4;
+                            let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
+                            ab[0][0] += c[0 * csc + 0 * rsc];
+                            ab[0][1] += c[1 * csc + 0 * rsc];
+                            ab[0][2] += c[2 * csc + 0 * rsc];
+                            ab[0][3] += c[3 * csc + 0 * rsc];
+                            ab[1][0] += c[0 * csc + 1 * rsc];
+                            ab[1][1] += c[1 * csc + 1 * rsc];
+                            ab[1][2] += c[2 * csc + 1 * rsc];
+                            ab[1][3] += c[3 * csc + 1 * rsc];
+                            ab[2][0] += c[0 * csc + 2 * rsc];
+                            ab[2][1] += c[1 * csc + 2 * rsc];
+                            ab[2][2] += c[2 * csc + 2 * rsc];
+                            ab[2][3] += c[3 * csc + 2 * rsc];
+                            ab[3][0] += c[0 * csc + 3 * rsc];
+                            ab[3][1] += c[1 * csc + 3 * rsc];
+                            ab[3][2] += c[2 * csc + 3 * rsc];
+                            ab[3][3] += c[3 * csc + 3 * rsc];
                         }
-                    }
+                        _ => return 1,
+                    },
                     FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..4 {
                             ab[i][0] *= *bias.offset(i as isize);
@@ -210,7 +208,7 @@ impl MatMatMulKer<f32> for SMmm4x4 {
                 _ => return 1,
             }
         }
-        return 0
+        return 0;
     }
 }
 
@@ -291,22 +289,20 @@ impl MatMatMulKer<f32> for SMmmTest3x2 {
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::AddC => {
-                        match *spec.c {
-                            Strides { ptr: c, row_byte_stride, col_byte_stride } => {
-                                let rsc = row_byte_stride as usize / 4;
-                                let csc = col_byte_stride as usize / 4;
-                                let c = std::slice::from_raw_parts_mut(c, 1 + 1 * csc + 2 * rsc);
-                                ab[0][0] += c[0 * csc + 0 * rsc];
-                                ab[0][1] += c[1 * csc + 0 * rsc];
-                                ab[1][0] += c[0 * csc + 1 * rsc];
-                                ab[1][1] += c[1 * csc + 1 * rsc];
-                                ab[2][0] += c[0 * csc + 2 * rsc];
-                                ab[2][1] += c[1 * csc + 2 * rsc];
-                            }
-                            _ => return 1
+                    FusedKerSpec::AddC => match *spec.c {
+                        Strides { ptr: c, row_byte_stride, col_byte_stride } => {
+                            let rsc = row_byte_stride as usize / 4;
+                            let csc = col_byte_stride as usize / 4;
+                            let c = std::slice::from_raw_parts_mut(c, 1 + 1 * csc + 2 * rsc);
+                            ab[0][0] += c[0 * csc + 0 * rsc];
+                            ab[0][1] += c[1 * csc + 0 * rsc];
+                            ab[1][0] += c[0 * csc + 1 * rsc];
+                            ab[1][1] += c[1 * csc + 1 * rsc];
+                            ab[2][0] += c[0 * csc + 2 * rsc];
+                            ab[2][1] += c[1 * csc + 2 * rsc];
                         }
-                    }
+                        _ => return 1,
+                    },
                     FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..3 {
                             ab[i][0] *= *bias.offset(i as isize);
@@ -372,7 +368,7 @@ impl MatMatMulKer<f32> for SMmmTest3x2 {
                 _ => return 1,
             }
         }
-        return 0
+        return 0;
     }
 }
 

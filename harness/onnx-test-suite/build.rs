@@ -32,11 +32,13 @@ pub fn make_test_file(tests_set: &str) {
     assert!(node_tests.exists());
     let working_list_file = path::PathBuf::from(".").join(tests_set).with_extension("txt");
     println!("cargo:rerun-if-changed={}", working_list_file.to_str().unwrap());
-    let working_list: Vec<(String, bool)> = if let Ok(list) = fs::read_to_string(&working_list_file) {
+    let working_list: Vec<(String, bool)> = if let Ok(list) = fs::read_to_string(&working_list_file)
+    {
         list.split("\n")
             .map(|s| s.to_string())
             .filter(|s| s.trim().len() > 1 && s.trim().as_bytes()[0] != b'#')
-            .map(|s| { let splits = s.split_whitespace().collect::<Vec<_>>();
+            .map(|s| {
+                let splits = s.split_whitespace().collect::<Vec<_>>();
                 (splits[0].to_string(), splits.len() == 1)
             })
             .collect()

@@ -1,8 +1,8 @@
 use ndarray::*;
 use num_traits::Zero;
 
-use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 
 pub mod raw;
 pub mod unary;

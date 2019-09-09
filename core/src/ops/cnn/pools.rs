@@ -64,7 +64,8 @@ impl PoolSpec {
             self.strides.as_ref().unwrap_or(&ones),
         );
         let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<TDim>>();
-        let oshape = self.data_format.from_n_c_hw(ishape.n().clone(), ishape.c().clone(), spatial_dims);
+        let oshape =
+            self.data_format.from_n_c_hw(ishape.n().clone(), ishape.c().clone(), spatial_dims);
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*oshape.shape)?))
     }
 
@@ -103,8 +104,9 @@ impl PoolSpec {
                 final_fact.shape[fact.axis] = final_fact.shape[fact.axis] / stride;
                 final_fact.dim = final_fact.dim.clone() / stride;
                 final_fact.delay = final_fact.delay / stride;
-                let id = target.chain_after(input, &*node.name, node.op.clone(), tvec!(final_fact))?;
-                return Ok(tvec!(OutletId::new(id, 0)))
+                let id =
+                    target.chain_after(input, &*node.name, node.op.clone(), tvec!(final_fact))?;
+                return Ok(tvec!(OutletId::new(id, 0)));
             }
 
             // overlap case, need delay with augmented output
@@ -114,7 +116,8 @@ impl PoolSpec {
             augmented_fact.delay += kernel_len;
 
             let mut final_fact = fact.clone();
-            final_fact.shape[fact.axis] = (augmented_fact.shape[augmented_fact.axis] - kernel_len) / stride;
+            final_fact.shape[fact.axis] =
+                (augmented_fact.shape[augmented_fact.axis] - kernel_len) / stride;
             final_fact.delay += kernel_len;
             final_fact.dim = (final_fact.dim.clone() - kernel_len.to_dim()) / stride;
 

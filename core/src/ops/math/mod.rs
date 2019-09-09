@@ -30,10 +30,14 @@ bin_to_super_type!(pow, Pow,
 
 fn flip_sub(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     let mut t = t.clone().into_tensor();
-    fn negate<T: Datum + std::ops::Neg<Output=T>>(t:&mut Tensor) {
+    fn negate<T: Datum + std::ops::Neg<Output = T>>(t: &mut Tensor) {
         t.as_slice_mut::<T>().unwrap().iter_mut().for_each(|p| *p = -p.clone());
     }
-    (|t:&mut Tensor| -> TractResult<()> { dispatch_signed!(negate(t.datum_type())(t)); Ok(()) })(&mut t).unwrap();
+    (|t: &mut Tensor| -> TractResult<()> {
+        dispatch_signed!(negate(t.datum_type())(t));
+        Ok(())
+    })(&mut t)
+    .unwrap();
     Some(UnaryOp::new(Box::new(Add), Arc::new(t)))
 }
 
@@ -94,7 +98,6 @@ element_map_inplace!(Tanh, [f32], |xs| <f32 as FloatLike>::tanh().run(xs));
 element_map!(Acosh, [f16, f32, f64], |x| x.acosh());
 element_map!(Asinh, [f16, f32, f64], |x| x.asinh());
 element_map!(Atanh, [f16, f32, f64], |x| x.atanh());
-
 
 element_map!(Neg, [i8, i16, i32, i64, f16, f32, f64, TDim], |x| -x);
 

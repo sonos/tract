@@ -61,7 +61,6 @@ pub trait InferenceRulesOp {
     fn nboutputs(&self) -> TractResult<usize> {
         Ok(1)
     }
-
 }
 
 impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
@@ -94,7 +93,7 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
         _model: &InferenceModel,
         _node: &InferenceNode,
     ) -> TractResult<Vec<OutletId>> {
-        Ok(vec!())
+        Ok(vec![])
     }
 
     fn as_op(&self) -> &dyn Op {

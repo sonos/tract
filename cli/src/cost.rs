@@ -1,6 +1,6 @@
 use crate::display_graph::*;
 use crate::errors::*;
-use crate::{Parameters, Model};
+use crate::{Model, Parameters};
 use tract_core::internal::*;
 
 pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
@@ -18,14 +18,11 @@ pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
     }
 }
 
-fn handle_t(
-    model: &TypedModel,
-    params: &Parameters,
-    options: DisplayOptions,
-) -> CliResult<()> {
+fn handle_t(model: &TypedModel, params: &Parameters, options: DisplayOptions) -> CliResult<()> {
     let mut total: HashMap<Cost, TDim> = HashMap::default();
     let mut display_graph =
-        DisplayGraph::from_model_and_options(model as &dyn Model, options.into())?.with_graph_def(&params.graph)?;
+        DisplayGraph::from_model_and_options(model as &dyn Model, options.into())?
+            .with_graph_def(&params.graph)?;
     for i in ::tract_core::model::eval_order(&model)? {
         let inputs = model.node_input_facts(i)?;
         let cost = model.nodes()[i].op().cost(&*inputs)?;

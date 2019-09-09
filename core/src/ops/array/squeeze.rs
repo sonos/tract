@@ -82,18 +82,13 @@ impl InferenceRulesOp for Squeeze {
     to_typed!();
 }
 
-
 impl TypedOp for Squeeze {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
             &*self.compute_shape(&*inputs[0].shape.to_tvec())?,
         )?))
     }
 }
-

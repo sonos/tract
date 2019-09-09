@@ -1,7 +1,7 @@
+use num_traits::Zero;
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::{ Add, Mul };
-use num_traits::Zero;
+use std::ops::{Add, Mul};
 
 #[derive(PartialEq, Clone)]
 pub enum FusedSpec<T>
@@ -33,7 +33,6 @@ where
         }
     }
 }
-
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]

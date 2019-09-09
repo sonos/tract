@@ -34,14 +34,28 @@ impl DatumType {
     pub fn super_types(&self) -> &'static [DatumType] {
         match self {
             DatumType::Bool => &[DatumType::Bool],
-            DatumType::U8 => {
-                &[DatumType::U8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32]
+            DatumType::U8 => &[
+                DatumType::U8,
+                DatumType::I16,
+                DatumType::I32,
+                DatumType::I64,
+                DatumType::TDim,
+                DatumType::F32,
+            ],
+            DatumType::U16 => {
+                &[DatumType::U16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32]
             }
-            DatumType::U16 => &[DatumType::U16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32],
-            DatumType::I8 => {
-                &[DatumType::I8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32]
+            DatumType::I8 => &[
+                DatumType::I8,
+                DatumType::I16,
+                DatumType::I32,
+                DatumType::I64,
+                DatumType::TDim,
+                DatumType::F32,
+            ],
+            DatumType::I16 => {
+                &[DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32]
             }
-            DatumType::I16 => &[DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32],
             DatumType::I32 => &[DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32],
             DatumType::I64 => &[DatumType::I64, DatumType::TDim, DatumType::F32],
             DatumType::F16 => &[DatumType::F16, DatumType::F32, DatumType::F64],
@@ -305,7 +319,10 @@ impl FloatLike for f16 {
     fn mmm(_m: usize, _k: usize, _n: usize) -> Box<dyn tract_linalg::mmm::MatMatMul<Self>> {
         unimplemented!("f16 ops");
     }
-    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
+    fn packed_vec_mat_mul(
+        _k: usize,
+        _n: usize,
+    ) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
         unimplemented!("f16 ops");
     }
     fn sigmoid() -> Box<dyn tract_linalg::sigmoid::Sigmoid<Self>> {
@@ -335,7 +352,10 @@ impl FloatLike for f64 {
     fn mmm(_m: usize, _k: usize, _n: usize) -> Box<dyn tract_linalg::mmm::MatMatMul<Self>> {
         unimplemented!("f64 ops");
     }
-    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
+    fn packed_vec_mat_mul(
+        _k: usize,
+        _n: usize,
+    ) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
         unimplemented!("f64 ops");
     }
     fn sigmoid() -> Box<dyn tract_linalg::sigmoid::Sigmoid<Self>> {

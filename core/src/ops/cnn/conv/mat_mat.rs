@@ -146,9 +146,9 @@ where
                     return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
                     return Ok(Some(tvec!(
-                                FusedSpec::Min(op.min.as_()),
-                                FusedSpec::Max(op.max.as_()),
-                                )));
+                        FusedSpec::Min(op.min.as_()),
+                        FusedSpec::Max(op.max.as_()),
+                    )));
                 }
                 Ok(None)
             })()?;
@@ -186,13 +186,7 @@ where
 {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
-            inputs[0].datum_type,
-            &*self.output_shape.shape
-        )?))
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))
     }
 }

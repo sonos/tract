@@ -8,8 +8,8 @@ use crate::parser::spaced;
 
 pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
     let mut input_node: Option<(String, usize)> = None;
-    let mut nodes = vec!();
-    let mut outputs = vec!();
+    let mut nodes = vec![];
+    let mut outputs = vec![];
     for line in s.lines() {
         if line.trim().is_empty() {
             continue;
@@ -39,23 +39,16 @@ pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
                     .1;
                 nodes.push((name, NodeLine::Component(it)));
             }
-            "output-node" => {
-                outputs.push(
-                    parse_output_node_line(line)
-                        .map_err(|e| format!("Error {:?} while parsing {}", e, line))?
-                        .1,
-                )
-            }
+            "output-node" => outputs.push(
+                parse_output_node_line(line)
+                    .map_err(|e| format!("Error {:?} while parsing {}", e, line))?
+                    .1,
+            ),
             _ => bail!("Unknown config line {}", line_kind),
         }
     }
     let (input_name, input_dim) = input_node.unwrap();
-    Ok(ConfigLines {
-        input_dim,
-        input_name,
-        nodes,
-        outputs,
-    })
+    Ok(ConfigLines { input_dim, input_name, nodes, outputs })
 }
 
 fn parse_input_node_line(i: &str) -> IResult<&str, (String, usize)> {
@@ -89,11 +82,14 @@ fn parse_dim_range_node_line(i: &str) -> IResult<&str, (String, DimRangeNode)> {
 
 fn parse_output_node_line(i: &str) -> IResult<&str, OutputLine> {
     let (i, _) = tag("output-node")(i)?;
-    map(tuple((
-        spaced(map(preceded(tag("name="), identifier), |n: &str| n.to_string())),
-        spaced(opt(map(preceded(tag("objective="), identifier), |n: &str| n.to_string()))),
-        spaced(preceded(tag("input="), super::descriptor::parse_general))
-    )), |(output_alias, _objective, descriptor)| OutputLine {output_alias, descriptor})(i)
+    map(
+        tuple((
+            spaced(map(preceded(tag("name="), identifier), |n: &str| n.to_string())),
+            spaced(opt(map(preceded(tag("objective="), identifier), |n: &str| n.to_string()))),
+            spaced(preceded(tag("input="), super::descriptor::parse_general)),
+        )),
+        |(output_alias, _objective, descriptor)| OutputLine { output_alias, descriptor },
+    )(i)
 }
 
 pub fn identifier(i: &str) -> IResult<&str, &str> {

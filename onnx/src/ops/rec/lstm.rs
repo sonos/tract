@@ -447,7 +447,12 @@ impl InferenceRulesOp for LSTM {
 
         let scan_outputs = target.wire_node(
             &*node.name,
-            scan::Typed::new(body, input_mapping, vec![h_mapping, c_mapping], self.optional_sequence_lens_input)?,
+            scan::Typed::new(
+                body,
+                input_mapping,
+                vec![h_mapping, c_mapping],
+                self.optional_sequence_lens_input,
+            )?,
             &outer_inputs,
         )?;
 

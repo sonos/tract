@@ -183,7 +183,7 @@ impl ShapeInfo {
 impl TryFrom<()> for ShapeInfo {
     type Error = TractError;
     fn try_from(_it: ()) -> TractResult<ShapeInfo> {
-        ShapeInfo::from_dims([0.to_dim();0].as_ref())
+        ShapeInfo::from_dims([0.to_dim(); 0].as_ref())
     }
 }
 

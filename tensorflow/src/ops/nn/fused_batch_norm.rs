@@ -142,4 +142,3 @@ impl TypedOp for FusedBatchNorm {
         Ok(tvec!(inputs[0].clone()))
     }
 }
-

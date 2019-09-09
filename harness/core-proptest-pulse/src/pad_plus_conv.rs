@@ -1,10 +1,10 @@
-use tract_core::ndarray::*;
-use tract_core::internal::*;
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use proptest::*;
-use tract_core::ops::array::PadMode;
 use tract_core::dimfact;
+use tract_core::internal::*;
+use tract_core::ndarray::*;
+use tract_core::ops::array::PadMode;
 use tract_core::shapefact;
 
 use super::*;
@@ -37,7 +37,7 @@ impl Arbitrary for PadPlusConvProblem {
                     Just(pad_after),
                     Just(stride * pulse_factor),
                     vec(min_input..3 * min_input),
-                    Just(edge)
+                    Just(edge),
                 )
             })
             .prop_map(|(stride, ker, dilation, pad_before, pad_after, pulse, input, edge)| {
@@ -48,7 +48,16 @@ impl Arbitrary for PadPlusConvProblem {
                 };
                 let input = Array3::from_shape_vec((1, 1, input.len()), input).unwrap(); // NCHW
                 let ker = Array3::from_shape_vec((1, 1, ker.len()), ker).unwrap(); // OIHW
-                PadPlusConvProblem { pad_before, pad_after, pad_mode, stride, dilation, pulse, ker, input }
+                PadPlusConvProblem {
+                    pad_before,
+                    pad_after,
+                    pad_mode,
+                    stride,
+                    dilation,
+                    pulse,
+                    ker,
+                    input,
+                }
             })
             .boxed()
     }
@@ -226,9 +235,8 @@ fn conv_kaldi_librispeech() {
         dilation: 1,
         pulse: 9,
         ker: arr3(&[[[1f32, 0f32, 0f32, 0f32, 0f32]]]),
-        input: Array3::from_shape_vec((1,1,10), (1..=10).map(|i| i as f32).collect()).unwrap()
+        input: Array3::from_shape_vec((1, 1, 10), (1..=10).map(|i| i as f32).collect()).unwrap(),
     }
     .run()
     .unwrap()
 }
-

@@ -1,6 +1,6 @@
+use std::fmt::{Debug, Display};
 #[allow(unused_imports)]
 use std::fs;
-use std::fmt::{Debug, Display};
 
 use ansi_term::Color::*;
 
@@ -83,10 +83,13 @@ where
         }
     }
 
-    let mut all_values:HashMap<String, CliResult<TVec<Tensor>>> = HashMap::new();
+    let mut all_values: HashMap<String, CliResult<TVec<Tensor>>> = HashMap::new();
     if resilient {
         for name in wanted_outputs {
-            all_values.insert(name.to_string(), tf.run(pairs.clone(), &name).map(|t| t.into()).map_err(|e| e.into()));
+            all_values.insert(
+                name.to_string(),
+                tf.run(pairs.clone(), &name).map(|t| t.into()).map_err(|e| e.into()),
+            );
         }
     } else {
         tf.run_get_many(pairs, wanted_outputs)?.into_iter().for_each(|(k, v)| {
@@ -115,7 +118,13 @@ pub fn handle_npz(
             values.insert(name.to_string(), Ok(tvec!(value.into())));
         }
     }
-    dispatch_model_no_pulse!(params.tract_model, |m| compare(cumulative, m, &values, &params, output_params))
+    dispatch_model_no_pulse!(params.tract_model, |m| compare(
+        cumulative,
+        m,
+        &values,
+        &params,
+        output_params
+    ))
 }
 
 #[cfg(feature = "onnx")]
@@ -125,7 +134,7 @@ pub fn handle_pbdir(
     params: Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()> {
-    let mut values:HashMap<&str, TVec<Option<Tensor>>> = HashMap::new();
+    let mut values: HashMap<&str, TVec<Option<Tensor>>> = HashMap::new();
     let parsed_model = if let SomeGraphDef::Onnx(_, ref parsed) = params.graph {
         parsed
     } else {
@@ -144,8 +153,20 @@ pub fn handle_pbdir(
         }
         output_tuple[outlet.slot] = Some(tensor.try_into()?);
     }
-    let values = values.into_iter().filter(|(_,t)| t.iter().all(|t| t.is_some())).map(|(k,t)| (k.to_string(), Ok(t.into_iter().map(Option::unwrap).collect::<TVec<Tensor>>()))).collect();
-    dispatch_model_no_pulse!(params.tract_model, |m| compare(cumulative, m, &values, &params, output_params))
+    let values = values
+        .into_iter()
+        .filter(|(_, t)| t.iter().all(|t| t.is_some()))
+        .map(|(k, t)| {
+            (k.to_string(), Ok(t.into_iter().map(Option::unwrap).collect::<TVec<Tensor>>()))
+        })
+        .collect();
+    dispatch_model_no_pulse!(params.tract_model, |m| compare(
+        cumulative,
+        m,
+        &values,
+        &params,
+        output_params
+    ))
 }
 
 pub fn compare<TI, O>(
@@ -172,9 +193,11 @@ where
         state.set_input(ix, value.clone())?;
     }
 
-    let mut display_graph =
-        crate::display_graph::DisplayGraph::from_model_and_options(tract as &dyn Model, output_params.into())?
-            .with_graph_def(&params.graph)?;
+    let mut display_graph = crate::display_graph::DisplayGraph::from_model_and_options(
+        tract as &dyn Model,
+        output_params.into(),
+    )?
+    .with_graph_def(&params.graph)?;
 
     let mut failing = vec![];
 
@@ -185,9 +208,10 @@ where
             Some(Ok(it)) => it,
             Some(Err(e)) => {
                 display_graph.set_node_color(n, Yellow)?;
-                display_graph.add_node_label(&[n], format!("{} {}", Yellow.paint("TF Error"), e))?;
+                display_graph
+                    .add_node_label(&[n], format!("{} {}", Yellow.paint("TF Error"), e))?;
                 continue;
-            },
+            }
             None => {
                 display_graph.set_node_color(n, Yellow)?;
                 display_graph.add_node_label(&[n], Yellow.paint("Not in reference").to_string())?;
@@ -195,12 +219,12 @@ where
                 continue;
             }
         };
-        let expected: Vec<Option<Arc<Tensor>>> = tf_output.iter().map(|m| Some(m.clone().into_arc_tensor())).collect();
-        let expected_outputs_section = expected.iter()
+        let expected: Vec<Option<Arc<Tensor>>> =
+            tf_output.iter().map(|m| Some(m.clone().into_arc_tensor())).collect();
+        let expected_outputs_section = expected
+            .iter()
             .enumerate()
-            .map(|(ix, o)| {
-                format!("expected output #{}: {:?}", ix, o)
-            })
+            .map(|(ix, o)| format!("expected output #{}: {:?}", ix, o))
             .collect::<Vec<_>>();
         display_graph.add_node_section(n, expected_outputs_section)?;
 
@@ -236,7 +260,8 @@ where
                 Some(e) => {
                     failing.push(n);
                     display_graph.set_node_color(n, Red.bold())?;
-                    display_graph.add_node_label(&[n], format!("{}: {}", Red.bold().paint("ERROR"), e))?;
+                    display_graph
+                        .add_node_label(&[n], format!("{}: {}", Red.bold().paint("ERROR"), e))?;
                     display_graph.add_node_section(n, inputs)?;
                 }
                 _ => {

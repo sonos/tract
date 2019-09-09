@@ -28,12 +28,12 @@ unsafe impl Sync for Tensor {}
 impl Clone for Tensor {
     fn clone(&self) -> Tensor {
         if self.dt == DatumType::String {
-            let data:Vec<String> = self.as_slice::<String>().unwrap().to_vec();
+            let data: Vec<String> = self.as_slice::<String>().unwrap().to_vec();
             let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
             std::mem::forget(data);
             t
         } else if self.dt == DatumType::TDim {
-            let data:Vec<TDim> = self.as_slice::<TDim>().unwrap().to_vec();
+            let data: Vec<TDim> = self.as_slice::<TDim>().unwrap().to_vec();
             let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
             std::mem::forget(data);
             t
@@ -81,17 +81,12 @@ impl Drop for Tensor {
 
 impl Tensor {
     /// Create an uninitialized tensor (dt as type paramater).
-    pub unsafe fn uninitialized<T: Datum>(
-        shape: &[usize],
-    ) -> TractResult<Tensor> {
+    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
     }
 
     /// Create an uninitialized tensor (dt as regular parameter).
-    pub unsafe fn uninitialized_dt(
-        dt: DatumType,
-        shape: &[usize],
-    ) -> TractResult<Tensor> {
+    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
         Self::uninitialized_aligned_dt(dt, shape, dt.alignment())
     }
 
@@ -127,12 +122,16 @@ impl Tensor {
         Tensor::from_raw_dt(T::datum_type(), shape, content)
     }
 
-    pub unsafe fn from_raw_dt(dt: DatumType, shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
+    pub unsafe fn from_raw_dt(
+        dt: DatumType,
+        shape: &[usize],
+        content: &[u8],
+    ) -> TractResult<Tensor> {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
         let layout = alloc::Layout::from_size_align(bytes, dt.alignment())?;
         let data = alloc::alloc(layout);
         content.as_ptr().copy_to_nonoverlapping(data, bytes);
-        Ok(Tensor { null: false, dt: dt, shape: shape.into(), data, layout })
+        Ok(Tensor { null: false, dt, shape: shape.into(), data, layout })
     }
 
     /// Creates a null tensor (this is rare, and should stay that way).
@@ -216,7 +215,7 @@ impl Tensor {
     /// Compare two tensors, allowing for rounding errors.
     pub fn close_enough(&self, other: &Self, approx: bool) -> TractResult<()> {
         if self.is_null() != other.is_null() {
-            return Ok(())
+            return Ok(());
         }
         if self.shape() != other.shape() {
             bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
@@ -233,13 +232,18 @@ impl Tensor {
                 let b = mb[&indices];
                 if !((a.is_nan() && b.is_nan())
                     || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
-                    || (a - b).abs() <= atol + rtol * b.abs()) {
-                        bail!("Mismatch at {:?} {} != {}", indices.slice(), a, b)
-                    }
+                    || (a - b).abs() <= atol + rtol * b.abs())
+                {
+                    bail!("Mismatch at {:?} {} != {}", indices.slice(), a, b)
+                }
                 Ok(())
             })
         } else {
-            if self.eq(other) { Ok(()) } else { bail!("Mismatch") }
+            if self.eq(other) {
+                Ok(())
+            } else {
+                bail!("Mismatch")
+            }
         }
     }
 
@@ -314,8 +318,11 @@ impl Tensor {
     fn cast<Source: Datum + crate::datum::TryInto<Target>, Target: Datum>(
         &self,
     ) -> TractResult<Tensor> {
-        let casted_vec: Vec<Target> =
-            self.as_slice::<Source>()?.iter().map(|s| s.try_into()).collect::<TractResult<_>>()
+        let casted_vec: Vec<Target> = self
+            .as_slice::<Source>()?
+            .iter()
+            .map(|s| s.try_into())
+            .collect::<TractResult<_>>()
             .chain_err(|| format!("Casting {:?} to {:?}", self, Target::datum_type()))?;
         let casted_array = ArrayD::from_shape_vec(&*self.shape, casted_vec)?;
         Ok(casted_array.into())
@@ -408,8 +415,7 @@ impl Tensor {
             it.into_owned().into_iter().cloned().collect::<Box<[T]>>()
         };
         let layout =
-            alloc::Layout::from_size_align(vec.len() * size_of::<T>(), align_of::<T>())
-                .unwrap();
+            alloc::Layout::from_size_align(vec.len() * size_of::<T>(), align_of::<T>()).unwrap();
         let data = Box::into_raw(vec) as *mut u8;
         Tensor { null: false, dt: T::datum_type(), shape, layout, data }
     }

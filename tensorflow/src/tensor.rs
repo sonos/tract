@@ -51,7 +51,7 @@ impl TryFrom<DatumType> for DataType {
     }
 }
 
-fn tensor_from_repeated_field<T:Datum>(shape: &[usize], data: Vec<T>) -> TractResult<Tensor> {
+fn tensor_from_repeated_field<T: Datum>(shape: &[usize], data: Vec<T>) -> TractResult<Tensor> {
     let t = if data.len() == 1 {
         ndarray::ArrayD::from_elem(shape, data[0].clone()).into()
     } else {
@@ -80,9 +80,15 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
         } else {
             match dtype {
                 DataType::DT_INT32 => tensor_from_repeated_field(&*dims, t.get_int_val().to_vec())?,
-                DataType::DT_INT64 => tensor_from_repeated_field(&*dims, t.get_int64_val().to_vec())?,
-                DataType::DT_FLOAT => tensor_from_repeated_field(&*dims, t.get_float_val().to_vec())?,
-                DataType::DT_DOUBLE => tensor_from_repeated_field(&*dims, t.get_double_val().to_vec())?,
+                DataType::DT_INT64 => {
+                    tensor_from_repeated_field(&*dims, t.get_int64_val().to_vec())?
+                }
+                DataType::DT_FLOAT => {
+                    tensor_from_repeated_field(&*dims, t.get_float_val().to_vec())?
+                }
+                DataType::DT_DOUBLE => {
+                    tensor_from_repeated_field(&*dims, t.get_double_val().to_vec())?
+                }
                 DataType::DT_STRING => {
                     let strings = t
                         .get_string_val()

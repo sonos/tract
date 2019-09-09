@@ -5,11 +5,11 @@ use num_traits::One;
 /// Computes a shape, if any, to which all shapes can be broadcasted.
 pub fn multi_broadcast<T>(shapes: &[impl AsRef<[T]>]) -> Option<TVec<T>>
 where
-    T: One + PartialEq + Clone
+    T: One + PartialEq + Clone,
 {
     let one = T::one();
     let len = shapes.iter().map(|shape| shape.as_ref().len()).max()?;
-    let mut shape:TVec<T> = tvec!();
+    let mut shape: TVec<T> = tvec!();
     for i in 0..len {
         let mut wanted_size = T::one();
         for shape in shapes {

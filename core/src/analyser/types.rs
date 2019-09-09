@@ -1,7 +1,7 @@
 use crate::TractResult;
 use std::fmt;
 use std::iter::FromIterator;
-use std::ops::{Add, Div, Mul, Neg, Sub, Rem};
+use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
 
 use num_traits::Zero;
 
@@ -63,7 +63,7 @@ pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
         loop {
             let mut changed = false;
             for i in 0..facts.len() - 1 {
-                for j in i+1..facts.len() {
+                for j in i + 1..facts.len() {
                     let (left, right) = facts.split_at_mut(j);
                     let c = left[i].unify_with(right[0])?;
                     changed = changed || c;
@@ -71,7 +71,7 @@ pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
                 }
             }
             if !changed {
-                return Ok(overall_changed)
+                return Ok(overall_changed);
             }
         }
     }
@@ -169,10 +169,7 @@ impl TensorFact {
     }
 
     pub fn without_value(self) -> TensorFact {
-        TensorFact {
-            value: GenericFact::Any,
-            ..self
-        }
+        TensorFact { value: GenericFact::Any, ..self }
     }
 }
 
@@ -353,12 +350,12 @@ impl ShapeFact {
         self.dims().nth(i)
     }
 
-    pub fn set_dim(&mut self, i:usize, d: TDim) {
+    pub fn set_dim(&mut self, i: usize, d: TDim) {
         match d.to_integer() {
             Ok(n) => self.dims[i] = GenericFact::Only(n),
             Err(_) => {
                 self.dims[i] = GenericFact::Only(-1);
-                self.stream = Some(StreamInfo { axis:i, len: d })
+                self.stream = Some(StreamInfo { axis: i, len: d })
             }
         }
     }
@@ -607,4 +604,3 @@ where
         }
     }
 }
-

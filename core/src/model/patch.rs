@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 use crate::internal::*;
 use crate::model::dsl::ModelSpecialOps;
 use crate::model::*;
-use crate::ops::source:: { Source, TypedSource };
+use crate::ops::source::{Source, TypedSource};
 
 /// A change to apply to a model.
 ///
@@ -201,7 +201,7 @@ where
         let mut all_inputs = HashMap::new(); // new_id -> [ old_inputs ]
         for node in patch.nodes {
             if node.op_is::<Source>() || node.op_is::<TypedSource>() {
-                continue
+                continue;
             }
             let BaseNode { id, name, inputs, control_inputs, op, outputs } = node;
             let n_outputs = outputs.len();

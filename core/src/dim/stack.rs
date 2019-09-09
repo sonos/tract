@@ -1,8 +1,8 @@
 use super::tree::ExpNode;
+use crate::model::TVec;
 use crate::TractResult;
 use std::collections::HashMap;
 use std::{fmt, ops};
-use crate::model::TVec;
 
 #[derive(Clone)]
 pub struct Stack(TVec<StackOp>);
@@ -174,8 +174,7 @@ impl ops::Neg for Stack {
     }
 }
 
-impl<'a> ops::AddAssign<&'a Stack> for Stack
-{
+impl<'a> ops::AddAssign<&'a Stack> for Stack {
     fn add_assign(&mut self, rhs: &'a Stack) {
         if let (Some(lhs), Some(rhs)) = (self.mut_val(), rhs.val()) {
             *lhs += *rhs;
@@ -265,7 +264,6 @@ impl<'a> ops::DivAssign<&'a Stack> for Stack {
         *self = ExpNode::Div(Box::new(self.to_tree()), Box::new(rhs.to_tree())).reduce().to_stack()
     }
 }
-
 
 impl<I> ops::DivAssign<I> for Stack
 where

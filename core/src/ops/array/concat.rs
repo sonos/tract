@@ -55,7 +55,7 @@ impl Op for Concat {
                             c_input.cast_to_dt(super_type)?.into_owned(),
                         ));
                     }
-                    None => slices.push(NormConcatSlice::Var)
+                    None => slices.push(NormConcatSlice::Var),
                 }
             }
             let op = NormConcat::new(axis, slices);
@@ -69,7 +69,11 @@ impl Op for Concat {
                     if model.outlet_fact(node.inputs[ix])?.datum_type != super_type {
                         let mut fact = model.outlet_fact(node.inputs[ix])?.clone();
                         fact.datum_type = super_type;
-                        let cast = patch.chain(format!("{}-Cast-{}", node.name, ix), crate::ops::cast::Cast::new(super_type), tvec!(fact))?;
+                        let cast = patch.chain(
+                            format!("{}-Cast-{}", node.name, ix),
+                            crate::ops::cast::Cast::new(super_type),
+                            tvec!(fact),
+                        )?;
                         tap = OutletId::new(cast, 0);
                     }
                     patch.add_edge(tap, InletId::new(node_id, inlet_slot))?;
@@ -139,10 +143,7 @@ impl InferenceRulesOp for Concat {
 impl TypedOp for Concat {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
         let mut shape = inputs[0].shape.clone();
         let dim = inputs.iter().map(|f| f.shape.dim(axis)).sum::<TDim>();
@@ -159,7 +160,6 @@ pub enum NormConcatSlice {
 }
 
 impl NormConcatSlice {
-
     pub fn as_const(&self) -> Option<&Tensor> {
         match self {
             NormConcatSlice::Const(c) => Some(&c),
@@ -173,7 +173,6 @@ impl NormConcatSlice {
             NormConcatSlice::Var => true,
         }
     }
-
 }
 
 #[derive(new, Debug, Clone)]
@@ -206,11 +205,7 @@ impl Op for NormConcat {
         "NormConcat".into()
     }
 
-    fn axes_info(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         if self.slices.iter().any(|s| s.as_const().is_some()) {
             Ok(AxesInfo::none())
         } else {
@@ -254,13 +249,15 @@ impl Op for NormConcat {
 impl TypedOp for NormConcat {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let mut fact = inputs[0].clone();
         let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
-            + self.slices.iter().filter_map(|s| s.as_const()).map(|s| s.shape()[self.axis]).sum::<usize>();
+            + self
+                .slices
+                .iter()
+                .filter_map(|s| s.as_const())
+                .map(|s| s.shape()[self.axis])
+                .sum::<usize>();
         fact.shape.set_dim(self.axis, dim)?;
         Ok(tvec!(fact))
     }
@@ -281,12 +278,13 @@ impl TypedOp for NormConcat {
         let fact = target.outlet_fact(input)?;
 
         if fact.axis == self.axis {
-            dispatch_datum!(Self::pulsify_along_concat_axis_t(fact.dt)(self, source, node, target, mapping))
+            dispatch_datum!(Self::pulsify_along_concat_axis_t(fact.dt)(
+                self, source, node, target, mapping
+            ))
         } else {
             bail!("Pulsify for Concat on a separate axis is not implemented (but possible)");
         }
     }
-
 }
 
 impl StatelessOp for NormConcat {
@@ -303,7 +301,7 @@ impl StatelessOp for NormConcat {
 }
 
 impl NormConcat {
-    fn pulsify_along_concat_axis_t<T:Datum>(
+    fn pulsify_along_concat_axis_t<T: Datum>(
         &self,
         _source: &NormalizedModel,
         node: &NormalizedNode,
@@ -317,13 +315,19 @@ impl NormConcat {
         let mut fact = target.outlet_fact(input)?.clone();
         assert_eq!(fact.axis, self.axis);
         let var_index = self.slices.iter().position(|s| s.is_var()).unwrap();
-        let pre_owned  =
-            self.slices[0..var_index].iter().map(|s| s.as_const().unwrap().cast_to::<T>()).collect::<TractResult<TVec<_>>>()?;
-        let pre_views = pre_owned.iter().map(|t| t.to_array_view::<T>()).collect::<TractResult<TVec<_>>>()?;
+        let pre_owned = self.slices[0..var_index]
+            .iter()
+            .map(|s| s.as_const().unwrap().cast_to::<T>())
+            .collect::<TractResult<TVec<_>>>()?;
+        let pre_views =
+            pre_owned.iter().map(|t| t.to_array_view::<T>()).collect::<TractResult<TVec<_>>>()?;
         let pre = T::stack_views(self.axis, &*pre_views)?;
-        let post_owned =
-            self.slices[var_index + 1..].iter().map(|s| s.as_const().unwrap().cast_to::<T>()).collect::<TractResult<TVec<_>>>()?;
-        let post_views = post_owned.iter().map(|t| t.to_array_view::<T>()).collect::<TractResult<TVec<_>>>()?;
+        let post_owned = self.slices[var_index + 1..]
+            .iter()
+            .map(|s| s.as_const().unwrap().cast_to::<T>())
+            .collect::<TractResult<TVec<_>>>()?;
+        let post_views =
+            post_owned.iter().map(|t| t.to_array_view::<T>()).collect::<TractResult<TVec<_>>>()?;
         let post = T::stack_views(self.axis, &*post_views)?;
 
         let mut prec = input;
@@ -453,14 +457,10 @@ impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
 impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
 }
-
 
 #[derive(Clone, Debug, Default)]
 pub struct PulsedSameAxisConcatState<T: Datum> {
@@ -507,7 +507,6 @@ impl<T: Datum> OpState for PulsedSameAxisConcatState<T> {
     }
 }
 
-
 ////////////////////////////////////////////////
 
 #[derive(Debug, Clone)]
@@ -520,7 +519,7 @@ impl<T> FixedConcatSlice<T> {
     pub fn as_const(&self) -> Option<ArrayViewD<T>> {
         match self {
             FixedConcatSlice::Const(a) => Some(a.view()),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -584,16 +583,18 @@ impl<T: Datum> StatelessOp for FixedConcat<T> {
     }
 }
 
-impl<T:Datum> TypedOp for FixedConcat<T> {
+impl<T: Datum> TypedOp for FixedConcat<T> {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let mut fact = inputs[0].clone();
         let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
-            + self.slices.iter().filter_map(|s| s.as_const()).map(|s| s.shape()[self.axis]).sum::<usize>();
+            + self
+                .slices
+                .iter()
+                .filter_map(|s| s.as_const())
+                .map(|s| s.shape()[self.axis])
+                .sum::<usize>();
         fact.shape.set_dim(self.axis, dim)?;
         Ok(tvec!(fact))
     }

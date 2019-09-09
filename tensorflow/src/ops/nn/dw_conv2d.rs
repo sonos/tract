@@ -136,10 +136,7 @@ impl InferenceRulesOp for DepthwiseConv2d {
 impl TypedOp for DepthwiseConv2d {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let img = self.data_format.shape(inputs[0].shape.to_tvec());
         let ker = &inputs[1].shape;
         if ker.iter().all(|d| d.to_integer().is_ok()) {

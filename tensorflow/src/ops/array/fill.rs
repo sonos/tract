@@ -1,6 +1,6 @@
-use tract_core::internal::*;
-use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
+use tract_core::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Fill {
@@ -13,10 +13,7 @@ pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferenc
 }
 
 impl Fill {
-    fn eval_t<T: Datum>(
-        &self,
-        mut inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_t<T: Datum>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (shape, value) = args_2!(inputs);
         let value = value.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
@@ -75,9 +72,13 @@ impl InferenceRulesOp for Fill {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         if let (Some(shape), Some(value)) = (
-            target.outlet_fact(mapping[&node.inputs[0]])?.konst.as_ref(), 
-            target.outlet_fact(mapping[&node.inputs[1]])?.konst.as_ref()) {
-            let mut value = dispatch_datum!(Self::eval_t(value.datum_type())(self, tvec!(shape.clone(), value.clone())))?;
+            target.outlet_fact(mapping[&node.inputs[0]])?.konst.as_ref(),
+            target.outlet_fact(mapping[&node.inputs[1]])?.konst.as_ref(),
+        ) {
+            let mut value = dispatch_datum!(Self::eval_t(value.datum_type())(
+                self,
+                tvec!(shape.clone(), value.clone())
+            ))?;
             let id = target.add_const(&*node.name, value.remove(0))?;
             Ok(tvec!(OutletId::new(id, 0)))
         } else {

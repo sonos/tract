@@ -83,10 +83,7 @@ impl InferenceRulesOp for Shape {
 impl TypedOp for Shape {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let shape = inputs[0].shape.iter().collect::<TVec<_>>();
         let mut tensor = tensor1(&*shape);
         if shape.iter().all(|d| d.to_integer().is_ok()) {

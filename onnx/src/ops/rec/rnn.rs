@@ -235,11 +235,12 @@ impl InferenceRulesOp for RNN {
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
-        let h_source = body.add_source("h_source",
-            TypedTensorInfo::dt_shape(
-                x_fact.datum_type,
-                [1, b_size, h_size].as_ref()
-            )?)?.into();
+        let h_source = body
+            .add_source(
+                "h_source",
+                TypedTensorInfo::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
+            )?
+            .into();
 
         wire!(Ht_1 = array::RmDims::new(vec!(0)), h_source);
 
@@ -269,17 +270,21 @@ impl InferenceRulesOp for RNN {
 
         let output_mapping = scan::OutputMapping {
             state: true,
-                axis: 0,
-                chunk: 1.to_dim(),
-                full_dim_hint: None,
-                last_value_slot: self.optional_y_h_output,
-                full_slot: self.optional_y_output,
-            };
-
+            axis: 0,
+            chunk: 1.to_dim(),
+            full_dim_hint: None,
+            last_value_slot: self.optional_y_h_output,
+            full_slot: self.optional_y_output,
+        };
 
         let scan_outputs = target.wire_node(
             &*node.name,
-            scan::Typed::new(body, input_mapping, vec!(output_mapping), self.optional_sequence_lens_input)?,
+            scan::Typed::new(
+                body,
+                input_mapping,
+                vec![output_mapping],
+                self.optional_sequence_lens_input,
+            )?,
             &outer_inputs,
         )?;
 
@@ -366,4 +371,3 @@ impl StatelessOp for RNN {
         Ok(outputs)
     }
 }
-

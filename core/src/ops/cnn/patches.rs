@@ -165,8 +165,8 @@ impl PatchSpec {
         for ix in 0..self.input_shape.len() {
             let min_max = data_field_min_max[ix];
             let min = (-min_max.0 as usize).div_ceil(self.strides[ix]) as usize;
-            let max =
-                (self.input_shape[ix].saturating_sub(min_max.1 as usize)).div_ceil(self.strides[ix]) as usize;
+            let max = (self.input_shape[ix].saturating_sub(min_max.1 as usize))
+                .div_ceil(self.strides[ix]) as usize;
             if min != 0 {
                 let mut invalid = valid_output_zone.clone();
                 invalid.push(0..min);

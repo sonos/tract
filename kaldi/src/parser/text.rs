@@ -6,7 +6,7 @@ use nom::{
     number::complete::float, sequence::*,
 };
 
-use super::{integer, multispaced, spaced, open_any};
+use super::{integer, multispaced, open_any, spaced};
 
 pub fn attributes(i: &[u8]) -> IResult<&[u8], HashMap<String, Arc<Tensor>>> {
     let (i, attributes) = nom::multi::many0(map(pair(open_any, tensor), |(k, v)| {
@@ -51,8 +51,8 @@ pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
 #[cfg(test)]
 #[allow(non_snake_case)]
 mod tests {
-    use super::*;
     use super::super::nnet3;
+    use super::*;
 
     #[test]
     fn test_nnet3_1() {
@@ -75,10 +75,7 @@ output-node name=output input=fixed1
     #[test]
     fn test_vector() {
         let slice = r#"[ 7.0 8.0 ]"#;
-        assert_eq!(
-            tensor(slice.as_bytes()).unwrap().1,
-            tensor1(&[7.0f32, 8.0])
-        );
+        assert_eq!(tensor(slice.as_bytes()).unwrap().1, tensor1(&[7.0f32, 8.0]));
     }
 
     #[test]

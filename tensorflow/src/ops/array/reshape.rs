@@ -1,6 +1,6 @@
-use tract_core::internal::*;
-use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
+use tract_core::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Reshape<T: Datum>(PhantomData<T>);
@@ -67,7 +67,8 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
             let output_shape = if dims.as_slice::<i32>()?.iter().all(|&x| x >= 0) {
                 dims.as_slice::<i32>()?.iter().map(|d| *d as usize).collect()
             } else if input_shape.shape.stream_info.is_none() {
-                let input_len = input_shape.shape.iter().fold(1, |a,b| a*b.to_integer().unwrap());
+                let input_len =
+                    input_shape.shape.iter().fold(1, |a, b| a * b.to_integer().unwrap());
                 let dims = dims.cast_to::<i32>()?;
                 true_dims(dims.as_slice::<i32>()?, input_len as usize)
             } else {

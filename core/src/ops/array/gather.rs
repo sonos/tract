@@ -25,7 +25,11 @@ impl Gather {
         }
     }
 
-    fn compute_output_shape<D:DimLike>(&self, input_shape: &[D], indices_shape: &[D]) -> TractResult<TVec<D>> {
+    fn compute_output_shape<D: DimLike>(
+        &self,
+        input_shape: &[D],
+        indices_shape: &[D],
+    ) -> TractResult<TVec<D>> {
         let axis = self.resolved_axis(input_shape.len())?;
         let mut output_shape = tvec![];
         for (idx, dim) in input_shape.iter().enumerate() {
@@ -58,8 +62,9 @@ impl Gather {
                 .into_arc_tensor());
         }
 
-
-        let mut output: Array<T, _> = unsafe { T::uninitialized_array(&*self.compute_output_shape(data.shape(), indices.shape())?) };
+        let mut output: Array<T, _> = unsafe {
+            T::uninitialized_array(&*self.compute_output_shape(data.shape(), indices.shape())?)
+        };
         for (pattern, index) in indices.to_array_view::<i64>()?.indexed_iter() {
             {
                 let mut to_update = output.index_axis_mut(Axis(axis), pattern[0]);
@@ -77,17 +82,14 @@ impl Gather {
 impl TypedOp for Gather {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
-            &*self.compute_output_shape(&*inputs[0].shape.to_tvec(), &*inputs[1].shape.to_tvec())?
+            &*self
+                .compute_output_shape(&*inputs[0].shape.to_tvec(), &*inputs[1].shape.to_tvec())?
         )?))
     }
 }
-
 
 impl StatelessOp for Gather {
     /// Evaluates the operation given the input tensors.

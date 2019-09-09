@@ -389,14 +389,8 @@ pub mod test {
                 #[test]
                 fn mat_mul_1_2_1() {
                     if $cond {
-                        test_mat_mat_mul_prep_f32::<$ker>(
-                            1,
-                            2,
-                            1,
-                            &[0.0, 1.0],
-                            &[0.0, 1.0],
-                        )
-                        .unwrap()
+                        test_mat_mat_mul_prep_f32::<$ker>(1, 2, 1, &[0.0, 1.0], &[0.0, 1.0])
+                            .unwrap()
                     }
                 }
 

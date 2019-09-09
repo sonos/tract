@@ -53,7 +53,7 @@ impl Op for Downsample {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("axis:{} stride:{} modulo:{}", self.axis, self.stride, self.modulo)))
+        Ok(vec![format!("axis:{} stride:{} modulo:{}", self.axis, self.stride, self.modulo)])
     }
 
     fn declutter(
@@ -155,18 +155,10 @@ fn pull_downsample_up(
                 let source = patch.tap_model(model, oo)?;
                 let mut op = down_op.clone();
                 op.axis = above_axis;
-                let ds = patch.wire_node(
-                    format!("{}-{}", prec.name, ix),
-                    op,
-                    [source].as_ref(),
-                )?;
+                let ds = patch.wire_node(format!("{}-{}", prec.name, ix), op, [source].as_ref())?;
                 inputs.push(ds[0]);
             }
-            let other = patch.wire_node(
-                &*prec.name,
-                prec.op.clone(),
-                &*inputs
-            )?;
+            let other = patch.wire_node(&*prec.name, prec.op.clone(), &*inputs)?;
             patch.shunt_outside(OutletId::new(down_node.id, 0), other[0])?;
             return Ok(Some(patch));
         } else if let Some(crop_op) = prec.op_as::<ops::array::Slice<TDim>>() {

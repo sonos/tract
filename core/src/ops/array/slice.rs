@@ -32,11 +32,7 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
         Ok(vec![format!("axis: {}, {}..{}", self.axis, self.start, self.end)])
     }
 
-    fn axes_info(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let axes = (0..fact.shape.rank())
             .filter(|&ax| self.axis != ax)
@@ -51,8 +47,11 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let prec = model.node(node.inputs[0].node);
-        if self.start == D::zero() && (self.end.clone().to_dim() == model.outlet_fact(node.inputs[0])?.shape.dim(self.axis)) {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        if self.start == D::zero()
+            && (self.end.clone().to_dim()
+                == model.outlet_fact(node.inputs[0])?.shape.dim(self.axis))
+        {
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
         }
         let (start, end) = if let (Ok(s), Ok(e)) = (self.start.to_integer(), self.end.to_integer())
         {
@@ -76,11 +75,7 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
                         patch.tap_model(model, input)?;
                         let s = patch.chain(
                             &*node.name,
-                            Slice {
-                                axis: self.axis,
-                                start: start - offset,
-                                end: end - offset,
-                            },
+                            Slice { axis: self.axis, start: start - offset, end: end - offset },
                             tvec!(node.outputs[0].fact.clone()),
                         )?;
                         patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(s, 0))?;

@@ -8,7 +8,6 @@ use std::path;
 use std::rc::Rc;
 use std::str::FromStr;
 
-
 use ndarray::*;
 
 use tract_core::internal::*;

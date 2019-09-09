@@ -35,7 +35,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
     let mut output_shape: TVec<DimFact> = tvec![];
 
     for i in 0..bound {
-        let mut previous:Option<TDim> = None;
+        let mut previous: Option<TDim> = None;
         let mut unknown = 0;
 
         for shape in shapes.iter() {

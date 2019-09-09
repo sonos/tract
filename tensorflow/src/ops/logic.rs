@@ -23,7 +23,7 @@ fn switch(ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp
 
 #[derive(Debug, Clone, new)]
 pub struct Switch {
-    output_arity: usize
+    output_arity: usize,
 }
 
 impl Op for Switch {

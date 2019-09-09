@@ -65,7 +65,6 @@ impl IncorporatePass for IncorporateOps {
     }
 }
 
-
 #[derive(Debug)]
 pub struct NormalizeOps;
 

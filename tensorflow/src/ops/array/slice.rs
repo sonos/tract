@@ -4,13 +4,24 @@ use tract_core::internal::*;
 pub struct Slice;
 
 impl Slice {
-    pub fn eval_t<T:Datum>(&self, input: Arc<Tensor>, begin: &[i32], size: &[i32]) -> TractResult<Arc<Tensor>> {
+    pub fn eval_t<T: Datum>(
+        &self,
+        input: Arc<Tensor>,
+        begin: &[i32],
+        size: &[i32],
+    ) -> TractResult<Arc<Tensor>> {
         let mut input = input.into_tensor().into_array::<T>()?;
         for i in 0..begin.len() {
             let b = begin[i];
             let e = begin[i] + size[i];
             if e > input.shape()[i] as i32 {
-                bail!("on axis {} of length {}, invalid slice required: begin={} size={}", i, input.shape()[i],begin[i], size[i]);
+                bail!(
+                    "on axis {} of length {}, invalid slice required: begin={} size={}",
+                    i,
+                    input.shape()[i],
+                    begin[i],
+                    size[i]
+                );
             }
             input.slice_axis_inplace(ndarray::Axis(i), (b..e).into());
         }
@@ -56,9 +67,10 @@ impl InferenceRulesOp for Slice {
         s.given(&inputs[2].value, move |s, sizes| {
             let sizes = sizes.cast_to::<i32>()?;
             let sizes = sizes.as_slice::<i32>()?;
-            sizes.iter().enumerate().try_for_each(|(axis, dim)|
-                s.equals(&outputs[0].shape[axis], dim.to_dim())
-            )
+            sizes
+                .iter()
+                .enumerate()
+                .try_for_each(|(axis, dim)| s.equals(&outputs[0].shape[axis], dim.to_dim()))
         })?;
         Ok(())
     }

@@ -7,8 +7,8 @@ use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
-mod dropout;
 mod batch_norm;
+mod dropout;
 
 macro_rules! reduce {
     ($id:ident) => {
@@ -57,7 +57,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ReduceProd", reduce!(Prod));
     reg.insert("ReduceSum", reduce!(Sum));
     reg.insert("ReduceSumSquare", reduce!(SumSquare));
-    reg.insert("Relu", |_, _| Ok((Box::new(tractops::math::ScalarMax::new(0.0)),vec!())));
+    reg.insert("Relu", |_, _| Ok((Box::new(tractops::math::ScalarMax::new(0.0)), vec![])));
     reg.insert("ScaledTanh", scaled_tanh);
     reg.insert("Shrink", shrink);
     reg.insert("ThresholdedRelu", thresholded_relu);

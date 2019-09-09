@@ -86,11 +86,15 @@ impl Conv {
         Ok(None)
     }
 
-    pub fn add_bias_t<T: FloatLike + std::ops::AddAssign>(&self, conv_result: &mut Tensor, bias: &Tensor) -> TractResult<()> {
+    pub fn add_bias_t<T: FloatLike + std::ops::AddAssign>(
+        &self,
+        conv_result: &mut Tensor,
+        bias: &Tensor,
+    ) -> TractResult<()> {
         let mut conv = conv_result.to_array_view_mut::<T>()?;
         let shape = self.data_format.shape(conv.shape());
         let bias = bias.to_array_view::<T>()?;
-        let mut reshaped = vec!(1; conv.ndim());
+        let mut reshaped = vec![1; conv.ndim()];
         reshaped[shape.c_axis()] = bias.len();
         conv += &bias.into_shape(reshaped)?;
         Ok(())
@@ -117,12 +121,13 @@ impl Op for Conv {
         if let Some(op) = self.to_unary(&*inputs)? {
             let mut patch = TypedModelPatch::default();
             patch.tap_model(model, node.inputs[0])?;
-            let mut output:OutletId = patch.chain(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?.into();
+            let mut output: OutletId =
+                patch.chain(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?.into();
             if let Some(bias) = node.inputs.get(2) {
                 let mut tap = patch.tap_model(model, *bias)?;
                 if self.data_format == DataFormat::NCHW {
                     let data_rank = node.outputs[0].fact.shape.rank();
-                    let add_dims = crate::ops::array::AddDims::new((1..data_rank-1).collect());
+                    let add_dims = crate::ops::array::AddDims::new((1..data_rank - 1).collect());
                     tap = patch.wire_node(
                         format!("{}-reshaped-bias", node.name),
                         add_dims,
@@ -132,7 +137,7 @@ impl Op for Conv {
                 output = patch.wire_node(
                     format!("{}-add-bias", node.name),
                     crate::ops::math::add::bin(),
-                    [output, tap].as_ref()
+                    [output, tap].as_ref(),
                 )?[0];
             }
             patch.shunt_outside(OutletId::new(node.id, 0), output)?;
@@ -233,7 +238,6 @@ impl TypedOp for Conv {
         }
     }
 }
-
 
 #[cfg(test)]
 mod test {

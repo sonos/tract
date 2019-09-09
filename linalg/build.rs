@@ -36,7 +36,13 @@ fn main() {
             for f in files {
                 let mut obj = f.clone();
                 obj.set_extension("o");
-                assert!(std::process::Command::new("cc").args(&["-c", "-o"]).arg(&obj).arg(&f).status().unwrap().success());
+                assert!(std::process::Command::new("cc")
+                    .args(&["-c", "-o"])
+                    .arg(&obj)
+                    .arg(&f)
+                    .status()
+                    .unwrap()
+                    .success());
                 lib.arg(obj);
             }
             assert!(lib.status().unwrap().success());
@@ -96,7 +102,13 @@ fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>
     }
     globals.insert(
         "L".into(),
-        liquid::value::Value::scalar(if os == "macos" { "L" } else if family == "windows" { "" } else { "." }),
+        liquid::value::Value::scalar(if os == "macos" {
+            "L"
+        } else if family == "windows" {
+            ""
+        } else {
+            "."
+        }),
     );
     liquid::ParserBuilder::with_liquid()
         .build()

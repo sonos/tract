@@ -129,8 +129,8 @@ pub mod internal {
     pub use crate::framework::*;
     pub use crate::model::*;
     pub use crate::ops::{
-        check_input_arity, check_output_arity, Cost, InferenceOp, Op, OpState, StatefullOp,
-        AxesInfo, StatelessOp, AxisInfo, Validation
+        check_input_arity, check_output_arity, AxesInfo, AxisInfo, Cost, InferenceOp, Op, OpState,
+        StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
@@ -148,4 +148,3 @@ fn setup_test_logger() {
     let _ =
         env_logger::Builder::from_default_env().filter_level(log::LevelFilter::Trace).try_init();
 }
-

@@ -384,11 +384,7 @@ impl Op for ConvUnary {
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
                 let op = MatMulUnary::new(kernel.into_arc_tensor(), true, true, true);
-                return Ok(Some(TypedModelPatch::single_unary_op(
-                    model,
-                    node,
-                    op
-                )?));
+                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
             }
         } else if let Some(axis) = (0..self.strides.len()).find(|&ax| {
             self.padding.valid_dim(ax)
@@ -458,11 +454,7 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
-    fn axes_info(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
         let mut axes = vec![AxisInfo::simple(0).disposable(false)];
@@ -494,7 +486,12 @@ impl TypedOp for ConvUnary {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
     }
 
-    fn dispose_dummy_axis(&self, _model: &TypedModel, _node: &TypedNode, axis: usize) -> TractResult<Option<Box<dyn TypedOp>>> {
+    fn dispose_dummy_axis(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+        axis: usize,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
         let shape = self.data_format.shape(&self.full_input_shape);
         if axis < shape.h_axis() {
             bail!("Only spatial axis can be disposed of.");
@@ -533,7 +530,6 @@ impl TypedOp for ConvUnary {
         };
         Ok(Some(Box::new(new_op)))
     }
-
 
     fn pulsify(
         &self,

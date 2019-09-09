@@ -24,7 +24,7 @@ pub struct DisplayOptions {
     pub op_name: Option<String>,
     pub node_name: Option<String>,
     pub expect_canonic: bool,
-//    pub successors: Option<TVec<usize>>,
+    //    pub successors: Option<TVec<usize>>,
 }
 
 impl DisplayOptions {
@@ -102,8 +102,16 @@ impl<'a> DisplayGraph<'a> {
             "{}{} {} {}",
             prefix,
             White.bold().paint(format!("{}", node_id)),
-            (if node_name == "UnimplementedOp" { Red.bold() } else { if self.options.expect_canonic && !model.node_op(node_id).is_canonic() {Yellow.bold()}  else { Blue.bold() } })
-                .paint(node_op_name),
+            (if node_name == "UnimplementedOp" {
+                Red.bold()
+            } else {
+                if self.options.expect_canonic && !model.node_op(node_id).is_canonic() {
+                    Yellow.bold()
+                } else {
+                    Blue.bold()
+                }
+            })
+            .paint(node_op_name),
             name_color.italic().paint(node_name)
         );
         for label in self.node_labels.get(&node_id).unwrap_or(&vec![]).iter() {
@@ -207,7 +215,11 @@ impl<'a> DisplayGraph<'a> {
                         .map(|(label, sub)| {
                             Ok((
                                 label.into_owned(),
-                                Self::from_model_prefix_and_options(sub, &*prefix, Arc::clone(&options))?,
+                                Self::from_model_prefix_and_options(
+                                    sub,
+                                    &*prefix,
+                                    Arc::clone(&options),
+                                )?,
                             ))
                         })
                         .collect::<CliResult<_>>()?,

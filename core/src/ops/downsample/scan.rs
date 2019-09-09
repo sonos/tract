@@ -61,16 +61,16 @@ pub fn pull_downsample_over_scan(
             }
             InputMapping::Scan { ref mut chunk, .. } => {
                 if chunk.to_integer()? as usize % down_op.stride != 0 {
-                    return Ok(None)
+                    return Ok(None);
                 }
                 *chunk = chunk.div_ceil(down_op.stride.to_dim())
-            },
+            }
             _ => (),
         }
     }
     for output in &mut new_scan.output_mapping {
         if output.chunk.to_integer()? as usize % down_op.stride != 0 {
-            return Ok(None)
+            return Ok(None);
         }
         output.full_dim_hint.as_mut().map(|d| *d = down_op.transform_dim(d));
         output.chunk = output.chunk.div_ceil(down_op.stride.to_dim());

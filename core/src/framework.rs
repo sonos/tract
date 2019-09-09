@@ -11,7 +11,7 @@ use std::path::Path;
 /// not have to be Protobuf based.
 pub trait Framework<ProtoModel>
 where
-      ProtoModel: Debug,
+    ProtoModel: Debug,
 {
     /// Parse a proto model from a reader.
     fn proto_model_for_read(&self, reader: &mut dyn Read) -> TractResult<ProtoModel>;

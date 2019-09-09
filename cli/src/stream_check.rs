@@ -4,7 +4,7 @@ use itertools::Itertools;
 use ndarray::ArrayD;
 use ndarray::Axis;
 
-use tract_core::model::{ OutletId, TensorInfo };
+use tract_core::model::{OutletId, TensorInfo};
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::pulse::PulsedModel;
 
@@ -20,9 +20,11 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
     let pulsed_input_fact = pulsed.input_fact(0)?;
     let input_pulse = pulsed_input_fact.pulse();
 
-    let display_graph =
-        display_graph::DisplayGraph::from_model_and_options(&*params.tract_model, Arc::new(options))?
-            .with_graph_def(&params.graph)?;
+    let display_graph = display_graph::DisplayGraph::from_model_and_options(
+        &*params.tract_model,
+        Arc::new(options),
+    )?
+    .with_graph_def(&params.graph)?;
 
     let eval_order = ::tract_core::model::eval_order(&fixed)?;
 

@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 
-use crate::model::{ ParsingContext, TfOpRegister };
+use crate::model::{ParsingContext, TfOpRegister};
 use crate::tfpb::node_def::NodeDef;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
@@ -60,7 +60,11 @@ impl Op for VariableV2 {
 }
 
 impl StatefullOp for VariableV2 {
-    fn state(&self, state: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(
+        &self,
+        state: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
             ::ndarray::ArrayD::<T>::default(shape).into()
         }
@@ -95,7 +99,6 @@ impl TypedOp for VariableV2 {
     fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(self.dt, &*self.shape)?))
     }
-
 }
 
 // need some dummy state to make sure Assign is a StatefullOp, and will not be
@@ -150,7 +153,11 @@ impl OpState for AssignState {
 }
 
 impl StatefullOp for Assign {
-    fn state(&self, _state: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(
+        &self,
+        _state: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(AssignState)))
     }
 }
@@ -182,7 +189,6 @@ impl TypedOp for Assign {
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
-
 }
 
 #[cfg(test)]

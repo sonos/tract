@@ -1,11 +1,11 @@
 extern crate ndarray;
 extern crate tract_core;
 extern crate tract_tensorflow;
+use std::convert::TryFrom;
 use tract_core::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensor::TensorProto;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
-use std::convert::TryFrom;
 
 fn main() {
     let plus3 =

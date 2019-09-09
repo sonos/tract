@@ -109,7 +109,10 @@ mod tests {
         let typed = typed.declutter()?;
         trace!("{:#?}", typed);
         let order = typed.eval_order()?;
-        prop_assert!(typed.node(order[1]).op_is::<Downsample>() || !typed.nodes().iter().any(|n| n.op_is::<Downsample>()));
+        prop_assert!(
+            typed.node(order[1]).op_is::<Downsample>()
+                || !typed.nodes().iter().any(|n| n.op_is::<Downsample>())
+        );
         let found = SimplePlan::new(&typed)?.run(tvec!(input))?;
         prop_assert_eq!(found, expected);
         Ok(())

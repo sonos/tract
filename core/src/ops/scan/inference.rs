@@ -66,7 +66,12 @@ impl Inference {
                 })
             })
             .collect::<TractResult<_>>()?;
-        Ok(Box::new(Typed::new(typed_model, input_mapping, output_mapping, self.seq_length_input_slot)?))
+        Ok(Box::new(Typed::new(
+            typed_model,
+            input_mapping,
+            output_mapping,
+            self.seq_length_input_slot,
+        )?))
     }
     fn unify_scanning_tensor_fact(
         outer: &mut TensorFact,
@@ -115,9 +120,7 @@ impl Inference {
                 .output_mapping
                 .iter()
                 .enumerate()
-                .filter(
-                    |(_ix, map)| map.state
-                )
+                .filter(|(_ix, map)| map.state)
                 .nth(state_ix)
                 .unwrap()
                 .0;

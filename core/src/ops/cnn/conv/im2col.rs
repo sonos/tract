@@ -106,10 +106,7 @@ impl<T: Copy + Datum + Mul + Zero> StatelessOp for Im2Col<T> {
 impl<T: Copy + Datum + Mul + Zero> TypedOp for Im2Col<T> {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        _inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
     }
 }

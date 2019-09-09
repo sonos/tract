@@ -1,8 +1,8 @@
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 use num_traits::Zero;
 
-use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 
 use tract_core::internal::*;
 

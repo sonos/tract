@@ -67,6 +67,4 @@ impl<T: Copy + Add + Mul + Zero + Debug + PartialEq> PackA<T> {
             assert_eq!(*pa, *a);
         }
     }
-
 }
-

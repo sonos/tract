@@ -124,7 +124,11 @@ impl InferenceRulesOp for Pack {
                 )?[0])
             })
             .collect::<TractResult<TVec<OutletId>>>()?;
-        target.wire_node(&*node.name, tract_core::ops::array::Concat::new(self.axis as i64), &*inputs)
+        target.wire_node(
+            &*node.name,
+            tract_core::ops::array::Concat::new(self.axis as i64),
+            &*inputs,
+        )
     }
 }
 

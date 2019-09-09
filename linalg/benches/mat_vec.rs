@@ -12,20 +12,24 @@ fn mat_vec_mul(c: &mut Criterion) {
     let mut group = c.benchmark_group("mat_vec_mul");
     for (m, k) in [(64usize, 64usize)].iter() {
         group.throughput(Throughput::Elements((m * k) as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(format!("{}x{}", m, k)), &(m, k), |be, (&m, &k)| {
-            let mm = (tract_linalg::ops().smmm)(m, k, 1);
-            let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
-            let b = vec![0.0; k];
-            let mut c = vec![0.0; m];
-            be.iter(move || unsafe {
-                mm.run(
-                    &mm.a_from_packed(pa),
-                    &mm.b_vec_from_data(b.as_ptr()),
-                    &mut mm.c_vec_from_data(c.as_mut_ptr()),
-                    &[],
-                )
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("{}x{}", m, k)),
+            &(m, k),
+            |be, (&m, &k)| {
+                let mm = (tract_linalg::ops().smmm)(m, k, 1);
+                let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
+                let b = vec![0.0; k];
+                let mut c = vec![0.0; m];
+                be.iter(move || unsafe {
+                    mm.run(
+                        &mm.a_from_packed(pa),
+                        &mm.b_vec_from_data(b.as_ptr()),
+                        &mut mm.c_vec_from_data(c.as_mut_ptr()),
+                        &[],
+                    )
+                });
+            },
+        );
     }
     group.finish();
 }

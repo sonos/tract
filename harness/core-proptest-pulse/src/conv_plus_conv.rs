@@ -31,12 +31,13 @@ impl Arbitrary for ConvOp {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> BoxedStrategy<Self> {
-        (1usize..3, 1usize..3, vec(1usize..3)).prop_map(|(stride, dilation, ker)| ConvOp {
-            stride,
-            dilation,
-            ker: Array3::from_shape_vec((1, 1, ker.len()), ker).unwrap(),
-        })
-        .boxed()
+        (1usize..3, 1usize..3, vec(1usize..3))
+            .prop_map(|(stride, dilation, ker)| ConvOp {
+                stride,
+                dilation,
+                ker: Array3::from_shape_vec((1, 1, ker.len()), ker).unwrap(),
+            })
+            .boxed()
     }
 }
 
@@ -84,4 +85,3 @@ proptest! {
     #[test]
     fn proptest(pb in ConvPlusConvProblem::arbitrary()) { pb.run().unwrap() }
 }
-

@@ -71,7 +71,7 @@ impl InferenceRulesOp for Tile {
             let facts = op.output_facts(&[target.outlet_fact(input)?])?;
             let id = target.add_node(&*node.name, op, facts)?;
             target.add_edge(mapping[&node.inputs[0]], InletId::new(id, 0))?;
-            return Ok(tvec!(OutletId::new(id, 0)))
+            return Ok(tvec!(OutletId::new(id, 0)));
         }
         bail!("shape input is variable")
     }
@@ -85,13 +85,14 @@ pub struct TypedTile {
 }
 
 impl TypedTile {
-    fn eval_t<T: Datum>(
-        &self,
-        data: &Arc<Tensor>,
-    ) -> TractResult<Arc<Tensor>> {
+    fn eval_t<T: Datum>(&self, data: &Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         let data = data.to_array_view::<T>()?;
-        let output_shape: TVec<usize> =
-            data.shape().iter().zip(self.multipliers.iter()).map(|(&d, &m)| d * m as usize).collect();
+        let output_shape: TVec<usize> = data
+            .shape()
+            .iter()
+            .zip(self.multipliers.iter())
+            .map(|(&d, &m)| d * m as usize)
+            .collect();
         let output = ndarray::ArrayD::from_shape_fn(&*output_shape, |coords| {
             let coords: TVec<usize> =
                 coords.slice().iter().zip(data.shape().iter()).map(|(&x, &d)| x % d).collect();
@@ -118,14 +119,15 @@ impl StatelessOp for TypedTile {
 }
 
 impl TypedOp for TypedTile {
-
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
-        let shape = inputs[0].shape.iter().zip(self.multipliers.iter()).map(|(a,&b)| a.clone()*b).collect::<TVec<_>>();
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let shape = inputs[0]
+            .shape
+            .iter()
+            .zip(self.multipliers.iter())
+            .map(|(a, &b)| a.clone() * b)
+            .collect::<TVec<_>>();
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
     }
 }

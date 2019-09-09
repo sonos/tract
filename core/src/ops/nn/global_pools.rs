@@ -134,7 +134,6 @@ impl TypedOp for GlobalLpPool {
     }
 }
 
-
 #[derive(Debug, Clone, new, Default)]
 pub struct GlobalMaxPool {
     //    data_is_nhwc: bool, // default is nchw (onnx)
@@ -216,7 +215,6 @@ fn rules<'r, 'p: 'r, 's: 'r>(
         Ok(())
     })
 }
-
 
 fn output_facts(inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
     let mut output = inputs[0].clone();

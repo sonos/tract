@@ -10,7 +10,7 @@ use crate::pb;
 pub struct ParsingContext<'a> {
     pub framework: &'a Onnx,
     pub model: &'a pb::ModelProto,
-    pub parent_graphs: Vec<&'a pb::GraphProto>
+    pub parent_graphs: Vec<&'a pb::GraphProto>,
 }
 
 #[derive(Clone, Debug)]
@@ -21,20 +21,19 @@ pub struct ParseResult {
 }
 
 impl<'a> ParsingContext<'a> {
-
     pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<ParseResult> {
         let mut ctx = self.clone();
         ctx.parent_graphs.push(graph);
         let mut model = InferenceModel::default();
-        let mut unresolved_inputs = vec!();
-        let mut closures_to_wire = vec!();
+        let mut unresolved_inputs = vec![];
+        let mut closures_to_wire = vec![];
         let mut initializers: HashMap<&str, Tensor> = graph
             .get_initializer()
             .iter()
             .map(|init| Ok((init.get_name(), init.try_into()?)))
             .collect::<TractResult<_>>()?;
         for (k, v) in initializers.iter() {
-            trace!("Initializer: {} {:?}", k ,v);
+            trace!("Initializer: {} {:?}", k, v);
         }
         let mut outlets_by_name = HashMap::<String, OutletId>::new();
         for input in graph.get_input().iter() {
@@ -63,12 +62,23 @@ impl<'a> ParsingContext<'a> {
                 format!("{}-{}", model.nodes().len(), pbnode.get_op_type())
             };
             trace!("Creating node {}", name);
-            let facts = pbnode.get_output().iter().filter(|s| !s.is_empty()).map(|_| TensorFact::default()).collect();
+            let facts = pbnode
+                .get_output()
+                .iter()
+                .filter(|s| !s.is_empty())
+                .map(|_| TensorFact::default())
+                .collect();
             trace!("  outputs {:?}", pbnode.get_output());
             let (op, closures) = match self.framework.op_register.0.get(pbnode.get_op_type()) {
                 Some(builder) => (builder)(&ctx, pbnode)?,
-                None => (tract_core::ops::unimpl::UnimplementedOp::new(pbnode.get_op_type(),
-                            format!("{:?}", pbnode)).into(), vec!()),
+                None => (
+                    tract_core::ops::unimpl::UnimplementedOp::new(
+                        pbnode.get_op_type(),
+                        format!("{:?}", pbnode),
+                    )
+                    .into(),
+                    vec![],
+                ),
             };
             let id = model.add_node(name, op, facts)?;
             for (ix, output) in pbnode.get_output().iter().filter(|s| !s.is_empty()).enumerate() {
@@ -113,10 +123,25 @@ impl<'a> ParsingContext<'a> {
 }
 
 #[derive(Clone, Default)]
-pub struct OnnxOpRegister(pub HashMap<String, fn(&ParsingContext, node: &pb::NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)>>);
+pub struct OnnxOpRegister(
+    pub  HashMap<
+        String,
+        fn(
+            &ParsingContext,
+            node: &pb::NodeProto,
+        ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)>,
+    >,
+);
 
 impl OnnxOpRegister {
-    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &pb::NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)>) {
+    pub fn insert(
+        &mut self,
+        s: &'static str,
+        builder: fn(
+            &ParsingContext,
+            node: &pb::NodeProto,
+        ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)>,
+    ) {
         self.0.insert(s.into(), builder);
     }
 }
@@ -129,11 +154,10 @@ pub struct Onnx {
 impl Onnx {
     pub fn parse(&self, proto: &pb::ModelProto) -> TractResult<ParseResult> {
         let graph = proto.get_graph();
-        let ctx = ParsingContext { framework: self, model: proto, parent_graphs: vec!() };
+        let ctx = ParsingContext { framework: self, model: proto, parent_graphs: vec![] };
         ctx.parse_graph(&graph)
     }
 }
-
 
 impl Framework<pb::ModelProto> for Onnx {
     fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<pb::ModelProto> {

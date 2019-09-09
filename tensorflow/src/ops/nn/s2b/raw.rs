@@ -73,7 +73,14 @@ impl InferenceRulesOp for SpaceToBatch {
             let op = super::unary::SpaceToBatchUnary::new(
                 self.datum_type,
                 target.outlet_fact(mapping[&node.inputs[0]])?.shape.to_tvec(),
-                node.outputs[0].fact.shape.concretize().unwrap().iter().cloned().collect::<TVec<_>>(),
+                node.outputs[0]
+                    .fact
+                    .shape
+                    .concretize()
+                    .unwrap()
+                    .iter()
+                    .cloned()
+                    .collect::<TVec<_>>(),
                 block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
@@ -156,7 +163,14 @@ impl InferenceRulesOp for BatchToSpace {
             let op = super::unary::BatchToSpaceUnary::new(
                 self.datum_type,
                 target.outlet_fact(mapping[&node.inputs[0]])?.shape.to_tvec(),
-                node.outputs[0].fact.shape.concretize().unwrap().iter().cloned().collect::<TVec<_>>(),
+                node.outputs[0]
+                    .fact
+                    .shape
+                    .concretize()
+                    .unwrap()
+                    .iter()
+                    .cloned()
+                    .collect::<TVec<_>>(),
                 block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );

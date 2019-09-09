@@ -107,7 +107,8 @@ impl InferenceRulesOp for Slice {
                     wire = target.wire_node(
                         format!("{}-axis-{}", node.name, axis),
                         tract_core::ops::array::Slice::new(axis, b, e),
-                        [wire].as_ref())?[0];
+                        [wire].as_ref(),
+                    )?[0];
                 }
             } else {
                 bail!("Can't translate slice: axis={} dim={} b={} e={}", axis, dim, b, e)
@@ -117,4 +118,3 @@ impl InferenceRulesOp for Slice {
         Ok(tvec!(wire))
     }
 }
-

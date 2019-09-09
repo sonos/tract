@@ -36,9 +36,10 @@ impl InferenceRulesOp for MultiBroadcastTo {
         s.given(&inputs[0].shape, move |s, shape| {
             s.given(&inputs[1].value, move |s, dims| {
                 let dims = dims.cast_to::<TDim>()?;
-                let dims = crate::broadcast::multi_broadcast(&[&*dims.as_slice::<TDim>()?, &*shape])
-                    .ok_or("incompatible shapes")
-                    .unwrap();
+                let dims =
+                    crate::broadcast::multi_broadcast(&[&*dims.as_slice::<TDim>()?, &*shape])
+                        .ok_or("incompatible shapes")
+                        .unwrap();
                 s.equals(&outputs[0].shape, ShapeFact::from(dims))
             })
         })
@@ -62,10 +63,9 @@ impl InferenceRulesOp for MultiBroadcastTo {
     inference_op_as_op!();
 }
 
-
 #[derive(Debug, Clone, new, Default)]
 pub struct TypedMultiBroadcastTo {
-    shape: TVec<TDim>
+    shape: TVec<TDim>,
 }
 
 impl Op for TypedMultiBroadcastTo {
@@ -80,7 +80,8 @@ impl Op for TypedMultiBroadcastTo {
 impl StatelessOp for TypedMultiBroadcastTo {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let dims: Vec<usize> = self.shape.iter().map(|d| Ok(d.to_integer()? as usize)).collect::<TractResult<_>>()?;
+        let dims: Vec<usize> =
+            self.shape.iter().map(|d| Ok(d.to_integer()? as usize)).collect::<TractResult<_>>()?;
         dispatch_datum!(self::eval_t(input.datum_type())(&*input, &*dims))
     }
 }

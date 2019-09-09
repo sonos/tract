@@ -389,8 +389,8 @@ impl FromStr for TDim {
         if s == "S" {
             Ok(TDim::s())
         } else if s.ends_with("S") {
-            let number:String = s.chars().take_while(|c| c.is_digit(10)).collect();
-            let number:i32 = number.parse::<i32>().map(|i| i.into())?;
+            let number: String = s.chars().take_while(|c| c.is_digit(10)).collect();
+            let number: i32 = number.parse::<i32>().map(|i| i.into())?;
             Ok(TDim::s() * number)
         } else {
             s.parse::<i32>().map(|i| i.into())

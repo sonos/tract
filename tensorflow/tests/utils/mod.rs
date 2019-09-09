@@ -5,7 +5,11 @@ fn setup_test_logger() {
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub enum Mode { Infer, Type, Opt }
+pub enum Mode {
+    Infer,
+    Type,
+    Opt,
+}
 
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
@@ -67,7 +71,6 @@ pub fn compare_optim<S: AsRef<str>>(
             use crate::tract_core::error_chain::ChainedError;
             error!("{}", e.display_chain());
             return Err(e.into());
-
         }
         Ok(t) => t,
     };
@@ -105,7 +108,11 @@ pub fn infer<S: AsRef<str>>(
         .inputs
         .iter()
         .map(|outlet| {
-            state.values[outlet.node].as_ref().unwrap()[outlet.slot].clone().into_tensor().clone().into()
+            state.values[outlet.node].as_ref().unwrap()[outlet.slot]
+                .clone()
+                .into_tensor()
+                .clone()
+                .into()
         })
         .collect();
     let output_vectors: TVec<TensorFact> =

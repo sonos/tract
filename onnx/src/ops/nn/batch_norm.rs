@@ -67,7 +67,6 @@ impl Op for BatchNorm {
     not_a_typed_op!();
 }
 
-
 impl StatelessOp for BatchNorm {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
@@ -131,7 +130,7 @@ impl InferenceRulesOp for BatchNorm {
                 self, c_dim, &scale, &beta, &mean, &var
             ))?;
 
-            let mut param_shape:TVec<usize> = slope.shape().into();
+            let mut param_shape: TVec<usize> = slope.shape().into();
             if c_axis < x_shape.len() - 1 {
                 for _i in c_axis..x_shape.len() - 1 {
                     param_shape.push(1);
@@ -149,7 +148,7 @@ impl InferenceRulesOp for BatchNorm {
             return target.wire_node(
                 &*node.name,
                 tract_core::ops::math::add::unary(inter.into_arc_tensor()),
-                &wire
+                &wire,
             );
         }
         bail!("Params are not const")

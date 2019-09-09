@@ -45,7 +45,7 @@ impl Typed {
                     full_slot: im.full_slot,
                     full_dim_hint: im.full_dim_hint.clone(),
                     last_value_slot: im.last_value_slot,
-                    chunk: im.chunk.to_integer()? as usize
+                    chunk: im.chunk.to_integer()? as usize,
                 })
             })
             .collect::<TractResult<_>>()?;
@@ -57,11 +57,18 @@ impl Typed {
         body: TypedModel,
         input_mapping: Vec<InputMapping<TDim>>,
         output_mapping: Vec<OutputMapping<TDim, TDim>>,
-        seq_length_input_slot: Option<usize>
+        seq_length_input_slot: Option<usize>,
     ) -> TractResult<Typed> {
         assert_eq!(input_mapping.len(), body.input_outlets()?.len());
         assert_eq!(output_mapping.len(), body.output_outlets()?.len());
-        Ok(Typed { skip: 0, body, decluttered: false, input_mapping, output_mapping, seq_length_input_slot })
+        Ok(Typed {
+            skip: 0,
+            body,
+            decluttered: false,
+            input_mapping,
+            output_mapping,
+            seq_length_input_slot,
+        })
     }
 }
 
@@ -128,10 +135,7 @@ impl StatefullOp for Typed {
 impl TypedOp for Typed {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let mut outputs = tvec!();
         let iters = {
             let (outside_slot, axis, chunk) = self
@@ -155,7 +159,8 @@ impl TypedOp for Typed {
                 outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
             }
             if let Some(slot) = output.last_value_slot {
-                outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+                outputs
+                    .push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
             }
         }
         outputs.sort_by_key(|a| a.0);
@@ -169,7 +174,7 @@ impl TypedOp for Typed {
         node: &NormalizedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize
+        _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         if node.inputs.len() > 1 || node.outputs.len() > 1 {
             bail!("Scan pulsificiaton limited to single streaming input and output case");
@@ -196,5 +201,4 @@ impl TypedOp for Typed {
         let id = target.chain_after(input, &*node.name, op, tvec!(output_fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
-
 }

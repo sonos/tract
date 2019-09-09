@@ -43,7 +43,7 @@ impl Op for RmDims {
                 if let Some(add_dims) = prec.op_as::<super::AddDims>() {
                     if add_dims.axes.contains(&axis) {
                         let mut patch = TypedModelPatch::default();
-                        let mut wire:OutletId = patch.tap_model(model, prec.inputs[0])?.into();
+                        let mut wire: OutletId = patch.tap_model(model, prec.inputs[0])?.into();
                         if add_dims.axes.len() > 1 {
                             let mut add_dims = add_dims.clone();
                             add_dims.axes.retain(|&a| a != axis);
@@ -51,9 +51,16 @@ impl Op for RmDims {
                         }
                         let mut next = model.single_succ(prec.id)?.unwrap();
                         while next.id != node.id {
-                            let op = next.op.dispose_dummy_axis(model, next, axis)?.unwrap_or_else(|| next.op.clone());
+                            let op = next
+                                .op
+                                .dispose_dummy_axis(model, next, axis)?
+                                .unwrap_or_else(|| next.op.clone());
                             wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
-                            axis = next.op.axes_info(model, next)?.unary_track_axis_down(axis, true).unwrap();
+                            axis = next
+                                .op
+                                .axes_info(model, next)?
+                                .unary_track_axis_down(axis, true)
+                                .unwrap();
                             next = model.single_succ(next.id)?.unwrap();
                         }
                         if self.axes.len() > 1 {
@@ -62,7 +69,7 @@ impl Op for RmDims {
                             wire = patch.wire_node(&*node.name, rm_dims, [wire].as_ref())?[0];
                         }
                         patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
-                        return Ok(Some(patch))
+                        return Ok(Some(patch));
                     }
                 }
                 let invariants = prec.op.axes_info(model, prec)?;
@@ -115,10 +122,7 @@ impl InferenceRulesOp for RmDims {
 impl TypedOp for RmDims {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
             self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),

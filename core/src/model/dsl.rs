@@ -307,7 +307,8 @@ impl ModelWireNode<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
-        let output_facts:TVec<TensorFact> = (0..op.nboutputs()?).map(|_| TensorFact::default()).collect();
+        let output_facts: TVec<TensorFact> =
+            (0..op.nboutputs()?).map(|_| TensorFact::default()).collect();
         let id = self.add_node(name, op, output_facts)?;
         inputs
             .iter()
@@ -329,7 +330,8 @@ impl ModelWireNode<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
             let input_facts =
                 inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
             if input_facts.iter().all(|f| f.konst.is_some()) && op.as_stateless().is_some() {
-                let tensors = input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
+                let tensors =
+                    input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
                 let outputs = op.as_stateless().unwrap().eval(tensors)?;
                 outputs.into_iter().map(|t| TypedTensorInfo::from(t)).collect()
             } else {
@@ -344,4 +346,3 @@ impl ModelWireNode<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
         Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
     }
 }
-

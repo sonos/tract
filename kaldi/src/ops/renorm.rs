@@ -23,11 +23,7 @@ impl Op for Renorm {
         "kaldi.Renorm".into()
     }
 
-    fn axes_info(
-        &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
-    ) -> TractResult<AxesInfo> {
+    fn axes_info(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<AxesInfo> {
         Ok(vec![AxisInfo::simple(0)].into_iter().collect())
     }
 
@@ -87,5 +83,4 @@ impl TypedOp for Renorm {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
-
 }

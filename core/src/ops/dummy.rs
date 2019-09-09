@@ -20,10 +20,7 @@ impl StatelessOp for Dummy {
 impl TypedOp for Dummy {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        _inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!())
     }
 }

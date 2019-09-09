@@ -2,8 +2,8 @@ use ndarray::*;
 
 use tract_core::internal::*;
 
-use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 
 #[derive(Debug, Clone, new)]
 pub struct GatherNd {}
@@ -13,7 +13,11 @@ pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn In
 }
 
 impl GatherNd {
-    fn compute_shape<D: DimLike>(&self, data_shape: &[D], indices_shape: &[D]) -> TractResult<TVec<D>> {
+    fn compute_shape<D: DimLike>(
+        &self,
+        data_shape: &[D],
+        indices_shape: &[D],
+    ) -> TractResult<TVec<D>> {
         let mut shape: TVec<D> = indices_shape.into();
         let n = shape.pop().unwrap().to_integer()? as usize;
         shape.extend(data_shape[n..].iter().cloned());

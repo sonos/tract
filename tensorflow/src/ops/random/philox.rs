@@ -107,10 +107,11 @@ impl Philox4x32x10 {
         *counter = r3 << 96 | r2 << 64 | r1 << 32 | r0
     }
 
-    pub fn u32_iter(self) -> impl Iterator<Item=u32> {
-        self.flat_map(|big|
-            tvec![big as u32, (big >> 32) as u32, (big >> 64) as u32, (big >> 96) as u32].into_iter()
-        )
+    pub fn u32_iter(self) -> impl Iterator<Item = u32> {
+        self.flat_map(|big| {
+            tvec![big as u32, (big >> 32) as u32, (big >> 64) as u32, (big >> 96) as u32]
+                .into_iter()
+        })
     }
 }
 
@@ -132,7 +133,6 @@ mod test {
         let mut ph = Philox4x32x10::for_seeds(1, 2);
         assert_eq!(ph.next_as_u32s(), [0x598de3a, 0x98d2802e, 0x270f8f9e, 0xeab709d3]);
     }
-
 
     #[test]
     fn zeros() {

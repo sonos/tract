@@ -90,7 +90,7 @@ impl InferenceRulesOp for RandomUniform {
                 self.t,
                 self.seed1,
                 self.seed2,
-                shape.cast_to::<TDim>()?.as_slice::<TDim>()?.into()
+                shape.cast_to::<TDim>()?.as_slice::<TDim>()?.into(),
             );
             target.wire_node(&*node.name, op, &[node.inputs[0]])
         } else {

@@ -8,10 +8,16 @@ pub struct ParsingContext {
 }
 
 #[derive(Clone, Default)]
-pub struct TfOpRegister(pub HashMap<String, fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>>);
+pub struct TfOpRegister(
+    pub HashMap<String, fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>>,
+);
 
 impl TfOpRegister {
-    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>) {
+    pub fn insert(
+        &mut self,
+        s: &'static str,
+        builder: fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>,
+    ) {
         self.0.insert(s.into(), builder);
     }
 }
@@ -39,7 +45,9 @@ impl Tensorflow {
     pub fn determinize(model: &mut GraphDef) -> TractResult<()> {
         for pbnode in model.mut_node().iter_mut() {
             if pbnode.get_op() == "RandomUniform" {
-                if pbnode.get_attr_int::<i64>("seed")? == 0 && pbnode.get_attr_int::<i64>("seed2")? == 0 {
+                if pbnode.get_attr_int::<i64>("seed")? == 0
+                    && pbnode.get_attr_int::<i64>("seed2")? == 0
+                {
                     pbnode.mut_attr().insert("seed".to_string(), 1.into());
                     pbnode.mut_attr().insert("seed2".to_string(), 1.into());
                 }
@@ -77,15 +85,19 @@ impl Framework<GraphDef> for Tensorflow {
             if pbnode.get_op() == "NextIteration" {
                 let source_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Source);
                 let sink_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Sink);
-                let _source = model.add_node(name.clone(), source_op, tvec!(TensorFact::default()))?;
+                let _source =
+                    model.add_node(name.clone(), source_op, tvec!(TensorFact::default()))?;
                 let _sink = model.add_node(format!("{}-Sink", name), sink_op, tvec!())?;
                 continue;
             }
 
             let op = match self.op_register.0.get(pbnode.get_op()) {
                 Some(builder) => (builder)(&context, pbnode)?,
-                None => tract_core::ops::unimpl::UnimplementedOp::new(pbnode.get_op(),
-                            format!("{:?}", pbnode)).into(),
+                None => tract_core::ops::unimpl::UnimplementedOp::new(
+                    pbnode.get_op(),
+                    format!("{:?}", pbnode),
+                )
+                .into(),
             };
 
             let node_id = model.add_node(name.clone(), op, facts)?;
@@ -147,4 +159,3 @@ impl Framework<GraphDef> for Tensorflow {
         Ok(model)
     }
 }
-

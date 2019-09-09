@@ -1,5 +1,5 @@
 use crate::errors::*;
-use crate::{Parameters, Model};
+use crate::{Model, Parameters};
 use tract_core::internal::*;
 
 pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
@@ -41,7 +41,6 @@ fn run_regular(tract: &dyn Model, params: &Parameters) -> CliResult<TVec<Arc<Ten
     }
     Ok(dispatch_model!(tract, |m| SimplePlan::new(m)?.run(inputs))?)
 }
-
 
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
     let input_fact = model.input_fact(0)?;

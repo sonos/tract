@@ -249,11 +249,9 @@ fn strat() -> BoxedStrategy<LstmProblem> {
             )
         })
         .prop_map(|((length, batch_size, cell_size), x, w_xh_icfo, b_icfo, h0, c0)| {
-            let x = Array3::from_shape_vec(
-                (length, batch_size, cell_size), x
-            )
-            .unwrap()
-            .into_arc_tensor();
+            let x = Array3::from_shape_vec((length, batch_size, cell_size), x)
+                .unwrap()
+                .into_arc_tensor();
             let w_xh_icfo =
                 Array2::from_shape_vec((cell_size * 2, cell_size * 4), w_xh_icfo).unwrap();
             let b_icfo = Array1::from_shape_vec(cell_size * 4, b_icfo).unwrap();

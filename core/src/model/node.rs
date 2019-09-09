@@ -47,7 +47,9 @@ impl<TI: TensorInfo, O: std::fmt::Display> fmt::Display for BaseNode<TI, O> {
 
 pub type Node<TI> = BaseNode<TI, Box<dyn Op>>;
 
-impl<TI: TensorInfo, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op>> BaseNode<TI, NodeOp> {
+impl<TI: TensorInfo, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op>>
+    BaseNode<TI, NodeOp>
+{
     /// Access the op of the node
     pub fn op(&self) -> &dyn Op {
         self.op.as_ref()
@@ -69,7 +71,7 @@ impl<TI: TensorInfo, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + A
     }
 
     /// Check that this node produce the same outputs as `other`.
-    pub fn same_as(&self, other: &BaseNode<TI,NodeOp>) -> bool {
+    pub fn same_as(&self, other: &BaseNode<TI, NodeOp>) -> bool {
         self.inputs == other.inputs && self.op().same_as(other.op())
     }
 }

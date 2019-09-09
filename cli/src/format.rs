@@ -1,5 +1,5 @@
-use ansi_term::Colour::*;
 use crate::rusage::Duration;
+use ansi_term::Colour::*;
 
 #[allow(unused_imports)]
 use itertools::Itertools;

@@ -1,7 +1,7 @@
 use crate::pb::*;
+use std::convert::{TryFrom, TryInto};
 use tract_core::internal::*;
 use tract_core::*;
-use std::convert::{ TryFrom, TryInto };
 
 impl TryFrom<TensorProto_DataType> for DatumType {
     type Error = TractError;
@@ -161,7 +161,8 @@ impl TryFrom<TensorProto> for Tensor {
 }
 
 pub fn proto_from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<TensorProto> {
-    protobuf::parse_from_reader(&mut r).map_err(|e| format!("Can not parse protobuf input: {:?}", e).into())
+    protobuf::parse_from_reader(&mut r)
+        .map_err(|e| format!("Can not parse protobuf input: {:?}", e).into())
 }
 
 pub fn from_reader<R: ::std::io::Read>(r: R) -> TractResult<Tensor> {

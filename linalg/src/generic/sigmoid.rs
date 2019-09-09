@@ -55,7 +55,7 @@ impl SigmoidKer<f32> for SSigmoid4 {
     fn run(x: &mut [f32]) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
-        x.iter_mut().for_each(|px| { *px = ssigmoid(*px) })
+        x.iter_mut().for_each(|px| *px = ssigmoid(*px))
     }
 }
 

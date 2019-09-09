@@ -21,20 +21,12 @@ pub struct ProfileData {
 }
 
 impl ProfileData {
-    pub fn add(
-        &mut self,
-        node_id: &[usize],
-        dur: Duration,
-    ) -> ::tract_core::TractResult<()> {
+    pub fn add(&mut self, node_id: &[usize], dur: Duration) -> ::tract_core::TractResult<()> {
         *self.nodes.entry(node_id.into()).or_insert(Duration::default()) += dur;
         Ok(())
     }
 
-    pub fn sub(
-        &mut self,
-        node_id: &[usize],
-        dur: Duration,
-    ) -> ::tract_core::TractResult<()> {
+    pub fn sub(&mut self, node_id: &[usize], dur: Duration) -> ::tract_core::TractResult<()> {
         *self.nodes.entry(node_id.into()).or_insert(Duration::default()) -= dur;
         Ok(())
     }
