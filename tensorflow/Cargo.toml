@@ -1,42 +1,32 @@
 [package]
-authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
-autobenches = false
-categories = ["science"]
-description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-edition = "2018"
-keywords = [
-    "TensorFlow",
-    "NeuralNetworks",
-    "ONNX",
-]
-license = "MIT/Apache-2.0"
 name = "tract-tensorflow"
+version = "0.4.1-pre"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+license = "MIT/Apache-2.0"
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 repository = "https://github.com/snipsco/tract"
-version = "0.4.2-pre"
+keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
+categories = [ "science" ]
+autobenches = false
+edition = "2018"
 
-[badges.travis-ci]
-repository = "snipsco/tract"
+[badges]
+travis-ci = { repository = "snipsco/tract" }
 
 [dependencies]
 derive-new = "0.5"
 error-chain = "0.12"
 itertools = "0.8"
 log = "0.4"
+ndarray = { version = "0.12" }
 num-traits = "0.2"
 protobuf = "2.0"
+tensorflow = { version = "0", optional = true }
+tract-core = { path = "../core" }
+tract-linalg = { path = "../linalg" }
 
-[dependencies.ndarray]
-version = "0.4.2-pre"
-
-[dependencies.tensorflow]
-optional = true
-version = "0.4.2-pre"
-
-[dependencies.tract-core]
-path = "../core"
-
-[dependencies.tract-linalg]
-path = "../linalg"
+[features]
+conform = [ "tensorflow" ]
 
 [dev-dependencies]
 criterion = "0.3"
@@ -44,5 +34,6 @@ env_logger = "0.6"
 proptest = "0.9"
 rand = "0.7"
 
-[features]
-conform = ["tensorflow"]
+# [[bench]]
+# name = "conv"
+# harness = false
