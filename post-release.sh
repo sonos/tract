@@ -1,7 +1,7 @@
 #!/bin/sh
 
 VERSION=$1
-CRATES="linalg core tensorflow onnx cli"
+CRATES="linalg core tensorflow onnx kaldi cli"
 
 if [ `uname` = "Darwin" ]
 then
