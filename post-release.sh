@@ -3,6 +3,13 @@
 VERSION=$1
 CRATES="linalg core tensorflow onnx cli"
 
+if [ `uname` = "Darwin" ]
+then
+    SED=gsed
+else
+    SED=sed
+fi
+
 if [ -z "$VERSION" ]
 then
     echo "Usage: $0 <version>" 
@@ -13,7 +20,7 @@ fi
 set_version() {
     FILE=$1
     VERSION=$2
-    sed -i.back "s/^version *= *\".*\"/version = \"$2\"/" $FILE
+    $SED -i.back "0,/^version/s/^version *= *\".*\"/version = \"$2\"/" $FILE
     for dep in `grep "^tract-" $FILE | cut -d " " -f 1`
     do
         short_dep=`echo $dep | sed "s/^tract-//"`
