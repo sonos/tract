@@ -67,6 +67,7 @@ macro_rules! to_typed {
     }
 }
 
+/*
 #[macro_export]
 macro_rules! element_map {
     ($Name:ident, [$($type:ty),*], $expr:expr) => {
@@ -152,6 +153,7 @@ macro_rules! element_map {
         }
     };
 }
+*/
 
 #[macro_export]
 macro_rules! element_map_move {

@@ -19,7 +19,7 @@ bin_to_bool!(lesser_equal, LesserEqual, [bool, u8, i8, i16, i32, i64, f32, f64] 
 bin_to_bool!(greater, Greatser, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
 bin_to_bool!(greater_equal, GreaterEqual, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
 
-element_map!(Not, [bool], |a: bool| !a);
+unary!(not, Not, [bool], |a: bool| !a);
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Iff;

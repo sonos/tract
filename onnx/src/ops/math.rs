@@ -16,9 +16,9 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Min", |_, _| Ok((Box::new(Nary(Box::new(tractops::math::Min), false)), vec![])));
     reg.insert("Mean", |_, _| Ok((Box::new(Nary(Box::new(tractops::math::Add), true)), vec![])));
 
-    reg.insert("Abs", |_, _| Ok((Box::new(tractops::math::Abs::default()), vec![])));
-    reg.insert("Ceil", |_, _| Ok((Box::new(tractops::math::Ceil::default()), vec![])));
-    reg.insert("Floor", |_, _| Ok((Box::new(tractops::math::Floor::default()), vec![])));
+    reg.insert("Abs", |_, _| Ok((Box::new(tractops::math::abs()), vec![])));
+    reg.insert("Ceil", |_, _| Ok((Box::new(tractops::math::ceil()), vec![])));
+    reg.insert("Floor", |_, _| Ok((Box::new(tractops::math::floor()), vec![])));
     reg.insert("Clip", clip);
 
     reg.insert("Cos", |_, _| Ok((Box::new(tractops::math::Cos::default()), vec![])));
@@ -36,15 +36,15 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Atanh", |_, _| Ok((Box::new(tractops::math::Atanh::default()), vec![])));
 
     reg.insert("Erf", |_, _| Ok((Box::new(Erf::default()), vec![])));
-    reg.insert("Exp", |_, _| Ok((Box::new(tractops::math::Exp::default()), vec![])));
-    reg.insert("Log", |_, _| Ok((Box::new(tractops::math::Ln::default()), vec![])));
-    reg.insert("Sqrt", |_, _| Ok((Box::new(tractops::math::Sqrt::default()), vec![])));
-    reg.insert("Rsqrt", |_, _| Ok((Box::new(tractops::math::Rsqrt::default()), vec![])));
+    reg.insert("Exp", |_, _| Ok((Box::new(tractops::math::exp()), vec![])));
+    reg.insert("Log", |_, _| Ok((Box::new(tractops::math::ln()), vec![])));
+    reg.insert("Sqrt", |_, _| Ok((Box::new(tractops::math::sqrt()), vec![])));
+    reg.insert("Rsqrt", |_, _| Ok((Box::new(tractops::math::rsqrt()), vec![])));
 
     reg.insert("IsNaN", |_, _| Ok((Box::new(tractops::math::IsNan::default()), vec![])));
     reg.insert("Neg", |_, _| Ok((Box::new(tractops::math::Neg::default()), vec![])));
     reg.insert("Sign", |_, _| Ok((Box::new(tractops::math::Sign::default()), vec![])));
-    reg.insert("Reciprocal", |_, _| Ok((Box::new(tractops::math::Recip::default()), vec![])));
+    reg.insert("Reciprocal", |_, _| Ok((Box::new(tractops::math::recip()), vec![])));
 
     reg.insert("Pow", |_, _| Ok((Box::new(tractops::math::pow::bin()), vec![])));
 
