@@ -18,6 +18,6 @@ pub fn register_all_ops(reg: &mut KaldiOpRegister) {
     reg.insert("NormalizeComponent", renorm::renorm);
     reg.insert("LstmNonlinearityComponent", lstm_nonlin::lstm_nonlin);
     reg.insert("RectifiedLinearComponent", |_, _| {
-        Ok(Box::new(tract_core::ops::math::ScalarMax { max: 0.0 }))
+        Ok(Box::new(tract_core::ops::math::scalar_max(0.0)))
     });
 }

@@ -522,15 +522,17 @@ where
                             ))));
                         }
                     }
-                } else if let Some(op) = succ.op_as::<ops::math::ScalarMax>() {
-                    return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
-                } else if let Some(op) = succ.op_as::<ops::math::ScalarMin>() {
-                    return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
-                } else if let Some(op) = succ.op_as::<ops::math::ScalarMinMax>() {
-                    return Ok(Some(tvec!(
-                        FusedSpec::Min(op.min.as_()),
-                        FusedSpec::Max(op.max.as_()),
-                    )));
+                } else if let Some(op) = succ.op_as::<ops::unary::UnaryOp>() {
+                    if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMax>() {
+                        return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
+                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMin>() {
+                        return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
+                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMinMax>() {
+                        return Ok(Some(tvec!(
+                            FusedSpec::Min(op.min.as_()),
+                            FusedSpec::Max(op.max.as_()),
+                        )));
+                    }
                 }
                 Ok(None)
             })()?;

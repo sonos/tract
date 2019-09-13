@@ -12,95 +12,92 @@ pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};
 pub use self::lrn::Lrn;
 pub use self::reduce::{Reduce, Reducer};
 
-use num_traits::AsPrimitive;
+use num_traits::{ AsPrimitive, Float};
 
-element_map!(Softplus, [f32], |x| (x.exp() + 1.0).ln());
-element_map!(Softsign, [f32], |x| x / (x.abs() + 1.0));
-element_map_inplace!(Sigmoid, [f32], |xs| f32::sigmoid().run(xs));
+pub use crate::internal::*;
 
-element_map_with_params!(
-    Elu,
-    [f32, f64],
-    { alpha: f32 },
-    fn eval_one<T>(elu: &Elu, x: T) -> T
-    where
-        T: Datum + ::num_traits::Float,
-        f32: ::num_traits::AsPrimitive<T>,
-    {
-        if x < 0.0.as_() {
-            elu.alpha.as_() * (x.exp() - 1.0.as_())
+unary!(softplus, Softplus, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = (x.exp() + 1.0).ln()));
+unary!(softsign, Softsign, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = *x / (x.abs() + 1.0)));
+unary!(sigmoid, Sigmoid, [f32] => |_, xs| f32::sigmoid().run(xs));
+
+unary!(elu, Elu { alpha: f32 },
+    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.elu(e.alpha); })
+);
+
+unary!(hard_sigmoid, HardSigmoid { alpha: f32, beta: f32 },
+    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.hard_sigmoid(e.alpha, e.beta); })
+);
+
+unary!(leaky_relu, LeakyRelu { alpha: f32 },
+    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.leaky_relu(e.alpha); })
+);
+
+unary!(parametric_softplus, ParametricSoftplus { alpha: f32, beta: f32 },
+    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.parametric_softplus(e.alpha, e.beta); })
+);
+
+unary!(scaled_tanh, ScaledTanh { alpha: f32, beta: f32 },
+    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.scaled_tanh(e.alpha, e.beta); })
+);
+
+unary!(selu, Selu { alpha: f32, gamma: f32 },
+    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.selu(e.alpha, e.gamma); })
+);
+
+unary!(threshold_relu, ThresholdRelu { alpha: f32 },
+    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.threshold_relu(e.alpha); })
+);
+
+trait Activations {
+    fn elu(self, alpha: f32) -> Self;
+    fn hard_sigmoid(self, alpha: f32, beta: f32) -> Self;
+    fn leaky_relu(self, alpha: f32) -> Self;
+    fn parametric_softplus(self, alpha: f32, beta:f32) -> Self;
+    fn scaled_tanh(self, alpha: f32, beta:f32) -> Self;
+    fn selu(self, alpha: f32, gamma:f32) -> Self;
+    fn threshold_relu(self, alpha: f32) -> Self;
+}
+
+impl<T> Activations for T
+where T: Datum + Float,
+      f32: AsPrimitive<T>,
+{
+    fn elu(self, alpha: f32) -> Self {
+        if self < 0.0.as_() {
+            alpha.as_() * (self.exp() - 1.0.as_())
         } else {
-            x
+            self
         }
     }
-);
-
-element_map_with_params!(Hardsigmoid, [f32, f64], {alpha: f32, beta: f32},
-    fn eval_one<T>(hs: &Hardsigmoid, x:T) -> T
-    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
-    {
-        (hs.alpha.as_() * x + hs.beta.as_()).min(1.0.as_()).max(0.0.as_())
+    fn hard_sigmoid(self, alpha:f32, beta:f32) -> Self {
+        (alpha.as_() * self + beta.as_()).min(1.0.as_()).max(0.0.as_())
     }
-);
-
-element_map_with_params!(
-    LeakyRelu,
-    [f32, f64],
-    { alpha: f32 },
-    fn eval_one<T>(lr: &LeakyRelu, x: T) -> T
-    where
-        T: Datum + ::num_traits::Float,
-        f32: ::num_traits::AsPrimitive<T>,
-    {
-        if x < 0.0.as_() {
-            lr.alpha.as_() * x
+    fn leaky_relu(self, alpha: f32) -> Self {
+        if self < 0.0.as_() {
+            alpha.as_() * self
         } else {
-            x
+            self
         }
     }
-);
-
-element_map_with_params!(ParametricSoftplus, [f32, f64], {alpha: f32, beta: f32},
-    fn eval_one<T>(s: &ParametricSoftplus, x:T) -> T
-    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
-    {
-        s.alpha.as_() * ((s.beta.as_() * x).exp() + 1.0.as_()).ln()
+    fn parametric_softplus(self, alpha: f32, beta:f32) -> Self {
+        alpha.as_() * ((beta.as_() * self).exp() + 1.0.as_()).ln()
     }
-);
-
-element_map_with_params!(ScaledTanh, [f32, f64], {alpha: f32, beta: f32},
-    fn eval_one<T>(s: &ScaledTanh, x:T) -> T
-    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
-    {
-        s.alpha.as_() * (s.beta.as_() * x).tanh()
+    fn scaled_tanh(self, alpha: f32, beta:f32) -> Self {
+        alpha.as_() * (beta.as_() * self).tanh()
     }
-);
-
-element_map_with_params!(Selu, [f32, f64], {alpha: f32, gamma: f32},
-    fn eval_one<T>(s: &Selu, x:T) -> T
-    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
-    {
-        if x < 0.0.as_() {
-            s.gamma.as_() * (s.alpha.as_() * x.exp() - s.alpha.as_())
+    fn selu(self, alpha: f32, gamma:f32) -> Self {
+        if self < 0.0.as_() {
+            gamma.as_() * (alpha.as_() * self.exp() - alpha.as_())
         } else {
-            s.gamma.as_() * x
+            gamma.as_() * self
         }
     }
-);
-
-element_map_with_params!(
-    ThresholdedRelu,
-    [f32, f64],
-    { alpha: f32 },
-    fn eval_one<T>(s: &ThresholdedRelu, x: T) -> T
-    where
-        T: Datum + ::num_traits::Float,
-        f32: ::num_traits::AsPrimitive<T>,
-    {
-        if x <= s.alpha.as_() {
+    fn threshold_relu(self, alpha: f32) -> Self {
+        if self <= alpha.as_() {
             0.0.as_()
         } else {
-            x
+            self
         }
     }
-);
+}
+

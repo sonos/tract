@@ -34,6 +34,8 @@ impl Op for Direct {
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        use crate::ops;
+        use crate::num_traits::AsPrimitive;
         if let Some(succ) = model.single_succ(node.id)? {
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<f32>>>> {
                 if let Some(op) = succ.op_as::<crate::ops::binary::UnaryOp>() {
@@ -48,12 +50,17 @@ impl Op for Direct {
                             ))));
                         }
                     }
-                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
-                    return Ok(Some(tvec!(FusedSpec::Max(op.max))));
-                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMin>() {
-                    return Ok(Some(tvec!(FusedSpec::Min(op.min))));
-                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
-                    return Ok(Some(tvec!(FusedSpec::Min(op.min), FusedSpec::Max(op.max),)));
+                } else if let Some(op) = succ.op_as::<ops::unary::UnaryOp>() {
+                    if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMax>() {
+                        return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
+                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMin>() {
+                        return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
+                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMinMax>() {
+                        return Ok(Some(tvec!(
+                            FusedSpec::Min(op.min.as_()),
+                            FusedSpec::Max(op.max.as_()),
+                        )));
+                    }
                 }
                 Ok(None)
             })()?;

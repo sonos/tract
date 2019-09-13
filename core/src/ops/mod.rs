@@ -8,6 +8,8 @@ use objekt;
 #[macro_use]
 pub mod macros;
 #[macro_use]
+pub mod unary;
+#[macro_use]
 pub mod binary;
 
 pub mod axis;

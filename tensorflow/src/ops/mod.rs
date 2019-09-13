@@ -4,9 +4,6 @@ use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
 
-#[macro_use]
-mod macros;
-
 pub mod array;
 pub mod control_flow;
 pub mod logic;

@@ -53,8 +53,8 @@ impl Default for RNN {
             optional_initial_h_input: None,
             optional_y_output: None,
             optional_y_h_output: None,
-            fore: Box::new(core_ops::math::Tanh::new(f32::datum_type().into())),
-            back: Box::new(core_ops::math::Tanh::new(f32::datum_type().into())),
+            fore: Box::new(core_ops::math::tanh()),
+            back: Box::new(core_ops::math::tanh()),
         }
     }
 }

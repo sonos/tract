@@ -63,9 +63,9 @@ impl Default for LSTM {
             optional_y_output: None,
             optional_y_h_output: None,
             optional_y_c_output: None,
-            f: Box::new(core_ops::nn::Sigmoid::new(f32::datum_type().into())),
-            g: Box::new(core_ops::math::Tanh::new(f32::datum_type().into())),
-            h: Box::new(core_ops::math::Tanh::new(f32::datum_type().into())),
+            f: Box::new(core_ops::nn::sigmoid()),
+            g: Box::new(core_ops::math::tanh()),
+            h: Box::new(core_ops::math::tanh()),
         }
     }
 }

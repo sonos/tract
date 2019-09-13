@@ -16,35 +16,35 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Min", |_, _| Ok((Box::new(Nary(Box::new(tractops::math::Min), false)), vec![])));
     reg.insert("Mean", |_, _| Ok((Box::new(Nary(Box::new(tractops::math::Add), true)), vec![])));
 
-    reg.insert("Abs", |_, _| Ok((Box::new(tractops::math::Abs::default()), vec![])));
-    reg.insert("Ceil", |_, _| Ok((Box::new(tractops::math::Ceil::default()), vec![])));
-    reg.insert("Floor", |_, _| Ok((Box::new(tractops::math::Floor::default()), vec![])));
+    reg.insert("Abs", |_, _| Ok((Box::new(tractops::math::abs()), vec![])));
+    reg.insert("Ceil", |_, _| Ok((Box::new(tractops::math::ceil()), vec![])));
+    reg.insert("Floor", |_, _| Ok((Box::new(tractops::math::floor()), vec![])));
     reg.insert("Clip", clip);
 
-    reg.insert("Cos", |_, _| Ok((Box::new(tractops::math::Cos::default()), vec![])));
-    reg.insert("Sin", |_, _| Ok((Box::new(tractops::math::Sin::default()), vec![])));
-    reg.insert("Tan", |_, _| Ok((Box::new(tractops::math::Tan::default()), vec![])));
-    reg.insert("Acos", |_, _| Ok((Box::new(tractops::math::Acos::default()), vec![])));
-    reg.insert("Asin", |_, _| Ok((Box::new(tractops::math::Asin::default()), vec![])));
-    reg.insert("Atan", |_, _| Ok((Box::new(tractops::math::Atan::default()), vec![])));
+    reg.insert("Cos", |_, _| Ok((Box::new(tractops::math::cos()), vec![])));
+    reg.insert("Sin", |_, _| Ok((Box::new(tractops::math::sin()), vec![])));
+    reg.insert("Tan", |_, _| Ok((Box::new(tractops::math::tan()), vec![])));
+    reg.insert("Acos", |_, _| Ok((Box::new(tractops::math::acos()), vec![])));
+    reg.insert("Asin", |_, _| Ok((Box::new(tractops::math::asin()), vec![])));
+    reg.insert("Atan", |_, _| Ok((Box::new(tractops::math::atan()), vec![])));
 
-    reg.insert("Cosh", |_, _| Ok((Box::new(tractops::math::Cosh::default()), vec![])));
-    reg.insert("Sinh", |_, _| Ok((Box::new(tractops::math::Sinh::default()), vec![])));
-    reg.insert("Tanh", |_, _| Ok((Box::new(tractops::math::Tanh::default()), vec![])));
-    reg.insert("Acosh", |_, _| Ok((Box::new(tractops::math::Acosh::default()), vec![])));
-    reg.insert("Asinh", |_, _| Ok((Box::new(tractops::math::Asinh::default()), vec![])));
-    reg.insert("Atanh", |_, _| Ok((Box::new(tractops::math::Atanh::default()), vec![])));
+    reg.insert("Cosh", |_, _| Ok((Box::new(tractops::math::cosh()), vec![])));
+    reg.insert("Sinh", |_, _| Ok((Box::new(tractops::math::sinh()), vec![])));
+    reg.insert("Tanh", |_, _| Ok((Box::new(tractops::math::tanh()), vec![])));
+    reg.insert("Acosh", |_, _| Ok((Box::new(tractops::math::acosh()), vec![])));
+    reg.insert("Asinh", |_, _| Ok((Box::new(tractops::math::asinh()), vec![])));
+    reg.insert("Atanh", |_, _| Ok((Box::new(tractops::math::atanh()), vec![])));
 
-    reg.insert("Erf", |_, _| Ok((Box::new(Erf::default()), vec![])));
-    reg.insert("Exp", |_, _| Ok((Box::new(tractops::math::Exp::default()), vec![])));
-    reg.insert("Log", |_, _| Ok((Box::new(tractops::math::Ln::default()), vec![])));
-    reg.insert("Sqrt", |_, _| Ok((Box::new(tractops::math::Sqrt::default()), vec![])));
-    reg.insert("Rsqrt", |_, _| Ok((Box::new(tractops::math::Rsqrt::default()), vec![])));
+    reg.insert("Erf", |_, _| Ok((Box::new(erf()), vec![])));
+    reg.insert("Exp", |_, _| Ok((Box::new(tractops::math::exp()), vec![])));
+    reg.insert("Log", |_, _| Ok((Box::new(tractops::math::ln()), vec![])));
+    reg.insert("Sqrt", |_, _| Ok((Box::new(tractops::math::sqrt()), vec![])));
+    reg.insert("Rsqrt", |_, _| Ok((Box::new(tractops::math::rsqrt()), vec![])));
 
-    reg.insert("IsNaN", |_, _| Ok((Box::new(tractops::math::IsNan::default()), vec![])));
-    reg.insert("Neg", |_, _| Ok((Box::new(tractops::math::Neg::default()), vec![])));
-    reg.insert("Sign", |_, _| Ok((Box::new(tractops::math::Sign::default()), vec![])));
-    reg.insert("Reciprocal", |_, _| Ok((Box::new(tractops::math::Recip::default()), vec![])));
+    reg.insert("IsNaN", |_, _| Ok((Box::new(IsNan), vec![])));
+    reg.insert("Neg", |_, _| Ok((Box::new(tractops::math::neg()), vec![])));
+    reg.insert("Sign", |_, _| Ok((Box::new(tractops::math::sign()), vec![])));
+    reg.insert("Reciprocal", |_, _| Ok((Box::new(tractops::math::recip()), vec![])));
 
     reg.insert("Pow", |_, _| Ok((Box::new(tractops::math::pow::bin()), vec![])));
 
@@ -59,15 +59,15 @@ pub fn clip(
     let min = node.get_attr_opt("min")?;
     let max = node.get_attr_opt("max")?;
     let op: Box<dyn InferenceOp> = match (min, max) {
-        (Some(min), Some(max)) => Box::new(tractops::math::ScalarMinMax::new(max, min)),
-        (None, Some(max)) => Box::new(tractops::math::ScalarMin::new(max)),
-        (Some(min), None) => Box::new(tractops::math::ScalarMax::new(min)),
+        (Some(min), Some(max)) => Box::new(tractops::math::scalar_min_max(max, min)),
+        (None, Some(max)) => Box::new(tractops::math::scalar_min(max)),
+        (Some(min), None) => Box::new(tractops::math::scalar_max(min)),
         (None, None) => Box::new(tractops::identity::Identity::default()),
     };
     Ok((op, vec![]))
 }
 
-element_map!(Erf, [f32], erf_f32);
+unary!(erf, Erf, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = erf_f32(*x)));
 
 #[allow(non_upper_case_globals)]
 fn erf_f32(x: f32) -> f32 {
@@ -193,4 +193,69 @@ impl InferenceRulesOp for Gemm {
     }
 
     inference_op_as_op!();
+}
+
+#[derive(Debug, Clone)]
+pub struct IsNan;
+
+impl IsNan {
+    fn eval_t<T: Datum + num_traits::Float>(&self, t: &Tensor) -> TractResult<Tensor> {
+        let array = t.to_array_view::<T>()?;
+        Ok(array.map(|f| f.is_nan()).into_tensor())
+    }
+}
+
+impl Op for IsNan {
+    fn name(&self) -> Cow<str> {
+        "IsNan".into()
+    }
+
+    op_as_typed_op!();
+}
+
+impl StatelessOp for IsNan {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let mut t = args_1!(inputs).into_tensor();
+        let t = dispatch_floatlike!(Self::eval_t(t.datum_type())(self, &mut t))?;
+        Ok(tvec!(t.into_arc_tensor()))
+    }
+}
+
+impl InferenceRulesOp for IsNan {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
+        s.equals(bool::datum_type(), &outputs[0].datum_type)?;
+        s.equals(&inputs[0].shape, &outputs[0].shape)?;
+        Ok(())
+    }
+    to_typed!();
+    inference_op_as_op!();
+}
+
+impl TypedOp for IsNan {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(bool::datum_type(), inputs[0].shape.clone())?))
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let fact = target.outlet_fact(input)?.clone();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
 }

@@ -8,11 +8,11 @@ use crate::tfpb::node_def::NodeDef;
 mod max;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Abs", with_T!(tractops::math::Abs));
+    reg.insert("Abs", |_, _| Ok(Box::new(tractops::math::abs())));
     reg.insert("Add", |_, _| Ok(Box::new(tractops::math::add::bin())));
     reg.insert("AddN", add_n);
     reg.insert("BiasAdd", |_, _| Ok(Box::new(tractops::math::add::bin())));
-    reg.insert("Ceil", with_T!(tractops::math::Ceil));
+    reg.insert("Ceil", |_, _| Ok(Box::new(tractops::math::ceil())));
     reg.insert("Div", |_, _| Ok(Box::new(tractops::math::div::bin())));
     reg.insert("FloorMod", |_, _| Ok(Box::new(tractops::math::rem::bin())));
     reg.insert("MatMul", mat_mul);
@@ -20,14 +20,14 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Maximum", |_, _| Ok(Box::new(tractops::math::max::bin())));
     reg.insert("Minimum", |_, _| Ok(Box::new(tractops::math::min::bin())));
     reg.insert("Less", |_, _| Ok(Box::new(tractops::logic::lesser::bin())));
-    reg.insert("Log", with_T!(tractops::math::Ln));
+    reg.insert("Log", |_, _| Ok(Box::new(tractops::math::ln())));
     reg.insert("Mul", |_, _| Ok(Box::new(tractops::math::mul::bin())));
     reg.insert("Pow", |_, _| Ok(Box::new(tractops::math::pow::bin())));
-    reg.insert("Neg", with_T!(tractops::math::Neg));
+    reg.insert("Neg", |_,_| Ok(Box::new(tractops::math::neg())));
     reg.insert("RealDiv", |_, _| Ok(Box::new(tractops::math::div::bin())));
-    reg.insert("Rsqrt", with_T!(tractops::math::Rsqrt));
+    reg.insert("Rsqrt", |_, _| Ok(Box::new(tractops::math::rsqrt())));
     reg.insert("Sub", |_, _| Ok(Box::new(tractops::math::sub::bin())));
-    reg.insert("Tanh", with_T!(tractops::math::Tanh));
+    reg.insert("Tanh", |_, _| Ok(Box::new(tractops::math::tanh())));
 }
 
 pub fn add_n(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
