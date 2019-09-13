@@ -23,11 +23,11 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Log", |_, _| Ok(Box::new(tractops::math::ln())));
     reg.insert("Mul", |_, _| Ok(Box::new(tractops::math::mul::bin())));
     reg.insert("Pow", |_, _| Ok(Box::new(tractops::math::pow::bin())));
-    reg.insert("Neg", with_T!(tractops::math::Neg));
+    reg.insert("Neg", |_,_| Ok(Box::new(tractops::math::neg())));
     reg.insert("RealDiv", |_, _| Ok(Box::new(tractops::math::div::bin())));
     reg.insert("Rsqrt", |_, _| Ok(Box::new(tractops::math::rsqrt())));
     reg.insert("Sub", |_, _| Ok(Box::new(tractops::math::sub::bin())));
-    reg.insert("Tanh", with_T!(tractops::math::Tanh));
+    reg.insert("Tanh", |_, _| Ok(Box::new(tractops::math::tanh())));
 }
 
 pub fn add_n(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

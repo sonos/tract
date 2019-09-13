@@ -54,8 +54,8 @@ impl Default for GRU {
             optional_initial_h_input: None,
             optional_y_output: None,
             optional_y_h_output: None,
-            f: Box::new(core_ops::nn::Sigmoid::new(f32::datum_type().into())),
-            g: Box::new(core_ops::math::Tanh::new(f32::datum_type().into())),
+            f: Box::new(core_ops::nn::sigmoid()),
+            g: Box::new(core_ops::math::tanh()),
             linear_before_reset: false,
         }
     }

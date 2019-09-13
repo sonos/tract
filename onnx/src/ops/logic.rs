@@ -2,7 +2,7 @@ use crate::model::OnnxOpRegister;
 use tract_core::ops as tractops;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("Not", |_, _| Ok((Box::new(tractops::logic::Not::default()), vec![])));
+    reg.insert("Not", |_, _| Ok((Box::new(tractops::logic::not()), vec![])));
     reg.insert("And", |_, _| Ok((Box::new(tractops::logic::and::bin()), vec![])));
     reg.insert("Or", |_, _| Ok((Box::new(tractops::logic::or::bin()), vec![])));
     reg.insert("Xor", |_, _| Ok((Box::new(tractops::logic::xor::bin()), vec![])));

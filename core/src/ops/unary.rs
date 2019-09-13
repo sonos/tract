@@ -2,18 +2,17 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-pub trait UnaMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
+pub trait UnaryMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
-
     fn eval_in_place(&self, t: &mut Tensor) -> TractResult<()>;
 }
-clone_trait_object!(UnaMiniOp);
-downcast_rs::impl_downcast!(UnaMiniOp);
+clone_trait_object!(UnaryMiniOp);
+downcast_rs::impl_downcast!(UnaryMiniOp);
 
 #[derive(Debug, Clone)]
-pub struct UnaOp(pub Box<dyn UnaMiniOp>);
+pub struct UnaryOp(pub Box<dyn UnaryMiniOp>);
 
-impl Op for UnaOp {
+impl Op for UnaryOp {
     fn name(&self) -> Cow<str> {
         format!("{}", self.0.name()).into()
     }
@@ -21,7 +20,7 @@ impl Op for UnaOp {
     op_as_typed_op!();
 }
 
-impl StatelessOp for UnaOp {
+impl StatelessOp for UnaryOp {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut t = args_1!(inputs).into_tensor();
         self.0.eval_in_place(&mut t)?;
@@ -29,7 +28,7 @@ impl StatelessOp for UnaOp {
     }
 }
 
-impl InferenceRulesOp for UnaOp {
+impl InferenceRulesOp for UnaryOp {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -46,7 +45,7 @@ impl InferenceRulesOp for UnaOp {
     inference_op_as_op!();
 }
 
-impl TypedOp for UnaOp {
+impl TypedOp for UnaryOp {
     typed_op_as_op!();
 
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
@@ -70,10 +69,10 @@ impl TypedOp for UnaOp {
 
 #[macro_export]
 macro_rules! unary {
-    ($func:ident, $Op:ident, $( [$($typ:ident),*] => $f:expr),*) => {
+    ($func:ident, $Op:ident $({$($var: ident : $var_typ: path),*})?, $( [$($typ:ident),*] => $f:expr),*) => {
         #[derive(Debug, Clone)]
-        pub struct $Op;
-        impl $crate::ops::unary::UnaMiniOp for $Op {
+        pub struct $Op { $( $(pub $var: $var_typ),* )? }
+        impl $crate::ops::unary::UnaryMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
             }
@@ -81,8 +80,8 @@ macro_rules! unary {
                 $(
                     $(if t.datum_type() == $typ::datum_type() {
                         let t: &mut[$typ] = t.as_slice_mut::<$typ>()?;
-                        let f: fn(&mut[$typ]) = $f;
-                        f(t);
+                        let f: fn(&Self, &mut[$typ]) = $f;
+                        f(self, t);
                         return Ok(())
                     }
                     )*
@@ -90,8 +89,8 @@ macro_rules! unary {
                 bail!("{} does not support {:?}", self.name(), t.datum_type());
             }
         }
-        pub fn $func() -> $crate::ops::unary::UnaOp {
-            $crate::ops::unary::UnaOp(Box::new($Op))
+        pub fn $func($( $($var: $var_typ),* )?) -> $crate::ops::unary::UnaryOp {
+            $crate::ops::unary::UnaryOp(Box::new($Op { $( $($var),* )? } ))
         }
     }
 }
