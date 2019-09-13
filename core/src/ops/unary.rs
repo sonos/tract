@@ -17,6 +17,12 @@ impl Op for UnaryOp {
         format!("{}", self.0.name()).into()
     }
 
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let a = model.outlet_fact(node.inputs[0])?;
+        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
+    }
+
+    canonic!();
     op_as_typed_op!();
 }
 
@@ -46,8 +52,6 @@ impl InferenceRulesOp for UnaryOp {
 }
 
 impl TypedOp for UnaryOp {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, inputs[0].shape.clone())?))
     }
@@ -65,6 +69,8 @@ impl TypedOp for UnaryOp {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    typed_op_as_op!();
 }
 
 #[macro_export]
