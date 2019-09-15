@@ -1,13 +1,13 @@
 #!/bin/sh
 
 export CI=true
-
 set -ex
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
 . $HOME/.cargo/env
 
+: "${RUST_VERSION:=stable}"
 rustup toolchain add $RUST_VERSION
 rustup default $RUST_VERSION
 
