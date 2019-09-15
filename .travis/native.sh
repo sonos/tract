@@ -9,7 +9,7 @@ which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 . $HOME/.cargo/env
 
 rustup toolchain add $RUST_VERSION
-rustup toolchain default $RUST_VERSION
+rustup default $RUST_VERSION
 
 rustc --version
 
