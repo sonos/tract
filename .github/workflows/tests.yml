@@ -12,7 +12,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: .travis/native.sh
+    - name: Native script
       env:
         RUST_VERSION: ${{matrix.rust}}
       run: .travis/native.sh
@@ -22,7 +22,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: .travis/native.sh
+    - name: Native script
       run: .travis/native.sh
 
   windows-native:
