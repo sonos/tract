@@ -6,7 +6,6 @@ jobs:
   unix-native:
     strategy:
       matrix:
-        os: [macOS-latest, ubuntu-latest]
         include:
           - os: ubuntu-latest
             rust: 1.35.0
@@ -16,6 +15,8 @@ jobs:
             rust: beta
           - os: ubuntu-latest
             rust: nightly
+          - os: macOS-latest
+            rust: stable
 
     runs-on: ${{ matrix.os }}
 
@@ -23,6 +24,7 @@ jobs:
     - uses: actions/checkout@v1
     - name: .travis/native.sh
       run: |
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
         rustup toolchain add ${{ matrix.rust }}
         rustup default ${{ matrix.rust }}
         rustc --version
