@@ -23,9 +23,6 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: .travis/native.sh
-      run: |
-        curl https://sh.rustup.rs -sSf | sh -s -- -y
-        rustup toolchain add ${{ matrix.rust }}
-        rustup default ${{ matrix.rust }}
-        rustc --version
-        .travis/native.sh
+      env:
+        RUST_VERSION: ${{matrix.rust}}
+      run: .travis/native.sh

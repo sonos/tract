@@ -4,6 +4,15 @@ export CI=true
 
 set -e
 
+PATH=$HOME/.cargo/bin:$PATH
+
+which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+rustup toolchain add $RUST_VERSION
+rustup toolchain default $RUST_VERSION
+
+rustc --version
+
 # if [ `uname` = "Linux" -a -z "$TRAVIS" ]
 # then
 #     apt-get update
