@@ -2,11 +2,11 @@
 
 export CI=true
 
-set -e
-
-PATH=$HOME/.cargo/bin:$PATH
+set -ex
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+. $HOME/.cargo/env
 
 rustup toolchain add $RUST_VERSION
 rustup toolchain default $RUST_VERSION
@@ -21,7 +21,6 @@ rustc --version
 #     cargo --version || ( curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y )
 # fi
 
-. $HOME/.cargo/env
 
 if [ -z "$CACHEDIR" ]
 then
