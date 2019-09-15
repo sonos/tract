@@ -7,9 +7,9 @@ PATH=$HOME/cached/bin:$HOME/.cargo/bin:/tmp/cargo-dinghy:$HOME/cached/android-sd
 
 if [ -z "$TRAVIS" -a `uname` = "Linux" ]
 then
-    apt-get update
-    apt-get -y upgrade
-    apt-get install -y unzip wget curl python awscli build-essential sudo libssl-dev
+    sudo apt-get update
+    sudo apt-get -y upgrade
+    sudo apt-get install -y unzip wget curl python awscli build-essential sudo libssl-dev
 fi
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
