@@ -5,12 +5,18 @@ set -ex
 ANDROID_SDK_VERSION=4333796
 
 which java || (
-    apt-get install -y software-properties-common
-    add-apt-repository -y ppa:webupd8team/java
-    apt-get update
-    echo debconf shared/accepted-oracle-license-v1-1 select true | debconf-set-selections
-    echo debconf shared/accepted-oracle-license-v1-1 seen true | debconf-set-selections
-    apt-get install -y oracle-java8-installer ca-certificates-java python
+sudo    apt-get install -y software-properties-common
+sudo add-apt-repository ppa:linuxuprising/java
+sudo apt-get update
+echo debconf shared/accepted-oracle-license-v1-2 select true | debconf-set-selections
+echo debconf shared/accepted-oracle-license-v1-2 seen true | debconf-set-selections
+sudo apt-get install -y oracle-java12-installer ca-certificates-java python
+#    apt-get install -y software-properties-common
+#    add-apt-repository -y ppa:webupd8team/java
+#    apt-get update
+#    echo debconf shared/accepted-oracle-license-v1-1 select true | debconf-set-selections
+#   echo debconf shared/accepted-oracle-license-v1-1 seen true | debconf-set-selections
+#    apt-get install -y oracle-java9-installer ca-certificates-java python
 )
 
 ANDROID_SDK=$HOME/cached/android-sdk

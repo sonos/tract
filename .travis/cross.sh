@@ -5,11 +5,13 @@ set -ex
 mkdir -p $HOME/cached/bin
 PATH=$HOME/cached/bin:$HOME/.cargo/bin:/tmp/cargo-dinghy:$HOME/cached/android-sdk/platform-tools:$PATH
 
+export DEBIAN_FRONTEND=noninteractive
+
 if [ -z "$TRAVIS" -a `uname` = "Linux" ]
 then
-    sudo apt-get update
-    sudo apt-get -y upgrade
-    sudo apt-get install -y unzip wget curl python awscli build-essential sudo libssl-dev
+    apt-get update
+    apt-get -y upgrade
+    apt-get install -y unzip wget curl python awscli build-essential sudo libssl-dev
 fi
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
