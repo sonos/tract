@@ -1,0 +1,25 @@
+name: Linux targets
+
+on: [push]
+
+jobs:
+  cross:
+    strategy:
+      matrix:
+        platform:
+          - raspbian
+          - aarch64-unknown-linux-gnu
+          - armv6vfp-unknown-linux-gnueabihf
+          - armv7-unknown-linux-gnueabihf
+          - aarch64-linux-android
+          - armv7-linux-androideabi
+          - i686-linux-android
+          - x86_64-linux-android
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Cross script
+      env:
+        PLATFORM: ${{matrix.platform}}
+      run: .travis/cross.sh
