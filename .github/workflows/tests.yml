@@ -3,13 +3,27 @@ name: Run tests
 on: [push]
 
 jobs:
-  build:
+  unix-native:
+    strategy:
+      matrix:
+        os: [macOS-latest, ubuntu-latest]
+        include:
+          - os: ubuntu-latest
+            rust: 1.35.0
+          - os: ubuntu-latest
+            rust: stable
+          - os: ubuntu-latest
+            rust: beta
+          - os: ubuntu-latest
+            rust: nightly
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v1
-    - name: Build
-      run: cargo build --release
-    - name: Run tests
-      run: cargo test --release
+    - name: .travis/native.sh
+      run: |
+        rustup toolchain add ${{ matrix.rust }}
+        rustup default ${{ matrix.rust }}
+        rustc --version
+        .travis/native.sh
