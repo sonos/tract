@@ -3,23 +3,12 @@ name: Run tests
 on: [push]
 
 jobs:
-  unix-native:
+  linux-native:
     strategy:
       matrix:
-        rust: [ stable ]
-        include:
-          - os: ubuntu-latest
-            rust: 1.35.0
-          - os: ubuntu-latest
-            rust: stable
-          - os: ubuntu-latest
-            rust: beta
-          - os: ubuntu-latest
-            rust: nightly
-          - os: macOS-latest
-            rust: stable
+        rust: [ 1.35.0, stable, beta, nightly ]
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v1
@@ -27,3 +16,19 @@ jobs:
       env:
         RUST_VERSION: ${{matrix.rust}}
       run: .travis/native.sh
+
+  macos-native:
+    runs-on: macOS-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: .travis/native.sh
+      run: .travis/native.sh
+
+  windows-native:
+    runs-on: windows-2016
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: linalg
+      run: cargo test -p tract-linalg
