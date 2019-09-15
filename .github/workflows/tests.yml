@@ -6,6 +6,7 @@ jobs:
   unix-native:
     strategy:
       matrix:
+        rust: [ stable ]
         include:
           - os: ubuntu-latest
             rust: 1.35.0
