@@ -2,13 +2,8 @@
 
 set -ex
 
-TRAVIS_COMMIT=${TRAVIS_COMMIT:-dummy-commit-id}
-if [ -n "$TRAVIS_PULL_REQUEST_BRANCH" ]
-then
-    BRANCH=$TRAVIS_PULL_REQUEST_BRANCH
-else
-    BRANCH=${TRAVIS_BRANCH:-dummy-branch}
-fi
+TRAVIS_COMMIT=${GITHUB_SHA:-dummy-commit-id}
+BRANCH=$(echo $GITHUB_REF | cut -d / -f 3)
 PLATFORM=${PLATFORM:-dummy-platform}
 
 dates=`date -u +"%Y%m%dT%H%M%S %s"`
