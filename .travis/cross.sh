@@ -4,9 +4,10 @@ set -ex
 
 export DEBIAN_FRONTEND=noninteractive
 
+[ which apt-get ] && apt-get update
+
 if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" -a `uname` = "Linux" ]
 then
-    apt-get update
     apt-get -y upgrade
     apt-get install -y unzip wget curl python awscli build-essential
 fi
@@ -65,6 +66,8 @@ set +e
         ls /
         ls /usr/local/
         ls /opt
+
+        find / -name ndk-bundle -type -d
 
 set -e
 
