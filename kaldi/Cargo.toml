@@ -13,7 +13,7 @@ categories = [ "science" ]
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "snipsco/tract" }
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 bit-set="0.5"

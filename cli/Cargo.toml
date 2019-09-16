@@ -11,7 +11,7 @@ autobenches = false
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "snipsco/tract" }
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 ansi_term = "0.12.0"
