@@ -2,19 +2,18 @@
 
 set -ex
 
-mkdir -p $HOME/cached/bin
-PATH=$HOME/cached/bin:$HOME/.cargo/bin:/tmp/cargo-dinghy:$HOME/cached/android-sdk/platform-tools:$PATH
-
 export DEBIAN_FRONTEND=noninteractive
 
-if [ -z "$TRAVIS" -a `uname` = "Linux" ]
+if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" -a `uname` = "Linux" ]
 then
     apt-get update
     apt-get -y upgrade
-    apt-get install -y unzip wget curl python awscli build-essential sudo libssl-dev
+    apt-get install -y unzip wget curl python awscli build-essential
 fi
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+. $HOME/.cargo/env
 
 [ which cargo-dinghy ] || ( mkdir -p /tmp/cargo-dinghy
 cd /tmp/cargo-dinghy
@@ -24,13 +23,14 @@ then
 else
     NAME=travis
 fi
-wget -q https://github.com/snipsco/dinghy/releases/download/0.4.5/cargo-dinghy-$NAME.tgz -O cargo-dinghy.tgz
+wget -q https://github.com/snipsco/dinghy/releases/download/0.4.15/cargo-dinghy-$NAME.tgz -O cargo-dinghy.tgz
 tar vzxf cargo-dinghy.tgz --strip-components 1
+mv /tmp/cargo-dinghy/cargo-dinghy $HOME/.cargo/bin
 )
 
 case "$PLATFORM" in
     "raspbian")
-        [ -e $HOME/cached/raspitools ] || git clone https://github.com/raspberrypi/tools $HOME/cached/raspitools
+        [ -e $HOME/cached/raspitools ] || git clone --depth 1 https://github.com/raspberrypi/tools $HOME/cached/raspitools
         TOOLCHAIN=$HOME/cached/raspitools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
@@ -59,8 +59,8 @@ case "$PLATFORM" in
             ;;
         esac
 
-        export ANDROID_SDK_HOME=$HOME/cached/android-sdk
-        [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
+#        export ANDROID_SDK_HOME=$HOME/cached/android-sdk
+#        [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
 
         rustup target add $RUSTC_TRIPLE
         ls $ANDROID_SDK_HOME
