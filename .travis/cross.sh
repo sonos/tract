@@ -4,7 +4,7 @@ set -ex
 
 export DEBIAN_FRONTEND=noninteractive
 
-[ which apt-get ] && apt-get update
+which apt-get && apt-get update
 
 if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" -a `uname` = "Linux" ]
 then
