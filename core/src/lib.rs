@@ -125,7 +125,7 @@ pub mod internal {
     pub use crate::analyser::types::*;
     pub use crate::datum::FloatLike;
     pub use crate::dim::{DimLike, TDim, ToDim};
-    pub use crate::ops::unary::UnaryMiniOp;
+    pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::framework::*;
     pub use crate::model::*;
     pub use crate::ops::{

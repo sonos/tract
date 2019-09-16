@@ -50,7 +50,7 @@ impl Op for Direct {
                             ))));
                         }
                     }
-                } else if let Some(op) = succ.op_as::<ops::unary::UnaryOp>() {
+                } else if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>() {
                     if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMax>() {
                         return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
                     } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMin>() {
