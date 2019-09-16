@@ -60,24 +60,15 @@ case "$PLATFORM" in
             ;;
         esac
 
-set +e
-
-        ls $HOME/Android
-        ls /
-        ls /usr/local/
-        ls /opt
-
-        find / -name ndk-bundle -type d
-
-set -e
-
-#        export ANDROID_SDK_HOME=$HOME/cached/android-sdk
-#        [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
+        if [ -e /usr/local/lib/android/sdk/ndk-bundle ]
+        then
+            export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
+        else 
+            export ANDROID_SDK_HOME=$HOME/cached/android-sdk
+            [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
+        fi
 
         rustup target add $RUSTC_TRIPLE
-        ls $ANDROID_SDK_HOME
-        ls $ANDROID_SDK_HOME/ndk-bundle
-        export ANDROID_NDK_HOME=$ANDROID_SDK_HOME/ndk-bundle
         cargo dinghy --platform auto-android-$ANDROID_CPU build -p tract-linalg
     ;;
 
