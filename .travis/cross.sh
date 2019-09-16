@@ -4,13 +4,18 @@ set -ex
 
 export DEBIAN_FRONTEND=noninteractive
 
+if [ `whoami` != "root" ]
+then
+    SUDO=sudo
+fi
+
 if [ `uname` = "Linux" ]
 then
-    apt-get update
+    $SUDO apt-get update
     if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" ]
     then
-        apt-get -y upgrade
-        apt-get install -y unzip wget curl python awscli build-essential
+        $SUDO apt-get -y upgrade
+        $SUDO apt-get install -y unzip wget curl python awscli build-essential
     fi
 fi
 
@@ -115,7 +120,7 @@ case "$PLATFORM" in
         echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $HOME/qemu-$ARCH
         chmod +x $HOME/qemu-$ARCH
 
-        sudo apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
+        $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
         cargo dinghy --platform $PLATFORM test --release -p tract-linalg -- --nocapture
         cargo dinghy --platform $PLATFORM test --release -p tract-core
