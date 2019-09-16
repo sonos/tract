@@ -1,8 +1,8 @@
 ![tract-logo](assets/tract-logo/PNG/tract-horizontal-blue.png)
 
 ![MIT/Apache 2](https://img.shields.io/crates/l/tract)
-[![Native tests status](https://github.com/snipsco/tract/workflows/Native+test+suite/badge.svg)](https://github.com/snipsco/tract/actions)
-[![Linux targets status](https://github.com/snipsco/tract/workflows/Linux+targets/badge.svg)](https://github.com/snipsco/tract/actions)
+[![Native tests status](https://github.com/snipsco/tract/workflows/Native test suite/badge.svg)](https://github.com/snipsco/tract/actions)
+[![Linux targets status](https://github.com/snipsco/tract/workflows/Linux targets/badge.svg)](https://github.com/snipsco/tract/actions)
 [![Doc](https://docs.rs/tract-core/badge.svg)](https://docs.rs/tract-core)
 
 Snips' tiny TensorFlow and ONNX inference engine.
