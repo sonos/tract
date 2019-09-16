@@ -20,4 +20,6 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Cross script
-      run: docker run -e PLATFORM=${{matrix.platform}} -v `pwd`:/tract -w /tract debian:stretch .travis/cross.sh
+      env:
+        PLATFORM: ${{matrix.platform}}
+      run: .travis/cross.sh
