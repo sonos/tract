@@ -15,7 +15,7 @@ which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
 . $HOME/.cargo/env
 
-[ which cargo-dinghy ] || ( mkdir -p /tmp/cargo-dinghy
+which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
 cd /tmp/cargo-dinghy
 if [ `uname` = "Darwin" ]
 then
@@ -58,6 +58,11 @@ case "$PLATFORM" in
                 RUSTC_TRIPLE=x86_64-linux-android
             ;;
         esac
+
+        ls $HOME/Android
+        ls /
+        ls /usr/local/
+        ls /opt
 
 #        export ANDROID_SDK_HOME=$HOME/cached/android-sdk
 #        [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
