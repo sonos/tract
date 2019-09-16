@@ -1,8 +1,17 @@
 #!/bin/sh
 
 export CI=true
+set -ex
 
-set -e
+which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+. $HOME/.cargo/env
+
+: "${RUST_VERSION:=stable}"
+rustup toolchain add $RUST_VERSION
+rustup default $RUST_VERSION
+
+rustc --version
 
 # if [ `uname` = "Linux" -a -z "$TRAVIS" ]
 # then
@@ -12,7 +21,6 @@ set -e
 #     cargo --version || ( curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y )
 # fi
 
-. $HOME/.cargo/env
 
 if [ -z "$CACHEDIR" ]
 then

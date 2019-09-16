@@ -2,19 +2,28 @@
 
 set -ex
 
-mkdir -p $HOME/cached/bin
-PATH=$HOME/cached/bin:$HOME/.cargo/bin:/tmp/cargo-dinghy:$HOME/cached/android-sdk/platform-tools:$PATH
+export DEBIAN_FRONTEND=noninteractive
 
-if [ -z "$TRAVIS" -a `uname` = "Linux" ]
+if [ `whoami` != "root" ]
 then
-    apt-get update
-    apt-get -y upgrade
-    apt-get install -y unzip wget curl python awscli build-essential sudo libssl-dev
+    SUDO=sudo
+fi
+
+if [ `uname` = "Linux" ]
+then
+    $SUDO apt-get update
+    if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" ]
+    then
+        $SUDO apt-get -y upgrade
+        $SUDO apt-get install -y unzip wget curl python awscli build-essential
+    fi
 fi
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-[ which cargo-dinghy ] || ( mkdir -p /tmp/cargo-dinghy
+. $HOME/.cargo/env
+
+which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
 cd /tmp/cargo-dinghy
 if [ `uname` = "Darwin" ]
 then
@@ -22,13 +31,14 @@ then
 else
     NAME=travis
 fi
-wget -q https://github.com/snipsco/dinghy/releases/download/0.4.5/cargo-dinghy-$NAME.tgz -O cargo-dinghy.tgz
+wget -q https://github.com/snipsco/dinghy/releases/download/0.4.15/cargo-dinghy-$NAME.tgz -O cargo-dinghy.tgz
 tar vzxf cargo-dinghy.tgz --strip-components 1
+mv /tmp/cargo-dinghy/cargo-dinghy $HOME/.cargo/bin
 )
 
 case "$PLATFORM" in
     "raspbian")
-        [ -e $HOME/cached/raspitools ] || git clone https://github.com/raspberrypi/tools $HOME/cached/raspitools
+        [ -e $HOME/cached/raspitools ] || git clone --depth 1 https://github.com/raspberrypi/tools $HOME/cached/raspitools
         TOOLCHAIN=$HOME/cached/raspitools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
@@ -57,13 +67,15 @@ case "$PLATFORM" in
             ;;
         esac
 
-        export ANDROID_SDK_HOME=$HOME/cached/android-sdk
-        [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
+        if [ -e /usr/local/lib/android/sdk/ndk-bundle ]
+        then
+            export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
+        else 
+            export ANDROID_SDK_HOME=$HOME/cached/android-sdk
+            [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
+        fi
 
         rustup target add $RUSTC_TRIPLE
-        ls $ANDROID_SDK_HOME
-        ls $ANDROID_SDK_HOME/ndk-bundle
-        export ANDROID_NDK_HOME=$ANDROID_SDK_HOME/ndk-bundle
         cargo dinghy --platform auto-android-$ANDROID_CPU build -p tract-linalg
     ;;
 
@@ -108,7 +120,7 @@ case "$PLATFORM" in
         echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $HOME/qemu-$ARCH
         chmod +x $HOME/qemu-$ARCH
 
-        sudo apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
+        $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
         cargo dinghy --platform $PLATFORM test --release -p tract-linalg -- --nocapture
         cargo dinghy --platform $PLATFORM test --release -p tract-core

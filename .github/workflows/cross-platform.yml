@@ -1,0 +1,28 @@
+name: Linux targets
+
+on: [push]
+
+jobs:
+  cross:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - raspbian
+          - aarch64-unknown-linux-gnu
+          - armv6vfp-unknown-linux-gnueabihf
+          - armv7-unknown-linux-gnueabihf
+          - aarch64-linux-android
+          - armv7-linux-androideabi
+          - i686-linux-android
+          - x86_64-linux-android
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Cross script
+      env:
+        PLATFORM: ${{matrix.platform}}
+        AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
+        AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
+      run: .travis/cross.sh

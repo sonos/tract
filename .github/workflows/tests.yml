@@ -1,15 +1,34 @@
-name: Run tests
+name: Native test suite
 
 on: [push]
 
 jobs:
-  build:
+  linux:
+    strategy:
+      matrix:
+        rust: [ 1.35.0, stable, beta, nightly ]
 
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v1
-    - name: Build
-      run: cargo build --release
-    - name: Run tests
-      run: cargo test --release
+    - name: Native script
+      env:
+        RUST_VERSION: ${{matrix.rust}}
+      run: .travis/native.sh
+
+  macos:
+    runs-on: macOS-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Native script
+      run: .travis/native.sh
+
+#  windows:
+#    runs-on: windows-2016
+#
+#    steps:
+#    - uses: actions/checkout@v1
+#    - name: linalg
+#      run: cargo test -p tract-linalg
