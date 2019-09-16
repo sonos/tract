@@ -67,7 +67,7 @@ set +e
         ls /usr/local/
         ls /opt
 
-        find / -name ndk-bundle -type -d
+        find / -name ndk-bundle -type d
 
 set -e
 
