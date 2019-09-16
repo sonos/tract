@@ -4,12 +4,14 @@ set -ex
 
 export DEBIAN_FRONTEND=noninteractive
 
-which apt-get && apt-get update
-
-if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" -a `uname` = "Linux" ]
+if [ `uname` = "Linux" ]
 then
-    apt-get -y upgrade
-    apt-get install -y unzip wget curl python awscli build-essential
+    apt-get update
+    if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" ]
+    then
+        apt-get -y upgrade
+        apt-get install -y unzip wget curl python awscli build-essential
+    fi
 fi
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
