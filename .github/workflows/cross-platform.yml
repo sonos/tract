@@ -5,6 +5,7 @@ on: [push]
 jobs:
   cross:
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - raspbian
