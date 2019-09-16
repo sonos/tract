@@ -59,10 +59,14 @@ case "$PLATFORM" in
             ;;
         esac
 
+set +e
+
         ls $HOME/Android
         ls /
         ls /usr/local/
         ls /opt
+
+set -e
 
 #        export ANDROID_SDK_HOME=$HOME/cached/android-sdk
 #        [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
