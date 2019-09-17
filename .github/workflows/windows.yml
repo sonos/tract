@@ -1,0 +1,17 @@
+name: Windows unit tests
+
+on: [push]
+
+jobs:
+  windows:
+    strategy:
+      matrix:
+        os: [ windows-2016, windows-2018 ]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: linalg and core tests
+      run: cargo test -p tract-linalg -p tract-core
+
