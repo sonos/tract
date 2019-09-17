@@ -127,7 +127,7 @@ where
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::align;
+    use crate::align::Buffer;
     use proptest::prelude::*;
 
     pub fn strat_vec_mat_mul() -> BoxedStrategy<(usize, usize, Vec<f32>, Vec<f32>)> {
@@ -150,27 +150,22 @@ pub mod test {
         a: &[f32],
         b: &[f32],
     ) -> Result<(), proptest::test_runner::TestCaseError> {
-        unsafe {
-            let mut packed_a: Vec<f32> =
-                align::uninitialized(mm.packed_a_len(), mm.packed_a_alignment());
-            mm.pack_a(packed_a.as_mut_ptr(), a.as_ptr(), 1);
+        let mut packed_a = Buffer::uninitialized(mm.packed_a_len(), mm.packed_a_alignment());
+        mm.pack_a(packed_a.as_mut_ptr(), a.as_ptr(), 1);
 
-            let mut packed_b: Vec<f32> =
-                align::uninitialized(mm.b_pack().len(), mm.b_pack().alignment());
-            mm.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
+        let mut packed_b = Buffer::uninitialized(mm.b_pack().len(), mm.b_pack().alignment());
+        mm.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
-            let mut found = vec![9999.0f32; n];
+        let mut found = vec![9999.0f32; n];
 
-            mm.vec_mat_mul_prepacked(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), 1);
-            let mut expect = vec![0.0f32; n];
-            for x in 0..n {
-                for i in 0..k {
-                    expect[x] += a[i] * b[x + i * n]
-                }
+        mm.vec_mat_mul_prepacked(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), 1);
+        let mut expect = vec![0.0f32; n];
+        for x in 0..n {
+            for i in 0..k {
+                expect[x] += a[i] * b[x + i * n]
             }
-            prop_assert_eq!(found, expect);
         }
+        prop_assert_eq!(found, expect);
         Ok(())
     }
-
 }

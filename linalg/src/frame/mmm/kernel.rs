@@ -46,7 +46,7 @@ where
 #[macro_use]
 pub mod test {
     use super::*;
-    use crate::align::realign_vec;
+    use crate::align::Buffer;
     use num_traits::One;
 
     #[test]
@@ -281,8 +281,8 @@ pub mod test {
         T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
     {
         let len = K::mr() * K::nr();
-        let pa = realign_vec(vec![T::one(); K::mr() * k], K::alignment_bytes_packed_a());
-        let pb = realign_vec(vec![T::one(); K::nr() * k], K::alignment_bytes_packed_b());
+        let pa = Buffer::realign_data(&vec![T::one(); K::mr() * k], K::alignment_bytes_packed_a());
+        let pb = Buffer::realign_data(&vec![T::one(); K::nr() * k], K::alignment_bytes_packed_b());
         let mut v: Vec<T> = vec![T::zero(); len];
         let mut c = mmm_stride_storage(&mut v, K::nr());
         let err = K::kernel(&MatMatMulKerSpec {
@@ -301,8 +301,8 @@ pub mod test {
         K: MatMatMulKer<T>,
         T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
     {
-        let a = (1..=(k * K::mr())).map(|x| (x as f32).into()).collect();
-        let pa = realign_vec(a, K::alignment_bytes_packed_a());
+        let a:Vec<T> = (1..=(k * K::mr())).map(|x| (x as f32).into()).collect();
+        let pa = Buffer::realign_data(&a, K::alignment_bytes_packed_a());
         let b: Vec<T> = (0..(k * t)).map(|x| (x as f32).into()).collect();
         let len = K::mr() * K::nr();
         let mut v: Vec<T> = vec![T::zero(); len];
@@ -336,7 +336,7 @@ pub mod test {
         K: MatMatMulKer<T>,
         T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
     {
-        let pa = realign_vec(vec![T::one(); K::mr() * k], K::alignment_bytes_packed_a());
+        let pa = Buffer::realign_data(&vec![T::one(); K::mr() * k], K::alignment_bytes_packed_a());
         let b = vec![T::one(); k];
         let c: Vec<T> = vec![T::zero(); K::mr()];
         let err = K::kernel(&MatMatMulKerSpec {

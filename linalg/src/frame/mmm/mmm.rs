@@ -339,7 +339,7 @@ where
 #[macro_use]
 pub mod test {
     use super::*;
-    use crate::align;
+    use crate::align::Buffer;
     use proptest::prelude::*;
 
     #[macro_export]
@@ -495,12 +495,10 @@ pub mod test {
     ) -> Result<(), proptest::test_runner::TestCaseError> {
         let op = MatMatMulImpl::<K, f32>::new(m, k, n);
         unsafe {
-            let mut packed_a: Vec<f32> =
-                align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+            let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
             op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
 
-            let mut packed_b: Vec<f32> =
-                align::uninitialized(op.b_pack().len(), op.b_pack().alignment());
+            let mut packed_b = Buffer::uninitialized(op.b_pack().len(), op.b_pack().alignment());
             op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
             let mut found = vec![9999.0f32; m * n];
@@ -539,8 +537,7 @@ pub mod test {
     ) -> Result<(), proptest::test_runner::TestCaseError> {
         let op = MatMatMulImpl::<K, f32>::new(m, k, 1);
         unsafe {
-            let mut packed_a: Vec<f32> =
-                align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+            let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
             op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
 
             let mut found = vec![9999.0f32; m];
@@ -580,12 +577,10 @@ pub mod test {
         let b = vec![1.0f32; n * k];
         let op = MatMatMulImpl::<K, f32>::new(m, k, n);
 
-        let mut packed_a: Vec<f32> =
-            align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+        let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
         op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
 
-        let mut packed_b: Vec<f32> =
-            align::uninitialized(op.b_pack().len(), op.b_pack().alignment());
+        let mut packed_b = Buffer::uninitialized(op.b_pack().len(), op.b_pack().alignment());
         op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
         let mut found = vec![9999.0f32; m * n];
@@ -759,8 +754,7 @@ pub mod test {
         pub fn run<K: MatMatMulKer<f32>>(&self) -> Vec<f32> {
             let op = MatMatMulImpl::<K, f32>::new(self.m(), self.k(), self.n());
             unsafe {
-                let mut packed_a: Vec<f32> =
-                    align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+                let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
                 op.a_pack().pack(
                     packed_a.as_mut_ptr(),
                     self.filters.as_ptr(),

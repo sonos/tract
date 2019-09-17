@@ -11,6 +11,12 @@ System V ABI:
     preserve: rbx, rsp, rbp, r12, r13, r14, r15
     scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
     return: rax (+rdx)
+
+Windows ABI:
+    args: RCX, RDX, R8, R9
+    preserve: RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-15
+    scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
+    return: rax (+rdx)
 */
 {% endcomment %}
 
@@ -34,7 +40,6 @@ fma_smmm16x6:
 
 _text segment
 fma_smmm16x6 proc
-    mov         rdi, rcx
 
 {% endif %}
 
@@ -56,6 +61,12 @@ fma_smmm16x6 proc
     vmovaps [rsp+16*7],xmm13
     vmovaps [rsp+16*8],xmm14
     vmovaps [rsp+16*9],xmm15
+
+    push        rdi
+    push        rsi
+
+    mov         rdi, rcx
+
 {% endif %}
 
     push        rbx
@@ -282,7 +293,7 @@ fma_smmm16x6 proc
     mov     rax,    0
 
 {{L}}return:
-    stmxcsr     [rsp + 4]
+    ldmxcsr     [rsp + 4]
     add         rsp, 8
 
     pop r15
@@ -292,6 +303,9 @@ fma_smmm16x6 proc
     pop rbx
 
 {% if family == "windows" %}
+    pop rsi
+    pop rdi
+
     vmovaps xmm15, dword ptr [rsp+16*9]
     vmovaps xmm14, dword ptr [rsp+16*8]
     vmovaps xmm13, dword ptr [rsp+16*7]
