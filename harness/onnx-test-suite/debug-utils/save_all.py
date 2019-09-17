@@ -12,12 +12,13 @@ print("model: " + model)
 print("output: " + output_name)
 sess = rt.InferenceSession(model)
 
-inputs = {}
+known = {}
 for i in range(3, len(sys.argv)):
     input_data = sys.argv[i]
     if input_data.endswith(".npz"):
-        input_data = numpy.load(input_data)
-        input_data = numpy.squeeze(input_data, 0)
+        tensors = numpy.load(input_data)
+        for name, array in tensors.items():
+            known[name] = array
         name = sess.get_inputs()[i-3].name
     elif input_data.endswith(".pb"):
         new_tensor = onnx.TensorProto()
@@ -25,16 +26,25 @@ for i in range(3, len(sys.argv)):
             new_tensor.ParseFromString(f.read())
         name = new_tensor.name
         input_data = numpy_helper.to_array(new_tensor)
-    inputs[name] = input_data
+
+print("known: ", known)
+
+inputs = {}
+for input in sess.get_inputs():
+    inputs[input.name] = known[input.name]
 
 outputs = inputs.copy()
-print(outputs.keys())
 pred_onnx = sess.run(None, inputs)
 
 for ix, output in enumerate(sess.get_outputs()):
     outputs[output.name] = pred_onnx[ix]
 
-print(outputs.keys())
+print("computed: ", outputs.keys())
+
+for name, array in outputs.items():
+    print(name)
+    print(array)
+
 os.mkdir(output_name)
 
 for name in outputs:

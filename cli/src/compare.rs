@@ -245,7 +245,7 @@ where
                 .iter()
                 .enumerate()
                 .map(|(ix, o)| {
-                    let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
+                    let tensor = &state.values[o.node].as_ref().and_then(|v| v.get(o.slot));
                     format!("input value #{}: {:?}", ix, tensor)
                 })
                 .collect::<Vec<_>>();
