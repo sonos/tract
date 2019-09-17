@@ -17,11 +17,6 @@ impl Op for ElementWiseOp {
         format!("{}", self.0.name()).into()
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let a = model.outlet_fact(node.inputs[0])?;
-        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
-    }
-
     canonic!();
     op_as_typed_op!();
 }
@@ -55,6 +50,12 @@ impl TypedOp for ElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, inputs[0].shape.clone())?))
     }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let a = model.outlet_fact(node.inputs[0])?;
+        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
+    }
+
 
     fn pulsify(
         &self,
