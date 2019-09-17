@@ -83,11 +83,10 @@ where
         outlet: OutletId,
     ) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
-        let node_id = self
+        let id = self
             .add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), objekt::clone(fact))?;
-        let inside = OutletId::new(node_id, 0);
-        self.incoming.insert(inside, outlet);
-        Ok(inside)
+        self.incoming.insert(id, outlet);
+        Ok(id)
     }
 
     /// Draw a tap from a preexisting node and connect it to an inlet.

@@ -472,9 +472,10 @@ impl Parameters {
                 let mut outputs = raw_model.output_outlets()?.to_vec();
                 let output_name = raw_model.node(outputs[0].node).name.clone();
                 raw_model.node_mut(outputs[0].node).name = format!("{}-old", output_name);
-                let id = raw_model.add_node_default(
+                let id = raw_model.add_node(
                     output_name,
                     tract_core::ops::Downsample::new(0, period as _, 0),
+                    tvec!(TensorFact::default())
                 )?;
                 raw_model.add_edge(outputs[0], InletId::new(id, 0))?;
                 outputs[0].node = id;

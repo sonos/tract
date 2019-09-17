@@ -200,17 +200,22 @@ mod tests {
         let mut model = InferenceModel::default();
 
         let var = model
-            .add_node_default(
+            .add_node(
                 "var",
                 VariableV2::new(None, None, "var".into(), "xxx".into(), tvec![], f32::datum_type()),
+                tvec!(TensorFact::default()),
             )
             .unwrap();
         let zero = model.add_const("zero".to_string(), tensor0(0f32)).unwrap();
         let one = model.add_const("one".to_string(), tensor0(1f32)).unwrap();
-        let reset = model.add_node_default("reset", Assign::new(Some("xxx".into()))).unwrap();
+        let reset = model
+            .add_node("reset", Assign::new(Some("xxx".into())), tvec!(TensorFact::new()))
+            .unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(reset, 0)).unwrap();
         model.add_edge(zero, InletId::new(reset, 1)).unwrap();
-        let set = model.add_node_default("set", Assign::new(Some("xxx".into()))).unwrap();
+        let set = model
+            .add_node("set", Assign::new(Some("xxx".into())), tvec!(TensorFact::new()))
+            .unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(set, 0)).unwrap();
         model.add_edge(one, InletId::new(set, 1)).unwrap();
         model.auto_outputs().unwrap();

@@ -74,7 +74,7 @@ impl ConvPlusConvProblem {
         let input = model
             .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S)))
             .unwrap();
-        let id = self.conv1.chain("conv1", &mut model, OutletId::new(input, 0));
+        let id = self.conv1.chain("conv1", &mut model, input);
         let _id = self.conv2.chain("conv2", &mut model, id);
         model.auto_outputs().unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)

@@ -45,7 +45,7 @@ impl<'a> ParsingContext<'a> {
                 let fact = input.get_field_type().get_tensor_type().try_into()?;
                 trace!("Input: {} is a source ({:?})", input.get_name(), fact);
                 let id = model.add_source(input.get_name(), fact)?;
-                outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
+                outlets_by_name.insert(input.get_name().to_owned(), id);
             }
         }
         for (name, t) in initializers.into_iter() {
@@ -92,9 +92,9 @@ impl<'a> ParsingContext<'a> {
         for (id, pbnode) in graph.get_node().iter().enumerate() {
             for (ix, input) in pbnode.get_input().iter().filter(|s| !s.is_empty()).enumerate() {
                 if !outlets_by_name.contains_key(&*input) {
-                    let id = model.add_source_default(input.clone())?;
+                    let id = model.add_source(input.clone(), TensorFact::default())?;
                     unresolved_inputs.push(input.to_string());
-                    outlets_by_name.insert(input.to_string(), OutletId::new(id, 0));
+                    outlets_by_name.insert(input.to_string(), id);
                 }
                 let outlet = outlets_by_name[&*input];
                 model.add_edge(outlet, InletId::new(id + consts, ix))?;
@@ -102,9 +102,9 @@ impl<'a> ParsingContext<'a> {
         }
         for (id, closure) in closures_to_wire {
             if !outlets_by_name.contains_key(&*closure) {
-                let id = model.add_source_default(closure.clone())?;
+                let id = model.add_source(closure.clone(), TensorFact::default())?;
                 unresolved_inputs.push(closure.to_string());
-                outlets_by_name.insert(closure.to_string(), OutletId::new(id, 0));
+                outlets_by_name.insert(closure.to_string(), id);
             }
             let outlet = outlets_by_name[&*closure];
             let ix = model.nodes()[id].inputs.len();

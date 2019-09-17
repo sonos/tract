@@ -129,7 +129,7 @@ fn incorporate_memory_ops_as_scans(
                     ShapeFact::from(&[(-op.offset) as usize, channel]),
                 ),
             )?;
-            node_id_old_to_new.insert(mem, id);
+            node_id_old_to_new.insert(mem, id.node);
 
             let zeroes = Tensor::from(tract_core::ndarray::Array2::<f32>::zeros((
                 (-op.offset) as usize,
@@ -156,7 +156,7 @@ fn incorporate_memory_ops_as_scans(
                 format!("{}-scan", old_node.name),
                 TensorFact::dt_shape(f32::datum_type(), shapefact!(_, channel)),
             )?;
-            node_id_old_to_new.insert(scan_input.node, new_id);
+            node_id_old_to_new.insert(scan_input.node, new_id.node);
             mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan {
                 axis: 0,
                 chunk: (),

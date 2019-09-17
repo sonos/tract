@@ -110,7 +110,7 @@ impl LstmProblem {
             tvec!(memory_fact),
         )?;
         model.plug_const(InletId::new(lstm, 0), "seq_length", tensor0(self.length as i64))?;
-        model.add_edge(OutletId::new(x, 0), InletId::new(lstm, 1))?;
+        model.add_edge(x, InletId::new(lstm, 1))?;
         model.add_edge(OutletId::new(cs, 0), InletId::new(lstm, 2))?;
         model.add_edge(OutletId::new(h, 0), InletId::new(lstm, 3))?;
         model.plug_const(InletId::new(lstm, 4), "w", self.w_xh_icfo.clone())?;

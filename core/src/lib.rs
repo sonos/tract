@@ -13,14 +13,13 @@
 //! // build a simple model that just add 3 to each input component
 //! let mut model = InferenceModel::default();
 //!
-//! let input = model.add_source_default("input").unwrap();
+//! let input = model.add_source("input").unwrap();
 //! let three = model.add_const("three".to_string(), tensor0(3f32)).unwrap();
-//! let add = model.add_node_default("add".to_string(),
+//! let add = model.wire_node("add".to_string(),
 //!     tract_core::ops::math::add::bin()
+//!     [input, three].as_ref()
 //!     ).unwrap();
 //!
-//! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();
-//! model.add_edge(three, InletId::new(add, 1)).unwrap();
 //! model.auto_outputs().unwrap();
 //!
 //! // We build an execution plan. Default inputs and outputs are inferred from

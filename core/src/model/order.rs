@@ -74,33 +74,31 @@ mod tests {
 
     #[test]
     fn simple() {
-        let mut model = ModelImpl::default();
-        model.add_source_default("a").unwrap();
-        model.chain_default("add", math::add::bin()).unwrap();
-        model.add_const("b", Tensor::from(12.0f32)).unwrap();
-        model.add_edge(OutletId::new(2, 0), InletId::new(1, 1)).unwrap();
+        let mut model = InferenceModel::default();
+        let a = model.add_source("a", TensorFact::default()).unwrap();
+        let b = model.add_const("b", Tensor::from(12.0f32)).unwrap();
+        let add = model.wire_node("add", math::add::bin(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
-        assert_eq!(model.eval_order().unwrap(), vec!(0, 2, 1));
+        assert_eq!(model.eval_order().unwrap(), vec!(a.node, b.node, add.node));
     }
 
     #[test]
     fn diamond() {
-        let mut model = ModelImpl::default();
-        model.add_source_default("a").unwrap();
-        model.chain_default("add", math::add::bin()).unwrap();
-        model.add_edge(OutletId::new(0, 0), InletId::new(1, 1)).unwrap();
+        let mut model = InferenceModel::default();
+        let a = model.add_source("a", TensorFact::default()).unwrap();
+        let add = model.wire_node("add", math::add::bin(), &[a, a]).unwrap()[0];
         model.auto_outputs().unwrap();
-        assert_eq!(model.eval_order().unwrap(), vec!(0, 1));
+        assert_eq!(model.eval_order().unwrap(), vec!(a.node, add.node));
     }
 
     #[test]
     fn dodge_loop() {
-        let mut model = ModelImpl::default();
-        model.add_source_default("a").unwrap();
-        let add = model.chain_default("add", math::add::bin()).unwrap();
-        let neg = model.chain_default("neg", math::add::bin()).unwrap();
-        model.add_edge(OutletId::new(neg, 0), InletId::new(add, 1)).unwrap();
-        model.set_output_outlets(&tvec!(OutletId::new(neg, 0))).unwrap();
+        let mut model = InferenceModel::default();
+        let a = model.add_source("a", TensorFact::default()).unwrap();
+        let add = model.wire_node("add", math::add::bin(), &[a]).unwrap()[0];
+        let neg = model.wire_node("neg", math::add::bin(), &[add]).unwrap()[0];
+        model.add_edge(neg, InletId::new(add.node, 1)).unwrap();
+        model.set_output_outlets(&[neg]).unwrap();
         let (rx, tx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             rx.send(model.eval_order()).unwrap();
