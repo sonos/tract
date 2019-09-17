@@ -282,7 +282,7 @@ fma_smmm16x6 proc
     mov     rax,    0
 
 {{L}}return:
-    stmxcsr     [rsp + 4]
+    ldmxcsr     [rsp + 4]
     add         rsp, 8
 
     pop r15
