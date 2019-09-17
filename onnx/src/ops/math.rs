@@ -67,7 +67,7 @@ pub fn clip(
     Ok((op, vec![]))
 }
 
-unary!(erf, Erf, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = erf_f32(*x)));
+element_wise!(erf, Erf, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = erf_f32(*x)));
 
 #[allow(non_upper_case_globals)]
 fn erf_f32(x: f32) -> f32 {

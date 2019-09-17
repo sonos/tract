@@ -2,17 +2,17 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-pub trait UnaryMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
+pub trait ElementWiseMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
     fn eval_in_place(&self, t: &mut Tensor) -> TractResult<()>;
 }
-clone_trait_object!(UnaryMiniOp);
-downcast_rs::impl_downcast!(UnaryMiniOp);
+clone_trait_object!(ElementWiseMiniOp);
+downcast_rs::impl_downcast!(ElementWiseMiniOp);
 
 #[derive(Debug, Clone)]
-pub struct UnaryOp(pub Box<dyn UnaryMiniOp>);
+pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
 
-impl Op for UnaryOp {
+impl Op for ElementWiseOp {
     fn name(&self) -> Cow<str> {
         format!("{}", self.0.name()).into()
     }
@@ -26,7 +26,7 @@ impl Op for UnaryOp {
     op_as_typed_op!();
 }
 
-impl StatelessOp for UnaryOp {
+impl StatelessOp for ElementWiseOp {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut t = args_1!(inputs).into_tensor();
         self.0.eval_in_place(&mut t)?;
@@ -34,7 +34,7 @@ impl StatelessOp for UnaryOp {
     }
 }
 
-impl InferenceRulesOp for UnaryOp {
+impl InferenceRulesOp for ElementWiseOp {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -51,7 +51,7 @@ impl InferenceRulesOp for UnaryOp {
     inference_op_as_op!();
 }
 
-impl TypedOp for UnaryOp {
+impl TypedOp for ElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, inputs[0].shape.clone())?))
     }
@@ -74,11 +74,11 @@ impl TypedOp for UnaryOp {
 }
 
 #[macro_export]
-macro_rules! unary {
+macro_rules! element_wise {
     ($func:ident, $Op:ident $({$($var: ident : $var_typ: path),*})?, $( [$($typ:ident),*] => $f:expr),*) => {
         #[derive(Debug, Clone)]
         pub struct $Op { $( $(pub $var: $var_typ),* )? }
-        impl $crate::ops::unary::UnaryMiniOp for $Op {
+        impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
             }
@@ -95,8 +95,8 @@ macro_rules! unary {
                 bail!("{} does not support {:?}", self.name(), t.datum_type());
             }
         }
-        pub fn $func($( $($var: $var_typ),* )?) -> $crate::ops::unary::UnaryOp {
-            $crate::ops::unary::UnaryOp(Box::new($Op { $( $($var),* )? } ))
+        pub fn $func($( $($var: $var_typ),* )?) -> $crate::ops::element_wise::ElementWiseOp {
+            $crate::ops::element_wise::ElementWiseOp(Box::new($Op { $( $($var),* )? } ))
         }
     }
 }

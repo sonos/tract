@@ -8,7 +8,7 @@ use objekt;
 #[macro_use]
 pub mod macros;
 #[macro_use]
-pub mod unary;
+pub mod element_wise;
 #[macro_use]
 pub mod binary;
 

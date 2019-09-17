@@ -257,7 +257,7 @@ pub fn scaled_tanh(
     Ok((Box::new(tractops::nn::scaled_tanh(alpha, beta)), vec![]))
 }
 
-unary!(shrink_op, Shrink { bias: f32, lambd: f32 },
+element_wise!(shrink_op, Shrink { bias: f32, lambd: f32 },
     [f16,f32,f64] => |s, xs| xs.iter_mut().for_each(|x| *x = shrink_value(*x, s))
 );
 

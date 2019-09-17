@@ -16,35 +16,35 @@ use num_traits::{ AsPrimitive, Float};
 
 pub use crate::internal::*;
 
-unary!(softplus, Softplus, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = (x.exp() + 1.0).ln()));
-unary!(softsign, Softsign, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = *x / (x.abs() + 1.0)));
-unary!(sigmoid, Sigmoid, [f32] => |_, xs| f32::sigmoid().run(xs));
+element_wise!(softplus, Softplus, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = (x.exp() + 1.0).ln()));
+element_wise!(softsign, Softsign, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = *x / (x.abs() + 1.0)));
+element_wise!(sigmoid, Sigmoid, [f32] => |_, xs| f32::sigmoid().run(xs));
 
-unary!(elu, Elu { alpha: f32 },
+element_wise!(elu, Elu { alpha: f32 },
     [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.elu(e.alpha); })
 );
 
-unary!(hard_sigmoid, HardSigmoid { alpha: f32, beta: f32 },
+element_wise!(hard_sigmoid, HardSigmoid { alpha: f32, beta: f32 },
     [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.hard_sigmoid(e.alpha, e.beta); })
 );
 
-unary!(leaky_relu, LeakyRelu { alpha: f32 },
+element_wise!(leaky_relu, LeakyRelu { alpha: f32 },
     [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.leaky_relu(e.alpha); })
 );
 
-unary!(parametric_softplus, ParametricSoftplus { alpha: f32, beta: f32 },
+element_wise!(parametric_softplus, ParametricSoftplus { alpha: f32, beta: f32 },
     [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.parametric_softplus(e.alpha, e.beta); })
 );
 
-unary!(scaled_tanh, ScaledTanh { alpha: f32, beta: f32 },
+element_wise!(scaled_tanh, ScaledTanh { alpha: f32, beta: f32 },
     [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.scaled_tanh(e.alpha, e.beta); })
 );
 
-unary!(selu, Selu { alpha: f32, gamma: f32 },
+element_wise!(selu, Selu { alpha: f32, gamma: f32 },
     [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.selu(e.alpha, e.gamma); })
 );
 
-unary!(threshold_relu, ThresholdRelu { alpha: f32 },
+element_wise!(threshold_relu, ThresholdRelu { alpha: f32 },
     [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.threshold_relu(e.alpha); })
 );
 

@@ -39,48 +39,48 @@ fn flip_sub(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     Some(UnaryOp::new(Box::new(Add), Arc::new(t)))
 }
 
-unary!(abs, Abs, [f16, f32, i32] => |_, xs| xs.iter_mut().for_each(|x| *x = x.abs()));
-unary!(exp, Exp, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.exp()));
-unary!(ln, Ln, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.ln()));
-unary!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt()));
-unary!(recip, Recip, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.recip()));
-unary!(rsqrt, Rsqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt().recip()));
+element_wise!(abs, Abs, [f16, f32, i32] => |_, xs| xs.iter_mut().for_each(|x| *x = x.abs()));
+element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.exp()));
+element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.ln()));
+element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt()));
+element_wise!(recip, Recip, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.recip()));
+element_wise!(rsqrt, Rsqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt().recip()));
 
-unary!(ceil, Ceil, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.ceil()));
-unary!(floor, Floor, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.floor()));
+element_wise!(ceil, Ceil, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.ceil()));
+element_wise!(floor, Floor, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.floor()));
 
-unary!(scalar_min_max, ScalarMinMax { min: f32, max: f32 },
+element_wise!(scalar_min_max, ScalarMinMax { min: f32, max: f32 },
    [f32, f64] => |m, xs| xs.iter_mut().for_each(|x| *x = x.max(m.max as _).min(m.min as _))
 );
 
-unary!(scalar_min, ScalarMin { min: f32 },
+element_wise!(scalar_min, ScalarMin { min: f32 },
    [f32, f64] => |m, xs| xs.iter_mut().for_each(|x| *x = x.min(m.min as _))
 );
 
-unary!(scalar_max, ScalarMax { max: f32 },
+element_wise!(scalar_max, ScalarMax { max: f32 },
    [f32, f64] => |m, xs| xs.iter_mut().for_each(|x| *x = x.max(m.max as _))
 );
 
-unary!(cos, Cos, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.cos()));
-unary!(sin, Sin, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sin()));
-unary!(tan, Tan, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.tan()));
-unary!(acos, Acos, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.acos()));
-unary!(asin, Asin, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.asin()));
-unary!(atan, Atan, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.atan()));
+element_wise!(cos, Cos, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.cos()));
+element_wise!(sin, Sin, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sin()));
+element_wise!(tan, Tan, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.tan()));
+element_wise!(acos, Acos, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.acos()));
+element_wise!(asin, Asin, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.asin()));
+element_wise!(atan, Atan, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.atan()));
 
-unary!(cosh, Cosh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.cosh()));
-unary!(sinh, Sinh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sinh()));
-unary!(tanh, Tanh,
+element_wise!(cosh, Cosh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.cosh()));
+element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sinh()));
+element_wise!(tanh, Tanh,
    [f32] => |_, xs| <f32 as FloatLike>::tanh().run(xs),
    [f16, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.tanh())
 );
-unary!(acosh, Acosh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.acosh()));
-unary!(asinh, Asinh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.asinh()));
-unary!(atanh, Atanh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.atanh()));
+element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.acosh()));
+element_wise!(asinh, Asinh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.asinh()));
+element_wise!(atanh, Atanh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.atanh()));
 
-unary!(neg, Neg, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, xs| xs.iter_mut().for_each(|x| *x = -x.clone()));
+element_wise!(neg, Neg, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, xs| xs.iter_mut().for_each(|x| *x = -x.clone()));
 
-unary!(sign, Sign, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { x.signum() }));
+element_wise!(sign, Sign, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { x.signum() }));
 
 #[cfg(test)]
 mod tests {
