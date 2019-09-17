@@ -14,15 +14,16 @@ where
     /// Adds a source op to the network.
     ///
     /// The model will assume this is an input.
-    fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize>;
+    fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<OutletId>;
 
     fn create_dummy(&self) -> O;
 }
 
 impl ModelSpecialOps<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
-    fn add_source(&mut self, name: impl Into<String>, fact: TensorFact) -> TractResult<usize> {
+    fn add_source(&mut self, name: impl Into<String>, fact: TensorFact) -> TractResult<OutletId> {
         let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
-        self.inputs.push(OutletId::new(id, 0));
+        let id = OutletId::new(id, 0);
+        self.inputs.push(id);
         Ok(id)
     }
 
@@ -32,10 +33,11 @@ impl ModelSpecialOps<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
 }
 
 impl ModelSpecialOps<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
-    fn add_source(&mut self, name: impl Into<String>, fact: TypedTensorInfo) -> TractResult<usize> {
+    fn add_source(&mut self, name: impl Into<String>, fact: TypedTensorInfo) -> TractResult<OutletId> {
         let id =
             self.add_node(name, crate::ops::source::TypedSource::new(fact.clone()), tvec!(fact))?;
-        self.inputs.push(OutletId::new(id, 0));
+        let id = OutletId::new(id, 0);
+        self.inputs.push(id);
         Ok(id)
     }
 
@@ -49,13 +51,14 @@ impl ModelSpecialOps<PulsedTensorFact, Box<dyn TypedOp>> for PulsedModel {
         &mut self,
         name: impl Into<String>,
         fact: PulsedTensorFact,
-    ) -> TractResult<usize> {
+    ) -> TractResult<OutletId> {
         let id = self.add_node(
             name,
             crate::ops::source::TypedSource::new(TypedTensorInfo::dt_shape(fact.dt, &*fact.shape)?),
             tvec!(fact),
         )?;
-        self.inputs.push(OutletId::new(id, 0));
+        let id = OutletId::new(id, 0);
+        self.inputs.push(id);
         Ok(id)
     }
 
@@ -225,37 +228,7 @@ where
     }
 }
 
-/*
-impl ModelDslConst for super::TypedModel {
-    fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<usize> {
-        let v = v.into_arc_tensor();
-        let facts = tvec!(v.clone().into());
-        self.add_node(name, crate::ops::konst::Const::new(v), facts)
-    }
-    fn plug_const(
-        &mut self,
-        inlet: InletId,
-        name: impl Into<String>,
-        v: impl IntoArcTensor,
-    ) -> TractResult<()> {
-        let cst = self.add_const(name, v)?;
-        self.add_edge(OutletId::new(cst, 0), inlet)?;
-        Ok(())
-    }
-}
-*/
-
 pub trait ModelDslInfer: ModelDsl<TensorFact, Box<dyn InferenceOp>> {
-    /// Add a source with no tensor information.
-    fn add_source_default(&mut self, name: impl Into<String>) -> TractResult<usize>;
-
-    /// Add a node without tensor information.
-    fn add_node_default(
-        &mut self,
-        name: impl Into<String>,
-        op: impl Into<Box<dyn InferenceOp>>,
-    ) -> TractResult<usize>;
-
     /// Chain a node without tensor information.
     fn chain_default(
         &mut self,
@@ -265,18 +238,6 @@ pub trait ModelDslInfer: ModelDsl<TensorFact, Box<dyn InferenceOp>> {
 }
 
 impl ModelDslInfer for super::InferenceModel {
-    fn add_source_default(&mut self, name: impl Into<String>) -> TractResult<usize> {
-        self.add_source(name, TensorFact::default())
-    }
-
-    fn add_node_default(
-        &mut self,
-        name: impl Into<String>,
-        op: impl Into<Box<dyn InferenceOp>>,
-    ) -> TractResult<usize> {
-        self.add_node(name, op, tvec!(TensorFact::default()))
-    }
-
     fn chain_default(
         &mut self,
         name: impl Into<String>,

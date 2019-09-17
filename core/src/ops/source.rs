@@ -107,6 +107,6 @@ impl TypedOp for TypedSource {
         let pulsed_fact =
             crate::pulse::PulsedTensorFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
         let id = target.add_source(node.name.clone(), pulsed_fact)?;
-        Ok(tvec!(OutletId::new(id, 0)))
+        Ok(tvec!(id))
     }
 }
