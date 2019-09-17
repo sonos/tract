@@ -9,6 +9,7 @@ extern crate num_traits;
 #[cfg(test)]
 extern crate proptest;
 
+#[cfg(test)]
 pub mod align;
 pub mod f16;
 #[macro_use]

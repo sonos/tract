@@ -1,60 +1,44 @@
-use std::alloc;
-use std::mem;
+use std::{alloc, mem, ops, slice};
 
-pub unsafe fn alloc_bytes(size: usize, alignment: usize) -> *mut u8 {
-    alloc::alloc(alloc::Layout::from_size_align(size, alignment).unwrap())
+pub struct Buffer<T> {
+    ptr: *mut T,
+    items: usize,
+    layout: alloc::Layout,
 }
 
-pub unsafe fn vec_bytes(capacity: usize, alignment: usize) -> Vec<u8> {
-    let aligned_buffer = alloc_bytes(capacity, alignment);
-    Vec::from_raw_parts(aligned_buffer as _, 0, capacity)
-}
-
-pub unsafe fn uninitialized_bytes(size: usize, alignment: usize) -> Vec<u8> {
-    let aligned_buffer = alloc_bytes(size, alignment);
-    Vec::from_raw_parts(aligned_buffer as _, size, size)
-}
-
-pub unsafe fn uninitialized<T>(size: usize, alignment_bytes: usize) -> Vec<T> {
-    let aligned_buffer = alloc_bytes(size * mem::size_of::<T>(), alignment_bytes);
-    Vec::from_raw_parts(aligned_buffer as _, size, size)
-}
-
-/*
-fn realign_slice_bytes(v: &[u8], alignment: usize) -> Vec<u8> {
-    assert!(
-        (alignment as u32).count_ones() == 1,
-        "Invalid alignment required ({})",
-        alignment
-    );
-    if v.len() == 0 {
-        return vec![];
-    }
-    unsafe {
-        let aligned_buffer = alloc_bytes(v.len(), alignment);
-        let mut output = Vec::from_raw_parts(aligned_buffer as _, v.len(), v.len());
-        output.copy_from_slice(v);
-        output
-    }
-}
-*/
-
-pub fn realign_slice<T: Copy>(v: &[T], alignment: usize) -> Vec<T> {
-    if v.len() == 0 {
-        return vec![];
-    }
-    unsafe {
-        let t = mem::size_of::<T>();
-        let aligned = alloc_bytes(v.len() * t, alignment);
-        let mut result = Vec::from_raw_parts(aligned as _, v.len(), v.len());
-        result.copy_from_slice(&v);
-        result
+impl<T> Drop for Buffer<T> {
+    fn drop(&mut self) {
+        unsafe { alloc::dealloc(self.ptr as _, self.layout) };
     }
 }
 
-pub fn realign_vec<T: Copy>(v: Vec<T>, alignment: usize) -> Vec<T> {
-    if v.len() == 0 || v.as_ptr() as usize % alignment == 0 {
-        return v;
+impl<T> ops::Deref for Buffer<T> {
+    type Target = [T];
+    fn deref(&self) -> &[T] {
+        unsafe { slice::from_raw_parts(self.ptr, self.items) }
     }
-    realign_slice(&v, alignment)
 }
+
+impl<T> ops::DerefMut for Buffer<T> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        unsafe { slice::from_raw_parts_mut(self.ptr, self.items) }
+    }
+}
+
+impl<T> Buffer<T> {
+    pub fn uninitialized(items: usize, alignment_bytes: usize) -> Buffer<T> {
+        let layout =
+            alloc::Layout::from_size_align(items * mem::size_of::<T>(), alignment_bytes).unwrap();
+        let ptr = unsafe { alloc::alloc(layout) } as *mut T;
+        Buffer { ptr, items, layout }
+    }
+}
+
+impl<T: Copy> Buffer<T> {
+    pub fn realign_data(data: &[T], alignment_bytes: usize) -> Buffer<T> {
+        let mut buf = Buffer::uninitialized(data.len(), alignment_bytes);
+        buf.copy_from_slice(data);
+        buf
+    }
+}
+
