@@ -8,7 +8,6 @@ mod gather;
 mod pack;
 mod pad;
 mod range;
-mod reshape;
 mod slice;
 mod squeeze;
 mod strided_slice;
@@ -22,7 +21,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
     reg.insert("Range", range::range);
-    reg.insert("Reshape", reshape::reshape);
+    reg.insert("Reshape", |_, _|Ok(Box::new(::tract_core::ops::array::Reshape::new())));
     reg.insert("Shape", |_, _| Ok(Box::new(::tract_core::ops::array::Shape::new(DatumType::I32))));
     reg.insert("Slice", |_, _| Ok(Box::new(slice::Slice)));
     reg.insert("Squeeze", squeeze::squeeze);
