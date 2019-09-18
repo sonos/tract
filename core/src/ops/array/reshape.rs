@@ -1,6 +1,8 @@
 use crate::internal::*;
 use itertools::Itertools;
 
+// FIXME: try to recanonicalize as flatten (maybe extended) / add_dims / rm_dims ?
+
 #[derive(Debug, Clone, new, Default)]
 pub struct Reshape {}
 
@@ -103,7 +105,7 @@ impl Op for TypedReshape {
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for TypedReshape {
@@ -153,7 +155,7 @@ impl Op for FiniteReshape {
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for FiniteReshape {

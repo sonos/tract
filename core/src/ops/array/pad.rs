@@ -167,7 +167,7 @@ impl TypedOp for Pad {
         };
         let mut prec = input;
         if extra_delay > 0 {
-            let buffer_op = Delay::new(fact.clone(), extra_delay, 0);
+            let buffer_op = Delay::new(&fact.clone(), extra_delay, 0);
             fact.delay += extra_delay;
             let id = target.chain_after(
                 input,
@@ -318,4 +318,15 @@ impl<T: Datum + Copy> TypedOp for PulsePad<T> {
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
+}
+
+impl<T: Datum + Copy> PulsedOp for PulsePad<T> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.dim += (self.before + self.after).to_dim();
+        fact.delay -= self.before;
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }

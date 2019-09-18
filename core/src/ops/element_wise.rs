@@ -49,7 +49,7 @@ impl InferenceRulesOp for ElementWiseOp {
 
 impl TypedOp for ElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, inputs[0].shape.clone())?))
+        Ok(tvec!(inputs[0].clone()))
     }
 
     fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
@@ -73,6 +73,14 @@ impl TypedOp for ElementWiseOp {
     }
 
     typed_op_as_op!();
+}
+
+impl PulsedOp for ElementWiseOp {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[macro_export]

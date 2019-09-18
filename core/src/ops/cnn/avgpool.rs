@@ -71,8 +71,6 @@ impl InferenceRulesOp for AvgPool {
 }
 
 impl TypedOp for AvgPool {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         self.pool_spec.output_facts(inputs)
     }
@@ -101,6 +99,16 @@ impl TypedOp for AvgPool {
         }
         Ok(None)
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for AvgPool {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        self.pool_spec.pulsed_output_facts(inputs)
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -124,7 +132,7 @@ where
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl<T: Datum + Float + Sum> StatelessOp for AvgPoolFixed<T>
@@ -171,9 +179,9 @@ impl<T: Datum + Float + Sum> TypedOp for AvgPoolFixed<T>
 where
     usize: AsPrimitive<T>,
 {
-    typed_op_as_op!();
-
     fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
     }
+
+    typed_op_as_op!();
 }

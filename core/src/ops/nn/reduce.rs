@@ -373,3 +373,16 @@ impl TypedOp for TypedReduce {
         Ok(tvec!(OutletId::new(id, 0)))
     }
 }
+
+impl PulsedOp for TypedReduce {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        for &ax in &self.axes {
+            fact.shape[ax] = 1;
+        }
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
+}
+

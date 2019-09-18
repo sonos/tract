@@ -68,8 +68,6 @@ impl InferenceRulesOp for LayerHardmax {
 }
 
 impl TypedOp for LayerHardmax {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
@@ -84,6 +82,16 @@ impl TypedOp for LayerHardmax {
     ) -> TractResult<TVec<OutletId>> {
         pulsify(self, self.axis, node, target, mapping)
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for LayerHardmax {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -151,8 +159,6 @@ impl InferenceRulesOp for LayerLogSoftmax {
 }
 
 impl TypedOp for LayerLogSoftmax {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
@@ -167,6 +173,16 @@ impl TypedOp for LayerLogSoftmax {
     ) -> TractResult<TVec<OutletId>> {
         pulsify(self, self.axis, node, target, mapping)
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for LayerLogSoftmax {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -233,21 +249,7 @@ impl InferenceRulesOp for LayerSoftmax {
     to_typed!();
 }
 
-fn rules<'r, 'p: 'r, 's: 'r>(
-    s: &mut Solver<'r>,
-    inputs: &'p [TensorProxy],
-    outputs: &'p [TensorProxy],
-) -> InferenceResult {
-    check_output_arity(&outputs, 1)?;
-    s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-    s.equals(&outputs[0].rank, &inputs[0].rank)?;
-    s.equals(&outputs[0].shape, &inputs[0].shape)?;
-    Ok(())
-}
-
 impl TypedOp for LayerSoftmax {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
@@ -262,7 +264,30 @@ impl TypedOp for LayerSoftmax {
     ) -> TractResult<TVec<OutletId>> {
         pulsify(self, self.axis, node, target, mapping)
     }
+
+    typed_op_as_op!();
 }
+
+impl PulsedOp for LayerSoftmax {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+
+    pulsed_op_as_op!();
+}
+
+fn rules<'r, 'p: 'r, 's: 'r>(
+    s: &mut Solver<'r>,
+    inputs: &'p [TensorProxy],
+    outputs: &'p [TensorProxy],
+) -> InferenceResult {
+    check_output_arity(&outputs, 1)?;
+    s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+    s.equals(&outputs[0].rank, &inputs[0].rank)?;
+    s.equals(&outputs[0].shape, &inputs[0].shape)?;
+    Ok(())
+}
+
 
 fn pulsify(
     op: &dyn TypedOp,

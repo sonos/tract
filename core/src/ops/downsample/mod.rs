@@ -101,8 +101,6 @@ impl InferenceRulesOp for Downsample {
 }
 
 impl TypedOp for Downsample {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let mut downed = inputs[0].clone();
         let down_len = self.transform_dim(&downed.shape.dim(self.axis));
@@ -139,6 +137,19 @@ impl TypedOp for Downsample {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for Downsample {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.shape[self.axis] /= self.stride;
+        fact.dim = fact.dim.div_ceil(self.stride.to_dim());
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }
 
 fn pull_downsample_up(

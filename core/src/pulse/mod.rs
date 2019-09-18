@@ -7,7 +7,7 @@ pub mod delay;
 
 #[derive(Clone, PartialEq)]
 pub struct PulsedTensorFact {
-    pub dt: DatumType,
+    pub datum_type: DatumType,
     pub shape: TVec<usize>,
     pub axis: usize,
     pub dim: TDim,
@@ -21,7 +21,7 @@ impl fmt::Debug for PulsedTensorFact {
             fmt,
             "{}x{:?} [pulse axis:{} ∂:{} full dim:{:?}]",
             self.shape.iter().join("x"),
-            self.dt,
+            self.datum_type,
             self.axis,
             self.delay,
             self.dim
@@ -31,14 +31,14 @@ impl fmt::Debug for PulsedTensorFact {
 
 impl TensorInfo for PulsedTensorFact {
     fn to_tensor_fact(&self) -> TensorFact {
-        TensorFact::dt_shape(self.dt, &self.shape)
+        TensorFact::dt_shape(self.datum_type, &self.shape)
     }
 }
 
 impl TryFrom<PulsedTensorFact> for TypedTensorInfo {
     type Error = TractError;
     fn try_from(fact: PulsedTensorFact) -> TractResult<TypedTensorInfo> {
-        TypedTensorInfo::dt_shape(fact.dt, &*fact.shape)
+        TypedTensorInfo::dt_shape(fact.datum_type, &*fact.shape)
     }
 }
 
@@ -47,12 +47,12 @@ impl PulsedTensorFact {
         tf: &NormalizedTensorInfo,
         pulse: usize,
     ) -> TractResult<PulsedTensorFact> {
-        let dt = tf.datum_type;
+        let datum_type = tf.datum_type;
         let stream =
             tf.shape.stream_info.as_ref().ok_or("Can not pulse a tensor with no streaming dim")?;
         let shape =
             tf.shape.iter().map(|d| d.to_integer().map(|d| d as usize).unwrap_or(pulse)).collect();
-        Ok(PulsedTensorFact { dt, shape, axis: stream.axis, dim: stream.len.clone(), delay: 0 })
+        Ok(PulsedTensorFact { datum_type, shape, axis: stream.axis, dim: stream.len.clone(), delay: 0 })
     }
 
     pub fn pulse(&self) -> usize {
@@ -60,7 +60,7 @@ impl PulsedTensorFact {
     }
 
     pub fn to_pulse_fact(&self) -> NormalizedTensorInfo {
-        NormalizedTensorInfo::dt_shape(self.dt, &*self.shape).unwrap()
+        NormalizedTensorInfo::dt_shape(self.datum_type, &*self.shape).unwrap()
     }
 
     pub fn streaming_shape(&self) -> Vec<TDim> {

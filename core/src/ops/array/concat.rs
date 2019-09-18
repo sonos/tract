@@ -38,7 +38,7 @@ impl Op for Concat {
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Concat {
@@ -207,7 +207,7 @@ impl Op for NormConcat {
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl TypedOp for NormConcat {
@@ -251,7 +251,7 @@ impl TypedOp for NormConcat {
         let fact = target.outlet_fact(input)?;
 
         if fact.axis == self.axis {
-            dispatch_datum!(Self::pulsify_along_concat_axis_t(fact.dt)(
+            dispatch_datum!(Self::pulsify_along_concat_axis_t(fact.datum_type)(
                 self, source, node, target, mapping
             ))
         } else {
@@ -336,7 +336,7 @@ impl NormConcat {
         let before = pre.shape()[self.axis];
         let after = post.shape()[self.axis];
         if fact.delay < before {
-            let buffer_op = Delay::new(fact.clone(), before - fact.delay, 0);
+            let buffer_op = Delay::new(&fact.clone(), before - fact.delay, 0);
             fact.delay = before;
             let id = target.chain_after(
                 prec,
@@ -465,6 +465,20 @@ impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
     }
 }
 
+impl<T: Datum> PulsedOp for PulsedSameAxisConcat<T> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        let before = self.pre_slice.shape()[self.axis];
+        let after = self.post_slice.shape()[self.axis];
+        fact.dim += (before + after).to_dim();
+        fact.delay -= before;
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
+}
+
+
 #[derive(Clone, Debug, Default)]
 pub struct PulsedSameAxisConcatState<T: Datum> {
     current_pos: usize,
@@ -572,7 +586,7 @@ impl<T: Datum> Op for FixedConcat<T> {
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl<T: Datum> StatelessOp for FixedConcat<T> {

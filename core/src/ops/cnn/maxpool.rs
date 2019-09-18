@@ -70,8 +70,6 @@ impl InferenceRulesOp for MaxPool {
 }
 
 impl TypedOp for MaxPool {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let mut facts = self.pool_spec.output_facts(inputs)?;
         if let Some(idt) = self.with_index_outputs {
@@ -106,6 +104,20 @@ impl TypedOp for MaxPool {
         Ok(None)
     }
 
+    typed_op_as_op!();
+}
+
+impl PulsedOp for MaxPool {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut facts = self.pool_spec.pulsed_output_facts(inputs)?;
+        if let Some(idt) = self.with_index_outputs {
+            facts.push(facts[0].clone());
+            facts[1].datum_type = idt;
+        }
+        Ok(facts)
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -123,7 +135,7 @@ impl<T: Datum + Float> Op for MaxPoolFixed<T> {
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {

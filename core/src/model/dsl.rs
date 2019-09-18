@@ -54,7 +54,7 @@ impl ModelSpecialOps<PulsedTensorFact, Box<dyn TypedOp>> for PulsedModel {
     ) -> TractResult<OutletId> {
         let id = self.add_node(
             name,
-            crate::ops::source::TypedSource::new(TypedTensorInfo::dt_shape(fact.dt, &*fact.shape)?),
+            crate::ops::source::TypedSource::new(TypedTensorInfo::dt_shape(fact.datum_type, &*fact.shape)?),
             tvec!(fact),
         )?;
         let id = OutletId::new(id, 0);

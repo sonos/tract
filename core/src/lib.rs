@@ -13,10 +13,10 @@
 //! // build a simple model that just add 3 to each input component
 //! let mut model = InferenceModel::default();
 //!
-//! let input = model.add_source("input").unwrap();
+//! let input = model.add_source("input", TensorFact::default()).unwrap();
 //! let three = model.add_const("three".to_string(), tensor0(3f32)).unwrap();
 //! let add = model.wire_node("add".to_string(),
-//!     tract_core::ops::math::add::bin()
+//!     tract_core::ops::math::add::bin(),
 //!     [input, three].as_ref()
 //!     ).unwrap();
 //!

@@ -378,8 +378,6 @@ impl StatelessOp for ConvUnary {
 }
 
 impl TypedOp for ConvUnary {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
     }
@@ -448,7 +446,6 @@ impl TypedOp for ConvUnary {
         Ok(None)
     }
 
-
     fn dispose_dummy_axis(
         &self,
         _model: &TypedModel,
@@ -493,7 +490,6 @@ impl TypedOp for ConvUnary {
         };
         Ok(Some(Box::new(new_op)))
     }
-
 
     fn pulsify(
         &self,
@@ -550,7 +546,7 @@ impl TypedOp for ConvUnary {
             if augmented_fact != *fact {
                 let extra_delay = augmented_fact.delay - fact.delay - overlap;
                 let delay = crate::pulse::delay::Delay::new(
-                    fact.clone(),
+                    &fact,
                     extra_delay,
                     augmented_fact.pulse() - fact.pulse(),
                 );
@@ -607,4 +603,27 @@ impl TypedOp for ConvUnary {
         Ok(None)
     }
 
+    typed_op_as_op!();
+}
+
+impl PulsedOp for ConvUnary {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.shape =
+            self.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
+        let shape = self.data_format.shape(&fact.shape);
+        if fact.axis != shape.n_axis() {
+            let spatial_rank = self.full_input_shape.len() - 2;
+            let geo_axis = fact.axis - shape.h_axis();
+            let stride = self.strides[geo_axis];
+            let kernel_spatial_shape =
+                &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
+            let kernel_overreach = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
+            fact.dim = (fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
+            fact.delay = fact.delay.div_ceil(stride);
+        }
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }
