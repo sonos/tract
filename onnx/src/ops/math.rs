@@ -239,7 +239,6 @@ impl InferenceRulesOp for IsNan {
 }
 
 impl TypedOp for IsNan {
-    typed_op_as_op!();
 
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(bool::datum_type(), inputs[0].shape.clone())?))
@@ -258,4 +257,17 @@ impl TypedOp for IsNan {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for IsNan {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.datum_type = bool::datum_type();
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }

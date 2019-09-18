@@ -83,7 +83,7 @@ impl TypedOp for AvgPool {
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        self.pool_spec.pulsify(source, node, target, mapping)
+        self.pool_spec.pulsify(source, node, self, target, mapping)
     }
 
     fn codegen(
@@ -109,6 +109,7 @@ impl PulsedOp for AvgPool {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[derive(Debug, Clone, new)]

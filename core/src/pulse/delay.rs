@@ -117,6 +117,7 @@ impl PulsedOp for Delay {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[cfg(test)]

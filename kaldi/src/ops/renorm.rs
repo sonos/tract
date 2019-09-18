@@ -84,3 +84,13 @@ impl TypedOp for Renorm {
         Ok(tvec!(OutletId::new(id, 0)))
     }
 }
+
+impl PulsedOp for Renorm {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+
+    pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
+}
+

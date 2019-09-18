@@ -78,7 +78,8 @@ impl PulsedTensorFact {
     }
 }
 
-pub type PulsedModel = ModelImpl<PulsedTensorFact, Box<dyn TypedOp>>;
+pub type PulsedModel = ModelImpl<PulsedTensorFact, Box<dyn PulsedOp>>;
+pub type PulsedNode = BaseNode<PulsedTensorFact, Box<dyn PulsedOp>>;
 
 impl PulsedModel {
     pub fn new(source: &NormalizedModel, pulse: usize) -> TractResult<PulsedModel> {
@@ -93,7 +94,7 @@ impl PulsedModel {
     }
 
     pub fn into_typed(self) -> TractResult<TypedModel> {
-        crate::model::compact::compact(&self)
+        Ok(crate::model::compact::translate(&self, &())?.0)
     }
 }
 

@@ -13,7 +13,7 @@ impl Op for Identity {
     }
 
     op_as_typed_op!();
-    not_a_pulsed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for Identity {
@@ -42,8 +42,6 @@ impl InferenceRulesOp for Identity {
 }
 
 impl TypedOp for Identity {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
@@ -55,4 +53,15 @@ impl TypedOp for Identity {
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for Identity {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+
+    pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }

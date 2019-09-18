@@ -266,8 +266,12 @@ pub trait PulsedOp:
     /// Reinterpret the PulsedOp as an Op, mutably.
     fn as_op_mut(&mut self) -> &mut dyn Op;
 
+    /// Reinterpret the PulsedOp as an TypedOp.
+    fn to_typed(&self) -> Box<dyn TypedOp>;
+
     /// Deduce output facts from input facts.
     fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>>;
+
 }
 
 impl
@@ -275,7 +279,7 @@ impl
         NormalizedTensorInfo,
         Box<dyn TypedOp>,
         crate::pulse::PulsedTensorFact,
-        Box<dyn TypedOp>,
+        Box<dyn PulsedOp>,
         usize,
     > for Box<dyn TypedOp>
 {
@@ -398,12 +402,29 @@ impl crate::ops::Translate<TensorFact, Box<dyn InferenceOp>, TypedTensorInfo, Bo
     }
 }
 
+impl crate::ops::Translate<PulsedTensorFact, Box<dyn PulsedOp>, TypedTensorInfo, Box<dyn TypedOp>, ()>
+    for Box<dyn PulsedOp>
+{
+    fn translate(
+        &self,
+        _source: &PulsedModel,
+        node: &PulsedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _ctx: &(),
+    ) -> TractResult<TVec<OutletId>> {
+        let inputs:TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
+        target.wire_node(&*node.name, node.op.to_typed(), &*inputs)
+    }
+}
+
 impl_downcast!(Op);
 
 clone_trait_object!(Op);
 clone_trait_object!(StatelessOp);
 clone_trait_object!(TypedOp);
 clone_trait_object!(InferenceOp);
+clone_trait_object!(PulsedOp);
 
 impl<O: Op> From<O> for Box<dyn Op> {
     fn from(it: O) -> Box<dyn Op> {
@@ -419,6 +440,12 @@ impl<O: InferenceOp> From<O> for Box<dyn InferenceOp> {
 
 impl<O: TypedOp> From<O> for Box<dyn TypedOp> {
     fn from(it: O) -> Box<dyn TypedOp> {
+        Box::new(it)
+    }
+}
+
+impl<O: PulsedOp> From<O> for Box<dyn PulsedOp> {
+    fn from(it: O) -> Box<dyn PulsedOp> {
         Box::new(it)
     }
 }
@@ -465,6 +492,30 @@ impl AsMut<dyn Op> for dyn TypedOp {
     }
 }
 
+impl AsMut<dyn Op> for Box<dyn PulsedOp> {
+    fn as_mut(&mut self) -> &mut dyn Op {
+        self.as_op_mut()
+    }
+}
+
+impl AsRef<dyn Op> for dyn PulsedOp {
+    fn as_ref(&self) -> &dyn Op {
+        self.as_op()
+    }
+}
+
+impl AsRef<dyn Op> for Box<dyn PulsedOp> {
+    fn as_ref(&self) -> &dyn Op {
+        self.as_op()
+    }
+}
+
+impl AsMut<dyn Op> for dyn PulsedOp {
+    fn as_mut(&mut self) -> &mut dyn Op {
+        self.as_op_mut()
+    }
+}
+
 impl AsMut<dyn Op> for Box<dyn TypedOp> {
     fn as_mut(&mut self) -> &mut dyn Op {
         self.as_op_mut()
@@ -484,6 +535,12 @@ impl std::fmt::Display for Box<dyn InferenceOp> {
 }
 
 impl std::fmt::Display for Box<dyn TypedOp> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", self.name())
+    }
+}
+
+impl std::fmt::Display for Box<dyn PulsedOp> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.name())
     }

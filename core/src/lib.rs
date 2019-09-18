@@ -67,7 +67,7 @@ extern crate maplit;
 #[cfg(not(debug_assertions))]
 extern crate no_panic;
 #[macro_use]
-extern crate objekt;
+pub extern crate objekt;
 #[cfg(test)]
 extern crate env_logger;
 #[cfg(test)]
@@ -133,7 +133,7 @@ pub mod internal {
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
-    pub use crate::pulse::{PulsedModel, PulsedTensorFact};
+    pub use crate::pulse::{PulsedModel, PulsedNode, PulsedTensorFact};
     pub use crate::{args_1, args_2, args_3, args_4};
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;

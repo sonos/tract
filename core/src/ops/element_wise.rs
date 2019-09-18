@@ -81,6 +81,7 @@ impl PulsedOp for ElementWiseOp {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[macro_export]

@@ -313,11 +313,11 @@ impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
 }
 
 impl<T: Datum + Copy> TypedOp for PulsePad<T> {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
+
+    typed_op_as_op!();
 }
 
 impl<T: Datum + Copy> PulsedOp for PulsePad<T> {
@@ -329,4 +329,5 @@ impl<T: Datum + Copy> PulsedOp for PulsePad<T> {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }

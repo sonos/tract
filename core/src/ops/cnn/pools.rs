@@ -83,6 +83,7 @@ impl PoolSpec {
         &self,
         _source: &NormalizedModel,
         node: &NormalizedNode,
+        op: &dyn PulsedOp,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
@@ -92,7 +93,7 @@ impl PoolSpec {
         if fact.axis == input_shape.n_axis() {
             let (_input_shape, _patch, output_shape) = self.compute_geo(&*fact.shape);
             fact.shape = output_shape.shape;
-            let id = target.chain_after(input, &*node.name, node.op.clone(), tvec!(fact))?;
+            let id = target.chain_after(input, &*node.name, objekt::clone_box(op), tvec!(fact))?;
             Ok(tvec!(OutletId::new(id, 0)))
         } else if fact.axis == input_shape.c_axis() {
             bail!("Can not pulsify cnn pooling ops along the input channel axis");
@@ -115,7 +116,7 @@ impl PoolSpec {
                 final_fact.dim = final_fact.dim.clone() / stride;
                 final_fact.delay = final_fact.delay / stride;
                 let id =
-                    target.chain_after(input, &*node.name, node.op.clone(), tvec!(final_fact))?;
+                    target.chain_after(input, &*node.name, objekt::clone_box(op), tvec!(final_fact))?;
                 return Ok(tvec!(OutletId::new(id, 0)));
             }
 
@@ -138,7 +139,7 @@ impl PoolSpec {
                 delay,
                 tvec!(augmented_fact),
             )?;
-            let id = target.chain(&*node.name, node.op.clone(), tvec!(final_fact))?;
+            let id = target.chain(&*node.name, objekt::clone_box(op), tvec!(final_fact))?;
 
             Ok(tvec!(OutletId::new(id, 0)))
         }

@@ -388,6 +388,7 @@ impl PulsedOp for TypedBinOp {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -497,6 +498,7 @@ impl PulsedOp for UnaryOp {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -611,6 +613,7 @@ impl PulsedOp for MergeOp {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -654,6 +657,7 @@ impl PulsedOp for MergeOpUnicast {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[macro_export]
