@@ -38,6 +38,15 @@ macro_rules! pulsed_op_as_op {
 }
 
 #[macro_export]
+macro_rules! pulsed_op_to_typed_op {
+    () => {
+        fn to_typed(&self) -> Box<dyn TypedOp> {
+            $crate::objekt::clone_box(self)
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! op_as_typed_op {
     () => {
         fn as_typed(&self) -> Option<&dyn TypedOp> {

@@ -110,4 +110,5 @@ impl PulsedOp for AddDims {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }

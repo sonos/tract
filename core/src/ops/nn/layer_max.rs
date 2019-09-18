@@ -92,6 +92,7 @@ impl PulsedOp for LayerHardmax {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -183,6 +184,7 @@ impl PulsedOp for LayerLogSoftmax {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -274,6 +276,7 @@ impl PulsedOp for LayerSoftmax {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 fn rules<'r, 'p: 'r, 's: 'r>(
@@ -290,7 +293,7 @@ fn rules<'r, 'p: 'r, 's: 'r>(
 
 
 fn pulsify(
-    op: &dyn TypedOp,
+    op: &dyn PulsedOp,
     axis: isize,
     node: &NormalizedNode,
     target: &mut PulsedModel,

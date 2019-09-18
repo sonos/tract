@@ -476,6 +476,7 @@ impl<T: Datum> PulsedOp for PulsedSameAxisConcat<T> {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 

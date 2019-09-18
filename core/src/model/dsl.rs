@@ -33,7 +33,11 @@ impl ModelSpecialOps<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
 }
 
 impl ModelSpecialOps<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
-    fn add_source(&mut self, name: impl Into<String>, fact: TypedTensorInfo) -> TractResult<OutletId> {
+    fn add_source(
+        &mut self,
+        name: impl Into<String>,
+        fact: TypedTensorInfo,
+    ) -> TractResult<OutletId> {
         let id =
             self.add_node(name, crate::ops::source::TypedSource::new(fact.clone()), tvec!(fact))?;
         let id = OutletId::new(id, 0);
@@ -52,11 +56,8 @@ impl ModelSpecialOps<PulsedTensorFact, Box<dyn TypedOp>> for PulsedModel {
         name: impl Into<String>,
         fact: PulsedTensorFact,
     ) -> TractResult<OutletId> {
-        let id = self.add_node(
-            name,
-            crate::ops::source::TypedSource::new(TypedTensorInfo::dt_shape(fact.datum_type, &*fact.shape)?),
-            tvec!(fact),
-        )?;
+        let id =
+            self.add_node(name, crate::ops::source::PulsedSource::new(fact.clone()), tvec!(fact))?;
         let id = OutletId::new(id, 0);
         self.inputs.push(id);
         Ok(id)
@@ -189,7 +190,11 @@ where
 /// Extension to add constants to model that tolerates them.
 pub trait ModelDslConst {
     /// Add a constant node to the graph.
-    fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<OutletId>;
+    fn add_const(
+        &mut self,
+        name: impl Into<String>,
+        v: impl IntoArcTensor,
+    ) -> TractResult<OutletId>;
     /// Add a constant node to the graph and connect its output to `inlet`.
     fn plug_const(
         &mut self,
@@ -211,7 +216,11 @@ where
         + Clone
         + 'static,
 {
-    fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<OutletId> {
+    fn add_const(
+        &mut self,
+        name: impl Into<String>,
+        v: impl IntoArcTensor,
+    ) -> TractResult<OutletId> {
         let v = v.into_arc_tensor();
         let fact = TI::try_from(TensorFact::from(v.clone()))?;
         self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())

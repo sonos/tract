@@ -92,8 +92,6 @@ impl StatefullOp for TypedSource {
 }
 
 impl TypedOp for TypedSource {
-    typed_op_as_op!();
-
     fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(self.fact.clone()))
     }
@@ -111,6 +109,8 @@ impl TypedOp for TypedSource {
         let id = target.add_source(node.name.clone(), pulsed_fact)?;
         Ok(tvec!(id))
     }
+
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -140,6 +140,10 @@ impl StatefullOp for PulsedSource {
 impl PulsedOp for PulsedSource {
     fn pulsed_output_facts(&self, _inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
         Ok(tvec!(self.fact.clone()))
+    }
+
+    fn to_typed(&self) -> Box<dyn TypedOp> {
+        Box::new(TypedSource::new(TypedTensorInfo::dt_shape(self.fact.datum_type, &*self.fact.shape).unwrap()))
     }
 
     pulsed_op_as_op!();

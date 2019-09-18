@@ -150,6 +150,7 @@ impl PulsedOp for Downsample {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 fn pull_downsample_up(

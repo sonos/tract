@@ -173,4 +173,5 @@ impl<D: DimLike + ToDim> PulsedOp for Slice<D> {
     }
 
     pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }

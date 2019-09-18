@@ -84,8 +84,6 @@ impl InferenceRulesOp for ArgMaxMin {
 }
 
 impl TypedOp for ArgMaxMin {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let mut shape = inputs[0].shape.to_tvec();
         if self.keepdims {
@@ -95,4 +93,6 @@ impl TypedOp for ArgMaxMin {
         }
         Ok(tvec!(TypedTensorInfo::dt_shape(i64::datum_type(), &*shape)?))
     }
+
+    typed_op_as_op!();
 }
