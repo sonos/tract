@@ -368,6 +368,7 @@ impl Op for ConvUnary {
 
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for ConvUnary {

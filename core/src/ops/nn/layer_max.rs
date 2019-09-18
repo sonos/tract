@@ -43,6 +43,7 @@ impl Op for LayerHardmax {
     }
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for LayerHardmax {
@@ -125,6 +126,7 @@ impl Op for LayerLogSoftmax {
     }
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for LayerLogSoftmax {
@@ -207,6 +209,7 @@ impl Op for LayerSoftmax {
     }
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for LayerSoftmax {

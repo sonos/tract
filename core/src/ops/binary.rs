@@ -41,6 +41,7 @@ impl Op for InferenceBinOp {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for InferenceBinOp {
@@ -154,6 +155,7 @@ impl Op for Nary {
     }
 
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Nary {
@@ -239,6 +241,7 @@ impl Op for TypedBinOp {
 
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for TypedBinOp {
@@ -389,6 +392,7 @@ impl Op for UnaryOp {
 
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for UnaryOp {
@@ -475,6 +479,7 @@ impl Op for MergeOp {
 
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for MergeOp {
@@ -572,6 +577,7 @@ impl Op for MergeOpUnicast {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for MergeOpUnicast {

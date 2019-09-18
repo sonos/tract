@@ -40,6 +40,7 @@ impl Op for AvgPool {
 
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for AvgPool {
@@ -123,6 +124,7 @@ where
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl<T: Datum + Float + Sum> StatelessOp for AvgPoolFixed<T>

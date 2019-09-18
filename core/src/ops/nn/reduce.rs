@@ -251,6 +251,7 @@ impl Op for Reduce {
         Ok(vec![format!("axes: {:?} keep_dims: {}", self.axes, self.keep_dims)])
     }
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Reduce {
@@ -333,6 +334,7 @@ impl Op for TypedReduce {
     }
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for TypedReduce {

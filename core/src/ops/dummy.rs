@@ -9,6 +9,7 @@ impl Op for Dummy {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Dummy {

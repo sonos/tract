@@ -129,11 +129,11 @@ pub mod internal {
     pub use crate::model::*;
     pub use crate::ops::{
         check_input_arity, check_output_arity, AxesInfo, AxisInfo, Cost, InferenceOp, Op, OpState,
-        StatefullOp, StatelessOp, Validation,
+        PulsedOp, StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
-    pub use crate::pulse::PulsedModel;
+    pub use crate::pulse::{PulsedModel, PulsedTensorFact};
     pub use crate::{args_1, args_2, args_3, args_4};
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;

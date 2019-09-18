@@ -82,6 +82,7 @@ impl Op for Delay {
     canonic!();
     impl_op_same_as!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {

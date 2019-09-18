@@ -34,6 +34,7 @@ impl Op for GlobalAvgPool {
         "GlobalAvgPool".into()
     }
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for GlobalAvgPool {
@@ -103,6 +104,7 @@ impl Op for GlobalLpPool {
         "GlobalLpPool".into()
     }
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for GlobalLpPool {
@@ -166,6 +168,7 @@ impl Op for GlobalMaxPool {
         "GlobalMaxPool".into()
     }
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for GlobalMaxPool {

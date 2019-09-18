@@ -25,6 +25,19 @@ macro_rules! typed_op_as_op {
 }
 
 #[macro_export]
+macro_rules! pulsed_op_as_op {
+    () => {
+        fn as_op(&self) -> &dyn Op {
+            self
+        }
+
+        fn as_op_mut(&mut self) -> &mut dyn Op {
+            self
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! op_as_typed_op {
     () => {
         fn as_typed(&self) -> Option<&dyn TypedOp> {
@@ -34,19 +47,38 @@ macro_rules! op_as_typed_op {
 }
 
 #[macro_export]
-macro_rules! canonic {
+macro_rules! not_a_typed_op {
     () => {
-        fn is_canonic(&self) -> bool {
-            true
+        fn as_typed(&self) -> Option<&dyn TypedOp> {
+            None
+        }
+    }
+}
+
+
+#[macro_export]
+macro_rules! op_as_pulsed_op {
+    () => {
+        fn as_pulsed(&self) -> Option<&dyn PulsedOp> {
+            Some(self)
         }
     }
 }
 
 #[macro_export]
-macro_rules! not_a_typed_op {
+macro_rules! not_a_pulsed_op {
     () => {
-        fn as_typed(&self) -> Option<&dyn TypedOp> {
+        fn as_pulsed(&self) -> Option<&dyn PulsedOp> {
             None
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! canonic {
+    () => {
+        fn is_canonic(&self) -> bool {
+            true
         }
     }
 }

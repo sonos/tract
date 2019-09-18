@@ -32,6 +32,7 @@ impl Op for AddDims {
 
     canonic!();
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for AddDims {
@@ -58,7 +59,6 @@ impl InferenceRulesOp for AddDims {
     }
 
     inference_op_as_op!();
-
     to_typed!();
 }
 

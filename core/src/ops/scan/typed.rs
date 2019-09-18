@@ -93,6 +93,7 @@ impl Op for Typed {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatefullOp for Typed {

@@ -18,6 +18,7 @@ impl Op for Inference {
     }
 
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatefullOp for Inference {

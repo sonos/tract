@@ -23,6 +23,7 @@ impl Op for ConstantLike {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for ConstantLike {
@@ -97,6 +98,7 @@ impl Op for EyeLike {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for EyeLike {

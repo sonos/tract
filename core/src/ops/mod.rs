@@ -175,6 +175,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     }
 
     fn as_typed(&self) -> Option<&dyn TypedOp>;
+    fn as_pulsed(&self) -> Option<&dyn PulsedOp>;
 
     fn is_canonic(&self) -> bool {
         false
@@ -251,7 +252,19 @@ pub trait TypedOp:
     fn nested_model_multipliers(&self, inputs: &[&TypedTensorInfo]) -> Vec<(Cow<str>, f32)> {
         vec![]
     }
+}
 
+pub trait PulsedOp:
+    Op + fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
+{
+    /// Reinterpret the PulsedOp as an Op.
+    fn as_op(&self) -> &dyn Op;
+
+    /// Reinterpret the PulsedOp as an Op, mutably.
+    fn as_op_mut(&mut self) -> &mut dyn Op;
+
+    /// Deduce output facts from input facts.
+    fn output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>>;
 }
 
 impl

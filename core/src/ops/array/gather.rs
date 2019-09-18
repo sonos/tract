@@ -12,6 +12,7 @@ impl Op for Gather {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl Gather {

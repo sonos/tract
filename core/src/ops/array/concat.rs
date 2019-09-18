@@ -38,6 +38,7 @@ impl Op for Concat {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for Concat {
@@ -206,6 +207,7 @@ impl Op for NormConcat {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl TypedOp for NormConcat {
@@ -442,6 +444,7 @@ impl<T: Datum> Op for PulsedSameAxisConcat<T> {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
@@ -569,6 +572,7 @@ impl<T: Datum> Op for FixedConcat<T> {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl<T: Datum> StatelessOp for FixedConcat<T> {
