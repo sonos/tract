@@ -80,8 +80,6 @@ impl InferenceRulesOp for InferenceBinOp {
 }
 
 impl TypedOp for InferenceBinOp {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
@@ -130,6 +128,8 @@ impl TypedOp for InferenceBinOp {
         }
         Ok(Some(patch))
     }
+
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -251,8 +251,6 @@ impl StatelessOp for TypedBinOp {
 }
 
 impl TypedOp for TypedBinOp {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
@@ -362,7 +360,7 @@ impl TypedOp for TypedBinOp {
                 let id = target.chain_after(
                     mapping[&node.inputs[ix]],
                     format!("{}/Delay", &*node.name),
-                    Delay::new(fact, add_delay, 0),
+                    Delay::new(&fact, add_delay, 0),
                     tvec!(fixed_fact),
                 )?;
                 OutletId::new(id, 0)
@@ -373,6 +371,23 @@ impl TypedOp for TypedBinOp {
         }
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for TypedBinOp {
+    fn pulsed_output_facts(
+        &self,
+        inputs: &[&PulsedTensorFact],
+    ) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
+        fact.shape =
+            crate::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape]).unwrap();
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -402,8 +417,6 @@ impl StatelessOp for UnaryOp {
 }
 
 impl TypedOp for UnaryOp {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             self.mini_op.result_datum_type(self.a.datum_type(), inputs[0].datum_type)?,
@@ -463,10 +476,27 @@ impl TypedOp for UnaryOp {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let mut fact = target.outlet_fact(input)?.clone();
-        fact.dt = self.a.datum_type();
+        fact.datum_type = self.a.datum_type();
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for UnaryOp {
+    fn pulsed_output_facts(
+        &self,
+        inputs: &[&PulsedTensorFact],
+    ) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.datum_type =
+            self.mini_op.result_datum_type(inputs[0].datum_type, self.a.datum_type())?;
+        fact.shape = crate::broadcast::multi_broadcast(&[&inputs[0].shape, &self.a.shape().into()]).unwrap();
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -489,8 +519,6 @@ impl StatelessOp for MergeOp {
 }
 
 impl TypedOp for MergeOp {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
@@ -555,7 +583,7 @@ impl TypedOp for MergeOp {
                 let id = target.chain_after(
                     mapping[&node.inputs[ix]],
                     format!("{}/Delay", &*node.name),
-                    Delay::new(fact, add_delay, 0),
+                    Delay::new(&fact, add_delay, 0),
                     tvec!(fixed_fact),
                 )?;
                 OutletId::new(id, 0)
@@ -566,6 +594,23 @@ impl TypedOp for MergeOp {
         }
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for MergeOp {
+    fn pulsed_output_facts(
+        &self,
+        inputs: &[&PulsedTensorFact],
+    ) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
+        fact.shape =
+            crate::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape]).unwrap();
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -590,11 +635,25 @@ impl StatelessOp for MergeOpUnicast {
 }
 
 impl TypedOp for MergeOpUnicast {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for MergeOpUnicast {
+    fn pulsed_output_facts(
+        &self,
+        inputs: &[&PulsedTensorFact],
+    ) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
+        fact.shape = inputs[0].shape.clone();
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[macro_export]

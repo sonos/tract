@@ -13,12 +13,6 @@ impl AddDims {
         }
         shape
     }
-
-    /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape = self.compute_shape(input.shape());
-        Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(&*shape)?.into_arc_tensor()])
-    }
 }
 
 impl Op for AddDims {
@@ -32,13 +26,14 @@ impl Op for AddDims {
 
     canonic!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for AddDims {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
+        let shape = self.compute_shape(input.shape());
+        Ok(unsafe { tvec![input.into_tensor().into_shape(&*shape)?.into_arc_tensor()] })
     }
 }
 
@@ -104,4 +99,15 @@ impl TypedOp for AddDims {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+}
+
+impl PulsedOp for AddDims {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.shape = self.compute_shape(&*inputs[0].shape);
+        fact.axis += self.axes.iter().filter(|&ax| *ax <= fact.axis).count();
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }

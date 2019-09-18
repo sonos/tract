@@ -203,3 +203,37 @@ impl TypedOp for Typed {
         )?))
     }
 }
+
+impl PulsedOp for Typed {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let (output_body_ix, output_mapping) = self
+            .output_mapping
+            .iter()
+            .enumerate()
+            .find(|(_ix, om)| om.full_slot == Some(0))
+            .unwrap();
+        let output_body_fact = self.body.output_fact(output_body_ix)?;
+        let shape = output_body_fact
+            .shape
+            .iter()
+            .enumerate()
+            .map(|(axis, d)| {
+                if axis == output_mapping.axis {
+                    inputs[0].pulse()
+                } else {
+                    d.to_integer().unwrap() as usize
+                }
+            })
+            .collect();
+        let fact = PulsedTensorFact {
+            datum_type: output_body_fact.datum_type,
+            shape,
+            axis: output_mapping.axis,
+            dim: inputs[0].dim.clone(),
+            delay: inputs[0].delay,
+        };
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
+}

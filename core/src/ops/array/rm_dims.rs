@@ -68,8 +68,6 @@ impl InferenceRulesOp for RmDims {
 }
 
 impl TypedOp for RmDims {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
@@ -145,4 +143,17 @@ impl TypedOp for RmDims {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for RmDims {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.shape = self.compute_shape(&*inputs[0].shape);
+        fact.axis -= self.axes.iter().filter(|&ax| *ax <= fact.axis).count();
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }

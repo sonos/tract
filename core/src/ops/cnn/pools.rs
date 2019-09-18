@@ -131,7 +131,7 @@ impl PoolSpec {
             final_fact.delay += kernel_len;
             final_fact.dim = (final_fact.dim.clone() - kernel_len.to_dim()) / stride;
 
-            let delay = crate::pulse::delay::Delay::new(fact, 0, kernel_len);
+            let delay = crate::pulse::delay::Delay::new(&fact, 0, kernel_len);
             target.chain_after(
                 input,
                 format!("{}/Delay", node.name),
@@ -142,5 +142,28 @@ impl PoolSpec {
 
             Ok(tvec!(OutletId::new(id, 0)))
         }
+    }
+
+    pub fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let ishape = self.data_format.shape(&inputs[0].shape);
+        let ones = tvec![1; ishape.hw_rank()];
+        let computed = self.padding.compute(
+            ishape.hw_dims(),
+            &*self.kernel_shape,
+            &ones,
+            self.strides.as_ref().unwrap_or(&ones),
+        );
+        let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<usize>>();
+        let oshape =
+            self.data_format.from_n_c_hw(ishape.n().clone(), ishape.c().clone(), spatial_dims);
+        let mut fact = inputs[0].clone();
+        let input_shape = self.data_format.shape(&*fact.shape);
+        let geo_axis = fact.axis - input_shape.h_axis();
+        let dilation = 1;
+        let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
+        let stride = self.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
+        fact.dim = (fact.dim.clone() - kernel_len.to_dim()) / stride;
+        fact.shape = oshape.shape;
+        Ok(tvec!(fact))
     }
 }

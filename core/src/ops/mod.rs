@@ -175,7 +175,10 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     }
 
     fn as_typed(&self) -> Option<&dyn TypedOp>;
-    fn as_pulsed(&self) -> Option<&dyn PulsedOp>;
+
+    fn as_pulsed(&self) -> Option<&dyn PulsedOp> {
+        None
+    }
 
     fn is_canonic(&self) -> bool {
         false
@@ -264,7 +267,7 @@ pub trait PulsedOp:
     fn as_op_mut(&mut self) -> &mut dyn Op;
 
     /// Deduce output facts from input facts.
-    fn output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>>;
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>>;
 }
 
 impl

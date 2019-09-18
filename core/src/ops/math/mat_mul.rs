@@ -226,7 +226,7 @@ impl Op for MatMul {
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for MatMul {
@@ -267,8 +267,6 @@ impl InferenceRulesOp for MatMul {
 }
 
 impl TypedOp for MatMul {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
@@ -308,6 +306,7 @@ impl TypedOp for MatMul {
         Ok(None)
     }
 
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -353,8 +352,6 @@ impl StatelessOp for MatMulUnary {
 }
 
 impl TypedOp for MatMulUnary {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
@@ -391,7 +388,6 @@ impl TypedOp for MatMulUnary {
         };
         Ok(invars.into_iter().collect())
     }
-
 
     fn pulsify(
         &self,
@@ -440,6 +436,28 @@ impl TypedOp for MatMulUnary {
         }
         Ok(None)
     }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for MatMulUnary {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+        let mut fact = inputs[0].clone();
+        fact.shape = infer_shapes(
+            self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+            inputs[0].shape.iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+            self.a_trans,
+            self.b_trans,
+            self.c_trans,
+        )?
+        .2
+        .iter()
+        .map(|d| d.to_integer().unwrap() as usize)
+        .collect::<TVec<_>>();
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -554,7 +572,7 @@ where
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl<T> StatelessOp for MatMulUnaryFinite<T>
@@ -648,11 +666,11 @@ where
     T: Copy + Datum + Add + Mul + Zero + FloatLike,
     f32: ::num_traits::AsPrimitive<T>,
 {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.geo.c_shape)?))
     }
+
+    typed_op_as_op!();
 }
 
 #[cfg(test)]

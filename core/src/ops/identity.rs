@@ -13,7 +13,7 @@ impl Op for Identity {
     }
 
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Identity {
