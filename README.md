@@ -1,5 +1,6 @@
 ![tract-logo](assets/tract-logo/PNG/tract-horizontal-blue.png)
 
+![rustc >= 1.35.0](https://img.shields.io/badge/rustc-%3E%3D1.35.0-brightgreen)
 ![MIT/Apache 2](https://img.shields.io/crates/l/tract)
 [![Native tests status](https://github.com/snipsco/tract/workflows/Native%20test%20suite/badge.svg)](https://github.com/snipsco/tract/actions)
 [![Linux targets status](https://github.com/snipsco/tract/workflows/Linux%20targets/badge.svg)](https://github.com/snipsco/tract/actions)
