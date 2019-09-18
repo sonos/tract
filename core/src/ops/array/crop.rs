@@ -13,6 +13,7 @@ impl Op for Crop {
     }
 
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Crop {

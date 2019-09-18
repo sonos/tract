@@ -113,6 +113,7 @@ impl Op for Conv {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Conv {

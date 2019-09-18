@@ -40,6 +40,7 @@ impl Op for Lrn {
         "Lrn".into()
     }
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Lrn {

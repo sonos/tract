@@ -34,6 +34,7 @@ impl Op for Reshape {
     }
 
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Reshape {
@@ -101,21 +102,8 @@ impl Op for TypedReshape {
         Ok(vec![format!("to shape: {}", self.shape.iter().map(|d| format!("{:?}", d)).join("x"))])
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let input_fact = model.outlet_fact(node.inputs[0])?;
-        if input_fact.shape.to_tvec() == self.shape {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
-        } else if let Ok(shape) = self.shape.iter().map(|d| Ok(d.to_integer()? as usize)).collect::<TractResult<_>>() {
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, FiniteReshape::new(shape))?))
-        }
-        Ok(None)
-    }
-
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for TypedReshape {
@@ -134,6 +122,19 @@ impl TypedOp for TypedReshape {
         Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.shape)?))
     }
 
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        if input_fact.shape.to_tvec() == self.shape {
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        } else if let Ok(shape) = self.shape.iter().map(|d| Ok(d.to_integer()? as usize)).collect::<TractResult<_>>() {
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, FiniteReshape::new(shape))?))
+        }
+        Ok(None)
+    }
 
 }
 
@@ -152,6 +153,7 @@ impl Op for FiniteReshape {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for FiniteReshape {

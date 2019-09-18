@@ -9,6 +9,7 @@ impl Op for MultiBroadcastTo {
     }
 
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for MultiBroadcastTo {
@@ -75,6 +76,7 @@ impl Op for TypedMultiBroadcastTo {
 
     canonic!();
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for TypedMultiBroadcastTo {

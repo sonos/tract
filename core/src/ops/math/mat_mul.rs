@@ -226,6 +226,7 @@ impl Op for MatMul {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for MatMul {
@@ -334,6 +335,7 @@ impl Op for MatMulUnary {
 
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for MatMulUnary {
@@ -552,6 +554,7 @@ where
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl<T> StatelessOp for MatMulUnaryFinite<T>

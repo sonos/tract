@@ -18,6 +18,7 @@ impl Op for UnimplementedOp {
     }
 
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatefullOp for UnimplementedOp {

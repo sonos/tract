@@ -17,6 +17,7 @@ impl Op for ConstantOfShape {
     }
 
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for ConstantOfShape {

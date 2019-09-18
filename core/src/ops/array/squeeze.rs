@@ -35,6 +35,7 @@ impl Op for Squeeze {
     }
 
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Squeeze {

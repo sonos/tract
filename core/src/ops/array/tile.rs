@@ -10,6 +10,7 @@ impl Op for Tile {
     }
 
     not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Tile {
@@ -109,6 +110,7 @@ impl Op for TypedTile {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for TypedTile {

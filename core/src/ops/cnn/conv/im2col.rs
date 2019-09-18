@@ -94,6 +94,7 @@ impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
 
     impl_op_same_as!();
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl<T: Copy + Datum + Mul + Zero> StatelessOp for Im2Col<T> {

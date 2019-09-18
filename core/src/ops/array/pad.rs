@@ -89,6 +89,7 @@ impl Op for Pad {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Pad {
@@ -298,6 +299,7 @@ impl<T: Datum + Copy> Op for PulsePad<T> {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsePad<T> {

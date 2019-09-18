@@ -31,6 +31,7 @@ impl Op for MaxPool {
 
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl StatelessOp for MaxPool {
@@ -122,6 +123,7 @@ impl<T: Datum + Float> Op for MaxPoolFixed<T> {
     }
 
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {

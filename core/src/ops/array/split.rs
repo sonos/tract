@@ -43,6 +43,7 @@ impl Op for Split {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Split {

@@ -90,6 +90,7 @@ impl Op for Direct {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Direct {

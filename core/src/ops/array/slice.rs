@@ -34,6 +34,7 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
 
     canonic!();
     op_as_typed_op!();
+    op_as_pulsed_op!();
 }
 
 impl<D: DimLike + ToDim> StatelessOp for Slice<D> {

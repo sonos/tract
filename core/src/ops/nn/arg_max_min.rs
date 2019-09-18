@@ -32,6 +32,7 @@ impl Op for ArgMaxMin {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for ArgMaxMin {

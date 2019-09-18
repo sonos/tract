@@ -28,6 +28,7 @@ impl Op for Flatten {
     }
 
     op_as_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Flatten {
