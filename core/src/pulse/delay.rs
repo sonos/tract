@@ -113,6 +113,7 @@ impl PulsedOp for Delay {
     fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
         let mut fact = inputs[0].clone();
         fact.shape[self.axis] += self.overlap;
+        fact.delay += self.delay;
         Ok(tvec!(fact))
     }
 
@@ -134,15 +135,8 @@ mod test {
             dim: TDim::s(),
             delay: 0,
         };
-        model.add_source("source", fact1.clone()).unwrap();
-        let fact2 = PulsedTensorFact {
-            datum_type: u8::datum_type(),
-            shape: tvec![pulse + overlap],
-            axis: 0,
-            dim: TDim::s(),
-            delay,
-        };
-        model.chain("delay", Delay::new(&fact1, delay, overlap), tvec!(fact2)).unwrap();
+        let source = model.add_source("source", fact1.clone()).unwrap();
+        model.wire_node("delay", Delay::new(&fact1, delay, overlap), &[source]).unwrap();
         model.auto_outputs().unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
@@ -190,24 +184,11 @@ mod test {
             dim: TDim::s(),
             delay: 0,
         };
-        model.add_source("source", fact_0.clone()).unwrap();
-        let fact_1 = PulsedTensorFact {
-            datum_type: u8::datum_type(),
-            shape: tvec![pulse],
-            axis: 0,
-            dim: TDim::s(),
-            delay: 2,
-        };
-        model.chain("delay-1", Delay::new(&fact_0, 2, 0), tvec!(fact_1.clone())).unwrap();
-        let fact_2 = PulsedTensorFact {
-            datum_type: u8::datum_type(),
-            shape: tvec![pulse],
-            axis: 0,
-            dim: TDim::s(),
-            delay: 4,
-        };
-        model.chain("delay-2", Delay::new(&fact_1, 2, 0), tvec!(fact_2)).unwrap();
-        model.auto_outputs().unwrap();
+        let source = model.add_source("source", fact_0.clone()).unwrap();
+        let delay_1 = model.wire_node("delay-1", Delay::new(&fact_0, 2, 0), &[source]).unwrap()[0];
+        let fact_1 = model.outlet_fact(delay_1).unwrap().clone();
+        let delay_2 = model.wire_node("delay-1", Delay::new(&fact_1, 2, 0), &[delay_1]).unwrap();
+        model.set_output_outlets(&delay_2).unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = crate::plan::SimpleState::new(plan).unwrap();

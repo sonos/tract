@@ -84,30 +84,6 @@ where
     /// Find the count-th successor of a node `id` in a chain of single tensor
     /// operation, if applicable.
     fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
-
-    /// Chain a node to the latest inserted node.
-    ///
-    /// * creates a node with name and op
-    /// * connect the 0-th input of the new node to the 0-th outlet of the
-    /// latest previously inserted node.
-    fn chain(
-        &mut self,
-        name: impl Into<String>,
-        op: impl Into<O>,
-        facts: TVec<TI>,
-    ) -> TractResult<usize>;
-
-    /// Chain a node to an arbitrary node.
-    ///
-    /// * creates a node with name and op
-    /// * connect the 0-th input of the new node to `tap`
-    fn chain_after(
-        &mut self,
-        tap: OutletId,
-        name: impl Into<String>,
-        op: impl Into<O>,
-        facts: TVec<TI>,
-    ) -> TractResult<usize>;
 }
 
 impl<TI, O> ModelDsl<TI, O> for ModelImpl<TI, O>
@@ -115,16 +91,6 @@ where
     TI: TensorInfo + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    fn chain(
-        &mut self,
-        name: impl Into<String>,
-        op: impl Into<O>,
-        facts: TVec<TI>,
-    ) -> TractResult<usize> {
-        let previous_id = self.nodes().len() - 1;
-        self.chain_after(OutletId::new(previous_id, 0), name, op.into(), facts)
-    }
-
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>> {
         let node = &self.nodes()[id];
         if node.inputs.len() != 1 {
@@ -173,18 +139,6 @@ where
         }
         Ok(Some(succ))
     }
-
-    fn chain_after(
-        &mut self,
-        tap: OutletId,
-        name: impl Into<String>,
-        op: impl Into<O>,
-        facts: TVec<TI>,
-    ) -> TractResult<usize> {
-        let id = self.add_node(name, op, facts)?;
-        self.add_edge(tap, InletId::new(id, 0))?;
-        Ok(id)
-    }
 }
 
 /// Extension to add constants to model that tolerates them.
@@ -195,13 +149,6 @@ pub trait ModelDslConst {
         name: impl Into<String>,
         v: impl IntoArcTensor,
     ) -> TractResult<OutletId>;
-    /// Add a constant node to the graph and connect its output to `inlet`.
-    fn plug_const(
-        &mut self,
-        inlet: InletId,
-        name: impl Into<String>,
-        v: impl IntoArcTensor,
-    ) -> TractResult<()>;
 }
 
 impl<TI: TensorInfo + Clone + 'static, O, E> ModelDslConst for ModelImpl<TI, O>
@@ -224,35 +171,6 @@ where
         let v = v.into_arc_tensor();
         let fact = TI::try_from(TensorFact::from(v.clone()))?;
         self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
-    }
-    fn plug_const(
-        &mut self,
-        inlet: InletId,
-        name: impl Into<String>,
-        v: impl IntoArcTensor,
-    ) -> TractResult<()> {
-        let cst = self.add_const(name, v)?;
-        self.add_edge(cst, inlet)?;
-        Ok(())
-    }
-}
-
-pub trait ModelDslInfer: ModelDsl<TensorFact, Box<dyn InferenceOp>> {
-    /// Chain a node without tensor information.
-    fn chain_default(
-        &mut self,
-        name: impl Into<String>,
-        op: impl Into<Box<dyn InferenceOp>>,
-    ) -> TractResult<usize>;
-}
-
-impl ModelDslInfer for super::InferenceModel {
-    fn chain_default(
-        &mut self,
-        name: impl Into<String>,
-        op: impl Into<Box<dyn InferenceOp>>,
-    ) -> TractResult<usize> {
-        self.chain(name, op, tvec!(TensorFact::default()))
     }
 }
 
@@ -307,6 +225,28 @@ impl ModelWireNode<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
             } else {
                 op.output_facts(&*input_facts)?
             }
+        };
+        let id = self.add_node(name, op, output_facts)?;
+        inputs
+            .iter()
+            .enumerate()
+            .try_for_each(|(ix, i)| self.add_edge(*i, InletId::new(id, ix)))?;
+        Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
+    }
+}
+
+impl ModelWireNode<PulsedTensorFact, Box<dyn PulsedOp>> for PulsedModel {
+    fn wire_node(
+        &mut self,
+        name: impl Into<String>,
+        op: impl Into<Box<dyn PulsedOp>>,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let op = op.into();
+        let output_facts = {
+            let input_facts =
+                inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
+            op.pulsed_output_facts(&*input_facts)?
         };
         let id = self.add_node(name, op, output_facts)?;
         inputs

@@ -78,13 +78,13 @@ impl TypedOp for SpaceToBatchUnary {
                         group: conv_op.group,
                     };
                     let mut patch = TypedModelPatch::default();
-                    patch.tap_model(&model, node.inputs[0])?;
-                    let out = patch.model.chain(
+                    let tap = patch.tap_model(&model, node.inputs[0])?;
+                    let out = patch.model.wire_node(
                         &*conv_node.name,
                         op,
-                        tvec!(b2s_node.outputs[0].fact.clone()),
-                    )?;
-                    patch.shunt_outside(OutletId::new(b2s_node.id, 0), OutletId::new(out, 0))?;
+                        &[tap]
+                    )?[0];
+                    patch.shunt_outside(OutletId::new(b2s_node.id, 0), out)?;
                     return Ok(Some(patch));
                 }
             }

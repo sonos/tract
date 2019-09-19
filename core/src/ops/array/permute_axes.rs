@@ -97,8 +97,7 @@ impl TypedOp for PermuteAxes {
             })?;
             fact.shape = axes.iter().map(|idx| fact.shape[*idx]).collect();
         }
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
+        target.wire_node(&*node.name, self.clone(), &[input])
     }
 
     typed_op_as_op!();

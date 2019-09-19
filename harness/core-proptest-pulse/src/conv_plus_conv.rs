@@ -15,14 +15,11 @@ struct ConvOp {
 }
 impl ConvOp {
     fn chain(&self, name: &str, model: &mut InferenceModel, after: OutletId) -> OutletId {
+        let filters = model.add_const(format!("{}-kernel", name), self.ker.clone()).unwrap();
         let mut conv = tract_core::ops::cnn::Conv::default();
         conv.dilations = Some(tvec!(self.dilation));
         conv.strides = Some(tvec!(self.stride));
-        let conv = model.chain_after(after, name, conv, tvec!(TensorFact::default())).unwrap();
-        model
-            .plug_const(InletId::new(conv, 1), format!("{}-kernel", name), self.ker.clone())
-            .unwrap();
-        OutletId::new(conv, 0)
+        model.wire_node(name, conv, &[after, filters]).unwrap()[0]
     }
 }
 

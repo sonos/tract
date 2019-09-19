@@ -429,18 +429,15 @@ impl TypedOp for ConvUnary {
             }
             new_op.strides[axis] /= downsample_factor;
             let mut patch = TypedModelPatch::default();
-            patch.tap_model(model, node.inputs[0])?;
+            let tap = patch.tap_model(model, node.inputs[0])?;
             let shape = self.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>());
-            let downample_op =
-                crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0);
-            let downsampled_fact = downample_op.transform_fact(input_fact)?;
-            patch.chain(
+            let down = patch.wire_node(
                 format!("Downsample-{}", node.name),
-                downample_op,
-                tvec!(downsampled_fact),
+                crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0),
+                &[tap],
             )?;
-            let id = patch.chain(&*node.name, new_op, tvec!(node.outputs[0].fact.clone()))?;
-            patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(id, 0))?;
+            let id = patch.wire_node(&*node.name, new_op, &down)?[0];
+            patch.shunt_outside(OutletId::new(node.id, 0), id)?;
             return Ok(Some(patch));
         }
         Ok(None)
@@ -503,13 +500,7 @@ impl TypedOp for ConvUnary {
         let fact = target.outlet_fact(input)?;
         let shape = self.data_format.shape(&fact.shape);
         if fact.axis == shape.n_axis() {
-            let mut op = self.clone();
-            let mut fact = fact.clone();
-            op.full_output_shape[fact.axis] = fact.pulse().to_dim();
-            fact.shape =
-                op.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
-            let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-            Ok(tvec!(OutletId::new(id, 0)))
+            target.wire_node(&*node.name, self.clone(), &[input])
         } else if fact.axis == shape.c_axis() {
             bail!("Can not pulsify convolution along the input channel axis");
         } else {
@@ -534,14 +525,6 @@ impl TypedOp for ConvUnary {
             conv_op.full_input_shape[fact.axis] = augmented_fact.pulse().to_dim();
             conv_op.full_output_shape[fact.axis] =
                 ((augmented_fact.pulse() - overlap) / self.strides[geo_axis]).to_dim();
-            let mut conv_fact = fact.clone();
-            conv_fact.shape = conv_op
-                .full_output_shape
-                .iter()
-                .map(|d| d.to_integer().unwrap() as usize)
-                .collect();
-            conv_fact.delay = augmented_fact.delay / stride;
-            conv_fact.dim = (conv_fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
 
             if augmented_fact != *fact {
                 let extra_delay = augmented_fact.delay - fact.delay - overlap;
@@ -550,17 +533,9 @@ impl TypedOp for ConvUnary {
                     extra_delay,
                     augmented_fact.pulse() - fact.pulse(),
                 );
-                let node = target.chain_after(
-                    input,
-                    format!("{}/Delay", node.name),
-                    delay,
-                    tvec!(augmented_fact),
-                )?;
-                input = OutletId::new(node, 0);
+                input = target.wire_node(format!("{}/Delay", node.name), delay, &[input])?[0];
             }
-            let id = target.chain_after(input, &*node.name, conv_op, tvec!(conv_fact))?;
-
-            Ok(tvec!(OutletId::new(id, 0)))
+            target.wire_node(&*node.name, conv_op, &[input])
         }
     }
 
@@ -586,17 +561,13 @@ impl TypedOp for ConvUnary {
                     dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
                 )?));
             } else {
-                let (op1, shape, op2) =
+                let (op1, _, op2) =
                     dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
                 let mut patch = TypedModelPatch::default();
-                let _ = patch.tap_model(&model, node.inputs[0])?;
-                patch.chain(
-                    format!("{}-im2col", node.name),
-                    op1,
-                    tvec!(TypedTensorInfo::dt_shape(dt, &*shape)?),
-                )?;
-                let mm = patch.chain(&*node.name, op2, tvec!(node.outputs[0].fact.clone()))?;
-                patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
+                let tap = patch.tap_model(&model, node.inputs[0])?;
+                let im2col = patch.wire_node(format!("{}-im2col", node.name), op1, &[tap])?;
+                let mm = patch.wire_node(&*node.name, op2, &im2col)?[0];
+                patch.shunt_outside(OutletId::new(node.id, 0), mm)?;
                 return Ok(Some(patch));
             }
         }
@@ -607,7 +578,10 @@ impl TypedOp for ConvUnary {
 }
 
 impl PulsedOp for ConvUnary {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(
+        &self,
+        inputs: &[&PulsedTensorFact],
+    ) -> TractResult<TVec<PulsedTensorFact>> {
         let mut fact = inputs[0].clone();
         fact.shape =
             self.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
@@ -620,7 +594,7 @@ impl PulsedOp for ConvUnary {
                 &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
             let kernel_overreach = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
             fact.dim = (fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
-            fact.delay = fact.delay.div_ceil(stride);
+            fact.delay = (fact.delay + kernel_overreach) / stride;
         }
         Ok(tvec!(fact))
     }

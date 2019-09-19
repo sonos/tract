@@ -68,26 +68,26 @@ impl PadPlusConvProblem {
         use tract_core::ops::array::Pad;
         use tract_core::ops::cnn::*;
         let mut model = InferenceModel::default();
-        let _ = model
+        let mut wire = model
             .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S)))
             .unwrap();
         if self.pad_before > 0 || self.pad_after > 0 {
-            model
-                .chain_default(
+            wire = model.wire_node(
                     "pad",
                     Pad::new(
                         vec![(0, 0), (0, 0), (self.pad_before, self.pad_after)],
                         self.pad_mode.clone(),
                     ),
+                    &[wire]
                 )
-                .unwrap();
+                .unwrap()[0];
         }
         let mut conv = Conv::default();
         conv.dilations = Some(tvec!(self.dilation));
         conv.strides = Some(tvec!(self.stride));
-        let conv = model.chain_default("conv", conv).unwrap();
-        model.plug_const(InletId::new(conv, 1), "kernel", self.ker.clone()).unwrap();
-        model.auto_outputs().unwrap();
+        let kernel = model.add_const("kernel", self.ker.clone()).unwrap();
+        let conv = model.wire_node("conv", conv, &[wire, kernel]).unwrap();
+        model.set_output_outlets(&conv).unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
     }
 }

@@ -85,40 +85,25 @@ impl Problem {
 
         let direct = unary.to_direct(&*self.image_shape()).unwrap();
         let mut model_direct = TypedModel::default();
-        model_direct.add_source("input", self.image_type()).unwrap();
-        model_direct
-            .chain(
+        let input = model_direct.add_source("input", self.image_type()).unwrap();
+        let conv = model_direct
+            .add_node(
                 "conv",
                 direct.clone(),
                 tvec!(TypedTensorInfo::dt_shape(f32::datum_type(), direct.output_shape()).unwrap()),
             )
             .unwrap();
+        model_direct.add_edge(input, InletId::new(conv, 0)).unwrap();
         SimplePlan::new(model_direct).unwrap()
     }
 
     pub fn to_im2col(&self) -> SimplePlan<TypedTensorInfo, Box<dyn TypedOp>, TypedModel> {
         let unary = self.to_unary();
-        let output_shape: TVec<usize> =
-            unary.full_output_shape.iter().map(|a| a.to_integer().unwrap() as usize).collect();
-
-        let (im2col, im2col_shape, cvgemm) =
-            unary.to_im2col_pair::<f32>(&*self.image_shape()).unwrap();
+        let (im2col, _, cvgemm) = unary.to_im2col_pair::<f32>(&*self.image_shape()).unwrap();
         let mut model_im2col = TypedModel::default();
-        model_im2col.add_source("input", self.image_type()).unwrap();
-        model_im2col
-            .chain(
-                "im2col",
-                im2col,
-                tvec!(TypedTensorInfo::dt_shape(f32::datum_type(), &*im2col_shape).unwrap()),
-            )
-            .unwrap();
-        model_im2col
-            .chain(
-                "gemm",
-                cvgemm,
-                tvec!(TypedTensorInfo::dt_shape(f32::datum_type(), &*output_shape).unwrap()),
-            )
-            .unwrap();
+        let input = model_im2col.add_source("input", self.image_type()).unwrap();
+        let im2col = model_im2col.wire_node("im2col", im2col, &[input]).unwrap();
+        model_im2col.wire_node("gemm", cvgemm, &im2col).unwrap();
         SimplePlan::new(model_im2col).unwrap()
     }
 }

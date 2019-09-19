@@ -186,8 +186,9 @@ where
         fact: TI,
     ) -> TractResult<ModelPatch<TI, O>> {
         let mut patch = ModelPatch::default();
-        patch.tap_model(patched_model, outlet)?;
-        let new_id = patch.chain(name, new_op, tvec!(fact))?;
+        let tap = patch.tap_model(patched_model, outlet)?;
+        let new_id = patch.add_node(name, new_op, tvec!(fact))?;
+        patch.add_edge(tap, InletId::new(new_id, 0))?;
         patch.shunt_outside(outlet, OutletId::new(new_id, 0))?;
         Ok(patch)
     }

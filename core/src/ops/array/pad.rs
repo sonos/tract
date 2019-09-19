@@ -140,18 +140,17 @@ impl TypedOp for Pad {
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let input_fact = target.outlet_fact(input)?.clone();
+        let mut input = mapping[&node.inputs[0]];
+        let fact = target.outlet_fact(input)?.clone();
         if !self
             .pads
             .iter()
             .enumerate()
-            .all(|(ax, &(a, b))| ax == input_fact.axis || (a == 0 && b == 0))
+            .all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
         {
             bail!("Pad pulse only implemented for streaming dim");
         }
-        let (before, after) = self.pads[input_fact.axis];
-        let mut fact = input_fact.clone();
+        let (before, after) = self.pads[fact.axis];
         let pulse = fact.pulse();
         let mut extra_delay = before.saturating_sub(fact.delay);
         match self.mode {
@@ -165,32 +164,22 @@ impl TypedOp for Pad {
             PadMode::Edge => bail!("Edge padding mode needs pulse strictly bigger than left padding (pulse={} padding={})", pulse, before),
             PadMode::Reflect => bail!("Reflect padding mode pulsing is not supported")
         };
-        let mut prec = input;
         if extra_delay > 0 {
-            let buffer_op = Delay::new(&fact.clone(), extra_delay, 0);
-            fact.delay += extra_delay;
-            let id = target.chain_after(
-                input,
+            input = target.wire_node(
                 format!("{}/Delay", node.name),
-                buffer_op,
-                tvec!(fact.clone()),
-            )?;
-            prec = OutletId::new(id, 0);
+                Delay::new(&fact.clone(), extra_delay, 0),
+                &[input])?[0];
         }
-        fact.dim += (before + after).to_dim();
-        fact.delay -= before;
         let op = PulsePad::<f32>::new(
-            input_fact.axis,
-            input_fact.pulse(),
+            fact.axis,
+            pulse,
             before,
             after,
-            fact.delay + before,
-            (fact.delay + before).to_dim() + input_fact.dim,
+            fact.delay + extra_delay,
+            fact.delay.to_dim() + extra_delay + fact.dim,
             self.mode.clone(),
         );
-        let id = target.chain_after(prec, &*node.name, op, tvec!(fact))?;
-
-        Ok(tvec!(OutletId::new(id, 0)))
+        target.wire_node(&*node.name, op, &[input])
     }
 }
 
