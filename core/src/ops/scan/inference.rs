@@ -137,7 +137,7 @@ impl Inference {
                         self.body.output_outlets()?[inner_model_output_ix],
                     ])?;
                     facts.push(&mut inputs[*outer_input_ix]);
-                    Fact::unify_all(&mut facts)?;
+                    Factoid::unify_all(&mut facts)?;
                 }
             }
         }

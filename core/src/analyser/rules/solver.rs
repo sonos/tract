@@ -58,18 +58,18 @@ pub trait Rule<'rules>: fmt::Debug {
 /// solver.equals(a, b);
 /// solver.equals_all(vec![a, b, ...]);
 /// ```
-struct EqualsRule<T: Output + Fact> {
+struct EqualsRule<T: Output + Factoid> {
     items: Vec<Exp<T>>,
 }
 
-impl<T: Output + Fact> EqualsRule<T> {
+impl<T: Output + Factoid> EqualsRule<T> {
     /// Creates a new EqualsRule instance.
     pub fn new(items: Vec<Exp<T>>) -> EqualsRule<T> {
         EqualsRule { items }
     }
 }
 
-impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
+impl<'rules, T: Output + Factoid> Rule<'rules> for EqualsRule<T> {
     /// Tries to apply the rule to a given context.
     fn apply(
         &self,
@@ -90,7 +90,7 @@ impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
     }
 }
 
-impl<'rules, T: Output + Fact> fmt::Debug for EqualsRule<T> {
+impl<'rules, T: Output + Factoid> fmt::Debug for EqualsRule<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self.items[0])?;
         for item in &self.items[1..] {
@@ -109,11 +109,11 @@ impl<'rules, T: Output + Fact> fmt::Debug for EqualsRule<T> {
 /// ```
 struct EqualsZeroRule<F>(Exp<F>)
 where
-    F: Fact + Zero + Add<F, Output = F> + Neg<Output = F> + Clone + ::std::fmt::Debug + Output;
+    F: Factoid + Zero + Add<F, Output = F> + Neg<Output = F> + Clone + ::std::fmt::Debug + Output;
 
 impl<'rules, F> Rule<'rules> for EqualsZeroRule<F>
 where
-    F: Fact + Zero + Add<F, Output = F> + Neg<Output = F> + Clone + ::std::fmt::Debug + Output,
+    F: Factoid + Zero + Add<F, Output = F> + Neg<Output = F> + Clone + ::std::fmt::Debug + Output,
 {
     /// Tries to apply the rule to a given context.
     fn apply(
@@ -131,7 +131,7 @@ where
 
 impl<F> fmt::Debug for EqualsZeroRule<F>
 where
-    F: Fact + Zero + Add<F, Output = F> + Neg<Output = F> + Clone + ::std::fmt::Debug + Output,
+    F: Factoid + Zero + Add<F, Output = F> + Neg<Output = F> + Clone + ::std::fmt::Debug + Output,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(formatter)?;
@@ -149,12 +149,12 @@ where
 ///     // Add more rules to `solver` here.
 /// );
 /// ```
-pub struct WithRule<'rules, T: Fact> {
+pub struct WithRule<'rules, T: Factoid> {
     pub item: Exp<T>,
     pub closure: Box<dyn Fn(&mut Solver<'rules>, T) -> InferenceResult + 'rules>,
 }
 
-impl<'rules, T: Output + Fact> WithRule<'rules, T> {
+impl<'rules, T: Output + Factoid> WithRule<'rules, T> {
     /// Creates a new GivenRule instance.
     pub fn new<F>(item: Exp<T>, closure: F) -> WithRule<'rules, T>
     where
@@ -165,7 +165,7 @@ impl<'rules, T: Output + Fact> WithRule<'rules, T> {
     }
 }
 
-impl<'rules, T: Output + Fact> Rule<'rules> for WithRule<'rules, T> {
+impl<'rules, T: Output + Factoid> Rule<'rules> for WithRule<'rules, T> {
     /// Tries to apply the rule to a given context.
     fn apply(
         &self,
@@ -184,7 +184,7 @@ impl<'rules, T: Output + Fact> Rule<'rules> for WithRule<'rules, T> {
     }
 }
 
-impl<'s, T: Output + Fact> fmt::Debug for WithRule<'s, T> {
+impl<'s, T: Output + Factoid> fmt::Debug for WithRule<'s, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "WithRule {{ {:?} }}", self.item)
     }
@@ -200,12 +200,12 @@ impl<'s, T: Output + Fact> fmt::Debug for WithRule<'s, T> {
 ///     // Add more rules to `solver` here.
 /// );
 /// ```
-pub struct GivenRule<'rules, T: Fact> {
+pub struct GivenRule<'rules, T: Factoid> {
     pub item: Exp<T>,
     pub closure: Box<dyn Fn(&mut Solver<'rules>, T::Concrete) -> InferenceResult + 'rules>,
 }
 
-impl<'rules, T: Output + Fact> GivenRule<'rules, T> {
+impl<'rules, T: Output + Factoid> GivenRule<'rules, T> {
     /// Creates a new GivenRule instance.
     pub fn new<F>(item: Exp<T>, closure: F) -> GivenRule<'rules, T>
     where
@@ -217,7 +217,7 @@ impl<'rules, T: Output + Fact> GivenRule<'rules, T> {
     }
 }
 
-impl<'rules, T: Output + Fact> Rule<'rules> for GivenRule<'rules, T> {
+impl<'rules, T: Output + Factoid> Rule<'rules> for GivenRule<'rules, T> {
     /// Tries to apply the rule to a given context.
     fn apply(
         &self,
@@ -250,7 +250,7 @@ impl<'rules, T: Output + Fact> Rule<'rules> for GivenRule<'rules, T> {
     }
 }
 
-impl<'s, T: Output + Fact> fmt::Debug for GivenRule<'s, T> {
+impl<'s, T: Output + Factoid> fmt::Debug for GivenRule<'s, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GivenRule {{ {:?} }}", self.item)
     }
@@ -266,12 +266,12 @@ impl<'s, T: Output + Fact> fmt::Debug for GivenRule<'s, T> {
 ///     // Add more rules to `solver` here.
 /// );
 /// ```
-pub struct GivenAllRule<'rules, T: Fact> {
+pub struct GivenAllRule<'rules, T: Factoid> {
     pub items: Vec<Exp<T>>,
     pub closure: Box<dyn Fn(&mut Solver<'rules>, Vec<T::Concrete>) -> InferenceResult + 'rules>,
 }
 
-impl<'rules, T: Output + Fact> GivenAllRule<'rules, T> {
+impl<'rules, T: Output + Factoid> GivenAllRule<'rules, T> {
     /// Creates a new GivenRule instance.
     pub fn new<F>(items: Vec<Exp<T>>, closure: F) -> GivenAllRule<'rules, T>
     where
@@ -283,7 +283,7 @@ impl<'rules, T: Output + Fact> GivenAllRule<'rules, T> {
     }
 }
 
-impl<'rules, T: Output + Fact> Rule<'rules> for GivenAllRule<'rules, T> {
+impl<'rules, T: Output + Factoid> Rule<'rules> for GivenAllRule<'rules, T> {
     /// Tries to apply the rule to a given context.
     fn apply(
         &self,
@@ -311,7 +311,7 @@ impl<'rules, T: Output + Fact> Rule<'rules> for GivenAllRule<'rules, T> {
     }
 }
 
-impl<'s, T: Output + Fact> fmt::Debug for GivenAllRule<'s, T> {
+impl<'s, T: Output + Factoid> fmt::Debug for GivenAllRule<'s, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GivenAllRule {:?}", self.items)
     }
@@ -392,7 +392,7 @@ impl<'rules> Solver<'rules> {
     /// ```
     pub fn equals<T, A, B>(&mut self, left: A, right: B) -> InferenceResult
     where
-        T: Output + Fact + 'static,
+        T: Output + Factoid + 'static,
         A: IntoExp<T>,
         B: IntoExp<T>,
     {
@@ -415,7 +415,7 @@ impl<'rules> Solver<'rules> {
     /// ```
     pub fn equals_all<T>(&mut self, items: Vec<Exp<T>>) -> InferenceResult
     where
-        T: Output + Fact + 'static,
+        T: Output + Factoid + 'static,
     {
         let rule = EqualsRule::new(items);
         self.rules.push(Box::new(rule));
@@ -434,7 +434,7 @@ impl<'rules> Solver<'rules> {
     /// ```
     pub fn equals_zero<F>(&mut self, items: Exp<F>) -> InferenceResult
     where
-        F: Fact
+        F: Factoid
             + Zero
             + Add<F, Output = F>
             + Neg<Output = F>
@@ -458,7 +458,7 @@ impl<'rules> Solver<'rules> {
     /// ```
     pub fn with<T, A, F>(&mut self, item: A, closure: F) -> InferenceResult
     where
-        T: Fact + Output + 'static,
+        T: Factoid + Output + 'static,
         A: IntoExp<T>,
         F: Fn(&mut Solver<'rules>, T) -> InferenceResult + 'rules,
     {
@@ -477,7 +477,7 @@ impl<'rules> Solver<'rules> {
     /// ```
     pub fn given<T, A, F>(&mut self, item: A, closure: F) -> InferenceResult
     where
-        T: Fact + Output + 'static,
+        T: Factoid + Output + 'static,
         A: IntoExp<T>,
         F: Fn(&mut Solver<'rules>, T::Concrete) -> InferenceResult + 'rules,
     {
@@ -496,7 +496,7 @@ impl<'rules> Solver<'rules> {
     /// ```
     pub fn given_all<T, I, A, F>(&mut self, items: I, closure: F) -> InferenceResult
     where
-        T: Fact + Output + 'static,
+        T: Factoid + Output + 'static,
         A: IntoExp<T>,
         I: IntoIterator<Item = A>,
         F: Fn(&mut Solver<'rules>, Vec<T::Concrete>) -> InferenceResult + 'rules,
@@ -510,13 +510,13 @@ impl<'rules> Solver<'rules> {
 macro_rules! given_tuple {
     ($Name:ident, $name:ident, $($id:ident),*) => {
         #[allow(non_camel_case_types)]
-        pub struct $Name<'rules, $($id: Fact),*> {
+        pub struct $Name<'rules, $($id: Factoid),*> {
             $(pub $id: Exp<$id>,)*
             pub closure: Box<dyn Fn(&mut Solver<'rules>, $($id::Concrete,)*) -> InferenceResult + 'rules>,
         }
 
         #[allow(non_camel_case_types)]
-        impl<'rules, $($id: Fact + Output,)*> $Name<'rules, $($id,)*> {
+        impl<'rules, $($id: Factoid + Output,)*> $Name<'rules, $($id,)*> {
             pub fn new<F>($($id: Exp<$id>,)* closure: F) -> $Name<'rules, $($id,)*>
             where
                 F: Fn(&mut Solver<'rules>, $($id::Concrete,)*) -> InferenceResult + 'rules,
@@ -528,7 +528,7 @@ macro_rules! given_tuple {
         }
 
         #[allow(non_camel_case_types)]
-        impl<'rules, $($id: Fact + Output,)*> Rule<'rules> for $Name<'rules, $($id,)*> {
+        impl<'rules, $($id: Factoid + Output,)*> Rule<'rules> for $Name<'rules, $($id,)*> {
             /// Tries to apply the rule to a given context.
             fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<dyn Rule<'rules> + 'rules>>)> {
                 $(
@@ -553,7 +553,7 @@ macro_rules! given_tuple {
         }
 
         #[allow(non_camel_case_types)]
-        impl<'s, $($id: Fact + Output,)*> fmt::Debug for $Name<'s, $($id,)*> {
+        impl<'s, $($id: Factoid + Output,)*> fmt::Debug for $Name<'s, $($id,)*> {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 write!(f, "Given2Rule {{ {:?} }}", ($(&self.$id),*))
             }
@@ -572,9 +572,9 @@ impl<'rules> Solver<'rules> {
     ) -> InferenceResult
     where
         A1: IntoExp<T1>,
-        T1: Fact + Output + 'static,
+        T1: Factoid + Output + 'static,
         A2: IntoExp<T2>,
-        T2: Fact + Output + 'static,
+        T2: Factoid + Output + 'static,
         F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete) -> InferenceResult + 'rules,
     {
         let rule = Given2Rule::new(item_1.bex(), item_2.bex(), closure);
@@ -594,11 +594,11 @@ impl<'rules> Solver<'rules> {
     ) -> InferenceResult
     where
         A1: IntoExp<T1>,
-        T1: Fact + Output + 'static,
+        T1: Factoid + Output + 'static,
         A2: IntoExp<T2>,
-        T2: Fact + Output + 'static,
+        T2: Factoid + Output + 'static,
         A3: IntoExp<T3>,
-        T3: Fact + Output + 'static,
+        T3: Factoid + Output + 'static,
         F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete) -> InferenceResult
             + 'rules,
     {
@@ -620,13 +620,13 @@ impl<'rules> Solver<'rules> {
     ) -> InferenceResult
     where
         A1: IntoExp<T1>,
-        T1: Fact + Output + 'static,
+        T1: Factoid + Output + 'static,
         A2: IntoExp<T2>,
-        T2: Fact + Output + 'static,
+        T2: Factoid + Output + 'static,
         A3: IntoExp<T3>,
-        T3: Fact + Output + 'static,
+        T3: Factoid + Output + 'static,
         A4: IntoExp<T4>,
-        T4: Fact + Output + 'static,
+        T4: Factoid + Output + 'static,
         F: Fn(
                 &mut Solver<'rules>,
                 T1::Concrete,

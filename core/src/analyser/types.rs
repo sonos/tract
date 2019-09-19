@@ -8,7 +8,7 @@ use num_traits::Zero;
 use crate::internal::*;
 
 /// Partial information about any value.
-pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
+pub trait Factoid: fmt::Debug + Clone + PartialEq + Default {
     type Concrete: fmt::Debug;
 
     /// Tries to transform the fact into a concrete value.
@@ -173,7 +173,7 @@ impl TensorFact {
     }
 }
 
-impl Fact for TensorFact {
+impl Factoid for TensorFact {
     type Concrete = Arc<Tensor>;
 
     /// Tries to transform the fact into a concrete value.
@@ -226,7 +226,7 @@ pub enum GenericFact<T: fmt::Debug + Clone + PartialEq> {
 
 impl<T: Copy + Clone + fmt::Debug + PartialEq> Copy for GenericFact<T> {}
 
-impl<T: fmt::Debug + Clone + PartialEq> Fact for GenericFact<T> {
+impl<T: fmt::Debug + Clone + PartialEq> Factoid for GenericFact<T> {
     type Concrete = T;
 
     /// Tries to transform the fact into a concrete value.
@@ -395,7 +395,7 @@ impl ShapeFact {
     }
 }
 
-impl Fact for ShapeFact {
+impl Factoid for ShapeFact {
     type Concrete = TVec<TDim>;
 
     /// Tries to transform the fact into a `Vec<usize>`, or returns `None`.
