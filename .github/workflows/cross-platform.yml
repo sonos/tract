@@ -1,6 +1,9 @@
 name: Linux targets
 
-on: [push]
+on:
+  push:
+  schedule:
+    - cron:  '0 5 * * *'
 
 jobs:
   cross:
