@@ -13,7 +13,7 @@
 //! // build a simple model that just add 3 to each input component
 //! let mut model = InferenceModel::default();
 //!
-//! let input = model.add_source("input", TensorFact::default()).unwrap();
+//! let input = model.add_source("input", InferenceFact::default()).unwrap();
 //! let three = model.add_const("three".to_string(), tensor0(3f32)).unwrap();
 //! let add = model.wire_node("add".to_string(),
 //!     tract_core::ops::math::add::bin(),
@@ -103,7 +103,7 @@ pub use crate::errors::*;
 
 /// This prelude is meant for code using tract.
 pub mod prelude {
-    pub use crate::analyser::types::TensorFact;
+    pub use crate::analyser::types::InferenceFact;
     pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::TDim;
     pub use crate::errors::*;
@@ -133,7 +133,7 @@ pub mod internal {
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
-    pub use crate::pulse::{PulsedModel, PulsedNode, PulsedTensorFact};
+    pub use crate::pulse::{PulsedModel, PulsedNode, PulsedFact};
     pub use crate::{args_1, args_2, args_3, args_4};
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;

@@ -32,7 +32,7 @@ pub fn run_tract<S: AsRef<str>>(
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
     model.set_output_names(&[output])?;
     for (ix, (_, tf)) in inputs.iter().enumerate() {
-        model.set_input_fact(ix, TensorFact::dt_shape(tf.datum_type(), tf.shape()))?;
+        model.set_input_fact(ix, InferenceFact::dt_shape(tf.datum_type(), tf.shape()))?;
     }
     info!("analysed");
     let inputs = inputs.iter().map(|pair| pair.1.clone()).collect();
@@ -91,7 +91,7 @@ pub fn infer<S: AsRef<str>>(
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
     model.set_output_names(&[output_str])?;
     for (ix, (_, tf)) in inputs.iter().enumerate() {
-        model.set_input_fact(ix, TensorFact::dt_shape(tf.datum_type(), tf.shape()))?;
+        model.set_input_fact(ix, InferenceFact::dt_shape(tf.datum_type(), tf.shape()))?;
     }
     let plan = SimplePlan::new(&model)?;
     let mut state = SimpleState::new(&plan)?;
@@ -104,7 +104,7 @@ pub fn infer<S: AsRef<str>>(
     let _found = &state.values[output.id].as_ref().unwrap();
 
     info!("Checking inference consistency on {}", output.name);
-    let input_vectors: TVec<TensorFact> = output
+    let input_vectors: TVec<InferenceFact> = output
         .inputs
         .iter()
         .map(|outlet| {
@@ -115,7 +115,7 @@ pub fn infer<S: AsRef<str>>(
                 .into()
         })
         .collect();
-    let output_vectors: TVec<TensorFact> =
+    let output_vectors: TVec<InferenceFact> =
         tvec![state.values[output.id].as_ref().unwrap()[0].clone().into_tensor().clone().into(),];
 
     let input_facts = input_vectors.iter().collect();

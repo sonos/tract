@@ -166,22 +166,22 @@ mod tests {
     #[test]
     fn inference_1() {
         let mut pack = Pack::new(DatumType::I32, 2, 0);
-        let a = TensorFact::from(Tensor::from(0i32));
-        let b = TensorFact::from(Tensor::from(TDim::zero()));
-        let any = TensorFact::default();
+        let a = InferenceFact::from(Tensor::from(0i32));
+        let b = InferenceFact::from(Tensor::from(TDim::zero()));
+        let any = InferenceFact::default();
         let (_, output_facts, _) = pack.infer_facts(tvec![&a, &b], tvec![&any], tvec!()).unwrap();
-        let exp: TVec<TensorFact> = tvec!(TensorFact::dt_shape(DatumType::TDim, vec![2usize]));
+        let exp: TVec<InferenceFact> = tvec!(InferenceFact::dt_shape(DatumType::TDim, vec![2usize]));
         assert_eq!(output_facts, exp)
     }
 
     #[test]
     fn inference_2() {
         let mut pack = Pack::new(DatumType::I32, 2, 0);
-        let a = TensorFact::from(rctensor0(0i32));
-        let b = TensorFact::from(rctensor0(TDim::zero()));
-        let any = TensorFact::default();
+        let a = InferenceFact::from(rctensor0(0i32));
+        let b = InferenceFact::from(rctensor0(TDim::zero()));
+        let any = InferenceFact::default();
         let (_, output_facts, _) = pack.infer(tvec![&a, &b], tvec![&any], tvec!()).unwrap();
-        let exp: TVec<TensorFact> = tvec!(tensor1(&[TDim::zero(), TDim::zero()]).into());
+        let exp: TVec<InferenceFact> = tvec!(tensor1(&[TDim::zero(), TDim::zero()]).into());
         assert_eq!(output_facts, exp);
     }
 }

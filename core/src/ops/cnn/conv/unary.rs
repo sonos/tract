@@ -332,7 +332,7 @@ impl Op for ConvUnary {
         "ConvUnary".into()
     }
 
-    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let shape = self.data_format.shape(inputs[0].shape.iter().collect::<TVec<TDim>>());
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
@@ -378,8 +378,8 @@ impl StatelessOp for ConvUnary {
 }
 
 impl TypedOp for ConvUnary {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
     }
 
     fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
@@ -580,8 +580,8 @@ impl TypedOp for ConvUnary {
 impl PulsedOp for ConvUnary {
     fn pulsed_output_facts(
         &self,
-        inputs: &[&PulsedTensorFact],
-    ) -> TractResult<TVec<PulsedTensorFact>> {
+        inputs: &[&PulsedFact],
+    ) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape =
             self.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();

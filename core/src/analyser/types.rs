@@ -92,46 +92,46 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default {
 /// reach a fixed point that - hopefully - holds enough information.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq, Default)]
-pub struct TensorFact {
+pub struct InferenceFact {
     pub datum_type: TypeFact,
     pub shape: ShapeFact,
     pub value: ValueFact,
 }
 
-impl TensorFact {
+impl InferenceFact {
     /// Constructs the most general tensor fact possible.
-    pub fn new() -> TensorFact {
-        TensorFact::default()
+    pub fn new() -> InferenceFact {
+        InferenceFact::default()
     }
 
-    pub fn any() -> TensorFact {
-        TensorFact::default()
+    pub fn any() -> InferenceFact {
+        InferenceFact::default()
     }
 
-    pub fn dt(dt: DatumType) -> TensorFact {
-        TensorFact::default().with_datum_type(dt)
+    pub fn dt(dt: DatumType) -> InferenceFact {
+        InferenceFact::default().with_datum_type(dt)
     }
 
-    pub fn dt_shape<S: Into<ShapeFact>>(dt: DatumType, shape: S) -> TensorFact {
-        TensorFact::dt(dt).with_shape(shape)
+    pub fn dt_shape<S: Into<ShapeFact>>(dt: DatumType, shape: S) -> InferenceFact {
+        InferenceFact::dt(dt).with_shape(shape)
     }
 
-    pub fn shape<S: Into<ShapeFact>>(shape: S) -> TensorFact {
-        TensorFact::default().with_shape(shape)
+    pub fn shape<S: Into<ShapeFact>>(shape: S) -> InferenceFact {
+        InferenceFact::default().with_shape(shape)
     }
 
-    pub fn with_datum_type(self, dt: DatumType) -> TensorFact {
-        TensorFact { datum_type: dt.into(), ..self }
+    pub fn with_datum_type(self, dt: DatumType) -> InferenceFact {
+        InferenceFact { datum_type: dt.into(), ..self }
     }
 
-    pub fn with_shape<S: Into<ShapeFact>>(self, shape: S) -> TensorFact {
-        TensorFact { shape: shape.into(), ..self }
+    pub fn with_shape<S: Into<ShapeFact>>(self, shape: S) -> InferenceFact {
+        InferenceFact { shape: shape.into(), ..self }
     }
 
     pub fn with_streaming_shape<S: IntoIterator<Item = Option<usize>>>(
         self,
         shape: S,
-    ) -> TensorFact {
+    ) -> InferenceFact {
         let shape: ShapeFact = shape
             .into_iter()
             .map(|d| d.map(|d| (d as isize).to_dim()).unwrap_or(TDim::s()))
@@ -164,16 +164,16 @@ impl TensorFact {
         }
     }
 
-    pub fn dt_shape_from_tensor(t: &Tensor) -> TensorFact {
-        TensorFact::dt_shape(t.datum_type(), t.shape())
+    pub fn dt_shape_from_tensor(t: &Tensor) -> InferenceFact {
+        InferenceFact::dt_shape(t.datum_type(), t.shape())
     }
 
-    pub fn without_value(self) -> TensorFact {
-        TensorFact { value: GenericFact::Any, ..self }
+    pub fn without_value(self) -> InferenceFact {
+        InferenceFact { value: GenericFact::Any, ..self }
     }
 }
 
-impl Factoid for TensorFact {
+impl Factoid for InferenceFact {
     type Concrete = Arc<Tensor>;
 
     /// Tries to transform the fact into a concrete value.
@@ -183,7 +183,7 @@ impl Factoid for TensorFact {
 
     /// Tries to unify the fact with another fact of the same type.
     fn unify(&self, other: &Self) -> TractResult<Self> {
-        let tensor = TensorFact {
+        let tensor = InferenceFact {
             datum_type: self.datum_type.unify(&other.datum_type)?,
             shape: self.shape.unify(&other.shape)?,
             value: self.value.unify(&other.value)?,
@@ -195,10 +195,10 @@ impl Factoid for TensorFact {
     }
 }
 
-impl<V: Into<Arc<Tensor>>> From<V> for TensorFact {
-    fn from(v: V) -> TensorFact {
+impl<V: Into<Arc<Tensor>>> From<V> for InferenceFact {
+    fn from(v: V) -> InferenceFact {
         let v: Arc<Tensor> = v.into();
-        TensorFact {
+        InferenceFact {
             datum_type: GenericFact::Only(v.datum_type()),
             shape: ShapeFact::from(v.shape()),
             value: GenericFact::Only(v),
@@ -206,7 +206,7 @@ impl<V: Into<Arc<Tensor>>> From<V> for TensorFact {
     }
 }
 
-impl fmt::Debug for TensorFact {
+impl fmt::Debug for InferenceFact {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         if let Some(t) = self.value.concretize() {
             write!(formatter, "{:?}", t)

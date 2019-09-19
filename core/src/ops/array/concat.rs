@@ -95,12 +95,12 @@ impl InferenceRulesOp for Concat {
 impl TypedOp for Concat {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
         let mut shape = inputs[0].shape.clone();
         let dim = inputs.iter().map(|f| f.shape.dim(axis)).sum::<TDim>();
         shape.set_dim(axis, dim)?;
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)?))
     }
 
     fn declutter(
@@ -210,7 +210,7 @@ impl Op for NormConcat {
 impl TypedOp for NormConcat {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
         let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
             + self
@@ -447,13 +447,13 @@ impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
 impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 }
 
 impl<T: Datum> PulsedOp for PulsedSameAxisConcat<T> {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         let before = self.pre_slice.shape()[self.axis];
         let after = self.post_slice.shape()[self.axis];
@@ -592,7 +592,7 @@ impl<T: Datum> StatelessOp for FixedConcat<T> {
 impl<T: Datum> TypedOp for FixedConcat<T> {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
         let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
             + self

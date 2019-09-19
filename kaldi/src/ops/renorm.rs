@@ -62,7 +62,7 @@ impl InferenceRulesOp for Renorm {
 impl TypedOp for Renorm {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -83,7 +83,7 @@ impl TypedOp for Renorm {
 }
 
 impl PulsedOp for Renorm {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 

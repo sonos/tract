@@ -345,12 +345,12 @@ impl StatelessOp for TypedReduce {
 
 impl TypedOp for TypedReduce {
     typed_op_as_op!();
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape: TVec<_> = inputs[0].shape.to_tvec();
         for &ax in &self.axes {
             shape[ax] = 1.to_dim();
         }
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)?))
     }
 
     fn pulsify(
@@ -371,7 +371,7 @@ impl TypedOp for TypedReduce {
 }
 
 impl PulsedOp for TypedReduce {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         for &ax in &self.axes {
             fact.shape[ax] = 1;

@@ -109,7 +109,7 @@ impl StatefullOp for Typed {
 impl TypedOp for Typed {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut outputs = tvec!();
         let iters = {
             let (outside_slot, axis, chunk) = self
@@ -130,11 +130,11 @@ impl TypedOp for Typed {
                 let scanning_dim =
                     output.full_dim_hint.clone().unwrap_or(shape.dim(output.axis) * &iters);
                 shape.set_dim(output.axis, scanning_dim)?;
-                outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
+                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }
             if let Some(slot) = output.last_value_slot {
                 outputs
-                    .push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+                    .push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())?));
             }
         }
         outputs.sort_by_key(|a| a.0);
@@ -179,7 +179,7 @@ impl TypedOp for Typed {
             bail!("Scan pulsification limited to scanning axis");
         }
 
-        let mut output_fact = crate::pulse::PulsedTensorFact::from_tensor_fact_pulse(
+        let mut output_fact = crate::pulse::PulsedFact::from_tensor_fact_pulse(
             &node.outputs[0].fact,
             input_fact.pulse(),
         )?;
@@ -204,7 +204,7 @@ impl TypedOp for Typed {
 }
 
 impl PulsedOp for Typed {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let (output_body_ix, output_mapping) = self
             .output_mapping
             .iter()
@@ -224,7 +224,7 @@ impl PulsedOp for Typed {
                 }
             })
             .collect();
-        let fact = PulsedTensorFact {
+        let fact = PulsedFact {
             datum_type: output_body_fact.datum_type,
             shape,
             axis: output_mapping.axis,

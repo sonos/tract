@@ -63,8 +63,8 @@ fn deepspeech() -> TractResult<()> {
     //    let mut model = tf.model_for_path("deepspeech-0.4.1-models/output_graph.pb")?;
     let mut model = tf.model_for_path(cachedir().join("deepspeech-0.4.1.pb"))?;
     model.set_input_names(&["input_node", "input_lengths"])?;
-    model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), tvec!(1, 16, 19, 26)))?;
-    model.set_input_fact(1, TensorFact::dt_shape(i32::datum_type(), tvec!(1)))?;
+    model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 16, 19, 26)))?;
+    model.set_input_fact(1, InferenceFact::dt_shape(i32::datum_type(), tvec!(1)))?;
     model.set_output_names(&["initialize_state", "logits"])?;
     trace!("{:#?}", &model);
     let model = model.into_typed()?;

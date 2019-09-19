@@ -12,11 +12,11 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
 /// A Node in an Model.
 ///
-/// Parameterized by a TensorInfo implementation matching the one used in the
+/// Parameterized by a Fact implementation matching the one used in the
 /// model.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct BaseNode<TI: TensorInfo, O> {
+pub struct BaseNode<TI: Fact, O> {
     /// node id in the model
     ///
     /// Caution: this id will not be persistent during networks transformation
@@ -39,7 +39,7 @@ pub struct BaseNode<TI: TensorInfo, O> {
     pub outputs: TVec<OutletFact<TI>>,
 }
 
-impl<TI: TensorInfo, O: std::fmt::Display> fmt::Display for BaseNode<TI, O> {
+impl<TI: Fact, O: std::fmt::Display> fmt::Display for BaseNode<TI, O> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op)
     }
@@ -47,7 +47,7 @@ impl<TI: TensorInfo, O: std::fmt::Display> fmt::Display for BaseNode<TI, O> {
 
 pub type Node<TI> = BaseNode<TI, Box<dyn Op>>;
 
-impl<TI: TensorInfo, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op>>
+impl<TI: Fact, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op>>
     BaseNode<TI, NodeOp>
 {
     /// Access the op of the node
@@ -79,14 +79,14 @@ impl<TI: TensorInfo, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + A
 /// Information for each outlet of a node
 #[derive(Clone, Default)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct OutletFact<TI: TensorInfo> {
+pub struct OutletFact<TI: Fact> {
     /// the tensor type information
     pub fact: TI,
     /// where this outlet is used.
     pub successors: TVec<InletId>,
 }
 
-impl<TI: TensorInfo> fmt::Debug for OutletFact<TI> {
+impl<TI: Fact> fmt::Debug for OutletFact<TI> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,

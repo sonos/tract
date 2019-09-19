@@ -34,7 +34,7 @@ pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> C
 }
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_inferred(got: &[TensorFact], expected: &[TensorFact]) -> CliResult<()> {
+pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> CliResult<()> {
     if got.len() != expected.len() {
         bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
     }

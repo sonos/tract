@@ -205,7 +205,7 @@ macro_rules! boxed_new {
 #[macro_export]
 macro_rules! assert_forward {
     ($op:expr, $input:ident, $output:ident) => {
-        let any = TensorFact::new();
+        let any = InferenceFact::new();
         assert_eq!(
             $op.infer_facts(tvec![&$input], tvec![&any]).unwrap(),
             (tvec![$input.clone()], tvec![$output])
@@ -218,7 +218,7 @@ macro_rules! assert_forward {
 #[macro_export]
 macro_rules! assert_backward {
     ($op:expr, $input:ident, $output:ident) => {
-        let any = TensorFact::new();
+        let any = InferenceFact::new();
         assert_eq!(
             $op.infer_facts(tvec![&any], tvec![&$output]).unwrap(),
             (tvec![$input], tvec![$output.clone()])

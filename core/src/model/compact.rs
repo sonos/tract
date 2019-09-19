@@ -1,4 +1,4 @@
-use crate::model::{InletId, ModelImpl, OutletId, TensorInfo};
+use crate::model::{InletId, ModelImpl, OutletId, Fact};
 use crate::ops::Translate;
 use crate::prelude::*;
 use std::collections::HashMap;
@@ -10,8 +10,8 @@ pub(crate) fn translate<TI1, TI2, O1, O2, Ctx>(
     ctx: &Ctx,
 ) -> TractResult<(ModelImpl<TI2, O2>, HashMap<OutletId, OutletId>)>
 where
-    TI1: TensorInfo + Clone + 'static,
-    TI2: TensorInfo + Clone + 'static,
+    TI1: Fact + Clone + 'static,
+    TI2: Fact + Clone + 'static,
     O1: Display
         + Debug
         + AsRef<dyn Op>
@@ -69,8 +69,8 @@ pub(crate) fn compact<TI1, TI2, O1, O2, E1, E2>(
 ) -> TractResult<ModelImpl<TI2, O2>>
 where
     TractError: From<E1> + From<E2>,
-    TI1: TensorInfo + Clone + 'static,
-    TI2: TensorInfo + TryFrom<TI1, Error = E1> + Clone + 'static,
+    TI1: Fact + Clone + 'static,
+    TI2: Fact + TryFrom<TI1, Error = E1> + Clone + 'static,
     O1: Display + Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     O2: Display + TryFrom<O1, Error = E2> + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {

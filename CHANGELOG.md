@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Breaking
+
+* Change tensor facts names for consistency: TensorFact is now InferenceFact.
+
+### Notable
+
 * Introduce Windows support, including CI coverage for linalg
 * Switch from Travis to GitHub Actions
 * Internal refactoring around tract-core canonic opset

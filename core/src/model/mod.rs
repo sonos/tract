@@ -15,13 +15,13 @@
 //! At this stage, the model can be converted into a `TypedModel`.
 //!
 //! InferanceModel and TypeModel are two variants of `ModelImpl`, Parameterized
-//! by a TensorInfo implementation: TypedModel uses TypedTensorInfo, enforcing
+//! by a Fact implementation: TypedModel uses TypedFact, enforcing
 //! complete determination of element type and shape, and allowing a constant
-//! value for the tensor. InferenceModel uses TensorFact, which can handle
+//! value for the tensor. InferenceModel uses InferenceFact, which can handle
 //! partial information.
 //!
 //! A third type of Model exists and can be useful: NormalizedModel, using
-//! NormalizedTensorInfo. In this case, constant values are no longer allowed:
+//! NormalizedFact. In this case, constant values are no longer allowed:
 //! all tensors exchanged in the network are actual variables.
 //! Parts of the graph producing constant values (like constant weights or
 //! hyper-parameter computation implemented in the graph) have been
@@ -49,15 +49,15 @@ mod model;
 mod node;
 pub mod order;
 mod patch;
-mod tensor_info;
+mod fact;
 
 pub use self::dsl::*;
 pub use self::model::*;
 pub use self::node::*;
 pub use self::order::eval_order;
 pub use self::patch::ModelPatch;
-pub use self::tensor_info::*;
-pub use crate::analyser::types::TensorFact;
+pub use self::fact::*;
+pub use crate::analyser::types::InferenceFact;
 pub use crate::ops::{InferenceOp, Op, TypedOp};
 
 use crate::plan::{SimplePlan, SimpleState};
@@ -102,7 +102,7 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + objekt::Clone {
     fn output_outlets(&self) -> &[OutletId];
 
     /// Tensorfact for an outlet
-    fn outlet_tensorfact(&self, outlet: OutletId) -> TensorFact;
+    fn outlet_tensorfact(&self, outlet: OutletId) -> InferenceFact;
 
     /// Tensorfact for an outlet
     fn outlet_fact_format(&self, outlet: OutletId) -> String;
@@ -147,38 +147,38 @@ macro_rules! dispatch_model_no_pulse {
 
 /// A model with partially types and shapes, as produced by parsing ONNX or
 /// Tensorflow graphs.
-pub type InferenceModel = ModelImpl<TensorFact, Box<dyn InferenceOp>>;
+pub type InferenceModel = ModelImpl<InferenceFact, Box<dyn InferenceOp>>;
 /// Node for InferenceModel graph
-pub type InferenceNode = BaseNode<TensorFact, Box<dyn InferenceOp>>;
+pub type InferenceNode = BaseNode<InferenceFact, Box<dyn InferenceOp>>;
 /// A ModelPatch for InferenceModel.
-pub type InferenceModelPatch = ModelPatch<TensorFact, Box<dyn InferenceOp>>;
+pub type InferenceModelPatch = ModelPatch<InferenceFact, Box<dyn InferenceOp>>;
 /// An execution plan for InferenceModel.
-pub type InferenceSimplePlan<M> = SimplePlan<TensorFact, Box<dyn InferenceOp>, M>;
+pub type InferenceSimplePlan<M> = SimplePlan<InferenceFact, Box<dyn InferenceOp>, M>;
 /// An execution state for InferenceModel.
-pub type InferenceSimpleState<M, P> = SimpleState<TensorFact, Box<dyn InferenceOp>, M, P>;
+pub type InferenceSimpleState<M, P> = SimpleState<InferenceFact, Box<dyn InferenceOp>, M, P>;
 
 /// A model with completely determined types and shapes.
-pub type TypedModel = ModelImpl<TypedTensorInfo, Box<dyn TypedOp>>;
+pub type TypedModel = ModelImpl<TypedFact, Box<dyn TypedOp>>;
 /// Node for TypedModel graph
-pub type TypedNode = BaseNode<TypedTensorInfo, Box<dyn TypedOp>>;
+pub type TypedNode = BaseNode<TypedFact, Box<dyn TypedOp>>;
 /// A ModelPatch for TypedModel.
-pub type TypedModelPatch = ModelPatch<TypedTensorInfo, Box<dyn TypedOp>>;
+pub type TypedModelPatch = ModelPatch<TypedFact, Box<dyn TypedOp>>;
 /// An execution plan for TypedModel.
-pub type TypedSimplePlan<M> = SimplePlan<TypedTensorInfo, Box<dyn TypedOp>, M>;
+pub type TypedSimplePlan<M> = SimplePlan<TypedFact, Box<dyn TypedOp>, M>;
 /// An execution state for TypedModel.
-pub type TypedSimpleState<M, P> = SimpleState<TypedTensorInfo, Box<dyn TypedOp>, M, P>;
+pub type TypedSimpleState<M, P> = SimpleState<TypedFact, Box<dyn TypedOp>, M, P>;
 
 /// A model with determined types and shapes, where constant have been
 /// eleminated from the graph.
-pub type NormalizedModel = ModelImpl<NormalizedTensorInfo, Box<dyn TypedOp>>;
+pub type NormalizedModel = ModelImpl<NormalizedFact, Box<dyn TypedOp>>;
 /// A Node for NormalizedModel.
-pub type NormalizedNode = BaseNode<NormalizedTensorInfo, Box<dyn TypedOp>>;
+pub type NormalizedNode = BaseNode<NormalizedFact, Box<dyn TypedOp>>;
 /// A ModelPatch for NormalizedModel.
-pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<dyn TypedOp>>;
+pub type NormalizedModelPatch = ModelPatch<NormalizedFact, Box<dyn TypedOp>>;
 /// An execution plan for NormalizedModel.
-pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedTensorInfo, Box<dyn TypedOp>, M>;
+pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedFact, Box<dyn TypedOp>, M>;
 /// An execution state for TypedModel.
-pub type NormalizedSimpleState<M, P> = SimpleState<NormalizedTensorInfo, Box<dyn TypedOp>, M, P>;
+pub type NormalizedSimpleState<M, P> = SimpleState<NormalizedFact, Box<dyn TypedOp>, M, P>;
 
 impl InferenceModel {
     /// Analyse one node of the graph.

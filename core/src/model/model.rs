@@ -4,11 +4,11 @@ use std::fmt;
 
 /// Main model class
 ///
-/// Parameterized by a TensorInfo class.
+/// Parameterized by a Fact class.
 #[derive(Clone, Debug)]
 pub struct ModelImpl<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// all nodes in the model
@@ -23,7 +23,7 @@ where
 
 impl<TI, O> Default for ModelImpl<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn default() -> ModelImpl<TI, O> {
@@ -33,7 +33,7 @@ where
 
 impl<TI, O> ModelImpl<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     ModelImpl<TI, O>: Model,
 {
@@ -328,7 +328,7 @@ where
 
 impl<TI, O> Model for ModelImpl<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
@@ -383,7 +383,7 @@ where
         self.nodes[id].op.as_ref()
     }
 
-    fn outlet_tensorfact(&self, outlet: OutletId) -> TensorFact {
+    fn outlet_tensorfact(&self, outlet: OutletId) -> InferenceFact {
         self.outlet_fact(outlet).unwrap().to_tensor_fact()
     }
 

@@ -1,6 +1,6 @@
 use crate::internal::*;
 use crate::ops::dummy::Dummy;
-use crate::pulse::PulsedTensorFact;
+use crate::pulse::PulsedFact;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display};
 
@@ -8,7 +8,7 @@ pub use super::{InletId, ModelImpl, Node, OutletId};
 
 pub trait ModelSpecialOps<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// Adds a source op to the network.
@@ -19,8 +19,8 @@ where
     fn create_dummy(&self) -> O;
 }
 
-impl ModelSpecialOps<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
-    fn add_source(&mut self, name: impl Into<String>, fact: TensorFact) -> TractResult<OutletId> {
+impl ModelSpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
+    fn add_source(&mut self, name: impl Into<String>, fact: InferenceFact) -> TractResult<OutletId> {
         let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
         let id = OutletId::new(id, 0);
         self.inputs.push(id);
@@ -32,11 +32,11 @@ impl ModelSpecialOps<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
     }
 }
 
-impl ModelSpecialOps<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
+impl ModelSpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     fn add_source(
         &mut self,
         name: impl Into<String>,
-        fact: TypedTensorInfo,
+        fact: TypedFact,
     ) -> TractResult<OutletId> {
         let id =
             self.add_node(name, crate::ops::source::TypedSource::new(fact.clone()), tvec!(fact))?;
@@ -50,11 +50,11 @@ impl ModelSpecialOps<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
     }
 }
 
-impl ModelSpecialOps<PulsedTensorFact, Box<dyn TypedOp>> for PulsedModel {
+impl ModelSpecialOps<PulsedFact, Box<dyn TypedOp>> for PulsedModel {
     fn add_source(
         &mut self,
         name: impl Into<String>,
-        fact: PulsedTensorFact,
+        fact: PulsedFact,
     ) -> TractResult<OutletId> {
         let id =
             self.add_node(name, crate::ops::source::PulsedSource::new(fact.clone()), tvec!(fact))?;
@@ -71,7 +71,7 @@ impl ModelSpecialOps<PulsedTensorFact, Box<dyn TypedOp>> for PulsedModel {
 /// Extensions on ModelImpl to explore and build graph models more easily.
 pub trait ModelDsl<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// Find the lone precursor of a node, if applicable.
@@ -88,7 +88,7 @@ where
 
 impl<TI, O> ModelDsl<TI, O> for ModelImpl<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>> {
@@ -151,10 +151,10 @@ pub trait ModelDslConst {
     ) -> TractResult<OutletId>;
 }
 
-impl<TI: TensorInfo + Clone + 'static, O, E> ModelDslConst for ModelImpl<TI, O>
+impl<TI: Fact + Clone + 'static, O, E> ModelDslConst for ModelImpl<TI, O>
 where
     TractError: From<E>,
-    TI: TensorInfo + Clone + 'static + TryFrom<TensorFact, Error = E>,
+    TI: Fact + Clone + 'static + TryFrom<InferenceFact, Error = E>,
     O: Debug
         + Display
         + From<crate::ops::konst::Const>
@@ -169,14 +169,14 @@ where
         v: impl IntoArcTensor,
     ) -> TractResult<OutletId> {
         let v = v.into_arc_tensor();
-        let fact = TI::try_from(TensorFact::from(v.clone()))?;
+        let fact = TI::try_from(InferenceFact::from(v.clone()))?;
         self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }
 }
 
 pub trait ModelWireNode<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn wire_node(
@@ -187,7 +187,7 @@ where
     ) -> TractResult<TVec<OutletId>>;
 }
 
-impl ModelWireNode<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
+impl ModelWireNode<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
     fn wire_node(
         &mut self,
         name: impl Into<String>,
@@ -195,8 +195,8 @@ impl ModelWireNode<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
-        let output_facts: TVec<TensorFact> =
-            (0..op.nboutputs()?).map(|_| TensorFact::default()).collect();
+        let output_facts: TVec<InferenceFact> =
+            (0..op.nboutputs()?).map(|_| InferenceFact::default()).collect();
         let id = self.add_node(name, op, output_facts)?;
         inputs
             .iter()
@@ -206,7 +206,7 @@ impl ModelWireNode<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
     }
 }
 
-impl ModelWireNode<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
+impl ModelWireNode<TypedFact, Box<dyn TypedOp>> for TypedModel {
     fn wire_node(
         &mut self,
         name: impl Into<String>,
@@ -221,7 +221,7 @@ impl ModelWireNode<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
                 let tensors =
                     input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
                 let outputs = op.as_stateless().unwrap().eval(tensors)?;
-                outputs.into_iter().map(|t| TypedTensorInfo::from(t)).collect()
+                outputs.into_iter().map(|t| TypedFact::from(t)).collect()
             } else {
                 op.output_facts(&*input_facts)?
             }
@@ -235,7 +235,7 @@ impl ModelWireNode<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
     }
 }
 
-impl ModelWireNode<PulsedTensorFact, Box<dyn PulsedOp>> for PulsedModel {
+impl ModelWireNode<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
     fn wire_node(
         &mut self,
         name: impl Into<String>,

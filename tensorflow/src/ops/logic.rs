@@ -75,8 +75,8 @@ impl InferenceRulesOp for Switch {
 impl TypedOp for Switch {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        let fact = TypedTensorInfo::dt_shape(f32::datum_type(), inputs[0].shape.clone())?;
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let fact = TypedFact::dt_shape(f32::datum_type(), inputs[0].shape.clone())?;
         Ok(tvec!(fact.clone(), fact))
     }
 }
@@ -132,10 +132,10 @@ impl InferenceRulesOp for Merge {
 impl TypedOp for Merge {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(
-            TypedTensorInfo::dt_shape(f32::datum_type(), inputs[0].shape.clone())?,
-            TypedTensorInfo::dt_shape(i32::datum_type(), ())?
+            TypedFact::dt_shape(f32::datum_type(), inputs[0].shape.clone())?,
+            TypedFact::dt_shape(i32::datum_type(), ())?
         ))
     }
 }

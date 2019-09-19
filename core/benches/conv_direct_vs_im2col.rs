@@ -54,12 +54,12 @@ impl Problem {
         tvec!(1, self.h, self.w, self.ci)
     }
 
-    pub fn image_fact(&self) -> TensorFact {
-        TensorFact::dt_shape(DatumType::F32, self.image_shape())
+    pub fn image_fact(&self) -> InferenceFact {
+        InferenceFact::dt_shape(DatumType::F32, self.image_shape())
     }
 
-    pub fn image_type(&self) -> TypedTensorInfo {
-        TypedTensorInfo::dt_shape(f32::datum_type(), &*self.image_shape()).unwrap()
+    pub fn image_type(&self) -> TypedFact {
+        TypedFact::dt_shape(f32::datum_type(), &*self.image_shape()).unwrap()
     }
 
     pub fn to_unary(&self) -> Box<ConvUnary> {
@@ -74,13 +74,13 @@ impl Problem {
             Some(tvec!(self.stride_h, self.stride_w)),
             1,
         );
-        let kernel_fact: TypedTensorInfo = TypedTensorInfo::from(kernel);
-        let image_fact: TypedTensorInfo = self.image_fact().try_into().unwrap();
+        let kernel_fact: TypedFact = TypedFact::from(kernel);
+        let image_fact: TypedFact = self.image_fact().try_into().unwrap();
         let unary = conv.to_unary(&[&image_fact, &kernel_fact]).unwrap();
         Box::new(unary.unwrap())
     }
 
-    pub fn to_direct(&self) -> SimplePlan<TypedTensorInfo, Box<dyn TypedOp>, TypedModel> {
+    pub fn to_direct(&self) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
         let unary = self.to_unary();
 
         let direct = unary.to_direct(&*self.image_shape()).unwrap();
@@ -90,14 +90,14 @@ impl Problem {
             .add_node(
                 "conv",
                 direct.clone(),
-                tvec!(TypedTensorInfo::dt_shape(f32::datum_type(), direct.output_shape()).unwrap()),
+                tvec!(TypedFact::dt_shape(f32::datum_type(), direct.output_shape()).unwrap()),
             )
             .unwrap();
         model_direct.add_edge(input, InletId::new(conv, 0)).unwrap();
         SimplePlan::new(model_direct).unwrap()
     }
 
-    pub fn to_im2col(&self) -> SimplePlan<TypedTensorInfo, Box<dyn TypedOp>, TypedModel> {
+    pub fn to_im2col(&self) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
         let unary = self.to_unary();
         let (im2col, _, cvgemm) = unary.to_im2col_pair::<f32>(&*self.image_shape()).unwrap();
         let mut model_im2col = TypedModel::default();

@@ -68,7 +68,7 @@ impl InferenceRulesOp for LayerHardmax {
 }
 
 impl TypedOp for LayerHardmax {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -87,7 +87,7 @@ impl TypedOp for LayerHardmax {
 }
 
 impl PulsedOp for LayerHardmax {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -160,7 +160,7 @@ impl InferenceRulesOp for LayerLogSoftmax {
 }
 
 impl TypedOp for LayerLogSoftmax {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -179,7 +179,7 @@ impl TypedOp for LayerLogSoftmax {
 }
 
 impl PulsedOp for LayerLogSoftmax {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -252,7 +252,7 @@ impl InferenceRulesOp for LayerSoftmax {
 }
 
 impl TypedOp for LayerSoftmax {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -271,7 +271,7 @@ impl TypedOp for LayerSoftmax {
 }
 
 impl PulsedOp for LayerSoftmax {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 

@@ -80,13 +80,13 @@ impl Framework<GraphDef> for Tensorflow {
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
             let output_arity = context.node_output_arities.get(&*name).cloned().unwrap_or(1);
-            let facts = tvec!(TensorFact::default(); output_arity);
+            let facts = tvec!(InferenceFact::default(); output_arity);
 
             if pbnode.get_op() == "NextIteration" {
                 let source_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Source);
                 let sink_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Sink);
                 let _source =
-                    model.add_node(name.clone(), source_op, tvec!(TensorFact::default()))?;
+                    model.add_node(name.clone(), source_op, tvec!(InferenceFact::default()))?;
                 let _sink = model.add_node(format!("{}-Sink", name), sink_op, tvec!())?;
                 continue;
             }
@@ -103,7 +103,7 @@ impl Framework<GraphDef> for Tensorflow {
             let node_id = model.add_node(name.clone(), op, facts)?;
             if pbnode.get_op() == "Placeholder" {
                 let dt = pbnode.get_attr_datum_type("dtype")?;
-                let mut fact = TensorFact::dt(dt);
+                let mut fact = InferenceFact::dt(dt);
                 if let Some(shape) = pbnode.get_attr_opt_shape("shape")? {
                     fact = fact.with_shape(shape)
                 }

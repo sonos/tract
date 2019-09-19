@@ -75,8 +75,8 @@ impl Inference {
         )?))
     }
     fn unify_scanning_tensor_fact(
-        outer: &mut TensorFact,
-        inner: &mut TensorFact,
+        outer: &mut InferenceFact,
+        inner: &mut InferenceFact,
         outer_scan_axis: usize,
     ) -> TractResult<()> {
         outer.datum_type.unify_with_mut(&mut inner.datum_type)?;
@@ -104,8 +104,8 @@ impl Inference {
 
     fn unify_facts(
         &mut self,
-        inputs: &mut [TensorFact],
-        outputs: &mut [TensorFact],
+        inputs: &mut [InferenceFact],
+        outputs: &mut [InferenceFact],
     ) -> TractResult<()> {
         let hidden_state_len = self.input_mapping.iter().filter_map(|m| m.as_state()).count();
         for state_ix in 0..hidden_state_len {
@@ -127,7 +127,7 @@ impl Inference {
                 .0;
             match initializer {
                 StateInitializer::Value(v) => {
-                    let fact = TensorFact::dt_shape_from_tensor(v);
+                    let fact = InferenceFact::dt_shape_from_tensor(v);
                     self.body.set_input_fact(inner_model_input_ix, fact.clone())?;
                     self.body.set_output_fact(inner_model_output_ix, fact)?;
                 }
@@ -171,10 +171,10 @@ impl Inference {
 impl InferenceOp for Inference {
     fn infer_facts(
         &mut self,
-        inputs: TVec<&TensorFact>,
-        outputs: TVec<&TensorFact>,
-        _observed: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)> {
+        inputs: TVec<&InferenceFact>,
+        outputs: TVec<&InferenceFact>,
+        _observed: TVec<&InferenceFact>,
+    ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let body_inputs = self.body.input_outlets()?.len();
         let body_outputs = self.body.output_outlets()?.len();
         let expected_op_inputs = self.input_mapping.iter().filter(|m| !m.invisible()).count();
@@ -199,8 +199,8 @@ impl InferenceOp for Inference {
                 self.output_mapping.len()
             )
         }
-        let mut inputs: TVec<TensorFact> = inputs.into_iter().cloned().collect();
-        let mut outputs: TVec<TensorFact> = outputs.into_iter().cloned().collect();
+        let mut inputs: TVec<InferenceFact> = inputs.into_iter().cloned().collect();
+        let mut outputs: TVec<InferenceFact> = outputs.into_iter().cloned().collect();
         self.unify_facts(&mut inputs, &mut outputs)?;
         trace!("Starting inner model analyse");
         for (ix, input) in self.body.input_outlets()?.iter().enumerate() {

@@ -75,8 +75,8 @@ fn debug_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
     debug_tensorfacts_path(&path[1..], formatter)
 }
 
-/// Returns the value at the given path (starting from a set of TensorFacts).
-fn get_tensorfacts_path(facts: &TVec<TensorFact>, path: &[isize]) -> TractResult<Wrapped> {
+/// Returns the value at the given path (starting from a set of InferenceFacts).
+fn get_tensorfacts_path(facts: &TVec<InferenceFact>, path: &[isize]) -> TractResult<Wrapped> {
     match path {
         // Get the number of facts in the set.
         [-1] => Ok(facts.len().wrap()),
@@ -104,9 +104,9 @@ fn get_tensorfacts_path(facts: &TVec<TensorFact>, path: &[isize]) -> TractResult
     }
 }
 
-/// Sets the value at the given path (starting from a set of TensorFacts).
+/// Sets the value at the given path (starting from a set of InferenceFacts).
 fn set_tensorfacts_path(
-    facts: &mut TVec<TensorFact>,
+    facts: &mut TVec<InferenceFact>,
     path: &[isize],
     value: Wrapped,
 ) -> TractResult<()> {
@@ -162,13 +162,13 @@ fn debug_tensorfacts_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt
     }
 }
 
-/// Returns the value at the given path (starting from a TensorFact).
-fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> TractResult<Wrapped> {
+/// Returns the value at the given path (starting from a InferenceFact).
+fn get_tensorfact_path(fact: &InferenceFact, path: &[isize]) -> TractResult<Wrapped> {
     match path {
-        // Get the type of the TensorFact.
+        // Get the type of the InferenceFact.
         [0] => Ok(fact.datum_type.clone().wrap()),
 
-        // Get the rank of the TensorFact.
+        // Get the rank of the InferenceFact.
         [1] => Ok(fact.shape.rank().wrap()),
 
         slice if slice[0] == 2 => get_shape_path(&fact.shape, &slice[1..]),
@@ -182,17 +182,17 @@ fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> TractResult<Wrapped
     }
 }
 
-/// Sets the value at the given path (starting from a TensorFact).
-fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) -> TractResult<()> {
+/// Sets the value at the given path (starting from a InferenceFact).
+fn set_tensorfact_path(fact: &mut InferenceFact, path: &[isize], value: Wrapped) -> TractResult<()> {
     match path {
-        // Set the type of the TensorFact.
+        // Set the type of the InferenceFact.
         [0] => {
             let value = TypeFact::from_wrapped(value)?;
             fact.datum_type = value.unify(&fact.datum_type)?;
             Ok(())
         }
 
-        // Set the rank of the TensorFact.
+        // Set the rank of the InferenceFact.
         [1] => {
             if let Some(k) = IntFact::from_wrapped(value)?.concretize() {
                 if k >= 0 {
@@ -206,7 +206,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             Ok(())
         }
 
-        // Set the whole shape of the TensorFact.
+        // Set the whole shape of the InferenceFact.
         [2] => {
             let shape = ShapeFact::from_wrapped(value)?;
             fact.shape = shape.unify(&fact.shape)?;
@@ -214,7 +214,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             Ok(())
         }
 
-        // Set a precise dimension of the TensorFact.
+        // Set a precise dimension of the InferenceFact.
         [2, k] => {
             let k = k.to_usize().unwrap();
             let dim = DimFact::from_wrapped(value)?;
@@ -227,7 +227,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             Ok(())
         }
 
-        // Set full TensorFact value, also unifying type and shape.
+        // Set full InferenceFact value, also unifying type and shape.
         [3] => {
             let value = ValueFact::from_wrapped(value)?;
             fact.value = fact.value.unify(&value)?;

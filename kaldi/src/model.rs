@@ -91,7 +91,7 @@ impl GeneralDescriptor {
             }
             &Append(appendees) => {
                 let name = format!("{}-Append", name);
-                let id = model.add_node(&*name, tract_core::ops::array::Concat::new(1), tvec!(TensorFact::default()))?;
+                let id = model.add_node(&*name, tract_core::ops::array::Concat::new(1), tvec!(InferenceFact::default()))?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
                 for (ix, appendee) in appendees.iter().enumerate() {
                     let name = format!("{}-{}", name, ix);
@@ -112,7 +112,7 @@ impl GeneralDescriptor {
                         model.add_node(
                             &*name,
                             crate::ops::memory::Memory::new(n.to_string(), *o),
-                            tvec!(TensorFact::default())
+                            tvec!(InferenceFact::default())
                         )?;
                         deferred.insert(inlet, name);
                         return Ok(());
@@ -128,7 +128,7 @@ impl GeneralDescriptor {
                 let id = model.add_node(
                     &*name,
                     tract_core::ops::array::Crop::new(0, crop as usize, 0),
-                    tvec!(TensorFact::default())
+                    tvec!(InferenceFact::default())
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
                 n.wire(InletId::new(id, 0), &*name, model, deferred, adjust_final_offset)?;
@@ -196,7 +196,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
         let mut model = InferenceModel::default();
         model.add_source(
             proto_model.config_lines.input_name.clone(),
-            TensorFact::dt_shape(
+            InferenceFact::dt_shape(
                 f32::datum_type(),
                 shapefact!(S, (proto_model.config_lines.input_dim)),
             ),
@@ -210,7 +210,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
                         && line.input.as_conv_shape_dilation().is_some()
                     {
                         let op = crate::ops::affine::affine_component(&ctx, name)?;
-                        let id = model.add_node(name.to_string(), op, tvec!(TensorFact::default()))?;
+                        let id = model.add_node(name.to_string(), op, tvec!(InferenceFact::default()))?;
                         inputs_to_wire
                             .insert(InletId::new(id, 0), line.input.inputs()[0].to_owned());
                     } else {
@@ -223,7 +223,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
                                 )))
                             }
                         };
-                        let id = model.add_node(name.to_string(), op, tvec!(TensorFact::default()))?;
+                        let id = model.add_node(name.to_string(), op, tvec!(InferenceFact::default()))?;
                         line.input.wire(
                             InletId::new(id, 0),
                             name,
@@ -239,7 +239,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
                         line.offset as usize,
                         (line.offset + line.dim) as usize,
                     );
-                    let id = model.add_node(name.to_string(), op, tvec!(TensorFact::default()))?;
+                    let id = model.add_node(name.to_string(), op, tvec!(InferenceFact::default()))?;
                     line.input.wire(
                         InletId::new(id, 0),
                         name,
@@ -255,7 +255,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
             let output = model.add_node(
                 &*o.output_alias,
                 tract_core::ops::identity::Identity::default(),
-                tvec!(TensorFact::default())
+                tvec!(InferenceFact::default())
             )?;
             o.descriptor.wire(
                 InletId::new(output, 0),

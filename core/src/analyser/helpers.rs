@@ -4,8 +4,8 @@ use crate::model::TVec;
 /// Infers every possible fact when all the values are concrete.
 pub fn infer_forward_concrete(
     op: &dyn Op,
-    inputs: &Vec<&TensorFact>,
-) -> TractResult<Option<TVec<TensorFact>>> {
+    inputs: &Vec<&InferenceFact>,
+) -> TractResult<Option<TVec<InferenceFact>>> {
     let input_values: TVec<_> =
         inputs.iter().filter_map(|t| t.value.concretize()).map(|v| v.clone().into()).collect();
 
@@ -85,8 +85,8 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
 /// Infers basic facts in the case of unary or binary operators.
 pub fn infer_forward_basic(
     op: &dyn Op,
-    inputs: Vec<&TensorFact>,
-) -> TractResult<Option<TVec<TensorFact>>> {
+    inputs: Vec<&InferenceFact>,
+) -> TractResult<Option<TVec<InferenceFact>>> {
     if let Some(output) = infer_forward_concrete(op, &inputs)? {
         return Ok(Some(output));
     }
@@ -101,7 +101,7 @@ pub fn infer_forward_basic(
         .map(|t| typefact!(t))
         .unwrap_or(typefact!(_));
 
-    let output = TensorFact {
+    let output = InferenceFact {
         datum_type,
         shape: infer_shape_broadcasting(&input_shapes)?.unwrap_or(shapefact![..]),
         value: valuefact!(_),

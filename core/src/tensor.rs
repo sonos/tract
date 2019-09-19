@@ -182,7 +182,7 @@ impl Tensor {
     /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump_t<D: Datum>(&self, force_full: bool) -> TractResult<String> {
         use itertools::Itertools;
-        let spec = TensorFact::dt_shape(D::datum_type(), &*self.shape);
+        let spec = InferenceFact::dt_shape(D::datum_type(), &*self.shape);
         if self.is_null() {
             return Ok(format!("{} (null)", spec.format_dt_shape()));
         }

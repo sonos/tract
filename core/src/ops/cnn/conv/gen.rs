@@ -59,7 +59,7 @@ impl Conv {
 
     pub fn to_unary(
         &self,
-        inputs: &[impl Borrow<TypedTensorInfo>],
+        inputs: &[impl Borrow<TypedFact>],
     ) -> TractResult<Option<ConvUnary>> {
         let input = &inputs[0];
         let kernel = &inputs[1];
@@ -106,7 +106,7 @@ impl Op for Conv {
         "Conv".into()
     }
 
-    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let unary =
             self.to_unary(&*inputs)?.ok_or_else(|| format!("Can not unarize conv: {:?}", self))?;
         unary.cost(&[inputs[0]])
@@ -118,8 +118,8 @@ impl Op for Conv {
 
 impl StatelessOp for Conv {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let inputs_info: TVec<TypedTensorInfo> =
-            inputs.iter().map(|t| TypedTensorInfo::from(&**t)).collect();
+        let inputs_info: TVec<TypedFact> =
+            inputs.iter().map(|t| TypedFact::from(&**t)).collect();
         let unary = self.to_unary(&*inputs_info)?.unwrap();
         let mut result = unary.eval(tvec!(inputs[0].clone()))?;
         if let Some(bias) = inputs.get(2) {
@@ -193,12 +193,12 @@ impl InferenceRulesOp for Conv {
 impl TypedOp for Conv {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if inputs[1].shape.iter().all(|d| d.to_integer().is_ok()) {
             let kshape: TVec<usize> =
                 inputs[1].shape.iter().map(|d| d.to_integer().unwrap() as _).collect();
             let oshape = self.output_shape(&*inputs[0].shape.to_tvec(), &*kshape);
-            Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*oshape)?))
+            Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*oshape)?))
         } else {
             bail!("Streaming on kernel is not typeable")
         }
@@ -252,42 +252,42 @@ mod test {
         let mut op = Conv::default();
         op.strides = Some(tvec![2, 2]);
         op.kernel_shape = Some(tvec![3, 3]);
-        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
-        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
-        let ofact = TensorFact::default();
+        let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
+        let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
+        let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 2))));
+        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 2))));
     }
 
     #[test]
     fn test_infer_channels() {
         let mut op = Conv::default(); // NCHW - OIHW
-        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1, 1));
-        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(3, 2, 1, 1));
-        let ofact = TensorFact::default();
+        let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1, 1));
+        let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(3, 2, 1, 1));
+        let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 3, 1, 1))));
+        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 3, 1, 1))));
     }
 
     #[test]
     fn test_infer_onxx_strides_no_padding() {
         let mut op = Conv::default();
         op.strides = Some(tvec![2, 2]);
-        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
-        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
-        let ofact = TensorFact::default();
+        let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
+        let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
+        let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 2))));
+        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 2))));
     }
 
     #[test]
     fn test_infer_nhwc_1() {
         let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
-        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 2));
-        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 2, 1));
-        let ofact = TensorFact::default();
+        let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 2));
+        let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 2, 2, 1));
+        let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 1))));
+        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 1))));
     }
 
     #[test]
@@ -305,11 +305,11 @@ mod test {
     #[test]
     fn test_infer_nhwc_2() {
         let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
-        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 2));
-        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 2, 1));
-        let ofact = TensorFact::default();
+        let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 2));
+        let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 1, 2, 1));
+        let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 1))));
+        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 1))));
     }
 
     #[test]
@@ -344,11 +344,11 @@ mod test {
     #[test]
     fn test_infer_ntc_simple() {
         let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
-        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
-        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
-        let ofact = TensorFact::default();
+        let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
+        let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
+        let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1))));
+        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1))));
     }
 
     #[test]
@@ -362,11 +362,11 @@ mod test {
     #[test]
     fn test_infer_ntc_batch() {
         let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
-        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1));
-        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
-        let ofact = TensorFact::default();
+        let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1));
+        let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
+        let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1))));
+        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1))));
     }
 
     #[test]
@@ -380,11 +380,11 @@ mod test {
     #[test]
     fn test_infer_ntc_channel() {
         let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
-        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2));
-        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
-        let ofact = TensorFact::default();
+        let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2));
+        let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
+        let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1))));
+        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1))));
     }
 
     #[test]

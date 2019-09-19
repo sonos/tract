@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::pulse::PulsedTensorFact;
+use crate::pulse::PulsedFact;
 use ndarray::*;
 
 #[derive(Debug, new, Clone)]
@@ -68,7 +68,7 @@ pub struct Delay {
 }
 
 impl Delay {
-    pub fn new(input_fact: &PulsedTensorFact, delay: usize, overlap: usize) -> Delay {
+    pub fn new(input_fact: &PulsedFact, delay: usize, overlap: usize) -> Delay {
         let axis = input_fact.axis;
         let mut buffer_shape = input_fact.shape.clone();
         buffer_shape[axis] = delay + overlap;
@@ -102,7 +102,7 @@ impl StatefullOp for Delay {
 impl TypedOp for Delay {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape.set_dim(self.axis, fact.shape.dim(self.axis) + self.overlap)?;
         Ok(tvec!(fact))
@@ -110,7 +110,7 @@ impl TypedOp for Delay {
 }
 
 impl PulsedOp for Delay {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape[self.axis] += self.overlap;
         fact.delay += self.delay;
@@ -128,7 +128,7 @@ mod test {
 
     fn test_pulse_delay_over(pulse: usize, delay: usize, overlap: usize) {
         let mut model = PulsedModel::default();
-        let fact1 = PulsedTensorFact {
+        let fact1 = PulsedFact {
             datum_type: u8::datum_type(),
             shape: tvec![pulse],
             axis: 0,
@@ -177,7 +177,7 @@ mod test {
     fn test_two_delays() {
         let pulse = 4;
         let mut model = PulsedModel::default();
-        let fact_0 = PulsedTensorFact {
+        let fact_0 = PulsedFact {
             datum_type: u8::datum_type(),
             shape: tvec![pulse],
             axis: 0,

@@ -172,30 +172,30 @@ mod tests {
     #[test]
     fn inference_1() {
         let mut op = make_conv(1, 3, PaddingSpec::Valid);
-        let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]).into_tensor());
-        let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]).into_tensor());
-        let any = TensorFact::default();
+        let img = InferenceFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]).into_tensor());
+        let ker = InferenceFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]).into_tensor());
+        let any = InferenceFact::default();
 
         let (_, output_facts, _) = op.infer_facts(tvec![&img, &ker], tvec![&any], tvec!()).unwrap();
 
         assert_eq!(
             output_facts,
-            tvec![TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, (7 - 3 + 1), 1))]
+            tvec![InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, (7 - 3 + 1), 1))]
         );
     }
 
     #[test]
     fn inference_2() {
         let mut op = make_conv(1, 1, PaddingSpec::SameUpper);
-        let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]).into_tensor());
-        let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]).into_tensor());
-        let any = TensorFact::default();
+        let img = InferenceFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]).into_tensor());
+        let ker = InferenceFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]).into_tensor());
+        let any = InferenceFact::default();
 
         let (_, output_facts, _) = op.infer_facts(tvec![&img, &ker], tvec![&any], tvec!()).unwrap();
 
         assert_eq!(
             output_facts,
-            tvec![TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1, 1))]
+            tvec![InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1, 1))]
         );
     }
 }

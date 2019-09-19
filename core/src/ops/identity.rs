@@ -42,7 +42,7 @@ impl InferenceRulesOp for Identity {
 }
 
 impl TypedOp for Identity {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -58,7 +58,7 @@ impl TypedOp for Identity {
 }
 
 impl PulsedOp for Identity {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 

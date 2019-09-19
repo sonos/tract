@@ -5,7 +5,7 @@ use std::str::FromStr;
 use crate::CliResult;
 use tract_core::internal::*;
 
-pub fn parse_spec(size: &str) -> CliResult<TensorFact> {
+pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     let splits = size.split("x").collect::<Vec<_>>();
 
     if splits.len() < 1 {
@@ -35,9 +35,9 @@ pub fn parse_spec(size: &str) -> CliResult<TensorFact> {
     );
 
     if let Some(dt) = datum_type {
-        Ok(TensorFact::dt_shape(dt, shape))
+        Ok(InferenceFact::dt_shape(dt, shape))
     } else {
-        Ok(TensorFact::shape(shape))
+        Ok(InferenceFact::shape(shape))
     }
 }
 
@@ -72,7 +72,7 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 }
 
 /// Parses the `data` command-line argument.
-fn for_data(filename: &str) -> CliResult<(Option<String>, TensorFact)> {
+fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
     #[allow(unused_imports)]
     use std::convert::TryFrom;
     if filename.ends_with(".pb") {
@@ -104,7 +104,7 @@ fn for_data(filename: &str) -> CliResult<(Option<String>, TensorFact)> {
     }
 }
 
-pub fn for_string(value: &str) -> CliResult<(Option<String>, TensorFact)> {
+pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
     if value.starts_with("@") {
         for_data(&value[1..])
     } else {
@@ -132,11 +132,11 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, TensorFact)> {
     }
 }
 
-pub fn make_inputs(values: &[TensorFact]) -> CliResult<TVec<Tensor>> {
+pub fn make_inputs(values: &[InferenceFact]) -> CliResult<TVec<Tensor>> {
     values.iter().map(|v| tensor_for_fact(v, None)).collect()
 }
 
-pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
+pub fn tensor_for_fact(fact: &InferenceFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
     if let Some(value) = fact.concretize() {
         Ok(value.into_tensor())
     } else {

@@ -93,7 +93,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
 
     /// Tries to run a single step of the analysis, and returns whether
     /// there was any additional information gained during the step.
-    pub fn analyse_one(&mut self, node: usize) -> TractResult<Vec<(OutletId, TensorFact)>> {
+    pub fn analyse_one(&mut self, node: usize) -> TractResult<Vec<(OutletId, InferenceFact)>> {
         let mut changed_edges = vec![];
         {
             debug!("Starting step for {}", self.model.borrow().node(node));
@@ -112,9 +112,9 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                         outputs.len(),
                     )
                 }
-                let inputs: TVec<TensorFact> = inputs.into_iter().cloned().collect();
-                let outputs: TVec<TensorFact> = outputs.into_iter().cloned().collect();
-                let observed: TVec<(OutletId, TensorFact)> = {
+                let inputs: TVec<InferenceFact> = inputs.into_iter().cloned().collect();
+                let outputs: TVec<InferenceFact> = outputs.into_iter().cloned().collect();
+                let observed: TVec<(OutletId, InferenceFact)> = {
                     let model = self.model.borrow();
                     let node = model.node(node);
                     node.op
@@ -132,9 +132,9 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     }
                 }
 
-                let inputs: TVec<&TensorFact> = inputs.iter().collect();
-                let outputs: TVec<&TensorFact> = outputs.iter().collect();
-                let observed: TVec<&TensorFact> = observed.iter().map(|p| &p.1).collect();
+                let inputs: TVec<&InferenceFact> = inputs.iter().collect();
+                let outputs: TVec<&InferenceFact> = outputs.iter().collect();
+                let observed: TVec<&InferenceFact> = observed.iter().map(|p| &p.1).collect();
 
                 self.model.borrow_mut().node_mut(node).op.infer(inputs, outputs, observed)?
             };

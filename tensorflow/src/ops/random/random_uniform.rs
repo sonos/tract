@@ -139,8 +139,8 @@ impl StatelessOp for TypedRandomUniform {
 }
 
 impl TypedOp for TypedRandomUniform {
-    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(self.t, &*self.shape)?))
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(self.t, &*self.shape)?))
     }
 
     typed_op_as_op!();
