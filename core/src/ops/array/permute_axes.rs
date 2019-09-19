@@ -81,6 +81,24 @@ impl TypedOp for PermuteAxes {
         )?))
     }
 
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let permutation = if let Some(axes) = self.axes.clone( ){
+            axes
+        } else {
+            (0..model.outlet_fact(node.inputs[0])?.shape.rank()).rev().collect()
+        };
+        let mut infos = tvec!();
+        for (from, to) in permutation.iter().enumerate() {
+            infos.push(AxisInfo {
+                inputs: tvec!(Some(from)),
+                outputs: tvec!(Some(*to)),
+                period: 1,
+                disposable: true,
+            })
+        }
+        Ok(infos.into())
+    }
+
     fn pulsify(
         &self,
         _source: &NormalizedModel,
@@ -106,6 +124,11 @@ impl TypedOp for PermuteAxes {
 impl PulsedOp for PermuteAxes {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
+        fact.axis = if let Some(axes) = &self.axes {
+            axes[fact.axis]
+        } else {
+            fact.shape.len() - 1 - fact.axis
+        };
         fact.shape = self.compute_shape(&*inputs[0].shape);
         Ok(tvec!(fact))
     }
