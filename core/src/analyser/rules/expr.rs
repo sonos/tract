@@ -128,7 +128,7 @@ pub trait TExp<T>: fmt::Debug {
 }
 
 pub struct Exp<T>(Box<dyn TExp<T>>);
-impl<T: Fact + Output + Clone + fmt::Debug> TExp<T> for Exp<T> {
+impl<T: Factoid + Output + Clone + fmt::Debug> TExp<T> for Exp<T> {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
         self.0.get(context)
@@ -147,7 +147,7 @@ impl<T: Fact + Output + Clone + fmt::Debug> TExp<T> for Exp<T> {
 
 impl<T> fmt::Debug for Exp<T>
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug,
+    T: Factoid + Output + Clone + ::std::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self.0)
@@ -162,11 +162,11 @@ pub trait IntoExp<T> {
 #[derive(new)]
 pub struct SumExp<T>(Vec<Exp<T>>)
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug + 'static;
+    T: Factoid + Output + Clone + ::std::fmt::Debug + 'static;
 
 impl<T> TExp<T> for SumExp<T>
 where
-    T: Fact + Output + Zero + Add<T> + Neg<Output = T> + Clone + ::std::fmt::Debug + 'static,
+    T: Factoid + Output + Zero + Add<T> + Neg<Output = T> + Clone + ::std::fmt::Debug + 'static,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
@@ -207,7 +207,7 @@ where
 
 impl<T> fmt::Debug for SumExp<T>
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug,
+    T: Factoid + Output + Clone + ::std::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         for (ix, t) in self.0.iter().enumerate() {
@@ -223,11 +223,11 @@ where
 /// A constant expression (e.g. `2` or `DatumType::DT_INT32`).
 pub struct ConstantExp<T>(T)
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug;
+    T: Factoid + Output + Clone + ::std::fmt::Debug;
 
 impl<T> TExp<T> for ConstantExp<T>
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug,
+    T: Factoid + Output + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, _: &Context) -> TractResult<T> {
@@ -248,7 +248,7 @@ where
 
 impl<T> fmt::Debug for ConstantExp<T>
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug,
+    T: Factoid + Output + Clone + ::std::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self.0)
@@ -262,11 +262,11 @@ where
 /// the documentation for `Proxy::get_path`).
 pub struct VariableExp<T>(Path, PhantomData<T>)
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug;
+    T: Factoid + Output + Clone + ::std::fmt::Debug;
 
 impl<T> TExp<T> for VariableExp<T>
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug,
+    T: Factoid + Output + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
@@ -290,7 +290,7 @@ where
 
 impl<T> fmt::Debug for VariableExp<T>
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug,
+    T: Factoid + Output + Clone + ::std::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self.0)
@@ -300,11 +300,11 @@ where
 /// A scalar product between a constant and another expression.
 pub struct ScaledExp<T>(i32, Exp<T>)
 where
-    T: Fact + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone;
+    T: Factoid + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone;
 
 impl<T> TExp<T> for ScaledExp<T>
 where
-    T: Fact + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone,
+    T: Factoid + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
@@ -348,7 +348,7 @@ where
 
 impl<T> fmt::Debug for ScaledExp<T>
 where
-    T: Fact + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone,
+    T: Factoid + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}*{{{:?}}}", self.0, self.1)

@@ -218,7 +218,7 @@ impl InferenceModel {
     ///
     /// Will stop on first error unless `obstinate` is `true`.
     pub fn missing_type_shape(&self) -> TractResult<Vec<OutletId>> {
-        use crate::analyser::types::Fact;
+        use crate::analyser::types::Factoid;
         Ok(self
             .eval_order()?
             .iter()
