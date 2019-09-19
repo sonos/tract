@@ -272,9 +272,7 @@ impl TryFrom<TypedFact> for NormalizedFact {
     type Error = TractError;
     fn try_from(fact: TypedFact) -> TractResult<NormalizedFact> {
         match fact.konst {
-            None => {
-                Ok(NormalizedFact { shape: fact.shape.clone(), datum_type: fact.datum_type })
-            }
+            None => Ok(NormalizedFact { shape: fact.shape.clone(), datum_type: fact.datum_type }),
             _ => bail!("Constant tensor are excluded from declutterd stage: {:?}", fact),
         }
     }

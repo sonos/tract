@@ -170,7 +170,8 @@ mod tests {
         let b = InferenceFact::from(Tensor::from(TDim::zero()));
         let any = InferenceFact::default();
         let (_, output_facts, _) = pack.infer_facts(tvec![&a, &b], tvec![&any], tvec!()).unwrap();
-        let exp: TVec<InferenceFact> = tvec!(InferenceFact::dt_shape(DatumType::TDim, vec![2usize]));
+        let exp: TVec<InferenceFact> =
+            tvec!(InferenceFact::dt_shape(DatumType::TDim, vec![2usize]));
         assert_eq!(output_facts, exp)
     }
 

@@ -124,16 +124,16 @@ pub mod internal {
     pub use crate::analyser::types::*;
     pub use crate::datum::FloatLike;
     pub use crate::dim::{DimLike, TDim, ToDim};
-    pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::framework::*;
     pub use crate::model::*;
+    pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::{
         check_input_arity, check_output_arity, AxesInfo, AxisInfo, Cost, InferenceOp, Op, OpState,
         PulsedOp, StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
-    pub use crate::pulse::{PulsedModel, PulsedNode, PulsedFact};
+    pub use crate::pulse::{PulsedFact, PulsedModel, PulsedNode};
     pub use crate::{args_1, args_2, args_3, args_4};
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;

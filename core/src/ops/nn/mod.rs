@@ -12,7 +12,7 @@ pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};
 pub use self::lrn::Lrn;
 pub use self::reduce::{Reduce, Reducer};
 
-use num_traits::{ AsPrimitive, Float};
+use num_traits::{AsPrimitive, Float};
 
 pub use crate::internal::*;
 
@@ -52,15 +52,16 @@ trait Activations {
     fn elu(self, alpha: f32) -> Self;
     fn hard_sigmoid(self, alpha: f32, beta: f32) -> Self;
     fn leaky_relu(self, alpha: f32) -> Self;
-    fn parametric_softplus(self, alpha: f32, beta:f32) -> Self;
-    fn scaled_tanh(self, alpha: f32, beta:f32) -> Self;
-    fn selu(self, alpha: f32, gamma:f32) -> Self;
+    fn parametric_softplus(self, alpha: f32, beta: f32) -> Self;
+    fn scaled_tanh(self, alpha: f32, beta: f32) -> Self;
+    fn selu(self, alpha: f32, gamma: f32) -> Self;
     fn threshold_relu(self, alpha: f32) -> Self;
 }
 
 impl<T> Activations for T
-where T: Datum + Float,
-      f32: AsPrimitive<T>,
+where
+    T: Datum + Float,
+    f32: AsPrimitive<T>,
 {
     fn elu(self, alpha: f32) -> Self {
         if self < 0.0.as_() {
@@ -69,7 +70,7 @@ where T: Datum + Float,
             self
         }
     }
-    fn hard_sigmoid(self, alpha:f32, beta:f32) -> Self {
+    fn hard_sigmoid(self, alpha: f32, beta: f32) -> Self {
         (alpha.as_() * self + beta.as_()).min(1.0.as_()).max(0.0.as_())
     }
     fn leaky_relu(self, alpha: f32) -> Self {
@@ -79,13 +80,13 @@ where T: Datum + Float,
             self
         }
     }
-    fn parametric_softplus(self, alpha: f32, beta:f32) -> Self {
+    fn parametric_softplus(self, alpha: f32, beta: f32) -> Self {
         alpha.as_() * ((beta.as_() * self).exp() + 1.0.as_()).ln()
     }
-    fn scaled_tanh(self, alpha: f32, beta:f32) -> Self {
+    fn scaled_tanh(self, alpha: f32, beta: f32) -> Self {
         alpha.as_() * (beta.as_() * self).tanh()
     }
-    fn selu(self, alpha: f32, gamma:f32) -> Self {
+    fn selu(self, alpha: f32, gamma: f32) -> Self {
         if self < 0.0.as_() {
             gamma.as_() * (alpha.as_() * self.exp() - alpha.as_())
         } else {
@@ -100,4 +101,3 @@ where T: Datum + Float,
         }
     }
 }
-

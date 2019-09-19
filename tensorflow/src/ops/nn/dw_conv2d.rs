@@ -131,6 +131,10 @@ impl InferenceRulesOp for DepthwiseConv2d {
             bail!("Do not expect streaming on kernel dims");
         };
         let conv = self.to_core(&*input_shape, kernel_shape)?;
-        target.wire_node(&*node.name, conv, [mapping[&node.inputs[0]], mapping[&node.inputs[1]]].as_ref())
+        target.wire_node(
+            &*node.name,
+            conv,
+            [mapping[&node.inputs[0]], mapping[&node.inputs[1]]].as_ref(),
+        )
     }
 }

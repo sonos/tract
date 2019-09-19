@@ -382,4 +382,3 @@ impl PulsedOp for TypedReduce {
     pulsed_op_as_op!();
     pulsed_op_to_typed_op!();
 }
-

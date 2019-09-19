@@ -93,8 +93,7 @@ impl StatefullOp for Delay {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        let buffer =
-            unsafe { Tensor::uninitialized_dt(self.datum_type, &*self.buffer_shape)? };
+        let buffer = unsafe { Tensor::uninitialized_dt(self.datum_type, &*self.buffer_shape)? };
         Ok(Some(Box::new(DelayState { buffer })))
     }
 }
@@ -148,7 +147,7 @@ mod test {
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
             let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
-            let skip = (delay + overlap).saturating_sub(i * pulse).min(pulse+overlap);
+            let skip = (delay + overlap).saturating_sub(i * pulse).min(pulse + overlap);
             assert_eq!(&output[0].as_slice::<u8>().unwrap()[skip..], &expect[skip..]);
         }
     }

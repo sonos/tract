@@ -578,10 +578,7 @@ impl TypedOp for ConvUnary {
 }
 
 impl PulsedOp for ConvUnary {
-    fn pulsed_output_facts(
-        &self,
-        inputs: &[&PulsedFact],
-    ) -> TractResult<TVec<PulsedFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape =
             self.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();

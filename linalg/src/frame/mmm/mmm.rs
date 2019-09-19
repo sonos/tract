@@ -754,7 +754,8 @@ pub mod test {
         pub fn run<K: MatMatMulKer<f32>>(&self) -> Vec<f32> {
             let op = MatMatMulImpl::<K, f32>::new(self.m(), self.k(), self.n());
             unsafe {
-                let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+                let mut packed_a =
+                    Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
                 op.a_pack().pack(
                     packed_a.as_mut_ptr(),
                     self.filters.as_ptr(),

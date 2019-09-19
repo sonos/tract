@@ -36,10 +36,7 @@ impl Downsample {
         (input_dim.clone() - self.modulo).div_ceil(self.stride.into())
     }
 
-    pub(crate) fn transform_fact(
-        &self,
-        input_fact: &TypedFact,
-    ) -> TractResult<TypedFact> {
+    pub(crate) fn transform_fact(&self, input_fact: &TypedFact) -> TractResult<TypedFact> {
         let mut downed = input_fact.clone();
         let down_len = self.transform_dim(&input_fact.shape.dim(self.axis));
         downed.shape.set_dim(self.axis, down_len.clone())?;

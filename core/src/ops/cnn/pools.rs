@@ -108,14 +108,15 @@ impl PoolSpec {
                 if misalignment != 0 {
                     unimplemented!();
                 }
-                return target.wire_node(&*node.name, objekt::clone_box(op), &[input])
+                return target.wire_node(&*node.name, objekt::clone_box(op), &[input]);
             }
 
             // overlap case, need delay with augmented output
             let delayed = target.wire_node(
                 format!("{}/Delay", node.name),
                 crate::pulse::delay::Delay::new(&fact, 0, kernel_len),
-                &[input])?;
+                &[input],
+            )?;
             target.wire_node(&*node.name, objekt::clone_box(op), &delayed)
         }
     }

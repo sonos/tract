@@ -43,10 +43,7 @@ impl TryFrom<PulsedFact> for TypedFact {
 }
 
 impl PulsedFact {
-    pub fn from_tensor_fact_pulse(
-        tf: &NormalizedFact,
-        pulse: usize,
-    ) -> TractResult<PulsedFact> {
+    pub fn from_tensor_fact_pulse(tf: &NormalizedFact, pulse: usize) -> TractResult<PulsedFact> {
         let datum_type = tf.datum_type;
         let stream =
             tf.shape.stream_info.as_ref().ok_or("Can not pulse a tensor with no streaming dim")?;

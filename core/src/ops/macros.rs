@@ -64,7 +64,6 @@ macro_rules! not_a_typed_op {
     }
 }
 
-
 #[macro_export]
 macro_rules! op_as_pulsed_op {
     () => {

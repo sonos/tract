@@ -41,7 +41,8 @@ impl LstmProblem {
         let r_iofc = r_iofc.t().into_shape((1, 4 * s, s))?.to_owned();
         let b_iofc = b_iofc.into_shape((1, 8 * s))?;
 
-        let x = model.add_source("x", InferenceFact::dt_shape(self.x.datum_type(), self.x.shape()))?;
+        let x =
+            model.add_source("x", InferenceFact::dt_shape(self.x.datum_type(), self.x.shape()))?;
         let mut op = tract_onnx::ops::rec::lstm::LSTM::default();
         op.optional_y_output = Some(0);
         op.optional_bias_input = Some(3);
@@ -61,7 +62,8 @@ impl LstmProblem {
     pub fn tf_model(&self) -> TractResult<TypedModel> {
         let mut model = InferenceModel::default();
 
-        let x = model.add_source("x", InferenceFact::dt_shape(self.x.datum_type(), self.x.shape()))?;
+        let x =
+            model.add_source("x", InferenceFact::dt_shape(self.x.datum_type(), self.x.shape()))?;
         let memory_shape = tvec!(self.batch_size, self.cell_size);
         let h = model.wire_node(
             "h",
@@ -141,32 +143,24 @@ impl LstmProblem {
             &[cs, last_cs_squeezed],
         )?[0];
 
-        let _memo = model.wire_node(
-            "memo",
-            ::tract_tensorflow::ops::Noop::new(),
-            &[a_h, a_cs]
-        )?[0];
+        let _memo = model.wire_node("memo", ::tract_tensorflow::ops::Noop::new(), &[a_h, a_cs])?[0];
 
         let h0 = model.add_const("h0", self.h0.clone())?;
         let a_h0 = model.wire_node(
             "a_h0",
             ::tract_tensorflow::ops::vars::Assign::new(Some("h".into())),
-            &[h, h0]
-
+            &[h, h0],
         )?[0];
 
         let cs0 = model.add_const("cs0", self.c0.clone()).unwrap();
         let a_cs0 = model.wire_node(
             "a_cs0",
             ::tract_tensorflow::ops::vars::Assign::new(Some("cs".into())),
-            &[cs, cs0]
+            &[cs, cs0],
         )?[0];
 
-        let _init = model.wire_node(
-            "init",
-            ::tract_tensorflow::ops::Noop::new(),
-            &[a_h0, a_cs0]
-        )?;
+        let _init =
+            model.wire_node("init", ::tract_tensorflow::ops::Noop::new(), &[a_h0, a_cs0])?;
 
         model.set_output_names(&["lstm", "init", "memo"])?;
 

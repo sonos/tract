@@ -71,7 +71,7 @@ pub use self::flatten::Flatten;
 pub use self::gather::Gather;
 pub use self::pad::{Pad, PadMode};
 pub use self::permute_axes::PermuteAxes;
-pub use self::reshape::{ Reshape, TypedReshape };
+pub use self::reshape::{Reshape, TypedReshape};
 pub use self::rm_dims::RmDims;
 pub use self::shape::Shape;
 pub use self::size::Size;

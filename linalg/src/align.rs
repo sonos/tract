@@ -41,4 +41,3 @@ impl<T: Copy> Buffer<T> {
         buf
     }
 }
-

@@ -291,7 +291,6 @@ fn rules<'r, 'p: 'r, 's: 'r>(
     Ok(())
 }
 
-
 fn pulsify(
     op: &dyn PulsedOp,
     axis: isize,

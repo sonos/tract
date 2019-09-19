@@ -142,11 +142,7 @@ impl TypedOp for Pad {
     ) -> TractResult<TVec<OutletId>> {
         let mut input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?.clone();
-        if !self
-            .pads
-            .iter()
-            .enumerate()
-            .all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
+        if !self.pads.iter().enumerate().all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
         {
             bail!("Pad pulse only implemented for streaming dim");
         }
@@ -168,7 +164,8 @@ impl TypedOp for Pad {
             input = target.wire_node(
                 format!("{}/Delay", node.name),
                 Delay::new(&fact.clone(), extra_delay, 0),
-                &[input])?[0];
+                &[input],
+            )?[0];
         }
         let op = PulsePad::<f32>::new(
             fact.axis,

@@ -251,8 +251,7 @@ impl TypedOp for Codegen {
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;
             if let Some(slot) = output.last_value_slot {
-                outputs
-                    .push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())?));
+                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())?));
             }
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();

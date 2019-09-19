@@ -7,8 +7,8 @@ use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
-use tractops::nn::Reducer;
 use num_traits::AsPrimitive;
+use tractops::nn::Reducer;
 
 mod batch_norm;
 mod dropout;
@@ -261,11 +261,18 @@ element_wise!(shrink_op, Shrink { bias: f32, lambd: f32 },
     [f16,f32,f64] => |s, xs| xs.iter_mut().for_each(|x| *x = shrink_value(*x, s))
 );
 
-
-fn shrink_value<T>(x:T, s:&Shrink) -> T
-where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
+fn shrink_value<T>(x: T, s: &Shrink) -> T
+where
+    T: Datum + ::num_traits::Float,
+    f32: ::num_traits::AsPrimitive<T>,
 {
-    if x < -s.lambd.as_() { x + s.bias.as_() } else if x > s.lambd.as_() { x - s.bias.as_() } else { T::zero() }
+    if x < -s.lambd.as_() {
+        x + s.bias.as_()
+    } else if x > s.lambd.as_() {
+        x - s.bias.as_()
+    } else {
+        T::zero()
+    }
 }
 
 pub fn shrink(

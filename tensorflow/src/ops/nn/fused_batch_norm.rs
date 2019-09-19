@@ -110,24 +110,20 @@ impl InferenceRulesOp for FusedBatchNorm {
             let mean = mean.as_slice::<f32>()?;
             let variance = variance.as_slice::<f32>()?;
             let (alpha, beta) = self.coeffs(scale, offset, mean, variance)?;
-            let slope = target.add_const(
-                format!("{}-slope", node.name),
-                tensor1(&*alpha).into_arc_tensor(),
-            )?;
+            let slope = target
+                .add_const(format!("{}-slope", node.name), tensor1(&*alpha).into_arc_tensor())?;
             let wire = target.wire_node(
                 format!("{}-mul", node.name),
                 tract_core::ops::math::mul::bin(),
-                [slope, mapping[&node.inputs[0]]].as_ref()
+                [slope, mapping[&node.inputs[0]]].as_ref(),
             )?[0];
-            let offset = target.add_const(
-                format!("{}-offset", node.name),
-                tensor1(&*beta).into_arc_tensor(),
-            )?;
+            let offset = target
+                .add_const(format!("{}-offset", node.name), tensor1(&*beta).into_arc_tensor())?;
             return target.wire_node(
                 format!("{}-add", node.name),
                 tract_core::ops::math::add::bin(),
-                [offset, wire].as_ref()
-            )
+                [offset, wire].as_ref(),
+            );
         };
         bail!("Batch norm parameters expected to be known")
     }
