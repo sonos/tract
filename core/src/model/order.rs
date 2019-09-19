@@ -6,7 +6,7 @@ use std::fmt::{Debug, Display};
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
 pub fn eval_order<
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 >(
     model: &super::ModelImpl<TI, O>,
@@ -17,7 +17,7 @@ pub fn eval_order<
 }
 
 /// Find a working evaluation order for a list of nodes.
-pub fn eval_order_for_nodes<TI: TensorInfo, O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op>>(
+pub fn eval_order_for_nodes<TI: Fact, O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op>>(
     nodes: &[BaseNode<TI, O>],
     inputs: &[usize],
     targets: &[usize],
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn simple() {
         let mut model = InferenceModel::default();
-        let a = model.add_source("a", TensorFact::default()).unwrap();
+        let a = model.add_source("a", InferenceFact::default()).unwrap();
         let b = model.add_const("b", Tensor::from(12.0f32)).unwrap();
         let add = model.wire_node("add", math::add::bin(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn diamond() {
         let mut model = InferenceModel::default();
-        let a = model.add_source("a", TensorFact::default()).unwrap();
+        let a = model.add_source("a", InferenceFact::default()).unwrap();
         let add = model.wire_node("add", math::add::bin(), &[a, a]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, add.node));
@@ -94,7 +94,7 @@ mod tests {
     #[test]
     fn dodge_loop() {
         let mut model = InferenceModel::default();
-        let a = model.add_source("a", TensorFact::default()).unwrap();
+        let a = model.add_source("a", InferenceFact::default()).unwrap();
         let add = model.wire_node("add", math::add::bin(), &[a]).unwrap()[0];
         let neg = model.wire_node("neg", math::add::bin(), &[add]).unwrap()[0];
         model.add_edge(neg, InletId::new(add.node, 1)).unwrap();

@@ -8,23 +8,23 @@ use std::fmt;
 
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
-pub trait TensorInfo: std::fmt::Debug + Downcast + objekt::Clone + Send + Sync + 'static {
-    /// Convert to TensorFact, the most accomoding variant of TensorInfo.
-    fn to_tensor_fact(&self) -> TensorFact;
+pub trait Fact: std::fmt::Debug + Downcast + objekt::Clone + Send + Sync + 'static {
+    /// Convert to InferenceFact, the most accomoding variant of Fact.
+    fn to_tensor_fact(&self) -> InferenceFact;
 }
 
-impl_downcast!(TensorInfo);
-objekt::clone_trait_object!(TensorInfo);
+impl_downcast!(Fact);
+objekt::clone_trait_object!(Fact);
 
-impl TensorInfo for TensorFact {
-    fn to_tensor_fact(&self) -> TensorFact {
+impl Fact for InferenceFact {
+    fn to_tensor_fact(&self) -> InferenceFact {
         self.clone()
     }
 }
 
-impl<'a> TryFrom<&'a TensorFact> for TypedTensorInfo {
+impl<'a> TryFrom<&'a InferenceFact> for TypedFact {
     type Error = TractError;
-    fn try_from(fact: &TensorFact) -> TractResult<TypedTensorInfo> {
+    fn try_from(fact: &InferenceFact) -> TractResult<TypedFact> {
         if let (Some(datum_type), Some(shape)) =
             (fact.datum_type.concretize(), fact.shape.concretize())
         {
@@ -36,23 +36,23 @@ impl<'a> TryFrom<&'a TensorFact> for TypedTensorInfo {
                 .map(|(axis, len)| StreamInfo { axis, len });
             let shape = shape.iter().map(|d| d.to_integer().unwrap_or(0) as usize).collect();
             let shape = ShapeInfo { shape, stream_info };
-            Ok(TypedTensorInfo { datum_type, shape, konst: fact.value.concretize() })
+            Ok(TypedFact { datum_type, shape, konst: fact.value.concretize() })
         } else {
-            bail!("Can not make a TypedTensorInfo out of {:?}", fact)
+            bail!("Can not make a TypedFact out of {:?}", fact)
         }
     }
 }
 
-impl TryFrom<TensorFact> for TypedTensorInfo {
+impl TryFrom<InferenceFact> for TypedFact {
     type Error = TractError;
-    fn try_from(fact: TensorFact) -> TractResult<TypedTensorInfo> {
+    fn try_from(fact: InferenceFact) -> TractResult<TypedFact> {
         (&fact).try_into()
     }
 }
 
-impl<'a> From<&'a Tensor> for TensorFact {
-    fn from(t: &'a Tensor) -> TensorFact {
-        TensorFact::from(t.clone())
+impl<'a> From<&'a Tensor> for InferenceFact {
+    fn from(t: &'a Tensor) -> InferenceFact {
+        InferenceFact::from(t.clone())
     }
 }
 
@@ -210,7 +210,7 @@ impl fmt::Debug for ShapeInfo {
 
 /// Fully determined tensor information for TypedModel.
 #[derive(Clone, PartialEq)]
-pub struct TypedTensorInfo {
+pub struct TypedFact {
     /// tensor element type
     pub datum_type: DatumType,
     /// tensor shape
@@ -219,8 +219,8 @@ pub struct TypedTensorInfo {
     pub konst: Option<Arc<Tensor>>,
 }
 
-impl TypedTensorInfo {
-    pub fn shape<T, S, E>(shape: S) -> TractResult<TypedTensorInfo>
+impl TypedFact {
+    pub fn shape<T, S, E>(shape: S) -> TractResult<TypedFact>
     where
         T: Datum,
         S: TryInto<ShapeInfo, Error = E>,
@@ -228,39 +228,39 @@ impl TypedTensorInfo {
     {
         Self::dt_shape(T::datum_type(), shape)
     }
-    pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<TypedTensorInfo>
+    pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<TypedFact>
     where
         S: TryInto<ShapeInfo, Error = E>,
         TractError: From<E>,
     {
-        Ok(TypedTensorInfo { datum_type, shape: shape.try_into()?, konst: None })
+        Ok(TypedFact { datum_type, shape: shape.try_into()?, konst: None })
     }
 }
 
-impl TensorInfo for TypedTensorInfo {
-    fn to_tensor_fact(&self) -> TensorFact {
+impl Fact for TypedFact {
+    fn to_tensor_fact(&self) -> InferenceFact {
         match self.konst.clone() {
             Some(k) => k.into(),
-            None => TensorFact::dt_shape(self.datum_type, self.shape.to_shape_fact()),
+            None => InferenceFact::dt_shape(self.datum_type, self.shape.to_shape_fact()),
         }
     }
 }
 
-impl From<Tensor> for TypedTensorInfo {
-    fn from(t: Tensor) -> TypedTensorInfo {
-        TypedTensorInfo::from(t.into_arc_tensor())
+impl From<Tensor> for TypedFact {
+    fn from(t: Tensor) -> TypedFact {
+        TypedFact::from(t.into_arc_tensor())
     }
 }
 
-impl<'t> From<&'t Tensor> for TypedTensorInfo {
-    fn from(t: &'t Tensor) -> TypedTensorInfo {
-        TypedTensorInfo::from(t.clone())
+impl<'t> From<&'t Tensor> for TypedFact {
+    fn from(t: &'t Tensor) -> TypedFact {
+        TypedFact::from(t.clone())
     }
 }
 
-impl From<Arc<Tensor>> for TypedTensorInfo {
-    fn from(t: Arc<Tensor>) -> TypedTensorInfo {
-        TypedTensorInfo {
+impl From<Arc<Tensor>> for TypedFact {
+    fn from(t: Arc<Tensor>) -> TypedFact {
+        TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeInfo { shape: t.shape().into(), stream_info: None },
             konst: Some(t),
@@ -268,19 +268,19 @@ impl From<Arc<Tensor>> for TypedTensorInfo {
     }
 }
 
-impl TryFrom<TypedTensorInfo> for NormalizedTensorInfo {
+impl TryFrom<TypedFact> for NormalizedFact {
     type Error = TractError;
-    fn try_from(fact: TypedTensorInfo) -> TractResult<NormalizedTensorInfo> {
+    fn try_from(fact: TypedFact) -> TractResult<NormalizedFact> {
         match fact.konst {
             None => {
-                Ok(NormalizedTensorInfo { shape: fact.shape.clone(), datum_type: fact.datum_type })
+                Ok(NormalizedFact { shape: fact.shape.clone(), datum_type: fact.datum_type })
             }
             _ => bail!("Constant tensor are excluded from declutterd stage: {:?}", fact),
         }
     }
 }
 
-impl fmt::Debug for TypedTensorInfo {
+impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.konst {
             Some(ref k) => write!(fmt, "{:?}", k),
@@ -294,15 +294,15 @@ impl fmt::Debug for TypedTensorInfo {
 /// Constant value is not allowed, as all tensors in normalized forms are
 /// variables.
 #[derive(Clone, PartialEq)]
-pub struct NormalizedTensorInfo {
+pub struct NormalizedFact {
     /// tensor element type
     pub datum_type: DatumType,
     /// tensor shape
     pub shape: ShapeInfo,
 }
 
-impl NormalizedTensorInfo {
-    pub fn shape<T, S, E>(shape: S) -> TractResult<NormalizedTensorInfo>
+impl NormalizedFact {
+    pub fn shape<T, S, E>(shape: S) -> TractResult<NormalizedFact>
     where
         T: Datum,
         S: TryInto<ShapeInfo, Error = E>,
@@ -310,36 +310,36 @@ impl NormalizedTensorInfo {
     {
         Self::dt_shape(T::datum_type(), shape)
     }
-    pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<NormalizedTensorInfo>
+    pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<NormalizedFact>
     where
         S: TryInto<ShapeInfo, Error = E>,
         TractError: From<E>,
     {
-        Ok(NormalizedTensorInfo { datum_type, shape: shape.try_into()? })
+        Ok(NormalizedFact { datum_type, shape: shape.try_into()? })
     }
 }
 
-impl TensorInfo for NormalizedTensorInfo {
-    fn to_tensor_fact(&self) -> TensorFact {
-        TensorFact::dt_shape(self.datum_type, self.shape.to_shape_fact())
+impl Fact for NormalizedFact {
+    fn to_tensor_fact(&self) -> InferenceFact {
+        InferenceFact::dt_shape(self.datum_type, self.shape.to_shape_fact())
     }
 }
 
-impl TryFrom<NormalizedTensorInfo> for TypedTensorInfo {
+impl TryFrom<NormalizedFact> for TypedFact {
     type Error = TractError;
-    fn try_from(fact: NormalizedTensorInfo) -> TractResult<TypedTensorInfo> {
-        Ok(TypedTensorInfo { shape: fact.shape.clone(), datum_type: fact.datum_type, konst: None })
+    fn try_from(fact: NormalizedFact) -> TractResult<TypedFact> {
+        Ok(TypedFact { shape: fact.shape.clone(), datum_type: fact.datum_type, konst: None })
     }
 }
 
-impl fmt::Debug for NormalizedTensorInfo {
+impl fmt::Debug for NormalizedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{:?}x{:?}", self.shape, self.datum_type)
     }
 }
 
-impl<'t> From<&'t Tensor> for NormalizedTensorInfo {
-    fn from(t: &'t Tensor) -> NormalizedTensorInfo {
-        NormalizedTensorInfo { datum_type: t.datum_type(), shape: t.shape().try_into().unwrap() }
+impl<'t> From<&'t Tensor> for NormalizedFact {
+    fn from(t: &'t Tensor) -> NormalizedFact {
+        NormalizedFact { datum_type: t.datum_type(), shape: t.shape().try_into().unwrap() }
     }
 }

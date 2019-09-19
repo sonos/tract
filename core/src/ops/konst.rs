@@ -46,7 +46,7 @@ impl InferenceRulesOp for Const {
 impl TypedOp for Const {
     typed_op_as_op!();
 
-    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.value.as_ref().into()))
     }
 }

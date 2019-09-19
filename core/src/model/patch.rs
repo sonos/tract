@@ -14,7 +14,7 @@ use crate::ops::source::{Source, TypedSource};
 #[derive(Clone, Debug)]
 pub struct ModelPatch<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
@@ -27,7 +27,7 @@ where
 
 impl<TI, O> Default for ModelPatch<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
@@ -43,7 +43,7 @@ where
 
 impl<TI, O> Deref for ModelPatch<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
@@ -55,7 +55,7 @@ where
 
 impl<TI, O> DerefMut for ModelPatch<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
@@ -66,7 +66,7 @@ where
 
 impl<TI, O> ModelPatch<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {

@@ -234,7 +234,7 @@ impl OpState for State {
 impl TypedOp for Codegen {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut outputs = tvec!();
         let iters = {
             let (outside_slot, axis, chunk) = self
@@ -252,14 +252,14 @@ impl TypedOp for Codegen {
             let fact = self.plan.model().output_fact(ix)?;
             if let Some(slot) = output.last_value_slot {
                 outputs
-                    .push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+                    .push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())?));
             }
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();
                 let scanning_dim =
                     output.full_dim_hint.clone().unwrap_or(shape.dim(output.axis) * &iters);
                 shape.set_dim(output.axis, scanning_dim)?;
-                outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
+                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }
         }
         outputs.sort_by_key(|a| a.0);
@@ -267,7 +267,7 @@ impl TypedOp for Codegen {
         Ok(outputs)
     }
 
-    fn nested_model_multipliers(&self, inputs: &[&TypedTensorInfo]) -> Vec<(Cow<str>, f32)> {
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f32)> {
         let iters = {
             let (outside_slot, axis, chunk) = self
                 .input_mapping

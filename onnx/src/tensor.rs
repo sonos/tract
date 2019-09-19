@@ -39,10 +39,10 @@ impl TryFrom<TensorProto_DataType> for DatumType {
     */
 }
 
-impl<'a> TryFrom<&'a TypeProto_Tensor> for TensorFact {
+impl<'a> TryFrom<&'a TypeProto_Tensor> for InferenceFact {
     type Error = TractError;
-    fn try_from(t: &'a TypeProto_Tensor) -> TractResult<TensorFact> {
-        let mut fact = TensorFact::default();
+    fn try_from(t: &'a TypeProto_Tensor) -> TractResult<InferenceFact> {
+        let mut fact = InferenceFact::default();
         if t.has_elem_type() {
             fact = fact.with_datum_type(t.get_elem_type().try_into()?);
         }
@@ -65,9 +65,9 @@ impl<'a> TryFrom<&'a TypeProto_Tensor> for TensorFact {
     }
 }
 
-impl TryFrom<TypeProto_Tensor> for TensorFact {
+impl TryFrom<TypeProto_Tensor> for InferenceFact {
     type Error = TractError;
-    fn try_from(t: TypeProto_Tensor) -> TractResult<TensorFact> {
+    fn try_from(t: TypeProto_Tensor) -> TractResult<InferenceFact> {
         (&t).try_into()
     }
 }

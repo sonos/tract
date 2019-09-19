@@ -45,7 +45,7 @@ impl Op for DepthwiseConv2d {
         "tf.DepthwiseConv2dNative".into()
     }
 
-    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let img = inputs[0];
         let ker = inputs[1].shape.as_finite().ok_or("Can not stream kernel")?;
         let shape = self.data_format.shape(img.shape.to_tvec());

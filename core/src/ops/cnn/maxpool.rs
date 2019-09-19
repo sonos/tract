@@ -70,7 +70,7 @@ impl InferenceRulesOp for MaxPool {
 }
 
 impl TypedOp for MaxPool {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut facts = self.pool_spec.output_facts(inputs)?;
         if let Some(idt) = self.with_index_outputs {
             facts.push(facts[0].clone());
@@ -108,7 +108,7 @@ impl TypedOp for MaxPool {
 }
 
 impl PulsedOp for MaxPool {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut facts = self.pool_spec.pulsed_output_facts(inputs)?;
         if let Some(idt) = self.with_index_outputs {
             facts.push(facts[0].clone());
@@ -190,9 +190,9 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
 impl<T: Datum + Float> TypedOp for MaxPoolFixed<T> {
     typed_op_as_op!();
 
-    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut facts =
-            tvec!(TypedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?);
+            tvec!(TypedFact::dt_shape(T::datum_type(), &*self.output_shape.shape)?);
         if let Some(idt) = self.with_index_outputs {
             facts.push(facts[0].clone());
             facts[1].datum_type = idt;

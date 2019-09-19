@@ -11,7 +11,7 @@ use ndarray::prelude::*;
 #[derive(Debug, Clone, new, Default)]
 pub struct Generic<TI, O>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
     ModelImpl<TI, O>: Model,
 {

@@ -240,7 +240,7 @@ impl InferenceRulesOp for GRU {
         let h_source = body
             .add_source(
                 "h_source",
-                TypedTensorInfo::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
+                TypedFact::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
             )?
             .into();
 

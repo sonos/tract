@@ -209,7 +209,7 @@ impl Op for MatMul {
         "MatMul".into()
     }
 
-    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let dt = inputs[0].datum_type;
         let (bc_a_shape, bc_b_shape, bc_c_shape) = infer_shapes(
             inputs[0].shape.iter().collect(),
@@ -267,8 +267,8 @@ impl InferenceRulesOp for MatMul {
 }
 
 impl TypedOp for MatMul {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(
             inputs[0].datum_type,
             &*infer_shapes(
                 inputs[0].shape.to_tvec(),
@@ -352,8 +352,8 @@ impl StatelessOp for MatMulUnary {
 }
 
 impl TypedOp for MatMulUnary {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(
             inputs[0].datum_type,
             &*infer_shapes(
                 self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
@@ -429,7 +429,7 @@ impl TypedOp for MatMulUnary {
 }
 
 impl PulsedOp for MatMulUnary {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape = infer_shapes(
             self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
@@ -655,8 +655,8 @@ where
     T: Copy + Datum + Add + Mul + Zero + FloatLike,
     f32: ::num_traits::AsPrimitive<T>,
 {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.geo.c_shape)?))
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.geo.c_shape)?))
     }
 
     typed_op_as_op!();

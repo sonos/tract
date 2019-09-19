@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 use crate::internal::*;
 use crate::model::order::eval_order_for_nodes;
-use crate::model::{ModelImpl, OutletId, TensorInfo};
+use crate::model::{ModelImpl, OutletId, Fact};
 
 #[derive(Debug, Default)]
 pub struct SessionState {
@@ -16,7 +16,7 @@ pub struct SessionState {
 #[derive(Debug, Clone)]
 pub struct SimplePlan<TI, O, M>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
 {
@@ -29,7 +29,7 @@ where
 
 impl<TI, O, M> SimplePlan<TI, O, M>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
 {
@@ -84,7 +84,7 @@ where
 #[derive(Debug)]
 pub struct SimpleState<TI, O, M, P>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>>,
@@ -98,7 +98,7 @@ where
 
 impl<TI, O, M, P> Clone for SimpleState<TI, O, M, P>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>> + Clone,
@@ -123,7 +123,7 @@ where
 
 impl<TI, O, M, P> SimpleState<TI, O, M, P>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>> + Clone,

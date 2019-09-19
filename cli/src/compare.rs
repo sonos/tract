@@ -36,7 +36,7 @@ pub fn handle_tensorflow(
 }
 
 #[cfg(feature = "conform")]
-fn handle_tensorflow_t<TI: TensorInfo, O>(
+fn handle_tensorflow_t<TI: Fact, O>(
     cumulative: bool,
     resilient: bool,
     tract: &ModelImpl<TI, O>,
@@ -45,7 +45,7 @@ fn handle_tensorflow_t<TI: TensorInfo, O>(
     output_params: DisplayOptions,
 ) -> CliResult<()>
 where
-    TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
+    TI: Fact + Clone + for<'a> From<&'a Tensor>,
     O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
 {
     // First generate random values for the inputs.
@@ -177,7 +177,7 @@ pub fn compare<TI, O>(
     output_params: DisplayOptions,
 ) -> CliResult<()>
 where
-    TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
+    TI: Fact + Clone + for<'a> From<&'a Tensor>,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
     ModelImpl<TI, O>: Model,
 {

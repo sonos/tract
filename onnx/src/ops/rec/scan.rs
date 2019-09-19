@@ -46,7 +46,7 @@ pub fn scan(
             model.outlet_fact(outlet)?.clone(),
         )?
         .apply(&mut model)?;
-        model.set_outlet_fact(outlet, TensorFact::default())?;
+        model.set_outlet_fact(outlet, InferenceFact::default())?;
         mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan {
             axis: *ax,
             slot: ix + num_hidden_state,
@@ -62,7 +62,7 @@ pub fn scan(
             outlet,
             format!("output-{}-adjust-dim", ix),
             op,
-            TensorFact::default(),
+            InferenceFact::default(),
         )?
         .apply(&mut model)?;
         mapped_outputs.push(tract_core::ops::scan::OutputMapping {

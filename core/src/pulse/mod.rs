@@ -6,7 +6,7 @@ use std::convert::TryFrom;
 pub mod delay;
 
 #[derive(Clone, PartialEq)]
-pub struct PulsedTensorFact {
+pub struct PulsedFact {
     pub datum_type: DatumType,
     pub shape: TVec<usize>,
     pub axis: usize,
@@ -14,7 +14,7 @@ pub struct PulsedTensorFact {
     pub delay: usize,
 }
 
-impl fmt::Debug for PulsedTensorFact {
+impl fmt::Debug for PulsedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use itertools::Itertools;
         write!(
@@ -29,38 +29,38 @@ impl fmt::Debug for PulsedTensorFact {
     }
 }
 
-impl TensorInfo for PulsedTensorFact {
-    fn to_tensor_fact(&self) -> TensorFact {
-        TensorFact::dt_shape(self.datum_type, &self.shape)
+impl Fact for PulsedFact {
+    fn to_tensor_fact(&self) -> InferenceFact {
+        InferenceFact::dt_shape(self.datum_type, &self.shape)
     }
 }
 
-impl TryFrom<PulsedTensorFact> for TypedTensorInfo {
+impl TryFrom<PulsedFact> for TypedFact {
     type Error = TractError;
-    fn try_from(fact: PulsedTensorFact) -> TractResult<TypedTensorInfo> {
-        TypedTensorInfo::dt_shape(fact.datum_type, &*fact.shape)
+    fn try_from(fact: PulsedFact) -> TractResult<TypedFact> {
+        TypedFact::dt_shape(fact.datum_type, &*fact.shape)
     }
 }
 
-impl PulsedTensorFact {
+impl PulsedFact {
     pub fn from_tensor_fact_pulse(
-        tf: &NormalizedTensorInfo,
+        tf: &NormalizedFact,
         pulse: usize,
-    ) -> TractResult<PulsedTensorFact> {
+    ) -> TractResult<PulsedFact> {
         let datum_type = tf.datum_type;
         let stream =
             tf.shape.stream_info.as_ref().ok_or("Can not pulse a tensor with no streaming dim")?;
         let shape =
             tf.shape.iter().map(|d| d.to_integer().map(|d| d as usize).unwrap_or(pulse)).collect();
-        Ok(PulsedTensorFact { datum_type, shape, axis: stream.axis, dim: stream.len.clone(), delay: 0 })
+        Ok(PulsedFact { datum_type, shape, axis: stream.axis, dim: stream.len.clone(), delay: 0 })
     }
 
     pub fn pulse(&self) -> usize {
         self.shape[self.axis]
     }
 
-    pub fn to_pulse_fact(&self) -> NormalizedTensorInfo {
-        NormalizedTensorInfo::dt_shape(self.datum_type, &*self.shape).unwrap()
+    pub fn to_pulse_fact(&self) -> NormalizedFact {
+        NormalizedFact::dt_shape(self.datum_type, &*self.shape).unwrap()
     }
 
     pub fn streaming_shape(&self) -> Vec<TDim> {
@@ -71,15 +71,15 @@ impl PulsedTensorFact {
             .collect()
     }
 
-    pub fn to_streaming_fact(&self) -> NormalizedTensorInfo {
+    pub fn to_streaming_fact(&self) -> NormalizedFact {
         let mut info = self.to_pulse_fact();
         info.shape.stream_info = Some(StreamInfo { axis: self.axis, len: self.dim.clone() });
         info
     }
 }
 
-pub type PulsedModel = ModelImpl<PulsedTensorFact, Box<dyn PulsedOp>>;
-pub type PulsedNode = BaseNode<PulsedTensorFact, Box<dyn PulsedOp>>;
+pub type PulsedModel = ModelImpl<PulsedFact, Box<dyn PulsedOp>>;
+pub type PulsedNode = BaseNode<PulsedFact, Box<dyn PulsedOp>>;
 
 impl PulsedModel {
     pub fn new(source: &NormalizedModel, pulse: usize) -> TractResult<PulsedModel> {
@@ -106,7 +106,7 @@ mod tests {
     fn test_source_must_stream() {
         let mut model = InferenceModel::default();
         let _a =
-            model.add_source("a", TensorFact::dt_shape(DatumType::F32, vec![1, 2, 3])).unwrap();
+            model.add_source("a", InferenceFact::dt_shape(DatumType::F32, vec![1, 2, 3])).unwrap();
         model.auto_outputs().unwrap();
         assert!(
             PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).is_err()
@@ -116,7 +116,7 @@ mod tests {
         let _a = model
             .add_source(
                 "a",
-                TensorFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
+                InferenceFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
             )
             .unwrap();
         model.auto_outputs().unwrap();
@@ -124,7 +124,7 @@ mod tests {
             PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).unwrap();
         assert_eq!(
             pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
-            TensorFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
+            InferenceFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
         );
     }
 
@@ -134,7 +134,7 @@ mod tests {
         let _a = model
             .add_source(
                 "a",
-                TensorFact::dt_shape(DatumType::F32, vec![TDim::s(), 2.to_dim(), 3.to_dim()]),
+                InferenceFact::dt_shape(DatumType::F32, vec![TDim::s(), 2.to_dim(), 3.to_dim()]),
             )
             .unwrap();
         model.auto_outputs().unwrap();
@@ -143,11 +143,11 @@ mod tests {
 
         assert_eq!(
             pulse.input_fact(0).unwrap().to_tensor_fact(),
-            TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
+            InferenceFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
         assert_eq!(
             pulse.output_fact(0).unwrap().to_tensor_fact(),
-            TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
+            InferenceFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
     }
 }

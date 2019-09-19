@@ -89,8 +89,8 @@ impl StatelessOp for TypedMultiBroadcastTo {
 }
 
 impl TypedOp for TypedMultiBroadcastTo {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.shape)?))
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))
     }
 
     typed_op_as_op!();

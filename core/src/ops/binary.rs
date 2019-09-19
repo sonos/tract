@@ -80,8 +80,8 @@ impl InferenceRulesOp for InferenceBinOp {
 }
 
 impl TypedOp for InferenceBinOp {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),
@@ -243,8 +243,8 @@ impl StatelessOp for TypedBinOp {
 }
 
 impl TypedOp for TypedBinOp {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),
@@ -336,8 +336,8 @@ impl TypedOp for TypedBinOp {
 impl PulsedOp for TypedBinOp {
     fn pulsed_output_facts(
         &self,
-        inputs: &[&PulsedTensorFact],
-    ) -> TractResult<TVec<PulsedTensorFact>> {
+        inputs: &[&PulsedFact],
+    ) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
         fact.shape =
@@ -404,8 +404,8 @@ impl StatelessOp for UnaryOp {
 }
 
 impl TypedOp for UnaryOp {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(
             self.mini_op.result_datum_type(self.a.datum_type(), inputs[0].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
                 &*self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
@@ -471,8 +471,8 @@ impl TypedOp for UnaryOp {
 impl PulsedOp for UnaryOp {
     fn pulsed_output_facts(
         &self,
-        inputs: &[&PulsedTensorFact],
-    ) -> TractResult<TVec<PulsedTensorFact>> {
+        inputs: &[&PulsedFact],
+    ) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type =
             self.mini_op.result_datum_type(inputs[0].datum_type, self.a.datum_type())?;
@@ -505,8 +505,8 @@ impl StatelessOp for MergeOp {
 }
 
 impl TypedOp for MergeOp {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),
@@ -559,8 +559,8 @@ impl TypedOp for MergeOp {
 impl PulsedOp for MergeOp {
     fn pulsed_output_facts(
         &self,
-        inputs: &[&PulsedTensorFact],
-    ) -> TractResult<TVec<PulsedTensorFact>> {
+        inputs: &[&PulsedFact],
+    ) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
         fact.shape =
@@ -594,7 +594,7 @@ impl StatelessOp for MergeOpUnicast {
 }
 
 impl TypedOp for MergeOpUnicast {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -604,8 +604,8 @@ impl TypedOp for MergeOpUnicast {
 impl PulsedOp for MergeOpUnicast {
     fn pulsed_output_facts(
         &self,
-        inputs: &[&PulsedTensorFact],
-    ) -> TractResult<TVec<PulsedTensorFact>> {
+        inputs: &[&PulsedFact],
+    ) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
         fact.shape = inputs[0].shape.clone();

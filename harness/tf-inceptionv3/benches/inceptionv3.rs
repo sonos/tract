@@ -39,7 +39,7 @@ fn tract(bencher: &mut Criterion) {
     let mut tfd = ::tract_tensorflow::tensorflow()
         .model_for_path(inceptionv3::inception_v3_2016_08_28_frozen())
         .unwrap();
-    tfd.set_input_fact(0, TensorFact::dt_shape(DatumType::F32, &[1, 299, 299, 3])).unwrap();
+    tfd.set_input_fact(0, InferenceFact::dt_shape(DatumType::F32, &[1, 299, 299, 3])).unwrap();
     let tfd = tfd.into_optimized().unwrap();
     let input = inceptionv3::load_image(hopper());
     let plan = SimplePlan::new(tfd).unwrap();

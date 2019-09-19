@@ -82,13 +82,13 @@ impl InferenceRulesOp for Shape {
 }
 
 impl TypedOp for Shape {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = inputs[0].shape.iter().collect::<TVec<_>>();
         let mut tensor = tensor1(&*shape);
         if shape.iter().all(|d| d.to_integer().is_ok()) {
             tensor = tensor.cast_to_dt(self.dt)?.into_owned();
         }
-        Ok(tvec!(TypedTensorInfo::from(tensor)))
+        Ok(tvec!(TypedFact::from(tensor)))
     }
 
     typed_op_as_op!();
@@ -101,13 +101,13 @@ mod tests {
 
     #[test]
     fn shape_inference_1() {
-        let input = TensorFact {
+        let input = InferenceFact {
             datum_type: typefact!(DatumType::F32),
             shape: shapefact![1, _, _; ..],
             value: valuefact!(_),
         };
 
-        let output = TensorFact {
+        let output = InferenceFact {
             datum_type: typefact!(DatumType::TDim),
             shape: shapefact![_],
             value: valuefact!(_),
@@ -118,13 +118,13 @@ mod tests {
 
     #[test]
     fn shape_inference_2() {
-        let input = TensorFact {
+        let input = InferenceFact {
             datum_type: typefact!(DatumType::F32),
             shape: shapefact![1, _, _],
             value: valuefact!(_),
         };
 
-        let output = TensorFact {
+        let output = InferenceFact {
             datum_type: typefact!(DatumType::TDim),
             shape: shapefact![3],
             value: valuefact!(_),
@@ -135,13 +135,13 @@ mod tests {
 
     #[test]
     fn shape_inference_3() {
-        let input = TensorFact {
+        let input = InferenceFact {
             datum_type: typefact!(DatumType::F32),
             shape: shapefact![1, 2, 3],
             value: valuefact!(_),
         };
 
-        let output = TensorFact {
+        let output = InferenceFact {
             datum_type: typefact!(DatumType::TDim),
             shape: shapefact![3],
             value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
@@ -152,13 +152,13 @@ mod tests {
 
     #[test]
     fn shape_inference_4() {
-        let input = TensorFact {
+        let input = InferenceFact {
             datum_type: typefact!(_),
             shape: shapefact![1, 2, 3],
             value: valuefact!(_),
         };
 
-        let output = TensorFact {
+        let output = InferenceFact {
             datum_type: typefact!(DatumType::TDim),
             shape: shapefact![3],
             value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),

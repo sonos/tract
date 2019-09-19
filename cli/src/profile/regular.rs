@@ -24,7 +24,7 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
 
 pub fn make_inputs_for_model<TI, O>(model: &ModelImpl<TI, O>) -> CliResult<TVec<Tensor>>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
 {
     Ok(make_inputs(
@@ -42,7 +42,7 @@ fn handle_benching_t<TI, O>(
     profiling: ProfilingMode,
 ) -> CliResult<()>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
 {
     let (max_iters, max_time) =
@@ -91,7 +91,7 @@ pub fn handle_t<TI, O>(
     mut display_options: DisplayOptions,
 ) -> CliResult<()>
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
     ModelImpl<TI, O>: Model,
 {
@@ -162,12 +162,12 @@ where
                 profile.sub(&*prefix, measure)?;
             }
 
-            let inputs: TVec<TypedTensorInfo> = model
+            let inputs: TVec<TypedFact> = model
                 .node_input_facts(n)?
                 .iter()
                 .map(|&i| Ok(i.to_tensor_fact().try_into()?))
                 .collect::<TractResult<_>>()?;
-            let ref_inputs: TVec<&TypedTensorInfo> = inputs.iter().collect();
+            let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
             let nested_multis =
                 model.node_op(n).as_typed().unwrap().nested_model_multipliers(&*ref_inputs);
 

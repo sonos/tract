@@ -4,7 +4,7 @@ use itertools::Itertools;
 use ndarray::ArrayD;
 use ndarray::Axis;
 
-use tract_core::model::{OutletId, TensorInfo};
+use tract_core::model::{OutletId, Fact};
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::pulse::PulsedModel;
 

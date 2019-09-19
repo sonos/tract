@@ -123,13 +123,13 @@ impl StatelessOp for TypedTile {
 impl TypedOp for TypedTile {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = inputs[0]
             .shape
             .iter()
             .zip(self.multipliers.iter())
             .map(|(a, &b)| a.clone() * b)
             .collect::<TVec<_>>();
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)?))
     }
 }

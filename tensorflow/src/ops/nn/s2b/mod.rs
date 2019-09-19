@@ -198,30 +198,30 @@ mod tests {
     #[test]
     fn space_to_batch_nd_infer_1() {
         let mut op = SpaceToBatch::new(f32::datum_type());
-        let data = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 4, 16));
-        let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
-        let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
-        let any = TensorFact::default();
+        let data = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 4, 16));
+        let block_shape = InferenceFact::from(Tensor::from(arr1(&[2])));
+        let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
+        let any = InferenceFact::default();
 
         let (_, outputs, _) =
             op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any), tvec!()).unwrap();
 
-        assert_eq!(outputs[0], TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 16)));
+        assert_eq!(outputs[0], InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 2, 16)));
     }
 
     #[test]
     fn space_to_batch_nd_infer_2() {
         let mut op = SpaceToBatch::new(f32::datum_type());
-        let data = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::s() - 4), 16));
-        let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
-        let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
-        let any = TensorFact::default();
+        let data = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::s() - 4), 16));
+        let block_shape = InferenceFact::from(Tensor::from(arr1(&[2])));
+        let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
+        let any = InferenceFact::default();
 
         let (_, outputs, _) =
             op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any), tvec!()).unwrap();
         assert_eq!(
             outputs[0],
-            TensorFact::dt_shape(
+            InferenceFact::dt_shape(
                 DatumType::F32,
                 shapefact!(2, ((TDim::s() + TDim::s() % 2 - 4) / 2), 16)
             )

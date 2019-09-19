@@ -74,8 +74,8 @@ impl InferenceRulesOp for PermuteAxes {
 }
 
 impl TypedOp for PermuteAxes {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(
             inputs[0].datum_type,
             self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),
         )?))
@@ -104,7 +104,7 @@ impl TypedOp for PermuteAxes {
 }
 
 impl PulsedOp for PermuteAxes {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape = self.compute_shape(&*inputs[0].shape);
         Ok(tvec!(fact))

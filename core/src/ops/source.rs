@@ -69,7 +69,7 @@ impl InferenceRulesOp for Source {
 
 #[derive(Debug, Clone, new)]
 pub struct TypedSource {
-    fact: TypedTensorInfo,
+    fact: TypedFact,
 }
 
 impl Op for TypedSource {
@@ -92,7 +92,7 @@ impl StatefullOp for TypedSource {
 }
 
 impl TypedOp for TypedSource {
-    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.fact.clone()))
     }
 
@@ -105,7 +105,7 @@ impl TypedOp for TypedSource {
         pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         let pulsed_fact =
-            crate::pulse::PulsedTensorFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
+            crate::pulse::PulsedFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
         let id = target.add_source(node.name.clone(), pulsed_fact)?;
         Ok(tvec!(id))
     }
@@ -115,7 +115,7 @@ impl TypedOp for TypedSource {
 
 #[derive(Debug, Clone, new)]
 pub struct PulsedSource {
-    fact: PulsedTensorFact,
+    fact: PulsedFact,
 }
 
 impl Op for PulsedSource {
@@ -138,12 +138,12 @@ impl StatefullOp for PulsedSource {
 }
 
 impl PulsedOp for PulsedSource {
-    fn pulsed_output_facts(&self, _inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, _inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         Ok(tvec!(self.fact.clone()))
     }
 
     fn to_typed(&self) -> Box<dyn TypedOp> {
-        Box::new(TypedSource::new(TypedTensorInfo::dt_shape(self.fact.datum_type, &*self.fact.shape).unwrap()))
+        Box::new(TypedSource::new(TypedFact::dt_shape(self.fact.datum_type, &*self.fact.shape).unwrap()))
     }
 
     pulsed_op_as_op!();

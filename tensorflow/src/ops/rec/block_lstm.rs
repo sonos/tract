@@ -199,7 +199,7 @@ impl InferenceRulesOp for BlockLSTM {
 impl TypedOp for BlockLSTM {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(std::iter::repeat(inputs[1].clone()).take(7).collect())
     }
 }

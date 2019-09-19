@@ -106,8 +106,8 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
 
 pub trait Translate<TI1, O1, TI2, O2, Ctx>
 where
-    TI1: TensorInfo + Clone + 'static,
-    TI2: TensorInfo + Clone + 'static,
+    TI1: Fact + Clone + 'static,
+    TI2: Fact + Clone + 'static,
     O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
@@ -147,7 +147,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     /// Computes a cost hint of the operation.
     ///
     /// Each pair is a type of operation and a number per call on eval.
-    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         Ok(tvec!())
     }
 
@@ -195,7 +195,7 @@ pub trait TypedOp:
     fn as_op_mut(&mut self) -> &mut dyn Op;
 
     /// Deduce output facts from input facts.
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>>;
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
 
     fn axes_info(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<AxesInfo> {
         Ok(tvec![].into())
@@ -252,7 +252,7 @@ pub trait TypedOp:
 
     /// Nested model multipliers, with label (for profiling).
     #[allow(unused_variables)]
-    fn nested_model_multipliers(&self, inputs: &[&TypedTensorInfo]) -> Vec<(Cow<str>, f32)> {
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f32)> {
         vec![]
     }
 }
@@ -270,15 +270,15 @@ pub trait PulsedOp:
     fn to_typed(&self) -> Box<dyn TypedOp>;
 
     /// Deduce output facts from input facts.
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>>;
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>>;
 
 }
 
 impl
     crate::ops::Translate<
-        NormalizedTensorInfo,
+        NormalizedFact,
         Box<dyn TypedOp>,
-        crate::pulse::PulsedTensorFact,
+        crate::pulse::PulsedFact,
         Box<dyn PulsedOp>,
         usize,
     > for Box<dyn TypedOp>
@@ -313,10 +313,10 @@ pub trait InferenceOp:
     /// and the refined properties about the inputs and outputs otherwise.
     fn infer(
         &mut self,
-        inputs: TVec<&TensorFact>,
-        outputs: TVec<&TensorFact>,
-        observed: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)> {
+        inputs: TVec<&InferenceFact>,
+        outputs: TVec<&InferenceFact>,
+        observed: TVec<&InferenceFact>,
+    ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let (infered_inputs, infered_outputs, observed) =
             self.infer_facts(inputs, outputs, observed)?;
 
@@ -360,10 +360,10 @@ pub trait InferenceOp:
     /// Most of the time, it is implemented using InferenceRulesOp.
     fn infer_facts(
         &mut self,
-        inputs: TVec<&TensorFact>,
-        outputs: TVec<&TensorFact>,
-        observed: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)>;
+        inputs: TVec<&InferenceFact>,
+        outputs: TVec<&InferenceFact>,
+        observed: TVec<&InferenceFact>,
+    ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)>;
 
     fn nboutputs(&self) -> TractResult<usize> {
         Ok(1)
@@ -387,7 +387,7 @@ pub trait InferenceOp:
     }
 }
 
-impl crate::ops::Translate<TensorFact, Box<dyn InferenceOp>, TypedTensorInfo, Box<dyn TypedOp>, ()>
+impl crate::ops::Translate<InferenceFact, Box<dyn InferenceOp>, TypedFact, Box<dyn TypedOp>, ()>
     for Box<dyn InferenceOp>
 {
     fn translate(
@@ -402,7 +402,7 @@ impl crate::ops::Translate<TensorFact, Box<dyn InferenceOp>, TypedTensorInfo, Bo
     }
 }
 
-impl crate::ops::Translate<PulsedTensorFact, Box<dyn PulsedOp>, TypedTensorInfo, Box<dyn TypedOp>, ()>
+impl crate::ops::Translate<PulsedFact, Box<dyn PulsedOp>, TypedFact, Box<dyn TypedOp>, ()>
     for Box<dyn PulsedOp>
 {
     fn translate(

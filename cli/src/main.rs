@@ -475,7 +475,7 @@ impl Parameters {
                 let id = raw_model.add_node(
                     output_name,
                     tract_core::ops::Downsample::new(0, period as _, 0),
-                    tvec!(TensorFact::default())
+                    tvec!(InferenceFact::default())
                 )?;
                 raw_model.add_edge(outputs[0], InletId::new(id, 0))?;
                 outputs[0].node = id;
@@ -555,7 +555,7 @@ impl Parameters {
                     let name = format!("{}.npy", raw_model.node(input.node).name);
                     if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name) {
                         let shape = t.shape().to_vec();
-                        let mut fact = TensorFact::dt_shape(f32::datum_type(), shape);
+                        let mut fact = InferenceFact::dt_shape(f32::datum_type(), shape);
                         if let Some(s) = matches.value_of("stream_axis") {
                             fact.shape.set_dim(s.parse()?, TDim::s());
                         }
@@ -702,7 +702,7 @@ pub fn display_options_from_clap(
 
 pub struct Assertions {
     assert_outputs: Option<Vec<Option<Arc<Tensor>>>>,
-    assert_output_facts: Option<Vec<TensorFact>>,
+    assert_output_facts: Option<Vec<InferenceFact>>,
 }
 
 impl Assertions {
@@ -734,7 +734,7 @@ impl Assertions {
             }
         }
 
-        let assert_output_facts: Option<Vec<TensorFact>> = sub_matches
+        let assert_output_facts: Option<Vec<InferenceFact>> = sub_matches
             .values_of("assert-output-fact")
             .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
         Ok(Assertions { assert_outputs, assert_output_facts })

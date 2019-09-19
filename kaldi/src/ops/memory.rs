@@ -39,10 +39,10 @@ impl StatefullOp for Memory {
 impl InferenceOp for Memory {
     fn infer_facts(
         &mut self,
-        _inputs: TVec<&TensorFact>,
-        outputs: TVec<&TensorFact>,
-        observed: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)> {
+        _inputs: TVec<&InferenceFact>,
+        outputs: TVec<&InferenceFact>,
+        observed: TVec<&InferenceFact>,
+    ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let unified = outputs[0].unify(observed[0])?;
         Ok((tvec!(), tvec!(unified.clone()), tvec!(unified.clone())))
     }
@@ -124,7 +124,7 @@ fn incorporate_memory_ops_as_scans(
                     as usize;
             let id = inner_model.add_source(
                 &*mem_node.name,
-                TensorFact::dt_shape(
+                InferenceFact::dt_shape(
                     f32::datum_type(),
                     ShapeFact::from(&[(-op.offset) as usize, channel]),
                 ),
@@ -154,7 +154,7 @@ fn incorporate_memory_ops_as_scans(
                     as usize;
             let new_id = inner_model.add_source(
                 format!("{}-scan", old_node.name),
-                TensorFact::dt_shape(f32::datum_type(), shapefact!(_, channel)),
+                InferenceFact::dt_shape(f32::datum_type(), shapefact!(_, channel)),
             )?;
             node_id_old_to_new.insert(scan_input.node, new_id.node);
             mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan {
@@ -179,7 +179,7 @@ fn incorporate_memory_ops_as_scans(
             let new_id = inner_model.add_node(
                 &*node.name,
                 node.op.clone(),
-                (0..node.outputs.len()).map(|_| TensorFact::default()).collect(),
+                (0..node.outputs.len()).map(|_| InferenceFact::default()).collect(),
             )?;
             node_id_old_to_new.insert(node.id, new_id);
         }
@@ -226,7 +226,7 @@ fn incorporate_memory_ops_as_scans(
                 .to_integer()? as usize;
             let op = model.node(*memory).op_as::<Memory>().unwrap();
             let delay = (-op.offset) as usize;
-            output_facts.push(TensorFact::dt_shape(f32::datum_type(), tvec![delay, channels]));
+            output_facts.push(InferenceFact::dt_shape(f32::datum_type(), tvec![delay, channels]));
         }
         */
 

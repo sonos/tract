@@ -96,8 +96,8 @@ impl InferenceRulesOp for VariableV2 {
 impl TypedOp for VariableV2 {
     typed_op_as_op!();
 
-    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(self.dt, &*self.shape)?))
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(self.dt, &*self.shape)?))
     }
 }
 
@@ -186,7 +186,7 @@ impl InferenceRulesOp for Assign {
 impl TypedOp for Assign {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 }
@@ -203,18 +203,18 @@ mod tests {
             .add_node(
                 "var",
                 VariableV2::new(None, None, "var".into(), "xxx".into(), tvec![], f32::datum_type()),
-                tvec!(TensorFact::default()),
+                tvec!(InferenceFact::default()),
             )
             .unwrap();
         let zero = model.add_const("zero".to_string(), tensor0(0f32)).unwrap();
         let one = model.add_const("one".to_string(), tensor0(1f32)).unwrap();
         let reset = model
-            .add_node("reset", Assign::new(Some("xxx".into())), tvec!(TensorFact::new()))
+            .add_node("reset", Assign::new(Some("xxx".into())), tvec!(InferenceFact::new()))
             .unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(reset, 0)).unwrap();
         model.add_edge(zero, InletId::new(reset, 1)).unwrap();
         let set = model
-            .add_node("set", Assign::new(Some("xxx".into())), tvec!(TensorFact::new()))
+            .add_node("set", Assign::new(Some("xxx".into())), tvec!(InferenceFact::new()))
             .unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(set, 0)).unwrap();
         model.add_edge(one, InletId::new(set, 1)).unwrap();

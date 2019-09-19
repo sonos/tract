@@ -66,7 +66,7 @@ impl<'a> ParsingContext<'a> {
                 .get_output()
                 .iter()
                 .filter(|s| !s.is_empty())
-                .map(|_| TensorFact::default())
+                .map(|_| InferenceFact::default())
                 .collect();
             trace!("  outputs {:?}", pbnode.get_output());
             let (op, closures) = match self.framework.op_register.0.get(pbnode.get_op_type()) {
@@ -92,7 +92,7 @@ impl<'a> ParsingContext<'a> {
         for (id, pbnode) in graph.get_node().iter().enumerate() {
             for (ix, input) in pbnode.get_input().iter().filter(|s| !s.is_empty()).enumerate() {
                 if !outlets_by_name.contains_key(&*input) {
-                    let id = model.add_source(input.clone(), TensorFact::default())?;
+                    let id = model.add_source(input.clone(), InferenceFact::default())?;
                     unresolved_inputs.push(input.to_string());
                     outlets_by_name.insert(input.to_string(), id);
                 }
@@ -102,7 +102,7 @@ impl<'a> ParsingContext<'a> {
         }
         for (id, closure) in closures_to_wire {
             if !outlets_by_name.contains_key(&*closure) {
-                let id = model.add_source(closure.clone(), TensorFact::default())?;
+                let id = model.add_source(closure.clone(), InferenceFact::default())?;
                 unresolved_inputs.push(closure.to_string());
                 outlets_by_name.insert(closure.to_string(), id);
             }

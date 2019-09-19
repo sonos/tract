@@ -20,8 +20,8 @@ pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
             crate::utils::check_outputs(&*outputs, &asserts)?;
         }
         if let Some(facts) = &asserts.assert_output_facts {
-            let outputs: Vec<TensorFact> =
-                outputs.iter().map(|t| TensorFact::dt_shape(t.datum_type(), t.shape())).collect();
+            let outputs: Vec<InferenceFact> =
+                outputs.iter().map(|t| InferenceFact::dt_shape(t.datum_type(), t.shape())).collect();
             crate::utils::check_inferred(&*outputs, &*facts)?;
         }
     }

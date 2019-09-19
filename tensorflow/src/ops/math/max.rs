@@ -145,7 +145,7 @@ impl StatelessOp for TypedMax {
 impl TypedOp for TypedMax {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let output_shape: TVec<TDim> = inputs[0]
             .shape
             .iter()
@@ -162,7 +162,7 @@ impl TypedOp for TypedMax {
                 }
             })
             .collect();
-        Ok(tvec!(TypedTensorInfo::dt_shape(self.t, &*output_shape)?))
+        Ok(tvec!(TypedFact::dt_shape(self.t, &*output_shape)?))
     }
 }
 

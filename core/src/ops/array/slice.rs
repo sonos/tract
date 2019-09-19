@@ -73,7 +73,7 @@ impl<D: DimLike + ToDim> InferenceRulesOp for Slice<D> {
 }
 
 impl<D: DimLike + ToDim> TypedOp for Slice<D> {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape.set_dim(self.axis, (self.end.clone() - &self.start).to_dim())?;
         Ok(tvec!(fact))
@@ -161,8 +161,8 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
 impl<D: DimLike + ToDim> PulsedOp for Slice<D> {
     fn pulsed_output_facts(
         &self,
-        inputs: &[&PulsedTensorFact],
-    ) -> TractResult<TVec<PulsedTensorFact>> {
+        inputs: &[&PulsedFact],
+    ) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.delay += self.start.to_integer()? as usize;
         fact.dim = (self.end.clone() - &self.start).to_dim();
@@ -202,8 +202,8 @@ impl StatelessOp for PulsedAxisSlice {
 impl PulsedOp for PulsedAxisSlice {
     fn pulsed_output_facts(
         &self,
-        inputs: &[&PulsedTensorFact],
-    ) -> TractResult<TVec<PulsedTensorFact>> {
+        inputs: &[&PulsedFact],
+    ) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.delay += self.skip;
         fact.dim = self.take.clone();

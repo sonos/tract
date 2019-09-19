@@ -240,8 +240,8 @@ impl InferenceRulesOp for IsNan {
 
 impl TypedOp for IsNan {
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(bool::datum_type(), inputs[0].shape.clone())?))
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(bool::datum_type(), inputs[0].shape.clone())?))
     }
 
     fn pulsify(
@@ -260,7 +260,7 @@ impl TypedOp for IsNan {
 }
 
 impl PulsedOp for IsNan {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type = bool::datum_type();
         Ok(tvec!(fact))

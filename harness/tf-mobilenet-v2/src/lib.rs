@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn optimized() {
         let mut tfd = ::tract_tensorflow::tensorflow().model_for_path(mobilenet_v2()).unwrap();
-        tfd.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), &[1, 224, 224, 3])).unwrap();
+        tfd.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), &[1, 224, 224, 3])).unwrap();
         let tfd = tfd.into_optimized().unwrap();
         let plan = SimplePlan::new(&tfd).unwrap();
         let input = load_image(grace_hopper());

@@ -274,7 +274,7 @@ impl InferenceRulesOp for LSTM {
         let h_source = body
             .add_source(
                 "h_source",
-                TypedTensorInfo::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
+                TypedFact::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
             )?
             .into();
 
@@ -295,7 +295,7 @@ impl InferenceRulesOp for LSTM {
         let c_source = body
             .add_source(
                 "c_source",
-                TypedTensorInfo::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
+                TypedFact::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
             )?
             .into();
 

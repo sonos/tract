@@ -104,7 +104,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
 
 fn run_model<TI, O>(model: ModelImpl<TI, O>, path: &path::Path)
 where
-    TI: TensorInfo + Clone + 'static,
+    TI: Fact + Clone + 'static,
     O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let plan = SimplePlan::new(&model).unwrap();

@@ -19,7 +19,7 @@ pub fn handle_model(
 
     if let Some(asserts) = &params.assertions {
         if let Some(asserts) = &asserts.assert_output_facts {
-            let outputs_facts: Vec<TensorFact> =
+            let outputs_facts: Vec<InferenceFact> =
                 model.output_outlets().iter().map(|o| model.outlet_tensorfact(*o)).collect();
             crate::utils::check_inferred(&*outputs_facts, &*asserts)?;
         }
@@ -32,7 +32,7 @@ pub fn handle_model(
 fn handle_inner(tract: &TypedModel, params: &Parameters, options: DisplayOptions, inner: Vec<String>) -> CliResult<()> {
     if let Some(node) = inner.get(0) {
         let node = tract.node(node.parse()?);
-        if let Some(scan) = node.op_as::<tract_core::ops::rec::scan::Scan<TypedTensorInfo, Box<Op>>>() {
+        if let Some(scan) = node.op_as::<tract_core::ops::rec::scan::Scan<TypedFact, Box<Op>>>() {
             let model = &scan.body;
             handle_model(model, params, options)?
         }

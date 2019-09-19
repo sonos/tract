@@ -66,10 +66,10 @@ pub trait InferenceRulesOp {
 impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
     fn infer_facts(
         &mut self,
-        inputs: TVec<&TensorFact>,
-        outputs: TVec<&TensorFact>,
-        observed: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)> {
+        inputs: TVec<&InferenceFact>,
+        outputs: TVec<&InferenceFact>,
+        observed: TVec<&InferenceFact>,
+    ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let inputs_proxy: TVec<TensorProxy> =
             (0..inputs.len()).map(|ix| TensorProxy::new(tvec!(0, ix as isize).into())).collect();
         let outputs_proxy: TVec<TensorProxy> =

@@ -45,18 +45,18 @@ mod tests {
 
     #[test]
     fn squeeze_inference_1() {
-        let input = TensorFact::default().with_datum_type(DatumType::TDim).with_shape(shapefact![
+        let input = InferenceFact::default().with_datum_type(DatumType::TDim).with_shape(shapefact![
             1,
             1,
             (TDim::stream() - 2),
             16
         ]);
-        let any = TensorFact::default();
+        let any = InferenceFact::default();
 
         let mut op = Squeeze::new(Some(vec![1]));
         let inferred = op.infer_facts(tvec!(&input), tvec!(&any), tvec!()).unwrap();
 
-        let expect: TVec<_> = tvec!(TensorFact::default()
+        let expect: TVec<_> = tvec!(InferenceFact::default()
             .with_datum_type(DatumType::TDim)
             .with_shape(shapefact![1, (TDim::stream() - 2), 16]));
 

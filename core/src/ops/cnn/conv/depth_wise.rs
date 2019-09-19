@@ -23,7 +23,7 @@ where
         format!("Conv::DepthWise<{:?}>", T::datum_type()).into()
     }
 
-    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let n_output_points = self.patch.output_shape.iter().cloned().product::<usize>();
         Ok(tvec!((
             Cost::FMA(T::datum_type()),
@@ -84,7 +84,7 @@ where
 {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))
     }
 }

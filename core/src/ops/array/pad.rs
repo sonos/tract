@@ -124,7 +124,7 @@ impl InferenceRulesOp for Pad {
 impl TypedOp for Pad {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
         for (ix, (b, e)) in self.pads.iter().enumerate() {
             fact.shape.set_dim(ix, fact.shape.dim(ix).clone() + *b + *e)?
@@ -302,7 +302,7 @@ impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
 }
 
 impl<T: Datum + Copy> TypedOp for PulsePad<T> {
-    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -310,7 +310,7 @@ impl<T: Datum + Copy> TypedOp for PulsePad<T> {
 }
 
 impl<T: Datum + Copy> PulsedOp for PulsePad<T> {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedTensorFact]) -> TractResult<TVec<PulsedTensorFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.dim += (self.before + self.after).to_dim();
         fact.delay -= self.before;
