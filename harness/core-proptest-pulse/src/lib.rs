@@ -27,6 +27,7 @@ fn proptest_regular_against_pulse(
     let model = model.into_normalized().unwrap();
 
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
+    dbg!(&pulsed);
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
     let output_stream_axis = output_fact.axis;
@@ -86,11 +87,11 @@ proptest! {
         use tract_core::ops::array::Slice;
         let full_len = input_len + begin + end;
         let mut model = InferenceModel::default();
-        let _ = model
+        let a = model
             .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
             .unwrap();
-        model.chain_default("slice", Slice::new(0, begin as usize, (input_len + begin) as usize)).unwrap();
-        model.auto_outputs().unwrap();
+        let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
+        model.set_output_outlets(&slice)?;
 
         let input = Array1::range(1.0f32, full_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -100,12 +101,12 @@ proptest! {
     fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
         use tract_core::ops::array::{ Pad, PadMode };
         let mut model = InferenceModel::default();
-        let _ = model
+        let a = model
             .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
             .unwrap();
-        model.chain_default("pad", Pad::new(vec![(begin as _, end as _)],
-            PadMode::Constant(Arc::new(Tensor::from(-1f32))))).unwrap();
-        model.auto_outputs().unwrap();
+        let pad = model.wire_node("pad",Pad::new(vec![(begin as _, end as _)],
+            PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a])?;
+        model.set_output_outlets(&pad)?;
 
         let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -123,12 +124,11 @@ fn test_simple_conv() {
 
     let mut model = InferenceModel::default();
     let ker = model.add_const("kernel", tensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();
-    let _ = model
+    let a = model
         .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S))) // NCT
         .unwrap();
 
-    let conv = model.chain_default("conv", Conv::default()).unwrap();
-    model.add_edge(ker, InletId::new(conv, 1)).unwrap();
+    model.wire_node("conv", Conv::default(), &[a, ker]).unwrap();
     model.auto_outputs().unwrap();
 
     let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]);
@@ -139,8 +139,8 @@ fn test_simple_conv() {
 fn test_crop_after_1() {
     use tract_core::ops::array::Slice;
     let mut model = InferenceModel::default();
-    let _ = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
-    model.chain_default("slice", Slice::new(0, 0, 0)).unwrap();
+    let a = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    model.wire_node("slice", Slice::new(0, 0, 0), &[a]).unwrap();
     model.auto_outputs().unwrap();
 
     let input = arr1(&[1.0]);
@@ -151,11 +151,12 @@ fn test_crop_after_1() {
 fn test_pad_after_1() {
     use tract_core::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let _ = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let a = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
     model
-        .chain_default(
+        .wire_node(
             "pad",
             Pad::new(vec![(0, 1)], PadMode::Constant(Arc::new(Tensor::from(-1f32)))),
+            &[a],
         )
         .unwrap();
     model.auto_outputs().unwrap();
@@ -168,14 +169,17 @@ fn test_pad_after_1() {
 fn test_pad_before_1() {
     use tract_core::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let _ = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let a = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
     model
-        .chain_default(
+        .wire_node(
             "pad",
             Pad::new(vec![(1, 0)], PadMode::Constant(Arc::new(Tensor::from(-1f32)))),
+            &[a],
         )
         .unwrap();
     model.auto_outputs().unwrap();
+
+    dbg!(&model);
 
     let input = arr1(&[1.0]);
     proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
@@ -185,11 +189,12 @@ fn test_pad_before_1() {
 fn test_pad_before_2() {
     use tract_core::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let _ = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let a = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
     model
-        .chain_default(
+        .wire_node(
             "pad",
             Pad::new(vec![(1, 0)], PadMode::Constant(Arc::new(Tensor::from(-1f32)))),
+            &[a],
         )
         .unwrap();
     model.auto_outputs().unwrap();

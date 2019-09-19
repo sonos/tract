@@ -212,9 +212,8 @@ impl TypedOp for Conv {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(op) = self.to_unary(&*inputs)? {
             let mut patch = TypedModelPatch::default();
-            patch.tap_model(model, node.inputs[0])?;
-            let mut output: OutletId =
-                patch.chain(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?.into();
+            let tap = patch.tap_model(model, node.inputs[0])?;
+            let mut output: OutletId = patch.wire_node(&*node.name, op, &[tap])?[0];
             if let Some(bias) = node.inputs.get(2) {
                 let mut tap = patch.tap_model(model, *bias)?;
                 if self.data_format == DataFormat::NCHW {

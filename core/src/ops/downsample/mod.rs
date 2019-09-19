@@ -128,14 +128,11 @@ impl TypedOp for Downsample {
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
-        if fact.pulse() % self.stride != 0 {
+        let pulse = target.outlet_fact(input)?.pulse();
+        if pulse % self.stride != 0 {
             bail!("Pulsificaton requires pulse to be a stride multiple")
         }
-        fact.shape[self.axis] /= self.stride;
-        fact.dim = fact.dim.div_ceil(self.stride.to_dim());
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
+        target.wire_node(&*node.name, self.clone(), &[input])
     }
 
     typed_op_as_op!();

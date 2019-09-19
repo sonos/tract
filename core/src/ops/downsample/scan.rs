@@ -17,13 +17,11 @@ pub fn pull_downsample_over_scan(
         .into_iter()
         .enumerate()
         .map(|(ix, oo)| {
-            let ds = inner_model.chain_after(
-                oo,
+            Ok(inner_model.wire_node(
                 format!("{}-{}", &down_node.name, ix),
                 down_op.clone(),
-                tvec!(down_op.transform_fact(inner_model.outlet_fact(oo)?)?),
-            )?;
-            Ok(OutletId::new(ds, 0))
+                &[oo],
+            )?[0])
         })
         .collect::<TractResult<Vec<_>>>()?;
     inner_model.set_output_outlets(&*downsample_outputs)?;
@@ -77,28 +75,17 @@ pub fn pull_downsample_over_scan(
     }
 
     let mut patch = TypedModelPatch::default();
-    let scan_id = patch.add_node(
-        scan_node.name.clone(),
-        new_scan,
-        model
-            .node_output_facts(scan_node.id)?
-            .into_iter()
-            .map(|f| down_op.transform_fact(f))
-            .collect::<TractResult<_>>()?,
-    )?;
+    let mut inputs = tvec!();
     for (ix, &i) in scan_node.inputs.iter().enumerate() {
-        patch.tap_model(model, i)?;
-        let ds = patch.chain(
-            format!("{}-{}", down_node.name, ix),
-            down_op.clone(),
-            tvec!(down_op.transform_fact(model.outlet_fact(i)?)?),
-        )?;
-        patch.add_edge(OutletId::new(ds, 0), InletId::new(scan_id, ix))?;
+        let tap = patch.tap_model(model, i)?;
+        let ds = patch.wire_node(format!("{}-{}", down_node.name, ix), down_op.clone(), &[tap])?[0];
+        inputs.push(ds);
     }
+    let scan = patch.wire_node(&*scan_node.name, new_scan, &inputs)?;
     for ix in 0..scan_node.outputs.len() {
         // FIXME need to check earlier on that all output are followed by a ds
         let succ = scan_node.outputs[ix].successors[0].node;
-        patch.shunt_outside(OutletId::new(succ, 0), OutletId::new(scan_id, ix))?;
+        patch.shunt_outside(OutletId::new(succ, 0), scan[ix])?;
     }
     Ok(Some(patch))
 }

@@ -186,8 +186,7 @@ impl TypedOp for Typed {
         output_fact.delay = input_fact.delay;
         let mut op = self.clone();
         op.skip = input_fact.delay;
-        let id = target.chain_after(input, &*node.name, op, tvec!(output_fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
+        target.wire_node(&*node.name, op, &[input])
     }
 
     fn codegen(

@@ -67,9 +67,7 @@ impl TypedOp for ElementWiseOp {
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?.clone();
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
+        target.wire_node(&*node.name, self.clone(), &[input])
     }
 
     typed_op_as_op!();

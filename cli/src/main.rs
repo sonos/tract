@@ -494,12 +494,13 @@ impl Parameters {
             );
             let mut patch = InferenceModelPatch::default();
             for input in raw_model.input_outlets()? {
-                patch.tap_model(&raw_model, *input)?;
-                let pad = patch.chain_default(
+                let tap = patch.tap_model(&raw_model, *input)?;
+                let pad = patch.wire_node(
                     format!("{}-pad", raw_model.node(input.node).name),
                     op.clone(),
-                )?;
-                patch.shunt_outside(*input, OutletId::new(pad, 0))?;
+                    &[tap]
+                )?[0];
+                patch.shunt_outside(*input, pad)?;
             }
             patch.apply(&mut raw_model)?;
         }

@@ -133,14 +133,11 @@ impl TypedOp for Concat {
                 if input.konst.is_none() {
                     let mut tap = patch.tap_model(model, node.inputs[ix])?;
                     if model.outlet_fact(node.inputs[ix])?.datum_type != super_type {
-                        let mut fact = model.outlet_fact(node.inputs[ix])?.clone();
-                        fact.datum_type = super_type;
-                        let cast = patch.chain(
+                        tap = patch.wire_node(
                             format!("{}-Cast-{}", node.name, ix),
                             crate::ops::cast::Cast::new(super_type),
-                            tvec!(fact),
-                        )?;
-                        tap = OutletId::new(cast, 0);
+                            &[tap]
+                        )?[0];
                     }
                     patch.add_edge(tap, InletId::new(node_id, inlet_slot))?;
                     inlet_slot += 1;
@@ -313,8 +310,8 @@ impl NormConcat {
         if node.inputs.len() > 1 {
             bail!("Concat can not pulse more than on input on concat axis")
         }
-        let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
+        let mut input = mapping[&node.inputs[0]];
+        let fact = target.outlet_fact(input)?.clone();
         assert_eq!(fact.axis, self.axis);
         let var_index = self.slices.iter().position(|s| s.is_var()).unwrap();
         let pre_owned = self.slices[0..var_index]
@@ -332,25 +329,15 @@ impl NormConcat {
             post_owned.iter().map(|t| t.to_array_view::<T>()).collect::<TractResult<TVec<_>>>()?;
         let post = T::stack_views(self.axis, &*post_views)?;
 
-        let mut prec = input;
         let before = pre.shape()[self.axis];
-        let after = post.shape()[self.axis];
         if fact.delay < before {
-            let buffer_op = Delay::new(&fact.clone(), before - fact.delay, 0);
-            fact.delay = before;
-            let id = target.chain_after(
-                prec,
+            input = target.wire_node(
                 format!("{}/Delay", node.name),
-                buffer_op,
-                tvec!(fact.clone()),
-            )?;
-            prec = OutletId::new(id, 0);
+                Delay::new(&fact.clone(), before - fact.delay, 0),
+                &[input])?[0];
         }
-        let main_op = PulsedSameAxisConcat::new(self.axis, pre, post, fact.delay, fact.dim.clone());
-        fact.dim += (before + after).to_dim();
-        fact.delay -= before;
-        let id = target.chain_after(prec, &*node.name, main_op, tvec!(fact))?;
-        return Ok(tvec!(OutletId::new(id, 0)));
+        let main_op = PulsedSameAxisConcat::new(self.axis, pre, post, fact.delay.saturating_sub(before), fact.dim);
+        target.wire_node(&*node.name, main_op, &[input])
     }
 }
 

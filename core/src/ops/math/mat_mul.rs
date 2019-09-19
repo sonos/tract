@@ -398,23 +398,11 @@ impl TypedOp for MatMulUnary {
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
+        let fact = target.outlet_fact(input)?;
         if fact.axis >= fact.shape.len() - 1 {
             bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
         }
-        let (_, _, cshape_pulse) =
-            infer_shapes(fact.shape.clone(), self.a.shape().into(), false, false, false)?;
-        let (_, _, cshape_full) = infer_shapes(
-            fact.streaming_shape().into(),
-            self.a.shape().iter().map(|d| d.to_dim()).collect(),
-            false,
-            false,
-            false,
-        )?;
-        fact.shape = cshape_pulse;
-        fact.dim = cshape_full[fact.axis].clone();
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
+        target.wire_node(&*node.name, self.clone(), &[input])
     }
 
     fn codegen(

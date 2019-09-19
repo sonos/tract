@@ -103,29 +103,21 @@ impl TypedOp for InferenceBinOp {
         let mut patch = TypedModelPatch::default();
         let operating_datum_type =
             self.0.operating_datum_type(facts[0].datum_type, facts[1].datum_type)?;
-        let bin = patch.add_node(
-            &*node.name,
-            TypedBinOp(self.0.clone()),
-            tvec!(node.outputs[0].fact.clone()),
-        )?;
-        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(bin, 0))?;
+        let mut inputs = tvec!();
         for i in 0..2 {
             let fact = model.node_input_facts(node.id)?[i];
-            let tap = patch.tap_model(model, node.inputs[i])?;
+            let mut input = patch.tap_model(model, node.inputs[i])?;
             if fact.datum_type != operating_datum_type {
-                let mut fact = fact.clone();
-                fact.datum_type = operating_datum_type;
-                let cast = patch.chain_after(
-                    tap,
+                input = patch.wire_node(
                     format!("{}Cast{}", &*node.name, i),
                     super::cast::Cast::new(operating_datum_type),
-                    tvec!(fact),
-                )?;
-                patch.add_edge(OutletId::new(cast, 0), InletId::new(bin, i))?;
-            } else {
-                patch.add_edge(tap, InletId::new(bin, i))?;
+                    &[input],
+                )?[0];
             }
+            inputs.push(input);
         }
+        let res = patch.wire_node(&*node.name, TypedBinOp(self.0.clone()), &*inputs)?[0];
+        patch.shunt_outside(OutletId::new(node.id, 0), res)?;
         Ok(Some(patch))
     }
 
@@ -335,41 +327,7 @@ impl TypedOp for TypedBinOp {
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        use crate::pulse::delay::Delay;
-        let delay = (0..2)
-            .map(|ix| target.outlet_fact(mapping[&node.inputs[ix]]).unwrap().delay)
-            .max()
-            .unwrap();
-        let mut output_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
-        output_fact.shape = crate::broadcast::multi_broadcast(&[
-            &target.outlet_fact(mapping[&node.inputs[0]])?.shape,
-            &target.outlet_fact(mapping[&node.inputs[1]])?.shape,
-        ])
-        .unwrap();
-        output_fact.delay = delay;
-
-        let id = target.add_node(&*node.name, self.clone(), tvec!(output_fact))?;
-        for ix in 0..2 {
-            let input = mapping[&node.inputs[ix]];
-            let input_delay = target.outlet_fact(input)?.delay;
-            let source = if input_delay < delay {
-                let add_delay = delay - input_delay;
-                let fact = target.outlet_fact(input)?.clone();
-                let mut fixed_fact = fact.clone();
-                fixed_fact.delay += add_delay;
-                let id = target.chain_after(
-                    mapping[&node.inputs[ix]],
-                    format!("{}/Delay", &*node.name),
-                    Delay::new(&fact, add_delay, 0),
-                    tvec!(fixed_fact),
-                )?;
-                OutletId::new(id, 0)
-            } else {
-                input
-            };
-            target.add_edge(source, InletId::new(id, ix))?;
-        }
-        Ok(tvec!(OutletId::new(id, 0)))
+        pulsify_bin(node, self, target, mapping)
     }
 
     typed_op_as_op!();
@@ -389,6 +347,34 @@ impl PulsedOp for TypedBinOp {
 
     pulsed_op_as_op!();
     pulsed_op_to_typed_op!();
+}
+
+fn pulsify_bin(
+    node: &NormalizedNode,
+    op: &dyn PulsedOp,
+    target: &mut PulsedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+) -> TractResult<TVec<OutletId>> {
+    use crate::pulse::delay::Delay;
+    let delay = (0..2)
+        .map(|ix| target.outlet_fact(mapping[&node.inputs[ix]]).unwrap().delay)
+        .max()
+        .unwrap();
+    let mut inputs = tvec!();
+    for ix in 0..2 {
+        let mut input = mapping[&node.inputs[ix]];
+        let fact = target.outlet_fact(input)?.clone();
+        if fact.delay < delay {
+            let add_delay = delay - fact.delay;
+            input = target.wire_node(
+                format!("{}/Delay", &*node.name),
+                Delay::new(&fact, add_delay, 0),
+                &[input],
+            )?[0];
+        }
+        inputs.push(input);
+    }
+    target.wire_node(&*node.name, objekt::clone_box(op), &*inputs)
 }
 
 #[derive(Debug, Clone, new)]
@@ -476,10 +462,7 @@ impl TypedOp for UnaryOp {
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
-        fact.datum_type = self.a.datum_type();
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
+        target.wire_node(&*node.name, self.clone(), &[input])
     }
 
     typed_op_as_op!();
@@ -493,7 +476,8 @@ impl PulsedOp for UnaryOp {
         let mut fact = inputs[0].clone();
         fact.datum_type =
             self.mini_op.result_datum_type(inputs[0].datum_type, self.a.datum_type())?;
-        fact.shape = crate::broadcast::multi_broadcast(&[&inputs[0].shape, &self.a.shape().into()]).unwrap();
+        fact.shape =
+            crate::broadcast::multi_broadcast(&[&inputs[0].shape, &self.a.shape().into()]).unwrap();
         Ok(tvec!(fact))
     }
 
@@ -566,35 +550,7 @@ impl TypedOp for MergeOp {
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        use crate::pulse::delay::Delay;
-        let delay = (0..2)
-            .map(|ix| target.outlet_fact(mapping[&node.inputs[ix]]).unwrap().delay)
-            .max()
-            .unwrap();
-        let mut output_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
-        output_fact.delay = delay;
-        let id = target.add_node(&*node.name, self.clone(), tvec!(output_fact))?;
-        for ix in 0..2 {
-            let input = mapping[&node.inputs[ix]];
-            let input_delay = target.outlet_fact(input)?.delay;
-            let source = if input_delay < delay {
-                let add_delay = delay - input_delay;
-                let fact = target.outlet_fact(input)?.clone();
-                let mut fixed_fact = fact.clone();
-                fixed_fact.delay += add_delay;
-                let id = target.chain_after(
-                    mapping[&node.inputs[ix]],
-                    format!("{}/Delay", &*node.name),
-                    Delay::new(&fact, add_delay, 0),
-                    tvec!(fixed_fact),
-                )?;
-                OutletId::new(id, 0)
-            } else {
-                input
-            };
-            target.add_edge(source, InletId::new(id, ix))?;
-        }
-        Ok(tvec!(OutletId::new(id, 0)))
+        pulsify_bin(node, self, target, mapping)
     }
 
     typed_op_as_op!();
