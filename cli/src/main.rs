@@ -121,8 +121,9 @@ fn main() {
         (@arg partial: --partial "Before analyse, eliminate dead branches")
 
         (@arg pass: --pass +takes_value
-            default_value("declutter")
-            possible_values(&["load", "analyse", "incorporate", "type", "declutter"])
+            possible_values(&["load", "analyse", "incorporate", "type", "declutter",
+                            "pulse-normalized", "pulse", "pulse-to-type", "pulse-declutter",
+                            "optimize"])
          "Pass to stop preprocessing after.")
 
         (@arg optimize: -O --optimize "Optimize before running")
@@ -569,73 +570,78 @@ impl Parameters {
             }
         }
 
-        let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
-
         if matches.is_present("partial") {
             raw_model = raw_model.eliminate_dead_branches()?;
         }
 
+        let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
         let mut typed_model = None;
-        let mut tract_model: Box<dyn Model> = {
-            let stop_at = matches.value_of("pass").unwrap();
+        let normalized_model: Option<NormalizedModel> = None;
+
+        let tract_model: Box<dyn Model> = {
+            let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
+                "optimize"
+            } else if pulse.is_some() {
+                "pulse-declutter"
+            } else {
+                "declutter"
+            });
+            info!("Will stop at {}", stop_at);
+
             (|| -> CliResult<Box<dyn Model>> {
+                info!("Running 'load'");
                 if stop_at == "load" {
                     return Ok(Box::new(raw_model) as _);
                 }
-                info!("Running analyse");
+                info!("Running 'analyse'");
                 raw_model.analyse(!matches.is_present("analyse_fail_fast"))?;
                 if stop_at == "analyse" {
                     return Ok(Box::new(raw_model) as _);
                 }
-                info!("Running incorporate");
+                info!("Running 'incorporate'");
                 let model = raw_model.incorporate()?;
                 if stop_at == "incorporate" {
                     return Ok(Box::new(model) as _);
                 }
-                info!("Running typing");
+                info!("Running 'type'");
                 let model = model.into_typed()?;
                 typed_model = Some(model.clone());
                 if stop_at == "type" {
                     return Ok(Box::new(model) as _);
                 }
-                info!("Running declutter");
-                let model = model.declutter()?;
+                info!("Running 'declutter'");
+                let mut model = model.declutter()?;
+                typed_model = Some(model.clone());
+                if stop_at == "declutter" {
+                    return Ok(Box::new(model) as _);
+                }
+                if let Some(pulse) = pulse {
+                    info!("Running 'pulse-normalize'");
+                    let normalized_model = model.clone().into_normalized()?;
+                    if stop_at == "pulse-normalize" {
+                        return Ok(Box::new(normalized_model) as _);
+                    }
+                    info!("Running 'pulse' ({})", pulse);
+                    let pulsed = ::tract_core::pulse::PulsedModel::new(&normalized_model, pulse)?;
+                    if stop_at == "pulse" {
+                        return Ok(Box::new(pulsed) as _);
+                    }
+                    info!("Running 'pulse-to-type'");
+                    model = pulsed.into_typed()?;
+                    if stop_at == "pulse-to-type" {
+                        return Ok(Box::new(model) as _);
+                    }
+                    info!("Running 'pulse-declutter'");
+                    model = model.declutter()?;
+                    if stop_at == "pulse-declutter" {
+                        return Ok(Box::new(model) as _);
+                    }
+                }
+                info!("Running 'optimize'");
+                model = model.clone().codegen()?;
                 Ok(Box::new(model) as _)
             })()?
         };
-
-        info_usage("model preprocessed");
-
-        if matches.is_present("optimize")
-            || matches.is_present("declutter")
-            || pulse.is_some()
-            || matches.subcommand().0 == "optimize-check"
-        {
-            if let Ok(typed) = tract_model.downcast::<TypedModel>() {
-                info!("Declutter");
-                tract_model = Box::new(typed.declutter()?);
-            } else {
-                bail!("Can not run optimize without analyse")
-            }
-        }
-
-        let mut normalized_model: Option<NormalizedModel> = None;
-        if let (Some(pulse), Some(model)) = (pulse, tract_model.downcast_ref::<TypedModel>()) {
-            info!("Convert to normalized net");
-            normalized_model = Some(model.clone().into_normalized()?);
-            info!("Pulsify {}", pulse);
-            let pulsed =
-                ::tract_core::pulse::PulsedModel::new(normalized_model.as_ref().unwrap(), pulse)?;
-            tract_model = Box::new(pulsed);
-        };
-
-        if matches.is_present("optimize") {
-            if let Some(typed) = tract_model.downcast_ref::<TypedModel>() {
-                tract_model = Box::new(typed.clone().codegen()?);
-            } else if let Some(pulsed) = tract_model.downcast_ref::<PulsedModel>() {
-                tract_model = Box::new(pulsed.clone().into_typed()?.declutter()?.codegen()?);
-            }
-        }
 
         info!("Model ready");
         info_usage("model ready");

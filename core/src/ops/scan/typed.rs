@@ -185,6 +185,7 @@ impl TypedOp for Typed {
         output_fact.delay = input_fact.delay;
         let mut op = self.clone();
         op.skip = input_fact.delay;
+        op.output_mapping.iter_mut().find(|om| om.full_slot == Some(0)).unwrap().full_dim_hint = None;
         target.wire_node(&*node.name, op, &[input])
     }
 
