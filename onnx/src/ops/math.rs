@@ -239,7 +239,6 @@ impl InferenceRulesOp for IsNan {
 }
 
 impl TypedOp for IsNan {
-
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(bool::datum_type(), inputs[0].shape.clone())?))
     }

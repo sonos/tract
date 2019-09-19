@@ -301,7 +301,7 @@ pub mod test {
         K: MatMatMulKer<T>,
         T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
     {
-        let a:Vec<T> = (1..=(k * K::mr())).map(|x| (x as f32).into()).collect();
+        let a: Vec<T> = (1..=(k * K::mr())).map(|x| (x as f32).into()).collect();
         let pa = Buffer::realign_data(&a, K::alignment_bytes_packed_a());
         let b: Vec<T> = (0..(k * t)).map(|x| (x as f32).into()).collect();
         let len = K::mr() * K::nr();

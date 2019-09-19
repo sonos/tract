@@ -123,7 +123,7 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
                         let slice = patch.wire_node(
                             &*node.name,
                             Slice { axis: self.axis, start: start - offset, end: end - offset },
-                            &[tap]
+                            &[tap],
                         )?[0];
                         patch.shunt_outside(OutletId::new(node.id, 0), slice)?;
                         return Ok(Some(patch));
@@ -145,7 +145,7 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?.clone();
-        let op:Box<dyn PulsedOp> = if self.axis == fact.axis {
+        let op: Box<dyn PulsedOp> = if self.axis == fact.axis {
             let skip = self.start.to_integer()? as usize;
             let take = (self.end.clone() - &self.start).to_dim();
             PulsedAxisSlice::new(self.axis, skip, take).into()
@@ -159,10 +159,7 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
 }
 
 impl<D: DimLike + ToDim> PulsedOp for Slice<D> {
-    fn pulsed_output_facts(
-        &self,
-        inputs: &[&PulsedFact],
-    ) -> TractResult<TVec<PulsedFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.delay += self.start.to_integer()? as usize;
         fact.dim = (self.end.clone() - &self.start).to_dim();
@@ -200,10 +197,7 @@ impl StatelessOp for PulsedAxisSlice {
 }
 
 impl PulsedOp for PulsedAxisSlice {
-    fn pulsed_output_facts(
-        &self,
-        inputs: &[&PulsedFact],
-    ) -> TractResult<TVec<PulsedFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.delay += self.skip;
         fact.dim = self.take.clone();

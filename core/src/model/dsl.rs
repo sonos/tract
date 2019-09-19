@@ -20,7 +20,11 @@ where
 }
 
 impl ModelSpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
-    fn add_source(&mut self, name: impl Into<String>, fact: InferenceFact) -> TractResult<OutletId> {
+    fn add_source(
+        &mut self,
+        name: impl Into<String>,
+        fact: InferenceFact,
+    ) -> TractResult<OutletId> {
         let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
         let id = OutletId::new(id, 0);
         self.inputs.push(id);
@@ -33,11 +37,7 @@ impl ModelSpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
 }
 
 impl ModelSpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
-    fn add_source(
-        &mut self,
-        name: impl Into<String>,
-        fact: TypedFact,
-    ) -> TractResult<OutletId> {
+    fn add_source(&mut self, name: impl Into<String>, fact: TypedFact) -> TractResult<OutletId> {
         let id =
             self.add_node(name, crate::ops::source::TypedSource::new(fact.clone()), tvec!(fact))?;
         let id = OutletId::new(id, 0);
@@ -51,11 +51,7 @@ impl ModelSpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
 }
 
 impl ModelSpecialOps<PulsedFact, Box<dyn TypedOp>> for PulsedModel {
-    fn add_source(
-        &mut self,
-        name: impl Into<String>,
-        fact: PulsedFact,
-    ) -> TractResult<OutletId> {
+    fn add_source(&mut self, name: impl Into<String>, fact: PulsedFact) -> TractResult<OutletId> {
         let id =
             self.add_node(name, crate::ops::source::PulsedSource::new(fact.clone()), tvec!(fact))?;
         let id = OutletId::new(id, 0);

@@ -136,7 +136,7 @@ impl TypedOp for Concat {
                         tap = patch.wire_node(
                             format!("{}-Cast-{}", node.name, ix),
                             crate::ops::cast::Cast::new(super_type),
-                            &[tap]
+                            &[tap],
                         )?[0];
                     }
                     patch.add_edge(tap, InletId::new(node_id, inlet_slot))?;
@@ -334,9 +334,16 @@ impl NormConcat {
             input = target.wire_node(
                 format!("{}/Delay", node.name),
                 Delay::new(&fact.clone(), before - fact.delay, 0),
-                &[input])?[0];
+                &[input],
+            )?[0];
         }
-        let main_op = PulsedSameAxisConcat::new(self.axis, pre, post, fact.delay.saturating_sub(before), fact.dim);
+        let main_op = PulsedSameAxisConcat::new(
+            self.axis,
+            pre,
+            post,
+            fact.delay.saturating_sub(before),
+            fact.dim,
+        );
         target.wire_node(&*node.name, main_op, &[input])
     }
 }
@@ -465,7 +472,6 @@ impl<T: Datum> PulsedOp for PulsedSameAxisConcat<T> {
     pulsed_op_as_op!();
     pulsed_op_to_typed_op!();
 }
-
 
 #[derive(Clone, Debug, Default)]
 pub struct PulsedSameAxisConcatState<T: Datum> {

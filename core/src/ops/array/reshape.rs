@@ -77,7 +77,8 @@ impl InferenceRulesOp for Reshape {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         if let Some(ref shape) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
-            let input_shape:TVec<TDim> = target.outlet_fact(mapping[&node.inputs[0]])?.shape.to_tvec();
+            let input_shape: TVec<TDim> =
+                target.outlet_fact(mapping[&node.inputs[0]])?.shape.to_tvec();
             let shape_spec: TVec<isize> =
                 shape.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&i| i as isize).collect();
             let shape = self.compute_shape(&input_shape, &shape_spec)?;
@@ -111,7 +112,8 @@ impl Op for TypedReshape {
 impl StatelessOp for TypedReshape {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let shape:TVec<usize> = self.shape.iter().map(|d| Ok(d.to_integer()? as usize)).collect::<TractResult<_>>()?;
+        let shape: TVec<usize> =
+            self.shape.iter().map(|d| Ok(d.to_integer()? as usize)).collect::<TractResult<_>>()?;
         let o = unsafe { input.into_tensor().into_shape(&*shape)?.into_arc_tensor() };
         Ok(tvec!(o))
     }
@@ -131,13 +133,18 @@ impl TypedOp for TypedReshape {
     ) -> TractResult<Option<TypedModelPatch>> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         if input_fact.shape.to_tvec() == self.shape {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
-        } else if let Ok(shape) = self.shape.iter().map(|d| Ok(d.to_integer()? as usize)).collect::<TractResult<_>>() {
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, FiniteReshape::new(shape))?))
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+        } else if let Ok(shape) =
+            self.shape.iter().map(|d| Ok(d.to_integer()? as usize)).collect::<TractResult<_>>()
+        {
+            return Ok(Some(TypedModelPatch::single_unary_op(
+                model,
+                node,
+                FiniteReshape::new(shape),
+            )?));
         }
         Ok(None)
     }
-
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -173,4 +180,3 @@ impl TypedOp for FiniteReshape {
 
     typed_op_as_op!();
 }
-

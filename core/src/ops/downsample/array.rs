@@ -92,8 +92,10 @@ mod tests {
         let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
         let model = {
             let mut model = InferenceModel::default();
-            let input = model.add_source("input", InferenceFact::dt_shape(i32::datum_type(), &[len]))?;
-            let crop = model.wire_node("crop", ops::array::Slice::new(0, left, len - right), &[input])?;
+            let input =
+                model.add_source("input", InferenceFact::dt_shape(i32::datum_type(), &[len]))?;
+            let crop =
+                model.wire_node("crop", ops::array::Slice::new(0, left, len - right), &[input])?;
             let down = model.wire_node("down", Downsample::new(0, stride, modulo), &crop)?;
             model.set_output_outlets(&down)?;
             model

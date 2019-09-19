@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 use crate::internal::*;
 use crate::model::order::eval_order_for_nodes;
-use crate::model::{ModelImpl, OutletId, Fact};
+use crate::model::{Fact, ModelImpl, OutletId};
 
 #[derive(Debug, Default)]
 pub struct SessionState {

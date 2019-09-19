@@ -72,13 +72,14 @@ impl PadPlusConvProblem {
             .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S)))
             .unwrap();
         if self.pad_before > 0 || self.pad_after > 0 {
-            wire = model.wire_node(
+            wire = model
+                .wire_node(
                     "pad",
                     Pad::new(
                         vec![(0, 0), (0, 0), (self.pad_before, self.pad_after)],
                         self.pad_mode.clone(),
                     ),
-                    &[wire]
+                    &[wire],
                 )
                 .unwrap()[0];
         }

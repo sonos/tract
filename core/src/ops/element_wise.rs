@@ -57,7 +57,6 @@ impl TypedOp for ElementWiseOp {
         Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
     }
 
-
     fn pulsify(
         &self,
         _source: &NormalizedModel,

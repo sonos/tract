@@ -334,10 +334,7 @@ impl TypedOp for TypedBinOp {
 }
 
 impl PulsedOp for TypedBinOp {
-    fn pulsed_output_facts(
-        &self,
-        inputs: &[&PulsedFact],
-    ) -> TractResult<TVec<PulsedFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
         fact.shape =
@@ -469,10 +466,7 @@ impl TypedOp for UnaryOp {
 }
 
 impl PulsedOp for UnaryOp {
-    fn pulsed_output_facts(
-        &self,
-        inputs: &[&PulsedFact],
-    ) -> TractResult<TVec<PulsedFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type =
             self.mini_op.result_datum_type(inputs[0].datum_type, self.a.datum_type())?;
@@ -557,10 +551,7 @@ impl TypedOp for MergeOp {
 }
 
 impl PulsedOp for MergeOp {
-    fn pulsed_output_facts(
-        &self,
-        inputs: &[&PulsedFact],
-    ) -> TractResult<TVec<PulsedFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
         fact.shape =
@@ -602,10 +593,7 @@ impl TypedOp for MergeOpUnicast {
 }
 
 impl PulsedOp for MergeOpUnicast {
-    fn pulsed_output_facts(
-        &self,
-        inputs: &[&PulsedFact],
-    ) -> TractResult<TVec<PulsedFact>> {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
         fact.shape = inputs[0].shape.clone();

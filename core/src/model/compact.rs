@@ -1,4 +1,4 @@
-use crate::model::{InletId, ModelImpl, OutletId, Fact};
+use crate::model::{Fact, InletId, ModelImpl, OutletId};
 use crate::ops::Translate;
 use crate::prelude::*;
 use std::collections::HashMap;

@@ -133,8 +133,7 @@ impl TypedOp for Typed {
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }
             if let Some(slot) = output.last_value_slot {
-                outputs
-                    .push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())?));
+                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())?));
             }
         }
         outputs.sort_by_key(|a| a.0);

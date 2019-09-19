@@ -183,7 +183,11 @@ fn get_tensorfact_path(fact: &InferenceFact, path: &[isize]) -> TractResult<Wrap
 }
 
 /// Sets the value at the given path (starting from a InferenceFact).
-fn set_tensorfact_path(fact: &mut InferenceFact, path: &[isize], value: Wrapped) -> TractResult<()> {
+fn set_tensorfact_path(
+    fact: &mut InferenceFact,
+    path: &[isize],
+    value: Wrapped,
+) -> TractResult<()> {
     match path {
         // Set the type of the InferenceFact.
         [0] => {

@@ -271,7 +271,6 @@ pub trait PulsedOp:
 
     /// Deduce output facts from input facts.
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>>;
-
 }
 
 impl
@@ -413,7 +412,7 @@ impl crate::ops::Translate<PulsedFact, Box<dyn PulsedOp>, TypedFact, Box<dyn Typ
         mapping: &HashMap<OutletId, OutletId>,
         _ctx: &(),
     ) -> TractResult<TVec<OutletId>> {
-        let inputs:TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
+        let inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
         target.wire_node(&*node.name, node.op.to_typed(), &*inputs)
     }
 }

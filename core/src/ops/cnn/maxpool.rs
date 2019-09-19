@@ -191,8 +191,7 @@ impl<T: Datum + Float> TypedOp for MaxPoolFixed<T> {
     typed_op_as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut facts =
-            tvec!(TypedFact::dt_shape(T::datum_type(), &*self.output_shape.shape)?);
+        let mut facts = tvec!(TypedFact::dt_shape(T::datum_type(), &*self.output_shape.shape)?);
         if let Some(idt) = self.with_index_outputs {
             facts.push(facts[0].clone());
             facts[1].datum_type = idt;

@@ -475,7 +475,7 @@ impl Parameters {
                 let id = raw_model.add_node(
                     output_name,
                     tract_core::ops::Downsample::new(0, period as _, 0),
-                    tvec!(InferenceFact::default())
+                    tvec!(InferenceFact::default()),
                 )?;
                 raw_model.add_edge(outputs[0], InletId::new(id, 0))?;
                 outputs[0].node = id;
@@ -498,7 +498,7 @@ impl Parameters {
                 let pad = patch.wire_node(
                     format!("{}-pad", raw_model.node(input.node).name),
                     op.clone(),
-                    &[tap]
+                    &[tap],
                 )?[0];
                 patch.shunt_outside(*input, pad)?;
             }

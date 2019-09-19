@@ -143,7 +143,9 @@ impl PulsedOp for PulsedSource {
     }
 
     fn to_typed(&self) -> Box<dyn TypedOp> {
-        Box::new(TypedSource::new(TypedFact::dt_shape(self.fact.datum_type, &*self.fact.shape).unwrap()))
+        Box::new(TypedSource::new(
+            TypedFact::dt_shape(self.fact.datum_type, &*self.fact.shape).unwrap(),
+        ))
     }
 
     pulsed_op_as_op!();
