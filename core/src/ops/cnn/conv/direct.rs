@@ -77,14 +77,6 @@ impl Op for Direct {
         Ok(None)
     }
 
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let batch = inputs[0].shape.dim(0);
-        Ok(tvec!((
-            Cost::FMA(f32::datum_type()),
-            batch * self.tile.n() * self.tile.m() * self.tile.k()
-        )))
-    }
-
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
@@ -124,9 +116,17 @@ impl StatelessOp for Direct {
 }
 
 impl TypedOp for Direct {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))
     }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let batch = inputs[0].shape.dim(0);
+        Ok(tvec!((
+            Cost::FMA(f32::datum_type()),
+            batch * self.tile.n() * self.tile.m() * self.tile.k()
+        )))
+    }
+
+    typed_op_as_op!();
 }

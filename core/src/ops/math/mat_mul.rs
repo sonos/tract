@@ -209,22 +209,6 @@ impl Op for MatMul {
         "MatMul".into()
     }
 
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let dt = inputs[0].datum_type;
-        let (bc_a_shape, bc_b_shape, bc_c_shape) = infer_shapes(
-            inputs[0].shape.iter().collect(),
-            inputs[1].shape.iter().collect(),
-            self.a_trans,
-            self.b_trans,
-            self.c_trans,
-        )?;
-        let mul = bc_c_shape.iter().rev().skip(2).cloned().product::<TDim>();
-        let m = &bc_a_shape[bc_a_shape.len() - 2 + self.a_trans as usize];
-        let k = &bc_a_shape[bc_a_shape.len() - 1 - self.a_trans as usize];
-        let n = &bc_b_shape[bc_b_shape.len() - 1 - self.b_trans as usize];
-        Ok(tvec!((Cost::FMA(dt), (mul * m * k * n))))
-    }
-
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -304,6 +288,10 @@ impl TypedOp for MatMul {
             return Ok(Some(patch));
         }
         Ok(None)
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        cost(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec(), inputs[0].datum_type, self.a_trans, self.b_trans)
     }
 
     typed_op_as_op!();
@@ -387,6 +375,10 @@ impl TypedOp for MatMulUnary {
             invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
         };
         Ok(invars.into_iter().collect())
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        cost(self.a.shape(), &inputs[0].shape.to_tvec(), self.a.datum_type(), self.a_trans, self.b_trans)
     }
 
     fn pulsify(
@@ -659,7 +651,27 @@ where
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.geo.c_shape)?))
     }
 
+    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let g = &self.geo;
+        Ok(tvec!((Cost::FMA(T::datum_type()), (g.c_shape_prefix.iter().product::<usize>() * g.m * g.k * g.n).into())))
+    }
+
     typed_op_as_op!();
+}
+
+fn cost<A: ToDim + Clone, B:ToDim + Clone>(a: &[A], b: &[B], dt: DatumType, a_trans: bool, b_trans: bool) -> TractResult<TVec<(Cost, TDim)>> {
+    let (bc_a_shape, bc_b_shape, bc_c_shape) = infer_shapes(
+        a.iter().map(|d| d.clone().to_dim()).collect(),
+        b.iter().map(|d| d.clone().to_dim()).collect(),
+        a_trans,
+        b_trans,
+        false
+    )?;
+    let mul = bc_c_shape.iter().rev().skip(2).cloned().product::<TDim>();
+    let m = &bc_a_shape[bc_a_shape.len() - 2 + a_trans as usize];
+    let k = &bc_a_shape[bc_a_shape.len() - 1 - a_trans as usize];
+    let n = &bc_b_shape[bc_b_shape.len() - 1 - b_trans as usize];
+    Ok(tvec!((Cost::FMA(dt), (mul * m * k * n))))
 }
 
 #[cfg(test)]

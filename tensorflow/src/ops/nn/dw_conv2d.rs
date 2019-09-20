@@ -45,25 +45,6 @@ impl Op for DepthwiseConv2d {
         "tf.DepthwiseConv2dNative".into()
     }
 
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let img = inputs[0];
-        let ker = inputs[1].shape.as_finite().ok_or("Can not stream kernel")?;
-        let shape = self.data_format.shape(img.shape.to_tvec());
-        let output_dims = self.padding.compute(
-            shape.hw_dims(),
-            &ker[0..2],
-            &self.dilations[1..3],
-            &self.strides[1..3],
-        );
-        let n_output_points: TDim = output_dims.iter().map(|d| d.output.clone()).product::<TDim>();
-        let kernel_surface = ker[0] * ker[1];
-        let out_channels = ker[2] * ker[3];
-        Ok(tvec!((
-            Cost::FMA(f32::datum_type()),
-            shape.n().clone() * out_channels * n_output_points * kernel_surface
-        )))
-    }
-
     not_a_typed_op!(); // FIXME translate to core as to_fixed instead of declutter, get rid of typed op impl
 }
 

@@ -11,9 +11,12 @@ bin_to_super_type!(add, Add, flip:commute,
 bin_to_super_type!(sub, Sub, flip:flip_sub,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 #[inline]
-bin_to_super_type!(mul, Mul, flip:commute,
+bin_to_super_type!(mul, Mul,
+        cost: |dt| tvec!((Cost::FMA(dt), 1)),
+        flip:commute,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() * b);
 bin_to_super_type!(div, Div,
+        cost: |dt| tvec!((Cost::Div(dt), 1)),
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() / b);
 bin_to_super_type!(rem, Rem,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() % b);
@@ -72,7 +75,8 @@ element_wise!(cosh, Cosh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| 
 element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sinh()));
 element_wise!(tanh, Tanh,
    [f32] => |_, xs| <f32 as FloatLike>::tanh().run(xs),
-   [f16, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.tanh())
+   [f16, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.tanh());
+   cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
 element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.acosh()));
 element_wise!(asinh, Asinh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.asinh()));

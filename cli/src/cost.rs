@@ -25,7 +25,7 @@ fn handle_t(model: &TypedModel, params: &Parameters, options: DisplayOptions) ->
             .with_graph_def(&params.graph)?;
     for i in ::tract_core::model::eval_order(&model)? {
         let inputs = model.node_input_facts(i)?;
-        let cost = model.nodes()[i].op().cost(&*inputs)?;
+        let cost = model.nodes()[i].op.cost(&*inputs)?;
         if !cost.is_empty() {
             let rows = cost
                 .iter()

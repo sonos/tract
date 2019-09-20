@@ -60,6 +60,7 @@ pub enum Validation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Cost {
+    Div(DatumType),
     FMA(DatumType),
 }
 
@@ -144,13 +145,6 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Ok(None)
     }
 
-    /// Computes a cost hint of the operation.
-    ///
-    /// Each pair is a type of operation and a number per call on eval.
-    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        Ok(tvec!())
-    }
-
     /// Nested models, with label (for audit).
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![]
@@ -208,6 +202,13 @@ pub trait TypedOp:
         _node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
+    }
+
+    /// Computes a cost hint of the operation.
+    ///
+    /// Each pair is a type of operation and a number per call on eval.
+    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        Ok(tvec!())
     }
 
     /// Transforms the op in an equivalent one, discarding one dummy axis (of dim

@@ -23,14 +23,6 @@ where
         format!("Conv::DepthWise<{:?}>", T::datum_type()).into()
     }
 
-    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let n_output_points = self.patch.output_shape.iter().cloned().product::<usize>();
-        Ok(tvec!((
-            Cost::FMA(T::datum_type()),
-            (self.input_shape.n() * n_output_points * self.kernel_chw.len()).to_dim()
-        )))
-    }
-
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -82,9 +74,17 @@ impl<T> TypedOp for DepthWise<T>
 where
     T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
 {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))
     }
+
+    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let n_output_points = self.patch.output_shape.iter().cloned().product::<usize>();
+        Ok(tvec!((
+            Cost::FMA(T::datum_type()),
+            (self.input_shape.n() * n_output_points * self.kernel_chw.len()).to_dim()
+        )))
+    }
+
+    typed_op_as_op!();
 }

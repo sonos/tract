@@ -332,26 +332,6 @@ impl Op for ConvUnary {
         "ConvUnary".into()
     }
 
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let shape = self.data_format.shape(inputs[0].shape.iter().collect::<TVec<TDim>>());
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        let output_dims = self.padding.compute(
-            shape.hw_dims(),
-            kernel_spatial_shape,
-            &*self.dilations,
-            &*self.strides,
-        );
-        let n_output_points: TDim = output_dims.iter().map(|d| d.output.clone()).product::<TDim>();
-        let n_output_channels = self.output_channels().to_dim();
-        let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
-        Ok(tvec!((
-            Cost::FMA(f32::datum_type()),
-            shape.n().clone() * shape.c() * n_output_channels * n_output_points * kernel_surface
-                / self.group
-        )))
-    }
-
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![
             format!("Data format: {:?}", self.data_format),
@@ -442,6 +422,27 @@ impl TypedOp for ConvUnary {
         }
         Ok(None)
     }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let shape = self.data_format.shape(inputs[0].shape.iter().collect::<TVec<TDim>>());
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let output_dims = self.padding.compute(
+            shape.hw_dims(),
+            kernel_spatial_shape,
+            &*self.dilations,
+            &*self.strides,
+        );
+        let n_output_points: TDim = output_dims.iter().map(|d| d.output.clone()).product::<TDim>();
+        let n_output_channels = self.output_channels().to_dim();
+        let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
+        Ok(tvec!((
+            Cost::FMA(f32::datum_type()),
+            shape.n().clone() * shape.c() * n_output_channels * n_output_points * kernel_surface
+                / self.group
+        )))
+    }
+
 
     fn dispose_dummy_axis(
         &self,

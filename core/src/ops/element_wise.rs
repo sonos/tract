@@ -5,6 +5,10 @@ use std::fmt;
 pub trait ElementWiseMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
     fn eval_in_place(&self, t: &mut Tensor) -> TractResult<()>;
+    #[allow(unused_variables)]
+    fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
+        tvec!()
+    }
 }
 clone_trait_object!(ElementWiseMiniOp);
 downcast_rs::impl_downcast!(ElementWiseMiniOp);
@@ -57,6 +61,15 @@ impl TypedOp for ElementWiseOp {
         Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
     }
 
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let count: TDim = inputs[0].shape.iter().product();
+        Ok(self.0
+            .cost_per_element(inputs[0].datum_type)
+            .into_iter()
+            .map(|(c, n)| (c, count.clone() * n))
+            .collect())
+    }
+
     fn pulsify(
         &self,
         _source: &NormalizedModel,
@@ -83,7 +96,10 @@ impl PulsedOp for ElementWiseOp {
 
 #[macro_export]
 macro_rules! element_wise {
-    ($func:ident, $Op:ident $({$($var: ident : $var_typ: path),*})?, $( [$($typ:ident),*] => $f:expr),*) => {
+    ($func:ident, $Op:ident $({$($var: ident : $var_typ: path),*})?,
+        $( [$($typ:ident),*] => $f:expr ),*
+        $(; cost: $cost:expr )?
+    ) => {
         #[derive(Debug, Clone)]
         pub struct $Op { $( $(pub $var: $var_typ),* )? }
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
@@ -102,6 +118,11 @@ macro_rules! element_wise {
                 )*
                 bail!("{} does not support {:?}", self.name(), t.datum_type());
             }
+            $(
+            fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
+                $cost(dt)
+            }
+            )?
         }
         pub fn $func($( $($var: $var_typ),* )?) -> $crate::ops::element_wise::ElementWiseOp {
             $crate::ops::element_wise::ElementWiseOp(Box::new($Op { $( $($var),* )? } ))

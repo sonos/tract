@@ -18,7 +18,9 @@ pub use crate::internal::*;
 
 element_wise!(softplus, Softplus, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = (x.exp() + 1.0).ln()));
 element_wise!(softsign, Softsign, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = *x / (x.abs() + 1.0)));
-element_wise!(sigmoid, Sigmoid, [f32] => |_, xs| f32::sigmoid().run(xs));
+element_wise!(sigmoid, Sigmoid, [f32] => |_, xs| f32::sigmoid().run(xs);
+   cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
+);
 
 element_wise!(elu, Elu { alpha: f32 },
     [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.elu(e.alpha); })
