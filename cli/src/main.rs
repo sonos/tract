@@ -817,7 +817,9 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             stream_check::handle(params, display_options_from_clap(&matches, m)?)
         }
 
-        ("cost", Some(m)) => crate::cost::handle(params, display_options_from_clap(&matches, m)?, m),
+        ("cost", Some(m)) => {
+            crate::cost::handle(params, display_options_from_clap(&matches, m)?, m)
+        }
 
         ("draw", Some(m)) => {
             crate::draw::render(&*params.tract_model, display_options_from_clap(&matches, m)?)

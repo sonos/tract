@@ -443,7 +443,6 @@ impl TypedOp for ConvUnary {
         )))
     }
 
-
     fn dispose_dummy_axis(
         &self,
         _model: &TypedModel,

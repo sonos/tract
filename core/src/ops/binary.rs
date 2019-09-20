@@ -129,8 +129,9 @@ impl TypedOp for InferenceBinOp {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
-        Ok(self.0
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self
+            .0
             .cost_per_element(inputs[0].datum_type)
             .into_iter()
             .map(|(c, n)| (c, count.clone() * n))
@@ -297,8 +298,9 @@ impl TypedOp for TypedBinOp {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
-        Ok(self.0
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self
+            .0
             .cost_per_element(inputs[0].datum_type)
             .into_iter()
             .map(|(c, n)| (c, count.clone() * n))
@@ -457,8 +459,9 @@ impl TypedOp for UnaryOp {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
-        Ok(self.mini_op
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self
+            .mini_op
             .cost_per_element(inputs[0].datum_type)
             .into_iter()
             .map(|(c, n)| (c, count.clone() * n))
@@ -550,8 +553,9 @@ impl TypedOp for MergeOp {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
-        Ok(self.0
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self
+            .0
             .cost_per_element(inputs[0].datum_type)
             .into_iter()
             .map(|(c, n)| (c, count.clone() * n))
@@ -633,8 +637,9 @@ impl TypedOp for MergeOpUnicast {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
-        Ok(self.0
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self
+            .0
             .cost_per_element(inputs[0].datum_type)
             .into_iter()
             .map(|(c, n)| (c, count.clone() * n))

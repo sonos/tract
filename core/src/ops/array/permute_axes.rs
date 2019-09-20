@@ -82,7 +82,7 @@ impl TypedOp for PermuteAxes {
     }
 
     fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let permutation = if let Some(axes) = self.axes.clone( ){
+        let permutation = if let Some(axes) = self.axes.clone() {
             axes
         } else {
             (0..model.outlet_fact(node.inputs[0])?.shape.rank()).rev().collect()

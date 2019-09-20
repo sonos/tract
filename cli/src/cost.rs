@@ -3,18 +3,20 @@ use crate::errors::*;
 use crate::{Model, Parameters};
 use tract_core::internal::*;
 
-fn parse_costs(spec: &str) -> TVec<(Cost,usize)> {
-    spec.split(",").map(|spec| {
-        let mut toks = spec.split("=");
-        let name = toks.next().unwrap();
-        let n = toks.next().unwrap().parse::<usize>().unwrap();
-        let c = match name {
-            "FMA(F32)" => Cost::FMA(f32::datum_type()),
-            "Div(F32)" => Cost::Div(f32::datum_type()),
-            _ => panic!("Unknown cost specifier {}", name)
-        };
-        (c, n)
-    }).collect()
+fn parse_costs(spec: &str) -> TVec<(Cost, usize)> {
+    spec.split(",")
+        .map(|spec| {
+            let mut toks = spec.split("=");
+            let name = toks.next().unwrap();
+            let n = toks.next().unwrap().parse::<usize>().unwrap();
+            let c = match name {
+                "FMA(F32)" => Cost::FMA(f32::datum_type()),
+                "Div(F32)" => Cost::Div(f32::datum_type()),
+                _ => panic!("Unknown cost specifier {}", name),
+            };
+            (c, n)
+        })
+        .collect()
 }
 
 pub fn handle(params: Parameters, options: DisplayOptions, m: &clap::ArgMatches) -> CliResult<()> {
@@ -33,7 +35,12 @@ pub fn handle(params: Parameters, options: DisplayOptions, m: &clap::ArgMatches)
     }
 }
 
-fn handle_t(model: &TypedModel, params: &Parameters, options: DisplayOptions, assert: Option<TVec<(Cost, usize)>>) -> CliResult<()> {
+fn handle_t(
+    model: &TypedModel,
+    params: &Parameters,
+    options: DisplayOptions,
+    assert: Option<TVec<(Cost, usize)>>,
+) -> CliResult<()> {
     let mut total: HashMap<Cost, TDim> = HashMap::default();
     let mut display_graph =
         DisplayGraph::from_model_and_options(model as &dyn Model, options.into())?
@@ -50,7 +57,9 @@ fn handle_t(model: &TypedModel, params: &Parameters, options: DisplayOptions, as
             if !cost.is_empty() {
                 let rows = cost
                     .iter()
-                    .inspect(|(c, i)| *total.entry(*c).or_insert(0.to_dim()) += i.clone() * multiplier as usize)
+                    .inspect(|(c, i)| {
+                        *total.entry(*c).or_insert(0.to_dim()) += i.clone() * multiplier as usize
+                    })
                     .map(|(c, i)| format!("{:?} {:?}", c, i))
                     .collect();
                 display_graph.add_node_section(&full_id, rows)?;
@@ -59,7 +68,7 @@ fn handle_t(model: &TypedModel, params: &Parameters, options: DisplayOptions, as
             assert_eq!(
                 model.node_op(i).as_typed().unwrap().nested_model_multipliers(&*inputs).len(),
                 model.node_op(i).nested_models().len(),
-                );
+            );
 
             let nested_multis =
                 model.node_op(i).as_typed().unwrap().nested_model_multipliers(&*inputs);
@@ -78,7 +87,7 @@ fn handle_t(model: &TypedModel, params: &Parameters, options: DisplayOptions, as
         println!("{:?}: {:?}", c, i);
     }
     if let Some(assert) = assert {
-        let assert:HashMap<Cost, TDim> = assert.iter().map(|(c,n)| (*c, n.to_dim())).collect();
+        let assert: HashMap<Cost, TDim> = assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();
         if assert != total {
             bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);
         }

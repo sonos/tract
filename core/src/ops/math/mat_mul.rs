@@ -291,7 +291,13 @@ impl TypedOp for MatMul {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        cost(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec(), inputs[0].datum_type, self.a_trans, self.b_trans)
+        cost(
+            &inputs[0].shape.to_tvec(),
+            &inputs[1].shape.to_tvec(),
+            inputs[0].datum_type,
+            self.a_trans,
+            self.b_trans,
+        )
     }
 
     typed_op_as_op!();
@@ -378,7 +384,13 @@ impl TypedOp for MatMulUnary {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        cost(self.a.shape(), &inputs[0].shape.to_tvec(), self.a.datum_type(), self.a_trans, self.b_trans)
+        cost(
+            self.a.shape(),
+            &inputs[0].shape.to_tvec(),
+            self.a.datum_type(),
+            self.a_trans,
+            self.b_trans,
+        )
     }
 
     fn pulsify(
@@ -653,19 +665,28 @@ where
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let g = &self.geo;
-        Ok(tvec!((Cost::FMA(T::datum_type()), (g.c_shape_prefix.iter().product::<usize>() * g.m * g.k * g.n).into())))
+        Ok(tvec!((
+            Cost::FMA(T::datum_type()),
+            (g.c_shape_prefix.iter().product::<usize>() * g.m * g.k * g.n).into()
+        )))
     }
 
     typed_op_as_op!();
 }
 
-fn cost<A: ToDim + Clone, B:ToDim + Clone>(a: &[A], b: &[B], dt: DatumType, a_trans: bool, b_trans: bool) -> TractResult<TVec<(Cost, TDim)>> {
+fn cost<A: ToDim + Clone, B: ToDim + Clone>(
+    a: &[A],
+    b: &[B],
+    dt: DatumType,
+    a_trans: bool,
+    b_trans: bool,
+) -> TractResult<TVec<(Cost, TDim)>> {
     let (bc_a_shape, bc_b_shape, bc_c_shape) = infer_shapes(
         a.iter().map(|d| d.clone().to_dim()).collect(),
         b.iter().map(|d| d.clone().to_dim()).collect(),
         a_trans,
         b_trans,
-        false
+        false,
     )?;
     let mul = bc_c_shape.iter().rev().skip(2).cloned().product::<TDim>();
     let m = &bc_a_shape[bc_a_shape.len() - 2 + a_trans as usize];

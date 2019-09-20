@@ -268,7 +268,9 @@ impl<'a> DisplayGraph<'a> {
             self.node_sections.entry(id[0]).or_insert(vec![]).push(section);
             Ok(())
         } else {
-            self.node_nested_graphs.get_mut(&id[0]).unwrap()[0].1.add_node_section(&id[1..], section)
+            self.node_nested_graphs.get_mut(&id[0]).unwrap()[0]
+                .1
+                .add_node_section(&id[1..], section)
         }
     }
 
