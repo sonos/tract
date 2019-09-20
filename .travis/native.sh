@@ -39,6 +39,7 @@ fi
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
     GRU128KeywordSpotter-v2-10epochs.onnx \
+    hey_snips_v4_model17.pb \
     inception_v3_2016_08_28_frozen.pb \
     mobilenet_v1_1.0_224_frozen.pb \
     mobilenet_v2_1.4_224_frozen.pb \
@@ -71,6 +72,9 @@ fi
 
 ./target/release/tract $CACHEDIR/GRU128KeywordSpotter-v2-10epochs.onnx \
      -O run -q --assert-output-fact 1x3xf32
+
+./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb \
+     -i Sx20xf32 --pulse 8 cost -q --assert-cost "FMA(F32)=2060448,Div(F32)=24576"
 
 (
     cd $CACHEDIR
