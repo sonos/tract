@@ -31,7 +31,7 @@ then
 else
     NAME=travis
 fi
-wget -q https://github.com/snipsco/dinghy/releases/download/0.4.15/cargo-dinghy-$NAME.tgz -O cargo-dinghy.tgz
+wget -q https://github.com/snipsco/dinghy/releases/download/0.4.16/cargo-dinghy-$NAME.tgz -O cargo-dinghy.tgz
 tar vzxf cargo-dinghy.tgz --strip-components 1
 mv /tmp/cargo-dinghy/cargo-dinghy $HOME/.cargo/bin
 )
