@@ -263,9 +263,13 @@ impl<'a> DisplayGraph<'a> {
         }
     }
 
-    pub fn add_node_section(&mut self, id: usize, section: Vec<String>) -> CliResult<()> {
-        self.node_sections.entry(id).or_insert(vec![]).push(section);
-        Ok(())
+    pub fn add_node_section(&mut self, id: &[usize], section: Vec<String>) -> CliResult<()> {
+        if id.len() == 1 {
+            self.node_sections.entry(id[0]).or_insert(vec![]).push(section);
+            Ok(())
+        } else {
+            self.node_nested_graphs.get_mut(&id[0]).unwrap()[0].1.add_node_section(&id[1..], section)
+        }
     }
 
     #[cfg(feature = "kaldi")]
@@ -288,7 +292,7 @@ impl<'a> DisplayGraph<'a> {
                     }
                     _ => (),
                 }
-                self.add_node_section(node_id, vs)?;
+                self.add_node_section(&[node_id], vs)?;
             }
         }
         Ok(self)
@@ -308,7 +312,7 @@ impl<'a> DisplayGraph<'a> {
                     };
                     v.push(format!("Attr {}: {:.240}", bold.paint(a.0), value));
                 }
-                self.add_node_section(node_id, v)?;
+                self.add_node_section(&[node_id], v)?;
             }
         }
         Ok(self)
@@ -332,7 +336,7 @@ impl<'a> DisplayGraph<'a> {
                     };
                     v.push(format!("Attr {}: {:.240}", bold.paint(a.get_name()), value));
                 }
-                self.add_node_section(id, v)?;
+                self.add_node_section(&[id], v)?;
             }
         }
         Ok(self)

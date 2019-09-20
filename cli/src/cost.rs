@@ -38,16 +38,39 @@ fn handle_t(model: &TypedModel, params: &Parameters, options: DisplayOptions, as
     let mut display_graph =
         DisplayGraph::from_model_and_options(model as &dyn Model, options.into())?
             .with_graph_def(&params.graph)?;
-    for i in ::tract_core::model::eval_order(&model)? {
-        let inputs = model.node_input_facts(i)?;
-        let cost = model.nodes()[i].op.cost(&*inputs)?;
-        if !cost.is_empty() {
-            let rows = cost
-                .iter()
-                .inspect(|(c, i)| *total.entry(*c).or_insert(0.to_dim()) += i)
-                .map(|(c, i)| format!("{:?} {:?}", c, i))
-                .collect();
-            display_graph.add_node_section(i, rows)?;
+
+    let mut queue: Vec<(&TypedModel, TVec<usize>, f32)> = vec![(model, tvec!(), 1f32)];
+    while let Some((model, prefix, multiplier)) = queue.pop() {
+        let mut full_id: TVec<usize> = prefix.iter().cloned().collect();
+        full_id.push(0);
+        for i in ::tract_core::model::eval_order(&model)? {
+            full_id[prefix.len()] = i;
+            let inputs = model.node_input_facts(i)?;
+            let cost = model.nodes()[i].op.cost(&*inputs)?;
+            if !cost.is_empty() {
+                let rows = cost
+                    .iter()
+                    .inspect(|(c, i)| *total.entry(*c).or_insert(0.to_dim()) += i.clone() * multiplier as usize)
+                    .map(|(c, i)| format!("{:?} {:?}", c, i))
+                    .collect();
+                display_graph.add_node_section(&full_id, rows)?;
+            }
+
+            assert_eq!(
+                model.node_op(i).as_typed().unwrap().nested_model_multipliers(&*inputs).len(),
+                model.node_op(i).nested_models().len(),
+                );
+
+            let nested_multis =
+                model.node_op(i).as_typed().unwrap().nested_model_multipliers(&*inputs);
+
+            for (ix, (_name, m)) in model.node_op(i).nested_models().iter().enumerate() {
+                if let Some(m) = m.downcast_ref::<TypedModel>() {
+                    let mut prefix: TVec<usize> = prefix.clone();
+                    prefix.push(i);
+                    queue.push((m, prefix, multiplier * nested_multis[ix].1));
+                }
+            }
         }
     }
     display_graph.render()?;

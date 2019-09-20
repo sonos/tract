@@ -185,8 +185,18 @@ impl TypedOp for Typed {
         output_fact.delay = input_fact.delay;
         let mut op = self.clone();
         op.skip = input_fact.delay;
-        op.output_mapping.iter_mut().find(|om| om.full_slot == Some(0)).unwrap().full_dim_hint = None;
+        op.output_mapping.iter_mut().find(|om| om.full_slot == Some(0)).unwrap().full_dim_hint =
+            None;
         target.wire_node(&*node.name, op, &[input])
+    }
+
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f32)> {
+        self.to_codegen_op()
+            .unwrap()
+            .nested_model_multipliers(inputs)
+            .into_iter()
+            .map(|(c, n)| (c.into_owned().into(), n))
+            .collect()
     }
 
     fn codegen(

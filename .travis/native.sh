@@ -76,6 +76,10 @@ fi
 ./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb \
      -i Sx20xf32 --pulse 8 cost -q --assert-cost "FMA(F32)=2060448,Div(F32)=24576"
 
+./target/release/tract $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256/model.raw \
+    -f kaldi --output-node output \
+    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
+    -i Sx40 --pulse 24 cost --assert-cost "FMA(F32)=23725568,Div(F32)=20480"
 (
     cd $CACHEDIR
     [ -e librispeech_clean_tdnn_lstm_1e_256.tgz ] \
@@ -88,6 +92,7 @@ fi
         || ln -s `pwd`/$CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/
     cd kaldi/test_cases
     TRACT_RUN=../../target/release/tract ./run_all.sh
+
 )
 
 
