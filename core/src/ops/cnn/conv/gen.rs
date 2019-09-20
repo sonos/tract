@@ -103,12 +103,6 @@ impl Op for Conv {
         "Conv".into()
     }
 
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let unary =
-            self.to_unary(&*inputs)?.ok_or_else(|| format!("Can not unarize conv: {:?}", self))?;
-        unary.cost(&[inputs[0]])
-    }
-
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -187,8 +181,6 @@ impl InferenceRulesOp for Conv {
 }
 
 impl TypedOp for Conv {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if inputs[1].shape.iter().all(|d| d.to_integer().is_ok()) {
             let kshape: TVec<usize> =
@@ -198,6 +190,12 @@ impl TypedOp for Conv {
         } else {
             bail!("Streaming on kernel is not typeable")
         }
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let unary =
+            self.to_unary(&*inputs)?.ok_or_else(|| format!("Can not unarize conv: {:?}", self))?;
+        unary.cost(&[inputs[0]])
     }
 
     fn declutter(
@@ -233,6 +231,8 @@ impl TypedOp for Conv {
             Ok(None)
         }
     }
+
+    typed_op_as_op!();
 }
 
 #[cfg(test)]

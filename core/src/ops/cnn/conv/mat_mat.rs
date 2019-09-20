@@ -117,14 +117,6 @@ where
         Ok(info)
     }
 
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let batch = inputs[0].shape.dim(0);
-        Ok(tvec!((
-            Cost::FMA(T::datum_type()),
-            batch * self.group * self.tile.m() * self.tile.k() * self.tile.n()
-        )))
-    }
-
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
         if let Some(succ) = model.single_succ(node.id)? {
@@ -188,9 +180,17 @@ where
     T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     f32: AsPrimitive<T>,
 {
-    typed_op_as_op!();
-
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))
     }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let batch = inputs[0].shape.dim(0);
+        Ok(tvec!((
+            Cost::FMA(T::datum_type()),
+            batch * self.group * self.tile.m() * self.tile.k() * self.tile.n()
+        )))
+    }
+
+    typed_op_as_op!();
 }

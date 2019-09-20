@@ -27,7 +27,14 @@ pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downca
         self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
         Ok(tvec!(c.into_arc_tensor()))
     }
-    fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<UnaryOp>;
+    #[allow(unused_variables)]
+    fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<UnaryOp> {
+        None
+    }
+    #[allow(unused_variables)]
+    fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
+        tvec!()
+    }
 }
 clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
@@ -119,6 +126,15 @@ impl TypedOp for InferenceBinOp {
         let res = patch.wire_node(&*node.name, TypedBinOp(self.0.clone()), &*inputs)?[0];
         patch.shunt_outside(OutletId::new(node.id, 0), res)?;
         Ok(Some(patch))
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self.0
+            .cost_per_element(inputs[0].datum_type)
+            .into_iter()
+            .map(|(c, n)| (c, count.clone() * n))
+            .collect())
     }
 
     typed_op_as_op!();
@@ -280,6 +296,15 @@ impl TypedOp for TypedBinOp {
             .collect())
     }
 
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self.0
+            .cost_per_element(inputs[0].datum_type)
+            .into_iter()
+            .map(|(c, n)| (c, count.clone() * n))
+            .collect())
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
@@ -431,6 +456,15 @@ impl TypedOp for UnaryOp {
         return Ok(invs.into_iter().collect());
     }
 
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self.mini_op
+            .cost_per_element(inputs[0].datum_type)
+            .into_iter()
+            .map(|(c, n)| (c, count.clone() * n))
+            .collect())
+    }
+
     fn dispose_dummy_axis(
         &self,
         _model: &TypedModel,
@@ -515,6 +549,15 @@ impl TypedOp for MergeOp {
         Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
     }
 
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self.0
+            .cost_per_element(inputs[0].datum_type)
+            .into_iter()
+            .map(|(c, n)| (c, count.clone() * n))
+            .collect())
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,
@@ -589,6 +632,15 @@ impl TypedOp for MergeOpUnicast {
         Ok(tvec!(inputs[0].clone()))
     }
 
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let count:TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self.0
+            .cost_per_element(inputs[0].datum_type)
+            .into_iter()
+            .map(|(c, n)| (c, count.clone() * n))
+            .collect())
+    }
+
     typed_op_as_op!();
 }
 
@@ -606,10 +658,10 @@ impl PulsedOp for MergeOpUnicast {
 
 #[macro_export]
 macro_rules! bin_to_super_type {
-    ($func:ident, $Op:ident, $( [$($typ:ident),*] => $cab:expr),*) => {
-        bin_to_super_type!($func, $Op, flip: |_, _| None, $( [$($typ),*] => $cab),*);
-    };
-    ($func:ident, $Op:ident, flip: $flip:expr, $( [$($typ:ident),*] => $cab:expr),*) => {
+    ($func:ident, $Op:ident,
+     $(cost: $cost:expr,)?
+     $(flip: $flip:expr,)?
+     $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone)]
         pub struct $Op;
         impl $crate::ops::binary::BinMiniOp for $Op {
@@ -657,9 +709,16 @@ macro_rules! bin_to_super_type {
                 self.operating_datum_type(a, b)
             }
 
-            fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
-                ($flip)(self, b)
-            }
+            $(
+                fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
+                    ($flip)(self, b)
+                }
+            )?
+            $(
+                fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
+                    ($cost)(dt)
+                }
+            )?
         }
 
         pub mod $func {
@@ -674,10 +733,10 @@ macro_rules! bin_to_super_type {
 }
 
 macro_rules! bin_to_bool {
-    ($func:ident, $Op:ident, $( [$($typ:ident),*] => $cab:expr ),*) => {
-        bin_to_bool!($func, $Op, flip: |_, _| None, $( [$($typ),*] => $cab),*);
-    };
-    ($func:ident, $Op:ident, flip: $flip:expr, $( [$($typ:ident),*] => $cab:expr),*) => {
+    ($func:ident, $Op:ident,
+     $( cost: $cost:expr, )?
+     $( flip: $flip:expr, )?
+     $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone)]
         pub struct $Op;
         impl $crate::ops::binary::BinMiniOp for $Op {
@@ -726,9 +785,16 @@ macro_rules! bin_to_bool {
                 Ok(bool::datum_type())
             }
 
-            fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
-                ($flip)(self, b)
-            }
+            $(
+                fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
+                    ($flip)(self, b)
+                }
+            )?
+            $(
+                fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
+                    ($cost)(dt)
+                }
+            )?
         }
 
         pub mod $func {
