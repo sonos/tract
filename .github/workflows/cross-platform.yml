@@ -1,4 +1,4 @@
-name: Linux targets
+name: Embedded targets
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
     - cron:  '0 5 * * *'
 
 jobs:
-  cross:
+  linux:
     strategy:
       fail-fast: false
       matrix:
@@ -28,4 +28,20 @@ jobs:
         PLATFORM: ${{matrix.platform}}
         AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
         AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
+      run: .travis/cross.sh
+
+  ios:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - aarch64-apple-ios
+
+    runs-on: macOS-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Cross script
+      env:
+        PLATFORM: ${{matrix.platform}}
       run: .travis/cross.sh
