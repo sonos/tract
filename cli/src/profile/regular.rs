@@ -123,10 +123,10 @@ where
         let mut state = SimpleState::new(&plan)?;
         let mut progress = ProgressBar::new(plan.order.len() as u64);
         let mut full_id: TVec<usize> = prefix.iter().cloned().collect();
-        full_id.push(0);
         if prefix.len() != 0 {
             info!("Doing subnet {:?}", prefix);
         }
+        full_id.push(0);
 
         state.set_inputs(make_inputs_for_model(model)?)?;
 

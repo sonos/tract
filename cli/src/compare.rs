@@ -226,7 +226,7 @@ where
             .enumerate()
             .map(|(ix, o)| format!("expected output #{}: {:?}", ix, o))
             .collect::<Vec<_>>();
-        display_graph.add_node_section(n, expected_outputs_section)?;
+        display_graph.add_node_section(&[n], expected_outputs_section)?;
 
         if tract.input_outlets()?.iter().any(|o| o.node == n) {
             display_graph.set_node_color(n, Blue)?;
@@ -262,14 +262,14 @@ where
                     display_graph.set_node_color(n, Red.bold())?;
                     display_graph
                         .add_node_label(&[n], format!("{}: {}", Red.bold().paint("ERROR"), e))?;
-                    display_graph.add_node_section(n, inputs)?;
+                    display_graph.add_node_section(&[n], inputs)?;
                 }
                 _ => {
                     let tract_output: &[Arc<Tensor>] = &*state.values[n].as_ref().unwrap();
                     match check_outputs(&tract_output, &*expected) {
                         Err(e) => {
                             failing.push(n);
-                            display_graph.add_node_section(n, inputs)?;
+                            display_graph.add_node_section(&[n], inputs)?;
                             tract_output
                                 .iter()
                                 .enumerate()
@@ -287,7 +287,7 @@ where
                                         display_graph.set_node_color(n, Red.bold())?;
                                         let mut msg = vec!(Red.bold().paint(format!("Wrong value for output {}, {:?}", ix, e)).to_string());
                                         msg.push(format!("got     : {:?}", data));
-                                        display_graph.add_node_section(n, msg)?;
+                                        display_graph.add_node_section(&[n], msg)?;
                                     } else {
                                         display_graph.set_node_color(n, Red.bold())?;
                                         display_graph.add_node_label(&[n], format!("{:?}", e))?;
