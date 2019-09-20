@@ -248,7 +248,14 @@ fn main() {
         );
     app = app.subcommand(output_options(run));
 
-    let cost = clap::SubCommand::with_name("cost").help("Compute a cost on (some) operations.");
+    let cost = clap::SubCommand::with_name("cost")
+        .long_about("Compute a cost on (some) operations.")
+        .arg(
+            Arg::with_name("assert-cost")
+                .takes_value(true)
+                .long("assert-cost")
+                .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
+        );
     app = app.subcommand(output_options(cost));
 
     let optimize = clap::SubCommand::with_name("optimize").help("Optimize the graph");
@@ -810,7 +817,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             stream_check::handle(params, display_options_from_clap(&matches, m)?)
         }
 
-        ("cost", Some(m)) => crate::cost::handle(params, display_options_from_clap(&matches, m)?),
+        ("cost", Some(m)) => crate::cost::handle(params, display_options_from_clap(&matches, m)?, m),
 
         ("draw", Some(m)) => {
             crate::draw::render(&*params.tract_model, display_options_from_clap(&matches, m)?)
