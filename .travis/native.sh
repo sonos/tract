@@ -45,6 +45,14 @@ fi
     mobilenet_v2_1.4_224_frozen.pb \
     squeezenet.onnx
 
+(
+    cd $CACHEDIR
+    [ -e librispeech_clean_tdnn_lstm_1e_256.tgz ] \
+        || wget -q https://s3.amazonaws.com/tract-ci-builds/fridge/kaldi/librispeech_clean_tdnn_lstm_1e_256.tgz
+    [ -d librispeech_clean_tdnn_lstm_1e_256 ] \
+        || tar zxf librispeech_clean_tdnn_lstm_1e_256.tgz
+)
+
 ./target/release/tract $CACHEDIR/squeezenet.onnx \
      run -q --assert-output 1x1000x1x1xf32
 
@@ -80,22 +88,11 @@ fi
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     -i Sx40 --pulse 24 cost --assert-cost "FMA(F32)=23725568,Div(F32)=20480"
-(
-    cd $CACHEDIR
-    [ -e librispeech_clean_tdnn_lstm_1e_256.tgz ] \
-        || wget -q https://s3.amazonaws.com/tract-ci-builds/fridge/kaldi/librispeech_clean_tdnn_lstm_1e_256.tgz
-    [ -d librispeech_clean_tdnn_lstm_1e_256 ] \
-        || tar zxf librispeech_clean_tdnn_lstm_1e_256.tgz
-)
-(
-    [ -e kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ] \
-        || ln -s `pwd`/$CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/
-    cd kaldi/test_cases
-    TRACT_RUN=../../target/release/tract ./run_all.sh
 
-)
+[ -e kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ] \
+    || ln -s $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/
 
-
+( cd kaldi/test_cases TRACT_RUN=../../target/release/tract ./run_all.sh )
 
 # these tests require access to private snips models
 if [ -n "$RUN_ALL_TESTS" ]
