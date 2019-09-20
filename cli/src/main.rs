@@ -701,7 +701,7 @@ pub fn display_options_from_clap(
         node_name: matches.value_of("node_name").map(String::from),
         op_name: matches.value_of("op_name").map(String::from),
         //        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
-        expect_canonic: root_matches.value_of("pass").unwrap() == "declutter"
+        expect_canonic: root_matches.value_of("pass").unwrap_or("declutter") == "declutter"
             && !root_matches.is_present("optimize"),
     })
 }
