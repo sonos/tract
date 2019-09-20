@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.4.3-pre"
+version = "0.5.0"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -29,10 +29,10 @@ ndarray-npy = { version = "0.4", features = [ "compressed_npz" ] }
 pbr = "1.0"
 py_literal = "0.2"
 rand = "0.7"
-tract-core = { path = "../core" }
-tract-kaldi = { optional = true, path = "../kaldi" }
-tract-onnx = { optional = true, path = "../onnx" }
-tract-tensorflow = { optional = true, path = "../tensorflow" }
+tract-core = "0.5.0"
+tract-kaldi = { optional = true, version = "0.5.0" }
+tract-onnx = { optional = true, version = "0.5.0" }
+tract-tensorflow = { optional = true, version = "0.5.0" }
 
 [features]
 default = ["kaldi", "onnx", "tf"]
