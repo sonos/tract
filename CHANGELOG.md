@@ -9,6 +9,8 @@
 * Introduce Windows support, including CI coverage for linalg
 * Switch from Travis to GitHub Actions
 * Internal refactoring around tract-core canonic opset
+* Tract CLI can now compute a FLOP number for networks ("cost" subcommand). 
+    Furthermore the CI asserts its value for a few networks to prevent optimisation regressions.
 * Fix: handling of -1 in ONNX Reshape op
 
 ## 0.4.2 - 2019-09-10
