@@ -10,4 +10,4 @@ then
 fi
 
 
-(cd tensorflow; cargo test --release --all --features conform)
+(cd tensorflow; cargo test --release --features conform)
