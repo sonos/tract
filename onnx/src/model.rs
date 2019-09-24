@@ -6,6 +6,28 @@ use tract_core::internal::*;
 
 use crate::pb;
 
+pub fn optional_inputs(pb: &pb::NodeProto) -> impl Iterator<Item=Option<usize>> + '_ {
+    let mut real_input = 0;
+    (0..).map(move |i|
+        if pb.get_input().get(i).filter(|s| !s.is_empty()).is_some() {
+            real_input += 1;
+            Some(real_input - 1)
+        } else {
+            None
+        })
+}
+
+pub fn optional_outputs(pb: &pb::NodeProto) -> impl Iterator<Item=Option<usize>> + '_ {
+    let mut real_input = 0;
+    (0..).map(move |i|
+        if pb.get_output().get(i).filter(|s| !s.is_empty()).is_some() {
+            real_input += 1;
+            Some(real_input - 1)
+        } else {
+            None
+        })
+}
+
 #[derive(Clone)]
 pub struct ParsingContext<'a> {
     pub onnx_operator_set_version: i64,

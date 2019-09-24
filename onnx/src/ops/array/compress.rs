@@ -65,7 +65,7 @@ impl InferenceRulesOp for Compress {
         s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
+    ) -> TractResult<()> {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
