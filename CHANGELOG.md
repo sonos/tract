@@ -1,5 +1,11 @@
 ## Unreleased
 
+## 0.5.1 - 2019-09-24
+
+### Bugfix
+
+* remove the no_panic checks, as too fragile (breaking non-lto builds)
+
 ## 0.5.0 - 2019-09-20
 
 ### Breaking
