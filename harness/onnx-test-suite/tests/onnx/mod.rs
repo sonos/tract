@@ -52,7 +52,8 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
             test_path.file_name().unwrap().to_str().unwrap().chars().skip(5).collect();
         info!("Locked {:?}", f);
         if !test_path.join(&name).exists() {
-            let tgz_name = format!("{}.tgz", name);
+            let tgz_name = test_path.join(format!("{}.tgz", name));
+            info!("Downloading {:?}", tgz_name);
             let wget = std::process::Command::new("wget")
                 .arg("-q")
                 .arg(&url)
