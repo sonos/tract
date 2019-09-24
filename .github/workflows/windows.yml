@@ -14,4 +14,6 @@ jobs:
     - uses: actions/checkout@v1
     - name: linalg and core tests
       run: cargo test -p tract-linalg -p tract-core
+    - name: cli release build
+      run: cargo build -p tract --release
 
