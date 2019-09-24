@@ -8,6 +8,7 @@ use crate::pb;
 
 #[derive(Clone)]
 pub struct ParsingContext<'a> {
+    pub onnx_operator_set_version: i64,
     pub framework: &'a Onnx,
     pub model: &'a pb::ModelProto,
     pub parent_graphs: Vec<&'a pb::GraphProto>,
@@ -153,8 +154,19 @@ pub struct Onnx {
 
 impl Onnx {
     pub fn parse(&self, proto: &pb::ModelProto) -> TractResult<ParseResult> {
+        let onnx_operator_set_version = proto
+            .get_opset_import()
+            .iter()
+            .find(|import| import.get_domain() == "")
+            .unwrap()
+            .get_version();
         let graph = proto.get_graph();
-        let ctx = ParsingContext { framework: self, model: proto, parent_graphs: vec![] };
+        let ctx = ParsingContext {
+            framework: self,
+            model: proto,
+            parent_graphs: vec![],
+            onnx_operator_set_version,
+        };
         ctx.parse_graph(&graph)
     }
 }

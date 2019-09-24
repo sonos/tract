@@ -19,32 +19,30 @@ pub fn ensure_onnx_git_checkout() {
         if !run.success() {
             panic!("Failed to checkout onnx")
         }
-        let node_tests = dir().join("onnx/backend/test/data");
-        assert!(node_tests.exists());
         println!("onnx checkout done");
     });
 }
 
-pub fn make_test_file(tests_set: &str) {
+pub fn make_test_file(tests_set: &str, onnx_tag: &str) {
     use std::io::Write;
     ensure_onnx_git_checkout();
-    let node_tests = dir().join("onnx/backend/test/data").join(tests_set);
+    let sane_tag = onnx_tag.replace(".", "_");
+    let node_tests =
+        dir().join(format!("onnx-{}", onnx_tag)).join("onnx/backend/test/data").join(tests_set);
     assert!(node_tests.exists());
-    let working_list_file = path::PathBuf::from(".").join(tests_set).with_extension("txt");
+    let working_list_file =
+        path::PathBuf::from(".").join(format!("{}-{}.txt", tests_set, onnx_tag));
     println!("cargo:rerun-if-changed={}", working_list_file.to_str().unwrap());
-    let working_list: Vec<(String, bool)> = if let Ok(list) = fs::read_to_string(&working_list_file)
-    {
-        list.split("\n")
-            .map(|s| s.to_string())
-            .filter(|s| s.trim().len() > 1 && s.trim().as_bytes()[0] != b'#')
-            .map(|s| {
-                let splits = s.split_whitespace().collect::<Vec<_>>();
-                (splits[0].to_string(), splits.len() == 1)
-            })
-            .collect()
-    } else {
-        vec![]
-    };
+    let working_list: Vec<(String, bool)> = fs::read_to_string(&working_list_file)
+        .unwrap()
+        .split("\n")
+        .map(|s| s.to_string())
+        .filter(|s| s.trim().len() > 1 && s.trim().as_bytes()[0] != b'#')
+        .map(|s| {
+            let splits = s.split_whitespace().collect::<Vec<_>>();
+            (splits[0].to_string(), splits.len() == 1)
+        })
+        .collect();
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let out_dir = path::PathBuf::from(out_dir);
     let test_dir = out_dir.join("tests");
@@ -56,7 +54,7 @@ pub fn make_test_file(tests_set: &str) {
         .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
         .collect();
     tests.sort();
-    writeln!(rs, "mod {} {{", tests_set.replace("-", "_")).unwrap();
+    writeln!(rs, "mod {}_{} {{", tests_set.replace("-", "_"), sane_tag).unwrap();
     for (s, optim) in &[("plain", false), ("optim", true)] {
         writeln!(rs, "mod {} {{", s).unwrap();
         for t in &tests {
@@ -77,9 +75,9 @@ pub fn make_test_file(tests_set: &str) {
 
 fn main() {
     ensure_onnx_git_checkout();
-    make_test_file("node");
-    make_test_file("real");
-    make_test_file("simple");
-    make_test_file("pytorch-operator");
-    make_test_file("pytorch-converted");
+    for set in "node real simple pytorch-operator pytorch-converted".split_whitespace() {
+        for ver in "1.4.1 1.5.0".split_whitespace() {
+            make_test_file(set, ver);
+        }
+    }
 }
