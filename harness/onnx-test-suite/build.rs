@@ -7,7 +7,6 @@ pub fn dir() -> path::PathBuf {
 }
 
 pub fn ensure_onnx_git_checkout() {
-    println!("cargo:rerun-if-changed={}", dir().to_str().unwrap());
     use std::sync::Once;
     static START: Once = Once::new();
     START.call_once(|| {
@@ -23,10 +22,9 @@ pub fn ensure_onnx_git_checkout() {
     });
 }
 
-pub fn make_test_file(tests_set: &str, onnx_tag: &str) {
+pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     use std::io::Write;
     ensure_onnx_git_checkout();
-    let sane_tag = onnx_tag.replace(".", "_");
     let node_tests =
         dir().join(format!("onnx-{}", onnx_tag)).join("onnx/backend/test/data").join(tests_set);
     assert!(node_tests.exists());
@@ -46,15 +44,18 @@ pub fn make_test_file(tests_set: &str, onnx_tag: &str) {
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let out_dir = path::PathBuf::from(out_dir);
     let test_dir = out_dir.join("tests");
-    fs::create_dir_all(&test_dir).unwrap();
-    let test_file = test_dir.join(tests_set).with_extension("rs");
+    let tests_set_ver = format!("{}_{}", tests_set.replace("-", "_"), onnx_tag.replace(".", "_"));
+
+    writeln!(root, "include!(concat!(env!(\"OUT_DIR\"), \"/tests/{}.rs\"));", tests_set_ver).unwrap();
+
+    let test_file = test_dir.join(&tests_set_ver).with_extension("rs");
     let mut rs = fs::File::create(test_file).unwrap();
     let mut tests: Vec<String> = fs::read_dir(&node_tests)
         .unwrap()
         .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
         .collect();
     tests.sort();
-    writeln!(rs, "mod {}_{} {{", tests_set.replace("-", "_"), sane_tag).unwrap();
+    writeln!(rs, "mod {} {{", tests_set_ver).unwrap();
     for (s, optim) in &[("plain", false), ("optim", true)] {
         writeln!(rs, "mod {} {{", s).unwrap();
         for t in &tests {
@@ -75,9 +76,14 @@ pub fn make_test_file(tests_set: &str, onnx_tag: &str) {
 
 fn main() {
     ensure_onnx_git_checkout();
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let out_dir = path::PathBuf::from(out_dir);
+    let test_dir = out_dir.join("tests");
+    fs::create_dir_all(&test_dir).unwrap();
+    let mut root = fs::File::create(test_dir.join("root.rs")).unwrap();
     for set in "node real simple pytorch-operator pytorch-converted".split_whitespace() {
         for ver in "1.4.1 1.5.0".split_whitespace() {
-            make_test_file(set, ver);
+            make_test_file(&mut root, set, ver);
         }
     }
 }
