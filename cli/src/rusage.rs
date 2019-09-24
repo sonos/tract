@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+#[cfg(target_family = "unix")]
 use libc::{getrusage, rusage, RUSAGE_SELF};
 use std::time::Instant as StdInstant;
 
@@ -175,42 +176,81 @@ mod darwin {
 
 #[cfg(target_os = "macos")]
 pub fn get_usage() -> CliResult<ResourceUsage> {
-    let info = darwin::task_info();
-    let rusage = get_rusage();
-    Ok(ResourceUsage {
-        virtual_size: info.virtual_size,
-        resident_size: info.resident_size,
-        resident_size_max: info.resident_size_max,
-        user_time: rusage.ru_utime.tv_sec as f64 + rusage.ru_utime.tv_usec as f64 / 1_000_000f64,
-        system_time: rusage.ru_stime.tv_sec as f64 + rusage.ru_stime.tv_usec as f64 / 1_000_000f64,
-        minor_fault: rusage.ru_minflt as u64,
-        major_fault: rusage.ru_majflt as u64,
-    })
+    unsafe {
+        let info = darwin::task_info();
+        let mut rusage: rusage = std::mem::zeroed();
+        getrusage(RUSAGE_SELF, &mut rusage);
+        Ok(ResourceUsage {
+            virtual_size: info.virtual_size,
+            resident_size: info.resident_size,
+            resident_size_max: info.resident_size_max,
+            user_time: rusage.ru_utime.tv_sec as f64
+                + rusage.ru_utime.tv_usec as f64 / 1_000_000f64,
+            system_time: rusage.ru_stime.tv_sec as f64
+                + rusage.ru_stime.tv_usec as f64 / 1_000_000f64,
+            minor_fault: rusage.ru_minflt as u64,
+            major_fault: rusage.ru_majflt as u64,
+        })
+    }
 }
 
 #[cfg(target_os = "linux")]
 pub fn get_usage() -> CliResult<ResourceUsage> {
     use std::fs::File;
     use std::io::Read;
-    let mut proc_stat = String::new();
-    let _ = r#try!(r#try!(File::open("/proc/self/stat")).read_to_string(&mut proc_stat));
-    let mut tokens = proc_stat.split(" ");
-    let rusage = get_rusage();
-    Ok(ResourceUsage {
-        virtual_size: tokens.nth(22).unwrap().parse().unwrap_or(0),
-        resident_size: 4 * 1024 * tokens.next().unwrap().parse().unwrap_or(0),
-        resident_size_max: 1024 * rusage.ru_maxrss as u64,
-        user_time: rusage.ru_utime.tv_sec as f64 + rusage.ru_utime.tv_usec as f64 / 1_000_000f64,
-        system_time: rusage.ru_stime.tv_sec as f64 + rusage.ru_stime.tv_usec as f64 / 1_000_000f64,
-        minor_fault: rusage.ru_minflt as u64,
-        major_fault: rusage.ru_majflt as u64,
-    })
+    unsafe {
+        let mut proc_stat = String::new();
+        let _ = r#try!(r#try!(File::open("/proc/self/stat")).read_to_string(&mut proc_stat));
+        let mut tokens = proc_stat.split(" ");
+        let mut rusage: rusage = std::mem::zeroed();
+        getrusage(RUSAGE_SELF, &mut rusage);
+        Ok(ResourceUsage {
+            virtual_size: tokens.nth(22).unwrap().parse().unwrap_or(0),
+            resident_size: 4 * 1024 * tokens.next().unwrap().parse().unwrap_or(0),
+            resident_size_max: 1024 * rusage.ru_maxrss as u64,
+            user_time: rusage.ru_utime.tv_sec as f64
+                + rusage.ru_utime.tv_usec as f64 / 1_000_000f64,
+            system_time: rusage.ru_stime.tv_sec as f64
+                + rusage.ru_stime.tv_usec as f64 / 1_000_000f64,
+            minor_fault: rusage.ru_minflt as u64,
+            major_fault: rusage.ru_majflt as u64,
+        })
+    }
 }
 
-fn get_rusage() -> rusage {
+#[cfg(target_family = "windows")]
+pub fn get_usage() -> CliResult<ResourceUsage> {
+    use winapi::shared::minwindef::FILETIME;
+    use winapi::um::processthreadsapi::{GetCurrentProcess, GetProcessTimes};
     unsafe {
-        let mut usage: rusage = std::mem::zeroed();
-        getrusage(RUSAGE_SELF, &mut usage);
-        usage
+        let h_process = GetCurrentProcess();
+        let mut creation_time: FILETIME = std::mem::zeroed();
+        let mut exit_time: FILETIME = std::mem::zeroed();
+        let mut kernel_time: FILETIME = std::mem::zeroed();
+        let mut user_time: FILETIME = std::mem::zeroed();
+        GetProcessTimes(
+            h_process,
+            &mut creation_time,
+            &mut exit_time,
+            &mut kernel_time,
+            &mut user_time,
+        );
+        let kernel_time =
+            (kernel_time.dwHighDateTime as u64) << 32 + kernel_time.dwLowDateTime as u64;
+        let kernel_time = kernel_time as f64 * 1e-7; // 100 nanosec
+        let user_time = (user_time.dwHighDateTime as u64) << 32 + user_time.dwLowDateTime as u64;
+        let user_time = user_time as f64 * 1e-7; // 100 nanosec
+
+        let usage = ResourceUsage {
+            virtual_size: 0,
+            resident_size: 0,
+            resident_size_max: 0,
+            user_time,
+            system_time: kernel_time,
+            minor_fault: 0,
+            major_fault: 0,
+        };
+
+        Ok(usage)
     }
 }

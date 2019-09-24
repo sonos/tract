@@ -43,7 +43,6 @@ mod format;
 mod optimize_check;
 mod profile;
 mod run;
-#[cfg(not(target_family = "windows"))]
 mod rusage;
 mod stream_check;
 mod tensor;
@@ -54,8 +53,6 @@ const DEFAULT_MAX_ITERS: u64 = 100_000;
 const DEFAULT_MAX_TIME: u64 = 5000;
 
 fn info_usage(stage: &str) {
-    #[cfg(not(target_family = "windows"))]
-    {
         if log::log_enabled!(log::Level::Info) {
             let usage = rusage::get_usage().unwrap();
             info!(
@@ -63,7 +60,6 @@ fn info_usage(stage: &str) {
                 stage, usage.virtual_size, usage.resident_size, usage.resident_size_max
             );
         }
-    }
 }
 
 /// Entrypoint for the command-line interface.
