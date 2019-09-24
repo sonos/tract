@@ -64,8 +64,6 @@ extern crate num_integer;
 extern crate num_traits;
 #[macro_use]
 extern crate maplit;
-#[cfg(not(debug_assertions))]
-extern crate no_panic;
 #[macro_use]
 pub extern crate objekt;
 #[cfg(test)]

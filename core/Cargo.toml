@@ -23,7 +23,6 @@ itertools = "0.8"
 log = "0.4"
 maplit = "1.0"
 ndarray = { version = "0.12" }
-no-panic = "0.1"
 num-integer = "0.1"
 num-traits = "0.2"
 objekt = "0.1.1"

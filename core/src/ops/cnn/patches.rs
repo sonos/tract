@@ -2,8 +2,6 @@ use crate::internal::*;
 use crate::ops::cnn::PaddingSpec;
 use crate::ops::nn::{DataFormat, DataShape};
 use ndarray::prelude::*;
-#[cfg(not(debug_assertions))]
-use no_panic::no_panic;
 
 use super::PatchAxis;
 
@@ -467,7 +465,6 @@ pub struct FastPatchIterator<'p> {
 impl<'p> Iterator for FastPatchIterator<'p> {
     type Item = Option<isize>;
     #[inline(always)]
-    #[cfg_attr(not(debug_assertions), no_panic)]
     fn next(&mut self) -> Option<Option<isize>> {
         if self.item == self.patch.standard_layout_data_field.len() {
             return None;
@@ -491,7 +488,6 @@ pub struct SafePatchIterator<'p> {
 
 impl<'p> Iterator for SafePatchIterator<'p> {
     type Item = Option<isize>;
-    #[cfg_attr(not(debug_assertions), no_panic)]
     fn next(&mut self) -> Option<Option<isize>> {
         unsafe {
             if self.item == self.patch.standard_layout_data_field.len() {
