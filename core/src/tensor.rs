@@ -155,6 +155,11 @@ impl Tensor {
         self.null
     }
 
+    /// Get the number of dimensions (or axes) of the tensor.
+    pub fn rank(&self) -> usize {
+        self.shape.len()
+    }
+
     /// Get the shape of the tensor.
     pub fn shape(&self) -> &[usize] {
         &self.shape

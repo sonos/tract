@@ -28,7 +28,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Size", |_, _| Ok((Box::new(tractops::array::Size::new(DatumType::I64)), vec![])));
     reg.insert("Transpose", transpose);
     reg.insert("Tile", |_, _| Ok((Box::new(tractops::array::Tile::default()), vec![])));
-    reg.insert("Slice", slice);
+    reg.insert("Slice", slice::slice);
     reg.insert("Split", split);
     reg.insert("Squeeze", squeeze);
     reg.insert("Unsqueeze", unsqueeze);
@@ -140,16 +140,6 @@ pub fn pad(
     let rank = pads.len() / 2;
     let pads = (0..rank).map(|ax| (pads[ax], pads[ax + rank])).collect();
     Ok((Box::new(tractops::array::Pad::new(pads, mode)), vec![]))
-}
-
-pub fn slice(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let axes = node.get_attr_opt_vec("axes")?;
-    let begin = node.get_attr_vec("starts")?;
-    let end = node.get_attr_vec("ends")?;
-    Ok((Box::new(slice::Slice::new(axes, begin, end)), vec![]))
 }
 
 pub fn split(

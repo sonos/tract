@@ -10,24 +10,12 @@ pub fn rnn(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let mut rnn = RNN::default();
 
-    let mut real_input_count = 3;
-    let mut options = (3..6).map(|i| {
-        pb.get_input().get(i).filter(|s| !s.is_empty()).map(|_| {
-            real_input_count += 1;
-            real_input_count - 1
-        })
-    });
+    let mut options = crate::model::optional_inputs(pb).skip(3);
     rnn.optional_bias_input = options.next().unwrap();
     rnn.optional_sequence_lens_input = options.next().unwrap();
     rnn.optional_initial_h_input = options.next().unwrap();
 
-    let mut real_output_count = 0;
-    let mut options = (0..2).map(|i| {
-        pb.get_output().get(i).filter(|s| !s.is_empty()).map(|_| {
-            real_output_count += 1;
-            real_output_count - 1
-        })
-    });
+    let mut options = crate::model::optional_outputs(pb);
     rnn.optional_y_output = options.next().unwrap();
     rnn.optional_y_h_output = options.next().unwrap();
 
@@ -77,7 +65,7 @@ impl InferenceRulesOp for RNN {
         s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
+    ) -> TractResult<()> {
         let input_count = 3
             + self.optional_bias_input.is_some() as usize
             + self.optional_sequence_lens_input.is_some() as usize

@@ -86,12 +86,12 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     model.analyse(false).unwrap();
     info!("Incorporate");
     let model = model.incorporate().unwrap();
-    info!("Check full inference");
-    if model.missing_type_shape().unwrap().len() != 0 {
-        panic!("Incomplete inference {:?}", model.missing_type_shape());
-    }
     info!("Test model (optim: {:?}) {:#?}", optim, path);
     if optim {
+        info!("Check full inference");
+        if model.missing_type_shape().unwrap().len() != 0 {
+            panic!("Incomplete inference {:?}", model.missing_type_shape());
+        }
         info!("Into type");
         let model = model.into_typed().unwrap();
         let optimized = model.into_optimized().unwrap();
