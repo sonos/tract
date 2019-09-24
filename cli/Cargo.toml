@@ -33,6 +33,7 @@ tract-core = { path = "../core" }
 tract-kaldi = { optional = true, path = "../kaldi" }
 tract-onnx = { optional = true, path = "../onnx" }
 tract-tensorflow = { optional = true, path = "../tensorflow" }
+winapi = "0.3"
 
 [features]
 default = ["kaldi", "onnx", "tf"]
