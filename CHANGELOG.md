@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Notable
+
+* Make onnx loader operator set aware, and Slice-10 support.
+
 ## 0.5.1 - 2019-09-24
 
 ### Bugfix
