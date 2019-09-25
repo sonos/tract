@@ -108,6 +108,12 @@ impl StridedSlice {
             false
         };
 
+        // deal with shrinking
+        // (weirdly, tf ignores begin_mask when shrink is used)
+        if self.must_shrink(ix) {
+            return Dim { begin: b.clone(), end: b.clone() + 1, stride: 1, shrink: true };
+        }
+
         if stride.signum() > 0 {
             if self.ignore_begin(ix) {
                 b = 0.to_dim();
@@ -126,11 +132,6 @@ impl StridedSlice {
             } else if e_overflow {
                 e = dim.clone() - 1;
             }
-        }
-
-        // deal with shrinking
-        if self.must_shrink(ix) {
-            return Dim { begin: b.clone(), end: b.clone() + 1, stride: 1, shrink: true };
         }
 
         Dim { begin: b, end: e, stride, shrink: false }
@@ -284,7 +285,6 @@ impl InferenceRulesOp for StridedSlice {
         let params: TVec<Option<Arc<Tensor>>> = node.inputs[1..]
             .iter()
             .map(|i| Ok(target.outlet_fact(mapping[i])?.konst.clone()))
-            .inspect(|t| { dbg!(t); })
             .collect::<TractResult<_>>()?;
         if params.iter().all(|p| p.is_some()) {
             let params: TVec<&Tensor> = params.iter().map(|o| &**o.as_ref().unwrap()).collect();

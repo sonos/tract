@@ -217,3 +217,28 @@ fn strided_slice_5() {
     let inputs = vec![("input", tensor2(&[[0, 1]]))];
     compare(&graph, inputs, "op").unwrap()
 }
+
+#[test]
+fn strided_slice_shrink_override_begin_mask() {
+    let graph = tfpb::graph()
+        .node(placeholder_i32("input"))
+        .node(const_i32("begin", &tensor1(&[1])))
+        .node(const_i32("end", &tensor1(&[1])))
+        .node(const_i32("stride", &tensor1(&[1])))
+        .node(
+            tfpb::node()
+                .name("op")
+                .attr("T", DT_INT32)
+                .attr("Index", DT_INT32)
+                .attr("begin_mask", 1 as i64)
+                .attr("shrink_axis_mask", 1 as i64)
+                .input("input")
+                .input("begin")
+                .input("end")
+                .input("stride")
+                .op("StridedSlice"),
+        );
+    let graph = graph.write_to_bytes().unwrap();
+    let inputs = vec![("input", tensor1(&[0, 1]))];
+    compare(&graph, inputs, "op").unwrap()
+}
