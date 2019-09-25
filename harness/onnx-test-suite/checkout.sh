@@ -16,7 +16,12 @@ do
     then
         (
             rm -rf onnx-$version
-            tmp=$(mktemp -d -p .)
+            if [ `uname` = "Darwin" ] 
+            then
+                tmp=$(mktemp -d -t .)
+            else
+                tmp=$(mktemp -d -p .)
+            fi
             git clone https://github.com/onnx/onnx $tmp
             (cd $tmp ; git checkout v$version)
             mv $tmp onnx-$version
