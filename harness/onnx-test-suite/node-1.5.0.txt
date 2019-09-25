@@ -301,13 +301,13 @@ test_sinh
 test_sinh_example
 test_size
 test_size_example
-test_slice
-test_slice_default_axes
-test_slice_default_steps
-test_slice_end_out_of_bounds
-test_slice_neg
-test_slice_neg_steps
-test_slice_start_out_of_bounds
+test_slice                                                                          dynsize
+test_slice_default_axes                                                             dynsize
+test_slice_default_steps                                                            dynsize
+test_slice_end_out_of_bounds                                                        dynsize
+test_slice_neg                                                                      dynsize
+test_slice_neg_steps                                                                dynsize
+test_slice_start_out_of_bounds                                                      dynsize
 test_softmax_axis_0
 test_softmax_axis_1
 test_softmax_axis_2

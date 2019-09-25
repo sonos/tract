@@ -12,7 +12,7 @@ cd $CACHEDIR/onnx
 
 for version in 1.4.1 1.5.0
 do
-    if [ ! -e onnx-$version/backend/test/data ]
+    if [ ! -e onnx-$version/onnx/backend/test/data ]
     then
         (
             rm -rf onnx-$version
