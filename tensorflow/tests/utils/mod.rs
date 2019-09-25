@@ -75,9 +75,15 @@ pub fn compare_optim<S: AsRef<str>>(
         Ok(t) => t,
     };
 
-    expected[0].close_enough(&found[0], true).unwrap();
-    info!("Mode: {:?} passed", mode);
-    Ok(())
+    if let Err(e) = expected[0].close_enough(&found[0], true) {
+        error!("{:?} (mode: {:?})", e, mode);
+        error!("Tensorflow says: {:?}", expected);
+        error!("Tract says     : {:?}", found);
+        Err(e)?
+    } else {
+        info!("Mode: {:?} passed", mode);
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]
