@@ -123,7 +123,7 @@ impl PulsedOp for Delay {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape[self.axis] += self.overlap;
-        fact.delay += self.delay;
+        fact.delay += self.delay + self.overlap;
         Ok(tvec!(fact))
     }
 

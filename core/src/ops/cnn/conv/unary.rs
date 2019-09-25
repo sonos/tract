@@ -591,7 +591,7 @@ impl PulsedOp for ConvUnary {
                 &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
             let kernel_overreach = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
             fact.dim = (fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
-            fact.delay = (fact.delay + kernel_overreach) / stride;
+            fact.delay = fact.delay / stride;
         }
         Ok(tvec!(fact))
     }
