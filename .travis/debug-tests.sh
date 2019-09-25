@@ -11,4 +11,4 @@ fi
 
 # useful as debug_asserts will come into play
 cargo test -p tract-core
-cargo test -p onnx-test-suite -- --skip real::
+cargo test -p onnx-test-suite -- --skip real_

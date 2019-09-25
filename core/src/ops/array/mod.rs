@@ -58,6 +58,7 @@ mod size;
 mod slice;
 mod split;
 mod squeeze;
+mod strided_slice;
 mod tile;
 
 pub use self::add_dims::AddDims;
@@ -78,4 +79,5 @@ pub use self::size::Size;
 pub use self::slice::Slice;
 pub use self::split::Split;
 pub use self::squeeze::Squeeze;
+pub use self::strided_slice::StridedSlice;
 pub use self::tile::Tile;

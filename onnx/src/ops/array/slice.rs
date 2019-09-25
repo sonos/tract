@@ -150,11 +150,14 @@ fn slice10(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let mut optional_inputs = crate::model::optional_inputs(node).skip(3);
     Ok((
-        Box::new(Slice10::new(optional_inputs.next().unwrap(), optional_inputs.next().unwrap())),
+        Box::new(tract_core::ops::array::StridedSlice::onnx10(
+            optional_inputs.next().unwrap(),
+            optional_inputs.next().unwrap(),
+        )),
         vec![],
     ))
 }
-
+/*
 #[derive(Debug, Clone, new, Default)]
 pub struct Slice10 {
     pub optional_axes_input: Option<usize>,
@@ -192,53 +195,20 @@ impl Op for Slice10 {
         "onnx.Slice10".into()
     }
 
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        Ok(None)
+    }
+
     not_a_typed_op!();
 }
 
 impl StatelessOp for Slice10 {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let rank = inputs[0].rank();
-        let begin = inputs[1].cast_to::<i32>()?;
-        let begin = begin.as_slice::<i32>()?;
-        let end = inputs[2].cast_to::<i32>()?;
-        let end = end.as_slice::<i32>()?;
-        let axes: TVec<usize> = if let Some(i) = self.optional_axes_input {
-            inputs[i]
-                .cast_to::<i32>()?
-                .as_slice::<i32>()?
-                .iter()
-                .map(|&axis| if axis < 0 { axis + rank as i32 - 1 } else { axis } as usize)
-                .collect()
-        } else {
-            (0..rank).collect()
-        };
-        let steps: TVec<isize> = if let Some(i) = self.optional_steps_input {
-            inputs[i]
-                .cast_to::<i32>()?
-                .as_slice::<i32>()?
-                .iter()
-                .map(|&step| step as isize)
-                .collect()
-        } else {
-            tvec!(1; rank)
-        };
-        dbg!(&inputs[0].shape());
-        dbg!(&begin);
-        dbg!(&end);
-        dbg!(&steps);
-        let mut t = inputs[0].clone().into_tensor();
-        for (ix, &axis) in axes.iter().enumerate() {
-            t = dispatch_datum!(Self::eval_t(t.datum_type())(
-                &t,
-                axis,
-                begin[ix] as isize,
-                end[ix] as isize,
-                steps[ix]
-            ))?
-        }
-        dbg!(t.shape());
-        Ok(tvec!(t.into_arc_tensor()))
     }
 }
 
@@ -400,3 +370,4 @@ impl InferenceRulesOp for Slice10 {
 
     inference_op_as_op!();
 }
+*/
