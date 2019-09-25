@@ -71,6 +71,9 @@ impl<'a> ParsingContext<'a> {
                 outlets_by_name.insert(input.get_name().to_owned(), id);
             }
         }
+        for output in graph.get_output().iter() {
+            trace!("Model output: {:?}", output);
+        }
         for (name, t) in initializers.into_iter() {
             let id = model.add_const(name, t)?;
             outlets_by_name.insert(name.to_string(), id);

@@ -169,9 +169,16 @@ impl Slice10 {
         end: isize,
         step: isize,
     ) -> TractResult<Tensor> {
+        dbg!(begin, end, step);
         let dim = input.shape()[axis] as isize;
-        let begin = begin.min(dim).max(-dim);
-        let end = end.min(dim).max(-dim);
+        dbg!(dim);
+        let mut begin = begin.min(dim).max(-dim);
+        let mut end = end.min(dim).max(-dim);
+        dbg!(begin, end);
+        if step < 0 {
+            std::mem::swap(&mut begin, &mut end);
+        }
+        dbg!(begin, end);
         Ok(input
             .to_array_view::<T>()?
             .slice_axis(Axis(axis), ndarray::Slice::new(begin, Some(end), step))
@@ -216,6 +223,10 @@ impl StatelessOp for Slice10 {
         } else {
             tvec!(1; rank)
         };
+        dbg!(&inputs[0].shape());
+        dbg!(&begin);
+        dbg!(&end);
+        dbg!(&steps);
         let mut t = inputs[0].clone().into_tensor();
         for (ix, &axis) in axes.iter().enumerate() {
             t = dispatch_datum!(Self::eval_t(t.datum_type())(
@@ -226,6 +237,7 @@ impl StatelessOp for Slice10 {
                 steps[ix]
             ))?
         }
+        dbg!(t.shape());
         Ok(tvec!(t.into_arc_tensor()))
     }
 }
@@ -292,7 +304,7 @@ impl InferenceRulesOp for Slice10 {
                         } else {
                             end[ix].clone()
                         };
-                        s.equals(&outputs[0].shape[axis], (e - b) / steps[ix])?;
+                        s.equals(&outputs[0].shape[axis], (e - b).div_ceil(steps[ix].to_dim()))?;
                     }
                     for axis in 0..shape.len() {
                         if !axes.contains(&axis) {
