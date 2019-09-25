@@ -11,6 +11,12 @@ use tract_core::shapefact;
 
 mod conv_plus_conv;
 mod pad_plus_conv;
+mod delay_plus_pool;
+
+#[allow(dead_code)]
+fn setup_test_logger() {
+    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
+}
 
 fn proptest_regular_against_pulse(
     model: InferenceModel,
@@ -18,6 +24,7 @@ fn proptest_regular_against_pulse(
     input_array: ArrayD<f32>,
     axis: usize,
 ) -> TestCaseResult {
+    setup_test_logger();
     let mut ref_model = model.clone();
     ref_model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape()))?;
     let input = Tensor::from(input_array.clone());
