@@ -41,7 +41,8 @@ impl DelayState {
             buffer.as_slice_mut().unwrap().rotate_left(stride);
             buffer.slice_axis_mut(axis, Slice::from((buffered - input_pulse)..)).assign(&input);
         }
-        Ok(output.into_arc_tensor())
+        let output = output.into_arc_tensor();
+        Ok(output)
     }
 }
 

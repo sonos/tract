@@ -32,9 +32,7 @@ fn proptest_regular_against_pulse(
     let outputs = plan.run(tvec!(input.clone())).unwrap();
 
     let model = model.into_normalized().unwrap();
-
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
-    dbg!(&pulsed);
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
     let output_stream_axis = output_fact.axis;
@@ -82,9 +80,9 @@ fn proptest_regular_against_pulse(
     let pulsed_output = got.slice_axis(
         Axis(output_stream_axis),
         (output_fact.delay..output_fact.delay + output_len.unwrap() as usize).into(),
-    );
+    ).to_owned().into_tensor();
 
-    prop_assert_eq!(pulsed_output, outputs[0].to_array_view::<f32>().unwrap());
+    prop_assert_eq!(&pulsed_output, &*outputs[0]);
     Ok(())
 }
 
