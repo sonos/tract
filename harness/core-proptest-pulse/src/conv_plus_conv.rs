@@ -82,3 +82,14 @@ proptest! {
     #[test]
     fn proptest(pb in ConvPlusConvProblem::arbitrary()) { pb.run().unwrap() }
 }
+
+#[test]
+fn prob_1() {
+    let cpc = ConvPlusConvProblem {
+        input: Array3::from_shape_fn((1, 1, 7), |(_, _, x)| x as f32),
+        pulse: 1,
+        conv1: ConvOp { stride: 1, dilation: 1, ker: arr3(&[[[1f32]]]) },
+        conv2: ConvOp { stride: 1, dilation: 2, ker: arr3(&[[[1f32, 2.0]]]) },
+    };
+    cpc.run().unwrap();
+}

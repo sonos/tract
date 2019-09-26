@@ -1,6 +1,6 @@
 use ndarray::*;
 use tract_core::internal::*;
-use tract_core::ops::cnn::ConvUnary;
+use tract_core::ops::cnn::{ConvUnary, PoolSpec};
 
 #[derive(Debug, Copy, Clone)]
 pub enum PaddingStrat {
@@ -67,14 +67,16 @@ impl TypedOp for SpaceToBatchUnary {
                     (conv_node.op_as::<ConvUnary>(), b2s_node.op_as::<BatchToSpaceUnary>())
                 {
                     let op = ConvUnary {
-                        data_format: conv_op.data_format,
+                        pool_spec: PoolSpec {
+                            data_format: conv_op.pool_spec.data_format,
+                            padding: conv_op.pool_spec.padding.clone(), // FIXME
+                            strides: conv_op.pool_spec.strides.clone(),
+                            kernel_shape: conv_op.pool_spec.kernel_shape.clone(),
+                            output_channel_override: conv_op.pool_spec.output_channel_override,
+                            dilations: Some(self.block_shape.iter().map(|&i| i as usize).collect()),
+                        },
                         kernel_fmt: conv_op.kernel_fmt,
-                        padding: conv_op.padding.clone(), // FIXME
-                        dilations: self.block_shape.iter().map(|&i| i as usize).collect(),
-                        strides: conv_op.strides.clone(),
                         kernel: conv_op.kernel.clone(),
-                        full_input_shape: model.outlet_fact(node.inputs[0])?.shape.iter().collect(),
-                        full_output_shape: b2s_node.outputs[0].fact.shape.iter().collect(),
                         group: conv_op.group,
                     };
                     let mut patch = TypedModelPatch::default();

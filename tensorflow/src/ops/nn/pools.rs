@@ -14,7 +14,9 @@ pub fn avgpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
             data_format,
             kshape.hw_dims().into(),
             padding,
+            None,
             Some(strides[kshape.hw_axes()].into()),
+            None,
         ),
         false,
     )))
@@ -31,7 +33,9 @@ pub fn maxpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
             data_format,
             kshape.hw_dims().into(),
             padding,
+            None,
             Some(strides[kshape.hw_axes()].into()),
+            None,
         ),
         None,
     )))

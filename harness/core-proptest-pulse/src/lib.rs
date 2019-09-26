@@ -187,8 +187,6 @@ fn test_pad_before_1() {
         .unwrap();
     model.auto_outputs().unwrap();
 
-    dbg!(&model);
-
     let input = arr1(&[1.0]);
     proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
 }

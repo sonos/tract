@@ -11,81 +11,44 @@ use super::mat_mat::MatMat;
 use super::vec_mat::VecMat;
 use super::Conv;
 use crate::ops::cnn::conv::KernelFormat;
-use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
+use crate::ops::cnn::PoolSpec;
 use crate::ops::nn::DataFormat;
 
 use std::iter::Sum;
 
 #[derive(Debug, Clone)]
 pub struct ConvUnary {
-    pub data_format: DataFormat,
+    pub pool_spec: PoolSpec,
     pub kernel_fmt: KernelFormat,
-    pub padding: PaddingSpec,
-    pub dilations: TVec<usize>,
-    pub strides: TVec<usize>,
     pub kernel: Tensor,
 
-    pub full_input_shape: TVec<TDim>,
-    pub full_output_shape: TVec<TDim>,
     pub group: usize,
 }
 
 impl ConvUnary {
-    pub fn new(
-        conv: &Conv,
-        full_input_shape: &[TDim],
-        full_output_shape: &[TDim],
-        kernel: Tensor,
-        group: usize,
-    ) -> TractResult<ConvUnary> {
-        for td in full_input_shape {
-            if let Ok(d) = td.to_integer() {
-                if d < 0 {
-                    bail!("Negative input shape dim detected");
-                }
-            }
-        }
-        for td in full_output_shape {
-            if let Ok(d) = td.to_integer() {
-                if d < 0 {
-                    bail!("Negative output shape dim detected");
-                }
-            }
-        }
-        let spatial_rank = full_input_shape.len() - 2;
-        let dilations =
-            conv.dilations.as_ref().map(|a| TVec::from(&**a)).unwrap_or(tvec!(1; spatial_rank));
-        let strides =
-            conv.strides.as_ref().map(|a| TVec::from(&**a)).unwrap_or(tvec!(1; spatial_rank));
+    pub fn new(conv: &Conv, kernel: Tensor, group: usize) -> TractResult<ConvUnary> {
+        let spatial_rank = kernel.rank() - 2;
+        let kshape = kernel.shape();
+
+        let output_channels = match conv.kernel_fmt {
+            KernelFormat::OIHW => kshape[0],
+            KernelFormat::HWIO => kshape[kshape.len() - 1] * group,
+        };
 
         let unary = ConvUnary {
-            data_format: conv.data_format,
+            pool_spec: PoolSpec {
+                data_format: conv.data_format,
+                padding: conv.padding.clone(),
+                strides: conv.strides.clone(),
+                dilations: conv.dilations.clone(),
+                kernel_shape: kshape[conv.kernel_fmt.h_axis()..][..spatial_rank].into(),
+                output_channel_override: Some(output_channels),
+            },
             kernel_fmt: conv.kernel_fmt,
-            padding: conv.padding.clone(),
-            dilations,
-            strides,
             kernel,
-            full_input_shape: full_input_shape.into(),
-            full_output_shape: full_output_shape.into(),
             group,
         };
         Ok(unary)
-    }
-
-    fn patch(&self, input_full_shape: &[usize]) -> Patch {
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..(input_full_shape.len() - 2)];
-        let output_inner_stride = match self.data_format {
-            DataFormat::NHWC => self.output_channels(),
-            DataFormat::NCHW => 1,
-        };
-        let spec = PatchSpec::for_full_shape(self.data_format.clone(), input_full_shape)
-            .with_kernel_shape(kernel_spatial_shape.into())
-            .with_padding(self.padding.clone())
-            .with_dilations(self.dilations.clone())
-            .with_strides(self.strides.clone())
-            .with_output_inner_stride(output_inner_stride);
-        spec.into_patch()
     }
 
     fn input_channels(&self) -> usize {
@@ -96,23 +59,16 @@ impl ConvUnary {
     }
 
     fn output_channels(&self) -> usize {
-        self.data_format.shape(&self.full_output_shape).c_dim().to_integer().unwrap() as usize
+        let kshape = self.kernel.shape();
+        match self.kernel_fmt {
+            KernelFormat::OIHW => kshape[0],
+            KernelFormat::HWIO => kshape[kshape.len() - 1] * self.group,
+        }
     }
 
     pub fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
-        assert!(
-            (0..input_full_shape.len() - 2).all(|ax| self.padding.valid_dim(ax)) && self.group == 1
-        );
+        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
 
-        let patch = self.patch(input_full_shape);
-        assert!(!patch.padded);
-
-        let input_shape = self.data_format.shape(input_full_shape.into());
-        let output_shape = self.data_format.from_n_c_hw(
-            *input_shape.n(),
-            self.output_channels(),
-            &*patch.output_shape,
-        );
         let channel_stride = input_shape.c_stride();
         let rpatch = &patch;
         let data_offsets: Vec<isize> = patch.centers_offsets();
@@ -181,13 +137,7 @@ impl ConvUnary {
         f32: AsPrimitive<T>,
     {
         trace!("to_im2col_pair: {:?}", self);
-        let patch = self.patch(input_full_shape);
-        let input_shape = self.data_format.shape(input_full_shape.into());
-        let output_shape = self.data_format.from_n_c_hw(
-            *input_shape.n(),
-            self.output_channels(),
-            &*patch.output_shape,
-        );
+        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
         let kernel = self.kernel.to_array_view::<T>()?;
 
         trace!("output channels: {:?}", self.output_channels());
@@ -304,19 +254,12 @@ impl ConvUnary {
         conv_gemm.as_stateless().unwrap().eval(tvec!(mega.into()))
     }
 
-    pub fn to_depth_wise<T>(&self, shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
+    pub fn to_depth_wise<T>(&self, input_full_shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq + Sum,
         f32: AsPrimitive<T>,
     {
-        let patch = self.patch(shape);
-        let input_shape = self.data_format.shape(shape.into());
-        let output_shape = self
-            .full_output_shape
-            .iter()
-            .map(|a| a.to_integer().map(|a| a as usize))
-            .collect::<TractResult<TVec<usize>>>()?;
-        let output_shape = self.data_format.shape(output_shape);
+        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
         let op = DepthWise::<T>::new(
             patch,
             input_shape,
@@ -333,17 +276,14 @@ impl Op for ConvUnary {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![
-            format!("Data format: {:?}", self.data_format),
-            format!(
-                "Kernel shape, {:?}: {:?} (strides:{:?} dilations:{:?} groups:{}))",
-                self.kernel_fmt,
-                self.kernel.shape(),
-                self.strides,
-                self.dilations,
-                self.group
-            ),
-        ])
+        let mut info = self.pool_spec.info();
+        info.push(format!(
+            "Kernel shape, {:?}: {:?} (groups:{}))",
+            self.kernel_fmt,
+            self.kernel.shape(),
+            self.group
+        ));
+        Ok(info)
     }
 
     canonic!();
@@ -359,18 +299,18 @@ impl StatelessOp for ConvUnary {
 
 impl TypedOp for ConvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.full_output_shape)?))
+        self.pool_spec.output_facts(inputs)
     }
 
     fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
         let fact = model.outlet_fact(node.inputs[0])?;
-        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
+        let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
         let mut axes = vec![AxisInfo::simple(0).disposable(false)];
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let h_axis = shape.h_axis();
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
-            if dim == 1 && self.strides[ix] == 1 {
+            if dim == 1 && self.pool_spec.stride(ix) == 1 {
                 axes.push(AxisInfo::simple(ix + h_axis))
             }
         }
@@ -383,34 +323,38 @@ impl TypedOp for ConvUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
-        let spatial_rank = self.full_input_shape.len() - 2;
+        let full_input_shape = input_fact.shape.to_tvec();
+        let spatial_rank = full_input_shape.len() - 2;
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         if kernel_spatial_shape.iter().product::<usize>() == 1
-            && self.dilations.iter().all(|&x| x == 1)
-            && self.strides.iter().all(|&x| x == 1)
+            && (0..spatial_rank)
+                .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
             && self.group == 1
         {
-            if self.kernel_fmt == KernelFormat::HWIO && self.data_format == DataFormat::NHWC {
+            if self.kernel_fmt == KernelFormat::HWIO
+                && self.pool_spec.data_format == DataFormat::NHWC
+            {
                 use crate::ops::math::mat_mul::MatMulUnary;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
                 let op = MatMulUnary::new(kernel.into_arc_tensor(), true, true, true);
                 return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
             }
-        } else if let Some(axis) = (0..self.strides.len()).find(|&ax| {
-            self.padding.valid_dim(ax)
-                && self.strides[ax] > 1
-                && self.dilations[ax] % self.strides[ax] == 0
+        } else if let Some(axis) = (0..spatial_rank).find(|&ax| {
+            self.pool_spec.padding.valid_dim(ax)
+                && self.pool_spec.stride(ax) > 1
+                && self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0
         }) {
-            let downsample_factor = self.strides[axis];
+            let downsample_factor = self.pool_spec.stride(axis);
             let mut new_op = self.clone();
-            if new_op.dilations[axis] > 1 {
-                new_op.dilations[axis] /= downsample_factor;
+            if new_op.pool_spec.dilation(axis) > 1 {
+                new_op.pool_spec.dilations.as_mut().unwrap()[axis] /= downsample_factor;
             }
-            new_op.strides[axis] /= downsample_factor;
+            new_op.pool_spec.strides.as_mut().unwrap()[axis] /= downsample_factor;
             let mut patch = TypedModelPatch::default();
             let tap = patch.tap_model(model, node.inputs[0])?;
-            let shape = self.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>());
+            let shape =
+                self.pool_spec.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>());
             let down = patch.wire_node(
                 format!("Downsample-{}", node.name),
                 crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0),
@@ -424,14 +368,14 @@ impl TypedOp for ConvUnary {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let shape = self.data_format.shape(inputs[0].shape.iter().collect::<TVec<TDim>>());
+        let shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec());
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        let output_dims = self.padding.compute(
+        let output_dims = self.pool_spec.padding.compute(
             shape.hw_dims(),
             kernel_spatial_shape,
-            &*self.dilations,
-            &*self.strides,
+            &*self.pool_spec.dilations.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
+            &*self.pool_spec.strides.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
         );
         let n_output_points: TDim = output_dims.iter().map(|d| d.output.clone()).product::<TDim>();
         let n_output_channels = self.output_channels().to_dim();
@@ -445,11 +389,12 @@ impl TypedOp for ConvUnary {
 
     fn dispose_dummy_axis(
         &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
+        model: &TypedModel,
+        node: &TypedNode,
         axis: usize,
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let shape = self.data_format.shape(&self.full_input_shape);
+        let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
+        let shape = self.pool_spec.data_format.shape(full_input_shape);
         if axis < shape.h_axis() {
             bail!("Only spatial axis can be disposed of.");
         }
@@ -457,9 +402,9 @@ impl TypedOp for ConvUnary {
         if geo_axis >= shape.hw_rank() {
             bail!("Only spatial axis can be disposed of.");
         }
-        if self.dilations[geo_axis] != 1
-            || self.strides[geo_axis] != 1
-            || !self.padding.valid_dim(geo_axis)
+        if self.pool_spec.dilation(geo_axis) != 1
+            || self.pool_spec.stride(geo_axis) != 1
+            || !self.pool_spec.padding.valid_dim(geo_axis)
         {
             bail!("Can not dispose of axis with dilation, stride or padding.");
         }
@@ -475,14 +420,16 @@ impl TypedOp for ConvUnary {
             copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
         let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
         let new_op = ConvUnary {
-            data_format: self.data_format,
+            pool_spec: PoolSpec {
+                data_format: self.pool_spec.data_format,
+                padding: self.pool_spec.padding.rm_axis(geo_axis),
+                dilations: self.pool_spec.dilations.as_ref().map(|d| copy_rm_nth(&d, geo_axis)),
+                kernel_shape: copy_rm_nth(&self.pool_spec.kernel_shape, geo_axis),
+                strides: self.pool_spec.strides.as_ref().map(|s| copy_rm_nth(&s, geo_axis)),
+                output_channel_override: self.pool_spec.output_channel_override,
+            },
             kernel_fmt: self.kernel_fmt,
-            padding: self.padding.rm_axis(geo_axis),
-            dilations: copy_rm_nth(&self.dilations, geo_axis),
-            strides: copy_rm_nth(&self.strides, geo_axis),
             kernel,
-            full_input_shape: copy_rm_nth(&self.full_input_shape, axis),
-            full_output_shape: copy_rm_nth(&self.full_output_shape, axis),
             group: self.group,
         };
         Ok(Some(Box::new(new_op)))
@@ -490,53 +437,13 @@ impl TypedOp for ConvUnary {
 
     fn pulsify(
         &self,
-        _source: &NormalizedModel,
+        source: &NormalizedModel,
         node: &NormalizedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        let mut input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?;
-        let shape = self.data_format.shape(&fact.shape);
-        if fact.axis == shape.n_axis() {
-            target.wire_node(&*node.name, self.clone(), &[input])
-        } else if fact.axis == shape.c_axis() {
-            bail!("Can not pulsify convolution along the input channel axis");
-        } else {
-            let spatial_rank = self.full_input_shape.len() - 2;
-            let geo_axis = fact.axis - shape.h_axis();
-            let stride = self.strides[geo_axis];
-            if fact.pulse() % stride != 0 {
-                bail!("Convolution pulsification can only be achieved when the pulse length is a multiple of the stride. Got pulse={}, stride={}", fact.pulse(), stride)
-            }
-            let kernel_spatial_shape =
-                &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
-            let kernel_overreach = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
-
-            let overlap = (kernel_overreach + 1).saturating_sub(stride);
-
-            let mut augmented_fact = fact.clone();
-            augmented_fact.shape[augmented_fact.axis] += overlap;
-            augmented_fact.delay += overlap;
-            augmented_fact.delay = augmented_fact.delay.div_ceil(stride) * stride;
-
-            let mut conv_op = self.clone();
-            conv_op.full_input_shape[fact.axis] = augmented_fact.pulse().to_dim();
-            conv_op.full_output_shape[fact.axis] =
-                ((augmented_fact.pulse() - overlap) / self.strides[geo_axis]).to_dim();
-
-            if augmented_fact != *fact {
-                let extra_delay = augmented_fact.delay - fact.delay - overlap;
-                let delay = crate::pulse::delay::Delay::new(
-                    &fact,
-                    extra_delay,
-                    augmented_fact.pulse() - fact.pulse(),
-                );
-                input = target.wire_node(format!("{}/Delay", node.name), delay, &[input])?[0];
-            }
-            target.wire_node(&*node.name, conv_op, &[input])
-        }
+        self.pool_spec.pulsify(source, node, self, target, mapping)
     }
 
     fn codegen(
@@ -544,11 +451,12 @@ impl TypedOp for ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_fact = model.outlet_fact(node.inputs[0])?;
-        let spatial_rank = self.full_input_shape.len() - 2;
+        let spatial_rank = full_input_shape.len() - 2;
         if let Some(shape) = input_fact.shape.as_finite() {
             let dt = input_fact.datum_type;
-            if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
+            if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
                 && dt == f32::datum_type()
                 && self.group == 1
             {
@@ -579,21 +487,7 @@ impl TypedOp for ConvUnary {
 
 impl PulsedOp for ConvUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.shape =
-            self.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
-        let shape = self.data_format.shape(&fact.shape);
-        if fact.axis != shape.n_axis() {
-            let spatial_rank = self.full_input_shape.len() - 2;
-            let geo_axis = fact.axis - shape.h_axis();
-            let stride = self.strides[geo_axis];
-            let kernel_spatial_shape =
-                &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
-            let kernel_overreach = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
-            fact.dim = (fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
-            fact.delay = fact.delay / stride;
-        }
-        Ok(tvec!(fact))
+        self.pool_spec.pulsed_output_facts(inputs)
     }
 
     pulsed_op_as_op!();
