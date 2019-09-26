@@ -90,7 +90,11 @@ impl PaddingSpec {
         aft: usize,
     ) -> ComputedPaddedDim<D> {
         let kernel_field = (kernel - 1) * dilation + 1;
-        let output = (input.clone() + bef + aft - kernel_field + 1).div_ceil(stride);
+        let output = if let Ok(int) = input.to_integer() {
+            D::from((int as usize + bef + aft).saturating_sub(kernel_field - 1).div_ceil(stride))
+        } else {
+            (input.clone() + bef + aft - kernel_field + 1).div_ceil(stride)
+        };
         ComputedPaddedDim::new(output, bef.into(), aft.into())
     }
 

@@ -97,27 +97,26 @@ impl PoolSpec {
         } else {
             let geo_axis = fact.axis - input_shape.h_axis();
             let stride = self.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
+            let pulse = fact.pulse();
             if fact.pulse() % stride != 0 {
                 bail!("Pulsificaton requires pulse to be a stride multiple")
             }
             let dilation = 1;
             let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
+            let overlap = (kernel_len + 1).saturating_sub(stride);
+            let misalignment = fact.delay % pulse;
+            let mut wire = input;
 
-            if kernel_len < stride {
-                let misalignment = fact.delay % stride;
-                if misalignment != 0 {
-                    unimplemented!();
-                }
-                return target.wire_node(&*node.name, objekt::clone_box(op), &[input]);
+            if overlap > 0 || misalignment > 0 {
+                let align_to = (overlap + fact.delay).div_ceil(pulse) * pulse;
+                let delay = align_to - overlap - fact.delay;
+                wire = target.wire_node(
+                    format!("{}/Delay", node.name),
+                    crate::pulse::delay::Delay::new(&fact, delay, overlap),
+                    &[wire],
+                )?[0];
             }
-
-            // overlap case, need delay with augmented output
-            let delayed = target.wire_node(
-                format!("{}/Delay", node.name),
-                crate::pulse::delay::Delay::new(&fact, 0, kernel_len),
-                &[input],
-            )?;
-            target.wire_node(&*node.name, objekt::clone_box(op), &delayed)
+            target.wire_node(&*node.name, objekt::clone_box(op), &[wire])
         }
     }
 
@@ -139,7 +138,8 @@ impl PoolSpec {
         let dilation = 1;
         let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
         let stride = self.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
-        fact.dim = (fact.dim.clone() - kernel_len.to_dim()) / stride;
+        fact.delay /= stride;
+        fact.dim = (fact.dim.clone() - kernel_len.to_dim()).div_ceil(stride.to_dim());
         fact.shape = oshape.shape;
         Ok(tvec!(fact))
     }
