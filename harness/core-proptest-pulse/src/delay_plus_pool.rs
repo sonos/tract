@@ -46,7 +46,9 @@ impl DelayPlusPoolProblem {
             nn::DataFormat::NHWC,
             tvec!(self.pool_window),
             cnn::PaddingSpec::Valid,
+            None,
             Some(tvec!(self.stride)),
+            None,
         );
         let pool = model.wire_node("pool", cnn::MaxPool::new(pool_spec, None), &crop).unwrap();
         model.set_output_outlets(&pool).unwrap();

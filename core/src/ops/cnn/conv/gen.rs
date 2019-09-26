@@ -70,11 +70,8 @@ impl Conv {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
         }
         if let Some(kvalue) = kernel.borrow().konst.clone() {
-            let ishape: TVec<TDim> = input.borrow().shape.iter().collect();
             let reduced = ConvUnary::new(
                 &self,
-                &ishape,
-                &self.output_shape(&*ishape, kvalue.shape()),
                 kvalue.into_tensor(),
                 self.group,
             )?;

@@ -5,10 +5,12 @@ use crate::ops::nn::{DataFormat, DataShape};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct PoolSpec {
-    data_format: DataFormat,
-    kernel_shape: TVec<usize>,
-    padding: PaddingSpec,
-    strides: Option<TVec<usize>>,
+    pub data_format: DataFormat,
+    pub kernel_shape: TVec<usize>,
+    pub padding: PaddingSpec,
+    pub dilations: Option<TVec<usize>>,
+    pub strides: Option<TVec<usize>>,
+    pub output_channel_override: Option<usize>,
 }
 
 impl PoolSpec {
@@ -16,24 +18,43 @@ impl PoolSpec {
         vec![
             format!("Data format: {:?}", self.data_format),
             format!(
-                "Kernel shape:{:?} (strides:{:?}, padding:{:?})",
-                self.kernel_shape, self.strides, self.padding,
+                "Kernel shape:{:?} (strides:{:?}, padding:{:?}, dilations:{:?})",
+                self.kernel_shape, self.strides, self.padding, self.dilations,
             ),
         ]
     }
 
+    pub fn dilation(&self, geo_axis: usize) -> usize {
+        self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1)
+    }
+
+
+    pub fn stride(&self, geo_axis: usize) -> usize {
+        self.strides.as_ref().map(|s| s[geo_axis]).unwrap_or(1)
+    }
+
     pub fn compute_geo(&self, input_full_shape: &[usize]) -> (DataShape, Patch, DataShape) {
         let input_shape = self.data_format.shape(input_full_shape.into());
+        let output_inner_stride = match self.data_format {
+            DataFormat::NCHW => 1,
+            DataFormat::NHWC => self.output_channel_override.clone().unwrap_or(*input_shape.c()),
+        };
         let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)
-            .with_output_inner_stride(*input_shape.w_stride())
+            .with_output_inner_stride(output_inner_stride)
             .with_kernel_shape(self.kernel_shape.clone())
             .with_padding(self.padding.clone());
         if let Some(strides) = self.strides.clone() {
             spec = spec.with_strides(strides);
         }
+        if let Some(dilations) = self.dilations.clone() {
+            spec = spec.with_dilations(dilations);
+        }
         let patch = spec.into_patch();
-        let output_shape =
-            input_shape.fmt.from_n_c_hw(*input_shape.n(), *input_shape.c(), &*patch.output_shape);
+        let output_shape = input_shape.fmt.from_n_c_hw(
+            *input_shape.n(),
+            self.output_channel_override.unwrap_or(*input_shape.c()),
+            &*patch.output_shape,
+        );
         (input_shape, patch, output_shape)
     }
 
@@ -50,7 +71,7 @@ impl PoolSpec {
             let computed = self.padding.compute(
                 ishape.hw_dims(),
                 &*self.kernel_shape,
-                &ones,
+                self.dilations.as_ref().unwrap_or(&ones),
                 self.strides.as_ref().unwrap_or(&ones),
             );
             for o in 0..outputs.len() {
@@ -58,7 +79,11 @@ impl PoolSpec {
                     s.equals(&outputs[o].shape[ix + ishape.h_axis()], &d.output)?;
                 }
                 s.equals(&outputs[o].shape[ishape.n_axis()], ishape.n_dim())?;
-                s.equals(&outputs[o].shape[ishape.c_axis()], ishape.c_dim())?;
+                if let Some(c) = self.output_channel_override {
+                    s.equals(&outputs[o].shape[ishape.c_axis()], c.to_dim())?;
+                } else {
+                    s.equals(&outputs[o].shape[ishape.c_axis()], ishape.c_dim())?;
+                }
             }
             Ok(())
         })
@@ -70,12 +95,15 @@ impl PoolSpec {
         let computed = self.padding.compute(
             ishape.hw_dims(),
             &*self.kernel_shape,
-            &ones,
+            self.dilations.as_ref().unwrap_or(&ones),
             self.strides.as_ref().unwrap_or(&ones),
         );
         let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<TDim>>();
-        let oshape =
-            self.data_format.from_n_c_hw(ishape.n().clone(), ishape.c().clone(), spatial_dims);
+        let oshape = self.data_format.from_n_c_hw(
+            ishape.n().clone(),
+            self.output_channel_override.map(|i| i.to_dim()).unwrap_or(ishape.c().clone()),
+            spatial_dims,
+        );
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*oshape.shape)?))
     }
 
@@ -101,7 +129,7 @@ impl PoolSpec {
             if fact.pulse() % stride != 0 {
                 bail!("Pulsificaton requires pulse to be a stride multiple")
             }
-            let dilation = 1;
+            let dilation = self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
             let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
             let overlap = (kernel_len + 1).saturating_sub(stride);
             let misalignment = fact.delay % pulse;
@@ -126,16 +154,19 @@ impl PoolSpec {
         let computed = self.padding.compute(
             ishape.hw_dims(),
             &*self.kernel_shape,
-            &ones,
+            self.dilations.as_ref().unwrap_or(&ones),
             self.strides.as_ref().unwrap_or(&ones),
         );
         let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<usize>>();
-        let oshape =
-            self.data_format.from_n_c_hw(ishape.n().clone(), ishape.c().clone(), spatial_dims);
+        let oshape = self.data_format.from_n_c_hw(
+            ishape.n().clone(),
+            self.output_channel_override.unwrap_or(*ishape.c()),
+            spatial_dims,
+        );
         let mut fact = inputs[0].clone();
         let input_shape = self.data_format.shape(&*fact.shape);
         let geo_axis = fact.axis - input_shape.h_axis();
-        let dilation = 1;
+        let dilation = self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
         let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
         let stride = self.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
         fact.delay /= stride;
