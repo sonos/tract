@@ -136,7 +136,7 @@ impl PoolSpec {
             let mut wire = input;
 
             if overlap > 0 || misalignment > 0 {
-                let align_to = (overlap + fact.delay).div_ceil(pulse) * pulse;
+                let align_to = (overlap + fact.delay).div_ceil(stride) * stride;
                 let delay = align_to - overlap - fact.delay;
                 wire = target.wire_node(
                     format!("{}/Delay", node.name),
