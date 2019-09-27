@@ -7,6 +7,7 @@ pub struct Inference {
     pub output_mapping: Vec<OutputMapping<(), TDim>>,
     pub seq_length_input_slot: Option<usize>,
     pub clean_scan_counts: bool,
+    pub iter_count_fact: GenericFact<TDim>,
 }
 
 impl Op for Inference {
@@ -80,13 +81,17 @@ impl Inference {
         outer: &mut InferenceFact,
         inner: &mut InferenceFact,
         outer_scan_axis: usize,
-    ) -> TractResult<()> {
-        outer.datum_type.unify_with_mut(&mut inner.datum_type)?;
+    ) -> TractResult<bool> {
+        let mut changed = outer.datum_type.unify_with_mut(&mut inner.datum_type)?;
         let rank =
             outer.shape.rank().concretize().or(inner.shape.rank().concretize()).map(|r| r as usize);
         if let Some(rank) = rank {
-            outer.shape.unify_with(&ShapeFact::closed(tvec!(GenericFact::Any; rank as usize)))?;
-            inner.shape.unify_with(&ShapeFact::closed(tvec!(GenericFact::Any; rank as usize)))?;
+            if outer.shape.unify_with(&ShapeFact::closed(tvec!(GenericFact::Any; rank as usize)))? {
+                changed = true;
+            }
+            if inner.shape.unify_with(&ShapeFact::closed(tvec!(GenericFact::Any; rank as usize)))? {
+                changed = true;
+            }
             for axis in 0..rank {
                 if axis != outer_scan_axis {
                     let value = outer.shape.dim(axis).unwrap().concretize().or(inner
@@ -95,20 +100,25 @@ impl Inference {
                         .unwrap()
                         .concretize());
                     if let Some(value) = value {
-                        outer.shape.set_dim(axis, value.clone());
-                        inner.shape.set_dim(axis, value);
+                        if outer.shape.set_dim(axis, value.clone()) {
+                            changed = true
+                        }
+                        if inner.shape.set_dim(axis, value) {
+                            changed = true
+                        }
                     }
                 }
             }
         }
-        Ok(())
+        Ok(changed)
     }
 
     fn unify_facts(
         &mut self,
         inputs: &mut [InferenceFact],
         outputs: &mut [InferenceFact],
-    ) -> TractResult<()> {
+    ) -> TractResult<bool> {
+        let mut changed = false;
         let hidden_state_len = self.input_mapping.iter().filter_map(|m| m.as_state()).count();
         for state_ix in 0..hidden_state_len {
             trace!("Unify hidden state #{}", state_ix);
@@ -130,8 +140,14 @@ impl Inference {
             match initializer {
                 StateInitializer::Value(v) => {
                     let fact = InferenceFact::dt_shape_from_tensor(v);
-                    self.body.set_input_fact(inner_model_input_ix, fact.clone())?;
-                    self.body.set_output_fact(inner_model_output_ix, fact)?;
+                    if self.body.input_fact(inner_model_input_ix)? != &fact {
+                        self.body.set_input_fact(inner_model_input_ix, fact.clone())?;
+                        changed = true;
+                    }
+                    if self.body.output_fact(inner_model_input_ix)? != &fact {
+                        self.body.set_output_fact(inner_model_output_ix, fact)?;
+                        changed = true;
+                    }
                 }
                 StateInitializer::FromInput(outer_input_ix) => {
                     let mut facts = self.body.outlets_fact_mut(&[
@@ -139,7 +155,9 @@ impl Inference {
                         self.body.output_outlets()?[inner_model_output_ix],
                     ])?;
                     facts.push(&mut inputs[*outer_input_ix]);
-                    Factoid::unify_all(&mut facts)?;
+                    if Factoid::unify_all(&mut facts)? {
+                        changed = true;
+                    }
                 }
             }
         }
@@ -147,12 +165,30 @@ impl Inference {
             match i {
                 InputMapping::State { .. } => {}
                 InputMapping::Full { slot } => {
-                    inputs[*slot].unify_with(self.body.input_fact_mut(ix)?)?;
+                    if inputs[*slot].unify_with(self.body.input_fact_mut(ix)?)? {
+                        changed = true;
+                    }
                 }
                 InputMapping::Scan { slot, axis, .. } => {
                     let incoming = &mut inputs[*slot];
                     let inner = self.body.input_fact_mut(ix)?;
-                    Self::unify_scanning_tensor_fact(incoming, inner, *axis)?;
+                    if Self::unify_scanning_tensor_fact(incoming, inner, *axis)? {
+                        changed = true;
+                    };
+                    if self.clean_scan_counts {
+                        if incoming.shape.ensure_rank_at_least(*axis) {
+                            changed = true;
+                        }
+                        let value = self.iter_count_fact.unify(&incoming.shape.dim(*axis).unwrap())?;
+                        if self.iter_count_fact != value {
+                            changed = true;
+                            self.iter_count_fact = value.clone();
+                        }
+                        if incoming.shape.dim(*axis).unwrap() != value {
+                            changed = true;
+                            incoming.shape.set_dim(*axis, value.concretize().unwrap());
+                        }
+                    }
                 }
             }
         }
@@ -160,13 +196,31 @@ impl Inference {
             if let Some(slot) = i.full_slot {
                 let outgoing = &mut outputs[slot];
                 let inner = self.body.output_fact_mut(ix)?;
-                Self::unify_scanning_tensor_fact(outgoing, inner, i.axis)?;
+                if Self::unify_scanning_tensor_fact(outgoing, inner, i.axis)? {
+                    changed = true
+                }
+                if self.clean_scan_counts {
+                    if outgoing.shape.ensure_rank_at_least(i.axis) {
+                        changed = true;
+                    }
+                    let value = self.iter_count_fact.unify(&outgoing.shape.dim(i.axis).unwrap())?;
+                    if self.iter_count_fact != value {
+                        changed = true;
+                        self.iter_count_fact = value.clone();
+                    }
+                    if outgoing.shape.dim(i.axis).unwrap() != value {
+                        changed = true;
+                        outgoing.shape.set_dim(i.axis, value.concretize().unwrap());
+                    }
+                }
             }
             if let Some(slot) = i.last_value_slot {
-                outputs[slot].unify_with(self.body.output_fact_mut(ix)?)?;
+                if outputs[slot].unify_with(self.body.output_fact_mut(ix)?)? {
+                    changed = true;
+                }
             }
         }
-        Ok(())
+        Ok(changed)
     }
 }
 
@@ -203,19 +257,29 @@ impl InferenceOp for Inference {
         }
         let mut inputs: TVec<InferenceFact> = inputs.into_iter().cloned().collect();
         let mut outputs: TVec<InferenceFact> = outputs.into_iter().cloned().collect();
-        self.unify_facts(&mut inputs, &mut outputs)?;
-        trace!("Starting inner model analyse");
-        for (ix, input) in self.body.input_outlets()?.iter().enumerate() {
-            trace!("  Input inner model: {} {:?} {:?}", ix, input, self.body.input_fact(ix));
+        loop {
+            trace!("Unify inner and outer interface");
+            let mut changed = self.unify_facts(&mut inputs, &mut outputs)?;
+            trace!("iters: {:?} changed: {:?}", self.iter_count_fact, changed);
+            for (ix, input) in self.body.input_outlets()?.iter().enumerate() {
+                trace!("  Input inner model: {} {:?} {:?}", ix, input, self.body.input_fact(ix));
+            }
+            for (ix, output) in self.body.output_outlets()?.iter().enumerate() {
+                trace!("  Output inner model: {} {:?} {:?}", ix, output, self.body.output_fact(ix));
+            }
+            trace!("Inner model analyse");
+            if self
+                .body
+                .analyse(false)
+                .map_err(|e| format!("analysing inner model: {}\n{:#?}", e, self.body))?
+            {
+                changed = true;
+            }
+            if !changed {
+                break;
+            }
+            trace!("Finished inner model analyse");
         }
-        for (ix, output) in self.body.output_outlets()?.iter().enumerate() {
-            trace!("  Output inner model: {} {:?} {:?}", ix, output, self.body.output_fact(ix));
-        }
-        self.body
-            .analyse(false)
-            .map_err(|e| format!("analysing inner model: {}\n{:#?}", e, self.body))?;
-        trace!("Finished inner model analyse");
-        self.unify_facts(&mut inputs, &mut outputs)?;
         Ok((inputs, outputs, tvec!()))
     }
 

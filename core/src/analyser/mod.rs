@@ -23,7 +23,7 @@ pub struct Analyser<M: BorrowMut<InferenceModel>> {
 impl<M: BorrowMut<InferenceModel>> Analyser<M> {
     /// Runs the entire analysis at once. Will not stop on error if obstinate is
     /// true.
-    pub fn analyse_obstinate(&mut self, obstinate: bool) -> TractResult<()> {
+    pub fn analyse_obstinate(&mut self, obstinate: bool) -> TractResult<bool> {
         let mut nodes_to_visit: BTreeSet<usize> =
             self.model.borrow().eval_order()?.iter().cloned().collect();
         let mut observed_outlets: HashMap<usize, Vec<OutletId>> = HashMap::new();
@@ -39,6 +39,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             observed_outlets.insert(node.id, observed);
         }
         let mut first_error = None;
+        let mut did_something = false;
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
             let node = match nodes_to_visit.iter().next() {
@@ -48,6 +49,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             match self.analyse_one(node) {
                 Ok(changed_edges) => {
                     for (edge, _fact) in changed_edges {
+                        did_something = true;
                         trace!("Changed edge: {:?}", edge);
                         for dst in self.model.borrow().nodes()[edge.node].outputs[edge.slot]
                             .successors
@@ -88,7 +90,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
         if let Some(e) = first_error {
             Err(e)?
         }
-        Ok(())
+        Ok(did_something)
     }
 
     /// Tries to run a single step of the analysis, and returns whether
