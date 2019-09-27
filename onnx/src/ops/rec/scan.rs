@@ -75,5 +75,15 @@ pub fn scan(
         });
     }
 
-    Ok((Box::new(Inference::new(model, mapped_inputs, mapped_outputs, None)), unresolved_inputs))
+    Ok((
+        Box::new(Inference::new(
+            model,
+            mapped_inputs,
+            mapped_outputs,
+            None,
+            true,
+            GenericFact::default(),
+        )),
+        unresolved_inputs,
+    ))
 }

@@ -181,16 +181,17 @@ pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedFact, Box<dyn TypedOp>, 
 pub type NormalizedSimpleState<M, P> = SimpleState<NormalizedFact, Box<dyn TypedOp>, M, P>;
 
 impl InferenceModel {
+    /*
     /// Analyse one node of the graph.
-    pub fn analyse_one(&mut self, id: usize) -> TractResult<()> {
-        crate::analyser::Analyser::new(self).analyse_one(id)?;
-        Ok(())
+    pub fn analyse_one(&mut self, id: usize) -> TractResult<bool> {
+        crate::analyser::Analyser::new(self).analyse_one(id)
     }
+    */
 
     /// Analyse all nodes of the graph.
     ///
     /// Will stop on first error unless `obstinate` is `true`.
-    pub fn analyse(&mut self, obstinate: bool) -> TractResult<()> {
+    pub fn analyse(&mut self, obstinate: bool) -> TractResult<bool> {
         crate::analyser::Analyser::new(self).analyse_obstinate(obstinate)
     }
 

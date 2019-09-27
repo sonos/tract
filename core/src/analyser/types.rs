@@ -340,17 +340,24 @@ impl ShapeFact {
         if self.open { GenericFact::Any } else { GenericFact::Only(self.dims.len() as i32) }.into()
     }
 
-    pub fn ensure_rank_at_least(&mut self, n: usize) {
+    pub fn ensure_rank_at_least(&mut self, n: usize) -> bool {
+        let mut changed = false;
         while self.dims.len() <= n {
-            self.dims.push(GenericFact::Any)
+            self.dims.push(GenericFact::Any);
+            changed = true;
         }
+        changed
     }
 
     pub fn dim(&self, i: usize) -> Option<DimFact> {
         self.dims().nth(i)
     }
 
-    pub fn set_dim(&mut self, i: usize, d: TDim) {
+    pub fn set_dim(&mut self, i: usize, d: TDim) -> bool {
+        let fact = GenericFact::Only(d.clone());
+        if self.dim(i).as_ref() == Some(&fact) {
+            return false;
+        }
         match d.to_integer() {
             Ok(n) => self.dims[i] = GenericFact::Only(n),
             Err(_) => {
@@ -358,6 +365,7 @@ impl ShapeFact {
                 self.stream = Some(StreamInfo { axis: i, len: d })
             }
         }
+        return true;
     }
 
     pub fn dims(&self) -> impl Iterator<Item = DimFact> {
