@@ -181,6 +181,9 @@ try_into!(i16, f32);
 try_into!(i32, f32);
 try_into!(i64, f32);
 
+try_into!(u8, f32);
+try_into!(u16, f32);
+
 try_into!(i8, f64);
 try_into!(i16, f64);
 try_into!(i32, f64);

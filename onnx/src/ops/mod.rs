@@ -9,6 +9,7 @@ mod category_mapper;
 mod logic;
 mod math;
 mod nn;
+mod quant;
 pub mod rec;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -17,11 +18,12 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Identity", |_, _| {
         Ok((Box::new(::tract_core::ops::identity::Identity::default()), vec![]))
     });
+    array::register_all_ops(reg);
     category_mapper::register_all_ops(reg);
     logic::register_all_ops(reg);
     math::register_all_ops(reg);
     nn::register_all_ops(reg);
-    array::register_all_ops(reg);
+    quant::register_all_ops(reg);
     rec::register_all_ops(reg);
 }
 
