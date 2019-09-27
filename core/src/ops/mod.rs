@@ -62,6 +62,7 @@ pub enum Validation {
 pub enum Cost {
     Div(DatumType),
     FMA(DatumType),
+    Buffer(DatumType),
 }
 
 use crate::internal::*;

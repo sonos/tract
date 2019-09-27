@@ -3,6 +3,7 @@
 ### Notable
 
 * Make onnx loader operator set aware, and Slice-10 support.
+* Cost now reports delay ops buffer size
 
 ## 0.5.1 - 2019-09-24
 
