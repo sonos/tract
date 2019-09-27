@@ -6,6 +6,7 @@ pub struct Inference {
     pub input_mapping: Vec<InputMapping<()>>,
     pub output_mapping: Vec<OutputMapping<(), TDim>>,
     pub seq_length_input_slot: Option<usize>,
+    pub clean_scan_counts: bool,
 }
 
 impl Op for Inference {
@@ -74,6 +75,7 @@ impl Inference {
             self.seq_length_input_slot,
         )?))
     }
+
     fn unify_scanning_tensor_fact(
         outer: &mut InferenceFact,
         inner: &mut InferenceFact,

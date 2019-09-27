@@ -52,7 +52,7 @@ impl<'a> TryFrom<&'a TypeProto_Tensor> for InferenceFact {
                 .get_dim()
                 .iter()
                 .map(|d| {
-                    if d.get_dim_value() as usize == 0 {
+                    if d.get_dim_value() <= 0 {
                         DimFact::default()
                     } else {
                         DimFact::from(d.get_dim_value().to_dim())
