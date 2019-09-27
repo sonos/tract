@@ -41,7 +41,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Sqrt", |_, _| Ok((Box::new(tractops::math::sqrt()), vec![])));
     reg.insert("Rsqrt", |_, _| Ok((Box::new(tractops::math::rsqrt()), vec![])));
 
-    reg.insert("IsNaN", |_, _| Ok((Box::new(IsNan), vec![])));
+    reg.insert("IsNaN", |_, _| Ok((Box::new(is_nan()), vec![])));
     reg.insert("Neg", |_, _| Ok((Box::new(tractops::math::neg()), vec![])));
     reg.insert("Sign", |_, _| Ok((Box::new(tractops::math::sign()), vec![])));
     reg.insert("Reciprocal", |_, _| Ok((Box::new(tractops::math::recip()), vec![])));
@@ -67,7 +67,14 @@ pub fn clip(
     Ok((op, vec![]))
 }
 
-element_wise!(erf, Erf, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = erf_f32(*x)));
+element_wise!(erf, Erf,
+    [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = erf_f32(*x));
+    prefix: "onnx."
+);
+element_wise_oop!(is_nan, IsNan,
+    [f32] => bool |_, xs, ys| xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = x.is_nan());
+    prefix: "onnx."
+);
 
 #[allow(non_upper_case_globals)]
 fn erf_f32(x: f32) -> f32 {
@@ -195,76 +202,3 @@ impl InferenceRulesOp for Gemm {
     inference_op_as_op!();
 }
 
-#[derive(Debug, Clone)]
-pub struct IsNan;
-
-impl IsNan {
-    fn eval_t<T: Datum + num_traits::Float>(&self, t: &Tensor) -> TractResult<Tensor> {
-        let array = t.to_array_view::<T>()?;
-        Ok(array.map(|f| f.is_nan()).into_tensor())
-    }
-}
-
-impl Op for IsNan {
-    fn name(&self) -> Cow<str> {
-        "IsNan".into()
-    }
-
-    op_as_typed_op!();
-}
-
-impl StatelessOp for IsNan {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let mut t = args_1!(inputs).into_tensor();
-        let t = dispatch_floatlike!(Self::eval_t(t.datum_type())(self, &mut t))?;
-        Ok(tvec!(t.into_arc_tensor()))
-    }
-}
-
-impl InferenceRulesOp for IsNan {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(bool::datum_type(), &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape, &outputs[0].shape)?;
-        Ok(())
-    }
-    to_typed!();
-    inference_op_as_op!();
-}
-
-impl TypedOp for IsNan {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(bool::datum_type(), inputs[0].shape.clone())?))
-    }
-
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        target.wire_node(&*node.name, self.clone(), &[input])
-    }
-
-    typed_op_as_op!();
-}
-
-impl PulsedOp for IsNan {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.datum_type = bool::datum_type();
-        Ok(tvec!(fact))
-    }
-
-    pulsed_op_as_op!();
-    pulsed_op_to_typed_op!();
-}
