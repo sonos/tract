@@ -45,7 +45,9 @@ impl StatelessOp for QuantizeLinear {
         } else {
             let y_zero_point = y_zero_point.as_slice::<i8>()?[0];
             x.to_array_view::<f32>()?
-                .map(|x| ((x * y_scale).round() as i32 + y_zero_point as i32).max(-128).min(127) as i8)
+                .map(|x| {
+                    ((x * y_scale).round() as i32 + y_zero_point as i32).max(-128).min(127) as i8
+                })
                 .into_arc_tensor()
         };
         Ok(tvec!(tensor))
@@ -73,5 +75,51 @@ impl InferenceRulesOp for QuantizeLinear {
         Ok(())
     }
 
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let scale = target
+            .outlet_fact(mapping[&node.inputs[1]])?
+            .konst
+            .as_ref()
+            .ok_or("y_scale must be a const")?
+            .as_slice::<f32>()?[0]
+            .recip();
+        let zero_point = if self.optional_zero_point_input.is_some() {
+            target
+                .outlet_fact(mapping[&node.inputs[2]])?
+                .konst
+                .as_ref()
+                .ok_or("y_zero_point must be a const")?
+                .clone()
+        } else {
+            rctensor0(0u8)
+        };
+        let op: Box<dyn TypedOp> = if zero_point.datum_type() == u8::datum_type() {
+            Box::new(quantize_linear_u8(scale, zero_point.as_slice::<u8>()?[0]))
+        } else {
+            Box::new(quantize_linear_i8(scale, zero_point.as_slice::<i8>()?[0]))
+        };
+        target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
+    }
+
     inference_op_as_op!();
 }
+
+element_wise_oop!(quantize_linear_u8, QuantizeLinearU8 {scale: f32, zero_point: u8},
+    [f32,i32] => u8 |op, xs, ys| xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+        *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as u8
+    );
+    prefix: "onnx."
+);
+
+element_wise_oop!(quantize_linear_i8, QuantizeLinearI8 {scale: f32, zero_point: i8},
+    [f32,i32] => i8 |op, xs, ys| xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+        *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as i8
+    );
+    prefix: "onnx."
+);
