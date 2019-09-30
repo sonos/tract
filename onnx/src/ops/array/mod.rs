@@ -3,6 +3,7 @@ mod slice;
 
 use std::convert::TryInto;
 
+use tract_core::ndarray;
 use tract_core::internal::*;
 use tract_core::ops as tractops;
 
@@ -47,7 +48,7 @@ where
     T: Copy + Datum,
     f32: AsPrimitive<T>,
 {
-    Ok(::ndarray::Array::<T, _>::from_elem(shape, v.as_()).into_arc_tensor())
+    Ok(ndarray::Array::<T, _>::from_elem(shape, v.as_()).into_arc_tensor())
 }
 
 pub fn constant_like(

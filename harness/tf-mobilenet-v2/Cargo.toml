@@ -1,11 +1,10 @@
 [package]
-name = "mobilenetv2"
+name = "tf-mobilenetv2"
 version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 
 [dependencies]
 image = "0.22"
-ndarray = "0.12"
 tract-core = { path = "../../core" }
 tract-tensorflow = { path = "../../tensorflow" }
 

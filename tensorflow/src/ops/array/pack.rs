@@ -1,3 +1,4 @@
+use tract_core::ndarray;
 use tract_core::internal::*;
 
 use crate::model::ParsingContext;
@@ -23,7 +24,7 @@ pub struct Pack {
 impl Pack {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        use ndarray::Axis;
+        use tract_core::ndarray::Axis;
         let arrays =
             inputs.iter().map(|m| Ok(m.cast_to::<T>()?)).collect::<TractResult<Vec<_>>>()?;
         let views: Vec<_> = arrays

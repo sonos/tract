@@ -9,8 +9,8 @@ use tensorflow::Graph;
 use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 
-use ndarray::ArrayD;
 use tract_core::prelude::*;
+use tract_core::ndarray::*;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -90,7 +90,7 @@ impl From<Tensor> for TensorHolder {
 
 fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &tf::Tensor<T>) -> Result<ArrayD<T>> {
     let shape: Vec<usize> = tensor.dims().iter().map(|d| *d as _).collect();
-    Ok(::ndarray::Array::from_iter(tensor.iter().cloned()).into_shape(shape)?)
+    Ok(Array::from(tensor.into_iter().cloned().collect::<Vec<_>>()).into_shape(shape)?)
 }
 
 impl Tensorflow {

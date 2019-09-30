@@ -1,4 +1,4 @@
-use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
+use tract_core::ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 use num_traits::Zero;
 
 use crate::model::ParsingContext;

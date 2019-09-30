@@ -1,4 +1,5 @@
-use ndarray::*;
+use tract_core::ndarray;
+use tract_core::ndarray::*;
 use num_traits::Zero;
 
 use crate::model::ParsingContext;
@@ -29,18 +30,18 @@ fn space_to_batch<T: Copy + Datum + Zero>(
         if pad[0] != 0 {
             let mut pad_shape = data.shape().to_vec();
             pad_shape[ix + 1] = pad[0] as usize;
-            let tmp = ::ndarray::stack(
-                ::ndarray::Axis(ix + 1),
-                &[::ndarray::ArrayD::zeros(pad_shape).view(), data.view()],
+            let tmp = ndarray::stack(
+                ndarray::Axis(ix + 1),
+                &[ndarray::ArrayD::zeros(pad_shape).view(), data.view()],
             )?;
             data = tmp;
         }
         if pad[1] != 0 {
             let mut pad_shape = data.shape().to_vec();
             pad_shape[ix + 1] = pad[1] as usize;
-            let tmp = ::ndarray::stack(
-                ::ndarray::Axis(ix + 1),
-                &[data.view(), ::ndarray::ArrayD::zeros(pad_shape).view()],
+            let tmp = ndarray::stack(
+                ndarray::Axis(ix + 1),
+                &[data.view(), ndarray::ArrayD::zeros(pad_shape).view()],
             )?;
             data = tmp;
         }
@@ -63,7 +64,7 @@ fn space_to_batch<T: Copy + Datum + Zero>(
     permuted_axes.extend((block_shape.len() * 2 + 1)..data.ndim());
     let data = data.permuted_axes(permuted_axes);
     let data: Vec<T> = data.into_iter().map(|x| *x).collect();
-    let data = ::ndarray::ArrayD::from_shape_vec(final_shape, data)?;
+    let data = ndarray::ArrayD::from_shape_vec(final_shape, data)?;
 
     Ok(data.into_arc_tensor())
 }
@@ -97,7 +98,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
     padded_shape.extend(&input_shape[1 + block_shape.len()..]);
     let data = data.permuted_axes(permuted_axes);
     let data: Vec<T> = data.into_iter().map(|x| *x).collect();
-    let data = ::ndarray::ArrayD::from_shape_vec(padded_shape, data)?;
+    let data = ndarray::ArrayD::from_shape_vec(padded_shape, data)?;
     let mut data = data;
     for (i, crop) in crops.outer_iter().enumerate() {
         if crop[0] != 0 || crop[1] != 0 {

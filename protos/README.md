@@ -5,5 +5,7 @@ It was cumbersome for all kind of reasons, specifically it was breaking docs.rs
 generation. So let's put the handful of generated files in git.
 
 ```
-cargo run && cp target/generated/tensorflow/*.rs ../tensorflow/src/tfpb
+cargo run && \
+    cp target/generated/tensorflow/*.rs ../tensorflow/src/tfpb && 
+    cp target/generated/onnx/onnx.rs ../onnx/src/pb.rs
 ```

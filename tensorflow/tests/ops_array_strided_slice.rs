@@ -3,7 +3,6 @@
 extern crate env_logger;
 #[macro_use]
 extern crate log;
-extern crate ndarray;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;
@@ -13,9 +12,9 @@ extern crate tract_tensorflow;
 mod utils;
 
 use crate::utils::*;
-use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
+use tract_core::ndarray::prelude::*;
 use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
@@ -47,11 +46,11 @@ fn strided_slice_strat(
         let size: i32 = shape.iter().map(|d| *d as i32).product();
         (
             Tensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
-            Array::from_vec(dims.iter().map(|d| if d.4 { d.1 - d.0 } else { d.1 }).collect())
+            Array::from(dims.iter().map(|d| if d.4 { d.1 - d.0 } else { d.1 }).collect::<Vec<_>>())
                 .into(),
-            Array::from_vec(dims.iter().map(|d| if d.5 { d.2 - d.0 } else { d.2 }).collect())
+            Array::from(dims.iter().map(|d| if d.5 { d.2 - d.0 } else { d.2 }).collect::<Vec<_>>())
                 .into(),
-            Array::from_vec(
+            Array::from(
                 dims.iter()
                     .enumerate()
                     .map(|(ix, d)| {
@@ -61,7 +60,7 @@ fn strided_slice_strat(
                             d.3 as i32 * (d.2 as i32 - d.1 as i32).signum()
                         }
                     })
-                    .collect(),
+                    .collect::<Vec<_>>(),
             )
             .into(),
             masks,

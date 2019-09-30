@@ -14,7 +14,7 @@ impl Shape {
         T: Copy + Datum,
         usize: AsPrimitive<T>,
     {
-        let array = Array1::from_vec(shape.iter().map(|i| i.as_()).collect());
+        let array = Array1::from(shape.iter().map(|i| i.as_()).collect::<Vec<T>>());
         Ok(array.into_arc_tensor())
     }
 }
@@ -31,7 +31,7 @@ impl Op for Shape {
 impl StatelessOp for Shape {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape = inputs[0].shape();
+        let shape = inputs[0].shape().to_vec();
         Ok(tvec![dispatch_numbers!(Self::coerce_to(self.dt)(&shape))?])
     }
 }
@@ -56,20 +56,20 @@ impl InferenceRulesOp for Shape {
         s.given(&inputs[0].shape, move |s, shape| {
             if shape.iter().any(|d| d.to_integer().is_err()) {
                 s.equals(&outputs[0].datum_type, DatumType::TDim)?;
-                let array1: Array1<TDim> = Array1::from_iter(shape);
+                let array1: Array1<TDim> = Array1::from(shape.to_vec());
                 let tensor = array1.into_arc_tensor();
                 s.equals(&outputs[0].value, tensor)
             } else if self.dt == DatumType::I64 {
                 s.equals(&outputs[0].datum_type, DatumType::I64)?;
-                let array1: Array1<i64> = Array1::from_vec(
-                    shape.iter().map(|i| i.to_integer().unwrap() as i64).collect(),
+                let array1: Array1<i64> = Array1::from(
+                    shape.iter().map(|i| i.to_integer().unwrap() as i64).collect::<Vec<_>>(),
                 );
                 let tensor = array1.into_arc_tensor();
                 s.equals(&outputs[0].value, tensor)
             } else {
                 s.equals(&outputs[0].datum_type, DatumType::I32)?;
-                let array1: Array1<i32> = Array1::from_vec(
-                    shape.iter().map(|i| i.to_integer().unwrap() as i32).collect(),
+                let array1: Array1<i32> = Array1::from(
+                    shape.iter().map(|i| i.to_integer().unwrap() as i32).collect::<Vec<_>>(),
                 );
                 let tensor = array1.into_arc_tensor();
                 s.equals(&outputs[0].value, tensor)

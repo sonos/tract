@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use crate::CliResult;
 use tract_core::internal::*;
+use tract_core::ndarray;
 
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     let splits = size.split("x").collect::<Vec<_>>();
@@ -46,7 +47,7 @@ fn parse_values<'a, T: Datum + FromStr>(shape: &[usize], it: Vec<&'a str>) -> Cl
         .into_iter()
         .map(|v| Ok(v.parse::<T>().map_err(|_| format!("Failed to parse {}", v))?))
         .collect::<CliResult<Vec<T>>>()?;
-    Ok(::ndarray::Array::from_shape_vec(shape, values)?.into())
+    Ok(ndarray::Array::from_shape_vec(shape, values)?.into())
 }
 
 fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
@@ -91,17 +92,27 @@ fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
         let mut tokens = filename.split(":");
         let (filename, inner) = (tokens.next().unwrap(), tokens.next().unwrap());
         let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(filename)?)?;
-        let npy = npz
-            .by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(inner)
-            .map(|t| t.into_tensor())
-            .or_else(|_| {
-                npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(inner)
-                    .map(|t| t.into_tensor())
-            })?;
-        Ok((None, npy.into()))
+        Ok((None, for_npz(&mut npz, inner)?.into()))
     } else {
         Ok((None, tensor_for_text_data(filename)?.into()))
     }
+}
+
+pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractResult<Tensor> {
+    fn rewrap<T: Datum>(array: ndarray_0_12::ArrayD<T>) -> Tensor {
+        let shape = array.shape().to_vec();
+        unsafe {
+            let vec = array.into_raw_vec();
+            tract_core::ndarray::ArrayD::from_shape_vec_unchecked(shape, vec).into_tensor()
+        }
+    }
+    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<f64>, ndarray_0_12::IxDyn>(name) {
+        return Ok(rewrap(t))
+    }
+    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<f32>, ndarray_0_12::IxDyn>(name) {
+        return Ok(rewrap(t))
+    }
+    bail!("Can not extract tensor from {}", name);
 }
 
 pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
@@ -166,7 +177,7 @@ pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
         rand::distributions::Standard: rand::distributions::Distribution<D>,
     {
         let len = shape.iter().product();
-        ndarray::ArrayD::from_shape_vec(
+        tract_core::ndarray::ArrayD::from_shape_vec(
             shape,
             repeat_with(|| rand::random::<D>()).take(len).collect(),
         )

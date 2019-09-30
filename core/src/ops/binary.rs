@@ -698,7 +698,7 @@ macro_rules! bin_to_super_type {
                         let a = a.to_array_view::<$typ>()?;
                         let b = b.to_array_view::<$typ>()?;
                         let mut c = c.to_array_view_mut::<$typ>()?;
-                        ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).apply($cab);
+                        $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).apply($cab);
                         return Ok(())
                     }
                     )*

@@ -1,5 +1,6 @@
 use crate::model::ParsingContext;
 use crate::tfpb::node_def::NodeDef;
+use tract_core::ndarray;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, new)]
@@ -18,7 +19,7 @@ impl Fill {
         let value = value.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
         let shape = shape.to_array_view::<i32>()?;
-        let array = ::ndarray::Array::from_shape_fn(
+        let array = ndarray::Array::from_shape_fn(
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
             |_| value.clone(),
         );

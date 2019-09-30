@@ -1,4 +1,5 @@
-use ndarray::Axis;
+use tract_core::ndarray;
+use tract_core::ndarray::Axis;
 use num_traits::AsPrimitive;
 use tract_core::internal::*;
 use tract_core::ops::nn::DataFormat;
@@ -20,7 +21,7 @@ impl BatchNorm {
         var: &Tensor,
     ) -> TractResult<(Tensor, Tensor)>
     where
-        T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::ndarray::ScalarOperand,
+        T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ndarray::ScalarOperand,
         f32: AsPrimitive<T>,
     {
         let scale = scale.to_array_view::<T>()?.into_shape((c_dim,))?;
@@ -37,7 +38,7 @@ impl BatchNorm {
 
     fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
     where
-        T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::ndarray::ScalarOperand,
+        T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ndarray::ScalarOperand,
         f32: AsPrimitive<T>,
     {
         let (x, scale, beta, mean, var) = args_5!(&mut inputs);

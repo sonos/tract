@@ -18,7 +18,7 @@ pub fn squeeze(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use ndarray::*;
+    use tract_core::ndarray::*;
 
     fn run<I>(op: Squeeze, input: I) -> Tensor
     where

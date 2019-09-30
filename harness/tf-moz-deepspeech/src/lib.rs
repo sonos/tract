@@ -8,9 +8,8 @@ use std::path;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use ndarray::*;
-
 use tract_core::internal::*;
+use tract_core::ndarray;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
@@ -38,7 +37,7 @@ fn parse_tensor<T: Datum + FromStr>(s: &str) -> TractResult<Tensor> {
     let shape = tokens.next().unwrap();
     let shape = &shape[1..shape.len() - 1];
     let shape: Vec<usize> = shape.split(",").map(|s| s.parse().unwrap()).collect();
-    Ok(ndarray::Array1::from_iter(tokens.filter_map(|s| s.parse::<T>().ok()))
+    Ok(ndarray::Array1::from(tokens.filter_map(|s| s.parse::<T>().ok()).collect::<Vec<_>>())
         .into_shape(shape)?
         .into())
 }
@@ -85,7 +84,7 @@ fn deepspeech() -> TractResult<()> {
 
     // initialize_state
     state.run_plan(tvec!(), 0)?;
-    let mut inputs = tvec!(Tensor::from(arr0(0)), Tensor::from(arr0(1)));
+    let mut inputs = tvec!(tensor0(0), tensor0(1));
     let mut h = None;
     let mut cs = None;
     let mut logits = None;

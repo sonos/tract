@@ -1,4 +1,5 @@
-use ndarray::*;
+use tract_core::ndarray;
+use tract_core::ndarray::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::node_def::NodeDef;
@@ -79,59 +80,35 @@ impl StatelessOp for BlockLSTM {
             let mut co = co.index_axis_mut(Axis(0), n);
             let mut h = h.index_axis_mut(Axis(0), n);
 
-            // dbg!(x);
-
-            // println!("x: {:?}", x.iter().take(9).collect::<Vec<_>>());
             let xh = ndarray::stack(Axis(1), &[x, h_prev.view()])?;
-            //            dbg!(&xh);
 
             let i_ci_f_o = xh.dot(&w) + &bias;
-            //            dbg!(&i_ci_f_o);
 
             i.assign(&i_ci_f_o.slice_axis(Axis(1), (0..cell_size).into()));
             i.mapv_inplace(sigmoid_f32); // TODO: peepholes
                                          // dbg!(&i);
 
-            //            println!("i: {:?}", i.iter().take(6).collect::<Vec<_>>());
-
             f.assign(&i_ci_f_o.slice_axis(Axis(1), (2 * cell_size..3 * cell_size).into()));
             f.mapv_inplace(|x| sigmoid_f32(x + self.forget_bias)); // TODO: peepholes
-                                                                   //            println!("f: {:?}", f.iter().take(6).collect::<Vec<_>>());
 
             ci.assign(&i_ci_f_o.slice_axis(Axis(1), (cell_size..2 * cell_size).into()));
             ci.mapv_inplace(tanh_f32);
-            //            println!("ci: {:?}", ci.iter().take(6).collect::<Vec<_>>());
-            /*
-                        dbg!(&f);
-                        dbg!(&cs_prev);
-                        dbg!(&i);
-                        dbg!(&ci);
-            */
+
             cs_prev *= &f;
             cs_prev += &(ci.to_owned() * &i);
             // TODO: clip cs
             cs.assign(&cs_prev);
-            //            dbg!(&cs);
 
             o.assign(&i_ci_f_o.slice_axis(Axis(1), (3 * cell_size..4 * cell_size).into()));
             o.mapv_inplace(sigmoid_f32); // TODO: peephole
-                                         // dbg!(&o);
-                                         //            println!("o: {:?}", o.iter().take(6).collect::<Vec<_>>());
 
             co.assign(&cs);
             co.mapv_inplace(tanh_f32);
-            //            println!("co: {:?}", co.iter().take(6).collect::<Vec<_>>());
 
             h_prev.assign(&co);
             h_prev *= &o;
             h.assign(&h_prev);
-            // println!("h: {:?}", h.iter().take(6).collect::<Vec<_>>());
-            // println!("cs: {:?}", cs.iter().take(6).collect::<Vec<_>>());
         }
-        /*
-        dbg!(&h_prev);
-        dbg!(&cs_prev);
-        */
         if x.shape()[0] > len as usize {
             i.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);
             cs.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);

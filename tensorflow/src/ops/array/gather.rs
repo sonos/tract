@@ -1,4 +1,5 @@
-use ndarray::*;
+use tract_core::ndarray;
+use tract_core::ndarray::*;
 
 use tract_core::internal::*;
 
