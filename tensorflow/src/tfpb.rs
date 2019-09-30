@@ -16,16 +16,36 @@
 #![allow(unused_imports)]
 #![allow(unused_results)]
 
-pub mod attr_value;
-pub mod function;
-pub mod graph;
-pub mod node_def;
-pub mod op_def;
-pub mod resource_handle;
-pub mod tensor;
-pub mod tensor_shape;
-pub mod types;
-pub mod versions;
+pub mod attr_value {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/attr_value.rs"));
+}
+pub mod function {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/function.rs"));
+}
+pub mod graph {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/graph.rs"));
+}
+pub mod node_def {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/node_def.rs"));
+}
+pub mod op_def {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/op_def.rs"));
+}
+pub mod resource_handle {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/resource_handle.rs"));
+}
+pub mod tensor {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/tensor.rs"));
+}
+pub mod tensor_shape {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/tensor_shape.rs"));
+}
+pub mod types {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/types.rs"));
+}
+pub mod versions {
+    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/versions.rs"));
+}
 
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
