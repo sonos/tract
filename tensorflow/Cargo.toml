@@ -19,7 +19,7 @@ error-chain = "0.12"
 itertools = "0.8"
 log = "0.4"
 num-traits = "0.2"
-protobuf = "^2.9"
+protobuf = "^2.8"
 tensorflow = { version = "0", optional = true }
 tract-core = { path = "../core" }
 tract-linalg = { path = "../linalg" }
