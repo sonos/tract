@@ -1,5 +1,5 @@
-use std::{env, fs, io, path};
 use std::io::{BufRead, Write};
+use std::{env, fs, io, path};
 
 fn main() {
     let inputs: Vec<path::PathBuf> = fs::read_dir("protos/tensorflow/core/framework")
@@ -11,15 +11,13 @@ fn main() {
     dbg!(&workdir);
     let _ = fs::create_dir_all(&workdir);
 
-    protoc_rust::run(protoc_rust::Args {
+    protobuf_codegen_pure::run(protobuf_codegen_pure::Args {
         out_dir: workdir.to_str().unwrap(),
-        input: &*inputs
-            .iter()
-            .map(|a| a.to_str().unwrap())
-            .collect::<Vec<&str>>(),
+        input: &*inputs.iter().map(|a| a.to_str().unwrap()).collect::<Vec<&str>>(),
         includes: &["protos"],
-        ..protoc_rust::Args::default()
-    }).unwrap();
+        customize: protobuf_codegen_pure::Customize { ..Default::default() },
+    })
+    .unwrap();
 
     for input in inputs {
         let mut broken = workdir.join(input.file_name().unwrap());

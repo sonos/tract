@@ -25,7 +25,7 @@ tract-core = { path = "../core" }
 tract-linalg = { path = "../linalg" }
 
 [build-dependencies]
-protoc-rust = "^2.9"
+protobuf-codegen-pure = "2.3"
 
 [features]
 conform = [ "tensorflow" ]
