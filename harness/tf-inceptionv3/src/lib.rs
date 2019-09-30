@@ -1,13 +1,13 @@
 #[cfg(features = "conform")]
 extern crate conform;
 extern crate image;
-extern crate ndarray;
 extern crate tract_core;
 extern crate tract_tensorflow;
 
 use std::{fs, io, path};
 
 use tract_core::prelude::*;
+use tract_core::ndarray;
 
 fn download() {
     use std::sync::Once;
@@ -49,7 +49,7 @@ pub fn imagenet_slim_labels() -> path::PathBuf {
 pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
     let image = ::image::open(&p).unwrap().to_rgb();
     let resized = ::image::imageops::resize(&image, 299, 299, ::image::FilterType::Triangle);
-    let image = ::ndarray::Array4::from_shape_fn((1, 299, 299, 3), |(_, y, x, c)| {
+    let image = ndarray::Array4::from_shape_fn((1, 299, 299, 3), |(_, y, x, c)| {
         resized[(x as _, y as _)][c] as f32 / 255.0
     })
     .into_dyn()

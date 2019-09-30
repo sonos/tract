@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::tfpb::node_def::NodeDef;
-use ndarray::prelude::*;
+use tract_core::ndarray;
+use tract_core::ndarray::prelude::*;
 use tract_core::internal::*;
 
 pub fn build(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
@@ -22,7 +23,7 @@ impl<T: Copy + Datum> StatelessOp for ConcatV2<T> {
         let axis: i32 = *inputs.pop().unwrap().to_scalar::<i32>()?;
         let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
-        let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
+        let result = ndarray::stack(Axis(axis as usize), &*mats?)?;
         Ok(tvec![result.into_arc_tensor()])
     }
 }

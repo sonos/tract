@@ -1,4 +1,3 @@
-extern crate ndarray;
 extern crate tract_core;
 extern crate tract_tensorflow;
 use std::convert::TryFrom;

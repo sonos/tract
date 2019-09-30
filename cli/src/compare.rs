@@ -113,7 +113,7 @@ pub fn handle_npz(
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
     let mut values = HashMap::new();
     for name in npz.names()? {
-        if let Ok(value) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&name) {
+        if let Ok(value) = tensor::for_npz(&mut npz, &name) {
             let name = name.trim_end_matches(".npy");
             values.insert(name.to_string(), Ok(tvec!(value.into())));
         }

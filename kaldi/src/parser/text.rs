@@ -43,7 +43,7 @@ pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
     let lines = v.len();
     let data: Vec<_> = v.into_iter().flat_map(|v| v.into_iter()).collect();
     let cols = data.len() / lines;
-    let t = tract_core::ndarray::Array1::from_vec(data);
+    let t = tract_core::ndarray::Array1::from(data);
     let t = t.into_shape((lines, cols)).unwrap();
     Ok((i, t.into_tensor()))
 }

@@ -5,7 +5,7 @@
 error_chain! {
     foreign_links {
         Io(::std::io::Error);
-        NdarrayShape(::ndarray::ShapeError);
+        NdarrayShape(tract_core::ndarray::ShapeError);
         Protobuf(::protobuf::ProtobufError);
         StrUtf8(::std::str::Utf8Error);
     }

@@ -9,7 +9,6 @@ extern crate log;
 extern crate atty;
 extern crate env_logger;
 extern crate libc;
-extern crate ndarray;
 extern crate pbr;
 #[macro_use]
 extern crate tract_core;
@@ -53,13 +52,13 @@ const DEFAULT_MAX_ITERS: u64 = 100_000;
 const DEFAULT_MAX_TIME: u64 = 5000;
 
 fn info_usage(stage: &str) {
-        if log::log_enabled!(log::Level::Info) {
-            let usage = rusage::get_usage().unwrap();
-            info!(
-                "Resource usage {}: vsz:{} rsz:{} rszmax:{}",
-                stage, usage.virtual_size, usage.resident_size, usage.resident_size_max
-            );
-        }
+    if log::log_enabled!(log::Level::Info) {
+        let usage = rusage::get_usage().unwrap();
+        info!(
+            "Resource usage {}: vsz:{} rsz:{} rszmax:{}",
+            stage, usage.virtual_size, usage.resident_size, usage.resident_size_max
+        );
+    }
 }
 
 /// Entrypoint for the command-line interface.
@@ -553,15 +552,14 @@ impl Parameters {
             for input in bundle {
                 let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(input)?)?;
                 for name in npz.names()? {
-                    if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name)
-                    {
-                        debug!("{} contains {}: {:?}", input, name, npy.into_tensor());
+                    if let Ok(npy) = tensor::for_npz(&mut npz, &*name) {
+                        debug!("{} contains {}: {:?}", input, name, npy);
                     }
                 }
                 let input_outlets = raw_model.input_outlets()?.to_vec();
                 for (ix, input) in input_outlets.iter().enumerate() {
                     let name = format!("{}.npy", raw_model.node(input.node).name);
-                    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name) {
+                    if let Ok(t) = tensor::for_npz(&mut npz, &name) {
                         let shape = t.shape().to_vec();
                         let mut fact = InferenceFact::dt_shape(f32::datum_type(), shape);
                         if let Some(s) = matches.value_of("stream_axis") {
@@ -734,9 +732,7 @@ impl Assertions {
                         {
                             let mut npz =
                                 ndarray_npy::NpzReader::new(std::fs::File::open(output_bundle)?)?;
-                            if let Ok(t) =
-                                npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*npy_name)
-                            {
+                            if let Ok(t) = tensor::for_npz(&mut npz, &npy_name) {
                                 return Ok(Some(t.into_arc_tensor()));
                             }
                         }

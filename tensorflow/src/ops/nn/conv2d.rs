@@ -23,12 +23,12 @@ pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infere
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use ndarray::*;
+    use tract_core::ndarray::*;
     use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec};
     use tract_core::ops::nn::DataFormat;
 
     fn mk(sizes: &[usize]) -> Tensor {
-        ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
+        Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
             .into_shape(sizes)
             .unwrap()
             .into()

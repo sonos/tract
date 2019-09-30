@@ -3,7 +3,6 @@
 #[macro_use]
 extern crate log;
 extern crate env_logger;
-extern crate ndarray;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;
@@ -14,11 +13,11 @@ extern crate tract_tensorflow;
 mod utils;
 
 use crate::utils::*;
-use ndarray::prelude::*;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseResult;
 use protobuf::Message;
 use tract_core::internal::*;
+use tract_core::ndarray::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;

@@ -1,12 +1,12 @@
 #[cfg(features = "conform")]
 extern crate conform;
 extern crate image;
-extern crate ndarray;
 extern crate tract_core;
 extern crate tract_tensorflow;
 
 use std::{fs, path};
 
+use tract_core::ndarray;
 use tract_core::prelude::*;
 
 fn download() {
@@ -49,9 +49,9 @@ pub fn grace_hopper() -> path::PathBuf {
 }
 
 pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
-    let image = ::image::open(&p).unwrap().to_rgb();
-    let resized = ::image::imageops::resize(&image, 224, 224, ::image::FilterType::Triangle);
-    let image = ::ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
+    let image = image::open(&p).unwrap().to_rgb();
+    let resized = image::imageops::resize(&image, 224, 224, image::FilterType::Triangle);
+    let image = ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
         resized[(x as _, y as _)][c] as f32 / 255.0
     })
     .into_dyn()
@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn plain() {
-        let tfd = ::tract_tensorflow::tensorflow().model_for_path(mobilenet_v2()).unwrap();
+        let tfd = tract_tensorflow::tensorflow().model_for_path(mobilenet_v2()).unwrap();
         let plan = SimplePlan::new(&tfd).unwrap();
         let input = load_image(grace_hopper());
         let outputs = plan.run(tvec![input]).unwrap();
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn optimized() {
-        let mut tfd = ::tract_tensorflow::tensorflow().model_for_path(mobilenet_v2()).unwrap();
+        let mut tfd = tract_tensorflow::tensorflow().model_for_path(mobilenet_v2()).unwrap();
         tfd.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), &[1, 224, 224, 3]))
             .unwrap();
         let tfd = tfd.into_optimized().unwrap();

@@ -170,7 +170,7 @@ fn eval_t<T>(input: Arc<Tensor>, axes: &[usize], keep_dims: bool) -> TractResult
 where
     T: Copy + Datum + PartialOrd + num_traits::Bounded,
 {
-    use ndarray::*;
+    use tract_core::ndarray::*;
     let input = input.to_array_view::<T>()?;
     let full_output_shape: TVec<usize> = input
         .shape()

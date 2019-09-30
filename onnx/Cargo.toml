@@ -18,10 +18,9 @@ derive-new = "0.5"
 error-chain = "0.12"
 itertools = "0.8"
 log = "0.4"
-ndarray = { version = "0.12" }
 num-integer = "0.1"
 num-traits = "0.2"
-protobuf = "2.0"
+protobuf = "^2.9"
 smallvec = "0.6"
 tract-core = { path = "../core" }
 tract-linalg = { path = "../linalg" }

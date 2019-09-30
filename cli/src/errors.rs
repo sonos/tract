@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 
-use ndarray;
 use tract_core;
+use tract_core::ndarray;
 
 error_chain! {
     types {

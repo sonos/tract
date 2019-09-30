@@ -6,7 +6,6 @@ extern crate error_chain;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
-extern crate ndarray;
 extern crate num_integer;
 extern crate num_traits;
 extern crate protobuf;

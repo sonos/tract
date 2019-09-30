@@ -1,4 +1,4 @@
-use ndarray::prelude::*;
+use tract_core::ndarray::prelude::*;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, new)]

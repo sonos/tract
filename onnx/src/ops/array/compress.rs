@@ -37,7 +37,7 @@ impl Compress {
                 .filter(|(_, c)| **c)
                 .map(|(ix, _)| input[ix].clone())
                 .collect();
-            Ok(Array::from_vec(data).into_arc_tensor())
+            Ok(Array::from(data).into_arc_tensor())
         }
     }
 }

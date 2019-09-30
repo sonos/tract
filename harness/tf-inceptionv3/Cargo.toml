@@ -1,11 +1,10 @@
 [package]
-name = "inceptionv3"
+name = "tf-inceptionv3"
 version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 
 [dependencies]
 image = "0.22"
-ndarray = "0.12"
 tract-core = { path = "../../core" }
 tract-tensorflow = { path = "../../tensorflow" }
 
@@ -15,7 +14,7 @@ conform = [ "tract-tensorflow/conform" ]
 [dev-dependencies]
 criterion = "0.3"
 dinghy-test = "0.4"
-env_logger = "0.6"
+env_logger = "0.7"
 log = "0.4"
 
 [[bench]]

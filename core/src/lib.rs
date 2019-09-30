@@ -6,7 +6,6 @@
 //!
 //! ```
 //! # extern crate tract_core;
-//! # extern crate ndarray;
 //! # fn main() {
 //! use tract_core::internal::*;
 //!
@@ -27,15 +26,13 @@
 //! let plan = SimplePlan::new(&model).unwrap();
 //!
 //! // run the computation.
-//! let input = ndarray::arr1(&[1.0f32, 2.5, 5.0]);
-//! let mut outputs = plan.run(tvec![input.into()]).unwrap();
+//! let input = tensor1(&[1.0f32, 2.5, 5.0]);
+//! let mut outputs = plan.run(tvec![input]).unwrap();
 //!
 //! // take the first and only output tensor
 //! let mut tensor = outputs.pop().unwrap();
 //!
-//! // unwrap it as array of f32
-//! let tensor = tensor.to_array_view::<f32>().unwrap();
-//! assert_eq!(tensor, ndarray::arr1(&[4.0, 5.5, 8.0]).into_dyn());
+//! assert_eq!(tensor, rctensor1(&[4.0f32, 5.5, 8.0]));
 //! # }
 //! ```
 //!

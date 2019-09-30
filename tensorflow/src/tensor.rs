@@ -53,9 +53,9 @@ impl TryFrom<DatumType> for DataType {
 
 fn tensor_from_repeated_field<T: Datum>(shape: &[usize], data: Vec<T>) -> TractResult<Tensor> {
     let t = if data.len() == 1 {
-        ndarray::ArrayD::from_elem(shape, data[0].clone()).into()
+        tract_core::ndarray::ArrayD::from_elem(shape, data[0].clone()).into()
     } else {
-        ndarray::ArrayD::from_shape_vec(shape, data.to_vec())?.into()
+        tract_core::ndarray::ArrayD::from_shape_vec(shape, data.to_vec())?.into()
     };
     Ok(t)
 }
