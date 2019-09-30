@@ -12,6 +12,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - name: top level cargo check
+      run: cargo check
     - name: linalg and core tests
       run: cargo test -p tract-linalg -p tract-core
     - name: cli release build
