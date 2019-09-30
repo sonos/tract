@@ -74,6 +74,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     writeln!(rs, "}}").unwrap();
 }
 
+#[cfg(not(target_os = "windows"))]
 fn main() {
     ensure_onnx_git_checkout();
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -86,4 +87,9 @@ fn main() {
             make_test_file(&mut root, set, ver);
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn main() {
+    // TODO: Fix these tests for Windows.
 }
