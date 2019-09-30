@@ -1,6 +1,6 @@
 [package]
 name = "tract-tensorflow"
-version = "0.5.3"
+version = "0.5.4-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -21,8 +21,8 @@ log = "0.4"
 num-traits = "0.2"
 protobuf = "^2.9"
 tensorflow = { version = "0", optional = true }
-tract-core = "0.5.3"
-tract-linalg = "0.5.3"
+tract-core = { path = "../core" }
+tract-linalg = { path = "../linalg" }
 
 [build-dependencies]
 protobuf-codegen-pure = "2.3"
