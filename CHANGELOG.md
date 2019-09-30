@@ -1,9 +1,13 @@
 ## Unreleased
 
+## 0.5.3 - 2019-09-30
+
 ### Notable
 
-* Make onnx loader operator set aware, and Slice-10 support.
-* Cost now reports delay ops buffer size
+* Make Onnx loader operator set aware, and Slice-10 support.
+* Cost now reports Delay ops buffer size
+* Bump dependencies (protobuf) and fix codegen
+* Windows CI now performs a top-level "cargo check"
 
 ## 0.5.1 - 2019-09-24
 
