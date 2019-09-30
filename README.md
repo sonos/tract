@@ -152,11 +152,11 @@ easily as practical to small-ish devices (think 20$ boards).
 
 # License
 
-Note: files in the `protos/tensorflow` directory are copied from the
+Note: files in the `tensorflow/protos` directory are copied from the
 [TensorFlow](https://github.com/tensorflow/tensorflow) project and are not
 covered by the following licence statement.
 
-Note: files in the `protos/onnx` directory are copied from the
+Note: files in the `onnx/protos` directory are copied from the
 [ONNX](https://github.com/onnx/onnx) project and are not
 covered by the following licence statement.
 

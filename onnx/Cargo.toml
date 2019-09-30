@@ -24,3 +24,7 @@ protobuf = "^2.9"
 smallvec = "0.6"
 tract-core = { path = "../core" }
 tract-linalg = { path = "../linalg" }
+
+[build-dependencies]
+protoc-rust = "^2.9"
+
