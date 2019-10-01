@@ -99,7 +99,7 @@ impl Problem {
 
     pub fn to_im2col(&self) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
         let unary = self.to_unary();
-        let (im2col, _, cvgemm) = unary.to_im2col_pair::<f32>(&*self.image_shape()).unwrap();
+        let (im2col, cvgemm) = unary.to_im2col_pair::<f32>(&*self.image_shape()).unwrap();
         let mut model_im2col = TypedModel::default();
         let input = model_im2col.add_source("input", self.image_type()).unwrap();
         let im2col = model_im2col.wire_node("im2col", im2col, &[input]).unwrap();
