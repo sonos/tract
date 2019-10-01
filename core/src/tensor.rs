@@ -376,14 +376,17 @@ impl Tensor {
             (I32, F32) => self.cast::<i32, f32>()?,
             (I64, F32) => self.cast::<i64, f32>()?,
 
-            (U8, F32) => self.cast::<u8, f32>()?,
-            (U16, F32) => self.cast::<u16, f32>()?,
 
             (Bool, F64) => self.cast::<bool, f64>()?,
             (I8, F64) => self.cast::<i8, f64>()?,
             (I16, F64) => self.cast::<i16, f64>()?,
             (I32, F64) => self.cast::<i32, f64>()?,
             (I64, F64) => self.cast::<i64, f64>()?,
+
+            (U8, F32) => self.cast::<u8, f32>()?,
+            (U16, F32) => self.cast::<u16, f32>()?,
+            (U8, I32) => self.cast::<u8, i32>()?,
+            (U16, I32) => self.cast::<u16, i32>()?,
 
             (F32, Bool) => self.cast::<f32, bool>()?,
             (F32, I8) => self.cast::<f32, i8>()?,

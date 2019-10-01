@@ -4,6 +4,7 @@ use tract_core::internal::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("QuantizeLinear", quantize_linear);
+    reg.insert("DequantizeLinear", dequantize_linear);
 }
 
 fn quantize_linear(
@@ -123,3 +124,106 @@ element_wise_oop!(quantize_linear_i8, QuantizeLinearI8 {scale: f32, zero_point: 
     );
     prefix: "onnx."
 );
+
+fn dequantize_linear(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let op = DequantizeLinear::new(Some(2).filter(|_| node.get_input().len() == 3));
+    Ok((Box::new(op), vec![]))
+}
+
+#[derive(Debug, Clone, new, Default)]
+pub struct DequantizeLinear {
+    optional_zero_point_input: Option<usize>,
+}
+
+impl Op for DequantizeLinear {
+    fn name(&self) -> Cow<str> {
+        "onnx.DequantizeLinear".into()
+    }
+
+    not_a_typed_op!();
+}
+
+impl StatelessOp for DequantizeLinear {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let (x, y_scale, x_zero_point) = if self.optional_zero_point_input.is_some() {
+            args_3!(inputs)
+        } else {
+            let (x, y_scale) = args_2!(inputs);
+            (x, y_scale, rctensor0(0u8))
+        };
+        let x_scale = y_scale.as_slice::<f32>()?[0];
+        let x_zero_point = x_zero_point.cast_to::<i32>()?.as_slice::<i32>()?[0];
+        let x = x.cast_to::<i32>()?;
+        let tensor = x.to_array_view::<i32>()?
+                .map(|&x| ((x - x_zero_point) as f32) * x_scale)
+                .into_arc_tensor();
+        Ok(tvec!(tensor))
+    }
+}
+
+impl InferenceRulesOp for DequantizeLinear {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> TractResult<()> {
+        check_input_arity(&inputs, 2 + self.optional_zero_point_input.is_some() as usize)?;
+        check_output_arity(&outputs, 1)?;
+        //         s.equals(&inputs[1].rank, 0)?; broken in Onnx test suite
+        s.equals(&inputs[1].datum_type, f32::datum_type())?;
+        s.equals(&outputs[0].datum_type, f32::datum_type())?;
+        if self.optional_zero_point_input.is_some() {
+            s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
+        //            s.equals(&inputs[2].rank, 0)?; // broken in Onnx test suite
+        }
+        s.equals(&inputs[0].shape, &outputs[0].shape)?;
+        Ok(())
+    }
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let scale = target
+            .outlet_fact(mapping[&node.inputs[1]])?
+            .konst
+            .as_ref()
+            .ok_or("y_scale must be a const")?
+            .as_slice::<f32>()?[0];
+        let zero_point = if self.optional_zero_point_input.is_some() {
+            target
+                .outlet_fact(mapping[&node.inputs[2]])?
+                .konst
+                .as_ref()
+                .ok_or("y_zero_point must be a const")?
+                .clone()
+        } else {
+            rctensor0(0u8)
+        };
+        let op: Box<dyn TypedOp> = if zero_point.datum_type() == u8::datum_type() {
+            Box::new(dequantize_linear_f32(scale, zero_point.as_slice::<u8>()?[0] as i32))
+        } else if zero_point.datum_type() == i8::datum_type() {
+            Box::new(dequantize_linear_f32(scale, zero_point.as_slice::<i8>()?[0] as i32))
+        } else {
+            Box::new(dequantize_linear_f32(scale, zero_point.as_slice::<i32>()?[0] as i32))
+        };
+        target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
+    }
+
+    inference_op_as_op!();
+}
+
+element_wise_oop!(dequantize_linear_f32, DequantizeLinearF32 {scale: f32, zero_point: i32},
+    [i8,i32,u8] => f32 |op, xs, ys| xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+        *y = (*x as i32 - op.zero_point) as f32 * op.scale
+    );
+    prefix: "onnx."
+);
+
