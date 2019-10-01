@@ -97,6 +97,7 @@ test_cos
 test_cos_example
 test_cosh
 test_cosh_example
+test_dequantizelinear                                                               dynsize
 test_div
 test_div_bcast
 test_div_example
@@ -213,6 +214,7 @@ test_pow_bcast_scalar
 test_pow_example
 test_prelu_broadcast
 test_prelu_example
+test_quantizelinear                                                                 dynsize
 test_reciprocal
 test_reciprocal_example
 test_reduce_l1_default_axes_keepdims_example
