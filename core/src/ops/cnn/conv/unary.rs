@@ -8,7 +8,6 @@ use crate::model::*;
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use super::mat_mat::MatMat;
-use super::vec_mat::VecMat;
 use super::Conv;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
@@ -131,7 +130,7 @@ impl ConvUnary {
     pub fn to_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
-    ) -> TractResult<(Im2Col<T>, TVec<usize>, Box<dyn TypedOp>)>
+    ) -> TractResult<(Im2Col<T>, Box<dyn TypedOp>)>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + FloatLike,
         f32: AsPrimitive<T>,
@@ -148,72 +147,35 @@ impl ConvUnary {
         let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed_kernels: Vec<Tensor> = vec![];
 
-        let (op2, b_pack): (Box<dyn TypedOp>, _) = if m > 1 {
-            let mm = T::mmm(m, k, n);
-            let b_pack = mm.b_pack();
+        let mm = T::mmm(m, k, n);
+        let b_pack = mm.b_pack();
 
-            trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
+        trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
 
-            for subkernel in kernel.outer_iter() {
-                let mut packed = unsafe {
-                    Tensor::uninitialized_aligned::<T>(
-                        &[mm.a_pack().len()],
-                        mm.a_pack().alignment(),
-                    )?
-                };
-                mm.a_pack().pack(
-                    packed.as_slice_mut()?.as_mut_ptr(),
-                    subkernel.as_ptr(),
-                    subkernel.strides()[0],
-                    subkernel.strides()[1],
-                );
-                packed_kernels.push(packed);
-            }
-            let conv_gemm = MatMat::new(
-                patch.clone(),
-                output_shape,
-                m,
-                k,
-                n,
-                self.kernel_fmt,
-                packed_kernels,
-                self.group,
-                mm.clone(),
-                vec![],
+        for subkernel in kernel.outer_iter() {
+            let mut packed = unsafe {
+                Tensor::uninitialized_aligned::<T>(&[mm.a_pack().len()], mm.a_pack().alignment())?
+            };
+            mm.a_pack().pack(
+                packed.as_slice_mut()?.as_mut_ptr(),
+                subkernel.as_ptr(),
+                subkernel.strides()[0],
+                subkernel.strides()[1],
             );
-            (Box::new(conv_gemm), b_pack)
-        } else {
-            let mm = T::packed_vec_mat_mul(k, n);
-            let b_pack = mm.b_pack();
-
-            trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
-
-            for subkernel in kernel.outer_iter() {
-                let mut packed = unsafe {
-                    Tensor::uninitialized_aligned::<T>(
-                        &[mm.packed_a_len()],
-                        mm.packed_a_alignment(),
-                    )?
-                };
-                mm.pack_a(
-                    packed.as_slice_mut()?.as_mut_ptr(),
-                    subkernel.as_ptr(),
-                    subkernel.strides()[1],
-                );
-                packed_kernels.push(packed);
-            }
-            let conv_gemm = VecMat::new(
-                patch.clone(),
-                output_shape,
-                k,
-                n,
-                self.kernel_fmt,
-                packed_kernels,
-                self.group,
-                mm,
-            );
-            (Box::new(conv_gemm), b_pack)
-        };
+            packed_kernels.push(packed);
+        }
+        let op2 = MatMat::new(
+            patch.clone(),
+            output_shape,
+            m,
+            k,
+            n,
+            self.kernel_fmt,
+            packed_kernels,
+            self.group,
+            mm.clone(),
+            vec![],
+        );
         let c_dim = input_shape.c_dim().clone();
 
         let im2col = Im2Col::new(
@@ -226,20 +188,19 @@ impl ConvUnary {
             c_dim / self.group,
             b_pack,
         );
-        let intermediary_shape = im2col.output_shape().into();
-        Ok((im2col, intermediary_shape, op2))
+        Ok((im2col, Box::new(op2)))
     }
 
     pub fn to_boxed_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
-    ) -> TractResult<(Box<dyn TypedOp>, TVec<usize>, Box<dyn TypedOp>)>
+    ) -> TractResult<(Box<dyn TypedOp>, Box<dyn TypedOp>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
         f32: AsPrimitive<T>,
     {
-        let (op1, shape, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
-        Ok((Box::new(op1), shape, op2))
+        let (op1, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
+        Ok((Box::new(op1), op2))
     }
 
     fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
@@ -248,7 +209,7 @@ impl ConvUnary {
         f32: AsPrimitive<T>,
     {
         let input = args_1!(inputs);
-        let (im2col, _shape, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
+        let (im2col, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
         let mega = im2col.im2col(&input.to_array_view()?)?;
         trace!("im2col: {:?}", mega);
         conv_gemm.as_stateless().unwrap().eval(tvec!(mega.into()))
@@ -469,8 +430,7 @@ impl TypedOp for ConvUnary {
                     dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
                 )?));
             } else {
-                let (op1, _, op2) =
-                    dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
+                let (op1, op2) = dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
                 let mut patch = TypedModelPatch::default();
                 let tap = patch.tap_model(&model, node.inputs[0])?;
                 let im2col = patch.wire_node(format!("{}-im2col", node.name), op1, &[tap])?;
