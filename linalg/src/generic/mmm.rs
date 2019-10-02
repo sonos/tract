@@ -1,5 +1,5 @@
 use crate::frame::mmm::LinearSpec::*;
-use crate::frame::mmm::StorageKerSpec::*;
+use crate::frame::mmm::PanelStore::*;
 use crate::frame::mmm::*;
 
 #[derive(Copy, Clone, Debug)]

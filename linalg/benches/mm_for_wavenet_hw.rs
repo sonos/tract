@@ -34,14 +34,7 @@ fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {
         let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
         let mut c = vec![0.0; m * n];
         unsafe {
-            be.iter(move || {
-                mm.run(
-                    &mm.a_from_packed(pa),
-                    &mm.b_from_packed(pb),
-                    &mut mm.c_from_data_and_strides(c.as_mut_ptr(), n as _, 1),
-                    &[],
-                )
-            });
+            be.iter(move || mm.run(pa, pb, c.as_mut_ptr(), &[]));
         }
     });
 }

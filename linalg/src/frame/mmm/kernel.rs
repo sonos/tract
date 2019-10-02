@@ -10,9 +10,9 @@ pub struct MatMatMulKerSpec<'a, T>
 where
     T: Copy + Clone + Debug + Add + Mul + Zero + Debug,
 {
-    pub a: &'a StorageKerSpec<T>,
-    pub b: &'a StorageKerSpec<T>,
-    pub c: &'a StorageKerSpec<T>,
+    pub a: &'a PanelStore<T>,
+    pub b: &'a PanelStore<T>,
+    pub c: &'a PanelStore<T>,
     pub linear: &'a LinearSpec,
     pub non_linear: *const FusedKerSpec<T>,
 }
@@ -166,18 +166,18 @@ pub mod test {
         };
     }
 
-    pub fn null_packed_storage<T>() -> StorageKerSpec<T>
+    pub fn null_packed_storage<T>() -> PanelStore<T>
     where
         T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
     {
-        StorageKerSpec::Packed { ptr: std::ptr::null::<T>() as _ }
+        PanelStore::Packed { ptr: std::ptr::null::<T>() as _ }
     }
 
-    pub fn mmm_stride_storage<T>(v: &mut [T], rsc: usize) -> StorageKerSpec<T>
+    pub fn mmm_stride_storage<T>(v: &mut [T], rsc: usize) -> PanelStore<T>
     where
         T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
     {
-        StorageKerSpec::Strides {
+        PanelStore::Strides {
             ptr: v.as_mut_ptr(),
             row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
             col_byte_stride: std::mem::size_of::<T>() as isize,
@@ -286,8 +286,8 @@ pub mod test {
         let mut v: Vec<T> = vec![T::zero(); len];
         let mut c = mmm_stride_storage(&mut v, K::nr());
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &StorageKerSpec::Packed { ptr: pa.as_ptr() },
-            b: &StorageKerSpec::Packed { ptr: pb.as_ptr() },
+            a: &PanelStore::Packed { ptr: pa.as_ptr() },
+            b: &PanelStore::Packed { ptr: pb.as_ptr() },
             c: &mut c,
             linear: &LinearSpec::Mul { k },
             non_linear: std::ptr::null(),
@@ -311,8 +311,8 @@ pub mod test {
         let row_byte_offsets =
             (0..k).map(|i| (i * std::mem::size_of::<T>() * t) as isize).collect::<Vec<_>>();
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &StorageKerSpec::Packed { ptr: pa.as_ptr() },
-            b: &StorageKerSpec::OffsetsAndPtrs {
+            a: &PanelStore::Packed { ptr: pa.as_ptr() },
+            b: &PanelStore::OffsetsAndPtrs {
                 col_ptrs: col_ptrs.as_ptr(),
                 row_byte_offsets: row_byte_offsets.as_ptr(),
             },
@@ -340,12 +340,12 @@ pub mod test {
         let b = vec![T::one(); k];
         let c: Vec<T> = vec![T::zero(); K::mr()];
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &StorageKerSpec::Packed { ptr: pa.as_ptr() },
-            b: &StorageKerSpec::VecStride {
+            a: &PanelStore::Packed { ptr: pa.as_ptr() },
+            b: &PanelStore::VecStride {
                 ptr: b.as_ptr(),
                 byte_stride: std::mem::size_of::<T>() as isize,
             },
-            c: &StorageKerSpec::VecStride {
+            c: &PanelStore::VecStride {
                 ptr: c.as_ptr(),
                 byte_stride: std::mem::size_of::<T>() as isize,
             },
