@@ -499,7 +499,6 @@ pub mod test {
         b: &[f32],
     ) -> Result<(), proptest::test_runner::TestCaseError> {
         let op = MatMatMulImpl::<K, f32>::new(m, k, n);
-        dbg!(&op);
         unsafe {
             let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
             op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
