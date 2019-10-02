@@ -79,7 +79,14 @@ impl ConvUnary {
                     .map(move |x| x + (ici * channel_stride) as isize)
             })
             .collect();
-        let conv = f32::mmm(self.output_channels(), kernel_offsets.len(), data_offsets.len());
+        let mut conv = f32::mmm(self.output_channels(), kernel_offsets.len(), data_offsets.len());
+        unsafe {
+            conv.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
+            conv.c_from_data_and_strides(
+                *output_shape.c_stride() as isize,
+                *output_shape.w_stride() as isize,
+            );
+        }
 
         let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed = unsafe {
@@ -92,15 +99,7 @@ impl ConvUnary {
             kernel.strides()[2],
         );
 
-        Ok(super::Direct::new(
-            conv,
-            data_offsets,
-            kernel_offsets,
-            input_shape,
-            output_shape,
-            packed,
-            vec![],
-        ))
+        Ok(super::Direct::new(conv, input_shape, output_shape, packed, vec![]))
     }
 
     fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {
@@ -147,7 +146,14 @@ impl ConvUnary {
         let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed_kernels: Vec<Tensor> = vec![];
 
-        let mm = T::mmm(m, k, n);
+        let mut mm = T::mmm(m, k, n);
+        let (rsc, csc) = match output_shape.fmt {
+            DataFormat::NHWC => (1, (m * self.group) as isize),
+            DataFormat::NCHW => (n as isize, 1),
+        };
+        unsafe {
+            mm.c_from_data_and_strides(rsc, csc);
+        }
         let b_pack = mm.b_pack();
 
         trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);

@@ -15,7 +15,13 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
 ) -> TractResult<Tensor> {
     let a = a.to_array_view::<T>()?;
     let b = b.to_array_view::<T>()?;
-    let geo = Geo::<T>::new(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
+    let mut geo = Geo::<T>::new(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
+    unsafe {
+        geo.mm.c_from_data_and_strides(
+            if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
+            if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
+        );
+    }
     let a = a.into_shape(&*geo.bc_a_shape)?;
     let b = b.into_shape(&*geo.bc_b_shape)?;
     let mut c = unsafe { Array::uninitialized(&*geo.c_shape) };
@@ -53,16 +59,7 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
             b.strides()[prefix.ndim() + !b_trans as usize],
         );
         unsafe {
-            geo.mm.run(
-                &geo.mm.a_from_packed(pa.as_ptr()?),
-                &geo.mm.b_from_packed(pb.as_ptr()?),
-                &mut geo.mm.c_from_data_and_strides(
-                    c.as_mut_ptr(),
-                    c.strides()[prefix.ndim() + c_trans as usize],
-                    c.strides()[prefix.ndim() + !c_trans as usize],
-                ),
-                &[],
-            );
+            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), & []);
         }
     }
     Ok(c.into_tensor())
@@ -475,7 +472,7 @@ where
     T: Copy + Datum + Add + Mul + Zero + FloatLike,
     f32: ::num_traits::AsPrimitive<T>,
 {
-    let geo = Geo::<T>::new(a.shape(), b_shape, a_trans, b_trans, c_trans)?;
+    let mut geo = Geo::<T>::new(a.shape(), b_shape, a_trans, b_trans, c_trans)?;
     let a = a.to_array_view::<T>()?;
     let a = a.into_shape(&*geo.bc_a_shape)?;
     let packed_as = Array::from_shape_fn(&a.shape()[0..a.ndim() - 2], |a_prefix| {
@@ -498,6 +495,25 @@ where
         );
         pa
     });
+    unsafe {
+        if geo.n == 1 {
+            geo.mm.b_vec_from_data_and_stride(if b_trans {
+                1
+            } else {
+                *geo.b_shape.last().unwrap() as isize
+            });
+            geo.mm.c_vec_from_data_and_stride(if c_trans {
+                1
+            } else {
+                *geo.c_shape.last().unwrap() as isize
+            });
+        } else {
+            geo.mm.c_from_data_and_strides(
+                if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
+                if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
+            );
+        };
+    }
     Ok(Box::new(MatMulUnaryFinite { packed_as, geo, non_linear: vec![] }))
 }
 
@@ -580,7 +596,9 @@ where
         let b = b.into_shape(&*self.geo.bc_b_shape)?;
         let b_pack = self.geo.mm.b_pack();
         let mut pb = if self.geo.n > 1 {
-            Some(unsafe { Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())? })
+            Some(unsafe {
+                Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())?
+            })
         } else {
             None
         };
@@ -602,18 +620,7 @@ where
             let pa: &Tensor = a.iter().next().unwrap();
             if self.geo.n == 1 {
                 unsafe {
-                    self.geo.mm.run(
-                        &self.geo.mm.a_from_packed(pa.as_ptr()?),
-                        &self.geo.mm.b_vec_from_data_and_stride(
-                            b.as_ptr(),
-                            b.strides()[self.geo.b_trans as usize],
-                        ),
-                        &mut self.geo.mm.c_vec_from_data_and_stride(
-                            c.as_mut_ptr(),
-                            c.strides()[self.geo.c_trans as usize],
-                        ),
-                        &self.non_linear,
-                    );
+                    self.geo.mm.run(pa.as_ptr()?, b.as_ptr(), c.as_mut_ptr(), &self.non_linear);
                 }
             } else {
                 let pb = pb.as_mut().unwrap().as_ptr_mut()?;
@@ -624,16 +631,7 @@ where
                     b.strides()[!self.geo.b_trans as usize],
                 );
                 unsafe {
-                    self.geo.mm.run(
-                        &self.geo.mm.a_from_packed(pa.as_ptr()?),
-                        &self.geo.mm.b_from_packed(pb),
-                        &mut self.geo.mm.c_from_data_and_strides(
-                            c.as_mut_ptr(),
-                            c.strides()[self.geo.c_trans as usize],
-                            c.strides()[!self.geo.c_trans as usize],
-                        ),
-                        &self.non_linear,
-                    );
+                    self.geo.mm.run(pa.as_ptr()?, pb, c.as_mut_ptr(), &self.non_linear);
                 }
             }
         }

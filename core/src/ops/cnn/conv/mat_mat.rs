@@ -6,7 +6,7 @@ use ndarray::prelude::*;
 
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
-use crate::ops::nn::{DataFormat, DataShape};
+use crate::ops::nn:: DataShape;
 
 use tract_linalg::frame::mmm::{FusedSpec, MatMatMul};
 
@@ -68,11 +68,6 @@ where
 
         let co_per_group = self.output_shape.c() / self.group;
 
-        let (rsc, csc) = match self.output_shape.fmt {
-            DataFormat::NHWC => (1, (self.m * self.group) as isize),
-            DataFormat::NCHW => (self.n as isize, 1),
-        };
-
         for i in 0..*self.output_shape.n() {
             unsafe {
                 let output_i =
@@ -84,13 +79,11 @@ where
                     );
 
                     self.tile.run(
-                        &self.tile.a_from_packed(a.as_ptr()?),
-                        &self.tile.b_from_packed(
-                            packed_input
-                                .as_ptr()
-                                .offset(((self.group * i + g) * packed_b_len) as isize),
-                        ),
-                        &mut self.tile.c_from_data_and_strides(output_i_g, rsc, csc),
+                        a.as_ptr()?,
+                        packed_input
+                            .as_ptr()
+                            .offset(((self.group * i + g) * packed_b_len) as isize),
+                        output_i_g,
                         &*self.non_linear,
                     );
                 }

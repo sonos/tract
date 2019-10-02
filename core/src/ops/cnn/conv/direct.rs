@@ -6,8 +6,6 @@ use tract_linalg::mmm::*;
 #[derive(Debug, Clone, new)]
 pub struct Direct {
     tile: Box<dyn MatMatMul<f32>>,
-    data_offsets: Vec<isize>,
-    kernel_offsets: Vec<isize>,
     input_shape: DataShape,
     output_shape: DataShape,
     packed_filters: Tensor,
@@ -95,20 +93,7 @@ impl StatelessOp for Direct {
             for n in 0..*self.input_shape.n() {
                 let input = input.slice_axis(Axis(0), (n..=n).into());
                 let mut output = output.slice_axis_mut(Axis(0), (n..=n).into());
-                self.tile.run(
-                    &self.tile.a_from_packed(filters),
-                    &self.tile.b_from_data_and_offsets(
-                        input.as_ptr(),
-                        &self.kernel_offsets,
-                        &self.data_offsets,
-                    ),
-                    &mut self.tile.c_from_data_and_strides(
-                        output.as_mut_ptr(),
-                        *self.output_shape.c_stride() as isize,
-                        *self.output_shape.w_stride() as isize,
-                    ),
-                    &*self.fused_ops,
-                );
+                self.tile.run(filters, input.as_ptr(), output.as_mut_ptr(), &*self.fused_ops);
             }
             Ok(tvec!(output.into_arc_tensor()))
         }

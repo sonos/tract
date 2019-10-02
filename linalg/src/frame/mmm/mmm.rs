@@ -104,41 +104,22 @@ where
     fn k(&self) -> usize;
     fn n(&self) -> usize;
 
-    unsafe fn a_from_packed(&self, ptr: *const T) -> StorageSpec<T>;
-    unsafe fn b_from_packed(&self, ptr: *const T) -> StorageSpec<T>;
+    unsafe fn b_from_data_and_offsets(&mut self, rows_offsets: &[isize], cols_offsets: &[isize]);
 
-    unsafe fn b_from_data_and_offsets(
-        &self,
-        data: *const T,
-        rows_offsets: &[isize],
-        cols_offsets: &[isize],
-    ) -> StorageSpec<T>;
+    unsafe fn b_vec_from_data_and_stride(&mut self, stride: isize);
+    unsafe fn b_vec_from_data(&mut self);
 
-    unsafe fn b_vec_from_data_and_stride(&self, data: *const T, stride: isize) -> StorageSpec<T>;
-    unsafe fn b_vec_from_data(&self, data: *const T) -> StorageSpec<T>;
+    unsafe fn c_from_data_and_strides(&mut self, row_stride: isize, col_stride: isize);
 
-    unsafe fn c_from_data_and_strides(
-        &self,
-        data: *const T,
-        row_stride: isize,
-        col_stride: isize,
-    ) -> StorageSpec<T>;
+    unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize);
+    unsafe fn c_vec_from_data(&mut self);
 
-    unsafe fn c_vec_from_data_and_stride(&self, data: *mut T, stride: isize) -> StorageSpec<T>;
-    unsafe fn c_vec_from_data(&self, data: *mut T) -> StorageSpec<T>;
-
-    unsafe fn run(
-        &self,
-        a: &StorageSpec<T>,
-        b: &StorageSpec<T>,
-        c: &mut StorageSpec<T>,
-        non_linear: &[FusedSpec<T>],
-    );
+    unsafe fn run(&self, a: *const T, b: *const T, c: *mut T, non_linear: &[FusedSpec<T>]);
 }
 
 clone_trait_object!(<T> MatMatMul<T> where T: Copy + Add + Mul + Zero);
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone)]
 pub struct MatMatMulImpl<K, T>
 where
     T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
@@ -147,7 +128,33 @@ where
     pub m: usize,
     pub k: usize,
     pub n: usize,
+    pub a_storage: MatrixStoreSpec,
+    pub b_storage: MatrixStoreSpec,
+    pub c_storage: MatrixStoreSpec,
     phantom: PhantomData<(K, T)>,
+}
+
+impl<K, T> MatMatMulImpl<K, T>
+where
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
+    K: MatMatMulKer<T>,
+{
+    pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, T> {
+        MatMatMulImpl {
+            m,
+            k,
+            n,
+            a_storage: MatrixStoreSpec::Packed { panel_len: (k * K::mr()) },
+            b_storage: MatrixStoreSpec::Packed { panel_len: (k * K::nr()) },
+            c_storage: MatrixStoreSpec::Strides {
+                row_byte_stride: (n * std::mem::size_of::<T>()) as isize,
+                col_byte_stride: (std::mem::size_of::<T>()) as isize,
+                mr: K::mr(),
+                nr: K::nr(),
+            },
+            phantom: PhantomData,
+        }
+    }
 }
 
 impl<K, T> MatMatMul<T> for MatMatMulImpl<K, T>
@@ -175,31 +182,15 @@ where
         self.k
     }
 
-    unsafe fn a_from_packed(&self, ptr: *const T) -> StorageSpec<T> {
-        StorageSpec::Packed { ptr, panel_len: (self.k * K::mr()) }
-    }
-
-    unsafe fn b_from_packed(&self, ptr: *const T) -> StorageSpec<T> {
-        StorageSpec::Packed { ptr, panel_len: (self.k * K::nr()) }
-    }
-
-    unsafe fn b_from_data_and_offsets(
-        &self,
-        data: *const T,
-        rows_offsets: &[isize],
-        cols_offsets: &[isize],
-    ) -> StorageSpec<T> {
+    unsafe fn b_from_data_and_offsets(&mut self, rows_offsets: &[isize], cols_offsets: &[isize]) {
         debug_assert!(rows_offsets.len() > 0);
         debug_assert!(cols_offsets.len() > 0);
+        // repeat the last offset to get to the panel boundary (pad to next multiple of nr)
         let wanted = (cols_offsets.len() + K::nr() - 1) / K::nr() * K::nr();
-        let mut col_ptrs: Vec<_> = Vec::with_capacity(wanted);
-        col_ptrs.set_len(wanted);
-        for i in 0..cols_offsets.len() {
-            *col_ptrs.get_unchecked_mut(i) = data.offset(*cols_offsets.get_unchecked(i));
-        }
-        let pad = *col_ptrs.get_unchecked(cols_offsets.len() - 1);
-        for i in cols_offsets.len()..wanted {
-            *col_ptrs.get_unchecked_mut(i) = pad;
+        let mut col_byte_offsets: Vec<_> =
+            cols_offsets.iter().map(|o| o * std::mem::size_of::<T>() as isize).collect();
+        while col_byte_offsets.len() < wanted {
+            col_byte_offsets.push(*col_byte_offsets.last().unwrap());
         }
         // repeat the last offset four times to simplify kernel loop unrolling
         let mut row_byte_offsets: Vec<_> = Vec::with_capacity(rows_offsets.len() + 4);
@@ -212,30 +203,24 @@ where
         for i in 0..4 {
             *row_byte_offsets.get_unchecked_mut(rows_offsets.len() + i) = pad;
         }
-        StorageSpec::OffsetsAndPtrs { col_ptrs, row_byte_offsets, nr: K::nr() }
+        self.b_storage =
+            MatrixStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() };
     }
 
-    unsafe fn b_vec_from_data_and_stride(&self, data: *const T, stride: isize) -> StorageSpec<T> {
-        StorageSpec::VecStride {
-            ptr: data,
+    unsafe fn b_vec_from_data_and_stride(&mut self, stride: isize) {
+        self.b_storage = MatrixStoreSpec::VecStride {
             byte_stride: stride * std::mem::size_of::<T>() as isize,
             mr: K::mr(),
             nr: K::nr(),
         }
     }
 
-    unsafe fn b_vec_from_data(&self, data: *const T) -> StorageSpec<T> {
-        self.b_vec_from_data_and_stride(data, 1)
+    unsafe fn b_vec_from_data(&mut self) {
+        self.b_vec_from_data_and_stride(1)
     }
 
-    unsafe fn c_from_data_and_strides(
-        &self,
-        data: *const T,
-        row_stride: isize,
-        col_stride: isize,
-    ) -> StorageSpec<T> {
-        StorageSpec::Strides {
-            ptr: data,
+    unsafe fn c_from_data_and_strides(&mut self, row_stride: isize, col_stride: isize) {
+        self.c_storage = MatrixStoreSpec::Strides {
             row_byte_stride: row_stride * std::mem::size_of::<T>() as isize,
             col_byte_stride: col_stride * std::mem::size_of::<T>() as isize,
             mr: K::mr(),
@@ -243,26 +228,19 @@ where
         }
     }
 
-    unsafe fn c_vec_from_data_and_stride(&self, data: *mut T, stride: isize) -> StorageSpec<T> {
-        StorageSpec::VecStride {
-            ptr: data,
+    unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize) {
+        self.c_storage = MatrixStoreSpec::VecStride {
             byte_stride: stride * std::mem::size_of::<T>() as isize,
             mr: K::mr(),
             nr: K::nr(),
         }
     }
 
-    unsafe fn c_vec_from_data(&self, data: *mut T) -> StorageSpec<T> {
-        self.c_vec_from_data_and_stride(data, 1)
+    unsafe fn c_vec_from_data(&mut self) {
+        self.c_vec_from_data_and_stride(1)
     }
 
-    unsafe fn run(
-        &self,
-        a: &StorageSpec<T>,
-        b: &StorageSpec<T>,
-        c: &mut StorageSpec<T>,
-        non_linear: &[FusedSpec<T>],
-    ) {
+    unsafe fn run(&self, a: *const T, b: *const T, c: *mut T, non_linear: &[FusedSpec<T>]) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
@@ -270,18 +248,27 @@ where
         let n = self.n;
         let mut scratch = ScratchSpace::default();
         let tmpc = vec![T::zero(); mr * nr];
-        let ref mut tmp_tile = self.c_from_data_and_strides(tmpc.as_ptr(), nr as isize, 1);
+        let tmp_c_storage = MatrixStoreSpec::Strides {
+            row_byte_stride: (std::mem::size_of::<T>() * nr) as isize,
+            col_byte_stride: std::mem::size_of::<T>() as isize,
+            mr,
+            nr,
+        };
+        let ref mut tmp_tile = tmp_c_storage.wrap(tmpc.as_ptr());
         let ref linear = LinearSpec::Mul { k };
+        let a = self.a_storage.wrap(a);
+        let b = self.b_storage.wrap(b);
+        let mut c = self.c_storage.wrap(c);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
-                let ref mmm_c = c.mmm(ia, ib);
+                let ref direct_c = c.mmm(ia, ib);
                 let non_linear = scratch.non_linear::<K>(non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
-                    c: mmm_c as _,
+                    c: direct_c as _,
                     linear,
                     non_linear,
                 });
@@ -397,6 +384,24 @@ pub mod test {
                 #[test]
                 fn conv_prepacked_1() {
                     if $cond {
+                        let filters = vec![1.0f32];
+                        let data = vec![0.0f32, 1.0];
+                        let pb = ConvProblem {
+                            ci: 1,
+                            co: 1,
+                            kt: 1,
+                            stride: 1,
+                            dilation: 1,
+                            filters,
+                            data,
+                        };
+                        crate::check_close(&*pb.run::<$ker>(), &*pb.expected()).unwrap();
+                    }
+                }
+
+                #[test]
+                fn conv_prepacked_2() {
+                    if $cond {
                         let mut filters = vec![0.0f32; 3 * 14 * 2];
                         filters[13 * 6 + 5] = 1.0;
                         let mut data = vec![0.0f32; 3 * 10];
@@ -494,6 +499,7 @@ pub mod test {
         b: &[f32],
     ) -> Result<(), proptest::test_runner::TestCaseError> {
         let op = MatMatMulImpl::<K, f32>::new(m, k, n);
+        dbg!(&op);
         unsafe {
             let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
             op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
@@ -503,12 +509,7 @@ pub mod test {
 
             let mut found = vec![9999.0f32; m * n];
 
-            op.run(
-                &op.a_from_packed(packed_a.as_ptr()),
-                &op.b_from_packed(packed_b.as_ptr()),
-                &mut op.c_from_data_and_strides(found.as_mut_ptr(), n as isize, 1),
-                &[],
-            );
+            op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), &[]);
 
             let mut expected = vec![0.0f32; m * n];
             for x in 0..n {
@@ -535,19 +536,16 @@ pub mod test {
         a: &[f32],
         b: &[f32],
     ) -> Result<(), proptest::test_runner::TestCaseError> {
-        let op = MatMatMulImpl::<K, f32>::new(m, k, 1);
         unsafe {
+            let mut op = MatMatMulImpl::<K, f32>::new(m, k, 1);
+            op.b_vec_from_data_and_stride(1);
+            op.c_vec_from_data_and_stride(1);
             let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
             op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
 
             let mut found = vec![9999.0f32; m];
 
-            op.run(
-                &op.a_from_packed(packed_a.as_ptr()),
-                &op.b_vec_from_data_and_stride(b.as_ptr(), 1),
-                &mut op.c_vec_from_data_and_stride(found.as_mut_ptr(), 1),
-                &[],
-            );
+            op.run(packed_a.as_ptr(), b.as_ptr(), found.as_mut_ptr(), &[]);
 
             let mut expected = vec![0.0f32; m];
             for y in 0..m {
@@ -585,12 +583,7 @@ pub mod test {
 
         let mut found = vec![9999.0f32; m * n];
 
-        op.run(
-            &op.a_from_packed(packed_a.as_ptr()),
-            &op.b_from_packed(packed_b.as_ptr()),
-            &mut op.c_from_data_and_strides(found.as_mut_ptr(), n as isize, 1),
-            spec,
-        );
+        op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), spec);
 
         let mut expected = vec![0.0f32; m * n];
         for x in 0..n {
@@ -752,8 +745,9 @@ pub mod test {
         }
 
         pub fn run<K: MatMatMulKer<f32>>(&self) -> Vec<f32> {
-            let op = MatMatMulImpl::<K, f32>::new(self.m(), self.k(), self.n());
             unsafe {
+                let mut op = MatMatMulImpl::<K, f32>::new(self.m(), self.k(), self.n());
+                op.b_from_data_and_offsets(&self.data_rows_offsets(), &self.data_cols_offsets());
                 let mut packed_a =
                     Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
                 op.a_pack().pack(
@@ -764,16 +758,7 @@ pub mod test {
                 );
 
                 let mut found = vec![9999.0f32; self.co * self.output_width()];
-                op.run(
-                    &op.a_from_packed(packed_a.as_ptr()),
-                    &op.b_from_data_and_offsets(
-                        self.data.as_ptr(),
-                        &self.data_rows_offsets(),
-                        &self.data_cols_offsets(),
-                    ),
-                    &mut op.c_from_data_and_strides(found.as_mut_ptr(), self.n() as isize, 1),
-                    &[],
-                );
+                op.run(packed_a.as_ptr(), self.data.as_ptr(), found.as_mut_ptr(), &[]);
                 found
             }
         }
