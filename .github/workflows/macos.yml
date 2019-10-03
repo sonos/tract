@@ -1,0 +1,13 @@
+name: Native MacOS
+
+on:
+  push:
+
+jobs:
+  macos:
+    runs-on: macOS-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Native script
+      run: .travis/native.sh

@@ -2,7 +2,7 @@
 
 ![rustc >= 1.35.0](https://img.shields.io/badge/rustc-%3E%3D1.35.0-brightgreen)
 ![MIT/Apache 2](https://img.shields.io/crates/l/tract)
-[![Native tests status](https://github.com/snipsco/tract/workflows/Native%20test%20suite/badge.svg)](https://github.com/snipsco/tract/actions)
+[![Native Linux test status](https://github.com/snipsco/tract/workflows/Native%20Linux/badge.svg)](https://github.com/snipsco/tract/actions)
 [![Embedded targets status](https://github.com/snipsco/tract/workflows/Embedded%20targets/badge.svg)](https://github.com/snipsco/tract/actions)
 [![Doc](https://docs.rs/tract-core/badge.svg)](https://docs.rs/tract-core)
 
