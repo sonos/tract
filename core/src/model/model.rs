@@ -19,6 +19,8 @@ where
     pub(crate) inputs: Vec<OutletId>,
     /// model outputs
     pub(crate) outputs: Vec<OutletId>,
+    /// outlet labels
+    pub(crate) outlet_labels: HashMap<OutletId, String>,
 }
 
 impl<TI, O> Default for ModelImpl<TI, O>
@@ -27,7 +29,13 @@ where
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn default() -> ModelImpl<TI, O> {
-        ModelImpl { nodes: vec![], nodes_by_name: HashMap::new(), inputs: vec![], outputs: vec![] }
+        ModelImpl {
+            nodes: vec![],
+            nodes_by_name: HashMap::new(),
+            inputs: vec![],
+            outputs: vec![],
+            outlet_labels: HashMap::new(),
+        }
     }
 }
 
@@ -287,6 +295,23 @@ where
         Ok(())
     }
 
+    // outlet labels
+
+    /// Get label for an outlet.
+    pub fn outlet_label(&self, outlet: OutletId) -> Option<&str> {
+        self.outlet_labels.get(&outlet).map(|s| &**s)
+    }
+
+    /// Set label for an outlet.
+    pub fn set_outlet_label(&mut self, outlet: OutletId, label: String) {
+        self.outlet_labels.insert(outlet, label);
+    }
+
+    /// Find outlet by label.
+    pub fn find_outlet_label(&self, label: &str) -> Option<OutletId> {
+        self.outlet_labels.iter().find(|(_k,v)| &**v == label).map(|(k,_v)| *k)
+    }
+
     // misc
 
     /// Computes an evalutation order for the graph inputs and outputs
@@ -389,6 +414,10 @@ where
 
     fn outlet_fact_format(&self, outlet: OutletId) -> String {
         format!("{:?}", self.outlet_fact(outlet).unwrap())
+    }
+
+    fn outlet_label(&self, id: OutletId) -> Option<&str> {
+        self.outlet_label(id)
     }
 
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {

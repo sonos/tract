@@ -24,6 +24,7 @@ pub struct DisplayOptions {
     pub op_name: Option<String>,
     pub node_name: Option<String>,
     pub expect_canonic: bool,
+    pub outlet_labels: bool,
     //    pub successors: Option<TVec<usize>>,
 }
 
@@ -167,6 +168,11 @@ impl<'a> DisplayGraph<'a> {
                 White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
                 io
             );
+            if self.options.outlet_labels {
+                if let Some(label) = model.outlet_label(OutletId::new(node_id, ix)) {
+                    println!("{}            {} ", prefix, White.italic().paint(label));
+                }
+            }
         }
         for info in model.node_op(node_id).info()? {
             println!("{}  * {}", prefix, info);

@@ -32,6 +32,9 @@ where
             .chain_err(|| format!("Translating {}", node))?;
         for (ix, outlet) in outlets.into_iter().enumerate() {
             mapping.insert(OutletId::new(node.id, ix), outlet);
+            if let Some(label) = source.outlet_label(OutletId::new(node.id, ix)) {
+                target.set_outlet_label(outlet, label.to_string());
+            }
             /* This is only valid between analyse and typed, but may be useful
              * for debugging
             #[cfg(debug_assertions)]
@@ -87,6 +90,11 @@ where
         let new_op = O2::try_from(old_node.op.clone())?;
         let new_id = model.add_node(old_node.name.clone(), new_op, facts)?;
         map.insert(old_id, new_id);
+        for ix in 0..old_node.outputs.len() {
+            if let Some(label) = old.outlet_label(OutletId::new(old_id, ix)) {
+                model.set_outlet_label(OutletId::new(new_id, ix), label.to_string());
+            }
+        }
         if old.input_outlets()?.contains(&OutletId::new(old_node.id, 0)) {
             continue;
         }

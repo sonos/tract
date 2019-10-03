@@ -330,6 +330,7 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
                 .help("Select one node to dump"),
         )
         .arg(Arg::with_name("const").long("const").help("also display consts nodes"))
+        .arg(Arg::with_name("outlet-labels").long("outlet-labels").help("display outlet labels"))
 }
 
 #[derive(Debug)]
@@ -708,6 +709,7 @@ pub fn display_options_from_clap(
         //        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
         expect_canonic: root_matches.value_of("pass").unwrap_or("declutter") == "declutter"
             && !root_matches.is_present("optimize"),
+        outlet_labels: matches.is_present("outlet-labels")
     })
 }
 
