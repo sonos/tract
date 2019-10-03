@@ -14,9 +14,33 @@ pub fn ensure_onnx_git_checkout() {
         fs::create_dir_all(dir()).unwrap();
         let lockfile = dir().join(".lock");
         let _lock = fs::File::create(lockfile).unwrap().lock_exclusive();
-        let run = std::process::Command::new("./checkout.sh").status().unwrap();
-        if !run.success() {
-            panic!("Failed to checkout onnx")
+        for v in &["1.4.1", "1.5.0"] {
+            let wanted = dir().join(format!("onnx-{}", v));
+            if !wanted.join("onnx/backend/test/data").exists() {
+                let tmp = wanted.with_extension("tmp");
+                let _ = fs::remove_dir_all(&wanted);
+                let _ = fs::remove_dir_all(&tmp);
+                let run = std::process::Command::new("git")
+                    .arg("clone")
+                    .arg("https://github.com/onnx/onnx")
+                    .arg(&tmp)
+                    .status()
+                    .unwrap();
+                if !run.success() {
+                    panic!("Failed to clone onnx")
+                }
+                let run = std::process::Command::new("git")
+                    .arg("-C")
+                    .arg(&tmp)
+                    .arg("checkout")
+                    .arg(format!("v{}", v))
+                    .status()
+                    .unwrap();
+                if !run.success() {
+                    panic!("Failed to checkout onnx branch")
+                }
+                fs::rename(tmp, wanted).unwrap();
+            }
         }
         println!("onnx checkout done");
     });
@@ -46,7 +70,8 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     let test_dir = out_dir.join("tests");
     let tests_set_ver = format!("{}_{}", tests_set.replace("-", "_"), onnx_tag.replace(".", "_"));
 
-    writeln!(root, "include!(concat!(env!(\"OUT_DIR\"), \"/tests/{}.rs\"));", tests_set_ver).unwrap();
+    writeln!(root, "include!(concat!(env!(\"OUT_DIR\"), \"/tests/{}.rs\"));", tests_set_ver)
+        .unwrap();
 
     let test_file = test_dir.join(&tests_set_ver).with_extension("rs");
     let mut rs = fs::File::create(test_file).unwrap();
@@ -74,7 +99,6 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     writeln!(rs, "}}").unwrap();
 }
 
-#[cfg(not(target_os = "windows"))]
 fn main() {
     ensure_onnx_git_checkout();
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -87,9 +111,4 @@ fn main() {
             make_test_file(&mut root, set, ver);
         }
     }
-}
-
-#[cfg(target_os = "windows")]
-fn main() {
-    // TODO: Fix these tests for Windows.
 }
