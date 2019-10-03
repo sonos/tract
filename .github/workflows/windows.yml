@@ -18,4 +18,5 @@ jobs:
       run: cargo test -p tract-linalg -p tract-core
     - name: cli release build
       run: cargo build -p tract --release
-
+    - name: Onnx test suite
+      run: cargo test --release -p onnx-test-suite
