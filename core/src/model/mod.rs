@@ -104,8 +104,11 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + objekt::Clone {
     /// Tensorfact for an outlet
     fn outlet_tensorfact(&self, outlet: OutletId) -> InferenceFact;
 
-    /// Tensorfact for an outlet
+    /// Short outlet formatter (id plus fact)
     fn outlet_fact_format(&self, outlet: OutletId) -> String;
+
+    /// Labels for an outlet
+    fn outlet_label(&self, id: OutletId) -> Option<&str>;
 
     /// List consumers of an outlet
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId];

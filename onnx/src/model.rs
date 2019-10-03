@@ -109,6 +109,7 @@ impl<'a> ParsingContext<'a> {
             let id = model.add_node(name, op, facts)?;
             for (ix, output) in pbnode.get_output().iter().filter(|s| !s.is_empty()).enumerate() {
                 outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
+                model.set_outlet_label(OutletId::new(id, ix), output.to_owned());
             }
             for closure in closures {
                 trace!("Node {} closes on {}", model.nodes()[id], closure);

@@ -115,7 +115,7 @@ pub fn handle_npz(
     for name in npz.names()? {
         if let Ok(value) = tensor::for_npz(&mut npz, &name) {
             let name = name.trim_end_matches(".npy");
-            values.insert(name.to_string(), Ok(tvec!(value.into())));
+            values.insert(name.to_string(), Ok(value.into()));
         }
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
@@ -134,7 +134,7 @@ pub fn handle_pbdir(
     params: Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()> {
-    let mut values: HashMap<&str, TVec<Option<Tensor>>> = HashMap::new();
+    let mut values: HashMap<String, TractResult<Tensor>> = HashMap::new();
     let parsed_model = if let SomeGraphDef::Onnx(_, ref parsed) = params.graph {
         parsed
     } else {
@@ -145,21 +145,8 @@ pub fn handle_pbdir(
         let entry = entry?;
         let file = fs::File::open(entry.path())?;
         let tensor = tract_onnx::tensor::proto_from_reader(file)?;
-        let outlet = parsed_model.outlets_by_name[tensor.get_name()];
-        let node_name = &*parsed_model.model.nodes()[outlet.node].name;
-        let output_tuple = values.entry(node_name).or_insert(tvec!());
-        while output_tuple.len() <= outlet.slot {
-            output_tuple.push(None)
-        }
-        output_tuple[outlet.slot] = Some(tensor.try_into()?);
+        values.insert(tensor.get_name().to_string(), tensor.try_into());
     }
-    let values = values
-        .into_iter()
-        .filter(|(_, t)| t.iter().all(|t| t.is_some()))
-        .map(|(k, t)| {
-            (k.to_string(), Ok(t.into_iter().map(Option::unwrap).collect::<TVec<Tensor>>()))
-        })
-        .collect();
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
         m,
@@ -172,7 +159,7 @@ pub fn handle_pbdir(
 pub fn compare<TI, O>(
     cumulative: bool,
     tract: &ModelImpl<TI, O>,
-    all_values: &HashMap<String, CliResult<TVec<Tensor>>>,
+    all_values: &HashMap<String, TractResult<Tensor>>,
     params: &Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()>
@@ -189,7 +176,7 @@ where
 
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {
         let name = &tract.node(input.node).name;
-        let value = &all_values[name].as_ref().unwrap()[0];
+        let value = all_values[name].as_ref().unwrap();
         state.set_input(ix, value.clone())?;
     }
 
@@ -203,30 +190,6 @@ where
 
     for n in eval_order {
         let node = &tract.nodes()[n];
-
-        let tf_output = match all_values.get(&*node.name) {
-            Some(Ok(it)) => it,
-            Some(Err(e)) => {
-                display_graph.set_node_color(n, Yellow)?;
-                display_graph
-                    .add_node_label(&[n], format!("{} {}", Yellow.paint("TF Error"), e))?;
-                continue;
-            }
-            None => {
-                display_graph.set_node_color(n, Yellow)?;
-                display_graph.add_node_label(&[n], Yellow.paint("Not in reference").to_string())?;
-                debug!("Skipping node (no reference) {}", node);
-                continue;
-            }
-        };
-        let expected: Vec<Option<Arc<Tensor>>> =
-            tf_output.iter().map(|m| Some(m.clone().into_arc_tensor())).collect();
-        let expected_outputs_section = expected
-            .iter()
-            .enumerate()
-            .map(|(ix, o)| format!("expected output #{}: {:?}", ix, o))
-            .collect::<Vec<_>>();
-        display_graph.add_node_section(&[n], expected_outputs_section)?;
 
         if tract.input_outlets()?.iter().any(|o| o.node == n) {
             display_graph.set_node_color(n, Blue)?;
@@ -249,13 +212,55 @@ where
                     format!("input value #{}: {:?}", ix, tensor)
                 })
                 .collect::<Vec<_>>();
-            for (ix, f) in node.outputs.iter().enumerate() {
-                if f.fact.to_tensor_fact().unify(&expected[ix].clone().unwrap().into()).is_err() {
-                    failing.push(n);
-                    display_graph.set_node_color(n, Red.bold())?;
-                    display_graph.add_node_label(&[n], format!("{}: Could not reconcile infered fact for output #{} ({:?}) with reference.", Red.bold().paint("ERROR"), ix, f.fact))?;
+            if let Some(e) = error {
+                failing.push(n);
+                display_graph.set_node_color(n, Red.bold())?;
+                display_graph
+                    .add_node_label(&[n], format!("{}: {}", Red.bold().paint("ERROR"), e))?;
+            } else {
+                for (ix, f) in node.outputs.iter().enumerate() {
+                    if let Some(ref_value) =
+                        tract.outlet_label(OutletId::new(n, ix)).and_then(|lbl| all_values.get(lbl))
+                    {
+                        match ref_value {
+                            Ok(t) => {
+                                let found = &state.values[n].as_ref().unwrap()[ix];
+                                if let Err(e) = found
+                                    .close_enough(t, node.op().validation() == Validation::Rounding)
+                                {
+                                    failing.push(n);
+                                    display_graph.set_node_color(n, Red.bold())?;
+                                    display_graph.add_node_label(&[n], format!("{}: Could not reconcile infered fact for output #{} ({:?}) with reference. {:?}", Red.bold().paint("ERROR"), ix, f.fact, e))?;
+                                }
+                                if !cumulative {
+                                    // Use the output from reference to keep tract from drifting.
+                                    state.values[node.id].as_mut().unwrap()[ix] =
+                                        t.to_owned().into_arc_tensor();
+                                }
+                            }
+                            Err(e) => {
+                                failing.push(n);
+                                display_graph.set_node_color(n, Red.bold())?;
+                                display_graph.add_node_label(
+                                    &[n],
+                                    format!("{}: {}", Red.bold().paint("ERROR"), e),
+                                )?;
+                            }
+                        }
+                    } else {
+                        display_graph.add_node_label(&[n], "Not matched against reference")?;
+                    }
+                    /*
+                    if f.fact.to_tensor_fact().unify(&expected[ix].clone().unwrap().into()).is_err() {
+                        failing.push(n);
+                        display_graph.set_node_color(n, Red.bold())?;
+                        display_graph.add_node_label(&[n], format!("{}: Could not reconcile infered fact for output #{} ({:?}) with reference.", Red.bold().paint("ERROR"), ix, f.fact))?;
+                    }
+                    */
                 }
+                display_graph.add_node_section(&[n], inputs)?;
             }
+            /*
             match error {
                 Some(e) => {
                     failing.push(n);
@@ -274,13 +279,13 @@ where
                                 .iter()
                                 .enumerate()
                                 .try_for_each(|(ix, data)| -> CliResult<()> {
-                                    if ix >= tf_output.len() {
+                                    if ix >= expected.len() {
                                         display_graph.set_node_color(n, Yellow)?;
                                         display_graph.add_node_label(&[n], format!("Extra output (#{})", ix))?;
-                                    } else if tf_output[ix].shape() != data.shape() {
+                                    } else if expected[ix].shape() != data.shape() {
                                         display_graph.set_node_color(n, Red.bold())?;
-                                        display_graph.add_node_label(&[n], format!("Output {} has wrong shape. Expected {:?}, got {:?}", ix, tf_output[ix].shape(), data.shape()))?;
-                                    } else if let Err(e) = tf_output[ix].close_enough(
+                                        display_graph.add_node_label(&[n], format!("Output {} has wrong shape. Expected {:?}, got {:?}", ix, expected[ix].shape(), data.shape()))?;
+                                    } else if let Err(e) = expected[ix].close_enough(
                                         data,
                                         node.op().validation() == Validation::Rounding,
                                     ) {
@@ -301,12 +306,7 @@ where
                     }
                 }
             }
-        }
-
-        if !cumulative {
-            // Use the output from tensorflow to keep tract from drifting.
-            trace!("copy tensorflow output in state: for node {}, {:?}", node.id, tf_output);
-            state.set_values(node.id, tf_output.clone().into())?;
+            */
         }
     }
 
