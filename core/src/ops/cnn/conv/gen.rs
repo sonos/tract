@@ -100,6 +100,10 @@ impl Op for Conv {
         "Conv".into()
     }
 
+    fn validation(&self) -> Validation {
+        Validation::Rounding
+    }
+
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

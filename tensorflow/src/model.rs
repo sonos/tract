@@ -127,6 +127,7 @@ impl Framework<GraphDef> for Tensorflow {
                     let outlet = OutletId::new(prec, input.1);
                     let inlet = InletId::new(node_id, ix);
                     model.add_edge(outlet, inlet)?;
+                    model.set_outlet_label(outlet, i.to_string());
                 }
             }
         }

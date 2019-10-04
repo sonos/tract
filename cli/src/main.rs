@@ -370,7 +370,7 @@ pub struct Parameters {
 impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<Parameters> {
-        let name = matches.value_of("model").unwrap();
+        let name = matches.value_of("model").ok_or("Model argument required")?;
         let format = matches.value_of("format").unwrap_or(if name.ends_with(".onnx") {
             "onnx"
         } else {
@@ -782,7 +782,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             m.is_present("cumulative"),
             m.is_present("resilient"),
             params,
-            display_options_from_clap(m)?,
+            display_options_from_clap(&matches, m)?,
         ),
         #[cfg(not(feature = "conform"))]
         ("compare", _) => bail!("Need conform feature to be able to run comparison"),

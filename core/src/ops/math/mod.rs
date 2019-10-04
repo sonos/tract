@@ -43,11 +43,21 @@ fn flip_sub(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
 }
 
 element_wise!(abs, Abs, [f16, f32, i32] => |_, xs| xs.iter_mut().for_each(|x| *x = x.abs()));
-element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.exp()));
-element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.ln()));
-element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt()));
-element_wise!(recip, Recip, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.recip()));
-element_wise!(rsqrt, Rsqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt().recip()));
+element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.exp());
+    validation: Validation::Rounding
+);
+element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.ln());
+    validation: Validation::Rounding
+);
+element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt());
+    validation: Validation::Rounding
+);
+element_wise!(recip, Recip, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.recip());
+    validation: Validation::Rounding
+);
+element_wise!(rsqrt, Rsqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt().recip());
+    validation: Validation::Rounding
+);
 
 element_wise!(ceil, Ceil, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.ceil()));
 element_wise!(floor, Floor, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.floor()));
