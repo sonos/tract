@@ -84,7 +84,7 @@ where
         }
     }
 
-    pub(super) fn mmm(&self, down: usize, right: usize) -> PanelStore<T> {
+    pub(super) fn tile_c(&self, down: usize, right: usize) -> PanelStore<T> {
         match self {
             MatrixStore::Strides { ptr, row_byte_stride, col_byte_stride, mr, nr } => {
                 PanelStore::Strides {
@@ -100,13 +100,13 @@ where
         }
     }
 
-    pub(super) unsafe fn set_from_mmm(
+    pub(super) unsafe fn set_from_tile(
         &mut self,
         down: usize,
         right: usize,
         height: usize,
         width: usize,
-        mmm: &[T],
+        tile: &[T],
     ) {
         match self {
             MatrixStore::Strides { ptr, row_byte_stride, col_byte_stride, mr, nr } => {
@@ -116,7 +116,7 @@ where
                             + (*row_byte_stride as usize * (down * *mr + y)
                                 + *col_byte_stride as usize * (right * *nr + x))
                                 as isize) as *mut T;
-                        let value = *mmm.get_unchecked(y * *nr + x);
+                        let value = *tile.get_unchecked(y * *nr + x);
                         *ptr = value;
                     }
                 }
@@ -125,7 +125,7 @@ where
                 for y in 0..height {
                     let ptr =
                         ((*ptr as isize) + (*byte_stride * (down * *mr + y) as isize)) as *mut T;
-                    let value = *mmm.get_unchecked(y * *nr);
+                    let value = *tile.get_unchecked(y * *nr);
                     *ptr = value;
                 }
             }
