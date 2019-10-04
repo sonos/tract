@@ -60,7 +60,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
                 .arg("-O")
                 .arg(&tgz_name)
                 .status()
-                .unwrap();
+                .expect("Failed to run wget");
             if !wget.success() {
                 panic!("wget: {:?}", wget);
             }

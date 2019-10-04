@@ -17,6 +17,8 @@ jobs:
     - name: linalg and core tests
       run: cargo test -p tract-linalg -p tract-core
     - name: Onnx test suite
-      run: cargo test --release -p onnx-test-suite
+      run: |
+          choco install wget
+          cargo test --release -p onnx-test-suite
       env:
-        TRACT_LOG: debug
+        TRACT_LOG: info
