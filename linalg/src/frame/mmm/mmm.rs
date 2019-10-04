@@ -263,7 +263,7 @@ where
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
-                let ref direct_c = c.mmm(ia, ib);
+                let ref direct_c = c.tile_c(ia, ib);
                 let non_linear = scratch.non_linear::<K>(non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
@@ -276,7 +276,7 @@ where
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
-                let ref tmp_tile_c = tmp_tile.mmm(0, 0);
+                let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
                 let non_linear = scratch.non_linear::<K>(non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
@@ -286,12 +286,12 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_mmm(ia, n / nr, mr, n % nr, &*tmpc);
+                c.set_from_tile(ia, n / nr, mr, n % nr, &*tmpc);
             }
         }
         if m % mr != 0 {
             let ref panel_a = a.panel_a(m / mr);
-            let ref tmp_tile_c = tmp_tile.mmm(0, 0);
+            let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
                 let non_linear = scratch.non_linear::<K>(non_linear, m / mr, ib);
@@ -303,7 +303,7 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_mmm(m / mr, ib, m % mr, nr, &*tmpc);
+                c.set_from_tile(m / mr, ib, m % mr, nr, &*tmpc);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
@@ -316,7 +316,7 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_mmm(m / mr, n / nr, m % mr, n % nr, &*tmpc);
+                c.set_from_tile(m / mr, n / nr, m % mr, n % nr, &*tmpc);
             }
         }
     }
