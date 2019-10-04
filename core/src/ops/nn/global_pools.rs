@@ -33,6 +33,9 @@ impl Op for GlobalAvgPool {
     fn name(&self) -> Cow<str> {
         "GlobalAvgPool".into()
     }
+    fn validation(&self) -> Validation {
+        Validation::Rounding
+    }
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -102,6 +105,9 @@ impl GlobalLpPool {
 impl Op for GlobalLpPool {
     fn name(&self) -> Cow<str> {
         "GlobalLpPool".into()
+    }
+    fn validation(&self) -> Validation {
+        Validation::Rounding
     }
     op_as_typed_op!();
     not_a_pulsed_op!();

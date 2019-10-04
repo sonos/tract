@@ -38,6 +38,10 @@ impl Op for AvgPool {
         Ok(self.pool_spec.info())
     }
 
+    fn validation(&self) -> Validation {
+        Validation::Rounding
+    }
+
     canonic!();
     op_as_typed_op!();
     op_as_pulsed_op!();

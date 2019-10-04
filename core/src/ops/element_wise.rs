@@ -7,6 +7,9 @@ pub trait ElementWiseMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static 
     fn prefix(&self) -> &'static str {
         ""
     }
+    fn validation(&self) -> Validation {
+        Validation::Accurate
+    }
     #[allow(unused_variables)]
     fn output_type(&self, input_type: DatumType) -> Option<DatumType> {
         None
@@ -34,6 +37,10 @@ pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
 impl Op for ElementWiseOp {
     fn name(&self) -> Cow<str> {
         format!("{}", self.0.name()).into()
+    }
+
+    fn validation(&self) -> Validation {
+        self.0.validation()
     }
 
     canonic!();
@@ -134,6 +141,7 @@ macro_rules! element_wise {
         $( [$($typ:ident),*] => $f:expr ),*
         $(; cost: $cost:expr )?
         $(; prefix: $prefix:expr )?
+        $(; validation: $validation:expr )?
     ) => {
         #[derive(Debug, Clone)]
         pub struct $Op { $( $(pub $var: $var_typ),* )? }
@@ -163,6 +171,11 @@ macro_rules! element_wise {
                 $prefix
             }
             )?
+            $(
+            fn validation(&self) -> Validation {
+                $validation
+            }
+            )?
         }
         pub fn $func($( $($var: $var_typ),* )?) -> $crate::ops::element_wise::ElementWiseOp {
             $crate::ops::element_wise::ElementWiseOp(Box::new($Op { $( $($var),* )? } ))
@@ -176,6 +189,7 @@ macro_rules! element_wise_oop {
         $( [$($typ:ident),*] => $typ_dst:ident $f:expr ),*
         $(; cost: $cost:expr )?
         $(; prefix: $prefix:expr )?
+        $(; validation: $validation:expr )?
     ) => {
         #[derive(Debug, Clone)]
         pub struct $Op { $( $(pub $var: $var_typ),* )? }
@@ -212,6 +226,11 @@ macro_rules! element_wise_oop {
             $(
             fn prefix(&self) -> &'static str {
                 $prefix
+            }
+            )?
+            $(
+            fn validation(&self) -> Validation {
+                $validation
             }
             )?
         }

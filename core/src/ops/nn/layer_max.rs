@@ -133,6 +133,9 @@ impl Op for LayerLogSoftmax {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axis: {}", self.axis)])
     }
+    fn validation(&self) -> Validation {
+        Validation::Rounding
+    }
     canonic!();
     op_as_typed_op!();
     op_as_pulsed_op!();
@@ -224,6 +227,9 @@ impl Op for LayerSoftmax {
     }
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axis: {}", self.axis)])
+    }
+    fn validation(&self) -> Validation {
+        Validation::Rounding
     }
     canonic!();
     op_as_typed_op!();
