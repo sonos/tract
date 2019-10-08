@@ -6,7 +6,9 @@ use num_traits::{Float, Zero};
 
 use super::binary::*;
 
-bin_to_super_type!(add, Add, flip:commute,
+bin_to_super_type!(add, Add,
+        flip:commute,
+        validation: Validation::Rounding,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
 bin_to_super_type!(sub, Sub, flip:flip_sub,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);

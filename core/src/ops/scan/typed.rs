@@ -92,6 +92,10 @@ impl Op for Typed {
         vec![("loop".into(), &self.body)]
     }
 
+    fn validation(&self) -> Validation {
+        Validation::Rounding
+    }
+
     op_as_typed_op!();
     op_as_pulsed_op!();
 }

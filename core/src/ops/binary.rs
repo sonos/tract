@@ -4,6 +4,9 @@ use std::fmt;
 
 pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
+    fn validation(&self) -> Validation {
+        Validation::Accurate
+    }
     fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn eval_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()>;
@@ -45,6 +48,10 @@ pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
 impl Op for InferenceBinOp {
     fn name(&self) -> Cow<str> {
         format!("{}Inference", self.0.name()).into()
+    }
+
+    fn validation(&self) -> Validation {
+        self.0.validation()
     }
 
     op_as_typed_op!();
@@ -163,6 +170,10 @@ impl Op for Nary {
         format!("{}Nary", self.0.name()).into()
     }
 
+    fn validation(&self) -> Validation {
+        self.0.validation()
+    }
+
     not_a_typed_op!();
     not_a_pulsed_op!();
 }
@@ -246,6 +257,10 @@ pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
         format!("{}Typed", self.0.name()).into()
+    }
+
+    fn validation(&self) -> Validation {
+        self.0.validation()
     }
 
     canonic!();
@@ -416,6 +431,10 @@ impl Op for UnaryOp {
         Ok(vec![format!("a: {:?}", self.a)])
     }
 
+    fn validation(&self) -> Validation {
+        self.mini_op.validation()
+    }
+
     canonic!();
     op_as_typed_op!();
     op_as_pulsed_op!();
@@ -522,6 +541,10 @@ pub struct MergeOp(pub Box<dyn BinMiniOp>);
 impl Op for MergeOp {
     fn name(&self) -> Cow<str> {
         format!("{}Merge", self.0.name()).into()
+    }
+
+    fn validation(&self) -> Validation {
+        self.0.validation()
     }
 
     canonic!();
@@ -666,6 +689,7 @@ macro_rules! bin_to_super_type {
     ($func:ident, $Op:ident,
      $(cost: $cost:expr,)?
      $(flip: $flip:expr,)?
+     $(validation: $validation:expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone)]
         pub struct $Op;
@@ -723,6 +747,11 @@ macro_rules! bin_to_super_type {
                 fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
                     ($cost)(dt)
                 }
+            )?
+            $(
+            fn validation(&self) -> Validation {
+                $validation
+            }
             )?
         }
 
