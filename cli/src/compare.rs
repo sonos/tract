@@ -258,7 +258,7 @@ where
     if failing.len() > 0 {
         bail!("{} error(s).", failing.len())
     } else {
-        println!("{}", Green.paint(format!("{} node passed the comparison.", ok)));
+        println!("{}", Green.paint(format!("{} node(s) passed the comparison.", ok)));
     };
     Ok(())
 }

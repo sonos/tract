@@ -155,7 +155,10 @@ impl Inference {
                         self.body.output_outlets()?[inner_model_output_ix],
                     ])?;
                     facts.push(&mut inputs[*outer_input_ix]);
-                    if Factoid::unify_all(&mut facts)? {
+                    if Factoid::unify_all(&mut *facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>())? {
+                        changed = true;
+                    }
+                    if Factoid::unify_all(&mut *facts.iter_mut().map(|f| &mut f.shape).collect::<TVec<_>>())? {
                         changed = true;
                     }
                 }
