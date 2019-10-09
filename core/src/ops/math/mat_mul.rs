@@ -59,7 +59,7 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
             b.strides()[prefix.ndim() + !b_trans as usize],
         );
         unsafe {
-            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), & []);
+            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), &[]);
         }
     }
     Ok(c.into_tensor())
@@ -267,24 +267,26 @@ impl TypedOp for MatMul {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(ref a) = model.outlet_fact(node.inputs[0])?.konst {
-            let patch = TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs[1..2],
-                MatMulUnary::new(a.clone(), self.a_trans, self.b_trans, self.c_trans),
-            )?;
-            return Ok(Some(patch));
-        } else if let Some(ref b) = model.outlet_fact(node.inputs[1])?.konst {
-            let patch = TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs[0..1],
-                MatMulUnary::new(b.clone(), !self.b_trans, !self.a_trans, !self.c_trans),
-            )?;
-            return Ok(Some(patch));
-        }
-        Ok(None)
+        let konst_ix = if model.outlet_fact(node.inputs[0])?.konst.is_some() {
+            0
+        } else if model.outlet_fact(node.inputs[1])?.konst.is_some() {
+            1
+        } else {
+            return Ok(None);
+        };
+
+        let var_ix = 1 - konst_ix;
+        let flip = konst_ix == 1;
+        let t_konst = [self.a_trans, self.b_trans][konst_ix] ^ flip;
+        let t_var = [self.b_trans, self.a_trans][konst_ix] ^ flip;
+        let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.clone().unwrap();
+        let patch = TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &node.inputs[var_ix..][..1],
+            MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip),
+        )?;
+        return Ok(Some(patch));
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

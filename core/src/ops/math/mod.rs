@@ -1,4 +1,5 @@
 pub mod mat_mul;
+pub mod mat_mat_mul;
 
 pub use self::mat_mul::MatMul;
 use crate::internal::*;
