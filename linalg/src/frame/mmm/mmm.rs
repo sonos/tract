@@ -100,6 +100,10 @@ where
     fn a_pack(&self) -> PackA<T>;
     fn b_pack(&self) -> PackB<T>;
 
+    fn a_storage(&self) -> &MatrixStoreSpec;
+    fn b_storage(&self) -> &MatrixStoreSpec;
+    fn c_storage(&self) -> &MatrixStoreSpec;
+
     fn m(&self) -> usize;
     fn k(&self) -> usize;
     fn n(&self) -> usize;
@@ -180,6 +184,16 @@ where
 
     fn k(&self) -> usize {
         self.k
+    }
+
+    fn a_storage(&self) -> &MatrixStoreSpec {
+        &self.a_storage
+    }
+    fn b_storage(&self) -> &MatrixStoreSpec {
+        &self.b_storage
+    }
+    fn c_storage(&self) -> &MatrixStoreSpec {
+        &self.c_storage
     }
 
     unsafe fn b_from_data_and_offsets(&mut self, rows_offsets: &[isize], cols_offsets: &[isize]) {
