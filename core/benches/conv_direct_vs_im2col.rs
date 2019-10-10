@@ -80,28 +80,11 @@ impl Problem {
         Box::new(unary.unwrap())
     }
 
-    pub fn to_direct(&self) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
-        let unary = self.to_unary();
-
-        let direct = unary.to_direct(&*self.image_shape()).unwrap();
-        let mut model_direct = TypedModel::default();
-        let input = model_direct.add_source("input", self.image_type()).unwrap();
-        let conv = model_direct
-            .add_node(
-                "conv",
-                direct.clone(),
-                tvec!(TypedFact::dt_shape(f32::datum_type(), direct.output_shape()).unwrap()),
-            )
-            .unwrap();
-        model_direct.add_edge(input, InletId::new(conv, 0)).unwrap();
-        SimplePlan::new(model_direct).unwrap()
-    }
-
-    pub fn to_im2col(&self) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
+    pub fn to_plan(&self, direct: bool) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
         let unary = self.to_unary();
         let mut model_im2col = TypedModel::default();
         let input = model_im2col.add_source("input", self.image_type()).unwrap();
-        let output = unary.wire_as_im2col_pair::<f32>(&mut model_im2col, "", input).unwrap();
+        let output = unary.wire_as_im2col_pair::<f32>(&mut model_im2col, "", input, direct).unwrap();
         model_im2col.set_output_outlets(&[output]).unwrap();
         SimplePlan::new(model_im2col).unwrap()
     }
@@ -114,7 +97,7 @@ fn b(c: &mut Criterion, name: &str, pbs: Vec<Problem>) {
             "im2col",
             move |b, pb| {
                 let image = pb.image();
-                let im2col_plan = pb.to_im2col();
+                let im2col_plan = pb.to_plan(false);
                 let args = tvec!(image.clone().into());
                 b.iter(|| im2col_plan.run(args.clone()).unwrap())
             },
@@ -122,7 +105,7 @@ fn b(c: &mut Criterion, name: &str, pbs: Vec<Problem>) {
         )
         .with_function("direct", move |b, pb| {
             let image = pb.image();
-            let direct_plan = pb.to_direct();
+            let direct_plan = pb.to_plan(true);
             let args = tvec!(image.clone().into());
             b.iter(|| direct_plan.run(args.clone()).unwrap())
         })
