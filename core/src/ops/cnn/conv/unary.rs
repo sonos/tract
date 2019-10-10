@@ -1,6 +1,6 @@
 use ndarray::*;
 
-use num_traits::AsPrimitive;
+use num_traits::{AsPrimitive, Zero};
 
 use crate::internal::*;
 use crate::model::*;
@@ -13,6 +13,8 @@ use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
 use crate::ops::math::mat_mat_mul::MatMatMulUnaryFinite;
 use crate::ops::nn::DataFormat;
+
+use tract_linalg::frame::PackA;
 
 use std::iter::Sum;
 
@@ -66,6 +68,57 @@ impl ConvUnary {
         }
     }
 
+    fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {
+        let kernel = self.kernel.to_array_view::<T>()?;
+        let final_shape = (
+            self.group,
+            self.output_channels() / self.group,
+            kernel.len() / self.output_channels(),
+        );
+        trace!("kernel shape (group, output, rest) = {:?}", final_shape);
+        let hw_rank = kernel.ndim() - 2;
+        match self.kernel_fmt {
+            KernelFormat::HWIO => {
+                let mut shape = kernel.shape().to_vec();
+                shape.insert(hw_rank + 1, self.group);
+                shape[hw_rank] /= self.group;
+                let kernel = kernel.into_shape(shape)?;
+                let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
+                permutation.extend(0..hw_rank);
+                let permuted = kernel.permuted_axes(permutation);
+                Ok(Array3::<T>::from_shape_vec(final_shape, permuted.iter().cloned().collect())?)
+            }
+            KernelFormat::OIHW => Ok(kernel.into_shape(final_shape)?.to_owned()),
+        }
+    }
+
+    fn kernel_as_packed_as<T: Datum + Copy + Zero>(
+        &self,
+        packer: &PackA<T>,
+    ) -> TractResult<ArrayD<Tensor>> {
+        let kernel = self.kernel_as_group_o_ihw()?;
+        let packed_as = Array1::from(
+            kernel
+                .outer_iter()
+                .map(|subkernel| {
+                    let mut packed = unsafe {
+                        Tensor::uninitialized_aligned::<T>(&[packer.len()], packer.alignment())?
+                    };
+                    packer.pack(
+                        packed.as_slice_mut()?.as_mut_ptr(),
+                        subkernel.as_ptr(),
+                        subkernel.strides()[0],
+                        subkernel.strides()[1],
+                    );
+                    Ok(packed)
+                })
+                .collect::<TractResult<Vec<_>>>()?,
+        )
+        .into_dyn();
+        Ok(packed_as.insert_axis(Axis(0)))
+    }
+
+    /*
     pub fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
 
@@ -102,36 +155,14 @@ impl ConvUnary {
 
         Ok(super::Direct::new(conv, input_shape, output_shape, packed, vec![]))
     }
-
-    fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {
-        let kernel = self.kernel.to_array_view::<T>()?;
-        let final_shape = (
-            self.group,
-            self.output_channels() / self.group,
-            kernel.len() / self.output_channels(),
-        );
-        trace!("kernel shape (group, output, rest) = {:?}", final_shape);
-        let hw_rank = kernel.ndim() - 2;
-        match self.kernel_fmt {
-            KernelFormat::HWIO => {
-                let mut shape = kernel.shape().to_vec();
-                shape.insert(hw_rank + 1, self.group);
-                shape[hw_rank] /= self.group;
-                let kernel = kernel.into_shape(shape)?;
-                let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
-                permutation.extend(0..hw_rank);
-                let permuted = kernel.permuted_axes(permutation);
-                Ok(Array3::<T>::from_shape_vec(final_shape, permuted.iter().cloned().collect())?)
-            }
-            KernelFormat::OIHW => Ok(kernel.into_shape(final_shape)?.to_owned()),
-        }
-    }
+    */
 
     pub fn wire_as_im2col_pair<T>(
         &self,
         model: &mut TypedModel,
         name: &str,
         mut wire: OutletId,
+        direct: bool,
     ) -> TractResult<OutletId>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + FloatLike,
@@ -155,58 +186,43 @@ impl ConvUnary {
         };
         unsafe {
             mmm.c_from_data_and_strides(rsc, csc);
+            if direct {
+                let channel_stride = input_shape.c_stride();
+                let data_offsets: Vec<isize> = geo.centers_offsets();
+                let kernel_offsets: Vec<isize> = (0..self.input_channels())
+                    .flat_map(|ici| {
+                        geo
+                            .standard_layout_data_field
+                            .iter()
+                            .map(move |x| x + (ici * channel_stride) as isize)
+                    })
+                    .collect();
+                mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
+            }
         }
-        let b_pack = mmm.b_pack();
 
         trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
 
-        let kernel = self.kernel_as_group_o_ihw()?;
-        let packed_as = Array1::from(
-            kernel
-                .outer_iter()
-                .map(|subkernel| {
-                    let mut packed = unsafe {
-                        Tensor::uninitialized_aligned::<T>(
-                            &[mmm.a_pack().len()],
-                            mmm.a_pack().alignment(),
-                        )?
-                    };
-                    mmm.a_pack().pack(
-                        packed.as_slice_mut()?.as_mut_ptr(),
-                        subkernel.as_ptr(),
-                        subkernel.strides()[0],
-                        subkernel.strides()[1],
-                    );
-                    Ok(packed)
-                })
-                .collect::<TractResult<Vec<_>>>()?,
-        )
-        .into_dyn();
-        let packed_as = packed_as.insert_axis(Axis(0)); // n axis broadcast
-                                                        /*
-                                                        let op2 = MatMat::new(
-                                                            patch.clone(),
-                                                            output_shape,
-                                                            m,
-                                                            k,
-                                                            n,
-                                                            self.kernel_fmt,
-                                                            packed_kernels,
-                                                            self.group,
-                                                            mm.clone(),
-                                                            vec![],
-                                                        );
-                                                        */
-
+        let packed_as = self.kernel_as_packed_as(&mmm.a_pack())?;
         trace!("{:?}", packed_as);
 
-        let c_dim = input_shape.c_dim().clone();
-
-        wire = model.wire_node(
-            format!("{}-im2col", name),
-            Im2Col::new(geo.clone(), input_shape, m, k, n, self.group, c_dim / self.group, b_pack),
-            &[wire],
-        )?[0];
+        if !direct {
+            let c_dim = *input_shape.c_dim();
+            wire = model.wire_node(
+                format!("{}-im2col", name),
+                Im2Col::new(
+                    geo.clone(),
+                    input_shape,
+                    m,
+                    k,
+                    n,
+                    self.group,
+                    c_dim / self.group,
+                    mmm.b_pack(),
+                ),
+                &[wire],
+            )?[0];
+        }
 
         wire = model.wire_node(
             format!("{}-matmatmul", name),
@@ -251,7 +267,7 @@ impl ConvUnary {
         let mut model = TypedModel::default();
         let wire =
             model.add_source("source", TypedFact::dt_shape(T::datum_type(), inputs[0].shape())?)?;
-        let wire = self.wire_as_im2col_pair::<T>(&mut model, "im2col-adhoc", wire)?;
+        let wire = self.wire_as_im2col_pair::<T>(&mut model, "im2col-adhoc", wire, false)?;
         model.set_output_outlets(&[wire])?;
         let plan = SimplePlan::new(model)?;
         plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
@@ -469,8 +485,17 @@ impl TypedOp for ConvUnary {
                 && dt == f32::datum_type()
                 && self.group == 1
             {
-                let op = self.to_direct(&*shape)?;
-                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.tap_model(model, node.inputs[0])?;
+                let wire = dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
+                    self,
+                    &mut patch,
+                    &*node.name,
+                    wire,
+                    true
+                ))?;
+                patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
             } else if self.group != 1 && self.group == self.output_channels() {
                 return Ok(Some(TypedModelPatch::single_unary_op(
                     model,
@@ -484,7 +509,8 @@ impl TypedOp for ConvUnary {
                     self,
                     &mut patch,
                     &*node.name,
-                    wire
+                    wire,
+                    false
                 ))?;
                 patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
                 return Ok(Some(patch));

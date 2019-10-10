@@ -226,14 +226,10 @@ where
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
-            dbg!(&self.packed_as);
             let b = args_1!(inputs);
             let b = b.to_array_view::<T>()?;
-            dbg!(&b);
             let mut c = Array::uninitialized(&*self.c_shape);
-            dbg!(&c);
             for prefix in indices(&*self.c_prefix).into_iter() {
-                dbg!(&prefix);
                 let mut a = self.packed_as.view();
                 let mut b = b.view();
                 let mut c: *mut T = c.as_mut_ptr();
