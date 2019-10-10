@@ -239,6 +239,7 @@ impl TypedOp for Conv {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::setup_test_logger;
     use crate::ops::cnn::conv::KernelFormat::HWIO;
     use crate::ops::nn::DataFormat::NHWC;
     use ndarray::*;
@@ -288,6 +289,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_1() {
+        setup_test_logger();
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let res = op
             .eval(tvec!(
@@ -300,6 +302,7 @@ mod test {
 
     #[test]
     fn test_infer_nhwc_2() {
+        setup_test_logger();
         let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 2));
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 1, 2, 1));
@@ -310,6 +313,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_2() {
+        setup_test_logger();
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let i = rctensor4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]);
         let k = rctensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
@@ -320,7 +324,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_3() {
-        //        ::setup_test_logger();
+        setup_test_logger();
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::Valid, None, 1);
         let i = rctensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
         let k = rctensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
@@ -330,6 +334,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_batch() {
+        setup_test_logger();
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let result = op
             .eval(tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]]), rctensor4(&[[[[1.0f32]]]])))

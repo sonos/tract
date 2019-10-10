@@ -11,6 +11,7 @@ use super::mat_mat::MatMat;
 use super::Conv;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
+use crate::ops::math::mat_mat_mul::MatMatMulUnaryFinite;
 use crate::ops::nn::DataFormat;
 
 use std::iter::Sum;
@@ -126,77 +127,114 @@ impl ConvUnary {
         }
     }
 
-    pub fn to_im2col_pair<T>(
+    pub fn wire_as_im2col_pair<T>(
         &self,
-        input_full_shape: &[usize],
-    ) -> TractResult<(Im2Col<T>, Box<dyn TypedOp>)>
+        model: &mut TypedModel,
+        name: &str,
+        mut wire: OutletId,
+    ) -> TractResult<OutletId>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + FloatLike,
         f32: AsPrimitive<T>,
     {
         trace!("to_im2col_pair: {:?}", self);
-        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
-        let kernel = self.kernel.to_array_view::<T>()?;
+        let (input_shape, geo, output_shape) =
+            self.pool_spec.compute_geo(&*model.outlet_fact(wire)?.shape.as_finite().unwrap());
+
+        trace!("input: {:?}", input_shape);
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
-        let k = kernel.len() / self.output_channels();
-        let n = patch.output_shape.iter().cloned().product::<usize>();
+        let k = self.kernel.len() / self.output_channels();
+        let n = geo.output_shape.iter().cloned().product::<usize>();
 
-        let kernel = self.kernel_as_group_o_ihw()?;
-        let mut packed_kernels: Vec<Tensor> = vec![];
-
-        let mut mm = T::mmm(m, k, n);
+        let mut mmm = T::mmm(m, k, n);
         let (rsc, csc) = match output_shape.fmt {
             DataFormat::NHWC => (1, (m * self.group) as isize),
             DataFormat::NCHW => (n as isize, 1),
         };
         unsafe {
-            mm.c_from_data_and_strides(rsc, csc);
+            mmm.c_from_data_and_strides(rsc, csc);
         }
-        let b_pack = mm.b_pack();
+        let b_pack = mmm.b_pack();
 
         trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
 
-        for subkernel in kernel.outer_iter() {
-            let mut packed = unsafe {
-                Tensor::uninitialized_aligned::<T>(&[mm.a_pack().len()], mm.a_pack().alignment())?
-            };
-            mm.a_pack().pack(
-                packed.as_slice_mut()?.as_mut_ptr(),
-                subkernel.as_ptr(),
-                subkernel.strides()[0],
-                subkernel.strides()[1],
-            );
-            packed_kernels.push(packed);
-        }
-        let op2 = MatMat::new(
-            patch.clone(),
-            output_shape,
-            m,
-            k,
-            n,
-            self.kernel_fmt,
-            packed_kernels,
-            self.group,
-            mm.clone(),
-            vec![],
-        );
+        let kernel = self.kernel_as_group_o_ihw()?;
+        let packed_as = Array1::from(
+            kernel
+                .outer_iter()
+                .map(|subkernel| {
+                    let mut packed = unsafe {
+                        Tensor::uninitialized_aligned::<T>(
+                            &[mmm.a_pack().len()],
+                            mmm.a_pack().alignment(),
+                        )?
+                    };
+                    mmm.a_pack().pack(
+                        packed.as_slice_mut()?.as_mut_ptr(),
+                        subkernel.as_ptr(),
+                        subkernel.strides()[0],
+                        subkernel.strides()[1],
+                    );
+                    Ok(packed)
+                })
+                .collect::<TractResult<Vec<_>>>()?,
+        )
+        .into_dyn();
+        let packed_as = packed_as.insert_axis(Axis(0)); // n axis broadcast
+                                                        /*
+                                                        let op2 = MatMat::new(
+                                                            patch.clone(),
+                                                            output_shape,
+                                                            m,
+                                                            k,
+                                                            n,
+                                                            self.kernel_fmt,
+                                                            packed_kernels,
+                                                            self.group,
+                                                            mm.clone(),
+                                                            vec![],
+                                                        );
+                                                        */
+
+        trace!("{:?}", packed_as);
+
         let c_dim = input_shape.c_dim().clone();
 
-        let im2col = Im2Col::new(
-            patch.clone(),
-            input_shape,
-            m,
-            k,
-            n,
-            self.group,
-            c_dim / self.group,
-            b_pack,
-        );
-        Ok((im2col, Box::new(op2)))
+        wire = model.wire_node(
+            format!("{}-im2col", name),
+            Im2Col::new(geo.clone(), input_shape, m, k, n, self.group, c_dim / self.group, b_pack),
+            &[wire],
+        )?[0];
+
+        wire = model.wire_node(
+            format!("{}-matmatmul", name),
+            MatMatMulUnaryFinite {
+                c_shape: tvec![*output_shape.n(), self.group, n, *output_shape.c() / self.group],
+                c_prefix_strides: tvec![
+                    *output_shape.n_stride() as isize,
+                    (output_shape.c() / self.group * output_shape.c_stride()) as isize
+                ],
+                packed_as,
+                mmm,
+                non_linear: vec![],
+            },
+            &[wire],
+        )?[0];
+
+        wire = model.wire_node(
+            format!("{}-reshape-c", name),
+            crate::ops::array::FiniteReshape::new(output_shape.shape),
+            &[wire],
+        )?[0];
+
+        trace!("{:#?}", model);
+
+        Ok(wire)
     }
 
+    /*
     pub fn to_boxed_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
@@ -208,17 +246,26 @@ impl ConvUnary {
         let (op1, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
         Ok((Box::new(op1), op2))
     }
+    */
 
     fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
         f32: AsPrimitive<T>,
     {
-        let input = args_1!(inputs);
+        let mut model = TypedModel::default();
+        let wire =
+            model.add_source("source", TypedFact::dt_shape(T::datum_type(), inputs[0].shape())?)?;
+        let wire = self.wire_as_im2col_pair::<T>(&mut model, "im2col-adhoc", wire)?;
+        model.set_output_outlets(&[wire])?;
+        let plan = SimplePlan::new(model)?;
+        plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
+        /*
         let (im2col, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
         let mega = im2col.im2col(&input.to_array_view()?)?;
         trace!("im2col: {:?}", mega);
         conv_gemm.as_stateless().unwrap().eval(tvec!(mega.into()))
+        */
     }
 
     pub fn to_depth_wise<T>(&self, input_full_shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
@@ -436,12 +483,15 @@ impl TypedOp for ConvUnary {
                     dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
                 )?));
             } else {
-                let (op1, op2) = dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
                 let mut patch = TypedModelPatch::default();
-                let tap = patch.tap_model(&model, node.inputs[0])?;
-                let im2col = patch.wire_node(format!("{}-im2col", node.name), op1, &[tap])?;
-                let mm = patch.wire_node(&*node.name, op2, &im2col)?[0];
-                patch.shunt_outside(OutletId::new(node.id, 0), mm)?;
+                let wire = patch.tap_model(model, node.inputs[0])?;
+                let wire = dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
+                    self,
+                    &mut patch,
+                    &*node.name,
+                    wire
+                ))?;
+                patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
                 return Ok(Some(patch));
             }
         }
