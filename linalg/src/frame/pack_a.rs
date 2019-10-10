@@ -1,10 +1,9 @@
 use num_traits::Zero;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::ops::{Add, Mul};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PackA<T: Copy + Add + Mul + Zero + Debug + PartialEq> {
+pub struct PackA<T: Copy + Zero + Debug + PartialEq> {
     k: usize,
     m: usize,
     mr: usize,
@@ -12,7 +11,7 @@ pub struct PackA<T: Copy + Add + Mul + Zero + Debug + PartialEq> {
     _boo: PhantomData<T>,
 }
 
-impl<T: Copy + Add + Mul + Zero + Debug + PartialEq> PackA<T> {
+impl<T: Copy + Zero + Debug + PartialEq> PackA<T> {
     pub fn new(k: usize, m: usize, mr: usize, alignment: usize) -> PackA<T> {
         PackA { k, m, mr, alignment, _boo: PhantomData }
     }
