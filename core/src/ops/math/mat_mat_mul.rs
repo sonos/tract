@@ -85,6 +85,7 @@ where
     f32: ::num_traits::AsPrimitive<T>,
 {
     pub(crate) c_shape: TVec<usize>,
+    pub(crate) c_prefix: TVec<usize>,
     pub(crate) c_prefix_strides: TVec<isize>,
     pub(crate) packed_as: ArrayD<Tensor>,
     pub(crate) mmm: Box<dyn MatMatMul<T>>,
@@ -231,13 +232,7 @@ where
             dbg!(&b);
             let mut c = Array::uninitialized(&*self.c_shape);
             dbg!(&c);
-            let c_tail = match self.mmm.c_storage() {
-                MatrixStoreSpec::VecStride { .. } => 1,
-                MatrixStoreSpec::Strides { .. } => 2,
-                _ => unreachable!(),
-            };
-            let c_prefix = &self.c_shape[..self.c_shape.len() - c_tail];
-            for prefix in indices(c_prefix).into_iter() {
+            for prefix in indices(&*self.c_prefix).into_iter() {
                 dbg!(&prefix);
                 let mut a = self.packed_as.view();
                 let mut b = b.view();

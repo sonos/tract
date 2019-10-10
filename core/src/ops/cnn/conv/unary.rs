@@ -211,7 +211,8 @@ impl ConvUnary {
         wire = model.wire_node(
             format!("{}-matmatmul", name),
             MatMatMulUnaryFinite {
-                c_shape: tvec![*output_shape.n(), self.group, n, *output_shape.c() / self.group],
+                c_shape: output_shape.shape.clone(),
+                c_prefix: tvec!(*output_shape.n(), self.group),
                 c_prefix_strides: tvec![
                     *output_shape.n_stride() as isize,
                     (output_shape.c() / self.group * output_shape.c_stride()) as isize
@@ -220,12 +221,6 @@ impl ConvUnary {
                 mmm,
                 non_linear: vec![],
             },
-            &[wire],
-        )?[0];
-
-        wire = model.wire_node(
-            format!("{}-reshape-c", name),
-            crate::ops::array::FiniteReshape::new(output_shape.shape),
             &[wire],
         )?[0];
 
