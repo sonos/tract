@@ -40,11 +40,8 @@ where
         let b = args_1!(inputs);
         let b = b.to_array_view::<T>()?;
         let mut packed = unsafe {
-            Tensor::uninitialized_aligned::<T>(
-                &*self.output_shape,
-                self.pack_b.alignment(),
-            )
-            .unwrap()
+            Tensor::uninitialized_aligned::<T>(&*self.output_shape, self.pack_b.alignment())
+                .unwrap()
         };
         let b_prefix = &b.shape()[..b.shape().len() - 2];
         for prefix in indices(b_prefix).into_iter() {
@@ -82,15 +79,16 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct MatMatMulUnaryFinite<T>
+pub(crate) struct MatMatMulUnaryFinite<T>
 where
     T: Copy + Datum + Add + Mul + Zero + FloatLike,
     f32: ::num_traits::AsPrimitive<T>,
 {
-    c_shape: TVec<usize>,
-    packed_as: ArrayD<Tensor>,
-    mmm: Box<dyn MatMatMul<T>>,
-    non_linear: Vec<FusedSpec<T>>,
+    pub(crate) c_shape: TVec<usize>,
+    pub(crate) c_prefix_strides: TVec<isize>,
+    pub(crate) packed_as: ArrayD<Tensor>,
+    pub(crate) mmm: Box<dyn MatMatMul<T>>,
+    pub(crate) non_linear: Vec<FusedSpec<T>>,
 }
 
 /*
@@ -226,32 +224,36 @@ where
     f32: ::num_traits::AsPrimitive<T>,
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let b = args_1!(inputs);
-        let b = b.to_array_view::<T>()?;
-        let mut c = unsafe { Array::uninitialized(&*self.c_shape) };
-        let c_tail = match self.mmm.c_storage() {
-            MatrixStoreSpec::VecStride { .. } => 1,
-            MatrixStoreSpec::Strides { .. } => 2,
-            _ => unreachable!()
-        };
-        let c_prefix = &self.c_shape[..self.c_shape.len() - c_tail];
-        for prefix in indices(c_prefix).into_iter() {
-            let mut a = self.packed_as.view();
-            let mut b = b.view();
-            let mut c = c.view_mut();
-            for &dim in prefix.slice() {
-                let d = dim.min(a.shape()[0] - 1);
-                a.index_axis_inplace(Axis(0), d);
-                let d = dim.min(b.shape()[0] - 1);
-                b.index_axis_inplace(Axis(0), d);
-                c.index_axis_inplace(Axis(0), dim);
+        unsafe {
+            dbg!(&self.packed_as);
+            let b = args_1!(inputs);
+            let b = b.to_array_view::<T>()?;
+            dbg!(&b);
+            let mut c = Array::uninitialized(&*self.c_shape);
+            dbg!(&c);
+            let c_tail = match self.mmm.c_storage() {
+                MatrixStoreSpec::VecStride { .. } => 1,
+                MatrixStoreSpec::Strides { .. } => 2,
+                _ => unreachable!(),
+            };
+            let c_prefix = &self.c_shape[..self.c_shape.len() - c_tail];
+            for prefix in indices(c_prefix).into_iter() {
+                dbg!(&prefix);
+                let mut a = self.packed_as.view();
+                let mut b = b.view();
+                let mut c: *mut T = c.as_mut_ptr();
+                for (ix, &dim) in prefix.slice().iter().enumerate() {
+                    let d = dim.min(a.shape()[0] - 1);
+                    a.index_axis_inplace(Axis(0), d);
+                    let d = dim.min(b.shape()[0] - 1);
+                    b.index_axis_inplace(Axis(0), d);
+                    c = c.offset(self.c_prefix_strides[ix] * dim as isize);
+                }
+                let pa: &Tensor = a.iter().next().unwrap();
+                self.mmm.run(pa.as_ptr()?, b.as_ptr(), c, &self.non_linear);
             }
-            let pa: &Tensor = a.iter().next().unwrap();
-            unsafe {
-                self.mmm.run(pa.as_ptr()?, b.as_ptr(), c.as_mut_ptr(), &self.non_linear);
-            }
+            Ok(tvec!(c.into_arc_tensor()))
         }
-        Ok(tvec!(c.into_arc_tensor()))
     }
 }
 

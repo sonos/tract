@@ -7,6 +7,7 @@ mod unary;
 
 pub use self::direct::Direct;
 pub use self::gen::Conv;
+pub use self::im2col::Im2Col;
 pub use self::unary::ConvUnary;
 
 #[derive(Debug, Copy, Clone, PartialEq)]

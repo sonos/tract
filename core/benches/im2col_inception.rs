@@ -6,6 +6,7 @@ use criterion::Criterion;
 
 use tract_core::internal::*;
 use tract_core::ops::cnn::PaddingSpec;
+use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::cnn::PaddingSpec::SameUpper as Same;
 use tract_core::ops::cnn::PaddingSpec::Valid;
 
@@ -38,9 +39,11 @@ fn b(
         InferenceFact::dt_shape(DatumType::F32, image.shape()).try_into().unwrap();
     let kernel_fact: TypedFact = InferenceFact::from(kernel).try_into().unwrap();
     let unary = conv.to_unary(&[&input_fact, &kernel_fact]).unwrap().unwrap();
-    let im2col =
-        unary.to_boxed_im2col_pair::<f32>(&*input_fact.shape.as_finite().unwrap()).unwrap().0;
-    assert_eq!(im2col.name(), "Conv::Im2col");
+
+    let mut m = TypedModel::default();
+    let wire = m.add_source("", TypedFact::dt_shape(f32::datum_type(), [1, h, w, ci].as_ref()).unwrap()).unwrap();
+    unary.wire_as_im2col_pair::<f32>(&mut m, "", wire).unwrap();
+    let im2col = m.node(1).op_as::<Im2Col<f32>>().unwrap();
     let args = tvec!(image.into());
     c.bench_function(name, move |b| {
         let ref op = im2col.as_stateless().unwrap();
