@@ -7,8 +7,8 @@ use crate::model::*;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
-use super::mat_mat::MatMat;
 use super::Conv;
+use crate::ops::array::TypedReshape;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
 use crate::ops::math::mat_mat_mul::MatMatMulUnaryFinite;
@@ -118,46 +118,7 @@ impl ConvUnary {
         Ok(packed_as.insert_axis(Axis(0)))
     }
 
-    /*
-    pub fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
-        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
-
-        let channel_stride = input_shape.c_stride();
-        let rpatch = &patch;
-        let data_offsets: Vec<isize> = patch.centers_offsets();
-        let kernel_offsets: Vec<isize> = (0..self.input_channels())
-            .flat_map(|ici| {
-                rpatch
-                    .standard_layout_data_field
-                    .iter()
-                    .map(move |x| x + (ici * channel_stride) as isize)
-            })
-            .collect();
-        let mut conv = f32::mmm(self.output_channels(), kernel_offsets.len(), data_offsets.len());
-        unsafe {
-            conv.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
-            conv.c_from_data_and_strides(
-                *output_shape.c_stride() as isize,
-                *output_shape.w_stride() as isize,
-            );
-        }
-
-        let kernel = self.kernel_as_group_o_ihw()?;
-        let mut packed = unsafe {
-            Tensor::uninitialized_aligned::<f32>(&[conv.a_pack().len()], conv.a_pack().alignment())?
-        };
-        conv.a_pack().pack(
-            packed.as_slice_mut()?.as_mut_ptr(),
-            kernel.as_slice().unwrap().as_ptr(),
-            kernel.strides()[1],
-            kernel.strides()[2],
-        );
-
-        Ok(super::Direct::new(conv, input_shape, output_shape, packed, vec![]))
-    }
-    */
-
-    pub fn wire_as_im2col_pair<T>(
+    pub unsafe fn wire_as_im2col_pair<T>(
         &self,
         model: &mut TypedModel,
         name: &str,
@@ -184,29 +145,22 @@ impl ConvUnary {
             DataFormat::NHWC => (1, (m * self.group) as isize),
             DataFormat::NCHW => (n as isize, 1),
         };
-        unsafe {
-            mmm.c_from_data_and_strides(rsc, csc);
-            if direct {
-                let channel_stride = input_shape.c_stride();
-                let data_offsets: Vec<isize> = geo.centers_offsets();
-                let kernel_offsets: Vec<isize> = (0..self.input_channels())
-                    .flat_map(|ici| {
-                        geo
-                            .standard_layout_data_field
-                            .iter()
-                            .map(move |x| x + (ici * channel_stride) as isize)
-                    })
-                    .collect();
-                mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
-            }
-        }
+        mmm.c_from_data_and_strides(rsc, csc);
 
         trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
 
-        let packed_as = self.kernel_as_packed_as(&mmm.a_pack())?;
-        trace!("{:?}", packed_as);
-
-        if !direct {
+        if direct {
+            let channel_stride = input_shape.c_stride();
+            let data_offsets: Vec<isize> = geo.centers_offsets();
+            let kernel_offsets: Vec<isize> = (0..self.input_channels())
+                .flat_map(|ici| {
+                    geo.standard_layout_data_field
+                        .iter()
+                        .map(move |x| x + (ici * channel_stride) as isize)
+                })
+                .collect();
+            mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
+        } else {
             let c_dim = *input_shape.c_dim();
             wire = model.wire_node(
                 format!("{}-im2col", name),
@@ -233,50 +187,14 @@ impl ConvUnary {
                     *output_shape.n_stride() as isize,
                     (output_shape.c() / self.group * output_shape.c_stride()) as isize
                 ],
-                packed_as,
+                packed_as: self.kernel_as_packed_as(&mmm.a_pack())?,
                 mmm,
                 non_linear: vec![],
             },
             &[wire],
         )?[0];
 
-        trace!("{:#?}", model);
-
         Ok(wire)
-    }
-
-    /*
-    pub fn to_boxed_im2col_pair<T>(
-        &self,
-        input_full_shape: &[usize],
-    ) -> TractResult<(Box<dyn TypedOp>, Box<dyn TypedOp>)>
-    where
-        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
-        f32: AsPrimitive<T>,
-    {
-        let (op1, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
-        Ok((Box::new(op1), op2))
-    }
-    */
-
-    fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
-    where
-        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
-        f32: AsPrimitive<T>,
-    {
-        let mut model = TypedModel::default();
-        let wire =
-            model.add_source("source", TypedFact::dt_shape(T::datum_type(), inputs[0].shape())?)?;
-        let wire = self.wire_as_im2col_pair::<T>(&mut model, "im2col-adhoc", wire, false)?;
-        model.set_output_outlets(&[wire])?;
-        let plan = SimplePlan::new(model)?;
-        plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
-        /*
-        let (im2col, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
-        let mega = im2col.im2col(&input.to_array_view()?)?;
-        trace!("im2col: {:?}", mega);
-        conv_gemm.as_stateless().unwrap().eval(tvec!(mega.into()))
-        */
     }
 
     pub fn to_depth_wise<T>(&self, input_full_shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
@@ -318,7 +236,21 @@ impl Op for ConvUnary {
 
 impl StatelessOp for ConvUnary {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+        let mut model = TypedModel::default();
+        let dt = inputs[0].datum_type();
+        let wire = model.add_source("source", TypedFact::dt_shape(dt, inputs[0].shape())?)?;
+        let wire = unsafe {
+            dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
+                self,
+                &mut model,
+                "im2col-adhoc",
+                wire,
+                false
+            ))?
+        };
+        model.set_output_outlets(&[wire])?;
+        let plan = SimplePlan::new(model)?;
+        plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
     }
 }
 
@@ -350,22 +282,7 @@ impl TypedOp for ConvUnary {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let full_input_shape = input_fact.shape.to_tvec();
         let spatial_rank = full_input_shape.len() - 2;
-        let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
-        if kernel_spatial_shape.iter().product::<usize>() == 1
-            && (0..spatial_rank)
-                .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
-            && self.group == 1
-        {
-            if self.kernel_fmt == KernelFormat::HWIO
-                && self.pool_spec.data_format == DataFormat::NHWC
-            {
-                use crate::ops::math::mat_mul::MatMulUnary;
-                let kernel_shape = &self.kernel.shape()[spatial_rank..];
-                let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
-                let op = MatMulUnary::new(kernel.into_arc_tensor(), true, true, true);
-                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-            }
-        } else if let Some(axis) = (0..spatial_rank).find(|&ax| {
+        if let Some(axis) = (0..spatial_rank).find(|&ax| {
             self.pool_spec.padding.valid_dim(ax)
                 && self.pool_spec.stride(ax) > 1
                 && self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0
@@ -479,41 +396,83 @@ impl TypedOp for ConvUnary {
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let spatial_rank = full_input_shape.len() - 2;
+        let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         if let Some(shape) = input_fact.shape.as_finite() {
-            let dt = input_fact.datum_type;
-            if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
-                && dt == f32::datum_type()
-                && self.group == 1
-            {
-                let mut patch = TypedModelPatch::default();
-                let wire = patch.tap_model(model, node.inputs[0])?;
-                let wire = dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
-                    self,
-                    &mut patch,
-                    &*node.name,
-                    wire,
-                    true
-                ))?;
-                patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
-                return Ok(Some(patch));
-            } else if self.group != 1 && self.group == self.output_channels() {
-                return Ok(Some(TypedModelPatch::single_unary_op(
-                    model,
-                    node,
-                    dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
-                )?));
-            } else {
-                let mut patch = TypedModelPatch::default();
-                let wire = patch.tap_model(model, node.inputs[0])?;
-                let wire = dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
-                    self,
-                    &mut patch,
-                    &*node.name,
-                    wire,
-                    false
-                ))?;
-                patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
-                return Ok(Some(patch));
+            unsafe {
+                let dt = input_fact.datum_type;
+                if kernel_spatial_shape.iter().product::<usize>() == 1
+                    && (0..spatial_rank)
+                        .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
+                    && self.group == 1
+                {
+                    if self.kernel_fmt == KernelFormat::HWIO
+                        && self.pool_spec.data_format == DataFormat::NHWC
+                    {
+                        use crate::ops::math::mat_mul::MatMulUnary;
+                        let mut patch = TypedModelPatch::default();
+                        let mut wire = patch.tap_model(model, node.inputs[0])?;
+                        wire = patch.wire_node(
+                            &*node.name,
+                            TypedReshape::new(tvec!(
+                                full_input_shape[0].clone(),
+                                full_input_shape[1..][..full_input_shape.len() - 2]
+                                    .iter()
+                                    .cloned()
+                                    .product::<TDim>(),
+                                full_input_shape[full_input_shape.len() - 1].clone()
+                            )),
+                            &[wire],
+                        )?[0];
+                        let kernel_shape = &self.kernel.shape()[spatial_rank..];
+                        let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
+                        wire = patch.wire_node(
+                            &*node.name,
+                            MatMulUnary::new(kernel.into_arc_tensor(), true, true, true),
+                            &[wire],
+                        )?[0];
+                        wire = patch.wire_node(
+                            &*node.name,
+                            TypedReshape::new(node.outputs[0].fact.shape.to_tvec()),
+                            &[wire],
+                        )?[0];
+                        patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                        return Ok(Some(patch));
+                    }
+                }
+                if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
+                    && dt == f32::datum_type()
+                    && self.group == 1
+                {
+                    let mut patch = TypedModelPatch::default();
+                    let wire = patch.tap_model(model, node.inputs[0])?;
+                    let wire = dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
+                        self,
+                        &mut patch,
+                        &*node.name,
+                        wire,
+                        true
+                    ))?;
+                    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                    return Ok(Some(patch));
+                } else if self.group != 1 && self.group == self.output_channels() {
+                    return Ok(Some(TypedModelPatch::single_unary_op(
+                        model,
+                        node,
+                        dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
+                    )?));
+                } else {
+                    let mut patch = TypedModelPatch::default();
+                    let wire = patch.tap_model(model, node.inputs[0])?;
+                    let wire = dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
+                        self,
+                        &mut patch,
+                        &*node.name,
+                        wire,
+                        false
+                    ))?;
+                    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                    return Ok(Some(patch));
+                }
             }
         }
         Ok(None)

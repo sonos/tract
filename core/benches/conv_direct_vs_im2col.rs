@@ -84,7 +84,7 @@ impl Problem {
         let unary = self.to_unary();
         let mut model_im2col = TypedModel::default();
         let input = model_im2col.add_source("input", self.image_type()).unwrap();
-        let output = unary.wire_as_im2col_pair::<f32>(&mut model_im2col, "", input, direct).unwrap();
+        let output = unsafe { unary.wire_as_im2col_pair::<f32>(&mut model_im2col, "", input, direct).unwrap() };
         model_im2col.set_output_outlets(&[output]).unwrap();
         SimplePlan::new(model_im2col).unwrap()
     }

@@ -6,7 +6,6 @@ use ndarray::*;
 
 use tract_linalg::mmm::{FusedSpec, MatMatMul};
 
-use tract_linalg::frame::mmm::MatrixStoreSpec;
 use tract_linalg::frame::PackB;
 
 #[derive(Debug, Clone)]
@@ -14,10 +13,10 @@ pub struct MatMatMulPackB<T>
 where
     T: Copy + Datum + Add + Mul + Zero + FloatLike,
 {
-    pack_b: PackB<T>,
-    row_stride: isize,
-    col_stride: isize,
-    output_shape: TVec<usize>,
+    pub(crate) pack_b: PackB<T>,
+    pub(crate) row_stride: isize,
+    pub(crate) col_stride: isize,
+    pub(crate) output_shape: TVec<usize>,
 }
 
 impl<T> Op for MatMatMulPackB<T>

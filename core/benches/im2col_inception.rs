@@ -42,7 +42,7 @@ fn b(
 
     let mut m = TypedModel::default();
     let wire = m.add_source("", TypedFact::dt_shape(f32::datum_type(), [1, h, w, ci].as_ref()).unwrap()).unwrap();
-    unary.wire_as_im2col_pair::<f32>(&mut m, "", wire, false).unwrap();
+    unsafe { unary.wire_as_im2col_pair::<f32>(&mut m, "", wire, false).unwrap(); }
     let im2col = m.node(1).op_as::<Im2Col<f32>>().unwrap();
     let args = tvec!(image.into());
     c.bench_function(name, move |b| {

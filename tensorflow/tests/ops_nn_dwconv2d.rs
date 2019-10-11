@@ -15,8 +15,8 @@ use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::prelude::*;
 use tract_core::ndarray;
+use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
@@ -167,5 +167,13 @@ fn conv_eval_7() {
     let i: Tensor = tensor4(&[[[[1.0f32, 2.0]]]]);
     let k: Tensor = tensor4(&[[[[3.0f32, 5.0], [7.0, 11.0]]]]);
     let model = convolution_pb(1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_8() {
+    let i: Tensor = tensor4(&[[[[0.0f32], [0.0]], [[0.0], [0.0]]], [[[0.0], [0.0]], [[0.0], [0.0]]]]);
+    let k: Tensor = tensor4(&[[[[0.0f32, 0.0]]]]);
+    let model = convolution_pb(1, true, &k).unwrap();
     compare(&model, vec![("data", i.into())], "conv").unwrap();
 }

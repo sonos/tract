@@ -81,5 +81,3 @@ pub use self::split::Split;
 pub use self::squeeze::Squeeze;
 pub use self::strided_slice::StridedSlice;
 pub use self::tile::Tile;
-
-pub(crate) use self::reshape::FiniteReshape;

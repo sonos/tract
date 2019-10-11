@@ -8,6 +8,7 @@ fn setup_test_logger() {
 pub enum Mode {
     Infer,
     Type,
+    Declutter,
     Opt,
 }
 
@@ -16,7 +17,7 @@ pub fn compare<S: AsRef<str>>(
     inputs: Vec<(S, Tensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-    for mode in &[Mode::Infer, Mode::Type, Mode::Opt] {
+    for mode in &[Mode::Infer, Mode::Type, Mode::Declutter, Mode::Opt] {
         compare_optim(graph, &inputs, output, *mode)?;
     }
     Ok(())
@@ -34,18 +35,21 @@ pub fn run_tract<S: AsRef<str>>(
     for (ix, (_, tf)) in inputs.iter().enumerate() {
         model.set_input_fact(ix, InferenceFact::dt_shape(tf.datum_type(), tf.shape()))?;
     }
-    info!("analysed");
+    debug!("analysed");
     let inputs = inputs.iter().map(|pair| pair.1.clone()).collect();
     if mode == Mode::Infer {
         let plan = SimplePlan::new(&model)?;
         plan.run(inputs)
     } else {
         let mut model = model.into_typed()?;
-        info!("typed");
-        if mode == Mode::Opt {
+        debug!("typed");
+        if mode == Mode::Declutter {
+            model = model.declutter()?;
+            debug!("decluttered");
+        } else if mode == Mode::Opt {
             model = model.into_optimized()?;
-            info!("optimized");
-        }
+            debug!("optimized");
+        };
         trace!("{:#?}", model);
         let plan = SimplePlan::new(&model)?;
         plan.run(inputs)
@@ -63,8 +67,8 @@ pub fn compare_optim<S: AsRef<str>>(
         inputs.iter().map(|(s, m)| (s.as_ref(), m.clone())).collect();
     let expected =
         tract_tensorflow::conform::tf::for_slice(&graph)?.run(tf_inputs.clone(), &output)?;
+    info!("Mode: {:?} starting", mode);
     info!("Tensorflow says: {:?}", expected);
-    info!("Checking {} output against tensorflow ({:?})", output, mode);
 
     let found = match run_tract(graph, inputs, output, mode) {
         Err(e) => {
