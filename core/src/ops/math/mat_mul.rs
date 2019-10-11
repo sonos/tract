@@ -1,7 +1,8 @@
-use num_traits::{AsPrimitive, Zero};
+use num_traits::{ Zero};
 use std::ops::{Add, Mul};
 
 use crate::internal::*;
+use crate::ops::math::mat_mat_mul::{MatMatMulPackB, MatMatMulUnaryFinite};
 use ndarray::*;
 
 use tract_linalg::mmm::{FusedSpec, MatMatMul};
@@ -415,14 +416,15 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let b = args_1!(model.node_input_facts(node.id)?);
         if let Some(b_shape) = b.shape.as_finite() {
-            let op = dispatch_floatlike!(self::new_mat_mul_unary_finite(b.datum_type)(
+            let patch = dispatch_floatlike!(self::new_mat_mul_unary_finite(b.datum_type)(
+                model,
+                node,
                 self.a.clone(),
                 b_shape,
                 self.a_trans,
                 self.b_trans,
                 self.c_trans
             ))?;
-            let patch = TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?;
             return Ok(Some(patch));
         }
         Ok(None)
@@ -452,28 +454,21 @@ impl PulsedOp for MatMulUnary {
     pulsed_op_to_typed_op!();
 }
 
-#[derive(Debug, Clone)]
-pub struct MatMulUnaryFinite<T>
-where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
-    f32: ::num_traits::AsPrimitive<T>,
-{
-    packed_as: ArrayD<Tensor>,
-    geo: Geo<T>,
-    non_linear: Vec<FusedSpec<T>>,
-}
-
 fn new_mat_mul_unary_finite<T>(
+    model: &TypedModel,
+    node: &TypedNode,
     a: Arc<Tensor>,
     b_shape: &[usize],
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-) -> TractResult<Box<dyn TypedOp>>
+) -> TractResult<TypedModelPatch>
 where
     T: Copy + Datum + Add + Mul + Zero + FloatLike,
     f32: ::num_traits::AsPrimitive<T>,
 {
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.tap_model(model, node.inputs[0])?;
     let mut geo = Geo::<T>::new(a.shape(), b_shape, a_trans, b_trans, c_trans)?;
     let a = a.to_array_view::<T>()?;
     let a = a.into_shape(&*geo.bc_a_shape)?;
@@ -516,149 +511,49 @@ where
             );
         };
     }
-    Ok(Box::new(MatMulUnaryFinite { packed_as, geo, non_linear: vec![] }))
-}
-
-impl<T> Op for MatMulUnaryFinite<T>
-where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
-    f32: AsPrimitive<T>,
-{
-    fn name(&self) -> Cow<str> {
-        "MatMulUnaryFinite".into()
+    let c_prefix_strides: TVec<isize> = geo
+        .c_shape
+        .iter()
+        .rev()
+        .scan(1isize, |s, &d| {
+            let now: isize = *s;
+            *s *= d as isize;
+            Some(now)
+        })
+        .collect::<TVec<_>>()
+        .into_iter()
+        .skip(2)
+        .rev()
+        .collect::<TVec<_>>();
+    if geo.n > 1 {
+        let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
+        packed_b_shape.push(geo.mm.b_pack().len());
+        wire = patch.wire_node(
+            format!("{}-pack", &*node.name),
+            MatMatMulPackB {
+                pack_b: geo.mm.b_pack().clone(),
+                col_stride: if b_trans { *b_shape.last().unwrap() as isize } else { 1 },
+                row_stride: if b_trans { 1 } else { *b_shape.last().unwrap() as isize },
+                output_shape: packed_b_shape,
+            },
+            &[wire],
+        )?[0];
     }
-
-    fn info(&self) -> TractResult<Vec<String>> {
-        let mut infos = vec![format!(
-            "a: {:?} m:{} k:{} n:{}",
-            self.geo.a_shape, self.geo.m, self.geo.k, self.geo.n
-        )];
-        if self.non_linear.len() > 0 {
-            infos.push(format!("{:?}", self.non_linear))
-        }
-        Ok(infos)
-    }
-
-    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops;
-        if let Some(succ) = model.single_succ(node.id)? {
-            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
-                if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                    if op.a.shape() == &[self.geo.m] && self.geo.c_trans {
-                        if op.mini_op.is::<ops::math::Mul>() {
-                            return Ok(Some(tvec!(FusedSpec::PerRowMul(
-                                op.a.as_slice::<T>()?.to_vec(),
-                            ))));
-                        } else if op.mini_op.is::<ops::math::Add>() {
-                            return Ok(Some(tvec!(FusedSpec::PerRowAdd(
-                                op.a.as_slice::<T>()?.to_vec(),
-                            ))));
-                        }
-                    }
-                } else if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>() {
-                    if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMax>() {
-                        return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
-                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMin>() {
-                        return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
-                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMinMax>() {
-                        return Ok(Some(tvec!(
-                            FusedSpec::Min(op.min.as_()),
-                            FusedSpec::Max(op.max.as_()),
-                        )));
-                    }
-                }
-                Ok(None)
-            })()?;
-            if let Some(op) = fused_micro_op {
-                let mut ops = self.non_linear.clone();
-                ops.extend(op.into_iter());
-                return Ok(Some(TypedModelPatch::fuse_with_next(
-                    model,
-                    &node,
-                    Self { non_linear: ops, ..self.clone() },
-                )?));
-            }
-        }
-        Ok(None)
-    }
-
-    op_as_typed_op!();
-    not_a_pulsed_op!();
-}
-
-impl<T> StatelessOp for MatMulUnaryFinite<T>
-where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
-    f32: ::num_traits::AsPrimitive<T>,
-{
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let b = args_1!(inputs);
-        let b = b.to_array_view::<T>()?;
-        let mut c = unsafe { Array::uninitialized(&*self.geo.c_shape) };
-        let b = b.into_shape(&*self.geo.bc_b_shape)?;
-        let b_pack = self.geo.mm.b_pack();
-        let mut pb = if self.geo.n > 1 {
-            Some(unsafe {
-                Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())?
-            })
-        } else {
-            None
-        };
-
-        for prefix in indices(&*self.geo.c_shape_prefix).into_iter() {
-            let mut a = self.packed_as.view();
-            let mut b = b.view();
-            let mut c = c.view_mut();
-            for &dim in prefix.slice() {
-                let d = dim.min(a.shape()[0] - 1);
-                a.index_axis_inplace(Axis(0), d);
-                let d = dim.min(b.shape()[0] - 1);
-                b.index_axis_inplace(Axis(0), d);
-                c.index_axis_inplace(Axis(0), dim);
-            }
-            debug_assert_eq!(a.ndim(), 0);
-            debug_assert_eq!(b.ndim(), 2);
-            debug_assert_eq!(c.ndim(), 2);
-            let pa: &Tensor = a.iter().next().unwrap();
-            if self.geo.n == 1 {
-                unsafe {
-                    self.geo.mm.run(pa.as_ptr()?, b.as_ptr(), c.as_mut_ptr(), &self.non_linear);
-                }
-            } else {
-                let pb = pb.as_mut().unwrap().as_ptr_mut()?;
-                b_pack.pack(
-                    pb,
-                    b.as_ptr(),
-                    b.strides()[self.geo.b_trans as usize],
-                    b.strides()[!self.geo.b_trans as usize],
-                );
-                unsafe {
-                    self.geo.mm.run(pa.as_ptr()?, pb, c.as_mut_ptr(), &self.non_linear);
-                }
-            }
-        }
-        Ok(tvec!(c.into_arc_tensor()))
-    }
-}
-
-impl<T> TypedOp for MatMulUnaryFinite<T>
-where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
-    f32: ::num_traits::AsPrimitive<T>,
-{
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.geo.c_shape)?))
-    }
-
-    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let g = &self.geo;
-        Ok(tvec!((
-            Cost::FMA(T::datum_type()),
-            (g.c_shape_prefix.iter().product::<usize>() * g.m * g.k * g.n).into()
-        )))
-    }
-
-    typed_op_as_op!();
+    wire = patch.wire_node(
+        format!("{}-matmatmul", &*node.name),
+        MatMatMulUnaryFinite {
+            c_shape: geo.c_shape,
+            c_prefix: geo.c_shape_prefix,
+            c_prefix_strides,
+            packed_as,
+            mmm: geo.mm,
+            non_linear: vec![],
+        },
+        &[wire],
+    )?[0];
+    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+    trace!("{:#?}", &patch);
+    Ok(patch)
 }
 
 fn cost<A: ToDim + Clone, B: ToDim + Clone>(

@@ -8,3 +8,4 @@ xs 148868935 2656186008 3130107924 971183391 # shrinks to (ref i, ref k, ref str
 cc 26c8e393370a681ca5715cc50972bfedf5e306e8fb14d0de9ad9e4127b7bdb23 # shrinks to (ref i, ref k, ref strides) = (1x1x3x1xF32 1, 1, 0, 1x2x1x2xF32 0, 0, 0, -1, (1, 1)), valid = true
 cc b124ee0315131f2371cff1a3c07f454b37277dbf1fb2127d9d28d8bf01d01a45 # shrinks to (ref i, ref k, ref strides) = (1x2x1x2xF32 0, 0, 0, -1, 2x1x2x2xF32 0, 0, 0, 0, 0, 0, 0, -1, (1, 1)), valid = false
 cc 693fb4b86aff1b5ffd69b2f155949e014989d038ed3b86716d0ead375132586d # shrinks to (ref i, ref k, ref strides) = (1x2x2x1xF32 0, 0, 0, 1, 1x2x1x1xF32 0, 1, (1, 1)), valid = false
+cc 09991fe7a0d4a11a9b1c9e680a4ff7482b30ee49bab291c7f33532a8e9b442a1 # shrinks to (ref i, ref k, ref strides) = (1x2x2x1xF32 0, 0, 0, -1, 1x1x1x1xF32 1, (1, 1)), valid = false

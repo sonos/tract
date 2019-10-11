@@ -156,6 +156,14 @@ fn conv_eval_7() {
 }
 
 #[test]
+fn conv_eval_8() {
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[0.0], [1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[1.0f32]]]]));
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
 fn conv_eval_mobilenet_v2() {
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
