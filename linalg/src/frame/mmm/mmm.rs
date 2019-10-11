@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul};
@@ -93,9 +94,9 @@ where
     }
 }
 
-pub trait MatMatMul<T>: Send + Sync + Debug + objekt::Clone
+pub trait MatMatMul<T>: Send + Sync + Debug + fmt::Display + objekt::Clone
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
+    T: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
 {
     fn a_pack(&self) -> PackA<T>;
     fn b_pack(&self) -> PackB<T>;
@@ -163,7 +164,7 @@ where
 
 impl<K, T> MatMatMul<T> for MatMatMulImpl<K, T>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default + fmt::Display,
     K: MatMatMulKer<T>,
 {
     fn a_pack(&self) -> PackA<T> {
@@ -333,6 +334,16 @@ where
                 c.set_from_tile(m / mr, n / nr, m % mr, n % nr, &*tmpc);
             }
         }
+    }
+}
+
+impl<K, T> fmt::Display for MatMatMulImpl<K, T>
+where
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + fmt::Display,
+    K: MatMatMulKer<T>,
+{
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "A:{}, B:{} C:{} (m:{}, k:{}, n:{})", self.a_storage, self.b_storage, self.c_storage, self.m, self.k, self.n)
     }
 }
 

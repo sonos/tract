@@ -1,3 +1,4 @@
+use std::fmt;
 use num_traits::{AsPrimitive, Zero};
 use std::ops::{Add, Mul};
 
@@ -91,85 +92,28 @@ where
     pub(crate) non_linear: Vec<FusedSpec<T>>,
 }
 
-/*
-fn new_mat_mul_unary_finite<T>(
-    a: Arc<Tensor>,
-    b_shape: &[usize],
-    a_trans: bool,
-    b_trans: bool,
-    c_trans: bool,
-) -> TractResult<Box<dyn TypedOp>>
-where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
-    f32: ::num_traits::AsPrimitive<T>,
-{
-    let mut geo = Geo::<T>::new(a.shape(), b_shape, a_trans, b_trans, c_trans)?;
-    let a = a.to_array_view::<T>()?;
-    let a = a.into_shape(&*geo.bc_a_shape)?;
-    let packed_as = Array::from_shape_fn(&a.shape()[0..a.ndim() - 2], |a_prefix| {
-        let mut a = a.view();
-        for x in a_prefix.slice() {
-            a.index_axis_inplace(Axis(0), *x);
-        }
-        let mut pa = unsafe {
-            Tensor::uninitialized_aligned::<T>(
-                &[geo.mm.a_pack().len()],
-                geo.mm.a_pack().alignment(),
-            )
-            .unwrap()
-        };
-        geo.mm.a_pack().pack(
-            pa.as_ptr_mut().unwrap(),
-            a.as_ptr(),
-            a.strides()[a_trans as usize],
-            a.strides()[!a_trans as usize],
-        );
-        pa
-    });
-    unsafe {
-        if geo.n == 1 {
-            geo.mm.b_vec_from_data_and_stride(if b_trans {
-                1
-            } else {
-                *geo.b_shape.last().unwrap() as isize
-            });
-            geo.mm.c_vec_from_data_and_stride(if c_trans {
-                1
-            } else {
-                *geo.c_shape.last().unwrap() as isize
-            });
-        } else {
-            geo.mm.c_from_data_and_strides(
-                if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
-                if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
-            );
-        };
-    }
-    Ok(Box::new(MatMatMulUnaryFinite { packed_as, geo, non_linear: vec![] }))
-}
-*/
-
 impl<T> Op for MatMatMulUnaryFinite<T>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    T: Copy + Datum + Add + Mul + Zero + FloatLike + fmt::Display,
     f32: AsPrimitive<T>,
 {
     fn name(&self) -> Cow<str> {
         "MatMatMul".into()
     }
 
-    /*
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
-            "a_prefix: {:?} m:{} k:{} n:{}",
-            self.a_prefix, self.mmm.m(), self.mmm.k(), self.mmm.n(),
+            "c_prefix: {:?} m:{} k:{} n:{}",
+            self.c_prefix, self.mmm.m(), self.mmm.k(), self.mmm.n(),
         )];
+        infos.push(format!("{}", self.mmm));
         if self.non_linear.len() > 0 {
             infos.push(format!("{:?}", self.non_linear))
         }
         Ok(infos)
     }
 
+    /*
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
         if let Some(succ) = model.single_succ(node.id)? {
