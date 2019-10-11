@@ -1,5 +1,5 @@
-use std::fmt;
 use num_traits::{AsPrimitive, Zero};
+use std::fmt;
 use std::ops::{Add, Mul};
 
 use crate::internal::*;
@@ -104,7 +104,10 @@ where
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
             "c_prefix: {:?} m:{} k:{} n:{}",
-            self.c_prefix, self.mmm.m(), self.mmm.k(), self.mmm.n(),
+            self.c_prefix,
+            self.mmm.m(),
+            self.mmm.k(),
+            self.mmm.n(),
         )];
         infos.push(format!("{}", self.mmm));
         if self.non_linear.len() > 0 {
@@ -113,13 +116,12 @@ where
         Ok(infos)
     }
 
-    /*
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
         if let Some(succ) = model.single_succ(node.id)? {
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
                 if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                    if op.a.shape() == &[self.geo.m] && self.geo.c_trans {
+                    if op.a.shape() == &[self.mmm.m()] {
                         if op.mini_op.is::<ops::math::Mul>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowMul(
                                 op.a.as_slice::<T>()?.to_vec(),
@@ -156,7 +158,6 @@ where
         }
         Ok(None)
     }
-    */
 
     op_as_typed_op!();
     not_a_pulsed_op!();
