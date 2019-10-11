@@ -38,20 +38,24 @@ where
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let b = args_1!(inputs);
-        let b = b.to_array_view::<T>()?;
         let mut packed = unsafe {
             Tensor::uninitialized_aligned::<T>(&*self.output_shape, self.pack_b.alignment())
                 .unwrap()
         };
-        let b_prefix = &b.shape()[..b.shape().len() - 2];
-        for prefix in indices(b_prefix).into_iter() {
-            let mut b = b.view();
-            let mut p = packed.to_array_view_mut()?;
-            for &dim in prefix.slice() {
-                b.index_axis_inplace(Axis(0), dim);
-                p.index_axis_inplace(Axis(0), dim);
+        if b.shape()[..b.shape().len() - 2].iter().any(|d| *d > 1) {
+            let b = b.to_array_view::<T>()?;
+            let b_prefix = &b.shape()[..b.shape().len() - 2];
+            for prefix in indices(b_prefix).into_iter() {
+                let mut b = b.view();
+                let mut p = packed.to_array_view_mut()?;
+                for &dim in prefix.slice() {
+                    b.index_axis_inplace(Axis(0), dim);
+                    p.index_axis_inplace(Axis(0), dim);
+                }
+                self.pack_b.pack(p.as_mut_ptr(), b.as_ptr(), self.row_stride, self.col_stride)
             }
-            self.pack_b.pack(p.as_mut_ptr(), b.as_ptr(), self.row_stride, self.col_stride)
+        } else {
+            self.pack_b.pack(packed.as_ptr_mut()?, b.as_ptr()?, self.row_stride, self.col_stride)
         }
         Ok(tvec!(packed.into_arc_tensor()))
     }
@@ -64,16 +68,6 @@ where
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape)?))
     }
-
-    /*
-    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let g = &self.geo;
-        Ok(tvec!((
-            Cost::FMA(T::datum_type()),
-            (g.c_shape_prefix.iter().product::<usize>() * g.m * g.k * g.n).into()
-        )))
-    }
-    */
 
     typed_op_as_op!();
 }
