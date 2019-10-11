@@ -5,7 +5,7 @@ use crate::internal::*;
 use crate::ops::math::mat_mat_mul::{MatMatMulPackB, MatMatMulUnaryFinite};
 use ndarray::*;
 
-use tract_linalg::mmm::{FusedSpec, MatMatMul};
+use tract_linalg::mmm::MatMatMul;
 
 fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
     a: &Tensor,
@@ -552,7 +552,6 @@ where
         &[wire],
     )?[0];
     patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
-    trace!("{:#?}", &patch);
     Ok(patch)
 }
 
