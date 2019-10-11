@@ -511,20 +511,6 @@ where
             );
         };
     }
-    let c_prefix_strides: TVec<isize> = geo
-        .c_shape
-        .iter()
-        .rev()
-        .scan(1isize, |s, &d| {
-            let now: isize = *s;
-            *s *= d as isize;
-            Some(now)
-        })
-        .collect::<TVec<_>>()
-        .into_iter()
-        .skip(2)
-        .rev()
-        .collect::<TVec<_>>();
     if geo.n > 1 {
         let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
         packed_b_shape.push(geo.mm.b_pack().len());
@@ -539,12 +525,30 @@ where
             &[wire],
         )?[0];
     }
+    let c_prefix_dim_and_stride = if geo.c_shape_prefix.iter().any(|d| *d > 1) {
+        let c_prefix_strides: TVec<isize> = geo
+            .c_shape
+            .iter()
+            .rev()
+            .scan(1isize, |s, &d| {
+                let now: isize = *s;
+                *s *= d as isize;
+                Some(now)
+            })
+            .collect::<TVec<_>>()
+            .into_iter()
+            .skip(2)
+            .rev()
+            .collect::<TVec<_>>();
+        Some((geo.c_shape_prefix.clone(), c_prefix_strides))
+    } else {
+        None
+    };
     wire = patch.wire_node(
         format!("{}-matmatmul", &*node.name),
         MatMatMulUnaryFinite {
             c_shape: geo.c_shape,
-            c_prefix: geo.c_shape_prefix,
-            c_prefix_strides,
+            c_prefix_dim_and_stride,
             packed_as,
             mmm: geo.mm,
             non_linear: vec![],

@@ -178,15 +178,22 @@ impl ConvUnary {
             )?[0];
         }
 
+        let c_prefix_dim_and_stride = if *output_shape.n() != 1 || self.group != 1 {
+            Some((
+                tvec!(*output_shape.n(), self.group),
+                tvec![
+                    *output_shape.n_stride() as isize,
+                    (output_shape.c() / self.group * output_shape.c_stride()) as isize
+                ]))
+            } else {
+                None
+            };
+
         wire = model.wire_node(
             format!("{}-matmatmul", name),
             MatMatMulUnaryFinite {
                 c_shape: output_shape.shape.clone(),
-                c_prefix: tvec!(*output_shape.n(), self.group),
-                c_prefix_strides: tvec![
-                    *output_shape.n_stride() as isize,
-                    (output_shape.c() / self.group * output_shape.c_stride()) as isize
-                ],
+                c_prefix_dim_and_stride,
                 packed_as: self.kernel_as_packed_as(&mmm.a_pack())?,
                 mmm,
                 non_linear: vec![],

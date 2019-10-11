@@ -836,6 +836,9 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             if !matches.is_present("optimize") {
                 warn!("Profiling un-optimized network. Consider adding -O.");
             }
+            if cfg!(debug_assertions) {
+                warn!("Profiling a debug build of tract!");
+            }
             profile::handle(
                 params,
                 ProfilingMode::from_clap(&m)?,
