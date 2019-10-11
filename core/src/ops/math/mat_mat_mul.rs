@@ -85,8 +85,7 @@ where
     f32: ::num_traits::AsPrimitive<T>,
 {
     pub(crate) c_shape: TVec<usize>,
-    pub(crate) c_prefix: TVec<usize>,
-    pub(crate) c_prefix_strides: TVec<isize>,
+    pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Tensor>,
     pub(crate) mmm: Box<dyn MatMatMul<T>>,
     pub(crate) non_linear: Vec<FusedSpec<T>>,
@@ -104,7 +103,7 @@ where
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
             "c_prefix: {:?} m:{} k:{} n:{}",
-            self.c_prefix,
+            self.c_prefix_dim_and_stride,
             self.mmm.m(),
             self.mmm.k(),
             self.mmm.n(),
@@ -171,21 +170,31 @@ where
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
             let b = args_1!(inputs);
-            let b = b.to_array_view::<T>()?;
-            let mut c = Array::uninitialized(&*self.c_shape);
-            for prefix in indices(&*self.c_prefix).into_iter() {
-                let mut a = self.packed_as.view();
-                let mut b = b.view();
-                let mut c: *mut T = c.as_mut_ptr();
-                for (ix, &dim) in prefix.slice().iter().enumerate() {
-                    let d = dim.min(a.shape()[0] - 1);
-                    a.index_axis_inplace(Axis(0), d);
-                    let d = dim.min(b.shape()[0] - 1);
-                    b.index_axis_inplace(Axis(0), d);
-                    c = c.offset(self.c_prefix_strides[ix] * dim as isize);
+            let mut c = Tensor::uninitialized::<T>(&*self.c_shape)?;
+            if let Some((prefix_dim, prefix_strides)) = &self.c_prefix_dim_and_stride {
+                let b = b.to_array_view::<T>()?;
+                let mut c = c.to_array_view_mut::<T>()?;
+                for prefix in indices(&**prefix_dim).into_iter() {
+                    let mut a = self.packed_as.view();
+                    let mut b = b.view();
+                    let mut c: *mut T = c.as_mut_ptr();
+                    for (ix, &dim) in prefix.slice().iter().enumerate() {
+                        let d = dim.min(a.shape()[0] - 1);
+                        a.index_axis_inplace(Axis(0), d);
+                        let d = dim.min(b.shape()[0] - 1);
+                        b.index_axis_inplace(Axis(0), d);
+                        c = c.offset(prefix_strides[ix] * dim as isize);
+                    }
+                    let pa: &Tensor = a.iter().next().unwrap();
+                    self.mmm.run(pa.as_ptr()?, b.as_ptr(), c, &self.non_linear);
                 }
-                let pa: &Tensor = a.iter().next().unwrap();
-                self.mmm.run(pa.as_ptr()?, b.as_ptr(), c, &self.non_linear);
+            } else {
+                self.mmm.run(
+                    self.packed_as.as_slice().unwrap()[0].as_ptr()?,
+                    b.as_ptr()?,
+                    c.as_ptr_mut()?,
+                    &self.non_linear,
+                );
             }
             Ok(tvec!(c.into_arc_tensor()))
         }
