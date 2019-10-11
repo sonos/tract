@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fmt::Debug;
 
 #[derive(PartialEq, Clone, Debug)]
@@ -31,6 +32,17 @@ impl MatrixStoreSpec {
                     col_byte_offsets.iter().map(|&i| (ptr as *const u8).offset(i) as _).collect();
                 MatrixStore::OffsetsAndPtrs { col_ptrs, row_byte_offsets, nr: *nr }
             }
+        }
+    }
+}
+
+impl fmt::Display for MatrixStoreSpec {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MatrixStoreSpec::Packed { .. } => write!(fmt, "Packed"),
+            MatrixStoreSpec::Strides { .. } => write!(fmt, "Strides"),
+            MatrixStoreSpec::OffsetsAndPtrs { .. } => write!(fmt, "OffsetsAndPtrs"),
+            MatrixStoreSpec::VecStride { .. } => write!(fmt, "VecStrides"),
         }
     }
 }
