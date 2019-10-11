@@ -1,11 +1,8 @@
 mod depth_wise;
-mod direct;
 mod gen;
 mod im2col;
-mod mat_mat;
 mod unary;
 
-pub use self::direct::Direct;
 pub use self::gen::Conv;
 pub use self::im2col::Im2Col;
 pub use self::unary::ConvUnary;
