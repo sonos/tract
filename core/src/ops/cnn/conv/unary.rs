@@ -126,7 +126,7 @@ impl ConvUnary {
         direct: bool,
     ) -> TractResult<OutletId>
     where
-        T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + FloatLike,
+        T: Datum + Clone + ndarray::LinalgScalar + FloatLike,
     {
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =
@@ -205,7 +205,7 @@ impl ConvUnary {
 
     pub fn to_depth_wise<T>(&self, input_full_shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
     where
-        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq + Sum,
+        T: Datum + Clone + ::ndarray::LinalgScalar + PartialEq + Sum,
     {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
         let op = DepthWise::<T>::new(
