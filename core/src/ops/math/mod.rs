@@ -1,5 +1,5 @@
-pub mod mat_mul;
 pub mod mat_mat_mul;
+pub mod mat_mul;
 
 pub use self::mat_mul::MatMul;
 use crate::internal::*;
@@ -45,59 +45,137 @@ fn flip_sub(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     Some(UnaryOp::new(Box::new(Add), Arc::new(t)))
 }
 
-element_wise!(abs, Abs, [f16, f32, i32] => |_, xs| xs.iter_mut().for_each(|x| *x = x.abs()));
-element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.exp());
-    validation: Validation::Rounding
-);
-element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.ln());
-    validation: Validation::Rounding
-);
-element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt());
-    validation: Validation::Rounding
-);
-element_wise!(recip, Recip, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.recip());
-    validation: Validation::Rounding
-);
-element_wise!(rsqrt, Rsqrt, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sqrt().recip());
+element_wise!(abs, Abs, [f16, f32, i32] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.abs());
+    Ok(())
+});
+
+element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.exp());
+    Ok(())
+};
     validation: Validation::Rounding
 );
 
-element_wise!(ceil, Ceil, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.ceil()));
-element_wise!(floor, Floor, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.floor()));
-
-element_wise!(scalar_min_max, ScalarMinMax { min: f32, max: f32 },
-   [f32, f64] => |m, xs| xs.iter_mut().for_each(|x| *x = x.max(m.max as _).min(m.min as _))
+element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.ln());
+    Ok(())
+};
+    validation: Validation::Rounding
 );
 
-element_wise!(scalar_min, ScalarMin { min: f32 },
-   [f32, f64] => |m, xs| xs.iter_mut().for_each(|x| *x = x.min(m.min as _))
+element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.sqrt());
+    Ok(())
+};
+    validation: Validation::Rounding
 );
 
-element_wise!(scalar_max, ScalarMax { max: f32 },
-   [f32, f64] => |m, xs| xs.iter_mut().for_each(|x| *x = x.max(m.max as _))
+element_wise!(recip, Recip, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.recip());
+    Ok(())
+};
+    validation: Validation::Rounding
 );
 
-element_wise!(cos, Cos, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.cos()));
-element_wise!(sin, Sin, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sin()));
-element_wise!(tan, Tan, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.tan()));
-element_wise!(acos, Acos, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.acos()));
-element_wise!(asin, Asin, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.asin()));
-element_wise!(atan, Atan, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.atan()));
+element_wise!(rsqrt, Rsqrt, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.sqrt().recip());
+    Ok(())
+};
+    validation: Validation::Rounding
+);
 
-element_wise!(cosh, Cosh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.cosh()));
-element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.sinh()));
+element_wise!(ceil, Ceil, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.ceil());
+    Ok(())
+});
+
+element_wise!(floor, Floor, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.floor());
+    Ok(())
+});
+
+element_wise!(scalar_min_max, ScalarMinMax { min: Tensor, max: Tensor },
+   [f32, f64] => |m, xs| {
+        let max = m.max.cast_to_scalar()?;
+        let min = m.min.cast_to_scalar()?;
+        xs.iter_mut().for_each(|x| { *x = x.max(max).min(min) });
+        Ok(())
+});
+
+element_wise!(scalar_min, ScalarMin { min: Tensor },
+   [f32, f64] => |m, xs| {
+        let min = m.min.cast_to_scalar()?;
+        xs.iter_mut().for_each(|x| *x = x.min(min));
+        Ok(())
+});
+
+element_wise!(scalar_max, ScalarMax { max: Tensor },
+   [f32, f64] => |m, xs| {
+        let max = m.max.cast_to_scalar()?;
+        xs.iter_mut().for_each(|x| *x = x.max(max));
+        Ok(())
+});
+
+element_wise!(cos, Cos, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.cos());
+    Ok(())
+});
+
+element_wise!(sin, Sin, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.sin());
+    Ok(())
+});
+
+element_wise!(tan, Tan, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.tan());
+    Ok(())
+});
+
+element_wise!(acos, Acos, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.acos());
+    Ok(())
+});
+
+element_wise!(asin, Asin, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.asin());
+    Ok(())
+});
+
+element_wise!(atan, Atan, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.atan());
+    Ok(())
+});
+
+element_wise!(cosh, Cosh, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.cosh());
+    Ok(())
+});
+
+element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.sinh());
+    Ok(())
+});
+
 element_wise!(tanh, Tanh,
-   [f32] => |_, xs| <f32 as FloatLike>::tanh().run(xs),
-   [f16, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.tanh());
+   [f32] => |_, xs| { <f32 as FloatLike>::tanh().run(xs); Ok(()) },
+   [f16, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
    cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
-element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.acosh()));
-element_wise!(asinh, Asinh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.asinh()));
-element_wise!(atanh, Atanh, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = x.atanh()));
 
-element_wise!(neg, Neg, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, xs| xs.iter_mut().for_each(|x| *x = -x.clone()));
+element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.acosh()); Ok(()) });
+element_wise!(asinh, Asinh, [f16, f32, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.asinh()); Ok(()) });
+element_wise!(atanh, Atanh, [f16, f32, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.atanh()); Ok(()) });
 
-element_wise!(sign, Sign, [f16, f32, f64] => |_, xs| xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { x.signum() }));
+element_wise!(neg, Neg, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = -x.clone());
+    Ok(())
+});
+
+element_wise!(sign, Sign, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { x.signum() });
+    Ok(())
+});
 
 #[cfg(test)]
 mod tests {

@@ -52,7 +52,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ReduceProd", |_, node| reduce(node, Reducer::Prod));
     reg.insert("ReduceSum", |_, node| reduce(node, Reducer::Sum));
     reg.insert("ReduceSumSquare", |_, node| reduce(node, Reducer::SumSquare));
-    reg.insert("Relu", |_, _| Ok((Box::new(tractops::math::scalar_max(0.0)), vec![])));
+    reg.insert("Relu", |_, _| Ok((Box::new(tractops::math::scalar_max((0.0).into())), vec![])));
     reg.insert("ScaledTanh", scaled_tanh);
     reg.insert("Shrink", shrink);
     reg.insert("ThresholdedRelu", thresholded_relu);
@@ -280,8 +280,10 @@ pub fn scaled_tanh(
 }
 
 element_wise!(shrink_op, Shrink { bias: f32, lambd: f32 },
-    [f16,f32,f64] => |s, xs| xs.iter_mut().for_each(|x| *x = shrink_value(*x, s))
-);
+    [f16,f32,f64] => |s, xs| {
+        xs.iter_mut().for_each(|x| *x = shrink_value(*x, s));
+        Ok(())
+});
 
 fn shrink_value<T>(x: T, s: &Shrink) -> T
 where

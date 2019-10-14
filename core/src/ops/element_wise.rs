@@ -153,8 +153,8 @@ macro_rules! element_wise {
                 $(
                     $(if t.datum_type() == $typ::datum_type() {
                         let t: &mut[$typ] = t.as_slice_mut::<$typ>()?;
-                        let f: fn(&Self, &mut[$typ]) = $f;
-                        f(self, t);
+                        let f: fn(&Self, &mut[$typ]) -> TractResult<()> = $f;
+                        f(self, t)?;
                         return Ok(())
                     }
                     )*
@@ -210,8 +210,8 @@ macro_rules! element_wise_oop {
                 $(
                     let mut dst = unsafe { Tensor::uninitialized_dt(<$typ_dst>::datum_type(), &t.shape())? };
                     $(if t.datum_type() == $typ::datum_type() {
-                        let f: fn(&Self, &[$typ], &mut[$typ_dst]) = $f;
-                        f(self, t.as_slice::<$typ>()?, dst.as_slice_mut::<$typ_dst>()?);
+                        let f: fn(&Self, &[$typ], &mut[$typ_dst]) -> TractResult<()> = $f;
+                        f(self, t.as_slice::<$typ>()?, dst.as_slice_mut::<$typ_dst>()?)?;
                         return Ok(dst)
                     }
                     )*

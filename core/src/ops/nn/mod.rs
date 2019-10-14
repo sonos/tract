@@ -16,39 +16,64 @@ use num_traits::{AsPrimitive, Float};
 
 pub use crate::internal::*;
 
-element_wise!(softplus, Softplus, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = (x.exp() + 1.0).ln()));
-element_wise!(softsign, Softsign, [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = *x / (x.abs() + 1.0)));
-element_wise!(sigmoid, Sigmoid, [f32] => |_, xs| f32::sigmoid().run(xs);
-   cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
+element_wise!(softplus, Softplus, [f32] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = (x.exp() + 1.0).ln());
+    Ok(())
+});
+
+element_wise!(softsign, Softsign, [f32] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = *x / (x.abs() + 1.0));
+    Ok(())
+});
+
+element_wise!(sigmoid, Sigmoid, [f32] => |_, xs| {
+    f32::sigmoid().run(xs);
+    Ok(())
+};
+    cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
 
 element_wise!(elu, Elu { alpha: f32 },
-    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.elu(e.alpha); })
-);
+    [f32, f64] => |e, xs| {
+        xs.iter_mut().for_each(|x| { *x = x.elu(e.alpha); });
+        Ok(())
+});
 
 element_wise!(hard_sigmoid, HardSigmoid { alpha: f32, beta: f32 },
-    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.hard_sigmoid(e.alpha, e.beta); })
-);
+    [f32, f64] => |e, xs| {
+        xs.iter_mut().for_each(|x| { *x = x.hard_sigmoid(e.alpha, e.beta); });
+        Ok(())
+});
 
 element_wise!(leaky_relu, LeakyRelu { alpha: f32 },
-    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.leaky_relu(e.alpha); })
-);
+    [f32, f64] => |e, xs| {
+        xs.iter_mut().for_each(|x| { *x = x.leaky_relu(e.alpha); });
+        Ok(())
+});
 
 element_wise!(parametric_softplus, ParametricSoftplus { alpha: f32, beta: f32 },
-    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.parametric_softplus(e.alpha, e.beta); })
-);
+    [f32, f64] => |e, xs| {
+        xs.iter_mut().for_each(|x| { *x = x.parametric_softplus(e.alpha, e.beta); });
+        Ok(())
+});
 
 element_wise!(scaled_tanh, ScaledTanh { alpha: f32, beta: f32 },
-    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.scaled_tanh(e.alpha, e.beta); })
-);
+    [f32, f64] => |e, xs| {
+        xs.iter_mut().for_each(|x| { *x = x.scaled_tanh(e.alpha, e.beta); });
+        Ok(())
+});
 
 element_wise!(selu, Selu { alpha: f32, gamma: f32 },
-    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.selu(e.alpha, e.gamma); })
-);
+    [f32, f64] => |e, xs| {
+        xs.iter_mut().for_each(|x| { *x = x.selu(e.alpha, e.gamma); });
+        Ok(())
+});
 
 element_wise!(threshold_relu, ThresholdRelu { alpha: f32 },
-    [f32, f64] => |e, xs| xs.iter_mut().for_each(|x| { *x = x.threshold_relu(e.alpha); })
-);
+    [f32, f64] => |e, xs| {
+        xs.iter_mut().for_each(|x| { *x = x.threshold_relu(e.alpha); });
+        Ok(())
+});
 
 trait Activations {
     fn elu(self, alpha: f32) -> Self;

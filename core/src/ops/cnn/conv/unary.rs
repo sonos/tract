@@ -1,6 +1,6 @@
 use ndarray::*;
 
-use num_traits::{AsPrimitive, Zero};
+use num_traits::Zero;
 
 use crate::internal::*;
 use crate::model::*;
@@ -127,7 +127,6 @@ impl ConvUnary {
     ) -> TractResult<OutletId>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + FloatLike,
-        f32: AsPrimitive<T>,
     {
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =
@@ -207,7 +206,6 @@ impl ConvUnary {
     pub fn to_depth_wise<T>(&self, input_full_shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq + Sum,
-        f32: AsPrimitive<T>,
     {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
         let op = DepthWise::<T>::new(
@@ -330,7 +328,7 @@ impl TypedOp for ConvUnary {
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         Ok(tvec!((
-            Cost::FMA(f32::datum_type()),
+            Cost::FMA(inputs[0].datum_type),
             shape.n().clone() * shape.c() * n_output_channels * n_output_points * kernel_surface
                 / self.group
         )))
@@ -447,7 +445,6 @@ impl TypedOp for ConvUnary {
                     }
                 }
                 if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
-                    && dt == f32::datum_type()
                     && self.group == 1
                 {
                     let mut patch = TypedModelPatch::default();

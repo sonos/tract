@@ -17,8 +17,10 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("DepthwiseConv2dNative", dw_conv2d::depthwise_conv2d);
     reg.insert("FusedBatchNorm", fused_batch_norm::fused_batch_norm);
     reg.insert("MaxPool", pools::maxpool);
-    reg.insert("Relu", |_, _| Ok(Box::new(tract_core::ops::math::scalar_max(0.0))));
-    reg.insert("Relu6", |_, _| Ok(Box::new(tract_core::ops::math::scalar_min_max(6.0, 0.0))));
+    reg.insert("Relu", |_, _| Ok(Box::new(tract_core::ops::math::scalar_max((0.0).into()))));
+    reg.insert("Relu6", |_, _| {
+        Ok(Box::new(tract_core::ops::math::scalar_min_max((6.0).into(), (0.0).into())))
+    });
     reg.insert("Sigmoid", |_, _| Ok(Box::new(tract_core::ops::nn::sigmoid())));
     reg.insert("Softmax", |_, _| Ok(Box::new(LayerSoftmax::new(1))));
     reg.insert("SpaceToBatchND", s2b::space_to_batch_nd);

@@ -395,6 +395,12 @@ impl Tensor {
         Ok(Cow::Owned(target))
     }
 
+    /// Access the data as a scalar, after a cast.
+    pub fn cast_to_scalar<D: Datum + Copy>(&self) -> TractResult<D> {
+        let casted = self.cast_to::<D>()?;
+        casted.to_scalar::<D>().map(|&x| x)
+    }
+
     /// Strict equality test on tensors.
     fn eq_t<D: Datum>(&self, other: &Tensor) -> TractResult<bool> {
         Ok(self.to_array_view::<D>()? == other.to_array_view::<D>()?)
