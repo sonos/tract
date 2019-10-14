@@ -2,12 +2,11 @@ use crate::internal::*;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 use ndarray::*;
-use std::iter::Sum;
 
 #[derive(Debug, Clone, new)]
 pub struct DepthWise<T>
 where
-    T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
+    T: Datum + Clone + ndarray::LinalgScalar
 {
     patch: Patch,
     input_shape: DataShape,
@@ -17,7 +16,7 @@ where
 
 impl<T> Op for DepthWise<T>
 where
-    T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
+    T: Datum + Clone + ndarray::LinalgScalar
 {
     fn name(&self) -> Cow<str> {
         format!("Conv::DepthWise<{:?}>", T::datum_type()).into()
@@ -29,7 +28,7 @@ where
 
 impl<T> StatelessOp for DepthWise<T>
 where
-    T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
+    T: Datum + Clone + ndarray::LinalgScalar
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let img = args_1!(inputs);
@@ -58,7 +57,7 @@ where
                             for (ix, v) in visitor.valid_offsets_with_indexes() {
                                 let k = *kptr.offset(ix as isize);
                                 let i = *iptr.offset(input_offset as isize + v);
-                                sum += k * i;
+                                sum = sum + k * i;
                             }
                             *optr.offset(output_offset as isize + visitor.output_offset) = sum;
                         }
@@ -72,7 +71,7 @@ where
 
 impl<T> TypedOp for DepthWise<T>
 where
-    T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
+    T: Datum + Clone + ndarray::LinalgScalar
 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))

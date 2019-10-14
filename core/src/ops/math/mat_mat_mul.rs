@@ -12,7 +12,7 @@ use tract_linalg::frame::PackB;
 #[derive(Debug, Clone)]
 pub struct MatMatMulPackB<T>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    T: Copy + Datum + Add + Mul + Zero
 {
     pub(crate) pack_b: PackB<T>,
     pub(crate) row_stride: isize,
@@ -22,7 +22,7 @@ where
 
 impl<T> Op for MatMatMulPackB<T>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    T: Copy + Datum + Add + Mul + Zero
 {
     fn name(&self) -> Cow<str> {
         "MatMatMulPackB".into()
@@ -34,7 +34,7 @@ where
 
 impl<T> StatelessOp for MatMatMulPackB<T>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    T: Copy + Datum + Add + Mul + Zero
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let b = args_1!(inputs);
@@ -63,7 +63,7 @@ where
 
 impl<T> TypedOp for MatMatMulPackB<T>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    T: Copy + Datum + Add + Mul + Zero
 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape)?))
@@ -75,7 +75,7 @@ where
 #[derive(Debug, Clone)]
 pub(crate) struct MatMatMulUnaryFinite<T>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    T: Copy + Datum + Add + Mul + Zero
 {
     pub(crate) c_shape: TVec<usize>,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
@@ -86,7 +86,7 @@ where
 
 impl<T> Op for MatMatMulUnaryFinite<T>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike + fmt::Display,
+    T: Copy + Datum + Add + Mul + Zero + fmt::Display,
 {
     fn name(&self) -> Cow<str> {
         "MatMatMul".into()
@@ -164,7 +164,7 @@ where
 
 impl<T> StatelessOp for MatMatMulUnaryFinite<T>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    T: Copy + Datum + Add + Mul + Zero
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
@@ -202,7 +202,7 @@ where
 
 impl<T> TypedOp for MatMatMulUnaryFinite<T>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    T: Copy + Datum + Add + Mul + Zero
 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.c_shape)?))
