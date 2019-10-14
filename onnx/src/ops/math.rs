@@ -56,23 +56,29 @@ pub fn clip(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let min = node.get_attr_opt("min")?;
-    let max = node.get_attr_opt("max")?;
+    let min:Option<f32> = node.get_attr_opt("min")?;
+    let max:Option<f32> = node.get_attr_opt("max")?;
     let op: Box<dyn InferenceOp> = match (min, max) {
-        (Some(min), Some(max)) => Box::new(tractops::math::scalar_min_max(max, min)),
-        (None, Some(max)) => Box::new(tractops::math::scalar_min(max)),
-        (Some(min), None) => Box::new(tractops::math::scalar_max(min)),
+        (Some(min), Some(max)) => Box::new(tractops::math::scalar_min_max(max.into(), min.into())),
+        (None, Some(max)) => Box::new(tractops::math::scalar_min(max.into())),
+        (Some(min), None) => Box::new(tractops::math::scalar_max(min.into())),
         (None, None) => Box::new(tractops::identity::Identity::default()),
     };
     Ok((op, vec![]))
 }
 
 element_wise!(erf, Erf,
-    [f32] => |_, xs| xs.iter_mut().for_each(|x| *x = erf_f32(*x));
+    [f32] => |_, xs| {
+        xs.iter_mut().for_each(|x| *x = erf_f32(*x));
+        Ok(())
+    };
     prefix: "onnx."
 );
 element_wise_oop!(is_nan, IsNan,
-    [f32] => bool |_, xs, ys| xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = x.is_nan());
+    [f32] => bool |_, xs, ys| {
+        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = x.is_nan());
+        Ok(())
+    };
     prefix: "onnx."
 );
 

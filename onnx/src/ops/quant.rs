@@ -112,16 +112,22 @@ impl InferenceRulesOp for QuantizeLinear {
 }
 
 element_wise_oop!(quantize_linear_u8, QuantizeLinearU8 {scale: f32, zero_point: u8},
-    [f32,i32] => u8 |op, xs, ys| xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-        *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as u8
-    );
+    [f32,i32] => u8 |op, xs, ys| {
+        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as u8
+        );
+        Ok(())
+    };
     prefix: "onnx."
 );
 
 element_wise_oop!(quantize_linear_i8, QuantizeLinearI8 {scale: f32, zero_point: i8},
-    [f32,i32] => i8 |op, xs, ys| xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-        *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as i8
-    );
+    [f32,i32] => i8 |op, xs, ys| {
+        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as i8
+        );
+        Ok(())
+    };
     prefix: "onnx."
 );
 
@@ -221,9 +227,12 @@ impl InferenceRulesOp for DequantizeLinear {
 }
 
 element_wise_oop!(dequantize_linear_f32, DequantizeLinearF32 {scale: f32, zero_point: i32},
-    [i8,i32,u8] => f32 |op, xs, ys| xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-        *y = (*x as i32 - op.zero_point) as f32 * op.scale
-    );
+    [i8,i32,u8] => f32 |op, xs, ys| {
+        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+            *y = (*x as i32 - op.zero_point) as f32 * op.scale
+        );
+        Ok(())
+    };
     prefix: "onnx."
 );
 

@@ -1,4 +1,4 @@
-use num_traits::{AsPrimitive, Zero};
+use num_traits::Zero;
 use std::fmt;
 use std::ops::{Add, Mul};
 
@@ -76,7 +76,6 @@ where
 pub(crate) struct MatMatMulUnaryFinite<T>
 where
     T: Copy + Datum + Add + Mul + Zero + FloatLike,
-    f32: ::num_traits::AsPrimitive<T>,
 {
     pub(crate) c_shape: TVec<usize>,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
@@ -88,7 +87,6 @@ where
 impl<T> Op for MatMatMulUnaryFinite<T>
 where
     T: Copy + Datum + Add + Mul + Zero + FloatLike + fmt::Display,
-    f32: AsPrimitive<T>,
 {
     fn name(&self) -> Cow<str> {
         "MatMatMul".into()
@@ -127,13 +125,13 @@ where
                     }
                 } else if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>() {
                     if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMax>() {
-                        return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
+                        return Ok(Some(tvec!(FusedSpec::Max(op.max.cast_to_scalar()?))));
                     } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMin>() {
-                        return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
+                        return Ok(Some(tvec!(FusedSpec::Min(op.min.cast_to_scalar()?))));
                     } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMinMax>() {
                         return Ok(Some(tvec!(
-                            FusedSpec::Min(op.min.as_()),
-                            FusedSpec::Max(op.max.as_()),
+                            FusedSpec::Min(op.min.cast_to_scalar()?),
+                            FusedSpec::Max(op.max.cast_to_scalar()?),
                         )));
                     }
                 }
@@ -159,7 +157,6 @@ where
 impl<T> StatelessOp for MatMatMulUnaryFinite<T>
 where
     T: Copy + Datum + Add + Mul + Zero + FloatLike,
-    f32: ::num_traits::AsPrimitive<T>,
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
@@ -198,7 +195,6 @@ where
 impl<T> TypedOp for MatMatMulUnaryFinite<T>
 where
     T: Copy + Datum + Add + Mul + Zero + FloatLike,
-    f32: ::num_traits::AsPrimitive<T>,
 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.c_shape)?))
