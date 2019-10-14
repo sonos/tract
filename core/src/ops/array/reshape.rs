@@ -149,7 +149,7 @@ impl TypedOp for TypedReshape {
 
 #[derive(Debug, Clone, new, Default)]
 pub struct FiniteReshape {
-    shape: TVec<usize>,
+    pub shape: TVec<usize>,
 }
 
 impl Op for FiniteReshape {
