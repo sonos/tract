@@ -11,6 +11,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Abs", |_, _| Ok(Box::new(tractops::math::abs())));
     reg.insert("Add", |_, _| Ok(Box::new(tractops::math::add::bin())));
     reg.insert("AddN", add_n);
+    reg.insert("AddV2", |_, _| Ok(Box::new(tractops::math::add::bin())));
     reg.insert("BiasAdd", |_, _| Ok(Box::new(tractops::math::add::bin())));
     reg.insert("Ceil", |_, _| Ok(Box::new(tractops::math::ceil())));
     reg.insert("Div", |_, _| Ok(Box::new(tractops::math::div::bin())));
