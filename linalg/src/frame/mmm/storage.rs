@@ -48,20 +48,14 @@ impl fmt::Display for MatrixStoreSpec {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub enum MatrixStore<'a, T>
-where
-    T: Copy + Debug,
-{
+pub enum MatrixStore<'a, T: Copy> {
     Strides { ptr: *const T, row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
     Packed { ptr: *const T, panel_len: usize },
     OffsetsAndPtrs { row_byte_offsets: &'a [isize], col_ptrs: Vec<*const T>, nr: usize },
     VecStride { ptr: *const T, byte_stride: isize, mr: usize, nr: usize },
 }
 
-impl<'a, T> MatrixStore<'a, T>
-where
-    T: Copy + Debug,
-{
+impl<'a, T: Copy> MatrixStore<'a, T> {
     pub(super) unsafe fn panel_a(&self, i: usize) -> PanelStore<T> {
         match self {
             MatrixStore::Packed { ptr, panel_len } => {
@@ -148,10 +142,7 @@ where
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum PanelStore<T>
-where
-    T: Copy + Debug,
-{
+pub enum PanelStore<T: Copy> {
     Strides { ptr: *mut T, row_byte_stride: isize, col_byte_stride: isize },
     Packed { ptr: *const T },
     OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const T },

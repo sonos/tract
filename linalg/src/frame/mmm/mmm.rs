@@ -9,19 +9,18 @@ use crate::frame::{PackA, PackB};
 
 use super::*;
 
-#[derive(Default)]
-struct ScratchSpace<TI>
-where
-    TI: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default + fmt::Display,
-{
+struct ScratchSpace<TI: Copy> {
     uspecs: Vec<FusedKerSpec<TI>>,
     non_linear_buffers: Vec<Vec<TI>>,
 }
 
-impl<TI> ScratchSpace<TI>
-where
-    TI: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default + fmt::Display,
-{
+impl<TI: Copy> Default for ScratchSpace<TI> {
+    fn default() -> ScratchSpace<TI> {
+        ScratchSpace { uspecs: vec![], non_linear_buffers: vec![] }
+    }
+}
+
+impl<TI: Copy> ScratchSpace<TI> {
     unsafe fn non_linear<TA, TB, TC, K: MatMatMulKer<TA, TB, TC, TI>>(
         &mut self,
         specs: &[FusedSpec<TI>],
@@ -29,10 +28,10 @@ where
         right: usize,
     ) -> *const FusedKerSpec<TI>
     where
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy,
+        TI: Copy + Debug + Zero,
     {
         self.uspecs.clear();
         for spec in specs {
@@ -100,22 +99,12 @@ where
     }
 }
 
-pub trait MatMatMul<TA, TB, TC, TI>: Send + Sync + Debug + fmt::Display + objekt::Clone
+pub trait MatMatMul<TA, TB, TC, TI>: Debug + fmt::Display + objekt::Clone + Send + Sync
 where
-    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TI: Copy
-        + Add
-        + Mul
-        + Zero
-        + Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + Default
-        + PartialEq,
+    TA: Copy + Zero,
+    TB: Copy + Zero,
+    TC: Copy,
+    TI: Copy + Add + Mul + Zero + Debug,
 {
     fn a_pack(&self) -> PackA<TA>;
     fn b_pack(&self) -> PackB<TB>;
@@ -142,29 +131,19 @@ where
 }
 
 clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
-    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + Default + PartialEq,
+    TA: Copy + Zero,
+    TB: Copy + Zero,
+    TC: Copy,
+    TI: Copy + Add + Mul + Zero + Debug,
 );
 
 #[derive(Debug, Clone)]
 pub struct MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TI: Copy
-        + Add
-        + Mul
-        + Zero
-        + Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + Default
-        + PartialEq,
+    TA: Copy + Zero,
+    TB: Copy + Zero,
+    TC: Copy,
+    TI: Copy + Add + Mul + Zero + Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     pub m: usize,
@@ -176,22 +155,32 @@ where
     phantom: PhantomData<(K, TA, TB, TC, TI)>,
 }
 
+unsafe impl<K, TA, TB, TC, TI> Send for MatMatMulImpl<K, TA, TB, TC, TI>
+where
+    TA: Copy + Zero,
+    TB: Copy + Zero,
+    TC: Copy,
+    TI: Copy + Add + Mul + Zero + Debug,
+    K: MatMatMulKer<TA, TB, TC, TI>,
+{
+}
+
+unsafe impl<K, TA, TB, TC, TI> Sync for MatMatMulImpl<K, TA, TB, TC, TI>
+where
+    TA: Copy + Zero,
+    TB: Copy + Zero,
+    TC: Copy,
+    TI: Copy + Add + Mul + Zero + Debug,
+    K: MatMatMulKer<TA, TB, TC, TI>,
+{
+}
+
 impl<K, TA, TB, TC, TI> MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TI: Copy
-        + Add
-        + Mul
-        + Zero
-        + Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + Default
-        + PartialEq,
+    TA: Copy + Zero,
+    TB: Copy + Zero,
+    TC: Copy,
+    TI: Copy + Add + Mul + Zero + Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TA, TB, TC, TI> {
@@ -214,20 +203,10 @@ where
 
 impl<K, TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TI: Copy
-        + Add
-        + Mul
-        + Zero
-        + Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + Default
-        + PartialEq,
+    TA: Copy + Zero + Debug,
+    TB: Copy + Zero + Debug,
+    TC: Copy + Debug,
+    TI: Copy + Add + Mul + Zero + Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn a_pack(&self) -> PackA<TA> {
@@ -325,7 +304,8 @@ where
         let k = self.k;
         let n = self.n;
         let mut scratch = ScratchSpace::default();
-        let tmpc = vec![TC::zero(); mr * nr];
+        let mut tmpc = Vec::with_capacity(mr * nr);
+        tmpc.set_len(mr * nr);
         let tmp_c_storage = MatrixStoreSpec::Strides {
             row_byte_stride: (std::mem::size_of::<TC>() * nr) as isize,
             col_byte_stride: std::mem::size_of::<TC>() as isize,
@@ -402,20 +382,10 @@ where
 
 impl<K, TA, TB, TC, TI> fmt::Display for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TI: Copy
-        + Add
-        + Mul
-        + Zero
-        + Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + Default
-        + PartialEq,
+    TA: Copy + Zero,
+    TB: Copy + Zero,
+    TC: Copy,
+    TI: Copy + Add + Mul + Zero + Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -613,41 +583,10 @@ pub mod test {
         b: &[TB],
     ) -> Result<(), proptest::test_runner::TestCaseError>
     where
-        TA: Copy
-            + Add
-            + Mul
-            + Zero
-            + Debug
-            + fmt::Display
-            + PartialEq
-            + Send
-            + Sync
-            + AsPrimitive<f64>
-            + AsPrimitive<TC>,
-        TB: Copy
-            + Add
-            + Mul
-            + Zero
-            + Debug
-            + fmt::Display
-            + PartialEq
-            + Send
-            + Sync
-            + AsPrimitive<f64>
-            + AsPrimitive<TC>,
-        TC: Copy
-            + Add
-            + Mul<Output = TC>
-            + Zero
-            + Debug
-            + fmt::Display
-            + PartialEq
-            + Send
-            + Sync
-            + Bounded
-            + 'static
-            + AsPrimitive<f32>,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + Default,
+        TA: Copy + Zero + Debug + AsPrimitive<f64> + AsPrimitive<TI>,
+        TB: Copy + Zero + Debug + AsPrimitive<f64> + AsPrimitive<TI>,
+        TC: Copy + Zero + Debug + fmt::Display + PartialEq + Bounded + 'static + AsPrimitive<f32>,
+        TI: Copy + Add + Mul<Output = TI> + Zero + Debug + fmt::Display + 'static + AsPrimitive<TC>,
     {
         let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
         unsafe {
@@ -664,12 +603,13 @@ pub mod test {
             let mut expected = vec![TC::zero(); m * n];
             for x in 0..n {
                 for y in 0..m {
+                    let mut v: TI = TI::zero();
                     for i in 0..k {
-                        let ref mut v = expected[x + y * n];
-                        let a:TC = a[i + k * y].as_();
-                        let b:TC = b[x + i * n].as_();
-                        *v = *v + a*b;
+                        let a: TI = a[i + k * y].as_();
+                        let b: TI = b[x + i * n].as_();
+                        v = v + a * b;
                     }
+                    expected[x + y * n] = v.as_();
                 }
             }
 
@@ -850,8 +790,8 @@ pub mod test {
 
     impl<TA, TB> ConvProblem<TA, TB>
     where
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq,
+        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq,
     {
         pub fn kernel_field(&self) -> usize {
             self.dilation * (self.kt - 1) + 1
@@ -887,16 +827,7 @@ pub mod test {
 
         pub fn expected<TC>(&self) -> Vec<TC>
         where
-            TC: Copy
-                + Add
-                + Mul<Output = TC>
-                + Zero
-                + Debug
-                + fmt::Display
-                + PartialEq
-                + Send
-                + Sync
-                + 'static,
+            TC: Copy + Add + Mul<Output = TC> + Zero + Debug + fmt::Display + PartialEq + 'static,
             TA: AsPrimitive<TC>,
             TB: AsPrimitive<TC>,
         {
@@ -919,8 +850,8 @@ pub mod test {
 
         pub fn run<K: MatMatMulKer<TA, TB, TC, TI>, TC, TI>(&self) -> Vec<TC>
         where
-            TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + Default,
-            TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + Bounded,
+            TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Default,
+            TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Bounded,
         {
             unsafe {
                 let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(self.m(), self.k(), self.n());
@@ -943,8 +874,8 @@ pub mod test {
 
     pub fn strat_conv_1d<TA, TB>() -> BoxedStrategy<ConvProblem<TA, TB>>
     where
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
+        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + 'static,
+        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + 'static,
         isize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         (1usize..40, 1usize..40, 1usize..10, 1usize..5, 1usize..5)

@@ -1,7 +1,4 @@
-use num_traits::Zero;
-use std::fmt;
 use std::fmt::Debug;
-use std::ops::{Add, Mul};
 
 use super::*;
 
@@ -9,10 +6,10 @@ use super::*;
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub struct MatMatMulKerSpec<'a, TA, TB, TC, TI>
 where
-    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TA: Copy,
+    TB: Copy,
+    TC: Copy,
+    TI: Copy + Debug,
 {
     pub a: &'a PanelStore<TA>,
     pub b: &'a PanelStore<TB>,
@@ -30,10 +27,10 @@ pub enum LinearSpec {
 
 pub trait MatMatMulKer<TA, TB, TC, TI>: Copy + Clone + Debug + Send + Sync
 where
-    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TA: Copy,
+    TB: Copy,
+    TC: Copy,
+    TI: Copy + Debug,
 {
     #[inline(always)]
     fn name() -> &'static str;
@@ -54,7 +51,9 @@ where
 pub mod test {
     use super::*;
     use crate::align::Buffer;
-    use num_traits::{ One, AsPrimitive, Bounded };
+    use num_traits::{AsPrimitive, Bounded, One, Zero};
+    use std::fmt;
+    use std::ops::{Add, Mul};
 
     #[test]
     fn check_non_linear_enum_size() {
@@ -173,17 +172,11 @@ pub mod test {
         };
     }
 
-    pub fn null_packed_storage<T>() -> PanelStore<T>
-    where
-        T: Mul + Add + Zero +  Debug + Copy + PartialEq
-    {
+    pub fn null_packed_storage<T: Copy>() -> PanelStore<T> {
         PanelStore::Packed { ptr: std::ptr::null::<T>() as _ }
     }
 
-    pub fn mmm_stride_storage<T>(v: &mut [T], rsc: usize) -> PanelStore<T>
-    where
-        T: Mul + Add + Zero + Debug + Copy + PartialEq
-    {
+    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> PanelStore<T> {
         PanelStore::Strides {
             ptr: v.as_mut_ptr(),
             row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
@@ -194,10 +187,10 @@ pub mod test {
     pub fn return_zeros<K, TA, TB, TC, TI>()
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + Bounded,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + Bounded + Zero,
+        TI: Copy + Debug,
     {
         let mut v = vec![TC::max_value(); K::mr() * K::nr()];
         let mut c = mmm_stride_storage(&mut v, K::nr());
@@ -215,10 +208,10 @@ pub mod test {
     pub fn return_c<K, TA, TB, TC, TI>()
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + 'static + PartialEq,
+        TI: Copy + Debug,
         usize: AsPrimitive<TC>,
     {
         let len = K::mr() * K::nr();
@@ -238,10 +231,10 @@ pub mod test {
     pub fn return_c_mul_row<K, TA, TB, TC, TI>()
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TC: Copy + Add + Mul<Output=TC> + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static + AsPrimitive<TC>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + 'static + PartialEq,
+        TI: Copy + Add + Mul<Output = TI> + Zero + Debug + fmt::Display + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -262,19 +255,18 @@ pub mod test {
         assert_eq!(err, 0);
         assert!(v.iter().enumerate().all(|(ix, &a)| {
             let row = ix / K::nr();
-            let ix:TC = ix.as_();
-            let bias:TC = bias[row].as_();
-            a == ix * bias
+            let ix: TI = ix.as_();
+            a == (ix * bias[row]).as_()
         }));
     }
 
     pub fn return_c_add_row<K, TA, TB, TC, TI>()
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static + AsPrimitive<TC>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + PartialEq + 'static,
+        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
@@ -295,19 +287,18 @@ pub mod test {
         assert_eq!(err, 0);
         assert!(v.iter().enumerate().all(|(ix, &a)| {
             let row = ix / K::nr();
-            let ix:TC = ix.as_();
-            let bias:TC = bias[row].as_();
-            a == ix + bias
+            let ix: TI = ix.as_();
+            a == (ix + bias[row]).as_()
         }));
     }
 
     pub fn packed_packed<K, TA, TB, TC, TI>(k: usize)
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + One,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + One,
-        TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TA: Copy + One,
+        TB: Copy + One,
+        TC: Copy + PartialEq + Zero + 'static,
+        TI: Copy + Add + Mul + Zero + Debug + fmt::Display,
         usize: AsPrimitive<TC>,
     {
         let len = K::mr() * K::nr();
@@ -329,13 +320,11 @@ pub mod test {
     pub fn packed_offsets<K, TA, TB, TC, TI>(k: usize, t: usize)
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static + One,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
-        TC: Copy + Add + Mul<Output=TC> + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TA: Copy + One + AsPrimitive<TI>,
+        TB: Copy + One + AsPrimitive<TI>,
+        TC: Copy + PartialEq + Zero + 'static,
+        TI: Copy + Add + Zero + Mul<Output = TI> + Debug + fmt::Display + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
-        TA: AsPrimitive<TC>,
-        TB: AsPrimitive<TC>,
     {
         let a: Vec<TA> = (1..=(k * K::mr())).map(|x| x.as_()).collect();
         let pa = Buffer::realign_data(&a, K::alignment_bytes_packed_a());
@@ -362,21 +351,19 @@ pub mod test {
             let col = ix % K::nr();
             let s = (0..k)
                 .map(|i| pa[K::mr() * i + row].as_() * b[t * i + col].as_())
-                .fold(TC::zero(), |s, a| s + a);
-            v == s
+                .fold(TI::zero(), |s, a| s + a);
+            v == s.as_()
         }));
     }
 
     pub fn packed_vec<K, TA, TB, TC, TI>(k: usize)
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static + One,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static + One,
-        TC: Copy + Add + Mul<Output=TC> + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-        usize: AsPrimitive<TA> + AsPrimitive<TB> + AsPrimitive<TC>,
-        TA: AsPrimitive<TC>,
-        TB: AsPrimitive<TC>,
+        TA: Copy + One + AsPrimitive<TI>,
+        TB: Copy + One + AsPrimitive<TI>,
+        TC: Copy + PartialEq + Zero + 'static,
+        TI: Copy + Add + Zero + Mul<Output = TI> + Debug + fmt::Display + 'static + AsPrimitive<TC>,
+        usize: AsPrimitive<TC>,
     {
         let pa = Buffer::realign_data(&vec![TA::one(); K::mr() * k], K::alignment_bytes_packed_a());
         let b = vec![TB::one(); k];
