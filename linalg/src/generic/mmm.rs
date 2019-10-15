@@ -9,54 +9,26 @@ use crate::frame::mmm::*;
 #[derive(Copy, Clone, Debug)]
 pub struct GenericMmm4x4<TA, TB, TC, TI>(PhantomData<(TA, TB, TC, TI)>)
 where
-    TA: Copy + AsPrimitive<TI>,
-    TB: Copy + AsPrimitive<TI>,
-    TC: Copy + AsPrimitive<TI> + 'static,
+    TA: Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Copy + fmt::Debug + AsPrimitive<TI>,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Copy
-        + ops::Add
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + PartialOrd
         + Zero
+        + fmt::Debug
+        + fmt::Display
         + AsPrimitive<TC>
         + 'static;
 
-impl<TA, TB, TC, TI> MatMatMulKer<TA, TB, TC, TI> for GenericMmm4x4<TA, TB, TC, TI>
+unsafe impl<TA, TB, TC, TI> Send for GenericMmm4x4<TA, TB, TC, TI>
 where
-    TA: Copy
-        + ops::Add
-        + ops::Mul
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + AsPrimitive<TI>,
-    TB: Copy
-        + ops::Add
-        + ops::Mul
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + AsPrimitive<TI>,
-    TC: Copy
-        + ops::Add
-        + ops::Mul
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + AsPrimitive<TI>
-        + 'static,
+    TA: Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Copy + fmt::Debug + AsPrimitive<TI>,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Copy
-        + ops::Add
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
@@ -64,9 +36,42 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
+        + AsPrimitive<TC>
+        + 'static,
+{
+}
+
+unsafe impl<TA, TB, TC, TI> Sync for GenericMmm4x4<TA, TB, TC, TI>
+where
+    TA: Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Copy + fmt::Debug + AsPrimitive<TI>,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
+    TI: Copy
+        + ops::AddAssign
+        + ops::Mul<Output = TI>
+        + ops::MulAssign
+        + PartialOrd
+        + Zero
+        + fmt::Debug
+        + fmt::Display
+        + AsPrimitive<TC>
+        + 'static,
+{
+}
+
+impl<TA, TB, TC, TI> MatMatMulKer<TA, TB, TC, TI> for GenericMmm4x4<TA, TB, TC, TI>
+where
+    TA: Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Copy + fmt::Debug + AsPrimitive<TI>,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
+    TI: Copy
+        + ops::AddAssign
+        + ops::Mul<Output = TI>
+        + ops::MulAssign
+        + PartialOrd
+        + Zero
+        + fmt::Debug
+        + fmt::Display
         + AsPrimitive<TC>
         + 'static,
 {
@@ -168,8 +173,8 @@ where
                     FusedKerSpec::Done => break,
                     FusedKerSpec::AddC => match *spec.c {
                         Strides { ptr: c, row_byte_stride, col_byte_stride } => {
-                            let rsc = row_byte_stride as usize / 4;
-                            let csc = col_byte_stride as usize / 4;
+                            let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
+                            let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
                             let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
                             ab[0][0] += c[0 * csc + 0 * rsc].as_();
                             ab[0][1] += c[1 * csc + 0 * rsc].as_();
@@ -280,39 +285,10 @@ where
 #[derive(Copy, Clone, Debug)]
 pub struct GenericMmmTest3x2<TA, TB, TC, TI>(PhantomData<(TA, TB, TC, TI)>)
 where
-    TA: Copy
-        + ops::Add
-        + ops::Mul
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + AsPrimitive<TI>,
-    TB: Copy
-        + ops::Add
-        + ops::Mul
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + AsPrimitive<TI>,
-    TC: Copy
-        + ops::Add
-        + ops::Mul
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + AsPrimitive<TI>
-        + 'static,
+    TA: Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Copy + fmt::Debug + AsPrimitive<TI>,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Copy
-        + ops::Add
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
@@ -320,48 +296,16 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
         + AsPrimitive<TC>
         + 'static;
 
 #[cfg(test)]
-impl<TA, TB, TC, TI> MatMatMulKer<TA, TB, TC, TI> for GenericMmmTest3x2<TA, TB, TC, TI>
+unsafe impl<TA, TB, TC, TI> Send for GenericMmmTest3x2<TA, TB, TC, TI>
 where
-    TA: Copy
-        + ops::Add
-        + ops::Mul
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + AsPrimitive<TI>,
-    TB: Copy
-        + ops::Add
-        + ops::Mul
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + AsPrimitive<TI>,
-    TC: Copy
-        + ops::Add
-        + ops::Mul
-        + Zero
-        + fmt::Debug
-        + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
-        + AsPrimitive<TI>
-        + 'static,
+    TA: Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Copy + fmt::Debug + AsPrimitive<TI>,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
     TI: Copy
-        + ops::Add
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
@@ -369,9 +313,44 @@ where
         + Zero
         + fmt::Debug
         + fmt::Display
-        + PartialEq
-        + Send
-        + Sync
+        + AsPrimitive<TC>
+        + 'static,
+{
+}
+
+#[cfg(test)]
+unsafe impl<TA, TB, TC, TI> Sync for GenericMmmTest3x2<TA, TB, TC, TI>
+where
+    TA: Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Copy + fmt::Debug + AsPrimitive<TI>,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
+    TI: Copy
+        + ops::AddAssign
+        + ops::Mul<Output = TI>
+        + ops::MulAssign
+        + PartialOrd
+        + Zero
+        + fmt::Debug
+        + fmt::Display
+        + AsPrimitive<TC>
+        + 'static,
+{
+}
+
+#[cfg(test)]
+impl<TA, TB, TC, TI> MatMatMulKer<TA, TB, TC, TI> for GenericMmmTest3x2<TA, TB, TC, TI>
+where
+    TA: Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Copy + fmt::Debug + AsPrimitive<TI>,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
+    TI: Copy
+        + ops::AddAssign
+        + ops::Mul<Output = TI>
+        + ops::MulAssign
+        + PartialOrd
+        + Zero
+        + fmt::Debug
+        + fmt::Display
         + AsPrimitive<TC>
         + 'static,
 {
