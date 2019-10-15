@@ -4,22 +4,22 @@ use std::fmt::Debug;
 use std::ops::{Add, Mul};
 
 #[derive(PartialEq, Clone)]
-pub enum FusedSpec<T>
+pub enum FusedSpec<TI>
 where
-    T: Copy + Clone + Debug + Add + Mul + Zero,
+    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
 {
-    Min(T),
-    Max(T),
+    Min(TI),
+    Max(TI),
     AddC,
-    PerRowMul(Vec<T>),
-    PerRowAdd(Vec<T>),
-    PerColMul(Vec<T>),
-    PerColAdd(Vec<T>),
+    PerRowMul(Vec<TI>),
+    PerRowAdd(Vec<TI>),
+    PerColMul(Vec<TI>),
+    PerColAdd(Vec<TI>),
 }
 
-impl<T> Debug for FusedSpec<T>
+impl<TI> Debug for FusedSpec<TI>
 where
-    T: Copy + Clone + Debug + Add + Mul + Zero,
+    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -36,16 +36,16 @@ where
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum FusedKerSpec<T>
+pub enum FusedKerSpec<TI>
 where
-    T: Copy + Clone + Debug + Add + Mul + Zero,
+    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
 {
     Done,
-    Min(T),
-    Max(T),
+    Min(TI),
+    Max(TI),
     AddC,
-    PerRowMul(*const T),
-    PerRowAdd(*const T),
-    PerColMul(*const T),
-    PerColAdd(*const T),
+    PerRowMul(*const TI),
+    PerRowAdd(*const TI),
+    PerColMul(*const TI),
+    PerColAdd(*const TI),
 }

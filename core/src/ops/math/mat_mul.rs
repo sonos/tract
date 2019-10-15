@@ -115,7 +115,7 @@ struct Geo<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
     m: usize,
     k: usize,
     n: usize,
-    mm: Box<dyn MatMatMul<T>>,
+    mm: Box<dyn MatMatMul<T, T, T, T>>,
     a_shape: TVec<usize>,
     a_trans: bool,
     b_shape: TVec<usize>,

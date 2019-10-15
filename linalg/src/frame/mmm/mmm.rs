@@ -10,24 +10,30 @@ use crate::frame::{PackA, PackB};
 use super::*;
 
 #[derive(Default)]
-struct ScratchSpace<T>
+struct ScratchSpace<TI>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default,
+    TI: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default + fmt::Display,
 {
-    uspecs: Vec<FusedKerSpec<T>>,
-    non_linear_buffers: Vec<Vec<T>>,
+    uspecs: Vec<FusedKerSpec<TI>>,
+    non_linear_buffers: Vec<Vec<TI>>,
 }
 
-impl<T> ScratchSpace<T>
+impl<TI> ScratchSpace<TI>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default,
+    TI: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default + fmt::Display,
 {
-    unsafe fn non_linear<K: MatMatMulKer<T>>(
+    unsafe fn non_linear<TA, TB, TC, K: MatMatMulKer<TA, TB, TC, TI>>(
         &mut self,
-        specs: &[FusedSpec<T>],
+        specs: &[FusedSpec<TI>],
         down: usize,
         right: usize,
-    ) -> *const FusedKerSpec<T> {
+    ) -> *const FusedKerSpec<TI>
+    where
+        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    {
         self.uspecs.clear();
         for spec in specs {
             let s = match spec {
@@ -37,7 +43,7 @@ where
                 FusedSpec::PerRowMul(v) => {
                     let have = v.len() - down * K::mr();
                     let ptr = if have < K::mr() {
-                        let mut buf = vec![T::zero(); K::mr()];
+                        let mut buf = vec![TI::zero(); K::mr()];
                         buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
@@ -50,7 +56,7 @@ where
                 FusedSpec::PerRowAdd(v) => {
                     let have = v.len() - down * K::mr();
                     let ptr = if have < K::mr() {
-                        let mut buf = vec![T::zero(); K::mr()];
+                        let mut buf = vec![TI::zero(); K::mr()];
                         buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
@@ -63,7 +69,7 @@ where
                 FusedSpec::PerColMul(v) => {
                     let have = v.len() - right * K::nr();
                     let ptr = if have < K::nr() {
-                        let mut buf = vec![T::zero(); K::nr()];
+                        let mut buf = vec![TI::zero(); K::nr()];
                         buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
@@ -76,7 +82,7 @@ where
                 FusedSpec::PerColAdd(v) => {
                     let have = v.len() - right * K::nr();
                     let ptr = if have < K::nr() {
-                        let mut buf = vec![T::zero(); K::nr()];
+                        let mut buf = vec![TI::zero(); K::nr()];
                         buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
@@ -94,12 +100,25 @@ where
     }
 }
 
-pub trait MatMatMul<T>: Send + Sync + Debug + fmt::Display + objekt::Clone
+pub trait MatMatMul<TA, TB, TC, TI>: Send + Sync + Debug + fmt::Display + objekt::Clone
 where
-    T: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TI: Copy
+        + Add
+        + Mul
+        + Zero
+        + Debug
+        + fmt::Display
+        + PartialEq
+        + Send
+        + Sync
+        + Default
+        + PartialEq,
 {
-    fn a_pack(&self) -> PackA<T>;
-    fn b_pack(&self) -> PackB<T>;
+    fn a_pack(&self) -> PackA<TA>;
+    fn b_pack(&self) -> PackB<TB>;
 
     fn a_storage(&self) -> &MatrixStoreSpec;
     fn b_storage(&self) -> &MatrixStoreSpec;
@@ -119,16 +138,34 @@ where
     unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize);
     unsafe fn c_vec_from_data(&mut self);
 
-    unsafe fn run(&self, a: *const T, b: *const T, c: *mut T, non_linear: &[FusedSpec<T>]);
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]);
 }
 
-clone_trait_object!(<T> MatMatMul<T> where T: Copy + Add + Mul + Zero);
+clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
+    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + Default + PartialEq,
+);
 
 #[derive(Debug, Clone)]
-pub struct MatMatMulImpl<K, T>
+pub struct MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
-    K: MatMatMulKer<T>,
+    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TI: Copy
+        + Add
+        + Mul
+        + Zero
+        + Debug
+        + fmt::Display
+        + PartialEq
+        + Send
+        + Sync
+        + Default
+        + PartialEq,
+    K: MatMatMulKer<TA, TB, TC, TI>,
 {
     pub m: usize,
     pub k: usize,
@@ -136,15 +173,28 @@ where
     pub a_storage: MatrixStoreSpec,
     pub b_storage: MatrixStoreSpec,
     pub c_storage: MatrixStoreSpec,
-    phantom: PhantomData<(K, T)>,
+    phantom: PhantomData<(K, TA, TB, TC, TI)>,
 }
 
-impl<K, T> MatMatMulImpl<K, T>
+impl<K, TA, TB, TC, TI> MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
-    K: MatMatMulKer<T>,
+    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TI: Copy
+        + Add
+        + Mul
+        + Zero
+        + Debug
+        + fmt::Display
+        + PartialEq
+        + Send
+        + Sync
+        + Default
+        + PartialEq,
+    K: MatMatMulKer<TA, TB, TC, TI>,
 {
-    pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, T> {
+    pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TA, TB, TC, TI> {
         MatMatMulImpl {
             m,
             k,
@@ -152,8 +202,8 @@ where
             a_storage: MatrixStoreSpec::Packed { panel_len: (k * K::mr()) },
             b_storage: MatrixStoreSpec::Packed { panel_len: (k * K::nr()) },
             c_storage: MatrixStoreSpec::Strides {
-                row_byte_stride: (n * std::mem::size_of::<T>()) as isize,
-                col_byte_stride: (std::mem::size_of::<T>()) as isize,
+                row_byte_stride: (n * std::mem::size_of::<TC>()) as isize,
+                col_byte_stride: (std::mem::size_of::<TC>()) as isize,
                 mr: K::mr(),
                 nr: K::nr(),
             },
@@ -162,16 +212,29 @@ where
     }
 }
 
-impl<K, T> MatMatMul<T> for MatMatMulImpl<K, T>
+impl<K, TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default + fmt::Display,
-    K: MatMatMulKer<T>,
+    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TI: Copy
+        + Add
+        + Mul
+        + Zero
+        + Debug
+        + fmt::Display
+        + PartialEq
+        + Send
+        + Sync
+        + Default
+        + PartialEq,
+    K: MatMatMulKer<TA, TB, TC, TI>,
 {
-    fn a_pack(&self) -> PackA<T> {
+    fn a_pack(&self) -> PackA<TA> {
         PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a())
     }
 
-    fn b_pack(&self) -> PackB<T> {
+    fn b_pack(&self) -> PackB<TB> {
         PackB::new(self.k, self.n, K::nr(), K::alignment_bytes_packed_b())
     }
 
@@ -203,7 +266,7 @@ where
         // repeat the last offset to get to the panel boundary (pad to next multiple of nr)
         let wanted = (cols_offsets.len() + K::nr() - 1) / K::nr() * K::nr();
         let mut col_byte_offsets: Vec<_> =
-            cols_offsets.iter().map(|o| o * std::mem::size_of::<T>() as isize).collect();
+            cols_offsets.iter().map(|o| o * std::mem::size_of::<TB>() as isize).collect();
         while col_byte_offsets.len() < wanted {
             col_byte_offsets.push(*col_byte_offsets.last().unwrap());
         }
@@ -212,7 +275,7 @@ where
         row_byte_offsets.set_len(rows_offsets.len() + 4);
         for i in 0..rows_offsets.len() {
             *row_byte_offsets.get_unchecked_mut(i) =
-                *rows_offsets.get_unchecked(i) * std::mem::size_of::<T>() as isize;
+                *rows_offsets.get_unchecked(i) * std::mem::size_of::<TB>() as isize;
         }
         let pad = *row_byte_offsets.get_unchecked(rows_offsets.len() - 1);
         for i in 0..4 {
@@ -224,7 +287,7 @@ where
 
     unsafe fn b_vec_from_data_and_stride(&mut self, stride: isize) {
         self.b_storage = MatrixStoreSpec::VecStride {
-            byte_stride: stride * std::mem::size_of::<T>() as isize,
+            byte_stride: stride * std::mem::size_of::<TB>() as isize,
             mr: K::mr(),
             nr: K::nr(),
         }
@@ -236,8 +299,8 @@ where
 
     unsafe fn c_from_data_and_strides(&mut self, row_stride: isize, col_stride: isize) {
         self.c_storage = MatrixStoreSpec::Strides {
-            row_byte_stride: row_stride * std::mem::size_of::<T>() as isize,
-            col_byte_stride: col_stride * std::mem::size_of::<T>() as isize,
+            row_byte_stride: row_stride * std::mem::size_of::<TC>() as isize,
+            col_byte_stride: col_stride * std::mem::size_of::<TC>() as isize,
             mr: K::mr(),
             nr: K::nr(),
         }
@@ -245,7 +308,7 @@ where
 
     unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize) {
         self.c_storage = MatrixStoreSpec::VecStride {
-            byte_stride: stride * std::mem::size_of::<T>() as isize,
+            byte_stride: stride * std::mem::size_of::<TC>() as isize,
             mr: K::mr(),
             nr: K::nr(),
         }
@@ -255,17 +318,17 @@ where
         self.c_vec_from_data_and_stride(1)
     }
 
-    unsafe fn run(&self, a: *const T, b: *const T, c: *mut T, non_linear: &[FusedSpec<T>]) {
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
         let k = self.k;
         let n = self.n;
         let mut scratch = ScratchSpace::default();
-        let tmpc = vec![T::zero(); mr * nr];
+        let tmpc = vec![TC::zero(); mr * nr];
         let tmp_c_storage = MatrixStoreSpec::Strides {
-            row_byte_stride: (std::mem::size_of::<T>() * nr) as isize,
-            col_byte_stride: std::mem::size_of::<T>() as isize,
+            row_byte_stride: (std::mem::size_of::<TC>() * nr) as isize,
+            col_byte_stride: std::mem::size_of::<TC>() as isize,
             mr,
             nr,
         };
@@ -279,7 +342,7 @@ where
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
                 let ref direct_c = c.tile_c(ia, ib);
-                let non_linear = scratch.non_linear::<K>(non_linear, ia, ib);
+                let non_linear = scratch.non_linear::<TA, TB, TC, K>(non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -292,7 +355,7 @@ where
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
-                let non_linear = scratch.non_linear::<K>(non_linear, ia, n / nr);
+                let non_linear = scratch.non_linear::<TA, TB, TC, K>(non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -309,7 +372,7 @@ where
             let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
-                let non_linear = scratch.non_linear::<K>(non_linear, m / mr, ib);
+                let non_linear = scratch.non_linear::<TA, TB, TC, K>(non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -322,7 +385,7 @@ where
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
-                let non_linear = scratch.non_linear::<K>(non_linear, m / mr, n / nr);
+                let non_linear = scratch.non_linear::<TA, TB, TC, K>(non_linear, m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -337,13 +400,30 @@ where
     }
 }
 
-impl<K, T> fmt::Display for MatMatMulImpl<K, T>
+impl<K, TA, TB, TC, TI> fmt::Display for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + fmt::Display,
-    K: MatMatMulKer<T>,
+    TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    TI: Copy
+        + Add
+        + Mul
+        + Zero
+        + Debug
+        + fmt::Display
+        + PartialEq
+        + Send
+        + Sync
+        + Default
+        + PartialEq,
+    K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "A:{}, B:{} C:{} (m:{}, k:{}, n:{})", self.a_storage, self.b_storage, self.c_storage, self.m, self.k, self.n)
+        write!(
+            fmt,
+            "A:{}, B:{} C:{} (m:{}, k:{}, n:{})",
+            self.a_storage, self.b_storage, self.c_storage, self.m, self.k, self.n
+        )
     }
 }
 
@@ -352,33 +432,36 @@ where
 pub mod test {
     use super::*;
     use crate::align::Buffer;
+    use num_traits::{AsPrimitive, Bounded};
     use proptest::prelude::*;
 
     #[macro_export]
     macro_rules! mmm_frame_tests {
-        ($cond:expr, $ker:ty) => {
+        ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
             mod frame {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::mmm::test::*;
+                use $crate::num_traits::AsPrimitive;
+
                 proptest::proptest! {
                     #[test]
                     fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mat_mul()) {
                         if $cond {
-                            test_mat_mat_mul_prep_f32::<$ker>(m, k, n, a, b)?
+                            test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, a, b)?
                         }
                     }
 
                     #[test]
                     fn mat_vec_prepacked((m, k, ref a, ref b) in strat_mat_vec_mul()) {
                         if $cond {
-                            test_mat_vec_mul_prep_f32::<$ker>(m, k, a, b)?
+                            test_mat_vec_mul_prep::<$ker>(m, k, a, b)?
                         }
                     }
 
                     #[test]
                     fn conv_prepacked(pb in strat_conv_1d()) {
                         if $cond {
-                            crate::check_close(&*pb.run::<$ker>(), &*pb.expected())?;
+                            crate::check_close(&*pb.run::<$ker, $ta, $tb>(), &*pb.expected())?;
                         }
                     }
 
@@ -387,30 +470,36 @@ pub mod test {
                 #[test]
                 fn mat_mul_1() {
                     if $cond {
-                        test_mat_mat_mul_prep_f32::<$ker>(
-                            3,
-                            4,
-                            2,
-                            &[-3.0, 3.0, 5.0, -5.0, 6.0, 0.0, -6.0, -5.0, 0.0, 0.0, 9.0, 7.0],
-                            &[-8.0, 5.0, 5.0, -3.0, 5.0, 7.0, -8.0, -1.0],
-                        )
-                        .unwrap()
+                        let a: Vec<$ta> = [-3isize, 3, 5, -5, 6, 0, -6, -5, 0, 0, 9, 7]
+                            .iter()
+                            .map(|x| x.as_())
+                            .collect();
+                        let b: Vec<$tb> =
+                            [-8isize, 5, 5, -3, 5, 7, -8, -1].iter().map(|x| x.as_()).collect();
+                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(3, 4, 2, &*a, &*b)
+                            .unwrap()
                     }
                 }
 
                 #[test]
                 fn mat_mul_1_2_1() {
                     if $cond {
-                        test_mat_mat_mul_prep_f32::<$ker>(1, 2, 1, &[0.0, 1.0], &[0.0, 1.0])
-                            .unwrap()
+                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(
+                            1,
+                            2,
+                            1,
+                            &[0.0f32.as_(), 1.0],
+                            &[0.0, 1.0],
+                        )
+                        .unwrap()
                     }
                 }
 
                 #[test]
                 fn conv_prepacked_1() {
                     if $cond {
-                        let filters = vec![1.0f32];
-                        let data = vec![0.0f32, 1.0];
+                        let filters: Vec<$ta> = vec![1isize.as_()];
+                        let data: Vec<$tb> = vec![0.as_(), 1.as_()];
                         let pb = ConvProblem {
                             ci: 1,
                             co: 1,
@@ -420,7 +509,7 @@ pub mod test {
                             filters,
                             data,
                         };
-                        crate::check_close(&*pb.run::<$ker>(), &*pb.expected()).unwrap();
+                        crate::check_close(&*pb.run::<$ker, $ta, $tb>(), &*pb.expected()).unwrap();
                     }
                 }
 
@@ -440,7 +529,7 @@ pub mod test {
                             filters,
                             data,
                         };
-                        crate::check_close(&*pb.run::<$ker>(), &*pb.expected()).unwrap();
+                        crate::check_close(&*pb.run::<$ker, f32, f32>(), &*pb.expected()).unwrap();
                     }
                 }
 
@@ -516,14 +605,51 @@ pub mod test {
             .boxed()
     }
 
-    pub fn test_mat_mat_mul_prep_f32<K: MatMatMulKer<f32>>(
+    pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
-        a: &[f32],
-        b: &[f32],
-    ) -> Result<(), proptest::test_runner::TestCaseError> {
-        let op = MatMatMulImpl::<K, f32>::new(m, k, n);
+        a: &[TA],
+        b: &[TB],
+    ) -> Result<(), proptest::test_runner::TestCaseError>
+    where
+        TA: Copy
+            + Add
+            + Mul
+            + Zero
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + Send
+            + Sync
+            + AsPrimitive<f64>
+            + AsPrimitive<TC>,
+        TB: Copy
+            + Add
+            + Mul
+            + Zero
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + Send
+            + Sync
+            + AsPrimitive<f64>
+            + AsPrimitive<TC>,
+        TC: Copy
+            + Add
+            + Mul<Output = TC>
+            + Zero
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + Send
+            + Sync
+            + Bounded
+            + 'static
+            + AsPrimitive<f32>,
+        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + Default,
+    {
+        let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
         unsafe {
             let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
             op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
@@ -531,21 +657,24 @@ pub mod test {
             let mut packed_b = Buffer::uninitialized(op.b_pack().len(), op.b_pack().alignment());
             op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
-            let mut found = vec![9999.0f32; m * n];
+            let mut found = vec![TC::max_value(); m * n];
 
             op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), &[]);
 
-            let mut expected = vec![0.0f32; m * n];
+            let mut expected = vec![TC::zero(); m * n];
             for x in 0..n {
                 for y in 0..m {
                     for i in 0..k {
-                        expected[x + y * n] += a[i + k * y] * b[x + i * n]
+                        let ref mut v = expected[x + y * n];
+                        let a:TC = a[i + k * y].as_();
+                        let b:TC = b[x + i * n].as_();
+                        *v = *v + a*b;
                     }
                 }
             }
 
             proptest::prop_assert!(
-                found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
+                found.iter().zip(expected.iter()).all(|(&a, &b)| (a.as_() - b.as_()).abs() < 0.001),
                 "found: {:?} expected: {:?}",
                 found,
                 expected
@@ -554,14 +683,14 @@ pub mod test {
         Ok(())
     }
 
-    pub fn test_mat_vec_mul_prep_f32<K: MatMatMulKer<f32>>(
+    pub fn test_mat_vec_mul_prep<K: MatMatMulKer<f32, f32, f32, f32>>(
         m: usize,
         k: usize,
         a: &[f32],
         b: &[f32],
     ) -> Result<(), proptest::test_runner::TestCaseError> {
         unsafe {
-            let mut op = MatMatMulImpl::<K, f32>::new(m, k, 1);
+            let mut op = MatMatMulImpl::<K, f32, f32, f32, f32>::new(m, k, 1);
             op.b_vec_from_data_and_stride(1);
             op.c_vec_from_data_and_stride(1);
             let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
@@ -588,7 +717,7 @@ pub mod test {
         Ok(())
     }
 
-    pub unsafe fn fused_op<K: MatMatMulKer<f32>, F: Fn(&mut [f32])>(
+    pub unsafe fn fused_op<K: MatMatMulKer<f32, f32, f32, f32>, F: Fn(&mut [f32])>(
         m: usize,
         k: usize,
         n: usize,
@@ -597,7 +726,7 @@ pub mod test {
     ) -> proptest::test_runner::TestCaseResult {
         let a = vec![1.0f32; m * k];
         let b = vec![1.0f32; n * k];
-        let op = MatMatMulImpl::<K, f32>::new(m, k, n);
+        let op = MatMatMulImpl::<K, f32, f32, f32, f32>::new(m, k, n);
 
         let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
         op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
@@ -628,7 +757,7 @@ pub mod test {
         Ok(())
     }
 
-    pub unsafe fn row_add<K: MatMatMulKer<f32>>(
+    pub unsafe fn row_add<K: MatMatMulKer<f32, f32, f32, f32>>(
         m: usize,
         k: usize,
         n: usize,
@@ -643,7 +772,7 @@ pub mod test {
         })
     }
 
-    pub unsafe fn row_mul<K: MatMatMulKer<f32>>(
+    pub unsafe fn row_mul<K: MatMatMulKer<f32, f32, f32, f32>>(
         m: usize,
         k: usize,
         n: usize,
@@ -658,7 +787,7 @@ pub mod test {
         })
     }
 
-    pub unsafe fn col_add<K: MatMatMulKer<f32>>(
+    pub unsafe fn col_add<K: MatMatMulKer<f32, f32, f32, f32>>(
         m: usize,
         k: usize,
         n: usize,
@@ -673,7 +802,7 @@ pub mod test {
         })
     }
 
-    pub unsafe fn col_mul<K: MatMatMulKer<f32>>(
+    pub unsafe fn col_mul<K: MatMatMulKer<f32, f32, f32, f32>>(
         m: usize,
         k: usize,
         n: usize,
@@ -688,7 +817,7 @@ pub mod test {
         })
     }
 
-    pub unsafe fn max<K: MatMatMulKer<f32>>(
+    pub unsafe fn max<K: MatMatMulKer<f32, f32, f32, f32>>(
         m: usize,
         k: usize,
         n: usize,
@@ -698,7 +827,7 @@ pub mod test {
         })
     }
 
-    pub unsafe fn min<K: MatMatMulKer<f32>>(
+    pub unsafe fn min<K: MatMatMulKer<f32, f32, f32, f32>>(
         m: usize,
         k: usize,
         n: usize,
@@ -709,17 +838,21 @@ pub mod test {
     }
 
     #[derive(Clone, Debug)]
-    pub struct ConvProblem {
+    pub struct ConvProblem<TA, TB> {
         pub ci: usize,
         pub co: usize,
         pub kt: usize,
         pub stride: usize,
         pub dilation: usize,
-        pub filters: Vec<f32>,
-        pub data: Vec<f32>,
+        pub filters: Vec<TA>,
+        pub data: Vec<TB>,
     }
 
-    impl ConvProblem {
+    impl<TA, TB> ConvProblem<TA, TB>
+    where
+        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
+    {
         pub fn kernel_field(&self) -> usize {
             self.dilation * (self.kt - 1) + 1
         }
@@ -751,8 +884,23 @@ pub mod test {
                 })
                 .collect()
         }
-        pub fn expected(&self) -> Vec<f32> {
-            let mut expect = vec![0.0f32; self.co * self.output_width()];
+
+        pub fn expected<TC>(&self) -> Vec<TC>
+        where
+            TC: Copy
+                + Add
+                + Mul<Output = TC>
+                + Zero
+                + Debug
+                + fmt::Display
+                + PartialEq
+                + Send
+                + Sync
+                + 'static,
+            TA: AsPrimitive<TC>,
+            TB: AsPrimitive<TC>,
+        {
+            let mut expect = vec![TC::zero(); self.co * self.output_width()];
             for x in 0..self.output_width() {
                 for ico in 0..self.co {
                     for ikt in 0..self.kt {
@@ -760,7 +908,8 @@ pub mod test {
                             let f = self.filters[ici * self.kt + ikt + self.ci * self.kt * ico];
                             let d = self.data
                                 [x * self.stride + ikt * self.dilation + ici * self.input_width()];
-                            expect[x + ico * self.output_width()] += f * d;
+                            let ref mut pv = expect[x + ico * self.output_width()];
+                            *pv = *pv + f.as_() * d.as_();
                         }
                     }
                 }
@@ -768,9 +917,13 @@ pub mod test {
             expect
         }
 
-        pub fn run<K: MatMatMulKer<f32>>(&self) -> Vec<f32> {
+        pub fn run<K: MatMatMulKer<TA, TB, TC, TI>, TC, TI>(&self) -> Vec<TC>
+        where
+            TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + Default,
+            TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + Bounded,
+        {
             unsafe {
-                let mut op = MatMatMulImpl::<K, f32>::new(self.m(), self.k(), self.n());
+                let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(self.m(), self.k(), self.n());
                 op.b_from_data_and_offsets(&self.data_rows_offsets(), &self.data_cols_offsets());
                 let mut packed_a =
                     Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
@@ -781,14 +934,19 @@ pub mod test {
                     1,
                 );
 
-                let mut found = vec![9999.0f32; self.co * self.output_width()];
+                let mut found: Vec<TC> = vec![TC::max_value(); self.co * self.output_width()];
                 op.run(packed_a.as_ptr(), self.data.as_ptr(), found.as_mut_ptr(), &[]);
                 found
             }
         }
     }
 
-    pub fn strat_conv_1d() -> BoxedStrategy<ConvProblem> {
+    pub fn strat_conv_1d<TA, TB>() -> BoxedStrategy<ConvProblem<TA, TB>>
+    where
+        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
+        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync + 'static,
+        isize: AsPrimitive<TA> + AsPrimitive<TB>,
+    {
         (1usize..40, 1usize..40, 1usize..10, 1usize..5, 1usize..5)
             .prop_flat_map(|(ci, co, kt, stride, dilation)| {
                 let min = ((kt - 1) * dilation + 1) * stride;
@@ -801,8 +959,8 @@ pub mod test {
                     Just(kt),
                     Just(stride),
                     Just(dilation),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), ci * co * kt),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), t * ci),
+                    proptest::collection::vec((-10isize..10).prop_map(|a| a.as_()), ci * co * kt),
+                    proptest::collection::vec((-10isize..10).prop_map(|a| a.as_()), t * ci),
                 )
             })
             .prop_map(move |(ci, co, kt, stride, dilation, filters, data)| ConvProblem {

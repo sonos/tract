@@ -2,13 +2,13 @@ use crate::frame::mmm::*;
 
 extern "C" {
     #[no_mangle]
-    fn fma_smmm16x6(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn fma_smmm16x6(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct SMatMatMul16x6;
 
-impl MatMatMulKer<f32> for SMatMatMul16x6 {
+impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul16x6 {
     #[inline(always)]
     fn name() -> &'static str {
         "fma"
@@ -28,7 +28,7 @@ impl MatMatMulKer<f32> for SMatMatMul16x6 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
         unsafe { fma_smmm16x6(spec) }
     }
 }
@@ -36,6 +36,6 @@ impl MatMatMulKer<f32> for SMatMatMul16x6 {
 #[cfg(test)]
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),))]
 mod test {
-    mmm_frame_tests!(is_x86_feature_detected!("fma"), crate::x86_64_fma::mmm::SMatMatMul16x6);
-    mmm_kernel_tests!(is_x86_feature_detected!("fma"), crate::x86_64_fma::mmm::SMatMatMul16x6, f32);
+    mmm_frame_tests!(is_x86_feature_detected!("fma"), crate::x86_64_fma::mmm::SMatMatMul16x6, f32, f32, f32, f32);
+    mmm_kernel_tests!(is_x86_feature_detected!("fma"), crate::x86_64_fma::mmm::SMatMatMul16x6, f32, f32, f32, f32);
 }

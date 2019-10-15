@@ -2,13 +2,13 @@ use crate::frame::mmm::*;
 
 extern "C" {
     #[no_mangle]
-    fn arm64simd_smmm_8x8(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn arm64simd_smmm_8x8(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct SMatMatMul8x8;
 
-impl MatMatMulKer<f32> for SMatMatMul8x8 {
+impl MatMatMulKer<f32,f32,f32,f32> for SMatMatMul8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -28,13 +28,13 @@ impl MatMatMulKer<f32> for SMatMatMul8x8 {
         16
     }
     #[inline(never)]
-    fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
+    fn kernel(op: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
         unsafe { arm64simd_smmm_8x8(op) }
     }
 }
 
 #[cfg(test)]
 mod test {
-    mmm_kernel_tests!(true, crate::arm64::arm64simd::SMatMatMul8x8, f32);
-    mmm_frame_tests!(true, crate::arm64::arm64simd::SMatMatMul8x8);
+    mmm_kernel_tests!(true, crate::arm64::arm64simd::SMatMatMul8x8, f32, f32, f32, f32);
+    mmm_frame_tests!(true, crate::arm64::arm64simd::SMatMatMul8x8, f32, f32, f32, f32);
 }

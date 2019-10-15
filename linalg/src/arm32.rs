@@ -25,14 +25,14 @@ pub fn plug(ops: &mut Ops) {
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
         ops.smmm = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armv7neon::SMatMatMul8x4, f32>::new(m, k, n))
+            Box::new(MatMatMulImpl::<armv7neon::SMatMatMul8x4, f32, f32, f32, f32>::new(m, k, n))
         });
         ops.ssigmoid = Box::new(|| Box::new(SigmoidImpl::<armv7neon::SSigmoid4, f32>::new()));
         ops.stanh = Box::new(|| Box::new(TanhImpl::<armv7neon::STanh4, f32>::new()));
     } else {
         log::info!("armvfpv2 activated for smmm");
         ops.smmm = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armvfpv2::SMatMatMul4x4, f32>::new(m, k, n))
+            Box::new(MatMatMulImpl::<armvfpv2::SMatMatMul4x4, f32, f32, f32, f32>::new(m, k, n))
         });
     }
 }
