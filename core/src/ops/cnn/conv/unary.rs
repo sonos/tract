@@ -1,3 +1,6 @@
+use std::fmt;
+use std::ops::{Add, Mul};
+
 use ndarray::*;
 
 use num_traits::Zero;
@@ -14,6 +17,7 @@ use crate::ops::cnn::PoolSpec;
 use crate::ops::math::mat_mat_mul::MatMatMulUnaryFinite;
 use crate::ops::nn::DataFormat;
 
+use tract_linalg::frame::MatMatMul;
 use tract_linalg::frame::PackA;
 
 use std::iter::Sum;
@@ -118,15 +122,35 @@ impl ConvUnary {
         Ok(packed_as.insert_axis(Axis(0)))
     }
 
-    pub unsafe fn wire_as_im2col_pair<T>(
+    pub unsafe fn wire_as_im2col_pair(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        wire: OutletId,
+        direct: bool,
+    ) -> TractResult<OutletId> {
+        let a = self.kernel.datum_type();
+        let b = model.outlet_fact(wire)?.datum_type;
+        if (a, b) == (f32::datum_type(), f32::datum_type()) {
+            self.wire_as_im2col_pair_t(model, name, wire, direct, &tract_linalg::ops().smmm)
+        } else {
+            bail!("Unsupported combination for Conv (filters: {:?}, data:{:?})", a, b);
+        }
+    }
+
+    unsafe fn wire_as_im2col_pair_t<TA, TB, TC, TI>(
         &self,
         model: &mut TypedModel,
         name: &str,
         mut wire: OutletId,
         direct: bool,
+        mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
     ) -> TractResult<OutletId>
     where
-        T: Datum + Clone + ndarray::LinalgScalar + FloatLike,
+        TA: Datum + Copy + Zero,
+        TB: Datum + Copy + Zero,
+        TC: Datum + Copy,
+        TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
     {
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =
@@ -139,7 +163,7 @@ impl ConvUnary {
         let k = self.kernel.len() / self.output_channels();
         let n = geo.output_shape.iter().cloned().product::<usize>();
 
-        let mut mmm = T::mmm(m, k, n);
+        let mut mmm = mmm(m, k, n);
         let (rsc, csc) = match output_shape.fmt {
             DataFormat::NHWC => (1, (m * self.group) as isize),
             DataFormat::NCHW => (n as isize, 1),
@@ -183,10 +207,11 @@ impl ConvUnary {
                 tvec![
                     *output_shape.n_stride() as isize,
                     (output_shape.c() / self.group * output_shape.c_stride()) as isize
-                ]))
-            } else {
-                None
-            };
+                ],
+            ))
+        } else {
+            None
+        };
 
         wire = model.wire_node(
             format!("{}-matmatmul", name),
@@ -244,15 +269,7 @@ impl StatelessOp for ConvUnary {
         let mut model = TypedModel::default();
         let dt = inputs[0].datum_type();
         let wire = model.add_source("source", TypedFact::dt_shape(dt, inputs[0].shape())?)?;
-        let wire = unsafe {
-            dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
-                self,
-                &mut model,
-                "im2col-adhoc",
-                wire,
-                false
-            ))?
-        };
+        let wire = unsafe { self.wire_as_im2col_pair(&mut model, "im2col-adhoc", wire, false)? };
         model.set_output_outlets(&[wire])?;
         let plan = SimplePlan::new(model)?;
         plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
@@ -449,13 +466,7 @@ impl TypedOp for ConvUnary {
                 {
                     let mut patch = TypedModelPatch::default();
                     let wire = patch.tap_model(model, node.inputs[0])?;
-                    let wire = dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
-                        self,
-                        &mut patch,
-                        &*node.name,
-                        wire,
-                        true
-                    ))?;
+                    let wire = self.wire_as_im2col_pair(&mut patch, &*node.name, wire, true)?;
                     patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
                 } else if self.group != 1 && self.group == self.output_channels() {
@@ -467,13 +478,7 @@ impl TypedOp for ConvUnary {
                 } else {
                     let mut patch = TypedModelPatch::default();
                     let wire = patch.tap_model(model, node.inputs[0])?;
-                    let wire = dispatch_floatlike!(Self::wire_as_im2col_pair(dt)(
-                        self,
-                        &mut patch,
-                        &*node.name,
-                        wire,
-                        false
-                    ))?;
+                    let wire = self.wire_as_im2col_pair(&mut patch, &*node.name, wire, false)?;
                     patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
                 }

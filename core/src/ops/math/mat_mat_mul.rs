@@ -12,7 +12,7 @@ use tract_linalg::frame::PackB;
 #[derive(Debug, Clone)]
 pub struct MatMatMulPackB<T>
 where
-    T: Copy + Datum + Add + Mul + Zero
+    T: Copy + Datum + Zero,
 {
     pub(crate) pack_b: PackB<T>,
     pub(crate) row_stride: isize,
@@ -22,7 +22,7 @@ where
 
 impl<T> Op for MatMatMulPackB<T>
 where
-    T: Copy + Datum + Add + Mul + Zero
+    T: Copy + Datum + Zero
 {
     fn name(&self) -> Cow<str> {
         "MatMatMulPackB".into()
@@ -34,7 +34,7 @@ where
 
 impl<T> StatelessOp for MatMatMulPackB<T>
 where
-    T: Copy + Datum + Add + Mul + Zero
+    T: Copy + Datum + Zero
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let b = args_1!(inputs);
@@ -63,7 +63,7 @@ where
 
 impl<T> TypedOp for MatMatMulPackB<T>
 where
-    T: Copy + Datum + Add + Mul + Zero
+    T: Copy + Datum + Zero
 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape)?))
@@ -73,20 +73,26 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct MatMatMulUnaryFinite<T>
+pub(crate) struct MatMatMulUnaryFinite<TA, TB, TC, TI>
 where
-    T: Copy + Datum + Add + Mul + Zero
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     pub(crate) c_shape: TVec<usize>,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
-    pub(crate) mmm: Box<dyn MatMatMul<T, T, T, T>>,
-    pub(crate) non_linear: Vec<FusedSpec<T>>,
+    pub(crate) mmm: Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    pub(crate) non_linear: Vec<FusedSpec<TI>>,
 }
 
-impl<T> Op for MatMatMulUnaryFinite<T>
+impl<TA, TB, TC, TI> Op for MatMatMulUnaryFinite<TA, TB, TC, TI>
 where
-    T: Copy + Datum + Add + Mul + Zero + fmt::Display,
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn name(&self) -> Cow<str> {
         "MatMatMul".into()
@@ -118,16 +124,16 @@ where
                     Self { c_shape: shape, ..self.clone() },
                 )?));
             }
-            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
+            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
                 if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
                     if op.a.shape() == &[self.mmm.m()] {
                         if op.mini_op.is::<ops::math::Mul>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowMul(
-                                op.a.as_slice::<T>()?.to_vec(),
+                                op.a.as_slice::<TI>()?.to_vec(),
                             ))));
                         } else if op.mini_op.is::<ops::math::Add>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowAdd(
-                                op.a.as_slice::<T>()?.to_vec(),
+                                op.a.as_slice::<TI>()?.to_vec(),
                             ))));
                         }
                     }
@@ -162,21 +168,24 @@ where
     not_a_pulsed_op!();
 }
 
-impl<T> StatelessOp for MatMatMulUnaryFinite<T>
+impl<TA, TB, TC, TI> StatelessOp for MatMatMulUnaryFinite<TA, TB, TC, TI>
 where
-    T: Copy + Datum + Add + Mul + Zero
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
             let b = args_1!(inputs);
-            let mut c = Tensor::uninitialized::<T>(&*self.c_shape)?;
+            let mut c = Tensor::uninitialized::<TC>(&*self.c_shape)?;
             if let Some((prefix_dim, prefix_strides)) = &self.c_prefix_dim_and_stride {
-                let b = b.to_array_view::<T>()?;
-                let mut c = c.to_array_view_mut::<T>()?;
+                let b = b.to_array_view::<TB>()?;
+                let mut c = c.to_array_view_mut::<TC>()?;
                 for prefix in indices(&**prefix_dim).into_iter() {
                     let mut a = self.packed_as.view();
                     let mut b = b.view();
-                    let mut c: *mut T = c.as_mut_ptr();
+                    let mut c: *mut TC = c.as_mut_ptr();
                     for (ix, &dim) in prefix.slice().iter().enumerate() {
                         let d = dim.min(a.shape()[0] - 1);
                         a.index_axis_inplace(Axis(0), d);
@@ -200,9 +209,12 @@ where
     }
 }
 
-impl<T> TypedOp for MatMatMulUnaryFinite<T>
+impl<TA, TB, TC, TI> TypedOp for MatMatMulUnaryFinite<TA, TB, TC, TI>
 where
-    T: Copy + Datum + Add + Mul + Zero
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.c_shape)?))
