@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Tensorflow
+
+* Initial support for AddV2
+
 ## 0.5.3 - 2019-09-30
 
 ### Notable
