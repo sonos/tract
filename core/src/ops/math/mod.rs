@@ -158,7 +158,7 @@ element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| {
 });
 
 element_wise!(tanh, Tanh,
-   [f32] => |_, xs| { <f32 as FloatLike>::tanh().run(xs); Ok(()) },
+   [f32] => |_, xs| { (tract_linalg::ops().stanh)().run(xs); Ok(()) },
    [f16, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
    cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );

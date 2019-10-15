@@ -34,6 +34,8 @@ pub struct Ops {
     pub smmm: Box<
         dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<f32, f32, f32, f32>> + Send + Sync,
     >,
+    pub mmm_i8_i32:
+        Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<i8, i8, i32, i32>> + Send + Sync>,
     pub ssigmoid: Box<dyn Fn() -> Box<dyn sigmoid::Sigmoid<f32>> + Send + Sync>,
     pub stanh: Box<dyn Fn() -> Box<dyn tanh::Tanh<f32>> + Send + Sync>,
 }
@@ -50,6 +52,15 @@ pub fn generic() -> Ops {
                 f32,
                 f32,
                 f32,
+            >::new(m, k, n))
+        }),
+        mmm_i8_i32: Box::new(|m, k, n| {
+            Box::new(mmm::MatMatMulImpl::<
+                generic::GenericMmm4x4<i8, i8, i32, i32>,
+                i8,
+                i8,
+                i32,
+                i32,
             >::new(m, k, n))
         }),
         ssigmoid: Box::new(|| Box::new(sigmoid::SigmoidImpl::<generic::SSigmoid4, f32>::new())),

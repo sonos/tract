@@ -117,7 +117,6 @@ pub mod internal {
     pub use crate::analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::analyser::types::TypeFact;
     pub use crate::analyser::types::*;
-    pub use crate::datum::FloatLike;
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::*;
     pub use crate::model::*;

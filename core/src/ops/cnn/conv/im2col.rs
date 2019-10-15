@@ -7,10 +7,9 @@ use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 
 use num_traits::Zero;
-use std::ops::Mul;
 
 #[derive(Debug, Clone)]
-pub struct Im2Col<T: Copy + Datum + Mul + Zero> {
+pub struct Im2Col<T: Copy + Datum + Zero> {
     pub patch: Patch,
     pub input_shape: DataShape,
     pub output_shape: DataShape,
@@ -23,7 +22,7 @@ pub struct Im2Col<T: Copy + Datum + Mul + Zero> {
     patcher: Patcher,
 }
 
-impl<T: Copy + Datum + Mul + Zero> PartialEq for Im2Col<T> {
+impl<T: Copy + Datum + Zero> PartialEq for Im2Col<T> {
     fn eq(&self, other: &Im2Col<T>) -> bool {
         self.patch == other.patch
             && self.m == other.m
@@ -34,7 +33,7 @@ impl<T: Copy + Datum + Mul + Zero> PartialEq for Im2Col<T> {
     }
 }
 
-impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
+impl<T: Copy + Datum + Zero> Im2Col<T> {
     pub fn new(
         patch: Patch,
         input_shape: DataShape,
@@ -78,7 +77,7 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
     }
 }
 
-impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
+impl<T: Copy + Datum + Zero> Op for Im2Col<T> {
     fn name(&self) -> Cow<str> {
         "Conv::Im2col".into()
     }
@@ -97,14 +96,14 @@ impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
     not_a_pulsed_op!();
 }
 
-impl<T: Copy + Datum + Mul + Zero> StatelessOp for Im2Col<T> {
+impl<T: Copy + Datum + Zero> StatelessOp for Im2Col<T> {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let tensor = self.im2col(&inputs[0].to_array_view()?)?;
         Ok(tvec!(tensor.into()))
     }
 }
 
-impl<T: Copy + Datum + Mul + Zero> TypedOp for Im2Col<T> {
+impl<T: Copy + Datum + Zero> TypedOp for Im2Col<T> {
     typed_op_as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
@@ -121,7 +120,7 @@ enum Patcher {
 }
 
 impl Patcher {
-    fn patch<'i, 'p, T: Copy + Datum + Mul + Zero>(
+    fn patch<'i, 'p, T: Copy + Datum + Zero>(
         &self,
         im2col: &'i Im2Col<T>,
         input: &'i ArrayViewD<'i, T>,
@@ -156,7 +155,7 @@ impl Patcher {
     }
 
     #[inline(never)]
-    fn generic<'i, 'p, T: Copy + Datum + Mul + Zero>(
+    fn generic<'i, 'p, T: Copy + Datum + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayViewD<'i, T>,
         pack: &'p mut [T],
@@ -192,7 +191,7 @@ impl Patcher {
     }
 
     #[inline(never)]
-    fn valid_1d<'i, 'p, T: Copy + Datum + Mul + Zero>(
+    fn valid_1d<'i, 'p, T: Copy + Datum + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayView3<'i, T>,
         pack: &'p mut [T],
@@ -218,7 +217,7 @@ impl Patcher {
     }
 
     #[inline(never)]
-    fn padded_2d<'i, 'p, T: Copy + Datum + Mul + Zero>(
+    fn padded_2d<'i, 'p, T: Copy + Datum + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayView4<'i, T>,
         pack: &'p mut [T],
@@ -267,7 +266,7 @@ impl Patcher {
     }
 
     #[inline(never)]
-    fn valid_2d<'i, 'p, T: Copy + Datum + Mul + Zero>(
+    fn valid_2d<'i, 'p, T: Copy + Datum + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayView4<'i, T>,
         pack: &'p mut [T],

@@ -248,6 +248,12 @@ impl ops::Add<&f16> for f16 {
     }
 }
 
+impl ops::AddAssign<f16> for f16 {
+    fn add_assign(&mut self, other: f16) {
+        *self = *self + other
+    }
+}
+
 impl ops::Sub<f16> for f16 {
     type Output = f16;
     fn sub(self, other: f16) -> f16 {

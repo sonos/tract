@@ -1,4 +1,5 @@
-use num_traits::{ Zero};
+use num_traits::Zero;
+use std::fmt;
 use std::ops::{Add, Mul};
 
 use crate::internal::*;
@@ -7,16 +8,42 @@ use ndarray::*;
 
 use tract_linalg::mmm::MatMatMul;
 
-fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
+fn eval(
     a: &Tensor,
     b: &Tensor,
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-) -> TractResult<Tensor> {
-    let a = a.to_array_view::<T>()?;
-    let b = b.to_array_view::<T>()?;
-    let mut geo = Geo::<T>::new(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
+) -> TractResult<TVec<Arc<Tensor>>> {
+    let c = if (a.datum_type(), b.datum_type()) == (f32::datum_type(), f32::datum_type()) {
+        eval_t(a, b, a_trans, b_trans, c_trans, &tract_linalg::ops().smmm)?
+    } else {
+        bail!(
+            "Unsupported combination for MatMul (a: {:?}, b:{:?})",
+            a.datum_type(),
+            b.datum_type()
+        );
+    };
+    Ok(tvec!(c.into()))
+}
+
+fn eval_t<TA, TB, TC, TI>(
+    a: &Tensor,
+    b: &Tensor,
+    a_trans: bool,
+    b_trans: bool,
+    c_trans: bool,
+    mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
+) -> TractResult<Tensor>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
+    let a = a.to_array_view::<TA>()?;
+    let b = b.to_array_view::<TB>()?;
+    let mut geo = Geo::<TA, TB, TC, TI>::new(a.shape(), b.shape(), a_trans, b_trans, c_trans, mmm)?;
     unsafe {
         geo.mm.c_from_data_and_strides(
             if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
@@ -30,10 +57,10 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
     let b_pack = geo.mm.b_pack();
 
     let mut pa = unsafe {
-        Tensor::uninitialized_aligned::<T>(&[geo.mm.a_pack().len()], geo.mm.a_pack().alignment())?
+        Tensor::uninitialized_aligned::<TA>(&[geo.mm.a_pack().len()], geo.mm.a_pack().alignment())?
     };
     let mut pb =
-        unsafe { Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())? };
+        unsafe { Tensor::uninitialized_aligned::<TB>(&[b_pack.len()], b_pack.alignment())? };
 
     for prefix in indices(&*geo.c_shape_prefix).into_iter() {
         let mut a = a.view();
@@ -111,11 +138,17 @@ fn infer_shapes<D: DimLike>(
 }
 
 #[derive(Debug, Clone)]
-struct Geo<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
+struct Geo<TA, TB, TC, TI>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
     m: usize,
     k: usize,
     n: usize,
-    mm: Box<dyn MatMatMul<T, T, T, T>>,
+    mm: Box<dyn MatMatMul<TA, TB, TC, TI>>,
     a_shape: TVec<usize>,
     a_trans: bool,
     b_shape: TVec<usize>,
@@ -130,20 +163,27 @@ struct Geo<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
     c_stride_prefix: TVec<usize>,
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Geo<T> {
+impl<TA, TB, TC, TI> Geo<TA, TB, TC, TI>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
     pub fn new(
         a_shape: &[usize],
         b_shape: &[usize],
         a_trans: bool,
         b_trans: bool,
         c_trans: bool,
-    ) -> TractResult<Geo<T>> {
+        mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    ) -> TractResult<Geo<TA, TB, TC, TI>> {
         let (bc_a_shape, bc_b_shape, bc_c_shape) =
             infer_shapes(a_shape.into(), b_shape.into(), a_trans, b_trans, c_trans)?;
         let m = bc_a_shape[bc_a_shape.len() - 2 + a_trans as usize];
         let k = bc_a_shape[bc_a_shape.len() - 1 - a_trans as usize];
         let n = bc_b_shape[bc_b_shape.len() - 1 - b_trans as usize];
-        let mm = T::mmm(m, k, n);
+        let mm = mmm(m, k, n);
         let a_stride_prefix = bc_a_shape
             .iter()
             .rev()
@@ -212,16 +252,8 @@ impl Op for MatMul {
 }
 
 impl StatelessOp for MatMul {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (a, b) = args_2!(inputs);
-        let c = dispatch_floatlike!(self::eval_t(a.datum_type())(
-            &*a,
-            &*b,
-            self.a_trans,
-            self.b_trans,
-            self.c_trans
-        ))?;
-        Ok(tvec!(c.into_arc_tensor()))
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        eval(&inputs[0], &inputs[1], self.a_trans, self.b_trans, self.c_trans)
     }
 }
 
@@ -332,16 +364,8 @@ impl Op for MatMulUnary {
 }
 
 impl StatelessOp for MatMulUnary {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let b = args_1!(inputs);
-        let c = dispatch_floatlike!(self::eval_t(b.datum_type())(
-            &self.a,
-            &*b,
-            self.a_trans,
-            self.b_trans,
-            self.c_trans
-        ))?;
-        Ok(tvec!(c.into()))
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        eval(&self.a, &inputs[0], self.a_trans, self.b_trans, self.c_trans)
     }
 }
 
@@ -416,15 +440,25 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let b = args_1!(model.node_input_facts(node.id)?);
         if let Some(b_shape) = b.shape.as_finite() {
-            let patch = dispatch_floatlike!(self::new_mat_mul_unary_finite(b.datum_type)(
-                model,
-                node,
-                self.a.clone(),
-                b_shape,
-                self.a_trans,
-                self.b_trans,
-                self.c_trans
-            ))?;
+            let patch =
+                if (self.a.datum_type(), b.datum_type) == (f32::datum_type(), f32::datum_type()) {
+                    new_mat_mul_unary_finite(
+                        model,
+                        node,
+                        self.a.clone(),
+                        b_shape,
+                        self.a_trans,
+                        self.b_trans,
+                        self.c_trans,
+                        &tract_linalg::ops().smmm,
+                    )?
+                } else {
+                    bail!(
+                        "Unsupported combination for MatMul (a: {:?}, b:{:?})",
+                        self.a.datum_type(),
+                        b.datum_type
+                    );
+                };
             return Ok(Some(patch));
         }
         Ok(None)
@@ -454,7 +488,7 @@ impl PulsedOp for MatMulUnary {
     pulsed_op_to_typed_op!();
 }
 
-fn new_mat_mul_unary_finite<T>(
+fn new_mat_mul_unary_finite<TA, TB, TC, TI>(
     model: &TypedModel,
     node: &TypedNode,
     a: Arc<Tensor>,
@@ -462,15 +496,18 @@ fn new_mat_mul_unary_finite<T>(
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
+    mmm: &impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
 ) -> TractResult<TypedModelPatch>
 where
-    T: Copy + Datum + Add + Mul + Zero + FloatLike,
-    f32: ::num_traits::AsPrimitive<T>,
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.tap_model(model, node.inputs[0])?;
-    let mut geo = Geo::<T>::new(a.shape(), b_shape, a_trans, b_trans, c_trans)?;
-    let a = a.to_array_view::<T>()?;
+    let mut geo = Geo::<TA, TB, TC, TI>::new(a.shape(), b_shape, a_trans, b_trans, c_trans, mmm)?;
+    let a = a.to_array_view::<TA>()?;
     let a = a.into_shape(&*geo.bc_a_shape)?;
     let packed_as = Array::from_shape_fn(&a.shape()[0..a.ndim() - 2], |a_prefix| {
         let mut a = a.view();
@@ -478,7 +515,7 @@ where
             a.index_axis_inplace(Axis(0), *x);
         }
         let mut pa = unsafe {
-            Tensor::uninitialized_aligned::<T>(
+            Tensor::uninitialized_aligned::<TA>(
                 &[geo.mm.a_pack().len()],
                 geo.mm.a_pack().alignment(),
             )

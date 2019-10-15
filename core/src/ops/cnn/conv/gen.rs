@@ -80,7 +80,7 @@ impl Conv {
         Ok(None)
     }
 
-    pub fn add_bias_t<T: FloatLike + std::ops::AddAssign>(
+    pub fn add_bias_t<T: Datum + std::ops::AddAssign>(
         &self,
         conv_result: &mut Tensor,
         bias: &Tensor,
@@ -115,7 +115,7 @@ impl StatelessOp for Conv {
         let mut result = unary.eval(tvec!(inputs[0].clone()))?;
         if let Some(bias) = inputs.get(2) {
             let mut result = result.remove(0).into_tensor();
-            dispatch_floatlike!(Self::add_bias_t(bias.datum_type())(self, &mut result, bias))?;
+            dispatch_numbers!(Self::add_bias_t(bias.datum_type())(self, &mut result, bias))?;
             Ok(tvec!(result.into_arc_tensor()))
         } else {
             Ok(result)
