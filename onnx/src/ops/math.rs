@@ -7,7 +7,6 @@ use tract_core::ops::binary::Nary;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Add", |_, _| Ok((Box::new(tractops::math::add::bin()), vec![])));
-    reg.insert("AddV2", |_, _| Ok((Box::new(tractops::math::add::bin()), vec![])));
     reg.insert("Sub", |_, _| Ok((Box::new(tractops::math::sub::bin()), vec![])));
     reg.insert("Mul", |_, _| Ok((Box::new(tractops::math::mul::bin()), vec![])));
     reg.insert("Div", |_, _| Ok((Box::new(tractops::math::div::bin()), vec![])));
