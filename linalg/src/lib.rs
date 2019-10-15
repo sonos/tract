@@ -31,7 +31,7 @@ pub use self::frame::vecmatmul;
 
 pub struct Ops {
     pub svmm: Box<dyn Fn(usize, usize) -> Box<dyn vecmatmul::VecMatMul<f32>> + Send + Sync>,
-    pub smmm: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<f32>> + Send + Sync>,
+    pub smmm: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<f32, f32, f32, f32>> + Send + Sync>,
     pub ssigmoid: Box<dyn Fn() -> Box<dyn sigmoid::Sigmoid<f32>> + Send + Sync>,
     pub stanh: Box<dyn Fn() -> Box<dyn tanh::Tanh<f32>> + Send + Sync>,
 }
@@ -42,7 +42,7 @@ pub fn generic() -> Ops {
             Box::new(vecmatmul::PackedVecMatMul::<generic::SVecMatMul8, f32>::new(k, n))
         }),
         smmm: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<generic::SMmm4x4, f32>::new(m, k, n))
+            Box::new(mmm::MatMatMulImpl::<generic::SMmm4x4, f32, f32, f32, f32>::new(m, k, n))
         }),
         ssigmoid: Box::new(|| Box::new(sigmoid::SigmoidImpl::<generic::SSigmoid4, f32>::new())),
         stanh: Box::new(|| Box::new(tanh::TanhImpl::<generic::STanh4, f32>::new())),
@@ -56,7 +56,7 @@ pub fn best() -> Ops {
     {
         if is_x86_feature_detected!("fma") {
             ops.smmm = Box::new(|m, k, n| {
-                Box::new(mmm::MatMatMulImpl::<x86_64_fma::mmm::SMatMatMul16x6, f32>::new(m, k, n))
+                Box::new(mmm::MatMatMulImpl::<x86_64_fma::mmm::SMatMatMul16x6, f32, f32, f32, f32>::new(m, k, n))
             });
             log::info!("x86_64/fma activated");
         }

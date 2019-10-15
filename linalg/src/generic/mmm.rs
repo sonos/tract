@@ -5,7 +5,7 @@ use crate::frame::mmm::*;
 #[derive(Copy, Clone, Debug)]
 pub struct SMmm4x4;
 
-impl MatMatMulKer<f32> for SMmm4x4 {
+impl MatMatMulKer<f32, f32, f32, f32> for SMmm4x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "generic"
@@ -27,7 +27,7 @@ impl MatMatMulKer<f32> for SMmm4x4 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
         unsafe {
             let mut ab = [[0.0f32; 4]; 4];
             match (*spec.a, *spec.b, *spec.linear) {
@@ -217,7 +217,7 @@ impl MatMatMulKer<f32> for SMmm4x4 {
 pub struct SMmmTest3x2;
 
 #[cfg(test)]
-impl MatMatMulKer<f32> for SMmmTest3x2 {
+impl MatMatMulKer<f32, f32, f32, f32> for SMmmTest3x2 {
     #[inline(always)]
     fn name() -> &'static str {
         "generic-test-3x2"
@@ -239,7 +239,7 @@ impl MatMatMulKer<f32> for SMmmTest3x2 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
         unsafe {
             let mut ab = [[0.0f32; 2]; 3];
             match (*spec.a, *spec.b, *spec.linear) {
@@ -374,12 +374,12 @@ impl MatMatMulKer<f32> for SMmmTest3x2 {
 
 #[cfg(test)]
 mod test_3_2 {
-    mmm_kernel_tests!(true, crate::generic::mmm::SMmmTest3x2, f32);
-    mmm_frame_tests!(true, crate::generic::mmm::SMmmTest3x2);
+    mmm_kernel_tests!(true, crate::generic::mmm::SMmmTest3x2, f32, f32, f32, f32);
+    mmm_frame_tests!(true, crate::generic::mmm::SMmmTest3x2, f32, f32, f32, f32);
 }
 
 #[cfg(test)]
 mod test {
-    mmm_kernel_tests!(true, crate::generic::SMmm4x4, f32);
-    mmm_frame_tests!(true, crate::generic::SMmm4x4);
+    mmm_kernel_tests!(true, crate::generic::SMmm4x4, f32, f32, f32, f32);
+    mmm_frame_tests!(true, crate::generic::SMmm4x4, f32, f32, f32, f32);
 }

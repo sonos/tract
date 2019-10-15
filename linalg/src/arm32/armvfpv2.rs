@@ -2,13 +2,13 @@ use crate::frame::mmm::*;
 
 extern "C" {
     #[no_mangle]
-    fn armvfpv2_smmm_4x4(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn armvfpv2_smmm_4x4(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct SMatMatMul4x4;
 
-impl MatMatMulKer<f32> for SMatMatMul4x4 {
+impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul4x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "vfpv2"
@@ -28,13 +28,13 @@ impl MatMatMulKer<f32> for SMatMatMul4x4 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
         unsafe { armvfpv2_smmm_4x4(spec) }
     }
 }
 
 #[cfg(test)]
 mod test {
-    mmm_kernel_tests!(true, crate::arm32::armvfpv2::SMatMatMul4x4, f32);
-    mmm_frame_tests!(true, crate::arm32::armvfpv2::SMatMatMul4x4);
+    mmm_kernel_tests!(true, crate::arm32::armvfpv2::SMatMatMul4x4, f32, f32, f32, f32);
+    mmm_frame_tests!(true, crate::arm32::armvfpv2::SMatMatMul4x4, f32, f32, f32, f32);
 }

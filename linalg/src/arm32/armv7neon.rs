@@ -4,7 +4,7 @@ use crate::frame::tanh::*;
 
 extern "C" {
     #[no_mangle]
-    fn armv7neon_smmm_8x4(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn armv7neon_smmm_8x4(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
     #[no_mangle]
     fn armv7neon_ssigmoid_4(ptr: *mut f32, count: usize);
     #[no_mangle]
@@ -14,7 +14,7 @@ extern "C" {
 #[derive(Copy, Clone, Debug)]
 pub struct SMatMatMul8x4;
 
-impl MatMatMulKer<f32> for SMatMatMul8x4 {
+impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul8x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "neon"
@@ -34,7 +34,7 @@ impl MatMatMulKer<f32> for SMatMatMul8x4 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
         unsafe { armv7neon_smmm_8x4(spec) }
     }
 }
@@ -85,8 +85,8 @@ impl TanhKer<f32> for STanh4 {
 
 #[cfg(test)]
 mod test {
-    mmm_kernel_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SMatMatMul8x4, f32);
-    mmm_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SMatMatMul8x4);
+    mmm_kernel_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SMatMatMul8x4, f32, f32, f32, f32);
+    mmm_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SMatMatMul8x4, f32, f32, f32, f32);
     sigmoid_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SSigmoid4);
     tanh_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::STanh4);
 }
