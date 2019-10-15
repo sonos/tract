@@ -1,13 +1,8 @@
-use num_traits::Zero;
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::{Add, Mul};
 
 #[derive(PartialEq, Clone)]
-pub enum FusedSpec<TI>
-where
-    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-{
+pub enum FusedSpec<TI: Copy + Debug> {
     Min(TI),
     Max(TI),
     AddC,
@@ -17,10 +12,7 @@ where
     PerColAdd(Vec<TI>),
 }
 
-impl<TI> Debug for FusedSpec<TI>
-where
-    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-{
+impl<TI: Copy + Debug> Debug for FusedSpec<TI> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             FusedSpec::Min(t) => write!(fmt, "Min({:?})", t),
@@ -36,10 +28,7 @@ where
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum FusedKerSpec<TI>
-where
-    TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Send + Sync,
-{
+pub enum FusedKerSpec<TI: Copy> {
     Done,
     Min(TI),
     Max(TI),

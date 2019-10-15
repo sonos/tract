@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PackA<T: Copy + Zero + Debug + PartialEq> {
+pub struct PackA<T: Copy + Zero> {
     k: usize,
     m: usize,
     mr: usize,
@@ -11,7 +11,7 @@ pub struct PackA<T: Copy + Zero + Debug + PartialEq> {
     _boo: PhantomData<T>,
 }
 
-impl<T: Copy + Zero + Debug + PartialEq> PackA<T> {
+impl<T: Copy + Zero + Debug> PackA<T> {
     pub fn new(k: usize, m: usize, mr: usize, alignment: usize) -> PackA<T> {
         PackA { k, m, mr, alignment, _boo: PhantomData }
     }
@@ -63,7 +63,6 @@ impl<T: Copy + Zero + Debug + PartialEq> PackA<T> {
                     self.m % mr,
                 )
             }
-            assert_eq!(*pa, *a);
         }
     }
 }
