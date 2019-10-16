@@ -86,6 +86,7 @@ impl TypedOp for RmDims {
             while let Some(prec) = model.single_prec(current.id)? {
                 if let Some(add_dims) = prec.op_as::<super::AddDims>() {
                     if add_dims.axes.contains(&axis) {
+                        debug!("Discarding axis: from {} (axis:{}) to {} axis({})", prec, axis, node, rm_axis);
                         let mut patch = TypedModelPatch::default();
                         let mut wire: OutletId = patch.tap_model(model, prec.inputs[0])?.into();
                         if add_dims.axes.len() > 1 {
@@ -97,7 +98,8 @@ impl TypedOp for RmDims {
                         while next.id != node.id {
                             let op = next
                                 .op
-                                .dispose_dummy_axis(model, next, axis)?
+                                .dispose_dummy_axis(model, next, axis)
+                                .chain_err(|| format!("Disposing of axis {} in {}", axis, next))?
                                 .unwrap_or_else(|| next.op.clone());
                             wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
                             axis = next

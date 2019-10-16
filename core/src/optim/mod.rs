@@ -8,6 +8,8 @@ mod push_split_down;
 use self::prop_const::PropConst;
 use self::push_split_down::PushSplitDown;
 
+use crate::errors::TractResultExt;
+
 pub trait IncorporatePass: Debug + Send + Sync {
     fn pass(&self, model: &mut InferenceModel) -> TractResult<bool>;
 }
@@ -21,7 +23,7 @@ pub fn incorporate() -> Vec<Box<dyn IncorporatePass>> {
 }
 
 pub fn declutter() -> Vec<Box<dyn TypedPass>> {
-    vec![Box::new(PropConst) as _, Box::new(NormalizeOps), Box::new(PushSplitDown)]
+    vec![Box::new(PropConst) as _, Box::new(DeclutterOps), Box::new(PushSplitDown)]
 }
 
 pub fn codegen() -> Vec<Box<dyn TypedPass>> {
@@ -42,7 +44,7 @@ impl IncorporatePass for IncorporateOps {
                     debug!("Incorporate {}", node);
                     node.op
                         .incorporate(model, node)
-                        .map_err(|e| format!("{:?} node {}, {:?}", self, node, e))?
+                        .chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
                     {
@@ -66,9 +68,9 @@ impl IncorporatePass for IncorporateOps {
 }
 
 #[derive(Debug)]
-pub struct NormalizeOps;
+pub struct DeclutterOps;
 
-impl TypedPass for NormalizeOps {
+impl TypedPass for DeclutterOps {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut done_something = false;
         loop {
@@ -79,7 +81,7 @@ impl TypedPass for NormalizeOps {
                     debug!("Decluttering {}", node);
                     node.op
                         .declutter(model, node)
-                        .map_err(|e| format!("{:?} node {}, {:?}", self, node, e))?
+                        .chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
                     {
@@ -116,7 +118,7 @@ impl TypedPass for CodegenOps {
                     debug!("Codegen {}", node);
                     node.op
                         .codegen(model, node)
-                        .map_err(|e| format!("{:?} node {}, {:?}", self, node, e))?
+                        .chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
                     {
@@ -153,7 +155,7 @@ impl TypedPass for FuseOps {
                     debug!("Fuse {}", node);
                     node.op
                         .fuse(model, node)
-                        .map_err(|e| format!("{:?} node {}, {:?}", self, node, e))?
+                        .chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
                     {

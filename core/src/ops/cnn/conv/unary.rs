@@ -351,14 +351,14 @@ impl TypedOp for ConvUnary {
         if geo_axis >= shape.hw_rank() {
             bail!("Only spatial axis can be disposed of.");
         }
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         if self.pool_spec.dilation(geo_axis) != 1
             || self.pool_spec.stride(geo_axis) != 1
-            || !self.pool_spec.padding.valid_dim(geo_axis)
+            || (!self.pool_spec.padding.valid_dim(geo_axis) && kernel_spatial_shape[geo_axis] != 1)
         {
             bail!("Can not dispose of axis with dilation, stride or padding.");
         }
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         if kernel_spatial_shape[geo_axis] != 1 {
             bail!("Can not dispose of axis with actual convolution.");
         }
