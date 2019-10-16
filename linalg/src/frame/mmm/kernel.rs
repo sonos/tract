@@ -14,15 +14,21 @@ where
     pub a: &'a PanelStore<TA>,
     pub b: &'a PanelStore<TB>,
     pub c: &'a PanelStore<TC>,
-    pub linear: &'a LinearSpec,
+    pub linear: &'a LinearSpec<TI>,
     pub non_linear: *const FusedKerSpec<TI>,
 }
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum LinearSpec {
-    Mul { k: usize },
+pub enum LinearSpec<TI> {
+    Mul { k: usize, zero_point_a: *const TI, zero_point_b: *const TI },
     Noop,
+}
+
+impl<TI> LinearSpec<TI> {
+    pub fn k(k: usize) -> LinearSpec<TI> {
+        LinearSpec::Mul { k, zero_point_a: std::ptr::null(), zero_point_b: std::ptr::null() }
+    }
 }
 
 pub trait MatMatMulKer<TA, TB, TC, TI>: Copy + Clone + Debug + Send + Sync
@@ -198,7 +204,7 @@ pub mod test {
             a: &null_packed_storage(),
             b: &null_packed_storage(),
             c: &mut c,
-            linear: &LinearSpec::Mul { k: 0 },
+            linear: &LinearSpec::k(0),
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
@@ -221,7 +227,7 @@ pub mod test {
             a: &null_packed_storage(),
             b: &null_packed_storage(),
             c: &mut c,
-            linear: &LinearSpec::Mul { k: 0 },
+            linear: &LinearSpec::k(0),
             non_linear: &[FusedKerSpec::AddC, FusedKerSpec::Done] as _,
         });
         assert_eq!(err, 0);
@@ -245,7 +251,7 @@ pub mod test {
             a: &null_packed_storage(),
             b: &null_packed_storage(),
             c: &mut c,
-            linear: &LinearSpec::Mul { k: 0 },
+            linear: &LinearSpec::k(0),
             non_linear: &[
                 FusedKerSpec::AddC,
                 FusedKerSpec::PerRowMul(bias.as_ptr()),
@@ -277,7 +283,7 @@ pub mod test {
             a: &null_packed_storage(),
             b: &null_packed_storage(),
             c: &mut c,
-            linear: &LinearSpec::Mul { k: 0 },
+            linear: &LinearSpec::k(0),
             non_linear: &[
                 FusedKerSpec::AddC,
                 FusedKerSpec::PerRowAdd(bias.as_ptr()),
@@ -310,7 +316,7 @@ pub mod test {
             a: &PanelStore::Packed { ptr: pa.as_ptr() },
             b: &PanelStore::Packed { ptr: pb.as_ptr() },
             c: &mut c,
-            linear: &LinearSpec::Mul { k },
+            linear: &LinearSpec::k(k),
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
@@ -342,7 +348,7 @@ pub mod test {
                 row_byte_offsets: row_byte_offsets.as_ptr(),
             },
             c: &mut c,
-            linear: &LinearSpec::Mul { k },
+            linear: &LinearSpec::k(k),
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
@@ -378,7 +384,7 @@ pub mod test {
                 ptr: c.as_ptr(),
                 byte_stride: std::mem::size_of::<TC>() as isize,
             },
-            linear: &LinearSpec::Mul { k },
+            linear: &LinearSpec::k(k),
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);

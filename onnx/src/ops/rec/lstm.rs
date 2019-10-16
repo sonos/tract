@@ -346,8 +346,8 @@ impl InferenceRulesOp for LSTM {
         };
 
         // it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
-        wire!(Xt_WiT = math::MatMul::new(false, true, false), Xt, Wi);
-        wire!(Ht_1_RiT = math::MatMul::new(false, true, false), Ht_1, Ri);
+        wire!(Xt_WiT = math::MatMul::default().with_b_trans(true), Xt, Wi);
+        wire!(Ht_1_RiT = math::MatMul::default().with_b_trans(true), Ht_1, Ri);
         wire!(it0 = math::add::bin(), Xt_WiT, Ht_1_RiT);
         let mut it0 = it0;
         if let Some(biases) = biases {
@@ -362,8 +362,8 @@ impl InferenceRulesOp for LSTM {
         wire!(it = self.f.clone(), it0);
 
         // ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
-        wire!(Xt_WfT = math::MatMul::new(false, true, false), Xt, Wf);
-        wire!(Ht_1_RfT = math::MatMul::new(false, true, false), Ht_1, Rf);
+        wire!(Xt_WfT = math::MatMul::default().with_b_trans(true), Xt, Wf);
+        wire!(Ht_1_RfT = math::MatMul::default().with_b_trans(true), Ht_1, Rf);
         wire!(ft0 = math::add::bin(), Xt_WfT, Ht_1_RfT);
         let mut ft0 = ft0;
         if let Some(biases) = biases {
@@ -378,8 +378,8 @@ impl InferenceRulesOp for LSTM {
         wire!(ft = self.f.clone(), ft0);
 
         // ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
-        wire!(Xt_WcT = math::MatMul::new(false, true, false), Xt, Wc);
-        wire!(Ht_1_RcT = math::MatMul::new(false, true, false), Ht_1, Rc);
+        wire!(Xt_WcT = math::MatMul::default().with_b_trans(true), Xt, Wc);
+        wire!(Ht_1_RcT = math::MatMul::default().with_b_trans(true), Ht_1, Rc);
         wire!(ct0 = math::add::bin(), Xt_WcT, Ht_1_RcT);
         let mut ct0 = ct0;
         if let Some(biases) = biases {
@@ -394,8 +394,8 @@ impl InferenceRulesOp for LSTM {
         wire!(Ct = math::add::bin(), ft_Ct_1, it_ct);
 
         // ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
-        wire!(Xt_WoT = math::MatMul::new(false, true, false), Xt, Wo);
-        wire!(Ht_1_RoT = math::MatMul::new(false, true, false), Ht_1, Ro);
+        wire!(Xt_WoT = math::MatMul::default().with_b_trans(true), Xt, Wo);
+        wire!(Ht_1_RoT = math::MatMul::default().with_b_trans(true), Ht_1, Ro);
         wire!(ot0 = math::add::bin(), Xt_WoT, Ht_1_RoT);
         let mut ot0 = ot0;
         if let Some(biases) = biases {
