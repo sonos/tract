@@ -14,9 +14,42 @@ fn eval(
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
+    zero_point_a: Option<&Tensor>,
+    zero_point_b: Option<&Tensor>,
 ) -> TractResult<TVec<Arc<Tensor>>> {
     let c = if (a.datum_type(), b.datum_type()) == (f32::datum_type(), f32::datum_type()) {
-        eval_t(a, b, a_trans, b_trans, c_trans, &tract_linalg::ops().smmm)?
+        eval_t(
+            a,
+            b,
+            a_trans,
+            b_trans,
+            c_trans,
+            zero_point_a,
+            zero_point_b,
+            &tract_linalg::ops().smmm,
+        )?
+    } else if (a.datum_type(), b.datum_type()) == (i8::datum_type(), i8::datum_type()) {
+        eval_t(
+            a,
+            b,
+            a_trans,
+            b_trans,
+            c_trans,
+            zero_point_a,
+            zero_point_b,
+            &tract_linalg::ops().mmm_i8_i32,
+        )?
+    } else if (a.datum_type(), b.datum_type()) == (u8::datum_type(), u8::datum_type()) {
+        eval_t(
+            a,
+            b,
+            a_trans,
+            b_trans,
+            c_trans,
+            zero_point_a,
+            zero_point_b,
+            &tract_linalg::ops().mmm_u8_i32,
+        )?
     } else {
         bail!(
             "Unsupported combination for MatMul (a: {:?}, b:{:?})",
@@ -33,6 +66,8 @@ fn eval_t<TA, TB, TC, TI>(
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
+    zero_point_a: Option<&Tensor>,
+    zero_point_b: Option<&Tensor>,
     mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
 ) -> TractResult<Tensor>
 where
@@ -49,6 +84,22 @@ where
             if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
             if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
         );
+        if let Some(ref t) = zero_point_a {
+            let t = t.cast_to::<TI>()?;
+            if t.rank() == 0 {
+                geo.mm.set_zero_point_a_scalar(*t.to_scalar()?)
+            } else {
+                geo.mm.set_zero_point_a_vector(t.as_slice()?.to_vec())
+            }
+        }
+        if let Some(ref t) = zero_point_b {
+            let t = t.cast_to::<TI>()?;
+            if t.rank() == 0 {
+                geo.mm.set_zero_point_b_scalar(*t.to_scalar()?)
+            } else {
+                geo.mm.set_zero_point_b_vector(t.as_slice()?.to_vec())
+            }
+        }
     }
     let a = a.into_shape(&*geo.bc_a_shape)?;
     let b = b.into_shape(&*geo.bc_b_shape)?;
@@ -87,13 +138,13 @@ where
             b.strides()[prefix.ndim() + !b_trans as usize],
         );
         unsafe {
-            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), &[]);
+            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr());
         }
     }
     Ok(c.into_tensor())
 }
 
-fn infer_shapes<D: DimLike>(
+pub fn infer_shapes<D: DimLike>(
     mut ashape: TVec<D>,
     mut bshape: TVec<D>,
     a_trans: bool,
@@ -235,11 +286,35 @@ where
     }
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct MatMul {
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
+    zero_point_a: Option<Arc<Tensor>>,
+    zero_point_b: Option<Arc<Tensor>>,
+}
+
+impl MatMul {
+    pub fn with_a_trans(self, a_trans: bool) -> MatMul {
+        MatMul { a_trans, ..self }
+    }
+
+    pub fn with_b_trans(self, b_trans: bool) -> MatMul {
+        MatMul { b_trans, ..self }
+    }
+
+    pub fn with_c_trans(self, c_trans: bool) -> MatMul {
+        MatMul { c_trans, ..self }
+    }
+
+    pub fn with_zero_point_a(self, zero_point: &Arc<Tensor>) -> MatMul {
+        MatMul { zero_point_a: Some(zero_point.clone()), ..self }
+    }
+
+    pub fn with_zero_point_b(self, zero_point: &Arc<Tensor>) -> MatMul {
+        MatMul { zero_point_b: Some(zero_point.clone()), ..self }
+    }
 }
 
 impl Op for MatMul {
@@ -253,7 +328,15 @@ impl Op for MatMul {
 
 impl StatelessOp for MatMul {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        eval(&inputs[0], &inputs[1], self.a_trans, self.b_trans, self.c_trans)
+        eval(
+            &inputs[0],
+            &inputs[1],
+            self.a_trans,
+            self.b_trans,
+            self.c_trans,
+            self.zero_point_a.as_ref().map(|t| t.as_ref()),
+            self.zero_point_b.as_ref().map(|t| t.as_ref()),
+        )
     }
 }
 
@@ -317,7 +400,14 @@ impl TypedOp for MatMul {
             model,
             node,
             &node.inputs[var_ix..][..1],
-            MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip),
+            MatMulUnary::new(
+                konst,
+                t_konst,
+                t_var,
+                self.c_trans ^ flip,
+                self.zero_point_a.clone(),
+                self.zero_point_b.clone(),
+            ),
         )?;
         return Ok(Some(patch));
     }
@@ -341,6 +431,8 @@ pub struct MatMulUnary {
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
+    zero_point_a: Option<Arc<Tensor>>,
+    zero_point_b: Option<Arc<Tensor>>,
 }
 
 impl Op for MatMulUnary {
@@ -365,7 +457,15 @@ impl Op for MatMulUnary {
 
 impl StatelessOp for MatMulUnary {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        eval(&self.a, &inputs[0], self.a_trans, self.b_trans, self.c_trans)
+        eval(
+            &self.a,
+            &inputs[0],
+            self.a_trans,
+            self.b_trans,
+            self.c_trans,
+            self.zero_point_a.as_ref().map(|t| t.as_ref()),
+            self.zero_point_b.as_ref().map(|t| t.as_ref()),
+        )
     }
 }
 
@@ -450,6 +550,8 @@ impl TypedOp for MatMulUnary {
                         self.a_trans,
                         self.b_trans,
                         self.c_trans,
+                        self.zero_point_a.as_ref().map(|t| t.as_ref()),
+                        self.zero_point_b.as_ref().map(|t| t.as_ref()),
                         &tract_linalg::ops().smmm,
                     )?
                 } else {
@@ -496,6 +598,8 @@ fn new_mat_mul_unary_finite<TA, TB, TC, TI>(
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
+    zero_point_a: Option<&Tensor>,
+    zero_point_b: Option<&Tensor>,
     mmm: &impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
 ) -> TractResult<TypedModelPatch>
 where
@@ -547,6 +651,22 @@ where
                 if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
             );
         };
+        if let Some(ref t) = zero_point_a {
+            let t = t.cast_to::<TI>()?;
+            if t.rank() == 0 {
+                geo.mm.set_zero_point_a_scalar(*t.to_scalar()?)
+            } else {
+                geo.mm.set_zero_point_a_vector(t.as_slice()?.to_vec())
+            }
+        }
+        if let Some(ref t) = zero_point_b {
+            let t = t.cast_to::<TI>()?;
+            if t.rank() == 0 {
+                geo.mm.set_zero_point_b_scalar(*t.to_scalar()?)
+            } else {
+                geo.mm.set_zero_point_b_vector(t.as_slice()?.to_vec())
+            }
+        }
     }
     if geo.n > 1 {
         let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
@@ -588,7 +708,6 @@ where
             c_prefix_dim_and_stride,
             packed_as,
             mmm: geo.mm,
-            non_linear: vec![],
         },
         &[wire],
     )?[0];
@@ -626,7 +745,7 @@ mod test {
         let a = rctensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
         let b = rctensor2(&[[0f32], [1.0], [2.0]]);
         let c = rctensor2(&[[5f32], [14.0]]);
-        let op = MatMul::new(false, false, false);
+        let op = MatMul::default();
         let c_found = op.eval(tvec!(a, b)).unwrap().pop().unwrap();
         c.close_enough(&c_found, true).unwrap();
     }
@@ -636,7 +755,7 @@ mod test {
         let a = rctensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
         let b = rctensor2(&[[0f32], [1.0], [2.0]]);
         let c = rctensor2(&[[5f32], [14.0]]);
-        let op = MatMul::new(true, true, true);
+        let op = MatMul::default().with_a_trans(true).with_b_trans(true).with_c_trans(true);
         let c_found = op.eval(tvec!(b, a)).unwrap().pop().unwrap();
         c.close_enough(&c_found, true).unwrap();
     }

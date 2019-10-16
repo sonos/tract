@@ -243,8 +243,8 @@ impl InferenceRulesOp for RNN {
         };
 
         // Ht = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
-        wire!(Xt_WiT = math::MatMul::new(false, true, false), Xt, W);
-        wire!(Ht_1_RiT = math::MatMul::new(false, true, false), Ht_1, R);
+        wire!(Xt_WiT = math::MatMul::default().with_b_trans(true), Xt, W);
+        wire!(Ht_1_RiT = math::MatMul::default().with_b_trans(true), Ht_1, R);
 
         wire!(ht0 = math::add::bin(), Xt_WiT, Ht_1_RiT);
         let mut ht0 = ht0;

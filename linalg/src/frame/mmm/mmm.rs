@@ -1,7 +1,7 @@
-use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul};
+use std::{fmt, ptr};
 
 use num_traits::Zero;
 
@@ -9,18 +9,18 @@ use crate::frame::{PackA, PackB};
 
 use super::*;
 
-struct ScratchSpace<TI: Copy> {
+struct ScratchSpaceFusedNonLinear<TI: Copy> {
     uspecs: Vec<FusedKerSpec<TI>>,
     non_linear_buffers: Vec<Vec<TI>>,
 }
 
-impl<TI: Copy> Default for ScratchSpace<TI> {
-    fn default() -> ScratchSpace<TI> {
-        ScratchSpace { uspecs: vec![], non_linear_buffers: vec![] }
+impl<TI: Copy> Default for ScratchSpaceFusedNonLinear<TI> {
+    fn default() -> ScratchSpaceFusedNonLinear<TI> {
+        ScratchSpaceFusedNonLinear { uspecs: vec![], non_linear_buffers: vec![] }
     }
 }
 
-impl<TI: Copy> ScratchSpace<TI> {
+impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     unsafe fn non_linear<TA, TB, TC, K: MatMatMulKer<TA, TB, TC, TI>>(
         &mut self,
         specs: &[FusedSpec<TI>],
@@ -127,7 +127,15 @@ where
     unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize);
     unsafe fn c_vec_from_data(&mut self);
 
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]);
+    unsafe fn set_non_linear_specs(&mut self, fused: &[FusedSpec<TI>]);
+    unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI>>;
+
+    unsafe fn set_zero_point_a_scalar(&mut self, value: TI);
+    unsafe fn set_zero_point_a_vector(&mut self, values: Vec<TI>);
+    unsafe fn set_zero_point_b_scalar(&mut self, value: TI);
+    unsafe fn set_zero_point_b_vector(&mut self, values: Vec<TI>);
+
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC);
 }
 
 clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
@@ -149,9 +157,15 @@ where
     pub m: usize,
     pub k: usize,
     pub n: usize,
+
     pub a_storage: MatrixStoreSpec,
     pub b_storage: MatrixStoreSpec,
     pub c_storage: MatrixStoreSpec,
+    pub zero_point_a: Option<Vec<TI>>,
+    pub zero_point_b: Option<Vec<TI>>,
+
+    pub non_linear_specs: Vec<FusedSpec<TI>>,
+
     phantom: PhantomData<(K, TA, TB, TC, TI)>,
 }
 
@@ -196,7 +210,26 @@ where
                 mr: K::mr(),
                 nr: K::nr(),
             },
+            zero_point_a: None,
+            zero_point_b: None,
+            non_linear_specs: vec![],
             phantom: PhantomData,
+        }
+    }
+
+    fn linear_arg(&self, ia: usize, ib: usize) -> LinearSpec<TI> {
+        unsafe {
+            let zero_point_a = if let Some(ref v) = self.zero_point_a {
+                v.as_ptr().offset((ia * K::mr()) as isize)
+            } else {
+                ptr::null()
+            };
+            let zero_point_b = if let Some(ref v) = self.zero_point_b {
+                v.as_ptr().offset((ib * K::mr()) as isize)
+            } else {
+                ptr::null()
+            };
+            LinearSpec::Mul { k: self.k, zero_point_a, zero_point_b }
         }
     }
 }
@@ -297,13 +330,45 @@ where
         self.c_vec_from_data_and_stride(1)
     }
 
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]) {
+    unsafe fn set_non_linear_specs(&mut self, fused: &[FusedSpec<TI>]) {
+        self.non_linear_specs = fused.to_vec()
+    }
+
+    unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI>> {
+        &mut self.non_linear_specs
+    }
+
+    unsafe fn set_zero_point_a_scalar(&mut self, value: TI) {
+        self.zero_point_a = Some(vec!(value; self.m() + K::mr() - 1 / K::mr() * K::mr()))
+    }
+
+    unsafe fn set_zero_point_b_scalar(&mut self, value: TI) {
+        self.zero_point_b = Some(vec!(value; self.n() + K::nr() - 1 / K::nr() * K::nr()))
+    }
+
+    unsafe fn set_zero_point_a_vector(&mut self, mut values: Vec<TI>) {
+        let wanted = self.m() + K::mr() - 1 / K::mr() * K::mr();
+        while values.len() < wanted {
+            values.push(values[values.len() - 1])
+        }
+        self.zero_point_a = Some(values)
+    }
+
+    unsafe fn set_zero_point_b_vector(&mut self, mut values: Vec<TI>) {
+        let wanted = self.n() + K::nr() - 1 / K::nr() * K::nr();
+        while values.len() < wanted {
+            values.push(values[values.len() - 1])
+        }
+        self.zero_point_b = Some(values)
+    }
+
+
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
-        let k = self.k;
         let n = self.n;
-        let mut scratch = ScratchSpace::default();
+        let mut scratch = ScratchSpaceFusedNonLinear::default();
         let mut tmpc = Vec::with_capacity(mr * nr);
         tmpc.set_len(mr * nr);
         let tmp_c_storage = MatrixStoreSpec::Strides {
@@ -313,7 +378,6 @@ where
             nr,
         };
         let ref mut tmp_tile = tmp_c_storage.wrap(tmpc.as_ptr());
-        let ref linear = LinearSpec::Mul { k };
         let a = self.a_storage.wrap(a);
         let b = self.b_storage.wrap(b);
         let mut c = self.c_storage.wrap(c);
@@ -322,7 +386,9 @@ where
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
                 let ref direct_c = c.tile_c(ia, ib);
-                let non_linear = scratch.non_linear::<TA, TB, TC, K>(non_linear, ia, ib);
+                let ref linear = self.linear_arg(ia, ib);
+                let non_linear =
+                    scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -335,7 +401,9 @@ where
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
-                let non_linear = scratch.non_linear::<TA, TB, TC, K>(non_linear, ia, n / nr);
+                let ref linear = self.linear_arg(ia, n / nr);
+                let non_linear =
+                    scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -352,7 +420,9 @@ where
             let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
-                let non_linear = scratch.non_linear::<TA, TB, TC, K>(non_linear, m / mr, ib);
+                let ref linear = self.linear_arg(m / mr, ib);
+                let non_linear =
+                    scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -365,7 +435,9 @@ where
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
-                let non_linear = scratch.non_linear::<TA, TB, TC, K>(non_linear, m / mr, n / nr);
+                let non_linear =
+                    scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, m / mr, n / nr);
+                let ref linear = self.linear_arg(m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -598,7 +670,7 @@ pub mod test {
 
             let mut found = vec![TC::max_value(); m * n];
 
-            op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), &[]);
+            op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr());
 
             let mut expected = vec![TC::zero(); m * n];
             for x in 0..n {
@@ -638,7 +710,7 @@ pub mod test {
 
             let mut found = vec![9999.0f32; m];
 
-            op.run(packed_a.as_ptr(), b.as_ptr(), found.as_mut_ptr(), &[]);
+            op.run(packed_a.as_ptr(), b.as_ptr(), found.as_mut_ptr());
 
             let mut expected = vec![0.0f32; m];
             for y in 0..m {
@@ -666,7 +738,7 @@ pub mod test {
     ) -> proptest::test_runner::TestCaseResult {
         let a = vec![1.0f32; m * k];
         let b = vec![1.0f32; n * k];
-        let op = MatMatMulImpl::<K, f32, f32, f32, f32>::new(m, k, n);
+        let mut op = MatMatMulImpl::<K, f32, f32, f32, f32>::new(m, k, n);
 
         let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
         op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
@@ -674,9 +746,11 @@ pub mod test {
         let mut packed_b = Buffer::uninitialized(op.b_pack().len(), op.b_pack().alignment());
         op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
+        op.set_non_linear_specs(spec);
+
         let mut found = vec![9999.0f32; m * n];
 
-        op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), spec);
+        op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr());
 
         let mut expected = vec![0.0f32; m * n];
         for x in 0..n {
@@ -866,7 +940,7 @@ pub mod test {
                 );
 
                 let mut found: Vec<TC> = vec![TC::max_value(); self.co * self.output_width()];
-                op.run(packed_a.as_ptr(), self.data.as_ptr(), found.as_mut_ptr(), &[]);
+                op.run(packed_a.as_ptr(), self.data.as_ptr(), found.as_mut_ptr());
                 found
             }
         }

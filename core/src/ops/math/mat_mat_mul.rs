@@ -84,7 +84,6 @@ where
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
     pub(crate) mmm: Box<dyn MatMatMul<TA, TB, TC, TI>>,
-    pub(crate) non_linear: Vec<FusedSpec<TI>>,
 }
 
 impl<TA, TB, TC, TI> Op for MatMatMulUnaryFinite<TA, TB, TC, TI>
@@ -107,9 +106,6 @@ where
             self.mmm.n(),
         )];
         infos.push(format!("{}", self.mmm));
-        if self.non_linear.len() > 0 {
-            infos.push(format!("{:?}", self.non_linear))
-        }
         Ok(infos)
     }
 
@@ -152,13 +148,9 @@ where
                 Ok(None)
             })()?;
             if let Some(op) = fused_micro_op {
-                let mut ops = self.non_linear.clone();
-                ops.extend(op.into_iter());
-                return Ok(Some(TypedModelPatch::fuse_with_next(
-                    model,
-                    &node,
-                    Self { non_linear: ops, ..self.clone() },
-                )?));
+                let mut new_op = self.clone();
+                unsafe { new_op.mmm.non_linear_specs_mut().extend(op.into_iter()); }
+                return Ok(Some(TypedModelPatch::fuse_with_next(model, &node,  new_op)?))
             }
         }
         Ok(None)
@@ -194,14 +186,13 @@ where
                         c = c.offset(prefix_strides[ix] * dim as isize);
                     }
                     let pa: &Tensor = a.iter().next().unwrap();
-                    self.mmm.run(pa.as_ptr()?, b.as_ptr(), c, &self.non_linear);
+                    self.mmm.run(pa.as_ptr()?, b.as_ptr(), c);
                 }
             } else {
                 self.mmm.run(
                     self.packed_as.as_slice().unwrap()[0].as_ptr()?,
                     b.as_ptr()?,
                     c.as_ptr_mut()?,
-                    &self.non_linear,
                 );
             }
             Ok(tvec!(c.into_arc_tensor()))

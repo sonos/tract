@@ -29,6 +29,9 @@ pub struct ConvUnary {
     pub kernel: Arc<Tensor>,
 
     pub group: usize,
+
+    pub zero_point_a: Option<Arc<Tensor>>,
+    pub zero_point_b: Option<Arc<Tensor>>,
 }
 
 impl ConvUnary {
@@ -53,6 +56,8 @@ impl ConvUnary {
             kernel_fmt: conv.kernel_fmt,
             kernel,
             group,
+            zero_point_a: None,
+            zero_point_b: None,
         };
         Ok(unary)
     }
@@ -220,7 +225,6 @@ impl ConvUnary {
                 c_prefix_dim_and_stride,
                 packed_as: self.kernel_as_packed_as(&mmm.a_pack())?,
                 mmm,
-                non_linear: vec![],
             },
             &[wire],
         )?[0];
@@ -395,6 +399,8 @@ impl TypedOp for ConvUnary {
             kernel_fmt: self.kernel_fmt,
             kernel: kernel.into_arc_tensor(),
             group: self.group,
+            zero_point_a: self.zero_point_a.clone(),
+            zero_point_b: self.zero_point_b.clone(),
         };
         Ok(Some(Box::new(new_op)))
     }
@@ -449,7 +455,14 @@ impl TypedOp for ConvUnary {
                         let kernel = self.kernel.as_ref().clone().into_shape(&kernel_shape)?;
                         wire = patch.wire_node(
                             &*node.name,
-                            MatMulUnary::new(kernel.into_arc_tensor(), true, true, true),
+                            MatMulUnary::new(
+                                kernel.into_arc_tensor(),
+                                true,
+                                true,
+                                true,
+                                self.zero_point_a.clone(),
+                                self.zero_point_b.clone(),
+                            ),
                             &[wire],
                         )?[0];
                         wire = patch.wire_node(
