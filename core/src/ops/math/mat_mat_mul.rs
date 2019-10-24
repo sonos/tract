@@ -5,7 +5,8 @@ use std::ops::{Add, Mul};
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::mmm::{FusedSpec, MatMatMul};
+use tract_linalg::mmm::FusedSpec;
+use super::mat_mul::MMMWrapper;
 
 use tract_linalg::frame::PackB;
 
@@ -83,7 +84,7 @@ where
     pub(crate) c_shape: TVec<usize>,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
-    pub(crate) mmm: Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    pub(crate) mmm: MMMWrapper<TA, TB, TC, TI>,
 }
 
 impl<TA, TB, TC, TI> Op for MatMatMulUnaryFinite<TA, TB, TC, TI>
@@ -101,9 +102,9 @@ where
         let mut infos = vec![format!(
             "c_prefix: {:?} m:{} k:{} n:{}",
             self.c_prefix_dim_and_stride,
-            self.mmm.m(),
-            self.mmm.k(),
-            self.mmm.n(),
+            self.mmm.as_mmm().m(),
+            self.mmm.as_mmm().k(),
+            self.mmm.as_mmm().n(),
         )];
         infos.push(format!("{}", self.mmm));
         Ok(infos)
@@ -122,7 +123,7 @@ where
             }
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
                 if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                    if op.a.shape() == &[self.mmm.m()] {
+                    if op.a.shape() == &[self.mmm.as_mmm().m()] {
                         if op.mini_op.is::<ops::math::Mul>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowMul(
                                 op.a.as_slice::<TI>()?.to_vec(),
@@ -149,7 +150,7 @@ where
             })()?;
             if let Some(op) = fused_micro_op {
                 let mut new_op = self.clone();
-                unsafe { new_op.mmm.non_linear_specs_mut().extend(op.into_iter()); }
+                unsafe { new_op.mmm.as_mmm_mut().non_linear_specs_mut().extend(op.into_iter()); }
                 return Ok(Some(TypedModelPatch::fuse_with_next(model, &node,  new_op)?))
             }
         }
@@ -186,10 +187,10 @@ where
                         c = c.offset(prefix_strides[ix] * dim as isize);
                     }
                     let pa: &Tensor = a.iter().next().unwrap();
-                    self.mmm.run(pa.as_ptr()?, b.as_ptr(), c);
+                    self.mmm.as_mmm().run(pa.as_ptr()?, b.as_ptr(), c);
                 }
             } else {
-                self.mmm.run(
+                self.mmm.as_mmm().run(
                     self.packed_as.as_slice().unwrap()[0].as_ptr()?,
                     b.as_ptr()?,
                     c.as_ptr_mut()?,

@@ -15,9 +15,9 @@ use crate::ops::array::TypedReshape;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
 use crate::ops::math::mat_mat_mul::MatMatMulUnaryFinite;
+use crate::ops::math::mat_mul::MMMWrapper;
 use crate::ops::nn::DataFormat;
 
-use tract_linalg::frame::MatMatMul;
 use tract_linalg::frame::PackA;
 
 use std::iter::Sum;
@@ -137,7 +137,9 @@ impl ConvUnary {
         let a = self.kernel.datum_type();
         let b = model.outlet_fact(wire)?.datum_type;
         if (a, b) == (f32::datum_type(), f32::datum_type()) {
-            self.wire_as_im2col_pair_t(model, name, wire, direct, &tract_linalg::ops().smmm)
+            self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
+                MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n))
+            })
         } else {
             bail!("Unsupported combination for Conv (filters: {:?}, data:{:?})", a, b);
         }
@@ -149,7 +151,7 @@ impl ConvUnary {
         name: &str,
         mut wire: OutletId,
         direct: bool,
-        mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
+        mmm: impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
     ) -> TractResult<OutletId>
     where
         TA: Datum + Copy + Zero,
@@ -173,7 +175,7 @@ impl ConvUnary {
             DataFormat::NHWC => (1, (m * self.group) as isize),
             DataFormat::NCHW => (n as isize, 1),
         };
-        mmm.c_from_data_and_strides(rsc, csc);
+        mmm.as_mmm_mut().c_from_data_and_strides(rsc, csc);
 
         trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
 
@@ -187,7 +189,7 @@ impl ConvUnary {
                         .map(move |x| x + (ici * channel_stride) as isize)
                 })
                 .collect();
-            mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
+            mmm.as_mmm_mut().b_from_data_and_offsets(&kernel_offsets, &data_offsets);
         } else {
             let c_dim = *input_shape.c_dim();
             wire = model.wire_node(
@@ -200,7 +202,7 @@ impl ConvUnary {
                     n,
                     self.group,
                     c_dim / self.group,
-                    mmm.b_pack(),
+                    mmm.as_mmm().b_pack(),
                 ),
                 &[wire],
             )?[0];
@@ -223,7 +225,7 @@ impl ConvUnary {
             MatMatMulUnaryFinite {
                 c_shape: output_shape.shape.clone(),
                 c_prefix_dim_and_stride,
-                packed_as: self.kernel_as_packed_as(&mmm.a_pack())?,
+                packed_as: self.kernel_as_packed_as(&mmm.as_mmm().a_pack())?,
                 mmm,
             },
             &[wire],

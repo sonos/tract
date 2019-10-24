@@ -130,11 +130,6 @@ where
     unsafe fn set_non_linear_specs(&mut self, fused: &[FusedSpec<TI>]);
     unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI>>;
 
-    unsafe fn set_zero_point_a_scalar(&mut self, value: TI);
-    unsafe fn set_zero_point_a_vector(&mut self, values: Vec<TI>);
-    unsafe fn set_zero_point_b_scalar(&mut self, value: TI);
-    unsafe fn set_zero_point_b_vector(&mut self, values: Vec<TI>);
-
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC);
 }
 
@@ -337,31 +332,6 @@ where
     unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI>> {
         &mut self.non_linear_specs
     }
-
-    unsafe fn set_zero_point_a_scalar(&mut self, value: TI) {
-        self.zero_point_a = Some(vec!(value; self.m() + K::mr() - 1 / K::mr() * K::mr()))
-    }
-
-    unsafe fn set_zero_point_b_scalar(&mut self, value: TI) {
-        self.zero_point_b = Some(vec!(value; self.n() + K::nr() - 1 / K::nr() * K::nr()))
-    }
-
-    unsafe fn set_zero_point_a_vector(&mut self, mut values: Vec<TI>) {
-        let wanted = self.m() + K::mr() - 1 / K::mr() * K::mr();
-        while values.len() < wanted {
-            values.push(values[values.len() - 1])
-        }
-        self.zero_point_a = Some(values)
-    }
-
-    unsafe fn set_zero_point_b_vector(&mut self, mut values: Vec<TI>) {
-        let wanted = self.n() + K::nr() - 1 / K::nr() * K::nr();
-        while values.len() < wanted {
-            values.push(values[values.len() - 1])
-        }
-        self.zero_point_b = Some(values)
-    }
-
 
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
         let mr = K::mr();
