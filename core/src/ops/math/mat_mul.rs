@@ -1,12 +1,13 @@
 use num_traits::Zero;
 use std::fmt;
-use std::ops::{Add, Mul};
+use std::ops::{Add, Deref, Mul};
 
 use crate::internal::*;
 use crate::ops::math::mat_mat_mul::{MatMatMulPackB, MatMatMulUnaryFinite};
 use ndarray::*;
 
 use tract_linalg::mmm::MatMatMul;
+use tract_linalg::mmm::QMatMatMul;
 
 fn eval(
     a: &Tensor,
@@ -18,38 +19,17 @@ fn eval(
     zero_point_b: Option<&Tensor>,
 ) -> TractResult<TVec<Arc<Tensor>>> {
     let c = if (a.datum_type(), b.datum_type()) == (f32::datum_type(), f32::datum_type()) {
-        eval_t(
-            a,
-            b,
-            a_trans,
-            b_trans,
-            c_trans,
-            zero_point_a,
-            zero_point_b,
-            &tract_linalg::ops().smmm,
-        )?
+        eval_t(a, b, a_trans, b_trans, c_trans, zero_point_a, zero_point_b, &|m, k, n| {
+            MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n))
+        })?
     } else if (a.datum_type(), b.datum_type()) == (i8::datum_type(), i8::datum_type()) {
-        eval_t(
-            a,
-            b,
-            a_trans,
-            b_trans,
-            c_trans,
-            zero_point_a,
-            zero_point_b,
-            &tract_linalg::ops().mmm_i8_i32,
-        )?
+        eval_t(a, b, a_trans, b_trans, c_trans, zero_point_a, zero_point_b, &|m, k, n| {
+            MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
+        })?
     } else if (a.datum_type(), b.datum_type()) == (u8::datum_type(), u8::datum_type()) {
-        eval_t(
-            a,
-            b,
-            a_trans,
-            b_trans,
-            c_trans,
-            zero_point_a,
-            zero_point_b,
-            &tract_linalg::ops().mmm_u8_i32,
-        )?
+        eval_t(a, b, a_trans, b_trans, c_trans, zero_point_a, zero_point_b, &|m, k, n| {
+            MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_i32)(m, k, n))
+        })?
     } else {
         bail!(
             "Unsupported combination for MatMul (a: {:?}, b:{:?})",
@@ -68,7 +48,7 @@ fn eval_t<TA, TB, TC, TI>(
     c_trans: bool,
     zero_point_a: Option<&Tensor>,
     zero_point_b: Option<&Tensor>,
-    mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    mmm: impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
 ) -> TractResult<Tensor>
 where
     TA: Datum + Copy + Zero,
@@ -80,24 +60,24 @@ where
     let b = b.to_array_view::<TB>()?;
     let mut geo = Geo::<TA, TB, TC, TI>::new(a.shape(), b.shape(), a_trans, b_trans, c_trans, mmm)?;
     unsafe {
-        geo.mm.c_from_data_and_strides(
+        geo.mm.as_mmm_mut().c_from_data_and_strides(
             if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
             if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
         );
         if let Some(ref t) = zero_point_a {
             let t = t.cast_to::<TI>()?;
             if t.rank() == 0 {
-                geo.mm.set_zero_point_a_scalar(*t.to_scalar()?)
+                geo.mm.as_quant_mut().unwrap().set_zero_point_a_scalar(*t.to_scalar()?)
             } else {
-                geo.mm.set_zero_point_a_vector(t.as_slice()?.to_vec())
+                geo.mm.as_quant_mut().unwrap().set_zero_point_a_vector(t.as_slice()?.to_vec())
             }
         }
         if let Some(ref t) = zero_point_b {
             let t = t.cast_to::<TI>()?;
             if t.rank() == 0 {
-                geo.mm.set_zero_point_b_scalar(*t.to_scalar()?)
+                geo.mm.as_quant_mut().unwrap().set_zero_point_b_scalar(*t.to_scalar()?)
             } else {
-                geo.mm.set_zero_point_b_vector(t.as_slice()?.to_vec())
+                geo.mm.as_quant_mut().unwrap().set_zero_point_b_vector(t.as_slice()?.to_vec())
             }
         }
     }
@@ -105,10 +85,13 @@ where
     let b = b.into_shape(&*geo.bc_b_shape)?;
     let mut c = unsafe { Array::uninitialized(&*geo.c_shape) };
 
-    let b_pack = geo.mm.b_pack();
+    let b_pack = geo.mm.as_mmm().b_pack();
 
     let mut pa = unsafe {
-        Tensor::uninitialized_aligned::<TA>(&[geo.mm.a_pack().len()], geo.mm.a_pack().alignment())?
+        Tensor::uninitialized_aligned::<TA>(
+            &[geo.mm.as_mmm().a_pack().len()],
+            geo.mm.as_mmm().a_pack().alignment(),
+        )?
     };
     let mut pb =
         unsafe { Tensor::uninitialized_aligned::<TB>(&[b_pack.len()], b_pack.alignment())? };
@@ -125,7 +108,7 @@ where
             c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
         }
 
-        geo.mm.a_pack().pack(
+        geo.mm.as_mmm().a_pack().pack(
             pa.as_ptr_mut()?,
             a.as_ptr(),
             a.strides()[prefix.ndim() + a_trans as usize],
@@ -138,7 +121,7 @@ where
             b.strides()[prefix.ndim() + !b_trans as usize],
         );
         unsafe {
-            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr());
+            geo.mm.as_mmm().run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr());
         }
     }
     Ok(c.into_tensor())
@@ -188,6 +171,69 @@ pub fn infer_shapes<D: DimLike>(
     Ok((ashape, bshape, cshape))
 }
 
+#[derive(Clone, Debug)]
+pub enum MMMWrapper<TA, TB, TC, TI>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
+    Plain(Box<dyn MatMatMul<TA, TB, TC, TI>>),
+    Quant(Box<dyn QMatMatMul<TA, TB, TC, TI>>),
+}
+
+impl<TA, TB, TC, TI> MMMWrapper<TA, TB, TC, TI>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
+    pub fn as_mmm(&self) -> &dyn MatMatMul<TA, TB, TC, TI> {
+        match self {
+            MMMWrapper::Plain(a) => a.as_ref(),
+            MMMWrapper::Quant(a) => a.as_mmm(),
+        }
+    }
+
+    pub fn as_mmm_mut(&mut self) -> &mut dyn MatMatMul<TA, TB, TC, TI> {
+        match self {
+            MMMWrapper::Plain(a) => a.as_mut(),
+            MMMWrapper::Quant(a) => a.as_mmm_mut(),
+        }
+    }
+
+    pub fn as_quant(&self) -> Option<&dyn QMatMatMul<TA, TB, TC, TI>> {
+        match self {
+            MMMWrapper::Plain(_) => None,
+            MMMWrapper::Quant(a) => Some(a.deref()),
+        }
+    }
+
+    pub fn as_quant_mut(&mut self) -> Option<&mut dyn QMatMatMul<TA, TB, TC, TI>> {
+        match self {
+            MMMWrapper::Plain(_) => None,
+            MMMWrapper::Quant(ref mut a) => Some(a.as_mut()),
+        }
+    }
+}
+
+impl<TA, TB, TC, TI> fmt::Display for MMMWrapper<TA, TB, TC, TI>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MMMWrapper::Plain(a) => write!(fmt, "{}", a),
+            MMMWrapper::Quant(a) => write!(fmt, "{}", a),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Geo<TA, TB, TC, TI>
 where
@@ -199,7 +245,7 @@ where
     m: usize,
     k: usize,
     n: usize,
-    mm: Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    mm: MMMWrapper<TA, TB, TC, TI>,
     a_shape: TVec<usize>,
     a_trans: bool,
     b_shape: TVec<usize>,
@@ -227,7 +273,7 @@ where
         a_trans: bool,
         b_trans: bool,
         c_trans: bool,
-        mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
+        mmm: impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
     ) -> TractResult<Geo<TA, TB, TC, TI>> {
         let (bc_a_shape, bc_b_shape, bc_c_shape) =
             infer_shapes(a_shape.into(), b_shape.into(), a_trans, b_trans, c_trans)?;
@@ -552,7 +598,7 @@ impl TypedOp for MatMulUnary {
                         self.c_trans,
                         self.zero_point_a.as_ref().map(|t| t.as_ref()),
                         self.zero_point_b.as_ref().map(|t| t.as_ref()),
-                        &tract_linalg::ops().smmm,
+                        &|m, k, n| MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n)),
                     )?
                 } else {
                     bail!(
@@ -600,7 +646,7 @@ fn new_mat_mul_unary_finite<TA, TB, TC, TI>(
     c_trans: bool,
     zero_point_a: Option<&Tensor>,
     zero_point_b: Option<&Tensor>,
-    mmm: &impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    mmm: &impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
 ) -> TractResult<TypedModelPatch>
 where
     TA: Datum + Copy + Zero,
@@ -620,12 +666,12 @@ where
         }
         let mut pa = unsafe {
             Tensor::uninitialized_aligned::<TA>(
-                &[geo.mm.a_pack().len()],
-                geo.mm.a_pack().alignment(),
+                &[geo.mm.as_mmm().a_pack().len()],
+                geo.mm.as_mmm().a_pack().alignment(),
             )
             .unwrap()
         };
-        geo.mm.a_pack().pack(
+        geo.mm.as_mmm().a_pack().pack(
             pa.as_ptr_mut().unwrap(),
             a.as_ptr(),
             a.strides()[a_trans as usize],
@@ -635,18 +681,18 @@ where
     });
     unsafe {
         if geo.n == 1 {
-            geo.mm.b_vec_from_data_and_stride(if b_trans {
+            geo.mm.as_mmm_mut().b_vec_from_data_and_stride(if b_trans {
                 1
             } else {
                 *geo.b_shape.last().unwrap() as isize
             });
-            geo.mm.c_vec_from_data_and_stride(if c_trans {
+            geo.mm.as_mmm_mut().c_vec_from_data_and_stride(if c_trans {
                 1
             } else {
                 *geo.c_shape.last().unwrap() as isize
             });
         } else {
-            geo.mm.c_from_data_and_strides(
+            geo.mm.as_mmm_mut().c_from_data_and_strides(
                 if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
                 if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
             );
@@ -654,27 +700,27 @@ where
         if let Some(ref t) = zero_point_a {
             let t = t.cast_to::<TI>()?;
             if t.rank() == 0 {
-                geo.mm.set_zero_point_a_scalar(*t.to_scalar()?)
+                geo.mm.as_quant_mut().unwrap().set_zero_point_a_scalar(*t.to_scalar()?)
             } else {
-                geo.mm.set_zero_point_a_vector(t.as_slice()?.to_vec())
+                geo.mm.as_quant_mut().unwrap().set_zero_point_a_vector(t.as_slice()?.to_vec())
             }
         }
         if let Some(ref t) = zero_point_b {
             let t = t.cast_to::<TI>()?;
             if t.rank() == 0 {
-                geo.mm.set_zero_point_b_scalar(*t.to_scalar()?)
+                geo.mm.as_quant_mut().unwrap().set_zero_point_b_scalar(*t.to_scalar()?)
             } else {
-                geo.mm.set_zero_point_b_vector(t.as_slice()?.to_vec())
+                geo.mm.as_quant_mut().unwrap().set_zero_point_b_vector(t.as_slice()?.to_vec())
             }
         }
     }
     if geo.n > 1 {
         let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
-        packed_b_shape.push(geo.mm.b_pack().len());
+        packed_b_shape.push(geo.mm.as_mmm().b_pack().len());
         wire = patch.wire_node(
             format!("{}-pack", &*node.name),
             MatMatMulPackB {
-                pack_b: geo.mm.b_pack().clone(),
+                pack_b: geo.mm.as_mmm().b_pack().clone(),
                 col_stride: if b_trans { *b_shape.last().unwrap() as isize } else { 1 },
                 row_stride: if b_trans { 1 } else { *b_shape.last().unwrap() as isize },
                 output_shape: packed_b_shape,
