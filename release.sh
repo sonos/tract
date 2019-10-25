@@ -40,7 +40,10 @@ set_version() {
     done
 }
 
-cargo update
+for crate in $CRATES
+do
+    cargo update tract-$crate || /bin/true
+done
 
 set_version $CRATE/Cargo.toml $VERSION
 git commit . -m "release $CRATE/$VERSION"
