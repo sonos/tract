@@ -18,6 +18,7 @@ fn variable_v2(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inf
     let id = format!("{:?}#{:?}#{}", container, shared_name, name);
     let shape = node.get_attr_shape("shape")?;
     let dt = node.get_attr_datum_type("dtype")?;
+    let shape = shape.into_iter().map(|d| if d > 0 { Ok(d as usize) } else { bail!("VariableV2 shape contains forbidden negative dim.") }).collect::<TractResult<TVec<usize>>>()?;
     Ok(Box::new(VariableV2::new(container, shared_name, name, id, shape, dt)))
 }
 

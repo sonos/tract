@@ -172,12 +172,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_shape(&self, name: &str) -> TractResult<TVec<usize>> {
+    pub fn get_attr_shape(&self, name: &str) -> TractResult<TVec<isize>> {
         Ok(self.get_attr_opt_shape(name)?
             .ok_or_else(|| format!("Node {} ({}) expected shape attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_shape(&self, name: &str) -> TractResult<Option<TVec<usize>>> {
+    pub fn get_attr_opt_shape(&self, name: &str) -> TractResult<Option<TVec<isize>>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_shape()) {
             Ok(Some(t.try_into()?))
         } else {

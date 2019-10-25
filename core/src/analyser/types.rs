@@ -372,7 +372,7 @@ impl ShapeFact {
         let stream = self.stream.clone();
         self.dims.clone().into_iter().map(move |d| match d {
             GenericFact::Only(-1) => {
-                assert!(stream.is_some());
+                assert!(stream.is_some(), "-1 dim found with no stream. This is a tract bug.");
                 GenericFact::Only(stream.as_ref().unwrap().len.clone())
             }
             GenericFact::Only(d) => GenericFact::Only(d.to_dim()),
