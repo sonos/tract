@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 0.5.5 - 2019-10-25
+
 ### Tensorflow
 
 * Initial support for AddV2, Mean, Min, Prod, Sum
