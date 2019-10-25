@@ -5,7 +5,7 @@ use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
 
-mod max;
+mod reduce;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Abs", |_, _| Ok(Box::new(tractops::math::abs())));
@@ -17,7 +17,11 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Div", |_, _| Ok(Box::new(tractops::math::div::bin())));
     reg.insert("FloorMod", |_, _| Ok(Box::new(tractops::math::rem::bin())));
     reg.insert("MatMul", mat_mul);
-    reg.insert("Max", max::max);
+    reg.insert("Max", reduce::max);
+    reg.insert("Mean", reduce::mean);
+    reg.insert("Min", reduce::min);
+    reg.insert("Prod", reduce::prod);
+    reg.insert("Sum", reduce::sum);
     reg.insert("Maximum", |_, _| Ok(Box::new(tractops::math::max::bin())));
     reg.insert("Minimum", |_, _| Ok(Box::new(tractops::math::min::bin())));
     reg.insert("Less", |_, _| Ok(Box::new(tractops::logic::lesser::bin())));
