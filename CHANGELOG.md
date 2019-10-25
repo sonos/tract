@@ -2,9 +2,9 @@
 
 ### Tensorflow
 
-* Initial support for AddV2
+* Initial support for AddV2, Mean, Min, Prod, Sum
 
-## 0.5.3 - 2019-09-30
+## 0.5.4 - 2019-09-30
 
 ### Notable
 
