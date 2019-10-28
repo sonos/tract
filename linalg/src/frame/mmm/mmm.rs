@@ -8,96 +8,7 @@ use num_traits::Zero;
 use crate::frame::{PackA, PackB};
 
 use super::*;
-
-struct ScratchSpaceFusedNonLinear<TI: Copy> {
-    uspecs: Vec<FusedKerSpec<TI>>,
-    non_linear_buffers: Vec<Vec<TI>>,
-}
-
-impl<TI: Copy> Default for ScratchSpaceFusedNonLinear<TI> {
-    fn default() -> ScratchSpaceFusedNonLinear<TI> {
-        ScratchSpaceFusedNonLinear { uspecs: vec![], non_linear_buffers: vec![] }
-    }
-}
-
-impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
-    unsafe fn non_linear<TA, TB, TC, K: MatMatMulKer<TA, TB, TC, TI>>(
-        &mut self,
-        specs: &[FusedSpec<TI>],
-        down: usize,
-        right: usize,
-    ) -> *const FusedKerSpec<TI>
-    where
-        TA: Copy,
-        TB: Copy,
-        TC: Copy,
-        TI: Copy + Debug + Zero,
-    {
-        self.uspecs.clear();
-        for spec in specs {
-            let s = match spec {
-                FusedSpec::Min(m) => FusedKerSpec::Min(*m),
-                FusedSpec::Max(m) => FusedKerSpec::Max(*m),
-                FusedSpec::AddC => FusedKerSpec::AddC,
-                FusedSpec::PerRowMul(v) => {
-                    let have = v.len() - down * K::mr();
-                    let ptr = if have < K::mr() {
-                        let mut buf = vec![TI::zero(); K::mr()];
-                        buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
-                    } else {
-                        v.as_ptr().add(down * K::mr())
-                    };
-                    FusedKerSpec::PerRowMul(ptr)
-                }
-                FusedSpec::PerRowAdd(v) => {
-                    let have = v.len() - down * K::mr();
-                    let ptr = if have < K::mr() {
-                        let mut buf = vec![TI::zero(); K::mr()];
-                        buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
-                    } else {
-                        v.as_ptr().add(down * K::mr())
-                    };
-                    FusedKerSpec::PerRowAdd(ptr)
-                }
-                FusedSpec::PerColMul(v) => {
-                    let have = v.len() - right * K::nr();
-                    let ptr = if have < K::nr() {
-                        let mut buf = vec![TI::zero(); K::nr()];
-                        buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
-                    } else {
-                        v.as_ptr().add(right * K::nr())
-                    };
-                    FusedKerSpec::PerColMul(ptr)
-                }
-                FusedSpec::PerColAdd(v) => {
-                    let have = v.len() - right * K::nr();
-                    let ptr = if have < K::nr() {
-                        let mut buf = vec![TI::zero(); K::nr()];
-                        buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
-                    } else {
-                        v.as_ptr().add(right * K::nr())
-                    };
-                    FusedKerSpec::PerColAdd(ptr)
-                }
-            };
-            self.uspecs.push(s);
-        }
-        self.uspecs.push(FusedKerSpec::Done);
-        self.uspecs.as_ptr()
-    }
-}
+use super::fuse::ScratchSpaceFusedNonLinear;
 
 pub trait MatMatMul<TA, TB, TC, TI>: Debug + fmt::Display + objekt::Clone + Send + Sync
 where
@@ -131,6 +42,7 @@ where
     unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI>>;
 
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC);
+    unsafe fn run_with_non_linear(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]);
 }
 
 clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
@@ -318,6 +230,10 @@ where
     }
 
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
+        self.run_with_non_linear(a, b, c, &self.non_linear_specs)
+    }
+
+    unsafe fn run_with_non_linear(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
@@ -342,7 +258,7 @@ where
                 let ref b = b.panel_b(nr, ib, nr);
                 let ref direct_c = c.tile_c(ia, ib);
                 let non_linear =
-                    scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, ia, ib);
+                    scratch.for_tile::<TA, TB, TC, K>(non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -356,7 +272,7 @@ where
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
                 let non_linear =
-                    scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, ia, n / nr);
+                    scratch.for_tile::<TA, TB, TC, K>(non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -374,7 +290,7 @@ where
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
                 let non_linear =
-                    scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, m / mr, ib);
+                    scratch.for_tile::<TA, TB, TC, K>(non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -388,7 +304,7 @@ where
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 let non_linear =
-                    scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, m / mr, n / nr);
+                    scratch.for_tile::<TA, TB, TC, K>(non_linear, m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
