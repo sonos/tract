@@ -241,6 +241,13 @@ where
                             }
                         }
                     }
+                    FusedKerSpec::AddRowColProducts(rows, cols) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] += *rows.offset(i as isize) * *cols.offset(j as isize);
+                            }
+                        }
+                    }
                 }
                 pnl = pnl.add(1);
             }
@@ -476,6 +483,13 @@ where
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] = if m > ab[i][j] { m } else { ab[i][j] }
+                            }
+                        }
+                    }
+                    FusedKerSpec::AddRowColProducts(rows, cols) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                ab[i][j] += *rows.offset(i as isize) * *cols.offset(j as isize);
                             }
                         }
                     }

@@ -347,10 +347,10 @@
     ret
 
 .non_linear_loop_entry:
-    sub         x1, x1, 16
+    sub         x1, x1, 24
 
 .non_linear_loop:
-    add         x1, x1, 16
+    add         x1, x1, 24
     ldr         x2, [x1]
     cmp         x2, #0
     beq         .store

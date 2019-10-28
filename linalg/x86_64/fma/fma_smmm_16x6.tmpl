@@ -329,9 +329,9 @@ fma_smmm16x6 proc
 // NON LINEAR LOOP
 
 {{L}}non_linear_loop_enter:
-    sub     rcx,    16
+    sub     rcx,    24
 {{L}}non_linear_loop:
-    add     rcx,    16
+    add     rcx,    24
     mov     rax,    [rcx]
 
     cmp     rax,    0

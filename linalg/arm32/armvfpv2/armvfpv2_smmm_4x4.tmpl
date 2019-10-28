@@ -445,10 +445,10 @@ armvfpv2_smmm_4x4:
     bx          lr
 
 .non_linear_loop_entry:
-    sub     r1, #8
+    sub     r1, #12
 
 .non_linear_loop:
-    add     r1, #8
+    add     r1, #12
     ldr     r2, [r1]
     cmp     r2, #0
     beq     .store
