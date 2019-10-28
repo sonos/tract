@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul};
-use std::{fmt, ptr};
+use std::fmt;
 
 use num_traits::Zero;
 
@@ -211,22 +211,6 @@ where
             phantom: PhantomData,
         }
     }
-
-    fn linear_arg(&self, ia: usize, ib: usize) -> LinearSpec<TI> {
-        unsafe {
-            let zero_point_a = if let Some(ref v) = self.zero_point_a {
-                v.as_ptr().offset((ia * K::mr()) as isize)
-            } else {
-                ptr::null()
-            };
-            let zero_point_b = if let Some(ref v) = self.zero_point_b {
-                v.as_ptr().offset((ib * K::mr()) as isize)
-            } else {
-                ptr::null()
-            };
-            LinearSpec::Mul { k: self.k, zero_point_a, zero_point_b }
-        }
-    }
 }
 
 impl<K, TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> for MatMatMulImpl<K, TA, TB, TC, TI>
@@ -351,12 +335,12 @@ where
         let a = self.a_storage.wrap(a);
         let b = self.b_storage.wrap(b);
         let mut c = self.c_storage.wrap(c);
+        let ref linear = LinearSpec::k(self.k);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
                 let ref direct_c = c.tile_c(ia, ib);
-                let ref linear = self.linear_arg(ia, ib);
                 let non_linear =
                     scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -371,7 +355,6 @@ where
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
-                let ref linear = self.linear_arg(ia, n / nr);
                 let non_linear =
                     scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -390,7 +373,6 @@ where
             let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
-                let ref linear = self.linear_arg(m / mr, ib);
                 let non_linear =
                     scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -407,7 +389,6 @@ where
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 let non_linear =
                     scratch.non_linear::<TA, TB, TC, K>(&self.non_linear_specs, m / mr, n / nr);
-                let ref linear = self.linear_arg(m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -452,7 +433,7 @@ pub mod test {
         ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
             mod frame {
                 #[allow(unused_imports)]
-                use crate::frame::mmm::mmm::test::*;
+                use $crate::frame::mmm::mmm::test::*;
                 use $crate::num_traits::AsPrimitive;
 
                 proptest::proptest! {

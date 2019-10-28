@@ -172,6 +172,7 @@ test_lrn_default
 test_matmul_2d
 test_matmul_3d
 test_matmul_4d
+test_matmulinteger
 test_max_example
 test_max_one_input
 test_max_two_inputs
