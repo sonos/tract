@@ -14,20 +14,20 @@ where
     pub a: &'a PanelStore<TA>,
     pub b: &'a PanelStore<TB>,
     pub c: &'a PanelStore<TC>,
-    pub linear: &'a LinearSpec<TI>,
+    pub linear: &'a LinearSpec,
     pub non_linear: *const FusedKerSpec<TI>,
 }
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum LinearSpec<TI> {
-    Mul { k: usize, zero_point_a: *const TI, zero_point_b: *const TI },
+pub enum LinearSpec {
+    Mul { k: usize },
     Noop,
 }
 
-impl<TI> LinearSpec<TI> {
-    pub fn k(k: usize) -> LinearSpec<TI> {
-        LinearSpec::Mul { k, zero_point_a: std::ptr::null(), zero_point_b: std::ptr::null() }
+impl LinearSpec {
+    pub fn k(k: usize) -> LinearSpec {
+        LinearSpec::Mul { k }
     }
 }
 
