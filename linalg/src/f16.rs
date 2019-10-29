@@ -175,10 +175,10 @@ impl num_traits::NumCast for f16 {
 
 impl num_traits::Bounded for f16 {
     fn min_value() -> f16 {
-        f16(half::consts::MIN)
+        f16(half::f16::MIN)
     }
     fn max_value() -> f16 {
-        f16(half::consts::MAX)
+        f16(half::f16::MAX)
     }
 }
 
