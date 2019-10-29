@@ -35,6 +35,14 @@ pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downca
         None
     }
     #[allow(unused_variables)]
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+    #[allow(unused_variables)]
     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
         tvec!()
     }
@@ -328,6 +336,9 @@ impl TypedOp for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
+        if let Some(patch) = self.0.declutter(model, node)? {
+            return Ok(Some(patch));
+        }
         for i in 0..2 {
             use super::array::TypedMultiBroadcastTo;
             let prec = model.node(node.inputs[i].node);
@@ -689,6 +700,7 @@ macro_rules! bin_to_super_type {
     ($func:ident, $Op:ident,
      $(cost: $cost:expr,)?
      $(flip: $flip:expr,)?
+     $(declutter: $declutter:expr,)?
      $(validation: $validation:expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone)]
@@ -741,6 +753,15 @@ macro_rules! bin_to_super_type {
             $(
                 fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
                     ($flip)(self, b)
+                }
+            )?
+            $(
+                fn declutter(
+                    &self,
+                    model: &TypedModel,
+                    node: &TypedNode,
+                ) -> TractResult<Option<TypedModelPatch>> {
+                    ($declutter)(self, model, node)
                 }
             )?
             $(

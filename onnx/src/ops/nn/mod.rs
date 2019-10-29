@@ -245,8 +245,30 @@ pub fn parametric_softplus(
     let beta = node.get_attr("beta")?;
     Ok((Box::new(tractops::nn::parametric_softplus(alpha, beta)), vec![]))
 }
-bin_to_super_type!(prelu, Prelu,
-      [f16,f32,f64] => |c, &a, &b| *c = if a < 0f32.into() { a * b } else { a });
+
+bin_to_super_type!(prelu, Prelu, declutter: prelu_to_prelu_unary,
+  [f16,f32,f64] => |c, &a, &b| *c = if a < 0f32.into() { a * b } else { a });
+
+element_wise!(prelu_unary, PreluUnary { b: f32 },
+    [f32] => |op, xs| {
+        xs.iter_mut().for_each(|x| *x = if *x < 0.0 { *x * op.b } else { *x })},
+    [f64] => |op, xs| {
+        xs.iter_mut().for_each(|x| *x = if *x < 0.0 { *x * op.b as f64 } else { *x })}
+);
+
+fn prelu_to_prelu_unary(
+    _prelu: &Prelu,
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    if let Some(ref b) = model.outlet_fact(node.inputs[1])?.konst {
+        let b = b.cast_to::<f32>()?;
+        let op = prelu_unary(*b.to_scalar::<f32>()?);
+        Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?))
+    } else {
+        Ok(None)
+    }
+}
 
 pub fn scaled_tanh(
     _ctx: &ParsingContext,

@@ -189,6 +189,33 @@ impl ops::Neg for f16 {
     }
 }
 
+impl num_traits::Signed for f16 {
+    fn abs(&self) -> Self {
+        use std::ops::Neg;
+        if self.is_negative() {
+            (*self).neg()
+        } else {
+            *self
+        }
+    }
+
+    fn abs_sub(&self, other: &Self) -> Self {
+        (*self - *other).abs()
+    }
+
+    fn signum(&self) -> Self {
+        f16(self.0.signum())
+    }
+
+    fn is_positive(&self) -> bool {
+        self.0.is_sign_positive()
+    }
+
+    fn is_negative(&self) -> bool {
+        self.0.is_sign_negative()
+    }
+}
+
 impl From<f32> for f16 {
     fn from(f: f32) -> f16 {
         f16(half::f16::from_f32(f))
