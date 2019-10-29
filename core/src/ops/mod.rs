@@ -319,7 +319,7 @@ pub trait InferenceOp:
         observed: TVec<&InferenceFact>,
     ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
         let (infered_inputs, infered_outputs, observed) =
-            self.infer_facts(inputs, outputs, observed)?;
+            self.infer_facts(inputs, outputs, observed).chain_err(|| "Infering facts")?;
 
         if let Some(stateless) = self.as_stateless() {
             if infered_inputs.iter().all(|i| i.value.is_concrete()) {
@@ -335,7 +335,7 @@ pub trait InferenceOp:
                     }
                     Err(e) => match e {
                         TractError(TractErrorKind::StreamTensor, _) => (),
-                        e => return Err(e),
+                        e => return Err(e).chain_err(|| "Eager eval"),
                     },
                 }
             }

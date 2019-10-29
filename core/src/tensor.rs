@@ -260,9 +260,9 @@ impl Tensor {
     fn check_for_access<D: Datum>(&self) -> TractResult<()> {
         if self.datum_type() != D::datum_type() {
             bail!(
-                "Incompatible datum type. Required {:?}, got {:?}",
+                "Tensor datum type error: tensor is {:?}, accessed as {:?}",
+                self.datum_type(),
                 D::datum_type(),
-                self.datum_type()
             );
         }
         if self.is_null() {

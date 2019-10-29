@@ -26,7 +26,7 @@ impl Gather {
         }
     }
 
-    fn compute_output_shape<D: DimLike>(
+    pub fn compute_output_shape<D: DimLike>(
         &self,
         input_shape: &[D],
         indices_shape: &[D],
@@ -52,6 +52,7 @@ impl Gather {
     ) -> TractResult<Arc<Tensor>> {
         let data_view = data.to_array_view::<T>()?;
         let axis = self.resolved_axis(data.shape().len())?;
+        let indices = indices.cast_to::<i64>()?;
         if indices.shape().len() == 0 {
             let mut index = *indices.to_scalar::<i64>()?;
             if index < 0 {
