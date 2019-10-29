@@ -65,7 +65,7 @@ where
             if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
         );
         if let Some(ref t) = zero_point_a {
-            let t = t.cast_to::<TI>()?;
+            let t = t.cast_to::<TA>()?;
             if t.rank() == 0 {
                 geo.mm.as_quant_mut().unwrap().set_zero_point_a_scalar(*t.to_scalar()?)
             } else {
@@ -73,7 +73,7 @@ where
             }
         }
         if let Some(ref t) = zero_point_b {
-            let t = t.cast_to::<TI>()?;
+            let t = t.cast_to::<TB>()?;
             if t.rank() == 0 {
                 geo.mm.as_quant_mut().unwrap().set_zero_point_b_scalar(*t.to_scalar()?)
             } else {
@@ -121,7 +121,7 @@ where
             b.strides()[prefix.ndim() + !b_trans as usize],
         );
         unsafe {
-            geo.mm.as_mmm().run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr());
+            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr());
         }
     }
     Ok(c.into_tensor())
@@ -215,6 +215,13 @@ where
         match self {
             MMMWrapper::Plain(_) => None,
             MMMWrapper::Quant(ref mut a) => Some(a.as_mut()),
+        }
+    }
+
+    pub unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
+        match self {
+            MMMWrapper::Plain(p) => p.run(a, b, c),
+            MMMWrapper::Quant(q) => q.run(a, b, c),
         }
     }
 }

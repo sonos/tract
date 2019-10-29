@@ -139,7 +139,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     } else {
                         rows.as_ptr().add(down * K::mr())
                     };
-                    let have = rows.len() - right * K::nr();
+                    let have = cols.len() - right * K::nr();
                     let col_ptr = if have < K::nr() {
                         let mut buf = vec![TI::zero(); K::nr()];
                         buf[..have].copy_from_slice(&cols[right * K::nr()..][..have]);
