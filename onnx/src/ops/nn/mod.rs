@@ -251,9 +251,13 @@ bin_to_super_type!(prelu, Prelu, declutter: prelu_to_prelu_unary,
 
 element_wise!(prelu_unary, PreluUnary { b: f32 },
     [f32] => |op, xs| {
-        xs.iter_mut().for_each(|x| *x = if *x < 0.0 { *x * op.b } else { *x })},
+        xs.iter_mut().for_each(|x| *x = if *x < 0.0 { *x * op.b } else { *x });
+        Ok(())
+    },
     [f64] => |op, xs| {
-        xs.iter_mut().for_each(|x| *x = if *x < 0.0 { *x * op.b as f64 } else { *x })}
+        xs.iter_mut().for_each(|x| *x = if *x < 0.0 { *x * op.b as f64 } else { *x });
+        Ok(())
+    }
 );
 
 fn prelu_to_prelu_unary(
