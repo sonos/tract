@@ -1,9 +1,15 @@
-use std::{alloc, mem, ops, slice};
+use std::{alloc, fmt, mem, ops, slice};
 
 pub struct Buffer<T> {
     ptr: *mut T,
     items: usize,
     layout: alloc::Layout,
+}
+
+impl<T: fmt::Debug> fmt::Debug for Buffer<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?}", unsafe { slice::from_raw_parts(self.ptr, self.items) })
+    }
 }
 
 impl<T> Drop for Buffer<T> {

@@ -129,7 +129,8 @@ where
                     let pb3 = *(col_ptrs.offset(3));
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                        let offset = *row_byte_offsets.offset(i as isize) / 4;
+                        let offset = *row_byte_offsets.offset(i as isize)
+                            / std::mem::size_of::<TB>() as isize;
                         let b0 = *(pb0.offset(offset));
                         let b1 = *(pb1.offset(offset));
                         let b2 = *(pb2.offset(offset));
@@ -155,7 +156,8 @@ where
                 (Packed { ptr: a }, VecStride { ptr: b, byte_stride }, Mul { k }) => {
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                        let b = *b.offset(i as isize * byte_stride / 4);
+                        let b = *b
+                            .offset(i as isize * byte_stride / std::mem::size_of::<TB>() as isize);
                         ab[0][0] += a[0].as_() * b.as_();
                         ab[1][0] += a[1].as_() * b.as_();
                         ab[2][0] += a[2].as_() * b.as_();
@@ -253,8 +255,8 @@ where
             }
             match *spec.c {
                 Strides { ptr: c, row_byte_stride, col_byte_stride } => {
-                    let rsc = row_byte_stride as usize / 4;
-                    let csc = col_byte_stride as usize / 4;
+                    let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
+                    let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
                     let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
                     c[0 * csc + 0 * rsc] = ab[0][0].as_();
                     c[1 * csc + 0 * rsc] = ab[0][1].as_();
@@ -403,7 +405,8 @@ where
                     let pb1 = *(col_ptrs.offset(1));
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
-                        let offset = *row_byte_offsets.offset(i as isize) / 4;
+                        let offset =
+                            *row_byte_offsets.offset(i as isize) / std::mem::size_of::<TB>() as isize;
                         let b0 = *(pb0.offset(offset));
                         let b1 = *(pb1.offset(offset));
                         ab[0][0] += a[0].as_() * b0.as_();
@@ -417,7 +420,7 @@ where
                 (Packed { ptr: a }, VecStride { ptr: b, byte_stride }, Mul { k }) => {
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
-                        let b = *b.offset(i as isize * byte_stride / 4);
+                        let b = *b.offset(i as isize * byte_stride / std::mem::size_of::<TB>() as isize);
                         ab[0][0] += a[0].as_() * b.as_();
                         ab[1][0] += a[1].as_() * b.as_();
                         ab[2][0] += a[2].as_() * b.as_();
@@ -434,8 +437,8 @@ where
                     FusedKerSpec::Done => break,
                     FusedKerSpec::AddC => match *spec.c {
                         Strides { ptr: c, row_byte_stride, col_byte_stride } => {
-                            let rsc = row_byte_stride as usize / 4;
-                            let csc = col_byte_stride as usize / 4;
+                            let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
+                            let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
                             let c = std::slice::from_raw_parts_mut(c, 1 + 1 * csc + 2 * rsc);
                             ab[0][0] += c[0 * csc + 0 * rsc].as_();
                             ab[0][1] += c[1 * csc + 0 * rsc].as_();
@@ -498,8 +501,8 @@ where
             }
             match *spec.c {
                 Strides { ptr: c, row_byte_stride, col_byte_stride } => {
-                    let rsc = row_byte_stride as usize / 4;
-                    let csc = col_byte_stride as usize / 4;
+                    let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
+                    let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
                     let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
                     c[0 * csc + 0 * rsc] = ab[0][0].as_();
                     c[1 * csc + 0 * rsc] = ab[0][1].as_();
@@ -509,7 +512,7 @@ where
                     c[1 * csc + 2 * rsc] = ab[2][1].as_();
                 }
                 VecStride { ptr: c, byte_stride } => {
-                    let stride = byte_stride / 4;
+                    let stride = byte_stride / std::mem::size_of::<TC>() as isize;
                     let c: *mut TC = c as _;
                     *c.offset(0 * stride) = ab[0][0].as_();
                     *c.offset(1 * stride) = ab[1][0].as_();
@@ -526,10 +529,12 @@ where
 mod test_3_2 {
     mmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
     mmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
+    qmmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>);
 }
 
 #[cfg(test)]
 mod test {
     mmm_kernel_tests!(true, crate::generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
     mmm_frame_tests!(true, crate::generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
+    qmmm_frame_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>);
 }

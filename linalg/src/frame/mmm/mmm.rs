@@ -68,8 +68,6 @@ where
     pub a_storage: MatrixStoreSpec,
     pub b_storage: MatrixStoreSpec,
     pub c_storage: MatrixStoreSpec,
-    pub zero_point_a: Option<Vec<TI>>,
-    pub zero_point_b: Option<Vec<TI>>,
 
     pub non_linear_specs: Vec<FusedSpec<TI>>,
 
@@ -117,8 +115,6 @@ where
                 mr: K::mr(),
                 nr: K::nr(),
             },
-            zero_point_a: None,
-            zero_point_b: None,
             non_linear_specs: vec![],
             phantom: PhantomData,
         }
