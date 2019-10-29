@@ -4,6 +4,10 @@
 
 * Initial support for GatherV2
 
+### Onnx
+
+* Fix PReLu normalization
+
 ## 0.5.5 - 2019-10-25
 
 ### Tensorflow
