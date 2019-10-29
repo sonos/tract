@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Tensorflow
+
+* Initial support for GatherV2
+
 ## 0.5.5 - 2019-10-25
 
 ### Tensorflow
