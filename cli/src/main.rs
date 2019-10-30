@@ -599,49 +599,58 @@ impl Parameters {
                 if stop_at == "load" {
                     return Ok(Box::new(raw_model) as _);
                 }
+                info_usage("after load");
                 info!("Running 'analyse'");
                 raw_model.analyse(!matches.is_present("analyse_fail_fast"))?;
                 if stop_at == "analyse" {
                     return Ok(Box::new(raw_model) as _);
                 }
+                info_usage("after analyse");
                 info!("Running 'incorporate'");
                 let model = raw_model.incorporate()?;
                 if stop_at == "incorporate" {
                     return Ok(Box::new(model) as _);
                 }
+                info_usage("after incorporate");
                 info!("Running 'type'");
                 let model = model.into_typed()?;
                 typed_model = Some(model.clone());
                 if stop_at == "type" {
                     return Ok(Box::new(model) as _);
                 }
+                info_usage("after type");
                 info!("Running 'declutter'");
                 let mut model = model.declutter()?;
                 typed_model = Some(model.clone());
                 if stop_at == "declutter" {
                     return Ok(Box::new(model) as _);
                 }
+                info_usage("after declutter");
                 if let Some(pulse) = pulse {
                     info!("Running 'pulse-normalize'");
                     let normalized_model = model.clone().into_normalized()?;
                     if stop_at == "pulse-normalize" {
                         return Ok(Box::new(normalized_model) as _);
                     }
+                    info_usage("after pulse-normalize");
                     info!("Running 'pulse' ({})", pulse);
                     let pulsed = ::tract_core::pulse::PulsedModel::new(&normalized_model, pulse)?;
                     if stop_at == "pulse" {
                         return Ok(Box::new(pulsed) as _);
                     }
+                    info_usage("after pulse");
                     info!("Running 'pulse-to-type'");
                     model = pulsed.into_typed()?;
                     if stop_at == "pulse-to-type" {
                         return Ok(Box::new(model) as _);
                     }
+                    info_usage("after pulse-to-type");
                     info!("Running 'pulse-declutter'");
                     model = model.declutter()?;
                     if stop_at == "pulse-declutter" {
                         return Ok(Box::new(model) as _);
                     }
+                    info_usage("after pulse-declutter");
                 }
                 info!("Running 'optimize'");
                 model = model.clone().codegen()?;

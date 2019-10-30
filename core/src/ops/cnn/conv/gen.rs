@@ -72,7 +72,7 @@ impl Conv {
         if let Some(kvalue) = kernel.borrow().konst.clone() {
             let reduced = ConvUnary::new(
                 &self,
-                kvalue.into_tensor(),
+                kvalue,
                 self.group,
             )?;
             return Ok(Some(reduced));

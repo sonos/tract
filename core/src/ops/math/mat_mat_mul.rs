@@ -80,7 +80,7 @@ where
 {
     pub(crate) c_shape: TVec<usize>,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
-    pub(crate) packed_as: ArrayD<Tensor>,
+    pub(crate) packed_as: ArrayD<Arc<Tensor>>,
     pub(crate) mmm: Box<dyn MatMatMul<T>>,
     pub(crate) non_linear: Vec<FusedSpec<T>>,
 }

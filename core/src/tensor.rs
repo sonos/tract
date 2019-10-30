@@ -27,25 +27,7 @@ unsafe impl Sync for Tensor {}
 
 impl Clone for Tensor {
     fn clone(&self) -> Tensor {
-        if self.dt == DatumType::String {
-            let data: Vec<String> = self.as_slice::<String>().unwrap().to_vec();
-            let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
-            std::mem::forget(data);
-            t
-        } else if self.dt == DatumType::TDim {
-            let data: Vec<TDim> = self.as_slice::<TDim>().unwrap().to_vec();
-            let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
-            std::mem::forget(data);
-            t
-        } else if self.null {
-            Tensor { shape: self.shape.clone(), ..*self }
-        } else {
-            unsafe {
-                let data = alloc::alloc(self.layout) as *mut u8;
-                self.data.copy_to_nonoverlapping(data, self.layout.size());
-                Tensor { data, shape: self.shape.clone(), ..*self }
-            }
-        }
+        self.deep_clone()
     }
 }
 
@@ -111,7 +93,13 @@ impl Tensor {
         }
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
         let layout = alloc::Layout::from_size_align(bytes, alignment)?;
-        let data = if bytes == 0 { std::ptr::null() } else { alloc::alloc(layout) } as *mut u8;
+        let data = if bytes == 0 {
+            std::ptr::null()
+        } else {
+            let ptr = alloc::alloc(layout);
+            assert!(!ptr.is_null());
+            ptr
+        } as *mut u8;
         Ok(Tensor { null: false, layout, dt, shape: shape.into(), data })
     }
 
@@ -376,7 +364,6 @@ impl Tensor {
             (I32, F32) => self.cast::<i32, f32>()?,
             (I64, F32) => self.cast::<i64, f32>()?,
 
-
             (Bool, F64) => self.cast::<bool, f64>()?,
             (I8, F64) => self.cast::<i8, f64>()?,
             (I16, F64) => self.cast::<i16, f64>()?,
@@ -429,6 +416,28 @@ impl Tensor {
             alloc::Layout::from_size_align(vec.len() * size_of::<T>(), align_of::<T>()).unwrap();
         let data = Box::into_raw(vec) as *mut u8;
         Tensor { null: false, dt: T::datum_type(), shape, layout, data }
+    }
+
+    pub fn deep_clone(&self) -> Tensor {
+        if self.dt == DatumType::String {
+            let data: Vec<String> = self.as_slice::<String>().unwrap().to_vec();
+            let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
+            std::mem::forget(data);
+            t
+        } else if self.dt == DatumType::TDim {
+            let data: Vec<TDim> = self.as_slice::<TDim>().unwrap().to_vec();
+            let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
+            std::mem::forget(data);
+            t
+        } else if self.null {
+            Tensor { shape: self.shape.clone(), ..*self }
+        } else {
+            unsafe {
+                let data = alloc::alloc(self.layout) as *mut u8;
+                self.data.copy_to_nonoverlapping(data, self.layout.size());
+                Tensor { data, shape: self.shape.clone(), ..*self }
+            }
+        }
     }
 }
 
@@ -531,3 +540,4 @@ impl IntoArcTensor for Arc<Tensor> {
         self
     }
 }
+
