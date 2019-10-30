@@ -1,6 +1,6 @@
 [package]
 name = "tract-kaldi"
-version = "0.5.6-pre"
+version = "0.5.6"
 authors = [
     "Mathieu Poumeyrol <kali@zoy.org>",
     "Theodore Bluche <theodore.bluche@snips.ai>"
@@ -25,5 +25,5 @@ log = "0.4"
 maplit = "1"
 nom = "5.0.0-beta3"
 num-traits = "0.2"
-tract-core = { path = "../core" }
-tract-linalg = { path = "../linalg" }
+tract-core = "0.5.6"
+tract-linalg = "0.5.6"
