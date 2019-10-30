@@ -92,7 +92,7 @@ fi
     --assert-cost "FMA(F32)=23725568,Div(F32)=20480,Buffer(F32)=1896"
 
 [ -e kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ] \
-    || ln -s $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/
+    || (rm -f kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ; ln -s $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/ )
 
 ( cd kaldi/test_cases TRACT_RUN=../../target/release/tract ./run_all.sh )
 
