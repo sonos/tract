@@ -22,13 +22,13 @@ use std::iter::Sum;
 pub struct ConvUnary {
     pub pool_spec: PoolSpec,
     pub kernel_fmt: KernelFormat,
-    pub kernel: Tensor,
+    pub kernel: Arc<Tensor>,
 
     pub group: usize,
 }
 
 impl ConvUnary {
-    pub fn new(conv: &Conv, kernel: Tensor, group: usize) -> TractResult<ConvUnary> {
+    pub fn new(conv: &Conv, kernel: Arc<Tensor>, group: usize) -> TractResult<ConvUnary> {
         let spatial_rank = kernel.rank() - 2;
         let kshape = kernel.shape();
 
@@ -95,7 +95,7 @@ impl ConvUnary {
     fn kernel_as_packed_as<T: Datum + Copy + Zero>(
         &self,
         packer: &PackA<T>,
-    ) -> TractResult<ArrayD<Tensor>> {
+    ) -> TractResult<ArrayD<Arc<Tensor>>> {
         let kernel = self.kernel_as_group_o_ihw()?;
         let packed_as = Array1::from(
             kernel
@@ -110,7 +110,7 @@ impl ConvUnary {
                         subkernel.strides()[0],
                         subkernel.strides()[1],
                     );
-                    Ok(packed)
+                    Ok(packed.into_arc_tensor())
                 })
                 .collect::<TractResult<Vec<_>>>()?,
         )
@@ -367,7 +367,7 @@ impl TypedOp for ConvUnary {
         }
         let kernel_shape: TVec<usize> =
             copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
-        let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
+        let kernel = unsafe { self.kernel.as_ref().clone().into_shape(&kernel_shape)? };
         let new_op = ConvUnary {
             pool_spec: PoolSpec {
                 data_format: self.pool_spec.data_format,
@@ -378,7 +378,7 @@ impl TypedOp for ConvUnary {
                 output_channel_override: self.pool_spec.output_channel_override,
             },
             kernel_fmt: self.kernel_fmt,
-            kernel,
+            kernel: kernel.into_arc_tensor(),
             group: self.group,
         };
         Ok(Some(Box::new(new_op)))
@@ -431,7 +431,7 @@ impl TypedOp for ConvUnary {
                             &[wire],
                         )?[0];
                         let kernel_shape = &self.kernel.shape()[spatial_rank..];
-                        let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
+                        let kernel = self.kernel.as_ref().clone().into_shape(&kernel_shape)?;
                         wire = patch.wire_node(
                             &*node.name,
                             MatMulUnary::new(kernel.into_arc_tensor(), true, true, true),

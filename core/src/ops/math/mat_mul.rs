@@ -490,7 +490,7 @@ where
             a.strides()[a_trans as usize],
             a.strides()[!a_trans as usize],
         );
-        pa
+        pa.into_arc_tensor()
     });
     unsafe {
         if geo.n == 1 {

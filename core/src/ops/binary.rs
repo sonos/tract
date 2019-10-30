@@ -17,9 +17,14 @@ pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downca
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let (a, b) = args_2!(inputs);
         let op_type = self.operating_datum_type(a.datum_type(), b.datum_type())?;
-        let a = a.cast_to_dt(op_type)?.into_owned();
-        let b = b.cast_to_dt(op_type)?.into_owned();
-        self.eval_broadcast(tvec!(a.into_arc_tensor(), b.into_arc_tensor()))
+        let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+            .ok_or("Can not compute resulting shape")?;
+        let a = a.cast_to_dt(op_type)?;
+        let b = b.cast_to_dt(op_type)?;
+        let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
+        let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &*c_shape)? };
+        self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
+        Ok(tvec!(c.into_arc_tensor()))
     }
     fn eval_broadcast(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (a, b) = args_2!(inputs);
