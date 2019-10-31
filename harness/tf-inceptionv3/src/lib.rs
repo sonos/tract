@@ -6,8 +6,8 @@ extern crate tract_tensorflow;
 
 use std::{fs, io, path};
 
-use tract_core::prelude::*;
 use tract_core::ndarray;
+use tract_core::prelude::*;
 
 fn download() {
     use std::sync::Once;

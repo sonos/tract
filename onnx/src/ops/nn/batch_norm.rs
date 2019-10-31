@@ -1,7 +1,7 @@
-use tract_core::ndarray;
-use tract_core::ndarray::Axis;
 use num_traits::AsPrimitive;
 use tract_core::internal::*;
+use tract_core::ndarray;
+use tract_core::ndarray::Axis;
 use tract_core::ops::nn::DataFormat;
 
 #[derive(Debug, Clone, new, Default)]

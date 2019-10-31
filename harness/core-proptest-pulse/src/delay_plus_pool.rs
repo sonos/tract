@@ -25,7 +25,13 @@ impl Arbitrary for DelayPlusPoolProblem {
         (1usize..4, 1usize..4, 0usize..5, 1usize..4)
             .prop_flat_map(|(pool_window, factor, delay, stride)| {
                 let min_input = delay + pool_window;
-                (Just(pool_window), Just(factor), Just(delay), Just(stride), vec(min_input..min_input + 10))
+                (
+                    Just(pool_window),
+                    Just(factor),
+                    Just(delay),
+                    Just(stride),
+                    vec(min_input..min_input + 10),
+                )
             })
             .prop_map(|(pool_window, factor, delay, stride, input)| {
                 let pulse = factor * stride;
@@ -90,28 +96,16 @@ fn test_stride() {
 
 #[test]
 fn test_misaligned_stride() {
-    DelayPlusPoolProblem {
-        input: vec![0.0, 1.0],
-        pulse: 2,
-        delay: 1,
-        stride: 2,
-        pool_window: 1,
-    }
-    .run()
-    .unwrap()
+    DelayPlusPoolProblem { input: vec![0.0, 1.0], pulse: 2, delay: 1, stride: 2, pool_window: 1 }
+        .run()
+        .unwrap()
 }
 
 #[test]
 fn test_overlap() {
-    DelayPlusPoolProblem {
-        input: vec![0.0, 1.0],
-        pulse: 1,
-        delay: 0,
-        stride: 1,
-        pool_window: 2,
-    }
-    .run()
-    .unwrap()
+    DelayPlusPoolProblem { input: vec![0.0, 1.0], pulse: 1, delay: 0, stride: 1, pool_window: 2 }
+        .run()
+        .unwrap()
 }
 
 #[test]

@@ -34,7 +34,7 @@ impl<'a> TryFrom<&'a TensorShapeProto> for TVec<isize> {
 impl<'a> TryFrom<&'a TensorShapeProto> for TVec<usize> {
     type Error = TractError;
     fn try_from(t: &'a TensorShapeProto) -> TractResult<TVec<usize>> {
-        if t.get_dim().iter().any(|d| d.size<0) {
+        if t.get_dim().iter().any(|d| d.size < 0) {
             bail!("Negative dim found")
         }
         Ok(t.get_dim().iter().map(|d| d.size as usize).collect::<TVec<_>>())

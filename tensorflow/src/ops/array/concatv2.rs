@@ -1,8 +1,8 @@
 use crate::model::ParsingContext;
 use crate::tfpb::node_def::NodeDef;
+use tract_core::internal::*;
 use tract_core::ndarray;
 use tract_core::ndarray::prelude::*;
-use tract_core::internal::*;
 
 pub fn build(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let n = pb.get_attr_int("N")?;

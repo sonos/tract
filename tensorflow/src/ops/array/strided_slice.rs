@@ -9,4 +9,3 @@ pub fn build(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferen
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
     Ok(Box::new(StridedSlice::tensorflow(begin_mask, end_mask, shrink_axis_mask)))
 }
-

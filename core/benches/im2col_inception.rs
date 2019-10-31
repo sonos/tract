@@ -5,8 +5,8 @@ extern crate tract_core;
 use criterion::Criterion;
 
 use tract_core::internal::*;
-use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::conv::Im2Col;
+use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PaddingSpec::SameUpper as Same;
 use tract_core::ops::cnn::PaddingSpec::Valid;
 
@@ -41,8 +41,12 @@ fn b(
     let unary = conv.to_unary(&[&input_fact, &kernel_fact]).unwrap().unwrap();
 
     let mut m = TypedModel::default();
-    let wire = m.add_source("", TypedFact::dt_shape(f32::datum_type(), [1, h, w, ci].as_ref()).unwrap()).unwrap();
-    unsafe { unary.wire_as_im2col_pair(&mut m, "", wire, false).unwrap(); }
+    let wire = m
+        .add_source("", TypedFact::dt_shape(f32::datum_type(), [1, h, w, ci].as_ref()).unwrap())
+        .unwrap();
+    unsafe {
+        unary.wire_as_im2col_pair(&mut m, "", wire, false).unwrap();
+    }
     let im2col = m.node(1).op_as::<Im2Col<f32>>().unwrap();
     let args = tvec!(image.into());
     c.bench_function(name, move |b| {

@@ -105,13 +105,18 @@ impl Framework<GraphDef> for Tensorflow {
                 let dt = pbnode.get_attr_datum_type("dtype")?;
                 let mut fact = InferenceFact::dt(dt);
                 if let Some(shape) = pbnode.get_attr_opt_shape("shape")? {
-                    let shape_fact = ShapeFact::closed(shape.iter().map(|d| {
-                        if *d == -1 {
-                            GenericFact::Any
-                        } else {
-                            GenericFact::Only(d.to_dim())
-                        }
-                    }).collect());
+                    let shape_fact = ShapeFact::closed(
+                        shape
+                            .iter()
+                            .map(|d| {
+                                if *d == -1 {
+                                    GenericFact::Any
+                                } else {
+                                    GenericFact::Only(d.to_dim())
+                                }
+                            })
+                            .collect(),
+                    );
                     fact = fact.with_shape(shape_fact);
                 }
                 inputs.push(OutletId::new(node_id, 0));

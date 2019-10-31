@@ -59,11 +59,7 @@ impl InferenceRulesOp for GatherV2 {
     ) -> TractResult<TVec<OutletId>> {
         if let Some(axis) = target.outlet_fact(mapping[&node.inputs[2]])?.konst.as_ref() {
             let op = tract_core::ops::array::Gather::new(*axis.to_scalar::<i32>()? as i64);
-            target.wire_node(
-                &*node.name,
-                op,
-                &[mapping[&node.inputs[0]], mapping[&node.inputs[1]]],
-            )
+            target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]], mapping[&node.inputs[1]]])
         } else {
             bail!("Need to know axis to type GatherV2")
         }

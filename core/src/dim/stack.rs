@@ -424,5 +424,4 @@ mod tests {
         let e = (Stack::sym('S') - 3 + 1).div_ceil(&1.into());
         assert_eq!(e, Stack::sym('S') + -2);
     }
-
 }

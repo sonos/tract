@@ -546,4 +546,3 @@ impl IntoArcTensor for Arc<Tensor> {
         self
     }
 }
-

@@ -163,9 +163,10 @@ impl StatelessOp for DequantizeLinear {
         let x_scale = y_scale.as_slice::<f32>()?[0];
         let x_zero_point = x_zero_point.cast_to::<i32>()?.as_slice::<i32>()?[0];
         let x = x.cast_to::<i32>()?;
-        let tensor = x.to_array_view::<i32>()?
-                .map(|&x| ((x - x_zero_point) as f32) * x_scale)
-                .into_arc_tensor();
+        let tensor = x
+            .to_array_view::<i32>()?
+            .map(|&x| ((x - x_zero_point) as f32) * x_scale)
+            .into_arc_tensor();
         Ok(tvec!(tensor))
     }
 }
@@ -184,7 +185,7 @@ impl InferenceRulesOp for DequantizeLinear {
         s.equals(&outputs[0].datum_type, f32::datum_type())?;
         if self.optional_zero_point_input.is_some() {
             s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
-        //            s.equals(&inputs[2].rank, 0)?; // broken in Onnx test suite
+            //            s.equals(&inputs[2].rank, 0)?; // broken in Onnx test suite
         }
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())
@@ -235,4 +236,3 @@ element_wise_oop!(dequantize_linear_f32, DequantizeLinearF32 {scale: f32, zero_p
     };
     prefix: "onnx."
 );
-

@@ -155,10 +155,14 @@ impl Inference {
                         self.body.output_outlets()?[inner_model_output_ix],
                     ])?;
                     facts.push(&mut inputs[*outer_input_ix]);
-                    if Factoid::unify_all(&mut *facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>())? {
+                    if Factoid::unify_all(
+                        &mut *facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>(),
+                    )? {
                         changed = true;
                     }
-                    if Factoid::unify_all(&mut *facts.iter_mut().map(|f| &mut f.shape).collect::<TVec<_>>())? {
+                    if Factoid::unify_all(
+                        &mut *facts.iter_mut().map(|f| &mut f.shape).collect::<TVec<_>>(),
+                    )? {
                         changed = true;
                     }
                 }
@@ -182,7 +186,8 @@ impl Inference {
                         if incoming.shape.ensure_rank_at_least(*axis) {
                             changed = true;
                         }
-                        let value = self.iter_count_fact.unify(&incoming.shape.dim(*axis).unwrap())?;
+                        let value =
+                            self.iter_count_fact.unify(&incoming.shape.dim(*axis).unwrap())?;
                         if self.iter_count_fact != value {
                             changed = true;
                             self.iter_count_fact = value.clone();

@@ -3,8 +3,8 @@ mod slice;
 
 use std::convert::TryInto;
 
-use tract_core::ndarray;
 use tract_core::internal::*;
+use tract_core::ndarray;
 use tract_core::ops as tractops;
 
 use crate::model::{OnnxOpRegister, ParsingContext};

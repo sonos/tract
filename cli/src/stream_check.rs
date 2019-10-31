@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use itertools::Itertools;
-use tract_core::ndarray::{ ArrayD, Axis};
+use tract_core::ndarray::{ArrayD, Axis};
 
 use tract_core::model::{Fact, OutletId};
 use tract_core::plan::{SimplePlan, SimpleState};

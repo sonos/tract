@@ -1,5 +1,5 @@
-use tract_core::ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 use num_traits::Zero;
+use tract_core::ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 
 use crate::model::ParsingContext;
 use crate::tfpb::node_def::NodeDef;

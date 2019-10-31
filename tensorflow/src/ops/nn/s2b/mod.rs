@@ -1,6 +1,6 @@
+use num_traits::Zero;
 use tract_core::ndarray;
 use tract_core::ndarray::*;
-use num_traits::Zero;
 
 use crate::model::ParsingContext;
 use crate::tfpb::node_def::NodeDef;

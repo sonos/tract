@@ -1,5 +1,5 @@
-use tract_core::ndarray;
 use tract_core::internal::*;
+use tract_core::ndarray;
 
 use crate::model::ParsingContext;
 use crate::tfpb::node_def::NodeDef;

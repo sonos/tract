@@ -36,6 +36,20 @@ impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul16x6 {
 #[cfg(test)]
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),))]
 mod test {
-    mmm_frame_tests!(is_x86_feature_detected!("fma"), crate::x86_64_fma::mmm::SMatMatMul16x6, f32, f32, f32, f32);
-    mmm_kernel_tests!(is_x86_feature_detected!("fma"), crate::x86_64_fma::mmm::SMatMatMul16x6, f32, f32, f32, f32);
+    mmm_frame_tests!(
+        is_x86_feature_detected!("fma"),
+        crate::x86_64_fma::mmm::SMatMatMul16x6,
+        f32,
+        f32,
+        f32,
+        f32
+    );
+    mmm_kernel_tests!(
+        is_x86_feature_detected!("fma"),
+        crate::x86_64_fma::mmm::SMatMatMul16x6,
+        f32,
+        f32,
+        f32,
+        f32
+    );
 }

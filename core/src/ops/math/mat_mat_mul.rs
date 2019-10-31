@@ -5,8 +5,8 @@ use std::ops::{Add, Mul};
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::mmm::FusedSpec;
 use super::mat_mul::MMMWrapper;
+use tract_linalg::mmm::FusedSpec;
 
 use tract_linalg::frame::PackB;
 
@@ -23,7 +23,7 @@ where
 
 impl<T> Op for MatMatMulPackB<T>
 where
-    T: Copy + Datum + Zero
+    T: Copy + Datum + Zero,
 {
     fn name(&self) -> Cow<str> {
         "MatMatMulPackB".into()
@@ -35,7 +35,7 @@ where
 
 impl<T> StatelessOp for MatMatMulPackB<T>
 where
-    T: Copy + Datum + Zero
+    T: Copy + Datum + Zero,
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let b = args_1!(inputs);
@@ -64,7 +64,7 @@ where
 
 impl<T> TypedOp for MatMatMulPackB<T>
 where
-    T: Copy + Datum + Zero
+    T: Copy + Datum + Zero,
 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape)?))
@@ -150,8 +150,10 @@ where
             })()?;
             if let Some(op) = fused_micro_op {
                 let mut new_op = self.clone();
-                unsafe { new_op.mmm.as_mmm_mut().non_linear_specs_mut().extend(op.into_iter()); }
-                return Ok(Some(TypedModelPatch::fuse_with_next(model, &node,  new_op)?))
+                unsafe {
+                    new_op.mmm.as_mmm_mut().non_linear_specs_mut().extend(op.into_iter());
+                }
+                return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));
             }
         }
         Ok(None)

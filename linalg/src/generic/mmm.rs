@@ -405,8 +405,8 @@ where
                     let pb1 = *(col_ptrs.offset(1));
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
-                        let offset =
-                            *row_byte_offsets.offset(i as isize) / std::mem::size_of::<TB>() as isize;
+                        let offset = *row_byte_offsets.offset(i as isize)
+                            / std::mem::size_of::<TB>() as isize;
                         let b0 = *(pb0.offset(offset));
                         let b1 = *(pb1.offset(offset));
                         ab[0][0] += a[0].as_() * b0.as_();
@@ -420,7 +420,8 @@ where
                 (Packed { ptr: a }, VecStride { ptr: b, byte_stride }, Mul { k }) => {
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
-                        let b = *b.offset(i as isize * byte_stride / std::mem::size_of::<TB>() as isize);
+                        let b = *b
+                            .offset(i as isize * byte_stride / std::mem::size_of::<TB>() as isize);
                         ab[0][0] += a[0].as_() * b.as_();
                         ab[1][0] += a[1].as_() * b.as_();
                         ab[2][0] += a[2].as_() * b.as_();

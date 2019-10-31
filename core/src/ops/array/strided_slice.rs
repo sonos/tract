@@ -175,8 +175,7 @@ impl StatelessOp for StridedSlice {
         };
         let axes: TVec<usize> = if let Some(i) = self.optional_axes_input {
             let axes = inputs[i].cast_to::<i32>()?;
-            axes
-                .as_slice::<i32>()?
+            axes.as_slice::<i32>()?
                 .iter()
                 .map(|&i| if i < 0 { input_rank as i32 + i } else { i } as usize)
                 .collect()
@@ -294,7 +293,7 @@ impl InferenceRulesOp for StridedSlice {
             let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
             let input_shape = target.outlet_fact(mapping[&node.inputs[0]])?.shape.clone();
             let strides: TVec<i32> = if let Some(i) = self.optional_steps_input {
-                let strides = params[i-1].cast_to::<i32>()?;
+                let strides = params[i - 1].cast_to::<i32>()?;
                 strides.as_slice::<i32>()?.into()
             } else {
                 tvec![1; input_shape.rank()]
@@ -303,9 +302,8 @@ impl InferenceRulesOp for StridedSlice {
                 bail!("FIXME: negative strides are not yet supported by tract-core");
             }
             let axes: TVec<usize> = if let Some(i) = self.optional_axes_input {
-                let axes = params[i-1].cast_to::<i32>()?;
-                axes
-                    .as_slice::<i32>()?
+                let axes = params[i - 1].cast_to::<i32>()?;
+                axes.as_slice::<i32>()?
                     .iter()
                     .map(|&i| if i < 0 { input_shape.rank() as i32 + i } else { i } as usize)
                     .collect()

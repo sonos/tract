@@ -10,8 +10,8 @@ use tract_core::ndarray::*;
 use tract_core::shapefact;
 
 mod conv_plus_conv;
-mod pad_plus_conv;
 mod delay_plus_pool;
+mod pad_plus_conv;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
@@ -77,10 +77,13 @@ fn proptest_regular_against_pulse(
         }
     }
 
-    let pulsed_output = got.slice_axis(
-        Axis(output_stream_axis),
-        (output_fact.delay..output_fact.delay + output_len.unwrap() as usize).into(),
-    ).to_owned().into_tensor();
+    let pulsed_output = got
+        .slice_axis(
+            Axis(output_stream_axis),
+            (output_fact.delay..output_fact.delay + output_len.unwrap() as usize).into(),
+        )
+        .to_owned()
+        .into_tensor();
 
     prop_assert_eq!(&pulsed_output, &*outputs[0]);
     Ok(())

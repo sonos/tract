@@ -309,7 +309,7 @@ where
 
     /// Find outlet by label.
     pub fn find_outlet_label(&self, label: &str) -> Option<OutletId> {
-        self.outlet_labels.iter().find(|(_k,v)| &**v == label).map(|(k,_v)| *k)
+        self.outlet_labels.iter().find(|(_k, v)| &**v == label).map(|(k, _v)| *k)
     }
 
     // misc

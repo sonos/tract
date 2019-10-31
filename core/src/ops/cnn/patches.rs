@@ -250,7 +250,7 @@ impl Patch {
     #[inline]
     pub fn visit_output(&self, mut acceptor: impl FnMut(&Scanner)) {
         if self.zones.len() == 0 {
-            return
+            return;
         }
         let mut scanner = Scanner::new(self);
         while !scanner.done() {
@@ -261,7 +261,7 @@ impl Patch {
 
     pub fn centers_offsets(&self) -> Vec<isize> {
         if self.zones.len() == 0 {
-            return vec!()
+            return vec![];
         }
         let mut scanner = Scanner::new(self);
         let len = self.output_shape.iter().cloned().product();

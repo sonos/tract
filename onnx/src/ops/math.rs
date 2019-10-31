@@ -59,8 +59,8 @@ pub fn clip(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let min:Option<f32> = node.get_attr_opt("min")?;
-    let max:Option<f32> = node.get_attr_opt("max")?;
+    let min: Option<f32> = node.get_attr_opt("min")?;
+    let max: Option<f32> = node.get_attr_opt("max")?;
     let op: Box<dyn InferenceOp> = match (min, max) {
         (Some(min), Some(max)) => Box::new(tractops::math::scalar_min_max(max.into(), min.into())),
         (None, Some(max)) => Box::new(tractops::math::scalar_min(max.into())),
@@ -210,4 +210,3 @@ impl InferenceRulesOp for Gemm {
 
     inference_op_as_op!();
 }
-

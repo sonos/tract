@@ -28,7 +28,6 @@ impl PoolSpec {
         self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1)
     }
 
-
     pub fn stride(&self, geo_axis: usize) -> usize {
         self.strides.as_ref().map(|s| s[geo_axis]).unwrap_or(1)
     }

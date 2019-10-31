@@ -83,10 +83,10 @@ impl Op for Delay {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(
+        Ok(vec![
             format!("axis: {} delay: {} overlap: {}", self.axis, self.delay, self.overlap),
-            format!("buffer: {:?} {:?}", self.buffer_shape, self.datum_type)
-        ))
+            format!("buffer: {:?} {:?}", self.buffer_shape, self.datum_type),
+        ])
     }
 
     canonic!();
@@ -116,7 +116,10 @@ impl TypedOp for Delay {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        Ok(tvec!((Cost::Buffer(self.datum_type), self.buffer_shape.iter().product::<usize>().to_dim())))
+        Ok(tvec!((
+            Cost::Buffer(self.datum_type),
+            self.buffer_shape.iter().product::<usize>().to_dim()
+        )))
     }
 }
 

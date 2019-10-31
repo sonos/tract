@@ -41,8 +41,10 @@ impl Slice1 {
             let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
             let b = if b > input.shape()[axis] as isize { input.shape()[axis] as isize } else { b };
             let e = if e > input.shape()[axis] as isize { input.shape()[axis] as isize } else { e };
-            input
-                .slice_axis_inplace(ndarray::Axis(axis), ndarray::Slice::from((b as isize)..(e as isize)));
+            input.slice_axis_inplace(
+                ndarray::Axis(axis),
+                ndarray::Slice::from((b as isize)..(e as isize)),
+            );
         }
         Ok(Tensor::from(input.to_owned()).into())
     }

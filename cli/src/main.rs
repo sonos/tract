@@ -718,7 +718,7 @@ pub fn display_options_from_clap(
         //        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
         expect_canonic: root_matches.value_of("pass").unwrap_or("declutter") == "declutter"
             && !root_matches.is_present("optimize"),
-        outlet_labels: matches.is_present("outlet-labels")
+        outlet_labels: matches.is_present("outlet-labels"),
     })
 }
 

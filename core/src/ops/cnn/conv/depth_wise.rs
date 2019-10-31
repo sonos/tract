@@ -6,7 +6,7 @@ use ndarray::*;
 #[derive(Debug, Clone, new)]
 pub struct DepthWise<T>
 where
-    T: Datum + Clone + ndarray::LinalgScalar
+    T: Datum + Clone + ndarray::LinalgScalar,
 {
     patch: Patch,
     input_shape: DataShape,
@@ -16,7 +16,7 @@ where
 
 impl<T> Op for DepthWise<T>
 where
-    T: Datum + Clone + ndarray::LinalgScalar
+    T: Datum + Clone + ndarray::LinalgScalar,
 {
     fn name(&self) -> Cow<str> {
         format!("Conv::DepthWise<{:?}>", T::datum_type()).into()
@@ -28,7 +28,7 @@ where
 
 impl<T> StatelessOp for DepthWise<T>
 where
-    T: Datum + Clone + ndarray::LinalgScalar
+    T: Datum + Clone + ndarray::LinalgScalar,
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let img = args_1!(inputs);
@@ -71,7 +71,7 @@ where
 
 impl<T> TypedOp for DepthWise<T>
 where
-    T: Datum + Clone + ndarray::LinalgScalar
+    T: Datum + Clone + ndarray::LinalgScalar,
 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))

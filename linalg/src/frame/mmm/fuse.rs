@@ -27,7 +27,7 @@ impl<TI: Copy + Debug> Debug for FusedSpec<TI> {
             FusedSpec::PerRowAdd(_) => write!(fmt, "PerRowAdd"),
             FusedSpec::PerColMul(_) => write!(fmt, "PerColMul"),
             FusedSpec::PerColAdd(_) => write!(fmt, "PerColAdd"),
-            FusedSpec::AddRowColProducts(_,_) => write!(fmt, "AddRowColProducts"),
+            FusedSpec::AddRowColProducts(_, _) => write!(fmt, "AddRowColProducts"),
         }
     }
 }
@@ -158,5 +158,3 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         self.uspecs.as_ptr()
     }
 }
-
-

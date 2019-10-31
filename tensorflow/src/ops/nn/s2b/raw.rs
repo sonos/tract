@@ -1,5 +1,5 @@
-use tract_core::ndarray::prelude::*;
 use tract_core::internal::*;
+use tract_core::ndarray::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct SpaceToBatch {

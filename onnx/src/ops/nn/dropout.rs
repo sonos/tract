@@ -1,7 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::ndarray::*;
 use tract_core::internal::*;
+use tract_core::ndarray::*;
 use tract_core::ops::identity::Identity;
 
 pub fn dropout(

@@ -210,10 +210,7 @@ where
                 sum_b_over_k[n] = sum_b_over_k[n].neg();
             }
             let a0 = a0.iter().map(|a| a.as_()).collect();
-            non_linear.insert(
-                0,
-                FusedSpec::AddRowColProducts(a0, sum_b_over_k),
-            );
+            non_linear.insert(0, FusedSpec::AddRowColProducts(a0, sum_b_over_k));
         }
         if let Some(ref b0) = self.zero_point_b {
             let mut sum_a_over_k = self.sum_a_over_k(a);

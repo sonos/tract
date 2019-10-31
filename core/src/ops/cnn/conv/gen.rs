@@ -70,11 +70,7 @@ impl Conv {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
         }
         if let Some(kvalue) = kernel.borrow().konst.clone() {
-            let reduced = ConvUnary::new(
-                &self,
-                kvalue,
-                self.group,
-            )?;
+            let reduced = ConvUnary::new(&self, kvalue, self.group)?;
             return Ok(Some(reduced));
         }
         Ok(None)
@@ -239,9 +235,9 @@ impl TypedOp for Conv {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::setup_test_logger;
     use crate::ops::cnn::conv::KernelFormat::HWIO;
     use crate::ops::nn::DataFormat::NHWC;
+    use crate::setup_test_logger;
     use ndarray::*;
 
     #[test]

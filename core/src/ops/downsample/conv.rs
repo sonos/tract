@@ -11,7 +11,8 @@ pub fn fuse_downsample_into_conv(
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_fact = model.outlet_fact(conv_node.inputs[0])?;
-    let input_shape = conv_op.pool_spec.data_format.shape(input_fact.shape.iter().collect::<TVec<_>>());
+    let input_shape =
+        conv_op.pool_spec.data_format.shape(input_fact.shape.iter().collect::<TVec<_>>());
     if down_op.axis < input_shape.h_axis() {
         return Ok(None);
     }

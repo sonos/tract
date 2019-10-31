@@ -8,7 +8,7 @@ extern "C" {
 #[derive(Copy, Clone, Debug)]
 pub struct SMatMatMul8x8;
 
-impl MatMatMulKer<f32,f32,f32,f32> for SMatMatMul8x8 {
+impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"

@@ -153,9 +153,7 @@ impl TypedPass for FuseOps {
                 let reduced = {
                     let node = &model.nodes()[id];
                     debug!("Fuse {}", node);
-                    node.op
-                        .fuse(model, node)
-                        .chain_err(|| format!("{:?} node {}", self, node))?
+                    node.op.fuse(model, node).chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
                     {

@@ -1,7 +1,7 @@
 use crate::errors::*;
 use crate::{Model, Parameters};
-use tract_core::ndarray;
 use tract_core::internal::*;
+use tract_core::ndarray;
 
 pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
