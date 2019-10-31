@@ -48,6 +48,8 @@ impl Affine {
             PaddingSpec::Valid,
             None,
             1,
+            None,
+            None
         );
         trace!("{:?} -> {:?}", self, conv);
         conv

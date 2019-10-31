@@ -34,6 +34,8 @@ fn b(
         padding,
         Some(tvec!(stride, stride)),
         1,
+        None,
+        None,
     );
     let input_fact: TypedFact =
         InferenceFact::dt_shape(DatumType::F32, image.shape()).try_into().unwrap();

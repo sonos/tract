@@ -35,6 +35,8 @@ impl DepthwiseConv2d {
             self.padding.clone(),
             Some(self.strides[shape.hw_axes()].into()),
             group,
+            None,
+            None
         );
         Ok(conv)
     }
