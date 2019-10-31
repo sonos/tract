@@ -20,6 +20,7 @@ pub struct Im2Col<T: Copy + Datum + Zero> {
     pub ci_per_group: usize,
     pub b_pack: PackB<T>,
     patcher: Patcher,
+    pad_value: T,
 }
 
 impl<T: Copy + Datum + Zero> PartialEq for Im2Col<T> {
@@ -43,6 +44,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
         group: usize,
         ci_per_group: usize,
         b_pack: PackB<T>,
+        pad_value: T,
     ) -> Im2Col<T> {
         let patcher = if !patch.padded && patch.rank() == 2 {
             Patcher::Valid2d
@@ -54,7 +56,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
             Patcher::Generic
         };
         let output_shape = input_shape.fmt.shape(tvec!(*input_shape.n_dim(), group, b_pack.len()));
-        Im2Col { patch, input_shape, output_shape, m, k, n, group, ci_per_group, b_pack, patcher }
+        Im2Col { patch, input_shape, output_shape, m, k, n, group, ci_per_group, b_pack, patcher, pad_value }
     }
 
     pub fn output_shape(&self) -> &[usize] {
@@ -70,7 +72,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
                 let mut packed = packed.to_array_view_mut::<T>()?;
                 packed.slice_axis_inplace(Axis(0), (i..=i).into());
                 packed.slice_axis_inplace(Axis(1), (g..=g).into());
-                self.patcher.patch(self, input, packed.as_slice_mut().unwrap(), i, g);
+                self.patcher.patch(self, input, packed.as_slice_mut().unwrap(), i, g, self.pad_value);
             }
         }
         Ok(packed)
@@ -127,6 +129,7 @@ impl Patcher {
         pack: &'p mut [T],
         i: usize,
         g: usize,
+        pad_value: T,
     ) {
         match self {
             Patcher::Valid1d => Self::valid_1d(
@@ -149,8 +152,9 @@ impl Patcher {
                 pack,
                 i,
                 g,
+                pad_value
             ),
-            _ => Self::generic(im2col, input, pack, i, g),
+            _ => Self::generic(im2col, input, pack, i, g, pad_value),
         }
     }
 
@@ -161,6 +165,7 @@ impl Patcher {
         pack: &'p mut [T],
         i: usize,
         g: usize,
+        pad_value: T,
     ) {
         let ptr = input.as_ptr();
         let mut mega_matrix = unsafe { Array2::<T>::uninitialized((im2col.k, im2col.n)) };
@@ -177,7 +182,7 @@ impl Patcher {
                     let ptr = ptr.offset((shape.c_stride() * ci) as isize);
                     for v in im2col.patch.at(spatial.slice()) {
                         *col.next().expect("geometry error in conv") =
-                            v.map(|o| *ptr.offset(o)).unwrap_or(T::default());
+                            v.map(|o| *ptr.offset(o)).unwrap_or(pad_value);
                     }
                 }
             }
@@ -223,6 +228,7 @@ impl Patcher {
         pack: &'p mut [T],
         i: usize,
         g: usize,
+        pad_value: T,
     ) {
         unsafe {
             let y_stride = im2col.patch.spec.strides[0] as isize;
@@ -251,12 +257,12 @@ impl Patcher {
                                 if x >= 0 && x < input_width {
                                     writer.write(*iptr.offset(xo as isize * x_stride_ptr));
                                 } else {
-                                    writer.write(T::default());
+                                    writer.write(pad_value);
                                 }
                             }
                         } else {
                             for _x in 0..*im2col.patch.output_shape.get_unchecked(1) {
-                                writer.write(T::default());
+                                writer.write(pad_value);
                             }
                         }
                     }
