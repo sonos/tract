@@ -40,17 +40,11 @@ impl Affine {
     fn as_conv(&self) -> tract_core::ops::cnn::Conv {
         use tract_core::ops::cnn::*;
         use tract_core::ops::nn::*;
-        let conv = Conv::new(
-            DataFormat::NHWC,
-            KernelFormat::HWIO,
-            Some(tvec!(self.dilation)),
-            Some(tvec!(self.kernel_len)),
-            PaddingSpec::Valid,
-            None,
-            1,
-            None,
-            None
-        );
+        let conv = Conv::default()
+            .nhwc()
+            .hwio()
+            .dilations(tvec!(self.dilation))
+            .kernel_shape(tvec!(self.kernel_len));
         trace!("{:?} -> {:?}", self, conv);
         conv
     }

@@ -26,18 +26,15 @@ pub struct DepthwiseConv2d {
 impl DepthwiseConv2d {
     fn to_core(&self, input_shape: &[TDim], kernel_shape: &[usize]) -> TractResult<Conv> {
         let shape = self.data_format.shape(&input_shape);
-        let group = kernel_shape[2];
-        let conv = Conv::new(
-            self.data_format.clone(),
-            KernelFormat::HWIO,
-            Some(self.dilations[shape.hw_axes()].into()),
-            None,
-            self.padding.clone(),
-            Some(self.strides[shape.hw_axes()].into()),
-            group,
-            None,
-            None
-        );
+        let mut conv = Conv::default()
+            .hwio()
+            .group(kernel_shape[2])
+            .dilations(self.dilations[shape.hw_axes()].into())
+            .strides(self.strides[shape.hw_axes()].into())
+            .padding(self.padding.clone());
+        if self.data_format == DataFormat::NHWC {
+            conv = conv.nhwc()
+        }
         Ok(conv)
     }
 }

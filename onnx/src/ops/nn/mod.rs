@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 use tract_core::ops as tractops;
-use tract_core::ops::cnn::{KernelFormat, PaddingSpec};
+use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::nn::DataFormat;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
@@ -117,51 +117,47 @@ pub fn batch_normalization(
     Ok((Box::new(batch_norm::BatchNorm::new(DataFormat::NCHW, epsilon, spatial != 0)), vec![]))
 }
 
+fn common_conv(node: &NodeProto) -> TractResult<tractops::cnn::Conv> {
+    let mut op = tractops::cnn::Conv::default().padding(pad(node)?);
+    if let Some(kernel_shape) = node.get_attr_opt_tvec("kernel_shape")? {
+        op = op.kernel_shape(kernel_shape);
+    }
+    if let Some(group) = node.get_attr_opt("group")? {
+        op = op.group(group);
+    }
+    if let Some(v) = dilations(node)? {
+        op = op.dilations(v);
+    }
+    if let Some(v) = strides(node)? {
+        op = op.strides(v);
+    }
+    Ok(op)
+}
+
 pub fn conv(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let kernel_shape = node.get_attr_opt_tvec("kernel_shape")?;
-    let group = node.get_attr_opt("group")?.unwrap_or(1);
-    Ok((
-        Box::new(tractops::cnn::Conv::new(
-            DataFormat::NCHW,
-            KernelFormat::OIHW,
-            dilations(node)?,
-            kernel_shape,
-            pad(node)?,
-            strides(node)?,
-            group,
-            None,
-            None,
-        )),
-        vec![],
-    ))
+    let mut op = common_conv(node)?;
+    if node.get_input().len() == 3 {
+        op = op.bias_input(2);
+    }
+    Ok((Box::new(op), vec![]))
 }
 
 pub fn conv_integer(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let kernel_shape = node.get_attr_opt_tvec("kernel_shape")?;
-    let group = node.get_attr_opt("group")?.unwrap_or(1);
+    let mut op = common_conv(node)?;
     let mut options = crate::model::optional_inputs(node).skip(2);
-    let x_zero_point_input = options.next().unwrap();
-    let k_zero_point_input = options.next().unwrap();
-    Ok((
-        Box::new(tractops::cnn::Conv::new(
-            DataFormat::NCHW,
-            KernelFormat::OIHW,
-            dilations(node)?,
-            kernel_shape,
-            pad(node)?,
-            strides(node)?,
-            group,
-            x_zero_point_input,
-            k_zero_point_input,
-        )),
-        vec![],
-    ))
+    if let Some(i) = options.next().unwrap() {
+        op = op.x_zero_point_input(i);
+    }
+    if let Some(i) = options.next().unwrap() {
+        op = op.k_zero_point_input(i);
+    }
+    Ok((Box::new(op), vec![]))
 }
 
 pub fn average_pool(
