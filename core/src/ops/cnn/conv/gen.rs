@@ -16,6 +16,9 @@ pub struct Conv {
     pub padding: PaddingSpec,
     pub strides: Option<TVec<usize>>,
     pub group: usize,
+
+    pub x_zero_point_input: Option<usize>,
+    pub k_zero_point_input: Option<usize>,
 }
 
 impl ::std::default::Default for Conv {
@@ -28,6 +31,8 @@ impl ::std::default::Default for Conv {
             padding: PaddingSpec::default(),
             strides: None,
             group: 1,
+            x_zero_point_input: None,
+            k_zero_point_input: None,
         }
     }
 }
@@ -275,7 +280,7 @@ mod test {
 
     #[test]
     fn test_infer_nhwc_1() {
-        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 2));
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 2, 2, 1));
         let ofact = InferenceFact::default();
@@ -286,7 +291,7 @@ mod test {
     #[test]
     fn test_eval_nhwc_1() {
         setup_test_logger();
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let res = op
             .eval(tvec!(
                 ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into_arc_tensor(),
@@ -299,7 +304,7 @@ mod test {
     #[test]
     fn test_infer_nhwc_2() {
         setup_test_logger();
-        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 2));
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 1, 2, 1));
         let ofact = InferenceFact::default();
@@ -310,7 +315,7 @@ mod test {
     #[test]
     fn test_eval_nhwc_2() {
         setup_test_logger();
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let i = rctensor4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]);
         let k = rctensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
         let e = rctensor4(&[[[[1.0f32], [0.0]]]]);
@@ -321,7 +326,7 @@ mod test {
     #[test]
     fn test_eval_nhwc_3() {
         setup_test_logger();
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::Valid, None, 1);
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::Valid, None, 1, None, None);
         let i = rctensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
         let k = rctensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
         let res = op.eval(tvec!(i.clone(), k)).unwrap();
@@ -331,7 +336,7 @@ mod test {
     #[test]
     fn test_eval_nhwc_batch() {
         setup_test_logger();
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let result = op
             .eval(tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]]), rctensor4(&[[[[1.0f32]]]])))
             .unwrap();
@@ -340,7 +345,7 @@ mod test {
 
     #[test]
     fn test_infer_ntc_simple() {
-        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
         let ofact = InferenceFact::default();
@@ -350,7 +355,7 @@ mod test {
 
     #[test]
     fn test_eval_ntc_simple() {
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let result =
             op.eval(tvec!(rctensor3(&[[[2.0f32], [0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
         assert_eq!(result, tvec!(rctensor3(&[[[2.0f32], [0.0f32]]])));
@@ -358,7 +363,7 @@ mod test {
 
     #[test]
     fn test_infer_ntc_batch() {
-        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1));
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
         let ofact = InferenceFact::default();
@@ -368,7 +373,7 @@ mod test {
 
     #[test]
     fn test_eval_ntc_batch() {
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let result =
             op.eval(tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
         assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]])));
@@ -376,7 +381,7 @@ mod test {
 
     #[test]
     fn test_infer_ntc_channel() {
-        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let ifact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2));
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
         let ofact = InferenceFact::default();
@@ -386,7 +391,7 @@ mod test {
 
     #[test]
     fn test_eval_ntc_channel() {
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1, None, None);
         let result = op
             .eval(tvec!(rctensor3(&[[[2.0f32, 0.0f32]]]), rctensor3(&[[[1.0f32], [0.0f32]]])))
             .unwrap();

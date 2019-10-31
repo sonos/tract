@@ -73,6 +73,8 @@ impl Problem {
             tract_core::ops::cnn::PaddingSpec::Valid,
             Some(tvec!(self.stride_h, self.stride_w)),
             1,
+            None,
+            None,
         );
         let kernel_fact: TypedFact = TypedFact::from(kernel);
         let image_fact: TypedFact = self.image_fact().try_into().unwrap();

@@ -16,6 +16,8 @@ pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infere
         padding,
         Some(strides[1..3].into()),
         1,
+        None,
+        None,
     )))
 }
 
@@ -43,6 +45,8 @@ mod tests {
             padding,
             Some(tvec![v_stride, h_stride]),
             1,
+            None,
+            None,
         ))
     }
 

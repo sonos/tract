@@ -25,6 +25,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("AveragePool", average_pool);
     reg.insert("BatchNormalization", batch_normalization);
     reg.insert("Conv", conv);
+    reg.insert("ConvInteger", conv_integer);
     reg.insert("Dropout", dropout::dropout);
     reg.insert("Elu", elu);
     reg.insert("GlobalAveragePool", |_, _| {
@@ -131,6 +132,33 @@ pub fn conv(
             pad(node)?,
             strides(node)?,
             group,
+            None,
+            None,
+        )),
+        vec![],
+    ))
+}
+
+pub fn conv_integer(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let kernel_shape = node.get_attr_opt_tvec("kernel_shape")?;
+    let group = node.get_attr_opt("group")?.unwrap_or(1);
+    let mut options = crate::model::optional_inputs(node).skip(2);
+    let x_zero_point_input = options.next().unwrap();
+    let k_zero_point_input = options.next().unwrap();
+    Ok((
+        Box::new(tractops::cnn::Conv::new(
+            DataFormat::NCHW,
+            KernelFormat::OIHW,
+            dilations(node)?,
+            kernel_shape,
+            pad(node)?,
+            strides(node)?,
+            group,
+            x_zero_point_input,
+            k_zero_point_input,
         )),
         vec![],
     ))
