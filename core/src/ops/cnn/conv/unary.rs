@@ -216,6 +216,10 @@ impl ConvUnary {
                     self.group,
                     c_dim / self.group,
                     mmm.as_mmm().b_pack(),
+                    self.zero_point_x.as_ref()
+                        .map(|t| t.to_scalar::<TB>().map(|x| *x))
+                        .transpose()?
+                        .unwrap_or(TB::default()),
                 ),
                 &[wire],
             )?[0];
