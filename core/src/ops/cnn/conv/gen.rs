@@ -65,6 +65,10 @@ impl Conv {
         Conv { k_zero_point_input: Some(input), ..self }
     }
 
+    pub fn override_output_datum_type(self, override_output_datum_type: DatumType) -> Conv {
+        Conv { override_output_datum_type: Some(override_output_datum_type), ..self }
+    }
+
     pub fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[usize]) -> TVec<D> {
         debug_assert_eq!(ishape.len(), kshape.len(), "Input and kernel should have the same rank");
         let mut result: TVec<D> = ishape.into();
@@ -105,14 +109,14 @@ impl Conv {
             let mut reduced = ConvUnary::new(&self, kvalue, self.group.unwrap_or(1))?;
             if let Some(slot) = self.x_zero_point_input {
                 if let Some(ref value) = inputs[slot].borrow().konst {
-                    reduced.zero_point_a = Some(value.clone());
+                    reduced.zero_point_x = Some(value.clone());
                 } else {
                     bail!("Input zero point must be const")
                 }
             }
             if let Some(slot) = self.k_zero_point_input {
                 if let Some(ref value) = inputs[slot].borrow().konst {
-                    reduced.zero_point_b = Some(value.clone());
+                    reduced.zero_point_k = Some(value.clone());
                 } else {
                     bail!("Kernel zero point must be const")
                 }
@@ -155,9 +159,14 @@ impl StatelessOp for Conv {
         let inputs_info: TVec<TypedFact> = inputs.iter().map(|t| TypedFact::from(&**t)).collect();
         let unary = self.to_unary(&*inputs_info)?.unwrap();
         let mut result = unary.eval(tvec!(inputs[0].clone()))?;
-        if let Some(bias) = inputs.get(2) {
+        if let Some(bias_input) = self.bias_input {
             let mut result = result.remove(0).into_tensor();
-            dispatch_numbers!(Self::add_bias_t(bias.datum_type())(self, &mut result, bias))?;
+            let bias = &inputs[bias_input];
+            dispatch_numbers!(Self::add_bias_t(bias.datum_type())(
+                self,
+                &mut result,
+                &bias
+            ))?;
             Ok(tvec!(result.into_arc_tensor()))
         } else {
             Ok(result)

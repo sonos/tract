@@ -93,8 +93,8 @@ test_constantofshape_int_zeros                                                  
 test_conv_with_strides_and_asymmetric_padding
 test_conv_with_strides_no_padding
 test_conv_with_strides_padding
-# test_basic_convinteger
-# test_convinteger_with_padding
+test_basic_convinteger
+test_convinteger_with_padding
 test_cos
 test_cos_example
 test_cosh

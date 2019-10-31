@@ -157,6 +157,7 @@ pub fn conv_integer(
     if let Some(i) = options.next().unwrap() {
         op = op.k_zero_point_input(i);
     }
+    op = op.override_output_datum_type(i32::datum_type());
     Ok((Box::new(op), vec![]))
 }
 

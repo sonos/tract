@@ -30,8 +30,8 @@ pub struct ConvUnary {
 
     pub group: usize,
 
-    pub zero_point_a: Option<Arc<Tensor>>,
-    pub zero_point_b: Option<Arc<Tensor>>,
+    pub zero_point_k: Option<Arc<Tensor>>,
+    pub zero_point_x: Option<Arc<Tensor>>,
 }
 
 impl ConvUnary {
@@ -56,8 +56,8 @@ impl ConvUnary {
             kernel_fmt: conv.kernel_fmt,
             kernel,
             group,
-            zero_point_a: None,
-            zero_point_b: None,
+            zero_point_k: None,
+            zero_point_x: None,
         };
         Ok(unary)
     }
@@ -181,15 +181,16 @@ impl ConvUnary {
         };
         mmm.as_mmm_mut().c_from_data_and_strides(rsc, csc);
 
-        if let Some(ref t) = self.zero_point_a {
-            mmm.set_zero_point_a(&*t)?;
-        }
-
-        if let Some(ref t) = self.zero_point_b {
+        if let Some(ref t) = self.zero_point_x {
             mmm.set_zero_point_b(&*t)?;
         }
 
+        if let Some(ref t) = self.zero_point_k {
+            mmm.set_zero_point_a(&*t)?;
+        }
+
         trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
+        trace!("{:?}", mmm);
 
         if direct {
             let channel_stride = input_shape.c_stride();
@@ -413,8 +414,8 @@ impl TypedOp for ConvUnary {
             kernel_fmt: self.kernel_fmt,
             kernel: kernel.into_arc_tensor(),
             group: self.group,
-            zero_point_a: self.zero_point_a.clone(),
-            zero_point_b: self.zero_point_b.clone(),
+            zero_point_x: self.zero_point_x.clone(),
+            zero_point_k: self.zero_point_k.clone(),
         };
         Ok(Some(Box::new(new_op)))
     }
@@ -474,8 +475,8 @@ impl TypedOp for ConvUnary {
                                 true,
                                 true,
                                 true,
-                                self.zero_point_a.clone(),
-                                self.zero_point_b.clone(),
+                                self.zero_point_k.clone(),
+                                self.zero_point_x.clone(),
                             ),
                             &[wire],
                         )?[0];

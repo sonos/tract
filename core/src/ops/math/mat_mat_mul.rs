@@ -189,10 +189,10 @@ where
                         c = c.offset(prefix_strides[ix] * dim as isize);
                     }
                     let pa: &Tensor = a.iter().next().unwrap();
-                    self.mmm.as_mmm().run(pa.as_ptr()?, b.as_ptr(), c);
+                    self.mmm.run(pa.as_ptr()?, b.as_ptr(), c);
                 }
             } else {
-                self.mmm.as_mmm().run(
+                self.mmm.run(
                     self.packed_as.as_slice().unwrap()[0].as_ptr()?,
                     b.as_ptr()?,
                     c.as_ptr_mut()?,

@@ -55,57 +55,67 @@ where
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn sum_a_over_k(&self, mut a: *const TA) -> Vec<TI> {
-        let mr = K::mr();
-        let mut result = vec![TI::zero(); self.m];
-        unsafe {
-            for p in 0..(self.m / mr) {
-                for _k in 0..self.k {
-                    for row in 0..mr {
-                        result[p * mr + row] = result[p * mr + row] + (*a).as_();
-                        a = a.offset(1);
-                    }
-                }
-            }
-            if self.m % mr != 0 {
-                let p = self.m / mr;
-                for _k in 0..self.k {
-                    for row in 0..mr {
-                        if row < self.m % mr {
-                            result[p * mr + row] = result[p * mr + row] + (*a).as_();
+        match &self.mmm.a_storage {
+            MatrixStoreSpec::Packed { .. } => {
+                let mr = K::mr();
+                let mut result = vec![TI::zero(); self.m];
+                unsafe {
+                    for p in 0..(self.m / mr) {
+                        for _k in 0..self.k {
+                            for row in 0..mr {
+                                result[p * mr + row] = result[p * mr + row] + (*a).as_();
+                                a = a.offset(1);
+                            }
                         }
-                        a = a.offset(1);
+                    }
+                    if self.m % mr != 0 {
+                        let p = self.m / mr;
+                        for _k in 0..self.k {
+                            for row in 0..mr {
+                                if row < self.m % mr {
+                                    result[p * mr + row] = result[p * mr + row] + (*a).as_();
+                                }
+                                a = a.offset(1);
+                            }
+                        }
                     }
                 }
+                result
             }
+            a => panic!("Storage {:?} not supported for quantized ops", a),
         }
-        result
     }
 
     fn sum_b_over_k(&self, mut b: *const TB) -> Vec<TI> {
-        let nr = K::nr();
-        let mut result = vec![TI::zero(); self.n];
-        unsafe {
-            for p in 0..(self.n / nr) {
-                for _k in 0..self.k {
-                    for row in 0..nr {
-                        result[p * nr + row] = result[p * nr + row] + (*b).as_();
-                        b = b.offset(1);
-                    }
-                }
-            }
-            if self.n % nr != 0 {
-                let p = self.n / nr;
-                for _k in 0..self.k {
-                    for row in 0..nr {
-                        if row < self.n % nr {
-                            result[p * nr + row] = result[p * nr + row] + (*b).as_();
+        match &self.mmm.b_storage {
+            MatrixStoreSpec::Packed { .. } => {
+                let nr = K::nr();
+                let mut result = vec![TI::zero(); self.n];
+                unsafe {
+                    for p in 0..(self.n / nr) {
+                        for _k in 0..self.k {
+                            for row in 0..nr {
+                                result[p * nr + row] = result[p * nr + row] + (*b).as_();
+                                b = b.offset(1);
+                            }
                         }
-                        b = b.offset(1);
+                    }
+                    if self.n % nr != 0 {
+                        let p = self.n / nr;
+                        for _k in 0..self.k {
+                            for row in 0..nr {
+                                if row < self.n % nr {
+                                    result[p * nr + row] = result[p * nr + row] + (*b).as_();
+                                }
+                                b = b.offset(1);
+                            }
+                        }
                     }
                 }
+                result
             }
+            b => panic!("Storage {:?} not supported for quantized ops", b),
         }
-        result
     }
 }
 
@@ -223,7 +233,6 @@ where
             let b0 = b0.iter().map(|b| b.as_()).collect();
             non_linear.insert(0, FusedSpec::AddRowColProducts(sum_a_over_k, b0));
         }
-        dbg!(&non_linear);
         self.mmm.run_with_non_linear(a, b, c, &non_linear)
     }
 }
