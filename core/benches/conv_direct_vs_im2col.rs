@@ -65,17 +65,12 @@ impl Problem {
     pub fn to_unary(&self) -> Box<ConvUnary> {
         let kernel =
             Tensor::from(ndarray::Array4::<f32>::zeros((self.kh, self.kw, self.ci, self.co)));
-        let conv = tract_core::ops::cnn::Conv::new(
-            tract_core::ops::nn::DataFormat::NHWC,
-            tract_core::ops::cnn::KernelFormat::HWIO,
-            Some(tvec!(self.dil_h, self.dil_w)),
-            Some(kernel.shape()[0..2].into()),
-            tract_core::ops::cnn::PaddingSpec::Valid,
-            Some(tvec!(self.stride_h, self.stride_w)),
-            1,
-            None,
-            None,
-        );
+        let conv = tract_core::ops::cnn::Conv::default()
+            .nhwc()
+            .hwio()
+            .dilations(tvec!(self.dil_h, self.dil_w))
+            .kernel_shape(kernel.shape()[0..2].into())
+            .strides(tvec!(self.stride_h, self.stride_w));
         let kernel_fact: TypedFact = TypedFact::from(kernel);
         let image_fact: TypedFact = self.image_fact().try_into().unwrap();
         let unary = conv.to_unary(&[&image_fact, &kernel_fact]).unwrap();

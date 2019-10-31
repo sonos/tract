@@ -140,6 +140,10 @@ impl ConvUnary {
             self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
                 MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n))
             })
+        } else if (a, b) == (u8::datum_type(), u8::datum_type()) {
+            self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
+                MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_i32)(m, k, n))
+            })
         } else {
             bail!("Unsupported combination for Conv (filters: {:?}, data:{:?})", a, b);
         }
@@ -176,6 +180,14 @@ impl ConvUnary {
             DataFormat::NCHW => (n as isize, 1),
         };
         mmm.as_mmm_mut().c_from_data_and_strides(rsc, csc);
+
+        if let Some(ref t) = self.zero_point_a {
+            mmm.set_zero_point_a(&*t)?;
+        }
+
+        if let Some(ref t) = self.zero_point_b {
+            mmm.set_zero_point_b(&*t)?;
+        }
 
         trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
 

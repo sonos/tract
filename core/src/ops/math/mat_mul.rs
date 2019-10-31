@@ -65,20 +65,10 @@ where
             if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
         );
         if let Some(ref t) = zero_point_a {
-            let t = t.cast_to::<TA>()?;
-            if t.rank() == 0 {
-                geo.mm.as_quant_mut().unwrap().set_zero_point_a_scalar(*t.to_scalar()?)
-            } else {
-                geo.mm.as_quant_mut().unwrap().set_zero_point_a_vector(t.as_slice()?.to_vec())
-            }
+            geo.mm.set_zero_point_a(t)?;
         }
         if let Some(ref t) = zero_point_b {
-            let t = t.cast_to::<TB>()?;
-            if t.rank() == 0 {
-                geo.mm.as_quant_mut().unwrap().set_zero_point_b_scalar(*t.to_scalar()?)
-            } else {
-                geo.mm.as_quant_mut().unwrap().set_zero_point_b_vector(t.as_slice()?.to_vec())
-            }
+            geo.mm.set_zero_point_b(t)?;
         }
     }
     let a = a.into_shape(&*geo.bc_a_shape)?;
@@ -223,6 +213,30 @@ where
             MMMWrapper::Plain(p) => p.run(a, b, c),
             MMMWrapper::Quant(q) => q.run(a, b, c),
         }
+    }
+
+    pub fn set_zero_point_a(&mut self, t: &Tensor) -> TractResult<()> {
+        let q = self.as_quant_mut().ok_or("try to zero_point on a float mat mul")?;
+        unsafe {
+            if t.rank() == 0 {
+                q.set_zero_point_a_scalar(*t.to_scalar()?)
+            } else {
+                q.set_zero_point_a_vector(t.as_slice()?.to_vec())
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_zero_point_b(&mut self, t: &Tensor) -> TractResult<()> {
+        let q = self.as_quant_mut().ok_or("try to zero_point on a float mat mul")?;
+        unsafe {
+            if t.rank() == 0 {
+                q.set_zero_point_b_scalar(*t.to_scalar()?)
+            } else {
+                q.set_zero_point_b_vector(t.as_slice()?.to_vec())
+            }
+        }
+        Ok(())
     }
 }
 
@@ -705,20 +719,10 @@ where
             );
         };
         if let Some(ref t) = zero_point_a {
-            let t = t.cast_to::<TI>()?;
-            if t.rank() == 0 {
-                geo.mm.as_quant_mut().unwrap().set_zero_point_a_scalar(*t.to_scalar()?)
-            } else {
-                geo.mm.as_quant_mut().unwrap().set_zero_point_a_vector(t.as_slice()?.to_vec())
-            }
+            geo.mm.set_zero_point_a(t)?;
         }
         if let Some(ref t) = zero_point_b {
-            let t = t.cast_to::<TI>()?;
-            if t.rank() == 0 {
-                geo.mm.as_quant_mut().unwrap().set_zero_point_b_scalar(*t.to_scalar()?)
-            } else {
-                geo.mm.as_quant_mut().unwrap().set_zero_point_b_vector(t.as_slice()?.to_vec())
-            }
+            geo.mm.set_zero_point_b(t)?;
         }
     }
     if geo.n > 1 {

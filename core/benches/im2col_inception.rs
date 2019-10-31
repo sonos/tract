@@ -26,17 +26,12 @@ fn b(
 ) {
     let image = Tensor::from(ndarray::Array4::<f32>::zeros((1, h, w, ci)));
     let kernel = Tensor::from(ndarray::Array4::<f32>::zeros((kh, kw, ci, co)));
-    let conv = tract_core::ops::cnn::Conv::new(
-        tract_core::ops::nn::DataFormat::NHWC,
-        tract_core::ops::cnn::KernelFormat::HWIO,
-        None,
-        Some(kernel.shape()[0..2].into()),
-        padding,
-        Some(tvec!(stride, stride)),
-        1,
-        None,
-        None,
-    );
+    let conv = tract_core::ops::cnn::Conv::default()
+        .nhwc()
+        .hwio()
+        .kernel_shape(kernel.shape()[0..2].into())
+        .padding(padding)
+        .strides(tvec!(stride, stride));
     let input_fact: TypedFact =
         InferenceFact::dt_shape(DatumType::F32, image.shape()).try_into().unwrap();
     let kernel_fact: TypedFact = InferenceFact::from(kernel).try_into().unwrap();
