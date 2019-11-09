@@ -440,7 +440,7 @@ impl StatelessOp for GRU {
                     .eval(tvec!(ht1.into_arc_tensor()))?
                     .remove(0)
                     .into_tensor()
-                    .into_array::<f32>()?;;
+                    .into_array::<f32>()?;
 
                 ht = (1.0 - &zt) * ht1 + ht * &zt;
 

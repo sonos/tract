@@ -200,7 +200,7 @@ pub fn get_usage() -> CliResult<ResourceUsage> {
     use std::io::Read;
     unsafe {
         let mut proc_stat = String::new();
-        let _ = r#try!(r#try!(File::open("/proc/self/stat")).read_to_string(&mut proc_stat));
+        let _ = File::open("/proc/self/stat")?.read_to_string(&mut proc_stat)?;
         let mut tokens = proc_stat.split(" ");
         let mut rusage: rusage = std::mem::zeroed();
         getrusage(RUSAGE_SELF, &mut rusage);
