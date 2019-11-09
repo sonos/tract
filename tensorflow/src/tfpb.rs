@@ -1,5 +1,5 @@
-//! Generated protobuf codec for TensorFlow models, plus a handful of helper for
-//! writting tests.
+//! Generated protobuf codec for TensorFlow models, plus a handful of helpers
+//! for writting tests.
 
 #![allow(unknown_lints)]
 
@@ -16,36 +16,31 @@
 #![allow(unused_imports)]
 #![allow(unused_results)]
 
-pub mod attr_value {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/attr_value.rs"));
+macro_rules! proto {
+    ($name: ident) => {
+        pub mod $name {
+            include!(concat!(env!("OUT_DIR"), "/protobuf-generated/", stringify!($name), ".rs"));
+        }
+    }
 }
-pub mod function {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/function.rs"));
-}
-pub mod graph {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/graph.rs"));
-}
-pub mod node_def {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/node_def.rs"));
-}
-pub mod op_def {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/op_def.rs"));
-}
-pub mod resource_handle {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/resource_handle.rs"));
-}
-pub mod tensor {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/tensor.rs"));
-}
-pub mod tensor_shape {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/tensor_shape.rs"));
-}
-pub mod types {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/types.rs"));
-}
-pub mod versions {
-    include!(concat!(env!("OUT_DIR"), "/protobuf-generated/versions.rs"));
-}
+
+proto!(attr_value);
+proto!(function);
+proto!(graph);
+proto!(meta_graph);
+proto!(node_def);
+proto!(op_def);
+proto!(resource_handle);
+proto!(saved_model);
+proto!(saved_object_graph);
+proto!(saver);
+proto!(struct_pb);
+proto!(tensor);
+proto!(tensor_shape);
+proto!(trackable_object_graph);
+proto!(types);
+proto!(variable);
+proto!(versions);
 
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
