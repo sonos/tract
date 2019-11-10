@@ -39,6 +39,14 @@ impl Default for Tensor {
 
 impl Drop for Tensor {
     fn drop(&mut self) {
+        if self.dt == DatumType::Blob {
+            unsafe {
+                self.as_slice_mut::<Blob>()
+                    .unwrap()
+                    .iter_mut()
+                    .for_each(|s| std::ptr::drop_in_place(s as *mut Blob));
+            }
+        }
         if self.dt == DatumType::String {
             unsafe {
                 self.as_slice_mut::<String>()

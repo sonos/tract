@@ -1,5 +1,7 @@
 use crate::tfpb::graph::GraphDef;
 use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::saved_model::SavedModel;
+use std::{fs, path};
 use tract_core::internal::*;
 
 #[derive(Default)]
@@ -55,11 +57,34 @@ impl Tensorflow {
         }
         Ok(())
     }
+
+    pub fn read_frozen_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
+        Ok(::protobuf::parse_from_reader::<GraphDef>(r).map_err(|e| format!("{:?}", e))?)
+    }
+
+    pub fn open_saved_model(&self, r: &mut dyn std::io::Read) -> TractResult<SavedModel> {
+        Ok(::protobuf::parse_from_reader::<SavedModel>(r).map_err(|e| format!("{:?}", e))?)
+    }
+
+    /// Convenience method: will read the first model in the saved model
+    /// container. Use open_avec_model for more control.
+    pub fn read_saved_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
+        let mut saved = self.open_saved_model(r)?;
+        Ok(saved.take_meta_graphs()[0].take_graph_def())
+    }
 }
 
 impl Framework<GraphDef> for Tensorflow {
+    /// This method will try to read as frozen model, then as a saved model.
+    fn proto_model_for_path(&self, r: impl AsRef<path::Path>) -> TractResult<GraphDef> {
+        self.read_frozen_model(&mut fs::File::open(r.as_ref())?)
+            .or_else(|_| self.read_saved_model(&mut fs::File::open(r.as_ref())?))
+    }
+
+    /// This method expects a frozen model, use open_saved_model for TF2 saved
+    /// model format.
     fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
-        Ok(::protobuf::parse_from_reader::<GraphDef>(r).map_err(|e| format!("{:?}", e))?)
+        self.read_frozen_model(r)
     }
 
     fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<InferenceModel> {

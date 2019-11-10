@@ -240,6 +240,7 @@ macro_rules! dispatch_datum {
             DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
+            DatumType::Blob => $($path)::*::<Blob>($($args),*),
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
             DatumType::String => $($path)::*::<String>($($args),*),
         }

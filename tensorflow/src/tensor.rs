@@ -18,7 +18,7 @@ impl TryFrom<DataType> for DatumType {
             DataType::DT_HALF => Ok(DatumType::F16),
             DataType::DT_FLOAT => Ok(DatumType::F32),
             DataType::DT_DOUBLE => Ok(DatumType::F64),
-            DataType::DT_STRING => Ok(DatumType::String),
+            DataType::DT_STRING => Ok(DatumType::Blob),
             _ => Err(format!("Unknown DatumType {:?}", t))?,
         }
     }
@@ -55,6 +55,7 @@ impl TryFrom<DatumType> for DataType {
             DatumType::F16 => Ok(DataType::DT_HALF),
             DatumType::F32 => Ok(DataType::DT_FLOAT),
             DatumType::F64 => Ok(DataType::DT_DOUBLE),
+            DatumType::Blob => Ok(DataType::DT_STRING),
             DatumType::String => Ok(DataType::DT_STRING),
             DatumType::TDim => bail!("Dimension is not translatable in protobuf"),
         }
@@ -103,12 +104,8 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                     let strings = t
                         .get_string_val()
                         .iter()
-                        .map(|s| {
-                            std::str::from_utf8(s).map(|s| s.to_owned()).map_err(|_| {
-                                format!("Invalid UTF-8: {}", String::from_utf8_lossy(s)).into()
-                            })
-                        })
-                        .collect::<TractResult<Vec<String>>>()?;
+                        .map(|s| Blob(s.to_owned()))
+                        .collect::<Vec<Blob>>();
                     tensor_from_repeated_field(&*dims, strings)?
                 }
                 _ => unimplemented!("missing type (for _val()) {:?}", dtype),
