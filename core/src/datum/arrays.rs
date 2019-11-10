@@ -1,4 +1,5 @@
 use crate::dim::TDim;
+use crate::datum::Blob;
 use crate::TractResult;
 use ndarray::*;
 use tract_linalg::f16::f16;
@@ -63,5 +64,7 @@ impl_stack_views_by_copy!(i8);
 impl_stack_views_by_copy!(i16);
 impl_stack_views_by_copy!(i32);
 impl_stack_views_by_copy!(i64);
+
+impl_stack_views_by_clone!(Blob);
 impl_stack_views_by_clone!(String);
 impl_stack_views_by_clone!(TDim);

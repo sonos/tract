@@ -3,7 +3,7 @@ use crate::dim::TDim;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TractResult;
-use std::fmt;
+use std::{fmt, ops};
 
 use tract_linalg::f16::f16;
 
@@ -12,6 +12,29 @@ pub use arrays::ArrayDatum;
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+pub struct Blob(pub Vec<u8>);
+
+impl ops::Deref for Blob {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::Display for Blob {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "Blob of {} bytes: {}", self.len(), String::from_utf8_lossy(self))
+    }
+}
+
+impl std::str::FromStr for Blob {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Blob, ()> {
+        Ok(Blob(s.as_bytes().to_vec()))
+    }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -27,6 +50,7 @@ pub enum DatumType {
     F32,
     F64,
     TDim,
+    Blob,
     String,
 }
 
@@ -62,6 +86,7 @@ impl DatumType {
             DatumType::F32 => &[DatumType::F32, DatumType::F64],
             DatumType::F64 => &[DatumType::F64],
             DatumType::String => &[DatumType::String],
+            DatumType::Blob => &[DatumType::Blob],
             DatumType::TDim => &[DatumType::TDim],
         }
     }
@@ -104,6 +129,7 @@ impl DatumType {
             DatumType::F16 => std::mem::size_of::<f16>(),
             DatumType::F32 => std::mem::size_of::<f32>(),
             DatumType::F64 => std::mem::size_of::<f64>(),
+            DatumType::Blob => std::mem::size_of::<Blob>(),
             DatumType::TDim => std::mem::size_of::<TDim>(),
             DatumType::String => std::mem::size_of::<String>(),
         }
@@ -130,7 +156,7 @@ pub(crate) trait TryInto<D> {
 }
 
 macro_rules! datum {
-    ($t:ident, $v:ident) => {
+    ($t:ty, $v:ident) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
                 tensor0(it)
@@ -313,6 +339,7 @@ datum!(u8, U8);
 datum!(u16, U16);
 datum!(TDim, TDim);
 datum!(String, String);
+datum!(Blob, Blob);
 
 #[cfg(test)]
 mod tests {

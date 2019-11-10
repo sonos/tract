@@ -99,7 +99,7 @@ pub use crate::errors::*;
 /// This prelude is meant for code using tract.
 pub mod prelude {
     pub use crate::analyser::types::InferenceFact;
-    pub use crate::datum::{Datum, DatumType};
+    pub use crate::datum::{Blob, Datum, DatumType};
     pub use crate::dim::TDim;
     pub use crate::errors::*;
     pub use crate::framework::Framework;
