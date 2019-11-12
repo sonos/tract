@@ -4,7 +4,7 @@ use tract_core::ndarray::*;
 use tract_core::internal::*;
 
 use crate::model::ParsingContext;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 
 #[derive(Debug, Clone, new)]
 pub struct GatherNd {}

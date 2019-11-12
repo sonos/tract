@@ -3,7 +3,7 @@ use tract_core::ops::cnn::*;
 use tract_core::ops::nn::DataFormat;
 
 use crate::model::ParsingContext;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 
 pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let strides = super::strides(pb)?;

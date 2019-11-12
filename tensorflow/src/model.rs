@@ -1,6 +1,5 @@
-use crate::tfpb::graph::GraphDef;
-use crate::tfpb::node_def::NodeDef;
-use crate::tfpb::saved_model::SavedModel;
+use prost::Message;
+use crate::tfpb::tensorflow::{GraphDef, NodeDef, SavedModel};
 use std::{fs, path};
 use tract_core::internal::*;
 
@@ -45,13 +44,13 @@ impl Tensorflow {
     }
 
     pub fn determinize(model: &mut GraphDef) -> TractResult<()> {
-        for pbnode in model.mut_node().iter_mut() {
-            if pbnode.get_op() == "RandomUniform" {
+        for pbnode in &mut model.node {
+            if pbnode.op == "RandomUniform" {
                 if pbnode.get_attr_int::<i64>("seed")? == 0
                     && pbnode.get_attr_int::<i64>("seed2")? == 0
                 {
-                    pbnode.mut_attr().insert("seed".to_string(), 1.into());
-                    pbnode.mut_attr().insert("seed2".to_string(), 1.into());
+                    pbnode.attr.insert("seed".to_string(), 1.into());
+                    pbnode.attr.insert("seed2".to_string(), 1.into());
                 }
             }
         }
@@ -59,18 +58,22 @@ impl Tensorflow {
     }
 
     pub fn read_frozen_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
-        Ok(::protobuf::parse_from_reader::<GraphDef>(r).map_err(|e| format!("{:?}", e))?)
+        let mut v = vec!();
+        r.read_to_end(&mut v)?;
+        Ok(GraphDef::decode(v).map_err(|e| format!("{:?}", e))?)
     }
 
     pub fn open_saved_model(&self, r: &mut dyn std::io::Read) -> TractResult<SavedModel> {
-        Ok(::protobuf::parse_from_reader::<SavedModel>(r).map_err(|e| format!("{:?}", e))?)
+        let mut v = vec!();
+        r.read_to_end(&mut v)?;
+        Ok(SavedModel::decode(v).map_err(|e| format!("{:?}", e))?)
     }
 
     /// Convenience method: will read the first model in the saved model
     /// container. Use open_avec_model for more control.
     pub fn read_saved_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
         let mut saved = self.open_saved_model(r)?;
-        Ok(saved.take_meta_graphs()[0].take_graph_def())
+        Ok(saved.meta_graphs.remove(0).graph_def.unwrap())
     }
 }
 
@@ -94,20 +97,20 @@ impl Framework<GraphDef> for Tensorflow {
         let mut inputs = tvec!();
         // compute min output arity for all nodes
         let mut context = ParsingContext::default();
-        for pbnode in graph.get_node().iter() {
-            for i in pbnode.get_input().iter() {
+        for pbnode in &graph.node {
+            for i in &pbnode.input {
                 let (node, slot) = Self::parse_input(i)?;
                 let arity = context.node_output_arities.entry(node.to_string()).or_insert(1);
                 *arity = (*arity).max(slot + 1);
             }
         }
 
-        for pbnode in graph.get_node().iter() {
-            let name = pbnode.get_name().to_string();
+        for pbnode in &graph.node {
+            let name = &pbnode.name;
             let output_arity = context.node_output_arities.get(&*name).cloned().unwrap_or(1);
             let facts = tvec!(InferenceFact::default(); output_arity);
 
-            if pbnode.get_op() == "NextIteration" {
+            if pbnode.op == "NextIteration" {
                 let source_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Source);
                 let sink_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Sink);
                 let _source =
@@ -116,17 +119,17 @@ impl Framework<GraphDef> for Tensorflow {
                 continue;
             }
 
-            let op = match self.op_register.0.get(pbnode.get_op()) {
+            let op = match self.op_register.0.get(&pbnode.op) {
                 Some(builder) => (builder)(&context, pbnode)?,
                 None => tract_core::ops::unimpl::UnimplementedOp::new(
-                    pbnode.get_op(),
+                    &pbnode.op,
                     format!("{:?}", pbnode),
                 )
                 .into(),
             };
 
             let node_id = model.add_node(name.clone(), op, facts)?;
-            if pbnode.get_op() == "Placeholder" {
+            if pbnode.op == "Placeholder" {
                 let dt = pbnode.get_attr_datum_type("dtype")?;
                 let mut fact = InferenceFact::dt(dt);
                 if let Some(shape) = pbnode.get_attr_opt_shape("shape")? {
@@ -149,13 +152,13 @@ impl Framework<GraphDef> for Tensorflow {
             }
         }
 
-        for pbnode in graph.get_node().iter() {
-            let node_id = if pbnode.get_op() == "NextIteration" {
-                model.node_by_name(&*format!("{}-Sink", pbnode.get_name()))?.id
+        for pbnode in &graph.node {
+            let node_id = if pbnode.op == "NextIteration" {
+                model.node_by_name(&*format!("{}-Sink", &pbnode.name))?.id
             } else {
-                model.node_by_name(pbnode.get_name())?.id
+                model.node_by_name(&pbnode.name)?.id
             };
-            for (ix, i) in pbnode.get_input().iter().enumerate() {
+            for (ix, i) in pbnode.input.iter().enumerate() {
                 let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;
                 if i.starts_with("^") {

@@ -3,7 +3,7 @@ use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::nn::{DataFormat, LayerSoftmax};
 
 use crate::model::TfOpRegister;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 
 pub mod conv2d;
 pub mod dw_conv2d;

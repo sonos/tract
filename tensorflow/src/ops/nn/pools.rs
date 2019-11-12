@@ -1,5 +1,5 @@
 use crate::model::ParsingContext;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 use tract_core::internal::*;
 use tract_core::ops::cnn::*;
 

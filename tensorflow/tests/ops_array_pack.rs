@@ -5,7 +5,6 @@ extern crate env_logger;
 extern crate log;
 #[macro_use]
 extern crate proptest;
-extern crate protobuf;
 extern crate tract_core;
 extern crate tract_tensorflow;
 
@@ -14,12 +13,11 @@ mod utils;
 use crate::utils::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use protobuf::Message;
 use tract_core::ndarray::*;
 use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
-use tract_tensorflow::tfpb::types::DataType::DT_INT32;
+use tract_tensorflow::tfpb::tensorflow::DataType::DtInt32;
 
 fn strat() -> BoxedStrategy<(usize, Vec<Tensor>)> {
     // input rank
@@ -49,7 +47,7 @@ proptest! {
         let mut pack = tfpb::node()
             .name("op")
             .op("Pack")
-            .attr("T", DT_INT32)
+            .attr("T", DtInt32)
             .attr("N", inputs.len() as i64)
             .attr("axis", axis as i64);
         for (ix,input) in inputs.iter().enumerate() {

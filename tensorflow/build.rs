@@ -14,6 +14,14 @@ fn main() -> std::io::Result<()> {
         }
     }
 
+    let gen = path::PathBuf::from(env::var("OUT_DIR").unwrap()).join("prost");
+    let _ = fs::create_dir_all(&gen);
+    prost_build::Config::new()
+        .out_dir(gen)
+
+        .compile_protos(&inputs, &[path::PathBuf::from("protos/")])?;
+
+    /*
     let raw = path::PathBuf::from(env::var("OUT_DIR").unwrap()).join("protobuf-generated-raw");
     let fixed = path::PathBuf::from(env::var("OUT_DIR").unwrap()).join("protobuf-generated");
     let _ = fs::create_dir_all(&raw);
@@ -38,5 +46,6 @@ fn main() -> std::io::Result<()> {
             }
         }
     }
+    */
     Ok(())
 }

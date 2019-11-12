@@ -2,7 +2,7 @@ use tract_core::ndarray;
 use tract_core::ndarray::*;
 
 use crate::model::ParsingContext;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 use tract_core::internal::*;
 
 pub fn block_lstm(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

@@ -5,7 +5,6 @@ extern crate env_logger;
 extern crate log;
 #[macro_use]
 extern crate proptest;
-extern crate protobuf;
 extern crate tract_core;
 extern crate tract_tensorflow;
 
@@ -14,12 +13,11 @@ mod utils;
 use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
-use protobuf::Message;
 use tract_core::ndarray;
 use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
-use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
+use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
 
 fn convolution_pb(stride: usize, valid: bool, k: &Tensor) -> Result<Vec<u8>> {
     let conv = tfpb::node()
@@ -30,7 +28,7 @@ fn convolution_pb(stride: usize, valid: bool, k: &Tensor) -> Result<Vec<u8>> {
         .attr("strides", vec![1, stride as i64, stride as i64, 1])
         .attr("dilations", vec![1, 1, 1, 1])
         .attr("padding", if valid { "VALID" } else { "SAME" })
-        .attr("T", DT_FLOAT);
+        .attr("T", DtFloat);
 
     let graph = tfpb::graph().node(placeholder_f32("data")).node(const_f32("kernel", k)).node(conv);
 
@@ -129,7 +127,7 @@ fn conv_eval_3() {
         .attr("strides", vec![1, 1, 1, 1])
         .attr("dilations", vec![1, 1, 1, 1])
         .attr("padding", "SAME")
-        .attr("T", DT_FLOAT);
+        .attr("T", DtFloat);
 
     let graph =
         tfpb::graph().node(placeholder_f32("data")).node(const_f32("kernel", &k)).node(conv);

@@ -1,6 +1,6 @@
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 use tract_core::internal::*;
 use tract_core::ops as tractops;
 
@@ -17,7 +17,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
 }
 
 fn switch(ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    let arity = ctx.node_output_arities[pb.get_name()];
+    let arity = ctx.node_output_arities[&pb.name];
     Ok(Box::new(Switch::new(arity)))
 }
 

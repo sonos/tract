@@ -6,8 +6,10 @@ error_chain! {
     foreign_links {
         Io(::std::io::Error);
         NdarrayShape(tract_core::ndarray::ShapeError);
-        Protobuf(::protobuf::ProtobufError);
         StrUtf8(::std::str::Utf8Error);
+    }
+    links {
+        Tract(TractError, TractErrorKind);
     }
     errors {
         TFString {}
@@ -22,18 +24,17 @@ impl ::std::convert::From<::tensorflow::Status> for Error {
 
 pub mod tf;
 
-pub use protobuf::Message;
-
 use crate::tfpb;
-use crate::tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
-use crate::tfpb::types::DataType;
+use crate::tfpb::tensorflow::tensor_shape_proto::Dim;
+use crate::tfpb::tensorflow::{DataType, TensorProto, TensorShapeProto};
 use tract_core::internal::*;
+use std::convert::TryInto;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,
     t: DataType,
     shape: Shape,
-) -> tfpb::node_def::NodeDef {
+) -> tfpb::tensorflow::NodeDef {
     let mut node = tfpb::node().name(name).op("Placeholder").attr("dtype", t);
     if let Some(shape) = shape.into() {
         node = node.attr("shape", shape)
@@ -42,39 +43,26 @@ pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
 }
 
 pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
-    let mut shape = TensorShapeProto::new();
-    shape.set_dim(
-        dims.iter()
-            .map(|&d| {
-                let mut dim = TensorShapeProto_Dim::new();
-                dim.set_size(d as i64);
-                dim
-            })
-            .collect(),
-    );
-    shape
+    TensorShapeProto {
+        dim: dims.iter().map(|&d| Dim { size: d as i64, name: String::new() }).collect(),
+        unknown_rank: false,
+    }
 }
 
-pub fn const_f32(name: &str, t: &Tensor) -> tfpb::node_def::NodeDef {
-    let mut tf = crate::tfpb::tensor_f32(
-        t.shape().iter().cloned().collect(),
-        t.to_array_view::<f32>().unwrap().iter().cloned().collect(),
-    );
-    tfpb::node().name(name).op("Const").attr("dtype", DataType::DT_FLOAT).attr("value", tf)
+pub fn const_f32(name: &str, t: &Tensor) -> tfpb::tensorflow::NodeDef {
+    let tf:TensorProto = t.cast_to::<f32>().unwrap().as_ref().try_into().unwrap();
+    tfpb::node().name(name).op("Const").attr("dtype", DataType::DtFloat).attr("value", tf)
 }
 
-pub fn placeholder_f32(name: &str) -> tfpb::node_def::NodeDef {
-    placeholder(name, DataType::DT_FLOAT, None)
+pub fn placeholder_f32(name: &str) -> tfpb::tensorflow::NodeDef {
+    placeholder(name, DataType::DtFloat, None)
 }
 
-pub fn const_i32(name: &str, t: &Tensor) -> tfpb::node_def::NodeDef {
-    let mut tf = crate::tfpb::tensor_i32(
-        t.shape().iter().cloned().collect(),
-        t.to_array_view::<i32>().unwrap().iter().cloned().collect(),
-    );
-    tfpb::node().name(name).op("Const").attr("dtype", DataType::DT_INT32).attr("value", tf)
+pub fn const_i32(name: &str, t: &Tensor) -> tfpb::tensorflow::NodeDef {
+    let tf:TensorProto = t.cast_to::<i32>().unwrap().as_ref().try_into().unwrap();
+    tfpb::node().name(name).op("Const").attr("dtype", DataType::DtInt32).attr("value", tf)
 }
 
-pub fn placeholder_i32(name: &str) -> tfpb::node_def::NodeDef {
-    placeholder(name, DataType::DT_INT32, None)
+pub fn placeholder_i32(name: &str) -> tfpb::tensorflow::NodeDef {
+    placeholder(name, DataType::DtInt32, None)
 }

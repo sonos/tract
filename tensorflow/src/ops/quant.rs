@@ -2,7 +2,7 @@ use tract_core::internal::*;
 
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("FakeQuantWithMinMaxVars", fake_quant_with_min_max_vars);

@@ -1,7 +1,7 @@
 use tract_core::internal::*;
 
 use crate::model::ParsingContext;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 
 pub fn fused_batch_norm(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let epsilon = pb.get_attr_float::<f32>("epsilon")?;
