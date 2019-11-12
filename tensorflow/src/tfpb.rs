@@ -32,44 +32,6 @@ pub fn node() -> NodeDef {
     }
 }
 
-/*
-pub fn tensor_f32(dim: Vec<usize>, values: Vec<f32>) -> TensorProto {
-    let mut tensor = tensor;
-    tensor.set_dtype(DataType::DT_FLOAT);
-    let mut shape = TensorShapeProto::new();
-    shape.set_dim(
-        dim.into_iter()
-            .map(|i| {
-                let mut d = Dim::new();
-                d.set_size(i as _);
-                d
-            })
-            .collect(),
-    );
-    tensor.set_tensor_shape(shape);
-    tensor.set_float_val(values);
-    tensor
-}
-
-pub fn tensor_i32(dim: Vec<usize>, values: Vec<i32>) -> TensorProto {
-    let mut tensor = TensorProto::new();
-    tensor.set_dtype(DataType::DT_INT32);
-    let mut shape = TensorShapeProto::new();
-    shape.set_dim(
-        dim.into_iter()
-            .map(|i| {
-                let mut d = Dim::new();
-                d.set_size(i as _);
-                d
-            })
-            .collect(),
-    );
-    tensor.set_tensor_shape(shape);
-    tensor.set_int_val(values);
-    tensor
-}
-*/
-
 impl GraphDef {
     pub fn node(mut self, n: NodeDef) -> Self {
         self.node.push(n);
