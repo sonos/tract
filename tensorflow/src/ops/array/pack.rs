@@ -2,11 +2,11 @@ use tract_core::internal::*;
 use tract_core::ndarray;
 
 use crate::model::ParsingContext;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 
 pub fn pack(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
-    let n = pb.get_input().len();
+    let n = pb.input.len();
     let axis = pb.get_attr_int("axis")?;
 
     Ok(Box::new(Pack::new(dtype, n, axis)))

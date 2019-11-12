@@ -5,7 +5,6 @@ extern crate log;
 extern crate env_logger;
 #[macro_use]
 extern crate proptest;
-extern crate protobuf;
 extern crate tensorflow;
 extern crate tract_core;
 extern crate tract_tensorflow;
@@ -15,12 +14,11 @@ mod utils;
 use crate::utils::*;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseResult;
-use protobuf::Message;
 use tract_core::internal::*;
 use tract_core::ndarray::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
-use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
+use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
 
 fn img_and_pool() -> BoxedStrategy<(Array4<f32>, (usize, usize), String, usize)> {
     (1usize..5, 1usize..5, 1usize..5, (1usize..3, 1usize..3))
@@ -58,7 +56,7 @@ fn pool(
                 .name("pool")
                 .op(op)
                 .input("data")
-                .attr("T", DT_FLOAT)
+                .attr("T", DtFloat)
                 .attr("strides", vec![1, stride as i64, stride as i64, 1])
                 .attr("ksize", vec![1, k.0 as i64, k.1 as i64, 1])
                 .attr("padding", padding),

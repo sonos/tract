@@ -3,7 +3,7 @@ use tract_core::ops as tractops;
 
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 
 mod reduce;
 

@@ -1,255 +1,277 @@
-//! Generated protobuf codec for TensorFlow models, plus a handful of helpers
-//! for writting tests.
+use std::fs;
 
-#![allow(unknown_lints)]
-
-#![cfg_attr(rustfmt, rustfmt_skip)]
-
-#![allow(box_pointers)]
-#![allow(dead_code)]
-#![allow(missing_docs)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-#![allow(non_upper_case_globals)]
-#![allow(trivial_casts)]
-#![allow(unsafe_code)]
-#![allow(unused_imports)]
-#![allow(unused_results)]
-
-macro_rules! proto {
-    ($name: ident) => {
-        pub mod $name {
-            include!(concat!(env!("OUT_DIR"), "/protobuf-generated/", stringify!($name), ".rs"));
-        }
+mod google {
+    mod protobuf {
+        include!(concat!(env!("OUT_DIR"), "/prost/google.protobuf.rs"));
     }
 }
 
-proto!(attr_value);
-proto!(function);
-proto!(graph);
-proto!(meta_graph);
-proto!(node_def);
-proto!(op_def);
-proto!(resource_handle);
-proto!(saved_model);
-proto!(saved_object_graph);
-proto!(saver);
-proto!(struct_pb);
-proto!(tensor);
-proto!(tensor_shape);
-proto!(trackable_object_graph);
-proto!(types);
-proto!(variable);
-proto!(versions);
+pub mod tensorflow {
+    include!(concat!(env!("OUT_DIR"), "/prost/tensorflow.rs"));
+}
 
-use self::node_def::NodeDef;
-use self::attr_value::AttrValue;
+use self::tensorflow::attr_value::ListValue;
+use self::tensorflow::attr_value::Value;
+use self::tensorflow::{AttrValue, DataType, GraphDef, NodeDef, TensorProto, TensorShapeProto};
 
 use std::convert::TryInto;
 
 use tract_core::internal::*;
 
-pub fn graph() -> graph::GraphDef {
-    graph::GraphDef::new()
+pub fn graph() -> GraphDef {
+    GraphDef { library: None, node: vec![], version: 0, versions: None }
 }
 
 pub fn node() -> NodeDef {
-    node_def::NodeDef::new()
+    NodeDef {
+        name: String::new(),
+        op: String::new(),
+        input: vec![],
+        device: String::new(),
+        attr: HashMap::new(),
+    }
 }
 
-pub fn tensor_f32(dim:Vec<usize>, values:Vec<f32>) -> tensor::TensorProto {
-    let mut tensor = tensor::TensorProto::new();
-    tensor.set_dtype(types::DataType::DT_FLOAT);
-    let mut shape = tensor_shape::TensorShapeProto::new();
-    shape.set_dim(dim.into_iter().map(|i| {
-        let mut d = tensor_shape::TensorShapeProto_Dim::new();
-        d.set_size(i as _);
-        d
-    }).collect());
+/*
+pub fn tensor_f32(dim: Vec<usize>, values: Vec<f32>) -> TensorProto {
+    let mut tensor = tensor;
+    tensor.set_dtype(DataType::DT_FLOAT);
+    let mut shape = TensorShapeProto::new();
+    shape.set_dim(
+        dim.into_iter()
+            .map(|i| {
+                let mut d = Dim::new();
+                d.set_size(i as _);
+                d
+            })
+            .collect(),
+    );
     tensor.set_tensor_shape(shape);
     tensor.set_float_val(values);
     tensor
 }
 
-pub fn tensor_i32(dim:Vec<usize>, values:Vec<i32>) -> tensor::TensorProto {
-    let mut tensor = tensor::TensorProto::new();
-    tensor.set_dtype(types::DataType::DT_INT32);
-    let mut shape = tensor_shape::TensorShapeProto::new();
-    shape.set_dim(dim.into_iter().map(|i| {
-        let mut d = tensor_shape::TensorShapeProto_Dim::new();
-        d.set_size(i as _);
-        d
-    }).collect());
+pub fn tensor_i32(dim: Vec<usize>, values: Vec<i32>) -> TensorProto {
+    let mut tensor = TensorProto::new();
+    tensor.set_dtype(DataType::DT_INT32);
+    let mut shape = TensorShapeProto::new();
+    shape.set_dim(
+        dim.into_iter()
+            .map(|i| {
+                let mut d = Dim::new();
+                d.set_size(i as _);
+                d
+            })
+            .collect(),
+    );
     tensor.set_tensor_shape(shape);
     tensor.set_int_val(values);
     tensor
 }
+*/
 
-impl graph::GraphDef {
-    pub fn node(mut self, n: node_def::NodeDef) -> Self {
-        self.mut_node().push(n);
+impl GraphDef {
+    pub fn node(mut self, n: NodeDef) -> Self {
+        self.node.push(n);
         self
     }
+    pub fn write_to_bytes(&self) -> TractResult<Vec<u8>> {
+        use prost::Message;
+        let mut buf = vec![];
+        self.encode(&mut buf).map_err(|e| format!("Prost/Protobuf encoding error : {:?}", e))?;
+        Ok(buf)
+    }
     pub fn save_to<P: AsRef<::std::path::Path>>(self, p: P) -> TractResult<()> {
-        use protobuf::Message;
-        use std::io::Write;
-        ::std::fs::File::create(p)?.write(&*self.write_to_bytes().map_err(|e| format!("{:?}", e))?)?;
+        let buf = self.write_to_bytes()?;
+        fs::write(p, &buf)?;
         Ok(())
     }
 }
 
 impl NodeDef {
     pub fn name<S: ToString>(mut self, n: S) -> NodeDef {
-        self.set_name(n.to_string());
+        self.name = n.to_string();
         self
     }
     pub fn op<S: ToString>(mut self, n: S) -> NodeDef {
-        self.set_op(n.to_string());
+        self.op = n.to_string();
         self
     }
     pub fn input<S: ToString>(mut self, n: S) -> NodeDef {
-        self.mut_input().push(n.to_string());
+        self.input.push(n.to_string());
         self
     }
     pub fn attr<S: ToString, V: Into<AttrValue>>(mut self, n: S, v: V) -> NodeDef {
-        self.mut_attr().insert(n.to_string(), v.into());
+        self.attr.insert(n.to_string(), v.into());
         self
     }
 }
 
-impl node_def::NodeDef {
+impl NodeDef {
     pub fn get_attr_raw_str(&self, name: &str) -> TractResult<&[u8]> {
-        Ok(self.get_attr_opt_raw_str(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected string attribute '{}'", self.get_name(), self.get_op(), name))?)
+        Ok(self.get_attr_opt_raw_str(name)?.ok_or_else(|| {
+            format!("Node {} ({}) expected string attribute '{}'", self.name, self.op, name)
+        })?)
     }
 
     pub fn get_attr_opt_raw_str(&self, name: &str) -> TractResult<Option<&[u8]>> {
-        Ok(self.get_attr().get(name).map(|v| v.get_s()))
+        if let Some(a) = self.attr.get(name) {
+            if let Value::S(bytes) = a.value.as_ref().unwrap() {
+                return Ok(Some(&bytes));
+            }
+        };
+        Ok(None)
     }
 
     pub fn get_attr_str(&self, name: &str) -> TractResult<String> {
-        Ok(self.get_attr_opt_str(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected UTF-8 string attribute '{}'", self.get_name(), self.get_op(), name))?)
+        Ok(self.get_attr_opt_str(name)?.ok_or_else(|| {
+            format!("Node {} ({}) expected UTF-8 string attribute '{}'", self.name, self.op, name)
+        })?)
     }
 
     pub fn get_attr_opt_str(&self, name: &str) -> TractResult<Option<String>> {
         if let Some(s) = self.get_attr_opt_raw_str(name)? {
-            Ok(Some(String::from_utf8(s.to_vec())
-                .map_err(|_| format!("Node {} ({}) expected an UTF-8 string for attribute '{}'", self.get_name(), self.get_op(), name))?))
+            Ok(Some(String::from_utf8(s.to_vec()).map_err(|_| {
+                format!(
+                    "Node {} ({}) expected an UTF-8 string for attribute '{}'",
+                    self.name, self.op, name
+                )
+            })?))
         } else {
             Ok(None)
         }
     }
 
     pub fn get_attr_bool(&self, name: &str) -> TractResult<bool> {
-        Ok(self.get_attr_opt_bool(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected bool attribute '{}'", self.get_name(), self.get_op(), name))?)
+        Ok(self.get_attr_opt_bool(name)?.ok_or_else(|| {
+            format!("Node {} ({}) expected bool attribute '{}'", self.name, self.op, name)
+        })?)
     }
 
     pub fn get_attr_opt_bool(&self, name: &str) -> TractResult<Option<bool>> {
-        if let Some(t) = self.get_attr().get(name) {
-            Ok(Some(t.get_b()))
-        } else {
-            Ok(None)
-        }
+        if let Some(a) = self.attr.get(name) {
+            if let Value::B(v) = a.value.as_ref().unwrap() {
+                return Ok(Some(*v));
+            }
+        };
+        Ok(None)
     }
 
     pub fn get_attr_datum_type(&self, name: &str) -> TractResult<DatumType> {
-        Ok(self.get_attr_opt_datum_type(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected datum_type attribute '{}'", self.get_name(), self.get_op(), name))?)
+        Ok(self.get_attr_opt_datum_type(name)?.ok_or_else(|| {
+            format!("Node {} ({}) expected datum_type attribute '{}'", self.name, self.op, name)
+        })?)
     }
 
     pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<DatumType>> {
-        if let Some(t) = self.get_attr().get(name) {
-            Ok(Some(t.get_field_type().try_into()?))
-        } else {
-            Ok(None)
-        }
+        if let Some(a) = self.attr.get(name) {
+            if let Value::Type(v) = a.value.as_ref().unwrap() {
+                return Ok(Some(DataType::from_i32(*v).unwrap().try_into()?));
+            }
+        };
+        Ok(None)
     }
 
     pub fn get_attr_shape(&self, name: &str) -> TractResult<TVec<isize>> {
-        Ok(self.get_attr_opt_shape(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected shape attribute '{}'", self.get_name(), self.get_op(), name))?)
+        Ok(self.get_attr_opt_shape(name)?.ok_or_else(|| {
+            format!("Node {} ({}) expected shape attribute '{}'", self.name, self.op, name)
+        })?)
     }
 
     pub fn get_attr_opt_shape(&self, name: &str) -> TractResult<Option<TVec<isize>>> {
-        if let Some(t) = self.get_attr().get(name).map(|v| v.get_shape()) {
-            Ok(Some(t.try_into()?))
-        } else {
-            Ok(None)
-        }
+        if let Some(a) = self.attr.get(name) {
+            if let Value::Shape(ref shape) = a.value.as_ref().unwrap() {
+                return Ok(Some(shape.try_into()?));
+            }
+        };
+        Ok(None)
     }
 
     pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::internal::Tensor> {
-        Ok(self.get_attr_opt_tensor(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected tensor attribute '{}'", self.get_name(), self.get_op(), name))?)
+        Ok(self.get_attr_opt_tensor(name)?.ok_or_else(|| {
+            format!("Node {} ({}) expected tensor attribute '{}'", self.name, self.op, name)
+        })?)
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::internal::Tensor>> {
-        if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
-            Ok(Some(t.try_into()?))
-        } else {
-            Ok(None)
-        }
+    pub fn get_attr_opt_tensor(
+        &self,
+        name: &str,
+    ) -> TractResult<Option<tract_core::internal::Tensor>> {
+        if let Some(a) = self.attr.get(name) {
+            if let Value::Tensor(ref t) = a.value.as_ref().unwrap() {
+                return Ok(Some(t.try_into()?));
+            }
+        };
+        Ok(None)
     }
 
     pub fn get_attr_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
-        Ok(self.get_attr_opt_int(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?)
+        Ok(self.get_attr_opt_int(name)?.ok_or_else(|| {
+            format!("Node {} ({}) expected int attribute '{}'", self.name, self.op, name)
+        })?)
     }
 
-    pub fn get_attr_opt_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<Option<T>> {
-        if let Some(i) = self.get_attr().get(name) {
-            Ok(Some(T::from_i64(i.get_i())
-                .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?))
-        } else {
-            Ok(None)
-        }
+    pub fn get_attr_opt_int<T: ::num_traits::FromPrimitive>(
+        &self,
+        name: &str,
+    ) -> TractResult<Option<T>> {
+        if let Some(a) = self.attr.get(name) {
+            if let Value::I(i) = a.value.as_ref().unwrap() {
+                return Ok(Some(T::from_i64(*i).unwrap()));
+            }
+        };
+        Ok(None)
     }
 
     pub fn get_attr_float<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
-        Ok(self.get_attr_opt_float(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?)
+        Ok(self.get_attr_opt_float(name)?.ok_or_else(|| {
+            format!("Node {} ({}) expected int attribute '{}'", self.name, self.op, name)
+        })?)
     }
 
-    pub fn get_attr_opt_float<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<Option<T>> {
-        if let Some(i) = self.get_attr().get(name) {
-            Ok(Some(T::from_f32(i.get_f())
-                .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?))
-        } else {
-            Ok(None)
-        }
+    pub fn get_attr_opt_float<T: ::num_traits::FromPrimitive>(
+        &self,
+        name: &str,
+    ) -> TractResult<Option<T>> {
+        if let Some(a) = self.attr.get(name) {
+            if let Value::F(i) = a.value.as_ref().unwrap() {
+                return Ok(Some(T::from_f32(*i).unwrap()));
+            }
+        };
+        Ok(None)
     }
 
-    pub fn get_attr_list_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<Vec<T>> {
-        Ok(self.get_attr_opt_list_int(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name))?)
+    pub fn get_attr_list_int<T: ::num_traits::FromPrimitive>(
+        &self,
+        name: &str,
+    ) -> TractResult<Vec<T>> {
+        Ok(self.get_attr_opt_list_int(name)?.ok_or_else(|| {
+            format!("Node {} ({}) expected list<int> attribute '{}'", self.name, self.op, name)
+        })?)
     }
 
-    pub fn get_attr_opt_list_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<Option<Vec<T>>> {
-        if let Some(list) = self.get_attr().get(name) {
-            Ok(Some(list.get_list().get_i().iter().map(|i| T::from_i64(*i)
-                .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name).into()))
-                .collect::<TractResult<Vec<T>>>()?))
-        } else {
-            Ok(None)
-        }
+    pub fn get_attr_opt_list_int<T: ::num_traits::FromPrimitive>(
+        &self,
+        name: &str,
+    ) -> TractResult<Option<Vec<T>>> {
+        if let Some(a) = self.attr.get(name) {
+            if let Value::List(list) = a.value.as_ref().unwrap() {
+                return Ok(Some(list.i.iter().map(|&i| T::from_i64(i).unwrap()).collect()));
+            }
+        };
+        Ok(None)
     }
 }
 
-impl From<types::DataType> for AttrValue {
-    fn from(t: types::DataType) -> AttrValue {
-        let mut dt = AttrValue::new();
-        dt.set_field_type(t);
-        dt
+impl From<DataType> for AttrValue {
+    fn from(t: DataType) -> AttrValue {
+        AttrValue { value: Some(Value::Type(t.into())) }
     }
 }
 
 impl<'a> From<&'a str> for AttrValue {
     fn from(t: &'a str) -> AttrValue {
-        let mut value = attr_value::AttrValue::new();
-        value.set_s(t.to_string().into_bytes());
-        value
+        AttrValue { value: Some(Value::S(t.as_bytes().to_vec())) }
     }
 }
 
@@ -261,43 +283,41 @@ impl From<i32> for AttrValue {
 
 impl From<i64> for AttrValue {
     fn from(t: i64) -> AttrValue {
-        let mut value = attr_value::AttrValue::new();
-        value.set_i(t);
-        value
+        AttrValue { value: Some(Value::I(t)) }
     }
 }
 
 impl From<f32> for AttrValue {
     fn from(t: f32) -> AttrValue {
-        let mut value = attr_value::AttrValue::new();
-        value.set_f(t);
-        value
+        AttrValue { value: Some(Value::F(t)) }
     }
 }
 
 impl From<Vec<i64>> for AttrValue {
     fn from(t: Vec<i64>) -> AttrValue {
-        let mut list = attr_value::AttrValue_ListValue::new();
-        list.set_i(t);
-        let mut value = attr_value::AttrValue::new();
-        value.set_list(list);
-        value
+        AttrValue {
+            value: Some(Value::List(ListValue {
+                s: vec![],
+                i: t,
+                f: vec![],
+                b: vec![],
+                r#type: vec![],
+                shape: vec![],
+                tensor: vec![],
+                func: vec![],
+            })),
+        }
     }
 }
 
-impl<'a> From<tensor::TensorProto> for AttrValue {
-    fn from(t: tensor::TensorProto) -> AttrValue {
-        let mut value = attr_value::AttrValue::new();
-        value.set_tensor(t);
-        value
+impl From<TensorProto> for AttrValue {
+    fn from(t: TensorProto) -> AttrValue {
+        AttrValue { value: Some(Value::Tensor(t.into())) }
     }
 }
 
-impl<'a> From<tensor_shape::TensorShapeProto> for AttrValue {
-    fn from(t: tensor_shape::TensorShapeProto) -> AttrValue {
-        let mut value = attr_value::AttrValue::new();
-        value.set_shape(t);
-        value
+impl From<TensorShapeProto> for AttrValue {
+    fn from(t: TensorShapeProto) -> AttrValue {
+        AttrValue { value: Some(Value::Shape(t.into())) }
     }
 }
-

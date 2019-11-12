@@ -23,11 +23,9 @@ use std::process;
 use std::str::FromStr;
 
 #[cfg(feature = "tf")]
-use crate::tfpb::graph::GraphDef;
+use tract_tensorflow::tfpb::tensorflow::GraphDef;
 use tract_core::internal::*;
 use tract_core::model::{NormalizedModel, TypedModel};
-#[cfg(feature = "tf")]
-use tract_tensorflow::tfpb;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;

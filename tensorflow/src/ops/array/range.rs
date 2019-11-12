@@ -1,5 +1,5 @@
 use crate::model::ParsingContext;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 use num_traits::AsPrimitive;
 use std::ops::{Add, Div, Mul, Sub};
 use tract_core::internal::*;

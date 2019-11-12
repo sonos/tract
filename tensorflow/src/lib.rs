@@ -40,11 +40,23 @@ extern crate log;
 #[cfg(any(test, featutre = "conform"))]
 extern crate env_logger;
 extern crate num_traits;
-extern crate protobuf;
+extern crate prost;
+extern crate prost_types;
 #[macro_use]
 extern crate tract_core;
 #[cfg(feature = "conform")]
 extern crate tensorflow;
+/*
+mod google {
+    mod protobuf {
+        include!(concat!(env!("OUT_DIR"), "/prost/google.protobuf.rs"));
+    }
+}
+
+mod tensorflow {
+    include!(concat!(env!("OUT_DIR"), "/prost/tensorflow.rs"));
+}
+*/
 
 #[cfg(feature = "conform")]
 pub mod conform;

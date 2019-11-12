@@ -1,5 +1,5 @@
 use crate::model::ParsingContext;
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 use tract_core::internal::*;
 
 pub fn gather_v2(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

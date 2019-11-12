@@ -5,7 +5,6 @@ extern crate env_logger;
 extern crate log;
 #[macro_use]
 extern crate proptest;
-extern crate protobuf;
 extern crate tract_core;
 extern crate tract_tensorflow;
 
@@ -14,11 +13,10 @@ mod utils;
 use crate::utils::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use protobuf::Message;
 use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
-use tract_tensorflow::tfpb::types::DataType;
+use tract_tensorflow::tfpb::tensorflow::DataType;
 
 fn random_uniform_float(shape: &[i32], seed: (i32, i32)) -> proptest::test_runner::TestCaseResult {
     let graph = tfpb::graph().node(const_i32("shape", &tensor1(&*shape))).node(
@@ -26,8 +24,8 @@ fn random_uniform_float(shape: &[i32], seed: (i32, i32)) -> proptest::test_runne
             .name("op")
             .op("RandomUniform")
             .input("shape")
-            .attr("T", DataType::DT_INT32)
-            .attr("dtype", DataType::DT_FLOAT)
+            .attr("T", DataType::DtInt32)
+            .attr("dtype", DataType::DtFloat)
             .attr("seed", seed.0)
             .attr("seed2", seed.1),
     );

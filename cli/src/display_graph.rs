@@ -12,7 +12,7 @@ use tract_core::internal::*;
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
 #[cfg(feature = "tf")]
-use tract_tensorflow::tfpb::graph::GraphDef;
+use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DisplayOptions {
@@ -309,12 +309,15 @@ impl<'a> DisplayGraph<'a> {
     #[cfg(feature = "tf")]
     pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<'a>> {
         let bold = Style::new().bold();
-        for gnode in graph_def.get_node().iter() {
-            if let Ok(node_id) = self.model.borrow().node_id_by_name(gnode.get_name()) {
+        for gnode in graph_def.node.iter() {
+            if let Ok(node_id) = self.model.borrow().node_id_by_name(&gnode.name) {
                 let mut v = vec![];
-                for a in gnode.get_attr().iter() {
-                    let value = if a.1.has_tensor() {
-                        format!("{:?}", a.1.get_tensor())
+                for a in gnode.attr.iter() {
+                    let value = if let Some(
+                        tract_tensorflow::tfpb::tensorflow::attr_value::Value::Tensor(r),
+                    ) = &a.1.value
+                    {
+                        format!("{:?}", r)
                     } else {
                         format!("{:?}", a.1)
                     };

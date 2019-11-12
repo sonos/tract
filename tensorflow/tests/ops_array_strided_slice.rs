@@ -5,7 +5,6 @@ extern crate env_logger;
 extern crate log;
 #[macro_use]
 extern crate proptest;
-extern crate protobuf;
 extern crate tract_core;
 extern crate tract_tensorflow;
 
@@ -13,12 +12,11 @@ mod utils;
 
 use crate::utils::*;
 use proptest::prelude::*;
-use protobuf::Message;
 use tract_core::ndarray::prelude::*;
 use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
-use tract_tensorflow::tfpb::types::DataType::DT_INT32;
+use tract_tensorflow::tfpb::tensorflow::DataType::DtInt32;
 
 fn strided_slice_strat(
 ) -> BoxedStrategy<(Tensor, Tensor, Tensor, Tensor, (i32, i32, i32, i32, i32))> {
@@ -78,8 +76,8 @@ proptest! {
             .node(const_i32("end", e))
             .node(const_i32("stride", s))
             .node(tfpb::node().name("op")
-                  .attr("T", DT_INT32)
-                  .attr("Index", DT_INT32)
+                  .attr("T", DtInt32)
+                  .attr("Index", DtInt32)
                   .attr("begin_mask", masks.0 as i64)
                   .attr("end_mask", masks.1 as i64)
                   .attr("shrink_axis_mask", masks.4 as i64)
@@ -104,8 +102,8 @@ fn strided_slice_1() {
         .node(
             tfpb::node()
                 .name("op")
-                .attr("T", DT_INT32)
-                .attr("Index", DT_INT32)
+                .attr("T", DtInt32)
+                .attr("Index", DtInt32)
                 .input("input")
                 .input("begin")
                 .input("end")
@@ -129,8 +127,8 @@ fn strided_slice_2() {
         .node(
             tfpb::node()
                 .name("op")
-                .attr("T", DT_INT32)
-                .attr("Index", DT_INT32)
+                .attr("T", DtInt32)
+                .attr("Index", DtInt32)
                 .attr("shrink_axis_mask", 1 as i64)
                 .input("input")
                 .input("begin")
@@ -155,8 +153,8 @@ fn strided_slice_3() {
         .node(
             tfpb::node()
                 .name("op")
-                .attr("T", DT_INT32)
-                .attr("Index", DT_INT32)
+                .attr("T", DtInt32)
+                .attr("Index", DtInt32)
                 .attr("shrink_axis_mask", 1 as i64)
                 .input("input")
                 .input("begin")
@@ -180,8 +178,8 @@ fn strided_slice_4() {
         .node(
             tfpb::node()
                 .name("op")
-                .attr("T", DT_INT32)
-                .attr("Index", DT_INT32)
+                .attr("T", DtInt32)
+                .attr("Index", DtInt32)
                 .input("input")
                 .input("begin")
                 .input("end")
@@ -203,8 +201,8 @@ fn strided_slice_5() {
         .node(
             tfpb::node()
                 .name("op")
-                .attr("T", DT_INT32)
-                .attr("Index", DT_INT32)
+                .attr("T", DtInt32)
+                .attr("Index", DtInt32)
                 .attr("end_mask", 2 as i64)
                 .input("input")
                 .input("begin")
@@ -227,8 +225,8 @@ fn strided_slice_shrink_override_begin_mask() {
         .node(
             tfpb::node()
                 .name("op")
-                .attr("T", DT_INT32)
-                .attr("Index", DT_INT32)
+                .attr("T", DtInt32)
+                .attr("Index", DtInt32)
                 .attr("begin_mask", 1 as i64)
                 .attr("shrink_axis_mask", 1 as i64)
                 .input("input")

@@ -5,7 +5,6 @@ extern crate env_logger;
 extern crate log;
 #[macro_use]
 extern crate proptest;
-extern crate protobuf;
 extern crate tensorflow;
 extern crate tract_core;
 extern crate tract_tensorflow;
@@ -15,12 +14,11 @@ mod utils;
 use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
-use protobuf::Message;
 use tract_core::internal::*;
 use tract_core::ndarray;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
-use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
+use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
 
 fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
     use proptest::collection::vec;
@@ -77,7 +75,7 @@ proptest! {
             .node(tfpb::node().name("op").op("SpaceToBatchND").input("input")
             .input("block_shape")
             .input("paddings")
-            .attr("T", DT_FLOAT)
+            .attr("T", DtFloat)
             );
         let graph = graph.write_to_bytes()?;
         let inputs = vec!(("input", i.clone()));
@@ -111,7 +109,7 @@ proptest! {
             .node(tfpb::node().name("op").op("BatchToSpaceND").input("input")
             .input("block_shape")
             .input("crops")
-            .attr("T", DT_FLOAT)
+            .attr("T", DtFloat)
             );
         let graph = graph.write_to_bytes()?;
         let inputs = vec!(("input", b.clone()));
@@ -133,7 +131,7 @@ fn space_to_batch_1() {
                 .input("input")
                 .input("block_shape")
                 .input("paddings")
-                .attr("T", DT_FLOAT),
+                .attr("T", DtFloat),
         );
     let graph = graph.write_to_bytes().unwrap();
     let i = tensor4(&[[[[1.0f32], [2.0]], [[3.0], [4.0]]]]);
@@ -155,7 +153,7 @@ fn batch_to_space_1() {
                 .input("input")
                 .input("block_shape")
                 .input("crops")
-                .attr("T", DT_FLOAT),
+                .attr("T", DtFloat),
         );
     let graph = graph.write_to_bytes().unwrap();
     let i = tensor4(&[[[[1.0f32]]], [[[2.0]]], [[[3.0]]], [[[4.0]]]]);

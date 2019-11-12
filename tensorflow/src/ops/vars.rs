@@ -2,7 +2,7 @@ use tract_core::internal::*;
 use tract_core::ndarray;
 
 use crate::model::{ParsingContext, TfOpRegister};
-use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::tensorflow::NodeDef;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Assign", |_, _| Ok(Box::new(Assign::default())));
@@ -14,7 +14,7 @@ fn variable_v2(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inf
     let shared_name = if shared_name != "" { Some(shared_name) } else { None };
     let container = node.get_attr_str("container")?;
     let container = if container != "" { Some(container) } else { None };
-    let name = node.get_name().to_string();
+    let name = node.name.to_string();
     let id = format!("{:?}#{:?}#{}", container, shared_name, name);
     let shape = node.get_attr_shape("shape")?;
     let dt = node.get_attr_datum_type("dtype")?;
