@@ -5,12 +5,12 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2018"
 
 [dependencies]
+env_logger = "0.7"
 fs2 = "0.4"
+log = "0.4.6"
+prost = "0.5"
 tract-core = { path = "../../core" }
 tract-onnx = { path = "../../onnx" }
-env_logger = "0.7"
-log = "0.4.6"
-protobuf = "2.4.2"
 
 [build-dependencies]
 fs2 = "0.4"

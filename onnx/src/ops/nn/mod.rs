@@ -102,7 +102,7 @@ pub fn arg_max_min(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let max = node.get_op_type() == "ArgMax";
+    let max = node.op_type == "ArgMax";
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let keepdims = node.get_attr_opt("keepdims")?.unwrap_or(true);
     Ok((Box::new(tractops::nn::ArgMaxMin::new(max, axis, keepdims)), vec![]))
@@ -140,7 +140,7 @@ pub fn conv(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let mut op = common_conv(node)?;
-    if node.get_input().len() == 3 {
+    if node.input.len() == 3 {
         op = op.bias_input(2);
     }
     Ok((Box::new(op), vec![]))
@@ -275,7 +275,7 @@ pub fn max_pool(
     Ok((
         Box::new(tractops::cnn::MaxPool::new(
             tractops::cnn::PoolSpec::new(DataFormat::NCHW, kernel_shape, pad, None, strides, None),
-            if node.get_output().len() == 2 { Some(DatumType::I64) } else { None },
+            if node.output.len() == 2 { Some(DatumType::I64) } else { None },
         )),
         vec![],
     ))

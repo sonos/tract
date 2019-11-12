@@ -11,7 +11,7 @@ fn quantize_linear(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let op = QuantizeLinear::new(Some(2).filter(|_| node.get_input().len() == 3));
+    let op = QuantizeLinear::new(Some(2).filter(|_| node.input.len() == 3));
     Ok((Box::new(op), vec![]))
 }
 
@@ -135,7 +135,7 @@ fn dequantize_linear(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let op = DequantizeLinear::new(Some(2).filter(|_| node.get_input().len() == 3));
+    let op = DequantizeLinear::new(Some(2).filter(|_| node.input.len() == 3));
     Ok((Box::new(op), vec![]))
 }
 

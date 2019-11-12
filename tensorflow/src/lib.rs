@@ -46,17 +46,6 @@ extern crate prost_types;
 extern crate tract_core;
 #[cfg(feature = "conform")]
 extern crate tensorflow;
-/*
-mod google {
-    mod protobuf {
-        include!(concat!(env!("OUT_DIR"), "/prost/google.protobuf.rs"));
-    }
-}
-
-mod tensorflow {
-    include!(concat!(env!("OUT_DIR"), "/prost/tensorflow.rs"));
-}
-*/
 
 #[cfg(feature = "conform")]
 pub mod conform;

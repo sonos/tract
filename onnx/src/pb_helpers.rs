@@ -1,4 +1,5 @@
 use crate::pb::*;
+use attribute_proto::AttributeType;
 use tract_core::internal::*;
 
 use num_traits::{AsPrimitive, Bounded};
@@ -74,19 +75,19 @@ impl<A> OptionExt for Option<A> {
     }
 }
 
-impl Display for AttributeProto_AttributeType {
+impl Display for attribute_proto::AttributeType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
-            AttributeProto_AttributeType::INT => "int",
-            AttributeProto_AttributeType::FLOAT => "float",
-            AttributeProto_AttributeType::TENSOR => "tensor",
-            AttributeProto_AttributeType::STRING => "string",
-            AttributeProto_AttributeType::INTS => "list of ints",
-            AttributeProto_AttributeType::FLOATS => "list of floats",
-            AttributeProto_AttributeType::TENSORS => "list of tensors",
-            AttributeProto_AttributeType::STRINGS => "list of strings",
-            AttributeProto_AttributeType::GRAPH => "graph",
-            AttributeProto_AttributeType::GRAPHS => "graphs",
+            AttributeType::Int => "int",
+            AttributeType::Float => "float",
+            AttributeType::Tensor => "tensor",
+            AttributeType::String => "string",
+            AttributeType::Ints => "list of ints",
+            AttributeType::Floats => "list of floats",
+            AttributeType::Tensors => "list of tensors",
+            AttributeType::Strings => "list of strings",
+            AttributeType::Graph => "graph",
+            AttributeType::Graphs => "graphs",
             _ => "<undefined>",
         })
     }
@@ -96,17 +97,26 @@ pub trait AttrScalarType<'a>: 'a + Sized {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>>;
 }
 
+impl<'a> AttrScalarType<'a> for DatumType {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        i32::get_attr_opt_scalar(node, name)?
+            .map(tensor_proto::DataType::from_i32)
+            .map(|d| d.unwrap().try_into())
+            .transpose()
+    }
+}
+
 impl<'a> AttrScalarType<'a> for Tensor {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
-        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)?
-            .and_try(|attr| attr.get_t().try_into())
+        node.get_attr_opt_with_type(name, AttributeType::Tensor)?
+            .map(|attr| attr.t.as_ref().unwrap().try_into())
+            .transpose()
     }
 }
 
 impl<'a> AttrScalarType<'a> for &'a [u8] {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
-        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::STRING)?
-            .and_ok(AttributeProto::get_s)
+        Ok(node.get_attr_opt_with_type(name, AttributeType::String)?.map(|attr| &*attr.s))
     }
 }
 
@@ -126,8 +136,7 @@ impl<'a> AttrScalarType<'a> for String {
 
 impl<'a> AttrScalarType<'a> for i64 {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
-        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::INT)?
-            .and_ok(AttributeProto::get_i)
+        node.get_attr_opt_with_type(name, AttributeType::Int)?.and_ok(|a| a.i)
     }
 }
 
@@ -153,8 +162,7 @@ impl<'a> AttrScalarType<'a> for usize {
 
 impl<'a> AttrScalarType<'a> for &'a GraphProto {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
-        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::GRAPH)?
-            .and_ok(AttributeProto::get_g)
+        node.get_attr_opt_with_type(name, AttributeType::Graph)?.and_ok(|a| a.g.as_ref().unwrap())
     }
 }
 
@@ -202,8 +210,7 @@ impl_attr_scalar_type_int!(isize);
 
 impl<'a> AttrScalarType<'a> for f32 {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
-        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOAT)?
-            .and_ok(AttributeProto::get_f)
+        node.get_attr_opt_with_type(name, AttributeType::Float)?.and_ok(|x| x.f)
     }
 }
 
@@ -213,22 +220,19 @@ pub trait AttrSliceType<'a>: 'a + Sized {
 
 impl<'a> AttrSliceType<'a> for Vec<u8> {
     fn get_attr_opt_slice(node: &'a NodeProto, name: &str) -> TractResult<Option<&'a [Self]>> {
-        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::STRINGS)?
-            .and_ok(AttributeProto::get_strings)
+        node.get_attr_opt_with_type(name, AttributeType::Strings)?.and_ok(|x| &*x.strings)
     }
 }
 
 impl<'a> AttrSliceType<'a> for i64 {
     fn get_attr_opt_slice(node: &'a NodeProto, name: &str) -> TractResult<Option<&'a [Self]>> {
-        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::INTS)?
-            .and_ok(AttributeProto::get_ints)
+        node.get_attr_opt_with_type(name, AttributeType::Ints)?.and_ok(|a| &*a.ints)
     }
 }
 
 impl<'a> AttrSliceType<'a> for f32 {
     fn get_attr_opt_slice(node: &'a NodeProto, name: &str) -> TractResult<Option<&'a [Self]>> {
-        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOATS)?
-            .and_ok(AttributeProto::get_floats)
+        node.get_attr_opt_with_type(name, AttributeType::Floats)?.and_ok(|a| &*a.floats)
     }
 }
 
@@ -247,8 +251,8 @@ where
 
 impl<'a> AttrTVecType<'a> for Tensor {
     fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
-        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSORS)?
-            .and_try(|attr| attr.get_tensors().iter().map(|t| t.try_into()).try_collect())
+        node.get_attr_opt_with_type(name, AttributeType::Tensors)?
+            .and_try(|attr| attr.tensors.iter().map(|t| t.try_into()).try_collect())
     }
 }
 
@@ -293,11 +297,11 @@ impl<'a> AttrTVecType<'a> for usize {
 
 impl NodeProto {
     pub fn bail<T>(&self, msg: &str) -> TractResult<T> {
-        bail!("Node {} ({}): {}", self.get_name(), self.get_op_type(), msg)
+        bail!("Node {} ({}): {}", self.name, self.op_type, msg)
     }
 
     pub fn bail_attr<T>(&self, attr: &str, msg: &str) -> TractResult<T> {
-        bail!("Node {} ({}), attribute '{}': {}", self.get_name(), self.get_op_type(), attr, msg)
+        bail!("Node {} ({}), attribute '{}': {}", self.name, self.op_type, attr, msg)
     }
 
     pub fn expect<R: Reason>(&self, cond: bool, what: R) -> TractResult<()> {
@@ -326,14 +330,14 @@ impl NodeProto {
     fn get_attr_opt_with_type(
         &self,
         name: &str,
-        ty: AttributeProto_AttributeType,
+        ty: AttributeType,
     ) -> TractResult<Option<&AttributeProto>> {
-        let attr = match self.get_attribute().iter().find(|a| a.get_name() == name) {
+        let attr = match self.attribute.iter().find(|a| a.name == name) {
             Some(attr) => attr,
             _ => return Ok(None),
         };
-        self.expect_attr(name, attr.get_field_type() == ty, || {
-            format!("{}, got {}", ty, attr.get_field_type())
+        self.expect_attr(name, AttributeType::from_i32(attr.r#type).unwrap() == ty, || {
+            format!("{}, got {}", ty, attr.r#type)
         })?;
         Ok(Some(attr))
     }
