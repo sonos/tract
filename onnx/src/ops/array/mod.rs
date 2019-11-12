@@ -1,14 +1,11 @@
 mod compress;
 mod slice;
 
-use std::convert::TryInto;
-
 use tract_core::internal::*;
 use tract_core::ndarray;
 use tract_core::ops as tractops;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
-use crate::pb;
 use crate::pb::*;
 use num_traits::AsPrimitive;
 
@@ -56,16 +53,8 @@ pub fn constant_like(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let value = node.get_attr_opt("value")?.unwrap_or(0.);
-    if node.get_input().len() == 0 {
-        use protobuf::ProtobufEnum;
-        let dt = match node.get_attr_opt("dtype")? {
-            Some(dt) => pb::TensorProto_DataType::from_i32(dt)
-                .ok_or_else(|| {
-                    format!("Can not convert integer {} into a TensorProto_DataType", dt)
-                })?
-                .try_into()?,
-            None => f32::datum_type(),
-        };
+    if node.input.len() == 0 {
+        let dt = node.get_attr_opt("dtype")?.unwrap_or(f32::datum_type());
         let shape: Vec<usize> = node.get_attr_vec("shape")?;
         let tensor = dispatch_numbers!(self::make_const(dt)(&shape, value))?;
         Ok((Box::new(tractops::konst::Const::new(tensor)), vec![]))
@@ -89,17 +78,7 @@ pub fn eye_like(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    use protobuf::ProtobufEnum;
-    let dt = match node.get_attr_opt("dtype")? {
-        Some(dt) => Some(
-            pb::TensorProto_DataType::from_i32(dt)
-                .ok_or_else(|| {
-                    format!("Can not convert integer {} into a TensorProto_DataType", dt)
-                })?
-                .try_into()?,
-        ),
-        None => None,
-    };
+    let dt = node.get_attr_opt("dtype")?;
     let k = node.get_attr_opt("k")?.unwrap_or(0);
     Ok((Box::new(tractops::array::EyeLike::new(dt, k)), vec![]))
 }
@@ -149,7 +128,7 @@ pub fn split(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let split = node.get_attr_opt_vec("split")?;
-    Ok((Box::new(tractops::array::Split::new(axis, node.get_output().len(), split)), vec![]))
+    Ok((Box::new(tractops::array::Split::new(axis, node.output.len(), split)), vec![]))
 }
 
 pub fn squeeze(

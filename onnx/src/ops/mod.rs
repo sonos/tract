@@ -1,7 +1,5 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
-use crate::pb;
 use crate::pb::*;
-use std::convert::TryInto;
 use tract_core::internal::*;
 
 mod array;
@@ -39,9 +37,6 @@ fn cast(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    use protobuf::ProtobufEnum;
-    let to = node.get_attr("to")?;
-    let to = pb::TensorProto_DataType::from_i32(to)
-        .ok_or_else(|| format!("Cannot convert integer {} into a TensorProto_DataType", to))?;
-    Ok((Box::new(::tract_core::ops::cast::Cast::new(to.try_into()?)), vec![]))
+    let to = node.get_attr::<DatumType>("to")?;
+    Ok((Box::new(::tract_core::ops::cast::Cast::new(to)), vec![]))
 }

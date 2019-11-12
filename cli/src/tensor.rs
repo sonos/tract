@@ -82,7 +82,7 @@ fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
             let file =
                 fs::File::open(filename).chain_err(|| format!("Can't open {:?}", filename))?;
             let proto = ::tract_onnx::tensor::proto_from_reader(file)?;
-            Ok((Some(proto.get_name().to_string()), Tensor::try_from(proto)?.into()))
+            Ok((Some(proto.name.to_string()), Tensor::try_from(proto)?.into()))
         }
         #[cfg(not(feature = "onnx"))]
         {

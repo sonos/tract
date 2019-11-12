@@ -5,11 +5,12 @@ use std::collections::HashMap;
 use tract_core::internal::*;
 
 use crate::pb;
+use prost::Message;
 
 pub fn optional_inputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize>> + '_ {
     let mut real_input = 0;
     (0..).map(move |i| {
-        if pb.get_input().get(i).filter(|s| !s.is_empty()).is_some() {
+        if pb.input.get(i).filter(|s| !s.is_empty()).is_some() {
             real_input += 1;
             Some(real_input - 1)
         } else {
@@ -21,7 +22,7 @@ pub fn optional_inputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize>
 pub fn optional_outputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize>> + '_ {
     let mut real_input = 0;
     (0..).map(move |i| {
-        if pb.get_output().get(i).filter(|s| !s.is_empty()).is_some() {
+        if pb.output.get(i).filter(|s| !s.is_empty()).is_some() {
             real_input += 1;
             Some(real_input - 1)
         } else {
@@ -53,27 +54,33 @@ impl<'a> ParsingContext<'a> {
         let mut unresolved_inputs = vec![];
         let mut closures_to_wire = vec![];
         let mut initializers: HashMap<&str, Tensor> = graph
-            .get_initializer()
+            .initializer
             .iter()
-            .map(|init| Ok((init.get_name(), init.try_into()?)))
+            .map(|init| Ok((&*init.name, init.try_into()?)))
             .collect::<TractResult<_>>()?;
         for (k, v) in initializers.iter() {
             trace!("Initializer: {} {:?}", k, v);
         }
         let mut outlets_by_name = HashMap::<String, OutletId>::new();
-        for input in graph.get_input().iter() {
-            if let Some(init) = initializers.remove(input.get_name()) {
-                trace!("Input: {} initialized by {:?}", input.get_name(), init);
-                let id = model.add_const(input.get_name().to_owned(), init)?;
-                outlets_by_name.insert(input.get_name().to_owned(), id);
+        for input in graph.input.iter() {
+            if let Some(init) = initializers.remove(&*input.name) {
+                trace!("Input: {} initialized by {:?}", input.name, init);
+                let id = model.add_const(input.name.to_owned(), init)?;
+                outlets_by_name.insert(input.name.to_owned(), id);
             } else {
-                let fact = input.get_field_type().get_tensor_type().try_into()?;
-                trace!("Input: {} is a source ({:?})", input.get_name(), fact);
-                let id = model.add_source(input.get_name(), fact)?;
-                outlets_by_name.insert(input.get_name().to_owned(), id);
+                let fact = input.r#type.as_ref().unwrap().value.as_ref().unwrap();
+                #[allow(irrefutable_let_patterns)]
+                let fact: InferenceFact = if let pb::type_proto::Value::TensorType(fact) = fact {
+                    fact.try_into()?
+                } else {
+                    bail!("Can not parse tensor type");
+                };
+                trace!("Input: {} is a source ({:?})", input.name, fact);
+                let id = model.add_source(&*input.name, fact)?;
+                outlets_by_name.insert(input.name.to_owned(), id);
             }
         }
-        for output in graph.get_output().iter() {
+        for output in graph.output.iter() {
             trace!("Model output: {:?}", output);
         }
         for (name, t) in initializers.into_iter() {
@@ -81,27 +88,27 @@ impl<'a> ParsingContext<'a> {
             outlets_by_name.insert(name.to_string(), id);
         }
         let consts = model.nodes().len();
-        for pbnode in graph.get_node().iter() {
-            let name = if pbnode.get_name() != "" {
-                pbnode.get_name().to_string()
-            } else if pbnode.get_output().len() > 0 && pbnode.get_output()[0] != "" {
-                pbnode.get_output()[0].to_owned()
+        for pbnode in graph.node.iter() {
+            let name = if pbnode.name != "" {
+                pbnode.name.to_string()
+            } else if pbnode.output.len() > 0 && pbnode.output[0] != "" {
+                pbnode.output[0].to_owned()
             } else {
-                format!("{}-{}", model.nodes().len(), pbnode.get_op_type())
+                format!("{}-{}", model.nodes().len(), pbnode.op_type)
             };
             trace!("Creating node {}", name);
             let facts = pbnode
-                .get_output()
+                .output
                 .iter()
                 .filter(|s| !s.is_empty())
                 .map(|_| InferenceFact::default())
                 .collect();
-            trace!("  outputs {:?}", pbnode.get_output());
-            let (op, closures) = match self.framework.op_register.0.get(pbnode.get_op_type()) {
+            trace!("  outputs {:?}", pbnode.output);
+            let (op, closures) = match self.framework.op_register.0.get(&pbnode.op_type) {
                 Some(builder) => (builder)(&ctx, pbnode)?,
                 None => (
                     tract_core::ops::unimpl::UnimplementedOp::new(
-                        pbnode.get_op_type(),
+                        &*pbnode.op_type,
                         format!("{:?}", pbnode),
                     )
                     .into(),
@@ -109,7 +116,7 @@ impl<'a> ParsingContext<'a> {
                 ),
             };
             let id = model.add_node(name, op, facts)?;
-            for (ix, output) in pbnode.get_output().iter().filter(|s| !s.is_empty()).enumerate() {
+            for (ix, output) in pbnode.output.iter().filter(|s| !s.is_empty()).enumerate() {
                 outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
                 model.set_outlet_label(OutletId::new(id, ix), output.to_owned());
             }
@@ -118,8 +125,8 @@ impl<'a> ParsingContext<'a> {
                 closures_to_wire.push((id, closure))
             }
         }
-        for (id, pbnode) in graph.get_node().iter().enumerate() {
-            for (ix, input) in pbnode.get_input().iter().filter(|s| !s.is_empty()).enumerate() {
+        for (id, pbnode) in graph.node.iter().enumerate() {
+            for (ix, input) in pbnode.input.iter().filter(|s| !s.is_empty()).enumerate() {
                 if !outlets_by_name.contains_key(&*input) {
                     let id = model.add_source(input.clone(), InferenceFact::default())?;
                     unresolved_inputs.push(input.to_string());
@@ -140,10 +147,16 @@ impl<'a> ParsingContext<'a> {
             model.add_edge(outlet, InletId::new(id, ix))?;
         }
         let mut outputs = vec![];
-        for output in graph.get_output().iter() {
-            let fact = output.get_field_type().get_tensor_type().try_into()?;
-            outputs.push(outlets_by_name[output.get_name()]);
-            model.set_outlet_fact(outlets_by_name[output.get_name()], fact)?;
+        for output in graph.output.iter() {
+            let fact = output.r#type.as_ref().unwrap().value.as_ref().unwrap();
+            #[allow(irrefutable_let_patterns)]
+            let fact = if let pb::type_proto::Value::TensorType(fact) = fact {
+                fact.try_into()?
+            } else {
+                bail!("Can not parse tensor type");
+            };
+            outputs.push(outlets_by_name[&*output.name]);
+            model.set_outlet_fact(outlets_by_name[&*output.name], fact)?;
         }
         model.set_output_outlets(&outputs)?;
         let result = ParseResult { model, unresolved_inputs, outlets_by_name };
@@ -182,26 +195,24 @@ pub struct Onnx {
 
 impl Onnx {
     pub fn parse(&self, proto: &pb::ModelProto) -> TractResult<ParseResult> {
-        let onnx_operator_set_version = proto
-            .get_opset_import()
-            .iter()
-            .find(|import| import.get_domain() == "")
-            .unwrap()
-            .get_version();
-        let graph = proto.get_graph();
+        let onnx_operator_set_version =
+            proto.opset_import.iter().find(|import| import.domain == "").unwrap().version;
+        let graph = &proto.graph;
         let ctx = ParsingContext {
             framework: self,
             model: proto,
             parent_graphs: vec![],
             onnx_operator_set_version,
         };
-        ctx.parse_graph(&graph)
+        ctx.parse_graph(graph.as_ref().unwrap())
     }
 }
 
 impl Framework<pb::ModelProto> for Onnx {
     fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<pb::ModelProto> {
-        Ok(::protobuf::parse_from_reader(r).map_err(|e| format!("{:?}", e))?)
+        let mut v = vec![];
+        r.read_to_end(&mut v)?;
+        Ok(crate::pb::ModelProto::decode(v).map_err(|e| format!("{:?}", e))?)
     }
 
     fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {

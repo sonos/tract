@@ -116,7 +116,7 @@ pub fn handle_pbdir(
         let entry = entry?;
         let file = fs::File::open(entry.path())?;
         let tensor = tract_onnx::tensor::proto_from_reader(file)?;
-        values.insert(tensor.get_name().to_string(), Ok(tensor.try_into()?));
+        values.insert(tensor.name.to_string(), Ok(tensor.try_into()?));
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,

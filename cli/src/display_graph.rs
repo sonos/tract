@@ -332,20 +332,20 @@ impl<'a> DisplayGraph<'a> {
     #[cfg(feature = "onnx")]
     pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<'a>> {
         let bold = Style::new().bold();
-        for gnode in model_proto.get_graph().get_node().iter() {
-            let mut node_name = gnode.get_name();
-            if node_name == "" && gnode.get_output().len() > 0 {
-                node_name = &gnode.get_output()[0];
+        for gnode in model_proto.graph.as_ref().unwrap().node.iter() {
+            let mut node_name = &gnode.name;
+            if node_name == "" && gnode.output.len() > 0 {
+                node_name = &gnode.output[0];
             }
-            if let Ok(id) = self.model.borrow().node_id_by_name(node_name) {
+            if let Ok(id) = self.model.borrow().node_id_by_name(&*node_name) {
                 let mut v = vec![];
-                for a in gnode.get_attribute().iter() {
-                    let value = if a.has_t() {
-                        format!("{:?}", Tensor::try_from(a.get_t())?)
+                for a in gnode.attribute.iter() {
+                    let value = if let Some(t) =  &a.t {
+                        format!("{:?}", Tensor::try_from(t)?)
                     } else {
                         format!("{:?}", a)
                     };
-                    v.push(format!("Attr {}: {:.240}", bold.paint(a.get_name()), value));
+                    v.push(format!("Attr {}: {:.240}", bold.paint(&a.name), value));
                 }
                 self.add_node_section(&[id], v)?;
             }

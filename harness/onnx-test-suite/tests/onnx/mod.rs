@@ -1,12 +1,13 @@
 use std::{fs, path};
+use std::convert::TryInto;
 
 use log::*;
+
+use prost::Message;
 
 use tract_core::internal::*;
 use tract_onnx::pb::TensorProto;
 use tract_onnx::*;
-
-use std::convert::TryInto;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
@@ -22,9 +23,7 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
         .count();
     for i in 0..len {
         let filename = path.join(format!("{}_{}.pb", prefix, i));
-        let mut file =
-            fs::File::open(filename).map_err(|e| format!("accessing {:?}, {:?}", path, e)).unwrap();
-        let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
+        let tensor = TensorProto::decode(std::fs::read(filename).unwrap()).unwrap();
         vec.push(tensor.try_into().unwrap())
     }
     debug!("{:?}: {:?}", path, vec);
