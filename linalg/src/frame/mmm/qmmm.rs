@@ -33,6 +33,12 @@ clone_trait_object!(<TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> where
 );
 
 #[derive(Debug, Clone)]
+pub enum QuantizedParam<TI> {
+    Scalar(TI),
+    Vector(Vec<TI>),
+}
+
+#[derive(Debug, Clone)]
 pub struct QMatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero,
@@ -42,8 +48,8 @@ where
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     pub mmm: MatMatMulImpl<K, TA, TB, TC, TI>,
-    pub zero_point_a: Option<Vec<TA>>,
-    pub zero_point_b: Option<Vec<TB>>,
+    pub zero_point_a: Option<QuantizedParam<TA>>,
+    pub zero_point_b: Option<QuantizedParam<TB>>,
 }
 
 impl<K, TA, TB, TC, TI> QMatMatMulImpl<K, TA, TB, TC, TI>
@@ -184,11 +190,11 @@ where
     }
 
     unsafe fn set_zero_point_a_scalar(&mut self, value: TA) {
-        self.zero_point_a = Some(vec![value; self.m() + K::mr() - 1 / K::mr() * K::mr()])
+        self.zero_point_a = Some(QuantizedParam::Scalar(value))
     }
 
     unsafe fn set_zero_point_b_scalar(&mut self, value: TB) {
-        self.zero_point_b = Some(vec![value; self.n() + K::nr() - 1 / K::nr() * K::nr()])
+        self.zero_point_b = Some(QuantizedParam::Scalar(value))
     }
 
     unsafe fn set_zero_point_a_vector(&mut self, mut values: Vec<TA>) {
@@ -196,7 +202,7 @@ where
         while values.len() < wanted {
             values.push(values[values.len() - 1])
         }
-        self.zero_point_a = Some(values)
+        self.zero_point_a = Some(QuantizedParam::Vector(values))
     }
 
     unsafe fn set_zero_point_b_vector(&mut self, mut values: Vec<TB>) {
@@ -204,7 +210,7 @@ where
         while values.len() < wanted {
             values.push(values[values.len() - 1])
         }
-        self.zero_point_b = Some(values)
+        self.zero_point_b = Some(QuantizedParam::Vector(values))
     }
 
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
@@ -219,19 +225,48 @@ where
             for n in 0..self.n {
                 sum_b_over_k[n] = sum_b_over_k[n].neg();
             }
-            let a0 = a0.iter().map(|a| a.as_()).collect();
-            non_linear.insert(0, FusedSpec::AddRowColProducts(a0, sum_b_over_k));
+            let term = match a0 {
+                QuantizedParam::Scalar(a0) => {
+                    for n in 0..self.n {
+                        sum_b_over_k[n] = sum_b_over_k[n] * a0.as_();
+                    }
+                    FusedSpec::PerColAdd(sum_b_over_k)
+                }
+                QuantizedParam::Vector(a0) => {
+                    let a0 = a0.iter().map(|a| a.as_()).collect();
+                    FusedSpec::AddRowColProducts(a0, sum_b_over_k)
+                }
+            };
+            non_linear.insert(0, term);
         }
         if let Some(ref b0) = self.zero_point_b {
             let mut sum_a_over_k = self.sum_a_over_k(a);
             for m in 0..self.m {
                 sum_a_over_k[m] = sum_a_over_k[m].neg();
                 if let Some(ref a0) = self.zero_point_a {
-                    sum_a_over_k[m] = a0[m].as_() * self.k.as_() + sum_a_over_k[m];
+                    match a0 {
+                        QuantizedParam::Scalar(a0) => {
+                            sum_a_over_k[m] = a0.as_() * self.k.as_() + sum_a_over_k[m];
+                        }
+                        QuantizedParam::Vector(a0) => {
+                            sum_a_over_k[m] = a0[m].as_() * self.k.as_() + sum_a_over_k[m];
+                        }
+                    }
                 }
             }
-            let b0 = b0.iter().map(|b| b.as_()).collect();
-            non_linear.insert(0, FusedSpec::AddRowColProducts(sum_a_over_k, b0));
+            let term = match b0 {
+                QuantizedParam::Scalar(b0) => {
+                    for m in 0..self.m {
+                        sum_a_over_k[m] = sum_a_over_k[m] * b0.as_();
+                    }
+                    FusedSpec::PerRowAdd(sum_a_over_k)
+                }
+                QuantizedParam::Vector(b0) => {
+                    let b0 = b0.iter().map(|b| b.as_()).collect();
+                    FusedSpec::AddRowColProducts(sum_a_over_k, b0)
+                }
+            };
+            non_linear.insert(0, term);
         }
         self.mmm.run_with_non_linear(a, b, c, &non_linear)
     }
@@ -269,9 +304,21 @@ pub mod test {
         pub k: usize,
         pub n: usize,
         pub a: Vec<i8>,
-        pub a0: Vec<i8>,
+        pub a0: QuantizedParam<i8>,
         pub b: Vec<i8>,
-        pub b0: Vec<i8>,
+        pub b0: QuantizedParam<i8>,
+    }
+
+    impl Arbitrary for QuantizedParam<i8> {
+        type Parameters = usize;
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(n: usize) -> Self::Strategy {
+            prop_oneof![
+                any::<i8>().prop_map(QuantizedParam::Scalar),
+                vec(any::<i8>(), n..=n).prop_map(QuantizedParam::Vector),
+            ].boxed()
+        }
     }
 
     impl Arbitrary for QMatMulProblem {
@@ -286,9 +333,9 @@ pub mod test {
                         Just(k),
                         Just(n),
                         vec(any::<i8>(), m * k..=m * k),
-                        vec(any::<i8>(), m..=m),
+                        any_with::<QuantizedParam<i8>>(m),
                         vec(any::<i8>(), k * n..=k * n),
-                        vec(any::<i8>(), n..=n),
+                        any_with::<QuantizedParam<i8>>(n),
                     )
                 })
                 .prop_map(|(m, k, n, a, a0, b, b0)| QMatMulProblem { m, k, n, a, a0, b, b0 })
@@ -304,8 +351,14 @@ pub mod test {
                     for k in 0..self.k {
                         let a = self.a[k + self.k * m] as i32;
                         let b = self.b[n + self.n * k] as i32;
-                        let a0 = self.a0[m] as i32;
-                        let b0 = self.b0[n] as i32;
+                        let a0 = match &self.a0 {
+                            QuantizedParam::Scalar(a0) => *a0 as i32,
+                            QuantizedParam::Vector(a0) => a0[m] as i32,
+                        };
+                        let b0 = match &self.b0 {
+                            QuantizedParam::Scalar(b0) => *b0 as i32,
+                            QuantizedParam::Vector(b0) => b0[n] as i32,
+                        };
                         c[n + self.n * m] += (a - a0) * (b - b0);
                     }
                 }
@@ -325,8 +378,14 @@ pub mod test {
                 let mut packed_b =
                     Buffer::uninitialized(mmm.b_pack().len(), mmm.b_pack().alignment());
                 mmm.b_pack().pack(packed_b.as_mut_ptr(), self.b.as_ptr(), self.n as isize, 1);
-                mmm.set_zero_point_a_vector(self.a0.clone());
-                mmm.set_zero_point_b_vector(self.b0.clone());
+                match &self.a0 {
+                    QuantizedParam::Scalar(a0) => mmm.set_zero_point_a_scalar(*a0),
+                    QuantizedParam::Vector(a0) => mmm.set_zero_point_a_vector(a0.clone()),
+                }
+                match &self.b0 {
+                    QuantizedParam::Scalar(b0) => mmm.set_zero_point_b_scalar(*b0),
+                    QuantizedParam::Vector(b0) => mmm.set_zero_point_b_vector(b0.clone()),
+                }
                 mmm.run(packed_a.as_ptr(), packed_b.as_ptr(), c.as_mut_ptr());
                 c
             }
@@ -340,6 +399,7 @@ pub mod test {
                 use proptest::prelude::*;
                 #[allow(unused_imports)]
                 use $crate::frame::mmm::qmmm::test::*;
+                use $crate::frame::mmm::qmmm::QuantizedParam;
 
                 proptest::proptest! {
                     #[test]
@@ -357,9 +417,9 @@ pub mod test {
                             m: 1,
                             k: 1,
                             n: 1,
-                            a0: vec![1],
+                            a0: QuantizedParam::Vector(vec![1]),
                             a: vec![0],
-                            b0: vec![1],
+                            b0: QuantizedParam::Vector(vec![1]),
                             b: vec![0],
                         };
                         assert_eq!(pb.run_i32::<$ker>(), pb.ref_i32());
@@ -374,9 +434,9 @@ pub mod test {
                             k: 1,
                             n: 2,
                             a: vec![0],
-                            a0: vec![1],
+                            a0: QuantizedParam::Vector(vec![1]),
                             b: vec![0, 0],
-                            b0: vec![0, 1],
+                            b0: QuantizedParam::Vector(vec![0, 1]),
                         };
                         assert_eq!(pb.run_i32::<$ker>(), pb.ref_i32());
                     }
@@ -390,9 +450,9 @@ pub mod test {
                             k: 2,
                             n: 1,
                             a: vec![0, 1],
-                            a0: vec![0],
+                            a0: QuantizedParam::Vector(vec![0]),
                             b: vec![0, 1],
-                            b0: vec![0],
+                            b0: QuantizedParam::Vector(vec![0]),
                         };
                         assert_eq!(pb.run_i32::<$ker>(), pb.ref_i32());
                     }
