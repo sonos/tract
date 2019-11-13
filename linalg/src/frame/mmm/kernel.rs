@@ -15,7 +15,7 @@ where
     pub b: &'a PanelStore<TB>,
     pub c: &'a PanelStore<TC>,
     pub linear: &'a LinearSpec,
-    pub non_linear: *const FusedKerSpec<TI>,
+    pub non_linear: *const FusedKerSpec<TI, TC>,
 }
 
 #[repr(C, usize)]
@@ -38,17 +38,11 @@ where
     TC: Copy,
     TI: Copy + Debug,
 {
-    #[inline(always)]
     fn name() -> &'static str;
-    #[inline(always)]
     fn kernel(op: &MatMatMulKerSpec<TA, TB, TC, TI>) -> isize;
-    #[inline(always)]
     fn mr() -> usize;
-    #[inline(always)]
     fn nr() -> usize;
-    #[inline(always)]
     fn alignment_bytes_packed_a() -> usize;
-    #[inline(always)]
     fn alignment_bytes_packed_b() -> usize;
 }
 
@@ -64,7 +58,7 @@ pub mod test {
     #[test]
     fn check_non_linear_enum_size() {
         assert_eq!(
-            std::mem::size_of::<super::FusedKerSpec<f32>>(),
+            std::mem::size_of::<super::FusedKerSpec<f32, f32>>(),
             3 * std::mem::size_of::<usize>()
         )
     }
