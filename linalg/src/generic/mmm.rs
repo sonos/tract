@@ -1,10 +1,26 @@
-use num_traits::{AsPrimitive, Zero};
+use num_traits::{AsPrimitive, Bounded, Zero};
 use std::marker::PhantomData;
 use std::{fmt, ops};
 
 use crate::frame::mmm::LinearSpec::*;
 use crate::frame::mmm::PanelStore::*;
 use crate::frame::mmm::*;
+
+pub trait PseudoRightShift {
+    fn shift(&mut self, shift: usize);
+}
+
+impl PseudoRightShift for i32 {
+    fn shift(&mut self, shift: usize) {
+        *self >>= shift;
+    }
+}
+
+impl PseudoRightShift for f32 {
+    fn shift(&mut self, shift: usize) {
+        *self /= 2f32.powi((shift - 1) as i32)
+    }
+}
 
 #[derive(Copy, Clone, Debug)]
 pub struct GenericMmm4x4<TA, TB, TC, TI>(PhantomData<(TA, TB, TC, TI)>)
@@ -16,6 +32,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
+        + PseudoRightShift
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -32,6 +49,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
+        + PseudoRightShift
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -50,6 +68,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
+        + PseudoRightShift
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -63,11 +82,12 @@ impl<TA, TB, TC, TI> MatMatMulKer<TA, TB, TC, TI> for GenericMmm4x4<TA, TB, TC, 
 where
     TA: Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static + Bounded,
     TI: Copy
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
+        + PseudoRightShift
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -250,6 +270,22 @@ where
                             }
                         }
                     }
+                    FusedKerSpec::QI8Even(scale, shift, zero_point) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] += scale;
+                                ab[i][j].shift(shift as usize);
+                                ab[i][j] += zero_point.as_();
+                                ab[i][j] = if ab[i][j] < TC::min_value().as_() {
+                                    TC::min_value().as_()
+                                } else if ab[i][j] > TC::max_value().as_() {
+                                    TC::max_value().as_()
+                                } else {
+                                    ab[i][j]
+                                }
+                            }
+                        }
+                    }
                 }
                 pnl = pnl.add(1);
             }
@@ -351,12 +387,13 @@ impl<TA, TB, TC, TI> MatMatMulKer<TA, TB, TC, TI> for GenericMmmTest3x2<TA, TB, 
 where
     TA: Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Copy + fmt::Debug + AsPrimitive<TI>,
-    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static,
+    TC: Copy + fmt::Debug + AsPrimitive<TI> + 'static + Bounded,
     TI: Copy
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + PartialOrd
+        + PseudoRightShift
         + Zero
         + fmt::Debug
         + fmt::Display
@@ -494,6 +531,22 @@ where
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] += *rows.offset(i as isize) * *cols.offset(j as isize);
+                            }
+                        }
+                    }
+                    FusedKerSpec::QI8Even(scale, shift, zero_point) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                ab[i][j] += scale;
+                                ab[i][j].shift(shift as usize);
+                                ab[i][j] += zero_point.as_();
+                                ab[i][j] = if ab[i][j] < TC::min_value().as_() {
+                                    TC::min_value().as_()
+                                } else if ab[i][j] > TC::max_value().as_() {
+                                    TC::max_value().as_()
+                                } else {
+                                    ab[i][j]
+                                }
                             }
                         }
                     }

@@ -1,4 +1,5 @@
 use std::fmt;
+use std::fmt::Debug;
 use std::ops::{Add, Deref, Mul, Neg};
 
 use num_traits::{AsPrimitive, Zero};
@@ -11,7 +12,7 @@ pub trait QMatMatMul<TA, TB, TC, TI>:
 where
     TA: Copy + Zero,
     TB: Copy + Zero,
-    TC: Copy,
+    TC: Copy + Debug,
     TI: Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn as_mmm(&self) -> &dyn MatMatMul<TA, TB, TC, TI>;
@@ -28,7 +29,7 @@ where
 clone_trait_object!(<TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> where
     TA: Copy + Zero,
     TB: Copy + Zero,
-    TC: Copy,
+    TC: Copy + Debug,
     TI: Copy + Add + Mul + Zero + fmt::Debug,
 );
 
@@ -43,7 +44,7 @@ pub struct QMatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero,
     TB: Copy + Zero,
-    TC: Copy,
+    TC: Copy + Debug,
     TI: Copy + Add + Mul + Zero + fmt::Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
@@ -56,7 +57,7 @@ impl<K, TA, TB, TC, TI> QMatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero + AsPrimitive<TI>,
     TB: Copy + Zero + AsPrimitive<TI> + fmt::Debug,
-    TC: Copy,
+    TC: Copy + Debug,
     TI: Copy + Add + Mul + Zero + fmt::Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
@@ -129,7 +130,7 @@ impl<K, TA, TB, TC, TI> From<MatMatMulImpl<K, TA, TB, TC, TI>> for QMatMatMulImp
 where
     TA: Copy + Zero,
     TB: Copy + Zero,
-    TC: Copy,
+    TC: Copy + Debug,
     TI: Copy + Add + Mul + Zero + fmt::Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
@@ -142,7 +143,7 @@ impl<K, TA, TB, TC, TI> Deref for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero,
     TB: Copy + Zero,
-    TC: Copy,
+    TC: Copy + Debug,
     TI: Copy + Add + Mul + Zero + fmt::Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
@@ -156,7 +157,7 @@ unsafe impl<K, TA, TB, TC, TI> Send for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero,
     TB: Copy + Zero,
-    TC: Copy,
+    TC: Copy + Debug,
     TI: Copy + Add + Mul + Zero + fmt::Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
@@ -166,7 +167,7 @@ unsafe impl<K, TA, TB, TC, TI> Sync for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero,
     TB: Copy + Zero,
-    TC: Copy,
+    TC: Copy + Debug,
     TI: Copy + Add + Mul + Zero + fmt::Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
@@ -276,7 +277,7 @@ impl<K, TA, TB, TC, TI> fmt::Display for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero,
     TB: Copy + Zero,
-    TC: Copy,
+    TC: Copy + Debug,
     TI: Copy + Add + Mul + Zero + fmt::Debug,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {

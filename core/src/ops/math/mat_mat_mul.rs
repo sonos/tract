@@ -121,7 +121,7 @@ where
                     Self { c_shape: shape, ..self.clone() },
                 )?));
             }
-            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
+            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI, TC>>>> {
                 if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
                     if op.a.shape() == &[self.mmm.as_mmm().m()] {
                         if op.mini_op.is::<ops::math::Mul>() {
