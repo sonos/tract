@@ -28,10 +28,10 @@ impl PseudoRightShift for i32 {
 
 impl PseudoRightShift for f32 {
     fn left_shift(&mut self, shift: usize) {
-        *self *= 2f32.powi((shift - 1) as i32);
+        *self *= 2f32.powi((shift) as i32);
     }
     fn right_shift(&mut self, shift: usize) {
-        *self /= 2f32.powi((shift - 1) as i32)
+        *self /= 2f32.powi((shift) as i32)
     }
     fn and(self, other: Self) -> Self {
         f32::from_bits(self.to_bits() & other.to_bits())
@@ -624,9 +624,15 @@ where
 }
 
 #[cfg(test)]
-mod test_3_2 {
+mod test_3_2_f {
     mmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
     mmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
+}
+
+#[cfg(test)]
+mod test_3_2_i {
+    mmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8, i8, i32, i32);
+    qmmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8, i8, i32, i32);
     qmmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>);
 }
 
@@ -634,5 +640,11 @@ mod test_3_2 {
 mod test {
     mmm_kernel_tests!(true, crate::generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
     mmm_frame_tests!(true, crate::generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
+}
+
+#[cfg(test)]
+mod test_i {
+    mmm_kernel_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
+    qmmm_kernel_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
     qmmm_frame_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>);
 }

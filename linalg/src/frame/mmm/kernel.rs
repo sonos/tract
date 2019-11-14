@@ -51,7 +51,7 @@ where
 pub mod test {
     use super::*;
     use crate::align::Buffer;
-    use num_traits::{AsPrimitive, Bounded, One, Zero};
+    use num_traits::{AsPrimitive, Bounded, One, Signed, Zero};
     use std::fmt;
     use std::ops::{Add, Mul};
 
@@ -110,6 +110,27 @@ pub mod test {
                 fn return_c_add_col() {
                     if $cond {
                         test::return_c_add_col::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
+
+                #[test]
+                fn return_c_add_row_col_product() {
+                    if $cond {
+                        test::return_c_add_row_col_product::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
+
+                #[test]
+                fn return_c_scalar_mul() {
+                    if $cond {
+                        test::return_c_scalar_mul::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
+
+                #[test]
+                fn return_c_scalar_add() {
+                    if $cond {
+                        test::return_c_scalar_add::<$ker, $ta, $tb, $tc, $ti>()
                     }
                 }
 
@@ -184,6 +205,24 @@ pub mod test {
                 }
             }
         };
+    }
+
+    #[macro_export]
+    macro_rules! qmmm_kernel_tests {
+        ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
+            mod kernelq {
+                #[allow(unused_imports)]
+                use crate::frame::mmm::kernel::test;
+
+                #[test]
+                fn return_c_right_shift_ties_to_even() {
+                    if $cond {
+                        test::return_c_right_shift_ties_to_even::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
+
+            }
+        }
     }
 
     pub fn null_packed_storage<T: Copy>() -> PanelStore<T> {
@@ -337,6 +376,129 @@ pub mod test {
             let col = ix % K::nr();
             let ix: TI = ix.as_();
             a == (ix + bias[col]).as_()
+        }));
+    }
+
+    pub fn return_c_add_row_col_product<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + PartialEq + 'static,
+        TI: Copy
+            + Add
+            + Mul<Output = TI>
+            + Zero
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let rows: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
+        let cols: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(
+            &*v,
+            &[FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr())],
+        );
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let row = ix / K::nr();
+            let col = ix % K::nr();
+            let ix: TI = ix.as_();
+            a == (ix + cols[col] * rows[row]).as_()
+        }));
+    }
+
+    pub fn return_c_scalar_mul<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + PartialEq + 'static,
+        TI: Copy
+            + Add
+            + Mul<Output = TI>
+            + Zero
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::ScalarMul(5.as_())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let ix: TI = ix.as_();
+            a == (ix * 5.as_()).as_()
+        }));
+    }
+
+    pub fn return_c_scalar_add<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + PartialEq + 'static,
+        TI: Copy
+            + Add
+            + Mul<Output = TI>
+            + Zero
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::ScalarAdd(5.as_())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let ix: TI = ix.as_();
+            a == (ix + 5.as_()).as_()
+        }));
+    }
+
+    pub fn return_c_right_shift_ties_to_even<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + PartialEq + 'static + AsPrimitive<TI> + Debug,
+        TI: Copy
+            + Add
+            + Mul<Output = TI>
+            + Zero
+            + Signed
+            + Bounded
+            + Debug
+            + crate::generic::mmm::PseudoRightShift
+            + fmt::Display
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        isize: AsPrimitive<TC>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| (f as isize - len as isize / 2).as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::RightShiftTiesToEven(2)]);
+        assert!(found.iter().zip(v.iter()).all(|(&a, &i)| {
+            let ix: TI = i.as_();
+            let mut shifted = ix.abs();
+            shifted.right_shift(1);
+            let nudge = (((shifted.and(0x3.as_())) == 0x3.as_()) as usize) << 1;
+            shifted = shifted + nudge.as_();
+            shifted.right_shift(1);
+            if ix.is_negative() {
+                shifted = -shifted;
+            }
+            shifted.as_() == a
         }));
     }
 
