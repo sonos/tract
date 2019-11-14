@@ -217,6 +217,8 @@ test_pow_bcast_scalar
 test_pow_example
 test_prelu_broadcast
 test_prelu_example
+test_qlinearmatmul_2D                                                               dynsize
+test_qlinearmatmul_3D                                                               dynsize
 test_quantizelinear                                                                 dynsize
 test_reciprocal
 test_reciprocal_example

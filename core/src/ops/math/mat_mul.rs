@@ -53,7 +53,7 @@ fn eval_t<TA, TB, TC, TI>(
 where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
-    TC: Datum + Copy,
+    TC: Datum + Copy + Zero + fmt::Debug ,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     let a = a.to_array_view::<TA>()?;
