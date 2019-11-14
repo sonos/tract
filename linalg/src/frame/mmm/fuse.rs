@@ -6,7 +6,7 @@ use num_traits::Zero;
 use super::MatMatMulKer;
 
 #[derive(PartialEq, Clone)]
-pub enum FusedSpec<TI: Copy + Debug, TC: Copy + Debug> {
+pub enum FusedSpec<TI: Copy + Debug> {
     Min(TI),
     Max(TI),
     AddC,
@@ -15,10 +15,12 @@ pub enum FusedSpec<TI: Copy + Debug, TC: Copy + Debug> {
     PerColMul(Vec<TI>),
     PerColAdd(Vec<TI>),
     AddRowColProducts(Vec<TI>, Vec<TI>),
-    QI8Even(TI, u8, TC),
+    ScalarMul(TI),
+    ScalarAdd(TI),
+    RightShiftTiesToEven(usize),
 }
 
-impl<TI: Copy + Debug, TC: Copy + Debug> Debug for FusedSpec<TI, TC> {
+impl<TI: Copy + Debug> Debug for FusedSpec<TI> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             FusedSpec::Min(t) => write!(fmt, "Min({:?})", t),
@@ -29,14 +31,16 @@ impl<TI: Copy + Debug, TC: Copy + Debug> Debug for FusedSpec<TI, TC> {
             FusedSpec::PerColMul(_) => write!(fmt, "PerColMul"),
             FusedSpec::PerColAdd(_) => write!(fmt, "PerColAdd"),
             FusedSpec::AddRowColProducts(_, _) => write!(fmt, "AddRowColProducts"),
-            FusedSpec::QI8Even(_, _, _) => write!(fmt, "QI8Even"),
+            FusedSpec::ScalarMul(_) => write!(fmt, "ScalarMul"),
+            FusedSpec::ScalarAdd(_) => write!(fmt, "ScalarAdd"),
+            FusedSpec::RightShiftTiesToEven(_) => write!(fmt, "RightShiftTiesToEven"),
         }
     }
 }
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum FusedKerSpec<TI: Copy, TC:Copy> {
+pub enum FusedKerSpec<TI: Copy> {
     Done,
     Min(TI),
     Max(TI),
@@ -46,27 +50,29 @@ pub enum FusedKerSpec<TI: Copy, TC:Copy> {
     PerColMul(*const TI),
     PerColAdd(*const TI),
     AddRowColProducts(*const TI, *const TI),
-    QI8Even(TI, u8, TC),
+    ScalarMul(TI),
+    ScalarAdd(TI),
+    RightShiftTiesToEven(usize),
 }
 
-pub struct ScratchSpaceFusedNonLinear<TI: Copy, TC:Copy> {
-    uspecs: Vec<FusedKerSpec<TI, TC>>,
+pub struct ScratchSpaceFusedNonLinear<TI: Copy> {
+    uspecs: Vec<FusedKerSpec<TI>>,
     non_linear_buffers: Vec<Vec<TI>>,
 }
 
-impl<TI: Copy, TC: Copy> Default for ScratchSpaceFusedNonLinear<TI, TC> {
-    fn default() -> ScratchSpaceFusedNonLinear<TI, TC> {
+impl<TI: Copy> Default for ScratchSpaceFusedNonLinear<TI> {
+    fn default() -> ScratchSpaceFusedNonLinear<TI> {
         ScratchSpaceFusedNonLinear { uspecs: vec![], non_linear_buffers: vec![] }
     }
 }
 
-impl<TI: Copy, TC: Copy> ScratchSpaceFusedNonLinear<TI, TC> {
-    pub unsafe fn for_tile<TA, TB, K: MatMatMulKer<TA, TB, TC, TI>>(
+impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
+    pub unsafe fn for_tile<TA, TB, TC, K: MatMatMulKer<TA, TB, TC, TI>>(
         &mut self,
-        specs: &[FusedSpec<TI, TC>],
+        specs: &[FusedSpec<TI>],
         down: usize,
         right: usize,
-    ) -> *const FusedKerSpec<TI, TC>
+    ) -> *const FusedKerSpec<TI>
     where
         TA: Copy,
         TB: Copy,
@@ -154,9 +160,9 @@ impl<TI: Copy, TC: Copy> ScratchSpaceFusedNonLinear<TI, TC> {
                     };
                     FusedKerSpec::AddRowColProducts(row_ptr, col_ptr)
                 }
-                FusedSpec::QI8Even(scale, shift, zero) => {
-                    FusedKerSpec::QI8Even(*scale, *shift, *zero)
-                }
+                FusedSpec::ScalarMul(t) => FusedKerSpec::ScalarMul(*t),
+                FusedSpec::ScalarAdd(t) => FusedKerSpec::ScalarAdd(*t),
+                FusedSpec::RightShiftTiesToEven(t) => FusedKerSpec::RightShiftTiesToEven(*t),
             };
             self.uspecs.push(s);
         }
@@ -164,3 +170,4 @@ impl<TI: Copy, TC: Copy> ScratchSpaceFusedNonLinear<TI, TC> {
         self.uspecs.as_ptr()
     }
 }
+

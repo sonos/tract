@@ -52,6 +52,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 
     reg.insert("MatMul", |_, _| Ok((Box::new(tractops::math::MatMul::default()), vec![])));
     reg.insert("MatMulInteger", mat_mul_integer::mat_mul_integer);
+    reg.insert("QLinearMatMul", mat_mul_integer::q_linear_mat_mul);
     reg.insert("Gemm", gemm);
 }
 

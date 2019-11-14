@@ -38,8 +38,8 @@ where
     unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize);
     unsafe fn c_vec_from_data(&mut self);
 
-    unsafe fn set_non_linear_specs(&mut self, fused: &[FusedSpec<TI, TC>]);
-    unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI, TC>>;
+    unsafe fn set_non_linear_specs(&mut self, fused: &[FusedSpec<TI>]);
+    unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI>>;
 
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC);
     unsafe fn run_with_non_linear(
@@ -47,7 +47,7 @@ where
         a: *const TA,
         b: *const TB,
         c: *mut TC,
-        non_linear: &[FusedSpec<TI, TC>],
+        non_linear: &[FusedSpec<TI>],
     );
 }
 
@@ -75,7 +75,7 @@ where
     pub b_storage: MatrixStoreSpec,
     pub c_storage: MatrixStoreSpec,
 
-    pub non_linear_specs: Vec<FusedSpec<TI, TC>>,
+    pub non_linear_specs: Vec<FusedSpec<TI>>,
 
     phantom: PhantomData<(K, TA, TB, TC, TI)>,
 }
@@ -223,11 +223,11 @@ where
         self.c_vec_from_data_and_stride(1)
     }
 
-    unsafe fn set_non_linear_specs(&mut self, fused: &[FusedSpec<TI, TC>]) {
+    unsafe fn set_non_linear_specs(&mut self, fused: &[FusedSpec<TI>]) {
         self.non_linear_specs = fused.to_vec()
     }
 
-    unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI, TC>> {
+    unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI>> {
         &mut self.non_linear_specs
     }
 
@@ -240,7 +240,7 @@ where
         a: *const TA,
         b: *const TB,
         c: *mut TC,
-        non_linear: &[FusedSpec<TI, TC>],
+        non_linear: &[FusedSpec<TI>],
     ) {
         let mr = K::mr();
         let nr = K::nr();
@@ -265,7 +265,7 @@ where
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
                 let ref direct_c = c.tile_c(ia, ib);
-                let non_linear = scratch.for_tile::<TA, TB, K>(non_linear, ia, ib);
+                let non_linear = scratch.for_tile::<TA, TB, TC, K>(non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -278,7 +278,7 @@ where
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
-                let non_linear = scratch.for_tile::<TA, TB, K>(non_linear, ia, n / nr);
+                let non_linear = scratch.for_tile::<TA, TB, TC, K>(non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -295,7 +295,7 @@ where
             let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
-                let non_linear = scratch.for_tile::<TA, TB, K>(non_linear, m / mr, ib);
+                let non_linear = scratch.for_tile::<TA, TB, TC, K>(non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -308,7 +308,7 @@ where
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
-                let non_linear = scratch.for_tile::<TA, TB, K>(non_linear, m / mr, n / nr);
+                let non_linear = scratch.for_tile::<TA, TB, TC, K>(non_linear, m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -604,7 +604,7 @@ pub mod test {
         m: usize,
         k: usize,
         n: usize,
-        spec: &[FusedSpec<f32, f32>],
+        spec: &[FusedSpec<f32>],
         expect: F,
     ) -> proptest::test_runner::TestCaseResult {
         let a = vec![1.0f32; m * k];

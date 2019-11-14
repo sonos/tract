@@ -187,6 +187,72 @@ macro_rules! args_5 {
 
 #[allow(unused_macros)]
 #[macro_export]
+macro_rules! args_6 {
+    ($inputs:expr) => {{
+        if $inputs.len() != 6 {
+            $crate::error_chain::bail!("Expected 6 arg, got {:?}", $inputs)
+        }
+        $inputs.reverse();
+        let result = (
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+        );
+        ::std::mem::drop($inputs);
+        result
+    }};
+}
+
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! args_7 {
+    ($inputs:expr) => {{
+        if $inputs.len() != 7 {
+            $crate::error_chain::bail!("Expected 7 arg, got {:?}", $inputs)
+        }
+        $inputs.reverse();
+        let result = (
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+        );
+        ::std::mem::drop($inputs);
+        result
+    }};
+}
+
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! args_8 {
+    ($inputs:expr) => {{
+        if $inputs.len() != 8 {
+            $crate::error_chain::bail!("Expected 8 arg, got {:?}", $inputs)
+        }
+        $inputs.reverse();
+        let result = (
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+        );
+        ::std::mem::drop($inputs);
+        result
+    }};
+}
+
+#[allow(unused_macros)]
+#[macro_export]
 macro_rules! boxed_new {
     ($op:tt($dtype:expr)($($arg:expr),*)) => { {
         use $crate::datum::DatumType;

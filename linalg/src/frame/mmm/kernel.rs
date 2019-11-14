@@ -15,7 +15,7 @@ where
     pub b: &'a PanelStore<TB>,
     pub c: &'a PanelStore<TC>,
     pub linear: &'a LinearSpec,
-    pub non_linear: *const FusedKerSpec<TI, TC>,
+    pub non_linear: *const FusedKerSpec<TI>,
 }
 
 #[repr(C, usize)]
@@ -58,7 +58,7 @@ pub mod test {
     #[test]
     fn check_non_linear_enum_size() {
         assert_eq!(
-            std::mem::size_of::<super::FusedKerSpec<f32, f32>>(),
+            std::mem::size_of::<super::FusedKerSpec<f32>>(),
             3 * std::mem::size_of::<usize>()
         )
     }
@@ -96,6 +96,20 @@ pub mod test {
                 fn return_c_add_row() {
                     if $cond {
                         test::return_c_add_row::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
+
+                #[test]
+                fn return_c_mul_col() {
+                    if $cond {
+                        test::return_c_mul_col::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
+
+                #[test]
+                fn return_c_add_col() {
+                    if $cond {
+                        test::return_c_add_col::<$ker, $ta, $tb, $tc, $ti>()
                     }
                 }
 
@@ -205,7 +219,7 @@ pub mod test {
         assert!(v.iter().all(|&a| a.is_zero()));
     }
 
-    pub fn return_c<K, TA, TB, TC, TI>()
+    pub fn fused_ops<K, TA, TB, TC, TI>(c: &[TC], ops: &[FusedKerSpec<TI>]) -> Vec<TC>
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
@@ -214,18 +228,36 @@ pub mod test {
         TI: Copy + Debug,
         usize: AsPrimitive<TC>,
     {
-        let len = K::mr() * K::nr();
-        let mut v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        assert!(c.len() == K::mr() * K::nr());
+        let mut v = c.to_vec();
         let mut c = mmm_stride_storage(&mut v, K::nr());
+        let mut ops = ops.to_vec();
+        ops.insert(0, FusedKerSpec::AddC);
+        ops.push(FusedKerSpec::Done);
         let err = K::kernel(&MatMatMulKerSpec {
             a: &null_packed_storage(),
             b: &null_packed_storage(),
             c: &mut c,
             linear: &LinearSpec::k(0),
-            non_linear: &[FusedKerSpec::AddC, FusedKerSpec::Done] as _,
+            non_linear: ops.as_ptr(),
         });
         assert_eq!(err, 0);
-        assert!(v.iter().enumerate().all(|(ix, &a)| a == ix.as_()));
+        v
+    }
+
+    pub fn return_c<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + Debug + 'static + PartialEq,
+        TI: Copy + Debug,
+        usize: AsPrimitive<TC>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[]);
+        assert_eq!(found, v);
     }
 
     pub fn return_c_mul_row<K, TA, TB, TC, TI>()
@@ -238,22 +270,10 @@ pub mod test {
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
-        let mut v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        let mut c = mmm_stride_storage(&mut v, K::nr());
-        let err = K::kernel(&MatMatMulKerSpec {
-            a: &null_packed_storage(),
-            b: &null_packed_storage(),
-            c: &mut c,
-            linear: &LinearSpec::k(0),
-            non_linear: &[
-                FusedKerSpec::AddC,
-                FusedKerSpec::PerRowMul(bias.as_ptr()),
-                FusedKerSpec::Done,
-            ] as _,
-        });
-        assert_eq!(err, 0);
-        assert!(v.iter().enumerate().all(|(ix, &a)| {
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerRowMul(bias.as_ptr())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
             let row = ix / K::nr();
             let ix: TI = ix.as_();
             a == (ix * bias[row]).as_()
@@ -270,25 +290,53 @@ pub mod test {
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
-        let mut v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-        let mut c = mmm_stride_storage(&mut v, K::nr());
-        let err = K::kernel(&MatMatMulKerSpec {
-            a: &null_packed_storage(),
-            b: &null_packed_storage(),
-            c: &mut c,
-            linear: &LinearSpec::k(0),
-            non_linear: &[
-                FusedKerSpec::AddC,
-                FusedKerSpec::PerRowAdd(bias.as_ptr()),
-                FusedKerSpec::Done,
-            ] as _,
-        });
-        assert_eq!(err, 0);
-        assert!(v.iter().enumerate().all(|(ix, &a)| {
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerRowAdd(bias.as_ptr())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
             let row = ix / K::nr();
             let ix: TI = ix.as_();
             a == (ix + bias[row]).as_()
+        }));
+    }
+
+    pub fn return_c_mul_col<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + 'static + PartialEq,
+        TI: Copy + Add + Mul<Output = TI> + Zero + Debug + fmt::Display + 'static + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerColMul(bias.as_ptr())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let col = ix % K::nr();
+            let ix: TI = ix.as_();
+            a == (ix * bias[col]).as_()
+        }));
+    }
+
+    pub fn return_c_add_col<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + PartialEq + 'static,
+        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + 'static + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerColAdd(bias.as_ptr())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let col = ix % K::nr();
+            let ix: TI = ix.as_();
+            a == (ix + bias[col]).as_()
         }));
     }
 

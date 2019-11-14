@@ -6,19 +6,35 @@ use crate::frame::mmm::LinearSpec::*;
 use crate::frame::mmm::PanelStore::*;
 use crate::frame::mmm::*;
 
+use num_traits::sign::Signed;
+
 pub trait PseudoRightShift {
-    fn shift(&mut self, shift: usize);
+    fn left_shift(&mut self, shift: usize);
+    fn right_shift(&mut self, shift: usize);
+    fn and(self, other: Self) -> Self;
 }
 
 impl PseudoRightShift for i32 {
-    fn shift(&mut self, shift: usize) {
+    fn left_shift(&mut self, shift: usize) {
+        *self <<= shift;
+    }
+    fn right_shift(&mut self, shift: usize) {
         *self >>= shift;
+    }
+    fn and(self, other: Self) -> Self {
+        self & other
     }
 }
 
 impl PseudoRightShift for f32 {
-    fn shift(&mut self, shift: usize) {
+    fn left_shift(&mut self, shift: usize) {
+        *self *= 2f32.powi((shift - 1) as i32);
+    }
+    fn right_shift(&mut self, shift: usize) {
         *self /= 2f32.powi((shift - 1) as i32)
+    }
+    fn and(self, other: Self) -> Self {
+        f32::from_bits(self.to_bits() & other.to_bits())
     }
 }
 
@@ -90,10 +106,12 @@ where
         + PseudoRightShift
         + PartialOrd
         + Zero
+        + Signed
         + fmt::Debug
         + fmt::Display
         + AsPrimitive<TC>
         + 'static,
+    usize: AsPrimitive<TI>,
 {
     #[inline(always)]
     fn name() -> &'static str {
@@ -270,19 +288,31 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::QI8Even(scale, shift, zero_point) => {
+                    FusedKerSpec::ScalarAdd(a) => {
                         for i in 0..4 {
                             for j in 0..4 {
-                                ab[i][j] += scale;
-                                ab[i][j].shift(shift as usize);
-                                ab[i][j] += zero_point.as_();
-                                ab[i][j] = if ab[i][j] < TC::min_value().as_() {
-                                    TC::min_value().as_()
-                                } else if ab[i][j] > TC::max_value().as_() {
-                                    TC::max_value().as_()
-                                } else {
-                                    ab[i][j]
-                                }
+                                ab[i][j] += a;
+                            }
+                        }
+                    }
+                    FusedKerSpec::ScalarMul(a) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] *= a;
+                            }
+                        }
+                    }
+                    FusedKerSpec::RightShiftTiesToEven(a) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                let mut truncated = ab[i][j].abs();
+                                truncated.right_shift(a - 1);
+                                let mut nudge =
+                                    (((truncated.and(0x3.as_())) == 0x3.as_()) as usize).as_();
+                                nudge.left_shift(1);
+                                let mut pos = truncated + nudge;
+                                pos.right_shift(1);
+                                ab[i][j] = if ab[i][j].is_negative() { -pos } else { pos };
                             }
                         }
                     }
@@ -395,10 +425,12 @@ where
         + PartialOrd
         + PseudoRightShift
         + Zero
+        + Signed
         + fmt::Debug
         + fmt::Display
         + AsPrimitive<TC>
         + 'static,
+    usize: AsPrimitive<TI>,
 {
     #[inline(always)]
     fn name() -> &'static str {
@@ -534,19 +566,31 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::QI8Even(scale, shift, zero_point) => {
+                    FusedKerSpec::ScalarAdd(a) => {
                         for i in 0..3 {
                             for j in 0..2 {
-                                ab[i][j] += scale;
-                                ab[i][j].shift(shift as usize);
-                                ab[i][j] += zero_point.as_();
-                                ab[i][j] = if ab[i][j] < TC::min_value().as_() {
-                                    TC::min_value().as_()
-                                } else if ab[i][j] > TC::max_value().as_() {
-                                    TC::max_value().as_()
-                                } else {
-                                    ab[i][j]
-                                }
+                                ab[i][j] += a;
+                            }
+                        }
+                    }
+                    FusedKerSpec::ScalarMul(a) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                ab[i][j] *= a;
+                            }
+                        }
+                    }
+                    FusedKerSpec::RightShiftTiesToEven(a) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                let mut truncated = ab[i][j].abs();
+                                truncated.right_shift(a - 1);
+                                let mut nudge =
+                                    (((truncated.and(0x3.as_())) == 0x3.as_()) as usize).as_();
+                                nudge.left_shift(1);
+                                let mut pos = truncated + nudge;
+                                pos.right_shift(1);
+                                ab[i][j] = if ab[i][j].is_negative() { -pos } else { pos };
                             }
                         }
                     }
