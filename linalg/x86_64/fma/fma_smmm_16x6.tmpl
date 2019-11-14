@@ -358,6 +358,15 @@ fma_smmm16x6 proc
     cmp     rax,    7
     je      {{L}}per_col_add
 
+    cmp     rax,    8
+    je      {{L}}add_row_col_products
+
+    cmp     rax,    9
+    je      {{L}}scalar_mul
+
+    cmp     rax,    10
+    je      {{L}}scalar_add
+
     jmp     {{L}}unimplemented
 
 // NON LINEAR / ADDC
@@ -471,6 +480,39 @@ fma_smmm16x6 proc
 
     jmp    {{L}}non_linear_loop
 
+{{L}}add_row_col_products:
+    mov             rax, [ rcx + 8 ]
+    mov             rbx, [ rcx + 16 ]
+
+    vmovups         ymm12,  [rax]
+    vmovups         ymm13,  [rax + 32]
+
+{% for i in (0..5) %}
+    vbroadcastss    ymm14, dword ptr [rbx + {{i|times:4}} ]
+    vfmadd231ps     ymm{{i|times:2}},   ymm12, ymm14
+    vfmadd231ps     ymm{{i|times:2|plus:1}}, ymm13, ymm14
+{% endfor %}
+    jmp    {{L}}non_linear_loop
+
+{{L}}scalar_mul:
+    vbroadcastss    ymm12, dword ptr [rcx + 8]
+
+{% for i in (0..5) %}
+    vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}scalar_add:
+    vbroadcastss    ymm12, dword ptr [rcx + 8]
+
+{% for i in (0..5) %}
+    vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
 
 {% if family == "windows" %}
 fma_smmm16x6 endp
