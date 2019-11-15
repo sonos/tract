@@ -23,6 +23,9 @@ where
     unsafe fn set_zero_point_b_scalar(&mut self, value: TB);
     unsafe fn set_zero_point_b_vector(&mut self, values: Vec<TB>);
 
+    unsafe fn set_zero_point_c_scalar(&mut self, value: TC);
+    unsafe fn set_scale_factor(&mut self, factor: f32);
+
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC);
 }
 
@@ -51,6 +54,9 @@ where
     pub mmm: MatMatMulImpl<K, TA, TB, TC, TI>,
     pub zero_point_a: Option<QuantizedParam<TA>>,
     pub zero_point_b: Option<QuantizedParam<TB>>,
+
+    pub zero_point_c: Option<TC>,
+    pub scale_factor: Option<(TI, usize)>,
 }
 
 impl<K, TA, TB, TC, TI> QMatMatMulImpl<K, TA, TB, TC, TI>
@@ -135,7 +141,13 @@ where
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn from(mmm: MatMatMulImpl<K, TA, TB, TC, TI>) -> QMatMatMulImpl<K, TA, TB, TC, TI> {
-        QMatMatMulImpl { mmm, zero_point_a: None, zero_point_b: None }
+        QMatMatMulImpl {
+            mmm,
+            zero_point_a: None,
+            zero_point_b: None,
+            zero_point_c: None,
+            scale_factor: None,
+        }
     }
 }
 
@@ -177,10 +189,11 @@ impl<K, TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> for QMatMatMulImpl<K, TA, TB,
 where
     TA: Copy + Zero + fmt::Debug + AsPrimitive<TI>,
     TB: Copy + Zero + fmt::Debug + AsPrimitive<TI>,
-    TC: Copy + fmt::Debug,
+    TC: Copy + fmt::Debug + AsPrimitive<TI>,
     TI: Copy + Add + Mul<Output = TI> + Zero + Neg<Output = TI> + fmt::Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI>,
     usize: AsPrimitive<TI>,
+    i32: AsPrimitive<TI>,
 {
     fn as_mmm(&self) -> &dyn MatMatMul<TA, TB, TC, TI> {
         &self.mmm
@@ -198,6 +211,10 @@ where
         self.zero_point_b = Some(QuantizedParam::Scalar(value))
     }
 
+    unsafe fn set_zero_point_c_scalar(&mut self, value: TC) {
+        self.zero_point_c = Some(value)
+    }
+
     unsafe fn set_zero_point_a_vector(&mut self, mut values: Vec<TA>) {
         let wanted = self.m() + K::mr() - 1 / K::mr() * K::mr();
         while values.len() < wanted {
@@ -212,6 +229,16 @@ where
             values.push(values[values.len() - 1])
         }
         self.zero_point_b = Some(QuantizedParam::Vector(values))
+    }
+
+    unsafe fn set_scale_factor(&mut self, factor: f32) {
+        // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
+        let factor_bits = factor.to_bits();
+        let current_exponent = factor_bits >> 23;
+        let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
+        let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as i32;
+        let shift = 126 - current_exponent;
+        self.scale_factor = Some((int_multi.as_(), shift as usize));
     }
 
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
@@ -269,7 +296,13 @@ where
             };
             non_linear.insert(0, term);
         }
-        self.mmm.run_with_non_linear(a, b, c, &non_linear)
+        if let Some(scale) = self.scale_factor {
+            non_linear.push(FusedSpec::QToPlusInf(scale.0, scale.1));
+        }
+        if let Some(c0) = self.zero_point_c {
+            non_linear.push(FusedSpec::ScalarAdd(c0.as_()));
+        }
+        self.mmm.run_with_non_linear(a, b, c, &non_linear);
     }
 }
 
@@ -318,7 +351,8 @@ pub mod test {
             prop_oneof![
                 any::<i8>().prop_map(QuantizedParam::Scalar),
                 vec(any::<i8>(), n..=n).prop_map(QuantizedParam::Vector),
-            ].boxed()
+            ]
+            .boxed()
         }
     }
 

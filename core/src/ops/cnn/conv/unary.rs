@@ -32,6 +32,9 @@ pub struct ConvUnary {
 
     pub zero_point_k: Option<Arc<Tensor>>,
     pub zero_point_x: Option<Arc<Tensor>>,
+    pub zero_point_y: Option<Arc<Tensor>>,
+
+    pub scale_factor: Option<f32>,
 }
 
 impl ConvUnary {
@@ -58,6 +61,8 @@ impl ConvUnary {
             group,
             zero_point_k: None,
             zero_point_x: None,
+            zero_point_y: None,
+            scale_factor: None,
         };
         Ok(unary)
     }
@@ -187,6 +192,10 @@ impl ConvUnary {
 
         if let Some(ref t) = self.zero_point_k {
             mmm.set_zero_point_a(&*t)?;
+        }
+
+        if let Some(ref t) = self.zero_point_y {
+            mmm.set_zero_point_c(&*t)?;
         }
 
         trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
@@ -420,6 +429,8 @@ impl TypedOp for ConvUnary {
             group: self.group,
             zero_point_x: self.zero_point_x.clone(),
             zero_point_k: self.zero_point_k.clone(),
+            zero_point_y: self.zero_point_y.clone(),
+            scale_factor: None,
         };
         Ok(Some(Box::new(new_op)))
     }
@@ -479,8 +490,11 @@ impl TypedOp for ConvUnary {
                                 true,
                                 true,
                                 true,
+                                input_fact.datum_type,
                                 self.zero_point_k.clone(),
                                 self.zero_point_x.clone(),
+                                self.zero_point_y.clone(),
+                                self.scale_factor.clone(),
                             ),
                             &[wire],
                         )?[0];
