@@ -466,6 +466,12 @@ armvfpv2_smmm_4x4:
     beq     .per_col_mul
     cmp     r2, #7
     beq     .per_col_add
+    cmp     r2, #8
+    beq     .add_row_col_product
+    cmp     r2, #9
+    beq     .scalar_mul
+    cmp     r2, #10
+    beq     .scalar_add
 
     b .unsupported
 
@@ -556,6 +562,55 @@ armvfpv2_smmm_4x4:
         {% for col in (0..3) %}
             vadd.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{col}}
         {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.add_row_col_product:
+    ldr     r2, [r1, #4]
+    ldr     r3, [r1, #8]
+
+    vldmia          r2!, { s0, s1 }
+    vldmia          r3!, { s8, s9 }
+
+    vmla.f32        s16, s0, s8
+    vldmia          r2!, { s2, s3 }
+    vmla.f32        s17, s1, s8
+    vldmia          r3!, { s10, s11 }
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vmla.f32        s20, s0, s9
+    vmla.f32        s21, s1, s9
+    vmla.f32        s22, s2, s9
+    vmla.f32        s23, s3, s9
+
+    vmla.f32        s24, s0, s10
+    vmla.f32        s25, s1, s10
+    vmla.f32        s26, s2, s10
+    vmla.f32        s27, s3, s10
+
+    vmla.f32        s28, s0, s11
+    vmla.f32        s29, s1, s11
+    vmla.f32        s30, s2, s11
+    vmla.f32        s31, s3, s11
+
+    b .non_linear_loop
+
+.scalar_mul:
+    vldr    s0, [ r1, #4 ]
+
+    {% for s in (16..31) %}
+        vmul.f32    s{{s}}, s{{s}}, s0
+    {% endfor %}
+
+    b .non_linear_loop
+
+.scalar_add:
+    vldr    s0, [ r1, #4 ]
+
+    {% for s in (16..31) %}
+        vadd.f32    s{{s}}, s{{s}}, s0
     {% endfor %}
 
     b .non_linear_loop
