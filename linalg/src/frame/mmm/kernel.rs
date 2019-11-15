@@ -51,7 +51,7 @@ where
 pub mod test {
     use super::*;
     use crate::align::Buffer;
-    use num_traits::{AsPrimitive, Bounded, One, Signed, Zero};
+    use num_traits::{AsPrimitive, Bounded, One, Zero};
     use std::fmt;
     use std::ops::{Add, Mul};
 
@@ -214,12 +214,14 @@ pub mod test {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::kernel::test;
 
+                /*
                 #[test]
                 fn return_c_right_shift_ties_to_even() {
                     if $cond {
                         test::return_c_right_shift_ties_to_even::<$ker, $ta, $tb, $tc, $ti>()
                     }
                 }
+                */
 
             }
         }
@@ -417,7 +419,7 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
-        TC: Copy + PartialEq + 'static,
+        TC: Copy + PartialEq + 'static + Debug,
         TI: Copy
             + Add
             + Mul<Output = TI>
@@ -461,44 +463,6 @@ pub mod test {
         assert!(found.iter().enumerate().all(|(ix, &a)| {
             let ix: TI = ix.as_();
             a == (ix + 5.as_()).as_()
-        }));
-    }
-
-    pub fn return_c_right_shift_ties_to_even<K, TA, TB, TC, TI>()
-    where
-        K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy,
-        TB: Copy,
-        TC: Copy + PartialEq + 'static + AsPrimitive<TI> + Debug,
-        TI: Copy
-            + Add
-            + Mul<Output = TI>
-            + Zero
-            + Signed
-            + Bounded
-            + Debug
-            + crate::generic::mmm::PseudoRightShift
-            + fmt::Display
-            + PartialEq
-            + 'static
-            + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-        isize: AsPrimitive<TC>,
-    {
-        let len = K::mr() * K::nr();
-        let v: Vec<TC> = (0..len).map(|f| (f as isize - len as isize / 2).as_()).collect();
-        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::RightShiftTiesToEven(2)]);
-        assert!(found.iter().zip(v.iter()).all(|(&a, &i)| {
-            let ix: TI = i.as_();
-            let mut shifted = ix.abs();
-            shifted.right_shift(1);
-            let nudge = (((shifted.and(0x3.as_())) == 0x3.as_()) as usize) << 1;
-            shifted = shifted + nudge.as_();
-            shifted.right_shift(1);
-            if ix.is_negative() {
-                shifted = -shifted;
-            }
-            shifted.as_() == a
         }));
     }
 

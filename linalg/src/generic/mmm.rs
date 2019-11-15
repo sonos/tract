@@ -9,32 +9,34 @@ use crate::frame::mmm::*;
 use num_traits::sign::Signed;
 
 pub trait PseudoRightShift {
-    fn left_shift(&mut self, shift: usize);
-    fn right_shift(&mut self, shift: usize);
-    fn and(self, other: Self) -> Self;
+    fn q_even(self, mult: Self, shift: usize) -> Self;
+    fn q_to_plus_inf(self, mult: Self, shift: usize) -> Self;
 }
 
 impl PseudoRightShift for i32 {
-    fn left_shift(&mut self, shift: usize) {
-        *self <<= shift;
+    fn q_even(self, mult: Self, shift: usize) -> Self {
+        let v = ((self as i64 * mult as i64) >> (30 + shift)) as i32;
+        let truncated = v.abs();
+        let nudge = (((truncated & 0x3) == 0x3) as usize as i32) << 1;
+        let pos = (truncated + nudge) >> 1;
+        if v.is_negative() {
+            -pos
+        } else {
+            pos
+        }
     }
-    fn right_shift(&mut self, shift: usize) {
-        *self >>= shift;
-    }
-    fn and(self, other: Self) -> Self {
-        self & other
+    fn q_to_plus_inf(self, mult: Self, shift: usize) -> Self {
+        let v = ((self as i64 * mult as i64) >> (30 + shift)) as i32;
+        (v + 1) >> 1
     }
 }
 
 impl PseudoRightShift for f32 {
-    fn left_shift(&mut self, shift: usize) {
-        *self *= 2f32.powi((shift) as i32);
+    fn q_even(self, mult: Self, shift: usize) -> Self {
+        self * mult * 2f32.powi(-(shift as i32))
     }
-    fn right_shift(&mut self, shift: usize) {
-        *self /= 2f32.powi((shift) as i32)
-    }
-    fn and(self, other: Self) -> Self {
-        f32::from_bits(self.to_bits() & other.to_bits())
+    fn q_to_plus_inf(self, mult: Self, shift: usize) -> Self {
+        self * mult * 2f32.powi(-(shift as i32))
     }
 }
 
@@ -302,17 +304,17 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::RightShiftTiesToEven(a) => {
+                    FusedKerSpec::QEven(mult, shift) => {
                         for i in 0..4 {
                             for j in 0..4 {
-                                let mut truncated = ab[i][j].abs();
-                                truncated.right_shift(a - 1);
-                                let mut nudge =
-                                    (((truncated.and(0x3.as_())) == 0x3.as_()) as usize).as_();
-                                nudge.left_shift(1);
-                                let mut pos = truncated + nudge;
-                                pos.right_shift(1);
-                                ab[i][j] = if ab[i][j].is_negative() { -pos } else { pos };
+                                ab[i][j] = ab[i][j].q_even(mult, shift);
+                            }
+                        }
+                    }
+                    FusedKerSpec::QToPlusInf(mult, shift) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] = ab[i][j].q_to_plus_inf(mult, shift);
                             }
                         }
                     }
@@ -580,17 +582,17 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::RightShiftTiesToEven(a) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                let mut truncated = ab[i][j].abs();
-                                truncated.right_shift(a - 1);
-                                let mut nudge =
-                                    (((truncated.and(0x3.as_())) == 0x3.as_()) as usize).as_();
-                                nudge.left_shift(1);
-                                let mut pos = truncated + nudge;
-                                pos.right_shift(1);
-                                ab[i][j] = if ab[i][j].is_negative() { -pos } else { pos };
+                    FusedKerSpec::QEven(mult, shift) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] = ab[i][j].q_even(mult, shift);
+                            }
+                        }
+                    }
+                    FusedKerSpec::QToPlusInf(mult, shift) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] = ab[i][j].q_to_plus_inf(mult, shift);
                             }
                         }
                     }

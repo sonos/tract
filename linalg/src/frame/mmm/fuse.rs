@@ -17,7 +17,8 @@ pub enum FusedSpec<TI: Copy + Debug> {
     AddRowColProducts(Vec<TI>, Vec<TI>),
     ScalarMul(TI),
     ScalarAdd(TI),
-    RightShiftTiesToEven(usize),
+    QEven(TI, usize),
+    QToPlusInf(TI, usize),
 }
 
 impl<TI: Copy + Debug> Debug for FusedSpec<TI> {
@@ -33,7 +34,8 @@ impl<TI: Copy + Debug> Debug for FusedSpec<TI> {
             FusedSpec::AddRowColProducts(_, _) => write!(fmt, "AddRowColProducts"),
             FusedSpec::ScalarMul(_) => write!(fmt, "ScalarMul"),
             FusedSpec::ScalarAdd(_) => write!(fmt, "ScalarAdd"),
-            FusedSpec::RightShiftTiesToEven(_) => write!(fmt, "RightShiftTiesToEven"),
+            FusedSpec::QEven(_, _) => write!(fmt, "QEven"),
+            FusedSpec::QToPlusInf(_, _) => write!(fmt, "QToPlusInf"),
         }
     }
 }
@@ -52,7 +54,8 @@ pub enum FusedKerSpec<TI: Copy> {
     AddRowColProducts(*const TI, *const TI),
     ScalarMul(TI),
     ScalarAdd(TI),
-    RightShiftTiesToEven(usize),
+    QEven(TI, usize),
+    QToPlusInf(TI, usize),
 }
 
 pub struct ScratchSpaceFusedNonLinear<TI: Copy> {
@@ -162,7 +165,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 }
                 FusedSpec::ScalarMul(t) => FusedKerSpec::ScalarMul(*t),
                 FusedSpec::ScalarAdd(t) => FusedKerSpec::ScalarAdd(*t),
-                FusedSpec::RightShiftTiesToEven(t) => FusedKerSpec::RightShiftTiesToEven(*t),
+                FusedSpec::QEven(m, s) => FusedKerSpec::QEven(*m, *s),
+                FusedSpec::QToPlusInf(m, s) => FusedKerSpec::QToPlusInf(*m, *s),
             };
             self.uspecs.push(s);
         }
