@@ -15,7 +15,7 @@ use crate::ops::array::TypedReshape;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
 use crate::ops::math::mat_mat_mul::MatMatMulUnaryFinite;
-use crate::ops::math::mat_mul::MMMWrapper;
+use crate::ops::math::mat_mul::{MMMWrapper, QParams};
 use crate::ops::nn::DataFormat;
 
 use tract_linalg::frame::PackA;
@@ -30,15 +30,16 @@ pub struct ConvUnary {
 
     pub group: usize,
 
-    pub zero_point_k: Option<Arc<Tensor>>,
-    pub zero_point_x: Option<Arc<Tensor>>,
-    pub zero_point_y: Option<Arc<Tensor>>,
-
-    pub scale_factor: Option<f32>,
+    pub q_params: Option<QParams>,
 }
 
 impl ConvUnary {
-    pub fn new(conv: &Conv, kernel: Arc<Tensor>, group: usize) -> TractResult<ConvUnary> {
+    pub fn new(
+        conv: &Conv,
+        kernel: Arc<Tensor>,
+        group: usize,
+        q_params: Option<QParams>,
+    ) -> TractResult<ConvUnary> {
         let spatial_rank = kernel.rank() - 2;
         let kshape = kernel.shape();
 
@@ -59,10 +60,7 @@ impl ConvUnary {
             kernel_fmt: conv.kernel_fmt,
             kernel,
             group,
-            zero_point_k: None,
-            zero_point_x: None,
-            zero_point_y: None,
-            scale_factor: None,
+            q_params
         };
         Ok(unary)
     }
@@ -186,16 +184,8 @@ impl ConvUnary {
         };
         mmm.as_mmm_mut().c_from_data_and_strides(rsc, csc);
 
-        if let Some(ref t) = self.zero_point_x {
-            mmm.set_zero_point_b(&*t)?;
-        }
-
-        if let Some(ref t) = self.zero_point_k {
-            mmm.set_zero_point_a(&*t)?;
-        }
-
-        if let Some(ref t) = self.zero_point_y {
-            mmm.set_zero_point_c(&*t)?;
+        if let Some(q) = self.q_params.as_ref() {
+            mmm.set_quant_params(q)?;
         }
 
         trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
@@ -225,7 +215,7 @@ impl ConvUnary {
                     self.group,
                     c_dim / self.group,
                     mmm.as_mmm().b_pack(),
-                    self.zero_point_x.as_ref()
+                    self.q_params.as_ref().and_then(|q| q.zero_point_b.as_ref())
                         .map(|t| t.to_scalar::<TB>().map(|x| *x))
                         .transpose()?
                         .unwrap_or(TB::default()),
@@ -427,10 +417,7 @@ impl TypedOp for ConvUnary {
             kernel_fmt: self.kernel_fmt,
             kernel: kernel.into_arc_tensor(),
             group: self.group,
-            zero_point_x: self.zero_point_x.clone(),
-            zero_point_k: self.zero_point_k.clone(),
-            zero_point_y: self.zero_point_y.clone(),
-            scale_factor: None,
+            q_params: self.q_params.clone(),
         };
         Ok(Some(Box::new(new_op)))
     }
@@ -490,11 +477,7 @@ impl TypedOp for ConvUnary {
                                 true,
                                 true,
                                 true,
-                                input_fact.datum_type,
-                                self.zero_point_k.clone(),
-                                self.zero_point_x.clone(),
-                                self.zero_point_y.clone(),
-                                self.scale_factor.clone(),
+                                self.q_params.clone()
                             ),
                             &[wire],
                         )?[0];

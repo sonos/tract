@@ -5,6 +5,7 @@ use crate::dim::DimLike;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PaddingSpec;
 use crate::ops::nn::DataFormat;
+use crate::ops::math::mat_mul::QParams;
 use std::borrow::Borrow;
 
 #[derive(Debug, Clone, Default)]
@@ -106,21 +107,23 @@ impl Conv {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
         }
         if let Some(kvalue) = kernel.borrow().konst.clone() {
-            let mut reduced = ConvUnary::new(&self, kvalue, self.group.unwrap_or(1))?;
+            let mut qp = None;
+            let dt = self.override_output_datum_type.unwrap_or(input.borrow().datum_type);
             if let Some(slot) = self.x_zero_point_input {
                 if let Some(ref value) = inputs[slot].borrow().konst {
-                    reduced.zero_point_x = Some(value.clone());
+                    qp.get_or_insert(QParams::new(dt)).set_zero_point_b(value);
                 } else {
                     bail!("Input zero point must be const")
                 }
             }
             if let Some(slot) = self.k_zero_point_input {
                 if let Some(ref value) = inputs[slot].borrow().konst {
-                    reduced.zero_point_k = Some(value.clone());
+                    qp.get_or_insert(QParams::new(dt)).set_zero_point_a(value);
                 } else {
                     bail!("Kernel zero point must be const")
                 }
             }
+            let reduced = ConvUnary::new(&self, kvalue, self.group.unwrap_or(1), qp)?;
             return Ok(Some(reduced));
         }
         Ok(None)
