@@ -17,7 +17,7 @@ impl PseudoRightShift for i32 {
     fn q_even(self, mult: Self, shift: usize) -> Self {
         let v = ((self as i64 * mult as i64) >> (30 + shift)) as i32;
         let truncated = v.abs();
-        let nudge = (((truncated & 0x3) == 0x3) as usize as i32) << 1;
+        let nudge = ((truncated & 0x3) == 0x3) as usize as i32;
         let pos = (truncated + nudge) >> 1;
         if v.is_negative() {
             -pos
@@ -304,14 +304,14 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::QEven(mult, shift) => {
+                    FusedKerSpec::QTowardsEven(mult, shift) => {
                         for i in 0..4 {
                             for j in 0..4 {
                                 ab[i][j] = ab[i][j].q_even(mult, shift);
                             }
                         }
                     }
-                    FusedKerSpec::QToPlusInf(mult, shift) => {
+                    FusedKerSpec::QTowardsPlusInf(mult, shift) => {
                         for i in 0..4 {
                             for j in 0..4 {
                                 ab[i][j] = ab[i][j].q_to_plus_inf(mult, shift);
@@ -582,16 +582,16 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::QEven(mult, shift) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
+                    FusedKerSpec::QTowardsEven(mult, shift) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
                                 ab[i][j] = ab[i][j].q_even(mult, shift);
                             }
                         }
                     }
-                    FusedKerSpec::QToPlusInf(mult, shift) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
+                    FusedKerSpec::QTowardsPlusInf(mult, shift) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
                                 ab[i][j] = ab[i][j].q_to_plus_inf(mult, shift);
                             }
                         }
