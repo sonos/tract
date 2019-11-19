@@ -1,4 +1,5 @@
-mod fuse;
+#[macro_use]
+pub(crate) mod fuse;
 #[macro_use]
 pub(crate) mod kernel;
 #[macro_use]
