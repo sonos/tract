@@ -297,7 +297,7 @@ where
             non_linear.insert(0, term);
         }
         if let Some(scale) = self.scale_factor {
-            non_linear.push(FusedSpec::QToPlusInf(scale.0, scale.1));
+            non_linear.push(FusedSpec::QTowardsPlusInf(scale.0, scale.1));
         }
         if let Some(c0) = self.zero_point_c {
             non_linear.push(FusedSpec::ScalarAdd(c0.as_()));

@@ -17,8 +17,8 @@ pub enum FusedSpec<TI: Copy + Debug> {
     AddRowColProducts(Vec<TI>, Vec<TI>),
     ScalarMul(TI),
     ScalarAdd(TI),
-    QEven(TI, usize),
-    QToPlusInf(TI, usize),
+    QTowardsEven(TI, usize),
+    QTowardsPlusInf(TI, usize),
 }
 
 impl<TI: Copy + Debug> Debug for FusedSpec<TI> {
@@ -34,8 +34,8 @@ impl<TI: Copy + Debug> Debug for FusedSpec<TI> {
             FusedSpec::AddRowColProducts(_, _) => write!(fmt, "AddRowColProducts"),
             FusedSpec::ScalarMul(_) => write!(fmt, "ScalarMul"),
             FusedSpec::ScalarAdd(_) => write!(fmt, "ScalarAdd"),
-            FusedSpec::QEven(_, _) => write!(fmt, "QEven"),
-            FusedSpec::QToPlusInf(_, _) => write!(fmt, "QToPlusInf"),
+            FusedSpec::QTowardsEven(_, _) => write!(fmt, "QTowardsEven"),
+            FusedSpec::QTowardsPlusInf(_, _) => write!(fmt, "QTowardsPlusInf"),
         }
     }
 }
@@ -54,8 +54,8 @@ pub enum FusedKerSpec<TI: Copy> {
     AddRowColProducts(*const TI, *const TI),
     ScalarMul(TI),
     ScalarAdd(TI),
-    QEven(TI, usize),
-    QToPlusInf(TI, usize),
+    QTowardsEven(TI, usize),
+    QTowardsPlusInf(TI, usize),
 }
 
 pub struct ScratchSpaceFusedNonLinear<TI: Copy> {
@@ -165,8 +165,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 }
                 FusedSpec::ScalarMul(t) => FusedKerSpec::ScalarMul(*t),
                 FusedSpec::ScalarAdd(t) => FusedKerSpec::ScalarAdd(*t),
-                FusedSpec::QEven(m, s) => FusedKerSpec::QEven(*m, *s),
-                FusedSpec::QToPlusInf(m, s) => FusedKerSpec::QToPlusInf(*m, *s),
+                FusedSpec::QTowardsEven(m, s) => FusedKerSpec::QTowardsEven(*m, *s),
+                FusedSpec::QTowardsPlusInf(m, s) => FusedKerSpec::QTowardsPlusInf(*m, *s),
             };
             self.uspecs.push(s);
         }
@@ -179,11 +179,11 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
 #[macro_use]
 pub mod test {
     use super::*;
-    use crate::frame::mmm::*;
     use crate::frame::mmm::storage::*;
+    use crate::frame::mmm::*;
     use num_traits::{AsPrimitive, Bounded, Zero};
     use std::fmt;
-    use std::ops::{Add, Mul};
+    use std::ops::{Add, Mul, Sub};
 
     #[test]
     fn check_non_linear_enum_size() {
@@ -263,34 +263,36 @@ pub mod test {
                     }
                 }
             }
-        }
+        };
     }
-
 
     #[macro_export]
     macro_rules! qmmm_kernel_fuse_tests {
         ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
             mod kernelq {
                 #[allow(unused_imports)]
-                use crate::frame::mmm::kernel::test;
+                use crate::frame::mmm::fuse::test;
 
-                /*
                 #[test]
-                fn return_c_right_shift_ties_to_even() {
+                fn return_q_towards_even() {
                     if $cond {
-                        test::return_c_right_shift_ties_to_even::<$ker, $ta, $tb, $tc, $ti>()
+                        test::return_q_towards_even::<$ker, $ta, $tb, $tc, $ti>()
                     }
                 }
-                */
 
+                #[test]
+                fn return_q_towards_plusinf() {
+                    if $cond {
+                        test::return_q_towards_plusinf::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
             }
-        }
+        };
     }
 
     pub fn null_packed_storage<T: Copy>() -> PanelStore<T> {
         PanelStore::Packed { ptr: std::ptr::null::<T>() as _ }
     }
-
 
     pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> PanelStore<T> {
         PanelStore::Strides {
@@ -527,5 +529,89 @@ pub mod test {
         }));
     }
 
+    pub fn return_q_towards_even<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy
+            + PartialEq
+            + 'static
+            + Debug
+            + Sub<Output = TC>
+            + AsPrimitive<TI>
+            + Mul<Output = TC>,
+        TI: Copy
+            + Add
+            + Mul<Output = TI>
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>
+            + AsPrimitive<i64>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        i64: AsPrimitive<TC>,
+    {
+        let len = K::mr() * K::nr();
+        let half_len: TC = (len / 2).as_();
+        let v: Vec<TC> =
+            (0..len).map(|f| (<usize as AsPrimitive<TC>>::as_(f) - half_len)).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(
+            &*v,
+            &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QTowardsEven((1 << 30).as_(), 2)],
+        );
+        assert!(found.iter().zip(v.iter()).all(|(&found, input)| {
+            let input: TI = input.as_();
+            let input: i64 = input.as_();
+            let input = input >> 1;
+            let trunc = input.abs();
+            let nudge = (trunc & 0x3 == 0x3) as i64;
+            let mut trunc = (trunc + nudge) >> 1;
+            if input.is_negative() {
+                trunc = -trunc;
+            }
+            trunc.as_() == found
+        }));
+    }
 
+    pub fn return_q_towards_plusinf<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy
+            + PartialEq
+            + 'static
+            + Debug
+            + Sub<Output = TC>
+            + AsPrimitive<TI>
+            + Mul<Output = TC>,
+        TI: Copy
+            + Add
+            + Mul<Output = TI>
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>
+            + AsPrimitive<i64>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        i64: AsPrimitive<TC>,
+    {
+        let len = K::mr() * K::nr();
+        let half_len: TC = (len / 2).as_();
+        let v: Vec<TC> =
+            (0..len).map(|f| (<usize as AsPrimitive<TC>>::as_(f) - half_len)).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(
+            &*v,
+            &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QTowardsPlusInf((1 << 30).as_(), 2)],
+        );
+        assert!(found.iter().zip(v.iter()).all(|(&found, input)| {
+            let input: TI = input.as_();
+            let input: i64 = input.as_();
+            let trunc = ((input >> 1) + 1) >> 1;
+            trunc.as_() == found
+        }));
+    }
 }
