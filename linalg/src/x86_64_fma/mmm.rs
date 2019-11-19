@@ -52,4 +52,12 @@ mod test {
         f32,
         f32
     );
+    mmm_kernel_fuse_tests!(
+        is_x86_feature_detected!("fma"),
+        crate::x86_64_fma::mmm::SMatMatMul16x6,
+        f32,
+        f32,
+        f32,
+        f32
+    );
 }
