@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_core::internal::*;
+use tract_core::ops::math::mat_mul::QParams;
 
 pub fn mat_mul_integer(
     _ctx: &ParsingContext,
@@ -40,18 +41,18 @@ impl Op for MatMulInteger {
 
 impl StatelessOp for MatMulInteger {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let mut op = tract_core::ops::math::mat_mul::MatMul::default()
-            .with_c_datum_type(i32::datum_type());
+        let mut qp = QParams::new(i32::datum_type());
         if let Some(i) = self.optional_a_zero_point_input {
             if let Some(zp) = cleanup_zero_point(inputs[i].clone().into_tensor())? {
-                op = op.with_zero_point_a(&zp.into_arc_tensor());
+                qp = qp.with_zero_point_a(&zp.into_arc_tensor());
             }
         }
         if let Some(i) = self.optional_b_zero_point_input {
             if let Some(zp) = cleanup_zero_point(inputs[i].clone().into_tensor())? {
-                op = op.with_zero_point_b(&zp.into_arc_tensor());
+                qp = qp.with_zero_point_b(&zp.into_arc_tensor());
             }
         }
+        let op = tract_core::ops::math::mat_mul::MatMul::default().with_q_params(qp);
         op.eval(inputs)
     }
 }
@@ -91,7 +92,7 @@ impl InferenceRulesOp for MatMulInteger {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let mut op = tract_core::ops::math::mat_mul::MatMul::default();
+        let mut qp = QParams::new(i32::datum_type());
         if let Some(ix) = self.optional_a_zero_point_input {
             let zp = target
                 .outlet_fact(mapping[&node.inputs[ix]])?
@@ -99,7 +100,7 @@ impl InferenceRulesOp for MatMulInteger {
                 .as_ref()
                 .ok_or("zero_point_a must be a constant")?;
             if let Some(zp) = cleanup_zero_point(zp.clone().into_tensor())? {
-                op = op.with_zero_point_a(&zp.into_arc_tensor());
+                qp = qp.with_zero_point_a(&zp.into_arc_tensor());
             }
         };
         if let Some(ix) = self.optional_b_zero_point_input {
@@ -109,9 +110,10 @@ impl InferenceRulesOp for MatMulInteger {
                 .as_ref()
                 .ok_or("zero_point_b must be a constant")?;
             if let Some(zp) = cleanup_zero_point(zp.clone().into_tensor())? {
-                op = op.with_zero_point_b(&zp.into_arc_tensor());
+                qp = qp.with_zero_point_b(&zp.into_arc_tensor());
             }
         };
+        let op = tract_core::ops::math::mat_mul::MatMul::default().with_q_params(qp);
         target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]], mapping[&node.inputs[1]]])
     }
 
@@ -141,17 +143,17 @@ impl StatelessOp for QLinearMatMul {
         let (a, a_scale, a_zp, b, b_scale, b_zp, y_scale, y_zp) = args_8!(inputs);
         let scale = a_scale.to_scalar::<f32>()? * b_scale.to_scalar::<f32>()?
             / y_scale.to_scalar::<f32>()?;
-        let mut op = tract_core::ops::math::mat_mul::MatMul::default()
-            .with_scale_factor(scale);
+        let mut qp = QParams::new(y_zp.datum_type()).with_scale_factor(scale);
         if let Some(zp) = cleanup_zero_point(a_zp.into_tensor())? {
-            op = op.with_zero_point_a(&zp.into_arc_tensor())
+            qp = qp.with_zero_point_a(&zp.into_arc_tensor())
         }
         if let Some(zp) = cleanup_zero_point(b_zp.into_tensor())? {
-            op = op.with_zero_point_b(&zp.into_arc_tensor())
+            qp = qp.with_zero_point_b(&zp.into_arc_tensor())
         }
         if let Some(zp) = cleanup_zero_point(y_zp.into_tensor())? {
-            op = op.with_zero_point_c(&zp.into_arc_tensor())
+            qp = qp.with_zero_point_c(&zp.into_arc_tensor())
         }
+        let op = tract_core::ops::math::mat_mul::MatMul::default().with_q_params(qp);
         op.eval(tvec!(a, b))
     }
 }
@@ -189,14 +191,14 @@ impl InferenceRulesOp for QLinearMatMul {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let mut op = tract_core::ops::math::mat_mul::MatMul::default();
+        let mut qp = QParams::new(i32::datum_type());
         let a_zp = target
             .outlet_fact(mapping[&node.inputs[2]])?
             .konst
             .as_ref()
             .ok_or("zero_point_a must be a constant")?;
         if let Some(zp) = cleanup_zero_point(a_zp.clone().into_tensor())? {
-            op = op.with_zero_point_a(&zp.into_arc_tensor());
+            qp = qp.with_zero_point_a(&zp.into_arc_tensor());
         }
         let b_zp = target
             .outlet_fact(mapping[&node.inputs[5]])?
@@ -204,8 +206,9 @@ impl InferenceRulesOp for QLinearMatMul {
             .as_ref()
             .ok_or("zero_point_b must be a constant")?;
         if let Some(zp) = cleanup_zero_point(b_zp.clone().into_tensor())? {
-            op = op.with_zero_point_b(&zp.into_arc_tensor());
+            qp = qp.with_zero_point_b(&zp.into_arc_tensor());
         }
+        let op = tract_core::ops::math::mat_mul::MatMul::default().with_q_params(qp);
         target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]], mapping[&node.inputs[3]]])
     }
 

@@ -9,42 +9,93 @@ use ndarray::*;
 use tract_linalg::mmm::MatMatMul;
 use tract_linalg::mmm::QMatMatMul;
 
+#[derive(Clone, Debug)]
+pub struct QParams {
+    pub c_datum_type: DatumType,
+    pub zero_point_a: Option<Arc<Tensor>>,
+    pub zero_point_b: Option<Arc<Tensor>>,
+    pub zero_point_c: Option<Arc<Tensor>>,
+    pub scale_factor: Option<f32>,
+}
+
+impl QParams {
+    pub fn new(dt: DatumType) -> QParams {
+        QParams {
+            c_datum_type: dt,
+            zero_point_a: None,
+            zero_point_b: None,
+            zero_point_c: None,
+            scale_factor: None,
+        }
+    }
+
+    pub fn with_zero_point_a(self, zero_point: &Arc<Tensor>) -> QParams {
+        QParams { zero_point_a: Some(zero_point.clone()), ..self }
+    }
+
+    pub fn with_zero_point_b(self, zero_point: &Arc<Tensor>) -> QParams {
+        QParams { zero_point_b: Some(zero_point.clone()), ..self }
+    }
+
+    pub fn with_zero_point_c(self, zero_point: &Arc<Tensor>) -> QParams {
+        QParams { zero_point_c: Some(zero_point.clone()), ..self }
+    }
+
+    pub fn with_scale_factor(self, scale_factor: f32) -> QParams {
+        QParams { scale_factor: Some(scale_factor), ..self }
+    }
+
+    pub fn set_zero_point_a(&mut self, zero_point: &Arc<Tensor>) {
+        self.zero_point_a = Some(zero_point.clone());
+    }
+
+    pub fn set_zero_point_b(&mut self, zero_point: &Arc<Tensor>) {
+        self.zero_point_b = Some(zero_point.clone());
+    }
+
+    pub fn set_zero_point_c(&mut self, zero_point: &Arc<Tensor>) {
+        self.zero_point_c = Some(zero_point.clone());
+    }
+
+    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+        self.scale_factor = Some(scale_factor)
+    }
+}
+
 fn eval(
     a: &Tensor,
     b: &Tensor,
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-    c_datum_type: DatumType,
-    zero_point_a: Option<&Tensor>,
-    zero_point_b: Option<&Tensor>,
-    zero_point_c: Option<&Tensor>,
-    scale_factor: Option<f32>,
+    q_params: Option<&QParams>,
 ) -> TractResult<Tensor> {
-    if (a.datum_type(), b.datum_type()) == (f32::datum_type(), f32::datum_type()) {
-        return eval_t(a, b, a_trans, b_trans, c_trans, zero_point_a, zero_point_b, zero_point_c, scale_factor, &|m, k, n| {
+    if let Some(q) = q_params {
+        if (a.datum_type(), b.datum_type()) == (i8::datum_type(), i8::datum_type()) {
+            return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
+                MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
+            });
+        } else if (a.datum_type(), b.datum_type()) == (u8::datum_type(), u8::datum_type()) {
+            if q.c_datum_type == i32::datum_type() {
+                return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
+                    MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_i32)(m, k, n))
+                });
+            } else if q.c_datum_type == u8::datum_type() {
+                return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
+                    MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_u8)(m, k, n))
+                });
+            }
+        }
+    } else if (a.datum_type(), b.datum_type()) == (f32::datum_type(), f32::datum_type()) {
+        return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
             MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n))
         });
-    } else if (a.datum_type(), b.datum_type()) == (i8::datum_type(), i8::datum_type()) {
-        return eval_t(a, b, a_trans, b_trans, c_trans, zero_point_a, zero_point_b, zero_point_c, scale_factor, &|m, k, n| {
-            MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
-        });
-    } else if (a.datum_type(), b.datum_type()) == (u8::datum_type(), u8::datum_type()) {
-        if c_datum_type == i32::datum_type() {
-            return eval_t(a, b, a_trans, b_trans, c_trans, zero_point_a, zero_point_b, zero_point_c, scale_factor, &|m, k, n| {
-                MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_i32)(m, k, n))
-            });
-        } else if c_datum_type == u8::datum_type() {
-            return eval_t(a, b, a_trans, b_trans, c_trans, zero_point_a, zero_point_b, zero_point_c, scale_factor, &|m, k, n| {
-                MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_u8)(m, k, n))
-            });
-        }
     }
     bail!(
-        "Unsupported combination for MatMul (a: {:?}, b:{:?} c:{:?})",
+        "Unsupported combination for MatMul (a: {:?}, b:{:?} q:{:?})",
         a.datum_type(),
         b.datum_type(),
-        c_datum_type
+        q_params
     );
 }
 
@@ -54,10 +105,7 @@ fn eval_t<TA, TB, TC, TI>(
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-    zero_point_a: Option<&Tensor>,
-    zero_point_b: Option<&Tensor>,
-    zero_point_c: Option<&Tensor>,
-    scale_factor: Option<f32>,
+    q_params: Option<&QParams>,
     mmm: impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
 ) -> TractResult<Tensor>
 where
@@ -74,17 +122,8 @@ where
             if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
             if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
         );
-        if let Some(ref t) = zero_point_a {
-            geo.mm.set_zero_point_a(t)?;
-        }
-        if let Some(ref t) = zero_point_b {
-            geo.mm.set_zero_point_b(t)?;
-        }
-        if let Some(ref t) = zero_point_c {
-            geo.mm.set_zero_point_c(t)?;
-        }
-        if let Some(ref t) = scale_factor {
-            geo.mm.set_scale_factor(*t)?;
+        if let Some(q) = q_params {
+            geo.mm.set_quant_params(q)?;
         }
     }
     let a = a.into_shape(&*geo.bc_a_shape)?;
@@ -231,46 +270,32 @@ where
         }
     }
 
-    pub fn set_zero_point_a(&mut self, t: &Tensor) -> TractResult<()> {
+    pub fn set_quant_params(&mut self, params: &QParams) -> TractResult<()> {
         let q = self.as_quant_mut().ok_or("try to zero_point on a float mat mul")?;
         unsafe {
-            if t.rank() == 0 {
-                q.set_zero_point_a_scalar(*t.to_scalar()?)
-            } else {
-                q.set_zero_point_a_vector(t.as_slice()?.to_vec())
+            if let Some(t) = params.zero_point_a.as_ref() {
+                if t.rank() == 0 {
+                    q.set_zero_point_a_scalar(*t.to_scalar()?)
+                } else {
+                    q.set_zero_point_a_vector(t.as_slice()?.to_vec())
+                }
+            }
+            if let Some(t) = params.zero_point_b.as_ref() {
+                if t.rank() == 0 {
+                    q.set_zero_point_b_scalar(*t.to_scalar()?)
+                } else {
+                    q.set_zero_point_b_vector(t.as_slice()?.to_vec())
+                }
+            }
+            if let Some(t) = params.zero_point_c.as_ref() {
+                q.set_zero_point_c_scalar(*t.to_scalar()?)
+            }
+            if let Some(factor) = params.scale_factor {
+                q.set_scale_factor(factor);
             }
         }
         Ok(())
     }
-
-    pub fn set_zero_point_b(&mut self, t: &Tensor) -> TractResult<()> {
-        let q = self.as_quant_mut().ok_or("try to zero_point on a float mat mul")?;
-        unsafe {
-            if t.rank() == 0 {
-                q.set_zero_point_b_scalar(*t.to_scalar()?)
-            } else {
-                q.set_zero_point_b_vector(t.as_slice()?.to_vec())
-            }
-        }
-        Ok(())
-    }
-
-    pub fn set_scale_factor(&mut self, factor: f32) -> TractResult<()> {
-        let q = self.as_quant_mut().ok_or("try to set scaling factor on a float mat mul")?;
-        unsafe {
-            q.set_scale_factor(factor);
-        }
-        Ok(())
-    }
-
-    pub fn set_zero_point_c(&mut self, t: &Tensor) -> TractResult<()> {
-        let q = self.as_quant_mut().ok_or("try to zero_point on a float mat mul")?;
-        unsafe {
-            q.set_zero_point_c_scalar(*t.to_scalar()?)
-        }
-        Ok(())
-    }
-
 }
 
 impl<TA, TB, TC, TI> fmt::Display for MMMWrapper<TA, TB, TC, TI>
@@ -391,11 +416,7 @@ pub struct MatMul {
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-    c_datum_type: Option<DatumType>,
-    zero_point_a: Option<Arc<Tensor>>,
-    zero_point_b: Option<Arc<Tensor>>,
-    zero_point_c: Option<Arc<Tensor>>,
-    scale_factor: Option<f32>,
+    q_params: Option<QParams>,
 }
 
 impl MatMul {
@@ -411,24 +432,8 @@ impl MatMul {
         MatMul { c_trans, ..self }
     }
 
-    pub fn with_c_datum_type(self, dt: DatumType) -> MatMul {
-        MatMul { c_datum_type: Some(dt), ..self }
-    }
-
-    pub fn with_zero_point_a(self, zero_point: &Arc<Tensor>) -> MatMul {
-        MatMul { zero_point_a: Some(zero_point.clone()), ..self }
-    }
-
-    pub fn with_zero_point_b(self, zero_point: &Arc<Tensor>) -> MatMul {
-        MatMul { zero_point_b: Some(zero_point.clone()), ..self }
-    }
-
-    pub fn with_zero_point_c(self, zero_point: &Arc<Tensor>) -> MatMul {
-        MatMul { zero_point_c: Some(zero_point.clone()), ..self }
-    }
-
-    pub fn with_scale_factor(self, scale_factor: f32) -> MatMul {
-        MatMul { scale_factor: Some(scale_factor), ..self }
+    pub fn with_q_params(self, q_params: QParams) -> MatMul {
+        MatMul { q_params: Some(q_params), ..self }
     }
 }
 
@@ -443,17 +448,14 @@ impl Op for MatMul {
 
 impl StatelessOp for MatMul {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        dbg!(&self.q_params);
         let t = eval(
             &inputs[0],
             &inputs[1],
             self.a_trans,
             self.b_trans,
             self.c_trans,
-            self.c_datum_type.unwrap_or(inputs[0].datum_type()),
-            self.zero_point_a.as_ref().map(|t| t.as_ref()),
-            self.zero_point_b.as_ref().map(|t| t.as_ref()),
-            self.zero_point_c.as_ref().map(|t| t.as_ref()),
-            self.scale_factor.clone(),
+            self.q_params.as_ref(),
         )?;
         Ok(tvec!(t.into_arc_tensor()))
     }
@@ -521,17 +523,7 @@ impl TypedOp for MatMul {
             model,
             node,
             &node.inputs[var_ix..][..1],
-            MatMulUnary::new(
-                konst,
-                t_konst,
-                t_var,
-                self.c_trans ^ flip,
-                self.c_datum_type.unwrap_or(a_fact.datum_type),
-                self.zero_point_a.clone(),
-                self.zero_point_b.clone(),
-                self.zero_point_c.clone(),
-                self.scale_factor.clone(),
-            ),
+            MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip, self.q_params.clone()),
         )?;
         return Ok(Some(patch));
     }
@@ -555,11 +547,7 @@ pub struct MatMulUnary {
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-    c_datum_type: DatumType,
-    zero_point_a: Option<Arc<Tensor>>,
-    zero_point_b: Option<Arc<Tensor>>,
-    zero_point_c: Option<Arc<Tensor>>,
-    scale_factor: Option<f32>,
+    q_params: Option<QParams>,
 }
 
 impl Op for MatMulUnary {
@@ -590,11 +578,7 @@ impl StatelessOp for MatMulUnary {
             self.a_trans,
             self.b_trans,
             self.c_trans,
-            self.c_datum_type,
-            self.zero_point_a.as_ref().map(|t| t.as_ref()),
-            self.zero_point_b.as_ref().map(|t| t.as_ref()),
-            self.zero_point_c.as_ref().map(|t| t.as_ref()),
-            self.scale_factor.clone(),
+            self.q_params.as_ref(),
         )?;
         Ok(tvec!(t.into_arc_tensor()))
     }
@@ -681,9 +665,7 @@ impl TypedOp for MatMulUnary {
                         self.a_trans,
                         self.b_trans,
                         self.c_trans,
-                        self.zero_point_a.as_ref().map(|t| t.as_ref()),
-                        self.zero_point_b.as_ref().map(|t| t.as_ref()),
-                        self.zero_point_c.as_ref().map(|t| t.as_ref()),
+                        self.q_params.as_ref(),
                         &|m, k, n| MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n)),
                     )?
                 } else {
@@ -730,9 +712,7 @@ fn new_mat_mul_unary_finite<TA, TB, TC, TI>(
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-    zero_point_a: Option<&Tensor>,
-    zero_point_b: Option<&Tensor>,
-    zero_point_c: Option<&Tensor>,
+    q_params: Option<&QParams>,
     mmm: &impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
 ) -> TractResult<TypedModelPatch>
 where
@@ -784,14 +764,8 @@ where
                 if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
             );
         };
-        if let Some(ref t) = zero_point_a {
-            geo.mm.set_zero_point_a(t)?;
-        }
-        if let Some(ref t) = zero_point_b {
-            geo.mm.set_zero_point_b(t)?;
-        }
-        if let Some(ref t) = zero_point_c {
-            geo.mm.set_zero_point_c(t)?;
+        if let Some(q) = q_params {
+            geo.mm.set_quant_params(q)?;
         }
     }
     if geo.n > 1 {
