@@ -27,6 +27,14 @@ where
     unsafe fn set_scale_factor(&mut self, factor: f32);
 
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC);
+
+    unsafe fn run_with_non_linear(
+        &self,
+        a: *const TA,
+        b: *const TB,
+        c: *mut TC,
+        non_linear: &[FusedSpec<TI>],
+    );
 }
 
 clone_trait_object!(<TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> where
@@ -241,13 +249,24 @@ where
         self.scale_factor = Some((int_multi.as_(), shift as usize));
     }
 
+
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
+        self.run_with_non_linear(a, b, c, &*self.mmm.non_linear_specs)
+    }
+
+    unsafe fn run_with_non_linear(
+        &self,
+        a: *const TA,
+        b: *const TB,
+        c: *mut TC,
+        non_linear: &[FusedSpec<TI>],
+    ) {
         /* SUM_k( A[m,k] * B[k,n] )
             = SUM_k( A'[m,k] * B'[k,n] )
             - A0[m] * SUM_k(B'[k,n])
             + (A0[m].K - SUM_k(A'[m,k])) * B0[n]
         */
-        let mut non_linear = self.mmm.non_linear_specs.clone();
+        let mut non_linear = non_linear.to_vec();
         if let Some(ref a0) = self.zero_point_a {
             let mut sum_b_over_k = self.sum_b_over_k(b);
             for n in 0..self.n {

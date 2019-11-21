@@ -42,6 +42,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("LRN", lrn);
     reg.insert("MaxPool", max_pool);
     reg.insert("ParametricSoftplus", parametric_softplus);
+    reg.insert("QLinearConv", conv_qlinear);
     reg.insert("PRelu", |_, _| Ok((Box::new(prelu::bin()), vec![])));
     reg.insert("ReduceL1", |_, node| reduce(node, Reducer::L1));
     reg.insert("ReduceL2", |_, node| reduce(node, Reducer::L2));
@@ -158,6 +159,24 @@ pub fn conv_integer(
         op = op.k_zero_point_input(i);
     }
     op.override_output_datum_type = Some(i32::datum_type());
+    Ok((Box::new(op), vec![]))
+}
+
+pub fn conv_qlinear(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let mut op = common_conv(node)?;
+    op.x_scale_input = Some(1);
+    op.x_zero_point_input = Some(2);
+    op.k_input = Some(3);
+    op.k_scale_input = Some(4);
+    op.k_zero_point_input = Some(5);
+    op.y_scale_input = Some(6);
+    op.y_zero_point_input = Some(7);
+    if node.get_input().len() == 9 {
+        op.bias_input = Some(8);
+    }
     Ok((Box::new(op), vec![]))
 }
 

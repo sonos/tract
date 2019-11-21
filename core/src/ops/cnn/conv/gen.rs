@@ -4,8 +4,8 @@ use super::ConvUnary;
 use crate::dim::DimLike;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PaddingSpec;
-use crate::ops::nn::DataFormat;
 use crate::ops::math::mat_mul::QParams;
+use crate::ops::nn::DataFormat;
 use std::borrow::Borrow;
 
 #[derive(Debug, Clone, Default)]
@@ -18,9 +18,16 @@ pub struct Conv {
     pub strides: Option<TVec<usize>>,
     pub group: Option<usize>,
 
-    pub bias_input: Option<usize>,
+    pub x_scale_input: Option<usize>,
     pub x_zero_point_input: Option<usize>,
+    pub k_input: Option<usize>,
+    pub k_scale_input: Option<usize>,
     pub k_zero_point_input: Option<usize>,
+
+    pub y_scale_input: Option<usize>,
+    pub y_zero_point_input: Option<usize>,
+
+    pub bias_input: Option<usize>,
 
     pub override_output_datum_type: Option<DatumType>,
 }
@@ -95,10 +102,10 @@ impl Conv {
     }
 
     pub fn to_unary(&self, inputs: &[impl Borrow<TypedFact>]) -> TractResult<Option<ConvUnary>> {
-        let input = &inputs[0];
-        let kernel = &inputs[1];
-        let input_shape = self.data_format.shape(input.borrow().shape.iter().collect::<TVec<_>>());
-        let kshape = kernel.borrow().shape.iter().collect::<TVec<_>>();
+        let input = &inputs[0].borrow();
+        let kernel = &inputs[self.k_input.unwrap_or(1)].borrow();
+        let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>());
+        let kshape = kernel.shape.iter().collect::<TVec<_>>();
         let channels_in = match self.kernel_fmt {
             KernelFormat::OIHW => kshape[1].clone() * self.group.unwrap_or(1),
             KernelFormat::HWIO => kshape[kshape.len() - 2].clone(),
@@ -106,9 +113,34 @@ impl Conv {
         if input_shape.c_dim() != &channels_in {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
         }
-        if let Some(kvalue) = kernel.borrow().konst.clone() {
+        if let Some(kvalue) = kernel.konst.clone() {
             let mut qp = None;
-            let dt = self.override_output_datum_type.unwrap_or(input.borrow().datum_type);
+            let dt = self.override_output_datum_type.unwrap_or(input.datum_type);
+            let mut scale = 1.0;
+            if let Some(slot) = self.x_scale_input {
+                if let Some(ref value) = inputs[slot].borrow().konst {
+                    scale *= value.to_scalar::<f32>()?;
+                } else {
+                    bail!("Input scale must be const")
+                }
+            }
+            if let Some(slot) = self.k_scale_input {
+                if let Some(ref value) = inputs[slot].borrow().konst {
+                    scale *= value.to_scalar::<f32>()?;
+                } else {
+                    bail!("Filter scale must be const")
+                }
+            }
+            if let Some(slot) = self.y_scale_input {
+                if let Some(ref value) = inputs[slot].borrow().konst {
+                    scale /= value.to_scalar::<f32>()?;
+                } else {
+                    bail!("Output scale must be const")
+                }
+            }
+            if scale != 1.0 {
+                qp.get_or_insert(QParams::new(dt)).set_scale_factor(scale);
+            }
             if let Some(slot) = self.x_zero_point_input {
                 if let Some(ref value) = inputs[slot].borrow().konst {
                     qp.get_or_insert(QParams::new(dt)).set_zero_point_b(value);
@@ -123,24 +155,26 @@ impl Conv {
                     bail!("Kernel zero point must be const")
                 }
             }
-            let reduced = ConvUnary::new(&self, kvalue, self.group.unwrap_or(1), qp)?;
+            if let Some(slot) = self.y_zero_point_input {
+                if let Some(ref value) = inputs[slot].borrow().konst {
+                    qp.get_or_insert(QParams::new(dt)).set_zero_point_c(value);
+                } else {
+                    bail!("Output zero point must be const")
+                }
+            }
+            let bias = if let Some(slot) = self.bias_input {
+                if let Some(ref value) = inputs[slot].borrow().konst {
+                    Some(value.clone())
+                } else {
+                    bail!("Bias must be const")
+                }
+            } else {
+                None
+            };
+            let reduced = ConvUnary::new(&self, kvalue, self.group.unwrap_or(1), bias, qp)?;
             return Ok(Some(reduced));
         }
         Ok(None)
-    }
-
-    pub fn add_bias_t<T: Datum + std::ops::AddAssign>(
-        &self,
-        conv_result: &mut Tensor,
-        bias: &Tensor,
-    ) -> TractResult<()> {
-        let mut conv = conv_result.to_array_view_mut::<T>()?;
-        let shape = self.data_format.shape(conv.shape());
-        let bias = bias.to_array_view::<T>()?;
-        let mut reshaped = vec![1; conv.ndim()];
-        reshaped[shape.c_axis()] = bias.len();
-        conv += &bias.into_shape(reshaped)?;
-        Ok(())
     }
 }
 
@@ -161,19 +195,7 @@ impl StatelessOp for Conv {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let inputs_info: TVec<TypedFact> = inputs.iter().map(|t| TypedFact::from(&**t)).collect();
         let unary = self.to_unary(&*inputs_info)?.unwrap();
-        let mut result = unary.eval(tvec!(inputs[0].clone()))?;
-        if let Some(bias_input) = self.bias_input {
-            let mut result = result.remove(0).into_tensor();
-            let bias = &inputs[bias_input];
-            dispatch_numbers!(Self::add_bias_t(bias.datum_type())(
-                self,
-                &mut result,
-                &bias
-            ))?;
-            Ok(tvec!(result.into_arc_tensor()))
-        } else {
-            Ok(result)
-        }
+        unary.eval(tvec!(inputs[0].clone()))
     }
 }
 
@@ -187,16 +209,17 @@ impl InferenceRulesOp for Conv {
         if inputs.len() < 2 {
             bail!("Wrong number of inputs. Expected 2 or more, got {}", inputs.len());
         }
+        let k_input = &inputs[self.k_input.unwrap_or(1)];
         if let Some(kshape) = &self.kernel_shape {
-            s.equals(&inputs[1].rank, kshape.len() as i32 + 2)?;
+            s.equals(&k_input.rank, kshape.len() as i32 + 2)?;
             for (ix, dim) in kshape.iter().enumerate() {
-                s.equals(&inputs[1].shape[ix + self.kernel_fmt.h_axis()], TDim::from(*dim as i32))?;
+                s.equals(&k_input.shape[ix + self.kernel_fmt.h_axis()], TDim::from(*dim as i32))?;
             }
         }
-        s.equals(&inputs[0].rank, &inputs[1].rank)?;
-        s.equals(&outputs[0].rank, &inputs[1].rank)?;
+        s.equals(&inputs[0].rank, &k_input.rank)?;
+        s.equals(&outputs[0].rank, &k_input.rank)?;
         check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
+        s.equals(&inputs[0].datum_type, &k_input.datum_type)?;
         if let Some(dt) = self.override_output_datum_type {
             s.equals(&outputs[0].datum_type, dt)?;
         } else {
@@ -205,27 +228,27 @@ impl InferenceRulesOp for Conv {
         if let Some(bias) = self.bias_input {
             s.equals(&inputs[bias].rank, 1)?;
             s.equals(&inputs[0].datum_type, &inputs[bias].datum_type)?;
-            s.given(&inputs[1].rank, move |s, krank| {
+            s.given(&k_input.rank, move |s, krank| {
                 let filter_o = match self.kernel_fmt {
-                    KernelFormat::OIHW => &inputs[1].shape[0],
-                    KernelFormat::HWIO => &inputs[1].shape[krank as usize - 1],
+                    KernelFormat::OIHW => &k_input.shape[0],
+                    KernelFormat::HWIO => &k_input.shape[krank as usize - 1],
                 };
                 s.equals(&inputs[bias].shape[0], filter_o)
             })?
         }
-        s.given_2(&inputs[0].rank, &inputs[1].rank, move |s, irank, krank| {
+        s.given_2(&inputs[0].rank, &k_input.rank, move |s, irank, krank| {
             let input_c = if self.data_format == DataFormat::NHWC {
                 &inputs[0].shape[irank as usize - 1]
             } else {
                 &inputs[0].shape[1]
             };
             let filter_i = match self.kernel_fmt {
-                KernelFormat::OIHW => &inputs[1].shape[1],
-                KernelFormat::HWIO => &inputs[1].shape[krank as usize - 2],
+                KernelFormat::OIHW => &k_input.shape[1],
+                KernelFormat::HWIO => &k_input.shape[krank as usize - 2],
             };
             s.equals(input_c.bex(), self.group.unwrap_or(1) as i32 * filter_i.bex())
         })?;
-        s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ishape, kshape| {
+        s.given_2(&inputs[0].shape, &k_input.shape, move |s, ishape, kshape| {
             if kshape.iter().all(|d| d.to_integer().is_ok()) {
                 let kshape: TVec<usize> =
                     kshape.iter().map(|d| d.to_integer().unwrap() as _).collect();
@@ -265,32 +288,12 @@ impl TypedOp for Conv {
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(op) = self.to_unary(&*inputs)? {
-            let mut patch = TypedModelPatch::default();
-            let tap = patch.tap_model(model, node.inputs[0])?;
-            let mut output: OutletId = patch.wire_node(&*node.name, op, &[tap])?[0];
-            if let Some(bias) = node.inputs.get(2) {
-                let mut tap = patch.tap_model(model, *bias)?;
-                if self.data_format == DataFormat::NCHW {
-                    let data_rank = node.outputs[0].fact.shape.rank();
-                    let add_dims = crate::ops::array::AddDims::new((1..data_rank - 1).collect());
-                    tap = patch.wire_node(
-                        format!("{}-reshaped-bias", node.name),
-                        add_dims,
-                        [tap].as_ref(),
-                    )?[0];
-                }
-                output = patch.wire_node(
-                    format!("{}-add-bias", node.name),
-                    crate::ops::math::add::bin(),
-                    [output, tap].as_ref(),
-                )?[0];
-            }
-            patch.shunt_outside(OutletId::new(node.id, 0), output)?;
-            return Ok(Some(patch));
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         } else {
             Ok(None)
         }
     }
+
 
     typed_op_as_op!();
 }

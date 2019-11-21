@@ -6,8 +6,7 @@ use crate::internal::*;
 use crate::ops::math::mat_mat_mul::{MatMatMulPackB, MatMatMulUnaryFinite};
 use ndarray::*;
 
-use tract_linalg::mmm::MatMatMul;
-use tract_linalg::mmm::QMatMatMul;
+use tract_linalg::mmm::{FusedSpec, MatMatMul, QMatMatMul};
 
 #[derive(Clone, Debug)]
 pub struct QParams {
@@ -270,6 +269,19 @@ where
         }
     }
 
+    pub unsafe fn run_with_non_linear(
+        &self,
+        a: *const TA,
+        b: *const TB,
+        c: *mut TC,
+        non_linear: &[FusedSpec<TI>],
+    ) {
+        match self {
+            MMMWrapper::Plain(p) => p.run_with_non_linear(a, b, c, non_linear),
+            MMMWrapper::Quant(q) => q.run_with_non_linear(a, b, c, non_linear),
+        }
+    }
+
     pub fn set_quant_params(&mut self, params: &QParams) -> TractResult<()> {
         let q = self.as_quant_mut().ok_or("try to zero_point on a float mat mul")?;
         unsafe {
@@ -288,7 +300,7 @@ where
                 }
             }
             if let Some(t) = params.zero_point_c.as_ref() {
-                q.set_zero_point_c_scalar(*t.to_scalar()?)
+                q.set_zero_point_c_scalar(t.cast_to_scalar()?)
             }
             if let Some(factor) = params.scale_factor {
                 q.set_scale_factor(factor);
@@ -448,7 +460,6 @@ impl Op for MatMul {
 
 impl StatelessOp for MatMul {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        dbg!(&self.q_params);
         let t = eval(
             &inputs[0],
             &inputs[1],
@@ -807,6 +818,7 @@ where
             c_shape: geo.c_shape,
             c_prefix_dim_and_stride,
             packed_as,
+            fused_ops: None,
             mmm: geo.mm,
         },
         &[wire],
