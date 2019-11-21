@@ -84,6 +84,7 @@ where
     pub(crate) c_shape: TVec<usize>,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
+    pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec<TI>>>>,
     pub(crate) mmm: MMMWrapper<TA, TB, TC, TI>,
 }
 
@@ -107,6 +108,7 @@ where
             self.mmm.as_mmm().n(),
         )];
         infos.push(format!("{}", self.mmm));
+        infos.push(format!("{:?}", self.fused_ops));
         Ok(infos)
     }
 
@@ -189,14 +191,37 @@ where
                         c = c.offset(prefix_strides[ix] * dim as isize);
                     }
                     let pa: &Tensor = a.iter().next().unwrap();
-                    self.mmm.run(pa.as_ptr()?, b.as_ptr(), c);
+                    if let Some(fused) = &self.fused_ops {
+                        let mut fused = fused.view();
+                        for &dim in prefix.slice() {
+                            let d = dim.min(fused.shape()[0] - 1);
+                            fused.index_axis_inplace(Axis(0), d);
+                        }
+                        self.mmm.run_with_non_linear(
+                            pa.as_ptr()?,
+                            b.as_ptr(),
+                            c,
+                            &fused.as_slice().unwrap()[0],
+                        );
+                    } else {
+                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), c);
+                    }
                 }
             } else {
-                self.mmm.run(
-                    self.packed_as.as_slice().unwrap()[0].as_ptr()?,
-                    b.as_ptr()?,
-                    c.as_ptr_mut()?,
-                );
+                if let Some(fused) = &self.fused_ops {
+                    self.mmm.run_with_non_linear(
+                        self.packed_as.as_slice().unwrap()[0].as_ptr()?,
+                        b.as_ptr()?,
+                        c.as_ptr_mut()?,
+                        &fused.as_slice().unwrap()[0]
+                    );
+                } else {
+                    self.mmm.run(
+                        self.packed_as.as_slice().unwrap()[0].as_ptr()?,
+                        b.as_ptr()?,
+                        c.as_ptr_mut()?,
+                    );
+                }
             }
             Ok(tvec!(c.into_arc_tensor()))
         }

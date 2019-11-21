@@ -261,7 +261,7 @@ impl InferenceModel {
     ///
     /// This will work even if the network can not be normalized.
     pub fn into_optimized(self) -> TractResult<TypedModel> {
-        self.into_typed()?.declutter()?.codegen()
+        self.into_typed()?.into_optimized()
     }
 }
 

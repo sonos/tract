@@ -18,6 +18,7 @@ use crate::ops::math::mat_mat_mul::MatMatMulUnaryFinite;
 use crate::ops::math::mat_mul::{MMMWrapper, QParams};
 use crate::ops::nn::DataFormat;
 
+use tract_linalg::frame::mmm::FusedSpec;
 use tract_linalg::frame::PackA;
 
 use std::iter::Sum;
@@ -30,6 +31,7 @@ pub struct ConvUnary {
 
     pub group: usize,
 
+    pub bias: Option<Arc<Tensor>>,
     pub q_params: Option<QParams>,
 }
 
@@ -38,6 +40,7 @@ impl ConvUnary {
         conv: &Conv,
         kernel: Arc<Tensor>,
         group: usize,
+        bias: Option<Arc<Tensor>>,
         q_params: Option<QParams>,
     ) -> TractResult<ConvUnary> {
         let spatial_rank = kernel.rank() - 2;
@@ -60,7 +63,8 @@ impl ConvUnary {
             kernel_fmt: conv.kernel_fmt,
             kernel,
             group,
-            q_params
+            bias,
+            q_params,
         };
         Ok(unary)
     }
@@ -130,6 +134,31 @@ impl ConvUnary {
         Ok(packed_as.insert_axis(Axis(0)))
     }
 
+    fn bias_as_non_linear<T>(
+        &self,
+    ) -> TractResult<Option<ArrayD<Vec<FusedSpec<T>>>>>
+    where
+        T: Datum + Copy,
+    {
+        use crate::itertools::Itertools;
+        if let Some(bias) = &self.bias {
+            let bias = bias.as_slice::<T>()?;
+            Ok(Some(
+                Array2::from_shape_vec(
+                    (1, self.group),
+                    bias.iter()
+                        .chunks(self.output_channels() / self.group)
+                        .into_iter()
+                        .map(|c| vec![FusedSpec::PerRowAdd(c.into_iter().cloned().collect())])
+                        .collect(),
+                )?
+                .into_dyn(),
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub unsafe fn wire_as_im2col_pair(
         &self,
         model: &mut TypedModel,
@@ -179,7 +208,7 @@ impl ConvUnary {
 
         let mut mmm = mmm(m, k, n);
         let (rsc, csc) = match output_shape.fmt {
-            DataFormat::NHWC => (1, (m * self.group) as isize),
+            DataFormat::NHWC => (1, self.output_channels() as isize),
             DataFormat::NCHW => (n as isize, 1),
         };
         mmm.as_mmm_mut().c_from_data_and_strides(rsc, csc);
@@ -215,7 +244,9 @@ impl ConvUnary {
                     self.group,
                     c_dim / self.group,
                     mmm.as_mmm().b_pack(),
-                    self.q_params.as_ref().and_then(|q| q.zero_point_b.as_ref())
+                    self.q_params
+                        .as_ref()
+                        .and_then(|q| q.zero_point_b.as_ref())
                         .map(|t| t.to_scalar::<TB>().map(|x| *x))
                         .transpose()?
                         .unwrap_or(TB::default()),
@@ -242,6 +273,7 @@ impl ConvUnary {
                 c_shape: output_shape.shape.clone(),
                 c_prefix_dim_and_stride,
                 packed_as: self.kernel_as_packed_as(&mmm.as_mmm().a_pack())?,
+                fused_ops: self.bias_as_non_linear()?,
                 mmm,
             },
             &[wire],
@@ -255,11 +287,14 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + PartialEq + Sum,
     {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
+        let bias =
+            if let Some(b) = self.bias.as_ref() { Some(b.as_slice::<T>()?.to_vec()) } else { None };
         let op = DepthWise::<T>::new(
             patch,
             input_shape,
             output_shape,
             self.kernel_as_group_o_ihw()?.into_dyn(),
+            bias,
         );
         Ok(Box::new(op))
     }
@@ -417,6 +452,7 @@ impl TypedOp for ConvUnary {
             kernel_fmt: self.kernel_fmt,
             kernel: kernel.into_arc_tensor(),
             group: self.group,
+            bias: self.bias.clone(),
             q_params: self.q_params.clone(),
         };
         Ok(Some(Box::new(new_op)))
@@ -477,7 +513,7 @@ impl TypedOp for ConvUnary {
                                 true,
                                 true,
                                 true,
-                                self.q_params.clone()
+                                self.q_params.clone(),
                             ),
                             &[wire],
                         )?[0];
