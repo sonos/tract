@@ -25,6 +25,8 @@ objekt = "0.1.1"
 [build-dependencies]
 cc = "1.0"
 liquid = "0.19"
+unicode-normalization = "=0.1.9"
+smallvec = "=0.6.13"
 
 [dev-dependencies]
 criterion = "0.3"
