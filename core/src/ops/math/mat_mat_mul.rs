@@ -96,7 +96,7 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn name(&self) -> Cow<str> {
-        "MatMatMul".into()
+        "MatMatMulUnaryFinite".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -108,7 +108,9 @@ where
             self.mmm.as_mmm().n(),
         )];
         infos.push(format!("{}", self.mmm));
-        infos.push(format!("{:?}", self.fused_ops));
+        if let Some(f) = &self.fused_ops {
+            infos.push(format!("{:?}", f));
+        }
         Ok(infos)
     }
 
@@ -152,9 +154,10 @@ where
             })()?;
             if let Some(op) = fused_micro_op {
                 let mut new_op = self.clone();
-                unsafe {
-                    new_op.mmm.as_mmm_mut().non_linear_specs_mut().extend(op.into_iter());
-                }
+                new_op
+                    .fused_ops
+                    .get_or_insert_with(|| arr0(vec![]).into_dyn())
+                    .map_inplace(|v| v.extend(op.iter().cloned()));
                 return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));
             }
         }
@@ -213,7 +216,7 @@ where
                         self.packed_as.as_slice().unwrap()[0].as_ptr()?,
                         b.as_ptr()?,
                         c.as_ptr_mut()?,
-                        &fused.as_slice().unwrap()[0]
+                        &fused.as_slice().unwrap()[0],
                     );
                 } else {
                     self.mmm.run(
