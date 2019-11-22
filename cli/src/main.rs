@@ -446,7 +446,7 @@ impl Parameters {
             let names = inputs
                 .map(|t| Ok(tensor::for_string(t)?.0))
                 .collect::<CliResult<Vec<Option<String>>>>()?;
-            if names.iter().all(|s| s.is_some()) {
+            if names.iter().all(|s| s.is_some() && s.as_ref().unwrap().len() > 0) {
                 let names: Vec<String> = names.into_iter().map(|s| s.unwrap()).collect();
                 raw_model.set_input_names(names)?;
             }
@@ -524,7 +524,7 @@ impl Parameters {
                 .unwrap_or(vec![]);
             for (ix, v) in inputs.enumerate() {
                 let (name, mut t) = tensor::for_string(v)?;
-                let outlet = if let Some(name) = name {
+                let outlet = if let Some(name) = name.filter(|s| s.len() > 0) {
                     let node = raw_model.node_by_name(&*name)?;
                     OutletId::new(node.id, 0)
                 } else {
