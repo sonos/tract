@@ -4,8 +4,8 @@ use super::ConvUnary;
 use crate::dim::DimLike;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PaddingSpec;
-use crate::ops::math::mat_mul::QParams;
 use crate::ops::nn::DataFormat;
+use crate::ops::quant::QParams;
 use std::borrow::Borrow;
 
 #[derive(Debug, Clone, Default)]
