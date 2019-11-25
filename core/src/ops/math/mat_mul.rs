@@ -165,7 +165,7 @@ where
             b.strides()[prefix.ndim() + !b_trans as usize],
         );
         unsafe {
-            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr());
+            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), &[]);
         }
     }
     Ok(c.into_tensor())
@@ -262,14 +262,7 @@ where
         }
     }
 
-    pub unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
-        match self {
-            MMMWrapper::Plain(p) => p.run(a, b, c),
-            MMMWrapper::Quant(q) => q.run(a, b, c),
-        }
-    }
-
-    pub unsafe fn run_with_non_linear(
+    pub unsafe fn run(
         &self,
         a: *const TA,
         b: *const TB,
@@ -277,8 +270,8 @@ where
         non_linear: &[FusedSpec<TI>],
     ) {
         match self {
-            MMMWrapper::Plain(p) => p.run_with_non_linear(a, b, c, non_linear),
-            MMMWrapper::Quant(q) => q.run_with_non_linear(a, b, c, non_linear),
+            MMMWrapper::Plain(p) => p.run(a, b, c, non_linear),
+            MMMWrapper::Quant(q) => q.run(a, b, c, non_linear),
         }
     }
 

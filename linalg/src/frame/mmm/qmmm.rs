@@ -26,15 +26,7 @@ where
     unsafe fn set_zero_point_c_scalar(&mut self, value: TC);
     unsafe fn set_scale_factor(&mut self, factor: f32);
 
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC);
-
-    unsafe fn run_with_non_linear(
-        &self,
-        a: *const TA,
-        b: *const TB,
-        c: *mut TC,
-        non_linear: &[FusedSpec<TI>],
-    );
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]);
 }
 
 clone_trait_object!(<TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> where
@@ -249,18 +241,7 @@ where
         self.scale_factor = Some((int_multi.as_(), shift as usize));
     }
 
-
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
-        self.run_with_non_linear(a, b, c, &*self.mmm.non_linear_specs)
-    }
-
-    unsafe fn run_with_non_linear(
-        &self,
-        a: *const TA,
-        b: *const TB,
-        c: *mut TC,
-        non_linear: &[FusedSpec<TI>],
-    ) {
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]) {
         /* SUM_k( A[m,k] * B[k,n] )
             = SUM_k( A'[m,k] * B'[k,n] )
             - A0[m] * SUM_k(B'[k,n])
@@ -321,7 +302,7 @@ where
         if let Some(c0) = self.zero_point_c {
             non_linear.push(FusedSpec::ScalarAdd(c0.as_()));
         }
-        self.mmm.run_with_non_linear(a, b, c, &non_linear);
+        self.mmm.run(a, b, c, &non_linear);
     }
 }
 
@@ -440,7 +421,7 @@ pub mod test {
                     QuantizedParam::Scalar(b0) => mmm.set_zero_point_b_scalar(*b0),
                     QuantizedParam::Vector(b0) => mmm.set_zero_point_b_vector(b0.clone()),
                 }
-                mmm.run(packed_a.as_ptr(), packed_b.as_ptr(), c.as_mut_ptr());
+                mmm.run(packed_a.as_ptr(), packed_b.as_ptr(), c.as_mut_ptr(), &[]);
                 c
             }
         }
