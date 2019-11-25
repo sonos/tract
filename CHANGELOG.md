@@ -1,5 +1,11 @@
 ## Unreleased
 
+### Onnx
+
+* Support for MatMulInteger, ConvInteger
+* Support for QuantizeLinear DequantizeLinear
+* Basic support for QLinearMatMul, QLinearConv
+
 ## 0.5.6 - 2019-10-30
 
 ### Tensorflow
