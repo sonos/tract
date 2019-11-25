@@ -1,5 +1,4 @@
-use std::io::{BufRead, Write};
-use std::{env, fs, io, path};
+use std::{env, fs, path};
 
 fn main() {
     let workdir = path::PathBuf::from(env::var("OUT_DIR").unwrap()).join("prost");
