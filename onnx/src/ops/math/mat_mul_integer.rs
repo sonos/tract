@@ -1,7 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_core::internal::*;
-use tract_core::ops::math::mat_mul::QParams;
+use tract_core::ops::quant::QParams;
 
 pub fn mat_mul_integer(
     _ctx: &ParsingContext,

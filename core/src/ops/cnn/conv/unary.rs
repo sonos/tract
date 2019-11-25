@@ -15,8 +15,9 @@ use crate::ops::array::TypedReshape;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
 use crate::ops::math::mat_mat_mul::MatMatMulUnaryFinite;
-use crate::ops::math::mat_mul::{MMMWrapper, QParams};
+use crate::ops::math::mat_mul::MMMWrapper;
 use crate::ops::nn::DataFormat;
+use crate::ops::quant::QParams;
 
 use tract_linalg::frame::mmm::FusedSpec;
 use tract_linalg::frame::PackA;
