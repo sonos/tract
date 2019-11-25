@@ -1,5 +1,6 @@
 use crate::internal::*;
 use num_traits::Zero;
+use num_traits::AsPrimitive;
 
 #[derive(Clone, Debug)]
 pub struct QParams {
@@ -75,4 +76,104 @@ impl QParams {
     pub fn set_scale_factor(&mut self, scale_factor: f32) {
         self.scale_factor = Some(scale_factor)
     }
+}
+
+element_wise_oop!(quantize_linear_u8, QuantizeLinearU8 {scale: f32, zero_point: u8},
+    [f32,i32] => u8 |op, xs, ys| {
+        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as u8
+        );
+        Ok(())
+    }
+);
+
+element_wise_oop!(quantize_linear_i8, QuantizeLinearI8 {scale: f32, zero_point: i8},
+    [f32,i32] => i8 |op, xs, ys| {
+        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as i8
+        );
+        Ok(())
+    }
+);
+
+#[derive(Clone, Debug, new)]
+pub struct DequantizeLinearF32 {
+    scale: f32,
+    zero_point: i32,
+}
+
+impl DequantizeLinearF32 {
+    fn eval_t<T: Datum + AsPrimitive<i32>>(&self, input: &Tensor) -> TractResult<Tensor> {
+        let mut output = unsafe { Tensor::uninitialized::<f32>(input.shape())? };
+        input
+            .as_slice::<T>()?
+            .iter()
+            .zip(output.as_slice_mut::<f32>()?.iter_mut())
+            .for_each(|(x, y)| *y = (x.as_() - self.zero_point) as f32 * self.scale);
+        Ok(output)
+    }
+}
+
+impl Op for DequantizeLinearF32 {
+    fn name(&self) -> Cow<str> {
+        "DequantizeLinear".into()
+    }
+
+    fn validation(&self) -> Validation {
+        Validation::Accurate
+    }
+
+    canonic!();
+    op_as_typed_op!();
+    op_as_pulsed_op!();
+}
+
+impl StatelessOp for DequantizeLinearF32 {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let output = match inputs[0].datum_type() {
+            DatumType::I8 => self.eval_t::<i8>(&inputs[0])?,
+            DatumType::I32 => self.eval_t::<i32>(&inputs[0])?,
+            DatumType::U8 => self.eval_t::<u8>(&inputs[0])?,
+            dt => bail!("Unsupported type {:?}", dt),
+        };
+        Ok(tvec!(output.into_arc_tensor()))
+    }
+}
+
+impl TypedOp for DequantizeLinearF32 {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let mut fact = inputs[0].clone();
+        fact.datum_type = f32::datum_type();
+        Ok(tvec!(fact))
+    }
+
+    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+        let a = model.outlet_fact(node.inputs[0])?;
+        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        target.wire_node(&*node.name, self.clone(), &[input])
+    }
+
+    typed_op_as_op!();
+}
+
+impl PulsedOp for DequantizeLinearF32 {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
+        let mut fact = inputs[0].clone();
+        fact.datum_type = f32::datum_type();
+        Ok(tvec!(fact))
+    }
+
+    pulsed_op_as_op!();
+    pulsed_op_to_typed_op!();
 }
