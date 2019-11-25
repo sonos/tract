@@ -174,7 +174,7 @@ pub fn conv_qlinear(
     op.k_zero_point_input = Some(5);
     op.y_scale_input = Some(6);
     op.y_zero_point_input = Some(7);
-    if node.get_input().len() == 9 {
+    if node.input.len() == 9 {
         op.bias_input = Some(8);
     }
     Ok((Box::new(op), vec![]))
