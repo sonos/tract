@@ -38,17 +38,7 @@ where
     unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize);
     unsafe fn c_vec_from_data(&mut self);
 
-    unsafe fn set_non_linear_specs(&mut self, fused: &[FusedSpec<TI>]);
-    unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI>>;
-
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC);
-    unsafe fn run_with_non_linear(
-        &self,
-        a: *const TA,
-        b: *const TB,
-        c: *mut TC,
-        non_linear: &[FusedSpec<TI>],
-    );
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]);
 }
 
 clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
@@ -74,8 +64,6 @@ where
     pub a_storage: MatrixStoreSpec,
     pub b_storage: MatrixStoreSpec,
     pub c_storage: MatrixStoreSpec,
-
-    pub non_linear_specs: Vec<FusedSpec<TI>>,
 
     phantom: PhantomData<(K, TA, TB, TC, TI)>,
 }
@@ -121,7 +109,6 @@ where
                 mr: K::mr(),
                 nr: K::nr(),
             },
-            non_linear_specs: vec![],
             phantom: PhantomData,
         }
     }
@@ -223,25 +210,7 @@ where
         self.c_vec_from_data_and_stride(1)
     }
 
-    unsafe fn set_non_linear_specs(&mut self, fused: &[FusedSpec<TI>]) {
-        self.non_linear_specs = fused.to_vec()
-    }
-
-    unsafe fn non_linear_specs_mut(&mut self) -> &mut Vec<FusedSpec<TI>> {
-        &mut self.non_linear_specs
-    }
-
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC) {
-        self.run_with_non_linear(a, b, c, &self.non_linear_specs)
-    }
-
-    unsafe fn run_with_non_linear(
-        &self,
-        a: *const TA,
-        b: *const TB,
-        c: *mut TC,
-        non_linear: &[FusedSpec<TI>],
-    ) {
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
@@ -541,7 +510,7 @@ pub mod test {
 
             let mut found = vec![TC::max_value(); m * n];
 
-            op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr());
+            op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), &[]);
 
             let mut expected = vec![TC::zero(); m * n];
             for x in 0..n {
@@ -581,7 +550,7 @@ pub mod test {
 
             let mut found = vec![9999.0f32; m];
 
-            op.run(packed_a.as_ptr(), b.as_ptr(), found.as_mut_ptr());
+            op.run(packed_a.as_ptr(), b.as_ptr(), found.as_mut_ptr(), &[]);
 
             let mut expected = vec![0.0f32; m];
             for y in 0..m {
@@ -609,7 +578,7 @@ pub mod test {
     ) -> proptest::test_runner::TestCaseResult {
         let a = vec![1.0f32; m * k];
         let b = vec![1.0f32; n * k];
-        let mut op = MatMatMulImpl::<K, f32, f32, f32, f32>::new(m, k, n);
+        let op = MatMatMulImpl::<K, f32, f32, f32, f32>::new(m, k, n);
 
         let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
         op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
@@ -617,11 +586,9 @@ pub mod test {
         let mut packed_b = Buffer::uninitialized(op.b_pack().len(), op.b_pack().alignment());
         op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
-        op.set_non_linear_specs(spec);
-
         let mut found = vec![9999.0f32; m * n];
 
-        op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr());
+        op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), spec);
 
         let mut expected = vec![0.0f32; m * n];
         for x in 0..n {
@@ -811,7 +778,7 @@ pub mod test {
                 );
 
                 let mut found: Vec<TC> = vec![TC::max_value(); self.co * self.output_width()];
-                op.run(packed_a.as_ptr(), self.data.as_ptr(), found.as_mut_ptr());
+                op.run(packed_a.as_ptr(), self.data.as_ptr(), found.as_mut_ptr(), &[]);
                 found
             }
         }

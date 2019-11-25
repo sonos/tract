@@ -200,19 +200,19 @@ where
                             let d = dim.min(fused.shape()[0] - 1);
                             fused.index_axis_inplace(Axis(0), d);
                         }
-                        self.mmm.run_with_non_linear(
+                        self.mmm.run(
                             pa.as_ptr()?,
                             b.as_ptr(),
                             c,
                             &fused.as_slice().unwrap()[0],
                         );
                     } else {
-                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), c);
+                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), c, &[]);
                     }
                 }
             } else {
                 if let Some(fused) = &self.fused_ops {
-                    self.mmm.run_with_non_linear(
+                    self.mmm.run(
                         self.packed_as.as_slice().unwrap()[0].as_ptr()?,
                         b.as_ptr()?,
                         c.as_ptr_mut()?,
@@ -223,6 +223,7 @@ where
                         self.packed_as.as_slice().unwrap()[0].as_ptr()?,
                         b.as_ptr()?,
                         c.as_ptr_mut()?,
+                        &[],
                     );
                 }
             }
