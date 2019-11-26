@@ -333,30 +333,30 @@ pub mod test {
     use proptest::prelude::*;
 
     #[derive(Debug)]
-    pub struct QMatMulProblem {
+    pub struct QMatMulProblem<T> {
         pub m: usize,
         pub k: usize,
         pub n: usize,
-        pub a: Vec<i8>,
-        pub a0: QuantizedParam<i8>,
-        pub b: Vec<i8>,
-        pub b0: QuantizedParam<i8>,
+        pub a: Vec<T>,
+        pub a0: QuantizedParam<T>,
+        pub b: Vec<T>,
+        pub b0: QuantizedParam<T>,
     }
 
-    impl Arbitrary for QuantizedParam<i8> {
+    impl<T: Arbitrary + 'static> Arbitrary for QuantizedParam<T> {
         type Parameters = usize;
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(n: usize) -> Self::Strategy {
             prop_oneof![
-                any::<i8>().prop_map(QuantizedParam::Scalar),
-                vec(any::<i8>(), n..=n).prop_map(QuantizedParam::Vector),
+                any::<T>().prop_map(QuantizedParam::Scalar),
+                vec(any::<T>(), n..=n).prop_map(QuantizedParam::Vector),
             ]
             .boxed()
         }
     }
 
-    impl Arbitrary for QMatMulProblem {
+    impl<T: Arbitrary + 'static> Arbitrary for QMatMulProblem<T> {
         type Parameters = ();
         type Strategy = BoxedStrategy<Self>;
 
@@ -367,10 +367,10 @@ pub mod test {
                         Just(m),
                         Just(k),
                         Just(n),
-                        vec(any::<i8>(), m * k..=m * k),
-                        any_with::<QuantizedParam<i8>>(m),
-                        vec(any::<i8>(), k * n..=k * n),
-                        any_with::<QuantizedParam<i8>>(n),
+                        vec(any::<T>(), m * k..=m * k),
+                        any_with::<QuantizedParam<T>>(m),
+                        vec(any::<T>(), k * n..=k * n),
+                        any_with::<QuantizedParam<T>>(n),
                     )
                 })
                 .prop_map(|(m, k, n, a, a0, b, b0)| QMatMulProblem { m, k, n, a, a0, b, b0 })
@@ -378,21 +378,21 @@ pub mod test {
         }
     }
 
-    impl QMatMulProblem {
+    impl<T: AsPrimitive<i32> + Zero + Copy + Debug> QMatMulProblem<T> {
         pub fn ref_i32(&self) -> Vec<i32> {
             let mut c = vec![0; self.m * self.n];
             for m in 0..self.m {
                 for n in 0..self.n {
                     for k in 0..self.k {
-                        let a = self.a[k + self.k * m] as i32;
-                        let b = self.b[n + self.n * k] as i32;
+                        let a = self.a[k + self.k * m].as_();
+                        let b = self.b[n + self.n * k].as_();
                         let a0 = match &self.a0 {
-                            QuantizedParam::Scalar(a0) => *a0 as i32,
-                            QuantizedParam::Vector(a0) => a0[m] as i32,
+                            QuantizedParam::Scalar(a0) => a0.as_(),
+                            QuantizedParam::Vector(a0) => a0[m].as_(),
                         };
                         let b0 = match &self.b0 {
-                            QuantizedParam::Scalar(b0) => *b0 as i32,
-                            QuantizedParam::Vector(b0) => b0[n] as i32,
+                            QuantizedParam::Scalar(b0) => b0.as_(),
+                            QuantizedParam::Vector(b0) => b0[n].as_(),
                         };
                         c[n + self.n * m] += (a - a0) * (b - b0);
                     }
@@ -401,10 +401,10 @@ pub mod test {
             c
         }
 
-        pub fn run_i32<K: MatMatMulKer<i8, i8, i32, i32>>(&self) -> Vec<i32> {
+        pub fn run_i32<K: MatMatMulKer<T, T, i32, i32>>(&self) -> Vec<i32> {
             unsafe {
                 let mut c = vec![0i32; self.m * self.n];
-                let mut mmm = QMatMatMulImpl::from(MatMatMulImpl::<K, i8, i8, i32, i32>::new(
+                let mut mmm = QMatMatMulImpl::from(MatMatMulImpl::<K, T, T, i32, i32>::new(
                     self.m, self.k, self.n,
                 ));
                 let mut packed_a =
@@ -429,7 +429,7 @@ pub mod test {
 
     #[macro_export]
     macro_rules! qmmm_frame_tests {
-        ($cond:expr, $ker:ty) => {
+        ($cond:expr, $ker:ty, $t: ty) => {
             mod qframe {
                 use proptest::prelude::*;
                 #[allow(unused_imports)]
@@ -438,7 +438,7 @@ pub mod test {
 
                 proptest::proptest! {
                     #[test]
-                    fn q_mat_mul_i8_i32_prop(pb in any::<QMatMulProblem>()) {
+                    fn q_mat_mul_i32_prop(pb in any::<QMatMulProblem<$t>>()) {
                         if $cond {
                             prop_assert_eq!(pb.run_i32::<$ker>(), pb.ref_i32())
                         }
