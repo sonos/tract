@@ -628,28 +628,46 @@ where
 #[cfg(test)]
 mod test_3_2_f {
     mmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
-    mmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8, i8, i32, i32);
+    mmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
     mmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
 }
 
 #[cfg(test)]
-mod test_3_2_i {
+mod test_3_2_i8 {
     mmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8, i8, i32, i32);
     mmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8, i8, i32, i32);
     qmmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8, i8, i32, i32);
-    qmmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>);
+    qmmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8);
+}
+
+#[cfg(test)]
+mod test_3_2_u8 {
+    mmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<u8, u8, i32, i32>, u8, u8, i32, i32);
+    mmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<u8, u8, i32, i32>, u8, u8, i32, i32);
+    qmmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<u8, u8, i32, i32>, u8, u8, i32, i32);
+    qmmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<u8, u8, i32, i32>, u8);
 }
 
 #[cfg(test)]
 mod test {
     mmm_kernel_tests!(true, crate::generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
+    mmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
     mmm_frame_tests!(true, crate::generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
 }
 
 #[cfg(test)]
-mod test_i {
+mod test_i8 {
     mmm_kernel_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
     mmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
     qmmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
-    qmmm_frame_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>);
+    qmmm_frame_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8);
+
+}
+
+#[cfg(test)]
+mod test_u8 {
+    mmm_kernel_tests!(true, crate::generic::GenericMmm4x4<u8, u8, i32, i32>, u8, u8, i32, i32);
+    mmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<u8, u8, i32, i32>, u8, u8, i32, i32);
+    qmmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<u8, u8, i32, i32>, u8, u8, i32, i32);
+    qmmm_frame_tests!(true, crate::generic::GenericMmm4x4<u8, u8, i32, i32>, u8);
 }

@@ -143,6 +143,7 @@ impl ConvUnary {
     {
         use crate::itertools::Itertools;
         if let Some(bias) = &self.bias {
+            let bias = bias.cast_to::<T>()?;
             let bias = bias.as_slice::<T>()?;
             Ok(Some(
                 Array2::from_shape_vec(
@@ -170,16 +171,27 @@ impl ConvUnary {
         let a = self.kernel.datum_type();
         let b = model.outlet_fact(wire)?.datum_type;
         if (a, b) == (f32::datum_type(), f32::datum_type()) {
-            self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
+            return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
                 MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n))
             })
         } else if (a, b) == (u8::datum_type(), u8::datum_type()) {
-            self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
+            return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
                 MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_i32)(m, k, n))
             })
-        } else {
-            bail!("Unsupported combination for Conv (filters: {:?}, data:{:?})", a, b);
+        } else if (a, b) == (i8::datum_type(), i8::datum_type()) {
+            if let Some(q) = &self.q_params {
+                if q.c_datum_type == i8::datum_type() {
+                    return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
+                        MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i8)(m, k, n))
+                    })
+                }
+            } else {
+                return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
+                    MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
+                })
+            }
         }
+        bail!("Unsupported combination for Conv (filters: {:?}, data:{:?})", a, b);
     }
 
     unsafe fn wire_as_im2col_pair_t<TA, TB, TC, TI>(
