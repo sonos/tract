@@ -114,7 +114,9 @@ impl InferenceRulesOp for QuantizeLinear {
 element_wise_oop!(quantize_linear_u8, QuantizeLinearU8 {scale: f32, zero_point: u8},
     [f32,i32] => u8 |op, xs, ys| {
         xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as u8
+            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32)
+            .max(u8::min_value() as i32)
+            .min(u8::max_value() as i32) as u8
         );
         Ok(())
     };
@@ -124,7 +126,10 @@ element_wise_oop!(quantize_linear_u8, QuantizeLinearU8 {scale: f32, zero_point: 
 element_wise_oop!(quantize_linear_i8, QuantizeLinearI8 {scale: f32, zero_point: i8},
     [f32,i32] => i8 |op, xs, ys| {
         xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as i8
+            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32)
+            .max(i8::min_value() as i32)
+            .min(i8::max_value() as i32)
+            as i8
         );
         Ok(())
     };
