@@ -112,9 +112,9 @@ impl TypedOp for PermuteAxes {
         };
         let output_axis = permutation[axis];
         let new_permutation = permutation
-            .iter()
+            .into_iter()
             .filter(|&src| axis != src)
-            .map(|&dst| dst - (dst >= output_axis) as usize)
+            .map(|dst| dst - (dst >= output_axis) as usize)
             .collect();
         Ok(Some(Box::new(PermuteAxes::new(Some(new_permutation)))))
     }
