@@ -227,7 +227,11 @@ impl InferenceRulesOp for Conv {
         }
         if let Some(bias) = self.bias_input {
             s.equals(&inputs[bias].rank, 1)?;
-            s.equals(&inputs[0].datum_type, &inputs[bias].datum_type)?;
+            if self.override_output_datum_type.is_some() {
+                s.equals(&inputs[bias].datum_type, i32::datum_type())?;
+            } else {
+                s.equals(&inputs[bias].datum_type, &outputs[0].datum_type)?;
+            }
             s.given(&k_input.rank, move |s, krank| {
                 let filter_o = match self.kernel_fmt {
                     KernelFormat::OIHW => &k_input.shape[0],
@@ -265,9 +269,10 @@ impl InferenceRulesOp for Conv {
 
 impl TypedOp for Conv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if inputs[1].shape.iter().all(|d| d.to_integer().is_ok()) {
+        let k_input  = inputs[self.k_input.unwrap_or(1)];
+        if k_input.shape.iter().all(|d| d.to_integer().is_ok()) {
             let kshape: TVec<usize> =
-                inputs[1].shape.iter().map(|d| d.to_integer().unwrap() as _).collect();
+                k_input.shape.iter().map(|d| d.to_integer().unwrap() as _).collect();
             let oshape = self.output_shape(&*inputs[0].shape.to_tvec(), &*kshape);
             Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*oshape)?))
         } else {
