@@ -1,4 +1,6 @@
 #[macro_use]
+pub mod lut;
+#[macro_use]
 pub mod mmm;
 pub mod pack_a;
 pub mod pack_b;
