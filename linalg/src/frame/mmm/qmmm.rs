@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::ops::{Add, Deref, Mul, Neg};
 
-use num_traits::{AsPrimitive, Zero};
+use num_traits::{AsPrimitive, Bounded, Zero};
 
 use super::MatMatMul;
 use super::*;
@@ -189,7 +189,7 @@ impl<K, TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> for QMatMatMulImpl<K, TA, TB,
 where
     TA: Copy + Zero + fmt::Debug + AsPrimitive<TI>,
     TB: Copy + Zero + fmt::Debug + AsPrimitive<TI>,
-    TC: Copy + fmt::Debug + AsPrimitive<TI>,
+    TC: Copy + fmt::Debug + Bounded + AsPrimitive<TI>,
     TI: Copy + Add + Mul<Output = TI> + Zero + Neg<Output = TI> + fmt::Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI>,
     usize: AsPrimitive<TI>,
@@ -302,6 +302,8 @@ where
         if let Some(c0) = self.zero_point_c {
             non_linear.push(FusedSpec::ScalarAdd(c0.as_()));
         }
+        non_linear.push(FusedSpec::Min(TC::max_value().as_()));
+        non_linear.push(FusedSpec::Max(TC::min_value().as_()));
         self.mmm.run(a, b, c, &non_linear);
     }
 }
