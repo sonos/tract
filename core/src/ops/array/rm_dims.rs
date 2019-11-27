@@ -107,7 +107,7 @@ impl TypedOp for RmDims {
                             wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
                             axis = next
                                 .op
-                                .axes_info(model, next)?
+                                .invariants(model, next)?
                                 .unary_track_axis_down(axis, true)
                                 .unwrap();
                             next = model.single_succ(next.id)?.unwrap();
@@ -121,7 +121,7 @@ impl TypedOp for RmDims {
                         return Ok(Some(patch));
                     }
                 }
-                let invariants = prec.op.axes_info(model, prec)?;
+                let invariants = prec.op.invariants(model, prec)?;
                 if let Some(up_axis) = invariants.unary_track_axis_up(axis, true) {
                     current = prec;
                     axis = up_axis;

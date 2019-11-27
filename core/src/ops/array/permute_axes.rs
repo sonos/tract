@@ -81,7 +81,7 @@ impl TypedOp for PermuteAxes {
         )?))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let permutation = if let Some(axes) = self.axes.clone() {
             axes
         } else {

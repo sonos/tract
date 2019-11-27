@@ -12,7 +12,7 @@ pub mod element_wise;
 #[macro_use]
 pub mod binary;
 
-pub mod axis;
+pub mod invariants;
 
 pub mod array;
 pub mod cast;
@@ -29,7 +29,7 @@ pub mod scan;
 pub mod source;
 pub mod unimpl;
 
-pub use axis::{AxesInfo, AxisInfo};
+pub use invariants::{Invariants, AxisInfo};
 pub use downsample::Downsample;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
@@ -193,8 +193,8 @@ pub trait TypedOp:
     /// Deduce output facts from input facts.
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
 
-    fn axes_info(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<AxesInfo> {
-        Ok(tvec![].into())
+    fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
+        Ok(Invariants::default())
     }
 
     /// Declutter the op to the tract_core operator set as much as possible.
@@ -223,6 +223,21 @@ pub trait TypedOp:
         model: &TypedModel,
         node: &TypedNode,
         axis: usize,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        Ok(None)
+    }
+
+    /// Transforms the op in an equivalent one, operating on dt (i8 or u8).
+    ///
+    /// Returns None if the op can not be translated.
+    #[allow(unused_variables)]
+    fn quantize(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        dt: DatumType,
+        scale: f32,
+        zero_point: i32
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
         Ok(None)
     }

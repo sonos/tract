@@ -1,6 +1,8 @@
 use crate::internal::*;
 use num_traits::Zero;
 use num_traits::AsPrimitive;
+use crate::internal::*;
+use crate::ops::element_wise::ElementWiseOp;
 
 #[derive(Clone, Debug)]
 pub struct QParams {
@@ -147,9 +149,55 @@ impl TypedOp for DequantizeLinearF32 {
         Ok(tvec!(fact))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let a = model.outlet_fact(node.inputs[0])?;
         Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let mut current = node;
+        while let Some(prec) = model.single_prec(current.id)? {
+            let q_params = if let Some(op) = prec.op_as::<ElementWiseOp>() {
+                if let Some(mop) = op.0.downcast_ref::<QuantizeLinearU8>() {
+                    Some((mop.scale, mop.zero_point as i32))
+                } else if let Some(op) = op.0.downcast_ref::<QuantizeLinearI8>() {
+                    Some((op.scale, op.zero_point as i32))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(qp) = q_params {
+                if qp.0 != self.scale && qp.1 != self.zero_point {
+                    break;
+                }
+                let mut patch = TypedModelPatch::default();
+                let mut wire: OutletId = patch.tap_model(model, prec.inputs[0])?.into();
+                let mut next = model.single_succ(prec.id)?.unwrap();
+                while next.id != node.id {
+                    let op = next
+                        .op
+                        .dispose_dummy_axis(model, next, axis)
+                        .chain_err(|| format!("Disposing of axis {} in {}", axis, next))?
+                        .unwrap_or_else(|| next.op.clone());
+                    wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
+                    next = model.single_succ(next.id)?.unwrap();
+                }
+                patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
+            }
+            let invariants = prec.op.invariants(model, prec)?;
+            if invariants.element_wise() {
+                current = prec;
+                break;
+            }
+        }
+        Ok(None)
     }
 
     fn pulsify(

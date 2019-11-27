@@ -122,7 +122,7 @@ pub mod internal {
     pub use crate::model::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::{
-        check_input_arity, check_output_arity, AxesInfo, AxisInfo, Cost, InferenceOp, Op, OpState,
+        check_input_arity, check_output_arity, Invariants, AxisInfo, Cost, InferenceOp, Op, OpState,
         PulsedOp, StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;
