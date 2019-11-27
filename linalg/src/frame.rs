@@ -8,7 +8,6 @@ pub mod pack_b;
 pub mod sigmoid;
 #[macro_use]
 pub mod tanh;
-pub mod vecmatmul;
 
 pub use pack_a::PackA;
 pub use pack_b::PackB;
@@ -18,6 +17,3 @@ pub use self::qmmm::*;
 
 pub use self::sigmoid::SigmoidImpl;
 pub use self::tanh::TanhImpl;
-
-pub use self::vecmatmul::PackedVecMatMul;
-pub use self::vecmatmul::VecMatMul;
