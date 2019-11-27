@@ -67,7 +67,7 @@ impl TypedOp for AddDims {
         )?))
     }
 
-    fn axes_info(&self, _model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, _model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let mut i = 0;
         let mut axes = tvec!();
         for out in 0..node.outputs[0].fact.shape.rank() {

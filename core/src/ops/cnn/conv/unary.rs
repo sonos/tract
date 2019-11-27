@@ -351,7 +351,7 @@ impl TypedOp for ConvUnary {
         self.pool_spec.output_facts(inputs)
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
         let mut axes = vec![AxisInfo::simple(0).disposable(false)];

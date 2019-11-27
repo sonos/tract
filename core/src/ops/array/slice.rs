@@ -79,7 +79,7 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
         Ok(tvec!(fact))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let axes = (0..fact.shape.rank())
             .filter(|&ax| self.axis != ax)

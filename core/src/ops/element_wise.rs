@@ -92,9 +92,8 @@ impl TypedOp for ElementWiseOp {
         Ok(tvec!(fact))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
-        let a = model.outlet_fact(node.inputs[0])?;
-        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+        Ok(Invariants::new_element_wise())
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

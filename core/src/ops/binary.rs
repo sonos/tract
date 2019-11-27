@@ -308,7 +308,7 @@ impl TypedOp for TypedBinOp {
         )?))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let a = model.outlet_fact(node.inputs[0])?;
         let b = model.outlet_fact(node.inputs[1])?;
         let c = &self.output_facts(&[a, b])?[0];
@@ -487,10 +487,10 @@ impl TypedOp for UnaryOp {
         )?))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let b = model.outlet_fact(node.inputs[0])?;
         if b.shape.rank() < self.a.shape().len() {
-            return Ok(AxesInfo::none());
+            return Ok(Invariants::none());
         }
         let mut invs = vec![];
         for i in 0..b.shape.rank() - self.a.shape().len() {
@@ -603,7 +603,7 @@ impl TypedOp for MergeOp {
         )?))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let a = model.outlet_fact(node.inputs[0])?;
         Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
     }

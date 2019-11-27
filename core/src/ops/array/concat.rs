@@ -223,9 +223,9 @@ impl TypedOp for NormConcat {
         Ok(tvec!(fact))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         if self.slices.iter().any(|s| s.as_const().is_some()) {
-            Ok(AxesInfo::none())
+            Ok(Invariants::none())
         } else {
             let rank = model.outlet_fact(node.inputs[0])?.shape.rank();
             Ok((0..rank).filter(|&ax| ax != self.axis).map(|axis| AxisInfo::simple(axis)).collect())

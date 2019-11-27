@@ -551,10 +551,10 @@ impl TypedOp for MatMulUnary {
         )?))
     }
 
-    fn axes_info(&self, model: &TypedModel, node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         if input_fact.shape.rank() != node.outputs[0].fact.shape.rank() {
-            return Ok(AxesInfo::none());
+            return Ok(Invariants::none());
         }
         let mut broadcasted_a_shape: TVec<_> = self.a.shape().into();
         while broadcasted_a_shape.len() < input_fact.shape.rank() {
