@@ -24,6 +24,7 @@ pub mod arm64;
 #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
 pub mod arm32;
 
+pub use self::frame::lut;
 pub use self::frame::mmm;
 pub use self::frame::sigmoid;
 pub use self::frame::tanh;
@@ -46,6 +47,7 @@ pub struct Ops {
     >,
     pub ssigmoid: Box<dyn Fn() -> Box<dyn sigmoid::Sigmoid<f32>> + Send + Sync>,
     pub stanh: Box<dyn Fn() -> Box<dyn tanh::Tanh<f32>> + Send + Sync>,
+    pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 }
 
 pub fn generic() -> Ops {
@@ -97,6 +99,7 @@ pub fn generic() -> Ops {
         }),
         ssigmoid: Box::new(|| Box::new(sigmoid::SigmoidImpl::<generic::SSigmoid4, f32>::new())),
         stanh: Box::new(|| Box::new(tanh::TanhImpl::<generic::STanh4, f32>::new())),
+        lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
     }
 }
 
