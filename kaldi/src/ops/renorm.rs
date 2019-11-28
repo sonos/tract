@@ -66,7 +66,7 @@ impl TypedOp for Renorm {
         Ok(tvec!(inputs[0].clone()))
     }
 
-    fn axes_info(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<AxesInfo> {
+    fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
         Ok(vec![AxisInfo::simple(0)].into_iter().collect())
     }
 
