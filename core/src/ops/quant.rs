@@ -1,8 +1,7 @@
 use crate::internal::*;
 use num_traits::Zero;
-use num_traits::AsPrimitive;
-use crate::internal::*;
 use crate::ops::element_wise::ElementWiseOp;
+use num_traits::AsPrimitive;
 
 #[derive(Clone, Debug)]
 pub struct QParams {
@@ -80,10 +79,22 @@ impl QParams {
     }
 }
 
+pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
+    (((x * scale).round() as i32) + zero_point as i32)
+        .max(u8::min_value() as i32)
+        .min(u8::max_value() as i32) as u8
+}
+
+pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
+    (((x * scale).round() as i32) + zero_point as i32)
+        .max(i8::min_value() as i32)
+        .min(i8::max_value() as i32) as i8
+}
+
 element_wise_oop!(quantize_linear_u8, QuantizeLinearU8 {scale: f32, zero_point: u8},
     [f32,i32] => u8 |op, xs, ys| {
         xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as u8
+            *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
         );
         Ok(())
     }
@@ -92,7 +103,7 @@ element_wise_oop!(quantize_linear_u8, QuantizeLinearU8 {scale: f32, zero_point: 
 element_wise_oop!(quantize_linear_i8, QuantizeLinearI8 {scale: f32, zero_point: i8},
     [f32,i32] => i8 |op, xs, ys| {
         xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = (((*x as f32 * op.scale).round() as i32) + op.zero_point as i32) as i8
+            *y = quantize_linear_f32_i8(*x as f32, op.scale, op.zero_point as i32)
         );
         Ok(())
     }
@@ -160,40 +171,47 @@ impl TypedOp for DequantizeLinearF32 {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut current = node;
-        while let Some(prec) = model.single_prec(current.id)? {
-            let q_params = if let Some(op) = prec.op_as::<ElementWiseOp>() {
+        while let Some(succ) = model.single_succ(current.id)? {
+            let q_params = if let Some(op) = succ.op_as::<ElementWiseOp>() {
                 if let Some(mop) = op.0.downcast_ref::<QuantizeLinearU8>() {
-                    Some((mop.scale, mop.zero_point as i32))
-                } else if let Some(op) = op.0.downcast_ref::<QuantizeLinearI8>() {
-                    Some((op.scale, op.zero_point as i32))
+                    Some((mop.scale, mop.zero_point as i32, u8::datum_type()))
+                } else if let Some(mop) = op.0.downcast_ref::<QuantizeLinearI8>() {
+                    Some((mop.scale, mop.zero_point as i32, i8::datum_type()))
                 } else {
                     None
                 }
             } else {
                 None
             };
-            if let Some(qp) = q_params {
-                if qp.0 != self.scale && qp.1 != self.zero_point {
+            if let Some((scale, zero_point, dt)) = q_params {
+                if scale * self.scale != 1.0 || zero_point != self.zero_point {
                     break;
                 }
                 let mut patch = TypedModelPatch::default();
-                let mut wire: OutletId = patch.tap_model(model, prec.inputs[0])?.into();
-                let mut next = model.single_succ(prec.id)?.unwrap();
-                while next.id != node.id {
-                    let op = next
+                let mut wire: OutletId = patch.tap_model(model, node.inputs[0])?.into();
+                let mut next = model.single_succ(node.id)?.unwrap();
+                loop {
+                    if let Some(op) = next
                         .op
-                        .dispose_dummy_axis(model, next, axis)
-                        .chain_err(|| format!("Disposing of axis {} in {}", axis, next))?
-                        .unwrap_or_else(|| next.op.clone());
-                    wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
-                    next = model.single_succ(next.id)?.unwrap();
+                        .quantize(model, node, dt, scale, zero_point)
+                        .chain_err(|| format!("Quantizing {}", next))?
+                    {
+                        wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
+                    } else {
+                        break;
+                    }
+                    if next.id == current.id {
+                        patch.shunt_outside(OutletId::new(succ.id, 0), wire)?;
+                        return Ok(Some(patch));
+                    } else {
+                        next = model.single_succ(next.id)?.unwrap();
+                    }
                 }
-                patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
-                return Ok(Some(patch));
             }
-            let invariants = prec.op.invariants(model, prec)?;
+            let invariants = succ.op.invariants(model, succ)?;
             if invariants.element_wise() {
-                current = prec;
+                current = succ;
+            } else {
                 break;
             }
         }

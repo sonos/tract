@@ -26,6 +26,14 @@ pub trait ElementWiseMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static 
     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
         tvec!()
     }
+    #[allow(unused_variables)]
+    fn quantize(
+        &self,
+        dt: DatumType,
+        scale: f32,
+        zero_point: i32) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
+        Ok(None)
+    }
 }
 
 clone_trait_object!(ElementWiseMiniOp);
@@ -92,7 +100,7 @@ impl TypedOp for ElementWiseOp {
         Ok(tvec!(fact))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+    fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
         Ok(Invariants::new_element_wise())
     }
 
@@ -104,6 +112,21 @@ impl TypedOp for ElementWiseOp {
             .into_iter()
             .map(|(c, n)| (c, count.clone() * n))
             .collect())
+    }
+
+    fn quantize(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+        dt: DatumType,
+        scale: f32,
+        zero_point: i32,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        if let Some(mini) = self.0.quantize(dt, scale, zero_point)? {
+            Ok(Some(Box::new(ElementWiseOp(mini))))
+        } else {
+            Ok(None)
+        }
     }
 
     fn pulsify(
@@ -140,6 +163,7 @@ macro_rules! element_wise {
         $( [$($typ:ident),*] => $f:expr ),*
         $(; cost: $cost:expr )?
         $(; prefix: $prefix:expr )?
+        $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
         #[derive(Debug, Clone)]
@@ -171,6 +195,15 @@ macro_rules! element_wise {
             }
             )?
             $(
+            fn quantize(
+                &self,
+                dt: DatumType,
+                scale: f32,
+                zero_point: i32) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
+                    $quantize(&self, dt, scale, zero_point)
+            }
+            )?
+            $(
             fn validation(&self) -> Validation {
                 $validation
             }
@@ -188,6 +221,7 @@ macro_rules! element_wise_oop {
         $( [$($typ:ident),*] => $typ_dst:ident $f:expr ),*
         $(; cost: $cost:expr )?
         $(; prefix: $prefix:expr )?
+        $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
         #[derive(Debug, Clone)]
@@ -225,6 +259,15 @@ macro_rules! element_wise_oop {
             $(
             fn prefix(&self) -> &'static str {
                 $prefix
+            }
+            )?
+            $(
+            fn quantize(
+                &self,
+                dt: DatumType,
+                scale: f32,
+                zero_point: i32) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
+                    $quantize(ft, scale, zero_point)
             }
             )?
             $(
