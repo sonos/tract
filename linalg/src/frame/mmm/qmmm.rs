@@ -95,40 +95,46 @@ where
                 }
                 result
             }
-            a => panic!("Storage {:?} not supported for quantized ops", a),
+            a => panic!("Storage for A {:?} not supported for quantized ops", a),
         }
     }
 
     fn sum_b_over_k(&self, mut b: *const TB) -> Vec<TI> {
+        let mut result = vec![TI::zero(); self.n];
         match &self.mmm.b_storage {
-            MatrixStoreSpec::Packed { .. } => {
+            MatrixStoreSpec::Packed { .. } => unsafe {
                 let nr = K::nr();
-                let mut result = vec![TI::zero(); self.n];
-                unsafe {
-                    for p in 0..(self.n / nr) {
-                        for _k in 0..self.k {
-                            for row in 0..nr {
-                                result[p * nr + row] = result[p * nr + row] + (*b).as_();
-                                b = b.offset(1);
-                            }
-                        }
-                    }
-                    if self.n % nr != 0 {
-                        let p = self.n / nr;
-                        for _k in 0..self.k {
-                            for row in 0..nr {
-                                if row < self.n % nr {
-                                    result[p * nr + row] = result[p * nr + row] + (*b).as_();
-                                }
-                                b = b.offset(1);
-                            }
+                for p in 0..(self.n / nr) {
+                    for _k in 0..self.k {
+                        for col in 0..nr {
+                            result[p * nr + col] = result[p * nr + col] + (*b).as_();
+                            b = b.offset(1);
                         }
                     }
                 }
-                result
+                if self.n % nr != 0 {
+                    let p = self.n / nr;
+                    for _k in 0..self.k {
+                        for col in 0..nr {
+                            if col < self.n % nr {
+                                result[p * nr + col] = result[p * nr + col] + (*b).as_();
+                            }
+                            b = b.offset(1);
+                        }
+                    }
+                }
+            },
+            MatrixStoreSpec::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, .. } => unsafe {
+                for n in 0..self.n {
+                    for k  in 0..self.k {
+                        let offset = (row_byte_offsets[k] + col_byte_offsets[n]) / std::mem::size_of::<TB>() as isize;
+                        result[n] = result[n] + (*b.offset(offset)).as_();
+                    }
+                }
             }
-            b => panic!("Storage {:?} not supported for quantized ops", b),
+            b => panic!("Storage {:?} for B not supported for quantized ops", b),
         }
+        result
     }
 }
 
