@@ -185,9 +185,11 @@ impl TypedOp for DequantizeLinearF32 {
                 None
             };
             if let Some((scale, zero_point, dt)) = q_params {
+                // node is dequant, succ is final quant
                 if scale * self.scale != 1.0 || zero_point != self.zero_point {
                     break;
                 }
+                // first, try Op::quantize() on all ops in the chain
                 let mut patch = TypedModelPatch::default();
                 let mut wire: OutletId = patch.tap_model(model, node.inputs[0])?.into();
                 let mut next = model.single_succ(node.id)?.unwrap();
@@ -208,6 +210,39 @@ impl TypedOp for DequantizeLinearF32 {
                         next = model.single_succ(next.id)?.unwrap();
                     }
                 }
+                // or else make a lookup table
+                let mut adhoc_model = TypedModel::default();
+                let mut wire = adhoc_model.add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
+                let mut next = model.single_succ(node.id)?.unwrap();
+                wire = adhoc_model.wire_node(&*node.name, node.op.clone(), [wire].as_ref())?[0];
+                loop {
+                    wire = adhoc_model.wire_node(&*node.name, next.op.clone(), [wire].as_ref())?[0];
+                    if next.id == current.id {
+                        break;
+                    } else {
+                        next = model.single_succ(next.id)?.unwrap();
+                    }
+                }
+                wire = adhoc_model.wire_node(&*succ.name, succ.op.clone(), [wire].as_ref())?[0];
+                adhoc_model.set_output_outlets(&[wire])?;
+                let input = (0u8..=255).collect::<Vec<u8>>();
+                let input = match dt {
+                    DatumType::I8 => unsafe { tensor1(std::mem::transmute::<&[u8], &[i8]>(&*input)) },
+                    DatumType::U8 => tensor1(&input),
+                    _ => unreachable!(),
+                };
+                let output = SimplePlan::new(adhoc_model)?.run(tvec!(input))?.remove(0);
+                let table:&[u8] = match dt {
+                    DatumType::I8 => unsafe { std::mem::transmute(output.as_slice::<i8>()?) },
+                    DatumType::U8 => output.as_slice::<u8>()?,
+                    _ => unreachable!(),
+                };
+                let op = lookup_table((tract_linalg::ops().lut_u8)(table));
+                let mut patch = TypedModelPatch::default();
+                let mut wire: OutletId = patch.tap_model(model, node.inputs[0])?.into();
+                wire = patch.wire_node(&*node.name, op, [wire].as_ref())?[0];
+                patch.shunt_outside(OutletId::new(succ.id, 0), wire)?;
+                return Ok(Some(patch));
             }
             let invariants = succ.op.invariants(model, succ)?;
             if invariants.element_wise() {
@@ -248,7 +283,10 @@ impl PulsedOp for DequantizeLinearF32 {
 element_wise_oop!(lookup_table, LookupTable {table: Box<dyn Lut>},
     [i8] => i8 |op, xs, ys| {
         ys.copy_from_slice(xs);
-        unsafe { op.table.run(std::mem::transmute(ys)) }
+        unsafe {
+            let casted = std::slice::from_raw_parts_mut(ys.as_mut_ptr() as *mut u8, ys.len());
+            op.table.run(casted);
+        }
         Ok(())
     },
     [u8] => u8 |op, xs, ys| {
