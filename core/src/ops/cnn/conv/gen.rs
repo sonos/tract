@@ -30,6 +30,7 @@ pub struct Conv {
     pub bias_input: Option<usize>,
 
     pub override_output_datum_type: Option<DatumType>,
+    pub override_bias_datum_type: Option<DatumType>,
 }
 
 impl Conv {
@@ -227,8 +228,8 @@ impl InferenceRulesOp for Conv {
         }
         if let Some(bias) = self.bias_input {
             s.equals(&inputs[bias].rank, 1)?;
-            if self.override_output_datum_type.is_some() {
-                s.equals(&inputs[bias].datum_type, i32::datum_type())?;
+            if let Some(dt) = self.override_bias_datum_type {
+                s.equals(&inputs[bias].datum_type, dt)?;
             } else {
                 s.equals(&inputs[bias].datum_type, &outputs[0].datum_type)?;
             }
