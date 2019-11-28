@@ -2,6 +2,7 @@ use crate::internal::*;
 use num_traits::Zero;
 use crate::ops::element_wise::ElementWiseOp;
 use num_traits::AsPrimitive;
+use tract_linalg::lut::Lut;
 
 #[derive(Clone, Debug)]
 pub struct QParams {
@@ -243,3 +244,16 @@ impl PulsedOp for DequantizeLinearF32 {
     pulsed_op_as_op!();
     pulsed_op_to_typed_op!();
 }
+
+element_wise_oop!(lookup_table, LookupTable {table: Box<dyn Lut>},
+    [i8] => i8 |op, xs, ys| {
+        ys.copy_from_slice(xs);
+        unsafe { op.table.run(std::mem::transmute(ys)) }
+        Ok(())
+    },
+    [u8] => u8 |op, xs, ys| {
+        ys.copy_from_slice(xs);
+        op.table.run(ys);
+        Ok(())
+    }
+);

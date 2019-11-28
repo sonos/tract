@@ -1,9 +1,12 @@
+use std::fmt;
 use crate::align::Buffer;
 use std::marker::PhantomData;
 
-pub trait Lut {
+pub trait Lut: fmt::Debug + objekt::Clone + Send + Sync {
     fn run(&self, buf: &mut [u8]);
 }
+
+clone_trait_object!(Lut);
 
 #[derive(Debug, Clone)]
 pub struct LutImpl<K>
@@ -65,7 +68,7 @@ where
     }
 }
 
-pub trait LutKer {
+pub trait LutKer: Clone + fmt::Debug + Send + Sync {
     fn name() -> &'static str;
     fn n() -> usize;
     fn input_alignment_bytes() -> usize;
