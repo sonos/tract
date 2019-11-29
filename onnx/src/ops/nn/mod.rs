@@ -291,7 +291,7 @@ pub fn parametric_softplus(
     Ok((Box::new(tractops::nn::parametric_softplus(alpha, beta)), vec![]))
 }
 
-bin_to_super_type!(prelu, Prelu, declutter: prelu_to_prelu_unary,
+bin_to_super_type!(prelu, Prelu, declutter_bin: prelu_to_prelu_unary,
   [f16,f32,f64] => |c, &a, &b| *c = if a < 0f32.into() { a * b } else { a });
 
 element_wise!(prelu_unary, PreluUnary { b: f32 },

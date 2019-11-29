@@ -117,6 +117,18 @@ impl DatumType {
         return None;
     }
 
+    pub fn is_integer(&self) -> bool {
+        match self {
+            DatumType::U8 |
+            DatumType::U16 |
+            DatumType::I8 |
+            DatumType::I16 |
+            DatumType::I32 |
+            DatumType::I64 => true,
+            _ => false
+        }
+    }
+
     pub fn size_of(&self) -> usize {
         match self {
             DatumType::Bool => std::mem::size_of::<bool>(),
