@@ -13,7 +13,7 @@ bin_to_super_type!(add, Add,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
 bin_to_super_type!(sub, Sub, flip:flip_sub,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
-#[inline]
+
 bin_to_super_type!(mul, Mul,
         cost: |dt| tvec!((Cost::FMA(dt), 1)),
         declutter_unary: declutter_mul_as_shift,
@@ -21,6 +21,7 @@ bin_to_super_type!(mul, Mul,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() * b);
 bin_to_super_type!(div, Div,
         cost: |dt| tvec!((Cost::Div(dt), 1)),
+        declutter_bin: declutter_div_as_shift,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() / b);
 bin_to_super_type!(rem, Rem,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() % b);
@@ -61,23 +62,43 @@ fn declutter_mul_as_shift(
     node: &TypedNode,
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
+    declutter_as_shift(model, node, a, Box::new(FlippedShiftLeft))
+}
+
+fn declutter_div_as_shift(
+    _op: &Div,
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    let a = model.node_input_facts(node.id)?[1];
+    if let Some(a) = &a.konst {
+        declutter_as_shift(model, node, a, Box::new(FlippedShiftRight))
+    } else {
+        return Ok(None);
+    }
+}
+
+fn declutter_as_shift(
+    model: &TypedModel,
+    node: &TypedNode,
+    t: &Arc<Tensor>,
+    mini_op: Box<dyn BinMiniOp>,
+) -> TractResult<Option<TypedModelPatch>> {
     let input = model.node_input_facts(node.id)?[0];
-    if a.len() > 0
-        && a.is_uniform()?
-        && a.datum_type().is_integer()
+    if t.len() > 0
+        && t.is_uniform()?
+        && t.datum_type().is_integer()
         && input.datum_type.is_integer()
     {
-        let arg = a.cast_to::<i64>()?;
+        let arg = t.cast_to::<i64>()?;
         let arg = arg.as_slice::<i64>()?[0];
-        if arg.abs().count_ones() == 1 {
+        if arg > 0 && arg.abs().count_ones() == 1 {
             let shift = (63 - arg.abs().leading_zeros()) as i32;
-            let shift = tensor0(shift).cast_to_dt(a.datum_type())?.into_owned();
-            let mini_op: Box<dyn BinMiniOp> =
-                if arg > 0 { Box::new(FlippedShiftLeft) } else { Box::new(FlippedShiftRight) };
+            let shift = tensor0(shift).cast_to_dt(t.datum_type())?.into_owned();
             return Ok(Some(TypedModelPatch::replace_single_op(
                 model,
                 node,
-                &node.inputs,
+                &node.inputs[0..=0],
                 UnaryOp { a: shift.into_arc_tensor(), mini_op },
             )?));
         }
@@ -246,11 +267,29 @@ mod tests {
         let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[1, 2], [3, 4]])))?;
         assert_eq!(result[0], rctensor2(&[[4, 8], [12, 16]]));
         let decluttered = model.declutter()?;
-        dbg!(&decluttered);
         let result = SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[1, 2], [3, 4]])))?;
         assert_eq!(result[0], rctensor2(&[[4, 8], [12, 16]]));
         let op = decluttered.node_op(1).downcast_ref::<UnaryOp>().unwrap();
         assert!(op.mini_op.downcast_ref::<FlippedShiftLeft>().is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn div_as_shift() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x =
+            model.add_source("a", TypedFact::dt_shape(i32::datum_type(), [2usize, 2].as_ref())?)?;
+        let s = model.add_const("shift", tensor0(4))?;
+        let y = model.wire_node("c", div::bin(), [x, s].as_ref())?[0];
+        model.set_output_outlets(&[y])?;
+        let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[16, 32], [64, 68]])))?;
+        assert_eq!(result[0], rctensor2(&[[4, 8], [16, 17]]));
+        let decluttered = model.declutter()?;
+        dbg!(&decluttered);
+        let result = SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[16, 32], [64, 68]])))?;
+        assert_eq!(result[0], rctensor2(&[[4, 8], [16, 17]]));
+        let op = decluttered.node_op(1).downcast_ref::<UnaryOp>().unwrap();
+        assert!(op.mini_op.downcast_ref::<FlippedShiftRight>().is_some());
         Ok(())
     }
 }
