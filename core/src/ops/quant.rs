@@ -185,10 +185,6 @@ impl TypedOp for DequantizeLinearF32 {
                 None
             };
             if let Some((scale, zero_point, dt)) = q_params {
-                // node is dequant, succ is final quant
-                if scale * self.scale != 1.0 || zero_point != self.zero_point {
-                    break;
-                }
                 // first, try Op::quantize() on all ops in the chain
                 let mut patch = TypedModelPatch::default();
                 let mut wire: OutletId = patch.tap_model(model, node.inputs[0])?.into();
