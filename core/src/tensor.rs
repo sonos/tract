@@ -315,6 +315,18 @@ impl Tensor {
         unsafe { Ok(&*(self.as_ptr::<D>()?)) }
     }
 
+    fn is_uniform_t<T:Datum>(&self) -> TractResult<bool> {
+        let slice = self.as_slice::<T>()?;
+        Ok(slice[1..].iter().all(|x| x == &slice[0]))
+    }
+
+    pub fn is_uniform(&self) -> TractResult<bool> {
+        if self.len() <= 1 {
+            return Ok(true)
+        }
+        dispatch_datum!(Tensor::is_uniform_t(self.datum_type())(self))
+    }
+
     /// Convert data to a tensor for a new DatumType.
     fn cast<Source: Datum + crate::datum::TryInto<Target>, Target: Datum>(
         &self,

@@ -40,10 +40,19 @@ pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downca
         None
     }
     #[allow(unused_variables)]
-    fn declutter(
+    fn declutter_bin(
         &self,
         model: &TypedModel,
         node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+    #[allow(unused_variables)]
+    fn declutter_unary(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        a: &Arc<Tensor>,
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
     }
@@ -341,7 +350,7 @@ impl TypedOp for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
-        if let Some(patch) = self.0.declutter(model, node)? {
+        if let Some(patch) = self.0.declutter_bin(model, node)? {
             return Ok(Some(patch));
         }
         for i in 0..2 {
@@ -501,6 +510,14 @@ impl TypedOp for UnaryOp {
             .into_iter()
             .map(|(c, n)| (c, count.clone() * n))
             .collect())
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        self.mini_op.declutter_unary(model, node, &self.a)
     }
 
     fn dispose_dummy_axis(
@@ -704,8 +721,9 @@ impl PulsedOp for MergeOpUnicast {
 macro_rules! bin_to_super_type {
     ($func:ident, $Op:ident,
      $(cost: $cost:expr,)?
+     $(declutter_bin: $declutter_bin:expr,)?
+     $(declutter_unary: $declutter_unary:expr,)?
      $(flip: $flip:expr,)?
-     $(declutter: $declutter:expr,)?
      $(validation: $validation:expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone)]
@@ -761,12 +779,22 @@ macro_rules! bin_to_super_type {
                 }
             )?
             $(
-                fn declutter(
+                fn declutter_bin(
                     &self,
                     model: &TypedModel,
                     node: &TypedNode,
                 ) -> TractResult<Option<TypedModelPatch>> {
-                    ($declutter)(self, model, node)
+                    ($declutter_bin)(self, model, node)
+                }
+            )?
+            $(
+                fn declutter_unary(
+                    &self,
+                    model: &TypedModel,
+                    node: &TypedNode,
+                    a: &Arc<Tensor>,
+                ) -> TractResult<Option<TypedModelPatch>> {
+                    ($declutter_unary)(self, model, node, a)
                 }
             )?
             $(
