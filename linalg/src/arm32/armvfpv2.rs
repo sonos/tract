@@ -33,8 +33,4 @@ impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul4x4 {
     }
 }
 
-#[cfg(test)]
-mod test {
-    mmm_kernel_tests!(true, crate::arm32::armvfpv2::SMatMatMul4x4, f32, f32, f32, f32);
-    mmm_frame_tests!(true, crate::arm32::armvfpv2::SMatMatMul4x4, f32, f32, f32, f32);
-}
+test_mmm_kernel_f32!(crate::arm32::armvfpv2::SMatMatMul4x4, test_SMatMatMul4x4, true);

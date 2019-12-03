@@ -46,6 +46,61 @@ where
     fn alignment_bytes_packed_b() -> usize;
 }
 
+#[macro_export]
+macro_rules! test_mmm_kernel_f32 {
+    ($k: ty, $id: ident, $cond: expr) => {
+        #[cfg(test)]
+        #[allow(non_snake_case)]
+        mod $id {
+            mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
+            mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
+            mmm_kernel_fuse_tests!($cond, $k, f32, f32, f32, f32);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_mmm_kernel_i8 {
+    ($k: ty, $id: ident, $cond: expr) => {
+        #[cfg(test)]
+        #[allow(non_snake_case)]
+        mod $id {
+            mmm_kernel_tests!($cond, $k, i8, i8, i8, i32);
+            mmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
+            qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
+            qmmm_frame_tests!($cond, $k, i8, i8, i8, i32);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_mmm_kernel_i8_i32 {
+    ($k: ty, $id: ident, $cond: expr) => {
+        #[cfg(test)]
+        #[allow(non_snake_case)]
+        mod $id {
+            mmm_kernel_tests!($cond, $k, i8, i8, i32, i32);
+            mmm_kernel_fuse_tests!($cond, $k, i8, i8, i32, i32);
+            qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i32, i32);
+            qmmm_frame_tests!($cond, $k, i8, i8, i32, i32);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_mmm_kernel_u8 {
+    ($k: ty, $id: ident, $cond: expr) => {
+        #[cfg(test)]
+        #[allow(non_snake_case)]
+        mod $id {
+            mmm_kernel_tests!($cond, $k, u8, u8, u8, i32);
+            mmm_kernel_fuse_tests!($cond, $k, u8, u8, u8, i32);
+            qmmm_kernel_fuse_tests!($cond, $k, u8, u8, u8, i32);
+            qmmm_frame_tests!($cond, $k, u8, u8, u8, i32);
+        }
+    };
+}
+
 #[cfg(test)]
 #[macro_use]
 pub mod test {
@@ -70,6 +125,7 @@ pub mod test {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::kernel::test;
                 use crate::frame::mmm::MatMatMulKer;
+
                 #[test]
                 fn packed_packed_1() {
                     if $cond {
@@ -218,9 +274,9 @@ pub mod test {
     pub fn packed_vec<K, TA, TB, TC, TI>(k: usize)
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + One + AsPrimitive<TI>,
-        TB: Copy + One + AsPrimitive<TI>,
-        TC: Copy + PartialEq + Zero + 'static,
+        TA: Copy + One + AsPrimitive<TI> + Debug,
+        TB: Copy + One + AsPrimitive<TI> + Debug,
+        TC: Copy + PartialEq + Zero + 'static + Debug,
         TI: Copy + Add + Zero + Mul<Output = TI> + Debug + fmt::Display + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TC>,
     {
@@ -240,6 +296,9 @@ pub mod test {
             linear: &LinearSpec::k(k),
             non_linear: std::ptr::null(),
         });
+        dbg!(&pa);
+        dbg!(&b);
+        dbg!(&c);
         assert_eq!(err, 0);
         assert!(c.iter().all(|&a| a == k.as_()));
     }
