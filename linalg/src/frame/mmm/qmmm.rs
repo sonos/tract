@@ -461,14 +461,13 @@ pub mod test {
                 let mut packed_b =
                     Buffer::uninitialized(mmm.b_pack().len(), mmm.b_pack().alignment());
                 mmm.b_pack().pack(packed_b.as_mut_ptr(), self.b.as_ptr(), self.n as isize, 1);
-                let fo: &mut dyn QMatMatMul<TA, TB, TC, TI> = &mut mmm;
                 match &self.a0 {
-                    QuantizedParam::Scalar(a0) => fo.set_zero_point_a_scalar(*a0),
-                    QuantizedParam::Vector(a0) => fo.set_zero_point_a_vector(a0.clone()),
+                    QuantizedParam::Scalar(a0) => mmm.set_zero_point_a_scalar(*a0),
+                    QuantizedParam::Vector(a0) => mmm.set_zero_point_a_vector(a0.clone()),
                 }
                 match &self.b0 {
-                    QuantizedParam::Scalar(b0) => fo.set_zero_point_b_scalar(*b0),
-                    QuantizedParam::Vector(b0) => fo.set_zero_point_b_vector(b0.clone()),
+                    QuantizedParam::Scalar(b0) => mmm.set_zero_point_b_scalar(*b0),
+                    QuantizedParam::Vector(b0) => mmm.set_zero_point_b_vector(b0.clone()),
                 }
                 mmm.run(packed_a.as_ptr(), packed_b.as_ptr(), c.as_mut_ptr(), &[]);
                 c
