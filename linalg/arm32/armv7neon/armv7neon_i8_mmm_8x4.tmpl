@@ -681,8 +681,8 @@ armv7neon_i8_mmm_8x4:
 */
 
 .q_towards_plusinf:
-    vldr.s32    s0, [r1, #4]
-    vldr.s8     s4, [r1, #8]
+    vldr        s0, [r1, #4]
+    vldr        s4, [r1, #8]
     vdup.s8     q1, d2[0]
     vneg.s8     q1, q1
     {% for q in (8..15) %}
