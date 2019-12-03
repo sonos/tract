@@ -429,19 +429,31 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
-        TC: Copy + PartialEq + 'static,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + 'static + AsPrimitive<TC>,
+        TC: Copy + PartialEq + 'static + Debug,
+        TI: Copy
+            + Add
+            + Mul
+            + Zero
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>
+            + Debug,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
         let len = K::mr() * K::nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
         let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerColAdd(bias.as_ptr())]);
-        assert!(found.iter().enumerate().all(|(ix, &a)| {
-            let col = ix % K::nr();
-            let ix: TI = ix.as_();
-            a == (ix + bias[col]).as_()
-        }));
+        let expected = (0..found.len())
+            .map(|ix| {
+                let col = ix % K::nr();
+                let ix: TI = ix.as_();
+                (ix + bias[col]).as_()
+            })
+            .collect::<Vec<TC>>();
+        assert_eq!(found, expected);
     }
 
     pub fn return_c_add_row_col_product<K, TA, TB, TC, TI>()

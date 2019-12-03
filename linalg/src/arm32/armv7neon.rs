@@ -4,11 +4,41 @@ use crate::frame::tanh::*;
 
 extern "C" {
     #[no_mangle]
+    fn armv7neon_i8_mmm_8x4(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
+    #[no_mangle]
     fn armv7neon_smmm_8x4(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
     #[no_mangle]
     fn armv7neon_ssigmoid_4(ptr: *mut f32, count: usize);
     #[no_mangle]
     fn armv7neon_stanh_4(ptr: *mut f32, count: usize);
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct I8MatMatMul8x4;
+
+impl MatMatMulKer<i8, i8, i8, i32> for I8MatMatMul8x4 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "neon"
+    }
+    #[inline(always)]
+    fn mr() -> usize {
+        8
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        4
+    }
+    fn alignment_bytes_packed_a() -> usize {
+        4
+    }
+    fn alignment_bytes_packed_b() -> usize {
+        4
+    }
+    #[inline(never)]
+    fn kernel(spec: &MatMatMulKerSpec<i8, i8, i8, i32>) -> isize {
+        unsafe { armv7neon_i8_mmm_8x4(spec) }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -84,7 +114,7 @@ impl TanhKer<f32> for STanh4 {
 }
 
 #[cfg(test)]
-mod test {
+mod test_mmm_f32 {
     mmm_kernel_tests!(
         crate::arm32::has_neon(),
         crate::arm32::armv7neon::SMatMatMul8x4,
@@ -101,6 +131,38 @@ mod test {
         f32,
         f32
     );
+}
+
+#[cfg(test)]
+mod test_mmm_i8 {
+    mmm_kernel_tests!(
+        crate::arm32::has_neon(),
+        crate::arm32::armv7neon::I8MatMatMul8x4,
+        i8,
+        i8,
+        i8,
+        i32
+    );
+    mmm_kernel_fuse_tests!(
+        crate::arm32::has_neon(),
+        crate::arm32::armv7neon::I8MatMatMul8x4,
+        i8,
+        i8,
+        i8,
+        i32
+    );
+    qmmm_kernel_fuse_tests!(
+        crate::arm32::has_neon(),
+        crate::arm32::armv7neon::I8MatMatMul8x4,
+        i8,
+        i8,
+        i8,
+        i32
+    );
+}
+
+#[cfg(test)]
+mod test_neon_fn {
     sigmoid_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SSigmoid4);
     tanh_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::STanh4);
 }
