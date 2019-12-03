@@ -593,7 +593,6 @@ pub mod test {
             if input.is_negative() {
                 trunc = -trunc;
             }
-            dbg!(trunc, found);
             trunc.as_() == found
         }));
     }
