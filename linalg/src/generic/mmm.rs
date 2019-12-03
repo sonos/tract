@@ -661,7 +661,6 @@ mod test_i8 {
     mmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
     qmmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
     qmmm_frame_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8);
-
 }
 
 #[cfg(test)]
