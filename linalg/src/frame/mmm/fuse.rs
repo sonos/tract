@@ -549,15 +549,18 @@ pub mod test {
         TC: Copy
             + PartialEq
             + 'static
+            + Bounded
             + Debug
             + Sub<Output = TC>
             + AsPrimitive<TI>
             + Mul<Output = TC>,
         TI: Copy
             + Add
+            + Sub<Output = TI>
             + Mul<Output = TI>
             + Debug
             + fmt::Display
+            + Ord
             + PartialEq
             + 'static
             + AsPrimitive<TC>
@@ -566,9 +569,15 @@ pub mod test {
         i64: AsPrimitive<TC>,
     {
         let len = K::mr() * K::nr();
-        let half_len: TC = (len / 2).as_();
-        let v: Vec<TC> =
-            (0..len).map(|f| (<usize as AsPrimitive<TC>>::as_(f) - half_len)).collect();
+        let half_len: TI = (len / 2).as_();
+        let v: Vec<TC> = (0..len)
+            .map(|f| {
+                (<usize as AsPrimitive<TI>>::as_(f) - half_len)
+                    .min(TC::max_value().as_())
+                    .max(TC::min_value().as_())
+                    .as_()
+            })
+            .collect();
         let found = fused_ops::<K, TA, TB, TC, TI>(
             &*v,
             &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QTowardsEven((1 << 30).as_(), 2)],
@@ -595,15 +604,18 @@ pub mod test {
         TC: Copy
             + PartialEq
             + 'static
+            + Bounded
             + Debug
             + Sub<Output = TC>
             + AsPrimitive<TI>
             + Mul<Output = TC>,
         TI: Copy
             + Add
+            + Sub<Output = TI>
             + Mul<Output = TI>
             + Debug
             + fmt::Display
+            + Ord
             + PartialEq
             + 'static
             + AsPrimitive<TC>
@@ -612,9 +624,15 @@ pub mod test {
         i64: AsPrimitive<TC>,
     {
         let len = K::mr() * K::nr();
-        let half_len: TC = (len / 2).as_();
-        let v: Vec<TC> =
-            (0..len).map(|f| (<usize as AsPrimitive<TC>>::as_(f) - half_len)).collect();
+        let half_len: TI = (len / 2).as_();
+        let v: Vec<TC> = (0..len)
+            .map(|f| {
+                (<usize as AsPrimitive<TI>>::as_(f) - half_len)
+                    .min(TC::max_value().as_())
+                    .max(TC::min_value().as_())
+                    .as_()
+            })
+            .collect();
         let found = fused_ops::<K, TA, TB, TC, TI>(
             &*v,
             &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QTowardsPlusInf((1 << 30).as_(), 2)],

@@ -344,7 +344,7 @@ where
                     c[3 * csc + 3 * rsc] = ab[3][3].as_();
                 }
                 VecStride { ptr: c, byte_stride } => {
-                    let stride = byte_stride / 4;
+                    let stride = byte_stride / std::mem::size_of::<TC>() as isize;
                     let c: *mut TC = c as _;
                     *c.offset(0 * stride) = ab[0][0].as_();
                     *c.offset(1 * stride) = ab[1][0].as_();
@@ -625,48 +625,13 @@ where
     }
 }
 
-#[cfg(test)]
-mod test_3_2_f {
-    mmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
-    mmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
-    mmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, f32, f32, f32, f32);
-}
+test_mmm_kernel_f32!(crate::generic::mmm::GenericMmm4x4<f32, f32, f32, f32>, test_GenericMmm4x4_f32, true);
+test_mmm_kernel_i8!(crate::generic::mmm::GenericMmm4x4<i8, i8, i8, i32>, test_GenericMmm4x4_i8, true);
+test_mmm_kernel_u8!(crate::generic::mmm::GenericMmm4x4<u8, u8, u8, i32>, test_GenericMmm4x4_u8, true);
+test_mmm_kernel_i8_i32!(crate::generic::mmm::GenericMmm4x4<i8, i8, i32, i32>, test_GenericMmm4x4_i8_i32, true);
 
-#[cfg(test)]
-mod test_3_2_i8 {
-    mmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8, i8, i32, i32);
-    mmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8, i8, i32, i32);
-    qmmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8, i8, i32, i32);
-    qmmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, i8);
-}
+test_mmm_kernel_f32!(crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>, test_GenericMmmTest3x2_f32, true);
+test_mmm_kernel_i8!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i8, i32>, test_GenericMmmTest3x2_i8, true);
+test_mmm_kernel_u8!(crate::generic::mmm::GenericMmmTest3x2<u8, u8, u8, i32>, test_GenericMmmTest3x2_u8, true);
+test_mmm_kernel_i8_i32!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, test_GenericMmmTest3x2_i8_i32, true);
 
-#[cfg(test)]
-mod test_3_2_u8 {
-    mmm_kernel_tests!(true, crate::generic::mmm::GenericMmmTest3x2<u8, u8, i32, i32>, u8, u8, i32, i32);
-    mmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<u8, u8, i32, i32>, u8, u8, i32, i32);
-    qmmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmmTest3x2<u8, u8, i32, i32>, u8, u8, i32, i32);
-    qmmm_frame_tests!(true, crate::generic::mmm::GenericMmmTest3x2<u8, u8, i32, i32>, u8);
-}
-
-#[cfg(test)]
-mod test {
-    mmm_kernel_tests!(true, crate::generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
-    mmm_kernel_fuse_tests!(true, crate::generic::mmm::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
-    mmm_frame_tests!(true, crate::generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32, f32, f32);
-}
-
-#[cfg(test)]
-mod test_i8 {
-    mmm_kernel_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
-    mmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
-    qmmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8, i8, i32, i32);
-    qmmm_frame_tests!(true, crate::generic::GenericMmm4x4<i8, i8, i32, i32>, i8);
-}
-
-#[cfg(test)]
-mod test_u8 {
-    mmm_kernel_tests!(true, crate::generic::GenericMmm4x4<u8, u8, i32, i32>, u8, u8, i32, i32);
-    mmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<u8, u8, i32, i32>, u8, u8, i32, i32);
-    qmmm_kernel_fuse_tests!(true, crate::generic::GenericMmm4x4<u8, u8, i32, i32>, u8, u8, i32, i32);
-    qmmm_frame_tests!(true, crate::generic::GenericMmm4x4<u8, u8, i32, i32>, u8);
-}

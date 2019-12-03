@@ -113,53 +113,16 @@ impl TanhKer<f32> for STanh4 {
     }
 }
 
-#[cfg(test)]
-mod test_mmm_f32 {
-    mmm_kernel_tests!(
-        crate::arm32::has_neon(),
-        crate::arm32::armv7neon::SMatMatMul8x4,
-        f32,
-        f32,
-        f32,
-        f32
-    );
-    mmm_frame_tests!(
-        crate::arm32::has_neon(),
-        crate::arm32::armv7neon::SMatMatMul8x4,
-        f32,
-        f32,
-        f32,
-        f32
-    );
-}
-
-#[cfg(test)]
-mod test_mmm_i8 {
-    mmm_kernel_tests!(
-        crate::arm32::has_neon(),
-        crate::arm32::armv7neon::I8MatMatMul8x4,
-        i8,
-        i8,
-        i8,
-        i32
-    );
-    mmm_kernel_fuse_tests!(
-        crate::arm32::has_neon(),
-        crate::arm32::armv7neon::I8MatMatMul8x4,
-        i8,
-        i8,
-        i8,
-        i32
-    );
-    qmmm_kernel_fuse_tests!(
-        crate::arm32::has_neon(),
-        crate::arm32::armv7neon::I8MatMatMul8x4,
-        i8,
-        i8,
-        i8,
-        i32
-    );
-}
+test_mmm_kernel_f32!(
+    crate::arm32::armv7neon::SMatMatMul8x4,
+    test_SMatMatMul8x4,
+    crate::arm32::has_neon()
+);
+test_mmm_kernel_i8!(
+    crate::arm32::armv7neon::I8MatMatMul8x4,
+    test_I8MatMatMul8x4,
+    crate::arm32::has_neon()
+);
 
 #[cfg(test)]
 mod test_neon_fn {
