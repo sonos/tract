@@ -274,6 +274,7 @@ pub mod test {
                 use crate::frame::mmm::fuse::test;
 
                 #[test]
+                #[ignore]
                 fn return_q_towards_even() {
                     if $cond {
                         test::return_q_towards_even::<$ker, $ta, $tb, $tc, $ti>()
@@ -592,6 +593,7 @@ pub mod test {
             if input.is_negative() {
                 trunc = -trunc;
             }
+            dbg!(trunc, found);
             trunc.as_() == found
         }));
     }

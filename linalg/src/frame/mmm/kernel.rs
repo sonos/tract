@@ -296,9 +296,6 @@ pub mod test {
             linear: &LinearSpec::k(k),
             non_linear: std::ptr::null(),
         });
-        dbg!(&pa);
-        dbg!(&b);
-        dbg!(&c);
         assert_eq!(err, 0);
         assert!(c.iter().all(|&a| a == k.as_()));
     }
