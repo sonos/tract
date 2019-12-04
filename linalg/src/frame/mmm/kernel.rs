@@ -237,7 +237,7 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy + One + AsPrimitive<TI>,
         TB: Copy + One + AsPrimitive<TI>,
-        TC: Copy + PartialEq + Zero + 'static,
+        TC: Copy + PartialEq + Zero + 'static + Debug,
         TI: Copy + Add + Zero + Mul<Output = TI> + Debug + fmt::Display + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
@@ -261,14 +261,15 @@ pub mod test {
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
-        assert!(v.iter().enumerate().all(|(ix, &v)| {
+        let expected:Vec<TC> = (0..v.len()).map(|ix| {
             let row = ix / K::nr();
             let col = ix % K::nr();
-            let s = (0..k)
+            (0..k)
                 .map(|i| pa[K::mr() * i + row].as_() * b[t * i + col].as_())
-                .fold(TI::zero(), |s, a| s + a);
-            v == s.as_()
-        }));
+                .fold(TI::zero(), |s, a| s + a)
+                .as_()
+        }).collect();
+        assert_eq!(v, expected);
     }
 
     pub fn packed_vec<K, TA, TB, TC, TI>(k: usize)
