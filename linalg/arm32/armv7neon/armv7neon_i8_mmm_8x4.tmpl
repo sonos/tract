@@ -69,14 +69,20 @@ armv7neon_i8_mmm_8x4:
     ldm             r6, {r5, r6, r7, r8}    // cols tops ptr
     pld             [r5]
 
-/*
     cmp r3, #4
     blt .packed_tops_and_offsets_loop_1
 
     .packed_tops_and_offsets_loop_4:
-    // 1
-    vldmia          r4!, { q0, q1, q2, q3 }
+
+    // q2: d4 -> d4,d5 A even cols (from r4)
+    // q3: d6 -> d6,d7 A odd cols
+    // q0: s0 -> d0 : B even lines (from r2/r6->r9..r12)
+    // q1: s4 -> d2 : B odd lines
+
+    // 0
+    vldmia          r4!, { d4 }
     ldm             r2!, { r1 }
+    vldmia          r4!, { d6 }
 
     add             r9, r5, r0
     add             r10, r6, r0
@@ -85,94 +91,105 @@ armv7neon_i8_mmm_8x4:
 
     ldm             r2!, { r0 }
 
-    vldr            s16, [r9]
+    vst1.s8         d0[0], [r9]
+    vst1.s8         d0[1], [r10]
+    vst1.s8         d0[2], [r11]
+    vst1.s8         d0[3], [r12]
     add             r9, r5, r1
-    vldr            s17, [r10]
     add             r10, r6, r1
-    vldr            s18, [r11]
     add             r11, r7, r1
-    vldr            s19, [r12]
     add             r12, r8, r1
 
     ldm             r2!, { r1 }
-    vmla.f32        q8, q0, d8[0]
-    vldr            s20, [r9]
-    vmla.f32        q9, q1, d8[0]
-    vldr            s21, [r10]
+    vmovl.s8        q2, d4
+    vmovl.s8        q0, d0
 
-    vmla.f32        q10, q0, d8[1]
-    vldr            s22, [r11]
-    vmla.f32        q11, q1, d8[1]
-    vldr            s23, [r12]
+    vmlal.s16       q8, d4, d0[0]
+    vst1.s8         d2[0], [r9]
+    vmlal.s16       q9, d5, d0[0]
+    vst1.s8         d2[1], [r10]
 
-    vmla.f32        q12, q0, d9[0]
+    vmlal.s16       q10, d4, d0[1]
+    vst1.s8         d2[2], [r11]
+    vmlal.s16       q11, d5, d0[1]
+    vst1.s8         d2[3], [r12]
+
+    vmlal.s16       q12, d4, d0[2]
     add             r9, r5, r0
-    vmla.f32        q13, q1, d9[0]
+    vmlal.s16       q13, d5, d0[2]
     add             r10, r6, r0
 
-    vmla.f32        q14, q0, d9[1]
+    vmlal.s16       q14, d4, d0[3]
     add             r11, r7, r0
-    vmla.f32        q15, q1, d9[1]
+    vmlal.s16       q15, d5, d0[3]
     add             r12, r8, r0
 
-    vldmia          r4!, { q0, q1 }
+    vldmia          r4!, { d4 }
+
+    // 1
+    vmovl.s8        q3, d6
+    vmovl.s8        q1, d2
+
+    vmlal.s16       q8, d6, d2[0]
+    ldm             r2!, { r0 }
+    vmlal.s16       q9, d7, d2[0]
+    vst1.s8         d0[0], [r9]
+
+    vmlal.s16       q10, d6, d2[1]
+    vst1.s8         d0[1], [r10]
+    vmlal.s16       q11, d7, d2[1]
+    vst1.s8         d0[2], [r11]
+
+    vmlal.s16       q12, d6, d2[2]
+    vst1.s8         d0[3], [r12]
+    vmlal.s16       q13, d7, d2[2]
+    add             r9, r5, r1
+
+    vmlal.s16       q14, d6, d2[3]
+    add             r10, r6, r1
+    vmlal.s16       q15, d7, d2[3]
+    add             r11, r7, r1
 
     // 2
-    vmla.f32        q8, q2, d10[0]
-    ldm             r2!, { r0 }
-    vmla.f32        q9, q3, d10[0]
-    vldr            s16, [r9]
 
-    vmla.f32        q10, q2, d10[1]
-    vldr            s17, [r10]
-    vmla.f32        q11, q3, d10[1]
-    vldr            s18, [r11]
+    vmovl.s8        q2, d4
+    vmovl.s8        q0, d0
 
-    vmla.f32        q12, q2, d11[0]
-    vldr            s19, [r12]
-    vmla.f32        q13, q3, d11[0]
-    add             r9, r5, r1
-
-    vmla.f32        q14, q2, d11[1]
-    add             r10, r6, r1
-    vmla.f32        q15, q3, d11[1]
-    add             r11, r7, r1
-
-    // 3
-
-    vmla.f32        q8, q0, d8[0]
+    vmlal.s16       q8, d4, d0[0]
     add             r12, r8, r1
-    vmla.f32        q9, q1, d8[0]
-    vldmia          r4!, { q2, q3 }
+    vmlal.s16       q9, d5, d0[0]
+    vldmia          r4!, { d6 }
 
-    vmla.f32        q10, q0, d8[1]
-    vldr            s20, [r9]
-    vmla.f32        q11, q1, d8[1]
-    vldr            s21, [r10]
+    vmlal.s16       q10, d4, d0[1]
+    vst1.s8         d2[0], [r9]
+    vmlal.s16       q11, d5, d0[1]
+    vst1.s8         d2[1], [r10]
 
-    vmla.f32        q12, q0, d9[0]
-    vldr            s22, [r11]
-    vmla.f32        q13, q1, d9[0]
-    vldr            s23, [r12]
+    vmlal.s16       q12, d4, d0[2]
+    vst1.s8         d2[2], [r11]
+    vmlal.s16       q13, d5, d0[2]
+    vst1.s8         d2[3], [r12]
 
-    vmla.f32        q14, q0, d9[1]
+    vmlal.s16       q14, d4, d0[3]
 //    pld             [r4, #64]
-    vmla.f32        q15, q1, d9[1]
+    vmlal.s16       q15, d5, d0[3]
 //    pld             [r2, #64]
 
-    // 4
+    // 3
+    vmovl.s8        q3, d6
+    vmovl.s8        q1, d2
 
-    vmla.f32        q8, q2, d10[0]
-    vmla.f32        q9, q3, d10[0]
+    vmlal.s16       q8, d6, d2[0]
+    vmlal.s16       q9, d7, d2[0]
 
-    vmla.f32        q10, q2, d10[1]
-    vmla.f32        q11, q3, d10[1]
+    vmlal.s16       q10, d6, d2[1]
+    vmlal.s16       q11, d7, d2[1]
 
-    vmla.f32        q12, q2, d11[0]
-    vmla.f32        q13, q3, d11[0]
+    vmlal.s16       q12, d6, d2[2]
+    vmlal.s16       q13, d7, d2[2]
 
-    vmla.f32        q14, q2, d11[1]
-    vmla.f32        q15, q3, d11[1]
+    vmlal.s16       q14, d6, d2[3]
+    vmlal.s16       q15, d7, d2[3]
     sub r3, r3, #4
 
     cmp r3, #4
@@ -180,9 +197,10 @@ armv7neon_i8_mmm_8x4:
 
     cmp r3, #0
     beq .packed_tops_and_offsets_end
-*/
+
     .packed_tops_and_offsets_loop_1:
-    vldmia          r4!, { s0, s1 }
+
+    vldmia          r4!, { d0 }
     vmovl.s8        q0, d0
 
     add             r9, r5, r0
