@@ -55,7 +55,7 @@ fn all(c: &mut Criterion) {
     packed_packed(c, 256, 200, 24); // tdnn1
     packed_packed(c, 256, 256, 8); // fastlstm1 and 2
     packed_packed(c, 1690, 256, 8); // output
-    direct_conv(c, 24, 3, 256, 256); // tdnn2
+//    direct_conv(c, 24, 3, 256, 256); // tdnn2
 }
 
 criterion_group!(benches, all);
