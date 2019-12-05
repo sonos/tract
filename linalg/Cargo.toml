@@ -49,5 +49,9 @@ name = "mm_for_inception"
 harness = false
 
 [[bench]]
+name = "mm_for_asr_am"
+harness = false
+
+[[bench]]
 name = "sigmoid"
 harness = false
