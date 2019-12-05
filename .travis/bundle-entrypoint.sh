@@ -24,7 +24,7 @@ echo binary_size.cli $binary_size_cli > metrics
     mkdir -p target/criterion
     for bench in benches/*
     do
-        $bench
+        $bench --bench
     done
     for bench in `find target/criterion -path "*/new/*" -name raw.csv`
     do
