@@ -2,6 +2,7 @@ use std::{env, fs};
 mod armv7neon;
 mod armvfpv2;
 use crate::frame::MatMatMulImpl;
+use crate::frame::QMatMatMulImpl;
 use crate::frame::SigmoidImpl;
 use crate::frame::TanhImpl;
 
@@ -26,6 +27,15 @@ pub fn plug(ops: &mut Ops) {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
         ops.smmm = Box::new(|m, k, n| {
             Box::new(MatMatMulImpl::<armv7neon::SMatMatMul8x4, f32, f32, f32, f32>::new(m, k, n))
+        });
+        ops.qmmm_i8_i8 = Box::new(|m, k, n| {
+            Box::new(QMatMatMulImpl::from(MatMatMulImpl::<
+                armv7neon::I8MatMatMul8x4,
+                i8,
+                i8,
+                i8,
+                i32,
+            >::new(m, k, n)))
         });
         ops.ssigmoid = Box::new(|| Box::new(SigmoidImpl::<armv7neon::SSigmoid4, f32>::new()));
         ops.stanh = Box::new(|| Box::new(TanhImpl::<armv7neon::STanh4, f32>::new()));
