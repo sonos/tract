@@ -33,46 +33,51 @@ fn packed_packed(c: &mut Criterion, m: usize, k: usize, n: usize) {
 
 type ConvGeo = (usize, usize, usize, usize, usize);
 
-fn direct_conv_geo(&(pulse, kern, ci, co, stride): &ConvGeo)
- -> (usize, usize, usize, Vec<isize>, Vec<isize>) {
+fn direct_conv_geo(
+    &(pulse, kern, ci, co, stride): &ConvGeo,
+) -> (usize, usize, usize, Vec<isize>, Vec<isize>, usize) {
     let (m, k, n) = (co, kern * ci, pulse / stride);
-    let rows_offsets: Vec<isize> = (0..ci)
-        .flat_map(move |ici| (0..kern).map(move |ik| (ik * ci + ici) as isize))
-        .collect();
+    let rows_offsets: Vec<isize> =
+        (0..ci).flat_map(move |ici| (0..kern).map(move |ik| (ik * ci + ici) as isize)).collect();
     let cols_offsets: Vec<isize> = (0..n).map(move |i| (i * ci * stride) as isize).collect();
-    (m, k, n, rows_offsets, cols_offsets)
+    let b_len = cols_offsets.iter().max().unwrap() + rows_offsets.iter().max().unwrap() + 1;
+    (m, k, n, rows_offsets, cols_offsets, b_len as usize)
 }
 
 fn direct_conv_smmm(be: &mut Bencher, geo: &ConvGeo) {
-    let (m, k, n, rows_offsets, cols_offsets) = direct_conv_geo(geo);
+    let (m, k, n, rows_offsets, cols_offsets, b_len) = direct_conv_geo(geo);
     let mm = (tract_linalg::ops().smmm)(m, k, n);
     let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
-    let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
+    let pb = vec![0.0; b_len];
     let mut c = vec![0.0; m * n];
     let mut mm = (tract_linalg::ops().smmm)(m, k, n);
     unsafe {
         mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
     }
-    be.iter(move || unsafe { mm.run(pa, pb, c.as_mut_ptr(), &[]) });
+    be.iter(move || unsafe { mm.run(pa, pb.as_ptr(), c.as_mut_ptr(), &[]) });
 }
 
 fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
-    let (m, k, n, rows_offsets, cols_offsets) = direct_conv_geo(geo);
+    let (m, k, n, rows_offsets, cols_offsets, b_len) = direct_conv_geo(geo);
     let mm = (tract_linalg::ops().smmm)(m, k, n);
     let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
-    let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
+    let pb = vec![0; b_len];
     let mut c = vec![0; m * n];
     let mut mm = (tract_linalg::ops().qmmm_i8_i8)(m, k, n);
     unsafe {
         mm.as_mmm_mut().b_from_data_and_offsets(&rows_offsets, &cols_offsets);
     }
-    be.iter(move || unsafe { mm.run(pa, pb, c.as_mut_ptr(), &[]) });
+    be.iter(move || unsafe { mm.run(pa, pb.as_ptr(), c.as_mut_ptr(), &[]) });
 }
 
 fn direct_conv(c: &mut Criterion, p: usize, kl: usize, ci: usize, co: usize, stride: usize) {
     let mut group = c.benchmark_group("conv");
     let id = format!("{}x{}x{}x{}", p, kl, ci, co);
-    group.bench_with_input(BenchmarkId::new("f32", &id), &(p, kl, ci, co, stride), direct_conv_smmm);
+    group.bench_with_input(
+        BenchmarkId::new("f32", &id),
+        &(p, kl, ci, co, stride),
+        direct_conv_smmm,
+    );
     group.bench_with_input(BenchmarkId::new("i8", &id), &(p, kl, ci, co, stride), direct_conv_i8);
 }
 
