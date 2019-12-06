@@ -22,7 +22,7 @@ echo "export PLATFORM=$PLATFORM" >> $TASK_NAME/vars
 
 mkdir $TASK_NAME/benches
 cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
-for bench in mm_for_wavenet_hw conv_for_wavenet_hw
+for bench in mm_for_wavenet_hw conv_for_wavenet_hw mm_for_asr_am
 do
     exe=`ls -t target/$RUSTC_TRIPLE/release/$bench-???????????????? | head -1`
     cp $exe $TASK_NAME/benches/$bench
