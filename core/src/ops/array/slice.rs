@@ -88,6 +88,15 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
         Ok(axes)
     }
 
+    fn dispose_dummy_axis(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+        axis: usize,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        Ok(Some(Box::new(Slice { axis: self.axis - (self.axis > axis) as usize, ..self.clone() })))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,

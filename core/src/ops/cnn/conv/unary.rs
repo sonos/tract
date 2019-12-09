@@ -359,7 +359,10 @@ impl TypedOp for ConvUnary {
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
-        let mut axes = vec![AxisInfo::simple(0).disposable(false)];
+        let mut axes = vec![];
+        if let Some(n_axis) = shape.n_axis() {
+            axes.push(AxisInfo::simple(n_axis).disposable(true));
+        }
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let h_axis = shape.h_axis();
@@ -435,8 +438,14 @@ impl TypedOp for ConvUnary {
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let shape = self.pool_spec.data_format.shape(full_input_shape);
-        if axis < shape.h_axis() {
-            bail!("Only spatial axis can be disposed of.");
+        if Some(axis) == shape.n_axis() {
+            return Ok(Some(Box::new(ConvUnary {
+                pool_spec: self.pool_spec.dispose_n_axis(),
+                .. self.clone()
+            })))
+        }
+        if axis == shape.c_axis() {
+            bail!("Channel axis can not be disposed of");
         }
         let geo_axis = axis - shape.h_axis();
         if geo_axis >= shape.hw_rank() {
@@ -495,7 +504,8 @@ impl TypedOp for ConvUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_fact = model.outlet_fact(node.inputs[0])?;
-        let spatial_rank = full_input_shape.len() - 2;
+        let input_shape = self.pool_spec.data_format.shape(&full_input_shape);
+        let spatial_rank = input_shape.hw_rank();
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         if let Some(shape) = input_fact.shape.as_finite() {
             unsafe {
@@ -506,7 +516,7 @@ impl TypedOp for ConvUnary {
                     && self.group == 1
                 {
                     if self.kernel_fmt == KernelFormat::HWIO
-                        && self.pool_spec.data_format == DataFormat::NHWC
+                        && input_shape.c_axis() == input_shape.rank() - 1
                     {
                         use crate::ops::math::mat_mul::MatMulUnary;
                         let mut patch = TypedModelPatch::default();
@@ -515,7 +525,7 @@ impl TypedOp for ConvUnary {
                             &*node.name,
                             TypedReshape::new(tvec!(
                                 full_input_shape[0].clone(),
-                                full_input_shape[1..][..full_input_shape.len() - 2]
+                                input_shape.hw_dims()
                                     .iter()
                                     .cloned()
                                     .product::<TDim>(),
