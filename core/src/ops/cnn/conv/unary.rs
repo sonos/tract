@@ -219,8 +219,8 @@ impl ConvUnary {
 
         let mut mmm = mmm(m, k, n);
         let (rsc, csc) = match output_shape.fmt {
-            DataFormat::NHWC => (1, self.output_channels() as isize),
-            DataFormat::NCHW => (n as isize, 1),
+            DataFormat::NHWC|DataFormat::HWC => (1, self.output_channels() as isize),
+            DataFormat::NCHW|DataFormat::CHW => (n as isize, 1),
         };
         mmm.as_mmm_mut().c_from_data_and_strides(rsc, csc);
 
@@ -228,7 +228,13 @@ impl ConvUnary {
             mmm.set_quant_params(q)?;
         }
 
-        trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
+        trace!(
+            "Gemm iters={} m={} k={} n={}",
+            input_shape.n_dim().unwrap_or(&1) * self.group,
+            m,
+            k,
+            n
+        );
         trace!("{:?}", mmm);
 
         if direct {
@@ -266,14 +272,15 @@ impl ConvUnary {
             )?[0];
         }
 
-        let c_prefix_dim_and_stride = if *output_shape.n() != 1 || self.group != 1 {
-            Some((
-                tvec!(*output_shape.n(), self.group),
-                tvec![
-                    *output_shape.n_stride() as isize,
-                    (output_shape.c() / self.group * output_shape.c_stride()) as isize
-                ],
-            ))
+        let c_prefix_dim_and_stride = if *output_shape.n().unwrap_or(&1) != 1 || self.group != 1 {
+            let mut dims = tvec!(self.group as usize);
+            let mut strides =
+                tvec!((output_shape.c() / self.group * output_shape.c_stride()) as isize);
+            if output_shape.n().is_some() {
+                dims.insert(0, *output_shape.n().unwrap());
+                strides.insert(0, *output_shape.n_stride().unwrap() as isize);
+            }
+            Some((dims, strides))
         } else {
             None
         };
@@ -412,9 +419,10 @@ impl TypedOp for ConvUnary {
         let n_output_points: TDim = output_dims.iter().map(|d| d.output.clone()).product::<TDim>();
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
+        let one = 1.to_dim();
         Ok(tvec!((
             Cost::FMA(inputs[0].datum_type),
-            shape.n().clone() * shape.c() * n_output_channels * n_output_points * kernel_surface
+            shape.n().unwrap_or(&one).clone() * shape.c() * n_output_channels * n_output_points * kernel_surface
                 / self.group
         )))
     }
