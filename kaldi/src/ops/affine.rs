@@ -43,6 +43,7 @@ impl Affine {
         let conv = Conv::default()
             .nhwc()
             .hwio()
+            .bias_input(2)
             .dilations(tvec!(self.dilation))
             .kernel_shape(tvec!(self.kernel_len));
         trace!("{:?} -> {:?}", self, conv);

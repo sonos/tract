@@ -135,9 +135,7 @@ impl ConvUnary {
         Ok(packed_as.insert_axis(Axis(0)))
     }
 
-    fn bias_as_non_linear<T>(
-        &self,
-    ) -> TractResult<Option<ArrayD<Vec<FusedSpec<T>>>>>
+    fn bias_as_non_linear<T>(&self) -> TractResult<Option<ArrayD<Vec<FusedSpec<T>>>>>
     where
         T: Datum + Copy,
     {
@@ -173,22 +171,22 @@ impl ConvUnary {
         if (a, b) == (f32::datum_type(), f32::datum_type()) {
             return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
                 MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n))
-            })
+            });
         } else if (a, b) == (u8::datum_type(), u8::datum_type()) {
             return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
                 MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_i32)(m, k, n))
-            })
+            });
         } else if (a, b) == (i8::datum_type(), i8::datum_type()) {
             if let Some(q) = &self.q_params {
                 if q.c_datum_type == i8::datum_type() {
                     return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
                         MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i8)(m, k, n))
-                    })
+                    });
                 }
             } else {
                 return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
                     MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
-                })
+                });
             }
         }
         bail!("Unsupported combination for Conv (filters: {:?}, data:{:?})", a, b);
@@ -530,6 +528,13 @@ impl TypedOp for ConvUnary {
                             ),
                             &[wire],
                         )?[0];
+                        if let Some(ref bias) = self.bias {
+                            wire = patch.wire_node(
+                                format!("{}-bias", node.name),
+                                crate::ops::math::add::unary(bias.clone()),
+                                &[wire],
+                            )?[0];
+                        }
                         wire = patch.wire_node(
                             &*node.name,
                             TypedReshape::new(node.outputs[0].fact.shape.to_tvec()),
