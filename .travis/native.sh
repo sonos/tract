@@ -94,7 +94,7 @@ fi
 [ -e kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ] \
     || (rm -f kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ; ln -s $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/ )
 
-( cd kaldi/test_cases TRACT_RUN=../../target/release/tract ./run_all.sh )
+( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 
 # these tests require access to private snips models
 if [ -n "$RUN_ALL_TESTS" ]
