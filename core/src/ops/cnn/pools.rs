@@ -149,6 +149,13 @@ impl PoolSpec {
         }
     }
 
+    pub fn dispose_n_axis(&self) -> PoolSpec {
+        PoolSpec {
+            data_format: self.data_format.dispose_n_axis(),
+            .. self.clone()
+        }
+    }
+
     pub fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let ishape = self.data_format.shape(&inputs[0].shape);
         let ones = tvec![1; ishape.hw_rank()];

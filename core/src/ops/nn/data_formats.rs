@@ -17,6 +17,14 @@ impl Default for DataFormat {
 }
 
 impl DataFormat {
+    pub fn dispose_n_axis(&self) -> DataFormat {
+        match self {
+            &DataFormat::NCHW => DataFormat::CHW,
+            &DataFormat::NHWC => DataFormat::HWC,
+            _ => panic!("Attempt at removing N axis on {:?}", self)
+        }
+    }
+
     pub fn shape<D, S>(&self, shape: S) -> BaseDataShape<D, S>
     where
         D: DimLike,
@@ -80,7 +88,7 @@ where
     pub fn n_axis(&self) -> Option<usize> {
         match self.fmt {
             DataFormat::NHWC | DataFormat::NCHW => Some(0),
-            DataFormat::HWC | DataFormat::CHW => Some(0),
+            DataFormat::HWC | DataFormat::CHW => None,
         }
     }
 
