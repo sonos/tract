@@ -72,7 +72,7 @@ impl InferenceRulesOp for DepthwiseConv2d {
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, img, ker| {
             let img = self.data_format.shape(img);
             s.equals(&inputs[1].shape[2], &inputs[0].shape[img.c_axis()])?;
-            s.equals(&outputs[0].shape[img.n_axis()], img.n_dim())?;
+            s.equals(&outputs[0].shape[img.n_axis().unwrap()], img.n_dim().unwrap())?;
             if ker.iter().all(|d| d.to_integer().is_ok()) {
                 let ker: TVec<usize> =
                     ker.iter().map(|d| d.to_integer().unwrap() as usize).collect();

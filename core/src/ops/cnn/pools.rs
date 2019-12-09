@@ -35,8 +35,8 @@ impl PoolSpec {
     pub fn compute_geo(&self, input_full_shape: &[usize]) -> (DataShape, Patch, DataShape) {
         let input_shape = self.data_format.shape(input_full_shape.into());
         let output_inner_stride = match self.data_format {
-            DataFormat::NCHW => 1,
-            DataFormat::NHWC => self.output_channel_override.clone().unwrap_or(*input_shape.c()),
+            DataFormat::NCHW|DataFormat::CHW => 1,
+            DataFormat::NHWC|DataFormat::HWC => self.output_channel_override.clone().unwrap_or(*input_shape.c()),
         };
         let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)
             .with_output_inner_stride(output_inner_stride)
@@ -50,7 +50,7 @@ impl PoolSpec {
         }
         let patch = spec.into_patch();
         let output_shape = input_shape.fmt.from_n_c_hw(
-            *input_shape.n(),
+            *input_shape.n().unwrap_or(&1),
             self.output_channel_override.unwrap_or(*input_shape.c()),
             &*patch.output_shape,
         );
@@ -77,7 +77,9 @@ impl PoolSpec {
                 for (ix, d) in computed.iter().enumerate() {
                     s.equals(&outputs[o].shape[ix + ishape.h_axis()], &d.output)?;
                 }
-                s.equals(&outputs[o].shape[ishape.n_axis()], ishape.n_dim())?;
+                if ishape.n_axis().is_some() {
+                    s.equals(&outputs[o].shape[ishape.n_axis().unwrap()], ishape.n_dim().unwrap())?;
+                }
                 if let Some(c) = self.output_channel_override {
                     s.equals(&outputs[o].shape[ishape.c_axis()], c.to_dim())?;
                 } else {
@@ -99,7 +101,7 @@ impl PoolSpec {
         );
         let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<TDim>>();
         let oshape = self.data_format.from_n_c_hw(
-            ishape.n().clone(),
+            ishape.n().cloned().unwrap_or(1.to_dim()),
             self.output_channel_override.map(|i| i.to_dim()).unwrap_or(ishape.c().clone()),
             spatial_dims,
         );
@@ -117,7 +119,7 @@ impl PoolSpec {
         let input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?.clone();
         let input_shape = self.data_format.shape(&*fact.shape);
-        if fact.axis == input_shape.n_axis() {
+        if Some(fact.axis) == input_shape.n_axis() {
             target.wire_node(&*node.name, objekt::clone_box(op), &[input])
         } else if fact.axis == input_shape.c_axis() {
             bail!("Can not pulsify cnn pooling ops along the input channel axis");
@@ -158,7 +160,7 @@ impl PoolSpec {
         );
         let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<usize>>();
         let oshape = self.data_format.from_n_c_hw(
-            ishape.n().clone(),
+            ishape.n().cloned().unwrap_or(1),
             self.output_channel_override.unwrap_or(*ishape.c()),
             spatial_dims,
         );

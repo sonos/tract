@@ -42,9 +42,9 @@ where
         let mult = *self.output_shape.c() / *self.input_shape.c();
         unsafe {
             self.patch.visit_output(|visitor| {
-                for n in 0..*self.input_shape.n() {
-                    let input_offset = *self.input_shape.n_stride() * n;
-                    let output_offset = *self.output_shape.n_stride() * n;
+                for n in 0..*self.input_shape.n().unwrap_or(&1) {
+                    let input_offset = *self.input_shape.n_stride().unwrap_or(&0) * n;
+                    let output_offset = *self.output_shape.n_stride().unwrap_or(&0) * n;
                     for c in 0..*self.input_shape.c() {
                         let input_offset = input_offset + self.input_shape.c_stride() * c;
                         for m in 0..mult {
@@ -87,7 +87,7 @@ where
         let n_output_points = self.patch.output_shape.iter().cloned().product::<usize>();
         Ok(tvec!((
             Cost::FMA(T::datum_type()),
-            (self.input_shape.n() * n_output_points * self.kernel_chw.len()).to_dim()
+            (self.input_shape.n().unwrap_or(&1) * n_output_points * self.kernel_chw.len()).to_dim()
         )))
     }
 

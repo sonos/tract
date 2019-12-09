@@ -158,9 +158,9 @@ where
                     visitor.valid_count()
                 };
                 let div = div.as_().recip();
-                for n in 0..*self.input_shape.n() {
-                    let input_offset = self.input_shape.n_stride() * n;
-                    let output_offset = self.output_shape.n_stride() * n;
+                for n in 0..*self.input_shape.n().unwrap_or(&1) {
+                    let input_offset = self.input_shape.n_stride().unwrap_or(&0) * n;
+                    let output_offset = self.output_shape.n_stride().unwrap_or(&0) * n;
                     for c in 0..*self.input_shape.c() {
                         let input_offset = input_offset + self.input_shape.c_stride() * c;
                         let output_offset = output_offset + self.output_shape.c_stride() * c;
