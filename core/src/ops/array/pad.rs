@@ -88,6 +88,15 @@ impl Op for Pad {
         "Pad".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!(
+            "Mode: {:?}, pads: {:?})",
+            self.mode,
+            self.pads,
+        )))
+    }
+
+    canonic!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -281,9 +290,20 @@ struct PulsePad<T: Datum + Copy> {
 
 impl<T: Datum + Copy> Op for PulsePad<T> {
     fn name(&self) -> Cow<str> {
-        "Pad".into()
+        "PulsePad".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!(
+            "Mode: {:?}, axis: {} before: {} after: {}",
+            self.mode,
+            self.axis,
+            self.before,
+            self.after,
+        )))
+    }
+
+    canonic!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
