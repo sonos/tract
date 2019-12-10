@@ -150,6 +150,9 @@ where
         let input_ptr = input.as_ptr();
 
         let mut values = unsafe { ArrayD::<T>::uninitialized(&*self.output_shape.shape) };
+        let n = *self.input_shape.n().unwrap_or(&1);
+        let n_stride_i = self.input_shape.n_stride().unwrap_or(&0);
+        let n_stride_o = self.output_shape.n_stride().unwrap_or(&0);
         unsafe {
             self.patch.visit_output(|visitor| {
                 let div = if self.count_include_pad {
@@ -158,9 +161,9 @@ where
                     visitor.valid_count()
                 };
                 let div = div.as_().recip();
-                for n in 0..*self.input_shape.n().unwrap_or(&1) {
-                    let input_offset = self.input_shape.n_stride().unwrap_or(&0) * n;
-                    let output_offset = self.output_shape.n_stride().unwrap_or(&0) * n;
+                for n in 0..n {
+                    let input_offset = n * n_stride_i;
+                    let output_offset = n * n_stride_o;
                     for c in 0..*self.input_shape.c() {
                         let input_offset = input_offset + self.input_shape.c_stride() * c;
                         let output_offset = output_offset + self.output_shape.c_stride() * c;

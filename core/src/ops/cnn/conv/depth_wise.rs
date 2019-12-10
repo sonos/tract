@@ -41,12 +41,13 @@ where
         let k_stride_i = self.kernel_chw.strides()[1];
         let mult = *self.output_shape.c() / *self.input_shape.c();
         let n = *self.input_shape.n().unwrap_or(&1);
-        let n_stride = *self.input_shape.n_stride().unwrap_or(&0);
+        let n_stride_i = *self.input_shape.n_stride().unwrap_or(&0);
+        let n_stride_o = *self.output_shape.n_stride().unwrap_or(&0);
         unsafe {
             self.patch.visit_output(|visitor| {
                 for n in 0..n {
-                    let input_offset = n_stride * n;
-                    let output_offset = n_stride * n;
+                    let input_offset = n_stride_i * n;
+                    let output_offset = n_stride_o * n;
                     for c in 0..*self.input_shape.c() {
                         let input_offset = input_offset + self.input_shape.c_stride() * c;
                         for m in 0..mult {
