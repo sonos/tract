@@ -380,8 +380,7 @@ impl TypedOp for ConvUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
-        let full_input_shape = input_fact.shape.to_tvec();
-        let spatial_rank = full_input_shape.len() - 2;
+        let spatial_rank = self.kernel.rank() - 2;
         if let Some(axis) = (0..spatial_rank).find(|&ax| {
             self.pool_spec.padding.valid_dim(ax)
                 && self.pool_spec.stride(ax) > 1
@@ -524,7 +523,7 @@ impl TypedOp for ConvUnary {
                         wire = patch.wire_node(
                             &*node.name,
                             TypedReshape::new(tvec!(
-                                full_input_shape[0].clone(),
+                                input_shape.n().cloned().unwrap_or(1.to_dim()),
                                 input_shape.hw_dims()
                                     .iter()
                                     .cloned()
