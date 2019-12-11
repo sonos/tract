@@ -502,6 +502,52 @@ impl TypedOp for UnaryOp {
         return Ok(invs.into_iter().collect());
     }
 
+    fn slice_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        patch: &mut TypedModelPatch,
+        _output_slot: usize,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<OutletId>> {
+        let b = model.outlet_fact(node.inputs[0])?;
+        if b.shape.rank() < self.a.shape().len() {
+            return Ok(None);
+        }
+        let prec = model.node(node.inputs[0].node);
+        let wire = prec.op().as_typed().unwrap().slice_output(
+            model,
+            &prec,
+            patch,
+            node.inputs[0].slot,
+            axis,
+            start,
+            end,
+        )?;
+        let wire = if let Some(w) = wire { w } else { return Ok(None) };
+        let a_broadcast_prefix = b.shape.rank() - self.a.rank();
+        if axis < a_broadcast_prefix || self.a.shape()[axis - a_broadcast_prefix] == 1 {
+            return Ok(Some(
+                patch.wire_node(
+                    format!("{}-sliced-{}-{}", node.name, start, end),
+                    self.clone(),
+                    &[wire],
+                )?[0],
+            ));
+        } else {
+            let a = self.a.slice(axis, start, end)?;
+            return Ok(Some(
+                patch.wire_node(
+                    format!("{}-sliced-{}-{}", node.name, start, end),
+                    Self::new(self.mini_op.clone(), a.into_arc_tensor()),
+                    &[wire],
+                )?[0],
+            ));
+        }
+    }
+
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
         Ok(self

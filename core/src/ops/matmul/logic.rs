@@ -1,6 +1,6 @@
 use num_traits::Zero;
 use std::fmt;
-use std::ops::{Add,  Mul};
+use std::ops::{Add, Mul};
 
 use crate::internal::*;
 use crate::ops::matmul::*;
@@ -467,6 +467,33 @@ impl TypedOp for MatMulUnary {
             invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
         };
         Ok(invars.into_iter().collect())
+    }
+
+    fn slice_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        patch: &mut TypedModelPatch,
+        _output_slot: usize,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<OutletId>> {
+        let b_fact = model.outlet_fact(node.inputs[0])?;
+        let c_fact = &self.output_facts(&[b_fact])?[0];
+        if axis + self.c_trans as usize == c_fact.shape.rank() {
+            let a_split_axis = self.a.rank() - 1 - !self.a_trans as usize;
+            let a = self.a.slice(a_split_axis, start, end)?.into_arc_tensor();
+            let wire = patch.tap_model(model, node.inputs[0])?;
+            return Ok(Some(
+                patch.wire_node(
+                    format!("{}-sliced-m-{}-{}", node.name, start, end),
+                    Self { a, ..self.clone() },
+                    &[wire],
+                )?[0],
+            ));
+        }
+        return Ok(None)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
