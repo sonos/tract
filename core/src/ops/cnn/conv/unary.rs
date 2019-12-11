@@ -360,7 +360,6 @@ impl ConvUnary {
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape);
         if input_shape.rank() == 2
-            && self.bias.is_none()
             && input_shape.n_axis().is_none()
             && self.group == 1
             && self.pool_spec.stride(0) == 1
@@ -384,7 +383,21 @@ impl ConvUnary {
                 c_trans: trans_data,
                 q_params: self.q_params.clone(),
             };
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?));
+
+            let mut patch = TypedModelPatch::default();
+            let wire = patch.tap_model(model, node.inputs[0])?;
+            let mut wire = patch.wire_node(&*node.name, op, &[wire])?[0];
+            if let Some(b) = &self.bias {
+                let bias_shape = if trans_data { tvec!(co) } else { tvec!(co, 1) };
+                let b = unsafe { b.clone().into_tensor().into_shape(&bias_shape)? };
+                wire = patch.wire_node(
+                    format!("{}-bias", node.name),
+                    crate::ops::math::add::unary(b.into_arc_tensor()),
+                    &[wire],
+                )?[0];
+            }
+            patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+            return Ok(Some(patch));
         }
         Ok(None)
     }
