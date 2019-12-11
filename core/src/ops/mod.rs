@@ -22,6 +22,7 @@ pub mod dummy;
 pub mod identity;
 pub mod konst;
 pub mod logic;
+pub mod matmul;
 pub mod math;
 pub mod nn;
 pub mod quant;

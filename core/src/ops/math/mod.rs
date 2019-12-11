@@ -1,7 +1,3 @@
-pub mod mat_mat_mul;
-pub mod mat_mul;
-
-pub use self::mat_mul::{MatMul, MatMulUnary};
 use crate::internal::*;
 use num_traits::{Float, Zero};
 

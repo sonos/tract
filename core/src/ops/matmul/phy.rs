@@ -5,7 +5,7 @@ use std::ops::{Add, Mul};
 use crate::internal::*;
 use ndarray::*;
 
-use super::mat_mul::MMMWrapper;
+use super::MMMWrapper;
 use tract_linalg::mmm::FusedSpec;
 
 use tract_linalg::frame::PackB;
@@ -242,16 +242,6 @@ where
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.c_shape)?))
     }
-
-    /*
-    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let g = &self.geo;
-        Ok(tvec!((
-            Cost::FMA(T::datum_type()),
-            (g.c_shape_prefix.iter().product::<usize>() * g.m * g.k * g.n).into()
-        )))
-    }
-    */
 
     typed_op_as_op!();
 }

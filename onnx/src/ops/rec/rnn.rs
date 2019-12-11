@@ -133,7 +133,7 @@ impl InferenceRulesOp for RNN {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        use tract_core::ops::{array, math, scan};
+        use tract_core::ops::{array, math, matmul, scan};
 
         let x_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
         let r_fact = target.outlet_fact(mapping[&node.inputs[2]])?;
@@ -243,8 +243,8 @@ impl InferenceRulesOp for RNN {
         };
 
         // Ht = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
-        wire!(Xt_WiT = math::MatMul::default().with_b_trans(true), Xt, W);
-        wire!(Ht_1_RiT = math::MatMul::default().with_b_trans(true), Ht_1, R);
+        wire!(Xt_WiT = matmul::MatMul::default().with_b_trans(true), Xt, W);
+        wire!(Ht_1_RiT = matmul::MatMul::default().with_b_trans(true), Ht_1, R);
 
         wire!(ht0 = math::add::bin(), Xt_WiT, Ht_1_RiT);
         let mut ht0 = ht0;
