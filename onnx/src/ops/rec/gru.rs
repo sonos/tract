@@ -135,7 +135,7 @@ impl InferenceRulesOp for GRU {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        use tract_core::ops::{array, math, scan};
+        use tract_core::ops::{array, math, matmul, scan};
 
         let x_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
         let r_fact = target.outlet_fact(mapping[&node.inputs[2]])?;
@@ -244,8 +244,8 @@ impl InferenceRulesOp for GRU {
         wire!(Wh = array::Slice::new(0, 2 * h_size, 3 * h_size), W);
 
         // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
-        wire!(Xt_WzT = math::MatMul::default().with_b_trans(true), Xt, Wz);
-        wire!(Ht_1_RzT = math::MatMul::default().with_b_trans(true), Ht_1, Rz);
+        wire!(Xt_WzT = matmul::MatMul::default().with_b_trans(true), Xt, Wz);
+        wire!(Ht_1_RzT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rz);
         wire!(zt0 = math::add::bin(), Xt_WzT, Ht_1_RzT);
         let mut zt0 = zt0;
         if let Some(b) = b {
@@ -258,8 +258,8 @@ impl InferenceRulesOp for GRU {
         wire!(zt = self.f.clone(), zt0);
 
         // rt = f(Xt*(Wr^T) + Ht-1*(Rr^T) + Wbr + Rbr)
-        wire!(Xt_WrT = math::MatMul::default().with_b_trans(true), Xt, Wr);
-        wire!(Ht_1_RrT = math::MatMul::default().with_b_trans(true), Ht_1, Rr);
+        wire!(Xt_WrT = matmul::MatMul::default().with_b_trans(true), Xt, Wr);
+        wire!(Ht_1_RrT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rr);
         wire!(rt0 = math::add::bin(), Xt_WrT, Ht_1_RrT);
         let mut rt0 = rt0;
         if let Some(b) = b {
@@ -273,14 +273,14 @@ impl InferenceRulesOp for GRU {
 
         // ht = g(Xt*(Wh^T) + (rt (.) Ht-1)*(Rh^T) + Rbh + Wbh) # default, when linear_before_reset = 0
         // ht = g(Xt*(Wh^T) + (rt (.) (Ht-1*(Rh^T) + Rbh)) + Wbh) # when linear_before_reset != 0
-        wire!(Xt_WhT = math::MatMul::default().with_b_trans(true), Xt, Wh);
+        wire!(Xt_WhT = matmul::MatMul::default().with_b_trans(true), Xt, Wh);
         let rt_Ht_1_RhT = if self.linear_before_reset {
-            wire!(Ht_1_RhT = math::MatMul::default().with_b_trans(true), Ht_1, Rh);
+            wire!(Ht_1_RhT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rh);
             wire!(rt_Ht_1_RhT = math::mul::bin(), rt, Ht_1_RhT);
             rt_Ht_1_RhT
         } else {
             wire!(rt_Ht_1 = math::mul::bin(), rt, Ht_1);
-            wire!(rt_Ht_1_RhT = math::MatMul::default().with_b_trans(true), rt_Ht_1, Rh);
+            wire!(rt_Ht_1_RhT = matmul::MatMul::default().with_b_trans(true), rt_Ht_1, Rh);
             rt_Ht_1_RhT
         };
         wire!(ht0 = math::add::bin(), Xt_WhT, rt_Ht_1_RhT);

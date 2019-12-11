@@ -50,7 +50,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 
     reg.insert("Pow", |_, _| Ok((Box::new(tractops::math::pow::bin()), vec![])));
 
-    reg.insert("MatMul", |_, _| Ok((Box::new(tractops::math::MatMul::default()), vec![])));
+    reg.insert("MatMul", |_, _| Ok((Box::new(tractops::matmul::MatMul::default()), vec![])));
     reg.insert("MatMulInteger", mat_mul_integer::mat_mul_integer);
     reg.insert("QLinearMatMul", mat_mul_integer::q_linear_mat_mul);
     reg.insert("Gemm", gemm);
@@ -143,7 +143,7 @@ impl Op for Gemm {
         let b = patch.tap_model(model, node.inputs[1])?;
         let mut result = patch.wire_node(
             format!("{}-ab", node.name),
-            ops::math::MatMul::default().with_a_trans(self.trans_a).with_b_trans(self.trans_b),
+            ops::matmul::MatMul::default().with_a_trans(self.trans_a).with_b_trans(self.trans_b),
             &[a, b].as_ref(),
         )?[0];
         if self.alpha != 1.0 {

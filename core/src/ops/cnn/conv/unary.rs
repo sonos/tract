@@ -14,8 +14,8 @@ use super::Conv;
 use crate::ops::array::TypedReshape;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
-use crate::ops::math::mat_mat_mul::MatMatMulUnaryFinite;
-use crate::ops::math::mat_mul::MMMWrapper;
+use crate::ops::matmul;
+use crate::ops::matmul::mmm_wrapper::MMMWrapper;
 use crate::ops::nn::DataFormat;
 use crate::ops::quant::QParams;
 
@@ -287,7 +287,7 @@ impl ConvUnary {
 
         wire = model.wire_node(
             format!("{}-matmatmul", name),
-            MatMatMulUnaryFinite {
+            matmul::phy::MatMatMulUnaryFinite {
                 c_shape: output_shape.shape.clone(),
                 c_prefix_dim_and_stride,
                 packed_as: self.kernel_as_packed_as(&mmm.as_mmm().a_pack())?,
@@ -356,7 +356,7 @@ impl ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::math::MatMulUnary;
+        use crate::ops::matmul::MatMulUnary;
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape);
         if input_shape.rank() == 2
@@ -403,6 +403,9 @@ impl Op for ConvUnary {
             self.kernel.shape(),
             self.group
         ));
+        if let Some(b) = &self.bias {
+            info.push(format!("Bias: {:?}", b))
+        }
         Ok(info)
     }
 
@@ -572,7 +575,7 @@ impl TypedOp for ConvUnary {
                     if self.kernel_fmt == KernelFormat::HWIO
                         && input_shape.c_axis() == input_shape.rank() - 1
                     {
-                        use crate::ops::math::mat_mul::MatMulUnary;
+                        use crate::ops::matmul::MatMulUnary;
                         let mut patch = TypedModelPatch::default();
                         let mut wire = patch.tap_model(model, node.inputs[0])?;
                         wire = patch.wire_node(
