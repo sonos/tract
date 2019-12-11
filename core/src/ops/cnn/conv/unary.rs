@@ -219,8 +219,8 @@ impl ConvUnary {
 
         let mut mmm = mmm(m, k, n);
         let (rsc, csc) = match output_shape.fmt {
-            DataFormat::NHWC|DataFormat::HWC => (1, self.output_channels() as isize),
-            DataFormat::NCHW|DataFormat::CHW => (n as isize, 1),
+            DataFormat::NHWC | DataFormat::HWC => (1, self.output_channels() as isize),
+            DataFormat::NCHW | DataFormat::CHW => (n as isize, 1),
         };
         mmm.as_mmm_mut().c_from_data_and_strides(rsc, csc);
 
@@ -316,6 +316,78 @@ impl ConvUnary {
         );
         Ok(Box::new(op))
     }
+
+    fn declutter_stride_slice_to_downsample(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        let spatial_rank = self.kernel.rank() - 2;
+        if let Some(axis) = (0..spatial_rank).find(|&ax| {
+            self.pool_spec.padding.valid_dim(ax)
+                && self.pool_spec.stride(ax) > 1
+                && self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0
+        }) {
+            let downsample_factor = self.pool_spec.stride(axis);
+            let mut new_op = self.clone();
+            if new_op.pool_spec.dilation(axis) > 1 {
+                new_op.pool_spec.dilations.as_mut().unwrap()[axis] /= downsample_factor;
+            }
+            new_op.pool_spec.strides.as_mut().unwrap()[axis] /= downsample_factor;
+            let mut patch = TypedModelPatch::default();
+            let tap = patch.tap_model(model, node.inputs[0])?;
+            let shape =
+                self.pool_spec.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>());
+            let down = patch.wire_node(
+                format!("Downsample-{}", node.name),
+                crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0),
+                &[tap],
+            )?;
+            let id = patch.wire_node(&*node.name, new_op, &down)?[0];
+            patch.shunt_outside(OutletId::new(node.id, 0), id)?;
+            return Ok(Some(patch));
+        }
+        Ok(None)
+    }
+
+    fn declutter_as_matmul(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        use crate::ops::math::MatMulUnary;
+        let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
+        let input_shape = self.pool_spec.data_format.shape(&full_input_shape);
+        if input_shape.rank() == 2
+            && self.bias.is_none()
+            && input_shape.n_axis().is_none()
+            && self.group == 1
+            && self.pool_spec.stride(0) == 1
+            && self.pool_spec.dilation(0) == 1
+            && self.kernel.len() == self.input_channels() * self.output_channels()
+        {
+            let ci = self.input_channels();
+            let co = self.output_channels();
+            let ker = self.kernel.clone().into_tensor();
+            let (a_shape, a_trans) = if self.kernel_fmt == KernelFormat::HWIO {
+                ([ci, co], true)
+            } else {
+                ([co, ci], true)
+            };
+            let a = unsafe { ker.into_shape(&a_shape)? }.into_arc_tensor();
+            let trans_data = self.pool_spec.data_format == DataFormat::HWC;
+            let op = MatMulUnary {
+                a,
+                a_trans,
+                b_trans: trans_data,
+                c_trans: trans_data,
+                q_params: self.q_params.clone(),
+            };
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?));
+        }
+        Ok(None)
+    }
 }
 
 impl Op for ConvUnary {
@@ -379,31 +451,10 @@ impl TypedOp for ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let input_fact = model.outlet_fact(node.inputs[0])?;
-        let spatial_rank = self.kernel.rank() - 2;
-        if let Some(axis) = (0..spatial_rank).find(|&ax| {
-            self.pool_spec.padding.valid_dim(ax)
-                && self.pool_spec.stride(ax) > 1
-                && self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0
-        }) {
-            let downsample_factor = self.pool_spec.stride(axis);
-            let mut new_op = self.clone();
-            if new_op.pool_spec.dilation(axis) > 1 {
-                new_op.pool_spec.dilations.as_mut().unwrap()[axis] /= downsample_factor;
+        for d in &[Self::declutter_stride_slice_to_downsample, Self::declutter_as_matmul] {
+            if let Some(p) = d(&self, model, node)? {
+                return Ok(Some(p));
             }
-            new_op.pool_spec.strides.as_mut().unwrap()[axis] /= downsample_factor;
-            let mut patch = TypedModelPatch::default();
-            let tap = patch.tap_model(model, node.inputs[0])?;
-            let shape =
-                self.pool_spec.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>());
-            let down = patch.wire_node(
-                format!("Downsample-{}", node.name),
-                crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0),
-                &[tap],
-            )?;
-            let id = patch.wire_node(&*node.name, new_op, &down)?[0];
-            patch.shunt_outside(OutletId::new(node.id, 0), id)?;
-            return Ok(Some(patch));
         }
         Ok(None)
     }
@@ -424,7 +475,11 @@ impl TypedOp for ConvUnary {
         let one = 1.to_dim();
         Ok(tvec!((
             Cost::FMA(inputs[0].datum_type),
-            shape.n().unwrap_or(&one).clone() * shape.c() * n_output_channels * n_output_points * kernel_surface
+            shape.n().unwrap_or(&one).clone()
+                * shape.c()
+                * n_output_channels
+                * n_output_points
+                * kernel_surface
                 / self.group
         )))
     }
@@ -440,8 +495,8 @@ impl TypedOp for ConvUnary {
         if Some(axis) == shape.n_axis() {
             return Ok(Some(Box::new(ConvUnary {
                 pool_spec: self.pool_spec.dispose_n_axis(),
-                .. self.clone()
-            })))
+                ..self.clone()
+            })));
         }
         if axis == shape.c_axis() {
             bail!("Channel axis can not be disposed of");
@@ -524,10 +579,7 @@ impl TypedOp for ConvUnary {
                             &*node.name,
                             TypedReshape::new(tvec!(
                                 input_shape.n().cloned().unwrap_or(1.to_dim()),
-                                input_shape.hw_dims()
-                                    .iter()
-                                    .cloned()
-                                    .product::<TDim>(),
+                                input_shape.hw_dims().iter().cloned().product::<TDim>(),
                                 full_input_shape[full_input_shape.len() - 1].clone()
                             )),
                             &[wire],
