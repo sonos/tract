@@ -89,7 +89,7 @@ fi
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     -i Sx40 --pulse 24 cost -q \
-    --assert-cost "FMA(F32)=23725568,Div(F32)=20480,Buffer(F32)=1896"
+    --assert-cost "FMA(F32)=23201280,Div(F32)=20480,Buffer(F32)=1896"
 
 [ -e kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ] \
     || (rm -f kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ; ln -s $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/ )

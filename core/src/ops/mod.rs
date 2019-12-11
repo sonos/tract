@@ -228,6 +228,20 @@ pub trait TypedOp:
         Ok(None)
     }
 
+    #[allow(unused_variables)]
+    fn slice_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        patch: &mut TypedModelPatch,
+        output_slot: usize,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<OutletId>> {
+        Ok(None)
+    }
+
     /// Transforms the op in an equivalent one, operating on dt (i8 or u8).
     ///
     /// Returns None if the op can not be translated.

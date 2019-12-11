@@ -115,6 +115,12 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
         } else {
             return Ok(None);
         };
+        let mut patch = TypedModelPatch::default();
+        if let Some(wire) = prec.op().as_typed().unwrap().slice_output(model, prec, &mut patch, node.inputs[0].slot, self.axis, start, end)? {
+            patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+            return Ok(Some(patch));
+        }
+        /*
         if let Some(concat) = prec.op_as::<super::concat::NormConcat>() {
             if concat.axis == self.axis {
                 let mut offset = 0;
@@ -141,6 +147,7 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
                 }
             }
         }
+        */
         Ok(None)
     }
 

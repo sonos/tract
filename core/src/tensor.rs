@@ -315,14 +315,14 @@ impl Tensor {
         unsafe { Ok(&*(self.as_ptr::<D>()?)) }
     }
 
-    fn is_uniform_t<T:Datum>(&self) -> TractResult<bool> {
+    fn is_uniform_t<T: Datum>(&self) -> TractResult<bool> {
         let slice = self.as_slice::<T>()?;
         Ok(slice[1..].iter().all(|x| x == &slice[0]))
     }
 
     pub fn is_uniform(&self) -> TractResult<bool> {
         if self.len() <= 1 {
-            return Ok(true)
+            return Ok(true);
         }
         dispatch_datum!(Tensor::is_uniform_t(self.datum_type())(self))
     }
@@ -464,6 +464,17 @@ impl Tensor {
                 Tensor { data, shape: self.shape.clone(), ..*self }
             }
         }
+    }
+
+    pub fn slice(&self, axis: usize, start: usize, end: usize) -> TractResult<Tensor> {
+        fn slice_t<T: Datum>(t: &Tensor, axis: usize, start: usize, end: usize) -> TractResult<Tensor> {
+            Ok(t
+                .to_array_view::<T>()?
+                .slice_axis(ndarray::Axis(axis), (start..end).into())
+                .into_owned()
+                .into_tensor())
+        }
+        dispatch_datum!(slice_t(self.datum_type())(&self, axis, start, end))
     }
 }
 
