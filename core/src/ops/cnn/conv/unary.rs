@@ -388,7 +388,7 @@ impl ConvUnary {
             let wire = patch.tap_model(model, node.inputs[0])?;
             let mut wire = patch.wire_node(&*node.name, op, &[wire])?[0];
             if let Some(b) = &self.bias {
-                let bias_shape = if trans_data { tvec!(co) } else { tvec!(co, 1) };
+                let bias_shape = if trans_data { tvec!(1, co) } else { tvec!(co, 1) };
                 let b = unsafe { b.clone().into_tensor().into_shape(&bias_shape)? };
                 wire = patch.wire_node(
                     format!("{}-bias", node.name),
