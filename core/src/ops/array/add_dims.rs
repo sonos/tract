@@ -84,6 +84,16 @@ impl TypedOp for AddDims {
         Ok(axes.into_iter().collect())
     }
 
+    fn dispose_dummy_axis(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+        axis: usize,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let axes = self.axes.iter().copied().map(|a| a - (a > axis) as usize).collect();
+        Ok(Some(Box::new(AddDims::new(axes))))
+    }
+
     fn pulsify(
         &self,
         _source: &NormalizedModel,

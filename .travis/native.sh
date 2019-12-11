@@ -97,21 +97,9 @@ fi
 ( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 
 # these tests require access to private snips models
-if [ -n "$RUN_ALL_TESTS" ]
+if [ -e "$HOME/.aws/credentials" ]
 then
-    for model in \
-        snips-voice-commands-cnn-float.pb \
-        snips-voice-commands-cnn-fake-quant.pb
-    do
-        (cd $CACHEDIR/ ; [ -e $model ] || 
-            aws s3 cp s3://tract-ci-builds/tests/snips/$model . )
-    done
-
-    ./target/release/tract $CACHEDIR/snips-voice-commands-cnn-float.pb \
-        -O -i 200x10xf32 run > /dev/null
-
-    ./target/release/tract $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
-        -O -i 200x10xf32 run > /dev/null
+    sh .travis/bundle-entrypoint.sh
 fi
 
 if [ -z "$TRAVIS" ]
