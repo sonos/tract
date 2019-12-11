@@ -1,7 +1,7 @@
 pub mod mat_mat_mul;
 pub mod mat_mul;
 
-pub use self::mat_mul::MatMul;
+pub use self::mat_mul::{MatMul, MatMulUnary};
 use crate::internal::*;
 use num_traits::{Float, Zero};
 
@@ -362,7 +362,6 @@ mod tests {
         let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[16, 32], [64, 68]])))?;
         assert_eq!(result[0], rctensor2(&[[4, 8], [16, 17]]));
         let decluttered = model.declutter()?;
-        dbg!(&decluttered);
         let result = SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[16, 32], [64, 68]])))?;
         assert_eq!(result[0], rctensor2(&[[4, 8], [16, 17]]));
         let op = decluttered.node_op(1).downcast_ref::<UnaryOp>().unwrap();

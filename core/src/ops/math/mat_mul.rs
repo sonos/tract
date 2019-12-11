@@ -495,11 +495,11 @@ impl TypedOp for MatMul {
 
 #[derive(Debug, Clone, new)]
 pub struct MatMulUnary {
-    a: Arc<Tensor>,
-    a_trans: bool,
-    b_trans: bool,
-    c_trans: bool,
-    q_params: Option<QParams>,
+    pub a: Arc<Tensor>,
+    pub a_trans: bool,
+    pub b_trans: bool,
+    pub c_trans: bool,
+    pub q_params: Option<QParams>,
 }
 
 impl Op for MatMulUnary {
