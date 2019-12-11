@@ -112,9 +112,8 @@ impl TypedOp for RmDims {
                             next = model.single_succ(next.id)?.unwrap();
                         }
                         if self.axes.len() > 1 {
-                            let mut rm_dims = self.clone();
-                            rm_dims.axes.retain(|&a| a != rm_axis);
-                            wire = patch.wire_node(&*node.name, rm_dims, [wire].as_ref())?[0];
+                            let axes = self.axes.iter().cloned().filter(|&a| a != axis).map(|a| a - (a > axis) as usize).collect();
+                            wire = patch.wire_node(&*node.name, RmDims::new(axes), [wire].as_ref())?[0];
                         }
                         patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
                         return Ok(Some(patch));
