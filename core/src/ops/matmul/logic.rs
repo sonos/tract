@@ -469,6 +469,60 @@ impl TypedOp for MatMulUnary {
         Ok(invars.into_iter().collect())
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        use crate::ops::array::concat::NormConcatSlice;
+        use crate::ops::array::NormConcat;
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        if let Some(concat) = model.node_op(node.inputs[0].node).downcast_ref::<NormConcat>() {
+            let mut patch = TypedModelPatch::default();
+            let k_axis = self.a.rank() - 1 - self.a_trans as usize;
+            if concat.axis == input_fact.shape.rank() - 1 && self.b_trans {
+                let mut input = 0;
+                let concat_node = model.node(node.inputs[0].node);
+                let offsets = concat
+                    .offsets(&model.node_input_facts(concat_node.id)?)?
+                    .iter()
+                    .map(|x| x.to_integer().map(|i| i as usize))
+                    .collect::<TractResult<Vec<usize>>>()?;
+                let mut wires = vec![];
+                for (ix, slice) in concat.slices.iter().enumerate() {
+                    let wire = match slice {
+                        NormConcatSlice::Const(t) => patch.add_const(
+                            format!("{}-const-{}", node.name, ix),
+                            t.clone().into_arc_tensor(),
+                        )?,
+                        NormConcatSlice::Var => {
+                            input += 1;
+                            patch.tap_model(model, concat_node.inputs[input - 1])?
+                        }
+                    };
+                    let a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?.into_arc_tensor();
+                    let wire = patch.wire_node(
+                        format!("{}-k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
+                        MatMulUnary { a, ..self.clone() },
+                        &[wire],
+                    )?[0];
+                    wires.push(wire)
+                }
+                let mut wire = wires[0];
+                for (ix, w) in wires[1..].iter().enumerate() {
+                    wire = patch.wire_node(
+                        format!("{}-k-add-{}", node.name, ix),
+                        crate::ops::math::add::bin(),
+                        &[wire, *w],
+                    )?[0];
+                }
+                patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
+    }
+
     fn slice_output(
         &self,
         model: &TypedModel,
@@ -493,7 +547,7 @@ impl TypedOp for MatMulUnary {
                 )?[0],
             ));
         }
-        return Ok(None)
+        return Ok(None);
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
