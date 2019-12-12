@@ -194,15 +194,17 @@ pub trait TypedOp:
     /// Deduce output facts from input facts.
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
 
-    fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
+    #[allow(unused_variables)]
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         Ok(Invariants::default())
     }
 
     /// Declutter the op to the tract_core operator set as much as possible.
+    #[allow(unused_variables)]
     fn declutter(
         &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
+        model: &TypedModel,
+        node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
     }

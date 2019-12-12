@@ -141,6 +141,18 @@ impl TypedOp for Pad {
         Ok(tvec!(fact))
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.pads.iter().all(|p| p.0 == 0 && p.1 == 0 ) {
+            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn pulsify(
         &self,
         _source: &NormalizedModel,
