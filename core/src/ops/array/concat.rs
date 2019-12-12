@@ -232,6 +232,60 @@ impl TypedOp for NormConcat {
         }
     }
 
+    fn slice_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        patch: &mut TypedModelPatch,
+        _output_slot: usize,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<OutletId>> {
+        let inputs = model.node_input_facts(node.id)?;
+        if self.axis == axis {
+            let mut offset = 0;
+            let mut input = 0;
+            for slice in &self.slices {
+                let len = match slice {
+                    NormConcatSlice::Const(t) => t.shape()[axis],
+                    NormConcatSlice::Var => {
+                        if let Ok(x) = inputs[input].shape.dim(axis).to_integer() {
+                            x as usize
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                };
+                if start >= offset && end <= offset + len {
+                    match slice {
+                        NormConcatSlice::Const(t) => {
+                            return Ok(Some(patch.add_const(
+                                format!("{}-const", node.name),
+                                t.slice(axis, start - offset, end - offset)?,
+                            )?))
+                        }
+                        NormConcatSlice::Var => {
+                            let prec = model.node(node.inputs[input].node);
+                            return prec.op().as_typed().unwrap().slice_output(
+                                model,
+                                &prec,
+                                patch,
+                                node.inputs[input].slot,
+                                axis,
+                                start - offset,
+                                end - offset,
+                            );
+                        }
+                    };
+                }
+                input += slice.is_var() as usize;
+                offset += len;
+            }
+        }
+        Ok(None)
+    }
+
     fn pulsify(
         &self,
         source: &NormalizedModel,

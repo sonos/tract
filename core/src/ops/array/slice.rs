@@ -120,34 +120,6 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
             patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
             return Ok(Some(patch));
         }
-        /*
-        if let Some(concat) = prec.op_as::<super::concat::NormConcat>() {
-            if concat.axis == self.axis {
-                let mut offset = 0;
-                for &input in &prec.inputs {
-                    let len: usize = if let Ok(i) =
-                        model.outlet_fact(input)?.shape.dim(self.axis).to_integer()
-                    {
-                        i as usize
-                    } else {
-                        return Ok(None);
-                    };
-                    if start >= offset && end <= offset + len {
-                        let mut patch = TypedModelPatch::default();
-                        let tap = patch.tap_model(model, input)?;
-                        let slice = patch.wire_node(
-                            &*node.name,
-                            Slice { axis: self.axis, start: start - offset, end: end - offset },
-                            &[tap],
-                        )?[0];
-                        patch.shunt_outside(OutletId::new(node.id, 0), slice)?;
-                        return Ok(Some(patch));
-                    }
-                    offset += len;
-                }
-            }
-        }
-        */
         Ok(None)
     }
 

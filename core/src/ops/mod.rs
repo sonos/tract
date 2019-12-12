@@ -239,6 +239,11 @@ pub trait TypedOp:
         start: usize,
         end: usize,
     ) -> TractResult<Option<OutletId>> {
+        let outlet = OutletId::new(node.id, output_slot);
+        let output = model.outlet_fact(outlet)?;
+        if start == 0 && Some(end as i32) == output.shape.dim(axis).to_integer().ok() {
+            return Ok(Some(patch.tap_model(model, outlet)?))
+        }
         Ok(None)
     }
 
