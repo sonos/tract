@@ -196,6 +196,23 @@ impl NormConcat {
         }
         Ok(Box::new(FixedConcat::new(self.axis, fixed_slices)))
     }
+
+    pub fn offsets(&self, inputs: &[&TypedFact]) -> TractResult<Vec<TDim>> {
+        let mut offsets = vec![0.to_dim()];
+        let mut input = 0;
+        for slice in &self.slices {
+            let len = match slice {
+                NormConcatSlice::Const(t) => t.shape()[self.axis].to_dim(),
+                NormConcatSlice::Var => {
+                    input += 1;
+                    inputs[input - 1].shape.dim(self.axis)
+                }
+            };
+            let offset = len + offsets.last().unwrap();
+            offsets.push(offset)
+        }
+        Ok(offsets)
+    }
 }
 
 impl Op for NormConcat {
@@ -244,25 +261,19 @@ impl TypedOp for NormConcat {
     ) -> TractResult<Option<OutletId>> {
         let inputs = model.node_input_facts(node.id)?;
         if self.axis == axis {
-            let mut offset = 0;
             let mut input = 0;
-            for slice in &self.slices {
-                let len = match slice {
-                    NormConcatSlice::Const(t) => t.shape()[axis],
-                    NormConcatSlice::Var => {
-                        if let Ok(x) = inputs[input].shape.dim(axis).to_integer() {
-                            x as usize
-                        } else {
-                            return Ok(None);
-                        }
-                    }
-                };
-                if start >= offset && end <= offset + len {
+            let offsets = self
+                .offsets(&inputs)?
+                .iter()
+                .map(|x| x.to_integer().map(|i| i as usize))
+                .collect::<TractResult<Vec<usize>>>()?;
+            for (ix, slice) in self.slices.iter().enumerate() {
+                if start >= offsets[ix] && end <= offsets[ix + 1] {
                     match slice {
                         NormConcatSlice::Const(t) => {
                             return Ok(Some(patch.add_const(
                                 format!("{}-const", node.name),
-                                t.slice(axis, start - offset, end - offset)?,
+                                t.slice(axis, start - offsets[ix], end - offsets[ix])?,
                             )?))
                         }
                         NormConcatSlice::Var => {
@@ -273,14 +284,13 @@ impl TypedOp for NormConcat {
                                 patch,
                                 node.inputs[input].slot,
                                 axis,
-                                start - offset,
-                                end - offset,
+                                start - offsets[ix],
+                                end - offsets[ix],
                             );
                         }
                     };
                 }
                 input += slice.is_var() as usize;
-                offset += len;
             }
         }
         Ok(None)

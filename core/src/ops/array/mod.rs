@@ -43,7 +43,7 @@
 /// * Slice, unary, mandatory attrs are begin and end.
 mod add_dims;
 mod broadcast;
-mod concat;
+pub(crate) mod concat;
 mod constant_like;
 mod constant_of_shape;
 mod crop;
