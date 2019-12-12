@@ -81,6 +81,7 @@ where
     TC: Datum + Copy,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
+    pub(crate) c_trans: bool,
     pub(crate) c_shape: TVec<usize>,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
@@ -127,7 +128,9 @@ where
             }
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
                 if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                    if op.a.shape() == &[self.mmm.as_mmm().m()] {
+                    let m = self.mmm.as_mmm().m();
+                    let a_shape = op.a.shape();
+                    if self.c_trans && (a_shape == &[m] || a_shape == &[1, m]) {
                         if op.mini_op.is::<ops::math::Mul>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowMul(
                                 op.a.as_slice::<TI>()?.to_vec(),
