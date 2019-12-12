@@ -75,6 +75,33 @@ impl TypedOp for RmDims {
         )?))
     }
 
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+        let mut out = 0;
+        let mut axes = tvec!();
+        for in_ in 0..model.outlet_fact(node.inputs[0])?.shape.rank() {
+            if !self.axes.contains(&out) {
+                axes.push(AxisInfo {
+                    inputs: tvec!(Some(in_)),
+                    outputs: tvec!(Some(out)),
+                    period: 1,
+                    disposable: true,
+                });
+                out += 1;
+            }
+        }
+        Ok(axes.into_iter().collect())
+    }
+
+    fn dispose_dummy_axis(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+        axis: usize,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let axes = self.axes.iter().cloned().filter(|&a| a != axis).map(|a| a - (a > axis) as usize).collect();
+        Ok(Some(Box::new(RmDims::new(axes))))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
@@ -124,6 +151,7 @@ impl TypedOp for RmDims {
                     current = prec;
                     axis = up_axis;
                 } else {
+                    trace!("Don't drop axis {} because of {}", axis, current);
                     continue 'axis;
                 }
             }
