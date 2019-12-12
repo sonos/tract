@@ -131,7 +131,9 @@ where
                 if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
                     let m = self.mmm.as_mmm().m();
                     let a_shape = op.a.shape();
-                    if self.c_trans && (a_shape == &[m] || a_shape == &[1, m]) {
+                    if (self.c_trans && (a_shape == &[m] || a_shape == &[1, m]))
+                        || (!self.c_trans && a_shape == &[m])
+                    {
                         if op.mini_op.is::<ops::math::Mul>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowMul(
                                 op.a.as_slice::<TI>()?.to_vec(),
@@ -204,12 +206,7 @@ where
                             let d = dim.min(fused.shape()[0] - 1);
                             fused.index_axis_inplace(Axis(0), d);
                         }
-                        self.mmm.run(
-                            pa.as_ptr()?,
-                            b.as_ptr(),
-                            c,
-                            &fused.as_slice().unwrap()[0],
-                        );
+                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), c, &fused.as_slice().unwrap()[0]);
                     } else {
                         self.mmm.run(pa.as_ptr()?, b.as_ptr(), c, &[]);
                     }
