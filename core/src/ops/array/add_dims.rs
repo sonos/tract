@@ -90,7 +90,13 @@ impl TypedOp for AddDims {
         _node: &TypedNode,
         axis: usize,
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axes = self.axes.iter().cloned().map(|a| a - (a > axis) as usize).collect();
+        let axes = self
+            .axes
+            .iter()
+            .cloned()
+            .filter(|&a| a != axis)
+            .map(|a| a - (a > axis) as usize)
+            .collect();
         Ok(Some(Box::new(AddDims::new(axes))))
     }
 

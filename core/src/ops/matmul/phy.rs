@@ -102,11 +102,12 @@ where
 
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
-            "c_prefix: {:?} m:{} k:{} n:{}",
+            "c_prefix: {:?} m:{} k:{} n:{} c_trans:{:?}",
             self.c_prefix_dim_and_stride,
             self.mmm.as_mmm().m(),
             self.mmm.as_mmm().k(),
             self.mmm.as_mmm().n(),
+            self.c_trans
         )];
         infos.push(format!("{}", self.mmm));
         if let Some(f) = &self.fused_ops {
