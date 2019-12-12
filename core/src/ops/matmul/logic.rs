@@ -678,6 +678,7 @@ where
     wire = patch.wire_node(
         format!("{}-matmatmul", &*node.name),
         phy::MatMatMulUnaryFinite {
+            c_trans,
             c_shape: geo.c_shape,
             c_prefix_dim_and_stride,
             packed_as,
