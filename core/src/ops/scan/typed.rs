@@ -156,6 +156,77 @@ impl TypedOp for Typed {
             new.decluttered = true;
             return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?));
         }
+        for (model_input, input) in self.input_mapping.iter().enumerate() {
+            if let Some((slot, axis, chunk)) = input.as_scan() {
+                let scan_source = self.body.input_outlets()?[model_input];
+                let scan_source_node = self.body.node(scan_source.node);
+                for successor in &scan_source_node.outputs[0].successors {
+                    let successor_node = self.body.node(successor.node);
+                    if successor_node.inputs.len() != 1 || successor_node.outputs.len() != 1 {
+                        continue;
+                    }
+                    let invariants = successor_node
+                        .op()
+                        .as_typed()
+                        .unwrap()
+                        .invariants(&self.body, &successor_node)?;
+                    if let Some(axis_after) = invariants.unary_track_axis_down(axis, false) {
+                        let mut outside_patch = TypedModelPatch::default();
+                        let mut patch_inputs = node
+                            .inputs
+                            .iter()
+                            .map(|&i| outside_patch.tap_model(model, i))
+                            .collect::<TractResult<TVec<_>>>()?;
+                        let input = outside_patch.tap_model(&model, node.inputs[slot])?;
+                        let new_input_wire = outside_patch.wire_node(
+                            format!("{}-extracted-{}", node.name, successor_node.name),
+                            objekt::clone_box(successor_node.op().as_typed().unwrap()),
+                            &[input],
+                        )?[0];
+                        patch_inputs.push(new_input_wire);
+                        let new_input_outer_fact = outside_patch.outlet_fact(new_input_wire)?;
+                        let mut new_input_inner_fact = new_input_outer_fact.clone();
+                        new_input_inner_fact.shape.set_dim(axis_after, chunk.clone())?;
+
+                        let mut new_body = self.body.clone();
+                        let new_source_wire = new_body.add_source(
+                            format!("{}-extracted-{}", node.name, successor_node.name),
+                            new_input_inner_fact,
+                        )?;
+                        let mut inner_patch = TypedModelPatch::default();
+                        let new_source_wire_in_patch =
+                            inner_patch.tap_model(&new_body, new_source_wire)?;
+                        inner_patch.shunt_outside(
+                            OutletId::new(successor.node, 0),
+                            new_source_wire_in_patch,
+                        )?;
+                        inner_patch.apply(&mut new_body)?;
+
+                        let mut input_mapping = self.input_mapping.clone();
+                        input_mapping.push(InputMapping::Scan {
+                            axis: axis_after,
+                            chunk: chunk.clone(),
+                            slot: node.inputs.len(),
+                        });
+
+                        let new_op = Self {
+                            input_mapping,
+                            output_mapping: self.output_mapping.clone(),
+                            decluttered: false,
+                            body: new_body,
+                            skip: self.skip,
+                            seq_length_input_slot: self.seq_length_input_slot,
+                        };
+                        let output_wires =
+                            outside_patch.wire_node(&node.name, new_op, &patch_inputs)?;
+                        for w in output_wires {
+                            outside_patch.shunt_outside(OutletId::new(node.id, w.slot), w)?;
+                        }
+                        return Ok(Some(outside_patch));
+                    }
+                }
+            }
+        }
         Ok(None)
     }
 

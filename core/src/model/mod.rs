@@ -286,7 +286,7 @@ impl TypedModel {
             }
             model = compact::compact(&model)?;
         }
-        Ok(model)
+        compact::compact(&model)
     }
 
     /// Translate the graph to optimized operators.
