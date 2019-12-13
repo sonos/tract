@@ -115,10 +115,10 @@ impl OpState for State {
         let mut _codegen_op_holder = None;
         let op = if let Some(op) = op.downcast_ref::<Codegen>() {
             op
-        } else if let Some(op) = op.downcast_ref::<Typed>() {
+        } else if let Some(op) = op.downcast_ref::<TypedScan>() {
             _codegen_op_holder = Some(op.to_codegen_op()?);
             _codegen_op_holder.as_ref().unwrap()
-        } else if let Some(op) = op.downcast_ref::<Inference>() {
+        } else if let Some(op) = op.downcast_ref::<InferenceScan>() {
             _codegen_op_holder = Some(op.to_typed_scan()?.to_codegen_op()?);
             _codegen_op_holder.as_ref().unwrap()
         } else {

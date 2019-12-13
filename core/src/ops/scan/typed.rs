@@ -3,7 +3,7 @@ use super::codegen::Codegen;
 use super::*;
 
 #[derive(Debug, Clone, Default)]
-pub struct Typed {
+pub struct TypedScan {
     pub skip: usize,
     pub body: TypedModel,
     decluttered: bool,
@@ -12,7 +12,7 @@ pub struct Typed {
     pub output_mapping: Vec<OutputMapping<TDim, TDim>>,
 }
 
-impl Typed {
+impl TypedScan {
     pub fn to_codegen_op(&self) -> TractResult<Codegen> {
         trace!("Optimizing(Codegen) inner model");
         let plan = SimplePlan::new(self.body.clone().into_optimized()?)?;
@@ -58,10 +58,10 @@ impl Typed {
         input_mapping: Vec<InputMapping<TDim>>,
         output_mapping: Vec<OutputMapping<TDim, TDim>>,
         seq_length_input_slot: Option<usize>,
-    ) -> TractResult<Typed> {
+    ) -> TractResult<TypedScan> {
         assert_eq!(input_mapping.len(), body.input_outlets()?.len());
         assert_eq!(output_mapping.len(), body.output_outlets()?.len());
-        Ok(Typed {
+        Ok(TypedScan {
             skip: 0,
             body,
             decluttered: false,
@@ -72,7 +72,7 @@ impl Typed {
     }
 }
 
-impl Op for Typed {
+impl Op for TypedScan {
     fn name(&self) -> Cow<str> {
         "Scan::Typed".into()
     }
@@ -100,7 +100,7 @@ impl Op for Typed {
     op_as_pulsed_op!();
 }
 
-impl StatefullOp for Typed {
+impl StatefullOp for TypedScan {
     fn state(
         &self,
         session: &mut SessionState,
@@ -110,7 +110,7 @@ impl StatefullOp for Typed {
     }
 }
 
-impl TypedOp for Typed {
+impl TypedOp for TypedScan {
     typed_op_as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
@@ -288,7 +288,7 @@ impl TypedOp for Typed {
     }
 }
 
-impl PulsedOp for Typed {
+impl PulsedOp for TypedScan {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let (output_body_ix, output_mapping) = self
             .output_mapping

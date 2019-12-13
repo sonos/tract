@@ -2,7 +2,7 @@ use crate::model::{ParseResult, ParsingContext};
 use crate::pb::*;
 use tract_core::internal::*;
 
-use tract_core::ops::scan::Inference;
+use tract_core::ops::scan::InferenceScan;
 
 pub fn scan(
     ctx: &ParsingContext,
@@ -76,7 +76,7 @@ pub fn scan(
     }
 
     Ok((
-        Box::new(Inference::new(
+        Box::new(InferenceScan::new(
             model,
             mapped_inputs,
             mapped_outputs,

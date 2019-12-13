@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Debug, Clone, new, Default)]
-pub struct Inference {
+pub struct InferenceScan {
     pub body: InferenceModel,
     pub input_mapping: Vec<InputMapping<()>>,
     pub output_mapping: Vec<OutputMapping<(), TDim>>,
@@ -10,7 +10,7 @@ pub struct Inference {
     pub iter_count_fact: GenericFact<TDim>,
 }
 
-impl Op for Inference {
+impl Op for InferenceScan {
     fn name(&self) -> Cow<str> {
         "Scan::Inference".into()
     }
@@ -23,7 +23,7 @@ impl Op for Inference {
     not_a_pulsed_op!();
 }
 
-impl StatefullOp for Inference {
+impl StatefullOp for InferenceScan {
     fn state(
         &self,
         session: &mut SessionState,
@@ -33,8 +33,8 @@ impl StatefullOp for Inference {
     }
 }
 
-impl Inference {
-    pub(super) fn to_typed_scan(&self) -> TractResult<Box<Typed>> {
+impl InferenceScan {
+    pub(super) fn to_typed_scan(&self) -> TractResult<Box<TypedScan>> {
         let typed_model = self.body.clone().into_typed()?;
         let input_mapping = self
             .input_mapping
@@ -69,7 +69,7 @@ impl Inference {
                 })
             })
             .collect::<TractResult<_>>()?;
-        Ok(Box::new(Typed::new(
+        Ok(Box::new(TypedScan::new(
             typed_model,
             input_mapping,
             output_mapping,
@@ -232,7 +232,7 @@ impl Inference {
     }
 }
 
-impl InferenceOp for Inference {
+impl InferenceOp for InferenceScan {
     fn infer_facts(
         &mut self,
         inputs: TVec<&InferenceFact>,

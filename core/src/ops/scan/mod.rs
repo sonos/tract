@@ -4,8 +4,8 @@ mod codegen;
 mod inference;
 mod typed;
 
-pub use inference::Inference;
-pub use typed::Typed;
+pub use inference::InferenceScan;
+pub use typed::TypedScan;
 
 #[derive(Debug, Clone, new)]
 pub enum InputMapping<C: Clone> {
