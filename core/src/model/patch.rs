@@ -89,18 +89,6 @@ where
         Ok(id)
     }
 
-    /// Draw a tap from a preexisting node and connect it to an inlet.
-    pub fn tap_model_and_plug(
-        &mut self,
-        model: &ModelImpl<TI, O>,
-        outlet: OutletId,
-        inlet: InletId,
-    ) -> TractResult<OutletId> {
-        let tap = self.tap_model(model, outlet)?;
-        self.add_edge(tap, inlet)?;
-        Ok(tap)
-    }
-
     /// Replace an Outlet in the target model by one from the patch.
     pub fn shunt_outside(&mut self, outlet: OutletId, by: OutletId) -> TractResult<()> {
         self.shunt_outlet_by.insert(outlet, by);
