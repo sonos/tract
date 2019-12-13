@@ -268,7 +268,7 @@ impl InferenceRulesOp for RNN {
 
         let scan_outputs = target.wire_node(
             &*node.name,
-            scan::Typed::new(
+            scan::TypedScan::new(
                 body,
                 input_mapping,
                 vec![output_mapping],

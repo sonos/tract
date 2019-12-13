@@ -6,7 +6,7 @@ use crate::ops::scan::*;
 pub fn pull_downsample_over_scan(
     model: &TypedModel,
     scan_node: &TypedNode,
-    scan_op: &ops::scan::Typed,
+    scan_op: &ops::scan::TypedScan,
     down_node: &TypedNode,
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
