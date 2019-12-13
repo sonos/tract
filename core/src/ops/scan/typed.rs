@@ -218,7 +218,7 @@ impl TypedOp for TypedScan {
                             seq_length_input_slot: self.seq_length_input_slot,
                         };
                         let output_wires =
-                            outside_patch.wire_node(&node.name, new_op, &patch_inputs)?;
+                            outside_patch.wire_node(&*node.name, new_op, &patch_inputs)?;
                         for w in output_wires {
                             outside_patch.shunt_outside(OutletId::new(node.id, w.slot), w)?;
                         }
@@ -238,31 +238,27 @@ impl TypedOp for TypedScan {
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        if node.inputs.len() > 1 || node.outputs.len() > 1 {
-            bail!("Scan pulsificiaton limited to single streaming input and output case");
-        }
-        let input = mapping[&node.inputs[0]];
-        let input_fact = target.outlet_fact(input)?;
-        let (_slot, axis, _chunk) = self
-            .input_mapping
-            .iter()
-            .filter_map(InputMapping::as_scan)
-            .find(|mapping| mapping.0 == 0)
-            .unwrap();
-        if input_fact.axis != axis {
-            bail!("Scan pulsification limited to scanning axis");
+        for input_id in 0..node.inputs.len() {
+            let input = mapping[&node.inputs[input_id]];
+            let input_fact = target.outlet_fact(input)?;
+            let (_slot, axis, _chunk) = self
+                .input_mapping
+                .iter()
+                .filter_map(InputMapping::as_scan)
+                .find(|mapping| mapping.0 == input_id)
+                .unwrap();
+            if input_fact.axis != axis {
+                bail!("Scan pulsification limited to scanning axis");
+            }
         }
 
-        let mut output_fact = crate::pulse::PulsedFact::from_tensor_fact_pulse(
-            &node.outputs[0].fact,
-            input_fact.pulse(),
-        )?;
-        output_fact.delay = input_fact.delay;
+        let pulse_inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+
         let mut op = self.clone();
-        op.skip = input_fact.delay;
-        op.output_mapping.iter_mut().find(|om| om.full_slot == Some(0)).unwrap().full_dim_hint =
+        op.skip = target.outlet_fact(pulse_inputs[0])?.delay;
+        op.output_mapping.iter_mut().find(|om| om.full_slot.is_some()).unwrap().full_dim_hint =
             None;
-        target.wire_node(&*node.name, op, &[input])
+        target.wire_node(&*node.name, op, &pulse_inputs)
     }
 
     fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f32)> {
