@@ -29,8 +29,10 @@ pub fn pull_downsample_over_scan(
 
     for input in inner_model.input_outlets()? {
         let input = inner_model.node(input.node);
-        if input.outputs[0].successors.len() > 1
-            || !inner_model.node(input.outputs[0].successors[0].node).op().same_as(down_op)
+        if input.outputs[0]
+            .successors
+            .iter()
+            .any(|succ| !inner_model.node(succ.node).op().same_as(down_op))
         {
             return Ok(None);
         }
@@ -40,9 +42,11 @@ pub fn pull_downsample_over_scan(
     for input in inputs {
         let ref mut fact = inner_model.node_mut(input.node).outputs[0].fact;
         *fact = down_op.transform_fact(fact)?;
-        let ds = inner_model.node(input.node).outputs[0].successors[0].node;
-        TypedModelPatch::shunt_one_op(&inner_model as _, inner_model.node(ds))?
-            .apply(&mut inner_model)?;
+        let downsamples = inner_model.node(input.node).outputs[0].successors.clone();
+        for ds in downsamples {
+            TypedModelPatch::shunt_one_op(&inner_model as _, inner_model.node(ds.node))?
+                .apply(&mut inner_model)?;
+        }
     }
 
     let inner_model = crate::model::compact::compact(&inner_model.declutter()?)?;
