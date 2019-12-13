@@ -156,6 +156,75 @@ impl TypedOp for TypedScan {
             new.decluttered = true;
             return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?));
         }
+        for (inner_input_id, input) in self.body.input_outlets()?.iter().enumerate() {
+            let source_node = self.body.node(input.node);
+            if source_node.outputs[0].successors.len() == 0 {
+                let mut new_inputs = node.inputs.clone();
+                let slot = match &self.input_mapping[inner_input_id] {
+                    InputMapping::Full { slot } => Some(slot),
+                    InputMapping::Scan { slot, .. } => Some(slot),
+                    InputMapping::State { initializer } => match initializer {
+                        StateInitializer::FromInput(n) => Some(n),
+                        _ => None,
+                    },
+                };
+                let new_mappings = self
+                    .input_mapping
+                    .iter()
+                    .enumerate()
+                    .filter(|(ix, _)| *ix != inner_input_id)
+                    .map(|(_, m)| {
+                        if let Some(discarded) = slot {
+                            match m {
+                                InputMapping::Full { slot } => {
+                                    InputMapping::Full { slot: slot - (slot > discarded) as usize }
+                                }
+                                InputMapping::Scan { slot, axis, chunk } => InputMapping::Scan {
+                                    slot: slot - (slot > discarded) as usize,
+                                    axis: *axis,
+                                    chunk: chunk.clone(),
+                                },
+                                InputMapping::State { initializer } => {
+                                    let initializer = match initializer {
+                                        StateInitializer::FromInput(n) => {
+                                            StateInitializer::FromInput(
+                                                n - (n > discarded) as usize,
+                                            )
+                                        }
+                                        StateInitializer::Value(v) => {
+                                            StateInitializer::Value(v.clone())
+                                        }
+                                    };
+                                    InputMapping::State { initializer }
+                                }
+                            }
+                        } else {
+                            m.clone()
+                        }
+                    })
+                    .collect();
+                let mut model_inputs = self.body.input_outlets()?.to_vec();
+                if let Some(slot) = slot {
+                    new_inputs.remove(*slot);
+                }
+                model_inputs.remove(inner_input_id);
+                let mut body = self.body.clone();
+                let mut patch = TypedModelPatch::default();
+                patch.obliterate(source_node.id)?;
+                patch.apply(&mut body)?;
+                body.set_input_outlets(&model_inputs)?;
+                let body = body.declutter()?;
+                let op = Self {
+                    body,
+                    skip: self.skip,
+                    seq_length_input_slot: self.seq_length_input_slot,
+                    input_mapping: new_mappings,
+                    decluttered: true,
+                    output_mapping: self.output_mapping.clone(),
+                };
+                return Ok(Some(TypedModelPatch::replace_single_op(model, node, &new_inputs, op)?));
+            }
+        }
         for (model_input, input) in self.input_mapping.iter().enumerate() {
             if let Some((slot, axis, chunk)) = input.as_scan() {
                 let scan_source = self.body.input_outlets()?[model_input];
