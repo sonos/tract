@@ -4,6 +4,7 @@ set -ex
 
 export DEBIAN_FRONTEND=noninteractive
 
+
 if [ `whoami` != "root" ]
 then
     SUDO=sudo
@@ -11,6 +12,7 @@ fi
 
 if [ `uname` = "Linux" ]
 then
+    $SUDO rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
     $SUDO apt-get update
     if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" ]
     then
