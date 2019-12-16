@@ -107,8 +107,11 @@ pub mod test {
     use super::*;
     use crate::align::Buffer;
     use num_traits::{AsPrimitive, One, Zero};
+    use proptest::arbitrary::Arbitrary;
+    use proptest::prelude::*;
     use std::fmt;
-    use std::ops::{Add, Mul};
+    use std::marker::PhantomData;
+    use std::ops::{Add, AddAssign, Mul};
 
     #[test]
     fn check_non_linear_enum_size() {
@@ -118,6 +121,94 @@ pub mod test {
         )
     }
 
+    #[derive(Clone, Debug)]
+    pub struct PackedPackedKerProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + One + Debug,
+        TB: Copy + One + Debug,
+        TC: Copy + PartialEq + Zero + 'static + Debug,
+        TI: Copy + Add + Mul + Zero + Debug + fmt::Display,
+        usize: AsPrimitive<TC>,
+    {
+        k: usize,
+        pa: Vec<TA>,
+        pb: Vec<TB>,
+        _boo: PhantomData<(K, TC, TI)>,
+    }
+
+    impl<K, TA, TB, TC, TI> Arbitrary for PackedPackedKerProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + One + Debug + Arbitrary + 'static,
+        TB: Copy + One + Debug + Arbitrary + 'static,
+        TC: Copy + PartialEq + Zero + 'static + Debug,
+        TI: Copy + Add + Mul + Zero + Debug + fmt::Display,
+        usize: AsPrimitive<TC>,
+        isize: AsPrimitive<TA> + AsPrimitive<TB>,
+    {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(_: ()) -> Self::Strategy {
+            (1usize..100)
+                .prop_flat_map(|k| {
+                    use proptest::collection::vec;
+                    (
+                        Just(k),
+                        vec((-10isize..10).prop_map(|x| x.as_()), k * K::mr()..=k * K::mr()),
+                        vec((-10isize..10).prop_map(|x| x.as_()), k * K::nr()..=k * K::nr()),
+                    )
+                })
+                .prop_map(|(k, pa, pb)| PackedPackedKerProblem { k, pa, pb, _boo: PhantomData })
+                .boxed()
+        }
+    }
+
+    impl<K, TA, TB, TC, TI> PackedPackedKerProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + One + Debug + Arbitrary + AsPrimitive<TI>,
+        TB: Copy + One + Debug + Arbitrary + AsPrimitive<TI>,
+        TC: Copy + PartialEq + Zero + 'static + Debug,
+        TI: Copy + Add + AddAssign + Mul + Zero + Debug + fmt::Display + AsPrimitive<TC> + Mul<Output = TI>,
+        usize: AsPrimitive<TC>,
+    {
+        pub fn reference(&self) -> Vec<TC> {
+            let mut i = vec![TI::zero(); K::mr() * K::nr()];
+            for k in 0..self.k {
+                for n in 0..K::nr() {
+                    for m in 0..K::mr() {
+                        let a = self.pa[k * K::mr() + m];
+                        let b = self.pb[k * K::nr() + n];
+                        i[n + K::nr() * m] += a.as_() * b.as_()
+                    }
+                }
+            }
+            i.iter().map(|i| i.as_()).collect()
+        }
+
+        pub fn kernel(&self) -> Vec<TC> {
+            let pa = Buffer::realign_data(&self.pa, K::alignment_bytes_packed_a());
+            let pb = Buffer::realign_data(&self.pb, K::alignment_bytes_packed_a());
+            let mut c = vec![TC::zero(); K::mr() * K::nr()];
+            let size_of_tc = std::mem::size_of::<TC>() as isize;
+            let err = K::kernel(&MatMatMulKerSpec {
+                a: &PanelStore::Packed { ptr: pa.as_ptr() },
+                b: &PanelStore::Packed { ptr: pb.as_ptr() },
+                c: &PanelStore::Strides {
+                    ptr: c.as_mut_ptr(),
+                    row_byte_stride: K::nr() as isize * size_of_tc,
+                    col_byte_stride: size_of_tc,
+                },
+                linear: &LinearSpec::k(self.k),
+                non_linear: std::ptr::null(),
+            });
+            assert_eq!(err, 0);
+            c
+        }
+    }
+
     #[macro_export]
     macro_rules! mmm_kernel_tests {
         ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
@@ -125,6 +216,17 @@ pub mod test {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::kernel::test;
                 use crate::frame::mmm::MatMatMulKer;
+                use proptest::prelude::*;
+                use crate::frame::mmm::kernel::test::PackedPackedKerProblem;
+
+                proptest::proptest! {
+                    #[test]
+                    fn packed_packed_prop(pb in any::<PackedPackedKerProblem<$ker, $ta, $tb, $tc, $ti>>()) {
+                        if $cond {
+                            prop_assert_eq!(pb.kernel(), pb.reference());
+                        }
+                    }
+                }
 
                 #[test]
                 fn packed_packed_1() {
@@ -261,14 +363,16 @@ pub mod test {
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
-        let expected:Vec<TC> = (0..v.len()).map(|ix| {
-            let row = ix / K::nr();
-            let col = ix % K::nr();
-            (0..k)
-                .map(|i| pa[K::mr() * i + row].as_() * b[t * i + col].as_())
-                .fold(TI::zero(), |s, a| s + a)
-                .as_()
-        }).collect();
+        let expected: Vec<TC> = (0..v.len())
+            .map(|ix| {
+                let row = ix / K::nr();
+                let col = ix % K::nr();
+                (0..k)
+                    .map(|i| pa[K::mr() * i + row].as_() * b[t * i + col].as_())
+                    .fold(TI::zero(), |s, a| s + a)
+                    .as_()
+            })
+            .collect();
         assert_eq!(v, expected);
     }
 
