@@ -86,7 +86,9 @@ fn all(c: &mut Criterion) {
     packed_packed(c, 256, 200, 24); // tdnn1
     direct_conv(c, 24, 3, 256, 256, 1); // tdnn2
     direct_conv(c, 24, 1, 256, 256, 3); // tdnn3
-    packed_packed(c, 256, 256, 8); // fastlstm1 and 2
+    packed_packed(c, 256, 256, 8); // fastlstm1 and 2 (input)
+    packed_packed(c, 256, 128, 1); // fastlstm1 and 2 (rec)
+    packed_packed(c, 128, 256, 1); // fastlstm1 and 2 (rec)
     direct_conv(c, 8, 3, 256, 256, 1); // tdnn3
     packed_packed(c, 1690, 256, 8); // output
 }
