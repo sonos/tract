@@ -1,9 +1,8 @@
-use num_traits::Zero;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PackB<T: Copy + Zero> {
+pub struct PackB<T: Copy> {
     k: usize,
     n: usize,
     nr: usize,
@@ -11,7 +10,7 @@ pub struct PackB<T: Copy + Zero> {
     _boo: PhantomData<T>,
 }
 
-impl<T: Copy + Zero + Debug> PackB<T> {
+impl<T: Copy + Debug> PackB<T> {
     pub fn new(k: usize, n: usize, nr: usize, alignment: usize) -> PackB<T> {
         PackB { k, n, nr, alignment, _boo: PhantomData }
     }
@@ -55,12 +54,6 @@ impl<T: Copy + Zero + Debug> PackB<T> {
                 unsafe {
                     *pb.offset((i * nr + j) as isize) =
                         *b.offset(j as isize * csb + i as isize * rsb)
-                }
-            }
-            #[cfg(debug_assertions)]
-            for j in cols..nr {
-                unsafe {
-                    *pb.offset((i * nr + j) as isize) = T::zero();
                 }
             }
         }
