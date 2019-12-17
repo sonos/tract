@@ -64,144 +64,143 @@ armv7neon_i8_mmm_8x6:
     b       .unsupported
 
     .packed_tops_and_offsets:
-    mov             r2, r5                  // rows offsets
-    ldm             r6, { r7, r8, r9, r10, r11, r12 }
-    eor             r5, r5
+    mov             r2, r5                  // rows offsets ptr
+    ldm             r6, { r7, r8, r9, r10, r11, r12 } // cols ptr
+    eor             r5, r5                  // previous offset to sub
     pld             [r2]
 
-/*
     cmp r3, #4
     blt .packed_tops_and_offsets_loop_1
 
     .packed_tops_and_offsets_loop_4:
 
-    // q2: d4 -> d4,d5 A even cols (from r4)
-    // q3: d6 -> d6,d7 A odd cols
-    // q0: s0 -> d0 : B even lines (from r2/r6->r9..r12)
-    // q1: s4 -> d2 : B odd lines
+    ldm             r2!, { r4 }
+    vldmia          r1!, { d0 }
+    sub             r6, r4, r5
+    mov             r5, r4
+    ldm             r2!, { r4 }
 
-    // 0
-    vldmia          r4!, { d4 }
-    ldm             r2!, { r1 }
-    vldmia          r4!, { d6 }
+    add             r7, r7, r6
+    add             r8, r8, r6
+    add             r9, r9, r6
+    add             r10, r10, r6
+    add             r11, r11, r6
+    add             r12, r12, r6
 
-    add             r9, r5, r0
-    add             r10, r6, r0
-    add             r11, r7, r0
-    add             r12, r8, r0
+    vmovl.s8        q0, d0          // d0, d1: 8 as
 
-    ldm             r2!, { r0 }
-
-    vst1.s8         d0[0], [r9]
-    vst1.s8         d0[1], [r10]
-    vst1.s8         d0[2], [r11]
-    vst1.s8         d0[3], [r12]
-    add             r9, r5, r1
-    add             r10, r6, r1
-    add             r11, r7, r1
-    add             r12, r8, r1
-
-    ldm             r2!, { r1 }
+    vld1.s8         d4[0], [ r7 ]
+    vld1.s8         d4[1], [ r8 ]
+    vld1.s8         d4[2], [ r9 ]
+    vld1.s8         d4[3], [ r10 ]
+    vld1.s8         d6[0], [ r11 ]
+    vld1.s8         d6[1], [ r12 ]
     vmovl.s8        q2, d4
-    vmovl.s8        q0, d0
+    vmovl.s8        q3, d6
 
-    vmlal.s16       q8, d4, d0[0]
-    vst1.s8         d2[0], [r9]
-    vmlal.s16       q9, d5, d0[0]
-    vst1.s8         d2[1], [r10]
+    vmlal.s16       q4, d0, d4[0]
+    vmlal.s16       q5, d1, d4[0]
 
-    vmlal.s16       q10, d4, d0[1]
-    vst1.s8         d2[2], [r11]
-    vmlal.s16       q11, d5, d0[1]
-    vst1.s8         d2[3], [r12]
+    vmlal.s16       q6, d0, d4[1]
+    vmlal.s16       q7, d1, d4[1]
 
-    vmlal.s16       q12, d4, d0[2]
-    add             r9, r5, r0
-    vmlal.s16       q13, d5, d0[2]
-    add             r10, r6, r0
+    vmlal.s16       q8, d0, d4[2]
+    vmlal.s16       q9, d1, d4[2]
 
-    vmlal.s16       q14, d4, d0[3]
-    add             r11, r7, r0
-    vmlal.s16       q15, d5, d0[3]
-    add             r12, r8, r0
+    vmlal.s16       q10, d0, d4[3]
+    vmlal.s16       q11, d1, d4[3]
 
-    vldmia          r4!, { d4 }
+    vmlal.s16       q12, d0, d6[0]
+    vmlal.s16       q13, d1, d6[0]
+
+    vmlal.s16       q14, d0, d6[1]
+    vmlal.s16       q15, d1, d6[1]
 
     // 1
+    sub             r6, r4, r5
+    mov             r5, r4
+    vldmia          r1!, { d0 }
+    ldm             r2!, { r4 }
+
+    add             r7, r7, r6
+    add             r8, r8, r6
+    add             r9, r9, r6
+    add             r10, r10, r6
+    add             r11, r11, r6
+    add             r12, r12, r6
+
+    vmovl.s8        q0, d0          // d0, d1: 8 as
+
+    vld1.s8         d4[0], [ r7 ]
+    vld1.s8         d4[1], [ r8 ]
+    vld1.s8         d4[2], [ r9 ]
+    vld1.s8         d4[3], [ r10 ]
+    vld1.s8         d6[0], [ r11 ]
+    vld1.s8         d6[1], [ r12 ]
+    vmovl.s8        q2, d4
     vmovl.s8        q3, d6
-    vmovl.s8        q1, d2
 
-    vmlal.s16       q8, d6, d2[0]
-    ldm             r2!, { r0 }
-    vmlal.s16       q9, d7, d2[0]
-    vst1.s8         d0[0], [r9]
+    vmlal.s16       q4, d0, d4[0]
+    vmlal.s16       q5, d1, d4[0]
 
-    vmlal.s16       q10, d6, d2[1]
-    vst1.s8         d0[1], [r10]
-    vmlal.s16       q11, d7, d2[1]
-    vst1.s8         d0[2], [r11]
+    vmlal.s16       q6, d0, d4[1]
+    vmlal.s16       q7, d1, d4[1]
 
-    vmlal.s16       q12, d6, d2[2]
-    vst1.s8         d0[3], [r12]
-    vmlal.s16       q13, d7, d2[2]
-    add             r9, r5, r1
+    vmlal.s16       q8, d0, d4[2]
+    vmlal.s16       q9, d1, d4[2]
 
-    vmlal.s16       q14, d6, d2[3]
-    add             r10, r6, r1
-    vmlal.s16       q15, d7, d2[3]
-    add             r11, r7, r1
+    vmlal.s16       q10, d0, d4[3]
+    vmlal.s16       q11, d1, d4[3]
+
+    vmlal.s16       q12, d0, d6[0]
+    vmlal.s16       q13, d1, d6[0]
+
+    vmlal.s16       q14, d0, d6[1]
+    vmlal.s16       q15, d1, d6[1]
 
     // 2
+    sub             r6, r4, r5
+    mov             r5, r4
+    vldmia          r1!, { d0 }
+    ldm             r2!, { r4 }
 
+    add             r7, r7, r6
+    add             r8, r8, r6
+    add             r9, r9, r6
+    add             r10, r10, r6
+    add             r11, r11, r6
+    add             r12, r12, r6
+
+    vmovl.s8        q0, d0          // d0, d1: 8 as
+
+    vld1.s8         d4[0], [ r7 ]
+    vld1.s8         d4[1], [ r8 ]
+    vld1.s8         d4[2], [ r9 ]
+    vld1.s8         d4[3], [ r10 ]
+    vld1.s8         d6[0], [ r11 ]
+    vld1.s8         d6[1], [ r12 ]
     vmovl.s8        q2, d4
-    vmovl.s8        q0, d0
+    vmovl.s8        q3, d6
 
-    vmlal.s16       q8, d4, d0[0]
-    add             r12, r8, r1
-    vmlal.s16       q9, d5, d0[0]
-    vldmia          r4!, { d6 }
+    vmlal.s16       q4, d0, d4[0]
+    vmlal.s16       q5, d1, d4[0]
 
-    vmlal.s16       q10, d4, d0[1]
-    vst1.s8         d2[0], [r9]
-    vmlal.s16       q11, d5, d0[1]
-    vst1.s8         d2[1], [r10]
+    vmlal.s16       q6, d0, d4[1]
+    vmlal.s16       q7, d1, d4[1]
 
-    vmlal.s16       q12, d4, d0[2]
-    vst1.s8         d2[2], [r11]
-    vmlal.s16       q13, d5, d0[2]
-    vst1.s8         d2[3], [r12]
+    vmlal.s16       q8, d0, d4[2]
+    vmlal.s16       q9, d1, d4[2]
 
-    vmlal.s16       q14, d4, d0[3]
-//    pld             [r4, #64]
-    vmlal.s16       q15, d5, d0[3]
-//    pld             [r2, #64]
+    vmlal.s16       q10, d0, d4[3]
+    vmlal.s16       q11, d1, d4[3]
+
+    vmlal.s16       q12, d0, d6[0]
+    vmlal.s16       q13, d1, d6[0]
+
+    vmlal.s16       q14, d0, d6[1]
+    vmlal.s16       q15, d1, d6[1]
 
     // 3
-    vmovl.s8        q3, d6
-    vmovl.s8        q1, d2
-
-    vmlal.s16       q8, d6, d2[0]
-    vmlal.s16       q9, d7, d2[0]
-
-    vmlal.s16       q10, d6, d2[1]
-    vmlal.s16       q11, d7, d2[1]
-
-    vmlal.s16       q12, d6, d2[2]
-    vmlal.s16       q13, d7, d2[2]
-
-    vmlal.s16       q14, d6, d2[3]
-    vmlal.s16       q15, d7, d2[3]
-    sub r3, r3, #4
-
-    cmp r3, #4
-    bge .packed_tops_and_offsets_loop_4
-*/
-    cmp r3, #0
-    beq .packed_tops_and_offsets_end
-
-    .packed_tops_and_offsets_loop_1:
-
-    ldm             r2!, { r4 }
     sub             r6, r4, r5
     mov             r5, r4
     vldmia          r1!, { d0 }
@@ -215,32 +214,83 @@ armv7neon_i8_mmm_8x6:
 
     vmovl.s8        q0, d0          // d0, d1: 8 as
 
-    vld1.s8         d2[0], [ r7 ]
-    vld1.s8         d2[1], [ r8 ]
-    vld1.s8         d2[2], [ r9 ]
-    vld1.s8         d2[3], [ r10 ]
-    vld1.s8         d4[0], [ r11 ]
-    vld1.s8         d4[1], [ r12 ]
-    vmovl.s8        q1, d2
+    vld1.s8         d4[0], [ r7 ]
+    vld1.s8         d4[1], [ r8 ]
+    vld1.s8         d4[2], [ r9 ]
+    vld1.s8         d4[3], [ r10 ]
+    vld1.s8         d6[0], [ r11 ]
+    vld1.s8         d6[1], [ r12 ]
     vmovl.s8        q2, d4
+    vmovl.s8        q3, d6
 
-    vmlal.s16       q4, d0, d2[0]
-    vmlal.s16       q5, d1, d2[0]
+    vmlal.s16       q4, d0, d4[0]
+    vmlal.s16       q5, d1, d4[0]
 
-    vmlal.s16       q6, d0, d2[1]
-    vmlal.s16       q7, d1, d2[1]
+    vmlal.s16       q6, d0, d4[1]
+    vmlal.s16       q7, d1, d4[1]
 
-    vmlal.s16       q8, d0, d2[2]
-    vmlal.s16       q9, d1, d2[2]
+    vmlal.s16       q8, d0, d4[2]
+    vmlal.s16       q9, d1, d4[2]
 
-    vmlal.s16       q10, d0, d2[3]
-    vmlal.s16       q11, d1, d2[3]
+    vmlal.s16       q10, d0, d4[3]
+    vmlal.s16       q11, d1, d4[3]
 
-    vmlal.s16       q12, d0, d4[0]
-    vmlal.s16       q13, d1, d4[0]
+    vmlal.s16       q12, d0, d6[0]
+    vmlal.s16       q13, d1, d6[0]
 
-    vmlal.s16       q14, d0, d4[1]
-    vmlal.s16       q15, d1, d4[1]
+    vmlal.s16       q14, d0, d6[1]
+    vmlal.s16       q15, d1, d6[1]
+
+    sub r3, r3, #4
+
+    cmp r3, #4
+    bge .packed_tops_and_offsets_loop_4
+
+    cmp r3, #0
+    beq .packed_tops_and_offsets_end
+
+    .packed_tops_and_offsets_loop_1:
+
+    ldm             r2!, { r4 }
+    vldmia          r1!, { d0 }
+    sub             r6, r4, r5
+    mov             r5, r4
+
+    add             r7, r7, r6
+    add             r8, r8, r6
+    add             r9, r9, r6
+    add             r10, r10, r6
+    add             r11, r11, r6
+    add             r12, r12, r6
+
+    vmovl.s8        q0, d0          // d0, d1: 8 as
+
+    vld1.s8         d4[0], [ r7 ]
+    vld1.s8         d4[1], [ r8 ]
+    vld1.s8         d4[2], [ r9 ]
+    vld1.s8         d4[3], [ r10 ]
+    vld1.s8         d6[0], [ r11 ]
+    vld1.s8         d6[1], [ r12 ]
+    vmovl.s8        q2, d4
+    vmovl.s8        q3, d6
+
+    vmlal.s16       q4, d0, d4[0]
+    vmlal.s16       q5, d1, d4[0]
+
+    vmlal.s16       q6, d0, d4[1]
+    vmlal.s16       q7, d1, d4[1]
+
+    vmlal.s16       q8, d0, d4[2]
+    vmlal.s16       q9, d1, d4[2]
+
+    vmlal.s16       q10, d0, d4[3]
+    vmlal.s16       q11, d1, d4[3]
+
+    vmlal.s16       q12, d0, d6[0]
+    vmlal.s16       q13, d1, d6[0]
+
+    vmlal.s16       q14, d0, d6[1]
+    vmlal.s16       q15, d1, d6[1]
 
     subs            r3, r3, #1
     bne .packed_tops_and_offsets_loop_1
@@ -253,118 +303,106 @@ armv7neon_i8_mmm_8x6:
 
     cmp r3, #4
     blt .packed_packed_loop_1
-/*
+
     .packed_packed_loop_4:
-    pld             [r1, #64]
-    pld             [r5, #64]
+    vldmia          r1!, { q0 }         // 16 A
+    vld1.s64        { d4, d5 }, [r5]!   // 16 B (0..16) (no vldmia, b is not aligned)
 
-    // tile starts at q4, d8, s16
-    // A: r1 -> d4-7, q2, q3
-    // B: r5 -> d0-3, q1, q2
+    vmovl.s8        q1, d1              // q1 <- 8 as (8..16)
+    vmovl.s8        q0, d0              // q0 <- 8 as (0..8)
+    vmovl.s8        q3, d4              // q3 <- 8 bs (0..8)
 
-    // 0
-    vldmia          r1!, { d4 }         // 8 A: d4
-    vldmia          r5!, { d0 }         // 8 B: d0
+    vmlal.s16       q4, d0, d6[0]
+    vmlal.s16       q5, d1, d6[0]
 
-    vmovl.s8        q2, d4              // 8 A: d4, d5
-    vmovl.s8        q0, d0              // 8 B: d0, d1
+    vmlal.s16       q6, d0, d6[1]
+    vmlal.s16       q7, d1, d6[1]
 
-    vmlal.s16       q4, d4, d0[0]
-    vmlal.s16       q5, d5, d0[0]
+    vmlal.s16       q8, d0, d6[2]
+    vmlal.s16       q9, d1, d6[2]
 
-    vldmia          r1!, { d6 }         // 8A: d6
+    vmlal.s16       q10, d0, d6[3]
+    vmlal.s16       q11, d1, d6[3]
 
-    vmlal.s16       q6, d4, d0[1]
-    vmlal.s16       q7, d5, d0[1]
+    vmlal.s16       q12, d0, d7[0]
+    vmlal.s16       q13, d1, d7[0]
 
-    vmlal.s16       q8, d4, d0[2]
-    vmlal.s16       q9, d5, d0[2]
+    vmlal.s16       q14, d0, d7[1]
+    vmlal.s16       q15, d1, d7[1]
 
-    vmlal.s16       q10, d4, d0[3]
-    vmlal.s16       q11, d5, d0[3]
+    vldmia          r1!, { q0 }         // 16 A (16..32)
 
-    vldmia          r5!, { d2 }         // 8B, d2
+    // k = 1
+    vmlal.s16       q4, d2, d7[2]
+    vmlal.s16       q5, d3, d7[2]
 
-    vmlal.s16       q12, d4, d1[0]
-    vmlal.s16       q13, d5, d1[0]
+    vmlal.s16       q6, d2, d7[3]
+    vmlal.s16       q7, d3, d7[3]
 
-    vmlal.s16       q14, d4, d1[1]
-    vmlal.s16       q15, d5, d1[1]
+    vmovl.s8        q3, d5              // q3 <- 8 bs (8..16)
+    vld1.s64        { d4 }, [r5]!       // 8 B (16..24)
 
-    // 1
-    vmovl.s8        q3, d6              // 8 A: d6, d7
+    vmlal.s16       q8, d2, d6[0]
+    vmlal.s16       q9, d3, d6[0]
 
-    vmlal.s16       q4, d6, d1[2]
-    vldmia          r1!, { d4 }
-    vmlal.s16       q5, d7, d1[2]
+    vmlal.s16       q10, d2, d6[1]
+    vmlal.s16       q11, d3, d6[1]
 
-    vmlal.s16       q6, d6, d1[3]
-    vmlal.s16       q7, d7, d1[3]
+    vmlal.s16       q12, d2, d6[2]
+    vmlal.s16       q13, d3, d6[2]
 
-    vldmia          r5!, { d0 }         // 8 B: d0
-    vmovl.s8        q1, d2              // 8 B: d2, d3
-    vmlal.s16       q8, d6, d2[0]
-    vmlal.s16       q9, d7, d2[0]
+    vmlal.s16       q14, d2, d6[3]
+    vmlal.s16       q15, d3, d6[3]
 
-    vmlal.s16       q10, d6, d2[1]
-    vmlal.s16       q11, d7, d2[1]
+    vmovl.s8        q1, d1              // q1 <- 8 as (24..32)
+    vmovl.s8        q0, d0              // q0 <- 8 as (16..24)
 
-    vmlal.s16       q12, d6, d2[2]
-    vmlal.s16       q13, d7, d2[2]
+    // k = 2
 
-    vmlal.s16       q14, d6, d2[3]
-    vmlal.s16       q15, d7, d2[3]
+    vmlal.s16       q4, d0, d7[0]
+    vmlal.s16       q5, d1, d7[0]
 
-    // 2
-    vmovl.s8        q2, d4
+    vmlal.s16       q6, d0, d7[1]
+    vmlal.s16       q7, d1, d7[1]
 
-    vmlal.s16       q4, d4, d3[0]
-    vmlal.s16       q5, d5, d3[0]
+    vmlal.s16       q8, d0, d7[2]
+    vmlal.s16       q9, d1, d7[2]
 
-    vldmia          r1!, { d6 }
+    vmlal.s16       q10, d0, d7[3]
+    vmlal.s16       q11, d1, d7[3]
 
-    vmlal.s16       q6, d4, d3[1]
-    vmlal.s16       q7, d5, d3[1]
+    vmovl.s8        q3, d4              // q3 <- 8 bs (0..8)
 
-    vmovl.s8        q0, d0              // 8 B: d0, d1
+    vmlal.s16       q12, d0, d6[0]
+    vmlal.s16       q13, d1, d6[0]
 
-    vmlal.s16       q8, d4, d3[2]
-    vmlal.s16       q9, d5, d3[2]
+    vmlal.s16       q14, d0, d6[1]
+    vmlal.s16       q15, d1, d6[1]
 
-    vmlal.s16       q10, d4, d3[3]
-    vmlal.s16       q11, d5, d3[3]
+    // k = 3
 
-    vmlal.s16       q12, d4, d0[0]
-    vmlal.s16       q13, d5, d0[0]
+    vmlal.s16       q4, d2, d6[2]
+    vmlal.s16       q5, d3, d6[2]
 
-    vmlal.s16       q14, d4, d0[1]
-    vmlal.s16       q15, d5, d0[1]
+    vmlal.s16       q6, d2, d6[3]
+    vmlal.s16       q7, d3, d6[3]
 
-    // 3
-    vmovl.s8        q3, d6
+    vmlal.s16       q8, d2, d7[0]
+    vmlal.s16       q9, d3, d7[0]
 
-    vmlal.s16       q4, d6, d0[2]
-    vmlal.s16       q5, d7, d0[2]
+    vmlal.s16       q10, d2, d7[1]
+    vmlal.s16       q11, d3, d7[1]
 
-    vmlal.s16       q6, d6, d0[3]
-    vmlal.s16       q7, d7, d0[3]
+    vmlal.s16       q12, d2, d7[2]
+    vmlal.s16       q13, d3, d7[2]
 
-    vmlal.s16       q8, d6, d1[0]
-    vmlal.s16       q9, d7, d1[0]
-
-    vmlal.s16       q10, d6, d1[1]
-    vmlal.s16       q11, d7, d1[1]
-
-    vmlal.s16       q12, d6, d1[2]
-    vmlal.s16       q13, d7, d1[2]
-
-    vmlal.s16       q14, d6, d1[3]
-    vmlal.s16       q15, d7, d1[3]
+    vmlal.s16       q14, d2, d7[3]
+    vmlal.s16       q15, d3, d7[3]
 
     sub r3, r3, #4
     cmp r3, #4
     bge .packed_packed_loop_4
-*/
+
     cmp r3, #0
     beq .non_linear
 
