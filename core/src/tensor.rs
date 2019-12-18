@@ -467,6 +467,9 @@ impl Tensor {
     }
 
     pub fn slice(&self, axis: usize, start: usize, end: usize) -> TractResult<Tensor> {
+        if axis >= self.rank() {
+            bail!("Can not slice at axis {} tensor {:?}", axis, self); 
+        }
         fn slice_t<T: Datum>(t: &Tensor, axis: usize, start: usize, end: usize) -> TractResult<Tensor> {
             Ok(t
                 .to_array_view::<T>()?

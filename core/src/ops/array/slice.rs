@@ -116,7 +116,15 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
             return Ok(None);
         };
         let mut patch = TypedModelPatch::default();
-        if let Some(wire) = prec.op().as_typed().unwrap().slice_output(model, prec, &mut patch, node.inputs[0].slot, self.axis, start, end)? {
+        if let Some(wire) = prec.op().as_typed().unwrap().slice_output(
+            model,
+            prec,
+            &mut patch,
+            node.inputs[0].slot,
+            self.axis,
+            start,
+            end,
+        )? {
             patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
             return Ok(Some(patch));
         }

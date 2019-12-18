@@ -41,6 +41,7 @@ fi
     GRU128KeywordSpotter-v2-10epochs.onnx \
     hey_snips_v4_model17.pb \
     inception_v3_2016_08_28_frozen.pb \
+    mdl-en-2019-Q3-librispeech.onnx \
     mobilenet_v1_1.0_224_frozen.pb \
     mobilenet_v2_1.4_224_frozen.pb \
     squeezenet.onnx
@@ -69,6 +70,10 @@ fi
 ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
      -O -i 49x10xf32 --partial \
      --input-node Mfcc run -q
+
+./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+     -O -i Sx40xf32 --pulse 24 \
+     run -q
 
 ./target/release/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
      -O -i 1x224x224x3xf32 \
