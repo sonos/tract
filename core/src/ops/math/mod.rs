@@ -18,6 +18,7 @@ bin_to_super_type!(mul, Mul,
 bin_to_super_type!(div, Div,
         cost: |dt| tvec!((Cost::Div(dt), 1)),
         declutter_bin: declutter_div_as_shift,
+        flip: flip_div,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() / b);
 bin_to_super_type!(rem, Rem,
      [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() % b);
@@ -50,6 +51,19 @@ fn flip_sub(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     })(&mut t)
     .unwrap();
     Some(UnaryOp::new(Box::new(Add), Arc::new(t)))
+}
+
+fn flip_div(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
+    let mut t = t.clone().into_tensor();
+    fn inverse<T: Datum + num_traits::Float>(t: &mut Tensor) {
+        t.as_slice_mut::<T>().unwrap().iter_mut().for_each(|p| *p = p.recip());
+    }
+    (|t: &mut Tensor| -> TractResult<()> {
+        dispatch_floatlike!(inverse(t.datum_type())(t));
+        Ok(())
+    })(&mut t)
+    .unwrap();
+    Some(UnaryOp::new(Box::new(Mul), Arc::new(t)))
 }
 
 fn declutter_mul_as_shift(
