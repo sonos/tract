@@ -121,6 +121,20 @@ $TRACT --machine-friendly \
 kaldi_librispeech_clean_tdnn_lstm_1e_256=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.pulse_240ms $kaldi_librispeech_clean_tdnn_lstm_1e_256 >> metrics
 
+$TRACT --machine-friendly \
+    $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+    -O --output-node output -i 264x40 profile --bench \
+    > tract.out
+v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.mdl-en-2019-Q3-librispeech_onnx.evaltime.2600ms $v >> metrics
+
+$TRACT --machine-friendly \
+    $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+    -O --output-node output -i Sx40 --pulse 24 profile --bench \
+    > tract.out
+v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.mdl-en-2019-Q3-librispeech_onnx.evaltime.pulse_240ms $v >> metrics
+
 $TRACT --machine-friendly $CACHEDIR/speaker-id-2019-03.onnx \
     -O -i 1xSx40xf32 --output-node 257 --partial --pulse 8 profile --bench \
     > tract.out

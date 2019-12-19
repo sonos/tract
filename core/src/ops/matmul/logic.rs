@@ -570,8 +570,8 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?;
-        if fact.axis >= fact.shape.len() - 1 {
-            bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
+        if fact.axis >= fact.shape.len() - self.a_trans as usize {
+            bail!("Can not pulsify MatMulUnaryA on the k dimension");
         }
         target.wire_node(&*node.name, self.clone(), &[input])
     }

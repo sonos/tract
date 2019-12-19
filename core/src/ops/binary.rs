@@ -537,7 +537,7 @@ impl TypedOp for UnaryOp {
                 )?[0],
             ));
         } else {
-            let a = self.a.slice(axis, start, end)?;
+            let a = self.a.slice(axis - a_broadcast_prefix, start, end)?;
             return Ok(Some(
                 patch.wire_node(
                     format!("{}-sliced-{}-{}", node.name, start, end),

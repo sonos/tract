@@ -70,6 +70,266 @@ impl TypedScan {
             seq_length_input_slot,
         })
     }
+
+    fn declutter_body(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if !self.decluttered {
+            let mut new = self.clone();
+            new.body = self.body.clone().declutter()?;
+            new.decluttered = true;
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?));
+        }
+        Ok(None)
+    }
+
+    fn remove_outer_input_from_mappings(
+        mappings: &[InputMapping<TDim>],
+        discarded: usize,
+    ) -> Vec<InputMapping<TDim>> {
+        mappings
+            .iter()
+            .map(|m| match m {
+                InputMapping::Full { slot } => {
+                    InputMapping::Full { slot: *slot - (*slot > discarded) as usize }
+                }
+                InputMapping::Scan { slot, axis, chunk } => InputMapping::Scan {
+                    slot: *slot - (*slot > discarded) as usize,
+                    axis: *axis,
+                    chunk: chunk.clone(),
+                },
+                InputMapping::State { initializer } => {
+                    let initializer = match initializer {
+                        StateInitializer::FromInput(n) => {
+                            StateInitializer::FromInput(*n - (*n > discarded) as usize)
+                        }
+                        StateInitializer::Value(v) => StateInitializer::Value(v.clone()),
+                    };
+                    InputMapping::State { initializer }
+                }
+            })
+            .collect()
+    }
+
+    fn remove_outer_output_from_mappings(
+        mappings: &[OutputMapping<TDim, TDim>],
+        discarded: usize,
+    ) -> Vec<OutputMapping<TDim, TDim>> {
+        mappings
+            .iter()
+            .map(|m| OutputMapping {
+                full_slot: m.full_slot.map(|n| n - (n > discarded) as usize),
+                last_value_slot: m.last_value_slot.map(|n| n - (n > discarded) as usize),
+                full_dim_hint: m.full_dim_hint.clone(),
+                chunk: m.chunk.clone(),
+                state: m.state,
+                axis: m.axis,
+            })
+            .collect()
+    }
+
+    fn declutter_const_initializer(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        for (ix, mapping) in self.input_mapping.iter().enumerate() {
+            match mapping {
+                InputMapping::State { initializer } => match initializer {
+                    StateInitializer::FromInput(n) => {
+                        if let Some(i) = inputs[*n].konst.as_ref() {
+                            let mut op = self.clone();
+                            op.input_mapping[ix] = InputMapping::State {
+                                initializer: StateInitializer::Value(i.clone()),
+                            };
+                            op.input_mapping =
+                                Self::remove_outer_input_from_mappings(&op.input_mapping, *n);
+                            let mut inputs = node.inputs.clone();
+                            inputs.remove(*n);
+                            return Ok(Some(TypedModelPatch::replace_single_op(
+                                model, node, &inputs, op,
+                            )?));
+                        }
+                    }
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
+        Ok(None)
+    }
+
+    fn declutter_discard_unused_input_mapping(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        for (inner_input_id, input) in self.body.input_outlets()?.iter().enumerate() {
+            let source_node = self.body.node(input.node);
+            if source_node.outputs[0].successors.len() == 0 {
+                let mut new_inputs = node.inputs.clone();
+                let slot = match &self.input_mapping[inner_input_id] {
+                    InputMapping::Full { slot } => Some(slot),
+                    InputMapping::Scan { slot, .. } => Some(slot),
+                    InputMapping::State { initializer } => match initializer {
+                        StateInitializer::FromInput(n) => Some(n),
+                        _ => None,
+                    },
+                };
+                let mut new_mappings: Vec<_> = self.input_mapping.clone();
+                new_mappings.remove(inner_input_id);
+                if let Some(slot) = slot {
+                    new_mappings = Self::remove_outer_input_from_mappings(&new_mappings, *slot);
+                }
+                let mut model_inputs = self.body.input_outlets()?.to_vec();
+                if let Some(slot) = slot {
+                    new_inputs.remove(*slot);
+                }
+                model_inputs.remove(inner_input_id);
+                let mut body = self.body.clone();
+                let mut patch = TypedModelPatch::default();
+                patch.obliterate(source_node.id)?;
+                patch.apply(&mut body)?;
+                body.set_input_outlets(&model_inputs)?;
+                let body = body.declutter()?;
+                let op = Self {
+                    body,
+                    skip: self.skip,
+                    seq_length_input_slot: self.seq_length_input_slot,
+                    input_mapping: new_mappings,
+                    decluttered: true,
+                    output_mapping: self.output_mapping.clone(),
+                };
+                return Ok(Some(TypedModelPatch::replace_single_op(model, node, &new_inputs, op)?));
+            }
+        }
+        Ok(None)
+    }
+
+    fn declutter_discard_useless_outer_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        for (ix, o) in node.outputs.iter().enumerate() {
+            if o.successors.len() == 0
+                && !model.output_outlets()?.contains(&OutletId::new(node.id, ix))
+            {
+                let mappings = self
+                    .output_mapping
+                    .iter()
+                    .map(|m| OutputMapping {
+                        full_slot: m.full_slot.filter(|s| *s != ix),
+                        last_value_slot: m.last_value_slot.filter(|s| *s != ix),
+                        full_dim_hint: m.full_dim_hint.clone(),
+                        chunk: m.chunk.clone(),
+                        state: m.state,
+                        axis: m.axis,
+                    })
+                    .collect::<Vec<_>>();
+                let mut op = self.clone();
+                op.output_mapping = Self::remove_outer_output_from_mappings(&mappings, ix);
+                let mut patch = TypedModelPatch::default();
+                let inputs = node
+                    .inputs
+                    .iter()
+                    .map(|&i| patch.tap_model(model, i))
+                    .collect::<TractResult<Vec<_>>>()?;
+                let wires = patch.wire_node(&*node.name, op, &inputs)?;
+                for oix in 0..node.outputs.len() {
+                    if oix < ix {
+                        patch.shunt_outside(OutletId::new(node.id, oix), wires[oix])?;
+                    } else if oix > ix {
+                        patch.shunt_outside(OutletId::new(node.id, oix), wires[oix - 1])?;
+                    }
+                }
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
+    }
+
+    fn declutter_pull_batcheable_input(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        for (model_input, input) in self.input_mapping.iter().enumerate() {
+            if let Some((slot, axis, chunk)) = input.as_scan() {
+                let scan_source = self.body.input_outlets()?[model_input];
+                let scan_source_node = self.body.node(scan_source.node);
+                for successor in &scan_source_node.outputs[0].successors {
+                    let successor_node = self.body.node(successor.node);
+                    if successor_node.inputs.len() != 1 || successor_node.outputs.len() != 1 {
+                        continue;
+                    }
+                    let invariants = successor_node
+                        .op()
+                        .as_typed()
+                        .unwrap()
+                        .invariants(&self.body, &successor_node)?;
+                    if let Some(axis_after) = invariants.unary_track_axis_down(axis, false) {
+                        let mut outside_patch = TypedModelPatch::default();
+                        let mut patch_inputs = node
+                            .inputs
+                            .iter()
+                            .map(|&i| outside_patch.tap_model(model, i))
+                            .collect::<TractResult<TVec<_>>>()?;
+                        let input = outside_patch.tap_model(&model, node.inputs[slot])?;
+                        let new_input_wire = outside_patch.wire_node(
+                            format!("{}-extracted-{}", node.name, successor_node.name),
+                            objekt::clone_box(successor_node.op().as_typed().unwrap()),
+                            &[input],
+                        )?[0];
+                        patch_inputs.push(new_input_wire);
+                        let new_input_outer_fact = outside_patch.outlet_fact(new_input_wire)?;
+                        let mut new_input_inner_fact = new_input_outer_fact.clone();
+                        new_input_inner_fact.shape.set_dim(axis_after, chunk.clone())?;
+
+                        let mut new_body = self.body.clone();
+                        let new_source_wire = new_body.add_source(
+                            format!("{}-extracted-{}", node.name, successor_node.name),
+                            new_input_inner_fact,
+                        )?;
+                        let mut inner_patch = TypedModelPatch::default();
+                        let new_source_wire_in_patch =
+                            inner_patch.tap_model(&new_body, new_source_wire)?;
+                        inner_patch.shunt_outside(
+                            OutletId::new(successor.node, 0),
+                            new_source_wire_in_patch,
+                        )?;
+                        inner_patch.apply(&mut new_body)?;
+
+                        let mut input_mapping = self.input_mapping.clone();
+                        input_mapping.push(InputMapping::Scan {
+                            axis: axis_after,
+                            chunk: chunk.clone(),
+                            slot: node.inputs.len(),
+                        });
+
+                        let new_op = Self {
+                            input_mapping,
+                            output_mapping: self.output_mapping.clone(),
+                            decluttered: false,
+                            body: new_body,
+                            skip: self.skip,
+                            seq_length_input_slot: self.seq_length_input_slot,
+                        };
+                        let output_wires =
+                            outside_patch.wire_node(&*node.name, new_op, &patch_inputs)?;
+                        for w in output_wires {
+                            outside_patch.shunt_outside(OutletId::new(node.id, w.slot), w)?;
+                        }
+                        return Ok(Some(outside_patch));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl Op for TypedScan {
@@ -150,150 +410,15 @@ impl TypedOp for TypedScan {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if !self.decluttered {
-            let mut new = self.clone();
-            new.body = self.body.clone().declutter()?;
-            new.decluttered = true;
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?));
-        }
-        for (inner_input_id, input) in self.body.input_outlets()?.iter().enumerate() {
-            let source_node = self.body.node(input.node);
-            if source_node.outputs[0].successors.len() == 0 {
-                let mut new_inputs = node.inputs.clone();
-                let slot = match &self.input_mapping[inner_input_id] {
-                    InputMapping::Full { slot } => Some(slot),
-                    InputMapping::Scan { slot, .. } => Some(slot),
-                    InputMapping::State { initializer } => match initializer {
-                        StateInitializer::FromInput(n) => Some(n),
-                        _ => None,
-                    },
-                };
-                let new_mappings = self
-                    .input_mapping
-                    .iter()
-                    .enumerate()
-                    .filter(|(ix, _)| *ix != inner_input_id)
-                    .map(|(_, m)| {
-                        if let Some(discarded) = slot {
-                            match m {
-                                InputMapping::Full { slot } => {
-                                    InputMapping::Full { slot: slot - (slot > discarded) as usize }
-                                }
-                                InputMapping::Scan { slot, axis, chunk } => InputMapping::Scan {
-                                    slot: slot - (slot > discarded) as usize,
-                                    axis: *axis,
-                                    chunk: chunk.clone(),
-                                },
-                                InputMapping::State { initializer } => {
-                                    let initializer = match initializer {
-                                        StateInitializer::FromInput(n) => {
-                                            StateInitializer::FromInput(
-                                                n - (n > discarded) as usize,
-                                            )
-                                        }
-                                        StateInitializer::Value(v) => {
-                                            StateInitializer::Value(v.clone())
-                                        }
-                                    };
-                                    InputMapping::State { initializer }
-                                }
-                            }
-                        } else {
-                            m.clone()
-                        }
-                    })
-                    .collect();
-                let mut model_inputs = self.body.input_outlets()?.to_vec();
-                if let Some(slot) = slot {
-                    new_inputs.remove(*slot);
-                }
-                model_inputs.remove(inner_input_id);
-                let mut body = self.body.clone();
-                let mut patch = TypedModelPatch::default();
-                patch.obliterate(source_node.id)?;
-                patch.apply(&mut body)?;
-                body.set_input_outlets(&model_inputs)?;
-                let body = body.declutter()?;
-                let op = Self {
-                    body,
-                    skip: self.skip,
-                    seq_length_input_slot: self.seq_length_input_slot,
-                    input_mapping: new_mappings,
-                    decluttered: true,
-                    output_mapping: self.output_mapping.clone(),
-                };
-                return Ok(Some(TypedModelPatch::replace_single_op(model, node, &new_inputs, op)?));
-            }
-        }
-        for (model_input, input) in self.input_mapping.iter().enumerate() {
-            if let Some((slot, axis, chunk)) = input.as_scan() {
-                let scan_source = self.body.input_outlets()?[model_input];
-                let scan_source_node = self.body.node(scan_source.node);
-                for successor in &scan_source_node.outputs[0].successors {
-                    let successor_node = self.body.node(successor.node);
-                    if successor_node.inputs.len() != 1 || successor_node.outputs.len() != 1 {
-                        continue;
-                    }
-                    let invariants = successor_node
-                        .op()
-                        .as_typed()
-                        .unwrap()
-                        .invariants(&self.body, &successor_node)?;
-                    if let Some(axis_after) = invariants.unary_track_axis_down(axis, false) {
-                        let mut outside_patch = TypedModelPatch::default();
-                        let mut patch_inputs = node
-                            .inputs
-                            .iter()
-                            .map(|&i| outside_patch.tap_model(model, i))
-                            .collect::<TractResult<TVec<_>>>()?;
-                        let input = outside_patch.tap_model(&model, node.inputs[slot])?;
-                        let new_input_wire = outside_patch.wire_node(
-                            format!("{}-extracted-{}", node.name, successor_node.name),
-                            objekt::clone_box(successor_node.op().as_typed().unwrap()),
-                            &[input],
-                        )?[0];
-                        patch_inputs.push(new_input_wire);
-                        let new_input_outer_fact = outside_patch.outlet_fact(new_input_wire)?;
-                        let mut new_input_inner_fact = new_input_outer_fact.clone();
-                        new_input_inner_fact.shape.set_dim(axis_after, chunk.clone())?;
-
-                        let mut new_body = self.body.clone();
-                        let new_source_wire = new_body.add_source(
-                            format!("{}-extracted-{}", node.name, successor_node.name),
-                            new_input_inner_fact,
-                        )?;
-                        let mut inner_patch = TypedModelPatch::default();
-                        let new_source_wire_in_patch =
-                            inner_patch.tap_model(&new_body, new_source_wire)?;
-                        inner_patch.shunt_outside(
-                            OutletId::new(successor.node, 0),
-                            new_source_wire_in_patch,
-                        )?;
-                        inner_patch.apply(&mut new_body)?;
-
-                        let mut input_mapping = self.input_mapping.clone();
-                        input_mapping.push(InputMapping::Scan {
-                            axis: axis_after,
-                            chunk: chunk.clone(),
-                            slot: node.inputs.len(),
-                        });
-
-                        let new_op = Self {
-                            input_mapping,
-                            output_mapping: self.output_mapping.clone(),
-                            decluttered: false,
-                            body: new_body,
-                            skip: self.skip,
-                            seq_length_input_slot: self.seq_length_input_slot,
-                        };
-                        let output_wires =
-                            outside_patch.wire_node(&*node.name, new_op, &patch_inputs)?;
-                        for w in output_wires {
-                            outside_patch.shunt_outside(OutletId::new(node.id, w.slot), w)?;
-                        }
-                        return Ok(Some(outside_patch));
-                    }
-                }
+        for dec in &[
+            Self::declutter_body,
+            Self::declutter_discard_unused_input_mapping,
+            Self::declutter_pull_batcheable_input,
+            Self::declutter_const_initializer,
+            Self::declutter_discard_useless_outer_output,
+        ] {
+            if let Some(r) = dec(&self, model, node)? {
+                return Ok(Some(r));
             }
         }
         Ok(None)
@@ -360,7 +485,7 @@ impl PulsedOp for TypedScan {
             .iter()
             .enumerate()
             .find(|(_ix, om)| om.full_slot == Some(0))
-            .unwrap();
+            .ok_or("Expects output 0 to be the full stream (and no other output)")?;
         let output_body_fact = self.body.output_fact(output_body_ix)?;
         let shape = output_body_fact
             .shape
