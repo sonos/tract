@@ -72,7 +72,7 @@ fi
      --input-node Mfcc run -q
 
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-     -O -i Sx40xf32 --pulse 24 \
+     -O -i Sx40xf32 --output-node output --pulse 24 \
      run -q
 
 ./target/release/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \

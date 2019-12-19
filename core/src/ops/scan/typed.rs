@@ -215,7 +215,9 @@ impl TypedScan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         for (ix, o) in node.outputs.iter().enumerate() {
-            if o.successors.len() == 0 {
+            if o.successors.len() == 0
+                && !model.output_outlets()?.contains(&OutletId::new(node.id, ix))
+            {
                 let mappings = self
                     .output_mapping
                     .iter()
@@ -244,7 +246,7 @@ impl TypedScan {
                         patch.shunt_outside(OutletId::new(node.id, oix), wires[oix - 1])?;
                     }
                 }
-                return Ok(Some(patch))
+                return Ok(Some(patch));
             }
         }
         Ok(None)
@@ -483,7 +485,7 @@ impl PulsedOp for TypedScan {
             .iter()
             .enumerate()
             .find(|(_ix, om)| om.full_slot == Some(0))
-            .unwrap();
+            .ok_or("Expects output 0 to be the full stream (and no other output)")?;
         let output_body_fact = self.body.output_fact(output_body_ix)?;
         let shape = output_body_fact
             .shape

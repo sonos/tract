@@ -123,14 +123,14 @@ echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.pulse_240ms $kaldi_li
 
 $TRACT --machine-friendly \
     $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-    -O -i 264x40 profile --bench \
+    -O --output-node output -i 264x40 profile --bench \
     > tract.out
 v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.mdl-en-2019-Q3-librispeech_onnx.evaltime.2600ms $v >> metrics
 
 $TRACT --machine-friendly \
     $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-    -O -i Sx40 --pulse 24 profile --bench \
+    -O --output-node output -i Sx40 --pulse 24 profile --bench \
     > tract.out
 v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.mdl-en-2019-Q3-librispeech_onnx.evaltime.pulse_240ms $v >> metrics
