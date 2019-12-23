@@ -47,7 +47,7 @@ done
 
 set_version $CRATE/Cargo.toml $VERSION
 git diff
-git commit . -m "release $CRATE/$VERSION"
+git commit --allow-empty . -m "release $CRATE/$VERSION"
 (cd $CRATE ; cargo publish)
 
 git tag -f "$CRATE/$VERSION"
