@@ -16,7 +16,7 @@ armv7neon_ssigmoid_4:
 
     vpush       { q4-q7 }
 
-    ldr         r2, =.coeffs_num
+    adr         r2, .coeffs_num
     vldmia      r2!, { s0-s13 }
 
 // q4 -> q4,5,6
