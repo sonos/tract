@@ -31,7 +31,13 @@ pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
         Color::White.bold(),
     ];
 
-    let mut next_color: usize = 0;
+    let mut next_color_mem: usize = 0;
+    let mut next_color = || {
+        let col = colors[next_color_mem % colors.len()];
+        next_color_mem += 1;
+        col
+    };
+
     let mut wires: Vec<Option<Wire>> = vec![];
     for node in model.eval_order()? {
         let inputs = if model.input_outlets().contains(&OutletId::new(node, 0)) {
@@ -50,7 +56,8 @@ pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
             wires.push(None);
         }
         for (ix, &input) in inputs.iter().enumerate().rev() {
-            let wire = wires.iter().position(|o| o.is_some() && o.unwrap().outlet == input).unwrap();
+            let wire =
+                wires.iter().position(|o| o.is_some() && o.unwrap().outlet == input).unwrap();
             let wanted = first_input_wire + ix;
             if wire != wanted {
                 let little = wire.min(wanted);
@@ -82,6 +89,9 @@ pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
                     }
                 }
                 wires[wanted] = w;
+                if moving.pos != 1 {
+                    wires[wanted].as_mut().unwrap().color = next_color();
+                }
                 if moving.display {
                     if big < wires.len() {
                         for w in &wires[big + 1..] {
@@ -107,13 +117,8 @@ pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
             }
         }
         let node_output_count = model.node_output_count(node);
-        let node_color: Style = if inputs.len() == 1 && node_output_count == 1 {
-            wires[first_input_wire].unwrap().color
-        } else {
-            let col = colors[next_color % colors.len()];
-            next_color += 1;
-            col
-        };
+        let node_color: Style =
+            if inputs.len() > 0 { wires[first_input_wire].unwrap().color } else { next_color() };
         if display {
             match (inputs.len(), node_output_count) {
                 (0, 1) => print!("{}", node_color.paint(DOWN_RIGHT)),
@@ -145,13 +150,7 @@ pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
             if successors.len() == 0 {
                 continue;
             }
-            let color = if ix == 0 {
-                node_color
-            } else {
-                let col = colors[next_color % colors.len()];
-                next_color += 1;
-                col
-            };
+            let color = if ix == 0 { node_color } else { next_color() };
             wires.push(Some(Wire { outlet, color, pos: successors.len(), display }));
         }
     }
