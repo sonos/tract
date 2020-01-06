@@ -5,6 +5,14 @@ use box_drawing::light::*;
 use tract_core::model::OutletId;
 use tract_core::ops::konst::Const;
 
+#[derive(Clone, Copy)]
+struct Wire {
+    outlet: OutletId,
+    color: Style,
+    pos: usize,
+    display: bool,
+}
+
 pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
     let colors: &[Style] = &[
         Color::Red.normal(),
@@ -24,7 +32,7 @@ pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
     ];
 
     let mut next_color: usize = 0;
-    let mut wires: Vec<Option<(OutletId, Style, usize, bool)>> = vec![];
+    let mut wires: Vec<Option<Wire>> = vec![];
     for node in model.eval_order()? {
         let inputs = if model.input_outlets().contains(&OutletId::new(node, 0)) {
             &[]
@@ -33,53 +41,53 @@ pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
         };
         let mut memory_wires: Vec<_> = wires.clone();
         for i in inputs {
-            let pos = memory_wires.iter().position(|w| *i == w.as_ref().unwrap().0).unwrap();
-            memory_wires[pos].as_mut().unwrap().2 -= 1;
+            let pos = memory_wires.iter().position(|w| *i == w.as_ref().unwrap().outlet).unwrap();
+            memory_wires[pos].as_mut().unwrap().pos -= 1;
         }
-        memory_wires.retain(|w| w.unwrap().2 > 0);
+        memory_wires.retain(|w| w.unwrap().pos > 0);
         let first_input_wire = memory_wires.len();
         while wires.len() < first_input_wire + inputs.len() {
             wires.push(None);
         }
         for (ix, &input) in inputs.iter().enumerate().rev() {
-            let wire = wires.iter().position(|o| o.is_some() && o.unwrap().0 == input).unwrap();
+            let wire = wires.iter().position(|o| o.is_some() && o.unwrap().outlet == input).unwrap();
             let wanted = first_input_wire + ix;
             if wire != wanted {
                 let little = wire.min(wanted);
                 let big = wire.max(wanted);
                 let moving = wires[little].unwrap();
-                if moving.3 {
+                if moving.display {
                     for w in &wires[0..little] {
                         if let Some(w) = w {
-                            print!("{}", w.1.paint(VERTICAL));
+                            print!("{}", w.color.paint(VERTICAL));
                         } else {
                             print!(" ");
                         }
                     }
-                    if moving.2 == 1 {
-                        print!("{}", moving.1.paint(UP_RIGHT));
+                    if moving.pos == 1 {
+                        print!("{}", moving.color.paint(UP_RIGHT));
                     } else {
-                        print!("{}", moving.1.paint(VERTICAL_RIGHT));
+                        print!("{}", moving.color.paint(VERTICAL_RIGHT));
                     };
                     for _ in little + 1..big {
-                        print!("{}", moving.1.paint(HORIZONTAL));
+                        print!("{}", moving.color.paint(HORIZONTAL));
                     }
-                    print!("{}", moving.1.paint(DOWN_LEFT));
+                    print!("{}", moving.color.paint(DOWN_LEFT));
                 }
                 let w = wires[little];
-                wires[little].as_mut().unwrap().2 -= 1;
-                if wires[little].unwrap().2 == 0 {
+                wires[little].as_mut().unwrap().pos -= 1;
+                if wires[little].unwrap().pos == 0 {
                     for i in little..big {
                         wires[i] = wires[i + 1];
                     }
                 }
                 wires[wanted] = w;
-                if moving.3 {
+                if moving.display {
                     if big < wires.len() {
                         for w in &wires[big + 1..] {
                             if let Some(w) = w {
-                                if w.3 {
-                                    print!("{}", w.1.paint(VERTICAL));
+                                if w.display {
+                                    print!("{}", w.color.paint(VERTICAL));
                                 } else {
                                     print!(" ");
                                 }
@@ -95,12 +103,12 @@ pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
         let display = options.konst || !(model.node_op(node).is::<Const>());
         if display {
             for wire in &wires[0..first_input_wire] {
-                print!("{}", wire.unwrap().1.paint(VERTICAL));
+                print!("{}", wire.unwrap().color.paint(VERTICAL));
             }
         }
         let node_output_count = model.node_output_count(node);
         let node_color: Style = if inputs.len() == 1 && node_output_count == 1 {
-            wires[first_input_wire].unwrap().1
+            wires[first_input_wire].unwrap().color
         } else {
             let col = colors[next_color % colors.len()];
             next_color += 1;
@@ -144,7 +152,7 @@ pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
                 next_color += 1;
                 col
             };
-            wires.push(Some((outlet, color, successors.len(), display)));
+            wires.push(Some(Wire { outlet, color, pos: successors.len(), display }));
         }
     }
     Ok(())
