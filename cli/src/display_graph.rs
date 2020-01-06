@@ -18,6 +18,7 @@ use tract_tensorflow::tfpb::tensorflow::GraphDef;
 pub struct DisplayOptions {
     pub konst: bool,
     pub invariants: bool,
+    pub draw: bool,
     pub quiet: bool,
     pub natural_order: bool,
     pub debug_op: bool,

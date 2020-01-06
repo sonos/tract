@@ -335,6 +335,12 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
                 .long("invariants")
                 .help("Display operators invariants"),
         )
+        .arg(
+            Arg::with_name("draw")
+                .takes_value(false)
+                .long("draw")
+                .help("Ascii art graph"),
+        )
 }
 
 #[derive(Debug)]
@@ -712,6 +718,7 @@ pub fn display_options_from_clap(
     Ok(DisplayOptions {
         konst: matches.is_present("const"),
         invariants: matches.is_present("invariants"),
+        draw: matches.is_present("draw"),
         quiet: matches.is_present("quiet"),
         natural_order: matches.is_present("natural-order"),
         debug_op: matches.is_present("debug-op"),
