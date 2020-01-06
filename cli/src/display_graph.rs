@@ -17,6 +17,7 @@ use tract_tensorflow::tfpb::tensorflow::GraphDef;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DisplayOptions {
     pub konst: bool,
+    pub invariants: bool,
     pub quiet: bool,
     pub natural_order: bool,
     pub debug_op: bool,
@@ -176,6 +177,12 @@ impl<'a> DisplayGraph<'a> {
         }
         for info in model.node_op(node_id).info()? {
             println!("{}  * {}", prefix, info);
+        }
+        if self.options.invariants {
+            if let Some(typed) = model.downcast_ref::<TypedModel>() {
+                let node = typed.node(node_id);
+                println!("{}  * {:?}", prefix, node.op().as_typed().unwrap().invariants(&typed, &node)?);
+            }
         }
         if self.options.debug_op {
             println!("{}  * {:?}", prefix, model.node_op(node_id));
@@ -340,7 +347,7 @@ impl<'a> DisplayGraph<'a> {
             if let Ok(id) = self.model.borrow().node_id_by_name(&*node_name) {
                 let mut v = vec![];
                 for a in gnode.attribute.iter() {
-                    let value = if let Some(t) =  &a.t {
+                    let value = if let Some(t) = &a.t {
                         format!("{:?}", Tensor::try_from(t)?)
                     } else {
                         format!("{:?}", a)

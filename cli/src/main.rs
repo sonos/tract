@@ -329,6 +329,12 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         )
         .arg(Arg::with_name("const").long("const").help("also display consts nodes"))
         .arg(Arg::with_name("outlet-labels").long("outlet-labels").help("display outlet labels"))
+        .arg(
+            Arg::with_name("invariants")
+                .takes_value(false)
+                .long("invariants")
+                .help("Display operators invariants"),
+        )
 }
 
 #[derive(Debug)]
@@ -705,6 +711,7 @@ pub fn display_options_from_clap(
 ) -> CliResult<DisplayOptions> {
     Ok(DisplayOptions {
         konst: matches.is_present("const"),
+        invariants: matches.is_present("invariants"),
         quiet: matches.is_present("quiet"),
         natural_order: matches.is_present("natural-order"),
         debug_op: matches.is_present("debug-op"),
