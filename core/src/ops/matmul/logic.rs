@@ -444,7 +444,7 @@ impl StatelessOp for MatMulUnary {
 impl TypedOp for MatMulUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
+            self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type),
             &*infer_shapes(
                 self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
                 inputs[0].shape.to_tvec(),
