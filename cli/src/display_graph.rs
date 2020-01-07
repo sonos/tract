@@ -1,3 +1,4 @@
+use crate::draw::DrawingState;
 use crate::CliResult;
 use crate::SomeGraphDef;
 use ansi_term::Color::*;
@@ -79,6 +80,9 @@ impl<'a> DisplayGraph<'a> {
         if self.options.quiet {
             return Ok(());
         }
+        let mut drawing_state = if self.options.draw {
+            Some(DrawingState::default())
+        } else { None };
         let node_ids = if self.options.natural_order {
             (0..self.model.nodes_len()).collect()
         } else {
@@ -86,24 +90,42 @@ impl<'a> DisplayGraph<'a> {
         };
         for node in node_ids {
             if self.options.filter(self.model, &*self.prefix, node)? {
-                self.render_node_prefixed(node, prefix)?
+                self.render_node_prefixed(node, prefix, drawing_state.as_mut())?
             }
         }
         Ok(())
     }
 
     pub fn render_node(&self, node_id: usize) -> CliResult<()> {
-        self.render_node_prefixed(node_id, "")
+        self.render_node_prefixed(node_id, "", None)
     }
 
-    pub fn render_node_prefixed(&self, node_id: usize, prefix: &str) -> CliResult<()> {
+    pub fn render_node_prefixed(
+        &self,
+        node_id: usize,
+        prefix: &str,
+        drawing_state: Option<&mut DrawingState>,
+    ) -> CliResult<()> {
         let model = self.model.borrow();
         let name_color = self.node_color.get(&node_id).cloned().unwrap_or(White.into());
         let node_name = model.node_name(node_id);
         let node_op_name = model.node_op(node_id).name();
+        let mut drawing_lines = drawing_state
+            .map(|ds| ds.draw_node(model, node_id, &self.options))
+            .transpose()?
+            .map(|ds| ds.into_iter());
+        macro_rules! prefix {
+            () => {
+                print!(
+                    "{}{}",
+                    prefix,
+                    drawing_lines.as_mut().and_then(|dl| dl.next()).unwrap_or("".to_string())
+                )
+            };
+        };
+        prefix!();
         println!(
-            "{}{} {} {}",
-            prefix,
+            "{} {} {}",
             White.bold().paint(format!("{}", node_id)),
             (if node_name == "UnimplementedOp" {
                 Red.bold()
@@ -118,20 +140,18 @@ impl<'a> DisplayGraph<'a> {
             name_color.italic().paint(node_name)
         );
         for label in self.node_labels.get(&node_id).unwrap_or(&vec![]).iter() {
-            println!("{}  * {}", prefix, label);
+            prefix!();
+            println!("  * {}", label);
         }
         if model.node_control_inputs(node_id).len() > 0 {
-            println!(
-                "{}  * control nodes: {}",
-                prefix,
-                model.node_control_inputs(node_id).iter().join(", ")
-            );
+            prefix!();
+            println!("  * control nodes: {}", model.node_control_inputs(node_id).iter().join(", "));
         }
         for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
+            prefix!();
             println!(
-                "{}  {} input fact  #{}: {} {}",
-                prefix,
+                "  {} input fact  #{}: {} {}",
                 star,
                 ix,
                 White.bold().paint(format!("{:?}", i)),
@@ -161,9 +181,9 @@ impl<'a> DisplayGraph<'a> {
             };
             let outlet = OutletId::new(node_id, ix);
             let successors = model.outlet_successors(outlet);
+            prefix!();
             println!(
-                "{}  {} output fact #{}: {} {} {}",
-                prefix,
+                "  {} output fact #{}: {} {} {}",
                 star,
                 ix,
                 model.outlet_fact_format(outlet),
@@ -172,30 +192,35 @@ impl<'a> DisplayGraph<'a> {
             );
             if self.options.outlet_labels {
                 if let Some(label) = model.outlet_label(OutletId::new(node_id, ix)) {
-                    println!("{}            {} ", prefix, White.italic().paint(label));
+                    prefix!();
+                    println!("            {} ", White.italic().paint(label));
                 }
             }
         }
         for info in model.node_op(node_id).info()? {
-            println!("{}  * {}", prefix, info);
+            prefix!();
+            println!("  * {}", info);
         }
         if self.options.invariants {
             if let Some(typed) = model.downcast_ref::<TypedModel>() {
                 let node = typed.node(node_id);
-                println!("{}  * {:?}", prefix, node.op().as_typed().unwrap().invariants(&typed, &node)?);
+                println!("  * {:?}", node.op().as_typed().unwrap().invariants(&typed, &node)?);
             }
         }
         if self.options.debug_op {
-            println!("{}  * {:?}", prefix, model.node_op(node_id));
+            prefix!();
+            println!("  * {:?}", model.node_op(node_id));
         }
         if let Some(node_sections) = self.node_sections.get(&node_id) {
             for section in node_sections {
                 if section.is_empty() {
                     continue;
                 }
-                println!("{}  * {}", prefix, section[0]);
+                prefix!();
+                println!("  * {}", section[0]);
                 for s in &section[1..] {
-                    println!("{}    {}", prefix, s);
+                    prefix!();
+                    println!("    {}", s);
                 }
             }
         }

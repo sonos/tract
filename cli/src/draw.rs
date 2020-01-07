@@ -7,7 +7,7 @@ use tract_core::model::OutletId;
 use tract_core::ops::konst::Const;
 
 #[derive(Clone, Default)]
-struct DrawingState {
+pub struct DrawingState {
     next_color_mem: usize,
     wires: Vec<Option<Wire>>,
 }
@@ -158,6 +158,7 @@ impl DrawingState {
         node: usize,
         opts: &DisplayOptions,
     ) -> CliResult<Vec<String>> {
+        println!("node {}", node);
         let mut lines = vec![String::new()];
         macro_rules! p { ($($args: expr),*) => { write!(lines.last_mut().unwrap(), $($args),*)?;} }
         macro_rules! ln {
@@ -165,8 +166,12 @@ impl DrawingState {
                 lines.push(String::new())
             };
         };
+        println!("node {:?}", model.node_format(node));
         let inputs = self.inputs(model, node);
+        dbg!(inputs);
         let first_input_wire = self.first_input_wire(model, node);
+        dbg!(first_input_wire);
+        dbg!(&self.wires);
         let display = opts.konst || !(model.node_op(node).is::<Const>());
         if display {
             for wire in &self.wires[0..first_input_wire] {
@@ -232,7 +237,7 @@ impl DrawingState {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Wire {
     outlet: OutletId,
     color: Style,
