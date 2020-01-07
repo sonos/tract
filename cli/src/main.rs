@@ -564,7 +564,7 @@ impl Parameters {
                     let name = format!("{}.npy", raw_model.node(input.node).name);
                     if let Ok(t) = tensor::for_npz(&mut npz, &name) {
                         let shape = t.shape().to_vec();
-                        let mut fact = InferenceFact::dt_shape(f32::datum_type(), shape);
+                        let mut fact = InferenceFact::dt_shape(t.datum_type(), shape);
                         if let Some(s) = matches.value_of("stream_axis") {
                             fact.shape.set_dim(s.parse()?, TDim::s());
                         }
