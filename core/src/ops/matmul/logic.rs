@@ -787,7 +787,7 @@ where
         format!("{}-matmatmul", &*node.name),
         phy::MatMatMulUnaryFinite {
             c_trans,
-            c_shape: geo.c_shape,
+            c_fact: TypedFact::dt_shape(TC::datum_type(), &*geo.c_shape)?,
             c_prefix_dim_and_stride,
             packed_as,
             fused_ops: None,
