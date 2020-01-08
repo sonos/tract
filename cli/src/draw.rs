@@ -6,6 +6,14 @@ use std::fmt::Write;
 use tract_core::model::{InletId, OutletId};
 use tract_core::ops::konst::Const;
 
+#[derive(Clone, Debug)]
+struct Wire {
+    outlet: OutletId,
+    color: Style,
+    successors: Vec<InletId>,
+    display: bool,
+}
+
 #[derive(Clone, Default)]
 pub struct DrawingState {
     next_color_mem: usize,
@@ -44,18 +52,6 @@ impl DrawingState {
 
     fn passthrough_count(&self, node: usize) -> usize {
         self.wires.iter().filter(|w| w.successors.iter().find(|i| i.node != node).is_some()).count()
-    }
-
-    pub fn draw_node(
-        &mut self,
-        model: &dyn Model,
-        node: usize,
-        opts: &DisplayOptions,
-    ) -> CliResult<Vec<String>> {
-        let mut all = self.draw_node_vprefix(model, node, opts)?;
-        all.extend(self.draw_node_body(model, node, opts)?);
-        all.extend(self.draw_node_vsuffix(model, node, opts)?);
-        Ok(all)
     }
 
     pub fn draw_node_vprefix(
@@ -238,22 +234,4 @@ impl DrawingState {
         }
         Ok(v)
     }
-}
-
-#[derive(Clone, Debug)]
-struct Wire {
-    outlet: OutletId,
-    color: Style,
-    successors: Vec<InletId>,
-    display: bool,
-}
-
-pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
-    let mut state = DrawingState::default();
-    for node in model.eval_order()? {
-        for line in state.draw_node(model, node, &options)? {
-            println!("{}", line);
-        }
-    }
-    Ok(())
 }

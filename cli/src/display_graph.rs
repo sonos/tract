@@ -19,7 +19,6 @@ use tract_tensorflow::tfpb::tensorflow::GraphDef;
 pub struct DisplayOptions {
     pub konst: bool,
     pub invariants: bool,
-    pub draw: bool,
     pub quiet: bool,
     pub natural_order: bool,
     pub debug_op: bool,
@@ -58,6 +57,13 @@ impl DisplayOptions {
         */
         Ok(model.node_op(node_id).name() != "Const" || self.konst)
     }
+
+    pub fn should_draw(&self) -> bool {
+        !self.natural_order
+            && self.node_ids.is_none()
+            && self.op_name.is_none()
+            && self.node_name.is_none()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -80,8 +86,11 @@ impl<'a> DisplayGraph<'a> {
         if self.options.quiet {
             return Ok(());
         }
-        let mut drawing_state =
-            if self.options.draw { Some(DrawingState::default()) } else { None };
+        let mut drawing_state = if self.options.should_draw() {
+            Some(DrawingState::default())
+        } else {
+            None
+        };
         let node_ids = if self.options.natural_order {
             (0..self.model.nodes_len()).collect()
         } else {
