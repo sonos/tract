@@ -60,9 +60,6 @@ impl DisplayOptions {
 
     pub fn should_draw(&self) -> bool {
         !self.natural_order
-            && self.node_ids.is_none()
-            && self.op_name.is_none()
-            && self.node_name.is_none()
     }
 }
 
@@ -99,6 +96,10 @@ impl<'a> DisplayGraph<'a> {
         for node in node_ids {
             if self.options.filter(self.model, &*self.prefix, node)? {
                 self.render_node_prefixed(node, prefix, drawing_state.as_mut())?
+            } else if let Some(ref mut ds) = drawing_state {
+                let _prefix = ds.draw_node_vprefix(self.model, node, &self.options)?;
+                let _body = ds.draw_node_body(self.model, node, &self.options)?;
+                let _suffix = ds.draw_node_vsuffix(self.model, node, &self.options)?;
             }
         }
         Ok(())
@@ -118,6 +119,7 @@ impl<'a> DisplayGraph<'a> {
         let name_color = self.node_color.get(&node_id).cloned().unwrap_or(White.into());
         let node_name = model.node_name(node_id);
         let node_op_name = model.node_op(node_id).name();
+        // println!("{:?}", model.node_format(node_id));
         if let Some(ref mut ds) = &mut drawing_state {
             for l in ds.draw_node_vprefix(model, node_id, &self.options)? {
                 println!("{}{} ", prefix, l);
