@@ -80,9 +80,8 @@ impl<'a> DisplayGraph<'a> {
         if self.options.quiet {
             return Ok(());
         }
-        let mut drawing_state = if self.options.draw {
-            Some(DrawingState::default())
-        } else { None };
+        let mut drawing_state =
+            if self.options.draw { Some(DrawingState::default()) } else { None };
         let node_ids = if self.options.natural_order {
             (0..self.model.nodes_len()).collect()
         } else {
@@ -104,23 +103,29 @@ impl<'a> DisplayGraph<'a> {
         &self,
         node_id: usize,
         prefix: &str,
-        drawing_state: Option<&mut DrawingState>,
+        mut drawing_state: Option<&mut DrawingState>,
     ) -> CliResult<()> {
         let model = self.model.borrow();
         let name_color = self.node_color.get(&node_id).cloned().unwrap_or(White.into());
         let node_name = model.node_name(node_id);
         let node_op_name = model.node_op(node_id).name();
-        let mut drawing_lines = drawing_state
-            .map(|ds| ds.draw_node(model, node_id, &self.options))
-            .transpose()?
-            .map(|ds| ds.into_iter());
+        if let Some(ref mut ds) = &mut drawing_state {
+            for l in ds.draw_node_vprefix(model, node_id, &self.options)? {
+                println!("{}{} ", prefix, l);
+            }
+        }
+        let mut drawing_lines: Box<dyn Iterator<Item = String>> =
+            if let Some(ds) = drawing_state.as_mut() {
+                let body = ds.draw_node_body(model, node_id, &self.options)?;
+                ds.draw_node_vsuffix(model, node_id, &self.options)?;
+                let filler = ds.draw_node_vfiller()?;
+                Box::new(body.into_iter().chain(std::iter::repeat(filler)))
+            } else {
+                Box::new(std::iter::repeat(String::new()))
+            };
         macro_rules! prefix {
             () => {
-                print!(
-                    "{}{}",
-                    prefix,
-                    drawing_lines.as_mut().and_then(|dl| dl.next()).unwrap_or("".to_string())
-                )
+                print!("{}{} ", prefix, drawing_lines.next().unwrap(),)
             };
         };
         prefix!();
@@ -225,7 +230,8 @@ impl<'a> DisplayGraph<'a> {
             }
         }
         for (label, sub) in self.node_nested_graphs.get(&node_id).unwrap_or(&vec![]) {
-            sub.render_prefixed(&format!(" {}{}.{} >> ", prefix, model.node_name(node_id), label))?
+            let prefix = drawing_lines.next().unwrap();
+            sub.render_prefixed(&format!("{} [{}] ", prefix, label))?
         }
         Ok(())
     }

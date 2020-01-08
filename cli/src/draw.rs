@@ -3,13 +3,13 @@ use crate::{CliResult, Model};
 use ansi_term::{Color, Style};
 use box_drawing::light::*;
 use std::fmt::Write;
-use tract_core::model::OutletId;
+use tract_core::model::{InletId, OutletId};
 use tract_core::ops::konst::Const;
 
 #[derive(Clone, Default)]
 pub struct DrawingState {
     next_color_mem: usize,
-    wires: Vec<Option<Wire>>,
+    wires: Vec<Wire>,
 }
 
 impl DrawingState {
@@ -32,27 +32,18 @@ impl DrawingState {
         ];
         colors[self.next_color_mem % colors.len()]
     }
+
     fn next_color(&mut self) -> Style {
         self.next_color_mem += 1;
         self.current_color()
     }
 
     fn inputs<'a, 'm: 'a>(&self, model: &'m dyn Model, node: usize) -> &'a [OutletId] {
-        if model.input_outlets().contains(&OutletId::new(node, 0)) {
-            &[]
-        } else {
-            model.node_inputs(node)
-        }
+        model.node_inputs(node)
     }
 
-    fn first_input_wire(&self, model: &dyn Model, node: usize) -> usize {
-        let mut memory_wires: Vec<_> = self.wires.clone();
-        for i in self.inputs(model, node) {
-            let pos = memory_wires.iter().position(|w| *i == w.as_ref().unwrap().outlet).unwrap();
-            memory_wires[pos].as_mut().unwrap().pos -= 1;
-        }
-        memory_wires.retain(|w| w.unwrap().pos > 0);
-        memory_wires.len()
+    fn passthrough_count(&self, node: usize) -> usize {
+        self.wires.iter().filter(|w| w.successors.iter().find(|i| i.node != node).is_some()).count()
     }
 
     pub fn draw_node(
@@ -67,7 +58,7 @@ impl DrawingState {
         Ok(all)
     }
 
-    fn draw_node_vprefix(
+    pub fn draw_node_vprefix(
         &mut self,
         model: &dyn Model,
         node: usize,
@@ -81,33 +72,19 @@ impl DrawingState {
             };
         };
         let inputs = self.inputs(model, node);
-        let mut memory_wires: Vec<_> = self.wires.clone();
-        for i in inputs {
-            let pos = memory_wires.iter().position(|w| *i == w.as_ref().unwrap().outlet).unwrap();
-            memory_wires[pos].as_mut().unwrap().pos -= 1;
-        }
-        memory_wires.retain(|w| w.unwrap().pos > 0);
-        let first_input_wire = memory_wires.len();
-        while self.wires.len() < first_input_wire + inputs.len() {
-            self.wires.push(None);
-        }
+        let passthrough_count = self.passthrough_count(node);
         for (ix, &input) in inputs.iter().enumerate().rev() {
-            let wire =
-                self.wires.iter().position(|o| o.is_some() && o.unwrap().outlet == input).unwrap();
-            let wanted = first_input_wire + ix;
+            let wire = self.wires.iter().position(|o| o.outlet == input).unwrap();
+            let wanted = passthrough_count + ix;
             if wire != wanted {
                 let little = wire.min(wanted);
                 let big = wire.max(wanted);
-                let moving = self.wires[little].unwrap();
+                let moving = self.wires[little].clone();
                 if moving.display {
                     for w in &self.wires[0..little] {
-                        if let Some(w) = w {
-                            p!("{}", w.color.paint(VERTICAL));
-                        } else {
-                            p!(" ");
-                        }
+                        p!("{}", w.color.paint(VERTICAL));
                     }
-                    if moving.pos == 1 {
+                    if moving.successors.len() == 1 {
                         p!("{}", moving.color.paint(UP_RIGHT));
                     } else {
                         p!("{}", moving.color.paint(VERTICAL_RIGHT));
@@ -117,26 +94,30 @@ impl DrawingState {
                     }
                     p!("{}", moving.color.paint(DOWN_LEFT));
                 }
-                let w = self.wires[little];
-                self.wires[little].as_mut().unwrap().pos -= 1;
-                if self.wires[little].unwrap().pos == 0 {
+                let w = Wire { successors: vec![InletId::new(node, ix)], ..self.wires[little] };
+                self.wires[little].successors.retain(|s| s.node != node);
+                if self.wires[little].successors.is_empty() {
                     for i in little..big {
-                        self.wires[i] = self.wires[i + 1];
+                        self.wires.swap(i, i + 1);
                     }
                 }
+                while self.wires.len() <= wanted {
+                    self.wires.push(Wire {
+                        color: self.current_color(),
+                        display: false,
+                        outlet: OutletId::new(0, 0),
+                        successors: vec![],
+                    });
+                }
                 self.wires[wanted] = w;
-                if moving.pos != 1 {
-                    self.wires[wanted].as_mut().unwrap().color = self.next_color();
+                if moving.successors.len() > 0 {
+                    self.wires[wanted].color = self.next_color();
                 }
                 if moving.display {
                     if big < self.wires.len() {
                         for w in &self.wires[big + 1..] {
-                            if let Some(w) = w {
-                                if w.display {
-                                    p!("{}", w.color.paint(VERTICAL));
-                                } else {
-                                    p!(" ");
-                                }
+                            if w.display {
+                                p!("{}", w.color.paint(VERTICAL));
                             } else {
                                 p!(" ");
                             }
@@ -152,13 +133,12 @@ impl DrawingState {
         Ok(lines)
     }
 
-    fn draw_node_body(
+    pub fn draw_node_body(
         &mut self,
         model: &dyn Model,
         node: usize,
         opts: &DisplayOptions,
     ) -> CliResult<Vec<String>> {
-        println!("node {}", node);
         let mut lines = vec![String::new()];
         macro_rules! p { ($($args: expr),*) => { write!(lines.last_mut().unwrap(), $($args),*)?;} }
         macro_rules! ln {
@@ -166,24 +146,17 @@ impl DrawingState {
                 lines.push(String::new())
             };
         };
-        println!("node {:?}", model.node_format(node));
         let inputs = self.inputs(model, node);
-        dbg!(inputs);
-        let first_input_wire = self.first_input_wire(model, node);
-        dbg!(first_input_wire);
-        dbg!(&self.wires);
+        let passthrough_count = self.passthrough_count(node);
         let display = opts.konst || !(model.node_op(node).is::<Const>());
         if display {
-            for wire in &self.wires[0..first_input_wire] {
-                p!("{}", wire.unwrap().color.paint(VERTICAL));
+            for wire in &self.wires[0..passthrough_count] {
+                p!("{}", wire.color.paint(VERTICAL));
             }
         }
         let node_output_count = model.node_output_count(node);
-        let node_color: Style = if inputs.len() > 0 {
-            self.wires[first_input_wire].unwrap().color
-        } else {
-            self.next_color()
-        };
+        let node_color: Style =
+            if inputs.len() > 0 { self.wires[passthrough_count].color } else { self.next_color() };
         if display {
             match (inputs.len(), node_output_count) {
                 (0, 1) => p!("{}", node_color.paint(DOWN_RIGHT)),
@@ -209,39 +182,47 @@ impl DrawingState {
         Ok(lines)
     }
 
-    fn draw_node_vsuffix(
+    pub fn draw_node_vfiller(&self) -> CliResult<String> {
+        let mut s = String::new();
+        for wire in &self.wires {
+            write!(&mut s, "{}", wire.color.paint(VERTICAL))?;
+        }
+        Ok(s)
+    }
+
+    pub fn draw_node_vsuffix(
         &mut self,
         model: &dyn Model,
         node: usize,
         opts: &DisplayOptions,
     ) -> CliResult<Vec<String>> {
-        let first_input_wire = self.first_input_wire(model, node);
+        let passthrough_count = self.passthrough_count(node);
         let node_output_count = model.node_output_count(node);
         let display = opts.konst || !(model.node_op(node).is::<Const>());
         let node_color = self
             .wires
-            .get(first_input_wire)
-            .map(|w| w.unwrap().color)
+            .get(passthrough_count)
+            .map(|w| w.color)
             .unwrap_or_else(|| self.current_color());
-        self.wires.truncate(first_input_wire);
+        self.wires.truncate(passthrough_count);
         for ix in 0..node_output_count {
             let outlet = OutletId::new(node, ix);
-            let successors = model.outlet_successors(outlet);
+            let successors = model.outlet_successors(outlet).to_vec();
             if successors.len() == 0 {
                 continue;
             }
             let color = if ix == 0 { node_color } else { self.next_color() };
-            self.wires.push(Some(Wire { outlet, color, pos: successors.len(), display }));
+            self.wires.push(Wire { outlet, color, successors, display });
         }
         Ok(vec![])
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Wire {
     outlet: OutletId,
     color: Style,
-    pos: usize,
+    successors: Vec<InletId>,
     display: bool,
 }
 
