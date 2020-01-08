@@ -182,10 +182,13 @@ impl DrawingState {
         Ok(lines)
     }
 
-    pub fn draw_node_vfiller(&self) -> CliResult<String> {
+    pub fn draw_node_vfiller(&self, model: &dyn Model, node:usize) -> CliResult<String> {
         let mut s = String::new();
         for wire in &self.wires {
             write!(&mut s, "{}", wire.color.paint(VERTICAL))?;
+        }
+        for _ in self.wires.len()..model.node_output_count(node) {
+            write!(&mut s, " ")?;
         }
         Ok(s)
     }
@@ -196,6 +199,7 @@ impl DrawingState {
         node: usize,
         opts: &DisplayOptions,
     ) -> CliResult<Vec<String>> {
+        let mut v = vec![];
         let passthrough_count = self.passthrough_count(node);
         let node_output_count = model.node_output_count(node);
         let display = opts.konst || !(model.node_op(node).is::<Const>());
@@ -205,16 +209,34 @@ impl DrawingState {
             .map(|w| w.color)
             .unwrap_or_else(|| self.current_color());
         self.wires.truncate(passthrough_count);
-        for ix in 0..node_output_count {
-            let outlet = OutletId::new(node, ix);
+        for slot in 0..node_output_count {
+            let outlet = OutletId::new(node, slot);
             let successors = model.outlet_successors(outlet).to_vec();
-            if successors.len() == 0 {
-                continue;
-            }
-            let color = if ix == 0 { node_color } else { self.next_color() };
+            let color = if slot == 0 { node_color } else { self.next_color() };
             self.wires.push(Wire { outlet, color, successors, display });
         }
-        Ok(vec![])
+        let wires_before = self.wires.clone();
+        self.wires.retain(|w| w.successors.len() > 0);
+        for (wanted_at, w) in self.wires.iter().enumerate() {
+            let is_at = wires_before.iter().position(|w2| w.outlet == w2.outlet).unwrap();
+            if wanted_at < is_at {
+                let mut s = String::new();
+                for w in 0..wanted_at {
+                    write!(&mut s, "{}", self.wires[w].color.paint(VERTICAL))?;
+                }
+                let color = self.wires[wanted_at].color;
+                write!(&mut s, "{}", color.paint(DOWN_RIGHT))?;
+                for _ in 0..is_at - wanted_at - 1 {
+                    write!(&mut s, "{}", color.paint(HORIZONTAL))?;
+                }
+                write!(&mut s, "{}", color.paint(UP_LEFT))?;
+                for w in is_at..self.wires.len() {
+                    write!(&mut s, "{}", self.wires[w].color.paint(VERTICAL))?;
+                }
+                v.push(s);
+            }
+        }
+        Ok(v)
     }
 }
 

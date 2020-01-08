@@ -114,15 +114,16 @@ impl<'a> DisplayGraph<'a> {
                 println!("{}{} ", prefix, l);
             }
         }
-        let mut drawing_lines: Box<dyn Iterator<Item = String>> =
-            if let Some(ds) = drawing_state.as_mut() {
-                let body = ds.draw_node_body(model, node_id, &self.options)?;
-                ds.draw_node_vsuffix(model, node_id, &self.options)?;
-                let filler = ds.draw_node_vfiller()?;
-                Box::new(body.into_iter().chain(std::iter::repeat(filler)))
-            } else {
-                Box::new(std::iter::repeat(String::new()))
-            };
+        let mut drawing_lines: Box<dyn Iterator<Item = String>> = if let Some(ds) =
+            drawing_state.as_mut()
+        {
+            let body = ds.draw_node_body(model, node_id, &self.options)?;
+            let suffix = ds.draw_node_vsuffix(model, node_id, &self.options)?;
+            let filler = ds.draw_node_vfiller(model, node_id)?;
+            Box::new(body.into_iter().chain(suffix.into_iter()).chain(std::iter::repeat(filler)))
+        } else {
+            Box::new(std::iter::repeat(String::new()))
+        };
         macro_rules! prefix {
             () => {
                 print!("{}{} ", prefix, drawing_lines.next().unwrap(),)
