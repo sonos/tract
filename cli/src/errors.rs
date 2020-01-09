@@ -13,6 +13,7 @@ error_chain! {
     }
 
     foreign_links {
+        Fmt(::std::fmt::Error);
         Io(::std::io::Error);
         NumParseInt(::std::num::ParseIntError);
         NdarrayShape(ndarray::ShapeError);

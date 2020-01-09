@@ -1,3 +1,4 @@
+use crate::draw::DrawingState;
 use crate::CliResult;
 use crate::SomeGraphDef;
 use ansi_term::Color::*;
@@ -17,6 +18,7 @@ use tract_tensorflow::tfpb::tensorflow::GraphDef;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DisplayOptions {
     pub konst: bool,
+    pub invariants: bool,
     pub quiet: bool,
     pub natural_order: bool,
     pub debug_op: bool,
@@ -55,6 +57,10 @@ impl DisplayOptions {
         */
         Ok(model.node_op(node_id).name() != "Const" || self.konst)
     }
+
+    pub fn should_draw(&self) -> bool {
+        !self.natural_order
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +83,11 @@ impl<'a> DisplayGraph<'a> {
         if self.options.quiet {
             return Ok(());
         }
+        let mut drawing_state = if self.options.should_draw() {
+            Some(DrawingState::default())
+        } else {
+            None
+        };
         let node_ids = if self.options.natural_order {
             (0..self.model.nodes_len()).collect()
         } else {
@@ -84,24 +95,54 @@ impl<'a> DisplayGraph<'a> {
         };
         for node in node_ids {
             if self.options.filter(self.model, &*self.prefix, node)? {
-                self.render_node_prefixed(node, prefix)?
+                self.render_node_prefixed(node, prefix, drawing_state.as_mut())?
+            } else if let Some(ref mut ds) = drawing_state {
+                let _prefix = ds.draw_node_vprefix(self.model, node, &self.options)?;
+                let _body = ds.draw_node_body(self.model, node, &self.options)?;
+                let _suffix = ds.draw_node_vsuffix(self.model, node, &self.options)?;
             }
         }
         Ok(())
     }
 
     pub fn render_node(&self, node_id: usize) -> CliResult<()> {
-        self.render_node_prefixed(node_id, "")
+        self.render_node_prefixed(node_id, "", None)
     }
 
-    pub fn render_node_prefixed(&self, node_id: usize, prefix: &str) -> CliResult<()> {
+    pub fn render_node_prefixed(
+        &self,
+        node_id: usize,
+        prefix: &str,
+        mut drawing_state: Option<&mut DrawingState>,
+    ) -> CliResult<()> {
         let model = self.model.borrow();
         let name_color = self.node_color.get(&node_id).cloned().unwrap_or(White.into());
         let node_name = model.node_name(node_id);
         let node_op_name = model.node_op(node_id).name();
+        // println!("{:?}", model.node_format(node_id));
+        if let Some(ref mut ds) = &mut drawing_state {
+            for l in ds.draw_node_vprefix(model, node_id, &self.options)? {
+                println!("{}{} ", prefix, l);
+            }
+        }
+        let mut drawing_lines: Box<dyn Iterator<Item = String>> = if let Some(ds) =
+            drawing_state.as_mut()
+        {
+            let body = ds.draw_node_body(model, node_id, &self.options)?;
+            let suffix = ds.draw_node_vsuffix(model, node_id, &self.options)?;
+            let filler = ds.draw_node_vfiller(model, node_id)?;
+            Box::new(body.into_iter().chain(suffix.into_iter()).chain(std::iter::repeat(filler)))
+        } else {
+            Box::new(std::iter::repeat(String::new()))
+        };
+        macro_rules! prefix {
+            () => {
+                print!("{}{} ", prefix, drawing_lines.next().unwrap(),)
+            };
+        };
+        prefix!();
         println!(
-            "{}{} {} {}",
-            prefix,
+            "{} {} {}",
             White.bold().paint(format!("{}", node_id)),
             (if node_name == "UnimplementedOp" {
                 Red.bold()
@@ -116,20 +157,18 @@ impl<'a> DisplayGraph<'a> {
             name_color.italic().paint(node_name)
         );
         for label in self.node_labels.get(&node_id).unwrap_or(&vec![]).iter() {
-            println!("{}  * {}", prefix, label);
+            prefix!();
+            println!("  * {}", label);
         }
         if model.node_control_inputs(node_id).len() > 0 {
-            println!(
-                "{}  * control nodes: {}",
-                prefix,
-                model.node_control_inputs(node_id).iter().join(", ")
-            );
+            prefix!();
+            println!("  * control nodes: {}", model.node_control_inputs(node_id).iter().join(", "));
         }
         for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
+            prefix!();
             println!(
-                "{}  {} input fact  #{}: {} {}",
-                prefix,
+                "  {} input fact  #{}: {} {}",
                 star,
                 ix,
                 White.bold().paint(format!("{:?}", i)),
@@ -159,9 +198,9 @@ impl<'a> DisplayGraph<'a> {
             };
             let outlet = OutletId::new(node_id, ix);
             let successors = model.outlet_successors(outlet);
+            prefix!();
             println!(
-                "{}  {} output fact #{}: {} {} {}",
-                prefix,
+                "  {} output fact #{}: {} {} {}",
                 star,
                 ix,
                 model.outlet_fact_format(outlet),
@@ -170,29 +209,41 @@ impl<'a> DisplayGraph<'a> {
             );
             if self.options.outlet_labels {
                 if let Some(label) = model.outlet_label(OutletId::new(node_id, ix)) {
-                    println!("{}            {} ", prefix, White.italic().paint(label));
+                    prefix!();
+                    println!("            {} ", White.italic().paint(label));
                 }
             }
         }
         for info in model.node_op(node_id).info()? {
-            println!("{}  * {}", prefix, info);
+            prefix!();
+            println!("  * {}", info);
+        }
+        if self.options.invariants {
+            if let Some(typed) = model.downcast_ref::<TypedModel>() {
+                let node = typed.node(node_id);
+                println!("  * {:?}", node.op().as_typed().unwrap().invariants(&typed, &node)?);
+            }
         }
         if self.options.debug_op {
-            println!("{}  * {:?}", prefix, model.node_op(node_id));
+            prefix!();
+            println!("  * {:?}", model.node_op(node_id));
         }
         if let Some(node_sections) = self.node_sections.get(&node_id) {
             for section in node_sections {
                 if section.is_empty() {
                     continue;
                 }
-                println!("{}  * {}", prefix, section[0]);
+                prefix!();
+                println!("  * {}", section[0]);
                 for s in &section[1..] {
-                    println!("{}    {}", prefix, s);
+                    prefix!();
+                    println!("    {}", s);
                 }
             }
         }
         for (label, sub) in self.node_nested_graphs.get(&node_id).unwrap_or(&vec![]) {
-            sub.render_prefixed(&format!(" {}{}.{} >> ", prefix, model.node_name(node_id), label))?
+            let prefix = drawing_lines.next().unwrap();
+            sub.render_prefixed(&format!("{} [{}] ", prefix, label))?
         }
         Ok(())
     }
@@ -340,7 +391,7 @@ impl<'a> DisplayGraph<'a> {
             if let Ok(id) = self.model.borrow().node_id_by_name(&*node_name) {
                 let mut v = vec![];
                 for a in gnode.attribute.iter() {
-                    let value = if let Some(t) =  &a.t {
+                    let value = if let Some(t) = &a.t {
                         format!("{:?}", Tensor::try_from(t)?)
                     } else {
                         format!("{:?}", a)

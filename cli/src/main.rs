@@ -197,9 +197,6 @@ fn main() {
         );
     app = app.subcommand(output_options(dump));
 
-    let draw = clap::SubCommand::with_name("draw");
-    app = app.subcommand(output_options(draw));
-
     let profile =
         clap::SubCommand::with_name("profile")
             .long_about("Benchmarks tract on randomly generated input.")
@@ -329,6 +326,12 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         )
         .arg(Arg::with_name("const").long("const").help("also display consts nodes"))
         .arg(Arg::with_name("outlet-labels").long("outlet-labels").help("display outlet labels"))
+        .arg(
+            Arg::with_name("invariants")
+                .takes_value(false)
+                .long("invariants")
+                .help("Display operators invariants"),
+        )
 }
 
 #[derive(Debug)]
@@ -705,6 +708,7 @@ pub fn display_options_from_clap(
 ) -> CliResult<DisplayOptions> {
     Ok(DisplayOptions {
         konst: matches.is_present("const"),
+        invariants: matches.is_present("invariants"),
         quiet: matches.is_present("quiet"),
         natural_order: matches.is_present("natural-order"),
         debug_op: matches.is_present("debug-op"),
@@ -824,10 +828,6 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("cost", Some(m)) => {
             crate::cost::handle(params, display_options_from_clap(&matches, m)?, m)
-        }
-
-        ("draw", Some(m)) => {
-            crate::draw::render(&*params.tract_model, display_options_from_clap(&matches, m)?)
         }
 
         ("dump", Some(m)) => {

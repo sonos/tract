@@ -1,6 +1,8 @@
 use crate::prelude::TVec;
+use itertools::Itertools;
+use std::fmt;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct Invariants {
     element_wise: bool,
     axes: TVec<AxisInfo>,
@@ -20,6 +22,19 @@ impl Invariants {
     }
 }
 
+impl fmt::Debug for Invariants {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        if self.element_wise {
+            write!(fmt, "Element wise")?;
+        } else if self.axes.len() > 0 {
+            write!(fmt, "Axes tracking: {}", self.axes.iter().map(|axis| format!("{:?}", axis)).join(", "))?;
+        } else {
+            write!(fmt, "No invariants")?;
+        }
+        Ok(())
+    }
+}
+
 impl From<TVec<AxisInfo>> for Invariants {
     fn from(axes: TVec<AxisInfo>) -> Invariants {
         Invariants { element_wise: false, axes }
@@ -36,12 +51,27 @@ impl std::iter::FromIterator<AxisInfo> for Invariants {
 }
 
 /// Translation invariance property.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct AxisInfo {
     pub inputs: TVec<Option<usize>>,
     pub outputs: TVec<Option<usize>>,
     pub period: usize,
     pub disposable: bool,
+}
+
+impl fmt::Debug for AxisInfo {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}->{}",
+               self.inputs.iter().map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string())).join(","),
+               self.outputs.iter().map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string())).join(","))?;
+        if !self.disposable {
+            write!(fmt, " not disposable")?;
+        }
+        if self.period != 1 {
+            write!(fmt, " period: {}", self.period)?;
+        }
+        Ok(())
+    }
 }
 
 impl AxisInfo {
