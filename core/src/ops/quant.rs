@@ -1,7 +1,7 @@
 use crate::internal::*;
-use num_traits::Zero;
 use crate::ops::element_wise::ElementWiseOp;
 use num_traits::AsPrimitive;
+use num_traits::Zero;
 use tract_linalg::lut::Lut;
 
 #[derive(Clone, Debug)]
@@ -98,8 +98,18 @@ element_wise_oop!(quantize_linear_u8, QuantizeLinearU8 {scale: f32, zero_point: 
             *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
         );
         Ok(())
-    }
+    };
+    info: info_quantize_linear_u8
 );
+
+fn info_quantize_linear_u8(q: &QuantizeLinearU8) -> TractResult<Vec<String>> {
+    Ok(vec![format!(
+        "scale: {} zero_point: {} 1/scale: {}",
+        q.scale,
+        q.zero_point,
+        q.scale.recip()
+    )])
+}
 
 element_wise_oop!(quantize_linear_i8, QuantizeLinearI8 {scale: f32, zero_point: i8},
     [f32,i32] => i8 |op, xs, ys| {
@@ -107,8 +117,18 @@ element_wise_oop!(quantize_linear_i8, QuantizeLinearI8 {scale: f32, zero_point: 
             *y = quantize_linear_f32_i8(*x as f32, op.scale, op.zero_point as i32)
         );
         Ok(())
-    }
+    };
+    info: info_quantize_linear_i8
 );
+
+fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
+    Ok(vec![format!(
+        "scale: {} zero_point: {} 1/scale: {}",
+        q.scale,
+        q.zero_point,
+        q.scale.recip()
+    )])
+}
 
 #[derive(Clone, Debug, new)]
 pub struct DequantizeLinearF32 {
@@ -131,6 +151,10 @@ impl DequantizeLinearF32 {
 impl Op for DequantizeLinearF32 {
     fn name(&self) -> Cow<str> {
         "DequantizeLinear".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("scale: {} zero_point: {}", self.scale, self.zero_point)])
     }
 
     fn validation(&self) -> Validation {
@@ -172,6 +196,7 @@ impl TypedOp for DequantizeLinearF32 {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut current = node;
+        let incoming_dt = model.node_input_facts(node.id)?[0].datum_type;
         while let Some(succ) = model.single_succ(current.id)? {
             let q_params = if let Some(op) = succ.op_as::<ElementWiseOp>() {
                 if let Some(mop) = op.0.downcast_ref::<QuantizeLinearU8>() {
@@ -207,38 +232,44 @@ impl TypedOp for DequantizeLinearF32 {
                     }
                 }
                 // or else make a lookup table
-                let mut adhoc_model = TypedModel::default();
-                let mut wire = adhoc_model.add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
-                let mut next = model.single_succ(node.id)?.unwrap();
-                wire = adhoc_model.wire_node(&*node.name, node.op.clone(), [wire].as_ref())?[0];
-                loop {
-                    wire = adhoc_model.wire_node(&*node.name, next.op.clone(), [wire].as_ref())?[0];
-                    if next.id == current.id {
-                        break;
-                    } else {
-                        next = model.single_succ(next.id)?.unwrap();
+                if incoming_dt == DatumType::I8 || incoming_dt == DatumType::U8 {
+                    let mut adhoc_model = TypedModel::default();
+                    let mut wire =
+                        adhoc_model.add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
+                    let mut next = model.single_succ(node.id)?.unwrap();
+                    println!("next: {:?}", next);
+                    wire = adhoc_model.wire_node(&*node.name, node.op.clone(), [wire].as_ref())?[0];
+                    loop {
+                        wire = adhoc_model.wire_node(&*node.name, next.op.clone(), [wire].as_ref())?[0];
+                        if next.id == current.id {
+                            break;
+                        } else {
+                            next = model.single_succ(next.id)?.unwrap();
+                        }
                     }
+                    wire = adhoc_model.wire_node(&*succ.name, succ.op.clone(), [wire].as_ref())?[0];
+                    adhoc_model.set_output_outlets(&[wire])?;
+                    let input = (0u8..=255).collect::<Vec<u8>>();
+                    let input = match dt {
+                        DatumType::I8 => unsafe {
+                            tensor1(std::mem::transmute::<&[u8], &[i8]>(&*input))
+                        },
+                        DatumType::U8 => tensor1(&input),
+                        _ => unreachable!(),
+                    };
+                    let output = SimplePlan::new(adhoc_model)?.run(tvec!(input))?.remove(0);
+                    let table: &[u8] = match dt {
+                        DatumType::I8 => unsafe { std::mem::transmute(output.as_slice::<i8>()?) },
+                        DatumType::U8 => output.as_slice::<u8>()?,
+                        _ => unreachable!(),
+                    };
+                    let op = lookup_table((tract_linalg::ops().lut_u8)(table));
+                    let mut patch = TypedModelPatch::default();
+                    let mut wire: OutletId = patch.tap_model(model, node.inputs[0])?.into();
+                    wire = patch.wire_node(&*node.name, op, [wire].as_ref())?[0];
+                    patch.shunt_outside(OutletId::new(succ.id, 0), wire)?;
+                    return Ok(Some(patch));
                 }
-                wire = adhoc_model.wire_node(&*succ.name, succ.op.clone(), [wire].as_ref())?[0];
-                adhoc_model.set_output_outlets(&[wire])?;
-                let input = (0u8..=255).collect::<Vec<u8>>();
-                let input = match dt {
-                    DatumType::I8 => unsafe { tensor1(std::mem::transmute::<&[u8], &[i8]>(&*input)) },
-                    DatumType::U8 => tensor1(&input),
-                    _ => unreachable!(),
-                };
-                let output = SimplePlan::new(adhoc_model)?.run(tvec!(input))?.remove(0);
-                let table:&[u8] = match dt {
-                    DatumType::I8 => unsafe { std::mem::transmute(output.as_slice::<i8>()?) },
-                    DatumType::U8 => output.as_slice::<u8>()?,
-                    _ => unreachable!(),
-                };
-                let op = lookup_table((tract_linalg::ops().lut_u8)(table));
-                let mut patch = TypedModelPatch::default();
-                let mut wire: OutletId = patch.tap_model(model, node.inputs[0])?.into();
-                wire = patch.wire_node(&*node.name, op, [wire].as_ref())?[0];
-                patch.shunt_outside(OutletId::new(succ.id, 0), wire)?;
-                return Ok(Some(patch));
             }
             let invariants = succ.op.invariants(model, succ)?;
             if invariants.element_wise() {

@@ -31,8 +31,13 @@ pub trait ElementWiseMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static 
         &self,
         dt: DatumType,
         scale: f32,
-        zero_point: i32) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
+        zero_point: i32,
+    ) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
         Ok(None)
+    }
+    #[allow(unused_variables)]
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![])
     }
 }
 
@@ -45,6 +50,10 @@ pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
 impl Op for ElementWiseOp {
     fn name(&self) -> Cow<str> {
         format!("{}", self.0.name()).into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        self.0.info()
     }
 
     fn validation(&self) -> Validation {
@@ -220,6 +229,7 @@ macro_rules! element_wise_oop {
     ($func:ident, $Op:ident $({$($var: ident : $var_typ: path),*})?,
         $( [$($typ:ident),*] => $typ_dst:ident $f:expr ),*
         $(; cost: $cost:expr )?
+        $(; info: $info:expr )?
         $(; prefix: $prefix:expr )?
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
@@ -254,6 +264,11 @@ macro_rules! element_wise_oop {
             $(
             fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
                 $cost(dt)
+            }
+            )?
+            $(
+            fn info(&self) -> TractResult<Vec<String>> {
+                $info(self)
             }
             )?
             $(
