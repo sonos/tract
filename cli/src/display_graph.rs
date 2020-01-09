@@ -221,6 +221,7 @@ impl<'a> DisplayGraph<'a> {
         if self.options.invariants {
             if let Some(typed) = model.downcast_ref::<TypedModel>() {
                 let node = typed.node(node_id);
+                prefix!();
                 println!("  * {:?}", node.op().as_typed().unwrap().invariants(&typed, &node)?);
             }
         }
