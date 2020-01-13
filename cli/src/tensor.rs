@@ -112,6 +112,15 @@ pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractR
     if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<f32>, ndarray_0_12::IxDyn>(name) {
         return Ok(rewrap(t));
     }
+    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<i8>, ndarray_0_12::IxDyn>(name) {
+        return Ok(rewrap(t));
+    }
+    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<u8>, ndarray_0_12::IxDyn>(name) {
+        return Ok(rewrap(t));
+    }
+    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<i32>, ndarray_0_12::IxDyn>(name) {
+        return Ok(rewrap(t));
+    }
     bail!("Can not extract tensor from {}", name);
 }
 

@@ -289,7 +289,7 @@ impl ConvUnary {
             format!("{}-matmatmul", name),
             matmul::phy::MatMatMulUnaryFinite {
                 c_trans: false,
-                c_shape: output_shape.shape.clone(),
+                c_fact: TypedFact::dt_shape(TC::datum_type(), &*output_shape.shape)?,
                 c_prefix_dim_and_stride,
                 packed_as: self.kernel_as_packed_as(&mmm.as_mmm().a_pack())?,
                 fused_ops: self.bias_as_non_linear()?,

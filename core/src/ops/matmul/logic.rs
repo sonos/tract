@@ -20,6 +20,16 @@ fn eval(
             return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
                 MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
             });
+        } else if (a.datum_type(), b.datum_type()) == (i8::datum_type(), i8::datum_type()) {
+            if q.c_datum_type == i32::datum_type() {
+                return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
+                    MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
+                });
+            } else if q.c_datum_type == i8::datum_type() {
+                return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
+                    MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i8)(m, k, n))
+                });
+            }
         } else if (a.datum_type(), b.datum_type()) == (u8::datum_type(), u8::datum_type()) {
             if q.c_datum_type == i32::datum_type() {
                 return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
@@ -37,7 +47,7 @@ fn eval(
         });
     }
     bail!(
-        "Unsupported combination for MatMul (a: {:?}, b:{:?} q:{:?})",
+        "Unsupported combination for MatMul eval (a: {:?}, b:{:?} q:{:?})",
         a.datum_type(),
         b.datum_type(),
         q_params
@@ -317,8 +327,12 @@ impl InferenceRulesOp for MatMul {
     ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
+        if let Some(qp) = &self.q_params {
+            s.equals(&outputs[0].datum_type, &qp.c_datum_type)?;
+        } else {
+            s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        }
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ashape, bshape| {
             let (_, _, cshape) =
                 infer_shapes(ashape, bshape, self.a_trans, self.b_trans, self.c_trans)?;
@@ -333,8 +347,9 @@ impl InferenceRulesOp for MatMul {
 
 impl TypedOp for MatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
+            dt,
             &*infer_shapes(
                 inputs[0].shape.to_tvec(),
                 inputs[1].shape.to_tvec(),
@@ -403,13 +418,17 @@ impl Op for MatMulUnary {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![
+        let mut v = vec![
             format!(
                 "a_trans:{:?} b_trans:{:?} c_trans:{:?}",
                 self.a_trans, self.b_trans, self.c_trans
             ),
             format!("A: {:?}", self.a),
-        ])
+        ];
+        if let Some(qp) = &self.q_params {
+            v.push(format!("{:?}", qp));
+        }
+        Ok(v)
     }
 
     canonic!();
@@ -434,7 +453,7 @@ impl StatelessOp for MatMulUnary {
 impl TypedOp for MatMulUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
+            self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type),
             &*infer_shapes(
                 self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
                 inputs[0].shape.to_tvec(),
@@ -596,11 +615,46 @@ impl TypedOp for MatMulUnary {
                         self.q_params.as_ref(),
                         &|m, k, n| MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n)),
                     )?
+                } else if (
+                    self.a.datum_type(),
+                    b.datum_type,
+                    self.q_params.as_ref().map(|q| q.c_datum_type),
+                ) == (i8::datum_type(), i8::datum_type(), Some(i8::datum_type()))
+                {
+                    new_mat_mul_unary_finite(
+                        model,
+                        node,
+                        self.a.clone(),
+                        b_shape,
+                        self.a_trans,
+                        self.b_trans,
+                        self.c_trans,
+                        self.q_params.as_ref(),
+                        &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i8)(m, k, n)),
+                    )?
+                } else if (
+                    self.a.datum_type(),
+                    b.datum_type,
+                    self.q_params.as_ref().map(|q| q.c_datum_type),
+                ) == (i8::datum_type(), i8::datum_type(), Some(i32::datum_type()))
+                {
+                    new_mat_mul_unary_finite(
+                        model,
+                        node,
+                        self.a.clone(),
+                        b_shape,
+                        self.a_trans,
+                        self.b_trans,
+                        self.c_trans,
+                        self.q_params.as_ref(),
+                        &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n)),
+                    )?
                 } else {
                     bail!(
-                        "Unsupported combination for MatMul (a: {:?}, b:{:?})",
+                        "Unsupported combination for MatMul codegen (a: {:?}, b:{:?}, q: {:?})",
                         self.a.datum_type(),
-                        b.datum_type
+                        b.datum_type,
+                        self.q_params
                     );
                 };
             return Ok(Some(patch));
@@ -733,7 +787,7 @@ where
         format!("{}-matmatmul", &*node.name),
         phy::MatMatMulUnaryFinite {
             c_trans,
-            c_shape: geo.c_shape,
+            c_fact: TypedFact::dt_shape(TC::datum_type(), &*geo.c_shape)?,
             c_prefix_dim_and_stride,
             packed_as,
             fused_ops: None,

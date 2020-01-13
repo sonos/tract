@@ -82,7 +82,7 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     pub(crate) c_trans: bool,
-    pub(crate) c_shape: TVec<usize>,
+    pub(crate) c_fact: TypedFact,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
     pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec<TI>>>>,
@@ -124,7 +124,7 @@ where
                 return Ok(Some(TypedModelPatch::fuse_with_next(
                     model,
                     &node,
-                    Self { c_shape: shape, ..self.clone() },
+                    Self { c_fact: TypedFact::dt_shape(self.c_fact.datum_type, &*shape)?, ..self.clone() },
                 )?));
             }
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
@@ -184,7 +184,7 @@ where
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
             let b = args_1!(inputs);
-            let mut c = Tensor::uninitialized::<TC>(&*self.c_shape)?;
+            let mut c = Tensor::uninitialized::<TC>(&*self.c_fact.shape.as_finite().unwrap())?;
             if let Some((prefix_dim, prefix_strides)) = &self.c_prefix_dim_and_stride {
                 let b = b.to_array_view::<TB>()?;
                 let mut c = c.to_array_view_mut::<TC>()?;
@@ -240,8 +240,8 @@ where
     TC: Datum + Copy,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.c_shape)?))
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(self.c_fact.clone()))
     }
 
     typed_op_as_op!();

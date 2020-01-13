@@ -554,8 +554,9 @@ impl Parameters {
             for input in bundle {
                 let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(input)?)?;
                 for name in npz.names()? {
-                    if let Ok(npy) = tensor::for_npz(&mut npz, &*name) {
-                        debug!("{} contains {}: {:?}", input, name, npy);
+                    match tensor::for_npz(&mut npz, &*name) {
+                        Ok(t) => debug!("{} contains {}: {:?}", input, name, t),
+                        Err(r) => warn!("Could not read {} from {} ({})", name, input, r),
                     }
                 }
                 let input_outlets = raw_model.input_outlets()?.to_vec();
@@ -563,7 +564,7 @@ impl Parameters {
                     let name = format!("{}.npy", raw_model.node(input.node).name);
                     if let Ok(t) = tensor::for_npz(&mut npz, &name) {
                         let shape = t.shape().to_vec();
-                        let mut fact = InferenceFact::dt_shape(f32::datum_type(), shape);
+                        let mut fact = InferenceFact::dt_shape(t.datum_type(), shape);
                         if let Some(s) = matches.value_of("stream_axis") {
                             fact.shape.set_dim(s.parse()?, TDim::s());
                         }
