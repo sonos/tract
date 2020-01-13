@@ -237,7 +237,6 @@ impl TypedOp for DequantizeLinearF32 {
                     let mut wire =
                         adhoc_model.add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
                     let mut next = model.single_succ(node.id)?.unwrap();
-                    println!("next: {:?}", next);
                     wire = adhoc_model.wire_node(&*node.name, node.op.clone(), [wire].as_ref())?[0];
                     loop {
                         wire = adhoc_model.wire_node(&*node.name, next.op.clone(), [wire].as_ref())?[0];

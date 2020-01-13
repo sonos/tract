@@ -630,7 +630,7 @@ impl TypedOp for MatMulUnary {
                         self.b_trans,
                         self.c_trans,
                         self.q_params.as_ref(),
-                        &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n)),
+                        &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i8)(m, k, n)),
                     )?
                 } else if (
                     self.a.datum_type(),
@@ -647,7 +647,7 @@ impl TypedOp for MatMulUnary {
                         self.b_trans,
                         self.c_trans,
                         self.q_params.as_ref(),
-                        &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i8)(m, k, n)),
+                        &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n)),
                     )?
                 } else {
                     bail!(
