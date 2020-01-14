@@ -328,7 +328,7 @@ impl TypedModel {
 
     /// Attempt to convert the network to a NormalizedModel.
     pub fn into_normalized(self) -> TractResult<NormalizedModel> {
-        compact::compact(&self)
+        crate::model::translator::IntoTranslator.translate_model(&self)
     }
 
     /// Declutter as much as possible, then translate to optimized operators.

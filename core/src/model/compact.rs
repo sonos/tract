@@ -1,31 +1,19 @@
 use crate::model::{Fact, InletId, ModelImpl, OutletId};
 use crate::prelude::*;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::fmt;
 
-pub(crate) fn compact<TI1, TI2, O1, O2, E1, E2>(
-    old: &ModelImpl<TI1, O1>,
-) -> TractResult<ModelImpl<TI2, O2>>
+pub(crate) fn compact<TI, O>(old: &ModelImpl<TI, O>) -> TractResult<ModelImpl<TI, O>>
 where
-    TractError: From<E1> + From<E2>,
-    TI1: Fact + Clone + 'static,
-    TI2: Fact + for <'a> TryFrom<&'a TI1, Error = E1> + Clone + 'static,
-    O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    O2: fmt::Display + TryFrom<O1, Error = E2> + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    TI: Fact + Clone + 'static,
+    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let mut model = ModelImpl::default();
     let mut map = HashMap::new();
     for old_id in old.eval_order()? {
         let old_node = &old.nodes()[old_id];
-        let facts = old_node
-            .outputs
-            .iter()
-            .map(|of| Ok(TI2::try_from(&of.fact)?))
-            .collect::<TractResult<TVec<_>>>()
-            .map_err(|e| format!("While translating {}: {:?}", old_node, e))?;
-        let new_op = O2::try_from(old_node.op.clone())?;
-        let new_id = model.add_node(old_node.name.clone(), new_op, facts)?;
+        let facts = old_node.outputs.iter().map(|of| of.fact.clone()).collect::<TVec<_>>();
+        let new_id = model.add_node(old_node.name.clone(), old_node.op.clone(), facts)?;
         map.insert(old_id, new_id);
         for ix in 0..old_node.outputs.len() {
             if let Some(label) = old.outlet_label(OutletId::new(old_id, ix)) {
@@ -49,8 +37,8 @@ where
             debug!("Translate useless source {}", node);
             let new_id = model.add_node(
                 &*node.name,
-                O2::try_from(node.op.clone())?,
-                tvec!(TI2::try_from(&node.outputs[0].fact)?),
+                node.op.clone(),
+                tvec!(node.outputs[0].fact.clone()),
             )?;
             map.insert(i.node, new_id);
         }
