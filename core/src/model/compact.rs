@@ -1,71 +1,8 @@
 use crate::model::{Fact, InletId, ModelImpl, OutletId};
-use crate::ops::Translate;
 use crate::prelude::*;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt::{Debug, Display};
-
-pub(crate) fn translate<TI1, TI2, O1, O2, Ctx>(
-    source: &ModelImpl<TI1, O1>,
-    ctx: &Ctx,
-) -> TractResult<(ModelImpl<TI2, O2>, HashMap<OutletId, OutletId>)>
-where
-    TI1: Fact + Clone + 'static,
-    TI2: Fact + Clone + 'static,
-    O1: Display
-        + Debug
-        + AsRef<dyn Op>
-        + AsMut<dyn Op>
-        + Clone
-        + 'static
-        + Translate<TI1, O1, TI2, O2, Ctx>,
-    O2: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-{
-    let mut target = ModelImpl::default();
-    let mut mapping = HashMap::new();
-    for old_id in source.eval_order()? {
-        let node = source.node(old_id);
-        debug!("Translating {}", node);
-        let outlets = node
-            .op
-            .translate(&source, node, &mut target, &mapping, ctx)
-            .chain_err(|| format!("Translating {}", node))?;
-        for (ix, outlet) in outlets.into_iter().enumerate() {
-            mapping.insert(OutletId::new(node.id, ix), outlet);
-            if let Some(label) = source.outlet_label(OutletId::new(node.id, ix)) {
-                target.set_outlet_label(outlet, label.to_string());
-            }
-            /* This is only valid between analyse and typed, but may be useful
-             * for debugging
-            #[cfg(debug_assertions)]
-            {
-                use crate::analyser::types::Fact;
-                node.outputs[ix]
-                    .fact
-                    .to_tensor_fact()
-                    .unify(&target.outlet_fact(outlet)?.to_tensor_fact())
-                    .chain_err(|| format!("Translating {}", node))?;
-            }
-            */
-        }
-    }
-    // do not drop inputs, even if they are useless, to maintain interface
-    for i in source.input_outlets()? {
-        if !mapping.contains_key(i) {
-            let node = source.node(i.node);
-            debug!("Translate useless source {}", node);
-            let outlets = node
-                .op
-                .translate(&source, node, &mut target, &mapping, ctx)
-                .chain_err(|| format!("Translating {}", node))?;
-            mapping.insert(*i, outlets[0]);
-        }
-    }
-    // maintaining order of i/o interface
-    target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
-    target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
-    Ok((target, mapping))
-}
+use std::fmt;
 
 pub(crate) fn compact<TI1, TI2, O1, O2, E1, E2>(
     old: &ModelImpl<TI1, O1>,
@@ -74,8 +11,8 @@ where
     TractError: From<E1> + From<E2>,
     TI1: Fact + Clone + 'static,
     TI2: Fact + TryFrom<TI1, Error = E1> + Clone + 'static,
-    O1: Display + Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    O2: Display + TryFrom<O1, Error = E2> + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O2: fmt::Display + TryFrom<O1, Error = E2> + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let mut model = ModelImpl::default();
     let mut map = HashMap::new();
