@@ -108,23 +108,6 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
     }
 }
 
-pub trait Translate<TI1, O1, TI2, O2, Ctx>
-where
-    TI1: Fact + Clone + 'static,
-    TI2: Fact + Clone + 'static,
-    O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-{
-    fn translate(
-        &self,
-        source: &ModelImpl<TI1, O1>,
-        node: &BaseNode<TI1, O1>,
-        target: &mut ModelImpl<TI2, O2>,
-        mapping: &HashMap<OutletId, OutletId>,
-        ctx: &Ctx,
-    ) -> TractResult<TVec<OutletId>>;
-}
-
 /// A base operation
 pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp {
     fn name(&self) -> Cow<str>;
@@ -313,27 +296,6 @@ pub trait PulsedOp:
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>>;
 }
 
-impl
-    crate::ops::Translate<
-        NormalizedFact,
-        Box<dyn TypedOp>,
-        crate::pulse::PulsedFact,
-        Box<dyn PulsedOp>,
-        usize,
-    > for Box<dyn TypedOp>
-{
-    fn translate(
-        &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        ctx: &usize,
-    ) -> TractResult<TVec<OutletId>> {
-        self.pulsify(source, node, target, mapping, *ctx)
-    }
-}
-
 /// An operation with tensor type inference
 pub trait InferenceOp:
     Op + fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
@@ -426,22 +388,8 @@ pub trait InferenceOp:
     }
 }
 
-impl crate::ops::Translate<InferenceFact, Box<dyn InferenceOp>, TypedFact, Box<dyn TypedOp>, ()>
-    for Box<dyn InferenceOp>
-{
-    fn translate(
-        &self,
-        source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _ctx: &(),
-    ) -> TractResult<TVec<OutletId>> {
-        self.to_typed(source, node, target, mapping)
-    }
-}
-
-impl crate::ops::Translate<PulsedFact, Box<dyn PulsedOp>, TypedFact, Box<dyn TypedOp>, ()>
+/*
+impl crate::model::translator::Translate<PulsedFact, Box<dyn PulsedOp>, TypedFact, Box<dyn TypedOp>, ()>
     for Box<dyn PulsedOp>
 {
     fn translate(
@@ -456,6 +404,7 @@ impl crate::ops::Translate<PulsedFact, Box<dyn PulsedOp>, TypedFact, Box<dyn Typ
         target.wire_node(&*node.name, node.op.to_typed(), &*inputs)
     }
 }
+*/
 
 impl_downcast!(Op);
 

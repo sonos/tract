@@ -50,6 +50,7 @@ mod model;
 mod node;
 pub mod order;
 mod patch;
+pub(crate) mod translator;
 
 pub use self::dsl::*;
 pub use self::fact::*;
@@ -247,9 +248,26 @@ impl InferenceModel {
 
     /// Attempt full analyse and conversion to TypedModel.
     pub fn into_typed(mut self) -> TractResult<TypedModel> {
+        use crate::model::translator::Translate;
         self.analyse(false)?;
         let m = self.incorporate()?;
-        Ok(compact::translate(&m, &())?.0)
+
+        struct ToTypedTranslator;
+        impl Translate<InferenceFact, Box<dyn InferenceOp>, TypedFact, Box<dyn TypedOp>>
+            for ToTypedTranslator
+        {
+            fn translate_node(
+                &self,
+                source: &InferenceModel,
+                node: &InferenceNode,
+                target: &mut TypedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+            ) -> TractResult<TVec<OutletId>> {
+                node.op.to_typed(source, node, target, mapping)
+            }
+        }
+
+        ToTypedTranslator.translate_model(&m)
     }
 
     /// Attempt full analyse, decluttering and conversion to NormalizedModel.

@@ -1,7 +1,6 @@
 use crate::internal::*;
+use crate::model::translator::Translate;
 use std::fmt;
-
-use std::convert::TryFrom;
 
 pub mod delay;
 
@@ -35,10 +34,15 @@ impl Fact for PulsedFact {
     }
 }
 
-impl TryFrom<PulsedFact> for TypedFact {
-    type Error = TractError;
-    fn try_from(fact: PulsedFact) -> TractResult<TypedFact> {
-        TypedFact::dt_shape(fact.datum_type, &*fact.shape)
+impl From<PulsedFact> for TypedFact {
+    fn from(fact: PulsedFact) -> TypedFact {
+        TypedFact::dt_shape(fact.datum_type, &*fact.shape).unwrap()
+    }
+}
+
+impl From<Box<dyn PulsedOp>> for Box<dyn TypedOp> {
+    fn from(op: Box<dyn PulsedOp>) -> Box<dyn TypedOp> {
+        op.to_typed()
     }
 }
 
@@ -87,11 +91,31 @@ impl PulsedModel {
         source: &NormalizedModel,
         pulse: usize,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
-        crate::model::compact::translate(source, &pulse)
+        Pulsifier(pulse).translate_model_with_mappings(source)
     }
 
     pub fn into_typed(self) -> TractResult<TypedModel> {
-        Ok(crate::model::compact::translate(&self, &())?.0)
+        crate::model::translator::IntoTranslator.translate_model(&self)
+    }
+}
+
+struct Pulsifier(usize);
+impl
+    crate::model::translator::Translate<
+        NormalizedFact,
+        Box<dyn TypedOp>,
+        crate::pulse::PulsedFact,
+        Box<dyn PulsedOp>,
+    > for Pulsifier
+{
+    fn translate_node(
+        &self,
+        source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        node.op.pulsify(source, node, target, mapping, self.0)
     }
 }
 
