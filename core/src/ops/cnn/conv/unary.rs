@@ -586,51 +586,60 @@ impl TypedOp for ConvUnary {
                         .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
                     && self.group == 1
                 {
-                    if self.kernel_fmt == KernelFormat::HWIO
-                        && input_shape.c_axis() == input_shape.rank() - 1
-                    {
-                        use crate::ops::matmul::MatMulUnary;
-                        let mut patch = TypedModelPatch::default();
-                        let mut wire = patch.tap_model(model, node.inputs[0])?;
-                        wire = patch.wire_node(
-                            &*node.name,
-                            TypedReshape::new(tvec!(
-                                input_shape.n().cloned().unwrap_or(1.to_dim()),
-                                input_shape.hw_dims().iter().cloned().product::<TDim>(),
-                                full_input_shape[full_input_shape.len() - 1].clone()
-                            )),
-                            &[wire],
-                        )?[0];
-                        let kernel_shape = &self.kernel.shape()[spatial_rank..];
-                        let kernel = self.kernel.as_ref().clone().into_shape(&kernel_shape)?;
-                        wire = patch.wire_node(
-                            &*node.name,
-                            MatMulUnary::new(
-                                kernel.into_arc_tensor(),
-                                true,
-                                true,
-                                true,
-                                self.q_params.clone(),
-                            ),
-                            &[wire],
-                        )?[0];
-                        if let Some(ref bias) = self.bias {
-                            wire = patch.wire_node(
-                                format!("{}-bias", node.name),
-                                crate::ops::math::add::unary(bias.clone()),
-                                &[wire],
-                            )?[0];
-                        }
-                        wire = patch.wire_node(
-                            &*node.name,
-                            TypedReshape::new(node.outputs[0].fact.shape.to_tvec()),
-                            &[wire],
-                        )?[0];
-                        patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
-                        return Ok(Some(patch));
+                    use crate::ops::matmul::MatMulUnary;
+                    let mut patch = TypedModelPatch::default();
+                    let mut wire = patch.tap_model(model, node.inputs[0])?;
+                    let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
+                    let mut reshaped_input = tvec!(
+                        input_shape.n().cloned().unwrap_or(1.to_dim()),
+                        input_shape.hw_dims().iter().cloned().product::<TDim>(),
+                        input_shape.c().clone(),
+                    );
+                    if !input_c_is_last {
+                        reshaped_input.swap(1, 2);
                     }
-                }
-                if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
+                    wire =
+                        patch.wire_node(&*node.name, TypedReshape::new(reshaped_input), &[wire])?
+                            [0];
+                    let kernel_shape = match self.kernel_fmt {
+                        KernelFormat::HWIO => &self.kernel.shape()[spatial_rank..],
+                        KernelFormat::OIHW => &self.kernel.shape()[..2],
+                    };
+                    let kernel = self.kernel.as_ref().clone().into_shape(&kernel_shape)?;
+                    wire = patch.wire_node(
+                        &*node.name,
+                        MatMulUnary::new(
+                            kernel.into_arc_tensor(),
+                            self.kernel_fmt == KernelFormat::HWIO,
+                            input_c_is_last,
+                            input_c_is_last,
+                            self.q_params.clone(),
+                        ),
+                        &[wire],
+                    )?[0];
+                    if let Some(ref bias) = self.bias {
+                        let bias: Arc<Tensor> = if input_c_is_last {
+                            bias.clone()
+                        } else {
+                            bias.clone()
+                                .into_tensor()
+                                .into_shape(&[bias.len(), 1])?
+                                .into_arc_tensor()
+                        };
+                        wire = patch.wire_node(
+                            format!("{}-bias", node.name),
+                            crate::ops::math::add::unary(bias),
+                            &[wire],
+                        )?[0];
+                    }
+                    wire = patch.wire_node(
+                        &*node.name,
+                        TypedReshape::new(node.outputs[0].fact.shape.to_tvec()),
+                        &[wire],
+                    )?[0];
+                    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                    return Ok(Some(patch));
+                } else if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
                     && self.group == 1
                 {
                     let mut patch = TypedModelPatch::default();
