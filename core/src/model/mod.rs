@@ -61,6 +61,7 @@ pub use self::patch::ModelPatch;
 pub use crate::analyser::types::InferenceFact;
 pub use crate::ops::{InferenceOp, Op, TypedOp};
 
+use crate::model::translator::Translate;
 use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
 
@@ -248,7 +249,6 @@ impl InferenceModel {
 
     /// Attempt full analyse and conversion to TypedModel.
     pub fn into_typed(mut self) -> TractResult<TypedModel> {
-        use crate::model::translator::Translate;
         self.analyse(false)?;
         let m = self.incorporate()?;
 
@@ -345,7 +345,7 @@ impl NormalizedModel {
     ///
     /// Can not fail.
     pub fn into_typed(self) -> TractResult<TypedModel> {
-        compact::compact(&self)
+        translator::IntoTranslator.translate_model(&self)
     }
 }
 

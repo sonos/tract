@@ -432,6 +432,12 @@ impl<O: TypedOp> From<O> for Box<dyn TypedOp> {
     }
 }
 
+impl<'a> From<&'a Box<dyn TypedOp>> for Box<dyn TypedOp> {
+    fn from(it: &'a Box<dyn TypedOp>) -> Box<dyn TypedOp> {
+        it.clone()
+    }
+}
+
 impl<O: PulsedOp> From<O> for Box<dyn PulsedOp> {
     fn from(it: O) -> Box<dyn PulsedOp> {
         Box::new(it)

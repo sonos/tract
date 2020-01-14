@@ -34,14 +34,14 @@ impl Fact for PulsedFact {
     }
 }
 
-impl From<PulsedFact> for TypedFact {
-    fn from(fact: PulsedFact) -> TypedFact {
+impl<'a> From<&'a PulsedFact> for TypedFact {
+    fn from(fact: &'a PulsedFact) -> TypedFact {
         TypedFact::dt_shape(fact.datum_type, &*fact.shape).unwrap()
     }
 }
 
-impl From<Box<dyn PulsedOp>> for Box<dyn TypedOp> {
-    fn from(op: Box<dyn PulsedOp>) -> Box<dyn TypedOp> {
+impl<'a> From<&'a Box<dyn PulsedOp>> for Box<dyn TypedOp> {
+    fn from(op: &'a Box<dyn PulsedOp>) -> Box<dyn TypedOp> {
         op.to_typed()
     }
 }
