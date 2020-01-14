@@ -165,7 +165,7 @@ where
             let inputs: TVec<TypedFact> = model
                 .node_input_facts(n)?
                 .iter()
-                .map(|&i| Ok(i.to_tensor_fact().try_into()?))
+                .map(|&i| Ok((&i.to_tensor_fact()).try_into()?))
                 .collect::<TractResult<_>>()?;
             let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
             let nested_multis =

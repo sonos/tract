@@ -58,9 +58,9 @@ impl InferenceRulesOp for Source {
         target: &mut TypedModel,
         _mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        use std::convert::TryInto;
-        if let Ok(fact) = node.outputs[0].fact.clone().try_into() {
-            target.wire_node(&*node.name, Box::new(TypedSource::new(fact)) as Box<dyn TypedOp>, &[])
+        use std::convert::TryFrom;
+        if let Ok(fact) = TypedFact::try_from(&node.outputs[0].fact) {
+            target.wire_node(&*node.name, TypedSource::new(fact), &[])
         } else {
             bail!("Output type not determined")
         }

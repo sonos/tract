@@ -43,18 +43,19 @@ impl<'a> TryFrom<&'a InferenceFact> for TypedFact {
     }
 }
 
-impl TryFrom<InferenceFact> for TypedFact {
-    type Error = TractError;
-    fn try_from(fact: InferenceFact) -> TractResult<TypedFact> {
-        (&fact).try_into()
-    }
-}
 
 impl<'a> From<&'a Tensor> for InferenceFact {
     fn from(t: &'a Tensor) -> InferenceFact {
         InferenceFact::from(t.clone())
     }
 }
+
+impl<'a> From<&'a InferenceFact> for InferenceFact {
+    fn from(t: &'a InferenceFact) -> InferenceFact {
+        t.clone()
+    }
+}
+
 
 /// Streaming information for a streamed tensor.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -268,13 +269,19 @@ impl From<Arc<Tensor>> for TypedFact {
     }
 }
 
-impl TryFrom<TypedFact> for NormalizedFact {
+impl<'a> TryFrom<&'a TypedFact> for NormalizedFact {
     type Error = TractError;
-    fn try_from(fact: TypedFact) -> TractResult<NormalizedFact> {
+    fn try_from(fact: &TypedFact) -> TractResult<NormalizedFact> {
         match fact.konst {
             None => Ok(NormalizedFact { shape: fact.shape.clone(), datum_type: fact.datum_type }),
             _ => bail!("Constant tensor are excluded from declutterd stage: {:?}", fact),
         }
+    }
+}
+
+impl<'a> From<&'a TypedFact> for TypedFact {
+    fn from(fact: &TypedFact) -> TypedFact {
+        fact.clone()
     }
 }
 
@@ -323,10 +330,9 @@ impl Fact for NormalizedFact {
     }
 }
 
-impl TryFrom<NormalizedFact> for TypedFact {
-    type Error = TractError;
-    fn try_from(fact: NormalizedFact) -> TractResult<TypedFact> {
-        Ok(TypedFact { shape: fact.shape.clone(), datum_type: fact.datum_type, konst: None })
+impl<'a> From<&'a NormalizedFact> for TypedFact {
+    fn from(fact: &NormalizedFact) -> TypedFact {
+        TypedFact { shape: fact.shape.clone(), datum_type: fact.datum_type, konst: None }
     }
 }
 

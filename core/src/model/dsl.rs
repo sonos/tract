@@ -150,7 +150,7 @@ pub trait ModelDslConst {
 impl<TI: Fact + Clone + 'static, O, E> ModelDslConst for ModelImpl<TI, O>
 where
     TractError: From<E>,
-    TI: Fact + Clone + 'static + TryFrom<InferenceFact, Error = E>,
+    TI: Fact + Clone + 'static + for<'a> TryFrom<&'a InferenceFact, Error = E>,
     O: Debug
         + Display
         + From<crate::ops::konst::Const>
@@ -165,7 +165,7 @@ where
         v: impl IntoArcTensor,
     ) -> TractResult<OutletId> {
         let v = v.into_arc_tensor();
-        let fact = TI::try_from(InferenceFact::from(v.clone()))?;
+        let fact = TI::try_from(&InferenceFact::from(&*v))?;
         self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }
 }

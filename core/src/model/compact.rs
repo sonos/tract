@@ -10,7 +10,7 @@ pub(crate) fn compact<TI1, TI2, O1, O2, E1, E2>(
 where
     TractError: From<E1> + From<E2>,
     TI1: Fact + Clone + 'static,
-    TI2: Fact + TryFrom<TI1, Error = E1> + Clone + 'static,
+    TI2: Fact + for <'a> TryFrom<&'a TI1, Error = E1> + Clone + 'static,
     O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     O2: fmt::Display + TryFrom<O1, Error = E2> + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
@@ -21,7 +21,7 @@ where
         let facts = old_node
             .outputs
             .iter()
-            .map(|of| Ok(TI2::try_from(of.fact.clone())?))
+            .map(|of| Ok(TI2::try_from(&of.fact)?))
             .collect::<TractResult<TVec<_>>>()
             .map_err(|e| format!("While translating {}: {:?}", old_node, e))?;
         let new_op = O2::try_from(old_node.op.clone())?;
@@ -50,7 +50,7 @@ where
             let new_id = model.add_node(
                 &*node.name,
                 O2::try_from(node.op.clone())?,
-                tvec!(TI2::try_from(node.outputs[0].fact.clone())?),
+                tvec!(TI2::try_from(&node.outputs[0].fact)?),
             )?;
             map.insert(i.node, new_id);
         }

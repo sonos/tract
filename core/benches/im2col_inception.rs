@@ -10,8 +10,6 @@ use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PaddingSpec::SameUpper as Same;
 use tract_core::ops::cnn::PaddingSpec::Valid;
 
-use std::convert::TryInto;
-
 fn b(
     c: &mut Criterion,
     name: &str,
@@ -32,9 +30,8 @@ fn b(
         .kernel_shape(kernel.shape()[0..2].into())
         .padding(padding)
         .strides(tvec!(stride, stride));
-    let input_fact: TypedFact =
-        InferenceFact::dt_shape(DatumType::F32, image.shape()).try_into().unwrap();
-    let kernel_fact: TypedFact = InferenceFact::from(kernel).try_into().unwrap();
+    let input_fact: TypedFact = TypedFact::dt_shape(DatumType::F32, image.shape()).unwrap();
+    let kernel_fact: TypedFact = TypedFact::dt_shape(DatumType::F32, kernel.shape()).unwrap();
     let unary = conv.to_unary(&[&input_fact, &kernel_fact]).unwrap().unwrap();
 
     let mut m = TypedModel::default();
