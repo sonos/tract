@@ -96,7 +96,7 @@ impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
             let id = target.add_node(
                 &*node.name,
                 tract_core::ops::array::Concat::new(axis as i64),
-                tvec!(node.outputs[0].fact.clone().try_into()?),
+                tvec!((&node.outputs[0].fact).try_into()?),
             )?;
             for (ix, input) in node.inputs[..node.inputs.len() - 1].iter().enumerate() {
                 target.add_edge(mapping[input], InletId::new(id, ix))?;

@@ -102,7 +102,7 @@ impl Conv {
         result
     }
 
-    pub fn to_unary(&self, inputs: &[impl Borrow<TypedFact>]) -> TractResult<Option<ConvUnary>> {
+    pub fn to_unary(&self, inputs: &[&TypedFact]) -> TractResult<Option<ConvUnary>> {
         let input = &inputs[0].borrow();
         let kernel = &inputs[self.k_input.unwrap_or(1)].borrow();
         let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>());
@@ -195,7 +195,7 @@ impl Op for Conv {
 impl StatelessOp for Conv {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let inputs_info: TVec<TypedFact> = inputs.iter().map(|t| TypedFact::from(&**t)).collect();
-        let unary = self.to_unary(&*inputs_info)?.unwrap();
+        let unary = self.to_unary(&inputs_info.iter().collect::<TVec<_>>())?.unwrap();
         unary.eval(tvec!(inputs[0].clone()))
     }
 }

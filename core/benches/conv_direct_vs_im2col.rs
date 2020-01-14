@@ -72,7 +72,7 @@ impl Problem {
             .kernel_shape(kernel.shape()[0..2].into())
             .strides(tvec!(self.stride_h, self.stride_w));
         let kernel_fact: TypedFact = TypedFact::from(kernel);
-        let image_fact: TypedFact = self.image_fact().try_into().unwrap();
+        let image_fact: TypedFact = (&self.image_fact()).try_into().unwrap();
         let unary = conv.to_unary(&[&image_fact, &kernel_fact]).unwrap();
         Box::new(unary.unwrap())
     }
