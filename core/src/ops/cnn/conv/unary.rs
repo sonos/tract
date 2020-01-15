@@ -418,7 +418,7 @@ impl ConvUnary {
                         scale,
                         qp.zero_point_c.as_ref().map(|zp| zp.to_scalar().map(|&x:&u8| x.clone())).transpose()?.unwrap_or(0),
                     ),
-                    _ => todo!("Unexpected quant type")
+                    _ => unimplemented!("Unexpected quant type")
                 };
                 wire = patch.wire_node(format!("{}-quant", node.name), op, &[wire])?[0];
             }
