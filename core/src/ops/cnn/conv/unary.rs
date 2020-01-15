@@ -358,7 +358,8 @@ impl ConvUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops::matmul::MatMulUnary;
-        let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        let full_input_shape = input_fact.shape.to_tvec();
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape);
         if input_shape.hw_rank() == 1
             && self.group == 1
@@ -375,17 +376,26 @@ impl ConvUnary {
                 ([co, ci], false)
             };
             let a = unsafe { ker.into_shape(&a_shape)? }.into_arc_tensor();
-            let trans_data = self.pool_spec.data_format == DataFormat::HWC || self.pool_spec.data_format == DataFormat::NHWC;
-            let op = MatMulUnary {
-                a,
-                a_trans,
-                b_trans: trans_data,
-                c_trans: trans_data,
-                q_params: self.q_params.clone(),
-            };
+            let trans_data = self.pool_spec.data_format == DataFormat::HWC
+                || self.pool_spec.data_format == DataFormat::NHWC;
             let mut patch = TypedModelPatch::default();
-            let wire = patch.tap_model(model, node.inputs[0])?;
-            let mut wire = patch.wire_node(&*node.name, op, &[wire])?[0];
+            let mut wire = patch.tap_model(model, node.inputs[0])?;
+            let output_type =
+                self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(input_fact.datum_type);
+            let must_split_quant =
+                self.bias.is_some() && self.bias.as_ref().unwrap().datum_type() != output_type;
+            let q_params = if must_split_quant {
+                Some(QParams {
+                    c_datum_type: self.bias.as_ref().unwrap().datum_type(),
+                    zero_point_c: None,
+                    scale_factor: None,
+                    ..self.q_params.clone().unwrap()
+                })
+            } else {
+                self.q_params.clone()
+            };
+            let op = MatMulUnary { a, a_trans, b_trans: trans_data, c_trans: trans_data, q_params };
+            wire = patch.wire_node(&*node.name, op, &[wire])?[0];
             if let Some(b) = &self.bias {
                 let bias_shape = if trans_data { tvec!(1, co) } else { tvec!(co, 1) };
                 let b = unsafe { b.clone().into_tensor().into_shape(&bias_shape)? };
@@ -394,6 +404,23 @@ impl ConvUnary {
                     crate::ops::math::add::unary(b.into_arc_tensor()),
                     &[wire],
                 )?[0];
+            }
+            if must_split_quant {
+                use crate::ops::quant::*;
+                let qp = self.q_params.as_ref().unwrap();
+                let scale = qp.scale_factor.unwrap_or(1.0);
+                let op = match output_type {
+                    DatumType::I8 => quantize_linear_i8(
+                        scale,
+                        qp.zero_point_c.as_ref().map(|zp| zp.to_scalar().map(|&x:&i8| x.clone())).transpose()?.unwrap_or(0),
+                    ),
+                    DatumType::U8 => quantize_linear_u8(
+                        scale,
+                        qp.zero_point_c.as_ref().map(|zp| zp.to_scalar().map(|&x:&u8| x.clone())).transpose()?.unwrap_or(0),
+                    ),
+                    _ => todo!("Unexpected quant type")
+                };
+                wire = patch.wire_node(format!("{}-quant", node.name), op, &[wire])?[0];
             }
             patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
             return Ok(Some(patch));
