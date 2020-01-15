@@ -155,7 +155,7 @@ fn pull_downsample_up(
     if let Some(prec) = model.single_prec(down_node.id)? {
         let invariants = prec.op.invariants(model, prec)?;
         debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, invariants);
-        if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis, true) {
+        if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis, false) {
             let mut patch = TypedModelPatch::default();
             let mut inputs = vec![];
             for (ix, &oo) in prec.inputs.iter().enumerate() {
