@@ -360,8 +360,7 @@ impl ConvUnary {
         use crate::ops::matmul::MatMulUnary;
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape);
-        if input_shape.rank() == 2
-            && input_shape.n_axis().is_none()
+        if input_shape.hw_rank() == 1
             && self.group == 1
             && self.pool_spec.stride(0) == 1
             && self.pool_spec.dilation(0) == 1
@@ -373,10 +372,10 @@ impl ConvUnary {
             let (a_shape, a_trans) = if self.kernel_fmt == KernelFormat::HWIO {
                 ([ci, co], true)
             } else {
-                ([co, ci], true)
+                ([co, ci], false)
             };
             let a = unsafe { ker.into_shape(&a_shape)? }.into_arc_tensor();
-            let trans_data = self.pool_spec.data_format == DataFormat::HWC;
+            let trans_data = self.pool_spec.data_format == DataFormat::HWC || self.pool_spec.data_format == DataFormat::NHWC;
             let op = MatMulUnary {
                 a,
                 a_trans,
@@ -384,7 +383,6 @@ impl ConvUnary {
                 c_trans: trans_data,
                 q_params: self.q_params.clone(),
             };
-
             let mut patch = TypedModelPatch::default();
             let wire = patch.tap_model(model, node.inputs[0])?;
             let mut wire = patch.wire_node(&*node.name, op, &[wire])?[0];
@@ -419,6 +417,9 @@ impl Op for ConvUnary {
         ));
         if let Some(b) = &self.bias {
             info.push(format!("Bias: {:?}", b))
+        }
+        if let Some(qp) = &self.q_params {
+            info.push(format!("Quant: {:?}", qp))
         }
         Ok(info)
     }

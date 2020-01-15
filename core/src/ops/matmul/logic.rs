@@ -480,10 +480,10 @@ impl TypedOp for MatMulUnary {
             .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
             .collect::<Vec<_>>();
         if self.b_trans && self.c_trans {
-            invars.push(AxisInfo::simple(input_fact.shape.rank() - 2))
+            invars.push(AxisInfo::simple(input_fact.shape.rank() - 2).disposable(false))
         }
         if !self.b_trans && !self.c_trans {
-            invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
+            invars.push(AxisInfo::simple(input_fact.shape.rank() - 1).disposable(false))
         };
         Ok(invars.into_iter().collect())
     }

@@ -98,7 +98,13 @@ impl TypedOp for RmDims {
         _node: &TypedNode,
         axis: usize,
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axes = self.axes.iter().cloned().filter(|&a| a != axis).map(|a| a - (a > axis) as usize).collect();
+        let axes = self
+            .axes
+            .iter()
+            .cloned()
+            .filter(|&a| a != axis)
+            .map(|a| a - (a > axis) as usize)
+            .collect();
         Ok(Some(Box::new(RmDims::new(axes))))
     }
 
@@ -120,8 +126,18 @@ impl TypedOp for RmDims {
                         let mut patch = TypedModelPatch::default();
                         let mut wire: OutletId = patch.tap_model(model, prec.inputs[0])?.into();
                         if add_dims.axes.len() > 1 {
-                            let axes = add_dims.axes.iter().cloned().filter(|&a| a != axis).map(|a| a - (a > axis) as usize).collect();
-                            wire = patch.wire_node(&*prec.name, super::AddDims::new(axes), [wire].as_ref())?[0];
+                            let axes = add_dims
+                                .axes
+                                .iter()
+                                .cloned()
+                                .filter(|&a| a != axis)
+                                .map(|a| a - (a > axis) as usize)
+                                .collect();
+                            wire = patch.wire_node(
+                                &*prec.name,
+                                super::AddDims::new(axes),
+                                [wire].as_ref(),
+                            )?[0];
                         }
                         let mut next = model.single_succ(prec.id)?.unwrap();
                         while next.id != node.id {
@@ -139,8 +155,16 @@ impl TypedOp for RmDims {
                             next = model.single_succ(next.id)?.unwrap();
                         }
                         if self.axes.len() > 1 {
-                            let axes = self.axes.iter().cloned().filter(|&a| a != axis).map(|a| a - (a > axis) as usize).collect();
-                            wire = patch.wire_node(&*node.name, RmDims::new(axes), [wire].as_ref())?[0];
+                            let axes = self
+                                .axes
+                                .iter()
+                                .cloned()
+                                .filter(|&a| a != axis)
+                                .map(|a| a - (a > axis) as usize)
+                                .collect();
+                            wire =
+                                patch.wire_node(&*node.name, RmDims::new(axes), [wire].as_ref())?
+                                    [0];
                         }
                         patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
                         return Ok(Some(patch));
