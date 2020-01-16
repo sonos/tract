@@ -674,49 +674,36 @@ impl TypedOp for MergeOp {
         start: usize,
         end: usize,
     ) -> TractResult<Option<OutletId>> {
+        let a_input = node.inputs[0];
+        let b_input = node.inputs[1];
+        let a = model.outlet_fact(a_input)?;
+        let b = model.outlet_fact(b_input)?;
+        if a.shape == b.shape {
+            let a_prec_node = model.node(a_input.node);
+            let b_prec_node = model.node(b_input.node);
+            let a_sliced = a_prec_node.op.slice_output(
+                model,
+                a_prec_node,
+                patch,
+                a_input.slot,
+                axis,
+                start,
+                end,
+            )?;
+            let b_sliced = b_prec_node.op.slice_output(
+                model,
+                b_prec_node,
+                patch,
+                b_input.slot,
+                axis,
+                start,
+                end,
+            )?;
+            if let (Some(a), Some(b)) = (a_sliced, b_sliced) {
+                return Ok(Some(patch.wire_node(&*node.name, self.clone(), &[a, b])?[0]));
+            }
+        }
         Ok(None)
-        /*
-        let a = model.outlet_fact(node.inputs[0])?;
-        let b = model.outlet_fact(node.inputs[1])?;
-        panic!();
-        if a.shape() == b.shape() {
-        }
-        dbg!(&a);
-        dbg!(&b);
-        if b.shape.rank() < self.a.shape().len() {
-            return Ok(None);
-        }
-        let prec = model.node(node.inputs[0].node);
-        let wire = prec.op().as_typed().unwrap().slice_output(
-            model,
-            &prec,
-            patch,
-            node.inputs[0].slot,
-            axis,
-            start,
-            end,
-        )?;
-        let wire = if let Some(w) = wire { w } else { return Ok(None) };
-        let a_broadcast_prefix = b.shape.rank() - self.a.rank();
-        if axis < a_broadcast_prefix || self.a.shape()[axis - a_broadcast_prefix] == 1 {
-            return Ok(Some(
-                patch.wire_node(
-                    format!("{}-sliced-{}-{}", node.name, start, end),
-                    self.clone(),
-                    &[wire],
-                )?[0],
-            ));
-        } else {
-            let a = self.a.slice(axis - a_broadcast_prefix, start, end)?;
-            return Ok(Some(
-                patch.wire_node(
-                    format!("{}-sliced-{}-{}", node.name, start, end),
-                    Self::new(self.mini_op.clone(), a.into_arc_tensor()),
-                    &[wire],
-                )?[0],
-            ));
-        }
-        */
     }
 
     fn codegen(
