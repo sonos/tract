@@ -353,7 +353,13 @@ impl TypedOp for NormConcat {
 impl StatelessOp for NormConcat {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let dts = inputs.iter().map(|x| x.datum_type()).collect::<TVec<_>>();
+        let dts = inputs.iter().map(|x| x.datum_type()).chain(self.slices.iter().filter_map(|s| {
+            if let NormConcatSlice::Const(s) = s {
+                Some(s.datum_type())
+            } else {
+                None
+            }
+        })).collect::<TVec<_>>();
         let super_type: DatumType = DatumType::super_type_for(&dts)
             .chain_err(|| format!("No supertype found for {:?}", dts))?;
         let shapes = inputs.iter().map(|t| t.shape()).collect::<TVec<_>>();
