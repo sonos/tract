@@ -31,9 +31,7 @@ fn proptest_regular_against_pulse(
     let plan = SimplePlan::new(&ref_model).unwrap();
     let outputs = plan.run(tvec!(input.clone())).unwrap();
 
-    dbg!(&model);
     let model = model.into_normalized().unwrap();
-    dbg!(&model);
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 

@@ -388,24 +388,6 @@ pub trait InferenceOp:
     }
 }
 
-/*
-impl crate::model::translator::Translate<PulsedFact, Box<dyn PulsedOp>, TypedFact, Box<dyn TypedOp>, ()>
-    for Box<dyn PulsedOp>
-{
-    fn translate(
-        &self,
-        _source: &PulsedModel,
-        node: &PulsedNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _ctx: &(),
-    ) -> TractResult<TVec<OutletId>> {
-        let inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
-        target.wire_node(&*node.name, node.op.to_typed(), &*inputs)
-    }
-}
-*/
-
 impl_downcast!(Op);
 
 clone_trait_object!(Op);
