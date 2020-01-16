@@ -537,6 +537,10 @@ impl Parameters {
                 if let Some(t) = t.value.concretize() {
                     input_values.push(Some(t));
                 }
+                for input in raw_model.node(outlet.node).inputs.clone() {
+                    raw_model.node_mut(input.node).outputs[input.slot].successors.retain(|s| s.node != outlet.node);
+                }
+                raw_model.node_mut(outlet.node).inputs.clear();
                 raw_model.node_mut(outlet.node).op =
                     Box::new(tract_core::ops::source::Source::new());
                 if !const_inputs.contains(&raw_model.node_name(outlet.node).to_string()) {

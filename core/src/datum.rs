@@ -91,14 +91,14 @@ impl DatumType {
         }
     }
 
-    pub fn super_type_for<I: IntoIterator<Item = DatumType>>(i: I) -> Option<DatumType> {
+    pub fn super_type_for(i: impl IntoIterator<Item = impl std::borrow::Borrow<DatumType>>) -> Option<DatumType> {
         let mut iter = i.into_iter();
         let mut current = match iter.next() {
             None => return None,
-            Some(it) => it,
+            Some(it) => *it.borrow(),
         };
         while let Some(n) = iter.next() {
-            match current.common_super_type(n) {
+            match current.common_super_type(*n.borrow()) {
                 None => return None,
                 Some(it) => current = it,
             }
