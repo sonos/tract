@@ -46,7 +46,7 @@ impl StatelessOp for Concat {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let super_type: DatumType =
             DatumType::super_type_for(inputs.iter().map(|x| x.datum_type()))
-                .ok_or_else(|| format!("No supertype found"))?;
+                .ok_or_else(|| format!("No supertype found for {:?}", inputs))?;
         dispatch_datum!(Self::eval(super_type)(self, inputs))
     }
 }
@@ -63,8 +63,8 @@ impl InferenceRulesOp for Concat {
         let n = inputs.len() as usize;
         s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
         s.given_all((0..n).map(|i| (&inputs[i].datum_type).bex()), move |s, dts| {
-            let super_type: DatumType =
-                DatumType::super_type_for(dts).ok_or_else(|| format!("No supertype found"))?;
+            let super_type: DatumType = DatumType::super_type_for(&dts)
+                .ok_or_else(|| format!("No supertype found for {:?}", dts))?;
             s.equals(&outputs[0].datum_type, super_type)
         })?;
         s.given(&inputs[0].rank, move |s, rank| {
@@ -353,9 +353,9 @@ impl TypedOp for NormConcat {
 impl StatelessOp for NormConcat {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let super_type: DatumType =
-            DatumType::super_type_for(inputs.iter().map(|x| x.datum_type()))
-                .ok_or_else(|| format!("No supertype found"))?;
+        let dts = inputs.iter().map(|x| x.datum_type()).collect::<TVec<_>>();
+        let super_type: DatumType = DatumType::super_type_for(&dts)
+            .chain_err(|| format!("No supertype found for {:?}", dts))?;
         let shapes = inputs.iter().map(|t| t.shape()).collect::<TVec<_>>();
         let op = dispatch_datum!(Self::to_codegen_op(super_type)(self, &*shapes))?;
         std::mem::drop(shapes);
