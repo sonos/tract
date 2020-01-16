@@ -109,8 +109,8 @@ impl TypedOp for ElementWiseOp {
         Ok(tvec!(fact))
     }
 
-    fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
-        Ok(Invariants::new_element_wise())
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+        Invariants::new_element_wise(model, node)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

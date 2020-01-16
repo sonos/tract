@@ -236,6 +236,9 @@ impl TypedFact {
     {
         Ok(TypedFact { datum_type, shape: shape.try_into()?, konst: None })
     }
+    pub fn rank(&self) -> usize {
+        self.shape.rank()
+    }
 }
 
 impl Fact for TypedFact {
