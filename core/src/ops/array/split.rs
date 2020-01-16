@@ -16,6 +16,7 @@ impl Split {
             Ok(tvec!(input/self.outputs;self. outputs))
         }
     }
+
     fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut current = 0;
         let input = input.to_array_view::<T>()?;
@@ -42,7 +43,7 @@ impl Op for Split {
         "Split".into()
     }
 
-    op_as_typed_op!();
+    not_a_typed_op!();
     not_a_pulsed_op!();
 }
 
@@ -84,20 +85,29 @@ impl InferenceRulesOp for Split {
     }
 
     inference_op_as_op!();
-    to_typed!();
-}
 
-impl TypedOp for Split {
-    typed_op_as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        self.split_dims(inputs[0].shape.dim(self.axis))?
-            .into_iter()
-            .map(|d| {
-                let mut fact = inputs[0].clone();
-                fact.shape.set_dim(self.axis, d)?;
-                Ok(fact)
-            })
-            .collect()
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
+        let wire = mapping[&node.inputs[0]];
+        let mut outputs = tvec!();
+        let mut current = 0.to_dim();
+        for len in self.split_dims(input.shape.dim(self.axis))? {
+            let end = current.clone() + len;
+            outputs.push(
+                target.wire_node(
+                    format!("{}-{}..{}", node.name, current, end),
+                    crate::ops::array::Slice::new(self.axis, current, end.clone()),
+                    &[wire],
+                )?[0],
+            );
+            current = end;
+        }
+        Ok(outputs)
     }
 }
