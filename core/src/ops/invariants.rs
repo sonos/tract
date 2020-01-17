@@ -26,8 +26,10 @@ impl Invariants {
             bail!("Inconsistent element wise operation: {:?} {:?}", input_facts, output_facts);
         }
         let axes = (0..shape.rank())
-            .map(|axis| Ok(AxisInfo::for_node(model, node, axis)?.disposable(shape.dim(axis) == 1.into())))
-            .collect::<TractResult::<_>>()?;
+            .map(|axis| {
+                Ok(AxisInfo::for_node(model, node, axis)?.disposable(shape.dim(axis) == 1.into()))
+            })
+            .collect::<TractResult<_>>()?;
         Ok(Invariants { element_wise: true, axes })
     }
 
@@ -116,11 +118,7 @@ impl AxisInfo {
         AxisInfo { disposable, ..self }
     }
 
-    pub fn for_node(
-        _model: &TypedModel,
-        node: &TypedNode,
-        axis: usize,
-    ) -> TractResult<AxisInfo> {
+    pub fn for_node(_model: &TypedModel, node: &TypedNode, axis: usize) -> TractResult<AxisInfo> {
         Ok(AxisInfo {
             inputs: node.inputs.iter().map(|_| Some(axis)).collect(),
             outputs: node.outputs.iter().map(|_| Some(axis)).collect(),

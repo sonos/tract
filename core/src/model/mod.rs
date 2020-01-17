@@ -64,6 +64,7 @@ pub use crate::ops::{InferenceOp, Op, TypedOp};
 use crate::model::translator::Translate;
 use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
+use crate::ops::invariants;
 
 /// Common methods for all variants of model.
 pub trait Model: downcast_rs::Downcast + std::fmt::Debug + objekt::Clone {
@@ -325,6 +326,12 @@ impl TypedModel {
         }
         Ok(model)
     }
+
+    pub fn invariants(&self) -> TractResult<invariants::Invariants> {
+        invariants::for_model(self)
+    }
+
+
 
     /// Attempt to convert the network to a NormalizedModel.
     pub fn into_normalized(self) -> TractResult<NormalizedModel> {

@@ -651,7 +651,12 @@ impl TypedOp for MergeOp {
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let a = model.outlet_fact(node.inputs[0])?;
-        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
+        let b = model.outlet_fact(node.inputs[1])?;
+        if a.shape == b.shape {
+            Invariants::new_element_wise(model, node)
+        } else {
+            Ok(Invariants::none())
+        }
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
