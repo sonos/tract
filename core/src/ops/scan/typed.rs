@@ -410,6 +410,45 @@ impl TypedOp for TypedScan {
         Ok(outputs)
     }
 
+    fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
+        let mut invariants = tvec!();
+        let body_invs = self.body.invariants()?;
+        for axis in body_invs.axes {
+            let mut info = AxisInfo::default().with_period(1);
+            for (ix, input_mapping) in self.input_mapping.iter().enumerate() {
+                let slot = match input_mapping {
+                    InputMapping::Full { slot } => Some(*slot),
+                    InputMapping::Scan { slot, .. } => Some(*slot),
+                    _ => None,
+                };
+                if let Some(slot) = slot {
+                    while info.inputs.len() <= slot {
+                        info.inputs.push(None);
+                    }
+                    info.inputs[slot] = axis.inputs[ix].clone();
+                }
+            }
+            for (ix, output_mapping) in self.output_mapping.iter().enumerate() {
+                let mut slots = vec![];
+                if let Some(slot) = output_mapping.full_slot {
+                    slots.push(slot);
+                }
+                if let Some(slot) = output_mapping.last_value_slot {
+                    slots.push(slot);
+                }
+                for slot in slots {
+                    while info.outputs.len() <= slot {
+                        info.outputs.push(None);
+                    }
+                    info.outputs[slot] = axis.outputs[ix].clone();
+                }
+            }
+            info.disposable = false;// FIXME axis.disposable;
+            invariants.push(info);
+        }
+        Ok(Invariants::from(invariants))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
