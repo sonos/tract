@@ -114,19 +114,36 @@ impl TypedOp for RmDims {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         'axis: for &rm_axis in &self.axes {
-            let mut current = node;
-            let mut axis = rm_axis;
-            while let Some(prec) = model.single_prec(current.id)? {
-                if let Some(add_dims) = prec.op_as::<super::AddDims>() {
-                    if add_dims.axes.contains(&axis) {
-                        debug!(
-                            "Discarding axis: from {} (axis:{}) to {} axis({})",
-                            prec, axis, node, rm_axis
-                        );
-                        let mut patch = TypedModelPatch::default();
-                        let mut wire: OutletId = patch.tap_model(model, prec.inputs[0])?.into();
-                        if add_dims.axes.len() > 1 {
-                            let axes = add_dims
+            let tracking = crate::ops::invariants::AxisTracking::for_outlet_and_axis(
+                model,
+                node.inputs[0],
+                rm_axis,
+            )?;
+            if tracking.creators.iter().any(|c| {
+                !model
+                    .node(c.node)
+                    .op_as::<super::AddDims>()
+                    .map(|ad| ad.axes.contains(&tracking.outlets[c]))
+                    .unwrap_or(false)
+            }) || !tracking.destructors.iter().all(|c| {
+                model
+                    .node(c.node)
+                    .op_as::<RmDims>()
+                    .map(|ad| ad.axes.contains(&tracking.outlets[&model.node(c.node).inputs[0]]))
+                    .unwrap_or(false)
+            }) {
+                continue 'axis;
+            }
+            let mut patch = TypedModelPatch::default();
+            let mut mapping = HashMap::<OutletId, OutletId>::new();
+            for c in &tracking.creators {
+                let node = model.node(c.node);
+                let axis = tracking.outlets[&c];
+                if let Some(add) = node.op_as::<super::AddDims>() {
+                    if add.axes.contains(&axis) {
+                        let mut wire = patch.tap_model(model, node.inputs[0])?;
+                        if add.axes.len() > 1 {
+                            let axes = add
                                 .axes
                                 .iter()
                                 .cloned()
@@ -134,50 +151,57 @@ impl TypedOp for RmDims {
                                 .map(|a| a - (a > axis) as usize)
                                 .collect();
                             wire = patch.wire_node(
-                                &*prec.name,
+                                &*node.name,
                                 super::AddDims::new(axes),
                                 [wire].as_ref(),
                             )?[0];
                         }
-                        let mut next = model.single_succ(prec.id)?.unwrap();
-                        while next.id != node.id {
-                            let op = next
-                                .op
-                                .dispose_dummy_axis(model, next, axis)
-                                .chain_err(|| format!("Disposing of axis {} in {}", axis, next))?
-                                .unwrap_or_else(|| next.op.clone());
-                            wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
-                            axis = next
-                                .op
-                                .invariants(model, next)?
-                                .unary_track_axis_down(axis, true)
-                                .unwrap();
-                            next = model.single_succ(next.id)?.unwrap();
-                        }
-                        if self.axes.len() > 1 {
-                            let axes = self
-                                .axes
-                                .iter()
-                                .cloned()
-                                .filter(|&a| a != axis)
-                                .map(|a| a - (a > axis) as usize)
-                                .collect();
-                            wire =
-                                patch.wire_node(&*node.name, RmDims::new(axes), [wire].as_ref())?
-                                    [0];
-                        }
-                        patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
-                        return Ok(Some(patch));
+                        mapping.insert(node.id.into(), wire);
+                    } else {
+                        unreachable!();
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
+            for n in model.eval_order()? {
+                let node = model.node(n);
+                for i in &node.inputs {
+                    if !mapping.contains_key(&i) {
+                        mapping.insert(*i, patch.tap_model(model, *i)?);
                     }
                 }
-                let invariants = prec.op.invariants(model, prec)?;
-                if let Some(up_axis) = invariants.unary_track_axis_up(axis, true) {
-                    current = prec;
-                    axis = up_axis;
+                let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+                let axis = if let Some(axis) =
+                    node.inputs.get(0).and_then(|input| tracking.outlets.get(input).cloned())
+                {
+                    axis
                 } else {
-                    trace!("Don't drop axis {} because of {}", axis, current);
-                    continue 'axis;
+                    continue;
+                };
+                let op = node
+                    .op
+                    .dispose_dummy_axis(model, node, axis)?
+                    .unwrap_or_else(|| node.op.clone());
+                let outputs = patch.wire_node(&*node.name, op, &*inputs)?;
+                for (ix, o) in outputs.into_iter().enumerate() {
+                    mapping.insert(OutletId::new(node.id, ix), o);
                 }
+            }
+            for des in tracking.destructors {
+                let node = model.node(des.node);
+                let axis = *tracking.outlets.get(&node.inputs[0]).unwrap();
+                let axes = self
+                    .axes
+                    .iter()
+                    .cloned()
+                    .filter(|&a| a != axis)
+                    .map(|a| a - (a > axis) as usize)
+                    .collect();
+                let wire =
+                    patch.wire_node(&*node.name, RmDims::new(axes), &[mapping[&node.inputs[0]]])?
+                        [0];
+                patch.shunt_outside(node.id.into(), wire)?;
             }
         }
         Ok(None)

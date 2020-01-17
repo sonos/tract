@@ -169,73 +169,91 @@ impl Invariants {
         }
     }
 }
+#[derive(Debug, Clone)]
+pub struct AxisTracking {
+    pub creators: TVec<OutletId>,
+    pub destructors: TVec<InletId>,
+    pub outlets: HashMap<OutletId, usize>,
+    pub disposable: bool,
+}
 
-pub fn full_axis_tracking(
-    model: &TypedModel,
-) -> TractResult<Vec<(HashMap<OutletId, usize>, bool)>> {
-    let mut axes: Vec<(HashMap<OutletId, usize>, bool)> = vec![];
-    for &input in model.input_outlets()? {
-        let input_fact = model.outlet_fact(input)?;
-        'axis: for axis in 0..input_fact.rank() {
-            if axes.iter().any(|(group, _)| group.get(&input) == Some(&axis)) {
-                continue 'axis;
+impl AxisTracking {
+    pub fn for_outlet_and_axis(
+        model: &TypedModel,
+        outlet: OutletId,
+        axis: usize,
+    ) -> TractResult<AxisTracking> {
+        let mut mapped_outlets = HashMap::<OutletId, usize>::new();
+        let mut todo = HashSet::<OutletId>::new();
+        let mut disposable = true;
+        let mut creators = tvec!();
+        let mut destructors = tvec!();
+        mapped_outlets.insert(outlet, axis);
+        todo.insert(outlet);
+        while let Some(wire) = todo.iter().cloned().next() {
+            todo.remove(&wire);
+            let axis = mapped_outlets[&wire];
+            let emiter_node = model.node(wire.node);
+            let mut nodes = vec![];
+            if !emiter_node.op().is::<TypedSource>() && !emiter_node.op().is::<Const>() {
+                let invs = emiter_node.op.invariants(&model, emiter_node)?;
+                if let Some(info) = invs.track_output_axis(wire.slot, axis) {
+                    nodes.push((wire.node, info.clone()));
+                } else {
+                    creators.push(wire);
+                };
             }
-            let mut mapped = HashMap::<OutletId, usize>::new();
-            let mut todo = HashSet::<OutletId>::new();
-            let mut disposable = true;
-            mapped.insert(input, axis);
-            todo.insert(input);
-            while let Some(wire) = todo.iter().cloned().next() {
-                todo.remove(&wire);
-                let axis = mapped[&wire];
-                let emiter_node = model.node(wire.node);
-                let mut nodes = vec![];
-                if !emiter_node.op().is::<TypedSource>() && !emiter_node.op().is::<Const>() {
-                    let invs = emiter_node.op.invariants(&model, emiter_node)?;
-                    let axis_info = if let Some(info) = invs.track_output_axis(wire.slot, axis) {
-                        info
-                    } else {
-                        continue 'axis;
-                    };
-                    nodes.push((wire.node, axis_info.clone()));
-                }
-                for succ in &emiter_node.outputs[wire.slot].successors {
-                    let succ_node = model.node(succ.node);
-                    let invs = succ_node.op.invariants(&model, succ_node)?;
-                    let axis_info = if let Some(info) = invs.track_input_axis(succ.slot, axis) {
-                        info
-                    } else {
-                        continue 'axis;
-                    };
-                    nodes.push((succ_node.id, axis_info.clone()));
-                }
-                let mut outlets = vec![];
-                for (n, axes) in nodes {
-                    disposable = disposable && axes.disposable;
-                    let node = model.node(n);
-                    for slot in 0..node.outputs.len() {
-                        if let Some(axis) = axes.outputs[slot] {
-                            outlets.push((OutletId::new(n, slot), axis));
-                        }
-                    }
-                    for slot in 0..node.inputs.len() {
-                        if let Some(axis) = axes.inputs[slot] {
-                            outlets.push((node.inputs[slot], axis));
-                        }
+            for succ in &emiter_node.outputs[wire.slot].successors {
+                let succ_node = model.node(succ.node);
+                let invs = succ_node.op.invariants(&model, succ_node)?;
+                if let Some(info) = invs.track_input_axis(succ.slot, axis) {
+                    nodes.push((succ_node.id, info.clone()));
+                } else {
+                    destructors.push(*succ);
+                };
+            }
+            let mut new_outlets = vec![];
+            for (n, axes) in nodes {
+                disposable = disposable && axes.disposable;
+                let node = model.node(n);
+                for slot in 0..node.outputs.len() {
+                    if let Some(axis) = axes.outputs[slot] {
+                        new_outlets.push((OutletId::new(n, slot), axis));
                     }
                 }
-                for (outlet, axis) in outlets {
-                    if let Some(prev) = mapped.get(&outlet) {
-                        if *prev != axis {
-                            bail!("Inconsistent network");
-                        }
-                    } else {
-                        mapped.insert(outlet, axis);
-                        todo.insert(outlet);
+                for slot in 0..node.inputs.len() {
+                    if let Some(axis) = axes.inputs[slot] {
+                        new_outlets.push((node.inputs[slot], axis));
                     }
                 }
             }
-            axes.push((mapped, disposable));
+            for (outlet, axis) in new_outlets {
+                if let Some(prev) = mapped_outlets.get(&outlet) {
+                    if *prev != axis {
+                        bail!("Inconsistent network");
+                    }
+                } else {
+                    mapped_outlets.insert(outlet, axis);
+                    todo.insert(outlet);
+                }
+            }
+        }
+        Ok(AxisTracking { creators, destructors, outlets: mapped_outlets, disposable })
+    }
+}
+
+pub fn full_axis_tracking(model: &TypedModel) -> TractResult<Vec<AxisTracking>> {
+    let mut axes: Vec<AxisTracking> = vec![];
+    for node in model.eval_order()? {
+        for slot in 0..model.node(node).outputs.len() {
+            let outlet = OutletId::new(node, slot);
+            let input_fact = model.outlet_fact(outlet)?;
+            'axis: for axis in 0..input_fact.rank() {
+                if axes.iter().any(|tracking| tracking.outlets.get(&outlet) == Some(&axis)) {
+                    continue 'axis;
+                }
+                axes.push(AxisTracking::for_outlet_and_axis(model, outlet, axis)?);
+            }
         }
     }
     Ok(axes)
@@ -244,53 +262,38 @@ pub fn full_axis_tracking(
 pub fn for_model(model: &TypedModel) -> TractResult<Invariants> {
     full_axis_tracking(model)?
         .into_iter()
-        .map(|(axes, disposable)| {
-            let inputs = model.input_outlets()?.iter().map(|i| axes.get(i).cloned()).collect();
-            let outputs = model.input_outlets()?.iter().map(|i| axes.get(i).cloned()).collect();
-            Ok(AxisInfo { inputs, outputs, disposable, period: 1 })
+        .map(|tracking| {
+            let inputs =
+                model.input_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
+            let outputs =
+                model.input_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
+            Ok(AxisInfo { inputs, outputs, disposable: tracking.disposable, period: 1 })
         })
         .collect()
 }
 
-/*
 #[derive(Debug)]
 struct DisposeDummyAxisTranslator {
     tracked: HashMap<OutletId, usize>,
 }
 
-impl crate::model::compact::Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
+impl crate::model::translator::Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
     for DisposeDummyAxisTranslator
 {
-    fn translate_op(
+    fn translate_node(
         &self,
-        source: &ModelImpl<TypedFact, Box<dyn TypedOp>>,
-        node: &BaseNode<TypedFact, Box<dyn TypedOp>>,
-        _target: &mut ModelImpl<TypedFact, Box<dyn TypedOp>>,
-        _mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<Box<dyn TypedOp>> {
-        if let Some((input, axis)) = self.tracked.iter().find(|(k, _)| k.node == node.id) {
-            Ok(node
-                .op
-                .dispose_dummy_axis(source, node, input.slot, *axis)?
-                .unwrap_or_else(|| node.op.clone()))
-        } else {
-            Ok(node.op.clone())
-        }
-    }
-
-    fn node_output_facts(
-        &self,
-        _source: &ModelImpl<TypedFact, Box<dyn TypedOp>>,
-        node: &BaseNode<TypedFact, Box<dyn TypedOp>>,
-        target: &mut ModelImpl<TypedFact, Box<dyn TypedOp>>,
+        source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<TypedFact>> {
-        let inputs = node
-            .inputs
-            .iter()
-            .map(|i| target.outlet_fact(mapping[i]))
-            .collect::<TractResult<TVec<_>>>()?;
-        node.op.output_facts(&*inputs)
+    ) -> TractResult<TVec<OutletId>> {
+        let op = if let Some((_input, axis)) = self.tracked.iter().find(|(k, _)| k.node == node.id) {
+            node.op.dispose_dummy_axis(source, node, *axis)?.unwrap_or_else(|| node.op.clone())
+        } else {
+            node.op.clone()
+        };
+        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+        target.wire_node(&*node.name, op, &*inputs)
     }
 }
 
@@ -299,11 +302,12 @@ pub fn dispose_dummy_axis(
     input: usize,
     axis: usize,
 ) -> TractResult<TypedModel> {
+    use crate::model::translator::Translate;
+    dbg!(model.input_outlets())?;
     let input = model.input_outlets()?[input];
     let tracked = full_axis_tracking(model)?;
-    let (tracked, disposable) =
-        tracked.into_iter().find(|ax| ax.0.get(&input) == Some(&axis)).unwrap();
-    let translator = DisposeDummyAxisTranslator { tracked };
+    let tracking =
+        tracked.into_iter().find(|ax| ax.outlets.get(&input) == Some(&axis)).unwrap();
+    let translator = DisposeDummyAxisTranslator { tracked: tracking.outlets };
     translator.translate_model(model)
 }
-*/

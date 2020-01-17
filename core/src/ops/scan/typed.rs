@@ -443,10 +443,35 @@ impl TypedOp for TypedScan {
                     info.outputs[slot] = axis.outputs[ix].clone();
                 }
             }
-            info.disposable = false;// FIXME axis.disposable;
+            info.disposable = axis.disposable;
             invariants.push(info);
         }
         Ok(Invariants::from(invariants))
+    }
+
+    fn dispose_dummy_axis(
+        &self,
+        model: &TypedModel,
+        _node: &TypedNode,
+        axis: usize,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let input = 0; // FIXME
+        println!("{:?}", self.input_mapping);
+        let inner_input = self.input_mapping.iter().position(|mapping| match mapping {
+            InputMapping::Full { slot } => *slot == input,
+            InputMapping::Scan { slot, .. } => *slot == input,
+            InputMapping::State { initializer } => match initializer {
+                StateInitializer::FromInput(slot) => *slot == input,
+                _ => false,
+            },
+        });
+        let inner_input =
+            if let Some(inner_input) = inner_input { inner_input } else { return Ok(None) };
+        println!("inner_input: {}", inner_input);
+        Ok(Some(Box::new(TypedScan {
+            body: crate::ops::invariants::dispose_dummy_axis(&self.body, inner_input, axis)?,
+            ..self.clone()
+        })))
     }
 
     fn declutter(
