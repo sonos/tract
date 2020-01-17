@@ -327,7 +327,7 @@ pub struct TypedReduce {
 
 impl Op for TypedReduce {
     fn name(&self) -> Cow<str> {
-        format!("Reduce<{:?}>", self.reducer).into()
+        format!("TypedReduce<{:?}>", self.reducer).into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axes: {:?}", self.axes)])
@@ -351,6 +351,29 @@ impl TypedOp for TypedReduce {
             shape[ax] = 1.to_dim();
         }
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)?))
+    }
+
+    #[allow(unused_variables)]
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+        let input = model.outlet_fact(node.inputs[0])?;
+        let axes = (0..input.rank())
+            .filter(|axis| !self.axes.contains(axis))
+            .map(|axis| AxisInfo::simple(axis))
+            .collect::<TVec<_>>();
+        Ok(axes.into())
+    }
+
+    #[allow(unused_variables)]
+    fn dispose_dummy_axis(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        axis: usize,
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        Ok(Some(Box::new(Self {
+            axes: self.axes.iter().map(|&a| a - (axis < a) as usize).collect(),
+            ..self.clone()
+        })))
     }
 
     fn pulsify(
