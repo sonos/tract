@@ -96,7 +96,7 @@ impl TypedOp for RmDims {
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-        axes: &[Option<usize>]
+        axes: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
         let axis = axes[0].unwrap();
         let axes = self
@@ -120,6 +120,7 @@ impl TypedOp for RmDims {
                 node.inputs[0],
                 rm_axis,
             )?;
+            assert!(tracking.destructors.contains(&InletId::new(node.id, 0)));
             if tracking.creators.iter().any(|c| {
                 !model
                     .node(c.node)
@@ -135,7 +136,7 @@ impl TypedOp for RmDims {
             }) {
                 continue 'axis;
             }
-            println!("Decluttering {}", node);
+            println!("Decluttering axis {} {}", node, rm_axis);
             let mut patch = TypedModelPatch::default();
             let mut mapping = HashMap::<OutletId, OutletId>::new();
             for c in &tracking.creators {
@@ -168,7 +169,7 @@ impl TypedOp for RmDims {
             }
             for n in model.eval_order()? {
                 let node = model.node(n);
-                println!("   -> {}", node);
+                println!("  ### {}", node);
                 for i in &node.inputs {
                     if !mapping.contains_key(&i) {
                         mapping.insert(*i, patch.tap_model(model, *i)?);
@@ -186,7 +187,15 @@ impl TypedOp for RmDims {
                     .op
                     .dispose_dummy_axis(model, node, &[Some(axis)])?
                     .unwrap_or_else(|| node.op.clone());
+                println!(
+                    "      inputs {:?}",
+                    inputs.iter().map(|i| patch.outlet_fact(*i)).collect::<Vec<_>>()
+                );
                 let outputs = patch.wire_node(&*node.name, op, &*inputs)?;
+                println!(
+                    "     outputs {:?}",
+                    outputs.iter().map(|o| patch.outlet_fact(*o)).collect::<Vec<_>>()
+                );
                 for (ix, o) in outputs.into_iter().enumerate() {
                     mapping.insert(OutletId::new(node.id, ix), o);
                 }
@@ -206,6 +215,8 @@ impl TypedOp for RmDims {
                         [0];
                 patch.shunt_outside(node.id.into(), wire)?;
             }
+            println!("decluttered done");
+            return Ok(Some(patch));
         }
         Ok(None)
     }
