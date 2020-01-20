@@ -88,8 +88,9 @@ impl TypedOp for AddDims {
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-        axis: usize,
+        axes: &[Option<usize>]
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let axis = axes[0].unwrap();
         let axes = self
             .axes
             .iter()

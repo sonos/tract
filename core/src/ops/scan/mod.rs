@@ -37,6 +37,17 @@ impl<C: Clone> InputMapping<C> {
             false
         }
     }
+
+    pub fn slot(&self) -> Option<usize> {
+        match self {
+            InputMapping::Full { slot } => Some(*slot),
+            InputMapping::Scan { slot, .. } => Some(*slot),
+            InputMapping::State { initializer } => match initializer {
+                StateInitializer::FromInput(slot) => Some(*slot),
+                _ => None,
+            },
+        }
+    }
 }
 
 impl<C: Clone + fmt::Debug> fmt::Debug for InputMapping<C> {
@@ -69,7 +80,7 @@ impl<C: Clone, F: Clone> OutputMapping<C, F> {
     }
 }
 
-impl<C: Clone, F:Clone> fmt::Debug for OutputMapping<C, F> {
+impl<C: Clone, F: Clone> fmt::Debug for OutputMapping<C, F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         if self.state {
             write!(fmt, "State. ")?;

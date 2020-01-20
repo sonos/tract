@@ -96,8 +96,9 @@ impl TypedOp for RmDims {
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-        axis: usize,
+        axes: &[Option<usize>]
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let axis = axes[0].unwrap();
         let axes = self
             .axes
             .iter()
@@ -134,6 +135,7 @@ impl TypedOp for RmDims {
             }) {
                 continue 'axis;
             }
+            println!("Decluttering {}", node);
             let mut patch = TypedModelPatch::default();
             let mut mapping = HashMap::<OutletId, OutletId>::new();
             for c in &tracking.creators {
@@ -166,6 +168,7 @@ impl TypedOp for RmDims {
             }
             for n in model.eval_order()? {
                 let node = model.node(n);
+                println!("   -> {}", node);
                 for i in &node.inputs {
                     if !mapping.contains_key(&i) {
                         mapping.insert(*i, patch.tap_model(model, *i)?);
@@ -181,7 +184,7 @@ impl TypedOp for RmDims {
                 };
                 let op = node
                     .op
-                    .dispose_dummy_axis(model, node, axis)?
+                    .dispose_dummy_axis(model, node, &[Some(axis)])?
                     .unwrap_or_else(|| node.op.clone());
                 let outputs = patch.wire_node(&*node.name, op, &*inputs)?;
                 for (ix, o) in outputs.into_iter().enumerate() {

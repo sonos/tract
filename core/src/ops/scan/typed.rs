@@ -379,6 +379,7 @@ impl TypedOp for TypedScan {
     typed_op_as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        println!("scan inputs {:?}", inputs);
         let mut outputs = tvec!();
         let iters = {
             let (outside_slot, axis, chunk) = self
@@ -407,6 +408,7 @@ impl TypedOp for TypedScan {
         }
         outputs.sort_by_key(|a| a.0);
         let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
+        println!("scan outputs {:?}", outputs);
         Ok(outputs)
     }
 
@@ -451,27 +453,69 @@ impl TypedOp for TypedScan {
 
     fn dispose_dummy_axis(
         &self,
-        model: &TypedModel,
+        _model: &TypedModel,
         _node: &TypedNode,
-        axis: usize,
+        axes: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let input = 0; // FIXME
-        println!("{:?}", self.input_mapping);
-        let inner_input = self.input_mapping.iter().position(|mapping| match mapping {
-            InputMapping::Full { slot } => *slot == input,
-            InputMapping::Scan { slot, .. } => *slot == input,
-            InputMapping::State { initializer } => match initializer {
-                StateInitializer::FromInput(slot) => *slot == input,
-                _ => false,
-            },
-        });
-        let inner_input =
-            if let Some(inner_input) = inner_input { inner_input } else { return Ok(None) };
-        println!("inner_input: {}", inner_input);
-        Ok(Some(Box::new(TypedScan {
-            body: crate::ops::invariants::dispose_dummy_axis(&self.body, inner_input, axis)?,
-            ..self.clone()
-        })))
+        use crate::ops::invariants;
+        let input_axes: TVec<(usize, usize)> = self
+            .input_mapping
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, mapping)| mapping.slot().map(|s| (ix, s)))
+            .collect();
+        let tracking = invariants::AxisTracking::for_outlet_and_axis(
+            &self.body,
+            self.body.input_outlets()?[input_axes[0].0],
+            input_axes[0].1,
+        )?;
+        let body = invariants::dispose_dummy_axis(&self.body, &tracking)?;
+//        dbg!(&body);
+        println!("body outputs: {:?}", body.output_fact(0));
+        let input_mapping = self
+            .input_mapping
+            .iter()
+            .map(|m| {
+                let removed_axis: Option<usize> = m.slot().and_then(|s| axes[s]);
+                if let Some(removed_axis) = removed_axis {
+                    match m {
+                        InputMapping::Full { .. } => m.clone(),
+                        InputMapping::Scan { axis, chunk, slot } => {
+                            let axis = *axis - (*axis > removed_axis) as usize;
+                            InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() }
+                        }
+                        InputMapping::State { initializer } => match initializer {
+                            StateInitializer::FromInput(fi) => InputMapping::State {
+                                initializer: StateInitializer::FromInput(*fi),
+                            },
+                            StateInitializer::Value(ref v) => {
+                                assert!(v.shape()[removed_axis] == 1);
+                                let mut shape: TVec<usize> = v.shape().into();
+                                shape.remove(removed_axis);
+                                InputMapping::State {
+                                    initializer: StateInitializer::Value(unsafe {
+                                        v.clone().into_tensor().into_shape(&shape).unwrap().into()
+                                    }),
+                                }
+                            }
+                        },
+                    }
+                } else {
+                    m.clone()
+                }
+            })
+            .collect();
+        let output_mapping = self
+            .output_mapping
+            .iter()
+            .enumerate()
+            .map(|(ix, om)| {
+                let output = self.body.output_outlets()?[ix];
+                let axis = tracking.outlets[&output];
+                Ok(OutputMapping { axis: om.axis - (om.axis > axis) as usize, ..om.clone() })
+            })
+            .collect::<TractResult<_>>()?;
+        Ok(Some(Box::new(TypedScan { body, input_mapping, output_mapping, ..self.clone() })))
     }
 
     fn declutter(
