@@ -308,6 +308,12 @@ impl<'a>
             };
             let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
             let wired = target.wire_node(&*node.name, op, &*inputs)?;
+            println!(
+                "{} {:?} ----> {:?}",
+                node,
+                inputs.iter().map(|i| target.outlet_fact(*i).unwrap()).collect::<Vec<_>>(),
+                wired.iter().map(|w| target.outlet_fact(*w).unwrap()).collect::<Vec<_>>()
+            );
             Ok(wired)
         }
     }

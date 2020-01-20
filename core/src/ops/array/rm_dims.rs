@@ -187,15 +187,20 @@ impl TypedOp for RmDims {
                     .op
                     .dispose_dummy_axis(model, node, &[Some(axis)])?
                     .unwrap_or_else(|| node.op.clone());
+                /*
+                println!("{:?}", op);
                 println!(
                     "      inputs {:?}",
                     inputs.iter().map(|i| patch.outlet_fact(*i)).collect::<Vec<_>>()
                 );
+                */
                 let outputs = patch.wire_node(&*node.name, op, &*inputs)?;
+                /*
                 println!(
                     "     outputs {:?}",
                     outputs.iter().map(|o| patch.outlet_fact(*o)).collect::<Vec<_>>()
                 );
+                */
                 for (ix, o) in outputs.into_iter().enumerate() {
                     mapping.insert(OutletId::new(node.id, ix), o);
                 }
