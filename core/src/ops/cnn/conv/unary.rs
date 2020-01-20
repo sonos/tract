@@ -412,13 +412,21 @@ impl ConvUnary {
                 let op = match output_type {
                     DatumType::I8 => quantize_linear_i8(
                         scale,
-                        qp.zero_point_c.as_ref().map(|zp| zp.to_scalar().map(|&x:&i8| x.clone())).transpose()?.unwrap_or(0),
+                        qp.zero_point_c
+                            .as_ref()
+                            .map(|zp| zp.to_scalar().map(|&x: &i8| x.clone()))
+                            .transpose()?
+                            .unwrap_or(0),
                     ),
                     DatumType::U8 => quantize_linear_u8(
                         scale,
-                        qp.zero_point_c.as_ref().map(|zp| zp.to_scalar().map(|&x:&u8| x.clone())).transpose()?.unwrap_or(0),
+                        qp.zero_point_c
+                            .as_ref()
+                            .map(|zp| zp.to_scalar().map(|&x: &u8| x.clone()))
+                            .transpose()?
+                            .unwrap_or(0),
                     ),
-                    _ => unimplemented!("Unexpected quant type")
+                    _ => unimplemented!("Unexpected quant type"),
                 };
                 wire = patch.wire_node(format!("{}-quant", node.name), op, &[wire])?[0];
             }
@@ -470,6 +478,7 @@ impl StatelessOp for ConvUnary {
 
 impl TypedOp for ConvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        println!("inputs: {:?}", inputs);
         self.pool_spec.output_facts(inputs)
     }
 
@@ -533,15 +542,17 @@ impl TypedOp for ConvUnary {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        axis: usize,
+        axes: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        dbg!(self);
+        let axis = axes[0].unwrap();
+        dbg!(axis);
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let shape = self.pool_spec.data_format.shape(full_input_shape);
         if Some(axis) == shape.n_axis() {
-            return Ok(Some(Box::new(ConvUnary {
-                pool_spec: self.pool_spec.dispose_n_axis(),
-                ..self.clone()
-            })));
+            let op = ConvUnary { pool_spec: self.pool_spec.dispose_n_axis(), ..self.clone() };
+            dbg!(&op);
+            return Ok(Some(Box::new(op)));
         }
         if axis == shape.c_axis() {
             bail!("Channel axis can not be disposed of");

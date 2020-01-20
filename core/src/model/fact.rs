@@ -128,6 +128,16 @@ impl ShapeInfo {
         Ok(())
     }
 
+    pub fn rm_axis(&mut self, axis: usize) -> TractResult<()> {
+        self.shape.remove(axis);
+        if let Some(s) = self.stream_info.as_mut() {
+            if s.axis > axis {
+                s.axis -= 1;
+            }
+        }
+        Ok(())
+    }
+
     /// Shape of the tensor, unless it is streaming.
     pub fn as_finite(&self) -> Option<&[usize]> {
         match self.stream_info {

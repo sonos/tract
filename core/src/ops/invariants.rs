@@ -273,12 +273,12 @@ pub fn for_model(model: &TypedModel) -> TractResult<Invariants> {
 }
 
 #[derive(Debug)]
-struct DisposeDummyAxisTranslator {
-    tracked: HashMap<OutletId, usize>,
+struct DisposeDummyAxisTranslator<'a> {
+    tracked: &'a HashMap<OutletId, usize>,
 }
 
-impl crate::model::translator::Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
-    for DisposeDummyAxisTranslator
+impl<'a> crate::model::translator::Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
+    for DisposeDummyAxisTranslator<'a>
 {
     fn translate_node(
         &self,
@@ -287,27 +287,35 @@ impl crate::model::translator::Translate<TypedFact, Box<dyn TypedOp>, TypedFact,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let op = if let Some((_input, axis)) = self.tracked.iter().find(|(k, _)| k.node == node.id) {
-            node.op.dispose_dummy_axis(source, node, *axis)?.unwrap_or_else(|| node.op.clone())
+        let axis = self.tracked.iter().find(|(k, _)| k.node == node.id);
+        if source.input_outlets()?.contains(&node.id.into()) {
+            let mut fact = source.outlet_fact(node.id.into())?.clone();
+            if let Some((_, &axis)) = axis {
+                fact.shape.rm_axis(axis)?;
+            }
+            let wire = target.add_source(&*node.name, fact)?;
+            Ok(tvec!(wire.into()))
         } else {
-            node.op.clone()
-        };
-        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
-        target.wire_node(&*node.name, op, &*inputs)
+            let axes = (0..node.inputs.len())
+                .map(|slot| self.tracked.get(&OutletId::new(node.id, slot)).cloned())
+                .collect::<TVec<_>>();
+            let op = if axes.iter().any(|x| x.is_some()) {
+                node.op.dispose_dummy_axis(source, node, &*axes)?.unwrap_or_else(|| node.op.clone())
+            } else {
+                node.op.clone()
+            };
+            let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+            let wired = target.wire_node(&*node.name, op, &*inputs)?;
+            Ok(wired)
+        }
     }
 }
 
 pub fn dispose_dummy_axis(
     model: &TypedModel,
-    input: usize,
-    axis: usize,
+    tracking: &AxisTracking,
 ) -> TractResult<TypedModel> {
     use crate::model::translator::Translate;
-    dbg!(model.input_outlets())?;
-    let input = model.input_outlets()?[input];
-    let tracked = full_axis_tracking(model)?;
-    let tracking =
-        tracked.into_iter().find(|ax| ax.outlets.get(&input) == Some(&axis)).unwrap();
-    let translator = DisposeDummyAxisTranslator { tracked: tracking.outlets };
+    let translator = DisposeDummyAxisTranslator { tracked: &tracking.outlets };
     translator.translate_model(model)
 }

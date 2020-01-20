@@ -570,8 +570,9 @@ impl TypedOp for UnaryOp {
         &self,
         _model: &TypedModel,
         node: &TypedNode,
-        axis: usize,
+        axes: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let axis= axes[0].unwrap();
         let a_pad = node.outputs[0].fact.shape.rank() - self.a.shape().len();
         if axis > a_pad {
             let a = self.a.clone().into_tensor();

@@ -92,8 +92,9 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-        axis: usize,
+        axes: &[Option<usize>]
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let axis = axes[0].unwrap();
         Ok(Some(Box::new(Slice { axis: self.axis - (self.axis > axis) as usize, ..self.clone() })))
     }
 

@@ -128,17 +128,19 @@ where
 }
 
 pub fn infer_shapes<D: DimLike>(
-    mut ashape: TVec<D>,
-    mut bshape: TVec<D>,
+    ashape_input: TVec<D>,
+    bshape_input: TVec<D>,
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
 ) -> TractResult<(TVec<D>, TVec<D>, TVec<D>)> {
+    let mut ashape = ashape_input.clone();
+    let mut bshape = bshape_input.clone();
     if ashape.len() < 2 {
         ashape.insert(0, D::one());
     }
     if bshape.len() < 2 {
-        bshape.push(D::one());
+        bshape.insert(!b_trans as usize, D::one());
     }
     while ashape.len() < bshape.len() {
         ashape.insert(0, D::one());
@@ -160,7 +162,9 @@ pub fn infer_shapes<D: DimLike>(
     if b_trans {
         std::mem::swap(&mut kb, &mut n);
     }
-    assert_eq!(ka, kb);
+    if ka != kb {
+        bail!("Inconsistent malmul: a: {:?} b: {:?}, a_trans: {} b_trans: {} c_trans: {}", ashape, bshape, a_trans, b_trans, c_trans);
+    }
     if c_trans {
         cshape.push(n);
         cshape.push(m);

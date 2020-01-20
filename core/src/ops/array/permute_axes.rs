@@ -103,8 +103,9 @@ impl TypedOp for PermuteAxes {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        axis: usize,
+        axes: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let axis = axes[0].unwrap();
         let permutation = if let Some(axes) = self.axes.clone() {
             axes
         } else {

@@ -22,16 +22,16 @@ pub mod dummy;
 pub mod identity;
 pub mod konst;
 pub mod logic;
-pub mod matmul;
 pub mod math;
+pub mod matmul;
 pub mod nn;
 pub mod quant;
 pub mod scan;
 pub mod source;
 pub mod unimpl;
 
-pub use invariants::{Invariants, AxisInfo};
 pub use downsample::Downsample;
+pub use invariants::{AxisInfo, Invariants};
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
     if inputs.len() != expected {
@@ -208,7 +208,7 @@ pub trait TypedOp:
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        axis: usize,
+        axes: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
         Ok(None)
     }
@@ -227,7 +227,7 @@ pub trait TypedOp:
         let outlet = OutletId::new(node.id, output_slot);
         let output = model.outlet_fact(outlet)?;
         if start == 0 && Some(end as i32) == output.shape.dim(axis).to_integer().ok() {
-            return Ok(Some(patch.tap_model(model, outlet)?))
+            return Ok(Some(patch.tap_model(model, outlet)?));
         }
         Ok(None)
     }
@@ -242,7 +242,7 @@ pub trait TypedOp:
         node: &TypedNode,
         dt: DatumType,
         scale: f32,
-        zero_point: i32
+        zero_point: i32,
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
         Ok(None)
     }

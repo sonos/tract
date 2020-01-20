@@ -99,6 +99,7 @@ impl PulsedModel {
     }
 }
 
+#[derive(Debug)]
 struct Pulsifier(usize);
 impl
     crate::model::translator::Translate<

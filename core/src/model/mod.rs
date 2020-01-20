@@ -253,6 +253,7 @@ impl InferenceModel {
         self.analyse(false)?;
         let m = self.incorporate()?;
 
+        #[derive(Debug)]
         struct ToTypedTranslator;
         impl Translate<InferenceFact, Box<dyn InferenceOp>, TypedFact, Box<dyn TypedOp>>
             for ToTypedTranslator

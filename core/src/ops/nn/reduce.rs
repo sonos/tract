@@ -368,8 +368,9 @@ impl TypedOp for TypedReduce {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        axis: usize,
+        axis: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let axis = axis[0].unwrap();
         Ok(Some(Box::new(Self {
             axes: self.axes.iter().map(|&a| a - (axis < a) as usize).collect(),
             ..self.clone()
