@@ -82,6 +82,7 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     pub(crate) c_trans: bool,
+    pub(crate) bc_c_shape: TVec<usize>,
     pub(crate) c_fact: TypedFact,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
