@@ -379,7 +379,6 @@ impl TypedOp for TypedScan {
     typed_op_as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        println!("scan inputs {:?}", inputs);
         let mut outputs = tvec!();
         let iters = {
             let (outside_slot, axis, chunk) = self
@@ -408,7 +407,6 @@ impl TypedOp for TypedScan {
         }
         outputs.sort_by_key(|a| a.0);
         let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
-        println!("scan outputs {:?}", outputs);
         Ok(outputs)
     }
 
@@ -470,8 +468,6 @@ impl TypedOp for TypedScan {
             input_axes[0].1,
         )?;
         let body = invariants::dispose_dummy_axis(&self.body, &tracking)?;
-//        dbg!(&body);
-        println!("body outputs: {:?}", body.output_fact(0));
         let input_mapping = self
             .input_mapping
             .iter()

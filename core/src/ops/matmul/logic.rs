@@ -128,51 +128,63 @@ where
 }
 
 pub fn infer_shapes<D: DimLike>(
-    ashape_input: TVec<D>,
-    bshape_input: TVec<D>,
+    ashape_orig: TVec<D>,
+    bshape_orig: TVec<D>,
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
 ) -> TractResult<(TVec<D>, TVec<D>, TVec<D>)> {
-    let mut ashape = ashape_input.clone();
-    let mut bshape = bshape_input.clone();
-    if ashape.len() < 2 {
-        ashape.insert(0, D::one());
-    }
-    if bshape.len() < 2 {
-        bshape.insert(!b_trans as usize, D::one());
-    }
-    while ashape.len() < bshape.len() {
-        ashape.insert(0, D::one());
-    }
-    while bshape.len() < ashape.len() {
-        bshape.insert(0, D::one());
-    }
-    let cshape_prefix = crate::broadcast::multi_broadcast(&[
-        &ashape[..(ashape.len() - 2)],
-        &bshape[..(bshape.len() - 2)],
-    ])
-    .ok_or("Could not broadcast")?;
-    let mut cshape: TVec<D> = cshape_prefix.clone();
-    let (mut m, mut ka) = (ashape[ashape.len() - 2].clone(), ashape[ashape.len() - 1].clone());
-    let (mut kb, mut n) = (bshape[bshape.len() - 2].clone(), bshape[bshape.len() - 1].clone());
-    if a_trans {
-        std::mem::swap(&mut m, &mut ka);
-    }
-    if b_trans {
-        std::mem::swap(&mut kb, &mut n);
-    }
-    if ka != kb {
-        bail!("Inconsistent malmul: a: {:?} b: {:?}, a_trans: {} b_trans: {} c_trans: {}", ashape, bshape, a_trans, b_trans, c_trans);
-    }
-    if c_trans {
-        cshape.push(n);
-        cshape.push(m);
+    if bshape_orig.len() == 1 && ashape_orig.len() == 2 {
+        let cshape = tvec!(ashape_orig[a_trans as usize].clone());
+        Ok((ashape_orig, bshape_orig, cshape))
     } else {
-        cshape.push(m);
-        cshape.push(n);
+        let mut ashape = ashape_orig.clone();
+        let mut bshape = bshape_orig.clone();
+        if ashape.len() < 2 {
+            ashape.insert(0, D::one());
+        }
+        if bshape.len() < 2 {
+            bshape.insert(!b_trans as usize, D::one());
+        }
+        while ashape.len() < bshape.len() {
+            ashape.insert(0, D::one());
+        }
+        while bshape.len() < ashape.len() {
+            bshape.insert(0, D::one());
+        }
+        let cshape_prefix = crate::broadcast::multi_broadcast(&[
+            &ashape[..(ashape.len() - 2)],
+            &bshape[..(bshape.len() - 2)],
+        ])
+        .ok_or("Could not broadcast")?;
+        let mut cshape: TVec<D> = cshape_prefix.clone();
+        let (mut m, mut ka) = (ashape[ashape.len() - 2].clone(), ashape[ashape.len() - 1].clone());
+        let (mut kb, mut n) = (bshape[bshape.len() - 2].clone(), bshape[bshape.len() - 1].clone());
+        if a_trans {
+            std::mem::swap(&mut m, &mut ka);
+        }
+        if b_trans {
+            std::mem::swap(&mut kb, &mut n);
+        }
+        if ka != kb {
+            bail!(
+                "Inconsistent malmul: a: {:?} b: {:?}, a_trans: {} b_trans: {} c_trans: {}",
+                ashape,
+                bshape,
+                a_trans,
+                b_trans,
+                c_trans
+            );
+        }
+        if c_trans {
+            cshape.push(n);
+            cshape.push(m);
+        } else {
+            cshape.push(m);
+            cshape.push(n);
+        }
+        Ok((ashape, bshape, cshape))
     }
-    Ok((ashape, bshape, cshape))
 }
 
 #[derive(Debug, Clone)]

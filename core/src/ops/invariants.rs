@@ -195,14 +195,15 @@ impl AxisTracking {
             let axis = mapped_outlets[&wire];
             let emiter_node = model.node(wire.node);
             let mut nodes = vec![];
-            if !emiter_node.op().is::<TypedSource>() && !emiter_node.op().is::<Const>() {
-                let invs = emiter_node.op.invariants(&model, emiter_node)?;
-                if let Some(info) = invs.track_output_axis(wire.slot, axis) {
-                    nodes.push((wire.node, info.clone()));
-                } else {
-                    creators.push(wire);
-                };
-            }
+            let invs = emiter_node
+                .op
+                .invariants(&model, emiter_node)
+                .chain_err(|| format!("Computing invariants for {}", emiter_node))?;
+            if let Some(info) = invs.track_output_axis(wire.slot, axis) {
+                nodes.push((wire.node, info.clone()));
+            } else {
+                creators.push(wire);
+            };
             for succ in &emiter_node.outputs[wire.slot].successors {
                 let succ_node = model.node(succ.node);
                 let invs = succ_node.op.invariants(&model, succ_node)?;
@@ -277,7 +278,8 @@ struct DisposeDummyAxisTranslator<'a> {
     tracked: &'a HashMap<OutletId, usize>,
 }
 
-impl<'a> crate::model::translator::Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
+impl<'a>
+    crate::model::translator::Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
     for DisposeDummyAxisTranslator<'a>
 {
     fn translate_node(
@@ -311,10 +313,7 @@ impl<'a> crate::model::translator::Translate<TypedFact, Box<dyn TypedOp>, TypedF
     }
 }
 
-pub fn dispose_dummy_axis(
-    model: &TypedModel,
-    tracking: &AxisTracking,
-) -> TractResult<TypedModel> {
+pub fn dispose_dummy_axis(model: &TypedModel, tracking: &AxisTracking) -> TractResult<TypedModel> {
     use crate::model::translator::Translate;
     let translator = DisposeDummyAxisTranslator { tracked: &tracking.outlets };
     translator.translate_model(model)
