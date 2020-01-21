@@ -245,7 +245,7 @@ impl TypedOp for NormConcat {
             Ok(Invariants::none())
         } else {
             let rank = model.outlet_fact(node.inputs[0])?.shape.rank();
-            Ok((0..rank).filter(|&ax| ax != self.axis).map(|axis| AxisInfo::simple(axis)).collect())
+            (0..rank).filter(|&ax| ax != self.axis).map(|axis| AxisInfo::for_node(model, node, axis)).collect()
         }
     }
 
