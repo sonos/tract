@@ -73,7 +73,7 @@ where
         let inputs = node.inputs.iter().map(|o| map[o]).collect::<TVec<_>>();
         let outlets = new
             .wire_node(&*node.name, node.op.clone(), &inputs)
-            .chain_err(|| format!("Compacting model, {:?}", node))?;
+            .chain_err(|| format!("Compacting model, {}", node))?;
         for (ix, &o) in outlets.iter().enumerate() {
             new.set_outlet_fact(o, old.outlet_fact(OutletId::new(node.id, ix))?.clone())?;
         }
