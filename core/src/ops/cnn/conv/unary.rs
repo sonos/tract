@@ -395,7 +395,7 @@ impl ConvUnary {
             } else {
                 self.q_params.clone()
             };
-            let op = MatMulUnary { a, a_trans, b_trans: trans_data, c_trans: trans_data, q_params };
+            let op = MatMulUnary::new(a, a_trans, trans_data, trans_data, q_params);
             wire = patch.wire_node(&*node.name, op, &[wire])?[0];
             if let Some(b) = &self.bias {
                 let bias_shape = if trans_data { tvec!(1, co) } else { tvec!(co, 1) };

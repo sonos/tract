@@ -574,12 +574,9 @@ impl TypedOp for UnaryOp {
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
         let axis = axes[0].unwrap();
         let a_pad = node.outputs[0].fact.shape.rank() - self.a.shape().len();
-        if axis > a_pad {
-            let a = self.a.clone().into_tensor();
-            let mut shape = a.shape().to_vec();
-            assert_eq!(shape[axis - a_pad], 1);
-            shape.remove(axis - a_pad);
-            let a = unsafe { a.into_shape(&*shape)? };
+        if axis >= a_pad {
+            let mut a = self.a.clone().into_tensor();
+            a.remove_axis(axis - a_pad)?;
             Ok(Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor()))))
         } else {
             Ok(None)

@@ -78,7 +78,7 @@ impl InferenceRulesOp for MatMulInteger {
             s.equals(&inputs[b_zp].datum_type, &inputs[1].datum_type)?
         }
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ashape, bshape| {
-            let (_, _, cshape) =
+            let (_, _, cshape, _) =
                 tract_core::ops::matmul::infer_shapes(ashape, bshape, false, false, false)?;
             s.equals(&outputs[0].shape, cshape)
         })?;
@@ -177,7 +177,7 @@ impl InferenceRulesOp for QLinearMatMul {
         s.equals(&inputs[4].rank, &inputs[5].rank)?;
         s.equals(&inputs[6].rank, &inputs[7].rank)?;
         s.given_2(&inputs[0].shape, &inputs[3].shape, move |s, ashape, bshape| {
-            let (_, _, cshape) =
+            let (_, _, _, cshape) =
                 tract_core::ops::matmul::infer_shapes(ashape, bshape, false, false, false)?;
             s.equals(&outputs[0].shape, cshape)
         })?;

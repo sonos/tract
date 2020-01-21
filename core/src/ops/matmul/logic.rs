@@ -107,7 +107,6 @@ where
             b.slice_axis_inplace(Axis(axis), (d..=d).into());
             c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
         }
-
         geo.mm.as_mmm().a_pack().pack(
             pa.as_ptr_mut()?,
             a.as_ptr(),
@@ -181,27 +180,21 @@ pub fn infer_shapes<D: DimLike>(
         c_bc_shape.push(n.clone());
         c_bc_shape.push(m.clone());
         if !implicit_n {
-            c_shape_final.push(n);
+            c_shape_final.push(n.clone());
         }
         if !implicit_m {
-            c_shape_final.push(m);
+            c_shape_final.push(m.clone());
         }
     } else {
         c_bc_shape.push(m.clone());
         c_bc_shape.push(n.clone());
         if !implicit_m {
-            c_shape_final.push(m);
+            c_shape_final.push(m.clone());
         }
         if !implicit_n {
-            c_shape_final.push(n);
+            c_shape_final.push(n.clone());
         }
     }
-    /*
-    println!(
-        "a: {:?} b:{:?} a':{:?} b:':{:?} c':{:?} c:{:?}",
-        ashape_orig, bshape_orig, ashape, bshape, c_bc_shape, c_shape_final
-    );
-    */
     Ok((ashape, bshape, c_bc_shape, c_shape_final))
 }
 
@@ -251,11 +244,7 @@ where
             infer_shapes(a_shape.into(), b_shape.into(), a_trans, b_trans, c_trans)?;
         let m = bc_a_shape[bc_a_shape.len() - 2 + a_trans as usize];
         let k = bc_a_shape[bc_a_shape.len() - 1 - a_trans as usize];
-        let n = if b_trans && bc_b_shape.len() > 1 {
-            bc_b_shape[bc_b_shape.len() - 1 - b_trans as usize]
-        } else {
-            1
-        };
+        let n = bc_b_shape[bc_b_shape.len() - 1 - b_trans as usize];
         let mm = mmm(m, k, n);
         let a_stride_prefix = bc_a_shape
             .iter()
@@ -445,11 +434,11 @@ impl TypedOp for MatMul {
 
 #[derive(Debug, Clone, new)]
 pub struct MatMulUnary {
-    pub a: Arc<Tensor>,
-    pub a_trans: bool,
-    pub b_trans: bool,
-    pub c_trans: bool,
-    pub q_params: Option<QParams>,
+    a: Arc<Tensor>,
+    a_trans: bool,
+    b_trans: bool,
+    c_trans: bool,
+    q_params: Option<QParams>,
 }
 
 impl Op for MatMulUnary {
@@ -528,6 +517,23 @@ impl TypedOp for MatMulUnary {
         Ok(invars.into_iter().collect())
     }
 
+    fn dispose_dummy_axis(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        axes: &[Option<usize>],
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        let axis = axes[0].unwrap();
+        let b = &model.outlet_fact(node.inputs[0])?;
+        if b.rank() > axis + 2 && self.a.rank() == b.rank() {
+            let mut a = self.a.clone().into_tensor();
+            a.remove_axis(axis)?;
+            Ok(Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() })))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
@@ -559,10 +565,13 @@ impl TypedOp for MatMulUnary {
                             patch.tap_model(model, concat_node.inputs[input - 1])?
                         }
                     };
-                    let a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?.into_arc_tensor();
+                    let mut a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
+                    while a.rank() > 0 && a.shape()[0] == 1 {
+                        a.remove_axis(0)?;
+                    }
                     let wire = patch.wire_node(
                         format!("{}-k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
-                        MatMulUnary { a, ..self.clone() },
+                        MatMulUnary { a: a.into_arc_tensor(), ..self.clone() },
                         &[wire],
                     )?[0];
                     wires.push(wire)

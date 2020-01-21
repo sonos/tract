@@ -85,7 +85,7 @@ fn proptest_regular_against_pulse(
         .to_owned()
         .into_tensor();
 
-    prop_assert_eq!(&pulsed_output, &*outputs[0]);
+    prop_assert!(&pulsed_output.close_enough(&*outputs[0], true).is_ok(), "{:?} == {:?}", pulsed_output, outputs[0]);
     Ok(())
 }
 

@@ -114,6 +114,9 @@ impl TypedOp for RmDims {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if self.axes.len() == 0 {
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        }
         'axis: for &rm_axis in &self.axes {
             let tracking = crate::ops::invariants::AxisTracking::for_outlet_and_axis(
                 model,
@@ -136,7 +139,6 @@ impl TypedOp for RmDims {
             }) {
                 continue 'axis;
             }
-            println!("Decluttering axis {} {}", node, rm_axis);
             let mut patch = TypedModelPatch::default();
             let mut mapping = HashMap::<OutletId, OutletId>::new();
             for c in &tracking.creators {
@@ -169,7 +171,6 @@ impl TypedOp for RmDims {
             }
             for n in model.eval_order()? {
                 let node = model.node(n);
-                println!("  ### {}", node);
                 for i in &node.inputs {
                     if !mapping.contains_key(&i) {
                         mapping.insert(*i, patch.tap_model(model, *i)?);
@@ -187,20 +188,7 @@ impl TypedOp for RmDims {
                     .op
                     .dispose_dummy_axis(model, node, &[Some(axis)])?
                     .unwrap_or_else(|| node.op.clone());
-                /*
-                println!("{:?}", op);
-                println!(
-                    "      inputs {:?}",
-                    inputs.iter().map(|i| patch.outlet_fact(*i)).collect::<Vec<_>>()
-                );
-                */
                 let outputs = patch.wire_node(&*node.name, op, &*inputs)?;
-                /*
-                println!(
-                    "     outputs {:?}",
-                    outputs.iter().map(|o| patch.outlet_fact(*o)).collect::<Vec<_>>()
-                );
-                */
                 for (ix, o) in outputs.into_iter().enumerate() {
                     mapping.insert(OutletId::new(node.id, ix), o);
                 }
@@ -220,7 +208,6 @@ impl TypedOp for RmDims {
                         [0];
                 patch.shunt_outside(node.id.into(), wire)?;
             }
-            println!("decluttered done");
             return Ok(Some(patch));
         }
         Ok(None)
