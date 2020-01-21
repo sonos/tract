@@ -643,7 +643,10 @@ impl TypedOp for MergeOp {
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
             ])
-            .unwrap()
+            .ok_or_else(|| format!(
+                "Could not co-broadcast {:?} and {:?}",
+                inputs[0].shape, inputs[1].shape
+            ))?
         )?))
     }
 
