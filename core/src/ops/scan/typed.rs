@@ -465,35 +465,39 @@ impl TypedOp for TypedScan {
             self.body.input_outlets()?[input],
             axis,
         )?;
+        assert_eq!(self.body.input_outlets()?.len(), self.input_mapping.len());
         let body = invariants::dispose_dummy_axis(&self.body, &tracking)?;
         let input_mapping = self
             .input_mapping
             .iter()
             .enumerate()
             .map(|(ix, m)| {
-                let removed_axis = tracking.outlets[&self.body.input_outlets()?[ix]];
-                Ok(match m {
-                    InputMapping::Full { .. } => m.clone(),
-                    InputMapping::Scan { axis, chunk, slot } => {
-                        let axis = *axis - (*axis > removed_axis) as usize;
-                        InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() }
-                    }
-                    InputMapping::State { initializer } => match initializer {
-                        StateInitializer::FromInput(fi) => {
-                            InputMapping::State { initializer: StateInitializer::FromInput(*fi) }
+                if let Some(removed_axis) = tracking.outlets.get(&self.body.input_outlets()?[ix]) {
+                    Ok(match m {
+                        InputMapping::Full { .. } => m.clone(),
+                        InputMapping::Scan { axis, chunk, slot } => {
+                            let axis = *axis - (*axis > *removed_axis) as usize;
+                            InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() }
                         }
-                        StateInitializer::Value(ref v) => {
-                            assert!(v.shape()[removed_axis] == 1);
-                            let mut shape: TVec<usize> = v.shape().into();
-                            shape.remove(removed_axis);
-                            InputMapping::State {
-                                initializer: StateInitializer::Value(unsafe {
-                                    v.clone().into_tensor().into_shape(&shape).unwrap().into()
-                                }),
+                        InputMapping::State { initializer } => match initializer {
+                            StateInitializer::FromInput(fi) => {
+                                InputMapping::State { initializer: StateInitializer::FromInput(*fi) }
                             }
-                        }
-                    },
-                })
+                            StateInitializer::Value(ref v) => {
+                                assert!(v.shape()[*removed_axis] == 1);
+                                let mut shape: TVec<usize> = v.shape().into();
+                                shape.remove(*removed_axis);
+                                InputMapping::State {
+                                    initializer: StateInitializer::Value(unsafe {
+                                        v.clone().into_tensor().into_shape(&shape).unwrap().into()
+                                    }),
+                                }
+                            }
+                        },
+                    })
+                } else {
+                    Ok(m.clone())
+                }
             })
             .collect::<TractResult<Vec<_>>>()?;
         let output_mapping = self
@@ -502,8 +506,11 @@ impl TypedOp for TypedScan {
             .enumerate()
             .map(|(ix, om)| {
                 let output = self.body.output_outlets()?[ix];
-                let axis = tracking.outlets[&output];
-                Ok(OutputMapping { axis: om.axis - (om.axis > axis) as usize, ..om.clone() })
+                if let Some(axis) = tracking.outlets.get(&output) {
+                    Ok(OutputMapping { axis: om.axis - (om.axis > *axis) as usize, ..om.clone() })
+                } else {
+                    Ok(om.clone())
+                }
             })
             .collect::<TractResult<_>>()?;
         Ok(Some(Box::new(TypedScan { body, input_mapping, output_mapping, ..self.clone() })))

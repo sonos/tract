@@ -155,7 +155,19 @@ fn pull_downsample_up(
     if let Some(prec) = model.single_prec(down_node.id)? {
         let invariants = prec.op.invariants(model, prec)?;
         debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, invariants);
-        if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis, false) {
+        if let Some(crop_op) = prec.op_as::<ops::array::Slice<TDim>>() {
+            return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
+        } else if let Some(crop_op) = prec.op_as::<ops::array::Slice<usize>>() {
+            return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
+        } else if let Some(other_op) = prec.op_as::<ops::array::RmDims>() {
+            return array::pull_downsample_over_rmdims(model, prec, other_op, down_node, down_op);
+        } else if let Some(other_op) = prec.op_as::<ops::array::AddDims>() {
+            return array::pull_downsample_over_adddims(model, prec, other_op, down_node, down_op);
+        } else if let Some(conv_op) = prec.op_as::<ops::cnn::conv::ConvUnary>() {
+            return conv::fuse_downsample_into_conv(model, prec, conv_op, down_node, down_op);
+        } else if let Some(other_op) = prec.op_as::<ops::scan::TypedScan>() {
+            return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
+        } else if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis, false) {
             let mut patch = TypedModelPatch::default();
             let mut inputs = vec![];
             for (ix, &oo) in prec.inputs.iter().enumerate() {
@@ -168,18 +180,6 @@ fn pull_downsample_up(
             let other = patch.wire_node(&*prec.name, prec.op.clone(), &*inputs)?;
             patch.shunt_outside(OutletId::new(down_node.id, 0), other[0])?;
             return Ok(Some(patch));
-        } else if let Some(crop_op) = prec.op_as::<ops::array::Slice<TDim>>() {
-            return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
-        } else if let Some(crop_op) = prec.op_as::<ops::array::Slice<usize>>() {
-            return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
-        } else if let Some(other_op) = prec.op_as::<ops::array::RmDims>() {
-            return array::pull_downsample_over_rmdims(model, prec, other_op, down_node, down_op);
-        } else if let Some(other_op) = prec.op_as::<ops::array::AddDims>() {
-            return array::pull_downsample_over_adddims(model, prec, other_op, down_node, down_op);
-        } else if let Some(conv_op) = prec.op_as::<ops::cnn::conv::ConvUnary>() {
-            return conv::fuse_downsample_into_conv(model, prec, conv_op, down_node, down_op);
-        } else if let Some(other_op) = prec.op_as::<ops::scan::TypedScan>() {
-            return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
         }
     }
     Ok(None)
