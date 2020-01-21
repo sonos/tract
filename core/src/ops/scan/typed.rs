@@ -416,12 +416,7 @@ impl TypedOp for TypedScan {
         for axis in body_invs.axes {
             let mut info = AxisInfo::default().with_period(1);
             for (ix, input_mapping) in self.input_mapping.iter().enumerate() {
-                let slot = match input_mapping {
-                    InputMapping::Full { slot } => Some(*slot),
-                    InputMapping::Scan { slot, .. } => Some(*slot),
-                    _ => None,
-                };
-                if let Some(slot) = slot {
+                if let Some(slot) = input_mapping.slot() {
                     while info.inputs.len() <= slot {
                         info.inputs.push(None);
                     }
@@ -443,8 +438,10 @@ impl TypedOp for TypedScan {
                     info.outputs[slot] = axis.outputs[ix].clone();
                 }
             }
-            info.disposable = axis.disposable;
-            invariants.push(info);
+            if info.inputs.iter().any(|i| i.is_some()) || info.outputs.iter().any(|i| i.is_some()) {
+                info.disposable = axis.disposable;
+                invariants.push(info);
+            }
         }
         Ok(Invariants::from(invariants))
     }
@@ -456,51 +453,49 @@ impl TypedOp for TypedScan {
         axes: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
         use crate::ops::invariants;
-        let input_axes: TVec<(usize, usize)> = self
+        let (input, axis) = self
             .input_mapping
             .iter()
             .enumerate()
-            .filter_map(|(ix, mapping)| mapping.slot().map(|s| (ix, s)))
-            .collect();
+            .filter_map(|(ix, mapping)| mapping.slot().and_then(|s| axes[s]).map(|axis| (ix, axis)))
+            .next()
+            .unwrap();
         let tracking = invariants::AxisTracking::for_outlet_and_axis(
             &self.body,
-            self.body.input_outlets()?[input_axes[0].0],
-            input_axes[0].1,
+            self.body.input_outlets()?[input],
+            axis,
         )?;
         let body = invariants::dispose_dummy_axis(&self.body, &tracking)?;
         let input_mapping = self
             .input_mapping
             .iter()
-            .map(|m| {
-                let removed_axis: Option<usize> = m.slot().and_then(|s| axes[s]);
-                if let Some(removed_axis) = removed_axis {
-                    match m {
-                        InputMapping::Full { .. } => m.clone(),
-                        InputMapping::Scan { axis, chunk, slot } => {
-                            let axis = *axis - (*axis > removed_axis) as usize;
-                            InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() }
-                        }
-                        InputMapping::State { initializer } => match initializer {
-                            StateInitializer::FromInput(fi) => InputMapping::State {
-                                initializer: StateInitializer::FromInput(*fi),
-                            },
-                            StateInitializer::Value(ref v) => {
-                                assert!(v.shape()[removed_axis] == 1);
-                                let mut shape: TVec<usize> = v.shape().into();
-                                shape.remove(removed_axis);
-                                InputMapping::State {
-                                    initializer: StateInitializer::Value(unsafe {
-                                        v.clone().into_tensor().into_shape(&shape).unwrap().into()
-                                    }),
-                                }
-                            }
-                        },
+            .enumerate()
+            .map(|(ix, m)| {
+                let removed_axis = tracking.outlets[&self.body.input_outlets()?[ix]];
+                Ok(match m {
+                    InputMapping::Full { .. } => m.clone(),
+                    InputMapping::Scan { axis, chunk, slot } => {
+                        let axis = *axis - (*axis > removed_axis) as usize;
+                        InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() }
                     }
-                } else {
-                    m.clone()
-                }
+                    InputMapping::State { initializer } => match initializer {
+                        StateInitializer::FromInput(fi) => {
+                            InputMapping::State { initializer: StateInitializer::FromInput(*fi) }
+                        }
+                        StateInitializer::Value(ref v) => {
+                            assert!(v.shape()[removed_axis] == 1);
+                            let mut shape: TVec<usize> = v.shape().into();
+                            shape.remove(removed_axis);
+                            InputMapping::State {
+                                initializer: StateInitializer::Value(unsafe {
+                                    v.clone().into_tensor().into_shape(&shape).unwrap().into()
+                                }),
+                            }
+                        }
+                    },
+                })
             })
-            .collect();
+            .collect::<TractResult<Vec<_>>>()?;
         let output_mapping = self
             .output_mapping
             .iter()

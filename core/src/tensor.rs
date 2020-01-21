@@ -173,6 +173,11 @@ impl Tensor {
         Ok(t)
     }
 
+    pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
+        self.shape.remove(axis);
+        Ok(())
+    }
+
     /// Get the datum type of the tensor.
     pub fn datum_type(&self) -> DatumType {
         self.dt
@@ -468,11 +473,15 @@ impl Tensor {
 
     pub fn slice(&self, axis: usize, start: usize, end: usize) -> TractResult<Tensor> {
         if axis >= self.rank() {
-            bail!("Can not slice at axis {} tensor {:?}", axis, self); 
+            bail!("Can not slice at axis {} tensor {:?}", axis, self);
         }
-        fn slice_t<T: Datum>(t: &Tensor, axis: usize, start: usize, end: usize) -> TractResult<Tensor> {
-            Ok(t
-                .to_array_view::<T>()?
+        fn slice_t<T: Datum>(
+            t: &Tensor,
+            axis: usize,
+            start: usize,
+            end: usize,
+        ) -> TractResult<Tensor> {
+            Ok(t.to_array_view::<T>()?
                 .slice_axis(ndarray::Axis(axis), (start..end).into())
                 .into_owned()
                 .into_tensor())

@@ -41,6 +41,10 @@ impl Op for PermuteAxes {
         "PermuteAxes".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("{:?}", self.axes)])
+    }
+
     canonic!();
     op_as_typed_op!();
     op_as_pulsed_op!();
