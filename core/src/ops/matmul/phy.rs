@@ -10,7 +10,7 @@ use tract_linalg::mmm::FusedSpec;
 
 use tract_linalg::frame::PackB;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MatMatMulPackB<T>
 where
     T: Copy + Datum + Zero,
@@ -27,6 +27,10 @@ where
 {
     fn name(&self) -> Cow<str> {
         "MatMatMulPackB".into()
+    }
+
+    fn same_as(&self, other: &dyn Op) -> bool {
+        other.downcast_ref::<Self>().map(|other| other == self).unwrap_or(false)
     }
 
     op_as_typed_op!();
