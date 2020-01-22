@@ -281,7 +281,7 @@ impl TypedScan {
                         let input = outside_patch.tap_model(&model, node.inputs[slot])?;
                         let new_input_wire = outside_patch.wire_node(
                             format!("{}-extracted-{}", node.name, successor_node.name),
-                            objekt::clone_box(successor_node.op().as_typed().unwrap()),
+                            successor_node.op.clone(),
                             &[input],
                         )?[0];
                         patch_inputs.push(new_input_wire);
@@ -327,6 +327,60 @@ impl TypedScan {
                     }
                 }
             }
+        }
+        Ok(None)
+    }
+
+    fn declutter_pull_batcheable_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        for (model_ix, mapping) in self.output_mapping.iter().enumerate() {
+            let slot = if let Some(slot) = mapping.full_slot { slot } else { continue };
+            let emitter_outlet = self.body.output_outlets()?[model_ix];
+            let emitter_node = self.body.node(emitter_outlet.node);
+            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 1 || emitter_node.inputs.len() > 1 {
+                continue;
+            }
+            let invariants =
+                emitter_node.op().as_typed().unwrap().invariants(&self.body, &emitter_node)?;
+            let axis_before = if let Some(a) = invariants.unary_track_axis_up(mapping.axis, false) {
+                a
+            } else {
+                continue;
+            };
+            let mut fixed_body = self.body.clone();
+            fixed_body.outputs[model_ix] = emitter_node.inputs[0];
+            let mut output_mapping = self.output_mapping.clone();
+            output_mapping[model_ix] = OutputMapping { axis: axis_before, ..mapping.clone() };
+
+            let mut outside_patch = TypedModelPatch::default();
+            let inputs = node
+                .inputs
+                .iter()
+                .map(|&i| outside_patch.tap_model(model, i))
+                .collect::<TractResult<TVec<_>>>()?;
+            let new_op = Self {
+                input_mapping: self.input_mapping.clone(),
+                output_mapping,
+                decluttered: false,
+                body: fixed_body,
+                skip: self.skip,
+                seq_length_input_slot: self.seq_length_input_slot,
+            };
+            let scan_outputs = outside_patch.wire_node(&*node.name, new_op, &*inputs)?;
+            let wire = outside_patch.wire_node(&*emitter_node.name, 
+                        emitter_node.op.clone(),
+                        &[scan_outputs[slot]])?[0];
+            for ix in 0..node.outputs.len() {
+                if ix == slot {
+                    outside_patch.shunt_outside(OutletId::new(node.id, ix), wire)?;
+                } else {
+                    outside_patch.shunt_outside(OutletId::new(node.id, ix), scan_outputs[ix])?;
+                }
+            }
+            return Ok(Some(outside_patch))
         }
         Ok(None)
     }
@@ -480,9 +534,9 @@ impl TypedOp for TypedScan {
                             InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() }
                         }
                         InputMapping::State { initializer } => match initializer {
-                            StateInitializer::FromInput(fi) => {
-                                InputMapping::State { initializer: StateInitializer::FromInput(*fi) }
-                            }
+                            StateInitializer::FromInput(fi) => InputMapping::State {
+                                initializer: StateInitializer::FromInput(*fi),
+                            },
                             StateInitializer::Value(ref v) => {
                                 assert!(v.shape()[*removed_axis] == 1);
                                 let mut shape: TVec<usize> = v.shape().into();
@@ -525,6 +579,7 @@ impl TypedOp for TypedScan {
             Self::declutter_body,
             Self::declutter_discard_unused_input_mapping,
             Self::declutter_pull_batcheable_input,
+            Self::declutter_pull_batcheable_output,
             Self::declutter_const_initializer,
             Self::declutter_discard_useless_outer_output,
         ] {
