@@ -35,6 +35,7 @@ _fma_smmm16x6:
 .p2align 5
 .globl fma_smmm16x6
 fma_smmm16x6:
+.cfi_startproc
 
 {% elsif family == "windows" %}
 
@@ -76,6 +77,11 @@ fma_smmm16x6 proc
     push        r15
 
     sub         rsp, 8
+
+{% if family == "unix" %}
+.cfi_def_cfa_offset 64
+{% endif %}
+
     stmxcsr     [rsp + 4]
 {% if family == "windows" %}
     mov         rax, 1FC0h
@@ -117,7 +123,7 @@ fma_smmm16x6 proc
     mov     r11,    [rsi + 24]
     mov     r12,    [rsi + 32]
     mov     r13,    [rsi + 40]
-
+ 
 {{L}}main_loop_packed_tops_and_offsets:
     mov             rsi,    [rbx]   // rsi: current row offset
 
@@ -518,4 +524,8 @@ fma_smmm16x6 proc
 fma_smmm16x6 endp
 _text ends
 end
+{% endif %}
+
+{% if family == "unix" %}
+.cfi_endproc
 {% endif %}
