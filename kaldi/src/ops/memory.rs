@@ -202,9 +202,8 @@ fn incorporate_memory_ops_as_scans(
             .collect::<TractResult<_>>()?;
 
         for output in &scan_outputs {
-            let old_outlet = model.node(output.node).inputs[output.slot];
             inner_outputs
-                .push(OutletId::new(node_id_old_to_new[&old_outlet.node], old_outlet.slot));
+                .push(OutletId::new(node_id_old_to_new[&output.node], output.slot));
         }
 
         inner_model.set_output_outlets(&inner_outputs)?;
@@ -237,8 +236,7 @@ fn incorporate_memory_ops_as_scans(
         */
 
         for output in &scan_outputs {
-            let old_outlet = model.node(output.node).inputs[output.slot];
-            output_facts.push(model.outlet_fact(old_outlet)?.clone());
+            output_facts.push(model.outlet_fact(*output)?.clone());
         }
 
         let name =
@@ -255,8 +253,7 @@ fn incorporate_memory_ops_as_scans(
         }
 
         for (ix, output) in scan_outputs.iter().enumerate() {
-            let old_outlet = model.node(output.node).inputs[output.slot];
-            patch.shunt_outside(old_outlet, OutletId::new(scan_id, ix))?;
+            patch.shunt_outside(*output, OutletId::new(scan_id, ix))?;
         }
 
         for mem in coupled_mem_ops {

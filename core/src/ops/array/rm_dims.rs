@@ -115,7 +115,7 @@ impl TypedOp for RmDims {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.axes.len() == 0 {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
         }
         'axis: for &rm_axis in &self.axes {
             let tracking = crate::ops::invariants::AxisTracking::for_outlet_and_axis(
@@ -169,7 +169,8 @@ impl TypedOp for RmDims {
                     unreachable!();
                 }
             }
-            for n in model.eval_order()? {
+            let eval_order = model.eval_order()?;
+            for &n in &eval_order {
                 let node = model.node(n);
                 for i in &node.inputs {
                     if !mapping.contains_key(&i) {
@@ -194,6 +195,9 @@ impl TypedOp for RmDims {
                 }
             }
             for des in tracking.destructors {
+                if !eval_order.contains(&des.node) {
+                    continue;
+                }
                 let node = model.node(des.node);
                 let axis = *tracking.outlets.get(&node.inputs[0]).unwrap();
                 let axes = self

@@ -196,6 +196,8 @@ impl AxisTracking {
                 .op
                 .invariants(&model, emiter_node)
                 .chain_err(|| format!("Computing invariants for {}", emiter_node))?;
+            assert!(invs.axes.iter().all(|axis| axis.inputs.len() == emiter_node.inputs.len()));
+            assert!(invs.axes.iter().all(|axis| axis.outputs.len() == emiter_node.outputs.len()));
             if let Some(info) = invs.track_output_axis(wire.slot, axis) {
                 nodes.push((wire.node, info.clone()));
             } else {
@@ -204,6 +206,8 @@ impl AxisTracking {
             for succ in &emiter_node.outputs[wire.slot].successors {
                 let succ_node = model.node(succ.node);
                 let invs = succ_node.op.invariants(&model, succ_node)?;
+                assert!(invs.axes.iter().all(|axis| axis.inputs.len() == succ_node.inputs.len()));
+                assert!(invs.axes.iter().all(|axis| axis.outputs.len() == succ_node.outputs.len()));
                 if let Some(info) = invs.track_input_axis(succ.slot, axis) {
                     nodes.push((succ_node.id, info.clone()));
                 } else {
