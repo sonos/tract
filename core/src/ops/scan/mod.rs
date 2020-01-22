@@ -39,12 +39,16 @@ impl<C: Clone> InputMapping<C> {
     }
 }
 
-impl<C: Clone> fmt::Debug for InputMapping<C> {
+impl<C: Clone + fmt::Debug> fmt::Debug for InputMapping<C> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            InputMapping::Full { slot } => write!(fmt, "Full, from outer input {}", slot),
-            InputMapping::State { initializer } => write!(fmt, "State initialized by: {:?}", initializer),
-            InputMapping::Scan { slot, axis, .. } => write!(fmt, "Scan outer input {} (axis: {})", slot, axis),
+            InputMapping::Full { slot } => write!(fmt, "Full, inlet {}", slot),
+            InputMapping::State { initializer } => {
+                write!(fmt, "State initialized by {:?}", initializer)
+            }
+            InputMapping::Scan { slot, axis, chunk } => {
+                write!(fmt, "Scan inlet {}, axis: {}, chunk: {:?}.", slot, axis, chunk)
+            }
         }
     }
 }
@@ -67,22 +71,32 @@ impl<C: Clone, F: Clone> OutputMapping<C, F> {
 
 impl<C: Clone, F:Clone> fmt::Debug for OutputMapping<C, F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "axis:{} ", self.axis)?;
         if self.state {
-            write!(fmt, "State, ")?;
+            write!(fmt, "State. ")?;
         }
         if let Some(last_value_slot) = self.last_value_slot {
-            write!(fmt, "Last value to {},", last_value_slot)?;
+            write!(fmt, "Last value to outlet {}. ", last_value_slot)?;
         }
         if let Some(full_slot) = self.full_slot {
-            write!(fmt, "Full value to {},", full_slot)?;
+            write!(fmt, "Full value to outlet {}. ", full_slot)?;
         }
+        write!(fmt, "Axis:{} ", self.axis)?;
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Clone, new)]
 pub enum StateInitializer {
     FromInput(usize),
     Value(Arc<Tensor>),
+}
+
+impl fmt::Debug for StateInitializer {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use StateInitializer::*;
+        match self {
+            FromInput(i) => write!(fmt, "inlet {}", i),
+            Value(t) => write!(fmt, "tensor {:?}", t),
+        }
+    }
 }

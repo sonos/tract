@@ -15,8 +15,13 @@ impl Op for Codegen {
         "Codegen".into()
     }
 
-    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
-        vec![("loop".into(), self.plan.model())]
+    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
+        vec![(
+            "loop".into(),
+            self.plan.model(),
+            self.input_mapping.iter().map(|m| format!("{:?}", m)).collect(),
+            self.output_mapping.iter().map(|m| format!("{:?}", m)).collect(),
+        )]
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
