@@ -171,7 +171,7 @@ where
             let nested_multis =
                 model.node_op(n).as_typed().unwrap().nested_model_multipliers(&*ref_inputs);
 
-            for (ix, (_name, m)) in model.node_op(n).nested_models().iter().enumerate() {
+            for (ix, (_name, m, _, _)) in model.node_op(n).nested_models().iter().enumerate() {
                 if let Some(m) = m.downcast_ref::<ModelImpl<TI, O>>() {
                     let mut prefix: TVec<usize> = prefix.clone();
                     prefix.push(n);

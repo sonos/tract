@@ -72,6 +72,8 @@ pub struct DisplayGraph<'a> {
     node_labels: HashMap<usize, Vec<String>>,
     node_sections: HashMap<usize, Vec<Vec<String>>>,
     node_nested_graphs: HashMap<usize, Vec<(String, DisplayGraph<'a>)>>,
+    model_input_labels: HashMap<usize, String>,
+    model_output_labels: HashMap<usize, String>,
 }
 
 impl<'a> DisplayGraph<'a> {
@@ -83,11 +85,8 @@ impl<'a> DisplayGraph<'a> {
         if self.options.quiet {
             return Ok(());
         }
-        let mut drawing_state = if self.options.should_draw() {
-            Some(DrawingState::default())
-        } else {
-            None
-        };
+        let mut drawing_state =
+            if self.options.should_draw() { Some(DrawingState::default()) } else { None };
         let node_ids = if self.options.natural_order {
             (0..self.model.nodes_len()).collect()
         } else {
@@ -184,7 +183,11 @@ impl<'a> DisplayGraph<'a> {
                 .iter()
                 .position(|n| n.node == node_id && n.slot == ix)
             {
-                Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string()
+                format!(
+                    "{} {}",
+                    Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string(),
+                    self.model_input_labels.get(&id).map(|s| &**s).unwrap_or("")
+                )
             } else if let Some(id) = self
                 .model
                 .borrow()
@@ -192,7 +195,11 @@ impl<'a> DisplayGraph<'a> {
                 .iter()
                 .position(|n| n.node == node_id && n.slot == ix)
             {
-                Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string()
+                format!(
+                    "{} {}",
+                    Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string(),
+                    self.model_output_labels.get(&id).map(|s| &**s).unwrap_or("")
+                )
             } else {
                 "".to_string()
             };
@@ -270,15 +277,19 @@ impl<'a> DisplayGraph<'a> {
                 node_nested_graphs.insert(
                     n,
                     subs.into_iter()
-                        .map(|(label, sub)| {
-                            Ok((
-                                label.into_owned(),
-                                Self::from_model_prefix_and_options(
-                                    sub,
-                                    &*prefix,
-                                    Arc::clone(&options),
-                                )?,
-                            ))
+                        .map(|(label, sub, inputs, outputs)| {
+                            let mut dg = Self::from_model_prefix_and_options(
+                                sub,
+                                &*prefix,
+                                Arc::clone(&options),
+                            )?;
+                            inputs.into_iter().enumerate().for_each(|(ix, i)| {
+                                dg.model_input_labels.insert(ix, i);
+                            });
+                            outputs.into_iter().enumerate().for_each(|(ix, o)| {
+                                dg.model_output_labels.insert(ix, o);
+                            });
+                            Ok((label.into_owned(), dg))
                         })
                         .collect::<CliResult<_>>()?,
                 );
@@ -291,6 +302,8 @@ impl<'a> DisplayGraph<'a> {
             node_color: HashMap::new(),
             node_labels: HashMap::new(),
             node_sections: HashMap::new(),
+            model_input_labels: HashMap::new(),
+            model_output_labels: HashMap::new(),
             node_nested_graphs,
         })
     }

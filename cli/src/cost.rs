@@ -74,7 +74,7 @@ fn handle_t(
             let nested_multis =
                 model.node_op(i).as_typed().unwrap().nested_model_multipliers(&*inputs);
 
-            for (ix, (_name, m)) in model.node_op(i).nested_models().iter().enumerate() {
+            for (ix, (_name, m, _, _)) in model.node_op(i).nested_models().iter().enumerate() {
                 if let Some(m) = m.downcast_ref::<TypedModel>() {
                     let mut prefix: TVec<usize> = prefix.clone();
                     prefix.push(i);
