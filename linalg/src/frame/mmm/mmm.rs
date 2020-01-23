@@ -10,7 +10,7 @@ use crate::frame::{PackA, PackB};
 use super::fuse::ScratchSpaceFusedNonLinear;
 use super::*;
 
-pub trait MatMatMul<TA, TB, TC, TI>: Debug + fmt::Display + objekt::Clone + Send + Sync
+pub trait MatMatMul<TA, TB, TC, TI>: Debug + fmt::Display + dyn_clone::DynClone + Send + Sync
 where
     TA: Copy + Zero,
     TB: Copy + Zero,
@@ -41,7 +41,7 @@ where
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]);
 }
 
-clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
+dyn_clone::clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
     TA: Copy + Zero,
     TB: Copy + Zero,
     TC: Copy + Debug,

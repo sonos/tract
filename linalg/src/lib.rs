@@ -3,8 +3,6 @@ extern crate derive_new;
 extern crate lazy_static;
 extern crate libc;
 extern crate log;
-#[macro_use]
-extern crate objekt;
 extern crate num_traits;
 #[cfg(test)]
 extern crate proptest;

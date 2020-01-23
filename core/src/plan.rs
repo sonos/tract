@@ -108,7 +108,7 @@ where
             .states
             .iter()
             .map(|opt: &Option<Box<dyn OpState>>| -> Option<Box<dyn OpState>> {
-                opt.as_ref().map(|b| ::objekt::clone_box(&**b))
+                opt.as_ref().map(|b| ::dyn_clone::clone_box(&**b))
             })
             .collect();
         SimpleState {

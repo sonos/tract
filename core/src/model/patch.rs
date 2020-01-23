@@ -84,7 +84,7 @@ where
     ) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
         let id = self
-            .add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), objekt::clone(fact))?;
+            .add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), dyn_clone::clone(fact))?;
         self.incoming.insert(id, outlet);
         Ok(id)
     }
@@ -109,7 +109,7 @@ where
     ) -> TractResult<ModelPatch<TI, O>> {
         let mut patch = ModelPatch::default();
         let new_op = new_op.into();
-        let outputs = node.outputs.iter().map(|o| objekt::clone(&o.fact)).collect();
+        let outputs = node.outputs.iter().map(|o| dyn_clone::clone(&o.fact)).collect();
         let by = patch.add_node(&*node.name, new_op, outputs)?;
         for (ix, i) in inputs.iter().enumerate() {
             let o = patch.tap_model(&patched_model, *i)?;

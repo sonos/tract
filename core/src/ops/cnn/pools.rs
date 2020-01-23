@@ -120,7 +120,7 @@ impl PoolSpec {
         let fact = target.outlet_fact(input)?.clone();
         let input_shape = self.data_format.shape(&*fact.shape);
         if Some(fact.axis) == input_shape.n_axis() {
-            target.wire_node(&*node.name, objekt::clone_box(op), &[input])
+            target.wire_node(&*node.name, dyn_clone::clone_box(op), &[input])
         } else if fact.axis == input_shape.c_axis() {
             bail!("Can not pulsify cnn pooling ops along the input channel axis");
         } else {
@@ -145,7 +145,7 @@ impl PoolSpec {
                     &[wire],
                 )?[0];
             }
-            target.wire_node(&*node.name, objekt::clone_box(op), &[wire])
+            target.wire_node(&*node.name, dyn_clone::clone_box(op), &[wire])
         }
     }
 
