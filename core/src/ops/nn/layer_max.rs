@@ -307,7 +307,7 @@ fn pulsify(
     let input_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
     let axis = if axis < 0 { input_fact.shape.len() as isize + axis } else { axis } as usize;
     if input_fact.axis != axis {
-        let id = target.add_node(&*node.name, objekt::clone_box(op), tvec!(input_fact))?;
+        let id = target.add_node(&*node.name, dyn_clone::clone_box(op), tvec!(input_fact))?;
         target.add_edge(mapping[&node.inputs[0]], InletId::new(id, 0))?;
         return Ok(tvec!(OutletId::new(id, 0)));
     } else {

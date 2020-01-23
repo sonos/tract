@@ -2,7 +2,7 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-pub trait ElementWiseMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
+pub trait ElementWiseMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
     fn name(&self) -> String;
     fn prefix(&self) -> &'static str {
         ""
@@ -41,7 +41,7 @@ pub trait ElementWiseMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static 
     }
 }
 
-clone_trait_object!(ElementWiseMiniOp);
+dyn_clone::clone_trait_object!(ElementWiseMiniOp);
 downcast_rs::impl_downcast!(ElementWiseMiniOp);
 
 #[derive(Debug, Clone)]

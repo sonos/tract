@@ -2,7 +2,7 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
+pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
         Validation::Accurate
@@ -61,7 +61,7 @@ pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downca
         tvec!()
     }
 }
-clone_trait_object!(BinMiniOp);
+dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
 #[derive(Debug, Clone)]
@@ -438,7 +438,7 @@ fn pulsify_bin(
         }
         inputs.push(input);
     }
-    target.wire_node(&*node.name, objekt::clone_box(op), &*inputs)
+    target.wire_node(&*node.name, dyn_clone::clone_box(op), &*inputs)
 }
 
 #[derive(Debug, Clone, new)]
@@ -992,5 +992,5 @@ macro_rules! bin_to_bool {
 
 #[inline]
 pub fn commute(op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
-    Some(UnaryOp::new(objekt::clone_box(op), t.clone()))
+    Some(UnaryOp::new(dyn_clone::clone_box(op), t.clone()))
 }

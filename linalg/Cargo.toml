@@ -20,7 +20,7 @@ lazy_static = "1.3"
 libc = "0.2"
 log = "0.4"
 num-traits = "0.2"
-objekt = "0.1.1"
+dyn-clone = "1"
 
 [build-dependencies]
 cc = "1.0"

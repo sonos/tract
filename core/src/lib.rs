@@ -61,8 +61,6 @@ extern crate num_integer;
 extern crate num_traits;
 #[macro_use]
 extern crate maplit;
-#[macro_use]
-pub extern crate objekt;
 #[cfg(test)]
 extern crate env_logger;
 #[cfg(test)]
@@ -95,6 +93,7 @@ pub mod pulse;
 pub mod tensor;
 
 pub use crate::errors::*;
+pub use dyn_clone;
 
 /// This prelude is meant for code using tract.
 pub mod prelude {

@@ -3,7 +3,7 @@ use std::fmt;
 
 use downcast_rs::Downcast;
 
-use objekt;
+use dyn_clone;
 
 #[macro_use]
 pub mod macros;
@@ -69,7 +69,7 @@ pub enum Cost {
 
 use crate::internal::*;
 
-pub trait OpState: fmt::Debug + Send + objekt::Clone {
+pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
     fn eval(
         &mut self,
         session: &mut SessionState,
@@ -109,7 +109,7 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
 }
 
 /// A base operation
-pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp {
+pub trait Op: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp {
     fn name(&self) -> Cow<str>;
 
     /// Early pass on inference model, after analyse, but before translation to
@@ -166,7 +166,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
 }
 
 pub trait TypedOp:
-    Op + fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
+    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp
 {
     /// Reinterpret the TypedOp as an Op.
     fn as_op(&self) -> &dyn Op;
@@ -281,7 +281,7 @@ pub trait TypedOp:
 }
 
 pub trait PulsedOp:
-    Op + fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
+    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp
 {
     /// Reinterpret the PulsedOp as an Op.
     fn as_op(&self) -> &dyn Op;
@@ -298,7 +298,7 @@ pub trait PulsedOp:
 
 /// An operation with tensor type inference
 pub trait InferenceOp:
-    Op + fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
+    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp
 {
     /// Infers properties about the input and output tensors.
     ///
@@ -390,11 +390,11 @@ pub trait InferenceOp:
 
 impl_downcast!(Op);
 
-clone_trait_object!(Op);
-clone_trait_object!(StatelessOp);
-clone_trait_object!(TypedOp);
-clone_trait_object!(InferenceOp);
-clone_trait_object!(PulsedOp);
+dyn_clone::clone_trait_object!(Op);
+dyn_clone::clone_trait_object!(StatelessOp);
+dyn_clone::clone_trait_object!(TypedOp);
+dyn_clone::clone_trait_object!(InferenceOp);
+dyn_clone::clone_trait_object!(PulsedOp);
 
 impl<O: Op> From<O> for Box<dyn Op> {
     fn from(it: O) -> Box<dyn Op> {

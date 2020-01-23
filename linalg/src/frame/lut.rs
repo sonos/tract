@@ -2,11 +2,11 @@ use std::fmt;
 use crate::align::Buffer;
 use std::marker::PhantomData;
 
-pub trait Lut: fmt::Debug + objekt::Clone + Send + Sync {
+pub trait Lut: fmt::Debug + dyn_clone::DynClone + Send + Sync {
     fn run(&self, buf: &mut [u8]);
 }
 
-clone_trait_object!(Lut);
+dyn_clone::clone_trait_object!(Lut);
 
 #[derive(Debug, Clone)]
 pub struct LutImpl<K>

@@ -8,13 +8,13 @@ use std::fmt;
 
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
-pub trait Fact: std::fmt::Debug + Downcast + objekt::Clone + Send + Sync + 'static {
+pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
     /// Convert to InferenceFact, the most accomoding variant of Fact.
     fn to_tensor_fact(&self) -> InferenceFact;
 }
 
 impl_downcast!(Fact);
-objekt::clone_trait_object!(Fact);
+dyn_clone::clone_trait_object!(Fact);
 
 impl Fact for InferenceFact {
     fn to_tensor_fact(&self) -> InferenceFact {

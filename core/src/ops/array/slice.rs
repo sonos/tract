@@ -147,7 +147,7 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
             let take = (self.end.clone() - &self.start).to_dim();
             PulsedAxisSlice::new(self.axis, skip, take).into()
         } else {
-            objekt::clone_box(self)
+            dyn_clone::clone_box(self)
         };
         target.wire_node(&*node.name, op, &[input])
     }

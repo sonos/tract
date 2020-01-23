@@ -67,7 +67,7 @@ use crate::TractResult;
 use crate::ops::invariants;
 
 /// Common methods for all variants of model.
-pub trait Model: downcast_rs::Downcast + std::fmt::Debug + objekt::Clone {
+pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
     /// Lookup node id by name
     fn node_id_by_name(&self, name: &str) -> TractResult<usize>;
 

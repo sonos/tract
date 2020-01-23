@@ -8,7 +8,7 @@ use super::MatMatMul;
 use super::*;
 
 pub trait QMatMatMul<TA, TB, TC, TI>:
-    fmt::Debug + fmt::Display + objekt::Clone + Send + Sync
+    fmt::Debug + fmt::Display + dyn_clone::DynClone + Send + Sync
 where
     TA: Copy + Zero,
     TB: Copy + Zero,
@@ -29,7 +29,7 @@ where
     unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]);
 }
 
-clone_trait_object!(<TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> where
+dyn_clone::clone_trait_object!(<TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> where
     TA: Copy + Zero,
     TB: Copy + Zero,
     TC: Copy + Debug,
