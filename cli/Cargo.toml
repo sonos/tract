@@ -18,14 +18,13 @@ ansi_term = "0.12.0"
 atty = "0.2"
 box_drawing = "0.1"
 clap = "2.31"
-env_logger = "0.6"
+env_logger = "0.7"
 error-chain = "0.12"
 itertools = "0.8"
 lazy_static = "1.0"
 libc = "0.2"
 log = "0.4"
-ndarray_0_12 = { version = "0.12", package = "ndarray" }
-ndarray-npy = { version = "0.4", features = [ "compressed_npz" ] }
+ndarray-npy = { version = "0.5", features = [ "compressed_npz" ] }
 pbr = "1.0"
 py_literal = "0.2"
 rand = "0.7"

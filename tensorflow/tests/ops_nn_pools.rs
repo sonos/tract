@@ -33,7 +33,7 @@ fn img_and_pool() -> BoxedStrategy<(Array4<f32>, (usize, usize), String, usize)>
             )
         })
         .prop_map(|(img_shape, k, img, padding, stride)| {
-            (Array::from_vec(img).into_shape(img_shape).unwrap(), k, padding, stride)
+            (Array::from(img).into_shape(img_shape).unwrap(), k, padding, stride)
         })
         .boxed()
 }

@@ -277,7 +277,7 @@ fn main() {
 
     let env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn");
 
-    env_logger::Builder::from_env(env).default_format_timestamp_nanos(true).init();
+    env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init");
 
     if let Err(e) = handle(matches) {

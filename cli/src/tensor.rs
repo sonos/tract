@@ -99,26 +99,26 @@ fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
 }
 
 pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractResult<Tensor> {
-    fn rewrap<T: Datum>(array: ndarray_0_12::ArrayD<T>) -> Tensor {
+    fn rewrap<T: Datum>(array: ndarray::ArrayD<T>) -> Tensor {
         let shape = array.shape().to_vec();
         unsafe {
             let vec = array.into_raw_vec();
             tract_core::ndarray::ArrayD::from_shape_vec_unchecked(shape, vec).into_tensor()
         }
     }
-    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<f64>, ndarray_0_12::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<f32>, ndarray_0_12::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<i8>, ndarray_0_12::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<i8>, ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<u8>, ndarray_0_12::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<u8>, ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    if let Ok(t) = npz.by_name::<ndarray_0_12::OwnedRepr<i32>, ndarray_0_12::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<i32>, ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
     bail!("Can not extract tensor from {}", name);
