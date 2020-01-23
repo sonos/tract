@@ -44,14 +44,12 @@ fi
     mdl-en-2019-Q3-librispeech.onnx \
     mobilenet_v1_1.0_224_frozen.pb \
     mobilenet_v2_1.4_224_frozen.pb \
-    squeezenet.onnx
+    squeezenet.onnx \
+    en_libri_real.tar.gz
 
 (
     cd $CACHEDIR
-    [ -e librispeech_clean_tdnn_lstm_1e_256.tgz ] \
-        || wget -q https://s3.amazonaws.com/tract-ci-builds/fridge/kaldi/librispeech_clean_tdnn_lstm_1e_256.tgz
-    [ -d librispeech_clean_tdnn_lstm_1e_256 ] \
-        || tar zxf librispeech_clean_tdnn_lstm_1e_256.tgz
+    [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
 )
 
 ./target/release/tract $CACHEDIR/squeezenet.onnx \
@@ -90,16 +88,27 @@ fi
      -i Sx20xf32 --pulse 8 cost -q \
      --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920"
 
-./target/release/tract $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256/model.raw \
+( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
+
+./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     -i Sx40 --pulse 24 cost -q \
     --assert-cost "FMA(F32)=23201280,Div(F32)=20480,Buffer(F32)=1896"
 
-[ -e kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ] \
-    || (rm -f kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ; ln -s $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/ )
+./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
+    -f kaldi --output-node output \
+    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
+    --input-bundle $CACHEDIR/en_libri_real/io.npz \
+    run \
+    --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
-( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
+./target/release/tract $CACHEDIR/en_libri_real/model.onnx \
+    --output-node output \
+    --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
+    --input-bundle $CACHEDIR/en_libri_real/io.npz \
+    run \
+    --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
 # these tests require access to private snips models
 if [ -e "$HOME/.aws/credentials" ]
