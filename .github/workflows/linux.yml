@@ -9,7 +9,7 @@ jobs:
   linux:
     strategy:
       matrix:
-        rust: [ 1.35.0, stable, beta, nightly ]
+        rust: [ 1.39.0, stable, beta, nightly ]
 
     runs-on: ubuntu-latest
 

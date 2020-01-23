@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Breaking
+
+* Rustc minimum version is now 1.39
+
 ### Onnx
 
 * Support for MatMulInteger, ConvInteger

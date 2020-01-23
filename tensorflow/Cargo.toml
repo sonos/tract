@@ -14,20 +14,20 @@ edition = "2018"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-bytes = "0.4.7"
+bytes = "0.5"
 derive-new = "0.5"
 error-chain = "0.12"
 itertools = "0.8"
 log = "0.4"
 num-traits = "0.2"
-prost = "0.5"
-prost-types = "0.5"
+prost = "0.6"
+prost-types = "0.6"
 tensorflow = { version = "0", optional = true }
 tract-core = { path = "../core" }
 tract-linalg = { path = "../linalg" }
 
 [build-dependencies]
-prost-build = "0.5"
+prost-build = "0.6"
 
 [features]
 conform = [ "tensorflow" ]
