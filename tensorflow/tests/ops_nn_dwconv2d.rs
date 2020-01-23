@@ -58,10 +58,10 @@ fn img_and_ker() -> BoxedStrategy<(Array4<f32>, Array4<f32>, usize)> {
         })
         .prop_map(|(img_shape, ker_shape, img, ker, stride)| {
             (
-                Array::from_vec(img.into_iter().map(|i| i as f32).collect())
+                Array::from(img.into_iter().map(|i| i as f32).collect::<Vec<_>>())
                     .into_shape(img_shape)
                     .unwrap(),
-                Array::from_vec(ker.into_iter().map(|i| i as f32).collect())
+                Array::from(ker.into_iter().map(|i| i as f32).collect::<Vec<_>>())
                     .into_shape(ker_shape)
                     .unwrap(),
                 stride,
