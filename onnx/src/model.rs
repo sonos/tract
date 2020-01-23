@@ -212,7 +212,8 @@ impl Framework<pb::ModelProto> for Onnx {
     fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<pb::ModelProto> {
         let mut v = vec![];
         r.read_to_end(&mut v)?;
-        Ok(crate::pb::ModelProto::decode(v).map_err(|e| format!("{:?}", e))?)
+        let b = bytes::Bytes::from(v);
+        Ok(crate::pb::ModelProto::decode(b).map_err(|e| format!("{:?}", e))?)
     }
 
     fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {

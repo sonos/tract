@@ -23,7 +23,8 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
         .count();
     for i in 0..len {
         let filename = path.join(format!("{}_{}.pb", prefix, i));
-        let tensor = TensorProto::decode(std::fs::read(filename).unwrap()).unwrap();
+        let bytes = bytes::Bytes::from(std::fs::read(filename).unwrap());
+        let tensor = TensorProto::decode(bytes).unwrap();
         vec.push(tensor.try_into().unwrap())
     }
     debug!("{:?}: {:?}", path, vec);

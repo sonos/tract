@@ -146,7 +146,8 @@ impl TryFrom<TensorProto> for Tensor {
 pub fn proto_from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<TensorProto> {
     let mut v = vec![];
     r.read_to_end(&mut v)?;
-    TensorProto::decode(v).map_err(|e| format!("Can not parse protobuf input: {:?}", e).into())
+    let b = bytes::Bytes::from(v);
+    TensorProto::decode(b).map_err(|e| format!("Can not parse protobuf input: {:?}", e).into())
 }
 
 pub fn from_reader<R: ::std::io::Read>(r: R) -> TractResult<Tensor> {
