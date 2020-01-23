@@ -26,7 +26,7 @@ pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
     let (_, (config, components)) = parse_top_level(slice).map_err(|e| match e {
         nom::Err::Error(err) => format!(
             "Parsing kaldi enveloppe at: {:?}",
-            err.0.iter().map(|b| format!("{:02x}", b)).join(" ")
+            err.0.iter().take(120).map(|b| format!("{}", *b as char)).join("")
         ),
         e => format!("{:?}", e),
     })?;
@@ -50,9 +50,11 @@ fn parse_top_level(i: &[u8]) -> IResult<&[u8], (&str, HashMap<String, Component>
     let mut components = HashMap::new();
     let mut i = i;
     for _ in 0..num_components {
-        let (new_i, (name, op)) = pair(component_name, component(bin))(i)?;
+        let (new_i, name) = component_name(i)?;
+        debug!("Parsing component {}", name);
+        let (new_i, comp) = component(bin)(new_i)?;
         i = new_i;
-        components.insert(name.to_owned(), op);
+        components.insert(name.to_owned(), comp);
     }
     let (i, _) = close(i, "Nnet3")?;
     Ok((i, (config_lines, components)))
