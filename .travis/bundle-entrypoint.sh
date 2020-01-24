@@ -16,9 +16,12 @@ fi
 
 [ -e vars ] && . ./vars
 
-(cd $CACHEDIR ; aws s3 sync s3://tract-ci-builds/model $CACHEDIR)
-
-chmod +x $CACHEDIR/tflite*
+[ -d $CACHEDIR ] || mkdir $CACHEDIR
+aws s3 sync s3://tract-ci-builds/model $CACHEDIR
+(cd $CACHEDIR
+    chmod +x tflite*
+    [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+)
 
 touch metrics
 
@@ -104,32 +107,32 @@ inceptionv3=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}
 echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
 
 $TRACT --machine-friendly \
-    $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256.kaldi \
+    $CACHEDIR/en_libri_real/model.raw \
     -f kaldi  --output-node output \
      --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     -O -i 264x40 profile --bench \
     > tract.out
-kaldi_librispeech_clean_tdnn_lstm_1e_256=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.2600ms $kaldi_librispeech_clean_tdnn_lstm_1e_256 >> metrics
+kaldi_en_libri_real=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.2600ms $kaldi_en_libri_real >> metrics
 
 $TRACT --machine-friendly \
-    $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256.kaldi \
+    $CACHEDIR/en_libri_real/model.raw \
     -f kaldi  --output-node output \
      --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     -O -i Sx40 --pulse 24 profile --bench \
     > tract.out
-kaldi_librispeech_clean_tdnn_lstm_1e_256=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.pulse_240ms $kaldi_librispeech_clean_tdnn_lstm_1e_256 >> metrics
+kaldi_en_libri_real=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.pulse_240ms $kaldi_en_libri_real >> metrics
 
 $TRACT --machine-friendly \
-    $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+    $CACHEDIR/en_libri_real/model.onnx \
     -O --output-node output -i 264x40 profile --bench \
     > tract.out
 v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.mdl-en-2019-Q3-librispeech_onnx.evaltime.2600ms $v >> metrics
 
 $TRACT --machine-friendly \
-    $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+    $CACHEDIR/en_libri_real/model.onnx \
     -O --output-node output -i Sx40 --pulse 24 profile --bench \
     > tract.out
 v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
