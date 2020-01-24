@@ -36,8 +36,6 @@ then
     exit 0
 fi
 
-rm -rf $CACHEDIR/en_libri_real*
-
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
     GRU128KeywordSpotter-v2-10epochs.onnx \
