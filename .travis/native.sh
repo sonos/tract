@@ -36,6 +36,8 @@ then
     exit 0
 fi
 
+rm -rf $CACHEDIR/en_libri_real*
+
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
     GRU128KeywordSpotter-v2-10epochs.onnx \
@@ -97,6 +99,13 @@ fi
     --assert-cost "FMA(F32)=23201280,Div(F32)=20480,Buffer(F32)=1896"
 
 ./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
+    -f kaldi --output-node output \
+    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
+    --input-bundle $CACHEDIR/en_libri_real/io.npz \
+    run \
+    --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
+
+./target/release/tract $CACHEDIR/en_libri_real/model.raw \
     -f kaldi --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     --input-bundle $CACHEDIR/en_libri_real/io.npz \
