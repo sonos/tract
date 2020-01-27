@@ -124,6 +124,7 @@ pub mod internal {
         check_input_arity, check_output_arity, Invariants, AxisInfo, Cost, InferenceOp, Op, OpState,
         PulsedOp, StatefullOp, StatelessOp, Validation,
     };
+    pub use crate::ops::invariants::*;
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use crate::pulse::{PulsedFact, PulsedModel, PulsedNode};

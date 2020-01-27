@@ -2,9 +2,11 @@ use crate::model::*;
 use crate::TractResult;
 use std::fmt::Debug;
 
+pub mod change_axes;
 mod prop_const;
 mod push_split_down;
 
+use self::change_axes::ChangeAxes;
 use self::prop_const::PropConst;
 use self::push_split_down::PushSplitDown;
 
@@ -23,7 +25,12 @@ pub fn incorporate() -> Vec<Box<dyn IncorporatePass>> {
 }
 
 pub fn declutter() -> Vec<Box<dyn TypedPass>> {
-    vec![Box::new(PropConst) as _, Box::new(DeclutterOps), Box::new(PushSplitDown)]
+    vec![
+        Box::new(PropConst),
+        Box::new(DeclutterOps),
+        Box::new(PushSplitDown),
+        Box::new(ChangeAxes),
+    ]
 }
 
 pub fn codegen() -> Vec<Box<dyn TypedPass>> {
@@ -78,7 +85,6 @@ impl TypedPass for DeclutterOps {
             for id in model.eval_order()? {
                 let reduced = {
                     let node = &model.nodes()[id];
-                    debug!("Decluttering {}", node);
                     node.op
                         .declutter(model, node)
                         .chain_err(|| format!("{:?} node {}", self, node))?

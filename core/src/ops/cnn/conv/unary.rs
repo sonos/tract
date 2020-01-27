@@ -538,59 +538,86 @@ impl TypedOp for ConvUnary {
         )))
     }
 
-    fn dispose_dummy_axis(
+    fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        axes: &[Option<usize>],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axis = axes[0].unwrap();
-        let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
-        let shape = self.pool_spec.data_format.shape(full_input_shape);
-        if Some(axis) == shape.n_axis() {
-            let op = ConvUnary { pool_spec: self.pool_spec.dispose_n_axis(), ..self.clone() };
-            return Ok(Some(Box::new(op)));
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        match change {
+            AxisOp::Rm(axis) => {
+                let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
+                let shape = self.pool_spec.data_format.shape(full_input_shape);
+                if Some(*axis) == shape.n_axis() {
+                    let op =
+                        ConvUnary { pool_spec: self.pool_spec.dispose_n_axis(), ..self.clone() };
+                    return Ok(Some(AxisChangeConsequence {
+                        substitute_op: Some(Box::new(op)),
+                        wire_changes: tvec!(
+                            (InOut::In(0), change.clone()),
+                            (InOut::Out(0), change.clone())
+                        ),
+                    }));
+                }
+                if *axis == shape.c_axis() {
+                    return Ok(None)
+                }
+                let geo_axis = axis - shape.h_axis();
+                if geo_axis >= shape.hw_rank() {
+                    return Ok(None)
+                }
+                let kernel_spatial_shape =
+                    &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+                if self.pool_spec.dilation(geo_axis) != 1
+                    || self.pool_spec.stride(geo_axis) != 1
+                    || (!self.pool_spec.padding.valid_dim(geo_axis)
+                        && kernel_spatial_shape[geo_axis] != 1)
+                {
+                    return Ok(None)
+                }
+                if kernel_spatial_shape[geo_axis] != 1 {
+                    return Ok(None)
+                }
+                fn copy_rm_nth<D: DimLike>(input: &[D], nth: usize) -> TVec<D> {
+                    input
+                        .iter()
+                        .enumerate()
+                        .filter(|&(ax, _)| ax != nth)
+                        .map(|(_, d)| d.clone())
+                        .collect()
+                }
+                let kernel_shape: TVec<usize> =
+                    copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
+                let kernel = unsafe { self.kernel.as_ref().clone().into_shape(&kernel_shape)? };
+                let new_op = ConvUnary {
+                    pool_spec: PoolSpec {
+                        data_format: self.pool_spec.data_format,
+                        padding: self.pool_spec.padding.rm_axis(geo_axis),
+                        dilations: self
+                            .pool_spec
+                            .dilations
+                            .as_ref()
+                            .map(|d| copy_rm_nth(&d, geo_axis)),
+                        kernel_shape: copy_rm_nth(&self.pool_spec.kernel_shape, geo_axis),
+                        strides: self.pool_spec.strides.as_ref().map(|s| copy_rm_nth(&s, geo_axis)),
+                        output_channel_override: self.pool_spec.output_channel_override,
+                    },
+                    kernel_fmt: self.kernel_fmt,
+                    kernel: kernel.into_arc_tensor(),
+                    group: self.group,
+                    bias: self.bias.clone(),
+                    q_params: self.q_params.clone(),
+                };
+                return Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(new_op)),
+                    wire_changes: tvec!(
+                        (InOut::In(0), change.clone()),
+                        (InOut::Out(0), change.clone())
+                    ),
+                }));
+            }
         }
-        if axis == shape.c_axis() {
-            bail!("Channel axis can not be disposed of");
-        }
-        let geo_axis = axis - shape.h_axis();
-        if geo_axis >= shape.hw_rank() {
-            bail!("Only spatial axis can be disposed of.");
-        }
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        if self.pool_spec.dilation(geo_axis) != 1
-            || self.pool_spec.stride(geo_axis) != 1
-            || (!self.pool_spec.padding.valid_dim(geo_axis) && kernel_spatial_shape[geo_axis] != 1)
-        {
-            bail!("Can not dispose of axis with dilation, stride or padding.");
-        }
-        if kernel_spatial_shape[geo_axis] != 1 {
-            bail!("Can not dispose of axis with actual convolution.");
-        }
-        fn copy_rm_nth<D: DimLike>(input: &[D], nth: usize) -> TVec<D> {
-            input.iter().enumerate().filter(|&(ax, _)| ax != nth).map(|(_, d)| d.clone()).collect()
-        }
-        let kernel_shape: TVec<usize> =
-            copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
-        let kernel = unsafe { self.kernel.as_ref().clone().into_shape(&kernel_shape)? };
-        let new_op = ConvUnary {
-            pool_spec: PoolSpec {
-                data_format: self.pool_spec.data_format,
-                padding: self.pool_spec.padding.rm_axis(geo_axis),
-                dilations: self.pool_spec.dilations.as_ref().map(|d| copy_rm_nth(&d, geo_axis)),
-                kernel_shape: copy_rm_nth(&self.pool_spec.kernel_shape, geo_axis),
-                strides: self.pool_spec.strides.as_ref().map(|s| copy_rm_nth(&s, geo_axis)),
-                output_channel_override: self.pool_spec.output_channel_override,
-            },
-            kernel_fmt: self.kernel_fmt,
-            kernel: kernel.into_arc_tensor(),
-            group: self.group,
-            bias: self.bias.clone(),
-            q_params: self.q_params.clone(),
-        };
-        Ok(Some(Box::new(new_op)))
     }
 
     fn pulsify(

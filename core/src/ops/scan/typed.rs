@@ -503,74 +503,110 @@ impl TypedOp for TypedScan {
         Ok(Invariants::from(invariants))
     }
 
-    fn dispose_dummy_axis(
+    fn change_axes(
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-        axes: &[Option<usize>],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
         use crate::ops::invariants;
-        let (input, axis) = self
-            .input_mapping
-            .iter()
-            .enumerate()
-            .filter_map(|(ix, mapping)| mapping.slot().and_then(|s| axes[s]).map(|axis| (ix, axis)))
-            .next()
-            .unwrap();
-        let tracking = invariants::AxisTracking::for_outlet_and_axis(
-            &self.body,
-            self.body.input_outlets()?[input],
-            axis,
-        )?;
-        assert_eq!(self.body.input_outlets()?.len(), self.input_mapping.len());
-        let body = invariants::dispose_dummy_axis(&self.body, &tracking)?;
-        let input_mapping = self
-            .input_mapping
-            .iter()
-            .enumerate()
-            .map(|(ix, m)| {
-                if let Some(removed_axis) = tracking.outlets.get(&self.body.input_outlets()?[ix]) {
-                    Ok(match m {
-                        InputMapping::Full { .. } => m.clone(),
-                        InputMapping::Scan { axis, chunk, slot } => {
-                            let axis = *axis - (*axis > *removed_axis) as usize;
-                            InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() }
+        match change {
+            AxisOp::Rm(axis) => {
+                let outlet = match io {
+                    InOut::In(ix) => {
+                        let input =
+                            self.input_mapping.iter().position(|im| im.slot() == Some(ix)).unwrap();
+                        self.body.input_outlets()?[input]
+                    }
+                    InOut::Out(ix) => {
+                        let output = self
+                            .output_mapping
+                            .iter()
+                            .position(|im| {
+                                im.full_slot == Some(ix) || im.last_value_slot == Some(ix)
+                            })
+                            .unwrap();
+                        self.body.input_outlets()?[output]
+                    }
+                };
+                let tracking =
+                    invariants::AxisTracking::for_outlet_and_axis(&self.body, outlet, *axis)?;
+                let mut wire_changes = tvec!();
+                let mut input_mapping: Vec<InputMapping<TDim>> = vec![];
+                for (ix, m) in self.input_mapping.iter().enumerate() {
+                    let output = self.body.input_outlets()?[ix];
+                    if let Some(axis) = tracking.outlets.get(&output) {
+                        if let Some(slot) = m.slot() {
+                            wire_changes.push((InOut::In(slot), AxisOp::Rm(*axis)));
                         }
-                        InputMapping::State { initializer } => match initializer {
-                            StateInitializer::FromInput(fi) => InputMapping::State {
-                                initializer: StateInitializer::FromInput(*fi),
-                            },
-                            StateInitializer::Value(ref v) => {
-                                assert!(v.shape()[*removed_axis] == 1);
-                                let mut shape: TVec<usize> = v.shape().into();
-                                shape.remove(*removed_axis);
-                                InputMapping::State {
-                                    initializer: StateInitializer::Value(unsafe {
-                                        v.clone().into_tensor().into_shape(&shape).unwrap().into()
-                                    }),
-                                }
+                    }
+                    let m = if let Some(rm) = tracking.outlets.get(&output) {
+                        match m {
+                            InputMapping::Full { .. } => m.clone(),
+                            InputMapping::Scan { axis, chunk, slot } => {
+                                let axis = *axis - (*axis > *rm) as usize;
+                                InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() }
                             }
-                        },
-                    })
-                } else {
-                    Ok(m.clone())
+                            InputMapping::State { initializer } => match initializer {
+                                StateInitializer::FromInput(fi) => InputMapping::State {
+                                    initializer: StateInitializer::FromInput(*fi),
+                                },
+                                StateInitializer::Value(ref v) => {
+                                    assert!(v.shape()[*rm] == 1);
+                                    let mut shape: TVec<usize> = v.shape().into();
+                                    shape.remove(*rm);
+                                    InputMapping::State {
+                                        initializer: StateInitializer::Value(unsafe {
+                                            v.clone()
+                                                .into_tensor()
+                                                .into_shape(&shape)
+                                                .unwrap()
+                                                .into()
+                                        }),
+                                    }
+                                }
+                            },
+                        }
+                    } else {
+                        m.clone()
+                    };
+                    input_mapping.push(m);
                 }
-            })
-            .collect::<TractResult<Vec<_>>>()?;
-        let output_mapping = self
-            .output_mapping
-            .iter()
-            .enumerate()
-            .map(|(ix, om)| {
-                let output = self.body.output_outlets()?[ix];
-                if let Some(axis) = tracking.outlets.get(&output) {
-                    Ok(OutputMapping { axis: om.axis - (om.axis > *axis) as usize, ..om.clone() })
-                } else {
-                    Ok(om.clone())
+                let mut output_mapping: Vec<OutputMapping<TDim, TDim>> = vec![];
+                for (ix, om) in self.output_mapping.iter().enumerate() {
+                    let output = self.body.output_outlets()?[ix];
+                    if let Some(axis) = tracking.outlets.get(&output) {
+                        if let Some(slot) = om.full_slot {
+                            wire_changes.push((InOut::Out(slot), AxisOp::Rm(*axis)));
+                        }
+                        if let Some(slot) = om.last_value_slot {
+                            wire_changes.push((InOut::Out(slot), AxisOp::Rm(*axis)));
+                        }
+                    }
+                    let om = if let Some(axis) = tracking.outlets.get(&output) {
+                        OutputMapping { axis: om.axis - (om.axis > *axis) as usize, ..om.clone() }
+                    } else {
+                        om.clone()
+                    };
+                    output_mapping.push(om);
                 }
-            })
-            .collect::<TractResult<_>>()?;
-        Ok(Some(Box::new(TypedScan { body, input_mapping, output_mapping, ..self.clone() })))
+                let mut body = self.body.clone();
+                if !crate::optim::change_axes::change_axes(
+                    &mut body,
+                    &AxisChange { outlet, op: AxisOp::Rm(*axis) },
+                    false,
+                )? {
+                    return Ok(None);
+                }
+                let op =
+                    Some(
+                        Box::new(TypedScan { body, input_mapping, output_mapping, ..self.clone() })
+                            as _,
+                    );
+                Ok(Some(AxisChangeConsequence { substitute_op: op, wire_changes }))
+            }
+        }
     }
 
     fn declutter(

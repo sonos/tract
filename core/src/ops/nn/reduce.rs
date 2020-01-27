@@ -366,18 +366,22 @@ impl TypedOp for TypedReduce {
         Ok(axes.into())
     }
 
-    #[allow(unused_variables)]
-    fn dispose_dummy_axis(
+    fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        axis: &[Option<usize>],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axis = axis[0].unwrap();
-        Ok(Some(Box::new(Self {
-            axes: self.axes.iter().map(|&a| a - (axis < a) as usize).collect(),
-            ..self.clone()
-        })))
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        match change {
+            AxisOp::Rm(axis) => {
+                let op = Some(Box::new(Self {
+                    axes: self.axes.iter().map(|&a| a - (*axis < a) as usize).collect(),
+                    ..self.clone()
+                }) as _);
+                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+            }
+        }
     }
 
     fn pulsify(
