@@ -4,6 +4,71 @@ use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+#[derive(Clone, Copy, Debug)]
+pub enum InOut {
+    Out(usize),
+    In(usize),
+}
+
+impl InOut {
+    pub fn as_outlet<TI: Clone + Fact, O: Clone>(&self, node: &BaseNode<TI, O>) -> OutletId {
+        match self {
+            InOut::In(ix) => node.inputs[*ix],
+            InOut::Out(ix) => OutletId::new(node.id, *ix),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum AxisOp {
+    /*
+    DownSample { axis: usize, factor: usize, offset: usize },
+    Add(usize),
+    */
+    Rm(usize),
+    /*
+    Permute(TVec<usize>),
+    */
+}
+
+impl AxisOp {
+    pub fn apply(&self, shape: &mut ShapeInfo) -> TractResult<()> {
+        match self {
+            AxisOp::Rm(ix) => shape.remove_axis(*ix),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AxisChange {
+    pub outlet: OutletId,
+    pub op: AxisOp,
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct AxisChangeConsequence {
+    pub substitute_op: Option<Box<dyn TypedOp>>,
+    pub wire_changes: TVec<(InOut, AxisOp)>,
+}
+
+impl AxisChangeConsequence {
+    pub fn new(
+        _model: &TypedModel,
+        node: &TypedNode,
+        op: Option<Box<dyn TypedOp>>,
+        axis_op: &AxisOp,
+    ) -> AxisChangeConsequence {
+        let mut wire_changes = tvec!();
+        for i in 0..node.inputs.len() {
+            wire_changes.push((InOut::In(i), axis_op.clone()));
+        }
+        for i in 0..node.outputs.len() {
+            wire_changes.push((InOut::Out(i), axis_op.clone()));
+        }
+        AxisChangeConsequence { wire_changes, substitute_op: op }
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct Invariants {
     element_wise: bool,
@@ -274,6 +339,7 @@ pub fn for_model(model: &TypedModel) -> TractResult<Invariants> {
         .collect()
 }
 
+/*
 #[derive(Debug)]
 struct DisposeDummyAxisTranslator<'a> {
     tracked: &'a HashMap<OutletId, usize>,
@@ -319,3 +385,4 @@ pub fn dispose_dummy_axis(model: &TypedModel, tracking: &AxisTracking) -> TractR
     let translator = DisposeDummyAxisTranslator { tracked: &tracking.outlets };
     translator.translate_model(model)
 }
+*/

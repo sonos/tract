@@ -517,20 +517,29 @@ impl TypedOp for MatMulUnary {
         Ok(invars.into_iter().collect())
     }
 
-    fn dispose_dummy_axis(
+    fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        axes: &[Option<usize>],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axis = axes[0].unwrap();
-        let b = &model.outlet_fact(node.inputs[0])?;
-        if b.rank() > axis + 2 && self.a.rank() == b.rank() {
-            let mut a = self.a.clone().into_tensor();
-            a.remove_axis(axis)?;
-            Ok(Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() })))
-        } else {
-            Ok(None)
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        match change {
+            AxisOp::Rm(axis) => {
+                let b = &model.outlet_fact(node.inputs[0])?;
+                if b.rank() > *axis + 2 && self.a.rank() <= b.rank() {
+                    let op = if b.rank() - axis < self.a.rank() {
+                        let mut a = self.a.clone().into_tensor();
+                        a.remove_axis(*axis)?;
+                        Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _)
+                    } else {
+                        None
+                    };
+                    Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+                } else {
+                    Ok(None)
+                }
+            }
         }
     }
 

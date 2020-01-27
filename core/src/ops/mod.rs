@@ -31,7 +31,7 @@ pub mod source;
 pub mod unimpl;
 
 pub use downsample::Downsample;
-pub use invariants::{AxisInfo, Invariants};
+pub use invariants::*;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
     if inputs.len() != expected {
@@ -109,7 +109,9 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
 }
 
 /// A base operation
-pub trait Op: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp {
+pub trait Op:
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp
+{
     fn name(&self) -> Cow<str>;
 
     /// Early pass on inference model, after analyse, but before translation to
@@ -199,17 +201,19 @@ pub trait TypedOp:
         Ok(tvec!())
     }
 
-    /// Transforms the op in an equivalent one, discarding one dummy axis (of dim
-    /// assumed to be 1).
-    ///
-    /// Returns None if the op can be kept as is.
     #[allow(unused_variables)]
-    fn dispose_dummy_axis(
+    fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
+        Ok(tvec!())
+    }
+
+    #[allow(unused_variables)]
+    fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        axes: &[Option<usize>],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
         Ok(None)
     }
 

@@ -103,25 +103,39 @@ impl TypedOp for PermuteAxes {
         Ok(infos.into())
     }
 
-    fn dispose_dummy_axis(
+    fn change_axes(
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        axes: &[Option<usize>],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axis = axes[0].unwrap();
-        let permutation = if let Some(axes) = self.axes.clone() {
-            axes
-        } else {
-            (0..model.outlet_fact(node.inputs[0])?.shape.rank()).rev().collect()
-        };
-        let output_axis = permutation[axis];
-        let new_permutation = permutation
-            .into_iter()
-            .filter(|&src| axis != src)
-            .map(|dst| dst - (dst >= output_axis) as usize)
-            .collect();
-        Ok(Some(Box::new(PermuteAxes::new(Some(new_permutation)))))
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        match change {
+            AxisOp::Rm(axis) => {
+                let permutation = if let Some(axes) = self.axes.clone() {
+                    axes
+                } else {
+                    (0..model.outlet_fact(node.inputs[0])?.shape.rank()).rev().collect()
+                };
+                let input_axis = match io {
+                    InOut::In(_) => *axis,
+                    InOut::Out(_) => permutation.iter().position(|ix| axis == ix).unwrap(),
+                };
+                let output_axis = permutation[input_axis];
+                let new_permutation = permutation
+                    .into_iter()
+                    .filter(|&src| *axis != src)
+                    .map(|dst| dst - (dst >= output_axis) as usize)
+                    .collect();
+                Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(PermuteAxes::new(Some(new_permutation)))),
+                    wire_changes: tvec!(
+                        (InOut::In(0), AxisOp::Rm(input_axis)),
+                        (InOut::Out(0), AxisOp::Rm(output_axis))
+                    ),
+                }))
+            }
+        }
     }
 
     fn pulsify(

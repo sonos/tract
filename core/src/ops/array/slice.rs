@@ -88,14 +88,22 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
         Ok(axes)
     }
 
-    fn dispose_dummy_axis(
+    fn change_axes(
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-        axes: &[Option<usize>]
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axis = axes[0].unwrap();
-        Ok(Some(Box::new(Slice { axis: self.axis - (self.axis > axis) as usize, ..self.clone() })))
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        match change {
+            AxisOp::Rm(axis) => Ok(Some(AxisChangeConsequence {
+                substitute_op: Some(Box::new(Slice {
+                    axis: self.axis - (self.axis > *axis) as usize,
+                    ..self.clone()
+                })),
+                wire_changes: tvec!((InOut::In(0), change.clone()), (InOut::Out(0), change.clone())),
+            })),
+        }
     }
 
     fn declutter(

@@ -137,90 +137,41 @@ impl TypedOp for RmDim {
         Ok(axes.into_iter().collect())
     }
 
-    fn dispose_dummy_axis(
+    fn change_axes(
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-        axes: &[Option<usize>],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        Ok(Some(Box::new(RmDim::new(self.axis - (self.axis > axes[0].unwrap()) as usize))))
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let tracking = crate::ops::invariants::AxisTracking::for_outlet_and_axis(
-            model,
-            node.inputs[0],
-            self.axis,
-        )?;
-        assert!(tracking.destructors.contains(&InletId::new(node.id, 0)));
-        if tracking.creators.iter().any(|c| {
-            !model
-                .node(c.node)
-                .op_as::<super::AddDim>()
-                .map(|ad| ad.axis == tracking.outlets[c])
-                .unwrap_or(false)
-        }) || !tracking.destructors.iter().all(|c| {
-            model
-                .node(c.node)
-                .op_as::<RmDim>()
-                .map(|ad| ad.axis == tracking.outlets[&model.node(c.node).inputs[0]])
-                .unwrap_or(false)
-        }) {
-            return Ok(None);
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        /*
+        fn rm_axis(axes: &[usize], axis: usize) -> Vec<usize> {
+            axes.iter().filter(|&a| a != &axis).map(|&a| a - (a > axis) as usize).collect()
         }
-        let mut patch = TypedModelPatch::default();
-        let mut mapping = HashMap::<OutletId, OutletId>::new();
-        for c in &tracking.creators {
-            let node = model.node(c.node);
-            let axis = tracking.outlets[&c];
-            if let Some(add) = node.op_as::<super::AddDim>() {
-                if add.axis == axis {
-                    let wire = patch.tap_model(model, node.inputs[0])?;
-                    mapping.insert(node.id.into(), wire);
-                } else {
-                    unreachable!();
-                }
-            } else {
-                unreachable!();
-            }
+        match change {
+            AxisOp::Rm(axis) => match io {
+                InOut::In(_) if self.axes.contains(&axis) => Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(RmDims::new(rm_axis(&self.axes, *axis)))),
+                    wire_changes: tvec!(),
+                })),
+                InOut::In(_) => Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(RmDims::new(rm_axis(&self.axes, *axis)))),
+                    wire_changes: tvec!((
+                        InOut::Out(0),
+                        AxisOp::Rm(axis - self.axes.iter().filter(|&x| x < axis).count())
+                    )),
+                })),
+                InOut::Out(_) => Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(RmDims::new(rm_axis(&self.axes, *axis)))),
+                    wire_changes: tvec!((
+                        InOut::In(0),
+                        AxisOp::Rm(axis + self.axes.iter().filter(|&x| x < axis).count())
+                    )),
+                })),
+            },
         }
-        let eval_order = model.eval_order()?;
-        for &n in &eval_order {
-            let node = model.node(n);
-            for i in &node.inputs {
-                if !mapping.contains_key(&i) {
-                    mapping.insert(*i, patch.tap_model(model, *i)?);
-                }
-            }
-            let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
-            let axis = if let Some(axis) =
-                node.inputs.get(0).and_then(|input| tracking.outlets.get(input).cloned())
-            {
-                axis
-            } else {
-                continue;
-            };
-            let op = node
-                .op
-                .dispose_dummy_axis(model, node, &[Some(axis)])?
-                .unwrap_or_else(|| node.op.clone());
-            let outputs = patch.wire_node(&*node.name, op, &*inputs)?;
-            for (ix, o) in outputs.into_iter().enumerate() {
-                mapping.insert(OutletId::new(node.id, ix), o);
-            }
-        }
-        for des in tracking.destructors {
-            if !eval_order.contains(&des.node) {
-                continue;
-            }
-            let node = model.node(des.node);
-            patch.shunt_outside(node.id.into(), mapping[&node.inputs[0]])?;
-        }
-        return Ok(Some(patch));
+        */
+        todo!();
     }
 
     fn pulsify(

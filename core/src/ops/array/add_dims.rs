@@ -129,13 +129,45 @@ impl TypedOp for AddDim {
         Ok(axes.into_iter().collect())
     }
 
-    fn dispose_dummy_axis(
+    fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
+        Ok(tvec!((InOut::Out(0), AxisOp::Rm(self.axis))))
+    }
+
+    fn change_axes(
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-        axes: &[Option<usize>],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        Ok(Some(Box::new(AddDim::new(self.axis - (self.axis > axes[0].unwrap()) as usize))))
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        todo!();
+        /*
+        fn rm_axis(axes: &[usize], axis: usize) -> Vec<usize> {
+            axes.iter().filter(|&a| a != &axis).map(|&a| a - (a > axis) as usize).collect()
+        }
+        match change {
+            AxisOp::Rm(axis) => match io {
+                InOut::Out(_) if self.axes.contains(&axis) => Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(AddDims::new(rm_axis(&self.axes, *axis)))),
+                    wire_changes: tvec!(),
+                })),
+                InOut::Out(_) => Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(AddDims::new(rm_axis(&self.axes, *axis)))),
+                    wire_changes: tvec!((
+                        InOut::In(0),
+                        AxisOp::Rm(axis - self.axes.iter().filter(|&x| x < axis).count())
+                    )),
+                })),
+                InOut::In(_) => Ok(Some(AxisChangeConsequence {
+                    substitute_op: Some(Box::new(AddDims::new(rm_axis(&self.axes, *axis)))),
+                    wire_changes: tvec!((
+                        InOut::Out(0),
+                        AxisOp::Rm(axis + self.axes.iter().filter(|&x| x < axis).count())
+                    )),
+                })),
+            },
+        }
+        */
     }
 
     fn pulsify(

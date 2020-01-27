@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::invariants::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
@@ -566,20 +567,25 @@ impl TypedOp for UnaryOp {
         self.mini_op.declutter_unary(model, node, &self.a)
     }
 
-    fn dispose_dummy_axis(
+    fn change_axes(
         &self,
-        _model: &TypedModel,
+        model: &TypedModel,
         node: &TypedNode,
-        axes: &[Option<usize>],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axis = axes[0].unwrap();
-        let a_pad = node.outputs[0].fact.shape.rank() - self.a.shape().len();
-        if axis >= a_pad {
-            let mut a = self.a.clone().into_tensor();
-            a.remove_axis(axis - a_pad)?;
-            Ok(Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor()))))
-        } else {
-            Ok(None)
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        match change {
+            AxisOp::Rm(axis) => {
+                let a_pad = node.outputs[0].fact.shape.rank() - self.a.shape().len();
+                let op: Option<Box<dyn TypedOp>> = if *axis >= a_pad {
+                    let mut a = self.a.clone().into_tensor();
+                    a.remove_axis(axis - a_pad)?;
+                    Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor())))
+                } else {
+                    None
+                };
+                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+            }
         }
     }
 
@@ -658,6 +664,23 @@ impl TypedOp for MergeOp {
         } else {
             Ok(Invariants::none())
         }
+    }
+
+    fn change_axes(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        Ok(Some(AxisChangeConsequence {
+            substitute_op: None,
+            wire_changes: tvec!(
+                (InOut::In(0), change.clone()),
+                (InOut::In(1), change.clone()),
+                (InOut::Out(0), change.clone())
+            ),
+        }))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

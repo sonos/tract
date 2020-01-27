@@ -109,6 +109,16 @@ impl TypedOp for ElementWiseOp {
         Ok(tvec!(fact))
     }
 
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+    }
+
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         Invariants::new_element_wise(model, node)
     }
