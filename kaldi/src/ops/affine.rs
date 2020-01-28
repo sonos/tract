@@ -138,7 +138,7 @@ impl InferenceRulesOp for Affine {
         )?;
 
         let rm_dim =
-            target.wire_node(&*node.name, tract_core::ops::array::RmDims::new(vec![0]), &*conv)?;
+            target.wire_node(&*node.name, tract_core::ops::array::RmDim::new(0), &*conv)?;
 
         Ok(rm_dim)
     }

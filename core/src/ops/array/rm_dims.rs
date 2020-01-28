@@ -32,8 +32,7 @@ impl Op for RmDims {
     }
 
     canonic!();
-    op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_typed_op!();
 }
 
 impl StatelessOp for RmDims {
@@ -63,23 +62,69 @@ impl InferenceRulesOp for RmDims {
         })
     }
 
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let mut wire = mapping[&node.inputs[0]];
+        let mut axes = self.axes.clone();
+        axes.sort();
+        for axis in axes.into_iter().rev() {
+            wire = target.wire_node(
+                format!("{}-axis-{}", node.name, axis),
+                RmDim::new(axis),
+                &[wire],
+            )?[0];
+        }
+        Ok(tvec!(wire))
+    }
+
     inference_op_as_op!();
-    to_typed!();
 }
 
-impl TypedOp for RmDims {
+#[derive(Debug, Clone, new)]
+pub struct RmDim {
+    pub axis: usize,
+}
+
+impl Op for RmDim {
+    fn name(&self) -> Cow<str> {
+        "RmDim".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axis: {:?}", self.axis)])
+    }
+
+    canonic!();
+    op_as_typed_op!();
+    op_as_pulsed_op!();
+}
+
+impl StatelessOp for RmDim {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let mut input = args_1!(inputs).into_tensor();
+        input.remove_axis(self.axis)?;
+        Ok(tvec!(input.into_arc_tensor()))
+    }
+}
+
+impl TypedOp for RmDim {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
-            self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),
-        )?))
+        let mut shape = inputs[0].shape.clone();
+        shape.remove_axis(self.axis)?;
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)?))
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let mut out = 0;
         let mut axes = tvec!();
         for in_ in 0..model.outlet_fact(node.inputs[0])?.shape.rank() {
-            if !self.axes.contains(&out) {
+            if self.axis != out {
                 axes.push(AxisInfo {
                     inputs: tvec!(Some(in_)),
                     outputs: tvec!(Some(out)),
@@ -98,15 +143,7 @@ impl TypedOp for RmDims {
         _node: &TypedNode,
         axes: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axis = axes[0].unwrap();
-        let axes = self
-            .axes
-            .iter()
-            .cloned()
-            .filter(|&a| a != axis)
-            .map(|a| a - (a > axis) as usize)
-            .collect();
-        Ok(Some(Box::new(RmDims::new(axes))))
+        Ok(Some(Box::new(RmDim::new(self.axis - (self.axis > axes[0].unwrap()) as usize))))
     }
 
     fn declutter(
@@ -114,93 +151,76 @@ impl TypedOp for RmDims {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.axes.len() == 0 {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+        let tracking = crate::ops::invariants::AxisTracking::for_outlet_and_axis(
+            model,
+            node.inputs[0],
+            self.axis,
+        )?;
+        assert!(tracking.destructors.contains(&InletId::new(node.id, 0)));
+        if tracking.creators.iter().any(|c| {
+            !model
+                .node(c.node)
+                .op_as::<super::AddDim>()
+                .map(|ad| ad.axis == tracking.outlets[c])
+                .unwrap_or(false)
+        }) || !tracking.destructors.iter().all(|c| {
+            model
+                .node(c.node)
+                .op_as::<RmDim>()
+                .map(|ad| ad.axis == tracking.outlets[&model.node(c.node).inputs[0]])
+                .unwrap_or(false)
+        }) {
+            return Ok(None);
         }
-        'axis: for &rm_axis in &self.axes {
-            let tracking = crate::ops::invariants::AxisTracking::for_outlet_and_axis(
-                model,
-                node.inputs[0],
-                rm_axis,
-            )?;
-            assert!(tracking.destructors.contains(&InletId::new(node.id, 0)));
-            if tracking.creators.iter().any(|c| {
-                !model
-                    .node(c.node)
-                    .op_as::<super::AddDim>()
-                    .map(|ad| ad.axis == tracking.outlets[c])
-                    .unwrap_or(false)
-            }) || !tracking.destructors.iter().all(|c| {
-                model
-                    .node(c.node)
-                    .op_as::<RmDims>()
-                    .map(|ad| ad.axes.contains(&tracking.outlets[&model.node(c.node).inputs[0]]))
-                    .unwrap_or(false)
-            }) {
-                continue 'axis;
-            }
-            let mut patch = TypedModelPatch::default();
-            let mut mapping = HashMap::<OutletId, OutletId>::new();
-            for c in &tracking.creators {
-                let node = model.node(c.node);
-                let axis = tracking.outlets[&c];
-                if let Some(add) = node.op_as::<super::AddDim>() {
-                    if add.axis == axis {
-                        let wire = patch.tap_model(model, node.inputs[0])?;
-                        mapping.insert(node.id.into(), wire);
-                    } else {
-                        unreachable!();
-                    }
+        let mut patch = TypedModelPatch::default();
+        let mut mapping = HashMap::<OutletId, OutletId>::new();
+        for c in &tracking.creators {
+            let node = model.node(c.node);
+            let axis = tracking.outlets[&c];
+            if let Some(add) = node.op_as::<super::AddDim>() {
+                if add.axis == axis {
+                    let wire = patch.tap_model(model, node.inputs[0])?;
+                    mapping.insert(node.id.into(), wire);
                 } else {
                     unreachable!();
                 }
+            } else {
+                unreachable!();
             }
-            let eval_order = model.eval_order()?;
-            for &n in &eval_order {
-                let node = model.node(n);
-                for i in &node.inputs {
-                    if !mapping.contains_key(&i) {
-                        mapping.insert(*i, patch.tap_model(model, *i)?);
-                    }
-                }
-                let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
-                let axis = if let Some(axis) =
-                    node.inputs.get(0).and_then(|input| tracking.outlets.get(input).cloned())
-                {
-                    axis
-                } else {
-                    continue;
-                };
-                let op = node
-                    .op
-                    .dispose_dummy_axis(model, node, &[Some(axis)])?
-                    .unwrap_or_else(|| node.op.clone());
-                let outputs = patch.wire_node(&*node.name, op, &*inputs)?;
-                for (ix, o) in outputs.into_iter().enumerate() {
-                    mapping.insert(OutletId::new(node.id, ix), o);
-                }
-            }
-            for des in tracking.destructors {
-                if !eval_order.contains(&des.node) {
-                    continue;
-                }
-                let node = model.node(des.node);
-                let axis = *tracking.outlets.get(&node.inputs[0]).unwrap();
-                let axes = self
-                    .axes
-                    .iter()
-                    .cloned()
-                    .filter(|&a| a != axis)
-                    .map(|a| a - (a > axis) as usize)
-                    .collect();
-                let wire =
-                    patch.wire_node(&*node.name, RmDims::new(axes), &[mapping[&node.inputs[0]]])?
-                        [0];
-                patch.shunt_outside(node.id.into(), wire)?;
-            }
-            return Ok(Some(patch));
         }
-        Ok(None)
+        let eval_order = model.eval_order()?;
+        for &n in &eval_order {
+            let node = model.node(n);
+            for i in &node.inputs {
+                if !mapping.contains_key(&i) {
+                    mapping.insert(*i, patch.tap_model(model, *i)?);
+                }
+            }
+            let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+            let axis = if let Some(axis) =
+                node.inputs.get(0).and_then(|input| tracking.outlets.get(input).cloned())
+            {
+                axis
+            } else {
+                continue;
+            };
+            let op = node
+                .op
+                .dispose_dummy_axis(model, node, &[Some(axis)])?
+                .unwrap_or_else(|| node.op.clone());
+            let outputs = patch.wire_node(&*node.name, op, &*inputs)?;
+            for (ix, o) in outputs.into_iter().enumerate() {
+                mapping.insert(OutletId::new(node.id, ix), o);
+            }
+        }
+        for des in tracking.destructors {
+            if !eval_order.contains(&des.node) {
+                continue;
+            }
+            let node = model.node(des.node);
+            patch.shunt_outside(node.id.into(), mapping[&node.inputs[0]])?;
+        }
+        return Ok(Some(patch));
     }
 
     fn pulsify(
@@ -218,11 +238,11 @@ impl TypedOp for RmDims {
     typed_op_as_op!();
 }
 
-impl PulsedOp for RmDims {
+impl PulsedOp for RmDim {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape = self.compute_shape(&*inputs[0].shape);
-        fact.axis -= self.axes.iter().filter(|&ax| *ax <= fact.axis).count();
+        fact.shape.remove(self.axis);
+        fact.axis -= (self.axis <= fact.axis) as usize;
         Ok(tvec!(fact))
     }
 

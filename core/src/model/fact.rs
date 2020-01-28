@@ -138,7 +138,7 @@ impl ShapeInfo {
         Ok(())
     }
 
-    pub fn rm_axis(&mut self, axis: usize) -> TractResult<()> {
+    pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
         self.shape.remove(axis);
         if let Some(s) = self.stream_info.as_mut() {
             if s.axis > axis {
