@@ -377,12 +377,13 @@ pub trait InferenceOp:
     fn as_op_mut(&mut self) -> &mut dyn Op;
 
     /// Called during translation to TypedModel.
+    #[allow(unused_variables)]
     fn to_typed(
         &self,
-        _source: &InferenceModel,
-        _node: &InferenceNode,
-        _target: &mut TypedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         bail!("Operator can not be made a TypedOp.")
     }

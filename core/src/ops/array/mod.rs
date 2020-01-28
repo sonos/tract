@@ -61,7 +61,7 @@ mod squeeze;
 mod strided_slice;
 mod tile;
 
-pub use self::add_dims::AddDims;
+pub use self::add_dims::{AddDim, AddDims};
 pub use self::broadcast::{MultiBroadcastTo, TypedMultiBroadcastTo};
 pub use self::concat::{Concat, NormConcat};
 pub use self::constant_like::ConstantLike;

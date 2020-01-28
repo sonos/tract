@@ -217,7 +217,7 @@ impl InferenceRulesOp for GRU {
                 h = tract_core::ops::array::RmDims::new(vec![0]),
                 mapping[&node.inputs[initial_h_input]]
             );
-            target_wire!(h_chunk = tract_core::ops::array::AddDims::new(vec![0]), h);
+            target_wire!(h_chunk = tract_core::ops::array::AddDim::new(0), h);
             outer_inputs.push(h_chunk);
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
@@ -301,7 +301,7 @@ impl InferenceRulesOp for GRU {
         wire!(zt_Ht_1 = math::mul::bin(), zt, Ht_1);
         wire!(Ht = math::add::bin(), one_sub_zt_ht, zt_Ht_1);
 
-        wire!(y_h = array::AddDims::new(vec!(0)), Ht);
+        wire!(y_h = array::AddDim::new(0), Ht);
         body.set_output_outlets(&[y_h])?;
 
         let output_mapping = scan::OutputMapping {
@@ -326,7 +326,7 @@ impl InferenceRulesOp for GRU {
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
-            target_wire!(y = array::AddDims::new(vec!(0)), scan_outputs[slot]);
+            target_wire!(y = array::AddDim::new(0), scan_outputs[slot]);
             result.push(y);
         }
         if let Some(slot) = self.optional_y_h_output {

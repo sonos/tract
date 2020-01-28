@@ -120,7 +120,7 @@ impl InferenceRulesOp for Pack {
             .map(|(ix, &o)| {
                 Ok(target.wire_node(
                     format!("{}-add_dims-{}", node.name, ix),
-                    tract_core::ops::array::AddDims::new(vec![self.axis]),
+                    tract_core::ops::array::AddDim::new(self.axis),
                     [mapping[&o]].as_ref(),
                 )?[0])
             })

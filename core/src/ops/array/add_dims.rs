@@ -24,9 +24,7 @@ impl Op for AddDims {
         Ok(vec![format!("Axes: {:?}", self.axes)])
     }
 
-    canonic!();
-    op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_typed_op!();
 }
 
 impl StatelessOp for AddDims {
@@ -53,25 +51,72 @@ impl InferenceRulesOp for AddDims {
         })
     }
 
+    #[allow(unused_variables)]
+    fn to_typed(
+        &self,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let mut wire = mapping[&node.inputs[0]];
+        let mut axes = self.axes.clone();
+        axes.sort();
+        for axis in axes {
+            wire = target.wire_node(
+                format!("{}-axis-{}", node.name, axis),
+                AddDim::new(axis),
+                &[wire],
+            )?[0];
+        }
+        Ok(tvec!(wire))
+    }
+
     inference_op_as_op!();
-    to_typed!();
 }
 
-impl TypedOp for AddDims {
+#[derive(Debug, Clone, new)]
+pub struct AddDim {
+    pub axis: usize,
+}
+
+impl Op for AddDim {
+    fn name(&self) -> Cow<str> {
+        "AddDim".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("Axis: {:?}", self.axis)])
+    }
+
+    canonic!();
+    op_as_typed_op!();
+    op_as_pulsed_op!();
+}
+
+impl StatelessOp for AddDim {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let input = args_1!(inputs);
+        let mut tensor = input.into_tensor();
+        tensor.insert_axis(self.axis)?;
+        Ok(tvec!(tensor.into_arc_tensor()))
+    }
+}
+
+impl TypedOp for AddDim {
     typed_op_as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
-            self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),
-        )?))
+        let mut shape = inputs[0].shape.clone();
+        shape.insert_axis(self.axis)?;
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)?))
     }
 
     fn invariants(&self, _model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let mut i = 0;
         let mut axes = tvec!();
         for out in 0..node.outputs[0].fact.shape.rank() {
-            if !self.axes.contains(&out) {
+            if out != self.axis {
                 axes.push(AxisInfo {
                     inputs: tvec!(Some(i)),
                     outputs: tvec!(Some(out)),
@@ -88,17 +133,9 @@ impl TypedOp for AddDims {
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
-        axes: &[Option<usize>]
+        axes: &[Option<usize>],
     ) -> TractResult<Option<Box<dyn TypedOp>>> {
-        let axis = axes[0].unwrap();
-        let axes = self
-            .axes
-            .iter()
-            .cloned()
-            .filter(|&a| a != axis)
-            .map(|a| a - (a > axis) as usize)
-            .collect();
-        Ok(Some(Box::new(AddDims::new(axes))))
+        Ok(Some(Box::new(AddDim::new(self.axis - (self.axis > axes[0].unwrap()) as usize))))
     }
 
     fn pulsify(
@@ -114,11 +151,12 @@ impl TypedOp for AddDims {
     }
 }
 
-impl PulsedOp for AddDims {
+impl PulsedOp for AddDim {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape = self.compute_shape(&*inputs[0].shape);
-        fact.axis += self.axes.iter().filter(|&ax| *ax <= fact.axis).count();
+        fact.shape = inputs[0].shape.clone();
+        fact.shape.insert(self.axis, 1);
+        fact.axis += (self.axis >= fact.axis) as usize;
         Ok(tvec!(fact))
     }
 
