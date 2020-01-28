@@ -302,18 +302,21 @@ impl InferenceRulesOp for Reduce {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let input = target.outlet_fact(mapping[&node.inputs[0]])?;
-        let axes = self.resolve_axes(input.shape.rank())?;
+        let mut axes = self.resolve_axes(input.shape.rank())?;
         let mut wire = target.wire_node(
             &*node.name,
             TypedReduce::new(axes.clone(), self.reducer.clone()),
             [mapping[&node.inputs[0]]].as_ref(),
         )?;
         if !self.keep_dims {
-            wire = target.wire_node(
-                format!("{}-dispose-dims", node.name),
-                crate::ops::array::RmDims::new(axes.to_vec()),
-                &wire,
-            )?;
+            axes.sort();
+            for axis in axes.into_iter().rev() {
+                wire = target.wire_node(
+                    format!("{}-dispose-dims-{}", node.name, axis),
+                    crate::ops::array::RmDim::new(axis),
+                    &wire,
+                )?;
+            }
         }
         Ok(wire)
     }

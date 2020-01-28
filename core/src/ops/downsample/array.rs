@@ -47,17 +47,17 @@ pub fn pull_downsample_over_adddim(
     return Ok(Some(patch));
 }
 
-pub fn pull_downsample_over_rmdims(
+pub fn pull_downsample_over_rmdim(
     model: &TypedModel,
     rm_node: &TypedNode,
-    rm_op: &ops::array::RmDims,
+    rm_op: &ops::array::RmDim,
     down_node: &TypedNode,
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
     let mut patch = TypedModelPatch::default();
     let tap = patch.tap_model(model, rm_node.inputs[0])?;
     let mut new_down = down_op.clone();
-    new_down.axis += rm_op.axes.iter().filter(|&ax| *ax <= down_op.axis).count();
+    new_down.axis += (rm_op.axis <= down_op.axis) as usize;
     let ds = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
     let rm = patch.wire_node(&*rm_node.name, rm_op.clone(), &*ds)?;
     patch.shunt_outside(OutletId::new(down_node.id, 0), rm[0])?;

@@ -66,7 +66,7 @@ impl InferenceRulesOp for Squeeze {
 
     fn to_typed(
         &self,
-        _source: &InferenceModel,
+        source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
@@ -84,7 +84,7 @@ impl InferenceRulesOp for Squeeze {
                 .map(|(ix, _d)| ix)
                 .collect()
         };
-        target.wire_node(&*node.name, RmDims::new(axes), [input].as_ref())
+        InferenceRulesOp::to_typed(&RmDims::new(axes), source, node, target, mapping)
     }
 
     inference_op_as_op!();

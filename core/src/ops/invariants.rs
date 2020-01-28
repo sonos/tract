@@ -294,7 +294,7 @@ impl<'a>
         if source.input_outlets()?.contains(&node.id.into()) {
             let mut fact = source.outlet_fact(node.id.into())?.clone();
             if let Some((_, &axis)) = axis {
-                fact.shape.rm_axis(axis)?;
+                fact.shape.remove_axis(axis)?;
             }
             let wire = target.add_source(&*node.name, fact)?;
             Ok(tvec!(wire.into()))

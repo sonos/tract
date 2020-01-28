@@ -330,7 +330,7 @@ impl InferenceRulesOp for StridedSlice {
                     )?[0];
                 }
             }
-            let shrink = input
+            let mut shrink = input
                 .shape
                 .iter()
                 .enumerate()
@@ -340,10 +340,11 @@ impl InferenceRulesOp for StridedSlice {
                 })
                 .map(|pair| pair.0)
                 .collect::<Vec<_>>();
-            if shrink.len() > 0 {
+            shrink.sort();
+            for axis in shrink.iter().rev() {
                 wire = target.wire_node(
-                    format!("{}-RmDim", node.name),
-                    crate::ops::array::RmDims::new(shrink),
+                    format!("{}-RmDim-{}", node.name, axis),
+                    crate::ops::array::RmDim::new(*axis),
                     [wire].as_ref(),
                 )?[0];
             }
