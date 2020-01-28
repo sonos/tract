@@ -215,7 +215,7 @@ impl InferenceRulesOp for RNN {
                 h = tract_core::ops::array::RmDims::new(vec![0]),
                 mapping[&node.inputs[initial_h_input]]
             );
-            target_wire!(h_chunk = tract_core::ops::array::AddDims::new(vec![0]), h);
+            target_wire!(h_chunk = tract_core::ops::array::AddDim::new(0), h);
             outer_inputs.push(h_chunk);
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
@@ -254,7 +254,7 @@ impl InferenceRulesOp for RNN {
         }
         wire!(Ht = self.fore.clone(), ht0);
 
-        wire!(y_h = array::AddDims::new(vec!(0)), Ht);
+        wire!(y_h = array::AddDim::new(0), Ht);
         body.set_output_outlets(&[y_h])?;
 
         let output_mapping = scan::OutputMapping {
@@ -279,7 +279,7 @@ impl InferenceRulesOp for RNN {
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
-            target_wire!(y = array::AddDims::new(vec!(0)), scan_outputs[slot]);
+            target_wire!(y = array::AddDim::new(0), scan_outputs[slot]);
             result.push(y);
         }
         if let Some(slot) = self.optional_y_h_output {

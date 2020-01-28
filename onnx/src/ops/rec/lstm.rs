@@ -251,7 +251,7 @@ impl InferenceRulesOp for LSTM {
                 h = tract_core::ops::array::RmDims::new(vec![0]),
                 mapping[&node.inputs[initial_h_input]]
             );
-            target_wire!(h_chunk = tract_core::ops::array::AddDims::new(vec![0]), h);
+            target_wire!(h_chunk = tract_core::ops::array::AddDim::new(0), h);
             outer_inputs.push(h_chunk);
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
@@ -272,7 +272,7 @@ impl InferenceRulesOp for LSTM {
                 c = tract_core::ops::array::RmDims::new(vec![0]),
                 mapping[&node.inputs[initial_c_input]]
             );
-            target_wire!(c_chunk = tract_core::ops::array::AddDims::new(vec![0]), c);
+            target_wire!(c_chunk = tract_core::ops::array::AddDim::new(0), c);
             outer_inputs.push(c_chunk);
             scan::StateInitializer::FromInput(initial_c_input)
         } else {
@@ -413,8 +413,8 @@ impl InferenceRulesOp for LSTM {
         wire!(h_Ct = self.h.clone(), Ct);
         wire!(Ht = math::mul::bin(), ot, h_Ct);
 
-        wire!(Ht_fixed = array::AddDims::new(vec!(0)), Ht);
-        wire!(Ct_fixed = array::AddDims::new(vec!(0)), Ct);
+        wire!(Ht_fixed = array::AddDim::new(0), Ht);
+        wire!(Ct_fixed = array::AddDim::new(0), Ct);
         body.set_output_outlets(&[Ht_fixed, Ct_fixed])?;
 
         let h_mapping = scan::OutputMapping {
@@ -447,7 +447,7 @@ impl InferenceRulesOp for LSTM {
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
-            target_wire!(y = array::AddDims::new(vec!(0)), scan_outputs[slot]);
+            target_wire!(y = array::AddDim::new(0), scan_outputs[slot]);
             result.push(y);
         }
         if let Some(slot) = self.optional_y_h_output {

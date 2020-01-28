@@ -127,8 +127,8 @@ impl TypedOp for RmDims {
             if tracking.creators.iter().any(|c| {
                 !model
                     .node(c.node)
-                    .op_as::<super::AddDims>()
-                    .map(|ad| ad.axes.contains(&tracking.outlets[c]))
+                    .op_as::<super::AddDim>()
+                    .map(|ad| ad.axis == tracking.outlets[c])
                     .unwrap_or(false)
             }) || !tracking.destructors.iter().all(|c| {
                 model
@@ -144,23 +144,9 @@ impl TypedOp for RmDims {
             for c in &tracking.creators {
                 let node = model.node(c.node);
                 let axis = tracking.outlets[&c];
-                if let Some(add) = node.op_as::<super::AddDims>() {
-                    if add.axes.contains(&axis) {
-                        let mut wire = patch.tap_model(model, node.inputs[0])?;
-                        if add.axes.len() > 1 {
-                            let axes = add
-                                .axes
-                                .iter()
-                                .cloned()
-                                .filter(|&a| a != axis)
-                                .map(|a| a - (a > axis) as usize)
-                                .collect();
-                            wire = patch.wire_node(
-                                &*node.name,
-                                super::AddDims::new(axes),
-                                [wire].as_ref(),
-                            )?[0];
-                        }
+                if let Some(add) = node.op_as::<super::AddDim>() {
+                    if add.axis == axis {
+                        let wire = patch.tap_model(model, node.inputs[0])?;
                         mapping.insert(node.id.into(), wire);
                     } else {
                         unreachable!();

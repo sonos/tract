@@ -124,7 +124,7 @@ impl InferenceRulesOp for Affine {
 
         let add_dim = target.wire_node(
             format!("{}-AddBatchDim", node.name),
-            tract_core::ops::array::AddDims::new(vec![0]),
+            tract_core::ops::array::AddDim::new(0),
             [input].as_ref(),
         )?;
 

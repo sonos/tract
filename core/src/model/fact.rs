@@ -128,6 +128,16 @@ impl ShapeInfo {
         Ok(())
     }
 
+    pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
+        self.shape.insert(axis, 1);
+        if let Some(s) = self.stream_info.as_mut() {
+            if s.axis >= axis {
+                s.axis += 1;
+            }
+        }
+        Ok(())
+    }
+
     pub fn rm_axis(&mut self, axis: usize) -> TractResult<()> {
         self.shape.remove(axis);
         if let Some(s) = self.stream_info.as_mut() {

@@ -340,11 +340,12 @@ impl TypedScan {
             let slot = if let Some(slot) = mapping.full_slot { slot } else { continue };
             let emitter_outlet = self.body.output_outlets()?[model_ix];
             let emitter_node = self.body.node(emitter_outlet.node);
-            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 1 || emitter_node.inputs.len() > 1 {
+            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 1
+                || emitter_node.inputs.len() > 1
+            {
                 continue;
             }
-            let invariants =
-                emitter_node.op().as_typed().unwrap().invariants(&self.body, &emitter_node)?;
+            let invariants = emitter_node.op.invariants(&self.body, &emitter_node)?;
             let axis_before = if let Some(a) = invariants.unary_track_axis_up(mapping.axis, false) {
                 a
             } else {
@@ -370,9 +371,11 @@ impl TypedScan {
                 seq_length_input_slot: self.seq_length_input_slot,
             };
             let scan_outputs = outside_patch.wire_node(&*node.name, new_op, &*inputs)?;
-            let wire = outside_patch.wire_node(&*emitter_node.name, 
-                        emitter_node.op.clone(),
-                        &[scan_outputs[slot]])?[0];
+            let wire = outside_patch.wire_node(
+                &*emitter_node.name,
+                emitter_node.op.clone(),
+                &[scan_outputs[slot]],
+            )?[0];
             for ix in 0..node.outputs.len() {
                 if ix == slot {
                     outside_patch.shunt_outside(OutletId::new(node.id, ix), wire)?;
@@ -380,7 +383,7 @@ impl TypedScan {
                     outside_patch.shunt_outside(OutletId::new(node.id, ix), scan_outputs[ix])?;
                 }
             }
-            return Ok(Some(outside_patch))
+            return Ok(Some(outside_patch));
         }
         Ok(None)
     }

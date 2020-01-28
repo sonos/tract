@@ -173,6 +173,11 @@ impl Tensor {
         Ok(t)
     }
 
+    pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
+        self.shape.insert(axis, 1);
+        Ok(())
+    }
+
     pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
         self.shape.remove(axis);
         Ok(())
