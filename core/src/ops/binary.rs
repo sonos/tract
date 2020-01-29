@@ -574,9 +574,21 @@ impl TypedOp for UnaryOp {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        let b = &model.outlet_fact(node.inputs[0])?;
         match change {
+            AxisOp::Add(axis) => {
+                let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
+                let op = if axis_in_a > 0 {
+                    let mut a = self.a.clone().into_tensor();
+                    a.insert_axis(axis_in_a as usize)?;
+                    Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor())) as _)
+                } else {
+                    None
+                };
+                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+            }
             AxisOp::Rm(axis) => {
-                let a_pad = node.outputs[0].fact.shape.rank() - self.a.shape().len();
+                let a_pad = b.shape.rank() - self.a.shape().len();
                 let op: Option<Box<dyn TypedOp>> = if *axis >= a_pad {
                     let mut a = self.a.clone().into_tensor();
                     a.remove_axis(axis - a_pad)?;

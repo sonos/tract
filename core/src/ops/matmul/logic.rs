@@ -524,9 +524,23 @@ impl TypedOp for MatMulUnary {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        let b = &model.outlet_fact(node.inputs[0])?;
         match change {
+            AxisOp::Add(axis) => {
+                let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
+                if axis_in_a + 2 > self.a.rank() as isize {
+                    return Ok(None);
+                }
+                let op = if axis_in_a > 0 {
+                    let mut a = self.a.clone().into_tensor();
+                    a.insert_axis(axis_in_a as usize)?;
+                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _)
+                } else {
+                    None
+                };
+                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+            }
             AxisOp::Rm(axis) => {
-                let b = &model.outlet_fact(node.inputs[0])?;
                 if b.rank() > *axis + 2 && self.a.rank() <= b.rank() {
                     let op = if b.rank() - axis < self.a.rank() {
                         let mut a = self.a.clone().into_tensor();

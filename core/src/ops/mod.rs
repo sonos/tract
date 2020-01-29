@@ -16,6 +16,7 @@ pub mod invariants;
 
 pub mod array;
 pub mod cast;
+pub mod change_axes;
 pub mod cnn;
 pub mod downsample;
 pub mod dummy;

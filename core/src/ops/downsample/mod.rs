@@ -159,10 +159,8 @@ fn pull_downsample_up(
             return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
         } else if let Some(crop_op) = prec.op_as::<ops::array::Slice<usize>>() {
             return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
-        } else if let Some(other_op) = prec.op_as::<ops::array::RmDim>() {
-            return array::pull_downsample_over_rmdim(model, prec, other_op, down_node, down_op);
-        } else if let Some(other_op) = prec.op_as::<ops::array::AddDim>() {
-            return array::pull_downsample_over_adddim(model, prec, other_op, down_node, down_op);
+        } else if let Some(other_op) = prec.op_as::<AxisOp>() {
+            return array::pull_downsample_over_axis_op(model, prec, other_op, down_node, down_op);
         } else if let Some(conv_op) = prec.op_as::<ops::cnn::conv::ConvUnary>() {
             return conv::fuse_downsample_into_conv(model, prec, conv_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::scan::TypedScan>() {

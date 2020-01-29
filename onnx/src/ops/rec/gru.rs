@@ -174,28 +174,25 @@ impl InferenceRulesOp for GRU {
         let mut x_source_fact = x_fact.clone();
         x_source_fact.shape.set_dim(0, 1.to_dim())?;
         let x_source = body.add_source("x_source", x_source_fact)?.into();
-        wire!(Xt = array::RmDim::new(0), x_source);
+        wire!(Xt = AxisOp::Rm(0), x_source);
 
         // W: onnx interface: [num_directions, 3*hidden_size, input_size]
         // scan interfaces: [3*hidden_size, input_size]
-        target_wire!(w = tract_core::ops::array::RmDim::new(0), mapping[&node.inputs[1]]);
+        target_wire!(w = AxisOp::Rm(0), mapping[&node.inputs[1]]);
         outer_inputs.push(w);
         input_mapping.push(scan::InputMapping::Full { slot: 1 });
         let W = body.add_source("w", target.outlet_fact(w)?.clone())?.into();
 
         // R: onnx interface: [num_directions, 3*hidden_size, hidden_size]
         // scan interfaces: [3*hidden_size, hidden_size]
-        target_wire!(r = tract_core::ops::array::RmDim::new(0), mapping[&node.inputs[2]]);
+        target_wire!(r = AxisOp::Rm(0), mapping[&node.inputs[2]]);
         outer_inputs.push(r);
         input_mapping.push(scan::InputMapping::Full { slot: 2 });
         let R = body.add_source("r", target.outlet_fact(r)?.clone())?.into();
 
         // B: onnx interface: [num_directions, 6*hidden_size]
         let b = if let Some(slot) = self.optional_bias_input {
-            target_wire!(
-                b = tract_core::ops::array::RmDim::new(0),
-                mapping[&node.inputs[slot]]
-            );
+            target_wire!(b = AxisOp::Rm(0), mapping[&node.inputs[slot]]);
             outer_inputs.push(b);
             input_mapping.push(scan::InputMapping::Full { slot });
             let b = body.add_source("b", target.outlet_fact(b)?.clone())?.into();
@@ -213,11 +210,8 @@ impl InferenceRulesOp for GRU {
         // scan inner: [chunk=1, batch_size, hidden_size]
         // onnx inner: [batch_size, hidden_size]
         let initializer = if let Some(initial_h_input) = self.optional_initial_h_input {
-            target_wire!(
-                h = tract_core::ops::array::RmDim::new(0),
-                mapping[&node.inputs[initial_h_input]]
-            );
-            target_wire!(h_chunk = tract_core::ops::array::AddDim::new(0), h);
+            target_wire!(h = AxisOp::Rm(0), mapping[&node.inputs[initial_h_input]]);
+            target_wire!(h_chunk = AxisOp::Add(0), h);
             outer_inputs.push(h_chunk);
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
@@ -233,7 +227,7 @@ impl InferenceRulesOp for GRU {
             )?
             .into();
 
-        wire!(Ht_1 = array::RmDim::new(0), h_source);
+        wire!(Ht_1 = AxisOp::Rm(0), h_source);
 
         wire!(Rz = array::Slice::new(0, 0 * h_size, 1 * h_size), R);
         wire!(Rr = array::Slice::new(0, 1 * h_size, 2 * h_size), R);
@@ -301,7 +295,7 @@ impl InferenceRulesOp for GRU {
         wire!(zt_Ht_1 = math::mul::bin(), zt, Ht_1);
         wire!(Ht = math::add::bin(), one_sub_zt_ht, zt_Ht_1);
 
-        wire!(y_h = array::AddDim::new(0), Ht);
+        wire!(y_h = AxisOp::Add(0), Ht);
         body.set_output_outlets(&[y_h])?;
 
         let output_mapping = scan::OutputMapping {
@@ -326,7 +320,7 @@ impl InferenceRulesOp for GRU {
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
-            target_wire!(y = array::AddDim::new(0), scan_outputs[slot]);
+            target_wire!(y = AxisOp::Add(0), scan_outputs[slot]);
             result.push(y);
         }
         if let Some(slot) = self.optional_y_h_output {
