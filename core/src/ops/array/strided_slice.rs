@@ -345,7 +345,7 @@ impl InferenceRulesOp for StridedSlice {
             for axis in shrink.iter().rev() {
                 wire = target.wire_node(
                     format!("{}-RmDim-{}", node.name, axis),
-                    crate::ops::array::RmDim::new(*axis),
+                    AxisOp::Rm(*axis),
                     [wire].as_ref(),
                 )?[0];
             }

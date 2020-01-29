@@ -90,19 +90,20 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
 
     fn change_axes(
         &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
+        model: &TypedModel,
+        node: &TypedNode,
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        match change {
-            AxisOp::Rm(axis) => Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(Slice {
-                    axis: self.axis - (self.axis > *axis) as usize,
-                    ..self.clone()
-                })),
-                wire_changes: tvec!((InOut::In(0), change.clone()), (InOut::Out(0), change.clone())),
-            })),
+        if let Some(axis) = change.transform_axis(self.axis) {
+            Ok(Some(AxisChangeConsequence::new(
+                model,
+                node,
+                Some(Box::new(Slice { axis, ..self.clone() }) as _),
+                change,
+            )))
+        } else {
+            Ok(None)
         }
     }
 

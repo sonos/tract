@@ -510,103 +510,85 @@ impl TypedOp for TypedScan {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        use crate::ops::invariants;
-        match change {
-            AxisOp::Rm(axis) => {
-                let outlet = match io {
-                    InOut::In(ix) => {
-                        let input =
-                            self.input_mapping.iter().position(|im| im.slot() == Some(ix)).unwrap();
-                        self.body.input_outlets()?[input]
-                    }
-                    InOut::Out(ix) => {
-                        let output = self
-                            .output_mapping
-                            .iter()
-                            .position(|im| {
-                                im.full_slot == Some(ix) || im.last_value_slot == Some(ix)
-                            })
-                            .unwrap();
-                        self.body.input_outlets()?[output]
-                    }
-                };
-                let tracking =
-                    invariants::AxisTracking::for_outlet_and_axis(&self.body, outlet, *axis)?;
-                let mut wire_changes = tvec!();
-                let mut input_mapping: Vec<InputMapping<TDim>> = vec![];
-                for (ix, m) in self.input_mapping.iter().enumerate() {
-                    let output = self.body.input_outlets()?[ix];
-                    if let Some(axis) = tracking.outlets.get(&output) {
-                        if let Some(slot) = m.slot() {
-                            wire_changes.push((InOut::In(slot), AxisOp::Rm(*axis)));
-                        }
-                    }
-                    let m = if let Some(rm) = tracking.outlets.get(&output) {
-                        match m {
-                            InputMapping::Full { .. } => m.clone(),
-                            InputMapping::Scan { axis, chunk, slot } => {
-                                let axis = *axis - (*axis > *rm) as usize;
-                                InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() }
-                            }
-                            InputMapping::State { initializer } => match initializer {
-                                StateInitializer::FromInput(fi) => InputMapping::State {
-                                    initializer: StateInitializer::FromInput(*fi),
-                                },
-                                StateInitializer::Value(ref v) => {
-                                    assert!(v.shape()[*rm] == 1);
-                                    let mut shape: TVec<usize> = v.shape().into();
-                                    shape.remove(*rm);
-                                    InputMapping::State {
-                                        initializer: StateInitializer::Value(unsafe {
-                                            v.clone()
-                                                .into_tensor()
-                                                .into_shape(&shape)
-                                                .unwrap()
-                                                .into()
-                                        }),
-                                    }
-                                }
+        let body_leading_outlet = match io {
+            InOut::In(ix) => {
+                let input = self.input_mapping.iter().position(|im| im.slot() == Some(ix)).unwrap();
+                self.body.input_outlets()?[input]
+            }
+            InOut::Out(ix) => {
+                let output = self
+                    .output_mapping
+                    .iter()
+                    .position(|im| im.full_slot == Some(ix) || im.last_value_slot == Some(ix))
+                    .unwrap();
+                self.body.input_outlets()?[output]
+            }
+        };
+        let mut body = self.body.clone();
+        let body_changed_wires = if let Some(changes) = crate::ops::change_axes::change_axes(
+            &mut body,
+            &AxisChange { outlet: body_leading_outlet, op: change.clone() },
+            false,
+        )? {
+            changes
+        } else {
+            return Ok(None);
+        };
+        let mut input_mapping: Vec<InputMapping<TDim>> = vec![];
+        let mut output_mapping: Vec<OutputMapping<TDim, TDim>> = vec![];
+        let mut wire_changes = tvec!();
+        for (ix, m) in self.input_mapping.iter().enumerate() {
+            let input = self.body.input_outlets()?[ix];
+            if let Some(change) = body_changed_wires.get(&input) {
+                let fixed_mapping = if let Some(slot) = m.slot() {
+                    wire_changes.push((InOut::In(slot), change.clone()));
+                    match m {
+                        InputMapping::Full { .. } => m.clone(),
+                        InputMapping::Scan { axis, chunk, slot } => InputMapping::Scan {
+                            axis: change.transform_axis(*axis).ok_or("Invalid axis")?,
+                            slot: *slot,
+                            chunk: chunk.clone(),
+                        },
+                        InputMapping::State { initializer } => match initializer {
+                            StateInitializer::FromInput(fi) => InputMapping::State {
+                                initializer: StateInitializer::FromInput(*fi),
                             },
-                        }
-                    } else {
-                        m.clone()
-                    };
-                    input_mapping.push(m);
-                }
-                let mut output_mapping: Vec<OutputMapping<TDim, TDim>> = vec![];
-                for (ix, om) in self.output_mapping.iter().enumerate() {
-                    let output = self.body.output_outlets()?[ix];
-                    if let Some(axis) = tracking.outlets.get(&output) {
-                        if let Some(slot) = om.full_slot {
-                            wire_changes.push((InOut::Out(slot), AxisOp::Rm(*axis)));
-                        }
-                        if let Some(slot) = om.last_value_slot {
-                            wire_changes.push((InOut::Out(slot), AxisOp::Rm(*axis)));
-                        }
+                            StateInitializer::Value(ref v) => {
+                                let mut v = v.clone().into_tensor();
+                                change.change_tensor(&mut v)?;
+                                InputMapping::State {
+                                    initializer: StateInitializer::Value(v.into_arc_tensor()),
+                                }
+                            }
+                        },
                     }
-                    let om = if let Some(axis) = tracking.outlets.get(&output) {
-                        OutputMapping { axis: om.axis - (om.axis > *axis) as usize, ..om.clone() }
-                    } else {
-                        om.clone()
-                    };
-                    output_mapping.push(om);
-                }
-                let mut body = self.body.clone();
-                if !crate::optim::change_axes::change_axes(
-                    &mut body,
-                    &AxisChange { outlet, op: AxisOp::Rm(*axis) },
-                    false,
-                )? {
-                    return Ok(None);
-                }
-                let op =
-                    Some(
-                        Box::new(TypedScan { body, input_mapping, output_mapping, ..self.clone() })
-                            as _,
-                    );
-                Ok(Some(AxisChangeConsequence { substitute_op: op, wire_changes }))
+                } else {
+                    m.clone()
+                };
+                input_mapping.push(fixed_mapping);
             }
         }
+        for (ix, m) in self.output_mapping.iter().enumerate() {
+            let output = self.body.output_outlets()?[ix];
+            let fixed_mapping = if let Some(change) = body_changed_wires.get(&output) {
+                if let Some(slot) = m.full_slot {
+                    wire_changes.push((InOut::Out(slot), change.clone()));
+                }
+                if let Some(slot) = m.last_value_slot {
+                    wire_changes.push((InOut::Out(slot), change.clone()));
+                }
+                OutputMapping {
+                    axis: change.transform_axis(m.axis).ok_or("Invalid axis")?,
+                    ..m.clone()
+                }
+            } else {
+                m.clone()
+            };
+            output_mapping.push(fixed_mapping);
+        }
+        let op =
+            Some(Box::new(TypedScan { body, input_mapping, output_mapping, ..self.clone() }) as _);
+        Ok(Some(AxisChangeConsequence { substitute_op: op, wire_changes }))
     }
 
     fn declutter(

@@ -30,37 +30,20 @@ where
     return Ok(Some(patch));
 }
 
-pub fn pull_downsample_over_adddim(
+pub fn pull_downsample_over_axis_op(
     model: &TypedModel,
-    add_node: &TypedNode,
-    add_op: &ops::array::AddDim,
+    axis_node: &TypedNode,
+    axis_op: &AxisOp,
     down_node: &TypedNode,
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
     let mut patch = TypedModelPatch::default();
-    let tap = patch.tap_model(model, add_node.inputs[0])?;
+    let tap = patch.tap_model(model, axis_node.inputs[0])?;
     let mut new_down = down_op.clone();
-    new_down.axis -= (add_op.axis <= down_op.axis) as usize;
-    let ds = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
-    let add = patch.wire_node(&*add_node.name, add_op.clone(), &*ds)?;
-    patch.shunt_outside(OutletId::new(down_node.id, 0), add[0])?;
-    return Ok(Some(patch));
-}
-
-pub fn pull_downsample_over_rmdim(
-    model: &TypedModel,
-    rm_node: &TypedNode,
-    rm_op: &ops::array::RmDim,
-    down_node: &TypedNode,
-    down_op: &Downsample,
-) -> TractResult<Option<TypedModelPatch>> {
-    let mut patch = TypedModelPatch::default();
-    let tap = patch.tap_model(model, rm_node.inputs[0])?;
-    let mut new_down = down_op.clone();
-    new_down.axis += (rm_op.axis <= down_op.axis) as usize;
-    let ds = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
-    let rm = patch.wire_node(&*rm_node.name, rm_op.clone(), &*ds)?;
-    patch.shunt_outside(OutletId::new(down_node.id, 0), rm[0])?;
+    new_down.axis = axis_op.recip().transform_axis(down_op.axis).ok_or("Invalid axis")?;
+    let wire = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
+    let wire = patch.wire_node(&*axis_node.name, axis_op.clone(), &*wire)?[0];
+    patch.shunt_outside(OutletId::new(down_node.id, 0), wire)?;
     return Ok(Some(patch));
 }
 

@@ -61,7 +61,7 @@ mod squeeze;
 mod strided_slice;
 mod tile;
 
-pub use self::add_dims::{AddDim, AddDims};
+pub use self::add_dims::AddDims;
 pub use self::broadcast::{MultiBroadcastTo, TypedMultiBroadcastTo};
 pub use self::concat::{Concat, NormConcat};
 pub use self::constant_like::ConstantLike;
@@ -73,7 +73,7 @@ pub use self::gather::Gather;
 pub use self::pad::{Pad, PadMode};
 pub use self::permute_axes::PermuteAxes;
 pub use self::reshape::{FiniteReshape, Reshape, TypedReshape};
-pub use self::rm_dims::{ RmDim, RmDims};
+pub use self::rm_dims::RmDims;
 pub use self::shape::Shape;
 pub use self::size::Size;
 pub use self::slice::Slice;

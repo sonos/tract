@@ -111,6 +111,7 @@ impl TypedOp for PermuteAxes {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         match change {
+            AxisOp::Add(axis) => todo!(),
             AxisOp::Rm(axis) => {
                 let permutation = if let Some(axes) = self.axes.clone() {
                     axes

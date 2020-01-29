@@ -313,7 +313,7 @@ impl InferenceRulesOp for Reduce {
             for axis in axes.into_iter().rev() {
                 wire = target.wire_node(
                     format!("{}-dispose-dims-{}", node.name, axis),
-                    crate::ops::array::RmDim::new(axis),
+                    AxisOp::Rm(axis),
                     &wire,
                 )?;
             }
@@ -373,15 +373,15 @@ impl TypedOp for TypedReduce {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        match change {
-            AxisOp::Rm(axis) => {
-                let op = Some(Box::new(Self {
-                    axes: self.axes.iter().map(|&a| a - (*axis < a) as usize).collect(),
-                    ..self.clone()
-                }) as _);
-                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-            }
-        }
+        let op = Some(Box::new(Self {
+            axes: self
+                .axes
+                .iter()
+                .map(|ax| change.transform_axis(*ax).ok_or_else(|| "Invalid axis".into()))
+                .collect::<TractResult<_>>()?,
+            ..self.clone()
+        }) as _);
+        Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
     }
 
     fn pulsify(

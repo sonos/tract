@@ -107,7 +107,7 @@ impl InferenceRulesOp for ExpandDims {
             for axis in axes.iter().rev() {
                 wire = target.wire_node(
                     format!("{}-axis-{}", node.name, axis),
-                    tract_core::ops::array::AddDim::new(*axis as usize),
+                    AxisOp::Add(*axis as _),
                     &[wire],
                 )?[0];
             }
