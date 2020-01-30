@@ -1,5 +1,5 @@
-use std::{fs, path};
 use std::convert::TryInto;
+use std::{fs, path};
 
 use log::*;
 
@@ -31,11 +31,12 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     vec
 }
 
-pub fn load_dataset(path: &path::Path) -> (TVec<Tensor>, TVec<Tensor>) {
-    (load_half_dataset("input", path), load_half_dataset("output", path))
-}
-
-pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
+pub fn run_one<P: AsRef<path::Path>>(
+    root: P,
+    test: &str,
+    optim: bool,
+    more: &'static [&'static str],
+) {
     setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
@@ -80,67 +81,98 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     info!("Loading {:?}", model_file);
     let onnx = onnx();
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
-    let mut model = onnx.model_for_path(&model_file).unwrap();
-    info!("Analyse");
-    trace!("Model:\n{:#?}", model);
-    model.analyse(false).unwrap();
-    info!("Incorporate");
-    let model = model.incorporate().unwrap();
-    info!("Test model (optim: {:?}) {:#?}", optim, path);
-    if optim {
-        info!("Check full inference");
-        if model.missing_type_shape().unwrap().len() != 0 {
-            panic!("Incomplete inference {:?}", model.missing_type_shape());
+    for d in fs::read_dir(&path).unwrap() {
+        let mut model = onnx.model_for_path(&model_file).unwrap();
+        let d = d.unwrap();
+        if d.metadata().unwrap().is_dir()
+            && d.file_name().to_str().unwrap().starts_with("test_data_set_")
+        {
+            let data_path = d.path();
+            let mut inputs = load_half_dataset("input", &data_path);
+            for setup in more {
+                if setup.starts_with("input:") {
+                    let input = setup.split(":").nth(1).unwrap();
+                    let mut actual_input = None;
+                    let input_outlets = model.input_outlets().unwrap().to_vec();
+                    for (ix, outlet) in input_outlets.iter().enumerate() {
+                        if model.node_name(outlet.node) == input {
+                            actual_input = Some((outlet, inputs[ix].clone()));
+                        } else {
+                            model.node_mut(outlet.node).op =
+                                Box::new(tract_core::ops::konst::Const::new(
+                                    inputs[ix].clone().into_arc_tensor(),
+                                ));
+                        }
+                    }
+                    let (outlet, value) = actual_input.unwrap_or_else(|| {
+                        panic!(
+                            "specified input: {}, input names: {:?}",
+                            setup,
+                            model
+                                .input_outlets()
+                                .unwrap()
+                                .iter()
+                                .map(|n| model.node_name(n.node)).collect::<Vec<_>>()
+                        )
+                    });
+                    model.set_input_outlets(&[*outlet]).unwrap();
+                    inputs = tvec!(value);
+                }
+            }
+            info!("Analyse");
+            trace!("Model:\n{:#?}", model);
+            model.analyse(false).unwrap();
+            info!("Incorporate");
+            let model = model.incorporate().unwrap();
+            info!("Test model (optim: {:?}) {:#?}", optim, path);
+            if optim {
+                info!("Check full inference");
+                if model.missing_type_shape().unwrap().len() != 0 {
+                    panic!("Incomplete inference {:?}", model.missing_type_shape());
+                }
+                info!("Into type");
+                let model = model.into_typed().unwrap();
+                let optimized = model.into_optimized().unwrap();
+                trace!("Run optimized model:\n{:#?}", optimized);
+                run_model(optimized, inputs, &data_path)
+            } else {
+                trace!("Run analysed model:\n{:#?}", model);
+                run_model(model, inputs, &data_path)
+            };
         }
-        info!("Into type");
-        let model = model.into_typed().unwrap();
-        let optimized = model.into_optimized().unwrap();
-        trace!("Run optimized model:\n{:#?}", optimized);
-        run_model(optimized, &path)
-    } else {
-        trace!("Run analysed model:\n{:#?}", model);
-        run_model(model, &path)
-    };
+    }
 }
 
-fn run_model<TI, O>(model: ModelImpl<TI, O>, path: &path::Path)
+fn run_model<TI, O>(model: ModelImpl<TI, O>, inputs: TVec<Tensor>, data_path: &path::Path)
 where
     TI: Fact + Clone + 'static,
     O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let plan = SimplePlan::new(&model).unwrap();
-    for d in fs::read_dir(path).unwrap() {
-        let d = d.unwrap();
-        if d.metadata().unwrap().is_dir()
-            && d.file_name().to_str().unwrap().starts_with("test_data_set_")
-        {
-            let (inputs, expected) = load_dataset(&d.path());
-            trace!("Loaded inputs: {:?}", inputs);
-            trace!("Loaded output asserts: {:?}", expected);
-            let computed = plan.run(inputs).unwrap();
-            if computed.len() != expected.len() {
-                panic!(
-                    "For {:?}, different number of results: got:{} expected:{}",
-                    d.file_name(),
-                    computed.len(),
-                    expected.len()
-                );
-            }
-            for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
-                use tract_core::error_chain::ChainedError;
-                //                println!("computed: {:?}", computed[ix].dump(true));
-                //                println!("expected: {:?}", expected[ix].dump(true));
-                if let Err(e) = a.close_enough(b, true) {
-                    panic!(
-                        "For {:?}, different result for output #{}:\ngot:\n{:?}\nexpected:\n{:?}\n{}",
-                        d.file_name(),
-                        ix,
-                        a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
-                        b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
-                        e.display_chain()
-                    )
-                }
-            }
+    let expected = load_half_dataset("output", data_path);
+    trace!("Loaded output asserts: {:?}", expected);
+    let computed = plan.run(inputs).unwrap();
+    if computed.len() != expected.len() {
+        panic!(
+            "For {:?}, different number of results: got:{} expected:{}",
+            data_path,
+            computed.len(),
+            expected.len()
+        );
+    }
+    for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
+        use tract_core::error_chain::ChainedError;
+        //                println!("computed: {:?}", computed[ix].dump(true));
+        //                println!("expected: {:?}", expected[ix].dump(true));
+        if let Err(e) = a.close_enough(b, true) {
+            panic!(
+                "For {:?}, different result for output #{}:\ngot:\n{:?}\nexpected:\n{:?}\n{}",
+                data_path,
+                ix,
+                a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
+                b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
+                e.display_chain()
+            )
         }
     }
 }

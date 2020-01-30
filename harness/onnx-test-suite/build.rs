@@ -55,14 +55,14 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     let working_list_file =
         path::PathBuf::from(".").join(format!("{}-{}.txt", tests_set, onnx_tag));
     println!("cargo:rerun-if-changed={}", working_list_file.to_str().unwrap());
-    let working_list: Vec<(String, bool)> = fs::read_to_string(&working_list_file)
+    let working_list: Vec<(String, Vec<String>)> = fs::read_to_string(&working_list_file)
         .unwrap()
         .split("\n")
         .map(|s| s.to_string())
         .filter(|s| s.trim().len() > 1 && s.trim().as_bytes()[0] != b'#')
         .map(|s| {
-            let splits = s.split_whitespace().collect::<Vec<_>>();
-            (splits[0].to_string(), splits.len() == 1)
+            let mut splits = s.split_whitespace();
+            (splits.next().unwrap().to_string(), splits.map(|s| s.to_string()).collect())
         })
         .collect();
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -86,12 +86,21 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
         for t in &tests {
             writeln!(rs, "#[test]").unwrap();
             let pair = working_list.iter().find(|pair| &*pair.0 == &*t);
-            let run = pair.is_some() && (pair.unwrap().1 || !optim);
-            if !run {
+            let run = pair.is_some();
+            if !run || (*optim && pair.as_ref().unwrap().1.contains(&"dynsize".to_string())) {
                 writeln!(rs, "#[ignore]").unwrap();
             }
+            let more = pair.map(|p| &*p.1).unwrap_or(&[]);
             writeln!(rs, "fn {}() {{", t).unwrap();
-            writeln!(rs, "crate::onnx::run_one({:?}, {:?}, {:?})", node_tests, t, optim).unwrap();
+            writeln!(
+                rs,
+                "crate::onnx::run_one({:?}, {:?}, {:?}, &{:?})",
+                node_tests,
+                t,
+                optim,
+                more
+            )
+            .unwrap();
             writeln!(rs, "}}").unwrap();
         }
         writeln!(rs, "}}").unwrap();

@@ -53,9 +53,15 @@ impl InferenceRulesOp for MultiBroadcastTo {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(ref shape) = source.outlet_fact(node.inputs[1])?.value.concretize() {
+        if let (Some(input_shape), Some(shape)) = (
+            source.outlet_fact(node.inputs[0])?.shape.concretize(),
+            source.outlet_fact(node.inputs[1])?.value.concretize(),
+        ) {
             let shape = shape.cast_to::<TDim>()?;
-            let op = TypedMultiBroadcastTo::new(shape.as_slice::<TDim>()?.into());
+            let shape = shape.as_slice::<TDim>()?;
+            let dims = crate::broadcast::multi_broadcast(&[&*input_shape, shape])
+                .ok_or("incompatible shapes")?;
+            let op = TypedMultiBroadcastTo::new(dims.into());
             return target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref());
         }
         bail!("shape input is variable")
@@ -98,6 +104,8 @@ impl TypedOp for TypedMultiBroadcastTo {
 
 fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<Arc<Tensor>>> {
     let input = input.to_array_view::<T>()?;
+    dbg!(&input, &shape);
     let output = input.broadcast(&*shape).ok_or("incompatible shapes")?;
+    dbg!(&output);
     Ok(tvec![output.to_owned().into_arc_tensor()])
 }

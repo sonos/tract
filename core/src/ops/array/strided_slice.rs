@@ -255,7 +255,8 @@ impl InferenceRulesOp for StridedSlice {
                 let casted_end = params[1].cast_to::<TDim>()?;
                 let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
                 let strides = if let Some(i) = self.optional_steps_input {
-                    params[i - 1].as_slice::<i32>()?.iter().cloned().collect()
+                    let t = params[i - 1].cast_to::<i32>()?;
+                    t.as_slice::<i32>()?.iter().cloned().collect()
                 } else {
                     vec![1; input_shape.len()]
                 };

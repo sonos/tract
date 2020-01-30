@@ -48,8 +48,8 @@ test_averagepool_2d_strides
 test_averagepool_3d_default
 test_basic_conv_with_padding
 test_basic_conv_without_padding
-test_batchnorm_epsilon                                                              dynsize
-test_batchnorm_example                                                              dynsize
+test_batchnorm_epsilon                                                              input:x
+test_batchnorm_example                                                              input:x
 test_cast_DOUBLE_to_FLOAT
 test_cast_DOUBLE_to_FLOAT
 test_cast_DOUBLE_to_FLOAT16
@@ -74,9 +74,9 @@ test_clip_example
 test_clip_inbounds
 test_clip_outbounds
 test_clip_splitbounds
-test_compress_0 dynsize
-test_compress_1 dynsize
-test_compress_default_axis dynsize
+test_compress_0                                                                     dynsize
+test_compress_1                                                                     dynsize
+test_compress_default_axis                                                          dynsize
 test_concat_1d_axis_0
 test_concat_2d_axis_0
 test_concat_2d_axis_1
@@ -99,7 +99,7 @@ test_cos
 test_cos_example
 test_cosh
 test_cosh_example
-test_dequantizelinear                                                               dynsize
+test_dequantizelinear                                                               input:x
 test_div
 test_div_bcast
 test_div_example
@@ -114,8 +114,8 @@ test_equal_bcast
 test_erf
 test_exp
 test_exp_example
-test_expand_dim_changed                                                             dynsize
-test_expand_dim_unchanged                                                           dynsize
+test_expand_dim_changed                                                             input:data
+test_expand_dim_unchanged                                                           input:data
 test_eyelike_populate_off_main_diagonal
 test_eyelike_with_dtype
 test_eyelike_without_dtype
@@ -174,7 +174,7 @@ test_lrn_default
 test_matmul_2d
 test_matmul_3d
 test_matmul_4d
-test_matmulinteger                                                              dynsize
+test_matmulinteger                                                                  dynsize
 test_max_example
 test_max_one_input
 test_max_two_inputs
@@ -220,7 +220,7 @@ test_prelu_example
 test_qlinearconv                                                                    dynsize
 test_qlinearmatmul_2D                                                               dynsize
 test_qlinearmatmul_3D                                                               dynsize
-test_quantizelinear                                                                 dynsize
+test_quantizelinear                                                                 input:x
 test_reciprocal
 test_reciprocal_example
 test_reduce_l1_default_axes_keepdims_example
@@ -283,11 +283,11 @@ test_reduce_sum_square_keepdims_example
 test_reduce_sum_square_keepdims_random
 test_reflect_pad
 test_relu
-test_reshape_extended_dims                                                          dynsize
-test_reshape_negative_dim                                                           dynsize
-test_reshape_one_dim                                                                dynsize
-test_reshape_reduced_dims                                                           dynsize
-test_reshape_reordered_dims                                                         dynsize
+test_reshape_extended_dims                                                          input:data
+test_reshape_negative_dim                                                           input:data
+test_reshape_one_dim                                                                input:data
+test_reshape_reduced_dims                                                           input:data
+test_reshape_reordered_dims                                                         input:data
 test_rnn_seq_length
 test_scan9_sum
 test_selu
@@ -309,13 +309,13 @@ test_sinh
 test_sinh_example
 test_size
 test_size_example
-test_slice                                                                          dynsize
-test_slice_default_axes                                                             dynsize
-test_slice_default_steps                                                            dynsize
-test_slice_end_out_of_bounds                                                        dynsize
-test_slice_neg                                                                      dynsize
-test_slice_neg_steps                                                                dynsize
-test_slice_start_out_of_bounds                                                      dynsize
+test_slice                                                                          input:x
+test_slice_default_axes                                                             input:x 
+test_slice_default_steps                                                            input:x 
+# test_slice_end_out_of_bounds                                                        input:x 
+# test_slice_neg                                                                      input:x 
+# test_slice_neg_steps                                                                input:x 
+# test_slice_start_out_of_bounds                                                      input:x 
 test_softmax_axis_0
 test_softmax_axis_1
 test_softmax_axis_2
@@ -352,8 +352,8 @@ test_tanh_example
 test_thresholdedrelu
 test_thresholdedrelu_default
 test_thresholdedrelu_example
-test_tile                                                                           dynsize
-test_tile_precomputed                                                               dynsize
+test_tile                                                                           input:x
+test_tile_precomputed                                                               input:x
 test_transpose_all_permutations_0
 test_transpose_all_permutations_1
 test_transpose_all_permutations_2
