@@ -45,9 +45,8 @@ impl Op for PermuteAxes {
         Ok(vec![format!("{:?}", self.axes)])
     }
 
-    canonic!();
-    op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_typed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for PermuteAxes {
@@ -73,107 +72,25 @@ impl InferenceRulesOp for PermuteAxes {
         })
     }
 
-    inference_op_as_op!();
-    to_typed!();
-}
-
-impl TypedOp for PermuteAxes {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
-            self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),
-        )?))
-    }
-
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let permutation = if let Some(axes) = self.axes.clone() {
-            axes
-        } else {
-            (0..model.outlet_fact(node.inputs[0])?.shape.rank()).rev().collect()
-        };
-        let mut infos = tvec!();
-        for (from, to) in permutation.iter().enumerate() {
-            infos.push(AxisInfo {
-                inputs: tvec!(Some(from)),
-                outputs: tvec!(Some(*to)),
-                period: 1,
-                disposable: true,
-            })
-        }
-        Ok(infos.into())
-    }
-
-    fn change_axes(
+    #[allow(unused_variables)]
+    fn to_typed(
         &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        io: InOut,
-        change: &AxisOp,
-    ) -> TractResult<Option<AxisChangeConsequence>> {
-        match change {
-            AxisOp::Add(_axis) => Ok(None), // TODO
-            AxisOp::Permute(_axes) => Ok(None), // TODO
-            AxisOp::Rm(axis) => {
-                let permutation = if let Some(axes) = self.axes.clone() {
-                    axes
-                } else {
-                    (0..model.outlet_fact(node.inputs[0])?.shape.rank()).rev().collect()
-                };
-                let input_axis = match io {
-                    InOut::In(_) => *axis,
-                    InOut::Out(_) => permutation.iter().position(|ix| axis == ix).unwrap(),
-                };
-                let output_axis = permutation[input_axis];
-                let new_permutation = permutation
-                    .into_iter()
-                    .filter(|&src| *axis != src)
-                    .map(|dst| dst - (dst >= output_axis) as usize)
-                    .collect();
-                Ok(Some(AxisChangeConsequence {
-                    substitute_op: Some(Box::new(PermuteAxes::new(Some(new_permutation)))),
-                    wire_changes: tvec!(
-                        (InOut::In(0), AxisOp::Rm(input_axis)),
-                        (InOut::Out(0), AxisOp::Rm(output_axis))
-                    ),
-                }))
-            }
-        }
-    }
-
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
         if let Some(axes) = &self.axes {
-            fact.axis = axes.iter().position(|x| x == &fact.axis).ok_or_else(|| {
-                format!("Could not find streaming axis {} if permute axes {:?}", fact.axis, axes)
-            })?;
-            fact.shape = axes.iter().map(|idx| fact.shape[*idx]).collect();
-        }
-        target.wire_node(&*node.name, self.clone(), &[input])
-    }
-
-    typed_op_as_op!();
-}
-
-impl PulsedOp for PermuteAxes {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.axis = if let Some(axes) = &self.axes {
-            axes[fact.axis]
+            let op = AxisOp::Permute(axes.iter().cloned().collect());
+            target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
+        } else if let Some(rank) = source.outlet_fact(node.inputs[0])?.shape.rank().concretize() {
+            let axes = (0..rank as usize).rev().collect();
+            let op = AxisOp::Permute(axes);
+            target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
         } else {
-            fact.shape.len() - 1 - fact.axis
-        };
-        fact.shape = self.compute_shape(&*inputs[0].shape);
-        Ok(tvec!(fact))
+            bail!("Can not typed: no known input rank, and no permutation specified")
+        }
     }
 
-    pulsed_op_as_op!();
-    pulsed_op_to_typed_op!();
+    inference_op_as_op!();
 }
