@@ -96,6 +96,18 @@ impl TypedOp for TypedSource {
         Ok(tvec!(self.fact.clone()))
     }
 
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        let mut fact = self.fact.clone();
+        change.change_shape(&mut fact.shape)?;
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(TypedSource::new(fact))), change)))
+    }
+
     fn pulsify(
         &self,
         _source: &NormalizedModel,
