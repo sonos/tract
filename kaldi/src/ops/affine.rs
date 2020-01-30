@@ -40,33 +40,12 @@ impl Affine {
     fn as_conv(&self) -> tract_core::ops::cnn::Conv {
         use tract_core::ops::cnn::*;
         use tract_core::ops::nn::*;
-        let conv = Conv::default()
-            .nhwc()
+        Conv::default()
+            .hwc()
             .hwio()
             .bias_input(2)
             .dilations(tvec!(self.dilation))
-            .kernel_shape(tvec!(self.kernel_len));
-        trace!("{:?} -> {:?}", self, conv);
-        conv
-    }
-
-    fn eval_t<T: Datum + num_traits::One + ndarray::LinalgScalar>(
-        &self,
-        input: Tensor,
-    ) -> TractResult<Tensor> {
-        let array = input.into_array::<T>()?;
-        let array = array.insert_axis(ndarray::Axis(0));
-        let res = self
-            .as_conv()
-            .eval(tvec!(
-                array.into_arc_tensor(),
-                Arc::clone(&self.linear_params),
-                Arc::clone(&self.bias_params)
-            ))?
-            .remove(0);
-        let res = res.into_tensor().into_array::<T>()?;
-        let res = res.index_axis_move(ndarray::Axis(0), 0);
-        Ok(res.into_tensor())
+            .kernel_shape(tvec!(self.kernel_len))
     }
 }
 
@@ -75,15 +54,34 @@ impl Op for Affine {
         "kaldi.Affine".into()
     }
 
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        let mut patch = InferenceModelPatch::default();
+
+        let input = patch.tap_model(model, node.inputs[0])?;
+        let lin = patch.add_const(format!("{}-Linear", node.name), self.linear_params.clone())?;
+        let bias = patch.add_const(format!("{}-Bias", node.name), self.bias_params.clone())?;
+
+        let wire = patch.wire_node(
+            format!("{}-Conv", node.name),
+            self.as_conv(),
+            [input, lin.into(), bias.into()].as_ref(),
+        )?[0];
+        patch.shunt_outside(node.id.into(), wire)?;
+        Ok(Some(patch))
+    }
+
     not_a_typed_op!();
 }
 
 impl StatelessOp for Affine {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        let output =
-            dispatch_numbers!(Self::eval_t(input.datum_type())(self, input.into_tensor()))?;
-        Ok(tvec!(output.into_arc_tensor()))
+        inputs.push(Arc::clone(&self.linear_params));
+        inputs.push(Arc::clone(&self.bias_params));
+        self.as_conv().eval(inputs)
     }
 }
 
@@ -112,34 +110,4 @@ impl InferenceRulesOp for Affine {
     }
 
     inference_op_as_op!();
-
-    fn to_typed(
-        &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-
-        let add_dim = target.wire_node(
-            format!("{}-AddBatchDim", node.name),
-            tract_core::ops::array::AddDim::new(0),
-            [input].as_ref(),
-        )?;
-
-        let lin = target.add_const(format!("{}-Linear", node.name), self.linear_params.clone())?;
-        let bias = target.add_const(format!("{}-Bias", node.name), self.bias_params.clone())?;
-
-        let conv = target.wire_node(
-            format!("{}-Conv", node.name),
-            self.as_conv(),
-            [add_dim[0], lin.into(), bias.into()].as_ref(),
-        )?;
-
-        let rm_dim =
-            target.wire_node(&*node.name, tract_core::ops::array::RmDim::new(0), &*conv)?;
-
-        Ok(rm_dim)
-    }
 }

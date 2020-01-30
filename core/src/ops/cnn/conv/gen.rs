@@ -34,6 +34,10 @@ pub struct Conv {
 }
 
 impl Conv {
+    pub fn hwc(self) -> Conv {
+        Conv { data_format: DataFormat::HWC, ..self }
+    }
+
     pub fn nhwc(self) -> Conv {
         Conv { data_format: DataFormat::NHWC, ..self }
     }
@@ -188,7 +192,7 @@ impl Op for Conv {
         Validation::Rounding
     }
 
-    op_as_typed_op!();
+    not_a_typed_op!();
     not_a_pulsed_op!();
 }
 
@@ -265,9 +269,27 @@ impl InferenceRulesOp for Conv {
     }
 
     inference_op_as_op!();
-    to_typed!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let inputs: TVec<OutletId> = node.inputs.iter().map(|t| mapping[t]).collect();
+        let unary = {
+            let facts: TVec<&TypedFact> =
+                inputs.iter().map(|t| target.outlet_fact(*t)).collect::<TractResult<_>>()?;
+            self.to_unary(&*facts)?.ok_or_else(|| {
+                format!("Can not make {} into a typed op. (inputs facts: {:?})", node, facts)
+            })?
+        };
+        target.wire_node(&*node.name, unary, &inputs[0..=0])
+    }
 }
 
+/*
 impl TypedOp for Conv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let k_input  = inputs[self.k_input.unwrap_or(1)];
@@ -303,6 +325,7 @@ impl TypedOp for Conv {
 
     typed_op_as_op!();
 }
+*/
 
 #[cfg(test)]
 mod test {
