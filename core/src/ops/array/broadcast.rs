@@ -104,8 +104,6 @@ impl TypedOp for TypedMultiBroadcastTo {
 
 fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<Arc<Tensor>>> {
     let input = input.to_array_view::<T>()?;
-    dbg!(&input, &shape);
     let output = input.broadcast(&*shape).ok_or("incompatible shapes")?;
-    dbg!(&output);
     Ok(tvec![output.to_owned().into_arc_tensor()])
 }

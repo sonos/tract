@@ -46,8 +46,9 @@ test_averagepool_2d_same_lower
 test_averagepool_2d_same_upper
 test_averagepool_2d_strides
 test_averagepool_3d_default
-test_basic_conv_with_padding
-test_basic_conv_without_padding
+test_basic_conv_with_padding                                                        input:x
+test_basic_conv_without_padding                                                     input:x
+test_basic_convinteger                                                              input:x
 test_batchnorm_epsilon                                                              input:x
 test_batchnorm_example                                                              input:x
 test_cast_DOUBLE_to_FLOAT
@@ -90,11 +91,10 @@ test_constantlike_threes_with_shape_and_dtype
 test_constantlike_zeros_without_input_dtype
 test_constantofshape_float_ones                                                     dynsize
 test_constantofshape_int_zeros                                                      dynsize
-test_conv_with_strides_and_asymmetric_padding
-test_conv_with_strides_no_padding
-test_conv_with_strides_padding
-test_basic_convinteger
-test_convinteger_with_padding
+test_conv_with_strides_and_asymmetric_padding                                       input:x
+test_conv_with_strides_no_padding                                                   input:x
+test_conv_with_strides_padding                                                      input:x
+test_convinteger_with_padding                                                       input:x
 test_cos
 test_cos_example
 test_cosh
