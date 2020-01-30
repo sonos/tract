@@ -1,6 +1,7 @@
 use super::TypedPass;
 use crate::model::*;
 use crate::TractResult;
+use crate::internal::*;
 
 use crate::ops::change_axes::*;
 
@@ -18,7 +19,10 @@ impl TypedPass for ChangeAxes {
             }
         }
         for suggestion in suggestions.into_iter() {
-            if change_axes(model, &suggestion, true)?.is_some() {
+            if change_axes(model, &suggestion, true)
+                .chain_err(|| format!("Applying {:?}", suggestion))?
+                .is_some()
+            {
                 return Ok(true);
             }
         }

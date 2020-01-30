@@ -119,6 +119,12 @@ impl Op for AxisOp {
         }
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        match self {
+            AxisOp::Add(axis) | AxisOp::Rm(axis) => Ok(vec![format!("Axis: {}", axis)]),
+        }
+    }
+
     canonic!();
     op_as_typed_op!();
     op_as_pulsed_op!();
@@ -167,7 +173,8 @@ impl TypedOp for AxisOp {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        if (io == InOut::In(0) && change == self) || (io == InOut::Out(0) && change == &self.recip())
+        if (io == InOut::In(0) && change == self)
+            || (io == InOut::Out(0) && change == &self.recip())
         {
             return Ok(Some(AxisChangeConsequence {
                 substitute_op: Some(Box::new(crate::ops::identity::Identity)),
@@ -204,8 +211,7 @@ impl PulsedOp for AxisOp {
         let mut fact = inputs[0].clone();
         fact.shape = inputs[0].shape.clone();
         self.change_shape_array(&mut fact.shape);
-        fact.axis +=
-            self.transform_axis(fact.axis).ok_or("Invalid axis for pulsification")?;
+        fact.axis = self.transform_axis(fact.axis).ok_or("Invalid axis for pulsification")?;
         Ok(tvec!(fact))
     }
 
@@ -235,7 +241,10 @@ pub fn change_axes(
         }
         for (node_id, io) in nodes {
             let node = model.node(node_id);
-            let more = node.op.change_axes(model, node, io, &change.op)?;
+            let more = node
+                .op
+                .change_axes(model, node, io, &change.op)
+                .chain_err(|| format!("Propagating {:?} to node {}", change, node))?;
             if more.is_none() {
                 return Ok(None);
             }

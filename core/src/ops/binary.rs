@@ -279,7 +279,7 @@ pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
 
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
-        format!("{}Typed", self.0.name()).into()
+        format!("{}TypedBinOp", self.0.name()).into()
     }
 
     fn validation(&self) -> Validation {
@@ -307,6 +307,16 @@ impl TypedOp for TypedBinOp {
             ])
             .unwrap()
         )?))
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {

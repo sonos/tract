@@ -541,10 +541,17 @@ impl TypedOp for MatMulUnary {
                 Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
             }
             AxisOp::Rm(axis) => {
-                if b.rank() > *axis + 2 && self.a.rank() <= b.rank() {
-                    let op = if b.rank() - axis < self.a.rank() {
+                let bk_axis = b.rank() - 1 - (!self.b_trans as usize);
+                let bn_axis = b.rank() - 1 - (self.b_trans as usize);
+                if *axis == bk_axis {
+                    return Ok(None);
+                } else if *axis == bn_axis {
+                    Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+                } else if b.rank() > *axis + 2 && self.a.rank() <= b.rank() {
+                    let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
+                    let op = if axis_in_a >= 0 {
                         let mut a = self.a.clone().into_tensor();
-                        a.remove_axis(*axis)?;
+                        a.remove_axis(axis_in_a as usize)?;
                         Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _)
                     } else {
                         None

@@ -521,7 +521,7 @@ impl TypedOp for TypedScan {
                     .iter()
                     .position(|im| im.full_slot == Some(ix) || im.last_value_slot == Some(ix))
                     .unwrap();
-                self.body.input_outlets()?[output]
+                self.body.output_outlets()?[output]
             }
         };
         let mut body = self.body.clone();
@@ -540,30 +540,31 @@ impl TypedOp for TypedScan {
         for (ix, m) in self.input_mapping.iter().enumerate() {
             let input = self.body.input_outlets()?[ix];
             if let Some(change) = body_changed_wires.get(&input) {
-                let fixed_mapping = if let Some(slot) = m.slot() {
+                if let Some(slot) = m.slot() {
                     wire_changes.push((InOut::In(slot), change.clone()));
-                    match m {
-                        InputMapping::Full { .. } => m.clone(),
-                        InputMapping::Scan { axis, chunk, slot } => InputMapping::Scan {
-                            axis: change.transform_axis(*axis).ok_or("Invalid axis")?,
-                            slot: *slot,
-                            chunk: chunk.clone(),
-                        },
-                        InputMapping::State { initializer } => match initializer {
-                            StateInitializer::FromInput(fi) => InputMapping::State {
-                                initializer: StateInitializer::FromInput(*fi),
-                            },
-                            StateInitializer::Value(ref v) => {
-                                let mut v = v.clone().into_tensor();
-                                change.change_tensor(&mut v)?;
-                                InputMapping::State {
-                                    initializer: StateInitializer::Value(v.into_arc_tensor()),
-                                }
+                }
+                let fixed_mapping = match m {
+                    InputMapping::Full { .. } => m.clone(),
+                    InputMapping::Scan { axis, chunk, slot } => {
+                        let axis = if let Some(axis) = change.transform_axis(*axis) {
+                            axis
+                        } else {
+                            return Ok(None)
+                        };
+                        InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone(), }
+                    },
+                    InputMapping::State { initializer } => match initializer {
+                        StateInitializer::FromInput(fi) => {
+                            InputMapping::State { initializer: StateInitializer::FromInput(*fi) }
+                        }
+                        StateInitializer::Value(ref v) => {
+                            let mut v = v.clone().into_tensor();
+                            change.change_tensor(&mut v)?;
+                            InputMapping::State {
+                                initializer: StateInitializer::Value(v.into_arc_tensor()),
                             }
-                        },
-                    }
-                } else {
-                    m.clone()
+                        }
+                    },
                 };
                 input_mapping.push(fixed_mapping);
             }
@@ -577,9 +578,13 @@ impl TypedOp for TypedScan {
                 if let Some(slot) = m.last_value_slot {
                     wire_changes.push((InOut::Out(slot), change.clone()));
                 }
-                OutputMapping {
-                    axis: change.transform_axis(m.axis).ok_or("Invalid axis")?,
-                    ..m.clone()
+                if !m.state {
+                    OutputMapping {
+                        axis: change.transform_axis(m.axis).ok_or("Invalid axis")?,
+                        ..m.clone()
+                    }
+                } else {
+                    m.clone()
                 }
             } else {
                 m.clone()
