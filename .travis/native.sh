@@ -88,8 +88,8 @@ fi
      -i Sx20xf32 --pulse 8 cost -q \
      --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920"
 
-./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb \
-     -i Sx20xf32 --pulse 8 dump --op-name AddAxis | ifne false
+[ ! -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 --pass type dump --op-name AddAxis)" ]
+[ -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 dump --op-name AddAxis)" ]
 
 ( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 
