@@ -20,9 +20,7 @@ impl InOut {
 pub enum AxisOp {
     Add(usize),
     Rm(usize),
-    /*
     Permute(TVec<usize>),
-    */
 }
 
 impl AxisOp {
@@ -36,6 +34,7 @@ impl AxisOp {
                     Some(axis - (axis > *ix) as usize)
                 }
             }
+            AxisOp::Permute(perm) => perm.get(axis).cloned(),
         }
     }
 
@@ -47,6 +46,13 @@ impl AxisOp {
             AxisOp::Rm(other) => {
                 Ok(AxisOp::Rm(self.transform_axis(*other).ok_or("Invalid axis transformation")?))
             }
+            AxisOp::Permute(axes) => {
+                let axes = axes
+                    .iter()
+                    .map(|a| self.transform_axis(*a).ok_or("Invalid axis transformation".into()))
+                    .collect::<TractResult<_>>()?;
+                Ok(AxisOp::Permute(axes))
+            }
         }
     }
 
@@ -56,6 +62,13 @@ impl AxisOp {
             AxisOp::Rm(ix) => {
                 shape.remove(*ix);
             }
+            AxisOp::Permute(perm) => {
+                let mut new_shape: TVec<usize> = tvec!(0; shape.len());
+                for (ix, &d) in perm.iter().enumerate() {
+                    new_shape[d] = shape[ix];
+                }
+                shape.as_mut().copy_from_slice(&*new_shape);
+            }
         }
     }
 
@@ -63,13 +76,32 @@ impl AxisOp {
         match self {
             AxisOp::Add(ix) => shape.insert_axis(*ix),
             AxisOp::Rm(ix) => shape.remove_axis(*ix),
+            AxisOp::Permute(perm) => {
+                let mut new_shape = shape.clone();
+                let stream_info = new_shape.stream_info.clone();
+                for (ix, &to) in perm.iter().enumerate() {
+                    new_shape.set_dim(to, shape.dim(ix).to_integer().unwrap_or(1).to_dim())?;
+                }
+                if let Some(info) = stream_info {
+                    new_shape.set_dim(perm[info.axis], info.len)?;
+                }
+                Ok(())
+            }
         }
     }
 
     pub fn change_tensor(&self, tensor: &mut Tensor) -> TractResult<()> {
+        fn permute<T: Datum>(axes: &[usize], input: Tensor) -> TractResult<Tensor> {
+            Ok(input.into_array::<T>()?.permuted_axes(axes).into_tensor())
+        }
         match self {
             AxisOp::Add(ix) => tensor.insert_axis(*ix),
             AxisOp::Rm(ix) => tensor.remove_axis(*ix),
+            AxisOp::Permute(axes) => {
+                let mut tmp = dispatch_datum!(permute(tensor.datum_type())(axes, tensor.clone()))?;
+                std::mem::swap(tensor, &mut tmp);
+                Ok(())
+            }
         }
     }
 
@@ -77,6 +109,12 @@ impl AxisOp {
         match self {
             AxisOp::Add(ix) => AxisOp::Rm(*ix),
             AxisOp::Rm(ix) => AxisOp::Add(*ix),
+            AxisOp::Permute(axes) => {
+                let perm = (0..axes.len())
+                    .map(|axis| axes.iter().position(|i| axis == *i).unwrap())
+                    .collect();
+                AxisOp::Permute(perm)
+            }
         }
     }
 }
@@ -116,12 +154,14 @@ impl Op for AxisOp {
         match self {
             AxisOp::Add(_) => "AddAxis".into(),
             AxisOp::Rm(_) => "RmAxis".into(),
+            AxisOp::Permute(_) => "Permute".into(),
         }
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
         match self {
             AxisOp::Add(axis) | AxisOp::Rm(axis) => Ok(vec![format!("Axis: {}", axis)]),
+            AxisOp::Permute(axes) => Ok(vec![format!("Axes: {:?}", axes)]),
         }
     }
 

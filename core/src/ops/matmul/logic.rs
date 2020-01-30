@@ -526,6 +526,7 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let b = &model.outlet_fact(node.inputs[0])?;
         match change {
+            AxisOp::Permute(_axes) => Ok(None),
             AxisOp::Add(axis) => {
                 let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
                 if axis_in_a + 2 > self.a.rank() as isize {

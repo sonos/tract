@@ -586,6 +586,7 @@ impl TypedOp for UnaryOp {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let b = &model.outlet_fact(node.inputs[0])?;
         match change {
+            AxisOp::Permute(_axes) => Ok(None),
             AxisOp::Add(axis) => {
                 let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
                 let op = if axis_in_a > 0 {

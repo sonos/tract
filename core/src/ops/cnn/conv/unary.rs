@@ -547,6 +547,7 @@ impl TypedOp for ConvUnary {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         match change {
             AxisOp::Add(_) => Ok(None),
+            AxisOp::Permute(_axes) => Ok(None),
             AxisOp::Rm(axis) => {
                 let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
                 let shape = self.pool_spec.data_format.shape(full_input_shape);
