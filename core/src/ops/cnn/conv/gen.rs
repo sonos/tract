@@ -83,7 +83,13 @@ impl Conv {
     }
 
     pub fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[usize]) -> TVec<D> {
-        debug_assert_eq!(ishape.len(), kshape.len(), "Input and kernel should have the same rank");
+        debug_assert_eq!(
+            ishape.len()
+                + (self.data_format == DataFormat::HWC || self.data_format == DataFormat::CHW)
+                    as usize,
+            kshape.len(),
+            "Input and kernel ranks are inconsistent"
+        );
         let mut result: TVec<D> = ishape.into();
         let ishape = self.data_format.shape(ishape);
         let spatial_rank = ishape.hw_rank();
@@ -214,6 +220,7 @@ impl InferenceRulesOp for Conv {
         if inputs.len() < 2 {
             bail!("Wrong number of inputs. Expected 2 or more, got {}", inputs.len());
         }
+        let has_n = self.data_format == DataFormat::NHWC || self.data_format == DataFormat::NCHW;
         let k_input = &inputs[self.k_input.unwrap_or(1)];
         if let Some(kshape) = &self.kernel_shape {
             s.equals(&k_input.rank, kshape.len() as i32 + 2)?;
@@ -221,8 +228,8 @@ impl InferenceRulesOp for Conv {
                 s.equals(&k_input.shape[ix + self.kernel_fmt.h_axis()], TDim::from(*dim as i32))?;
             }
         }
-        s.equals(&inputs[0].rank, &k_input.rank)?;
-        s.equals(&outputs[0].rank, &k_input.rank)?;
+        s.equals(&inputs[0].rank, k_input.rank.bex() + (has_n as usize as i32 - 1))?;
+        s.equals(&outputs[0].rank, &inputs[0].rank)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &k_input.datum_type)?;
         if let Some(dt) = self.override_output_datum_type {
@@ -246,11 +253,12 @@ impl InferenceRulesOp for Conv {
             })?
         }
         s.given_2(&inputs[0].rank, &k_input.rank, move |s, irank, krank| {
-            let input_c = if self.data_format == DataFormat::NHWC {
-                &inputs[0].shape[irank as usize - 1]
-            } else {
-                &inputs[0].shape[1]
-            };
+            let input_c =
+                if self.data_format == DataFormat::NHWC || self.data_format == DataFormat::HWC {
+                    &inputs[0].shape[irank as usize - 1]
+                } else {
+                    &inputs[0].shape[1]
+                };
             let filter_i = match self.kernel_fmt {
                 KernelFormat::OIHW => &k_input.shape[1],
                 KernelFormat::HWIO => &k_input.shape[krank as usize - 2],
@@ -288,44 +296,6 @@ impl InferenceRulesOp for Conv {
         target.wire_node(&*node.name, unary, &inputs[0..=0])
     }
 }
-
-/*
-impl TypedOp for Conv {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let k_input  = inputs[self.k_input.unwrap_or(1)];
-        if k_input.shape.iter().all(|d| d.to_integer().is_ok()) {
-            let kshape: TVec<usize> =
-                k_input.shape.iter().map(|d| d.to_integer().unwrap() as _).collect();
-            let oshape = self.output_shape(&*inputs[0].shape.to_tvec(), &*kshape);
-            Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*oshape)?))
-        } else {
-            bail!("Streaming on kernel is not typeable")
-        }
-    }
-
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let unary =
-            self.to_unary(&*inputs)?.ok_or_else(|| format!("Can not unarize conv: {:?}", self))?;
-        unary.cost(&[inputs[0]])
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        if let Some(op) = self.to_unary(&*inputs)? {
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-        } else {
-            Ok(None)
-        }
-    }
-
-
-    typed_op_as_op!();
-}
-*/
 
 #[cfg(test)]
 mod test {
