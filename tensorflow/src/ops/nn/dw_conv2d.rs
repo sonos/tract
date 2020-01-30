@@ -44,7 +44,7 @@ impl Op for DepthwiseConv2d {
         "tf.DepthwiseConv2dNative".into()
     }
 
-    not_a_typed_op!(); // FIXME translate to core as to_fixed instead of declutter, get rid of typed op impl
+    not_a_typed_op!();
 }
 
 impl StatelessOp for DepthwiseConv2d {
@@ -110,7 +110,10 @@ impl InferenceRulesOp for DepthwiseConv2d {
         } else {
             bail!("Do not expect streaming on kernel dims");
         };
-        let conv = self.to_core(&*input_shape, kernel_shape)?;
+        let conv = self
+            .to_core(&*input_shape, kernel_shape)?
+            .to_unary(&[input, kernel])?
+            .ok_or("Failed to translate")?;
         target.wire_node(
             &*node.name,
             conv,
