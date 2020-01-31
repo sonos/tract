@@ -53,18 +53,18 @@ impl AxisOp {
         }
     }
 
-    pub fn change_shape_array(&self, shape: &mut TVec<usize>) {
+    pub fn change_shape_array<T: Clone + Default + num_traits::One>(&self, shape: &mut TVec<T>) {
         match self {
-            AxisOp::Add(ix) => shape.insert(*ix, 1),
+            AxisOp::Add(ix) => shape.insert(*ix, num_traits::One::one()),
             AxisOp::Rm(ix) => {
                 shape.remove(*ix);
             }
             AxisOp::Permute(perm) => {
-                let mut new_shape: TVec<usize> = tvec!(0; shape.len());
+                let mut new_shape: TVec<T> = tvec!(T::default(); shape.len());
                 for (ix, &from) in perm.iter().enumerate() {
-                    new_shape[ix] = shape[from];
+                    new_shape[ix] = shape[from].clone();
                 }
-                shape.as_mut().copy_from_slice(&*new_shape);
+                shape.as_mut().clone_from_slice(&*new_shape);
             }
         }
     }
@@ -79,10 +79,7 @@ impl AxisOp {
                     shape.set_dim(ix, orig.dim(from).to_integer().unwrap_or(1).to_dim())?;
                 }
                 if let Some(info) = orig.stream_info {
-                    shape.set_dim(
-                        perm.iter().position(|&i| i == info.axis).unwrap(),
-                        info.len,
-                    )?;
+                    shape.set_dim(perm.iter().position(|&i| i == info.axis).unwrap(), info.len)?;
                 }
                 Ok(())
             }
@@ -267,24 +264,25 @@ pub fn change_axes(
     let mut changed_wires = HashMap::new();
     changed_wires.insert(change.outlet, change.op.clone());
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
-    while let Some(change) = todo_changes.pop() {
+    while let Some(c) = todo_changes.pop() {
         if lock_interfaces
-            && (model.output_outlets()?.contains(&change.outlet)
-                || model.input_outlets()?.contains(&change.outlet))
+            && (model.output_outlets()?.contains(&c.outlet)
+                || model.input_outlets()?.contains(&c.outlet))
         {
             return Ok(None);
         }
-        let mut nodes = vec![(change.outlet.node, InOut::Out(change.outlet.slot))];
-        for inlet in model.outlet_successors(change.outlet) {
+        let mut nodes = vec![(c.outlet.node, InOut::Out(c.outlet.slot))];
+        for inlet in model.outlet_successors(c.outlet) {
             nodes.push((inlet.node, InOut::In(inlet.slot)));
         }
         for (node_id, io) in nodes {
             let node = model.node(node_id);
             let more = node
                 .op
-                .change_axes(model, node, io, &change.op)
+                .change_axes(model, node, io, &c.op)
                 .chain_err(|| format!("Propagating {:?} to node {}", change, node))?;
             if more.is_none() {
+                debug!("Propagation of {:?} blocked by {}", change, node);
                 return Ok(None);
             }
             let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
