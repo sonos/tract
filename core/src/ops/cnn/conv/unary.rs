@@ -545,81 +545,103 @@ impl TypedOp for ConvUnary {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        match change {
-            AxisOp::Add(_) => Ok(None),
-            AxisOp::Permute(_axes) => Ok(None),
-            AxisOp::Rm(axis) => {
-                let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
-                let shape = self.pool_spec.data_format.shape(full_input_shape);
-                if Some(*axis) == shape.n_axis() {
-                    let op =
-                        ConvUnary { pool_spec: self.pool_spec.dispose_n_axis(), ..self.clone() };
-                    return Ok(Some(AxisChangeConsequence {
-                        substitute_op: Some(Box::new(op)),
-                        wire_changes: tvec!(
-                            (InOut::In(0), change.clone()),
-                            (InOut::Out(0), change.clone())
-                        ),
-                    }));
-                }
-                if *axis == shape.c_axis() {
-                    return Ok(None)
-                }
-                let geo_axis = axis - shape.h_axis();
-                if geo_axis >= shape.hw_rank() {
-                    return Ok(None)
-                }
-                let kernel_spatial_shape =
-                    &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-                if self.pool_spec.dilation(geo_axis) != 1
-                    || self.pool_spec.stride(geo_axis) != 1
-                    || (!self.pool_spec.padding.valid_dim(geo_axis)
-                        && kernel_spatial_shape[geo_axis] != 1)
-                {
-                    return Ok(None)
-                }
-                if kernel_spatial_shape[geo_axis] != 1 {
-                    return Ok(None)
-                }
-                fn copy_rm_nth<D: DimLike>(input: &[D], nth: usize) -> TVec<D> {
-                    input
-                        .iter()
-                        .enumerate()
-                        .filter(|&(ax, _)| ax != nth)
-                        .map(|(_, d)| d.clone())
-                        .collect()
-                }
-                let kernel_shape: TVec<usize> =
-                    copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
-                let kernel = unsafe { self.kernel.as_ref().clone().into_shape(&kernel_shape)? };
-                let new_op = ConvUnary {
-                    pool_spec: PoolSpec {
-                        data_format: self.pool_spec.data_format,
-                        padding: self.pool_spec.padding.rm_axis(geo_axis),
-                        dilations: self
-                            .pool_spec
-                            .dilations
-                            .as_ref()
-                            .map(|d| copy_rm_nth(&d, geo_axis)),
-                        kernel_shape: copy_rm_nth(&self.pool_spec.kernel_shape, geo_axis),
-                        strides: self.pool_spec.strides.as_ref().map(|s| copy_rm_nth(&s, geo_axis)),
-                        output_channel_override: self.pool_spec.output_channel_override,
-                    },
-                    kernel_fmt: self.kernel_fmt,
-                    kernel: kernel.into_arc_tensor(),
-                    group: self.group,
-                    bias: self.bias.clone(),
-                    q_params: self.q_params.clone(),
-                };
-                return Ok(Some(AxisChangeConsequence {
-                    substitute_op: Some(Box::new(new_op)),
-                    wire_changes: tvec!(
-                        (InOut::In(0), change.clone()),
-                        (InOut::Out(0), change.clone())
-                    ),
-                }));
+        let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
+        let shape = self.pool_spec.data_format.shape(full_input_shape.clone());
+        // remove n
+        if let Some(n) = shape.n_axis() {
+            assert_eq!(n, 0);
+            if change == &AxisOp::Rm(n) {
+                let op = ConvUnary { pool_spec: self.pool_spec.dispose_n_axis(), ..self.clone() };
+                return Ok(Some(AxisChangeConsequence::new(
+                    model,
+                    node,
+                    Some(Box::new(op)),
+                    change,
+                )));
+            }
+            if change.transform_axis(n).unwrap() > 0 {
+                return Ok(None);
             }
         }
+        let mut new_full_input_shape = full_input_shape.clone();
+        change.change_shape_array(&mut new_full_input_shape);
+        let new_c_axis = if let Some(axis) = change.transform_axis(shape.c_axis()) {
+            axis
+        } else {
+            return Ok(None);
+        };
+        let new_data_format = if shape.n_axis().is_some() {
+            if new_c_axis == 1 {
+                DataFormat::NCHW
+            } else if new_c_axis == new_full_input_shape.len() - 1 {
+                DataFormat::NHWC
+            } else {
+                return Ok(None);
+            }
+        } else {
+            if new_c_axis == 0 {
+                DataFormat::CHW
+            } else if new_c_axis == new_full_input_shape.len() - 1 {
+                DataFormat::HWC
+            } else {
+                return Ok(None);
+            }
+        };
+        // geo axes
+        let new_shape = new_data_format.shape(new_full_input_shape);
+        let mut dilations = tvec!(1; new_shape.hw_rank());
+        let mut strides = tvec!(1; new_shape.hw_rank());
+        let mut new_kernel_spatial_shape = tvec!(1; new_shape.hw_rank());
+        let mut kernel_perm = (0..self.kernel.shape().len()).collect::<TVec<_>>();
+        let old_kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        for old_geo_axis in 0..shape.hw_rank() {
+            let old_axis = old_geo_axis + shape.h_axis();
+            if let Some(new_axis) = change.transform_axis(old_axis) {
+                let new_geo_axis = new_axis - new_shape.h_axis();
+                dilations[new_geo_axis] =
+                    self.pool_spec.dilations.as_ref().map(|dils| dils[old_geo_axis]).unwrap_or(1);
+                strides[new_geo_axis] =
+                    self.pool_spec.strides.as_ref().map(|st| st[old_geo_axis]).unwrap_or(1);
+                new_kernel_spatial_shape[new_geo_axis] = old_kernel_spatial_shape[old_geo_axis];
+                kernel_perm[new_geo_axis + self.kernel_fmt.h_axis()] =
+                    old_geo_axis + self.kernel_fmt.h_axis();
+            } else {
+                // don't remove non trivial axis
+                if self.pool_spec.dilation(old_geo_axis) != 1
+                    || self.pool_spec.stride(old_geo_axis) != 1
+                    || (!self.pool_spec.padding.valid_dim(old_geo_axis)
+                        && old_kernel_spatial_shape[old_geo_axis] != 1)
+                {
+                    return Ok(None);
+                }
+            }
+        }
+        let mut kernel = self.kernel.clone().into_tensor();
+        match change {
+            AxisOp::Rm(axis) => kernel.remove_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?,
+            AxisOp::Add(axis) => kernel.insert_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?,
+            AxisOp::Permute(_) => AxisOp::Permute(kernel_perm).change_tensor(&mut kernel)?,
+        };
+        let new_op = ConvUnary {
+            pool_spec: PoolSpec {
+                data_format: new_data_format,
+                padding: self.pool_spec.padding.clone(), // fixme (explicit padding)
+                dilations: Some(dilations),
+                kernel_shape: new_kernel_spatial_shape,
+                strides: Some(strides),
+                output_channel_override: self.pool_spec.output_channel_override,
+            },
+            kernel_fmt: self.kernel_fmt,
+            kernel: kernel.into_arc_tensor(),
+            group: self.group,
+            bias: self.bias.clone(),
+            q_params: self.q_params.clone(),
+        };
+        return Ok(Some(AxisChangeConsequence {
+            substitute_op: Some(Box::new(new_op)),
+            wire_changes: tvec!((InOut::In(0), change.clone()), (InOut::Out(0), change.clone())),
+        }));
     }
 
     fn pulsify(
