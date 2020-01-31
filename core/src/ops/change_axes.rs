@@ -47,10 +47,7 @@ impl AxisOp {
                 Ok(AxisOp::Rm(self.transform_axis(*other).ok_or("Invalid axis transformation")?))
             }
             AxisOp::Permute(axes) => {
-                let axes = axes
-                    .iter()
-                    .map(|a| self.transform_axis(*a).ok_or("Invalid axis transformation".into()))
-                    .collect::<TractResult<_>>()?;
+                let axes = axes.iter().flat_map(|a| self.transform_axis(*a)).collect();
                 Ok(AxisOp::Permute(axes))
             }
         }
@@ -64,8 +61,8 @@ impl AxisOp {
             }
             AxisOp::Permute(perm) => {
                 let mut new_shape: TVec<usize> = tvec!(0; shape.len());
-                for (ix, &d) in perm.iter().enumerate() {
-                    new_shape[d] = shape[ix];
+                for (ix, &from) in perm.iter().enumerate() {
+                    new_shape[ix] = shape[from];
                 }
                 shape.as_mut().copy_from_slice(&*new_shape);
             }
@@ -77,13 +74,15 @@ impl AxisOp {
             AxisOp::Add(ix) => shape.insert_axis(*ix),
             AxisOp::Rm(ix) => shape.remove_axis(*ix),
             AxisOp::Permute(perm) => {
-                let mut new_shape = shape.clone();
-                let stream_info = new_shape.stream_info.clone();
-                for (ix, &to) in perm.iter().enumerate() {
-                    new_shape.set_dim(to, shape.dim(ix).to_integer().unwrap_or(1).to_dim())?;
+                let orig = shape.clone();
+                for (ix, &from) in perm.iter().enumerate() {
+                    shape.set_dim(ix, orig.dim(from).to_integer().unwrap_or(1).to_dim())?;
                 }
-                if let Some(info) = stream_info {
-                    new_shape.set_dim(perm[info.axis], info.len)?;
+                if let Some(info) = orig.stream_info {
+                    shape.set_dim(
+                        perm.iter().position(|&i| i == info.axis).unwrap(),
+                        info.len,
+                    )?;
                 }
                 Ok(())
             }
