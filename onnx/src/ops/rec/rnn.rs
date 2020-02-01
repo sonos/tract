@@ -230,7 +230,7 @@ impl InferenceRulesOp for RNN {
         let bias = if let Some(b) = b {
             wire!(Wbi = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
             wire!(Rbi = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
-            wire!(bi = math::add::bin(), Wbi, Rbi);
+            wire!(bi = math::add::bin_typed(), Wbi, Rbi);
             Some(bi)
         } else {
             None
@@ -240,10 +240,10 @@ impl InferenceRulesOp for RNN {
         wire!(Xt_WiT = matmul::MatMul::default().with_b_trans(true), Xt, W);
         wire!(Ht_1_RiT = matmul::MatMul::default().with_b_trans(true), Ht_1, R);
 
-        wire!(ht0 = math::add::bin(), Xt_WiT, Ht_1_RiT);
+        wire!(ht0 = math::add::bin_typed(), Xt_WiT, Ht_1_RiT);
         let mut ht0 = ht0;
         if let Some(bias) = bias {
-            wire!(ht_bias = math::add::bin(), ht0, bias);
+            wire!(ht_bias = math::add::bin_typed(), ht0, bias);
             ht0 = ht_bias;
         }
         wire!(Ht = self.fore.clone(), ht0);

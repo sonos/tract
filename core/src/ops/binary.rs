@@ -77,7 +77,7 @@ impl Op for InferenceBinOp {
         self.0.validation()
     }
 
-    op_as_typed_op!();
+    not_a_typed_op!();
     not_a_pulsed_op!();
 }
 
@@ -112,63 +112,45 @@ impl InferenceRulesOp for InferenceBinOp {
         })?;
         Ok(())
     }
-    inference_op_as_op!();
-    to_typed!();
-}
 
-impl TypedOp for InferenceBinOp {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(
-            self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
-            &*crate::broadcast::multi_broadcast(&[
-                &inputs[0].shape.to_tvec(),
-                &inputs[1].shape.to_tvec()
-            ])
-            .ok_or_else(|| format!(
-                "Can not broadcast {:?} and {:?}",
-                inputs[0].shape, inputs[1].shape
-            ))?
-        )?))
-    }
-
-    fn declutter(
+    fn to_typed(
         &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let facts = model.node_input_facts(node.id)?;
-        let mut patch = TypedModelPatch::default();
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let facts = node
+            .inputs
+            .iter()
+            .map(|i| target.outlet_fact(mapping[i]).map(|c| c.clone()))
+            .collect::<TractResult<TVec<_>>>()?;
         let operating_datum_type =
             self.0.operating_datum_type(facts[0].datum_type, facts[1].datum_type)?;
+        let max_rank = facts[0].rank().max(facts[1].rank());
         let mut inputs = tvec!();
         for i in 0..2 {
-            let fact = model.node_input_facts(node.id)?[i];
-            let mut input = patch.tap_model(model, node.inputs[i])?;
-            if fact.datum_type != operating_datum_type {
-                input = patch.wire_node(
+            let mut wire = mapping[&node.inputs[i]];
+            if facts[i].datum_type != operating_datum_type {
+                wire = target.wire_node(
                     format!("{}Cast{}", &*node.name, i),
                     super::cast::Cast::new(operating_datum_type),
-                    &[input],
+                    &[wire],
                 )?[0];
             }
-            inputs.push(input);
+            for i in facts[i].rank()..max_rank {
+                wire = target.wire_node(
+                    format!("{}-AddAxis-{}", &*node.name, i),
+                    AxisOp::Add(0),
+                    &[wire],
+                )?[0];
+            }
+            inputs.push(wire);
         }
-        let res = patch.wire_node(&*node.name, TypedBinOp(self.0.clone()), &*inputs)?[0];
-        patch.shunt_outside(OutletId::new(node.id, 0), res)?;
-        Ok(Some(patch))
+        target.wire_node(&*node.name, TypedBinOp(self.0.clone()), &*inputs)
     }
 
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
-        Ok(self
-            .0
-            .cost_per_element(inputs[0].datum_type)
-            .into_iter()
-            .map(|(c, n)| (c, count.clone() * n))
-            .collect())
-    }
-
-    typed_op_as_op!();
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -264,7 +246,7 @@ impl InferenceRulesOp for Nary {
             )?;
             wire = target.wire_node(
                 format!("{}-norm", node.name),
-                crate::ops::math::div::bin(),
+                crate::ops::math::div::bin_typed(),
                 [wire, n.into()].as_ref(),
             )?[0];
         }
@@ -372,7 +354,11 @@ impl TypedOp for TypedBinOp {
             }
         }
         if let Some(a) = inputs[0].konst.clone() {
-            let op = UnaryOp::new(self.0.clone(), a.clone());
+            let mut a = a.clone().into_tensor();
+            while a.rank() < inputs[1].shape.rank() {
+                a.insert_axis(0)?;
+            }
+            let op = UnaryOp::new(self.0.clone(), a.into_arc_tensor());
             return Ok(Some(TypedModelPatch::replace_single_op(
                 &model,
                 &node,
@@ -381,6 +367,11 @@ impl TypedOp for TypedBinOp {
             )?));
         }
         if let Some(b) = inputs[1].konst.clone() {
+            let mut b = b.clone().into_tensor();
+            while b.rank() < inputs[0].shape.rank() {
+                b.insert_axis(0)?;
+            }
+            let b = b.into_arc_tensor();
             if let Some(op) = self.0.unary_with_b_const(&b) {
                 return Ok(Some(TypedModelPatch::replace_single_op(
                     &model,
@@ -478,12 +469,14 @@ impl Op for UnaryOp {
 
 impl StatelessOp for UnaryOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        debug_assert_eq!(self.a.rank(), inputs[0].rank());
         self.mini_op.eval_broadcast(tvec!(self.a.clone(), inputs[0].clone()))
     }
 }
 
 impl TypedOp for UnaryOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        debug_assert_eq!(self.a.rank(), inputs[0].rank());
         Ok(tvec!(TypedFact::dt_shape(
             self.mini_op.result_datum_type(self.a.datum_type(), inputs[0].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
@@ -500,17 +493,14 @@ impl TypedOp for UnaryOp {
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let b = model.outlet_fact(node.inputs[0])?;
-        if b.shape.rank() < self.a.shape().len() {
-            return Ok(Invariants::none());
-        }
-        let mut invs = vec![];
-        for i in 0..b.shape.rank() - self.a.shape().len() {
-            invs.push(AxisInfo::simple(i))
-        }
-        for &d in self.a.shape() {
-            invs.push(AxisInfo::simple(invs.len()).with_period(d))
-        }
-        return Ok(invs.into_iter().collect());
+        debug_assert_eq!(self.a.rank(), b.rank());
+        Ok(self
+            .a
+            .shape()
+            .iter()
+            .enumerate()
+            .map(|(ix, d)| AxisInfo::simple(ix).with_period(*d))
+            .collect())
     }
 
     fn slice_output(
@@ -524,9 +514,7 @@ impl TypedOp for UnaryOp {
         end: usize,
     ) -> TractResult<Option<OutletId>> {
         let b = model.outlet_fact(node.inputs[0])?;
-        if b.shape.rank() < self.a.shape().len() {
-            return Ok(None);
-        }
+        debug_assert_eq!(self.a.rank(), b.rank());
         let prec = model.node(node.inputs[0].node);
         let wire = prec.op().as_typed().unwrap().slice_output(
             model,
@@ -538,25 +526,18 @@ impl TypedOp for UnaryOp {
             end,
         )?;
         let wire = if let Some(w) = wire { w } else { return Ok(None) };
-        let a_broadcast_prefix = b.shape.rank() - self.a.rank();
-        if axis < a_broadcast_prefix || self.a.shape()[axis - a_broadcast_prefix] == 1 {
-            return Ok(Some(
-                patch.wire_node(
-                    format!("{}-sliced-{}-{}", node.name, start, end),
-                    self.clone(),
-                    &[wire],
-                )?[0],
-            ));
+        let a = if self.a.shape()[axis] != 1 {
+            self.a.slice(axis, start, end)?.into_arc_tensor()
         } else {
-            let a = self.a.slice(axis - a_broadcast_prefix, start, end)?;
-            return Ok(Some(
-                patch.wire_node(
-                    format!("{}-sliced-{}-{}", node.name, start, end),
-                    Self::new(self.mini_op.clone(), a.into_arc_tensor()),
-                    &[wire],
-                )?[0],
-            ));
-        }
+            self.a.clone()
+        };
+        Ok(Some(
+            patch.wire_node(
+                format!("{}-sliced-{}-{}", node.name, start, end),
+                UnaryOp::new(self.mini_op.clone(), a),
+                &[wire],
+            )?[0],
+        ))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -584,32 +565,10 @@ impl TypedOp for UnaryOp {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let b = &model.outlet_fact(node.inputs[0])?;
-        match change {
-            AxisOp::Permute(_axes) => Ok(None),
-            AxisOp::Add(axis) => {
-                let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
-                let op = if axis_in_a > 0 {
-                    let mut a = self.a.clone().into_tensor();
-                    a.insert_axis(axis_in_a as usize)?;
-                    Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor())) as _)
-                } else {
-                    None
-                };
-                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-            }
-            AxisOp::Rm(axis) => {
-                let a_pad = b.shape.rank() - self.a.shape().len();
-                let op: Option<Box<dyn TypedOp>> = if *axis >= a_pad {
-                    let mut a = self.a.clone().into_tensor();
-                    a.remove_axis(axis - a_pad)?;
-                    Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor())))
-                } else {
-                    None
-                };
-                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-            }
-        }
+        let mut a = self.a.clone().into_tensor();
+        change.change_tensor(&mut a)?;
+        let op = Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor())) as _);
+        Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
     }
 
     fn pulsify(
@@ -952,6 +911,9 @@ macro_rules! bin_to_super_type {
         pub mod $func {
             pub fn bin() -> $crate::ops::binary::InferenceBinOp {
                 $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
+            }
+            pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
+                $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
             }
             pub fn unary(t: std::sync::Arc<$crate::prelude::Tensor>) -> $crate::ops::binary::UnaryOp {
                 $crate::ops::binary::UnaryOp::new(Box::new(super::$Op), t)

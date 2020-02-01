@@ -314,10 +314,10 @@ impl InferenceRulesOp for LSTM {
             wire!(Rbf = array::Slice::new(0, 6 * h_size, 7 * h_size), b);
             wire!(Rbc = array::Slice::new(0, 7 * h_size, 8 * h_size), b);
 
-            wire!(bi = math::add::bin(), Wbi, Rbi);
-            wire!(bo = math::add::bin(), Wbo, Rbo);
-            wire!(bf = math::add::bin(), Wbf, Rbf);
-            wire!(bc = math::add::bin(), Wbc, Rbc);
+            wire!(bi = math::add::bin_typed(), Wbi, Rbi);
+            wire!(bo = math::add::bin_typed(), Wbo, Rbo);
+            wire!(bf = math::add::bin_typed(), Wbf, Rbf);
+            wire!(bc = math::add::bin_typed(), Wbc, Rbc);
 
             Some((bi, bo, bf, bc))
         } else {
@@ -336,15 +336,15 @@ impl InferenceRulesOp for LSTM {
         // it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
         wire!(Xt_WiT = matmul::MatMul::default().with_b_trans(true), Xt, Wi);
         wire!(Ht_1_RiT = matmul::MatMul::default().with_b_trans(true), Ht_1, Ri);
-        wire!(it0 = math::add::bin(), Xt_WiT, Ht_1_RiT);
+        wire!(it0 = math::add::bin_typed(), Xt_WiT, Ht_1_RiT);
         let mut it0 = it0;
         if let Some(biases) = biases {
-            wire!(it_bias = math::add::bin(), it0, biases.0);
+            wire!(it_bias = math::add::bin_typed(), it0, biases.0);
             it0 = it_bias;
         };
         if let Some(peephole) = peepholes {
-            wire!(Pi_Ct_1 = math::mul::bin(), peephole.0, Ct_1);
-            wire!(it_peep = math::add::bin(), Pi_Ct_1, it0);
+            wire!(Pi_Ct_1 = math::mul::bin_typed(), peephole.0, Ct_1);
+            wire!(it_peep = math::add::bin_typed(), Pi_Ct_1, it0);
             it0 = it_peep;
         }
         wire!(it = self.f.clone(), it0);
@@ -352,15 +352,15 @@ impl InferenceRulesOp for LSTM {
         // ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
         wire!(Xt_WfT = matmul::MatMul::default().with_b_trans(true), Xt, Wf);
         wire!(Ht_1_RfT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rf);
-        wire!(ft0 = math::add::bin(), Xt_WfT, Ht_1_RfT);
+        wire!(ft0 = math::add::bin_typed(), Xt_WfT, Ht_1_RfT);
         let mut ft0 = ft0;
         if let Some(biases) = biases {
-            wire!(ft_bias = math::add::bin(), ft0, biases.2);
+            wire!(ft_bias = math::add::bin_typed(), ft0, biases.2);
             ft0 = ft_bias;
         };
         if let Some(peephole) = peepholes {
-            wire!(Pf_Ct_1 = math::mul::bin(), peephole.2, Ct_1);
-            wire!(ft_peep = math::add::bin(), Pf_Ct_1, ft0);
+            wire!(Pf_Ct_1 = math::mul::bin_typed(), peephole.2, Ct_1);
+            wire!(ft_peep = math::add::bin_typed(), Pf_Ct_1, ft0);
             ft0 = ft_peep;
         }
         wire!(ft = self.f.clone(), ft0);
@@ -368,38 +368,38 @@ impl InferenceRulesOp for LSTM {
         // ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
         wire!(Xt_WcT = matmul::MatMul::default().with_b_trans(true), Xt, Wc);
         wire!(Ht_1_RcT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rc);
-        wire!(ct0 = math::add::bin(), Xt_WcT, Ht_1_RcT);
+        wire!(ct0 = math::add::bin_typed(), Xt_WcT, Ht_1_RcT);
         let mut ct0 = ct0;
         if let Some(biases) = biases {
-            wire!(ct_bias = math::add::bin(), ct0, biases.3);
+            wire!(ct_bias = math::add::bin_typed(), ct0, biases.3);
             ct0 = ct_bias
         };
         wire!(ct = self.g.clone(), ct0);
 
         // Ct = ft (.) Ct-1 + it (.) ct
-        wire!(ft_Ct_1 = math::mul::bin(), ft, Ct_1);
-        wire!(it_ct = math::mul::bin(), it, ct);
-        wire!(Ct = math::add::bin(), ft_Ct_1, it_ct);
+        wire!(ft_Ct_1 = math::mul::bin_typed(), ft, Ct_1);
+        wire!(it_ct = math::mul::bin_typed(), it, ct);
+        wire!(Ct = math::add::bin_typed(), ft_Ct_1, it_ct);
 
         // ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
         wire!(Xt_WoT = matmul::MatMul::default().with_b_trans(true), Xt, Wo);
         wire!(Ht_1_RoT = matmul::MatMul::default().with_b_trans(true), Ht_1, Ro);
-        wire!(ot0 = math::add::bin(), Xt_WoT, Ht_1_RoT);
+        wire!(ot0 = math::add::bin_typed(), Xt_WoT, Ht_1_RoT);
         let mut ot0 = ot0;
         if let Some(biases) = biases {
-            wire!(ot_bias = math::add::bin(), ot0, biases.1);
+            wire!(ot_bias = math::add::bin_typed(), ot0, biases.1);
             ot0 = ot_bias
         };
         if let Some(peephole) = peepholes {
-            wire!(Po_Ct = math::mul::bin(), peephole.1, Ct);
-            wire!(ot_peep = math::add::bin(), Po_Ct, ot0);
+            wire!(Po_Ct = math::mul::bin_typed(), peephole.1, Ct);
+            wire!(ot_peep = math::add::bin_typed(), Po_Ct, ot0);
             ot0 = ot_peep;
         }
         wire!(ot = self.f.clone(), ot0);
 
         // Ht = ot (.) h(Ct)
         wire!(h_Ct = self.h.clone(), Ct);
-        wire!(Ht = math::mul::bin(), ot, h_Ct);
+        wire!(Ht = math::mul::bin_typed(), ot, h_Ct);
 
         wire!(Ht_fixed = AxisOp::Add(0), Ht);
         wire!(Ct_fixed = AxisOp::Add(0), Ct);

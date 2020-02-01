@@ -112,8 +112,8 @@ impl InferenceRulesOp for LstmNonlin {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         use tract_core::ndarray;
-        use tract_core::ops::math::add::bin as add;
-        use tract_core::ops::math::mul::bin as mul;
+        use tract_core::ops::math::add::bin_typed as add;
+        use tract_core::ops::math::mul::bin_typed as mul;
         use tract_core::ops::{array, math, nn};
 
         let params =

@@ -126,29 +126,28 @@ impl InferenceRulesOp for BatchNorm {
             let c_axis = self.data_format.shape(&x_shape).c_axis();
             let c_dim = self.data_format.shape(&x_shape).c_dim().to_integer()? as usize;
 
-            let (slope, inter) = dispatch_floatlike!(Self::to_slope_and_inter(x.datum_type)(
+            let (mut slope, mut inter) = dispatch_floatlike!(Self::to_slope_and_inter(x.datum_type)(
                 self, c_dim, &scale, &beta, &mean, &var
             ))?;
 
-            let mut param_shape: TVec<usize> = slope.shape().into();
-            if c_axis < x_shape.len() - 1 {
-                for _i in c_axis..x_shape.len() - 1 {
-                    param_shape.push(1);
-                }
+            while c_axis + slope.rank() < x_shape.len() {
+                slope.insert_axis(slope.rank())?;
+                inter.insert_axis(inter.rank())?;
             }
-            let slope = unsafe { slope.into_shape(&param_shape)? };
-            let inter = unsafe { inter.into_shape(&param_shape)? };
+
+            let slope = target.add_const(format!("{}-slope", &*node.name), slope)?;
+            let inter = target.add_const(format!("{}-inter", &*node.name), inter)?;
 
             let wire = mapping[&node.inputs[0]];
             let wire = target.wire_node(
                 format!("{}-mul", node.name),
-                tract_core::ops::math::mul::unary(slope.into_arc_tensor()),
-                [wire].as_ref(),
-            )?;
+                tract_core::ops::math::mul::bin_typed(),
+                &[wire, slope]
+            )?[0];
             return target.wire_node(
                 &*node.name,
-                tract_core::ops::math::add::unary(inter.into_arc_tensor()),
-                &wire,
+                tract_core::ops::math::add::bin_typed(),
+                &[wire, inter]
             );
         }
         bail!("Params are not const")

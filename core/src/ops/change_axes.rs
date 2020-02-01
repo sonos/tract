@@ -222,7 +222,7 @@ impl TypedOp for AxisOp {
             InOut::Out(_) => self.recip().transform_op(change)?,
         };
         let outgoing_change = self.transform_op(&incoming_change)?;
-        let new_me = incoming_change.transform_op(&self)?;
+        let new_me = outgoing_change.transform_op(&self)?;
         Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(new_me)),
             wire_changes: tvec!((InOut::In(0), incoming_change), (InOut::Out(0), outgoing_change),),
