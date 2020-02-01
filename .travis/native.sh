@@ -93,11 +93,11 @@ fi
 
 ( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 
-./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
-    -f kaldi --output-node output \
-    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    -i Sx40 --pulse 24 cost -q \
-    --assert-cost "FMA(F32)=23201280,Div(F32)=20480,Buffer(F32)=1896"
+#./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
+#    -f kaldi --output-node output \
+#    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
+#    -i Sx40 --pulse 24 cost -q \
+#    --assert-cost "FMA(F32)=23201280,Div(F32)=20480,Buffer(F32)=1896"
 
 ./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
     -f kaldi --output-node output \

@@ -95,21 +95,22 @@ fn declutter_as_shift(
     mini_op: Box<dyn BinMiniOp>,
 ) -> TractResult<Option<TypedModelPatch>> {
     let input = model.node_input_facts(node.id)?[0];
-    if t.len() > 0
-        && t.is_uniform()?
-        && t.datum_type().is_integer()
-        && input.datum_type.is_integer()
-    {
+    if t.len() > 0 && t.datum_type().is_integer() && input.datum_type.is_integer() {
         let arg = t.cast_to::<i64>()?;
-        let arg = arg.as_slice::<i64>()?[0];
-        if arg > 0 && arg.abs().count_ones() == 1 {
-            let shift = (63 - arg.abs().leading_zeros()) as i32;
-            let shift = tensor0(shift).cast_to_dt(t.datum_type())?.into_owned();
+        if arg.as_slice::<i64>()?.iter().all(|i| *i > 0 && i.count_ones() == 1) {
+            let mut shift = arg.into_owned();
+            shift
+                .as_slice_mut::<i64>()?
+                .iter_mut()
+                .for_each(|i| *i = (63 - i.abs().leading_zeros()) as _);
             return Ok(Some(TypedModelPatch::replace_single_op(
                 model,
                 node,
                 &node.inputs[0..=0],
-                UnaryOp { a: shift.into_arc_tensor(), mini_op },
+                UnaryOp {
+                    a: shift.cast_to_dt(input.datum_type)?.into_owned().into_arc_tensor(),
+                    mini_op,
+                },
             )?));
         }
     }
@@ -349,7 +350,7 @@ mod tests {
         let mut model = TypedModel::default();
         let x =
             model.add_source("a", TypedFact::dt_shape(i32::datum_type(), [2usize, 2].as_ref())?)?;
-        let y = model.wire_node("c", mul::unary(rctensor0(4)), [x].as_ref())?[0];
+        let y = model.wire_node("c", mul::unary(rctensor2(&[[4]])), [x].as_ref())?[0];
         model.set_output_outlets(&[y])?;
         let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[1, 2], [3, 4]])))?;
         assert_eq!(result[0], rctensor2(&[[4, 8], [12, 16]]));
@@ -366,7 +367,7 @@ mod tests {
         let mut model = TypedModel::default();
         let x =
             model.add_source("a", TypedFact::dt_shape(i32::datum_type(), [2usize, 2].as_ref())?)?;
-        let s = model.add_const("shift", tensor0(4))?;
+        let s = model.add_const("shift", tensor2(&[[4]]))?;
         let y = model.wire_node("c", div::bin_typed(), [x, s].as_ref())?[0];
         model.set_output_outlets(&[y])?;
         let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[16, 32], [64, 68]])))?;
