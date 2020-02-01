@@ -38,19 +38,31 @@ impl AxisOp {
         }
     }
 
-    pub fn transform_op(&self, op: &AxisOp) -> TractResult<AxisOp> {
-        match op {
-            AxisOp::Add(other) => {
-                Ok(AxisOp::Add(self.transform_axis(*other).ok_or("Invalid axis tranformation")?))
-            }
-            AxisOp::Rm(other) => {
-                Ok(AxisOp::Rm(self.transform_axis(*other).ok_or("Invalid axis transformation")?))
-            }
+    pub fn transform_change(&self, change: &AxisOp) -> Option<AxisOp> {
+        match change {
+            AxisOp::Add(other) => self.transform_axis(*other).map(|o| AxisOp::Add(o)),
+            AxisOp::Rm(other) => self.transform_axis(*other).map(|o| AxisOp::Rm(o)),
             AxisOp::Permute(axes) => {
                 let axes = axes.iter().flat_map(|a| self.transform_axis(*a)).collect();
-                Ok(AxisOp::Permute(axes))
+                Some(AxisOp::Permute(axes))
             }
         }
+    }
+
+    pub fn transform_op(&self, op: &AxisOp) -> Option<AxisOp> {
+        Some(match op {
+            AxisOp::Add(other) => match self {
+                AxisOp::Rm(me) => AxisOp::Add(other - (me < other) as usize),
+                AxisOp::Add(me) => AxisOp::Add(other + (me < other) as usize),
+                _ => self.transform_change(op).unwrap()
+            },
+            AxisOp::Rm(other) => match self {
+                AxisOp::Rm(me) => AxisOp::Rm(other - (me < other) as usize),
+                AxisOp::Add(me) => AxisOp::Rm(other + (me < other) as usize),
+                _ => self.transform_change(op).unwrap()
+            }
+            _ => self.transform_change(op).unwrap()
+        })
     }
 
     pub fn change_shape_array<T: Clone + Default + num_traits::One>(&self, shape: &mut TVec<T>) {
@@ -111,6 +123,14 @@ impl AxisOp {
                     .collect();
                 AxisOp::Permute(perm)
             }
+        }
+    }
+
+    pub fn is_noop(&self) -> bool {
+        if let AxisOp::Permute(axes) = self {
+            axes.iter().enumerate().all(|(ix, &ax)| ix == ax)
+        } else {
+            false
         }
     }
 }
@@ -209,6 +229,9 @@ impl TypedOp for AxisOp {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        if change.is_noop() {
+            return Ok(Some(AxisChangeConsequence { substitute_op: None, wire_changes: tvec!() }));
+        }
         if (io == InOut::In(0) && change == self)
             || (io == InOut::Out(0) && change == &self.recip())
         {
@@ -219,10 +242,10 @@ impl TypedOp for AxisOp {
         }
         let incoming_change = match io {
             InOut::In(_) => change.clone(),
-            InOut::Out(_) => self.recip().transform_op(change)?,
+            InOut::Out(_) => self.recip().transform_change(change).unwrap(),
         };
-        let outgoing_change = self.transform_op(&incoming_change)?;
-        let new_me = outgoing_change.transform_op(&self)?;
+        let outgoing_change = self.transform_change(&incoming_change).unwrap();
+        let new_me = incoming_change.transform_op(&self).unwrap();
         Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(new_me)),
             wire_changes: tvec!((InOut::In(0), incoming_change), (InOut::Out(0), outgoing_change),),
@@ -306,4 +329,129 @@ pub fn change_axes(
         axis_op.change_shape(&mut node.outputs[outlet.slot].fact.shape)?;
     }
     Ok(Some(changed_wires))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use AxisOp::*;
+
+    // ADD-ADD
+
+    //           b,c   ------|Add(0)|----->        n,b,c
+    //   Add(0)                                            Add(1)
+    //         a,b,c   ------|Add(0)|----->        a,n,b,c
+    #[test]
+    pub fn transform_op_add_0_add_0() {
+        let change = Add(0);
+        let op = Add(0);
+        assert_eq!(op.transform_change(&change), Some(Add(1)));
+        assert_eq!(change.transform_op(&op), Some(Add(0)));
+    }
+
+    //           b,c   ------|Add(1)|----->        b,n,c
+    //   Add(0)                                                 Add(0)
+    //         a,b,c   ------|Add(2)|----->        a,b,n,c
+    #[test]
+    pub fn transform_op_add_0_add_1() {
+        let change = Add(0);
+        let op = Add(1);
+        assert_eq!(op.transform_change(&change).unwrap(), Add(0));
+        assert_eq!(change.transform_op(&op).unwrap(), Add(2));
+    }
+
+    //           a,c   ------|Add(0)|----->        n,a,c
+    //   Add(1)                                                 Add(2)
+    //         a,b,c   ------|Add(0)|----->        n,a,b,c
+    #[test]
+    pub fn transform_op_add_1_add_0() {
+        let change = Add(1);
+        let op = Add(0);
+        assert_eq!(op.transform_change(&change).unwrap(), Add(2));
+        assert_eq!(change.transform_op(&op).unwrap(), Add(0));
+    }
+
+    // RM-RM
+
+    //         a,b,c   ------|Rm(0)|----->        b,c
+    //   Rm(0)
+    //           b,c
+    #[test]
+    pub fn transform_op_rm_0_rm_0() {
+        let change = Rm(0);
+        let op = Rm(0);
+        assert_eq!(op.transform_change(&change), None);
+    }
+
+    //         a,b,c   ------|Rm(1)|----->         a,c
+    //   Rm(0)                                             Rm(0)
+    //           b,c   ------|Rm(0)|----->         c
+    #[test]
+    pub fn transform_op_rm_0_rm_1() {
+        let change = Rm(0);
+        let op = Rm(1);
+        assert_eq!(op.transform_change(&change).unwrap(), Rm(0));
+        assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
+    }
+
+    //         a,b,c   ------|Rm(0)|----->         b,c
+    //   Rm(1)                                             Rm(0)
+    //           a,c   ------|Rm(0)|----->         c
+    #[test]
+    pub fn transform_op_rm_1_rm_0() {
+        let change = Rm(1);
+        let op = Rm(0);
+        assert_eq!(op.transform_change(&change).unwrap(), Rm(0));
+        assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
+    }
+
+    // ADD - RM
+
+    //
+    //          b,c     ------|Rm(1)|------>        b
+    //   Add(0)                                                 Add(0)
+    //          a,b,c   ------|Rm(2)|----->         a,b
+    #[test]
+    pub fn transform_op_add_0_rm_1() {
+        let change = Add(0);
+        let op = Rm(1);
+        assert_eq!(op.transform_change(&change).unwrap(), Add(0));
+        assert_eq!(change.transform_op(&op).unwrap(), Rm(2));
+    }
+
+    //
+    //          a,c     ------|Rm(0)|------>        c
+    //   Add(1)                                                 Add(0)
+    //          a,b,c   ------|Rm(0)|----->         b,c
+    #[test]
+    pub fn transform_op_add_1_rm_0() {
+        let change = Add(1);
+        let op = Rm(0);
+        assert_eq!(op.transform_change(&change).unwrap(), Add(0));
+        assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
+    }
+
+    // RM - ADD
+
+    //         a,b,c   ------|Add(0)|----->        X,a,b,c
+    //   Rm(1)                                                 Rm(2)
+    //           a,c   ------|Add(0)|----->        X,a,c
+    #[test]
+    pub fn transform_op_rm_1_add_0() {
+        let change = Rm(1);
+        let op = Add(0);
+        assert_eq!(op.transform_change(&change).unwrap(), Rm(2));
+        assert_eq!(change.transform_op(&op).unwrap(), Add(0));
+    }
+
+    //         a,b,c   ------|Add(1)|----->        a,X,b,c
+    //   Rm(0)                                                 Rm(0)
+    //           b,c   ------|Add(0)|----->        X,b,c
+    #[test]
+    pub fn transform_op_rm_0_add_1() {
+        let change = Rm(0);
+        let op = Add(1);
+        assert_eq!(op.transform_change(&change).unwrap(), Rm(0));
+        assert_eq!(change.transform_op(&op).unwrap(), Add(0));
+    }
 }
