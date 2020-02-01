@@ -114,14 +114,14 @@ impl InferenceRulesOp for FusedBatchNorm {
                 .add_const(format!("{}-slope", node.name), tensor1(&*alpha).into_arc_tensor())?;
             let wire = target.wire_node(
                 format!("{}-mul", node.name),
-                tract_core::ops::math::mul::bin(),
+                tract_core::ops::math::mul::bin_typed(),
                 [slope, mapping[&node.inputs[0]]].as_ref(),
             )?[0];
             let offset = target
                 .add_const(format!("{}-offset", node.name), tensor1(&*beta).into_arc_tensor())?;
             return target.wire_node(
                 format!("{}-add", node.name),
-                tract_core::ops::math::add::bin(),
+                tract_core::ops::math::add::bin_typed(),
                 [offset, wire].as_ref(),
             );
         };

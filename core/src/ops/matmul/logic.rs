@@ -526,7 +526,14 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let b = &model.outlet_fact(node.inputs[0])?;
         match change {
-            AxisOp::Permute(_axes) => Ok(None),
+            AxisOp::Permute(axes) => {
+                if &**axes == &[1, 0] {
+                    let op = MatMulUnary { b_trans: !self.b_trans, c_trans: !self.c_trans, ..self.clone() };
+                    Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+                } else {
+                    Ok(None)
+                }
+            }
             AxisOp::Add(axis) => {
                 let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
                 if axis_in_a + 2 > self.a.rank() as isize {
@@ -611,7 +618,7 @@ impl TypedOp for MatMulUnary {
                 for (ix, w) in wires[1..].iter().enumerate() {
                     wire = patch.wire_node(
                         format!("{}-k-add-{}", node.name, ix),
-                        crate::ops::math::add::bin(),
+                        crate::ops::binary::TypedBinOp(Box::new(crate::ops::math::Add)),
                         &[wire, *w],
                     )?[0];
                 }

@@ -240,13 +240,13 @@ impl InferenceRulesOp for GRU {
         // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
         wire!(Xt_WzT = matmul::MatMul::default().with_b_trans(true), Xt, Wz);
         wire!(Ht_1_RzT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rz);
-        wire!(zt0 = math::add::bin(), Xt_WzT, Ht_1_RzT);
+        wire!(zt0 = math::add::bin_typed(), Xt_WzT, Ht_1_RzT);
         let mut zt0 = zt0;
         if let Some(b) = b {
             wire!(Wbz = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
             wire!(Rbz = array::Slice::new(0, 3 * h_size, 4 * h_size), b);
-            wire!(Wbz_Rbz = math::add::bin(), Wbz, Rbz);
-            wire!(zt0_biased = math::add::bin(), zt0, Wbz_Rbz);
+            wire!(Wbz_Rbz = math::add::bin_typed(), Wbz, Rbz);
+            wire!(zt0_biased = math::add::bin_typed(), zt0, Wbz_Rbz);
             zt0 = zt0_biased
         };
         wire!(zt = self.f.clone(), zt0);
@@ -254,13 +254,13 @@ impl InferenceRulesOp for GRU {
         // rt = f(Xt*(Wr^T) + Ht-1*(Rr^T) + Wbr + Rbr)
         wire!(Xt_WrT = matmul::MatMul::default().with_b_trans(true), Xt, Wr);
         wire!(Ht_1_RrT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rr);
-        wire!(rt0 = math::add::bin(), Xt_WrT, Ht_1_RrT);
+        wire!(rt0 = math::add::bin_typed(), Xt_WrT, Ht_1_RrT);
         let mut rt0 = rt0;
         if let Some(b) = b {
             wire!(Wbr = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
             wire!(Rbr = array::Slice::new(0, 4 * h_size, 5 * h_size), b);
-            wire!(Wbr_Rbr = math::add::bin(), Wbr, Rbr);
-            wire!(rt0_biased = math::add::bin(), rt0, Wbr_Rbr);
+            wire!(Wbr_Rbr = math::add::bin_typed(), Wbr, Rbr);
+            wire!(rt0_biased = math::add::bin_typed(), rt0, Wbr_Rbr);
             rt0 = rt0_biased
         };
         wire!(rt = self.f.clone(), rt0);
@@ -270,30 +270,30 @@ impl InferenceRulesOp for GRU {
         wire!(Xt_WhT = matmul::MatMul::default().with_b_trans(true), Xt, Wh);
         let rt_Ht_1_RhT = if self.linear_before_reset {
             wire!(Ht_1_RhT = matmul::MatMul::default().with_b_trans(true), Ht_1, Rh);
-            wire!(rt_Ht_1_RhT = math::mul::bin(), rt, Ht_1_RhT);
+            wire!(rt_Ht_1_RhT = math::mul::bin_typed(), rt, Ht_1_RhT);
             rt_Ht_1_RhT
         } else {
-            wire!(rt_Ht_1 = math::mul::bin(), rt, Ht_1);
+            wire!(rt_Ht_1 = math::mul::bin_typed(), rt, Ht_1);
             wire!(rt_Ht_1_RhT = matmul::MatMul::default().with_b_trans(true), rt_Ht_1, Rh);
             rt_Ht_1_RhT
         };
-        wire!(ht0 = math::add::bin(), Xt_WhT, rt_Ht_1_RhT);
+        wire!(ht0 = math::add::bin_typed(), Xt_WhT, rt_Ht_1_RhT);
         let mut ht0 = ht0;
         if let Some(b) = b {
             wire!(Wbh = array::Slice::new(0, 2 * h_size, 3 * h_size), b);
             wire!(Rbh = array::Slice::new(0, 5 * h_size, 6 * h_size), b);
-            wire!(Wbh_Rbh = math::add::bin(), Wbh, Rbh);
-            wire!(ht0_biased = math::add::bin(), ht0, Wbh_Rbh);
+            wire!(Wbh_Rbh = math::add::bin_typed(), Wbh, Rbh);
+            wire!(ht0_biased = math::add::bin_typed(), ht0, Wbh_Rbh);
             ht0 = ht0_biased
         }
         wire!(ht = self.g.clone(), ht0);
 
         // Ht = (1 - zt) (.) ht + zt (.) Ht-1
         let one: OutletId = body.add_const("one", tensor0(1f32))?.into();
-        wire!(one_sub_zt = math::sub::bin(), one, zt);
-        wire!(one_sub_zt_ht = math::mul::bin(), one_sub_zt, ht);
-        wire!(zt_Ht_1 = math::mul::bin(), zt, Ht_1);
-        wire!(Ht = math::add::bin(), one_sub_zt_ht, zt_Ht_1);
+        wire!(one_sub_zt = math::sub::bin_typed(), one, zt);
+        wire!(one_sub_zt_ht = math::mul::bin_typed(), one_sub_zt, ht);
+        wire!(zt_Ht_1 = math::mul::bin_typed(), zt, Ht_1);
+        wire!(Ht = math::add::bin_typed(), one_sub_zt_ht, zt_Ht_1);
 
         wire!(y_h = AxisOp::Add(0), Ht);
         body.set_output_outlets(&[y_h])?;

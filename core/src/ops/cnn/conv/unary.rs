@@ -398,7 +398,8 @@ impl ConvUnary {
             let op = MatMulUnary::new(a, a_trans, trans_data, trans_data, q_params);
             wire = patch.wire_node(&*node.name, op, &[wire])?[0];
             if let Some(b) = &self.bias {
-                let bias_shape = if trans_data { tvec!(1, co) } else { tvec!(co, 1) };
+                let mut bias_shape = tvec!(1; input_shape.rank());
+                bias_shape[input_shape.c_axis()] = co;
                 let b = unsafe { b.clone().into_tensor().into_shape(&bias_shape)? };
                 wire = patch.wire_node(
                     format!("{}-bias", node.name),

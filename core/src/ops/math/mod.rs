@@ -367,7 +367,7 @@ mod tests {
         let x =
             model.add_source("a", TypedFact::dt_shape(i32::datum_type(), [2usize, 2].as_ref())?)?;
         let s = model.add_const("shift", tensor0(4))?;
-        let y = model.wire_node("c", div::bin(), [x, s].as_ref())?[0];
+        let y = model.wire_node("c", div::bin_typed(), [x, s].as_ref())?[0];
         model.set_output_outlets(&[y])?;
         let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[16, 32], [64, 68]])))?;
         assert_eq!(result[0], rctensor2(&[[4, 8], [16, 17]]));
