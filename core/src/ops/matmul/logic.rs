@@ -528,7 +528,11 @@ impl TypedOp for MatMulUnary {
         match change {
             AxisOp::Permute(axes) => {
                 if &**axes == &[1, 0] {
-                    let op = MatMulUnary { b_trans: !self.b_trans, c_trans: !self.c_trans, ..self.clone() };
+                    let op = MatMulUnary {
+                        b_trans: !self.b_trans,
+                        c_trans: !self.c_trans,
+                        ..self.clone()
+                    };
                     Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
                 } else {
                     Ok(None)

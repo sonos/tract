@@ -129,16 +129,17 @@ where
                 return Ok(Some(TypedModelPatch::fuse_with_next(
                     model,
                     &node,
-                    Self { c_fact: TypedFact::dt_shape(self.c_fact.datum_type, &*shape)?, ..self.clone() },
+                    Self {
+                        c_fact: TypedFact::dt_shape(self.c_fact.datum_type, &*shape)?,
+                        ..self.clone()
+                    },
                 )?));
             }
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
                 if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                    let m = self.mmm.as_mmm().m();
-                    let a_shape = op.a.shape();
-                    if (self.c_trans && (a_shape == &[m] || a_shape == &[1, m]))
-                        || (!self.c_trans && a_shape == &[m])
-                    {
+                    let l =
+                        if self.c_trans { self.mmm.as_mmm().m() } else { self.mmm.as_mmm().n() };
+                    if op.a.len() == l && op.a.shape()[op.a.rank() - 1] == l {
                         if op.mini_op.is::<ops::math::Mul>() {
                             return Ok(Some(tvec!(FusedSpec::PerRowMul(
                                 op.a.as_slice::<TI>()?.to_vec(),

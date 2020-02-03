@@ -288,7 +288,7 @@ impl ConvUnary {
         wire = model.wire_node(
             format!("{}-matmatmul", name),
             matmul::phy::MatMatMulUnaryFinite {
-                c_trans: false,
+                c_trans: true,
                 bc_c_shape: output_shape.shape.clone(),
                 c_fact: TypedFact::dt_shape(TC::datum_type(), &*output_shape.shape)?,
                 c_prefix_dim_and_stride,
