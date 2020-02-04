@@ -43,7 +43,14 @@ impl AxisOp {
             AxisOp::Add(other) => self.transform_axis(*other).map(|o| AxisOp::Add(o)),
             AxisOp::Rm(other) => self.transform_axis(*other).map(|o| AxisOp::Rm(o)),
             AxisOp::Permute(axes) => {
-                let axes = axes.iter().flat_map(|a| self.transform_axis(*a)).collect();
+                let mut axes: TVec<usize> =
+                    axes.iter().flat_map(|a| self.transform_axis(*a)).collect();
+                match self {
+                    AxisOp::Add(add) => {
+                        axes.insert(*add, *add);
+                    }
+                    _ => (),
+                }
                 Some(AxisOp::Permute(axes))
             }
         }
@@ -54,14 +61,14 @@ impl AxisOp {
             AxisOp::Add(other) => match self {
                 AxisOp::Rm(me) => AxisOp::Add(other - (me < other) as usize),
                 AxisOp::Add(me) => AxisOp::Add(other + (me < other) as usize),
-                _ => self.transform_change(op).unwrap()
+                AxisOp::Permute(_) => AxisOp::Add(*other),
             },
             AxisOp::Rm(other) => match self {
                 AxisOp::Rm(me) => AxisOp::Rm(other - (me < other) as usize),
                 AxisOp::Add(me) => AxisOp::Rm(other + (me < other) as usize),
-                _ => self.transform_change(op).unwrap()
-            }
-            _ => self.transform_change(op).unwrap()
+                _ => self.transform_change(op).unwrap(),
+            },
+            _ => self.transform_change(op).unwrap(),
         })
     }
 
@@ -219,7 +226,7 @@ impl TypedOp for AxisOp {
     }
 
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
-        Ok(tvec!((InOut::Out(0), self.recip())))
+        Ok(tvec!((InOut::Out(0), self.recip()), (InOut::In(0), self.clone())))
     }
 
     fn change_axes(
@@ -229,9 +236,7 @@ impl TypedOp for AxisOp {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        if change.is_noop() {
-            return Ok(Some(AxisChangeConsequence { substitute_op: None, wire_changes: tvec!() }));
-        }
+        debug_assert!(!change.is_noop());
         if (io == InOut::In(0) && change == self)
             || (io == InOut::Out(0) && change == &self.recip())
         {
@@ -242,14 +247,25 @@ impl TypedOp for AxisOp {
         }
         let incoming_change = match io {
             InOut::In(_) => change.clone(),
-            InOut::Out(_) => self.recip().transform_change(change).unwrap(),
+            InOut::Out(_) => {
+                if let Some(change) = self.recip().transform_change(change) {
+                    change
+                } else {
+                    return Ok(None);
+                }
+            }
         };
         let outgoing_change = self.transform_change(&incoming_change).unwrap();
         let new_me = incoming_change.transform_op(&self).unwrap();
-        Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(new_me)),
-            wire_changes: tvec!((InOut::In(0), incoming_change), (InOut::Out(0), outgoing_change),),
-        }))
+        let substitute_op = if &new_me != self { Some(Box::new(new_me) as _) } else { None };
+        let mut wire_changes = tvec!();
+        if !incoming_change.is_noop() {
+            wire_changes.push((InOut::In(0), incoming_change))
+        }
+        if !outgoing_change.is_noop() {
+            wire_changes.push((InOut::Out(0), outgoing_change))
+        }
+        Ok(Some(AxisChangeConsequence { substitute_op, wire_changes }))
     }
 
     fn pulsify(
@@ -310,6 +326,14 @@ pub fn change_axes(
             }
             let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
             if let Some(op) = substitute_op {
+                trace!(
+                    "Change {:?} enters {} from {:?} -> replace {:?} by {:?}",
+                    c.op,
+                    node,
+                    io,
+                    node.op,
+                    op
+                );
                 changed_ops.insert(node.id, op);
             }
             for (wire, op) in wire_changes.into_iter() {
@@ -453,5 +477,42 @@ mod test {
         let op = Add(1);
         assert_eq!(op.transform_change(&change).unwrap(), Rm(0));
         assert_eq!(change.transform_op(&op).unwrap(), Add(0));
+    }
+
+    // PERMUTE ADD
+
+    //         a     ------|Add(1)|----->        a,b
+    //   Perm(0)                                          Perm(0,1)
+    //         a     ------|Add(1)|----->        a,b
+    #[test]
+    pub fn transform_permute_0_add_1() {
+        let change = Permute(tvec!(0));
+        let op = Add(1);
+        assert_eq!(op.transform_change(&change).unwrap(), Permute(tvec!(0, 1)));
+        assert_eq!(change.transform_op(&op).unwrap(), Add(1));
+    }
+
+    //         a,b     ------|Add(1)|----->        a,X,b
+    //   Perm(1,0)                                          Perm(2,1,0)
+    //         b,a     ------|Add(1)|----->        b,X,a
+    #[test]
+    pub fn transform_permute_10_add_1() {
+        let change = Permute(tvec!(1, 0));
+        let op = Add(1);
+        assert_eq!(op.transform_change(&change).unwrap(), Permute(tvec!(2, 1, 0)));
+        assert_eq!(change.transform_op(&op).unwrap(), Add(1));
+    }
+
+    // PERMUTE RM
+
+    //         a,b,c     ------|Rm(1)|----->        a,c
+    //   Perm(1,0,2)                                        Perm(0,1)
+    //         b,a,c     ------|Rm(0)|----->        a,c
+    #[test]
+    pub fn transform_permute_102_rm_1() {
+        let change = Permute(tvec!(1, 0, 2));
+        let op = Rm(1);
+        assert_eq!(op.transform_change(&change).unwrap(), Permute(tvec!(0, 1)));
+        assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
     }
 }

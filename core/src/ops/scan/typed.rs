@@ -441,10 +441,7 @@ impl TypedOp for TypedScan {
             let (outside_slot, axis, chunk) = self
                 .input_mapping
                 .iter()
-                .filter_map(|it| match it {
-                    InputMapping::Scan { axis, slot, chunk } => Some((*slot, *axis, chunk.clone())),
-                    _ => None,
-                })
+                .flat_map(|it| it.as_scan())
                 .next()
                 .unwrap();
             inputs[outside_slot].shape.dim(axis).div_ceil(chunk.to_dim())
@@ -567,6 +564,8 @@ impl TypedOp for TypedScan {
                     },
                 };
                 input_mapping.push(fixed_mapping);
+            } else {
+                input_mapping.push(m.clone());
             }
         }
         for (ix, m) in self.output_mapping.iter().enumerate() {

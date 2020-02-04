@@ -140,7 +140,7 @@ impl InferenceRulesOp for InferenceBinOp {
             }
             for i in facts[i].rank()..max_rank {
                 wire = target.wire_node(
-                    format!("{}-AddAxis-{}", &*node.name, i),
+                    format!("{}-BroadcastToRank-{}", &*node.name, i),
                     AxisOp::Add(0),
                     &[wire],
                 )?[0];
