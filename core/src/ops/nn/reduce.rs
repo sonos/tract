@@ -373,14 +373,15 @@ impl TypedOp for TypedReduce {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let op = Some(Box::new(Self {
-            axes: self
-                .axes
-                .iter()
-                .map(|ax| change.transform_axis(*ax).ok_or_else(|| "Invalid axis".into()))
-                .collect::<TractResult<_>>()?,
-            ..self.clone()
-        }) as _);
+        let mut axes = tvec!();
+        for reduced in &self.axes {
+            if let Some(axis) = change.transform_axis(*reduced) {
+                axes.push(axis);
+            } else {
+                return Ok(None);
+            }
+        }
+        let op = Some(Box::new(Self { axes, ..self.clone() }) as _);
         Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
     }
 

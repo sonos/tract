@@ -1,4 +1,3 @@
-//! B
 //! ## Models and their lifecycle
 //!
 //! In order to reason on the model and performs optimisations, a model needs
