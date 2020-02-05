@@ -61,6 +61,15 @@ pub trait InferenceRulesOp {
     fn nboutputs(&self) -> TractResult<usize> {
         Ok(1)
     }
+
+    #[allow(unused_variables)]
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        Ok(None)
+    }
 }
 
 impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
@@ -112,5 +121,13 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         self.to_typed(source, node, target, mapping)
+    }
+
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        self.incorporate(model, node)
     }
 }

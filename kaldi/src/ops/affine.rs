@@ -54,26 +54,6 @@ impl Op for Affine {
         "kaldi.Affine".into()
     }
 
-    fn incorporate(
-        &self,
-        model: &InferenceModel,
-        node: &InferenceNode,
-    ) -> TractResult<Option<InferenceModelPatch>> {
-        let mut patch = InferenceModelPatch::default();
-
-        let input = patch.tap_model(model, node.inputs[0])?;
-        let lin = patch.add_const(format!("{}-Linear", node.name), self.linear_params.clone())?;
-        let bias = patch.add_const(format!("{}-Bias", node.name), self.bias_params.clone())?;
-
-        let wire = patch.wire_node(
-            format!("{}-Conv", node.name),
-            self.as_conv(),
-            [input, lin.into(), bias.into()].as_ref(),
-        )?[0];
-        patch.shunt_outside(node.id.into(), wire)?;
-        Ok(Some(patch))
-    }
-
     not_a_typed_op!();
 }
 
@@ -105,6 +85,26 @@ impl InferenceRulesOp for Affine {
             s.equals(&outputs[0].shape[0], &oshape[0])
         })?;
         Ok(())
+    }
+
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        let mut patch = InferenceModelPatch::default();
+
+        let input = patch.tap_model(model, node.inputs[0])?;
+        let lin = patch.add_const(format!("{}-Linear", node.name), self.linear_params.clone())?;
+        let bias = patch.add_const(format!("{}-Bias", node.name), self.bias_params.clone())?;
+
+        let wire = patch.wire_node(
+            format!("{}-Conv", node.name),
+            self.as_conv(),
+            [input, lin.into(), bias.into()].as_ref(),
+        )?[0];
+        patch.shunt_outside(node.id.into(), wire)?;
+        Ok(Some(patch))
     }
 
     inference_op_as_op!();
