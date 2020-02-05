@@ -226,12 +226,7 @@ impl TypedOp for AxisOp {
     }
 
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
-        match self {
-            AxisOp::Rm(_) | AxisOp::Add(_) => {
-                Ok(tvec!((InOut::Out(0), self.recip()), (InOut::In(0), self.clone())))
-            }
-            _ => Ok(tvec!()),
-        }
+        Ok(tvec!((InOut::Out(0), self.recip()), (InOut::In(0), self.clone())))
     }
 
     fn change_axes(
