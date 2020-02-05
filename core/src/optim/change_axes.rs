@@ -18,8 +18,10 @@ impl TypedPass for ChangeAxes {
                 suggestions.push(AxisChange { outlet, op: suggestion.1 })
             }
         }
+        let mut interfaces = model.output_outlets()?.to_vec();
+        interfaces.extend(model.input_outlets()?.iter());
         for suggestion in suggestions.into_iter() {
-            if change_axes(model, &suggestion, true)
+            if change_axes(model, &suggestion, &interfaces, &[])
                 .chain_err(|| format!("Applying {:?}", suggestion))?
                 .is_some()
             {

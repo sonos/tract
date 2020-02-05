@@ -11,6 +11,7 @@ where
     TI: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
+    pub(super) label: Option<String>,
     /// all nodes in the model
     pub(super) nodes: Vec<BaseNode<TI, O>>,
     /// index of nodes per name
@@ -30,6 +31,7 @@ where
 {
     fn default() -> ModelImpl<TI, O> {
         ModelImpl {
+            label: None,
             nodes: vec![],
             nodes_by_name: HashMap::new(),
             inputs: vec![],
@@ -356,6 +358,10 @@ where
     TI: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
+    fn model_label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
         Ok(self
             .nodes_by_name

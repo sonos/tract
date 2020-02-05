@@ -80,9 +80,36 @@ impl TypedScan {
             let mut new = self.clone();
             new.body = self.body.clone().declutter()?;
             new.decluttered = true;
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?));
+            Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
+        } else {
+            Ok(None)
         }
-        Ok(None)
+    }
+
+    fn declutter_body_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let mut suggestions = vec![];
+        for n in self.body.eval_order()? {
+            let node = self.body.node(n);
+            for suggestion in node.op.suggested_axis_changes()? {
+                let outlet = suggestion.0.as_outlet(&node);
+                suggestions.push(AxisChange { outlet, op: suggestion.1 })
+            }
+        }
+        for suggestion in suggestions.into_iter() {
+            if let Some(op) = self.try_body_axes_change(suggestion, true)?.and_then(|c| c.substitute_op) {
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &node.inputs,
+                    op,
+                )?));
+            }
+        }
+        return Ok(None);
     }
 
     fn remove_outer_input_from_mappings(
@@ -387,6 +414,114 @@ impl TypedScan {
         }
         Ok(None)
     }
+
+    fn body_bounds(&self) -> TractResult<TVec<TVec<OutletId>>> {
+        let input_state_outlets = self
+            .input_mapping
+            .iter()
+            .zip(self.body.input_outlets()?.iter())
+            .filter(|(m, _)| m.as_state().is_some())
+            .map(|(_, o)| o);
+        let output_state_outlets = self
+            .output_mapping
+            .iter()
+            .zip(self.body.output_outlets()?.iter())
+            .filter(|(m, _)| m.state)
+            .map(|(_, o)| o);
+        Ok(input_state_outlets.zip(output_state_outlets).map(|(&i, &o)| tvec!(i, o)).collect())
+    }
+
+    fn body_exposed_outlets(&self) -> TractResult<TVec<OutletId>> {
+        let input_outlets = self
+            .input_mapping
+            .iter()
+            .zip(self.body.input_outlets()?.iter())
+            .filter(|(m, _)| !m.invisible())
+            .map(|(_, o)| o);
+        let output_outlets = self
+            .output_mapping
+            .iter()
+            .zip(self.body.output_outlets()?.iter())
+            .filter(|(m, _)| !m.invisible())
+            .map(|(_, o)| o);
+        Ok(input_outlets.chain(output_outlets).cloned().collect())
+    }
+
+    fn try_body_axes_change(
+        &self,
+        change: AxisChange,
+        locked_interface: bool,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        let mut body = self.body.clone();
+        let interface = self.body_exposed_outlets()?;
+        let body_changed_wires = if let Some(changes) = crate::ops::change_axes::change_axes(
+            &mut body,
+            &change,
+            if locked_interface { &interface } else { &[] },
+            &*self.body_bounds()?,
+        )? {
+            changes
+        } else {
+            return Ok(None);
+        };
+        let mut wire_changes = tvec!();
+        let mut input_mapping: Vec<InputMapping<TDim>> = self.input_mapping.clone();
+        for (ix, m) in input_mapping.iter_mut().enumerate() {
+            let input = body.input_outlets()?[ix];
+            if let Some(change) = body_changed_wires.get(&input) {
+                if let Some(slot) = m.slot() {
+                    wire_changes.push((InOut::In(slot), change.clone()));
+                }
+                match m {
+                    InputMapping::Full { .. } => (),
+                    InputMapping::Scan { axis, chunk, slot } => {
+                        if let Some(axis) = change.transform_axis(*axis) {
+                            *m = InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone() };
+                        } else {
+                            return Ok(None);
+                        };
+                    }
+                    InputMapping::State { initializer } => match initializer {
+                        StateInitializer::FromInput(_) => (),
+                        StateInitializer::Value(ref v) => {
+                            let mut v = v.clone().into_tensor();
+                            change.change_tensor(&mut v)?;
+                            *m = InputMapping::State {
+                                initializer: StateInitializer::Value(v.into_arc_tensor()),
+                            };
+                        }
+                    },
+                };
+            }
+        }
+        let mut output_mapping: Vec<OutputMapping<TDim, TDim>> = self.output_mapping.clone();
+        for (ix, m) in output_mapping.iter_mut().enumerate() {
+            let output = self.body.output_outlets()?[ix];
+            if let Some(change) = body_changed_wires.get(&output) {
+                if let Some(slot) = m.full_slot {
+                    wire_changes.push((InOut::Out(slot), change.clone()));
+                }
+                if let Some(slot) = m.last_value_slot {
+                    wire_changes.push((InOut::Out(slot), change.clone()));
+                }
+                if !m.state {
+                    if let Some(new_axis) = change.transform_axis(m.axis) {
+                        m.axis = new_axis;
+                    } else {
+                        return Ok(None)
+                    }
+                }
+            };
+        }
+        let op = Some(Box::new(TypedScan {
+            body,
+            input_mapping,
+            output_mapping,
+            decluttered: false,
+            ..self.clone()
+        }) as _);
+        Ok(Some(AxisChangeConsequence { substitute_op: op, wire_changes }))
+    }
 }
 
 impl Op for TypedScan {
@@ -438,12 +573,8 @@ impl TypedOp for TypedScan {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut outputs = tvec!();
         let iters = {
-            let (outside_slot, axis, chunk) = self
-                .input_mapping
-                .iter()
-                .flat_map(|it| it.as_scan())
-                .next()
-                .unwrap();
+            let (outside_slot, axis, chunk) =
+                self.input_mapping.iter().flat_map(|it| it.as_scan()).next().unwrap();
             inputs[outside_slot].shape.dim(axis).div_ceil(chunk.to_dim())
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
@@ -521,78 +652,8 @@ impl TypedOp for TypedScan {
                 self.body.output_outlets()?[output]
             }
         };
-        let mut body = self.body.clone();
-        let body_changed_wires = if let Some(changes) = crate::ops::change_axes::change_axes(
-            &mut body,
-            &AxisChange { outlet: body_leading_outlet, op: change.clone() },
-            false,
-        )? {
-            changes
-        } else {
-            return Ok(None);
-        };
-        let mut input_mapping: Vec<InputMapping<TDim>> = vec![];
-        let mut output_mapping: Vec<OutputMapping<TDim, TDim>> = vec![];
-        let mut wire_changes = tvec!();
-        for (ix, m) in self.input_mapping.iter().enumerate() {
-            let input = self.body.input_outlets()?[ix];
-            if let Some(change) = body_changed_wires.get(&input) {
-                if let Some(slot) = m.slot() {
-                    wire_changes.push((InOut::In(slot), change.clone()));
-                }
-                let fixed_mapping = match m {
-                    InputMapping::Full { .. } => m.clone(),
-                    InputMapping::Scan { axis, chunk, slot } => {
-                        let axis = if let Some(axis) = change.transform_axis(*axis) {
-                            axis
-                        } else {
-                            return Ok(None)
-                        };
-                        InputMapping::Scan { axis, slot: *slot, chunk: chunk.clone(), }
-                    },
-                    InputMapping::State { initializer } => match initializer {
-                        StateInitializer::FromInput(fi) => {
-                            InputMapping::State { initializer: StateInitializer::FromInput(*fi) }
-                        }
-                        StateInitializer::Value(ref v) => {
-                            let mut v = v.clone().into_tensor();
-                            change.change_tensor(&mut v)?;
-                            InputMapping::State {
-                                initializer: StateInitializer::Value(v.into_arc_tensor()),
-                            }
-                        }
-                    },
-                };
-                input_mapping.push(fixed_mapping);
-            } else {
-                input_mapping.push(m.clone());
-            }
-        }
-        for (ix, m) in self.output_mapping.iter().enumerate() {
-            let output = self.body.output_outlets()?[ix];
-            let fixed_mapping = if let Some(change) = body_changed_wires.get(&output) {
-                if let Some(slot) = m.full_slot {
-                    wire_changes.push((InOut::Out(slot), change.clone()));
-                }
-                if let Some(slot) = m.last_value_slot {
-                    wire_changes.push((InOut::Out(slot), change.clone()));
-                }
-                if !m.state {
-                    OutputMapping {
-                        axis: change.transform_axis(m.axis).ok_or("Invalid axis")?,
-                        ..m.clone()
-                    }
-                } else {
-                    m.clone()
-                }
-            } else {
-                m.clone()
-            };
-            output_mapping.push(fixed_mapping);
-        }
-        let op =
-            Some(Box::new(TypedScan { body, input_mapping, output_mapping, ..self.clone() }) as _);
-        Ok(Some(AxisChangeConsequence { substitute_op: op, wire_changes }))
+        let axis_change = AxisChange { outlet: body_leading_outlet, op: change.clone() };
+        self.try_body_axes_change(axis_change, false)
     }
 
     fn declutter(
@@ -602,6 +663,7 @@ impl TypedOp for TypedScan {
     ) -> TractResult<Option<TypedModelPatch>> {
         for dec in &[
             Self::declutter_body,
+            Self::declutter_body_axes,
             Self::declutter_discard_unused_input_mapping,
             Self::declutter_pull_batcheable_input,
             Self::declutter_pull_batcheable_output,

@@ -539,6 +539,10 @@ impl TypedOp for MatMulUnary {
                 }
             }
             AxisOp::Add(axis) => {
+                if b.rank() == 1 {
+                    let op = Self { b_trans: *axis == 0, c_trans: *axis == 0, ..self.clone() };
+                    return Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+                }
                 let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
                 if axis_in_a + 2 > self.a.rank() as isize {
                     return Ok(None);
@@ -680,7 +684,7 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?;
-        if fact.axis >= fact.shape.len() - self.a_trans as usize {
+        if fact.axis >= fact.shape.len() - self.b_trans as usize {
             bail!("Can not pulsify MatMulUnaryA on the k dimension");
         }
         target.wire_node(&*node.name, self.clone(), &[input])
