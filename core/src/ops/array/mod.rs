@@ -63,7 +63,7 @@ mod tile;
 
 pub use self::add_dims::AddDims;
 pub use self::broadcast::{MultiBroadcastTo, TypedMultiBroadcastTo};
-pub use self::concat::{Concat, NormConcat};
+pub use self::concat::{Concat, NormConcat, NormConcatSlice};
 pub use self::constant_like::ConstantLike;
 pub use self::constant_like::EyeLike;
 pub use self::constant_of_shape::ConstantOfShape;

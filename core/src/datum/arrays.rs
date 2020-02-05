@@ -3,8 +3,10 @@ use crate::datum::Blob;
 use crate::TractResult;
 use ndarray::*;
 use tract_linalg::f16::f16;
+use crate::prelude::*;
 
 pub trait ArrayDatum: Sized {
+    fn stack_tensors(axis: usize, tensors:&[&Tensor]) -> TractResult<Tensor>;
     fn stack_views(axis: usize, views: &[ArrayViewD<Self>]) -> TractResult<ArrayD<Self>>;
     unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D>
     where
@@ -16,6 +18,12 @@ pub trait ArrayDatum: Sized {
 macro_rules! impl_stack_views_by_copy(
     ($t: ty) => {
         impl ArrayDatum for $t {
+            fn stack_tensors(axis: usize, tensors:&[&Tensor]) -> TractResult<Tensor> {
+                let arrays = tensors.iter().map(|t| t.to_array_view::<$t>()).collect::<TractResult<TVec<_>>>()?;
+                let views = arrays.iter().map(|a| a.view()).collect::<TVec<_>>();
+                Self::stack_views(axis, &views).map(|a| a.into_tensor())
+            }
+
             fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> TractResult<ArrayD<$t>> {
                 Ok(ndarray::stack(ndarray::Axis(axis), views)?)
             }
@@ -32,6 +40,12 @@ macro_rules! impl_stack_views_by_copy(
 macro_rules! impl_stack_views_by_clone(
     ($t: ty) => {
         impl ArrayDatum for $t {
+            fn stack_tensors(axis: usize, tensors:&[&Tensor]) -> TractResult<Tensor> {
+                let arrays = tensors.iter().map(|t| t.to_array_view::<$t>()).collect::<TractResult<TVec<_>>>()?;
+                let views = arrays.iter().map(|a| a.view()).collect::<TVec<_>>();
+                Self::stack_views(axis, &views).map(|a| a.into_tensor())
+            }
+
             fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> TractResult<ArrayD<$t>> {
                 let mut shape = views[0].shape().to_vec();
                 shape[axis] = views.iter().map(|v| v.shape()[axis]).sum();
@@ -44,6 +58,7 @@ macro_rules! impl_stack_views_by_clone(
                 }
                 Ok(array)
             }
+
             unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
                 Sh: ShapeBuilder<Dim = D>,
                 S: DataOwned<Elem=Self>,

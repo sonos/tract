@@ -134,7 +134,9 @@ impl InferenceRulesOp for InferenceBinOp {
             if facts[i].datum_type != operating_datum_type {
                 wire = target.wire_node(
                     format!("{}Cast{}", &*node.name, i),
-                    super::cast::Cast::new(operating_datum_type),
+                    crate::ops::element_wise::ElementWiseOp(Box::new(super::cast::Cast::new(
+                        operating_datum_type,
+                    ))),
                     &[wire],
                 )?[0];
             }

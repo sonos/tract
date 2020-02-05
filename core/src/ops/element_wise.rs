@@ -2,7 +2,9 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-pub trait ElementWiseMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
+pub trait ElementWiseMiniOp:
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast
+{
     fn name(&self) -> String;
     fn prefix(&self) -> &'static str {
         ""
@@ -26,6 +28,15 @@ pub trait ElementWiseMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 's
     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
         tvec!()
     }
+    #[allow(unused_variables)]
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+
     #[allow(unused_variables)]
     fn quantize(
         &self,
@@ -117,6 +128,14 @@ impl TypedOp for ElementWiseOp {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        self.0.declutter(model, node)
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
