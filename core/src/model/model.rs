@@ -359,7 +359,7 @@ where
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn model_label(&self) -> Option<&str> {
-        self.label.as_deref()
+        self.label.as_ref().map(|s| &**s)
     }
 
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
