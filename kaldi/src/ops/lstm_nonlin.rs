@@ -115,6 +115,7 @@ impl InferenceRulesOp for LstmNonlin {
         use tract_core::ops::math::add::bin_typed as add;
         use tract_core::ops::math::mul::bin_typed as mul;
         use tract_core::ops::{array, math, nn};
+        use tract_core::ops::array::NormConcatSlice;
 
         let params =
             self.peepholes_params.to_array_view::<f32>()?.into_dimensionality::<ndarray::Ix2>()?;
@@ -185,7 +186,11 @@ impl InferenceRulesOp for LstmNonlin {
         wire!(tanh_c_t = math::tanh(), c_t);
         wire!(m_t = mul(), o_t, tanh_c_t);
 
-        wire!(output = array::Concat::new(1), c_t, m_t);
+        wire!(
+            output = array::NormConcat::new(1, tvec!(NormConcatSlice::Var, NormConcatSlice::Var)),
+            c_t,
+            m_t
+        );
 
         Ok(tvec!(output))
     }

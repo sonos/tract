@@ -38,5 +38,5 @@ fn cast(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let to = node.get_attr::<DatumType>("to")?;
-    Ok((Box::new(::tract_core::ops::cast::Cast::new(to)), vec![]))
+    Ok((Box::new(::tract_core::ops::cast::cast(to)), vec![]))
 }

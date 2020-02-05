@@ -1,57 +1,37 @@
 use crate::internal::*;
+use crate::ops::element_wise::ElementWiseOp;
+
+pub fn cast(to: DatumType) -> ElementWiseOp {
+    ElementWiseOp(Box::new(Cast { to }))
+}
 
 #[derive(Debug, Clone, new)]
 pub struct Cast {
     to: DatumType,
 }
 
-impl Cast {
-    /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
-        Ok(input.cast_to::<T>()?.into_owned().into_arc_tensor())
-    }
-}
-
-impl Op for Cast {
-    fn name(&self) -> Cow<str> {
+impl ElementWiseMiniOp for Cast {
+    fn name(&self) -> String {
         "Cast".into()
     }
 
-    op_as_typed_op!();
-    not_a_pulsed_op!();
-}
-
-impl StatelessOp for Cast {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        let output = dispatch_datum!(Self::eval_t(self.to)(input))?;
-        Ok(tvec!(output))
-    }
-}
-
-impl InferenceRulesOp for Cast {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].datum_type, self.to)?;
-        s.equals(&inputs[0].shape, &outputs[0].shape)?;
-        Ok(())
+    fn output_type(&self, _input_type: DatumType) -> Option<DatumType> {
+        Some(self.to)
     }
 
-    inference_op_as_op!();
-    to_typed!();
-}
+    fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
+        t.cast_to_dt(self.to).map(|t| t.into_owned())
+    }
 
-impl TypedOp for Cast {
-    typed_op_as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(self.to, inputs[0].shape.clone())?))
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if model.outlet_fact(node.inputs[0])?.datum_type == self.to {
+            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        } else {
+            Ok(None)
+        }
     }
 }
