@@ -132,6 +132,38 @@ impl Op for Gemm {
         "Gemm".into()
     }
 
+    not_a_typed_op!();
+}
+
+impl StatelessOp for Gemm {
+    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        unreachable!();
+    }
+}
+
+impl InferenceRulesOp for Gemm {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(&inputs, 3)?;
+        s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].rank, 2)?;
+        s.equals(&inputs[1].rank, 2)?;
+        check_output_arity(&outputs, 1)?;
+        s.equals(&outputs[0].rank, 2)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
+        let (ca, ra) = if self.trans_a { (0, 1) } else { (1, 0) };
+        let (cb, rb) = if self.trans_b { (0, 1) } else { (1, 0) };
+        s.equals(&inputs[0].shape[ra], &outputs[0].shape[0])?;
+        s.equals(&inputs[0].shape[ca], &inputs[1].shape[rb])?;
+        s.equals(&inputs[1].shape[cb], &outputs[0].shape[1])?;
+        Ok(())
+    }
+
     fn incorporate(
         &self,
         model: &InferenceModel,
@@ -176,38 +208,5 @@ impl Op for Gemm {
         patch.shunt_outside(node.id.into(), result)?;
         Ok(Some(patch))
     }
-
-    not_a_typed_op!();
-}
-
-impl StatelessOp for Gemm {
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        unreachable!();
-    }
-}
-
-impl InferenceRulesOp for Gemm {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
-        s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].rank, 2)?;
-        s.equals(&inputs[1].rank, 2)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].rank, 2)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
-        let (ca, ra) = if self.trans_a { (0, 1) } else { (1, 0) };
-        let (cb, rb) = if self.trans_b { (0, 1) } else { (1, 0) };
-        s.equals(&inputs[0].shape[ra], &outputs[0].shape[0])?;
-        s.equals(&inputs[0].shape[ca], &inputs[1].shape[rb])?;
-        s.equals(&inputs[1].shape[cb], &outputs[0].shape[1])?;
-        Ok(())
-    }
-
     inference_op_as_op!();
 }

@@ -15,14 +15,6 @@ impl Op for Memory {
         "kaldi.Memory".into()
     }
 
-    fn incorporate(
-        &self,
-        model: &InferenceModel,
-        node: &InferenceNode,
-    ) -> TractResult<Option<InferenceModelPatch>> {
-        Ok(Some(incorporate_memory_ops_as_scans(model, node)?))
-    }
-
     not_a_typed_op!();
 }
 
@@ -53,6 +45,14 @@ impl InferenceOp for Memory {
         _node: &InferenceNode,
     ) -> TractResult<Vec<OutletId>> {
         Ok(vec![OutletId::new(model.node_by_name(&self.name)?.id, 0)])
+    }
+
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        Ok(Some(incorporate_memory_ops_as_scans(model, node)?))
     }
 
     inference_op_as_op!();

@@ -115,20 +115,6 @@ pub trait Op:
 {
     fn name(&self) -> Cow<str>;
 
-    /// Early pass on inference model, after analyse, but before translation to
-    /// typed network. Meant to deal with some framework idiosyncrasies that
-    /// manifest with temporaries nodes that can run some form of inference but
-    /// require refactoring the network before it can be evaluated.
-    ///
-    /// Called after succesful analyse, but before translating to typed model.
-    fn incorporate(
-        &self,
-        _model: &InferenceModel,
-        _node: &InferenceNode,
-    ) -> TractResult<Option<InferenceModelPatch>> {
-        Ok(None)
-    }
-
     /// Fuse op after codegen to deal with local optimisations.
     fn fuse(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
@@ -370,6 +356,21 @@ pub trait InferenceOp:
         outputs: TVec<&InferenceFact>,
         observed: TVec<&InferenceFact>,
     ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)>;
+
+    /// Early pass on inference model, after analyse, but before translation to
+    /// typed network. Meant to deal with some framework idiosyncrasies that
+    /// manifest with temporaries nodes that can run some form of inference but
+    /// require refactoring the network before it can be evaluated.
+    ///
+    /// Called after succesful analyse, but before translating to typed model.
+    #[allow(unused_variables)]
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        Ok(None)
+    }
 
     fn nboutputs(&self) -> TractResult<usize> {
         Ok(1)
