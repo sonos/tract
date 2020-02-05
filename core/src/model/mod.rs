@@ -60,6 +60,7 @@ pub use self::patch::ModelPatch;
 pub use crate::analyser::types::InferenceFact;
 pub use crate::ops::{InferenceOp, Op, TypedOp};
 
+
 use crate::model::translator::Translate;
 use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
@@ -67,6 +68,9 @@ use crate::ops::invariants;
 
 /// Common methods for all variants of model.
 pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
+    /// Model label
+    fn model_label(&self) -> Option<&str>;
+
     /// Lookup node id by name
     fn node_id_by_name(&self, name: &str) -> TractResult<usize>;
 

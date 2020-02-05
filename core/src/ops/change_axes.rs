@@ -226,7 +226,12 @@ impl TypedOp for AxisOp {
     }
 
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
-        Ok(tvec!((InOut::Out(0), self.recip()), (InOut::In(0), self.clone())))
+        match self {
+            AxisOp::Rm(_) | AxisOp::Add(_) => {
+                Ok(tvec!((InOut::Out(0), self.recip()), (InOut::In(0), self.clone())))
+            }
+            _ => Ok(tvec!()),
+        }
     }
 
     fn change_axes(
@@ -297,50 +302,57 @@ impl PulsedOp for AxisOp {
 pub fn change_axes(
     model: &mut TypedModel,
     change: &AxisChange,
-    lock_interfaces: bool,
+    locked: &[OutletId],
+    bounds: &[TVec<OutletId>],
 ) -> TractResult<Option<HashMap<OutletId, AxisOp>>> {
+    debug!("Trying to apply change {:?}", change);
     let mut todo_changes = vec![change.clone()];
     let mut changed_wires = HashMap::new();
     changed_wires.insert(change.outlet, change.op.clone());
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
     while let Some(c) = todo_changes.pop() {
-        if lock_interfaces
-            && (model.output_outlets()?.contains(&c.outlet)
-                || model.input_outlets()?.contains(&c.outlet))
-        {
-            return Ok(None);
-        }
-        let mut nodes = vec![(c.outlet.node, InOut::Out(c.outlet.slot))];
-        for inlet in model.outlet_successors(c.outlet) {
-            nodes.push((inlet.node, InOut::In(inlet.slot)));
-        }
-        for (node_id, io) in nodes {
-            let node = model.node(node_id);
-            let more = node
-                .op
-                .change_axes(model, node, io, &c.op)
-                .chain_err(|| format!("Propagating {:?} to node {}", change, node))?;
-            if more.is_none() {
-                debug!("Propagation of {:?} blocked by {}", change, node);
+        let outlets = if let Some(group) = bounds.iter().find(|b| b.contains(&c.outlet)) {
+            group.clone()
+        } else {
+            tvec![c.outlet]
+        };
+        for outlet in outlets {
+            if locked.contains(&outlet) {
+                debug!("Change {:?} blocked by locked interface {:?}", change, outlet);
                 return Ok(None);
             }
-            let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
-            if let Some(op) = substitute_op {
-                trace!(
-                    "Change {:?} enters {} from {:?} -> replace {:?} by {:?}",
-                    c.op,
-                    node,
-                    io,
-                    node.op,
-                    op
-                );
-                changed_ops.insert(node.id, op);
+            let mut nodes = vec![(outlet.node, InOut::Out(outlet.slot))];
+            for inlet in model.outlet_successors(outlet) {
+                nodes.push((inlet.node, InOut::In(inlet.slot)));
             }
-            for (wire, op) in wire_changes.into_iter() {
-                let outlet = wire.as_outlet(node);
-                if !changed_wires.contains_key(&outlet) {
-                    changed_wires.insert(outlet, op.clone());
-                    todo_changes.push(AxisChange { outlet, op });
+            for (node_id, io) in nodes {
+                let node = model.node(node_id);
+                let more = node
+                    .op
+                    .change_axes(model, node, io, &c.op)
+                    .chain_err(|| format!("Propagating {:?} to node {}", change, node))?;
+                if more.is_none() {
+                    debug!("Propagation of {:?} blocked by {}", change, node);
+                    return Ok(None);
+                }
+                let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
+                if let Some(op) = substitute_op {
+                    trace!(
+                        "Change {:?} enters {} from {:?} -> replace {:?} by {:?}",
+                        c.op,
+                        node,
+                        io,
+                        node.op,
+                        op
+                    );
+                    changed_ops.insert(node.id, op);
+                }
+                for (wire, op) in wire_changes.into_iter() {
+                    let outlet = wire.as_outlet(node);
+                    if !changed_wires.contains_key(&outlet) {
+                        changed_wires.insert(outlet, op.clone());
+                        todo_changes.push(AxisChange { outlet, op });
+                    }
                 }
             }
         }
@@ -352,6 +364,7 @@ pub fn change_axes(
         let node = model.node_mut(outlet.node);
         axis_op.change_shape(&mut node.outputs[outlet.slot].fact.shape)?;
     }
+    debug!("Applied change {:?}", change);
     Ok(Some(changed_wires))
 }
 
