@@ -233,11 +233,7 @@ fn convert_output(
         ($dt:ident) => {
             match step.fetch(output) {
                 Err(r) => {
-                    if r.code() == tensorflow::Code::InvalidArgument {
-                        unsafe { Tensor::null::<$dt>(&[]).unwrap().into() }
-                    } else {
                         Err(r)?
-                    }
                 }
                 Ok(output) => tensor_to_array::<$dt>(&output)?.into(),
             }

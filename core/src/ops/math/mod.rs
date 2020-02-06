@@ -167,6 +167,11 @@ element_wise!(floor, Floor, [f16, f32, f64] => |_, xs| {
     Ok(())
 });
 
+element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.round());
+    Ok(())
+});
+
 element_wise!(scalar_min_max, ScalarMinMax { min: Tensor, max: Tensor },
    [f32, f64] => |m, xs| {
         let max = m.max.cast_to_scalar()?;

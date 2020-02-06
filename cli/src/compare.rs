@@ -14,7 +14,7 @@ use crate::*;
 pub fn handle_tensorflow(
     cumulative: bool,
     resilient: bool,
-    mut params: &Parameters,
+    params: &mut Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()> {
     let tract = &params.tract_model;

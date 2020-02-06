@@ -255,7 +255,11 @@ impl TypedOp for AxisOp {
                 }
             }
         };
-        let outgoing_change = self.transform_change(&incoming_change).unwrap();
+        let outgoing_change = if let Some(oc) = self.transform_change(&incoming_change) {
+            oc
+        } else {
+            return Ok(None);
+        };
         let new_me = incoming_change.transform_op(&self).unwrap();
         let substitute_op = if &new_me != self { Some(Box::new(new_me) as _) } else { None };
         let mut wire_changes = tvec!();

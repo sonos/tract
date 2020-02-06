@@ -424,7 +424,6 @@ impl Parameters {
             info!("Tensorflow version: {}", tract_tensorflow::conform::tf::version());
             if matches.is_present("determinize") {
                 if let SomeGraphDef::Tf(ref graph) = graph {
-                    use tract_tensorflow::conform::Message;
                     let graph = graph.write_to_bytes().unwrap();
                     Some(tract_tensorflow::conform::tf::for_slice(&graph)?)
                 } else {
@@ -805,7 +804,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ("compare", Some(m)) => compare::handle_tensorflow(
             m.is_present("cumulative"),
             m.is_present("resilient"),
-            &params,
+            &mut params,
             display_options_from_clap(&matches, m)?,
         ),
         #[cfg(not(feature = "conform"))]
