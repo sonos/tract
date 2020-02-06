@@ -29,9 +29,6 @@ pub struct BaseNode<TI: Fact, O> {
     /// A list of incoming tensors, identified by the node outlet that creates
     /// them.
     pub inputs: Vec<OutletId>,
-    /// A supplementary list of control inputs (only for execution order
-    /// constraint)
-    pub control_inputs: Vec<usize>,
     /// The actual operation the node performs.
     #[cfg_attr(feature = "serialize", serde(skip))]
     pub op: O,

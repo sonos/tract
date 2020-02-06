@@ -33,18 +33,13 @@ pub fn eval_order_for_nodes<TI: Fact, O: Debug + Display + AsRef<dyn Op> + AsMut
         while let Some((current_node, current_input)) = current_stack.pop() {
             if inputs.contains(&current_node)
                 || current_input
-                    == nodes[current_node].inputs.len() + nodes[current_node].control_inputs.len()
+                    == nodes[current_node].inputs.len()
             {
                 order.push(current_node);
                 done.insert(current_node);
                 pending.remove(current_node);
             } else {
-                let precursor = if current_input < nodes[current_node].inputs.len() {
-                    nodes[current_node].inputs[current_input].node
-                } else {
-                    nodes[current_node].control_inputs
-                        [current_input - nodes[current_node].inputs.len()]
-                };
+                let precursor = nodes[current_node].inputs[current_input].node;
                 if done.contains(precursor) {
                     current_stack.push((current_node, current_input + 1));
                 } else if pending.contains(precursor) {

@@ -86,9 +86,6 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
     /// Number of outputs for a node, by id.
     fn node_output_count(&self, id: usize) -> usize;
 
-    /// Number of outputs for a node, by id.
-    fn node_control_inputs(&self, id: usize) -> &[usize];
-
     /// Number nodes
     fn nodes_len(&self) -> usize;
 
@@ -190,13 +187,6 @@ pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedFact, Box<dyn TypedOp>, 
 pub type NormalizedSimpleState<M, P> = SimpleState<NormalizedFact, Box<dyn TypedOp>, M, P>;
 
 impl InferenceModel {
-    /*
-    /// Analyse one node of the graph.
-    pub fn analyse_one(&mut self, id: usize) -> TractResult<bool> {
-        crate::analyser::Analyser::new(self).analyse_one(id)
-    }
-    */
-
     /// Analyse all nodes of the graph.
     ///
     /// Will stop on first error unless `obstinate` is `true`.
