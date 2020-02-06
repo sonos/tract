@@ -20,7 +20,7 @@ fn parse_costs(spec: &str) -> TVec<(Cost, usize)> {
         .collect()
 }
 
-pub fn handle(params: Parameters, options: DisplayOptions, m: &clap::ArgMatches) -> CliResult<()> {
+pub fn handle(params: &Parameters, options: DisplayOptions, m: &clap::ArgMatches) -> CliResult<()> {
     let assert = m.value_of("assert-cost").map(|a| parse_costs(a));
     let tract = &params.tract_model;
     if let Some(_) = tract.downcast_ref::<InferenceModel>() {

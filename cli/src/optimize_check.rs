@@ -4,8 +4,8 @@ use tract_core::ops::source::Source;
 use crate::display_graph;
 use crate::{CliResult, Parameters};
 
-pub fn handle(params: Parameters, _options: display_graph::DisplayOptions) -> CliResult<()> {
-    let plain = params.typed_model.unwrap();
+pub fn handle(params: &Parameters, _options: display_graph::DisplayOptions) -> CliResult<()> {
+    let plain = params.typed_model.as_ref().unwrap();
     let optimized = params
         .tract_model
         .downcast_ref::<TypedModel>()

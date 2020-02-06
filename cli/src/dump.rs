@@ -3,7 +3,7 @@ use crate::errors::*;
 use crate::{Model, Parameters};
 use tract_core::internal::*;
 
-pub fn handle(params: Parameters, options: DisplayOptions, _inner: Vec<String>) -> CliResult<()> {
+pub fn handle(params: &Parameters, options: DisplayOptions, _inner: Vec<String>) -> CliResult<()> {
     let tract = &params.tract_model;
     handle_model(&**tract, &params, options)
 }

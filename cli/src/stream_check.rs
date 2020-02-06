@@ -10,7 +10,7 @@ use tract_core::pulse::PulsedModel;
 use crate::display_graph;
 use crate::{CliResult, Parameters};
 
-pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> CliResult<()> {
+pub fn handle(params: &Parameters, options: display_graph::DisplayOptions) -> CliResult<()> {
     let pulsed = params.tract_model.downcast_ref::<PulsedModel>().unwrap();
 
     let fixed = params.normalized_model.clone().unwrap();

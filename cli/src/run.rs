@@ -3,7 +3,7 @@ use crate::{Model, Parameters};
 use tract_core::internal::*;
 use tract_core::ndarray;
 
-pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
+pub fn handle(params: &Parameters, dump: bool) -> CliResult<()> {
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
         run_pulse_t(pulse, &params)?
     } else {
