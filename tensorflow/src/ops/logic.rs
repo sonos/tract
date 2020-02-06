@@ -67,12 +67,13 @@ impl InferenceRulesOp for Switch {
             let mut dead_to_visit = HashSet::new();
             let mut dead_done = HashSet::new();
             let mut patch = InferenceModelPatch::default();
-            dead_to_visit.insert(OutletId::new(node.id, pred as usize));
+            dead_to_visit.insert(OutletId::new(node.id, !pred as usize));
             while let Some(dead_outlet) = dead_to_visit.iter().cloned().next() {
+                dead_to_visit.remove(&dead_outlet);
                 dead_done.insert(dead_outlet);
                 for succ in model.outlet_successors(dead_outlet) {
                     if model.node(succ.node).op_is::<Merge>() {
-                        let outlet = model.node(succ.node).inputs[!succ.slot as usize];
+                        let outlet = model.node(succ.node).inputs[(succ.slot == 0) as usize];
                         let tap = patch.tap_model(model, outlet)?;
                         patch.shunt_outside(succ.node.into(), tap)?;
                     } else {
@@ -86,7 +87,8 @@ impl InferenceRulesOp for Switch {
                 }
             }
             let tap = patch.tap_model(model, node.inputs[0])?;
-            patch.shunt_outside(OutletId::new(node.id, !pred as usize) , tap)?;
+            patch.shunt_outside(OutletId::new(node.id, 0) , tap)?;
+            patch.shunt_outside(OutletId::new(node.id, 1) , tap)?;
             return Ok(Some(patch))
         }
         Ok(None)
