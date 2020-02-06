@@ -347,6 +347,7 @@ pub enum SomeGraphDef {
 
 /// Structure holding the parsed parameters.
 pub struct Parameters {
+    analyse_error: Option<TractError>,
     graph: SomeGraphDef,
     typed_model: Option<TypedModel>,
     normalized_model: Option<NormalizedModel>,
@@ -590,6 +591,8 @@ impl Parameters {
         let mut typed_model = None;
         let normalized_model: Option<NormalizedModel> = None;
 
+        let mut analyse_error = None;
+
         let tract_model: Box<dyn Model> = {
             let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
                 "optimize"
@@ -607,8 +610,12 @@ impl Parameters {
                 }
                 info_usage("after load");
                 info!("Running 'analyse'");
-                raw_model.analyse(!matches.is_present("analyse_fail_fast"))?;
-                if stop_at == "analyse" {
+                let r = raw_model.analyse(!matches.is_present("analyse_fail_fast"));
+                if let Err(e) = r {
+                    analyse_error = Some(e);
+                    return Ok(Box::new(raw_model) as _);
+                }
+                if stop_at == "analyse" || r.is_err() {
                     return Ok(Box::new(raw_model) as _);
                 }
                 info_usage("after analyse");
@@ -668,6 +675,7 @@ impl Parameters {
         info_usage("model ready");
 
         Ok(Parameters {
+            analyse_error,
             graph,
             typed_model,
             normalized_model,
@@ -797,7 +805,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ("compare", Some(m)) => compare::handle_tensorflow(
             m.is_present("cumulative"),
             m.is_present("resilient"),
-            params,
+            &params,
             display_options_from_clap(&matches, m)?,
         ),
         #[cfg(not(feature = "conform"))]
@@ -806,7 +814,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ("compare-npz", Some(m)) => compare::handle_npz(
             m.is_present("cumulative"),
             m.value_of("npz").unwrap(),
-            params,
+            &params,
             display_options_from_clap(&matches, m)?,
         ),
 
@@ -814,25 +822,25 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ("compare-pbdir", Some(m)) => compare::handle_pbdir(
             m.is_present("cumulative"),
             m.value_of("pbdir").unwrap(),
-            params,
+            &params,
             display_options_from_clap(&matches, m)?,
         ),
 
         ("run", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m, &*params.output_names)?);
-            run::handle(params, m.is_present("dump"))
+            run::handle(&params, m.is_present("dump"))
         }
 
         ("optimize-check", Some(m)) => {
-            optimize_check::handle(params, display_options_from_clap(&matches, m)?)
+            optimize_check::handle(&params, display_options_from_clap(&matches, m)?)
         }
 
         ("stream-check", Some(m)) => {
-            stream_check::handle(params, display_options_from_clap(&matches, m)?)
+            stream_check::handle(&params, display_options_from_clap(&matches, m)?)
         }
 
         ("cost", Some(m)) => {
-            crate::cost::handle(params, display_options_from_clap(&matches, m)?, m)
+            crate::cost::handle(&params, display_options_from_clap(&matches, m)?, m)
         }
 
         ("dump", Some(m)) => {
@@ -841,7 +849,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
                 .values_of("inner")
                 .map(|ss| ss.map(|s| s.to_string()).collect())
                 .unwrap_or(vec![]);
-            dump::handle(params, display_options_from_clap(&matches, m)?, inner)
+            dump::handle(&params, display_options_from_clap(&matches, m)?, inner)
         }
 
         ("profile", Some(m)) => {
@@ -852,12 +860,16 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
                 warn!("Profiling a debug build of tract!");
             }
             profile::handle(
-                params,
+                &params,
                 ProfilingMode::from_clap(&m)?,
                 display_options_from_clap(&matches, m)?,
             )
         }
 
         (s, _) => bail!("Unknown subcommand {}.", s),
+    }?;
+    if let Some(e) = params.analyse_error {
+        Err(e)?
     }
+    Ok(())
 }

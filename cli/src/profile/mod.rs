@@ -98,7 +98,7 @@ impl ProfileData {
 
 /// Handles the `profile` subcommand.
 pub fn handle(
-    params: Parameters,
+    params: &Parameters,
     profiling: ProfilingMode,
     display_options: DisplayOptions,
 ) -> CliResult<()> {

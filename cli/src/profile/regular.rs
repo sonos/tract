@@ -18,7 +18,7 @@ use crate::tensor::make_inputs;
 
 use tract_core::internal::*;
 
-pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResult<()> {
+pub fn handle_benching(params: &Parameters, profiling: ProfilingMode) -> CliResult<()> {
     dispatch_model!(params.tract_model, |m| handle_benching_t(m, &params, profiling))
 }
 
@@ -76,7 +76,7 @@ where
 }
 
 pub fn handle(
-    params: Parameters,
+    params: &Parameters,
     profiling: ProfilingMode,
     display_options: DisplayOptions,
 ) -> CliResult<()> {

@@ -159,10 +159,6 @@ impl<'a> DisplayGraph<'a> {
             prefix!();
             println!("  * {}", label);
         }
-        if model.node_control_inputs(node_id).len() > 0 {
-            prefix!();
-            println!("  * control nodes: {}", model.node_control_inputs(node_id).iter().join(", "));
-        }
         for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
             prefix!();

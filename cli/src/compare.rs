@@ -14,7 +14,7 @@ use crate::*;
 pub fn handle_tensorflow(
     cumulative: bool,
     resilient: bool,
-    mut params: Parameters,
+    mut params: &Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()> {
     let tract = &params.tract_model;
@@ -83,7 +83,7 @@ pub fn handle_tensorflow(
 pub fn handle_npz(
     cumulative: bool,
     npz: &str,
-    params: Parameters,
+    params: &Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()> {
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
@@ -107,7 +107,7 @@ pub fn handle_npz(
 pub fn handle_pbdir(
     cumulative: bool,
     pbdir: &str,
-    params: Parameters,
+    params: &Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()> {
     let mut values: HashMap<String, CliResult<Tensor>> = HashMap::new();
