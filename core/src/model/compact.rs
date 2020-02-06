@@ -22,7 +22,6 @@ where
         for old_id in old.eval_order()? {
             let old_node = old.node(old_id);
             let outlets = self.wire_node(old, &mut new, &map, old_node)?;
-            let new_node_id = outlets[0].node;
             for (ix, &o) in outlets.iter().enumerate() {
                 map.insert(OutletId::new(old_id, ix), o);
                 if let Some(label) = old.outlet_label(OutletId::new(old_id, ix)) {
@@ -31,10 +30,6 @@ where
             }
             if old.input_outlets()?.contains(&OutletId::new(old_node.id, 0)) {
                 continue;
-            }
-            for &input in old_node.control_inputs.iter() {
-                let control_input = map[&input.into()].node;
-                new.node_mut(new_node_id).control_inputs.push(control_input);
             }
         }
         for i in old.input_outlets()? {

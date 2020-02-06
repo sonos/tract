@@ -15,7 +15,6 @@ pub mod litteral;
 
 /// Tensor is a concrete tensor in tract.
 pub struct Tensor {
-    null: bool,
     dt: DatumType,
     shape: TVec<usize>,
     layout: alloc::Layout,
@@ -108,7 +107,7 @@ impl Tensor {
             assert!(!ptr.is_null());
             ptr
         } as *mut u8;
-        Ok(Tensor { null: false, layout, dt, shape: shape.into(), data })
+        Ok(Tensor { layout, dt, shape: shape.into(), data })
     }
 
     /// Create an tensor from raw data.
@@ -127,28 +126,7 @@ impl Tensor {
         let layout = alloc::Layout::from_size_align(bytes, dt.alignment())?;
         let data = alloc::alloc(layout);
         content.as_ptr().copy_to_nonoverlapping(data, bytes);
-        Ok(Tensor { null: false, dt, shape: shape.into(), data, layout })
-    }
-
-    /// Creates a null tensor (this is rare, and should stay that way).
-    pub unsafe fn null<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
-        Self::null_dt(T::datum_type(), shape)
-    }
-
-    /// Creates a null tensor (this is rare, and should stay that way).
-    pub unsafe fn null_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
-        Ok(Tensor {
-            null: true,
-            dt,
-            shape: shape.into(),
-            data: std::ptr::null::<u8>() as *mut u8,
-            layout: alloc::Layout::from_size_align(0, dt.size_of())?,
-        })
-    }
-
-    /// Check weather self is a null tensor.
-    pub fn is_null(&self) -> bool {
-        self.null
+        Ok(Tensor { dt, shape: shape.into(), data, layout })
     }
 
     /// Get the number of dimensions (or axes) of the tensor.
@@ -194,9 +172,6 @@ impl Tensor {
     pub fn dump_t<D: Datum>(&self, force_full: bool) -> TractResult<String> {
         use itertools::Itertools;
         let spec = InferenceFact::dt_shape(D::datum_type(), &*self.shape);
-        if self.is_null() {
-            return Ok(format!("{} (null)", spec.format_dt_shape()));
-        }
         let data = self.to_array_view::<D>()?;
         let s = if force_full || data.len() <= 12 {
             format!("{} {}", spec.format_dt_shape(), data.iter().join(", "))
@@ -225,9 +200,6 @@ impl Tensor {
 
     /// Compare two tensors, allowing for rounding errors.
     pub fn close_enough(&self, other: &Self, approx: bool) -> TractResult<()> {
-        if self.is_null() != other.is_null() {
-            return Ok(());
-        }
         if self.shape() != other.shape() {
             bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
@@ -270,9 +242,6 @@ impl Tensor {
                 self.datum_type(),
                 D::datum_type(),
             );
-        }
-        if self.is_null() {
-            bail!("Null tensor")
         }
         Ok(())
     }
@@ -451,7 +420,7 @@ impl Tensor {
         let layout =
             alloc::Layout::from_size_align(vec.len() * size_of::<T>(), align_of::<T>()).unwrap();
         let data = Box::into_raw(vec) as *mut u8;
-        Tensor { null: false, dt: T::datum_type(), shape, layout, data }
+        Tensor { dt: T::datum_type(), shape, layout, data }
     }
 
     pub fn deep_clone(&self) -> Tensor {
@@ -465,8 +434,6 @@ impl Tensor {
             let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
             std::mem::forget(data);
             t
-        } else if self.null {
-            Tensor { shape: self.shape.clone(), ..*self }
         } else {
             unsafe {
                 let data = alloc::alloc(self.layout) as *mut u8;

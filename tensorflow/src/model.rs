@@ -5,7 +5,6 @@ use tract_core::internal::*;
 
 #[derive(Default)]
 pub struct ParsingContext {
-    pub node_output_arities: HashMap<String, usize>,
 }
 
 #[derive(Clone, Default)]
@@ -97,20 +96,10 @@ impl Framework<GraphDef> for Tensorflow {
 
         let mut model = InferenceModel::default();
         let mut inputs = tvec!();
-        // compute min output arity for all nodes
-        let mut context = ParsingContext::default();
-        for pbnode in &graph.node {
-            for i in &pbnode.input {
-                let (node, slot) = Self::parse_input(i)?;
-                let arity = context.node_output_arities.entry(node.to_string()).or_insert(1);
-                *arity = (*arity).max(slot + 1);
-            }
-        }
+        let context = ParsingContext::default();
 
         for pbnode in &graph.node {
             let name = &pbnode.name;
-            let output_arity = context.node_output_arities.get(&*name).cloned().unwrap_or(1);
-            let facts = tvec!(InferenceFact::default(); output_arity);
 
             if pbnode.op == "NextIteration" {
                 let source_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Source);
@@ -129,6 +118,8 @@ impl Framework<GraphDef> for Tensorflow {
                 )
                 .into(),
             };
+
+            let facts = tvec!(InferenceFact::default(); op.nboutputs()?);
 
             let node_id = model.add_node(name.clone(), op, facts)?;
             if pbnode.op == "Placeholder" {
@@ -164,7 +155,7 @@ impl Framework<GraphDef> for Tensorflow {
                 let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;
                 if i.starts_with("^") {
-                    model.node_mut(node_id).control_inputs.push(prec);
+                    panic!();
                 } else {
                     let outlet = OutletId::new(prec, input.1);
                     let inlet = InletId::new(node_id, ix);

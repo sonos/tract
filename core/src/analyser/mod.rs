@@ -109,7 +109,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 let (inputs, outputs) = self.model.borrow().node_facts(node)?;
                 if outputs.len() != self.model.borrow().node(node).op.nboutputs().unwrap() {
                     bail!(
-                        "Wrong nnumber of outputs. Op says {}, node says {}.",
+                        "Wrong number of outputs. Op says {}, node says {}.",
                         self.model.borrow().node(node).op.nboutputs().unwrap(),
                         outputs.len(),
                     )

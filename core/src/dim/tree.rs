@@ -190,7 +190,7 @@ impl ExpNode {
                 let a = a.reduce();
                 let b = b.reduce();
                 if b == ExpNode::Val(1) {
-                    a
+                    ExpNode::Val(0)
                 } else {
                     Add(vec![a.clone(), Mul(-1, vec![b.clone(), Div(b!(a.clone()), b!(b))])])
                         .reduce()

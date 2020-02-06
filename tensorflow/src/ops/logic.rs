@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 use crate::tfpb::tensorflow::NodeDef;
+use std::collections::HashSet;
 use tract_core::internal::*;
 use tract_core::ops as tractops;
 
@@ -13,36 +14,27 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::and::bin())));
     reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::or::bin())));
     reg.insert("Merge", merge);
-    reg.insert("Switch", switch);
-}
-
-fn switch(ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    let arity = ctx.node_output_arities[&pb.name];
-    Ok(Box::new(Switch::new(arity)))
+    reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
 }
 
 #[derive(Debug, Clone, new)]
-pub struct Switch {
-    output_arity: usize,
-}
+pub struct Switch;
 
 impl Op for Switch {
     fn name(&self) -> Cow<str> {
         "tf.Switch".into()
     }
 
-    op_as_typed_op!();
+    not_a_typed_op!();
 }
 
-impl StatelessOp for Switch {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (input, pred) = args_2!(inputs);
-        let null = unsafe { Tensor::null_dt(input.datum_type(), input.shape())? };
-        if *pred.to_scalar::<bool>()? {
-            Ok(tvec!(null.into(), input))
-        } else {
-            Ok(tvec!(input, null.into()))
-        }
+impl StatefullOp for Switch {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(None)
     }
 }
 
@@ -54,7 +46,7 @@ impl InferenceRulesOp for Switch {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, self.output_arity)?;
+        check_output_arity(&outputs, 2)?;
         s.equals(&inputs[1].datum_type, DatumType::Bool)?;
         s.equals(&inputs[1].shape, shapefact!())?;
         for i in 0..outputs.len() {
@@ -64,21 +56,47 @@ impl InferenceRulesOp for Switch {
         Ok(())
     }
 
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        let pred = model.outlet_fact(node.inputs[1])?;
+        if let Some(pred) = pred.concretize() {
+            let pred = *pred.to_scalar::<bool>()?;
+            let mut dead_to_visit = HashSet::new();
+            let mut dead_done = HashSet::new();
+            let mut patch = InferenceModelPatch::default();
+            dead_to_visit.insert(OutletId::new(node.id, pred as usize));
+            while let Some(dead_outlet) = dead_to_visit.iter().cloned().next() {
+                dead_done.insert(dead_outlet);
+                for succ in model.outlet_successors(dead_outlet) {
+                    if model.node(succ.node).op_is::<Merge>() {
+                        let outlet = model.node(succ.node).inputs[!succ.slot as usize];
+                        let tap = patch.tap_model(model, outlet)?;
+                        patch.shunt_outside(succ.node.into(), tap)?;
+                    } else {
+                        for slot in 0..model.node(succ.node).outputs.len() {
+                            let new = OutletId::new(succ.node, slot);
+                            if !dead_done.contains(&new) {
+                                dead_to_visit.insert(new);
+                            }
+                        }
+                    }
+                }
+            }
+            let tap = patch.tap_model(model, node.inputs[0])?;
+            patch.shunt_outside(OutletId::new(node.id, !pred as usize) , tap)?;
+            return Ok(Some(patch))
+        }
+        Ok(None)
+    }
+
     fn nboutputs(&self) -> TractResult<usize> {
-        Ok(self.output_arity)
+        Ok(2)
     }
 
     inference_op_as_op!();
-    to_typed!();
-}
-
-impl TypedOp for Switch {
-    typed_op_as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let fact = TypedFact::dt_shape(f32::datum_type(), inputs[0].shape.clone())?;
-        Ok(tvec!(fact.clone(), fact))
-    }
 }
 
 fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
@@ -99,11 +117,13 @@ impl Op for Merge {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Merge {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let index =
-            inputs.iter().position(|t| !t.is_null()).ok_or("No tensor received in merge")?;
-        Ok(tvec!(inputs.remove(index), Tensor::from(index as i32).into()))
+impl StatefullOp for Merge {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(None)
     }
 }
 

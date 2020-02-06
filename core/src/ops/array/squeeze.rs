@@ -13,7 +13,7 @@ impl Squeeze {
             let mut shape: TVec<D> = input.iter().cloned().collect();
             for &axis in axes.iter().rev() {
                 if shape.remove(axis) != D::one() {
-                    bail!("Attempt to squeeze an axis which dimension in not one");
+                    bail!("Attempt to squeeze an axis which dimension is not one {:?}, {:?}", self, input);
                 }
             }
             Ok(shape)

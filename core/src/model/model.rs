@@ -59,7 +59,7 @@ where
         self.nodes_by_name.insert(name.clone(), id);
         let outputs =
             output_facts.into_iter().map(|fact| OutletFact { fact, successors: tvec!() }).collect();
-        let node = BaseNode { id, name, op, inputs: vec![], control_inputs: vec![], outputs };
+        let node = BaseNode { id, name, op, inputs: vec![], outputs };
         self.nodes.push(node);
         Ok(id)
     }
@@ -380,10 +380,6 @@ where
 
     fn node_output_count(&self, id: usize) -> usize {
         self.nodes[id].outputs.len()
-    }
-
-    fn node_control_inputs(&self, id: usize) -> &[usize] {
-        &*self.nodes[id].control_inputs
     }
 
     fn nodes_len(&self) -> usize {
