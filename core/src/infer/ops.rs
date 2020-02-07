@@ -3,6 +3,8 @@ use crate::infer::*;
 use downcast_rs::Downcast;
 use super::Factoid;
 
+dyn_clone::clone_trait_object!(InferenceOp);
+
 /// An operation with tensor type inference
 pub trait InferenceOp:
     Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp

@@ -1,4 +1,5 @@
 use tract_core::internal::*;
+use tract_core::infer::*;
 use tract_core::ops as tractops;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::nn::DataFormat;

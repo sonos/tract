@@ -1,6 +1,7 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
 use std::hash::Hash;
+use tract_core::infer::*;
 use tract_core::internal::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {

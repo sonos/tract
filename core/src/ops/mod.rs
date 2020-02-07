@@ -292,7 +292,6 @@ impl_downcast!(Op);
 dyn_clone::clone_trait_object!(Op);
 dyn_clone::clone_trait_object!(StatelessOp);
 dyn_clone::clone_trait_object!(TypedOp);
-dyn_clone::clone_trait_object!(InferenceOp);
 dyn_clone::clone_trait_object!(PulsedOp);
 
 impl<O: Op> From<O> for Box<dyn Op> {

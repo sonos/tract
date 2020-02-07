@@ -1,6 +1,7 @@
 use tract_core::ndarray;
 use tract_core::ndarray::*;
 
+use tract_core::infer::*;
 use tract_core::internal::*;
 
 use crate::model::ParsingContext;
