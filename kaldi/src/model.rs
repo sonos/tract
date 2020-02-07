@@ -226,6 +226,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
                             Some(builder) => (builder)(&ctx, name)?,
                             None => {
                                 (Box::new(tract_core::ops::unimpl::UnimplementedOp::new(
+                                    1,
                                     component.klass.to_string(),
                                     format!("{:?}", line),
                                 )))

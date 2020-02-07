@@ -2,13 +2,14 @@ use crate::internal::*;
 
 #[derive(Debug, Clone)]
 pub struct UnimplementedOp {
+    outputs: usize,
     name: String,
     message: String,
 }
 
 impl UnimplementedOp {
-    pub fn new(name: impl AsRef<str>, message: impl AsRef<str>) -> UnimplementedOp {
-        UnimplementedOp { name: name.as_ref().to_string(), message: message.as_ref().to_string() }
+    pub fn new(outputs: usize, name: impl AsRef<str>, message: impl AsRef<str>) -> UnimplementedOp {
+        UnimplementedOp { outputs, name: name.as_ref().to_string(), message: message.as_ref().to_string() }
     }
 }
 
@@ -32,6 +33,10 @@ impl StatefullOp for UnimplementedOp {
 }
 
 impl InferenceRulesOp for UnimplementedOp {
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(self.outputs)
+    }
+
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         _: &mut Solver<'r>,
