@@ -3,6 +3,7 @@ use crate::pb::*;
 use prost::Message;
 use std::convert::{TryFrom, TryInto};
 use tract_core::internal::*;
+use tract_core::infer::*;
 use tract_core::*;
 
 impl TryFrom<DataType> for DatumType {

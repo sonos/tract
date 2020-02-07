@@ -3,6 +3,7 @@ use itertools::Itertools;
 use std::collections::BTreeMap;
 
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 #[derive(Clone, Debug, new)]
 pub struct Memory {
@@ -215,7 +216,7 @@ fn incorporate_memory_ops_as_scans(
             mapped_outputs,
             None,
             false,
-            GenericFact::default(),
+            GenericFactoid::default(),
         );
 
         let mut output_facts = tvec!();

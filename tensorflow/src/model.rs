@@ -2,6 +2,7 @@ use prost::Message;
 use crate::tfpb::tensorflow::{GraphDef, NodeDef, SavedModel};
 use std::{fs, path};
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 #[derive(Default)]
 pub struct ParsingContext {
@@ -142,9 +143,9 @@ impl Framework<GraphDef> for Tensorflow {
                             .iter()
                             .map(|d| {
                                 if *d == -1 {
-                                    GenericFact::Any
+                                    GenericFactoid::Any
                                 } else {
-                                    GenericFact::Only(d.to_dim())
+                                    GenericFactoid::Only(d.to_dim())
                                 }
                             })
                             .collect(),

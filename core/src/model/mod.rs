@@ -57,7 +57,6 @@ pub use self::model::*;
 pub use self::node::*;
 pub use self::order::eval_order;
 pub use self::patch::ModelPatch;
-pub use crate::analyser::types::InferenceFact;
 pub use crate::ops::{Op, TypedOp};
 
 

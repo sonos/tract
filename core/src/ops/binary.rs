@@ -2,6 +2,7 @@ use crate::internal::*;
 use crate::ops::invariants::*;
 use downcast_rs::Downcast;
 use std::fmt;
+use crate::infer::*;
 
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
@@ -100,7 +101,7 @@ impl InferenceRulesOp for InferenceBinOp {
         s.with(&inputs[0].shape, move |s, a_shape| {
             s.with(&inputs[1].shape, move |s, b_shape| {
                 if let Ok(Some(c_shape)) =
-                    crate::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape])
+                    crate::infer::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape])
                 {
                     s.equals(&outputs[0].shape, c_shape)?;
                 }

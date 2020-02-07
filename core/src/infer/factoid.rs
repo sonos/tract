@@ -77,171 +77,32 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default {
     }
 }
 
-/// Partial information about a tensor.
-///
-/// The task of the analyser is to tag every edge in the graph with information
-/// about the tensors that flow through it - specifically their datum_type, their
-/// shape and possibly their value. During the analysis, however, we might only
-/// know some of that information (say, for instance, that an edge only carries
-/// tensors of rank 4, but without knowing their precise dimension).
-///
-/// This is where tensor facts come in: they hold partial information about the
-/// datum_type, shape and value of tensors that might flow through an edge of the
-/// graph. The analyser will first tag each edge with a fact, starting with the
-/// most general one and specializing it at each iteration. Eventually, it will
-/// reach a fixed point that - hopefully - holds enough information.
-#[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Clone, PartialEq, Default)]
-pub struct InferenceFact {
-    pub datum_type: TypeFact,
-    pub shape: ShapeFactoid,
-    pub value: ValueFact,
-}
-
-impl InferenceFact {
-    /// Constructs the most general tensor fact possible.
-    pub fn new() -> InferenceFact {
-        InferenceFact::default()
-    }
-
-    pub fn any() -> InferenceFact {
-        InferenceFact::default()
-    }
-
-    pub fn dt(dt: DatumType) -> InferenceFact {
-        InferenceFact::default().with_datum_type(dt)
-    }
-
-    pub fn dt_shape<S: Into<ShapeFactoid>>(dt: DatumType, shape: S) -> InferenceFact {
-        InferenceFact::dt(dt).with_shape(shape)
-    }
-
-    pub fn shape<S: Into<ShapeFactoid>>(shape: S) -> InferenceFact {
-        InferenceFact::default().with_shape(shape)
-    }
-
-    pub fn with_datum_type(self, dt: DatumType) -> InferenceFact {
-        InferenceFact { datum_type: dt.into(), ..self }
-    }
-
-    pub fn with_shape<S: Into<ShapeFactoid>>(self, shape: S) -> InferenceFact {
-        InferenceFact { shape: shape.into(), ..self }
-    }
-
-    pub fn with_streaming_shape<S: IntoIterator<Item = Option<usize>>>(
-        self,
-        shape: S,
-    ) -> InferenceFact {
-        let shape: ShapeFactoid = shape
-            .into_iter()
-            .map(|d| d.map(|d| (d as isize).to_dim()).unwrap_or(TDim::s()))
-            .collect();
-        self.with_shape(shape)
-    }
-
-    pub fn stream_info(&self) -> TractResult<Option<StreamFact>> {
-        self.shape.stream_info()
-    }
-
-    pub fn format_dt_shape(&self) -> String {
-        if !self.shape.open && self.shape.dims.len() == 0 {
-            format!(
-                "{}",
-                self.datum_type
-                    .concretize()
-                    .map(|dt| format!("{:?}", dt))
-                    .unwrap_or("?".to_string())
-            )
-        } else {
-            format!(
-                "{:?}x{}",
-                self.shape,
-                self.datum_type
-                    .concretize()
-                    .map(|dt| format!("{:?}", dt))
-                    .unwrap_or("?".to_string())
-            )
-        }
-    }
-
-    pub fn dt_shape_from_tensor(t: &Tensor) -> InferenceFact {
-        InferenceFact::dt_shape(t.datum_type(), t.shape())
-    }
-
-    pub fn without_value(self) -> InferenceFact {
-        InferenceFact { value: GenericFact::Any, ..self }
-    }
-}
-
-impl Factoid for InferenceFact {
-    type Concrete = Arc<Tensor>;
-
-    /// Tries to transform the fact into a concrete value.
-    fn concretize(&self) -> Option<Self::Concrete> {
-        self.value.concretize()
-    }
-
-    /// Tries to unify the fact with another fact of the same type.
-    fn unify(&self, other: &Self) -> TractResult<Self> {
-        let tensor = InferenceFact {
-            datum_type: self.datum_type.unify(&other.datum_type)?,
-            shape: self.shape.unify(&other.shape)?,
-            value: self.value.unify(&other.value)?,
-        };
-
-        trace!("Unifying {:?} with {:?} into {:?}.", self, other, tensor);
-
-        Ok(tensor)
-    }
-}
-
-impl<V: Into<Arc<Tensor>>> From<V> for InferenceFact {
-    fn from(v: V) -> InferenceFact {
-        let v: Arc<Tensor> = v.into();
-        InferenceFact {
-            datum_type: GenericFact::Only(v.datum_type()),
-            shape: ShapeFactoid::from(v.shape()),
-            value: GenericFact::Only(v),
-        }
-    }
-}
-
-impl fmt::Debug for InferenceFact {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(t) = self.value.concretize() {
-            write!(formatter, "{:?}", t)
-        } else {
-            write!(formatter, "{}", self.format_dt_shape())
-        }
-    }
-}
-
 /// Partial information about a value of type T.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq)]
-pub enum GenericFact<T: fmt::Debug + Clone + PartialEq> {
+pub enum GenericFactoid<T: fmt::Debug + Clone + PartialEq> {
     Only(T),
     Any,
 }
 
-impl<T: Copy + Clone + fmt::Debug + PartialEq> Copy for GenericFact<T> {}
+impl<T: Copy + Clone + fmt::Debug + PartialEq> Copy for GenericFactoid<T> {}
 
-impl<T: fmt::Debug + Clone + PartialEq> Factoid for GenericFact<T> {
+impl<T: fmt::Debug + Clone + PartialEq> Factoid for GenericFactoid<T> {
     type Concrete = T;
 
     /// Tries to transform the fact into a concrete value.
     fn concretize(&self) -> Option<T> {
         match self {
-            GenericFact::Any => None,
-            GenericFact::Only(m) => Some(m.clone()),
+            GenericFactoid::Any => None,
+            GenericFactoid::Only(m) => Some(m.clone()),
         }
     }
 
     /// Tries to unify the fact with another fact of the same type.
     fn unify(&self, other: &Self) -> TractResult<Self> {
         let fact = match (self, other) {
-            (_, GenericFact::Any) => self.clone(),
-            (GenericFact::Any, _) => other.clone(),
+            (_, GenericFactoid::Any) => self.clone(),
+            (GenericFactoid::Any, _) => other.clone(),
             _ if self == other => self.clone(),
             _ => bail!("Impossible to unify {:?} with {:?}.", self, other),
         };
@@ -250,29 +111,29 @@ impl<T: fmt::Debug + Clone + PartialEq> Factoid for GenericFact<T> {
     }
 }
 
-impl<T: fmt::Debug + Clone + PartialEq> Default for GenericFact<T> {
+impl<T: fmt::Debug + Clone + PartialEq> Default for GenericFactoid<T> {
     fn default() -> Self {
-        GenericFact::Any
+        GenericFactoid::Any
     }
 }
 
-impl<T: fmt::Debug + Clone + PartialEq> From<T> for GenericFact<T> {
+impl<T: fmt::Debug + Clone + PartialEq> From<T> for GenericFactoid<T> {
     fn from(t: T) -> Self {
-        GenericFact::Only(t)
+        GenericFactoid::Only(t)
     }
 }
 
-impl<T: fmt::Debug + Clone + PartialEq> fmt::Debug for GenericFact<T> {
+impl<T: fmt::Debug + Clone + PartialEq> fmt::Debug for GenericFactoid<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            GenericFact::Any => write!(formatter, "?"),
-            GenericFact::Only(u) => write!(formatter, "{:?}", u),
+            GenericFactoid::Any => write!(formatter, "?"),
+            GenericFactoid::Only(u) => write!(formatter, "{:?}", u),
         }
     }
 }
 
 /// Partial information about a type.
-pub type TypeFact = GenericFact<DatumType>;
+pub type TypeFactoid = GenericFactoid<DatumType>;
 
 /// Partial information about a shape.
 ///
@@ -286,9 +147,9 @@ pub type TypeFact = GenericFact<DatumType>;
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq)]
 pub struct ShapeFactoid {
-    open: bool,
-    dims: TVec<GenericFact<i32>>,
-    stream: Option<StreamFact>,
+    pub(super) open: bool,
+    pub(super) dims: TVec<GenericFactoid<i32>>,
+    pub(super) stream: Option<StreamFact>,
 }
 
 impl ShapeFactoid {
@@ -305,9 +166,9 @@ impl ShapeFactoid {
                 dims: dims
                     .iter()
                     .map(|d| match d {
-                        GenericFact::Only(d) if d.is_stream() => GenericFact::Only(-1),
-                        GenericFact::Only(d) => GenericFact::Only(d.to_integer().unwrap()),
-                        GenericFact::Any => GenericFact::Any,
+                        GenericFactoid::Only(d) if d.is_stream() => GenericFactoid::Only(-1),
+                        GenericFactoid::Only(d) => GenericFactoid::Only(d.to_integer().unwrap()),
+                        GenericFactoid::Any => GenericFactoid::Any,
                     })
                     .collect(),
                 stream,
@@ -318,8 +179,8 @@ impl ShapeFactoid {
                 dims: dims
                     .iter()
                     .map(|d| match d {
-                        GenericFact::Only(d) => GenericFact::Only(d.to_integer().unwrap()),
-                        GenericFact::Any => GenericFact::Any,
+                        GenericFactoid::Only(d) => GenericFactoid::Only(d.to_integer().unwrap()),
+                        GenericFactoid::Any => GenericFactoid::Any,
                     })
                     .collect(),
                 stream: None,
@@ -336,14 +197,14 @@ impl ShapeFactoid {
         ShapeFactoid { open: false, ..Self::open(dims) }
     }
 
-    pub fn rank(&self) -> IntFact {
-        if self.open { GenericFact::Any } else { GenericFact::Only(self.dims.len() as i32) }.into()
+    pub fn rank(&self) -> IntFactoid {
+        if self.open { GenericFactoid::Any } else { GenericFactoid::Only(self.dims.len() as i32) }.into()
     }
 
     pub fn ensure_rank_at_least(&mut self, n: usize) -> bool {
         let mut changed = false;
         while self.dims.len() <= n {
-            self.dims.push(GenericFact::Any);
+            self.dims.push(GenericFactoid::Any);
             changed = true;
         }
         changed
@@ -354,14 +215,14 @@ impl ShapeFactoid {
     }
 
     pub fn set_dim(&mut self, i: usize, d: TDim) -> bool {
-        let fact = GenericFact::Only(d.clone());
+        let fact = GenericFactoid::Only(d.clone());
         if self.dim(i).as_ref() == Some(&fact) {
             return false;
         }
         match d.to_integer() {
-            Ok(n) => self.dims[i] = GenericFact::Only(n),
+            Ok(n) => self.dims[i] = GenericFactoid::Only(n),
             Err(_) => {
-                self.dims[i] = GenericFact::Only(-1);
+                self.dims[i] = GenericFactoid::Only(-1);
                 self.stream = Some(StreamFact { axis: i, len: d })
             }
         }
@@ -371,12 +232,12 @@ impl ShapeFactoid {
     pub fn dims(&self) -> impl Iterator<Item = DimFact> {
         let stream = self.stream.clone();
         self.dims.clone().into_iter().map(move |d| match d {
-            GenericFact::Only(-1) => {
+            GenericFactoid::Only(-1) => {
                 assert!(stream.is_some(), "-1 dim found with no stream. This is a tract bug.");
-                GenericFact::Only(stream.as_ref().unwrap().len.clone())
+                GenericFactoid::Only(stream.as_ref().unwrap().len.clone())
             }
-            GenericFact::Only(d) => GenericFact::Only(d.to_dim()),
-            GenericFact::Any => GenericFact::Any,
+            GenericFactoid::Only(d) => GenericFactoid::Only(d.to_dim()),
+            GenericFactoid::Any => GenericFactoid::Any,
         })
     }
 
@@ -465,20 +326,20 @@ impl Default for ShapeFactoid {
 impl FromIterator<TDim> for ShapeFactoid {
     /// Converts an iterator over usize into a closed shape.
     fn from_iter<I: IntoIterator<Item = TDim>>(iter: I) -> ShapeFactoid {
-        ShapeFactoid::closed(iter.into_iter().map(|d| GenericFact::Only(d)).collect())
+        ShapeFactoid::closed(iter.into_iter().map(|d| GenericFactoid::Only(d)).collect())
     }
 }
 
 impl FromIterator<usize> for ShapeFactoid {
     /// Converts an iterator over usize into a closed shape.
     fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> ShapeFactoid {
-        ShapeFactoid::closed(iter.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
+        ShapeFactoid::closed(iter.into_iter().map(|d| GenericFactoid::Only(d.to_dim())).collect())
     }
 }
 
 impl<D: ToDim, I: IntoIterator<Item = D>> From<I> for ShapeFactoid {
     fn from(it: I) -> ShapeFactoid {
-        ShapeFactoid::closed(it.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
+        ShapeFactoid::closed(it.into_iter().map(|d| GenericFactoid::Only(d.to_dim())).collect())
     }
 }
 
@@ -509,106 +370,106 @@ impl fmt::Debug for ShapeFactoid {
     }
 }
 
-pub type DimFact = GenericFact<TDim>;
+pub type DimFact = GenericFactoid<TDim>;
 
 /// Partial information about a value.
-pub type ValueFact = GenericFact<Arc<Tensor>>;
+pub type ValueFact = GenericFactoid<Arc<Tensor>>;
 
-pub type IntFact = GenericFact<i32>;
+pub type IntFactoid = GenericFactoid<i32>;
 
-impl<T> Zero for GenericFact<T>
+impl<T> Zero for GenericFactoid<T>
 where
     T: Add<T, Output = T> + Zero + PartialEq + Clone + ::std::fmt::Debug,
 {
-    fn zero() -> GenericFact<T> {
-        GenericFact::Only(T::zero())
+    fn zero() -> GenericFactoid<T> {
+        GenericFactoid::Only(T::zero())
     }
     fn is_zero(&self) -> bool {
         match self {
-            GenericFact::Only(t) => t.is_zero(),
+            GenericFactoid::Only(t) => t.is_zero(),
             _ => false,
         }
     }
 }
 
-impl<T> Neg for GenericFact<T>
+impl<T> Neg for GenericFactoid<T>
 where
     T: Neg<Output = T> + PartialEq + Clone + ::std::fmt::Debug,
 {
-    type Output = GenericFact<T>;
-    fn neg(self) -> GenericFact<T> {
+    type Output = GenericFactoid<T>;
+    fn neg(self) -> GenericFactoid<T> {
         match self {
-            GenericFact::Only(t) => GenericFact::Only(t.neg()),
+            GenericFactoid::Only(t) => GenericFactoid::Only(t.neg()),
             any => any,
         }
     }
 }
 
-impl<T, I> Add<I> for GenericFact<T>
+impl<T, I> Add<I> for GenericFactoid<T>
 where
     T: Add<T, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
-    I: Into<GenericFact<T>>,
+    I: Into<GenericFactoid<T>>,
 {
-    type Output = GenericFact<T>;
+    type Output = GenericFactoid<T>;
     fn add(self, rhs: I) -> Self::Output {
         match (self.concretize(), rhs.into().concretize()) {
-            (Some(a), Some(b)) => GenericFact::Only(a + b),
-            _ => GenericFact::Any,
+            (Some(a), Some(b)) => GenericFactoid::Only(a + b),
+            _ => GenericFactoid::Any,
         }
     }
 }
 
-impl<T> Sub<GenericFact<T>> for GenericFact<T>
+impl<T> Sub<GenericFactoid<T>> for GenericFactoid<T>
 where
     T: Sub<T, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
 {
-    type Output = GenericFact<T>;
-    fn sub(self, rhs: GenericFact<T>) -> Self::Output {
+    type Output = GenericFactoid<T>;
+    fn sub(self, rhs: GenericFactoid<T>) -> Self::Output {
         match (self.concretize(), rhs.concretize()) {
-            (Some(a), Some(b)) => GenericFact::Only(a - b),
-            _ => GenericFact::Any,
+            (Some(a), Some(b)) => GenericFactoid::Only(a - b),
+            _ => GenericFactoid::Any,
         }
     }
 }
 
-impl<T, R> Mul<R> for GenericFact<T>
+impl<T, R> Mul<R> for GenericFactoid<T>
 where
     T: Mul<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
 {
-    type Output = GenericFact<T>;
+    type Output = GenericFactoid<T>;
     fn mul(self, rhs: R) -> Self::Output {
         if let Some(a) = self.concretize() {
-            GenericFact::Only(a * rhs)
+            GenericFactoid::Only(a * rhs)
         } else {
-            GenericFact::Any
+            GenericFactoid::Any
         }
     }
 }
 
-impl<T, R> Div<R> for GenericFact<T>
+impl<T, R> Div<R> for GenericFactoid<T>
 where
     T: Div<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
 {
-    type Output = GenericFact<T>;
+    type Output = GenericFactoid<T>;
     fn div(self, rhs: R) -> Self::Output {
         if let Some(a) = self.concretize() {
-            GenericFact::Only(a / rhs)
+            GenericFactoid::Only(a / rhs)
         } else {
-            GenericFact::Any
+            GenericFactoid::Any
         }
     }
 }
 
-impl<T, R> Rem<R> for GenericFact<T>
+impl<T, R> Rem<R> for GenericFactoid<T>
 where
     T: Rem<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
 {
-    type Output = GenericFact<T>;
+    type Output = GenericFactoid<T>;
     fn rem(self, rhs: R) -> Self::Output {
         if let Some(a) = self.concretize() {
-            GenericFact::Only(a % rhs)
+            GenericFactoid::Only(a % rhs)
         } else {
-            GenericFact::Any
+            GenericFactoid::Any
         }
     }
 }

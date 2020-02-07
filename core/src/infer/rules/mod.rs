@@ -16,7 +16,7 @@
 #[macro_export]
 macro_rules! wrap {
     ($($x:expr),*) => ({
-        vec![$( $crate::analyser::rules::expr::IntoExp::bex($x) ),*]
+        vec![$( $crate::infer::rules::expr::IntoExp::bex($x) ),*]
     });
 
     ($($x:expr,)*) => (wrap![$($x),*]);

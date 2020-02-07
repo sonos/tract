@@ -5,8 +5,6 @@ use std::collections::BTreeSet;
 use crate::internal::*;
 use crate::model::*;
 
-pub mod types;
-
 #[macro_use]
 pub mod macros;
 #[macro_use]
@@ -186,27 +184,27 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
 mod tests {
     #[test]
     fn unify_same_datum_type() {
-        let dt = TypeFact::Only(DatumType::DT_FLOAT);
+        let dt = TypeFactoid::Only(DatumType::DT_FLOAT);
         assert_eq!(unify_datum_type(&dt, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_datum_types_only() {
-        let dt1 = TypeFact::Only(DatumType::DT_FLOAT);
-        let dt2 = TypeFact::Only(DatumType::DT_DOUBLE);
+        let dt1 = TypeFactoid::Only(DatumType::DT_FLOAT);
+        let dt2 = TypeFactoid::Only(DatumType::DT_DOUBLE);
         assert!(unify_datum_type(&dt1, &dt2).is_err());
     }
 
     #[test]
     fn unify_different_datum_types_any_left() {
-        let dt = TypeFact::Only(DatumType::DT_FLOAT);
-        assert_eq!(unify_datum_type(&TypeFact::Any, &dt).unwrap(), dt);
+        let dt = TypeFactoid::Only(DatumType::DT_FLOAT);
+        assert_eq!(unify_datum_type(&TypeFactoid::Any, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_datum_types_any_right() {
-        let dt = TypeFact::Only(DatumType::DT_FLOAT);
-        assert_eq!(unify_datum_type(&dt, &TypeFact::Any).unwrap(), dt);
+        let dt = TypeFactoid::Only(DatumType::DT_FLOAT);
+        assert_eq!(unify_datum_type(&dt, &TypeFactoid::Any).unwrap(), dt);
     }
 
     #[test]

@@ -2,11 +2,11 @@
 #[macro_export]
 macro_rules! typefact {
     (_) => {
-        $crate::analyser::types::TypeFact::default()
+        $crate::infer::TypeFactoid::default()
     };
     ($arg:expr) => {{
-        let fact: $crate::analyser::types::TypeFact =
-            $crate::analyser::types::GenericFact::Only($arg);
+        let fact: $crate::infer::TypeFactoid =
+            $crate::infer::GenericFactoid::Only($arg);
         fact
     }};
 }
@@ -15,26 +15,26 @@ macro_rules! typefact {
 #[macro_export]
 macro_rules! shapefactoid {
     () =>
-        ($crate::analyser::types::ShapeFactoid::closed(tvec![]));
+        ($crate::infer::ShapeFactoid::closed(tvec![]));
     (..) =>
-        ($crate::analyser::types::ShapeFactoid::open(tvec![]));
+        ($crate::infer::ShapeFactoid::open(tvec![]));
     ($($arg:tt),+; ..) =>
-        ($crate::analyser::types::ShapeFactoid::open(tvec![$(dimfact!($arg)),+]));
+        ($crate::infer::ShapeFactoid::open(tvec![$(dimfact!($arg)),+]));
     ($($arg:tt),+) =>
-        ($crate::analyser::types::ShapeFactoid::closed(tvec![$(dimfact!($arg)),+]));
+        ($crate::infer::ShapeFactoid::closed(tvec![$(dimfact!($arg)),+]));
 }
 
 /// Constructs a dimension fact.
 #[macro_export]
 macro_rules! dimfact {
     (_) => {
-        $crate::analyser::types::DimFact::default()
+        $crate::infer::DimFact::default()
     };
     (S) => {
-        $crate::analyser::types::GenericFact::Only(TDim::s())
+        $crate::infer::GenericFactoid::Only(TDim::s())
     };
     ($arg:expr) => {
-        $crate::analyser::types::GenericFact::Only($arg.to_dim())
+        $crate::infer::GenericFactoid::Only($arg.to_dim())
     };
 }
 
@@ -42,11 +42,11 @@ macro_rules! dimfact {
 #[macro_export]
 macro_rules! valuefact {
     (_) => {
-        $crate::analyser::types::ValueFact::default()
+        $crate::infer::ValueFact::default()
     };
     ($arg:expr) => {{
-        let fact: $crate::analyser::types::ValueFact =
-            $crate::analyser::types::GenericFact::Only($arg);
+        let fact: $crate::infer::ValueFact =
+            $crate::infer::GenericFactoid::Only($arg);
         fact
     }};
 }
@@ -73,19 +73,19 @@ mod tests {
 
     #[test]
     fn shape_macro_closed_2() {
-        assert_eq!(shapefactoid![1], ShapeFactoid::closed(tvec![GenericFact::Only(1)]));
+        assert_eq!(shapefactoid![1], ShapeFactoid::closed(tvec![GenericFactoid::Only(1)]));
     }
 
     #[test]
     fn shape_macro_closed_3() {
-        assert_eq!(shapefactoid![(1 + 1)], ShapeFactoid::closed(vec![GenericFact::Only(2)]));
+        assert_eq!(shapefactoid![(1 + 1)], ShapeFactoid::closed(vec![GenericFactoid::Only(2)]));
     }
 
     #[test]
     fn shape_macro_closed_4() {
         assert_eq!(
             shapefactoid![_, 2],
-            ShapeFactoid::closed(vec![GenericFact::Any, GenericFact::Only(2)])
+            ShapeFactoid::closed(vec![GenericFactoid::Any, GenericFactoid::Only(2)])
         );
     }
 
@@ -93,7 +93,7 @@ mod tests {
     fn shape_macro_closed_5() {
         assert_eq!(
             shapefactoid![(1 + 1), _, 2],
-            ShapeFactoid::closed(vec![GenericFact::Only(2), GenericFact::Any, GenericFact::Only(2),])
+            ShapeFactoid::closed(vec![GenericFactoid::Only(2), GenericFactoid::Any, GenericFactoid::Only(2),])
         );
     }
 
@@ -104,19 +104,19 @@ mod tests {
 
     #[test]
     fn shape_macro_open_2() {
-        assert_eq!(shapefactoid![1; ..], ShapeFactoid::open(vec![GenericFact::Only(1)]));
+        assert_eq!(shapefactoid![1; ..], ShapeFactoid::open(vec![GenericFactoid::Only(1)]));
     }
 
     #[test]
     fn shape_macro_open_3() {
-        assert_eq!(shapefactoid![(1 + 1); ..], ShapeFactoid::open(vec![GenericFact::Only(2)]));
+        assert_eq!(shapefactoid![(1 + 1); ..], ShapeFactoid::open(vec![GenericFactoid::Only(2)]));
     }
 
     #[test]
     fn shape_macro_open_4() {
         assert_eq!(
             shapefactoid![_, 2; ..],
-            ShapeFactoid::open(vec![GenericFact::Any, GenericFact::Only(2)])
+            ShapeFactoid::open(vec![GenericFactoid::Any, GenericFactoid::Only(2)])
         );
     }
 
@@ -124,7 +124,7 @@ mod tests {
     fn shape_macro_open_5() {
         assert_eq!(
             shapefactoid![(1 + 1), _, 2; ..],
-            ShapeFactoid::open(tvec![GenericFact::Only(2), GenericFact::Any, GenericFact::Only(2),])
+            ShapeFactoid::open(tvec![GenericFactoid::Only(2), GenericFactoid::Any, GenericFactoid::Only(2),])
         );
     }
 }

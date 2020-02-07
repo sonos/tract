@@ -3,7 +3,7 @@ use std::ops::Index;
 
 use num_traits::ToPrimitive;
 
-use crate::internal::*;
+use crate::infer::factoid::*;
 
 use self::super::cache::Cache;
 use self::super::expr::Output;
@@ -69,7 +69,7 @@ pub struct IntProxy {
 }
 
 impl_proxy!(IntProxy);
-impl_comparable_proxy!(IntProxy, IntFact);
+impl_comparable_proxy!(IntProxy, IntFactoid);
 
 /// A proxy for a tensor.
 ///
@@ -110,7 +110,7 @@ pub struct TypeProxy {
 }
 
 impl_proxy!(TypeProxy);
-impl_comparable_proxy!(TypeProxy, TypeFact);
+impl_comparable_proxy!(TypeProxy, TypeFactoid);
 
 /// A proxy for a tensor shape.
 pub struct ShapeProxy {
@@ -213,7 +213,7 @@ impl Index<usize> for ElementProxy {
 }
 
 impl_proxy!(ElementProxy);
-impl_comparable_proxy!(ElementProxy, IntFact);
+impl_comparable_proxy!(ElementProxy, IntFactoid);
 
 #[cfg(test)]
 mod tests {

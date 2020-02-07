@@ -1,6 +1,5 @@
 use crate::internal::*;
-
-// FIXME: pulsification is very fragile
+use crate::infer::*;
 
 #[derive(Debug, Clone, new)]
 pub struct PermuteAxes {
