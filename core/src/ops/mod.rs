@@ -115,11 +115,6 @@ pub trait Op:
 {
     fn name(&self) -> Cow<str>;
 
-    /// Fuse op after codegen to deal with local optimisations.
-    fn fuse(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
-        Ok(None)
-    }
-
     /// Nested models, with label (for audit).
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
         vec![]
@@ -169,6 +164,11 @@ pub trait TypedOp:
     #[allow(unused_variables)]
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         Ok(Invariants::default())
+    }
+
+    /// Fuse op after codegen to deal with local optimisations.
+    fn fuse(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
     }
 
     /// Declutter the op to the tract_core operator set as much as possible.

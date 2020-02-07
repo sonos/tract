@@ -121,61 +121,6 @@ where
         Ok(infos)
     }
 
-    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops;
-        if let Some(succ) = model.single_succ(node.id)? {
-            if let Some(op) = succ.op_as::<ops::array::FiniteReshape>() {
-                let shape = op.shape.clone();
-                return Ok(Some(TypedModelPatch::fuse_with_next(
-                    model,
-                    &node,
-                    Self {
-                        c_fact: TypedFact::dt_shape(self.c_fact.datum_type, &*shape)?,
-                        ..self.clone()
-                    },
-                )?));
-            }
-            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
-                if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                    let l =
-                        if self.c_trans { self.mmm.as_mmm().m() } else { self.mmm.as_mmm().n() };
-                    if op.a.len() == l && op.a.shape()[op.a.rank() - 1] == l {
-                        if op.mini_op.is::<ops::math::Mul>() {
-                            return Ok(Some(tvec!(FusedSpec::PerRowMul(
-                                op.a.as_slice::<TI>()?.to_vec(),
-                            ))));
-                        } else if op.mini_op.is::<ops::math::Add>() {
-                            return Ok(Some(tvec!(FusedSpec::PerRowAdd(
-                                op.a.as_slice::<TI>()?.to_vec(),
-                            ))));
-                        }
-                    }
-                } else if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>() {
-                    if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMax>() {
-                        return Ok(Some(tvec!(FusedSpec::Max(op.max.cast_to_scalar()?))));
-                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMin>() {
-                        return Ok(Some(tvec!(FusedSpec::Min(op.min.cast_to_scalar()?))));
-                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMinMax>() {
-                        return Ok(Some(tvec!(
-                            FusedSpec::Min(op.min.cast_to_scalar()?),
-                            FusedSpec::Max(op.max.cast_to_scalar()?),
-                        )));
-                    }
-                }
-                Ok(None)
-            })()?;
-            if let Some(op) = fused_micro_op {
-                let mut new_op = self.clone();
-                new_op
-                    .fused_ops
-                    .get_or_insert_with(|| arr0(vec![]).into_dyn())
-                    .map_inplace(|v| v.extend(op.iter().cloned()));
-                return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));
-            }
-        }
-        Ok(None)
-    }
-
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -248,6 +193,61 @@ where
 {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.c_fact.clone()))
+    }
+
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        use crate::ops;
+        if let Some(succ) = model.single_succ(node.id)? {
+            if let Some(op) = succ.op_as::<ops::array::FiniteReshape>() {
+                let shape = op.shape.clone();
+                return Ok(Some(TypedModelPatch::fuse_with_next(
+                    model,
+                    &node,
+                    Self {
+                        c_fact: TypedFact::dt_shape(self.c_fact.datum_type, &*shape)?,
+                        ..self.clone()
+                    },
+                )?));
+            }
+            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
+                if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
+                    let l =
+                        if self.c_trans { self.mmm.as_mmm().m() } else { self.mmm.as_mmm().n() };
+                    if op.a.len() == l && op.a.shape()[op.a.rank() - 1] == l {
+                        if op.mini_op.is::<ops::math::Mul>() {
+                            return Ok(Some(tvec!(FusedSpec::PerRowMul(
+                                op.a.as_slice::<TI>()?.to_vec(),
+                            ))));
+                        } else if op.mini_op.is::<ops::math::Add>() {
+                            return Ok(Some(tvec!(FusedSpec::PerRowAdd(
+                                op.a.as_slice::<TI>()?.to_vec(),
+                            ))));
+                        }
+                    }
+                } else if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>() {
+                    if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMax>() {
+                        return Ok(Some(tvec!(FusedSpec::Max(op.max.cast_to_scalar()?))));
+                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMin>() {
+                        return Ok(Some(tvec!(FusedSpec::Min(op.min.cast_to_scalar()?))));
+                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMinMax>() {
+                        return Ok(Some(tvec!(
+                            FusedSpec::Min(op.min.cast_to_scalar()?),
+                            FusedSpec::Max(op.max.cast_to_scalar()?),
+                        )));
+                    }
+                }
+                Ok(None)
+            })()?;
+            if let Some(op) = fused_micro_op {
+                let mut new_op = self.clone();
+                new_op
+                    .fused_ops
+                    .get_or_insert_with(|| arr0(vec![]).into_dyn())
+                    .map_inplace(|v| v.extend(op.iter().cloned()));
+                return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));
+            }
+        }
+        Ok(None)
     }
 
     typed_op_as_op!();

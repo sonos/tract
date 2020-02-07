@@ -8,10 +8,6 @@ impl Op for Identity {
         "Identity".into()
     }
 
-    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
-        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
-    }
-
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
@@ -51,6 +47,10 @@ impl TypedOp for Identity {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+    }
+
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     }
 
