@@ -10,6 +10,7 @@ use criterion::Criterion;
 use tract_core::model::*;
 use tract_core::*;
 
+use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ops::cnn::ConvUnary;
 

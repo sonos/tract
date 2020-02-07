@@ -19,6 +19,7 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use tract_core::ndarray::*;
+    use tract_core::infer::*;
 
     fn run<I>(op: Squeeze, input: I) -> Tensor
     where

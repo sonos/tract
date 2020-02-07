@@ -112,7 +112,6 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
-    pub use crate::infer::InferenceFact;
     pub use crate::infer::rules::expr::{IntoExp, ToDimExp};
     pub use crate::infer::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::dim::{DimLike, TDim, ToDim};

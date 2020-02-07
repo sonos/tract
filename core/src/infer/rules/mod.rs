@@ -22,8 +22,7 @@ macro_rules! wrap {
     ($($x:expr,)*) => (wrap![$($x),*]);
 }
 
-use crate::internal::*;
-use crate::infer::{ InferenceModel, InferenceNode, InferenceModelPatch, InferenceOp};
+use crate::infer::*;
 
 mod cache;
 pub mod expr;

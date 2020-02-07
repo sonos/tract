@@ -1,4 +1,5 @@
 use crate::CliResult;
+use tract_core::infer::*;
 use tract_core::internal::*;
 
 /// Compares the outputs of a node in tract and tensorflow.

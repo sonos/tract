@@ -19,6 +19,7 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use tract_core::ndarray::*;
+    use tract_core::infer::*;
     use tract_core::ops::cnn::{Conv, PaddingSpec};
 
     fn mk(sizes: &[usize]) -> Tensor {
