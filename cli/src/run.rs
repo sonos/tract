@@ -1,5 +1,6 @@
 use crate::errors::*;
 use crate::{Model, Parameters};
+use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ndarray;
 

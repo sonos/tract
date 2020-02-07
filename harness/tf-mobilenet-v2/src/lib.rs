@@ -64,6 +64,7 @@ mod tests {
     extern crate dinghy_test;
     use tract_core::ndarray::*;
     use tract_core::prelude::*;
+    use tract_core::infer::*;
 
     use super::*;
 

@@ -3,6 +3,7 @@ use std::convert::TryInto;
 use std::collections::HashMap;
 
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 use crate::pb;
 use prost::Message;

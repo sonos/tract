@@ -1,4 +1,5 @@
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 use std::collections::BTreeMap;
 

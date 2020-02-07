@@ -1,5 +1,6 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
+use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ndarray;
 

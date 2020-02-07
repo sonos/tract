@@ -3,6 +3,7 @@
 use proptest::prelude::*;
 
 use tract_core::internal::*;
+use tract_core::infer::*;
 use tract_core::ndarray::*;
 
 #[derive(Clone, Debug)]
