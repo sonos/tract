@@ -34,6 +34,7 @@ fi
 
 export CACHEDIR
 
+cargo check --tests --all --all-features
 cargo build --release
 cargo test --release --all
 cargo build --release --benches

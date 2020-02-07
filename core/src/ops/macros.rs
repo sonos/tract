@@ -97,7 +97,7 @@ macro_rules! to_typed {
         fn to_typed(
             &self,
             _source: &InferenceModel,
-            node: &InferenceNode,
+            node: &$crate::infer::InferenceNode,
             target: &mut TypedModel,
             mapping: &HashMap<OutletId, OutletId>,
         ) -> TractResult<TVec<OutletId>> {

@@ -16,46 +16,6 @@ pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync +
 impl_downcast!(Fact);
 dyn_clone::clone_trait_object!(Fact);
 
-impl Fact for InferenceFact {
-    fn to_tensor_fact(&self) -> InferenceFact {
-        self.clone()
-    }
-}
-
-impl<'a> TryFrom<&'a InferenceFact> for TypedFact {
-    type Error = TractError;
-    fn try_from(fact: &InferenceFact) -> TractResult<TypedFact> {
-        if let (Some(datum_type), Some(shape)) =
-            (fact.datum_type.concretize(), fact.shape.concretize())
-        {
-            let stream_info = shape
-                .iter()
-                .cloned()
-                .enumerate()
-                .find(|d| d.1.to_integer().is_err())
-                .map(|(axis, len)| StreamInfo { axis, len });
-            let shape = shape.iter().map(|d| d.to_integer().unwrap_or(0) as usize).collect();
-            let shape = ShapeInfo { shape, stream_info };
-            Ok(TypedFact { datum_type, shape, konst: fact.value.concretize() })
-        } else {
-            bail!("Can not make a TypedFact out of {:?}", fact)
-        }
-    }
-}
-
-
-impl<'a> From<&'a Tensor> for InferenceFact {
-    fn from(t: &'a Tensor) -> InferenceFact {
-        InferenceFact::from(t.clone())
-    }
-}
-
-impl<'a> From<&'a InferenceFact> for InferenceFact {
-    fn from(t: &'a InferenceFact) -> InferenceFact {
-        t.clone()
-    }
-}
-
 
 /// Streaming information for a streamed tensor.
 #[derive(Debug, Clone, Default, PartialEq)]
