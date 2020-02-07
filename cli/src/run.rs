@@ -38,7 +38,7 @@ fn run_regular(tract: &dyn Model, params: &Parameters) -> CliResult<TVec<Arc<Ten
         if let Some(input) = params.input_values.get(ix).and_then(|x| x.as_ref()) {
             inputs.push(input.clone().into_tensor())
         } else {
-            let fact = tract.outlet_tensorfact(*input);
+            let fact = tract.outlet_typedfact(*input)?;
             inputs.push(crate::tensor::tensor_for_fact(&fact, None)?);
         }
     }

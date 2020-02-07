@@ -24,7 +24,7 @@ pub fn infer_forward_concrete(
 }
 
 /// Infers basic shape facts in the case of broadcasting operators.
-pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<ShapeFact>> {
+pub fn infer_shape_broadcasting(shapes: &[&ShapeFactoid]) -> TractResult<Option<ShapeFactoid>> {
     if shapes.iter().any(|s| s.is_open()) {
         debug!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
         return Ok(None);
@@ -79,7 +79,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
 
     output_shape.reverse();
 
-    Ok(Some(ShapeFact::closed(output_shape)))
+    Ok(Some(ShapeFactoid::closed(output_shape)))
 }
 
 /// Infers basic facts in the case of unary or binary operators.
@@ -103,7 +103,7 @@ pub fn infer_forward_basic(
 
     let output = InferenceFact {
         datum_type,
-        shape: infer_shape_broadcasting(&input_shapes)?.unwrap_or(shapefact![..]),
+        shape: infer_shape_broadcasting(&input_shapes)?.unwrap_or(shapefactoid![..]),
         value: valuefact!(_),
     };
 
@@ -111,9 +111,9 @@ pub fn infer_forward_basic(
 }
 
 /// Returns the most specific closed shape out of an iterator.
-pub fn most_specific_shape<'a, I: IntoIterator<Item = &'a ShapeFact>>(
+pub fn most_specific_shape<'a, I: IntoIterator<Item = &'a ShapeFactoid>>(
     iter: I,
-) -> TractResult<Option<&'a ShapeFact>> {
+) -> TractResult<Option<&'a ShapeFactoid>> {
     let mut prev_rank = None;
     let mut prev_concrete = None;
     let mut best = None;

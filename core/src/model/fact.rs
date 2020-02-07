@@ -8,18 +8,27 @@ use std::fmt;
 
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
-pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
-    /// Convert to InferenceFact, the most accomoding variant of Fact.
-    fn to_tensor_fact(&self) -> InferenceFact;
+pub trait Fact:
+    std::fmt::Debug
+    + Downcast
+    + dyn_clone::DynClone
+    + Send
+    + Sync
+    + 'static
+{
+    fn to_typed_fact(&self) -> TractResult<TypedFact>;
+
+    fn matches(&self, t: &Tensor) -> TractResult<bool> {
+        self.to_typed_fact()?.matches(t)
+    }
 }
 
 impl_downcast!(Fact);
 dyn_clone::clone_trait_object!(Fact);
 
-
 /// Streaming information for a streamed tensor.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct StreamInfo {
+pub struct StreamFact {
     /// Streaming axis
     pub axis: usize,
     /// Streaming length
@@ -32,19 +41,19 @@ pub struct StreamInfo {
 /// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
 /// (sometimes hypothetical) tensor length on the streaming axis.
 #[derive(Clone)]
-pub struct ShapeInfo {
+pub struct ShapeFact {
     shape: TVec<usize>,
     /// Optional information for streaming tensors. None for regular tensors.
-    pub stream_info: Option<StreamInfo>,
+    pub stream_info: Option<StreamFact>,
 }
 
-impl PartialEq for ShapeInfo {
-    fn eq(&self, other: &ShapeInfo) -> bool {
+impl PartialEq for ShapeFact {
+    fn eq(&self, other: &ShapeFact) -> bool {
         self.shape.len() == other.shape.len() && self.iter().zip(other.iter()).all(|(a, b)| a == b)
     }
 }
 
-impl ShapeInfo {
+impl ShapeFact {
     /// Rank of the tensor.
     pub fn rank(&self) -> usize {
         self.shape.len()
@@ -74,7 +83,7 @@ impl ShapeInfo {
                 if stream.axis != i {
                     bail!("Attempt at building a shape with two streaming dim")
                 } else {
-                    self.stream_info = Some(StreamInfo { len: dim, axis: i })
+                    self.stream_info = Some(StreamFact { len: dim, axis: i })
                 }
             }
         } else {
@@ -82,7 +91,7 @@ impl ShapeInfo {
                 self.shape[i] = int as _;
             } else {
                 self.shape[i] = 0;
-                self.stream_info = Some(StreamInfo { len: dim, axis: i })
+                self.stream_info = Some(StreamFact { len: dim, axis: i })
             }
         }
         Ok(())
@@ -134,11 +143,11 @@ impl ShapeInfo {
     }
 
     /// Convert the shape to a fully determined shape fact.
-    pub fn to_shape_fact(&self) -> ShapeFact {
-        ShapeFact::from(self.iter())
+    pub fn to_shape_factoid(&self) -> ShapeFactoid {
+        ShapeFactoid::from(self.iter())
     }
 
-    pub fn from_dims<T: AsRef<[TDim]> + std::fmt::Debug>(it: T) -> TractResult<ShapeInfo> {
+    pub fn from_dims<T: AsRef<[TDim]> + std::fmt::Debug>(it: T) -> TractResult<ShapeFact> {
         let count = it.as_ref().iter().filter(|t| t.is_stream()).count();
         if count > 1 {
             bail!("Shape with two streaming dims are invalid: {:?}", it)
@@ -148,8 +157,8 @@ impl ShapeInfo {
                 .iter()
                 .enumerate()
                 .find(|(_ix, d)| d.is_stream())
-                .map(|(ix, d)| StreamInfo { axis: ix, len: d.clone() });
-            Ok(ShapeInfo {
+                .map(|(ix, d)| StreamFact { axis: ix, len: d.clone() });
+            Ok(ShapeFact {
                 shape: it
                     .as_ref()
                     .iter()
@@ -161,28 +170,28 @@ impl ShapeInfo {
     }
 }
 
-impl TryFrom<()> for ShapeInfo {
+impl TryFrom<()> for ShapeFact {
     type Error = TractError;
-    fn try_from(_it: ()) -> TractResult<ShapeInfo> {
-        ShapeInfo::from_dims([0.to_dim(); 0].as_ref())
+    fn try_from(_it: ()) -> TractResult<ShapeFact> {
+        ShapeFact::from_dims([0.to_dim(); 0].as_ref())
     }
 }
 
-impl TryFrom<&[TDim]> for ShapeInfo {
+impl TryFrom<&[TDim]> for ShapeFact {
     type Error = TractError;
-    fn try_from(it: &[TDim]) -> TractResult<ShapeInfo> {
-        ShapeInfo::from_dims(it)
+    fn try_from(it: &[TDim]) -> TractResult<ShapeFact> {
+        ShapeFact::from_dims(it)
     }
 }
 
-impl TryFrom<&[usize]> for ShapeInfo {
+impl TryFrom<&[usize]> for ShapeFact {
     type Error = TractError;
-    fn try_from(it: &[usize]) -> TractResult<ShapeInfo> {
-        Ok(ShapeInfo { shape: it.into(), stream_info: None })
+    fn try_from(it: &[usize]) -> TractResult<ShapeFact> {
+        Ok(ShapeFact { shape: it.into(), stream_info: None })
     }
 }
 
-impl fmt::Debug for ShapeInfo {
+impl fmt::Debug for ShapeFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use itertools::Itertools;
         write!(fmt, "{}", self.iter().join("x"))
@@ -195,7 +204,7 @@ pub struct TypedFact {
     /// tensor element type
     pub datum_type: DatumType,
     /// tensor shape
-    pub shape: ShapeInfo,
+    pub shape: ShapeFact,
     /// optional constant value
     pub konst: Option<Arc<Tensor>>,
 }
@@ -204,29 +213,32 @@ impl TypedFact {
     pub fn shape<T, S, E>(shape: S) -> TractResult<TypedFact>
     where
         T: Datum,
-        S: TryInto<ShapeInfo, Error = E>,
+        S: TryInto<ShapeFact, Error = E>,
         TractError: From<E>,
     {
         Self::dt_shape(T::datum_type(), shape)
     }
+
     pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<TypedFact>
     where
-        S: TryInto<ShapeInfo, Error = E>,
+        S: TryInto<ShapeFact, Error = E>,
         TractError: From<E>,
     {
         Ok(TypedFact { datum_type, shape: shape.try_into()?, konst: None })
     }
+
     pub fn rank(&self) -> usize {
         self.shape.rank()
     }
 }
 
 impl Fact for TypedFact {
-    fn to_tensor_fact(&self) -> InferenceFact {
-        match self.konst.clone() {
-            Some(k) => k.into(),
-            None => InferenceFact::dt_shape(self.datum_type, self.shape.to_shape_fact()),
-        }
+    fn to_typed_fact(&self) -> TractResult<TypedFact> {
+        Ok(self.clone())
+    }
+
+    fn matches(&self, t: &Tensor) -> TractResult<bool> {
+        Ok(self.datum_type == t.datum_type() && t.shape() == &*self.shape.shape)
     }
 }
 
@@ -246,7 +258,7 @@ impl From<Arc<Tensor>> for TypedFact {
     fn from(t: Arc<Tensor>) -> TypedFact {
         TypedFact {
             datum_type: t.datum_type(),
-            shape: ShapeInfo { shape: t.shape().into(), stream_info: None },
+            shape: ShapeFact { shape: t.shape().into(), stream_info: None },
             konst: Some(t),
         }
     }
@@ -286,21 +298,21 @@ pub struct NormalizedFact {
     /// tensor element type
     pub datum_type: DatumType,
     /// tensor shape
-    pub shape: ShapeInfo,
+    pub shape: ShapeFact,
 }
 
 impl NormalizedFact {
     pub fn shape<T, S, E>(shape: S) -> TractResult<NormalizedFact>
     where
         T: Datum,
-        S: TryInto<ShapeInfo, Error = E>,
+        S: TryInto<ShapeFact, Error = E>,
         TractError: From<E>,
     {
         Self::dt_shape(T::datum_type(), shape)
     }
     pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<NormalizedFact>
     where
-        S: TryInto<ShapeInfo, Error = E>,
+        S: TryInto<ShapeFact, Error = E>,
         TractError: From<E>,
     {
         Ok(NormalizedFact { datum_type, shape: shape.try_into()? })
@@ -308,8 +320,8 @@ impl NormalizedFact {
 }
 
 impl Fact for NormalizedFact {
-    fn to_tensor_fact(&self) -> InferenceFact {
-        InferenceFact::dt_shape(self.datum_type, self.shape.to_shape_fact())
+    fn to_typed_fact(&self) -> TractResult<TypedFact> {
+        Ok(self.into())
     }
 }
 

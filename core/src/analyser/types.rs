@@ -94,7 +94,7 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default {
 #[derive(Clone, PartialEq, Default)]
 pub struct InferenceFact {
     pub datum_type: TypeFact,
-    pub shape: ShapeFact,
+    pub shape: ShapeFactoid,
     pub value: ValueFact,
 }
 
@@ -112,11 +112,11 @@ impl InferenceFact {
         InferenceFact::default().with_datum_type(dt)
     }
 
-    pub fn dt_shape<S: Into<ShapeFact>>(dt: DatumType, shape: S) -> InferenceFact {
+    pub fn dt_shape<S: Into<ShapeFactoid>>(dt: DatumType, shape: S) -> InferenceFact {
         InferenceFact::dt(dt).with_shape(shape)
     }
 
-    pub fn shape<S: Into<ShapeFact>>(shape: S) -> InferenceFact {
+    pub fn shape<S: Into<ShapeFactoid>>(shape: S) -> InferenceFact {
         InferenceFact::default().with_shape(shape)
     }
 
@@ -124,7 +124,7 @@ impl InferenceFact {
         InferenceFact { datum_type: dt.into(), ..self }
     }
 
-    pub fn with_shape<S: Into<ShapeFact>>(self, shape: S) -> InferenceFact {
+    pub fn with_shape<S: Into<ShapeFactoid>>(self, shape: S) -> InferenceFact {
         InferenceFact { shape: shape.into(), ..self }
     }
 
@@ -132,14 +132,14 @@ impl InferenceFact {
         self,
         shape: S,
     ) -> InferenceFact {
-        let shape: ShapeFact = shape
+        let shape: ShapeFactoid = shape
             .into_iter()
             .map(|d| d.map(|d| (d as isize).to_dim()).unwrap_or(TDim::s()))
             .collect();
         self.with_shape(shape)
     }
 
-    pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
+    pub fn stream_info(&self) -> TractResult<Option<StreamFact>> {
         self.shape.stream_info()
     }
 
@@ -200,7 +200,7 @@ impl<V: Into<Arc<Tensor>>> From<V> for InferenceFact {
         let v: Arc<Tensor> = v.into();
         InferenceFact {
             datum_type: GenericFact::Only(v.datum_type()),
-            shape: ShapeFact::from(v.shape()),
+            shape: ShapeFactoid::from(v.shape()),
             value: GenericFact::Only(v),
         }
     }
@@ -276,31 +276,31 @@ pub type TypeFact = GenericFact<DatumType>;
 
 /// Partial information about a shape.
 ///
-/// A basic example of a shape fact is `shapefact![1, 2]`, which corresponds to
+/// A basic example of a shape fact is `shapefactoid![1, 2]`, which corresponds to
 /// the shape `[1, 2]` in Arc<Tensor>. We can use `_` in facts to denote unknown
-/// dimensions (e.g. `shapefact![1, 2, _]` corresponds to any shape `[1, 2, k]`
+/// dimensions (e.g. `shapefactoid![1, 2, _]` corresponds to any shape `[1, 2, k]`
 /// with `k` a non-negative integer). We can also use `..` at the end of a fact
-/// to only specify its first dimensions, so `shapefact![1, 2; ..]` matches any
+/// to only specify its first dimensions, so `shapefactoid![1, 2; ..]` matches any
 /// shape that starts with `[1, 2]` (e.g. `[1, 2, i]` or `[1, 2, i, j]`), while
-/// `shapefact![..]` matches any shape.
+/// `shapefactoid![..]` matches any shape.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq)]
-pub struct ShapeFact {
+pub struct ShapeFactoid {
     open: bool,
     dims: TVec<GenericFact<i32>>,
-    stream: Option<StreamInfo>,
+    stream: Option<StreamFact>,
 }
 
-impl ShapeFact {
+impl ShapeFactoid {
     /// Constructs an open shape fact.
-    pub fn open(dims: TVec<DimFact>) -> ShapeFact {
+    pub fn open(dims: TVec<DimFact>) -> ShapeFactoid {
         if let Some((ix, d)) = dims
             .iter()
             .enumerate()
             .find(|(_ix, d)| d.concretize().map(|d| d.is_stream()).unwrap_or(false))
         {
-            let stream = Some(StreamInfo { axis: ix, len: d.concretize().unwrap() });
-            ShapeFact {
+            let stream = Some(StreamFact { axis: ix, len: d.concretize().unwrap() });
+            ShapeFactoid {
                 open: true,
                 dims: dims
                     .iter()
@@ -313,7 +313,7 @@ impl ShapeFact {
                 stream,
             }
         } else {
-            ShapeFact {
+            ShapeFactoid {
                 open: true,
                 dims: dims
                     .iter()
@@ -332,8 +332,8 @@ impl ShapeFact {
     }
 
     /// Constructs a closed shape fact.
-    pub fn closed(dims: TVec<DimFact>) -> ShapeFact {
-        ShapeFact { open: false, ..Self::open(dims) }
+    pub fn closed(dims: TVec<DimFact>) -> ShapeFactoid {
+        ShapeFactoid { open: false, ..Self::open(dims) }
     }
 
     pub fn rank(&self) -> IntFact {
@@ -362,7 +362,7 @@ impl ShapeFact {
             Ok(n) => self.dims[i] = GenericFact::Only(n),
             Err(_) => {
                 self.dims[i] = GenericFact::Only(-1);
-                self.stream = Some(StreamInfo { axis: i, len: d })
+                self.stream = Some(StreamFact { axis: i, len: d })
             }
         }
         return true;
@@ -380,7 +380,7 @@ impl ShapeFact {
         })
     }
 
-    pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
+    pub fn stream_info(&self) -> TractResult<Option<StreamFact>> {
         let concrete = self
             .concretize()
             .ok_or("Shape has unknown dims, can not find streaming dim for sure.")?;
@@ -392,7 +392,7 @@ impl ShapeFact {
             .into_iter()
             .enumerate()
             .find(|(_, d)| d.is_stream())
-            .map(|(axis, len)| StreamInfo { axis, len }))
+            .map(|(axis, len)| StreamFact { axis, len }))
     }
 
     pub fn as_concrete_finite(&self) -> TractResult<Option<TVec<usize>>> {
@@ -403,11 +403,11 @@ impl ShapeFact {
     }
 }
 
-impl Factoid for ShapeFact {
+impl Factoid for ShapeFactoid {
     type Concrete = TVec<TDim>;
 
     /// Tries to transform the fact into a `Vec<usize>`, or returns `None`.
-    fn concretize(self: &ShapeFact) -> Option<TVec<TDim>> {
+    fn concretize(self: &ShapeFactoid) -> Option<TVec<TDim>> {
         if self.open {
             return None;
         }
@@ -448,41 +448,41 @@ impl Factoid for ShapeFact {
             .map_err(|e| format!("Unifying shapes {:?} and {:?}, {}", x, y, e))?;
 
         if x.open && y.open {
-            Ok(ShapeFact::open(dimensions))
+            Ok(ShapeFactoid::open(dimensions))
         } else {
-            Ok(ShapeFact::closed(dimensions))
+            Ok(ShapeFactoid::closed(dimensions))
         }
     }
 }
 
-impl Default for ShapeFact {
+impl Default for ShapeFactoid {
     /// Returns the most general shape fact possible.
-    fn default() -> ShapeFact {
-        ShapeFact::open(tvec![])
+    fn default() -> ShapeFactoid {
+        ShapeFactoid::open(tvec![])
     }
 }
 
-impl FromIterator<TDim> for ShapeFact {
+impl FromIterator<TDim> for ShapeFactoid {
     /// Converts an iterator over usize into a closed shape.
-    fn from_iter<I: IntoIterator<Item = TDim>>(iter: I) -> ShapeFact {
-        ShapeFact::closed(iter.into_iter().map(|d| GenericFact::Only(d)).collect())
+    fn from_iter<I: IntoIterator<Item = TDim>>(iter: I) -> ShapeFactoid {
+        ShapeFactoid::closed(iter.into_iter().map(|d| GenericFact::Only(d)).collect())
     }
 }
 
-impl FromIterator<usize> for ShapeFact {
+impl FromIterator<usize> for ShapeFactoid {
     /// Converts an iterator over usize into a closed shape.
-    fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> ShapeFact {
-        ShapeFact::closed(iter.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
+    fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> ShapeFactoid {
+        ShapeFactoid::closed(iter.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
     }
 }
 
-impl<D: ToDim, I: IntoIterator<Item = D>> From<I> for ShapeFact {
-    fn from(it: I) -> ShapeFact {
-        ShapeFact::closed(it.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
+impl<D: ToDim, I: IntoIterator<Item = D>> From<I> for ShapeFactoid {
+    fn from(it: I) -> ShapeFactoid {
+        ShapeFactoid::closed(it.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
     }
 }
 
-impl fmt::Debug for ShapeFact {
+impl fmt::Debug for ShapeFactoid {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         for (ix, d) in self.dims.iter().enumerate() {
             if ix != 0 {

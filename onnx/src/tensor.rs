@@ -45,7 +45,7 @@ impl<'a> TryFrom<&'a type_proto::Tensor> for InferenceFact {
                     fact
                 })
                 .collect();
-            fact = fact.with_shape(ShapeFact::closed(shape));
+            fact = fact.with_shape(ShapeFactoid::closed(shape));
         }
         Ok(fact)
     }

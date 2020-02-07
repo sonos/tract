@@ -23,7 +23,7 @@ pub fn handle_tensorflow(
     let input_facts = tract
         .input_outlets()
         .iter()
-        .map(|&i| Ok(tract.outlet_tensorfact(i)))
+        .map(|&i| tract.outlet_typedfact(i))
         .collect::<TractResult<Vec<_>>>()?;
     let generated = crate::tensor::make_inputs(&*input_facts)?;
 

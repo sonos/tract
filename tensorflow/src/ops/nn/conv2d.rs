@@ -166,7 +166,7 @@ mod tests {
 
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, (7 - 3 + 1), 1))]
+            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, (7 - 3 + 1), 1))]
         );
     }
 
@@ -181,7 +181,7 @@ mod tests {
 
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1, 1))]
+            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 1, 1))]
         );
     }
 }

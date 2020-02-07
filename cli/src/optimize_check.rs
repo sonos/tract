@@ -10,7 +10,7 @@ pub fn handle(params: &Parameters, _options: display_graph::DisplayOptions) -> C
         .tract_model
         .downcast_ref::<TypedModel>()
         .expect("Can only optmize-check typed models");
-    let generated = crate::tensor::make_inputs(&[plain.input_fact(0)?.to_tensor_fact()])?;
+    let generated = crate::tensor::make_inputs(&[plain.input_fact(0)?])?;
 
     let original_plan = SimplePlan::new(plain)?;
     let mut original_state = SimpleState::new(original_plan)?;

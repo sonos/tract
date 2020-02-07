@@ -19,8 +19,11 @@ pub fn handle_model(
 
     if let Some(asserts) = &params.assertions {
         if let Some(asserts) = &asserts.assert_output_facts {
-            let outputs_facts: Vec<InferenceFact> =
-                model.output_outlets().iter().map(|o| model.outlet_tensorfact(*o)).collect();
+            let outputs_facts: Vec<InferenceFact> = model
+                .output_outlets()
+                .iter()
+                .map(|o| Ok(InferenceFact::from(&model.outlet_typedfact(*o)?)))
+                .collect::<TractResult<Vec<InferenceFact>>>()?;
             crate::utils::check_inferred(&*outputs_facts, &*asserts)?;
         }
     }

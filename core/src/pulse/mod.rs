@@ -29,8 +29,8 @@ impl fmt::Debug for PulsedFact {
 }
 
 impl Fact for PulsedFact {
-    fn to_tensor_fact(&self) -> InferenceFact {
-        InferenceFact::dt_shape(self.datum_type, &self.shape)
+    fn to_typed_fact(&self) -> TractResult<TypedFact> {
+        Ok(self.into())
     }
 }
 
@@ -74,7 +74,7 @@ impl PulsedFact {
 
     pub fn to_streaming_fact(&self) -> NormalizedFact {
         let mut info = self.to_pulse_fact();
-        info.shape.stream_info = Some(StreamInfo { axis: self.axis, len: self.dim.clone() });
+        info.shape.stream_info = Some(StreamFact { axis: self.axis, len: self.dim.clone() });
         info
     }
 }
@@ -145,8 +145,8 @@ mod tests {
         let pulse =
             PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).unwrap();
         assert_eq!(
-            pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
-            InferenceFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
+            pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_typed_fact().unwrap(),
+            TypedFact::dt_shape(DatumType::F32, [1usize, 4, 3].as_ref()).unwrap()
         );
     }
 
@@ -164,12 +164,12 @@ mod tests {
         let pulse = PulsedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
 
         assert_eq!(
-            pulse.input_fact(0).unwrap().to_tensor_fact(),
-            InferenceFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
+            pulse.input_fact(0).unwrap().to_typed_fact().unwrap(),
+            TypedFact::dt_shape(DatumType::F32, &*vec!(4, 2, 3)).unwrap()
         );
         assert_eq!(
-            pulse.output_fact(0).unwrap().to_tensor_fact(),
-            InferenceFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
+            pulse.output_fact(0).unwrap().to_typed_fact().unwrap(),
+            TypedFact::dt_shape(DatumType::F32, &*vec!(4, 2, 3)).unwrap()
         );
     }
 }

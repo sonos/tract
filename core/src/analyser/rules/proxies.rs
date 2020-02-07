@@ -126,7 +126,7 @@ impl ShapeProxy {
 }
 
 impl_proxy!(ShapeProxy);
-impl_comparable_proxy!(ShapeProxy, ShapeFact);
+impl_comparable_proxy!(ShapeProxy, ShapeFactoid);
 
 impl Index<usize> for ShapeProxy {
     type Output = DimProxy;

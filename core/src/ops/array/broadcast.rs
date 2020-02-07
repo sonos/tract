@@ -41,7 +41,7 @@ impl InferenceRulesOp for MultiBroadcastTo {
                     crate::broadcast::multi_broadcast(&[&*dims.as_slice::<TDim>()?, &*shape])
                         .ok_or("incompatible shapes")
                         .unwrap();
-                s.equals(&outputs[0].shape, ShapeFact::from(dims))
+                s.equals(&outputs[0].shape, ShapeFactoid::from(dims))
             })
         })
     }

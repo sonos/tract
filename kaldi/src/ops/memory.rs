@@ -126,7 +126,7 @@ fn incorporate_memory_ops_as_scans(
                 &*mem_node.name,
                 InferenceFact::dt_shape(
                     f32::datum_type(),
-                    ShapeFact::from(&[(-op.offset) as usize, channel]),
+                    ShapeFactoid::from(&[(-op.offset) as usize, channel]),
                 ),
             )?;
             node_id_old_to_new.insert(mem, id.node);
@@ -154,7 +154,7 @@ fn incorporate_memory_ops_as_scans(
                     as usize;
             let new_id = inner_model.add_source(
                 format!("{}-scan", old_node.name),
-                InferenceFact::dt_shape(f32::datum_type(), shapefact!(_, channel)),
+                InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(_, channel)),
             )?;
             node_id_old_to_new.insert(scan_input.node, new_id.node);
             mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan {
@@ -219,21 +219,6 @@ fn incorporate_memory_ops_as_scans(
         );
 
         let mut output_facts = tvec!();
-        /*
-        for memory in coupled_mem_ops.iter() {
-            let channels = model.node(*memory).outputs[0]
-                .fact
-                .shape
-                .dim(1)
-                .unwrap()
-                .concretize()
-                .unwrap()
-                .to_integer()? as usize;
-            let op = model.node(*memory).op_as::<Memory>().unwrap();
-            let delay = (-op.offset) as usize;
-            output_facts.push(InferenceFact::dt_shape(f32::datum_type(), tvec![delay, channels]));
-        }
-        */
 
         for output in &scan_outputs {
             output_facts.push(model.outlet_fact(*output)?.clone());
@@ -244,7 +229,7 @@ fn incorporate_memory_ops_as_scans(
         let scan_id = patch.add_node(
             name,
             scan,
-            output_facts.iter().map(|ti| ti.to_tensor_fact()).collect(),
+            output_facts
         )?;
 
         for (ix, input) in scan_inputs.iter().enumerate() {

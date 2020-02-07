@@ -201,7 +201,7 @@ fn set_tensorfact_path(
             if let Some(k) = IntFact::from_wrapped(value)?.concretize() {
                 if k >= 0 {
                     let k = k.to_usize().unwrap();
-                    fact.shape = fact.shape.unify(&ShapeFact::closed(tvec![dimfact!(_); k]))?;
+                    fact.shape = fact.shape.unify(&ShapeFactoid::closed(tvec![dimfact!(_); k]))?;
                 } else {
                     bail!("Infered a negative rank ({})", k)
                 }
@@ -212,7 +212,7 @@ fn set_tensorfact_path(
 
         // Set the whole shape of the InferenceFact.
         [2] => {
-            let shape = ShapeFact::from_wrapped(value)?;
+            let shape = ShapeFactoid::from_wrapped(value)?;
             fact.shape = shape.unify(&fact.shape)?;
 
             Ok(())
@@ -226,7 +226,7 @@ fn set_tensorfact_path(
             let mut dims = tvec![dimfact!(_); k];
             dims.push(dim);
 
-            fact.shape = fact.shape.unify(&ShapeFact::open(dims))?;
+            fact.shape = fact.shape.unify(&ShapeFactoid::open(dims))?;
 
             Ok(())
         }
@@ -236,7 +236,7 @@ fn set_tensorfact_path(
             let value = ValueFact::from_wrapped(value)?;
             fact.value = fact.value.unify(&value)?;
             if let Some(tensor) = fact.value.concretize() {
-                fact.shape = fact.shape.unify(&ShapeFact::from(tensor.shape()))?;
+                fact.shape = fact.shape.unify(&ShapeFactoid::from(tensor.shape()))?;
                 fact.datum_type = fact.datum_type.unify(&TypeFact::from(tensor.datum_type()))?;
             }
             Ok(())
@@ -267,8 +267,8 @@ fn debug_tensorfact_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt:
     }
 }
 
-/// Returns the shape or dimension at the given path (starting from a ShapeFact).
-fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> TractResult<Wrapped> {
+/// Returns the shape or dimension at the given path (starting from a ShapeFactoid).
+fn get_shape_path(shape: &ShapeFactoid, path: &[isize]) -> TractResult<Wrapped> {
     match path {
         // Get the whole shape.
         [] => Ok(shape.clone().wrap()),

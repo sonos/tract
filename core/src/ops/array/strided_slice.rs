@@ -525,7 +525,7 @@ mod tests {
         assert_eq!(
             input_facts,
             tvec![
-                InferenceFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..]),
+                InferenceFact::default().with_datum_type(DatumType::F32).with_shape(shapefactoid![..]),
                 begin,
                 end,
                 strides,
@@ -535,7 +535,7 @@ mod tests {
             output_facts,
             tvec![InferenceFact::default()
                 .with_datum_type(DatumType::F32)
-                .with_shape(shapefact![..]),]
+                .with_shape(shapefactoid![..]),]
         );
     }
 
@@ -553,7 +553,7 @@ mod tests {
         assert_eq!(
             input_facts,
             tvec![
-                InferenceFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..]),
+                InferenceFact::default().with_datum_type(DatumType::F32).with_shape(shapefactoid![..]),
                 begin,
                 end,
                 strides,
@@ -563,7 +563,7 @@ mod tests {
             output_facts,
             tvec![InferenceFact::default()
                 .with_datum_type(DatumType::F32)
-                .with_shape(shapefact![..]),]
+                .with_shape(shapefactoid![..]),]
         );
     }
 
@@ -571,7 +571,7 @@ mod tests {
     fn inference_3() {
         let mut op = StridedSlice::tensorflow(5, 7, 0);
         let input =
-            InferenceFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 2), 16));
+            InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 2), 16));
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
         let end = InferenceFact::from(tensor1(&[0i32, 0, 0]));
         let strides = InferenceFact::from(tensor1(&[1i32, 1, 1]));
@@ -582,7 +582,7 @@ mod tests {
 
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 4), 16))]
+            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 4), 16))]
         );
     }
 
@@ -590,7 +590,7 @@ mod tests {
     fn inference_4() {
         let mut op = StridedSlice::tensorflow(5, 7, 0);
         let input =
-            InferenceFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 2), 16));
+            InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 2), 16));
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
         let end = InferenceFact::from(tensor1(&[0i32, 0, 0]));
         let strides = InferenceFact::from(tensor1(&[1i32, 1, 1]));
@@ -601,7 +601,7 @@ mod tests {
 
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 4), 16))]
+            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 4), 16))]
         );
     }
 }
