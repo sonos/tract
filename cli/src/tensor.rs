@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use crate::CliResult;
 use tract_core::internal::*;
+use tract_core::infer::*;
 use tract_core::ndarray;
 
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
@@ -31,7 +32,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     let shape = ShapeFactoid::closed(
         shape
             .iter()
-            .map(|&s| Ok(if s == "_" { GenericFact::Any } else { GenericFact::Only(s.parse()?) }))
+            .map(|&s| Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(s.parse()?) }))
             .collect::<TractResult<TVec<DimFact>>>()?,
     );
 

@@ -1,6 +1,7 @@
 use crate::model::{ParseResult, ParsingContext};
 use crate::pb::*;
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 use tract_core::ops::scan::InferenceScan;
 
@@ -82,7 +83,7 @@ pub fn scan(
             mapped_outputs,
             None,
             true,
-            GenericFact::default(),
+            GenericFactoid::default(),
         )),
         unresolved_inputs,
     ))

@@ -25,6 +25,7 @@ use std::str::FromStr;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
 use tract_core::internal::*;
+use tract_core::infer::*;
 use tract_core::model::{NormalizedModel, TypedModel};
 
 use crate::display_graph::DisplayOptions;
@@ -544,7 +545,7 @@ impl Parameters {
                 raw_model.node_mut(outlet.node).op =
                     Box::new(tract_core::ops::source::Source::new());
                 if !const_inputs.contains(&raw_model.node_name(outlet.node).to_string()) {
-                    t.value = GenericFact::Any;
+                    t.value = GenericFactoid::Any;
                 }
                 if let Some(s) = matches.value_of("stream_axis") {
                     t.shape.set_dim(s.parse()?, TDim::s());

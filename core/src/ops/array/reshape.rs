@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::infer::*;
 use itertools::Itertools;
 
 // FIXME: try to recanonicalize as flatten (maybe extended) / add_dims / rm_dims ?

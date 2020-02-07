@@ -7,6 +7,7 @@ use crate::model::{ TypedFact, TypedModel, TypedOp };
 use crate::model::{ NormalizedModel };
 use crate::model::translator::Translate;
 use super::{ InferenceFact, InferenceModel, InferenceNode, InferenceOp };
+use super::factoid::Factoid;
 
 impl InferenceModel {
 
@@ -14,7 +15,7 @@ impl InferenceModel {
     ///
     /// Will stop on first error unless `obstinate` is `true`.
     pub fn analyse(&mut self, obstinate: bool) -> TractResult<bool> {
-        crate::analyser::Analyser::new(self).analyse_obstinate(obstinate)
+        super::analyser::Analyser::new(self).analyse_obstinate(obstinate)
     }
 
     /// Perform early transformation before going typed.
@@ -41,7 +42,6 @@ impl InferenceModel {
     ///
     /// Will stop on first error unless `obstinate` is `true`.
     pub fn missing_type_shape(&self) -> TractResult<Vec<OutletId>> {
-        use crate::analyser::types::Factoid;
         Ok(self
             .eval_order()?
             .iter()

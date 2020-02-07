@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::infer::*;
 
 // TODO: canonicalize as Reshape
 

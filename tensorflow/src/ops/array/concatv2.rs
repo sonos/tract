@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     Ok(Box::new(ConcatV2))

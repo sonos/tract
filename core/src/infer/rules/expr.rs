@@ -7,6 +7,7 @@ use num_traits::Zero;
 
 use crate::internal::*;
 
+use self::super::super::factoid::*;
 use self::super::path::Path;
 use self::super::proxies::*;
 use self::super::solver::Context;
@@ -44,8 +45,8 @@ macro_rules! impl_output {
     };
 }
 
-impl_output!(IntFact, Int, "Int");
-impl_output!(TypeFact, Type, "DatumType");
+impl_output!(IntFactoid, Int, "Int");
+impl_output!(TypeFactoid, Type, "DatumType");
 impl_output!(ShapeFactoid, Shape, "Shape");
 impl_output!(ValueFact, Tensor, "Tensor");
 impl_output!(DimFact, Dim, "TDim");
@@ -53,13 +54,13 @@ impl_output!(DimFact, Dim, "TDim");
 // Converts back and forth between Wrapped and usize.
 impl Output for usize {
     fn into_wrapped(source: usize) -> Wrapped {
-        IntFact::into_wrapped((source as i32).into())
+        IntFactoid::into_wrapped((source as i32).into())
     }
 
     fn from_wrapped(wrapped: Wrapped) -> TractResult<usize> {
         let message = format!("Tried to convert {:?} to a usize.", wrapped);
 
-        IntFact::from_wrapped(wrapped)?
+        IntFactoid::from_wrapped(wrapped)?
             .concretize()
             .and_then(|u| u.to_usize())
             .ok_or(message.into())
@@ -69,13 +70,13 @@ impl Output for usize {
 // Converts back and forth between Wrapped and i32.
 impl Output for i32 {
     fn into_wrapped(source: i32) -> Wrapped {
-        IntFact::into_wrapped(source.into())
+        IntFactoid::into_wrapped(source.into())
     }
 
     fn from_wrapped(wrapped: Wrapped) -> TractResult<i32> {
         let message = format!("Tried to convert {:?} to a i32.", wrapped);
 
-        IntFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
+        IntFactoid::from_wrapped(wrapped)?.concretize().ok_or(message.into())
     }
 }
 
@@ -108,8 +109,8 @@ impl Output for TDim {
 /// A wrapper for all the types of values that expressions can produce.
 #[derive(Debug, Clone)]
 pub enum Wrapped {
-    Int(IntFact),
-    Type(TypeFact),
+    Int(IntFactoid),
+    Type(TypeFactoid),
     Shape(ShapeFactoid),
     Tensor(ValueFact),
     Dim(DimFact),
@@ -355,16 +356,16 @@ where
     }
 }
 
-/// Cast an IntFact into a DimFact
-pub struct IntoDimExp(Exp<IntFact>);
+/// Cast an IntFactoid into a DimFact
+pub struct IntoDimExp(Exp<IntFactoid>);
 
 impl TExp<DimFact> for IntoDimExp {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<DimFact> {
-        let v: IntFact = self.0.get(context)?;
+        let v: IntFactoid = self.0.get(context)?;
         match v {
-            GenericFact::Only(i) => Ok(GenericFact::Only(i.to_dim())),
-            GenericFact::Any => Ok(GenericFact::Any),
+            GenericFactoid::Only(i) => Ok(GenericFactoid::Only(i.to_dim())),
+            GenericFactoid::Any => Ok(GenericFactoid::Any),
         }
     }
 
@@ -372,7 +373,7 @@ impl TExp<DimFact> for IntoDimExp {
     fn set(&self, context: &mut Context, value: DimFact) -> TractResult<bool> {
         if let Some(concrete) = value.concretize() {
             if let Ok(int) = concrete.to_integer() {
-                return self.0.set(context, GenericFact::Only(int));
+                return self.0.set(context, GenericFactoid::Only(int));
             }
         }
         Ok(false)
@@ -400,67 +401,67 @@ impl<T, E: TExp<T> + 'static> IntoExp<T> for E {
 
 // Type
 
-impl IntoExp<TypeFact> for TypeProxy {
-    fn bex(self) -> Exp<TypeFact> {
+impl IntoExp<TypeFactoid> for TypeProxy {
+    fn bex(self) -> Exp<TypeFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
 }
 
-impl<'a> IntoExp<TypeFact> for &'a TypeProxy {
-    fn bex(self) -> Exp<TypeFact> {
+impl<'a> IntoExp<TypeFactoid> for &'a TypeProxy {
+    fn bex(self) -> Exp<TypeFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
 }
 
-impl IntoExp<TypeFact> for DatumType {
-    fn bex(self) -> Exp<TypeFact> {
+impl IntoExp<TypeFactoid> for DatumType {
+    fn bex(self) -> Exp<TypeFactoid> {
         ConstantExp(self.into()).bex()
     }
 }
 
-impl<'a> IntoExp<TypeFact> for &'a DatumType {
-    fn bex(self) -> Exp<TypeFact> {
+impl<'a> IntoExp<TypeFactoid> for &'a DatumType {
+    fn bex(self) -> Exp<TypeFactoid> {
         ConstantExp((*self).into()).bex()
     }
 }
 
 // Int
 
-impl<'a> IntoExp<IntFact> for &'a IntProxy {
-    fn bex(self) -> Exp<IntFact> {
+impl<'a> IntoExp<IntFactoid> for &'a IntProxy {
+    fn bex(self) -> Exp<IntFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
 }
 
-impl<'a> IntoExp<IntFact> for &'a ElementProxy {
-    fn bex(self) -> Exp<IntFact> {
+impl<'a> IntoExp<IntFactoid> for &'a ElementProxy {
+    fn bex(self) -> Exp<IntFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
 }
 
-impl IntoExp<IntFact> for i32 {
-    fn bex(self) -> Exp<IntFact> {
+impl IntoExp<IntFactoid> for i32 {
+    fn bex(self) -> Exp<IntFactoid> {
         ConstantExp(self.into()).bex()
     }
 }
 
-impl<IE: IntoExp<IntFact>> Add<IE> for Exp<IntFact> {
-    type Output = Exp<IntFact>;
-    fn add(self, other: IE) -> Exp<IntFact> {
+impl<IE: IntoExp<IntFactoid>> Add<IE> for Exp<IntFactoid> {
+    type Output = Exp<IntFactoid>;
+    fn add(self, other: IE) -> Exp<IntFactoid> {
         SumExp(vec![self.bex(), other.bex()]).bex()
     }
 }
 
-impl<IE: IntoExp<IntFact>> Sub<IE> for Exp<IntFact> {
-    type Output = Exp<IntFact>;
-    fn sub(self, other: IE) -> Exp<IntFact> {
+impl<IE: IntoExp<IntFactoid>> Sub<IE> for Exp<IntFactoid> {
+    type Output = Exp<IntFactoid>;
+    fn sub(self, other: IE) -> Exp<IntFactoid> {
         SumExp(vec![self.bex(), -1 * other.bex()]).bex()
     }
 }
 
-impl Mul<Exp<IntFact>> for i32 {
-    type Output = Exp<IntFact>;
-    fn mul(self, other: Exp<IntFact>) -> Exp<IntFact> {
+impl Mul<Exp<IntFactoid>> for i32 {
+    type Output = Exp<IntFactoid>;
+    fn mul(self, other: Exp<IntFactoid>) -> Exp<IntFactoid> {
         ScaledExp(self, other).bex()
     }
 }
@@ -512,7 +513,7 @@ pub trait ToDimExp {
     fn to_dim(self) -> Exp<DimFact>;
 }
 
-impl ToDimExp for Exp<IntFact> {
+impl ToDimExp for Exp<IntFactoid> {
     fn to_dim(self) -> Exp<DimFact> {
         IntoDimExp(self).bex()
     }

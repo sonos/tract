@@ -77,7 +77,7 @@ extern crate tract_linalg;
 #[macro_use]
 pub mod macros;
 #[macro_use]
-pub mod analyser;
+pub mod infer;
 #[macro_use]
 pub mod ops;
 
@@ -86,7 +86,6 @@ pub mod datum;
 pub mod dim;
 pub mod errors;
 pub mod framework;
-pub mod infer;
 pub mod model;
 mod optim;
 pub mod plan;
@@ -113,10 +112,8 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
-    pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
-    pub use crate::analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
-    pub use crate::analyser::types::TypeFact;
-    pub use crate::analyser::types::*;
+    pub use crate::infer::rules::expr::{IntoExp, ToDimExp};
+    pub use crate::infer::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::*;
     pub use crate::infer::InferenceOp;

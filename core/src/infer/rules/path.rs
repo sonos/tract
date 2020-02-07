@@ -4,6 +4,7 @@ use num_traits::ToPrimitive;
 
 use crate::internal::*;
 
+use self::super::super::factoid::*;
 use self::super::expr::*;
 use self::super::solver::Context;
 
@@ -114,7 +115,7 @@ fn set_tensorfacts_path(
         // Set the number of facts in the set.
         [-1] => {
             // Conversion is checked.
-            let value = IntFact::from_wrapped(value)?.concretize().map(|v| v.to_usize().unwrap());
+            let value = IntFactoid::from_wrapped(value)?.concretize().map(|v| v.to_usize().unwrap());
 
             if value.is_some() && value.unwrap() != facts.len() {
                 bail!(
@@ -191,14 +192,14 @@ fn set_tensorfact_path(
     match path {
         // Set the type of the InferenceFact.
         [0] => {
-            let value = TypeFact::from_wrapped(value)?;
+            let value = TypeFactoid::from_wrapped(value)?;
             fact.datum_type = value.unify(&fact.datum_type)?;
             Ok(())
         }
 
         // Set the rank of the InferenceFact.
         [1] => {
-            if let Some(k) = IntFact::from_wrapped(value)?.concretize() {
+            if let Some(k) = IntFactoid::from_wrapped(value)?.concretize() {
                 if k >= 0 {
                     let k = k.to_usize().unwrap();
                     fact.shape = fact.shape.unify(&ShapeFactoid::closed(tvec![dimfact!(_); k]))?;
@@ -237,7 +238,7 @@ fn set_tensorfact_path(
             fact.value = fact.value.unify(&value)?;
             if let Some(tensor) = fact.value.concretize() {
                 fact.shape = fact.shape.unify(&ShapeFactoid::from(tensor.shape()))?;
-                fact.datum_type = fact.datum_type.unify(&TypeFact::from(tensor.datum_type()))?;
+                fact.datum_type = fact.datum_type.unify(&TypeFactoid::from(tensor.datum_type()))?;
             }
             Ok(())
         }
@@ -302,7 +303,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
     }
 
     let returns = match value.concretize() {
-        None => Ok(IntFact::default().wrap()),
+        None => Ok(IntFactoid::default().wrap()),
         Some(tensor) => {
             let path = path.iter().map(|i| *i as usize).collect::<TVec<usize>>();
             Ok(tensor.cast_to::<i32>()?.to_array_view::<i32>()?[&*path].wrap())

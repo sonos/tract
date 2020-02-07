@@ -1,6 +1,6 @@
 //! Partial and complete tensor types representations.
 use crate::internal::*;
-use crate::prelude::*;
+use crate::infer::*;
 use crate::tensor::Tensor;
 use downcast_rs::Downcast;
 use std::convert::{TryFrom, TryInto};

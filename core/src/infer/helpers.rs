@@ -1,4 +1,5 @@
 use super::*;
+use super::factoid::*;
 use crate::model::TVec;
 
 /// Infers every possible fact when all the values are concrete.
@@ -46,9 +47,9 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFactoid]) -> TractResult<Option<
             }
 
             match &shape[rank - i - 1] {
-                GenericFact::Any => unknown += 1,
-                GenericFact::Only(ref d) if d.is_one() => (),
-                GenericFact::Only(ref d) => {
+                GenericFactoid::Any => unknown += 1,
+                GenericFactoid::Only(ref d) if d.is_one() => (),
+                GenericFactoid::Only(ref d) => {
                     if previous.is_some() && previous.as_ref() != Some(d) {
                         bail!(
                             "Invalid shape (broadcasting): {:?} is not compatible with {:?}.",
@@ -69,11 +70,11 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFactoid]) -> TractResult<Option<
             debug!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
             return Ok(None);
         } else if unknown == 1 && previous == None {
-            output_shape.push(GenericFact::Any);
+            output_shape.push(GenericFactoid::Any);
         } else if let Some(previous) = previous {
-            output_shape.push(GenericFact::Only(previous.clone()));
+            output_shape.push(GenericFactoid::Only(previous.clone()));
         } else {
-            output_shape.push(GenericFact::Only(1.into()));
+            output_shape.push(GenericFactoid::Only(1.into()));
         }
     }
 

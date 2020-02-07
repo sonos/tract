@@ -3,7 +3,7 @@ use std::ops::{Add, Neg};
 
 use num_traits::Zero;
 
-use crate::internal::*;
+use crate::infer::*;
 
 use self::super::expr::{Exp, IntoExp, Output, TExp};
 use self::super::path::{get_path, set_path, Path};
