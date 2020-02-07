@@ -103,13 +103,13 @@ mod tests {
     fn shape_inference_1() {
         let input = InferenceFact {
             datum_type: typefact!(DatumType::F32),
-            shape: shapefact![1, _, _; ..],
+            shape: shapefactoid![1, _, _; ..],
             value: valuefact!(_),
         };
 
         let output = InferenceFact {
             datum_type: typefact!(DatumType::TDim),
-            shape: shapefact![_],
+            shape: shapefactoid![_],
             value: valuefact!(_),
         };
 
@@ -120,13 +120,13 @@ mod tests {
     fn shape_inference_2() {
         let input = InferenceFact {
             datum_type: typefact!(DatumType::F32),
-            shape: shapefact![1, _, _],
+            shape: shapefactoid![1, _, _],
             value: valuefact!(_),
         };
 
         let output = InferenceFact {
             datum_type: typefact!(DatumType::TDim),
-            shape: shapefact![3],
+            shape: shapefactoid![3],
             value: valuefact!(_),
         };
 
@@ -137,13 +137,13 @@ mod tests {
     fn shape_inference_3() {
         let input = InferenceFact {
             datum_type: typefact!(DatumType::F32),
-            shape: shapefact![1, 2, 3],
+            shape: shapefactoid![1, 2, 3],
             value: valuefact!(_),
         };
 
         let output = InferenceFact {
             datum_type: typefact!(DatumType::TDim),
-            shape: shapefact![3],
+            shape: shapefactoid![3],
             value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
         };
 
@@ -154,13 +154,13 @@ mod tests {
     fn shape_inference_4() {
         let input = InferenceFact {
             datum_type: typefact!(_),
-            shape: shapefact![1, 2, 3],
+            shape: shapefactoid![1, 2, 3],
             value: valuefact!(_),
         };
 
         let output = InferenceFact {
             datum_type: typefact!(DatumType::TDim),
-            shape: shapefact![3],
+            shape: shapefactoid![3],
             value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
         };
 

@@ -46,7 +46,7 @@ macro_rules! impl_output {
 
 impl_output!(IntFact, Int, "Int");
 impl_output!(TypeFact, Type, "DatumType");
-impl_output!(ShapeFact, Shape, "Shape");
+impl_output!(ShapeFactoid, Shape, "Shape");
 impl_output!(ValueFact, Tensor, "Tensor");
 impl_output!(DimFact, Dim, "TDim");
 
@@ -110,7 +110,7 @@ impl Output for TDim {
 pub enum Wrapped {
     Int(IntFact),
     Type(TypeFact),
-    Shape(ShapeFact),
+    Shape(ShapeFactoid),
     Tensor(ValueFact),
     Dim(DimFact),
 }
@@ -520,26 +520,26 @@ impl ToDimExp for Exp<IntFact> {
 
 // Shape
 
-impl IntoExp<ShapeFact> for ShapeFact {
-    fn bex(self) -> Exp<ShapeFact> {
+impl IntoExp<ShapeFactoid> for ShapeFactoid {
+    fn bex(self) -> Exp<ShapeFactoid> {
         ConstantExp(self).bex()
     }
 }
 
-impl IntoExp<ShapeFact> for ShapeProxy {
-    fn bex(self) -> Exp<ShapeFact> {
+impl IntoExp<ShapeFactoid> for ShapeProxy {
+    fn bex(self) -> Exp<ShapeFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
 }
 
-impl<'a> IntoExp<ShapeFact> for &'a ShapeProxy {
-    fn bex(self) -> Exp<ShapeFact> {
+impl<'a> IntoExp<ShapeFactoid> for &'a ShapeProxy {
+    fn bex(self) -> Exp<ShapeFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
 }
 
-impl IntoExp<ShapeFact> for TVec<TDim> {
-    fn bex(self) -> Exp<ShapeFact> {
+impl IntoExp<ShapeFactoid> for TVec<TDim> {
+    fn bex(self) -> Exp<ShapeFactoid> {
         ConstantExp(self.into_iter().collect()).bex()
     }
 }

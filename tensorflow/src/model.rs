@@ -137,7 +137,7 @@ impl Framework<GraphDef> for Tensorflow {
                 let dt = pbnode.get_attr_datum_type("dtype")?;
                 let mut fact = InferenceFact::dt(dt);
                 if let Some(shape) = pbnode.get_attr_opt_shape("shape")? {
-                    let shape_fact = ShapeFact::closed(
+                    let shape_factoid = ShapeFactoid::closed(
                         shape
                             .iter()
                             .map(|d| {
@@ -149,7 +149,7 @@ impl Framework<GraphDef> for Tensorflow {
                             })
                             .collect(),
                     );
-                    fact = fact.with_shape(shape_fact);
+                    fact = fact.with_shape(shape_factoid);
                 }
                 inputs.push(OutletId::new(node_id, 0));
                 model.set_outlet_fact(OutletId::new(node_id, 0), fact)?;

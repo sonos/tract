@@ -5,7 +5,7 @@ use tract_core::dimfact;
 use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops::array::PadMode;
-use tract_core::shapefact;
+use tract_core::shapefactoid;
 
 use super::*;
 
@@ -69,7 +69,7 @@ impl PadPlusConvProblem {
         use tract_core::ops::cnn::*;
         let mut model = InferenceModel::default();
         let mut wire = model
-            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S)))
+            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, 1, S)))
             .unwrap();
         if self.pad_before > 0 || self.pad_after > 0 {
             wire = model

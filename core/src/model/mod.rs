@@ -105,7 +105,7 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
     fn output_outlets(&self) -> &[OutletId];
 
     /// Tensorfact for an outlet
-    fn outlet_tensorfact(&self, outlet: OutletId) -> InferenceFact;
+    fn outlet_typedfact(&self, outlet: OutletId) -> TractResult<TypedFact>;
 
     /// Short outlet formatter (id plus fact)
     fn outlet_fact_format(&self, outlet: OutletId) -> String;

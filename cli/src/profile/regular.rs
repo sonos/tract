@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::fmt::{Debug, Display};
 
 use ansi_term::Colour::*;
@@ -31,8 +30,8 @@ where
         &*model
             .input_outlets()?
             .iter()
-            .map(|&t| Ok(model.outlet_fact(t)?.to_tensor_fact()))
-            .collect::<TractResult<Vec<_>>>()?,
+            .map(|&t| model.outlet_typedfact(t))
+            .collect::<TractResult<Vec<TypedFact>>>()?,
     )?)
 }
 
@@ -165,7 +164,7 @@ where
             let inputs: TVec<TypedFact> = model
                 .node_input_facts(n)?
                 .iter()
-                .map(|&i| Ok((&i.to_tensor_fact()).try_into()?))
+                .map(|&i| i.to_typed_fact())
                 .collect::<TractResult<_>>()?;
             let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
             let nested_multis =

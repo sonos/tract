@@ -88,7 +88,7 @@ impl AxisOp {
         }
     }
 
-    pub fn change_shape(&self, shape: &mut ShapeInfo) -> TractResult<()> {
+    pub fn change_shape(&self, shape: &mut ShapeFact) -> TractResult<()> {
         match self {
             AxisOp::Add(ix) => shape.insert_axis(*ix),
             AxisOp::Rm(ix) => shape.remove_axis(*ix),

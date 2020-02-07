@@ -91,10 +91,10 @@ impl InferenceScan {
         let rank =
             outer.shape.rank().concretize().or(inner.shape.rank().concretize()).map(|r| r as usize);
         if let Some(rank) = rank {
-            if outer.shape.unify_with(&ShapeFact::closed(tvec!(GenericFact::Any; rank as usize)))? {
+            if outer.shape.unify_with(&ShapeFactoid::closed(tvec!(GenericFact::Any; rank as usize)))? {
                 changed = true;
             }
-            if inner.shape.unify_with(&ShapeFact::closed(tvec!(GenericFact::Any; rank as usize)))? {
+            if inner.shape.unify_with(&ShapeFactoid::closed(tvec!(GenericFact::Any; rank as usize)))? {
                 changed = true;
             }
             for axis in 0..rank {

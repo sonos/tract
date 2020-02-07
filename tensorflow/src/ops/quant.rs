@@ -63,8 +63,8 @@ impl InferenceRulesOp for FakeQuantWithMinMaxVars {
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
-        s.equals(&inputs[1].shape, shapefact!())?;
-        s.equals(&inputs[2].shape, shapefact!())?;
+        s.equals(&inputs[1].shape, shapefactoid!())?;
+        s.equals(&inputs[2].shape, shapefactoid!())?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())

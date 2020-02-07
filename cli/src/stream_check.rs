@@ -48,7 +48,7 @@ pub fn handle(params: &Parameters, options: display_graph::DisplayOptions) -> Cl
             let stream_dim = delay + 3 * input_pulse + input_pulse / 2;
 
             let fixed_input = crate::tensor::tensor_for_fact(
-                &fixed_input_fact.to_tensor_fact(),
+                &fixed_input_fact.to_typed_fact()?,
                 Some(stream_dim),
             )?;
 

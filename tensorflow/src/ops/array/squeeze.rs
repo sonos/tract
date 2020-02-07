@@ -47,7 +47,7 @@ mod tests {
     fn squeeze_inference_1() {
         let input = InferenceFact::default()
             .with_datum_type(DatumType::TDim)
-            .with_shape(shapefact![1, 1, (TDim::stream() - 2), 16]);
+            .with_shape(shapefactoid![1, 1, (TDim::stream() - 2), 16]);
         let any = InferenceFact::default();
 
         let mut op = Squeeze::new(Some(vec![1]));
@@ -55,7 +55,7 @@ mod tests {
 
         let expect: TVec<_> = tvec!(InferenceFact::default()
             .with_datum_type(DatumType::TDim)
-            .with_shape(shapefact![1, (TDim::stream() - 2), 16]));
+            .with_shape(shapefactoid![1, (TDim::stream() - 2), 16]));
 
         assert_eq!(inferred.1, expect);
     }

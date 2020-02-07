@@ -96,7 +96,7 @@ impl InferenceRulesOp for VariableV2 {
         check_input_arity(inputs, 0)?;
         check_output_arity(outputs, 1)?;
         s.equals(&outputs[0].datum_type, self.dt)?;
-        s.equals(&outputs[0].shape, ShapeFact::from(&*self.shape))?;
+        s.equals(&outputs[0].shape, ShapeFactoid::from(&*self.shape))?;
         Ok(())
     }
 

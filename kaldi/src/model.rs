@@ -202,7 +202,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
             proto_model.config_lines.input_name.clone(),
             InferenceFact::dt_shape(
                 f32::datum_type(),
-                shapefact!(S, (proto_model.config_lines.input_dim)),
+                shapefactoid!(S, (proto_model.config_lines.input_dim)),
             ),
         )?;
         let mut inputs_to_wire: BTreeMap<InletId, String> = Default::default();

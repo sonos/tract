@@ -48,7 +48,7 @@ impl InferenceRulesOp for Switch {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 2)?;
         s.equals(&inputs[1].datum_type, DatumType::Bool)?;
-        s.equals(&inputs[1].shape, shapefact!())?;
+        s.equals(&inputs[1].shape, shapefactoid!())?;
         for i in 0..outputs.len() {
             s.equals(&inputs[0].datum_type, &outputs[i].datum_type)?;
             s.equals(&inputs[0].shape, &outputs[i].shape)?;

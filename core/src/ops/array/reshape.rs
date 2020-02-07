@@ -65,7 +65,7 @@ impl InferenceRulesOp for Reshape {
                 .map(|&i| i as isize)
                 .collect();
             let shape = self.compute_shape(&ishape, &shape)?;
-            s.equals(&outputs[0].shape, ShapeFact::from(shape))
+            s.equals(&outputs[0].shape, ShapeFactoid::from(shape))
         })
     }
 

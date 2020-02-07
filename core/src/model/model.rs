@@ -410,8 +410,8 @@ where
         self.nodes[id].op.as_ref()
     }
 
-    fn outlet_tensorfact(&self, outlet: OutletId) -> InferenceFact {
-        self.outlet_fact(outlet).unwrap().to_tensor_fact()
+    fn outlet_typedfact(&self, outlet: OutletId) -> TractResult<TypedFact> {
+        self.outlet_fact(outlet)?.to_typed_fact()
     }
 
     fn outlet_fact_format(&self, outlet: OutletId) -> String {

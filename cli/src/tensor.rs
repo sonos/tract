@@ -28,7 +28,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
         (Some(datum_type), &splits[0..splits.len() - 1])
     };
 
-    let shape = ShapeFact::closed(
+    let shape = ShapeFactoid::closed(
         shape
             .iter()
             .map(|&s| Ok(if s == "_" { GenericFact::Any } else { GenericFact::Only(s.parse()?) }))
@@ -152,35 +152,26 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
     }
 }
 
-pub fn make_inputs(values: &[InferenceFact]) -> CliResult<TVec<Tensor>> {
-    values.iter().map(|v| tensor_for_fact(v, None)).collect()
+pub fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<TVec<Tensor>> {
+    values.iter().map(|v| tensor_for_fact(v.borrow(), None)).collect()
 }
 
-pub fn tensor_for_fact(fact: &InferenceFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
-    if let Some(value) = fact.concretize() {
-        Ok(value.into_tensor())
+pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
+    if let Some(value) = &fact.konst {
+        Ok(value.clone().into_tensor())
     } else {
-        if fact.stream_info()?.is_some() && streaming_dim.is_none() {
+        if fact.shape.stream_info.is_some() && streaming_dim.is_none() {
             Err("random tensor requires a streaming dim")?
         }
-        Ok(random(
-            fact.shape
-                .concretize()
-                .unwrap()
-                .iter()
-                .map(|d| d.to_integer().ok().map(|d| d as usize).or(streaming_dim).unwrap())
-                .collect(),
-            fact.datum_type.concretize().ok_or_else(|| {
-                format!("Can not generate random tensor: unknown datum_type: {:?}", fact)
-            })?,
-        ))
+        let shape = fact.shape.as_finite().unwrap();
+        Ok(random(shape, fact.datum_type))
     }
 }
 
 /// Generates a random tensor of a given size and type.
-pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
+pub fn random(sizes: &[usize], datum_type: DatumType) -> Tensor {
     use std::iter::repeat_with;
-    fn make<D>(shape: Vec<usize>) -> Tensor
+    fn make<D>(shape: &[usize]) -> Tensor
     where
         D: Datum,
         rand::distributions::Standard: rand::distributions::Distribution<D>,
@@ -193,13 +184,18 @@ pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
         .unwrap()
         .into()
     }
-
+    use DatumType::*;
     match datum_type {
-        DatumType::F64 => make::<f64>(sizes),
-        DatumType::F32 => make::<f32>(sizes),
-        DatumType::I32 => make::<i32>(sizes),
-        DatumType::I8 => make::<i8>(sizes),
-        DatumType::U8 => make::<u8>(sizes),
-        _ => unimplemented!("missing type"),
+        Bool => make::<bool>(sizes),
+        I8 => make::<i8>(sizes),
+        I16 => make::<i16>(sizes),
+        I32 => make::<i32>(sizes),
+        I64 => make::<i64>(sizes),
+        U8 => make::<u8>(sizes),
+        U16 => make::<u16>(sizes),
+        F16 => make::<f32>(sizes).cast_to::<f16>().unwrap().into_owned(),
+        F32 => make::<f32>(sizes),
+        F64 => make::<f64>(sizes),
+        _ => panic!("Can generate random tensor for {:?}", datum_type),
     }
 }

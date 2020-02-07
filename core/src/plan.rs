@@ -213,12 +213,7 @@ where
                         );
                     }
                     for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
-                        if f.to_tensor_fact().shape.is_concrete()
-                            && f.to_tensor_fact().stream_info()?.is_some()
-                        {
-                            continue;
-                        }
-                        if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
+                        if let Err(e) = f.matches(v) {
                             bail!(
                                 "Evaluating {}: input {:?}, expected {:?}, got {:?} ({})",
                                 node,
@@ -251,12 +246,7 @@ where
                         if node.outputs[ix].successors.len() == 0 {
                             continue;
                         }
-                        if f.to_tensor_fact().shape.is_concrete()
-                            && f.to_tensor_fact().stream_info()?.is_some()
-                        {
-                            continue;
-                        }
-                        if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
+                        if let Err(e) = f.matches(v) {
                             bail!(
                                 "Evaluating {}: output {:?}, expected {:?}, got {:?} ({})",
                                 node,
