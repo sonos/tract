@@ -1,4 +1,5 @@
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;

@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 pub fn compress(
     _ctx: &ParsingContext,

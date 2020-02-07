@@ -116,7 +116,6 @@ pub mod internal {
     pub use crate::infer::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::*;
-    pub use crate::infer::InferenceOp;
     pub use crate::model::*;
     pub use crate::infer::InferenceModelPatch;
     pub use crate::ops::change_axes::*;

@@ -2,6 +2,7 @@ use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 use crate::tfpb::tensorflow::NodeDef;
 use std::collections::HashSet;
+use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ops as tractops;
 

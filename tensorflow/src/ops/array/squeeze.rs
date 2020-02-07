@@ -1,5 +1,6 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
+use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ops::array::Squeeze;
 
@@ -19,7 +20,6 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use tract_core::ndarray::*;
-    use tract_core::infer::*;
 
     fn run<I>(op: Squeeze, input: I) -> Tensor
     where

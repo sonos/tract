@@ -4,6 +4,7 @@ use tract_core::ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
+use tract_core::infer::*;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Default, new)]

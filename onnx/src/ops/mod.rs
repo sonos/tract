@@ -1,5 +1,6 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
+use tract_core::infer::*;
 use tract_core::internal::*;
 
 mod array;

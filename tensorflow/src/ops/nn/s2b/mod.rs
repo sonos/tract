@@ -7,6 +7,7 @@ use crate::tfpb::tensorflow::NodeDef;
 
 pub mod raw;
 pub mod unary;
+use tract_core::infer::*;
 use tract_core::internal::*;
 
 pub fn space_to_batch_nd(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
@@ -115,7 +116,6 @@ mod tests {
     #![allow(non_snake_case)]
     use super::raw::{BatchToSpace, SpaceToBatch};
     use super::*;
-    use tract_core::infer::*;
 
     // https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd
     #[test]
