@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 0.5.9 - 2020-02-07
+
 ### Breaking
 
 * Rustc minimum version is now 1.39
