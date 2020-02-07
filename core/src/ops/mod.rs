@@ -34,22 +34,6 @@ pub mod unimpl;
 pub use downsample::Downsample;
 pub use invariants::*;
 
-pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
-    if inputs.len() != expected {
-        bail!("Wrong input number. Rules expect {}, node has {}.", expected, inputs.len())
-    } else {
-        Ok(())
-    }
-}
-
-pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResult<()> {
-    if outputs.len() != expected {
-        bail!("Wrong output number. Rules expect {}, node has {}.", expected, outputs.len())
-    } else {
-        Ok(())
-    }
-}
-
 /// Level of precision to be expected in implementations comparisons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Validation {

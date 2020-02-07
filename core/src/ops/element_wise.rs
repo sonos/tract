@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::infer::*;
 use downcast_rs::Downcast;
 use std::fmt;
 

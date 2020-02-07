@@ -112,17 +112,14 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
-    pub use crate::infer::rules::expr::{IntoExp, ToDimExp};
-    pub use crate::infer::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::*;
     pub use crate::model::*;
-    pub use crate::infer::InferenceModelPatch;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
     pub use crate::ops::{
-        check_input_arity, check_output_arity, AxisInfo, Cost, Invariants, Op, OpState, PulsedOp,
+        AxisInfo, Cost, Invariants, Op, OpState, PulsedOp,
         StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;

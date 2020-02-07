@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::infer::*;
 
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
 use crate::ops::nn::{DataFormat, DataShape};
