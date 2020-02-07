@@ -5,6 +5,7 @@ use tract_core::internal::*;
 
 #[derive(Default)]
 pub struct ParsingContext {
+    pub node_output_arities: HashMap<String, usize>
 }
 
 #[derive(Clone, Default)]
@@ -96,7 +97,16 @@ impl Framework<GraphDef> for Tensorflow {
 
         let mut model = InferenceModel::default();
         let mut inputs = tvec!();
-        let context = ParsingContext::default();
+        let mut context = ParsingContext::default();
+
+        // compute min output arity for all nodes
+        for pbnode in &graph.node {
+            for i in &pbnode.input {
+                let (node, slot) = Self::parse_input(i)?;
+                let arity = context.node_output_arities.entry(node.to_string()).or_insert(1);
+                *arity = (*arity).max(slot + 1);
+            }
+        }
 
         for pbnode in &graph.node {
             let name = &pbnode.name;
@@ -113,6 +123,7 @@ impl Framework<GraphDef> for Tensorflow {
             let op = match self.op_register.0.get(&pbnode.op) {
                 Some(builder) => (builder)(&context, pbnode)?,
                 None => tract_core::ops::unimpl::UnimplementedOp::new(
+                    context.node_output_arities.get(name).cloned().unwrap_or(1),
                     &pbnode.op,
                     format!("{:?}", pbnode),
                 )

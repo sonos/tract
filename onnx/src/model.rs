@@ -108,6 +108,7 @@ impl<'a> ParsingContext<'a> {
                 Some(builder) => (builder)(&ctx, pbnode)?,
                 None => (
                     tract_core::ops::unimpl::UnimplementedOp::new(
+                        pbnode.output.len(),
                         &*pbnode.op_type,
                         format!("{:?}", pbnode),
                     )
