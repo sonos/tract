@@ -7,6 +7,7 @@ use crate::infer::*;
 
 use self::super::expr::{Exp, IntoExp, Output, TExp};
 use self::super::path::{get_path, set_path, Path};
+use self::super::InferenceResult;
 
 /// A structure that holds the current sets of InferenceFacts.
 ///

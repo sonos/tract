@@ -1,6 +1,7 @@
 use num_traits::AsPrimitive;
 
 use crate::internal::*;
+use crate::infer::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Size {

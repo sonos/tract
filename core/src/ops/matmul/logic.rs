@@ -3,6 +3,7 @@ use std::fmt;
 use std::ops::{Add, Mul};
 
 use crate::internal::*;
+use crate::infer::*;
 use crate::ops::matmul::*;
 use crate::ops::quant::QParams;
 use ndarray::*;

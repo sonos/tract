@@ -2,6 +2,7 @@ use ndarray::*;
 
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
+use crate::infer::*;
 
 use super::binary::commute;
 

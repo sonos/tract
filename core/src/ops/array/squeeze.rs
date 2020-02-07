@@ -85,7 +85,7 @@ impl InferenceRulesOp for Squeeze {
                 .map(|(ix, _d)| ix)
                 .collect()
         };
-        InferenceRulesOp::to_typed(&RmDims::new(axes), source, node, target, mapping)
+        InferenceOp::to_typed(&RmDims::new(axes), source, node, target, mapping)
     }
 
     inference_op_as_op!();
