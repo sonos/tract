@@ -1,4 +1,5 @@
 use num_traits::AsPrimitive;
+use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ndarray;
 use tract_core::ndarray::Axis;

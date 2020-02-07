@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::infer::*;
 use crate::ops::dummy::Dummy;
 use crate::pulse::PulsedFact;
 use std::convert::TryFrom;

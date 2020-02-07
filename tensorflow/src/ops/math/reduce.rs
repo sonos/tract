@@ -1,3 +1,4 @@
+use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ops::nn;
 

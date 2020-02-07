@@ -8,6 +8,7 @@
 //! # extern crate tract_core;
 //! # fn main() {
 //! use tract_core::internal::*;
+//! use tract_core::infer::*;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let mut model = InferenceModel::default();
@@ -101,7 +102,6 @@ pub mod prelude {
     pub use crate::dim::TDim;
     pub use crate::errors::*;
     pub use crate::framework::Framework;
-    pub use crate::infer::{InferenceFact, InferenceModel, InferenceNode};
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
     pub use crate::tensor::litteral::*;
@@ -112,6 +112,7 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
+    pub use crate::infer::InferenceFact;
     pub use crate::infer::rules::expr::{IntoExp, ToDimExp};
     pub use crate::infer::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::dim::{DimLike, TDim, ToDim};

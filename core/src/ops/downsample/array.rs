@@ -53,6 +53,7 @@ mod tests {
     use crate::ops;
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
+    use crate::infer::InferenceModel;
 
     fn crop_then_down_strat() -> BoxedStrategy<(usize, usize, usize, usize, usize)> {
         (1usize..5, 1usize..5)

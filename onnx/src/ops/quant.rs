@@ -1,5 +1,6 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
+use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ops::quant::*;
 

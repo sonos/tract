@@ -1,6 +1,7 @@
 use crate::model::NodeLine;
 use crate::model::ParsingContext;
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 pub fn lstm_nonlin(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn InferenceOp>> {
     let node = &ctx.proto_model.config_lines.nodes.iter().find(|l| l.0 == name);

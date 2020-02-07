@@ -16,6 +16,7 @@ use crate::rusage::{Duration, Instant};
 use crate::tensor::make_inputs;
 
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 pub fn handle_benching(params: &Parameters, profiling: ProfilingMode) -> CliResult<()> {
     dispatch_model!(params.tract_model, |m| handle_benching_t(m, &params, profiling))

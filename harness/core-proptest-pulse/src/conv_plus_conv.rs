@@ -4,6 +4,7 @@ use tract_core::dimfact;
 use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::shapefactoid;
+use tract_core::infer::*;
 
 use super::*;
 

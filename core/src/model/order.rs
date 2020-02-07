@@ -69,29 +69,29 @@ mod tests {
 
     #[test]
     fn simple() {
-        let mut model = InferenceModel::default();
-        let a = model.add_source("a", InferenceFact::default()).unwrap();
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap()).unwrap();
         let b = model.add_const("b", Tensor::from(12.0f32)).unwrap();
-        let add = model.wire_node("add", math::add::bin(), &[a, b]).unwrap()[0];
+        let add = model.wire_node("add", math::add::bin_typed(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, b.node, add.node));
     }
 
     #[test]
     fn diamond() {
-        let mut model = InferenceModel::default();
-        let a = model.add_source("a", InferenceFact::default()).unwrap();
-        let add = model.wire_node("add", math::add::bin(), &[a, a]).unwrap()[0];
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap()).unwrap();
+        let add = model.wire_node("add", math::add::bin_typed(), &[a, a]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, add.node));
     }
 
     #[test]
     fn dodge_loop() {
-        let mut model = InferenceModel::default();
-        let a = model.add_source("a", InferenceFact::default()).unwrap();
-        let add = model.wire_node("add", math::add::bin(), &[a]).unwrap()[0];
-        let neg = model.wire_node("neg", math::add::bin(), &[add]).unwrap()[0];
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap()).unwrap();
+        let add = model.wire_node("add", math::add::bin_typed(), &[a, a]).unwrap()[0];
+        let neg = model.wire_node("neg", math::add::bin_typed(), &[add, a]).unwrap()[0];
         model.add_edge(neg, InletId::new(add.node, 1)).unwrap();
         model.set_output_outlets(&[neg]).unwrap();
         let (rx, tx) = std::sync::mpsc::channel();

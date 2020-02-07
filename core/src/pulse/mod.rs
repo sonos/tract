@@ -126,24 +126,26 @@ mod tests {
 
     #[test]
     fn test_source_must_stream() {
-        let mut model = InferenceModel::default();
-        let _a =
-            model.add_source("a", InferenceFact::dt_shape(DatumType::F32, vec![1, 2, 3])).unwrap();
+        let mut model = TypedModel::default();
+        let _a = model
+            .add_source("a", TypedFact::dt_shape(f32::datum_type(), [1, 2, 3].as_ref()).unwrap())
+            .unwrap();
         model.auto_outputs().unwrap();
-        assert!(
-            PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).is_err()
-        );
+        assert!(PulsedModel::new(&model.into_normalized().unwrap(), 4).is_err());
 
-        let mut model = InferenceModel::default();
+        let mut model = TypedModel::default();
         let _a = model
             .add_source(
                 "a",
-                InferenceFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
+                TypedFact::dt_shape(
+                    f32::datum_type(),
+                    [1.to_dim(), TDim::s(), 3.to_dim()].as_ref(),
+                )
+                .unwrap(),
             )
             .unwrap();
         model.auto_outputs().unwrap();
-        let pulse =
-            PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).unwrap();
+        let pulse = PulsedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
         assert_eq!(
             pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_typed_fact().unwrap(),
             TypedFact::dt_shape(DatumType::F32, [1usize, 4, 3].as_ref()).unwrap()
@@ -152,11 +154,15 @@ mod tests {
 
     #[test]
     fn test_immediate() {
-        let mut model = InferenceModel::default();
+        let mut model = TypedModel::default();
         let _a = model
             .add_source(
                 "a",
-                InferenceFact::dt_shape(DatumType::F32, vec![TDim::s(), 2.to_dim(), 3.to_dim()]),
+                TypedFact::dt_shape(
+                    f32::datum_type(),
+                    [TDim::s(), 2.to_dim(), 3.to_dim()].as_ref(),
+                )
+                .unwrap(),
             )
             .unwrap();
         model.auto_outputs().unwrap();

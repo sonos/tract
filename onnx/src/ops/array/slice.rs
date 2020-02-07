@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_core::internal::*;
+use tract_core::infer::*;
 use tract_core::ndarray;
 
 pub fn slice(

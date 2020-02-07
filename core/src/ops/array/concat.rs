@@ -1,7 +1,7 @@
 use ndarray::*;
 
 use crate::internal::*;
-use crate::infer;
+use crate::infer::*;
 use crate::pulse::delay::Delay;
 use std::ops::Range;
 
@@ -71,7 +71,7 @@ impl InferenceRulesOp for Concat {
         s.given(&inputs[0].rank, move |s, rank| {
             let axis = self.resolve_axis(rank as i64)?;
             s.equals(
-                infer::rules::expr::SumExp::new(
+                rules::expr::SumExp::new(
                     (0..n).map(|i| (&inputs[i].shape[axis]).bex()).collect(),
                 ),
                 &outputs[0].shape[axis],

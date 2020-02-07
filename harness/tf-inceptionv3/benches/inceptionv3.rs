@@ -6,6 +6,7 @@ extern crate tract_core;
 extern crate tract_tensorflow;
 
 use tract_core::prelude::*;
+use tract_core::infer::*;
 
 use self::dinghy_test::test_project_path;
 use criterion::Criterion;

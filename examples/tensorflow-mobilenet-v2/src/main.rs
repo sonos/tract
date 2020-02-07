@@ -1,5 +1,6 @@
 use tract_core::ndarray;
 use tract_core::prelude::*;
+use tract_core::infer::*;
 
 fn main() -> TractResult<()> {
     // load the model

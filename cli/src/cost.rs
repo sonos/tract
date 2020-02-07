@@ -2,6 +2,7 @@ use crate::display_graph::*;
 use crate::errors::*;
 use crate::{Model, Parameters};
 use tract_core::internal::*;
+use tract_core::infer::*;
 
 fn parse_costs(spec: &str) -> TVec<(Cost, usize)> {
     spec.split(",")
