@@ -198,7 +198,8 @@ impl ShapeFactoid {
     }
 
     pub fn rank(&self) -> IntFactoid {
-        if self.open { GenericFactoid::Any } else { GenericFactoid::Only(self.dims.len() as i32) }.into()
+        if self.open { GenericFactoid::Any } else { GenericFactoid::Only(self.dims.len() as i32) }
+            .into()
     }
 
     pub fn ensure_rank_at_least(&mut self, n: usize) -> bool {
@@ -471,5 +472,133 @@ where
         } else {
             GenericFactoid::Any
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GenericFactoid::*;
+    use super::*;
+    use crate::datum::DatumType;
+
+    #[test]
+    fn unify_same_datum_type() {
+        let dt = TypeFactoid::Only(DatumType::F32);
+        assert_eq!(dt.unify(&dt).unwrap(), dt);
+    }
+
+    #[test]
+    fn unify_different_datum_types_only() {
+        let dt1 = TypeFactoid::Only(DatumType::F32);
+        let dt2 = TypeFactoid::Only(DatumType::F64);
+        assert!(dt1.unify(&dt2).is_err());
+    }
+
+    #[test]
+    fn unify_different_datum_types_any_left() {
+        let dt = TypeFactoid::Only(DatumType::F32);
+        assert_eq!(TypeFactoid::Any.unify(&dt).unwrap(), dt);
+    }
+
+    #[test]
+    fn unify_different_datum_types_any_right() {
+        let dt = TypeFactoid::Only(DatumType::F32);
+        assert_eq!(dt.unify(&TypeFactoid::Any).unwrap(), dt);
+    }
+
+    #[test]
+    fn unify_same_shape_1() {
+        let s = ShapeFactoid::closed(tvec![]);
+        assert_eq!(s.unify(&s).unwrap(), s);
+    }
+
+    #[test]
+    fn unify_same_shape_2() {
+        let s = ShapeFactoid::closed(tvec![Any]);
+        assert_eq!(s.unify(&s).unwrap(), s);
+    }
+
+    #[test]
+    fn unify_same_shape_3() {
+        let s = ShapeFactoid::closed(tvec![Only(1.into()), Only(2.into())]);
+        assert_eq!(s.unify(&s).unwrap(), s);
+    }
+
+    #[test]
+    fn unify_different_shapes_1() {
+        let s1 = ShapeFactoid::closed(tvec![Only(1.into()), Only(2.into())]);
+        let s2 = ShapeFactoid::closed(tvec![Only(1.into())]);
+        assert!(s1.unify(&s2).is_err());
+    }
+
+    #[test]
+    fn unify_different_shapes_2() {
+        let s1 = ShapeFactoid::closed(tvec![Only(1.into()), Only(2.into())]);
+        let s2 = ShapeFactoid::closed(tvec![Any]);
+        assert!(s1.unify(&s2).is_err());
+    }
+
+    #[test]
+    fn unify_different_shapes_3() {
+        let s1 = ShapeFactoid::open(tvec![Only(1.into()), Only(2.into())]);
+        let s2 = ShapeFactoid::closed(tvec![Any]);
+        assert!(s1.unify(&s2).is_err());
+    }
+
+    #[test]
+    fn unify_different_shapes_4() {
+        let s1 = ShapeFactoid::closed(tvec![Any]);
+        let s2 = ShapeFactoid::closed(tvec![Any]);
+        let sr = ShapeFactoid::closed(tvec![Any]);
+        assert_eq!(s1.unify(&s2).unwrap(), sr);
+    }
+
+    #[test]
+    fn unify_different_shapes_5() {
+        let s1 = ShapeFactoid::closed(tvec![Any]);
+        let s2 = ShapeFactoid::closed(tvec![Only(1.into())]);
+        let sr = ShapeFactoid::closed(tvec![Only(1.into())]);
+        assert_eq!(s1.unify(&s2).unwrap(), sr);
+    }
+
+    #[test]
+    fn unify_different_shapes_6() {
+        let s1 = ShapeFactoid::open(tvec![]);
+        let s2 = ShapeFactoid::closed(tvec![Only(1.into())]);
+        let sr = ShapeFactoid::closed(tvec![Only(1.into())]);
+        assert_eq!(s1.unify(&s2).unwrap(), sr);
+    }
+
+    #[test]
+    fn unify_different_shapes_7() {
+        let s1 = ShapeFactoid::open(tvec![Any, Only(2.into())]);
+        let s2 = ShapeFactoid::closed(tvec![Only(1.into()), Any, Any]);
+        let sr = ShapeFactoid::closed(tvec![Only(1.into()), Only(2.into()), Any]);
+        assert_eq!(s1.unify(&s2).unwrap(), sr);
+    }
+
+    #[test]
+    fn unify_same_value() {
+        let t = ValueFact::Only(rctensor0(12f32));
+        assert_eq!(t.unify(&t).unwrap(), t);
+    }
+
+    #[test]
+    fn unify_different_values_only() {
+        let t1 = ValueFact::Only(rctensor1(&[12f32]));
+        let t2 = ValueFact::Only(rctensor1(&[12f32, 42.0]));
+        assert!(t1.unify(&t2).is_err());
+    }
+
+    #[test]
+    fn unify_different_values_any_left() {
+        let t1 = ValueFact::Only(rctensor1(&[12f32]));
+        assert_eq!(ValueFact::Any.unify(&t1).unwrap(), t1);
+    }
+
+    #[test]
+    fn unify_different_values_any_right() {
+        let t1 = ValueFact::Only(rctensor1(&[12f32]));
+        assert_eq!(t1.unify(&ValueFact::Any).unwrap(), t1);
     }
 }
