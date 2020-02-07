@@ -35,7 +35,7 @@ env_logger = "0.7"
 
 [features]
 default = [ ]
-serialize = ["serde", "serde_derive", "smallvec/serde", "half/serde" ]
+# serialize = ["serde", "serde_derive", "smallvec/serde", "half/serde" ]
 
 [dev-dependencies]
 criterion = "0.3"

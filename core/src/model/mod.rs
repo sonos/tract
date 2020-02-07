@@ -58,7 +58,7 @@ pub use self::node::*;
 pub use self::order::eval_order;
 pub use self::patch::ModelPatch;
 pub use crate::analyser::types::InferenceFact;
-pub use crate::ops::{InferenceOp, Op, TypedOp};
+pub use crate::ops::{Op, TypedOp};
 
 
 use crate::model::translator::Translate;
@@ -151,18 +151,6 @@ macro_rules! dispatch_model_no_pulse {
     };
 }
 
-/// A model with partially types and shapes, as produced by parsing ONNX or
-/// Tensorflow graphs.
-pub type InferenceModel = ModelImpl<InferenceFact, Box<dyn InferenceOp>>;
-/// Node for InferenceModel graph
-pub type InferenceNode = BaseNode<InferenceFact, Box<dyn InferenceOp>>;
-/// A ModelPatch for InferenceModel.
-pub type InferenceModelPatch = ModelPatch<InferenceFact, Box<dyn InferenceOp>>;
-/// An execution plan for InferenceModel.
-pub type InferenceSimplePlan<M> = SimplePlan<InferenceFact, Box<dyn InferenceOp>, M>;
-/// An execution state for InferenceModel.
-pub type InferenceSimpleState<M, P> = SimpleState<InferenceFact, Box<dyn InferenceOp>, M, P>;
-
 /// A model with completely determined types and shapes.
 pub type TypedModel = ModelImpl<TypedFact, Box<dyn TypedOp>>;
 /// Node for TypedModel graph
@@ -185,98 +173,6 @@ pub type NormalizedModelPatch = ModelPatch<NormalizedFact, Box<dyn TypedOp>>;
 pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedFact, Box<dyn TypedOp>, M>;
 /// An execution state for TypedModel.
 pub type NormalizedSimpleState<M, P> = SimpleState<NormalizedFact, Box<dyn TypedOp>, M, P>;
-
-impl InferenceModel {
-    /// Analyse all nodes of the graph.
-    ///
-    /// Will stop on first error unless `obstinate` is `true`.
-    pub fn analyse(&mut self, obstinate: bool) -> TractResult<bool> {
-        crate::analyser::Analyser::new(self).analyse_obstinate(obstinate)
-    }
-
-    /// Perform early transformation before going typed.
-    pub fn incorporate(self) -> TractResult<InferenceModel> {
-        let mut model = self;
-        loop {
-            let mut done_something = false;
-            for p in crate::optim::incorporate() {
-                done_something = done_something || p.pass(&mut model)?;
-                if cfg!(debug_assertions) {
-                    model.check_edges()?;
-                }
-            }
-            if !done_something {
-                break;
-            }
-        }
-        model = compact::compact(&model)?;
-        model.analyse(false)?;
-        Ok(model)
-    }
-
-    /// List OutletId with incomplete type information.
-    ///
-    /// Will stop on first error unless `obstinate` is `true`.
-    pub fn missing_type_shape(&self) -> TractResult<Vec<OutletId>> {
-        use crate::analyser::types::Factoid;
-        Ok(self
-            .eval_order()?
-            .iter()
-            .flat_map(|&node| {
-                self.nodes()[node]
-                    .outputs
-                    .iter()
-                    .enumerate()
-                    .map(move |(ix, outlet)| (OutletId::new(node, ix), outlet))
-            })
-            .filter(|(_, o)| !o.fact.datum_type.is_concrete() || !o.fact.shape.is_concrete())
-            .map(|(id, _)| id)
-            .collect())
-    }
-
-    /// Eliminate seemingly dead branches of the graph.
-    ///
-    /// This may break stateful networks.
-    pub fn eliminate_dead_branches(mut self) -> TractResult<InferenceModel> {
-        compact::compact(&mut self)
-    }
-
-    /// Attempt full analyse and conversion to TypedModel.
-    pub fn into_typed(mut self) -> TractResult<TypedModel> {
-        self.analyse(false)?;
-        let m = self.incorporate()?;
-
-        #[derive(Debug)]
-        struct ToTypedTranslator;
-        impl Translate<InferenceFact, Box<dyn InferenceOp>, TypedFact, Box<dyn TypedOp>>
-            for ToTypedTranslator
-        {
-            fn translate_node(
-                &self,
-                source: &InferenceModel,
-                node: &InferenceNode,
-                target: &mut TypedModel,
-                mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                node.op.to_typed(source, node, target, mapping)
-            }
-        }
-
-        ToTypedTranslator.translate_model(&m)
-    }
-
-    /// Attempt full analyse, decluttering and conversion to NormalizedModel.
-    pub fn into_normalized(self) -> TractResult<NormalizedModel> {
-        self.into_typed()?.declutter()?.into_normalized()
-    }
-
-    /// Attempt full analyse, decluttering and mapping to optimized operations.
-    ///
-    /// This will work even if the network can not be normalized.
-    pub fn into_optimized(self) -> TractResult<TypedModel> {
-        self.into_typed()?.into_optimized()
-    }
-}
 
 impl TypedModel {
     /// Perform declutter pass on the network.
@@ -357,7 +253,6 @@ mod test {
     #[test]
     fn test() {
         fn is_sync<T: Sync>() {}
-        is_sync::<InferenceModel>();
         is_sync::<TypedModel>();
         is_sync::<NormalizedModel>();
     }

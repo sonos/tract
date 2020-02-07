@@ -86,6 +86,7 @@ pub mod datum;
 pub mod dim;
 pub mod errors;
 pub mod framework;
+pub mod infer;
 pub mod model;
 mod optim;
 pub mod plan;
@@ -97,11 +98,11 @@ pub use dyn_clone;
 
 /// This prelude is meant for code using tract.
 pub mod prelude {
-    pub use crate::analyser::types::InferenceFact;
     pub use crate::datum::{Blob, Datum, DatumType};
     pub use crate::dim::TDim;
     pub use crate::errors::*;
     pub use crate::framework::Framework;
+    pub use crate::infer::{InferenceFact, InferenceModel, InferenceNode};
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
     pub use crate::tensor::litteral::*;
@@ -118,14 +119,16 @@ pub mod internal {
     pub use crate::analyser::types::*;
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::*;
+    pub use crate::infer::InferenceOp;
     pub use crate::model::*;
-    pub use crate::ops::element_wise::ElementWiseMiniOp;
-    pub use crate::ops::{
-        check_input_arity, check_output_arity, Invariants, AxisInfo, Cost, InferenceOp, Op, OpState,
-        PulsedOp, StatefullOp, StatelessOp, Validation,
-    };
+    pub use crate::infer::InferenceModelPatch;
     pub use crate::ops::change_axes::*;
+    pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
+    pub use crate::ops::{
+        check_input_arity, check_output_arity, AxisInfo, Cost, Invariants, Op, OpState, PulsedOp,
+        StatefullOp, StatelessOp, Validation,
+    };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use crate::pulse::{PulsedFact, PulsedModel, PulsedNode};

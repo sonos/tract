@@ -23,6 +23,7 @@ macro_rules! wrap {
 }
 
 use crate::internal::*;
+use crate::infer::{ InferenceModel, InferenceNode, InferenceModelPatch, InferenceOp};
 
 mod cache;
 pub mod expr;
@@ -72,7 +73,7 @@ pub trait InferenceRulesOp {
     }
 }
 
-impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
+impl<O: InferenceRulesOp + Op> InferenceOp for O {
     fn infer_facts(
         &mut self,
         inputs: TVec<&InferenceFact>,

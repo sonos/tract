@@ -1,6 +1,6 @@
 //! Enforce consistent API between the implemented Frameworks importers.
 use crate::internal::*;
-use crate::model::InferenceModel;
+use crate::infer::InferenceModel;
 use std::fmt::Debug;
 use std::io::Read;
 use std::path::Path;

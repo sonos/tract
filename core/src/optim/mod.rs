@@ -1,4 +1,5 @@
 use crate::model::*;
+use crate::infer::InferenceModel;
 use crate::TractResult;
 use std::fmt::Debug;
 
