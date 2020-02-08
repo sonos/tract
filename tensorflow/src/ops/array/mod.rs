@@ -26,17 +26,17 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
     reg.insert("Range", range::range);
-    reg.insert("Reshape", |_, _| Ok(Box::new(::tract_core::ops::array::Reshape::new())));
-    reg.insert("Shape", |_, _| Ok(Box::new(::tract_core::ops::array::Shape::new(DatumType::I32))));
+    reg.insert("Reshape", |_, _| Ok(Box::new(::tract_core::hir::array::Reshape::new())));
+    reg.insert("Shape", |_, _| Ok(Box::new(::tract_core::hir::array::Shape::new(DatumType::I32))));
     reg.insert("Slice", |_, _| Ok(Box::new(slice::Slice)));
     reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("StridedSlice", strided_slice);
-    reg.insert("Tile", |_, _| Ok(Box::new(::tract_core::ops::array::Tile)));
+    reg.insert("Tile", |_, _| Ok(Box::new(::tract_core::hir::array::Tile)));
     reg.insert("Transpose", transpose::transpose);
 }
 
 pub fn strided_slice(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    use tract_core::ops::array::StridedSlice;
+    use tract_core::hir::array::StridedSlice;
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);

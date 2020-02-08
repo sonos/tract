@@ -23,11 +23,11 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
     reg.insert("Pad", pad);
-    reg.insert("Reshape", |_, _| Ok((Box::new(tractops::array::Reshape::default()), vec![])));
+    reg.insert("Reshape", |_, _| Ok((Box::new(hir::array::Reshape::default()), vec![])));
     reg.insert("Shape", |_, _| Ok((Box::new(hir::array::Shape::new(DatumType::I64)), vec![])));
     reg.insert("Size", |_, _| Ok((Box::new(hir::array::Size::new(DatumType::I64)), vec![])));
     reg.insert("Transpose", transpose);
-    reg.insert("Tile", |_, _| Ok((Box::new(tractops::array::Tile::default()), vec![])));
+    reg.insert("Tile", |_, _| Ok((Box::new(hir::array::Tile::default()), vec![])));
     reg.insert("Slice", slice::slice);
     reg.insert("Split", split);
     reg.insert("Squeeze", squeeze);
@@ -59,7 +59,7 @@ pub fn constant_like(
         let dt = node.get_attr_opt("dtype")?.unwrap_or(f32::datum_type());
         let shape: Vec<usize> = node.get_attr_vec("shape")?;
         let tensor = dispatch_numbers!(self::make_const(dt)(&shape, value))?;
-        Ok((Box::new(tractops::konst::Const::new(tensor)), vec![]))
+        Ok((Box::new(hir::konst::Const::new(tensor)), vec![]))
     } else {
         Ok((Box::new(hir::array::ConstantLike::new(value)), vec![]))
     }
@@ -73,7 +73,7 @@ pub fn constant_of_shape(
         Some(val) => val.into_arc_tensor(),
         None => make_const::<f32>(&vec![1], 0.0 as f32)?,
     };
-    Ok((Box::new(tractops::array::ConstantOfShape::new(value)), vec![]))
+    Ok((Box::new(hir::array::ConstantOfShape::new(value)), vec![]))
 }
 
 pub fn eye_like(

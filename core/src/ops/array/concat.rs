@@ -1,7 +1,6 @@
 use ndarray::*;
 
 use crate::internal::*;
-use crate::infer::*;
 use crate::pulse::delay::Delay;
 use std::ops::Range;
 

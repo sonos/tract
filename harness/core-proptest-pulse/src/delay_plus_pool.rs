@@ -1,10 +1,11 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use tract_core::dimfact;
-use tract_core::internal::*;
+use tract_core::hir::array;
 use tract_core::infer::*;
+use tract_core::internal::*;
 use tract_core::ndarray::*;
-use tract_core::ops::{array, cnn, nn};
+use tract_core::ops::{cnn, nn};
 use tract_core::shapefactoid;
 
 use super::*;
