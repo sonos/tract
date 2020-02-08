@@ -144,7 +144,7 @@ impl InferenceRulesOp for Slice1 {
         Ok(tvec!(wire))
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 fn slice10(

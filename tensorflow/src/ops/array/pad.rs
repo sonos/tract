@@ -103,7 +103,7 @@ impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 #[cfg(test)]

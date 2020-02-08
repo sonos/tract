@@ -56,7 +56,7 @@ impl InferenceOp for Memory {
         Ok(Some(incorporate_memory_ops_as_scans(model, node)?))
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 fn incorporate_memory_ops_as_scans(

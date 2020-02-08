@@ -69,7 +69,7 @@ impl<D: DimLike + ToDim> InferenceRulesOp for Slice<D> {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -162,7 +162,7 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
         target.wire_node(&*node.name, op, &[input])
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl<D: DimLike + ToDim> PulsedOp for Slice<D> {
@@ -173,7 +173,7 @@ impl<D: DimLike + ToDim> PulsedOp for Slice<D> {
         Ok(tvec!(fact))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 
@@ -215,5 +215,5 @@ impl PulsedOp for PulsedAxisSlice {
         Box::new(crate::ops::identity::Identity::default())
     }
 
-    pulsed_op_as_op!();
+    as_op!();
 }

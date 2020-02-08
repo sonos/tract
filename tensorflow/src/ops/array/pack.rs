@@ -105,7 +105,7 @@ impl InferenceRulesOp for Pack {
         s.equals(&outputs[0].shape[axis], self.n.to_dim())
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,

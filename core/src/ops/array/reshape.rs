@@ -89,7 +89,7 @@ impl InferenceRulesOp for Reshape {
         bail!("shape input is variable")
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -121,7 +121,7 @@ impl StatelessOp for TypedReshape {
 }
 
 impl TypedOp for TypedReshape {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))
@@ -179,5 +179,5 @@ impl TypedOp for FiniteReshape {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

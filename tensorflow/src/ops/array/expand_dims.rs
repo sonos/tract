@@ -81,7 +81,7 @@ impl InferenceRulesOp for ExpandDims {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,

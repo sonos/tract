@@ -85,7 +85,7 @@ impl InferenceRulesOp for Split {
         Ok(self.outputs)
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,

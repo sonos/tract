@@ -80,7 +80,7 @@ impl Op for Concat {
 }
 
 impl TypedOp for Concat {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
@@ -384,7 +384,7 @@ impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
 }
 
 impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
@@ -401,7 +401,7 @@ impl<T: Datum> PulsedOp for PulsedSameAxisConcat<T> {
         Ok(tvec!(fact))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 
@@ -528,7 +528,7 @@ impl<T: Datum> StatelessOp for FixedConcat<T> {
 }
 
 impl<T: Datum> TypedOp for FixedConcat<T> {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();

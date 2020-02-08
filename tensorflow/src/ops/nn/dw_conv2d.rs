@@ -94,7 +94,7 @@ impl InferenceRulesOp for DepthwiseConv2d {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,

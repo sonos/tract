@@ -237,7 +237,7 @@ impl OpState for State {
 }
 
 impl TypedOp for Codegen {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut outputs = tvec!();

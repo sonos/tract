@@ -74,7 +74,7 @@ where
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape)?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -250,5 +250,5 @@ where
         Ok(None)
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

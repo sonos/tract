@@ -312,5 +312,5 @@ impl InferenceOp for InferenceScan {
         Ok(self.output_mapping.iter().filter(|om| !om.invisible()).count())
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

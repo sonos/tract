@@ -160,7 +160,7 @@ impl InferenceRulesOp for LSTM {
             + self.optional_y_c_output.is_some() as usize)
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     #[allow(non_snake_case)]
     fn to_typed(

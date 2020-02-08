@@ -69,7 +69,7 @@ impl<Src: Datum + Hash + Eq, Dst: Datum> InferenceRulesOp for CategoryMapper<Src
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -78,5 +78,5 @@ impl<Src: Datum + Hash + Eq, Dst: Datum> TypedOp for CategoryMapper<Src, Dst> {
         Ok(tvec!(TypedFact::dt_shape(Dst::datum_type(), inputs[0].shape.clone())?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

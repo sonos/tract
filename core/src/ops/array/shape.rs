@@ -78,7 +78,7 @@ impl InferenceRulesOp for Shape {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -92,7 +92,7 @@ impl TypedOp for Shape {
         Ok(tvec!(TypedFact::from(tensor)))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 /*

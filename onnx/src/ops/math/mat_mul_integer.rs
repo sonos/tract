@@ -118,7 +118,7 @@ impl InferenceRulesOp for MatMulInteger {
         target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]], mapping[&node.inputs[1]]])
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 pub fn q_linear_mat_mul(
@@ -213,5 +213,5 @@ impl InferenceRulesOp for QLinearMatMul {
         target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]], mapping[&node.inputs[3]]])
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

@@ -58,12 +58,12 @@ impl InferenceRulesOp for ConstantLike {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for ConstantLike {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
@@ -144,12 +144,12 @@ impl InferenceRulesOp for EyeLike {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for EyeLike {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(

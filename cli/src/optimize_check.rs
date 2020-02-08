@@ -1,5 +1,5 @@
 use tract_core::internal::*;
-use tract_core::ops::source::Source;
+use tract_core::hir::source::Source;
 
 use crate::display_graph;
 use crate::{CliResult, Parameters};

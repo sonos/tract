@@ -1,8 +1,7 @@
 use crate::internal::*;
-use crate::infer::*;
 
 #[derive(Debug, Clone, new)]
-pub struct SourceState(usize);
+pub struct SourceState(pub usize);
 
 impl OpState for SourceState {
     fn eval(
@@ -12,59 +11,6 @@ impl OpState for SourceState {
         _inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec!(session.inputs[&self.0].clone()))
-    }
-}
-
-#[derive(Debug, Clone, new)]
-pub struct Source;
-
-impl Op for Source {
-    fn name(&self) -> Cow<str> {
-        "Source".into()
-    }
-
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
-
-impl StatefullOp for Source {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(SourceState(node_id))))
-    }
-}
-
-impl InferenceRulesOp for Source {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 0)?;
-        check_output_arity(&outputs, 1)?;
-        Ok(())
-    }
-
-    inference_op_as_op!();
-
-    fn to_typed(
-        &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        use std::convert::TryFrom;
-        if let Ok(fact) = TypedFact::try_from(&node.outputs[0].fact) {
-            target.wire_node(&*node.name, TypedSource::new(fact), &[])
-        } else {
-            bail!("Output type not determined")
-        }
     }
 }
 
@@ -123,7 +69,7 @@ impl TypedOp for TypedSource {
         Ok(tvec!(id))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -161,5 +107,5 @@ impl PulsedOp for PulsedSource {
         ))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
 }

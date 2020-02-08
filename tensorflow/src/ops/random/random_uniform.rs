@@ -77,7 +77,7 @@ impl InferenceRulesOp for RandomUniform {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,
@@ -144,7 +144,7 @@ impl TypedOp for TypedRandomUniform {
         Ok(tvec!(TypedFact::dt_shape(self.t, &*self.shape)?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<Arc<Tensor>> {
@@ -241,5 +241,5 @@ impl InferenceRulesOp for RandomUniformInt {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

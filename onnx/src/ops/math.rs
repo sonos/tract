@@ -4,7 +4,7 @@ use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
 use tract_core::infer::*;
 use tract_core::internal::*;
-use tract_core::ops::binary::Nary;
+use tract_core::hir::binary::Nary;
 
 mod mat_mul_integer;
 
@@ -209,5 +209,5 @@ impl InferenceRulesOp for Gemm {
         patch.shunt_outside(node.id.into(), result)?;
         Ok(Some(patch))
     }
-    inference_op_as_op!();
+    as_op!();
 }

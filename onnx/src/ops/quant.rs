@@ -118,7 +118,7 @@ impl InferenceRulesOp for QuantizeLinear {
         target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 
@@ -207,5 +207,5 @@ impl InferenceRulesOp for DequantizeLinear {
         target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

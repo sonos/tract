@@ -49,7 +49,7 @@ impl InferenceRulesOp for LoopGate {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -102,5 +102,5 @@ impl InferenceRulesOp for NextIteration {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::infer::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
@@ -89,29 +88,6 @@ impl StatelessOp for ElementWiseOp {
     }
 }
 
-impl InferenceRulesOp for ElementWiseOp {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.given(&inputs[0].datum_type, move |s, dt| {
-            if let Some(dt) = self.0.output_type(dt) {
-                s.equals(&outputs[0].datum_type, dt)
-            } else {
-                s.equals(&outputs[0].datum_type, dt)
-            }
-        })?;
-        s.equals(&inputs[0].shape, &outputs[0].shape)?;
-        Ok(())
-    }
-    to_typed!();
-    inference_op_as_op!();
-}
-
 impl TypedOp for ElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
@@ -180,7 +156,7 @@ impl TypedOp for ElementWiseOp {
         target.wire_node(&*node.name, self.clone(), &[input])
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for ElementWiseOp {
@@ -192,7 +168,7 @@ impl PulsedOp for ElementWiseOp {
         Ok(tvec!(fact))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 

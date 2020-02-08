@@ -568,7 +568,7 @@ impl StatefullOp for TypedScan {
 }
 
 impl TypedOp for TypedScan {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut outputs = tvec!();
@@ -762,6 +762,6 @@ impl PulsedOp for TypedScan {
         Ok(tvec!(fact))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }

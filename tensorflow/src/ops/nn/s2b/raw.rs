@@ -44,7 +44,7 @@ impl InferenceRulesOp for SpaceToBatch {
         rules(s, self.datum_type, &outputs[0], &inputs[0], &inputs[1], &inputs[2])
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,
@@ -180,7 +180,7 @@ impl InferenceRulesOp for BatchToSpace {
             bail!("Need fixed block shape and padding")
         }
     }
-    inference_op_as_op!();
+    as_op!();
 }
 
 fn rules<'r, 'p: 'r>(

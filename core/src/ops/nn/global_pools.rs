@@ -58,12 +58,12 @@ impl InferenceRulesOp for GlobalAvgPool {
         rules(solver, inputs, outputs)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for GlobalAvgPool {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         output_facts(inputs)
@@ -131,12 +131,12 @@ impl InferenceRulesOp for GlobalLpPool {
         rules(solver, inputs, outputs)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for GlobalLpPool {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         output_facts(inputs)
@@ -195,12 +195,12 @@ impl InferenceRulesOp for GlobalMaxPool {
         rules(solver, inputs, outputs)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for GlobalMaxPool {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         output_facts(inputs)

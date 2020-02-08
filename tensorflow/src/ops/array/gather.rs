@@ -98,12 +98,12 @@ impl InferenceRulesOp for GatherNd {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for GatherNd {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = self.compute_shape(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec())?;

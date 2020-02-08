@@ -56,12 +56,12 @@ impl InferenceRulesOp for Renorm {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for Renorm {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
@@ -88,6 +88,6 @@ impl PulsedOp for Renorm {
         Ok(tvec!(inputs[0].clone()))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }

@@ -43,7 +43,6 @@
 /// * Slice, unary, mandatory attrs are begin and end.
 mod broadcast;
 pub(crate) mod concat;
-mod constant_like;
 mod constant_of_shape;
 mod crop;
 mod flatten;
@@ -60,8 +59,6 @@ mod tile;
 
 pub use self::broadcast::MultiBroadcastTo;
 pub use self::concat::{Concat, ConcatSlice};
-pub use self::constant_like::ConstantLike;
-pub use self::constant_like::EyeLike;
 pub use self::constant_of_shape::ConstantOfShape;
 pub use self::crop::Crop;
 pub use self::flatten::Flatten;

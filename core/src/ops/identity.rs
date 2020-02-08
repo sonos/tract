@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::infer::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct Identity;
@@ -20,24 +19,6 @@ impl StatelessOp for Identity {
     }
 }
 
-impl InferenceRulesOp for Identity {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape, &outputs[0].shape)?;
-        Ok(())
-    }
-
-    inference_op_as_op!();
-    to_typed!();
-}
-
 impl TypedOp for Identity {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
@@ -55,7 +36,7 @@ impl TypedOp for Identity {
         Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for Identity {
@@ -63,6 +44,6 @@ impl PulsedOp for Identity {
         Ok(tvec!(inputs[0].clone()))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }

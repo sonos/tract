@@ -81,13 +81,14 @@ pub mod macros;
 pub mod infer;
 #[macro_use]
 pub mod ops;
+#[macro_use]
+pub mod hir;
 
 pub mod broadcast;
 pub mod datum;
 pub mod dim;
 pub mod errors;
 pub mod framework;
-pub mod hir;
 pub mod model;
 mod optim;
 pub mod plan;

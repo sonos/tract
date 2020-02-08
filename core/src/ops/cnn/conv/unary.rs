@@ -753,7 +753,7 @@ impl TypedOp for ConvUnary {
         Ok(None)
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for ConvUnary {
@@ -761,6 +761,6 @@ impl PulsedOp for ConvUnary {
         self.pool_spec.pulsed_output_facts(inputs)
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }

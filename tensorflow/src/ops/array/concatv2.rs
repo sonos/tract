@@ -68,7 +68,7 @@ impl InferenceRulesOp for ConcatV2 {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn incorporate(
         &self,

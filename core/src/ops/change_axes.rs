@@ -202,7 +202,7 @@ impl StatelessOp for AxisOp {
 }
 
 impl TypedOp for AxisOp {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape = inputs[0].shape.clone();
@@ -294,7 +294,7 @@ impl PulsedOp for AxisOp {
         Ok(tvec!(fact))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 
