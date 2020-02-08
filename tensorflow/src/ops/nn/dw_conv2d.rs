@@ -2,7 +2,7 @@ use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 use tract_core::infer::*;
 use tract_core::internal::*;
-use tract_core::ops::cnn::*;
+use tract_core::hir::cnn::*;
 use tract_core::ops::nn::*;
 
 pub fn depthwise_conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

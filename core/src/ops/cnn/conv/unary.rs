@@ -10,7 +10,6 @@ use crate::model::*;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
-use super::Conv;
 use crate::ops::array::TypedReshape;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
@@ -24,7 +23,7 @@ use tract_linalg::frame::PackA;
 
 use std::iter::Sum;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, new)]
 pub struct ConvUnary {
     pub pool_spec: PoolSpec,
     pub kernel_fmt: KernelFormat,
@@ -37,39 +36,6 @@ pub struct ConvUnary {
 }
 
 impl ConvUnary {
-    pub fn new(
-        conv: &Conv,
-        kernel: Arc<Tensor>,
-        group: usize,
-        bias: Option<Arc<Tensor>>,
-        q_params: Option<QParams>,
-    ) -> TractResult<ConvUnary> {
-        let spatial_rank = kernel.rank() - 2;
-        let kshape = kernel.shape();
-
-        let output_channels = match conv.kernel_fmt {
-            KernelFormat::OIHW => kshape[0],
-            KernelFormat::HWIO => kshape[kshape.len() - 1] * group,
-        };
-
-        let unary = ConvUnary {
-            pool_spec: PoolSpec {
-                data_format: conv.data_format,
-                padding: conv.padding.clone(),
-                strides: conv.strides.clone(),
-                dilations: conv.dilations.clone(),
-                kernel_shape: kshape[conv.kernel_fmt.h_axis()..][..spatial_rank].into(),
-                output_channel_override: Some(output_channels),
-            },
-            kernel_fmt: conv.kernel_fmt,
-            kernel,
-            group,
-            bias,
-            q_params,
-        };
-        Ok(unary)
-    }
-
     fn input_channels(&self) -> usize {
         match self.kernel_fmt {
             KernelFormat::OIHW => self.kernel.shape()[1],

@@ -7,7 +7,7 @@ mod patches;
 pub mod pools;
 
 pub use self::avgpool::AvgPool;
-pub use self::conv::{Conv, ConvUnary, KernelFormat};
+pub use self::conv::{ConvUnary, KernelFormat};
 pub use self::maxpool::MaxPool;
 pub use self::padding::PaddingSpec;
 pub use self::patch_axis::PatchAxis;

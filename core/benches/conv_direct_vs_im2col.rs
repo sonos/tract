@@ -66,7 +66,7 @@ impl Problem {
     pub fn to_unary(&self) -> Box<ConvUnary> {
         let kernel =
             Tensor::from(ndarray::Array4::<f32>::zeros((self.kh, self.kw, self.ci, self.co)));
-        let conv = tract_core::ops::cnn::Conv::default()
+        let conv = tract_core::hir::cnn::Conv::default()
             .nhwc()
             .hwio()
             .dilations(tvec!(self.dil_h, self.dil_w))

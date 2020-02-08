@@ -1,5 +1,5 @@
 use tract_core::internal::*;
-use tract_core::ops::cnn::*;
+use tract_core::hir::cnn::*;
 use tract_core::ops::nn::DataFormat;
 use tract_core::infer::*;
 
@@ -20,7 +20,7 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use tract_core::ndarray::*;
-    use tract_core::ops::cnn::{Conv, PaddingSpec};
+    use tract_core::hir::cnn::{Conv, PaddingSpec};
 
     fn mk(sizes: &[usize]) -> Tensor {
         Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
