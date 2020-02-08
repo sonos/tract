@@ -5,179 +5,45 @@ use crate::infer::*;
 use crate::pulse::delay::Delay;
 use std::ops::Range;
 
-/// Concat: high level concat op
-#[derive(Debug, Clone, new)]
-pub struct Concat {
-    axis: i64,
-}
-
-impl Concat {
-    fn resolve_axis(&self, rank: i64) -> TractResult<usize> {
-        if 0 <= self.axis && self.axis <= rank - 1 {
-            Ok(self.axis as usize)
-        } else if -rank <= self.axis && self.axis < 0 {
-            Ok((self.axis + rank) as usize)
-        } else {
-            bail!("Illegal combination of values for rank and axis: {} and {}", rank, self.axis)
-        }
-    }
-
-    fn eval<T: Datum>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let axis = self.resolve_axis(inputs[0].shape().len() as i64)?;
-        let mut slices: TVec<FixedConcatSlice<T>> = tvec![];
-        for input in &inputs {
-            let shape = Tensor::shape(&input);
-            slices.push(FixedConcatSlice::Var(TVec::from_slice(shape)));
-        }
-        FixedConcat::new(axis, slices).eval(inputs)
-    }
-}
-
-impl Op for Concat {
-    fn name(&self) -> Cow<str> {
-        "Concat".into()
-    }
-
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
-
-impl StatelessOp for Concat {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let super_type: DatumType =
-            DatumType::super_type_for(inputs.iter().map(|x| x.datum_type()))
-                .ok_or_else(|| format!("No supertype found for {:?}", inputs))?;
-        dispatch_datum!(Self::eval(super_type)(self, inputs))
-    }
-}
-
-impl InferenceRulesOp for Concat {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        let n = inputs.len() as usize;
-        s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
-        s.given_all((0..n).map(|i| (&inputs[i].datum_type).bex()), move |s, dts| {
-            let super_type: DatumType = DatumType::super_type_for(&dts)
-                .ok_or_else(|| format!("No supertype found for {:?}", dts))?;
-            s.equals(&outputs[0].datum_type, super_type)
-        })?;
-        s.given(&inputs[0].rank, move |s, rank| {
-            let axis = self.resolve_axis(rank as i64)?;
-            s.equals(
-                rules::expr::SumExp::new(
-                    (0..n).map(|i| (&inputs[i].shape[axis]).bex()).collect(),
-                ),
-                &outputs[0].shape[axis],
-            )?;
-            for axis in 0..axis {
-                s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])?;
-                s.equals_all((0..n).map(|i| inputs[i].shape[axis].bex()).collect())?;
-            }
-            for axis in (axis + 1)..(rank as usize) {
-                s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])?;
-                s.equals_all((0..n).map(|i| inputs[i].shape[axis].bex()).collect())?;
-            }
-            Ok(())
-        })?;
-        Ok(())
-    }
-
-    fn to_typed(
-        &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let mapped_inputs =
-            node.inputs.iter().map(|i| mapping[i].clone()).collect::<TVec<OutletId>>();
-        let facts = mapped_inputs
-            .iter()
-            .map(|i| target.outlet_fact(*i).map(|x| x.clone()))
-            .collect::<TractResult<TVec<_>>>()?;
-
-        let super_type = if let Some(super_type) =
-            DatumType::super_type_for(facts.iter().map(|x| x.datum_type))
-        {
-            super_type
-        } else {
-            bail!("Can not type op");
-        };
-
-        let axis = self.resolve_axis(facts[0].shape.rank() as i64)?;
-
-        let mut slices: TVec<NormConcatSlice> = tvec![];
-        let mut kept_inputs: TVec<OutletId> = tvec![];
-        for (ix, (fact, outlet)) in facts.iter().zip(mapped_inputs.iter()).enumerate() {
-            match &fact.konst {
-                Some(c_input) => {
-                    slices
-                        .push(NormConcatSlice::Const(c_input.cast_to_dt(super_type)?.into_owned()));
-                }
-                None => {
-                    let casted = target.wire_node(
-                        format!("{}-Cast-{}", node.name, ix),
-                        crate::ops::cast::cast(super_type),
-                        &[*outlet],
-                    )?[0];
-                    kept_inputs.push(casted);
-                    slices.push(NormConcatSlice::Var)
-                }
-            }
-        }
-        let op = NormConcat::new(axis, slices);
-        target.wire_node(&*node.name, op, &*kept_inputs)
-    }
-
-    inference_op_as_op!();
-}
-
-/// NormConcatSlice: fully decluttered Concat equivalent
+/// ConcatSlice: fully decluttered Concat equivalent
 #[derive(Debug, Clone)]
-pub enum NormConcatSlice {
+pub enum ConcatSlice {
     Const(Tensor),
     Var,
 }
 
-impl NormConcatSlice {
+impl ConcatSlice {
     pub fn as_const(&self) -> Option<&Tensor> {
         match self {
-            NormConcatSlice::Const(c) => Some(&c),
-            NormConcatSlice::Var => None,
+            ConcatSlice::Const(c) => Some(&c),
+            ConcatSlice::Var => None,
         }
     }
 
     pub fn is_var(&self) -> bool {
         match self {
-            NormConcatSlice::Const(_) => false,
-            NormConcatSlice::Var => true,
+            ConcatSlice::Const(_) => false,
+            ConcatSlice::Var => true,
         }
     }
 }
 
 #[derive(new, Debug, Clone)]
-pub struct NormConcat {
+pub struct Concat {
     pub axis: usize,
-    pub slices: TVec<NormConcatSlice>,
+    pub slices: TVec<ConcatSlice>,
 }
 
-impl NormConcat {
+impl Concat {
     fn to_codegen_op<T: Datum>(&self, input_shapes: &[&[usize]]) -> TractResult<Box<dyn TypedOp>> {
         let mut fixed_slices: TVec<FixedConcatSlice<T>> = tvec![];
         let mut input_idx = 0;
         for slice in &self.slices {
             match slice {
-                NormConcatSlice::Const(c) => {
+                ConcatSlice::Const(c) => {
                     fixed_slices.push(FixedConcatSlice::Const(c.clone().into_array::<T>()?))
                 }
-                NormConcatSlice::Var => {
+                ConcatSlice::Var => {
                     fixed_slices.push(FixedConcatSlice::Var(input_shapes[input_idx].into()));
                     input_idx += 1;
                 }
@@ -191,8 +57,8 @@ impl NormConcat {
         let mut input = 0;
         for slice in &self.slices {
             let len = match slice {
-                NormConcatSlice::Const(t) => t.shape()[self.axis].to_dim(),
-                NormConcatSlice::Var => {
+                ConcatSlice::Const(t) => t.shape()[self.axis].to_dim(),
+                ConcatSlice::Var => {
                     input += 1;
                     inputs[input - 1].shape.dim(self.axis)
                 }
@@ -204,16 +70,16 @@ impl NormConcat {
     }
 }
 
-impl Op for NormConcat {
+impl Op for Concat {
     fn name(&self) -> Cow<str> {
-        "NormConcat".into()
+        "Concat".into()
     }
 
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
 
-impl TypedOp for NormConcat {
+impl TypedOp for Concat {
     typed_op_as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
@@ -262,13 +128,13 @@ impl TypedOp for NormConcat {
             for (ix, slice) in self.slices.iter().enumerate() {
                 if start >= offsets[ix] && end <= offsets[ix + 1] {
                     match slice {
-                        NormConcatSlice::Const(t) => {
+                        ConcatSlice::Const(t) => {
                             return Ok(Some(patch.add_const(
                                 format!("{}-const", node.name),
                                 t.slice(axis, start - offsets[ix], end - offsets[ix])?,
                             )?))
                         }
-                        NormConcatSlice::Var => {
+                        ConcatSlice::Var => {
                             let prec = model.node(node.inputs[input].node);
                             return prec.op().as_typed().unwrap().slice_output(
                                 model,
@@ -320,7 +186,7 @@ impl TypedOp for NormConcat {
         let dt = model.outlet_fact(node.inputs[0])?.datum_type;
         let inputs = model.node_input_facts(node.id)?;
 
-        trace!("  Entering codegen for NormConcat");
+        trace!("  Entering codegen for Concat");
 
         if inputs.iter().any(|i| i.shape.as_finite().is_none()) {
             return Ok(None);
@@ -342,14 +208,14 @@ impl TypedOp for NormConcat {
     }
 }
 
-impl StatelessOp for NormConcat {
+impl StatelessOp for Concat {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let dts = inputs
             .iter()
             .map(|x| x.datum_type())
             .chain(self.slices.iter().filter_map(|s| {
-                if let NormConcatSlice::Const(s) = s {
+                if let ConcatSlice::Const(s) = s {
                     Some(s.datum_type())
                 } else {
                     None
@@ -365,7 +231,7 @@ impl StatelessOp for NormConcat {
     }
 }
 
-impl NormConcat {
+impl Concat {
     fn pulsify_along_concat_axis_t<T: Datum>(
         &self,
         _source: &NormalizedModel,

@@ -5,6 +5,7 @@ use tract_core::internal::*;
 use tract_core::infer::*;
 use tract_core::ndarray;
 use tract_core::ops as tractops;
+use tract_core::hir;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
@@ -16,7 +17,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ConstantLike", constant_like);
     reg.insert("ConstantOfShape", constant_of_shape);
     reg.insert("Expand", |_, _| {
-        Ok((Box::new(tractops::array::MultiBroadcastTo::default()), vec![]))
+        Ok((Box::new(hir::array::MultiBroadcastTo::default()), vec![]))
     });
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
@@ -38,7 +39,7 @@ pub fn concat(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr("axis")?;
-    Ok((Box::new(tractops::array::Concat::new(axis)), vec![]))
+    Ok((Box::new(hir::array::Concat::new(axis)), vec![]))
 }
 
 pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<Arc<Tensor>>
@@ -137,7 +138,7 @@ pub fn squeeze(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axes = node.get_attr_opt_vec("axes")?;
-    Ok((Box::new(tractops::array::Squeeze::new(axes)), vec![]))
+    Ok((Box::new(hir::array::Squeeze::new(axes)), vec![]))
 }
 
 pub fn transpose(
@@ -153,5 +154,5 @@ pub fn unsqueeze(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axes = node.get_attr_vec("axes")?;
-    Ok((Box::new(tractops::array::AddDims::new(axes)), vec![]))
+    Ok((Box::new(hir::array::AddDims::new(axes)), vec![]))
 }

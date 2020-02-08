@@ -2,7 +2,7 @@ use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 use tract_core::infer::*;
 use tract_core::internal::*;
-use tract_core::ops::array::Squeeze;
+use tract_core::hir::array::Squeeze;
 
 pub fn squeeze(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;

@@ -346,9 +346,9 @@ impl TypedOp for TypedBinOp {
             return Ok(Some(patch));
         }
         for i in 0..2 {
-            use super::array::TypedMultiBroadcastTo;
+            use super::array::MultiBroadcastTo;
             let prec = model.node(node.inputs[i].node);
-            if prec.op_is::<TypedMultiBroadcastTo>() {
+            if prec.op_is::<MultiBroadcastTo>() {
                 return Ok(Some(TypedModelPatch::shunt_one_op(model, prec)?));
             }
         }
