@@ -24,8 +24,8 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Gather", gather);
     reg.insert("Pad", pad);
     reg.insert("Reshape", |_, _| Ok((Box::new(tractops::array::Reshape::default()), vec![])));
-    reg.insert("Shape", |_, _| Ok((Box::new(tractops::array::Shape::new(DatumType::I64)), vec![])));
-    reg.insert("Size", |_, _| Ok((Box::new(tractops::array::Size::new(DatumType::I64)), vec![])));
+    reg.insert("Shape", |_, _| Ok((Box::new(hir::array::Shape::new(DatumType::I64)), vec![])));
+    reg.insert("Size", |_, _| Ok((Box::new(hir::array::Size::new(DatumType::I64)), vec![])));
     reg.insert("Transpose", transpose);
     reg.insert("Tile", |_, _| Ok((Box::new(tractops::array::Tile::default()), vec![])));
     reg.insert("Slice", slice::slice);
@@ -130,7 +130,7 @@ pub fn split(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let split = node.get_attr_opt_vec("split")?;
-    Ok((Box::new(tractops::array::Split::new(axis, node.output.len(), split)), vec![]))
+    Ok((Box::new(hir::array::Split::new(axis, node.output.len(), split)), vec![]))
 }
 
 pub fn squeeze(
@@ -146,7 +146,7 @@ pub fn transpose(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let perm = node.get_attr_opt_vec("perm")?;
-    Ok((Box::new(tractops::array::PermuteAxes::new(perm)), vec![]))
+    Ok((Box::new(hir::array::PermuteAxes::new(perm)), vec![]))
 }
 
 pub fn unsqueeze(
