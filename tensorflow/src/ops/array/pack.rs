@@ -128,9 +128,9 @@ impl InferenceRulesOp for Pack {
             .collect::<TractResult<TVec<OutletId>>>()?;
         target.wire_node(
             &*node.name,
-            tract_core::ops::array::NormConcat::new(
+            tract_core::ops::array::Concat::new(
                 self.axis as usize,
-                tvec!(tract_core::ops::array::NormConcatSlice::Var; node.inputs.len()),
+                tvec!(tract_core::ops::array::ConcatSlice::Var; node.inputs.len()),
             ),
             &*inputs,
         )

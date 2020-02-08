@@ -13,7 +13,7 @@ pub struct ConcatV2;
 impl StatelessOp for ConcatV2 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let axis: i32 = *inputs.pop().unwrap().to_scalar::<i32>()?;
-        tract_core::ops::array::Concat::new(axis as _).eval(inputs)
+        tract_core::hir::array::Concat::new(axis as _).eval(inputs)
     }
 }
 
@@ -81,7 +81,7 @@ impl InferenceRulesOp for ConcatV2 {
                 model,
                 node,
                 &node.inputs[..node.inputs.len() - 1],
-                tract_core::ops::array::Concat::new(*axis as _),
+                tract_core::hir::array::Concat::new(*axis as _),
             )?))
         } else {
             Ok(None)

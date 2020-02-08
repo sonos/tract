@@ -586,10 +586,10 @@ impl TypedOp for MatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::array::concat::NormConcatSlice;
-        use crate::ops::array::NormConcat;
+        use crate::ops::array::concat::ConcatSlice;
+        use crate::ops::array::Concat;
         let input_fact = model.outlet_fact(node.inputs[0])?;
-        if let Some(concat) = model.node_op(node.inputs[0].node).downcast_ref::<NormConcat>() {
+        if let Some(concat) = model.node_op(node.inputs[0].node).downcast_ref::<Concat>() {
             let mut patch = TypedModelPatch::default();
             let k_axis = self.a.rank() - 1 - self.a_trans as usize;
             if concat.axis == input_fact.shape.rank() - 1 && self.b_trans {
@@ -603,11 +603,11 @@ impl TypedOp for MatMulUnary {
                 let mut wires = vec![];
                 for (ix, slice) in concat.slices.iter().enumerate() {
                     let wire = match slice {
-                        NormConcatSlice::Const(t) => patch.add_const(
+                        ConcatSlice::Const(t) => patch.add_const(
                             format!("{}-const-{}", node.name, ix),
                             t.clone().into_arc_tensor(),
                         )?,
-                        NormConcatSlice::Var => {
+                        ConcatSlice::Var => {
                             input += 1;
                             patch.tap_model(model, concat_node.inputs[input - 1])?
                         }

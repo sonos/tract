@@ -87,6 +87,7 @@ pub mod datum;
 pub mod dim;
 pub mod errors;
 pub mod framework;
+pub mod hir;
 pub mod model;
 mod optim;
 pub mod plan;

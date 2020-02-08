@@ -41,7 +41,6 @@
 /// ### Ours
 ///
 /// * Slice, unary, mandatory attrs are begin and end.
-mod add_dims;
 mod broadcast;
 pub(crate) mod concat;
 mod constant_like;
@@ -52,18 +51,15 @@ mod gather;
 mod pad;
 mod permute_axes;
 mod reshape;
-mod rm_dims;
 mod shape;
 mod size;
 mod slice;
 mod split;
-mod squeeze;
 mod strided_slice;
 mod tile;
 
-pub use self::add_dims::AddDims;
-pub use self::broadcast::{MultiBroadcastTo, TypedMultiBroadcastTo};
-pub use self::concat::{Concat, NormConcat, NormConcatSlice};
+pub use self::broadcast::MultiBroadcastTo;
+pub use self::concat::{Concat, ConcatSlice};
 pub use self::constant_like::ConstantLike;
 pub use self::constant_like::EyeLike;
 pub use self::constant_of_shape::ConstantOfShape;
@@ -73,11 +69,9 @@ pub use self::gather::Gather;
 pub use self::pad::{Pad, PadMode};
 pub use self::permute_axes::PermuteAxes;
 pub use self::reshape::{FiniteReshape, Reshape, TypedReshape};
-pub use self::rm_dims::RmDims;
 pub use self::shape::Shape;
 pub use self::size::Size;
 pub use self::slice::Slice;
 pub use self::split::Split;
-pub use self::squeeze::Squeeze;
 pub use self::strided_slice::StridedSlice;
 pub use self::tile::Tile;

@@ -37,7 +37,7 @@ pub fn scan(
     }
 
     for (ix, ax) in scan_input_axes.iter().enumerate() {
-        let op = tract_core::ops::array::RmDims::new(vec![*ax]);
+        let op = tract_core::hir::array::RmDims::new(vec![*ax]);
         let outlet = model.input_outlets()?[num_hidden_state + ix];
         InferenceModelPatch::intercept(
             &model,
@@ -56,7 +56,7 @@ pub fn scan(
     }
 
     for (ix, ax) in scan_output_axes.iter().enumerate() {
-        let op = tract_core::ops::array::AddDims::new(vec![*ax]);
+        let op = tract_core::hir::array::AddDims::new(vec![*ax]);
         let outlet = model.output_outlets()?[num_hidden_state + ix];
         InferenceModelPatch::intercept(
             &model,

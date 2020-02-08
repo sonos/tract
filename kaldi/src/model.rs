@@ -94,7 +94,7 @@ impl GeneralDescriptor {
                 let name = format!("{}-Append", name);
                 let id = model.add_node(
                     &*name,
-                    tract_core::ops::array::Concat::new(1),
+                    tract_core::hir::array::Concat::new(1),
                     tvec!(InferenceFact::default()),
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
