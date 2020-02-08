@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Crop {
@@ -20,8 +20,11 @@ impl Op for Crop {
 impl StatelessOp for Crop {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let slice =
-            super::Slice::new(self.axis, self.start, inputs[0].shape()[self.axis] - self.end);
+        let slice = crate::ops::array::Slice::new(
+            self.axis,
+            self.start,
+            inputs[0].shape()[self.axis] - self.end,
+        );
         slice.eval(inputs)
     }
 }
@@ -62,7 +65,11 @@ impl InferenceRulesOp for Crop {
         let len = target.outlet_fact(mapping[&node.inputs[0]])?.shape.dim(self.axis);
         target.wire_node(
             &*node.name,
-            super::Slice::new(self.axis as usize, self.start.to_dim(), len - self.end.to_dim()),
+            crate::ops::array::Slice::new(
+                self.axis as usize,
+                self.start.to_dim(),
+                len - self.end.to_dim(),
+            ),
             [mapping[&node.inputs[0]]].as_ref(),
         )
     }

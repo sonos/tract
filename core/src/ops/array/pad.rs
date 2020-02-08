@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::infer::*;
 use crate::pulse::delay::Delay;
 use ndarray::*;
 
@@ -18,7 +17,7 @@ impl Default for PadMode {
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Pad {
-    pads: Vec<(usize, usize)>,
+    pub pads: Vec<(usize, usize)>,
     mode: PadMode,
 }
 
@@ -108,27 +107,6 @@ impl StatelessOp for Pad {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(self, input))?))
     }
-}
-
-impl InferenceRulesOp for Pad {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        for (ix, &(a, b)) in self.pads.iter().enumerate() {
-            s.equals(&inputs[0].shape[ix], outputs[0].shape[ix].bex() - a.to_dim() - b.to_dim())?;
-        }
-        Ok(())
-    }
-
-    as_op!();
-    to_typed!();
 }
 
 impl TypedOp for Pad {

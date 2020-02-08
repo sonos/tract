@@ -132,7 +132,7 @@ impl GeneralDescriptor {
                 }
                 let id = model.add_node(
                     &*name,
-                    tract_core::ops::array::Crop::new(0, crop as usize, 0),
+                    tract_core::hir::array::Crop::new(0, crop as usize, 0),
                     tvec!(InferenceFact::default()),
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
