@@ -1,10 +1,10 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
-use super::ConvUnary;
 use crate::dim::DimLike;
+use crate::ops::cnn::conv::ConvUnary;
 use crate::ops::cnn::conv::KernelFormat;
-use crate::ops::cnn::PaddingSpec;
+use crate::ops::cnn::{PaddingSpec, PoolSpec};
 use crate::ops::nn::DataFormat;
 use crate::ops::quant::QParams;
 use std::borrow::Borrow;
@@ -183,7 +183,22 @@ impl Conv {
             } else {
                 None
             };
-            let reduced = ConvUnary::new(&self, kvalue, self.group.unwrap_or(1), bias, qp)?;
+            let spatial_rank = kernel.rank() - 2;
+            let kshape = kvalue.shape();
+            let group = self.group.unwrap_or(1);
+            let output_channels = match self.kernel_fmt {
+                KernelFormat::OIHW => kshape[0],
+                KernelFormat::HWIO => kshape[kshape.len() - 1] * group,
+            };
+            let pool_spec = PoolSpec {
+                data_format: self.data_format,
+                padding: self.padding.clone(),
+                strides: self.strides.clone(),
+                dilations: self.dilations.clone(),
+                kernel_shape: kshape[self.kernel_fmt.h_axis()..][..spatial_rank].into(),
+                output_channel_override: Some(output_channels),
+            };
+            let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kvalue, group, bias, qp);
             return Ok(Some(reduced));
         }
         Ok(None)
@@ -311,7 +326,10 @@ mod test {
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 3, 3));
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 3, 2))));
+        assert_eq!(
+            facts.1,
+            tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 3, 2)))
+        );
     }
 
     #[test]
@@ -321,7 +339,10 @@ mod test {
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(3, 2, 1, 1));
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 3, 1, 1))));
+        assert_eq!(
+            facts.1,
+            tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 3, 1, 1)))
+        );
     }
 
     #[test]
@@ -331,7 +352,10 @@ mod test {
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 3, 3));
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 3, 2))));
+        assert_eq!(
+            facts.1,
+            tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 3, 2)))
+        );
     }
 
     #[test]
@@ -341,7 +365,10 @@ mod test {
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(2, 2, 2, 1));
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 2, 2, 1))));
+        assert_eq!(
+            facts.1,
+            tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 2, 2, 1)))
+        );
     }
 
     #[test]
@@ -365,7 +392,10 @@ mod test {
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(2, 1, 2, 1));
         let ofact = InferenceFact::default();
         let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
-        assert_eq!(facts.1, tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 2, 1))));
+        assert_eq!(
+            facts.1,
+            tvec!(InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 2, 1)))
+        );
     }
 
     #[test]

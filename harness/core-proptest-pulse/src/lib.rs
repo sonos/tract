@@ -129,7 +129,7 @@ fn vec(len: impl Strategy<Value = usize>) -> impl Strategy<Value = Vec<f32>> {
 
 #[test]
 fn test_simple_conv() {
-    use tract_core::ops::cnn::*;
+    use tract_core::hir::cnn::*;
 
     let mut model = InferenceModel::default();
     let ker = model.add_const("kernel", tensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();

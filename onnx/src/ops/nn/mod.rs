@@ -119,8 +119,8 @@ pub fn batch_normalization(
     Ok((Box::new(batch_norm::BatchNorm::new(DataFormat::NCHW, epsilon, spatial != 0)), vec![]))
 }
 
-fn common_conv(node: &NodeProto) -> TractResult<tractops::cnn::Conv> {
-    let mut op = tractops::cnn::Conv::default().padding(pad(node)?);
+fn common_conv(node: &NodeProto) -> TractResult<tract_core::hir::cnn::Conv> {
+    let mut op = tract_core::hir::cnn::Conv::default().padding(pad(node)?);
     if let Some(kernel_shape) = node.get_attr_opt_tvec("kernel_shape")? {
         op = op.kernel_shape(kernel_shape);
     }

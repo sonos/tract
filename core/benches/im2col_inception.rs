@@ -24,7 +24,7 @@ fn b(
 ) {
     let image = Tensor::from(ndarray::Array4::<f32>::zeros((1, h, w, ci)));
     let kernel = Tensor::from(ndarray::Array4::<f32>::zeros((kh, kw, ci, co)));
-    let conv = tract_core::ops::cnn::Conv::default()
+    let conv = tract_core::hir::cnn::Conv::default()
         .nhwc()
         .hwio()
         .kernel_shape(kernel.shape()[0..2].into())

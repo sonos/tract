@@ -1,9 +1,7 @@
 mod depth_wise;
-mod gen;
 mod im2col;
 mod unary;
 
-pub use self::gen::Conv;
 pub use self::im2col::Im2Col;
 pub use self::unary::ConvUnary;
 
@@ -20,7 +18,7 @@ impl Default for KernelFormat {
 }
 
 impl KernelFormat {
-    pub(super) fn h_axis(&self) -> usize {
+    pub fn h_axis(&self) -> usize {
         match self {
             KernelFormat::OIHW => 2,
             KernelFormat::HWIO => 0,

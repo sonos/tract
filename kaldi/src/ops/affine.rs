@@ -38,9 +38,8 @@ struct Affine {
 }
 
 impl Affine {
-    fn as_conv(&self) -> tract_core::ops::cnn::Conv {
-        use tract_core::ops::cnn::*;
-        use tract_core::ops::nn::*;
+    fn as_conv(&self) -> tract_core::hir::cnn::Conv {
+        use tract_core::hir::cnn::*;
         Conv::default()
             .hwc()
             .hwio()
