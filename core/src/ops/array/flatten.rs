@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::infer::*;
 
 // TODO: canonicalize as Reshape
 
@@ -18,7 +17,7 @@ impl Flatten {
         Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(shape)?.into_arc_tensor()])
     }
 
-    fn compute_shape<D: DimLike>(&self, shape: &[D]) -> [D; 2] {
+    pub fn compute_shape<D: DimLike>(&self, shape: &[D]) -> [D; 2] {
         let shape_0 = shape[..self.axis].iter().fold(D::one(), |acc, v| acc * v);
         let shape_1 = shape[self.axis..].iter().fold(D::one(), |acc, v| acc * v);
         [shape_0, shape_1]
@@ -40,24 +39,6 @@ impl StatelessOp for Flatten {
         let [shape_0, shape_1] = self.compute_shape(input.shape());
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input, (shape_0, shape_1)))
     }
-}
-
-impl InferenceRulesOp for Flatten {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-        s.given(&inputs[0].shape, move |s, shape| {
-            let [shape_0, shape_1] = self.compute_shape(&*shape);
-            s.equals(&outputs[0].shape, ShapeFactoid::from(vec![shape_0, shape_1]))
-        })
-    }
-
-    as_op!();
-    to_typed!();
 }
 
 impl TypedOp for Flatten {
