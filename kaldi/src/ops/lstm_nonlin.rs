@@ -103,7 +103,7 @@ impl InferenceRulesOp for LstmNonlin {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,
@@ -198,7 +198,7 @@ impl InferenceRulesOp for LstmNonlin {
 }
 
 impl TypedOp for LstmNonlin {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(

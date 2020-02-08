@@ -130,6 +130,6 @@ impl InferenceRulesOp for Concat {
         target.wire_node(&*node.name, op, &*kept_inputs)
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 

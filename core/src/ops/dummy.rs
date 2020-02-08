@@ -20,7 +20,7 @@ impl StatelessOp for Dummy {
 }
 
 impl TypedOp for Dummy {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!())
@@ -37,6 +37,6 @@ impl InferenceRulesOp for Dummy {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }

@@ -99,8 +99,9 @@ impl InferenceRulesOp for Switch {
         Ok(2)
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
+
 
 fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let inputs = pb.get_attr_int::<i32>("N")?;
@@ -148,12 +149,12 @@ impl InferenceRulesOp for Merge {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for Merge {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(

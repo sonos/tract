@@ -67,5 +67,5 @@ impl InferenceRulesOp for Crop {
         )
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

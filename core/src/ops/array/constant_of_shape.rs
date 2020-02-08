@@ -65,7 +65,7 @@ impl InferenceRulesOp for ConstantOfShape {
         bail!("shape input is variable")
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 fn make_from_shape<T>(shape: &[usize], scalar: &Tensor) -> TractResult<Arc<Tensor>>

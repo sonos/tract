@@ -127,12 +127,12 @@ impl InferenceRulesOp for Pad {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for Pad {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
@@ -336,7 +336,7 @@ impl<T: Datum + Copy> TypedOp for PulsePad<T> {
         Ok(tvec!(inputs[0].clone()))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl<T: Datum + Copy> PulsedOp for PulsePad<T> {
@@ -347,6 +347,6 @@ impl<T: Datum + Copy> PulsedOp for PulsePad<T> {
         Ok(tvec!(fact))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }

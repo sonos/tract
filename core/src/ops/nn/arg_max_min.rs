@@ -80,7 +80,7 @@ impl InferenceRulesOp for ArgMaxMin {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -95,5 +95,5 @@ impl TypedOp for ArgMaxMin {
         Ok(tvec!(TypedFact::dt_shape(i64::datum_type(), &*shape)?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

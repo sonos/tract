@@ -131,5 +131,5 @@ impl InferenceRulesOp for Reduce {
         }
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

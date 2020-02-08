@@ -88,5 +88,5 @@ impl InferenceRulesOp for Squeeze {
         InferenceOp::to_typed(&RmDims::new(axes), source, node, target, mapping)
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

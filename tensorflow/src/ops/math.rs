@@ -1,6 +1,7 @@
 use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ops as tractops;
+use tract_core::hir;
 
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
@@ -37,7 +38,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
 }
 
 pub fn add_n(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    Ok(Box::new(tractops::binary::Nary(Box::new(tractops::math::Add), false)))
+    Ok(Box::new(hir::binary::Nary(Box::new(tractops::math::Add), false)))
 }
 
 pub fn mat_mul(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

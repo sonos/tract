@@ -92,7 +92,7 @@ impl TypedOp for SpaceToBatchUnary {
         Ok(None)
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -138,7 +138,7 @@ impl StatelessOp for BatchToSpaceUnary {
 }
 
 impl TypedOp for BatchToSpaceUnary {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.space_shape)?))

@@ -170,12 +170,12 @@ impl InferenceRulesOp for BlockLSTM {
         Ok(7)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for BlockLSTM {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(std::iter::repeat(inputs[1].clone()).take(7).collect())

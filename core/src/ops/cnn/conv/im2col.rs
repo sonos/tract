@@ -124,7 +124,7 @@ impl<T: Copy + Datum + Zero> StatelessOp for Im2Col<T> {
 }
 
 impl<T: Copy + Datum + Zero> TypedOp for Im2Col<T> {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(T::datum_type(), &*self.output_shape.shape)?))

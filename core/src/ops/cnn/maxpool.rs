@@ -66,7 +66,7 @@ impl InferenceRulesOp for MaxPool {
         Ok(1 + self.with_index_outputs.is_some() as usize)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -105,7 +105,7 @@ impl TypedOp for MaxPool {
         Ok(None)
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for MaxPool {
@@ -118,7 +118,7 @@ impl PulsedOp for MaxPool {
         Ok(facts)
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 
@@ -192,7 +192,7 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
 }
 
 impl<T: Datum + Float> TypedOp for MaxPoolFixed<T> {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut facts = tvec!(TypedFact::dt_shape(T::datum_type(), &*self.output_shape.shape)?);

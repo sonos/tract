@@ -83,7 +83,7 @@ impl Gather {
 }
 
 impl TypedOp for Gather {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(
@@ -122,7 +122,7 @@ impl InferenceRulesOp for Gather {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 

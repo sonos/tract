@@ -94,7 +94,7 @@ impl InferenceRulesOp for Downsample {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -133,7 +133,7 @@ impl TypedOp for Downsample {
         target.wire_node(&*node.name, self.clone(), &[input])
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for Downsample {
@@ -144,7 +144,7 @@ impl PulsedOp for Downsample {
         Ok(tvec!(fact))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 

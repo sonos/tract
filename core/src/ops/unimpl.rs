@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::infer::*;
 
 #[derive(Debug, Clone)]
 pub struct UnimplementedOp {
@@ -30,32 +29,5 @@ impl StatefullOp for UnimplementedOp {
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         bail!("unimplemented operation: #{} {}", node_id, self.name)
-    }
-}
-
-impl InferenceRulesOp for UnimplementedOp {
-    fn nboutputs(&self) -> TractResult<usize> {
-        Ok(self.outputs)
-    }
-
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _: &mut Solver<'r>,
-        _: &'p [TensorProxy],
-        _: &'p [TensorProxy],
-    ) -> InferenceResult {
-        Ok(())
-    }
-
-    inference_op_as_op!();
-
-    fn to_typed(
-        &self,
-        _source: &InferenceModel,
-        _node: &InferenceNode,
-        _target: &mut TypedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        bail!("Operator can not be made a TypedOp.")
     }
 }

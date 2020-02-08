@@ -70,7 +70,7 @@ impl InferenceRulesOp for MultiBroadcastTo {
         bail!("shape input is variable")
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 

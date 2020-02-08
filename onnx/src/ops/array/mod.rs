@@ -61,7 +61,7 @@ pub fn constant_like(
         let tensor = dispatch_numbers!(self::make_const(dt)(&shape, value))?;
         Ok((Box::new(tractops::konst::Const::new(tensor)), vec![]))
     } else {
-        Ok((Box::new(tractops::array::ConstantLike::new(value)), vec![]))
+        Ok((Box::new(hir::array::ConstantLike::new(value)), vec![]))
     }
 }
 
@@ -82,7 +82,7 @@ pub fn eye_like(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let dt = node.get_attr_opt("dtype")?;
     let k = node.get_attr_opt("k")?.unwrap_or(0);
-    Ok((Box::new(tractops::array::EyeLike::new(dt, k)), vec![]))
+    Ok((Box::new(hir::array::EyeLike::new(dt, k)), vec![]))
 }
 
 pub fn flatten(

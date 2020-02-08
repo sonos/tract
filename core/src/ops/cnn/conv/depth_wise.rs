@@ -92,5 +92,5 @@ where
         )))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

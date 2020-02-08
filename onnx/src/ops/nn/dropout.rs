@@ -60,12 +60,12 @@ impl InferenceRulesOp for Dropout {
         Ok(1 + self.output_mask as usize)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for Dropout {
-    typed_op_as_op!();
+    as_op!();
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }

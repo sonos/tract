@@ -371,7 +371,7 @@ impl InferenceRulesOp for MatMul {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -430,7 +430,7 @@ impl TypedOp for MatMul {
         )
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -758,7 +758,7 @@ impl TypedOp for MatMulUnary {
         Ok(None)
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for MatMulUnary {
@@ -778,7 +778,7 @@ impl PulsedOp for MatMulUnary {
         Ok(tvec!(fact))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 

@@ -293,7 +293,7 @@ impl InferenceRulesOp for Reduce {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,
@@ -348,7 +348,7 @@ impl StatelessOp for TypedReduce {
 }
 
 impl TypedOp for TypedReduce {
-    typed_op_as_op!();
+    as_op!();
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape: TVec<_> = inputs[0].shape.to_tvec();
         for &ax in &self.axes {
@@ -412,6 +412,6 @@ impl PulsedOp for TypedReduce {
         Ok(tvec!(fact))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }

@@ -1,9 +1,8 @@
 use crate::internal::*;
-use crate::infer::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Const {
-    value: Arc<Tensor>,
+    pub value: Arc<Tensor>,
 }
 
 impl Const {
@@ -27,25 +26,8 @@ impl StatelessOp for Const {
     }
 }
 
-impl InferenceRulesOp for Const {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 0)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].value, self.value.clone().bex())?;
-        Ok(())
-    }
-
-    inference_op_as_op!();
-    to_typed!();
-}
-
 impl TypedOp for Const {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.value.as_ref().into()))

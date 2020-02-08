@@ -49,7 +49,7 @@ impl InferenceRulesOp for Size {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -58,5 +58,5 @@ impl TypedOp for Size {
         Ok(tvec!(TypedFact::dt_shape(self.dt, [0usize; 0].as_ref())?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

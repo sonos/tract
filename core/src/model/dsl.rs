@@ -26,7 +26,7 @@ impl ModelSpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
         name: impl Into<String>,
         fact: InferenceFact,
     ) -> TractResult<OutletId> {
-        let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
+        let id = self.add_node(name, crate::hir::source::Source::new(), tvec!(fact))?;
         let id = OutletId::new(id, 0);
         self.inputs.push(id);
         Ok(id)

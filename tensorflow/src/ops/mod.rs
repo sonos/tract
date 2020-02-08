@@ -29,7 +29,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Const", konst);
     reg.insert("Identity", |_, _| Ok(Box::new(tract_core::ops::identity::Identity)));
     reg.insert("NoOp", |_, _| Ok(Box::new(Noop)));
-    reg.insert("Placeholder", |_, _| Ok(Box::new(::tract_core::ops::source::Source::new())));
+    reg.insert("Placeholder", |_, _| Ok(Box::new(::tract_core::hir::source::Source::new())));
 }
 
 fn cast(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
@@ -78,7 +78,7 @@ impl InferenceRulesOp for Noop {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -87,5 +87,5 @@ impl TypedOp for Noop {
         Ok(tvec!(TypedFact::dt_shape(bool::datum_type(), ())?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

@@ -1,31 +1,21 @@
 #[macro_export]
-macro_rules! inference_op_as_op {
+macro_rules! to_typed {
     () => {
-        fn as_op(&self) -> &dyn Op {
-            self
-        }
-
-        fn as_op_mut(&mut self) -> &mut dyn Op {
-            self
+        fn to_typed(
+            &self,
+            _source: &$crate::infer::InferenceModel,
+            node: &$crate::infer::InferenceNode,
+            target: &mut TypedModel,
+            mapping: &HashMap<OutletId, OutletId>,
+        ) -> TractResult<TVec<OutletId>> {
+            let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
+            target.wire_node(&*node.name, self.clone(), &*inputs)
         }
     }
 }
 
 #[macro_export]
-macro_rules! typed_op_as_op {
-    () => {
-        fn as_op(&self) -> &dyn Op {
-            self
-        }
-
-        fn as_op_mut(&mut self) -> &mut dyn Op {
-            self
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! pulsed_op_as_op {
+macro_rules! as_op {
     () => {
         fn as_op(&self) -> &dyn Op {
             self
@@ -87,22 +77,6 @@ macro_rules! canonic {
     () => {
         fn is_canonic(&self) -> bool {
             true
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! to_typed {
-    () => {
-        fn to_typed(
-            &self,
-            _source: &$crate::infer::InferenceModel,
-            node: &$crate::infer::InferenceNode,
-            target: &mut TypedModel,
-            mapping: &HashMap<OutletId, OutletId>,
-        ) -> TractResult<TVec<OutletId>> {
-            let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
-            target.wire_node(&*node.name, self.clone(), &*inputs)
         }
     }
 }

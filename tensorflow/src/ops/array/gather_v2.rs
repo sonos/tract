@@ -66,5 +66,5 @@ impl InferenceRulesOp for GatherV2 {
         }
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

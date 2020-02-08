@@ -123,5 +123,6 @@ impl InferenceRulesOp for FakeQuantWithMinMaxVars {
         bail!("Operator can not be made a TypedOp.")
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
+

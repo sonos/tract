@@ -1,10 +1,11 @@
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
+use crate::hir::source::Source;
 use crate::internal::*;
 use crate::model::dsl::ModelSpecialOps;
 use crate::model::*;
-use crate::ops::source::{Source, TypedSource};
+use crate::ops::source::TypedSource;
 
 /// A change to apply to a model.
 ///
@@ -83,8 +84,10 @@ where
         outlet: OutletId,
     ) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
-        let id = self
-            .add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), dyn_clone::clone(fact))?;
+        let id = self.add_source(
+            format!("incoming-{}/{}", outlet.node, outlet.slot),
+            dyn_clone::clone(fact),
+        )?;
         self.incoming.insert(id, outlet);
         Ok(id)
     }

@@ -108,5 +108,5 @@ impl InferenceRulesOp for Affine {
         Ok(Some(patch))
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

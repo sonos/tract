@@ -83,5 +83,5 @@ impl InferenceRulesOp for RmDims {
         Ok(tvec!(wire))
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

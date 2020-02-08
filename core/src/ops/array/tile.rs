@@ -78,7 +78,7 @@ impl InferenceRulesOp for Tile {
         bail!("shape input is variable")
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -122,7 +122,7 @@ impl StatelessOp for TypedTile {
 }
 
 impl TypedOp for TypedTile {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = inputs[0]

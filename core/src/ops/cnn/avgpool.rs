@@ -71,7 +71,7 @@ impl InferenceRulesOp for AvgPool {
         self.pool_spec.rules_for_shape(s, inputs, outputs)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -105,7 +105,7 @@ impl TypedOp for AvgPool {
         Ok(None)
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for AvgPool {
@@ -113,7 +113,7 @@ impl PulsedOp for AvgPool {
         self.pool_spec.pulsed_output_facts(inputs)
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 
@@ -192,5 +192,5 @@ where
         Ok(tvec!(TypedFact::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

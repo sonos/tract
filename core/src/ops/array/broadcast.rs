@@ -37,5 +37,5 @@ impl TypedOp for MultiBroadcastTo {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

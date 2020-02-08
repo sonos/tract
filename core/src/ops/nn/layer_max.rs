@@ -64,7 +64,7 @@ impl InferenceRulesOp for LayerHardmax {
         rules(solver, inputs, outputs)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -84,7 +84,7 @@ impl TypedOp for LayerHardmax {
         pulsify(self, self.axis, node, target, mapping)
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for LayerHardmax {
@@ -92,7 +92,7 @@ impl PulsedOp for LayerHardmax {
         Ok(tvec!(inputs[0].clone()))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 
@@ -159,7 +159,7 @@ impl InferenceRulesOp for LayerLogSoftmax {
         rules(solver, inputs, outputs)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -179,7 +179,7 @@ impl TypedOp for LayerLogSoftmax {
         pulsify(self, self.axis, node, target, mapping)
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for LayerLogSoftmax {
@@ -187,7 +187,7 @@ impl PulsedOp for LayerLogSoftmax {
         Ok(tvec!(inputs[0].clone()))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 
@@ -254,7 +254,7 @@ impl InferenceRulesOp for LayerSoftmax {
         rules(solver, inputs, outputs)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
@@ -274,7 +274,7 @@ impl TypedOp for LayerSoftmax {
         pulsify(self, self.axis, node, target, mapping)
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 impl PulsedOp for LayerSoftmax {
@@ -282,7 +282,7 @@ impl PulsedOp for LayerSoftmax {
         Ok(tvec!(inputs[0].clone()))
     }
 
-    pulsed_op_as_op!();
+    as_op!();
     pulsed_op_to_typed_op!();
 }
 
