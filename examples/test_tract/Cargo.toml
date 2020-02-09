@@ -1,0 +1,15 @@
+[package]
+name = "test_tract"
+version = "0.1.0"
+authors = ["Matthew Alhonte <mattalhonte@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = { git = "https://github.com/rust-lang-nursery/rand" }
+tract-core = { path="../../core" }
+tract-tensorflow = { path = "../../tensorflow" }
+#tract = { git = "https://github.com/snipsco/tract" }
+#tract-core = { path="../../core" }
+#tract-tensorflow = { path = "../../tensorflow" }
