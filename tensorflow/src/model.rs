@@ -131,7 +131,8 @@ impl Framework<GraphDef> for Tensorflow {
                 .into(),
             };
 
-            let facts = tvec!(InferenceFact::default(); op.nboutputs()?);
+            let noutputs = op.nboutputs()?.max(context.node_output_arities.get(name).cloned().unwrap_or(1));
+            let facts = tvec!(InferenceFact::default(); noutputs);
 
             let node_id = model.add_node(name.clone(), op, facts)?;
             if pbnode.op == "Placeholder" {
