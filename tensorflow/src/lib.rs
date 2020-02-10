@@ -9,6 +9,7 @@
 //! # extern crate tract_tensorflow;
 //! # fn main() {
 //! use tract_core::prelude::*;
+//! use tract_core::infer::*;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let tf = tract_tensorflow::tensorflow();
