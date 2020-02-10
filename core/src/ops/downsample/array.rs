@@ -53,7 +53,6 @@ mod tests {
     use crate::ops;
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
-    use crate::infer::*;
 
     fn crop_then_down_strat() -> BoxedStrategy<(usize, usize, usize, usize, usize)> {
         (1usize..5, 1usize..5)
@@ -75,9 +74,9 @@ mod tests {
     ) -> TestCaseResult {
         let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
         let model = {
-            let mut model = InferenceModel::default();
+            let mut model = TypedModel::default();
             let input =
-                model.add_source("input", InferenceFact::dt_shape(i32::datum_type(), &[len]))?;
+                model.add_source("input", TypedFact::dt_shape(i32::datum_type(), [len].as_ref()).unwrap())?;
             let crop =
                 model.wire_node("crop", ops::array::Slice::new(0, left, len - right), &[input])?;
             let down = model.wire_node("down", Downsample::new(0, stride, modulo), &crop)?;
@@ -86,20 +85,18 @@ mod tests {
         };
         trace!("{:#?}", model);
         prop_assert!(model.node(model.output_outlets().unwrap()[0].node).op_is::<Downsample>());
-        let typed = model.into_typed()?;
-        trace!("{:#?}", typed);
         let input = tensor1(&(0i32..len as _).collect::<Vec<_>>());
-        let expected = SimplePlan::new(&typed)?.run(tvec!(input.clone()))?;
+        let expected = SimplePlan::new(&model)?.run(tvec!(input.clone()))?;
 
         info!("Decluttering");
-        let typed = typed.declutter()?;
-        trace!("{:#?}", typed);
-        let order = typed.eval_order()?;
+        let model = model.declutter()?;
+        trace!("{:#?}", model);
+        let order = model.eval_order()?;
         prop_assert!(
-            typed.node(order[1]).op_is::<Downsample>()
-                || !typed.nodes().iter().any(|n| n.op_is::<Downsample>())
+            model.node(order[1]).op_is::<Downsample>()
+                || !model.nodes().iter().any(|n| n.op_is::<Downsample>())
         );
-        let found = SimplePlan::new(&typed)?.run(tvec!(input))?;
+        let found = SimplePlan::new(&model)?.run(tvec!(input))?;
         prop_assert_eq!(found, expected);
         Ok(())
     }
