@@ -3,6 +3,7 @@ use tract_core::infer::*;
 use tract_core::ops as tractops;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::nn::DataFormat;
+use tract_core::hir;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
@@ -18,7 +19,7 @@ mod lrn;
 fn reduce(node: &NodeProto, reducer: Reducer) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axes = node.get_attr_opt_vec("axes")?;
     let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
-    Ok((Box::new(tractops::nn::Reduce::new(axes, keep_dims, reducer)), vec![]))
+    Ok((Box::new(hir::nn::Reduce::new(axes, keep_dims, reducer)), vec![]))
 }
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {

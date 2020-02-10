@@ -1,6 +1,6 @@
 use tract_core::infer::*;
 use tract_core::internal::*;
-use tract_core::ops::nn;
+use tract_core::hir::nn;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
