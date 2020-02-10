@@ -561,7 +561,7 @@ impl TypedOp for MatMulUnary {
                 let bn_axis = b.rank() - 1 - (self.b_trans as usize);
                 if *axis == bk_axis {
                     return Ok(None);
-                } else if *axis == bn_axis {
+                } else if *axis == bn_axis && b.rank() == 2 {
                     Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
                 } else if b.rank() > *axis + 2 && self.a.rank() <= b.rank() {
                     let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
