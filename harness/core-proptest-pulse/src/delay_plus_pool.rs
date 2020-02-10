@@ -2,10 +2,13 @@ use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use tract_core::dimfact;
 use tract_core::hir::array;
+use tract_core::hir::cnn;
 use tract_core::infer::*;
 use tract_core::internal::*;
 use tract_core::ndarray::*;
-use tract_core::ops::{cnn, nn};
+use tract_core::hir::cnn::MaxPool;
+use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::nn::DataFormat;
 use tract_core::shapefactoid;
 
 use super::*;
@@ -50,15 +53,15 @@ impl DelayPlusPoolProblem {
             .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, S, 1)))
             .unwrap();
         let crop = model.wire_node("crop", array::Crop::new(1, self.delay, 0), &[a]).unwrap();
-        let pool_spec = cnn::PoolSpec::new(
-            nn::DataFormat::NHWC,
+        let pool_spec = PoolSpec::new(
+            DataFormat::NHWC,
             tvec!(self.pool_window),
             cnn::PaddingSpec::Valid,
             None,
             Some(tvec!(self.stride)),
             None,
         );
-        let pool = model.wire_node("pool", cnn::MaxPool::new(pool_spec, None), &crop).unwrap();
+        let pool = model.wire_node("pool", MaxPool::new(pool_spec, None), &crop).unwrap();
         model.set_output_outlets(&pool).unwrap();
         let input = arr1(&self.input).into_shape((1, self.input.len(), 1)).unwrap().into_dyn();
         proptest_regular_against_pulse(model, self.pulse as _, input, 1)

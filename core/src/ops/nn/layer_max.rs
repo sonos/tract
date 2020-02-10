@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::infer::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct LayerHardmax {
@@ -52,20 +51,6 @@ impl StatelessOp for LayerHardmax {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
-}
-
-impl InferenceRulesOp for LayerHardmax {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        solver: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        rules(solver, inputs, outputs)
-    }
-
-    as_op!();
-    to_typed!();
 }
 
 impl TypedOp for LayerHardmax {
@@ -149,20 +134,6 @@ impl StatelessOp for LayerLogSoftmax {
     }
 }
 
-impl InferenceRulesOp for LayerLogSoftmax {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        solver: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        rules(solver, inputs, outputs)
-    }
-
-    as_op!();
-    to_typed!();
-}
-
 impl TypedOp for LayerLogSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
@@ -244,20 +215,6 @@ impl StatelessOp for LayerSoftmax {
     }
 }
 
-impl InferenceRulesOp for LayerSoftmax {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        solver: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        rules(solver, inputs, outputs)
-    }
-
-    as_op!();
-    to_typed!();
-}
-
 impl TypedOp for LayerSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
@@ -284,18 +241,6 @@ impl PulsedOp for LayerSoftmax {
 
     as_op!();
     pulsed_op_to_typed_op!();
-}
-
-fn rules<'r, 'p: 'r, 's: 'r>(
-    s: &mut Solver<'r>,
-    inputs: &'p [TensorProxy],
-    outputs: &'p [TensorProxy],
-) -> InferenceResult {
-    check_output_arity(&outputs, 1)?;
-    s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-    s.equals(&outputs[0].rank, &inputs[0].rank)?;
-    s.equals(&outputs[0].shape, &inputs[0].shape)?;
-    Ok(())
 }
 
 fn pulsify(

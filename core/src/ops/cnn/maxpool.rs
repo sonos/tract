@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::infer::*;
 use ndarray::prelude::*;
 use num_traits::Float;
 
@@ -9,8 +8,8 @@ use crate::ops::nn::DataShape;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct MaxPool {
-    pool_spec: PoolSpec,
-    with_index_outputs: Option<DatumType>,
+    pub pool_spec: PoolSpec,
+    pub with_index_outputs: Option<DatumType>,
 }
 
 impl MaxPool {
@@ -43,31 +42,6 @@ impl StatelessOp for MaxPool {
         ))?;
         op.as_stateless().unwrap().eval(inputs)
     }
-}
-
-impl InferenceRulesOp for MaxPool {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_output_arity(&outputs, 1 + self.with_index_outputs.is_some() as usize)?;
-        s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-        if let Some(idt) = self.with_index_outputs {
-            s.equals(&outputs[1].datum_type, idt)?;
-            s.equals(&outputs[1].shape, &outputs[0].shape)?;
-        }
-        self.pool_spec.rules_for_shape(s, inputs, outputs)
-    }
-
-    fn nboutputs(&self) -> TractResult<usize> {
-        Ok(1 + self.with_index_outputs.is_some() as usize)
-    }
-
-    as_op!();
-    to_typed!();
 }
 
 impl TypedOp for MaxPool {

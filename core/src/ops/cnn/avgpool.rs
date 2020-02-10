@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::infer::*;
 use ndarray::prelude::*;
 use num_traits::{AsPrimitive, Float};
 use std::iter::Sum;
@@ -8,12 +7,10 @@ use crate::ops::cnn::pools::PoolSpec;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 
-// TODO check why AvgPool need to be typed
-
 #[derive(Debug, Clone, new, Default)]
 pub struct AvgPool {
-    pool_spec: PoolSpec,
-    count_include_pad: bool,
+    pub pool_spec: PoolSpec,
+    pub count_include_pad: bool,
 }
 
 impl AvgPool {
@@ -56,23 +53,6 @@ impl StatelessOp for AvgPool {
         ))?;
         op.as_stateless().unwrap().eval(inputs)
     }
-}
-
-impl InferenceRulesOp for AvgPool {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-        self.pool_spec.rules_for_shape(s, inputs, outputs)
-    }
-
-    as_op!();
-    to_typed!();
 }
 
 impl TypedOp for AvgPool {

@@ -1,6 +1,6 @@
-use crate::internal::*;
-use crate::infer::*;
-use ndarray::prelude::*;
+use tract_core::internal::*;
+use tract_core::infer::*;
+use tract_core::ndarray::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Lrn {

@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::infer::*;
 
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
 use crate::ops::nn::{DataFormat, DataShape};
@@ -56,39 +55,6 @@ impl PoolSpec {
             &*patch.output_shape,
         );
         (input_shape, patch, output_shape)
-    }
-
-    pub fn rules_for_shape<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        s.given(&inputs[0].shape, move |s, ishape| {
-            let ishape = self.data_format.shape(ishape);
-            let ones = tvec![1; ishape.hw_rank()];
-            let computed = self.padding.compute(
-                ishape.hw_dims(),
-                &*self.kernel_shape,
-                self.dilations.as_ref().unwrap_or(&ones),
-                self.strides.as_ref().unwrap_or(&ones),
-            );
-            for o in 0..outputs.len() {
-                for (ix, d) in computed.iter().enumerate() {
-                    s.equals(&outputs[o].shape[ix + ishape.h_axis()], &d.output)?;
-                }
-                if ishape.n_axis().is_some() {
-                    s.equals(&outputs[o].shape[ishape.n_axis().unwrap()], ishape.n_dim().unwrap())?;
-                }
-                if let Some(c) = self.output_channel_override {
-                    s.equals(&outputs[o].shape[ishape.c_axis()], c.to_dim())?;
-                } else {
-                    s.equals(&outputs[o].shape[ishape.c_axis()], ishape.c_dim())?;
-                }
-            }
-            Ok(())
-        })
     }
 
     pub fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
