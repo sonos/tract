@@ -12,7 +12,11 @@
 //!
 //! // build a simple model that just add 3 to each input component
 //! let tf = tract_tensorflow::tensorflow();
-//! let model = tf.model_for_path("tests/models/plus3.pb").unwrap();
+//! let mut model = tf.model_for_path("tests/models/plus3.pb").unwrap();
+//!
+//! // set input input type and shape, then optimize the network.
+//! model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(3))).unwrap();
+//! let model = model.into_optimized().unwrap();
 //!
 //! // we build an execution plan. default input and output are inferred from
 //! // the model graph
