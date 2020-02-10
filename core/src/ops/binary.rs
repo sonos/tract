@@ -210,16 +210,12 @@ impl InferenceRulesOp for Nary {
     ) -> InferenceResult {
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].rank, &outputs[0].rank)?;
         let n = inputs.len();
         s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
-        s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
-        s.given(&inputs[0].rank, move |s, rank: i32| {
-            for dim in 0..(rank as usize) {
-                s.equals(&inputs[0].shape[dim], &outputs[0].shape[dim])?;
-                s.equals_all((0..n as usize).map(|i| inputs[i].shape[dim].bex()).collect())?;
-            }
-            Ok(())
+        s.given_all(inputs.iter().map(|i| &i.shape), move |s, shapes: Vec<TVec<TDim>>| {
+            let out = crate::broadcast::multi_broadcast(&*shapes)
+                .ok_or_else(|| format!("Failed to broadcast {:?}", &shapes))?;
+            s.equals(&outputs[0].shape, ShapeFact::from(out))
         })
     }
 
