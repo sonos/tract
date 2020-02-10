@@ -131,7 +131,7 @@ impl InferenceRulesOp for Nary {
         s.given_all(inputs.iter().map(|i| &i.shape), move |s, shapes: Vec<TVec<TDim>>| {
             let out = crate::broadcast::multi_broadcast(&*shapes)
                 .ok_or_else(|| format!("Failed to broadcast {:?}", &shapes))?;
-            s.equals(&outputs[0].shape, ShapeFact::from(out))
+            s.equals(&outputs[0].shape, ShapeFactoid::from(out))
         })
     }
 
