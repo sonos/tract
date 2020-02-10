@@ -13,6 +13,7 @@ use tractops::nn::Reducer;
 
 mod batch_norm;
 mod dropout;
+mod lrn;
 
 fn reduce(node: &NodeProto, reducer: Reducer) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axes = node.get_attr_opt_vec("axes")?;
@@ -106,7 +107,7 @@ pub fn arg_max_min(
     let max = node.op_type == "ArgMax";
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let keepdims = node.get_attr_opt("keepdims")?.unwrap_or(true);
-    Ok((Box::new(tractops::nn::ArgMaxMin::new(max, axis, keepdims)), vec![]))
+    Ok((Box::new(tract_core::hir::nn::ArgMaxMin::new(max, axis, keepdims)), vec![]))
 }
 
 pub fn batch_normalization(
@@ -264,7 +265,7 @@ pub fn lrn(
     let beta = node.get_attr_opt("beta")?.unwrap_or(0.75);
     let bias = node.get_attr_opt("bias")?.unwrap_or(1.);
     let size = node.get_attr("size")?;
-    Ok((Box::new(tractops::nn::Lrn::new(alpha, beta, bias, size)), vec![]))
+    Ok((Box::new(lrn::Lrn::new(alpha, beta, bias, size)), vec![]))
 }
 
 pub fn max_pool(
