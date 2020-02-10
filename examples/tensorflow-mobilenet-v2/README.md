@@ -125,7 +125,7 @@ RGB (C=3) pictures. We will only process one image at a time (N=1).
 And it operates on single precision floats (aka `f32`).
 
 ```rust
-    model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?;
+    model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?;
 
     let model = model.into_optimized()?;
     let plan = SimplePlan::new(&model)?;
