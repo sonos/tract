@@ -234,18 +234,17 @@ impl TypedOp for DequantizeLinearF32 {
                 // or else make a lookup table
                 if incoming_dt == DatumType::I8 || incoming_dt == DatumType::U8 {
                     let mut adhoc_model = TypedModel::default();
-                    let mut wire =
-                        adhoc_model.add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
+                    let mut wire = adhoc_model
+                        .add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
                     let mut next = model.single_succ(node.id)?.unwrap();
+                    // plug in dequant
                     wire = adhoc_model.wire_node(&*node.name, node.op.clone(), [wire].as_ref())?[0];
-                    loop {
-                        wire = adhoc_model.wire_node(&*node.name, next.op.clone(), [wire].as_ref())?[0];
-                        if next.id == current.id {
-                            break;
-                        } else {
-                            next = model.single_succ(next.id)?.unwrap();
-                        }
+                    while let Some(n) = model.single_succ(next.id)?.filter(|n| n.id == current.id) {
+                        wire =
+                            adhoc_model.wire_node(&*node.name, n.op.clone(), [wire].as_ref())?[0];
+                        next = n;
                     }
+                    // plug in quant
                     wire = adhoc_model.wire_node(&*succ.name, succ.op.clone(), [wire].as_ref())?[0];
                     adhoc_model.set_output_outlets(&[wire])?;
                     let input = (0u8..=255).collect::<Vec<u8>>();
