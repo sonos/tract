@@ -1,4 +1,4 @@
-use super::codegen::Codegen;
+use super::codegen::{ Codegen, CodegenOpParams };
 
 use super::*;
 
@@ -50,7 +50,7 @@ impl TypedScan {
             })
             .collect::<TractResult<_>>()?;
 
-        Ok(Codegen::new(self.skip, Arc::new(plan), input_mapping, output_mapping))
+        Ok(Codegen::new(Arc::new(CodegenOpParams::new(self.skip, Arc::new(plan), input_mapping, output_mapping))))
     }
 
     pub fn new(

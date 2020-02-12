@@ -13,4 +13,5 @@ pub mod logic;
 pub mod matmul;
 pub mod nn;
 pub mod unimpl;
+pub mod scan;
 pub mod source;

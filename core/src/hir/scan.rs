@@ -1,5 +1,7 @@
-use super::*;
+use crate::internal::*;
 use crate::infer::*;
+
+use crate::ops::scan::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct InferenceScan {

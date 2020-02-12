@@ -2,10 +2,8 @@ use crate::internal::*;
 use std::fmt;
 
 mod codegen;
-mod inference;
 mod typed;
 
-pub use inference::InferenceScan;
 pub use typed::TypedScan;
 
 #[derive(Clone, new)]
