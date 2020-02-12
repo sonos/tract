@@ -1,6 +1,6 @@
 //! Partial and complete tensor types representations.
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 use crate::tensor::Tensor;
 use downcast_rs::Downcast;
 use std::convert::{TryFrom, TryInto};
@@ -8,14 +8,7 @@ use std::fmt;
 
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
-pub trait Fact:
-    std::fmt::Debug
-    + Downcast
-    + dyn_clone::DynClone
-    + Send
-    + Sync
-    + 'static
-{
+pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
     fn to_typed_fact(&self) -> TractResult<TypedFact>;
 
     fn matches(&self, t: &Tensor) -> TractResult<bool> {
@@ -229,6 +222,10 @@ impl TypedFact {
 
     pub fn rank(&self) -> usize {
         self.shape.rank()
+    }
+
+    pub fn format_dt_shape(&self) -> String {
+        format!("{:?}x{:?}", self.shape, self.datum_type)
     }
 }
 

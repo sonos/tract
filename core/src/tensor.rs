@@ -1,6 +1,5 @@
 //! `Tensor`, tract main data object of interest.
 use crate::internal::*;
-use crate::infer::*;
 use ndarray::prelude::*;
 use std::alloc;
 use std::fmt;
@@ -172,7 +171,7 @@ impl Tensor {
     /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump_t<D: Datum>(&self, force_full: bool) -> TractResult<String> {
         use itertools::Itertools;
-        let spec = InferenceFact::dt_shape(D::datum_type(), &*self.shape);
+        let spec = TypedFact::dt_shape(D::datum_type(), &*self.shape)?;
         let data = self.to_array_view::<D>()?;
         let s = if force_full || data.len() <= 12 {
             format!("{} {}", spec.format_dt_shape(), data.iter().join(", "))
