@@ -193,12 +193,12 @@ impl TypedOp for DequantizeLinearF32 {
     fn declutter(
         &self,
         model: &TypedModel,
-        node: &TypedNode,
+        dequant: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut current = node;
-        let incoming_dt = model.node_input_facts(node.id)?[0].datum_type;
-        while let Some(succ) = model.single_succ(current.id)? {
-            let q_params = if let Some(op) = succ.op_as::<ElementWiseOp>() {
+        let mut current = dequant;
+        let incoming_dt = model.node_input_facts(dequant.id)?[0].datum_type;
+        while let Some(quant) = model.single_succ(current.id)? {
+            let q_params = if let Some(op) = quant.op_as::<ElementWiseOp>() {
                 if let Some(mop) = op.0.downcast_ref::<QuantizeLinearU8>() {
                     Some((mop.scale, mop.zero_point as i32, u8::datum_type()))
                 } else if let Some(mop) = op.0.downcast_ref::<QuantizeLinearI8>() {
@@ -212,12 +212,12 @@ impl TypedOp for DequantizeLinearF32 {
             if let Some((scale, zero_point, dt)) = q_params {
                 // first, try Op::quantize() on all ops in the chain
                 let mut patch = TypedModelPatch::default();
-                let mut wire: OutletId = patch.tap_model(model, node.inputs[0])?.into();
-                let mut next = model.single_succ(node.id)?.unwrap();
+                let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?.into();
+                let mut next = model.single_succ(dequant.id)?.unwrap();
                 loop {
                     if let Some(op) = next
                         .op
-                        .quantize(model, node, dt, scale, zero_point)
+                        .quantize(model, dequant, dt, scale, zero_point)
                         .chain_err(|| format!("Quantizing {}", next))?
                     {
                         wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
@@ -225,7 +225,7 @@ impl TypedOp for DequantizeLinearF32 {
                         break;
                     }
                     if next.id == current.id {
-                        patch.shunt_outside(OutletId::new(succ.id, 0), wire)?;
+                        patch.shunt_outside(OutletId::new(quant.id, 0), wire)?;
                         return Ok(Some(patch));
                     } else {
                         next = model.single_succ(next.id)?.unwrap();
@@ -236,16 +236,16 @@ impl TypedOp for DequantizeLinearF32 {
                     let mut adhoc_model = TypedModel::default();
                     let mut wire = adhoc_model
                         .add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
-                    let mut next = model.single_succ(node.id)?.unwrap();
+                    let mut next = model.single_succ(dequant.id)?.unwrap();
                     // plug in dequant
-                    wire = adhoc_model.wire_node(&*node.name, node.op.clone(), [wire].as_ref())?[0];
-                    while let Some(n) = model.single_succ(next.id)?.filter(|n| n.id == current.id) {
+                    wire = adhoc_model.wire_node(&*dequant.name, dequant.op.clone(), [wire].as_ref())?[0];
+                    while next.id != quant.id {
                         wire =
-                            adhoc_model.wire_node(&*node.name, n.op.clone(), [wire].as_ref())?[0];
-                        next = n;
+                            adhoc_model.wire_node(&*next.name, next.op.clone(), [wire].as_ref())?[0];
+                        next = model.single_succ(next.id)?.unwrap();
                     }
                     // plug in quant
-                    wire = adhoc_model.wire_node(&*succ.name, succ.op.clone(), [wire].as_ref())?[0];
+                    wire = adhoc_model.wire_node(&*quant.name, quant.op.clone(), [wire].as_ref())?[0];
                     adhoc_model.set_output_outlets(&[wire])?;
                     let input = (0u8..=255).collect::<Vec<u8>>();
                     let input = match dt {
@@ -263,15 +263,15 @@ impl TypedOp for DequantizeLinearF32 {
                     };
                     let op = lookup_table((tract_linalg::ops().lut_u8)(table));
                     let mut patch = TypedModelPatch::default();
-                    let mut wire: OutletId = patch.tap_model(model, node.inputs[0])?.into();
-                    wire = patch.wire_node(&*node.name, op, [wire].as_ref())?[0];
-                    patch.shunt_outside(OutletId::new(succ.id, 0), wire)?;
+                    let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?.into();
+                    wire = patch.wire_node(&*dequant.name, op, [wire].as_ref())?[0];
+                    patch.shunt_outside(OutletId::new(quant.id, 0), wire)?;
                     return Ok(Some(patch));
                 }
             }
-            let invariants = succ.op.invariants(model, succ)?;
+            let invariants = quant.op.invariants(model, quant)?;
             if invariants.element_wise() {
-                current = succ;
+                current = quant;
             } else {
                 break;
             }
