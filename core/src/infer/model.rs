@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 
-use crate::prelude::TVec;
-use crate::errors::*;
-use crate::model::{ compact, OutletId };
-use crate::model::{ TypedFact, TypedModel, TypedOp };
-use crate::model::{ NormalizedModel };
-use crate::model::translator::Translate;
-use super::{ InferenceFact, InferenceModel, InferenceNode, InferenceOp };
 use super::factoid::Factoid;
+use super::{InferenceFact, InferenceModel, InferenceNode, InferenceOp};
+use crate::errors::*;
+use crate::hir::dummy::Dummy;
+use crate::model::dsl::ModelSpecialOps;
+use crate::model::translator::Translate;
+use crate::model::NormalizedModel;
+use crate::model::{compact, OutletId};
+use crate::model::{TypedFact, TypedModel, TypedOp};
+use crate::ops::Op;
+use crate::prelude::TVec;
 
 impl InferenceModel {
-
     /// Analyse all nodes of the graph.
     ///
     /// Will stop on first error unless `obstinate` is `true`.
@@ -101,6 +103,26 @@ impl InferenceModel {
     }
 }
 
+impl ModelSpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
+    fn add_source(
+        &mut self,
+        name: impl Into<String>,
+        fact: InferenceFact,
+    ) -> TractResult<OutletId> {
+        let id = self.add_node(name, crate::hir::source::Source::new(), tvec!(fact))?;
+        let id = OutletId::new(id, 0);
+        self.inputs.push(id);
+        Ok(id)
+    }
+
+    fn is_source(op: &dyn Op) -> bool {
+        op.downcast_ref::<crate::hir::source::Source>().is_some()
+    }
+
+    fn create_dummy(&self) -> Box<dyn InferenceOp> {
+        Box::new(Dummy::new())
+    }
+}
 
 #[cfg(test)]
 mod test {

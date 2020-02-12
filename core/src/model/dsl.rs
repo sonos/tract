@@ -21,27 +21,6 @@ where
     fn create_dummy(&self) -> O;
 }
 
-impl ModelSpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
-    fn add_source(
-        &mut self,
-        name: impl Into<String>,
-        fact: InferenceFact,
-    ) -> TractResult<OutletId> {
-        let id = self.add_node(name, crate::hir::source::Source::new(), tvec!(fact))?;
-        let id = OutletId::new(id, 0);
-        self.inputs.push(id);
-        Ok(id)
-    }
-
-    fn is_source(op: &dyn Op) -> bool {
-        op.downcast_ref::<crate::hir::source::Source>().is_some()
-    }
-
-    fn create_dummy(&self) -> Box<dyn InferenceOp> {
-        Box::new(Dummy::new())
-    }
-}
-
 impl ModelSpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     fn add_source(&mut self, name: impl Into<String>, fact: TypedFact) -> TractResult<OutletId> {
         let id =
