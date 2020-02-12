@@ -210,7 +210,7 @@ fn incorporate_memory_ops_as_scans(
         inner_model.set_output_outlets(&inner_outputs)?;
 
         // prepare patch
-        let scan = tract_core::ops::scan::InferenceScan::new(
+        let scan = tract_core::hir::scan::InferenceScan::new(
             inner_model,
             mapped_inputs,
             mapped_outputs,

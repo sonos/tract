@@ -3,7 +3,7 @@ use crate::pb::*;
 use tract_core::internal::*;
 use tract_core::infer::*;
 
-use tract_core::ops::scan::InferenceScan;
+use tract_core::hir::scan::InferenceScan;
 
 pub fn scan(
     ctx: &ParsingContext,

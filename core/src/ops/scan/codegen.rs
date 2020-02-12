@@ -3,11 +3,21 @@ use ndarray::*;
 use super::*;
 
 #[derive(Debug, Clone, new)]
-pub struct Codegen {
+pub struct CodegenOpParams {
     pub skip: usize,
     pub plan: Arc<TypedSimplePlan<TypedModel>>,
     pub input_mapping: Vec<InputMapping<usize>>,
     pub output_mapping: Vec<OutputMapping<usize, TDim>>,
+}
+
+#[derive(Debug, Clone, new)]
+pub struct Codegen(Arc<CodegenOpParams>);
+
+impl std::ops::Deref for Codegen {
+    type Target = CodegenOpParams;
+    fn deref(&self) -> &CodegenOpParams {
+        &self.0
+    }
 }
 
 impl Op for Codegen {
@@ -46,21 +56,30 @@ impl StatefullOp for Codegen {
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(State {
-            position: 0,
-            hidden_state: tvec!(),
-            model_state: TypedSimpleState::new(Arc::clone(&self.plan))?,
+                mutable: MutableState {
+                position: 0,
+                hidden_state: tvec!(),
+                model_state: TypedSimpleState::new(Arc::clone(&self.plan))?,
+            },
+            op: Arc::clone(&self.0),
         })))
     }
 }
 
 #[derive(Debug, Clone)]
 struct State {
+    op: Arc<CodegenOpParams>,
+    mutable: MutableState
+}
+
+#[derive(Debug, Clone)]
+struct MutableState {
     position: usize,
     hidden_state: TVec<Tensor>,
     model_state: TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
 }
 
-impl State {
+impl MutableState {
     pub(super) fn slice_input_t<T: Datum>(
         &self,
         input: &Tensor,
@@ -114,27 +133,16 @@ impl OpState for State {
     fn eval(
         &mut self,
         _session: &mut SessionState,
-        op: &dyn Op,
+        _op: &dyn Op,
         inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
-        let mut _codegen_op_holder = None;
-        let op = if let Some(op) = op.downcast_ref::<Codegen>() {
-            op
-        } else if let Some(op) = op.downcast_ref::<TypedScan>() {
-            _codegen_op_holder = Some(op.to_codegen_op()?);
-            _codegen_op_holder.as_ref().unwrap()
-        } else if let Some(op) = op.downcast_ref::<InferenceScan>() {
-            _codegen_op_holder = Some(op.to_typed_scan()?.to_codegen_op()?);
-            _codegen_op_holder.as_ref().unwrap()
-        } else {
-            panic!("Wrong op");
-        };
+        let State { op, ref mut mutable } = self;
 
         // initialize state at first pass
-        if self.hidden_state.len() == 0 {
+        if mutable.hidden_state.len() == 0 {
             for input in &op.input_mapping {
                 if let InputMapping::State { initializer } = input {
-                    self.hidden_state.push(match initializer {
+                    mutable.hidden_state.push(match initializer {
                         StateInitializer::FromInput(slot) => (*inputs[*slot]).to_owned(),
                         StateInitializer::Value(v) => (**v).to_owned(),
                     });
@@ -166,7 +174,7 @@ impl OpState for State {
                     .and_then(|d| d.to_integer().ok().map(|i| i as usize))
                     .unwrap_or(shape[output.axis] * iters);
                 shape[output.axis] = scanning_dim;
-                let t = dispatch_datum!(Self::alloc_output_t(fact.datum_type)(self, &*shape))?;
+                let t = dispatch_datum!(MutableState::alloc_output_t(fact.datum_type)(mutable, &*shape))?;
                 outputs.push((slot, t));
             }
             if let Some(slot) = output.last_value_slot {
@@ -177,21 +185,21 @@ impl OpState for State {
         let mut outputs: TVec<Tensor> = outputs.into_iter().map(|(_slot, v)| v).collect();
 
         for i in 0..iters {
-            self.position += 1;
-            if self.position <= op.skip {
+            mutable.position += 1;
+            if mutable.position <= op.skip {
                 continue;
             }
-            self.hidden_state.reverse();
+            mutable.hidden_state.reverse();
 
             let iter_inputs: TVec<Tensor> = op
                 .input_mapping
                 .iter()
                 .map(|m| {
                     Ok(match m {
-                        InputMapping::State { .. } => Some(self.hidden_state.pop().unwrap()),
+                        InputMapping::State { .. } => Some(mutable.hidden_state.pop().unwrap()),
                         InputMapping::Scan { slot, axis, chunk } => {
-                            Some(dispatch_datum!(Self::slice_input_t(inputs[*slot].datum_type())(
-                                self,
+                            Some(dispatch_datum!(MutableState::slice_input_t(inputs[*slot].datum_type())(
+                                mutable,
                                 inputs[*slot].as_ref(),
                                 *axis,
                                 i,
@@ -208,13 +216,13 @@ impl OpState for State {
 
             trace!("iter_inputs: {:?}", iter_inputs);
             let iter_outputs =
-                self.model_state.run(iter_inputs).chain_err(|| "Evaluating inner body")?;
+                mutable.model_state.run(iter_inputs).chain_err(|| "Evaluating inner body")?;
             trace!("iter_outputs: {:?}", iter_outputs);
 
             for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
                 if let Some(slot) = mapping.full_slot {
-                    dispatch_datum!(Self::assign_output_t(v.datum_type())(
-                        self,
+                    dispatch_datum!(MutableState::assign_output_t(v.datum_type())(
+                        mutable,
                         &mut outputs[slot],
                         mapping.axis,
                         v.as_ref(),
@@ -227,7 +235,7 @@ impl OpState for State {
                     }
                 }
                 if mapping.state {
-                    self.hidden_state.push(v.into_tensor());
+                    mutable.hidden_state.push(v.into_tensor());
                 }
             }
         }
