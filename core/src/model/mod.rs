@@ -43,7 +43,7 @@ use std::collections::HashMap;
 use std::str;
 
 pub(crate) mod compact;
-mod dsl;
+pub mod dsl;
 mod fact;
 mod model;
 mod node;
