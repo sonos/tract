@@ -1,11 +1,9 @@
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
-use crate::hir::source::Source;
 use crate::internal::*;
 use crate::model::dsl::ModelSpecialOps;
 use crate::model::*;
-use crate::ops::source::TypedSource;
 
 /// A change to apply to a model.
 ///
@@ -191,7 +189,7 @@ where
         let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by, obliterate } = self;
         let mut all_inputs = HashMap::new(); // new_id -> [ old_inputs ]
         for node in patch.nodes {
-            if node.op_is::<Source>() || node.op_is::<TypedSource>() {
+            if <ModelImpl<TI, O>>::is_source(node.op()) {
                 continue;
             }
             let BaseNode { id, name, inputs, op, outputs } = node;

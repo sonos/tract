@@ -16,6 +16,7 @@ where
     ///
     /// The model will assume this is an input.
     fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<OutletId>;
+    fn is_source(op: &dyn Op) -> bool;
 
     fn create_dummy(&self) -> O;
 }
@@ -32,6 +33,10 @@ impl ModelSpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
         Ok(id)
     }
 
+    fn is_source(op: &dyn Op) -> bool {
+        op.downcast_ref::<crate::hir::source::Source>().is_some()
+    }
+
     fn create_dummy(&self) -> Box<dyn InferenceOp> {
         Box::new(Dummy::new())
     }
@@ -46,6 +51,10 @@ impl ModelSpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         Ok(id)
     }
 
+    fn is_source(op: &dyn Op) -> bool {
+        op.downcast_ref::<crate::ops::source::TypedSource>().is_some()
+    }
+
     fn create_dummy(&self) -> Box<dyn TypedOp> {
         Box::new(Dummy::new())
     }
@@ -58,6 +67,10 @@ impl ModelSpecialOps<PulsedFact, Box<dyn TypedOp>> for PulsedModel {
         let id = OutletId::new(id, 0);
         self.inputs.push(id);
         Ok(id)
+    }
+
+    fn is_source(op: &dyn Op) -> bool {
+        op.downcast_ref::<crate::ops::source::PulsedSource>().is_some()
     }
 
     fn create_dummy(&self) -> Box<dyn TypedOp> {
