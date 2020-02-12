@@ -92,6 +92,7 @@ fi
 [ -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 dump --op-name AddAxis)" ]
 
 ( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
+( cd onnx/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 
 #./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
 #    -f kaldi --output-node output \
