@@ -4,6 +4,15 @@
 
 * New jupyter/keras/tf example
 
+### API Breaking
+
+* refactor exports and dependencies
+    * preferred way to use tract is now to `use tract_tensorflow::prelude::*;`
+    * singleton framework is built by `let tensorflow = tensorflow()`. The Framework trait is in the prelude too.
+    * the prelude contains a reexport of `tract_core`, and of ndarray as `tract_ndarray`
+    * no more need to declare dependency on `tract-core` and/or `tract-linalg` in Cargo.toml
+    * same goes for `tract_onnx`
+
 ## 0.5.9 - 2020-02-07
 
 ### Breaking
