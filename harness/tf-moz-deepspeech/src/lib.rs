@@ -8,9 +8,7 @@ use std::path;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ndarray;
+use tract_tensorflow::prelude::*;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
@@ -38,7 +36,7 @@ fn parse_tensor<T: Datum + FromStr>(s: &str) -> TractResult<Tensor> {
     let shape = tokens.next().unwrap();
     let shape = &shape[1..shape.len() - 1];
     let shape: Vec<usize> = shape.split(",").map(|s| s.parse().unwrap()).collect();
-    Ok(ndarray::Array1::from(tokens.filter_map(|s| s.parse::<T>().ok()).collect::<Vec<_>>())
+    Ok(tract_ndarray::Array1::from(tokens.filter_map(|s| s.parse::<T>().ok()).collect::<Vec<_>>())
         .into_shape(shape)?
         .into())
 }
@@ -109,8 +107,9 @@ fn deepspeech() -> TractResult<()> {
             logits = Some(parse_tensor::<f32>(line)?);
         }
         if h.is_some() && cs.is_some() && logits.is_some() {
-            let mut outputs = state.run_plan(inputs.clone(), 1)?;
-            let (logits_, cs_, h_) = args_3!(outputs);
+            let mut outputs = state.run_plan(inputs.clone(), 1)?.into_iter();
+            let (logits_, cs_, h_) =
+                (outputs.next().unwrap(), outputs.next().unwrap(), outputs.next().unwrap());
             h.take().unwrap().close_enough(&h_, true).unwrap();
             cs.take().unwrap().close_enough(&cs_, true).unwrap();
             logits.take().unwrap().close_enough(&logits_, true).unwrap();

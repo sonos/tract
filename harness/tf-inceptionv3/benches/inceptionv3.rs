@@ -2,11 +2,9 @@
 extern crate criterion;
 extern crate dinghy_test;
 extern crate tf_inceptionv3;
-extern crate tract_core;
 extern crate tract_tensorflow;
 
-use tract_core::prelude::*;
-use tract_core::infer::*;
+use tract_tensorflow::prelude::*;
 
 use self::dinghy_test::test_project_path;
 use criterion::Criterion;
@@ -37,7 +35,7 @@ fn tf(bencher: &mut Criterion) {
 }
 
 fn tract(bencher: &mut Criterion) {
-    let mut tfd = ::tract_tensorflow::tensorflow()
+    let mut tfd = tensorflow()
         .model_for_path(tf_inceptionv3::inception_v3_2016_08_28_frozen())
         .unwrap();
     tfd.set_input_fact(0, InferenceFact::dt_shape(DatumType::F32, &[1, 299, 299, 3])).unwrap();

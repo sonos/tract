@@ -27,7 +27,7 @@ use tract_tensorflow::tfpb::tensorflow::GraphDef;
 use tract_core::internal::*;
 use tract_core::infer::*;
 use tract_core::model::{NormalizedModel, TypedModel};
-use tract_core::hir::Framework;
+use tract_core::hir::prelude::*;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
