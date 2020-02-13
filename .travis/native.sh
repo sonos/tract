@@ -24,7 +24,7 @@ rustc --version
 
 if [ -z "$CACHEDIR" ]
 then
-    CACHEDIR=$(readlink -f `dirname $0`/../.cached)
+    CACHEDIR=$(realpath `dirname $0`/../.cached)
 fi
 
 export CACHEDIR
