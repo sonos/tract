@@ -13,6 +13,11 @@ rustup default $RUST_VERSION
 
 rustc --version
 
+if [ `uname` = "Darwin" ]
+then
+    brew install coreutils
+fi
+
 # if [ `uname` = "Linux" -a -z "$TRAVIS" ]
 # then
 #     apt-get update
