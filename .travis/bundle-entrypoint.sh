@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -e
+set -ex
 
 ROOT=`pwd`
 CACHEDIR=${CACHEDIR:-$HOME/.cache}
