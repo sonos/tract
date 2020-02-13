@@ -24,8 +24,10 @@ rustc --version
 
 if [ -z "$CACHEDIR" ]
 then
-    CACHEDIR=`dirname $0`/../.cached
+    CACHEDIR=$(readlink -f `dirname $0`/../.cached)
 fi
+
+export CACHEDIR
 
 cargo build --release
 cargo test --release --all
@@ -125,6 +127,11 @@ fi
 if [ -e "$HOME/.aws/credentials" ]
 then
     sh .travis/bundle-entrypoint.sh
+    (
+        cd onnx/test_cases
+        [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
+        ./run_all.sh en_tdnn_lstm_bn_q7
+    )
 fi
 
 if [ -z "$TRAVIS" ]

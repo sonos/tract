@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -ex
+set -e
 
 ROOT=`pwd`
 CACHEDIR=${CACHEDIR:-$HOME/.cache}
@@ -21,6 +21,7 @@ aws s3 sync s3://tract-ci-builds/model $CACHEDIR
 (cd $CACHEDIR
     chmod +x tflite*
     [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+    [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
 )
 
 touch metrics
@@ -137,6 +138,20 @@ $TRACT --machine-friendly \
     > tract.out
 v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.mdl-en-2019-Q3-librispeech_onnx.evaltime.pulse_240ms $v >> metrics
+
+$TRACT --machine-friendly \
+    $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx \
+    -O --output-node output -i 264x40 profile --bench \
+    > tract.out
+v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.en_tdnn_lstm_bn_q7.evaltime.2600ms $v >> metrics
+
+$TRACT --machine-friendly \
+    $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx \
+    -O --output-node output -i Sx40 --pulse 24 profile --bench \
+    > tract.out
+v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.en_tdnn_lstm_bn_q7.evaltime.pulse_240ms $v >> metrics
 
 $TRACT --machine-friendly $CACHEDIR/speaker-id-2019-03.onnx \
     -O -i 1xSx40xf32 --output-node 257 --partial --pulse 8 profile --bench \
