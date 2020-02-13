@@ -34,10 +34,16 @@ fi
 
 export CACHEDIR
 
-cargo check --tests --all --all-features
-cargo build --release
-cargo test --release --all
-cargo build --release --benches
+cargo check --workspace --all-targets --all-features
+
+# useful as debug_asserts will come into play
+cargo test -p tract-core --all-features
+cargo test -p onnx-test-suite -- --skip real_
+
+cargo test --release --all-features
+cargo build --release --bin tract --all-features
+
+export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so))):$LD_LIBRARY_PATH
 
 if [ -n "$TRAVIS" -a -n "$PARTIAL_CI" ]
 then
@@ -138,11 +144,5 @@ then
         [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
         ./run_all.sh en_tdnn_lstm_bn_q7
     )
-fi
-
-if [ -z "$TRAVIS" ]
-then
-    sh .travis/debug-tests.sh
-    sh .travis/tf.sh
 fi
 
