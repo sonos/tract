@@ -19,9 +19,9 @@ macro_rules! shapefactoid {
     (..) =>
         ($crate::infer::ShapeFactoid::open(tvec![]));
     ($($arg:tt),+; ..) =>
-        ($crate::infer::ShapeFactoid::open(tvec![$(dimfact!($arg)),+]));
+        ($crate::infer::ShapeFactoid::open(tvec![$($crate::dimfact!($arg)),+]));
     ($($arg:tt),+) =>
-        ($crate::infer::ShapeFactoid::closed(tvec![$(dimfact!($arg)),+]));
+        ($crate::infer::ShapeFactoid::closed(tvec![$($crate::dimfact!($arg)),+]));
 }
 
 /// Constructs a dimension fact.

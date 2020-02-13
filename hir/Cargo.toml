@@ -1,0 +1,17 @@
+[package]
+name = "tract-hir"
+version = "0.5.12-pre"
+license = "MIT/Apache-2.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/snipsco/tract"
+keywords = [ "TensorFlow", "NeuralNetworks" ]
+categories = [ "science" ]
+autobenches = false
+edition = "2018"
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+tract-core = { path = "../core" }

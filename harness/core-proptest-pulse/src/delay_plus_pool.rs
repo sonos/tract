@@ -1,6 +1,5 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
-use tract_core::dimfact;
 use tract_core::hir::array;
 use tract_core::hir::cnn;
 use tract_core::infer::*;

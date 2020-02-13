@@ -209,20 +209,6 @@ macro_rules! args_8 {
     }};
 }
 
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! boxed_new {
-    ($op:tt($dtype:expr)($($arg:expr),*)) => { {
-        use $crate::datum::DatumType;
-        match $dtype {
-            DatumType::I32 => Box::new($op::<i32>::new($($arg),*)) as _,
-            DatumType::F32 => Box::new($op::<f32>::new($($arg),*)) as _,
-            DatumType::F64 => Box::new($op::<f64>::new($($arg),*)) as _,
-            _ => unimplemented!("missing type")
-        }
-    } }
-}
-
 #[macro_export]
 macro_rules! dispatch_datum {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {

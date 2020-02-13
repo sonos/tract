@@ -1,6 +1,6 @@
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ndarray;
+use tract_hir::tract_core::infer::*;
+use tract_hir::tract_core::internal::*;
+use tract_hir::tract_core::ndarray;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
@@ -25,7 +25,7 @@ pub struct Pack {
 impl Pack {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        use tract_core::ndarray::Axis;
+        use tract_hir::tract_core::ndarray::Axis;
         let arrays =
             inputs.iter().map(|m| Ok(m.cast_to::<T>()?)).collect::<TractResult<Vec<_>>>()?;
         let views: Vec<_> = arrays
@@ -128,9 +128,9 @@ impl InferenceRulesOp for Pack {
             .collect::<TractResult<TVec<OutletId>>>()?;
         target.wire_node(
             &*node.name,
-            tract_core::ops::array::Concat::new(
+            tract_hir::tract_core::ops::array::Concat::new(
                 self.axis as usize,
-                tvec!(tract_core::ops::array::ConcatSlice::Var; node.inputs.len()),
+                tvec!(tract_hir::tract_core::ops::array::ConcatSlice::Var; node.inputs.len()),
             ),
             &*inputs,
         )

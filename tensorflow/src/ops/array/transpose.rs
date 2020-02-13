@@ -1,7 +1,7 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_core::infer::*;
-use tract_core::internal::*;
+use tract_hir::tract_core::infer::*;
+use tract_hir::tract_core::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Transpose {

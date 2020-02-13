@@ -112,6 +112,10 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
+    pub use { as_op, not_a_pulsed_op, not_a_typed_op, op_as_typed_op, to_typed };
+    pub use { dispatch_copy, dispatch_datum, dispatch_numbers };
+    pub use { shapefactoid, tvec };
+    pub use { args_1, args_2, args_3, args_4, args_5, args_6  };
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
@@ -123,7 +127,6 @@ pub mod internal {
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use crate::pulse::{PulsedFact, PulsedModel, PulsedNode};
-    pub use crate::{args_1, args_2, args_3, args_4};
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;

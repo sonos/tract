@@ -1,5 +1,5 @@
-use tract_core::infer::*;
-use tract_core::internal::*;
+use tract_hir::tract_core::infer::*;
+use tract_hir::tract_core::internal::*;
 
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
@@ -95,27 +95,27 @@ impl InferenceRulesOp for FakeQuantWithMinMaxVars {
             let wire = mapping[&node.inputs[0]];
             let wire = target.wire_node(
                 format!("{}-sub-min", &*node.name),
-                tract_core::ops::math::add::unary(bc(-min)?),
+                tract_hir::tract_core::ops::math::add::unary(bc(-min)?),
                 &[wire],
             )?[0];
             let wire = target.wire_node(
                 format!("{}-div-step", &*node.name),
-                tract_core::ops::math::mul::unary(bc(step.recip())?),
+                tract_hir::tract_core::ops::math::mul::unary(bc(step.recip())?),
                 &[wire],
             )?[0];
             let wire = target.wire_node(
                 format!("{}-round", &*node.name),
-                tract_core::ops::math::round(),
+                tract_hir::tract_core::ops::math::round(),
                 &[wire],
             )?[0];
             let wire = target.wire_node(
                 format!("{}-mul-step", &*node.name),
-                tract_core::ops::math::mul::unary(bc(step)?),
+                tract_hir::tract_core::ops::math::mul::unary(bc(step)?),
                 &[wire],
             )?[0];
             let wire = target.wire_node(
                 format!("{}-add-min", &*node.name),
-                tract_core::ops::math::add::unary(bc(min)?),
+                tract_hir::tract_core::ops::math::add::unary(bc(min)?),
                 &[wire],
             )?[0];
             return Ok(tvec!(wire));

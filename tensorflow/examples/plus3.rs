@@ -1,7 +1,6 @@
-extern crate tract_core;
 extern crate tract_tensorflow;
 use std::convert::TryFrom;
-use tract_core::prelude::*;
+use tract_hir::tract_core::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::TensorProto;
 use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
