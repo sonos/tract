@@ -1,7 +1,7 @@
-use tract_core::internal::*;
-use tract_core::hir::cnn::*;
-use tract_core::ops::nn::DataFormat;
-use tract_core::infer::*;
+use tract_hir::tract_core::internal::*;
+use tract_hir::cnn::*;
+use tract_hir::tract_core::ops::nn::DataFormat;
+use tract_hir::tract_core::infer::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
@@ -19,8 +19,8 @@ pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infere
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract_core::ndarray::*;
-    use tract_core::hir::cnn::{Conv, PaddingSpec};
+    use tract_hir::tract_core::ndarray::*;
+    use tract_hir::cnn::{Conv, PaddingSpec};
 
     fn mk(sizes: &[usize]) -> Tensor {
         Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn testConv2D1x2Filter() {
-        // tract_core::setup_test_logger();
+        // tract_hir::tract_core::setup_test_logger();
         verify(
             mk(&[1, 2, 3, 3]),
             mk(&[1, 2, 3, 3]),

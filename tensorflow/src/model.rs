@@ -1,7 +1,7 @@
 use prost::Message;
 use crate::tfpb::tensorflow::{GraphDef, NodeDef, SavedModel};
 use std::{fs, path};
-use tract_core::hir::internal::*;
+use tract_hir::internal::*;
 
 #[derive(Default)]
 pub struct ParsingContext {
@@ -122,7 +122,7 @@ impl Framework<GraphDef> for Tensorflow {
 
             let op = match self.op_register.0.get(&pbnode.op) {
                 Some(builder) => (builder)(&context, pbnode)?,
-                None => tract_core::ops::unimpl::UnimplementedOp::new(
+                None => tract_hir::tract_core::ops::unimpl::UnimplementedOp::new(
                     context.node_output_arities.get(name).cloned().unwrap_or(1),
                     &pbnode.op,
                     format!("{:?}", pbnode),

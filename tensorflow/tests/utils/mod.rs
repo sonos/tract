@@ -72,7 +72,7 @@ pub fn compare_optim<S: AsRef<str>>(
 
     let found = match run_tract(graph, inputs, output, mode) {
         Err(e) => {
-            use crate::tract_core::error_chain::ChainedError;
+            use tract_tensorflow::tract_core::error_chain::ChainedError;
             error!("{}", e.display_chain());
             return Err(e.into());
         }

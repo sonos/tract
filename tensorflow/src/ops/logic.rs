@@ -2,9 +2,9 @@ use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 use crate::tfpb::tensorflow::NodeDef;
 use std::collections::HashSet;
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ops as tractops;
+use tract_hir::tract_core::infer::*;
+use tract_hir::tract_core::internal::*;
+use tract_hir::tract_core::ops as tractops;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Equal", |_, _| Ok(Box::new(tractops::logic::equals::bin())));

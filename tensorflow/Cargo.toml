@@ -23,7 +23,7 @@ num-traits = "0.2"
 prost = "0.6"
 prost-types = "0.6"
 tensorflow = { version = "0", optional = true }
-tract-core = { path = "../core" }
+tract-hir = { path = "../hir" }
 tract-linalg = { path = "../linalg" }
 
 [build-dependencies]

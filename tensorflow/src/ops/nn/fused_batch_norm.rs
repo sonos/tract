@@ -1,5 +1,5 @@
-use tract_core::infer::*;
-use tract_core::internal::*;
+use tract_hir::tract_core::infer::*;
+use tract_hir::tract_core::internal::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
@@ -54,8 +54,8 @@ impl StatelessOp for FusedBatchNorm {
         let mean = mean.as_slice::<f32>()?;
         let variance = variance.as_slice::<f32>()?;
         let (alpha, beta) = self.coeffs(scale, offset, mean, variance)?;
-        let alpha = tract_core::ndarray::arr1(&*alpha);
-        let beta = tract_core::ndarray::arr1(&*beta);
+        let alpha = tract_hir::tract_core::ndarray::arr1(&*alpha);
+        let beta = tract_hir::tract_core::ndarray::arr1(&*beta);
         data *= &alpha;
         data += &beta;
         Ok(tvec!(data.into_arc_tensor()))
@@ -115,14 +115,14 @@ impl InferenceRulesOp for FusedBatchNorm {
                 .add_const(format!("{}-slope", node.name), tensor1(&*alpha).into_arc_tensor())?;
             let wire = target.wire_node(
                 format!("{}-mul", node.name),
-                tract_core::ops::math::mul::bin_typed(),
+                tract_hir::tract_core::ops::math::mul::bin_typed(),
                 [slope, mapping[&node.inputs[0]]].as_ref(),
             )?[0];
             let offset = target
                 .add_const(format!("{}-offset", node.name), tensor1(&*beta).into_arc_tensor())?;
             return target.wire_node(
                 format!("{}-add", node.name),
-                tract_core::ops::math::add::bin_typed(),
+                tract_hir::tract_core::ops::math::add::bin_typed(),
                 [offset, wire].as_ref(),
             );
         };

@@ -9,8 +9,8 @@ use tensorflow::Graph;
 use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 
-use tract_core::ndarray::*;
-use tract_core::prelude::*;
+use tract_hir::tract_core::ndarray::*;
+use tract_hir::tract_core::prelude::*;
 
 use std::collections::HashMap;
 use std::collections::HashSet;

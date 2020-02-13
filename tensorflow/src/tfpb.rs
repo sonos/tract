@@ -16,7 +16,7 @@ use self::tensorflow::{AttrValue, DataType, GraphDef, NodeDef, TensorProto, Tens
 
 use std::convert::TryInto;
 
-use tract_core::internal::*;
+use tract_hir::tract_core::internal::*;
 
 pub fn graph() -> GraphDef {
     GraphDef { library: None, node: vec![], version: 0, versions: None }
@@ -149,7 +149,7 @@ impl NodeDef {
         Ok(None)
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::internal::Tensor> {
+    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_hir::tract_core::internal::Tensor> {
         Ok(self.get_attr_opt_tensor(name)?.ok_or_else(|| {
             format!("Node {} ({}) expected tensor attribute '{}'", self.name, self.op, name)
         })?)
@@ -158,7 +158,7 @@ impl NodeDef {
     pub fn get_attr_opt_tensor(
         &self,
         name: &str,
-    ) -> TractResult<Option<tract_core::internal::Tensor>> {
+    ) -> TractResult<Option<tract_hir::tract_core::internal::Tensor>> {
         if let Some(a) = self.attr.get(name) {
             if let Value::Tensor(ref t) = a.value.as_ref().unwrap() {
                 return Ok(Some(t.try_into()?));

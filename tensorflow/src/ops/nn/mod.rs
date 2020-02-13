@@ -1,6 +1,6 @@
-use tract_core::internal::*;
-use tract_core::ops::cnn::PaddingSpec;
-use tract_core::ops::nn::{DataFormat, LayerSoftmax};
+use tract_hir::tract_core::internal::*;
+use tract_hir::tract_core::ops::cnn::PaddingSpec;
+use tract_hir::tract_core::ops::nn::{DataFormat, LayerSoftmax};
 
 use crate::model::TfOpRegister;
 use crate::tfpb::tensorflow::NodeDef;
@@ -17,11 +17,11 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("DepthwiseConv2dNative", dw_conv2d::depthwise_conv2d);
     reg.insert("FusedBatchNorm", fused_batch_norm::fused_batch_norm);
     reg.insert("MaxPool", pools::maxpool);
-    reg.insert("Relu", |_, _| Ok(Box::new(tract_core::ops::math::scalar_max((0.0).into()))));
+    reg.insert("Relu", |_, _| Ok(Box::new(tract_hir::tract_core::ops::math::scalar_max((0.0).into()))));
     reg.insert("Relu6", |_, _| {
-        Ok(Box::new(tract_core::ops::math::scalar_min_max((6.0).into(), (0.0).into())))
+        Ok(Box::new(tract_hir::tract_core::ops::math::scalar_min_max((6.0).into(), (0.0).into())))
     });
-    reg.insert("Sigmoid", |_, _| Ok(Box::new(tract_core::ops::nn::sigmoid())));
+    reg.insert("Sigmoid", |_, _| Ok(Box::new(tract_hir::tract_core::ops::nn::sigmoid())));
     reg.insert("Softmax", |_, _| Ok(Box::new(LayerSoftmax::new(1))));
     reg.insert("SpaceToBatchND", s2b::space_to_batch_nd);
     reg.insert("BatchToSpaceND", s2b::batch_to_space_nd);

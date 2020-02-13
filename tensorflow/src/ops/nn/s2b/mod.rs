@@ -1,14 +1,14 @@
 use num_traits::Zero;
-use tract_core::ndarray;
-use tract_core::ndarray::*;
+use tract_hir::tract_core::ndarray;
+use tract_hir::tract_core::ndarray::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
 pub mod raw;
 pub mod unary;
-use tract_core::infer::*;
-use tract_core::internal::*;
+use tract_hir::tract_core::infer::*;
+use tract_hir::tract_core::internal::*;
 
 pub fn space_to_batch_nd(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let datum_type = pb.get_attr_datum_type("T")?;

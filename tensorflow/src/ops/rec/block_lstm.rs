@@ -1,10 +1,10 @@
-use tract_core::ndarray;
-use tract_core::ndarray::*;
+use tract_hir::tract_core::ndarray;
+use tract_hir::tract_core::ndarray::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_core::infer::*;
-use tract_core::internal::*;
+use tract_hir::tract_core::infer::*;
+use tract_hir::tract_core::internal::*;
 
 pub fn block_lstm(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let forget_bias = node.get_attr_opt_float("forget_bias")?.unwrap_or(1.0);
