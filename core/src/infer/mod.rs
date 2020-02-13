@@ -12,6 +12,7 @@ mod fact;
 mod factoid;
 mod model;
 mod ops;
+mod optim;
 
 pub use crate::dim::TDim;
 

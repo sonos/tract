@@ -23,9 +23,11 @@ pub mod pb {
 pub mod pb_helpers;
 pub mod tensor;
 
-pub use model::Onnx;
 use tract_core::internal::*;
 use tract_core::infer::*;
+
+pub use model::Onnx;
+pub use tract_core::hir::framework::Framework;
 
 #[deprecated(note = "Please use onnx().model_for_path(..)")]
 pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<InferenceModel> {

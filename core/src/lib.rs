@@ -88,7 +88,6 @@ pub mod broadcast;
 pub mod datum;
 pub mod dim;
 pub mod errors;
-pub mod framework;
 pub mod model;
 mod optim;
 pub mod plan;
@@ -103,7 +102,6 @@ pub mod prelude {
     pub use crate::datum::{Blob, Datum, DatumType};
     pub use crate::dim::TDim;
     pub use crate::errors::*;
-    pub use crate::framework::Framework;
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
     pub use crate::tensor::litteral::*;
@@ -115,14 +113,12 @@ pub mod prelude {
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
     pub use crate::dim::{DimLike, TDim, ToDim};
-    pub use crate::framework::*;
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
     pub use crate::ops::{
-        AxisInfo, Cost, Invariants, Op, OpState, PulsedOp,
-        StatefullOp, StatelessOp, Validation,
+        AxisInfo, Cost, Invariants, Op, OpState, PulsedOp, StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;

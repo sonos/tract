@@ -3,6 +3,7 @@ use crate::tfpb::tensorflow::{GraphDef, NodeDef, SavedModel};
 use std::{fs, path};
 use tract_core::internal::*;
 use tract_core::infer::*;
+use tract_core::hir::Framework;
 
 #[derive(Default)]
 pub struct ParsingContext {

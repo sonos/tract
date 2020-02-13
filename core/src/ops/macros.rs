@@ -223,32 +223,6 @@ macro_rules! boxed_new {
     } }
 }
 
-/// Asserts that forward inference results work as expected.
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! assert_forward {
-    ($op:expr, $input:ident, $output:ident) => {
-        let any = InferenceFact::new();
-        assert_eq!(
-            $op.infer_facts(tvec![&$input], tvec![&any]).unwrap(),
-            (tvec![$input.clone()], tvec![$output])
-        )
-    };
-}
-
-/// Asserts that backward inference results work as expected.
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! assert_backward {
-    ($op:expr, $input:ident, $output:ident) => {
-        let any = InferenceFact::new();
-        assert_eq!(
-            $op.infer_facts(tvec![&any], tvec![&$output]).unwrap(),
-            (tvec![$input], tvec![$output.clone()])
-        )
-    };
-}
-
 #[macro_export]
 macro_rules! dispatch_datum {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {

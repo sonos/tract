@@ -25,7 +25,7 @@ impl InferenceModel {
         let mut model = self;
         loop {
             let mut done_something = false;
-            for p in crate::optim::incorporate() {
+            for p in crate::infer::optim::incorporate() {
                 done_something = done_something || p.pass(&mut model)?;
                 if cfg!(debug_assertions) {
                     model.check_edges()?;
