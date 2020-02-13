@@ -2,7 +2,7 @@ use crate::prelude::*;
 use crate::infer::*;
 
 pub use crate::ops::matmul::MatMul;
-pub use crate::ops::matmul::infer_shapes;
+pub use crate::ops::matmul::compute_shapes;
 
 impl InferenceRulesOp for MatMul {
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -21,7 +21,7 @@ impl InferenceRulesOp for MatMul {
         }
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ashape, bshape| {
             let (_, _, _, cshape) =
-                infer_shapes(ashape, bshape, self.a_trans, self.b_trans, self.c_trans)?;
+                compute_shapes(ashape, bshape, self.a_trans, self.b_trans, self.c_trans)?;
             s.equals(&outputs[0].shape, cshape)
         })?;
         Ok(())

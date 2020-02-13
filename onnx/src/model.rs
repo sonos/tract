@@ -2,8 +2,9 @@ use std::convert::TryInto;
 
 use std::collections::HashMap;
 
-use tract_core::internal::*;
+use tract_core::hir::framework::Framework;
 use tract_core::infer::*;
+use tract_core::internal::*;
 
 use crate::pb;
 use prost::Message;

@@ -61,6 +61,7 @@ pub mod tensor;
 pub mod tfpb;
 
 pub use model::Tensorflow;
+pub use tract_core::hir::framework::Framework;
 
 pub fn tensorflow() -> Tensorflow {
     let mut ops = crate::model::TfOpRegister::default();

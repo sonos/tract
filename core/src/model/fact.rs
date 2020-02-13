@@ -1,5 +1,4 @@
 //! Partial and complete tensor types representations.
-use crate::infer::*;
 use crate::internal::*;
 use crate::tensor::Tensor;
 use downcast_rs::Downcast;
@@ -133,11 +132,6 @@ impl ShapeFact {
     /// Convert the shape to an array of extended dimensions.
     pub fn to_tvec(&self) -> TVec<TDim> {
         self.iter().collect::<TVec<TDim>>()
-    }
-
-    /// Convert the shape to a fully determined shape fact.
-    pub fn to_shape_factoid(&self) -> ShapeFactoid {
-        ShapeFactoid::from(self.iter())
     }
 
     pub fn from_dims<T: AsRef<[TDim]> + std::fmt::Debug>(it: T) -> TractResult<ShapeFact> {

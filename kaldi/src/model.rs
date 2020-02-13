@@ -1,7 +1,8 @@
-use tract_core::internal::*;
-use tract_core::infer::*;
-
 use std::collections::BTreeMap;
+
+use tract_core::hir::framework::Framework;
+use tract_core::infer::*;
+use tract_core::internal::*;
 
 #[derive(Clone, Debug)]
 pub struct KaldiProtoModel {

@@ -126,7 +126,7 @@ where
     unsafe { Ok(c.into_tensor().into_shape(&geo.final_c_shape)?) }
 }
 
-pub fn infer_shapes<D: DimLike>(
+pub fn compute_shapes<D: DimLike>(
     ashape_orig: TVec<D>,
     bshape_orig: TVec<D>,
     a_trans: bool,
@@ -241,7 +241,7 @@ where
         mmm: impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
     ) -> TractResult<Geo<TA, TB, TC, TI>> {
         let (bc_a_shape, bc_b_shape, bc_c_shape, final_c_shape) =
-            infer_shapes(a_shape.into(), b_shape.into(), a_trans, b_trans, c_trans)?;
+            compute_shapes(a_shape.into(), b_shape.into(), a_trans, b_trans, c_trans)?;
         let m = bc_a_shape[bc_a_shape.len() - 2 + a_trans as usize];
         let k = bc_a_shape[bc_a_shape.len() - 1 - a_trans as usize];
         let n = bc_b_shape[bc_b_shape.len() - 1 - b_trans as usize];
@@ -352,7 +352,7 @@ impl TypedOp for MatMul {
         let dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         Ok(tvec!(TypedFact::dt_shape(
             dt,
-            &*infer_shapes(
+            &*compute_shapes(
                 inputs[0].shape.to_tvec(),
                 inputs[1].shape.to_tvec(),
                 self.a_trans,
@@ -456,7 +456,7 @@ impl TypedOp for MatMulUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(
             self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type),
-            &*infer_shapes(
+            &*compute_shapes(
                 self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
                 inputs[0].shape.to_tvec(),
                 self.a_trans,
@@ -514,7 +514,12 @@ impl TypedOp for MatMulUnary {
             AxisOp::Add(axis) => {
                 if b.rank() == 1 {
                     let op = Self { b_trans: *axis == 0, c_trans: *axis == 0, ..self.clone() };
-                    return Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+                    return Ok(Some(AxisChangeConsequence::new(
+                        model,
+                        node,
+                        Some(Box::new(op)),
+                        change,
+                    )));
                 }
                 let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
                 if axis_in_a + 2 > self.a.rank() as isize {
@@ -736,7 +741,7 @@ impl TypedOp for MatMulUnary {
 impl PulsedOp for MatMulUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape = infer_shapes(
+        fact.shape = compute_shapes(
             self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             inputs[0].shape.iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             self.a_trans,
@@ -875,7 +880,7 @@ fn cost<A: ToDim + Clone, B: ToDim + Clone>(
     a_trans: bool,
     b_trans: bool,
 ) -> TractResult<TVec<(Cost, TDim)>> {
-    let (bc_a_shape, bc_b_shape, bc_c_shape, _c_shape) = infer_shapes(
+    let (bc_a_shape, bc_b_shape, bc_c_shape, _c_shape) = compute_shapes(
         a.iter().map(|d| d.clone().to_dim()).collect(),
         b.iter().map(|d| d.clone().to_dim()).collect(),
         a_trans,
