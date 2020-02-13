@@ -5,9 +5,8 @@ use log::*;
 
 use prost::Message;
 
-use tract_core::internal::*;
 use tract_onnx::pb::TensorProto;
-use tract_onnx::*;
+use tract_onnx::prelude::*;
 
 #[allow(dead_code)]
 fn setup_test_logger() {

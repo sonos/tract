@@ -6,5 +6,4 @@ edition = "2018"
 
 [dependencies]
 image = "*"
-tract-core = { path="../../core" }
 tract-tensorflow = { path = "../../tensorflow" }

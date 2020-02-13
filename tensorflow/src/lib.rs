@@ -5,14 +5,12 @@
 //! ## Example
 //!
 //! ```
-//! # extern crate tract_core;
 //! # extern crate tract_tensorflow;
 //! # fn main() {
-//! use tract_core::prelude::*;
-//! use tract_core::infer::*;
+//! use tract_tensorflow::prelude::*;
 //!
 //! // build a simple model that just add 3 to each input component
-//! let tf = tract_tensorflow::tensorflow();
+//! let tf = tensorflow();
 //! let mut model = tf.model_for_path("tests/models/plus3.pb").unwrap();
 //!
 //! // set input input type and shape, then optimize the network.
@@ -61,12 +59,17 @@ pub mod tensor;
 pub mod tfpb;
 
 pub use model::Tensorflow;
-pub use tract_core::hir::framework::Framework;
 
 pub fn tensorflow() -> Tensorflow {
     let mut ops = crate::model::TfOpRegister::default();
     ops::register_all_ops(&mut ops);
     Tensorflow { op_register: ops }
+}
+
+pub mod prelude {
+    pub use tract_core::prelude::*;
+    pub use tract_core::hir::prelude::*;
+    pub use crate::tensorflow;
 }
 
 #[cfg(test)]

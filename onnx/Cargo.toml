@@ -24,7 +24,6 @@ num-traits = "0.2"
 prost = "0.6"
 smallvec = "1"
 tract-core = { path = "../core" }
-tract-linalg = { path = "../linalg" }
 
 [build-dependencies]
 prost-build = "0.6"

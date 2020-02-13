@@ -11,7 +11,6 @@ extern crate num_traits;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate tract_core;
-extern crate tract_linalg;
 
 pub mod model;
 pub mod ops;
@@ -27,7 +26,13 @@ use tract_core::internal::*;
 use tract_core::infer::*;
 
 pub use model::Onnx;
-pub use tract_core::hir::framework::Framework;
+use tract_core::hir::framework::Framework;
+
+pub mod prelude {
+    pub use tract_core::prelude::*;
+    pub use tract_core::hir::prelude::*;
+    pub use crate::onnx;
+}
 
 #[deprecated(note = "Please use onnx().model_for_path(..)")]
 pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<InferenceModel> {

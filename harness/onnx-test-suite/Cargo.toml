@@ -10,7 +10,6 @@ env_logger = "0.7"
 fs2 = "0.4"
 log = "0.4.6"
 prost = "0.6"
-tract-core = { path = "../../core" }
 tract-onnx = { path = "../../onnx" }
 
 [build-dependencies]

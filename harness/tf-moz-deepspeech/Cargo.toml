@@ -7,5 +7,4 @@ edition = "2018"
 [dependencies]
 env_logger = "0.7"
 log = "0.4"
-tract-core = { path = "../../core" }
 tract-tensorflow = { path = "../../tensorflow" }
