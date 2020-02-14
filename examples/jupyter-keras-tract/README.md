@@ -1,14 +1,6 @@
 A simple example of training a Tensorflow model with Python in a Jupyter notebook, then loading it into `tract` to make predictions.
 
-With shape optimizations:
-```
-time cargo run
-real    0m1.145s
-user    0m0.172s
-sys     0m0.219s
-```
 
-Without optimizations:
 ```
 time targo run
 real    0m0.280s
