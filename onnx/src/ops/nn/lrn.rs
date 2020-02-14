@@ -1,6 +1,5 @@
-use tract_core::internal::*;
-use tract_core::infer::*;
-use tract_core::ndarray::prelude::*;
+use tract_hir::internal::*;
+use tract_ndarray::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Lrn {
@@ -11,7 +10,7 @@ pub struct Lrn {
 }
 
 impl Lrn {
-    fn eval_t<T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::std::iter::Sum>(
+    fn eval_t<T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + ::std::iter::Sum>(
         &self,
         input: Arc<Tensor>,
     ) -> TractResult<TVec<Arc<Tensor>>> {

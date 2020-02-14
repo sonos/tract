@@ -544,7 +544,7 @@ impl Parameters {
                 }
                 raw_model.node_mut(outlet.node).inputs.clear();
                 raw_model.node_mut(outlet.node).op =
-                    Box::new(tract_core::hir::source::Source::new());
+                    Box::new(tract_hir::ops::source::Source::new());
                 if !const_inputs.contains(&raw_model.node_name(outlet.node).to_string()) {
                     t.value = GenericFactoid::Any;
                 }

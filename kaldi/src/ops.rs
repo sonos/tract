@@ -13,11 +13,11 @@ pub fn register_all_ops(reg: &mut KaldiOpRegister) {
         reg.insert(affine, affine::affine_component);
     }
     reg.insert("BackpropTruncationComponent", |_, _| {
-        Ok(Box::new(tract_core::ops::identity::Identity::default()))
+        Ok(Box::new(tract_hir::ops::identity::Identity::default()))
     });
     reg.insert("NormalizeComponent", renorm::renorm);
     reg.insert("LstmNonlinearityComponent", lstm_nonlin::lstm_nonlin);
     reg.insert("RectifiedLinearComponent", |_, _| {
-        Ok(Box::new(tract_core::ops::math::scalar_max((0.0).into())))
+        Ok(Box::new(tract_hir::ops::math::scalar_max((0.0).into())))
     });
 }

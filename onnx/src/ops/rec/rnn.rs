@@ -1,10 +1,8 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ndarray;
-use tract_core::ndarray::*;
-use tract_core::ops as core_ops;
+use tract_hir::internal::*;
+use tract_hir::ops;
+use tract_ndarray::prelude::*;
 
 pub fn rnn(
     _ctx: &ParsingContext,
@@ -43,8 +41,8 @@ impl Default for RNN {
             optional_initial_h_input: None,
             optional_y_output: None,
             optional_y_h_output: None,
-            fore: Box::new(core_ops::math::tanh()),
-            back: Box::new(core_ops::math::tanh()),
+            fore: Box::new(ops::math::tanh()),
+            back: Box::new(ops::math::tanh()),
         }
     }
 }
@@ -134,7 +132,7 @@ impl InferenceRulesOp for RNN {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        use tract_core::ops::{array, math, matmul, scan};
+        use ops::{array, math, matmul, scan};
 
         let x_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
         let r_fact = target.outlet_fact(mapping[&node.inputs[2]])?;
@@ -215,7 +213,7 @@ impl InferenceRulesOp for RNN {
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
             scan::StateInitializer::Value(
-                ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
+                tract_ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });

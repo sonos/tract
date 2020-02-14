@@ -1,10 +1,8 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ndarray;
-use tract_core::ndarray::*;
-use tract_core::ops as core_ops;
+use tract_hir::internal::*;
+use tract_hir::ops;
+use tract_ndarray::prelude::*;
 
 pub fn gru(
     _ctx: &ParsingContext,
@@ -44,8 +42,8 @@ impl Default for GRU {
             optional_initial_h_input: None,
             optional_y_output: None,
             optional_y_h_output: None,
-            f: Box::new(core_ops::nn::sigmoid()),
-            g: Box::new(core_ops::math::tanh()),
+            f: Box::new(ops::nn::sigmoid()),
+            g: Box::new(ops::math::tanh()),
             linear_before_reset: false,
         }
     }
@@ -136,7 +134,7 @@ impl InferenceRulesOp for GRU {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        use tract_core::ops::{array, math, matmul, scan};
+        use ops::{array, math, matmul, scan};
 
         let x_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
         let r_fact = target.outlet_fact(mapping[&node.inputs[2]])?;
@@ -217,7 +215,7 @@ impl InferenceRulesOp for GRU {
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
             scan::StateInitializer::Value(
-                ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
+                tract_ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
@@ -310,7 +308,7 @@ impl InferenceRulesOp for GRU {
 
         let scan_outputs = target.wire_node(
             &*node.name,
-            scan::TypedScan::new(
+            ops::scan::TypedScan::new(
                 body,
                 input_mapping,
                 vec![output_mapping],

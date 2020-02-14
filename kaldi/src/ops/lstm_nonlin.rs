@@ -1,7 +1,6 @@
 use crate::model::NodeLine;
 use crate::model::ParsingContext;
-use tract_core::internal::*;
-use tract_core::infer::*;
+use tract_hir::internal::*;
 
 pub fn lstm_nonlin(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn InferenceOp>> {
     let node = &ctx.proto_model.config_lines.nodes.iter().find(|l| l.0 == name);
@@ -30,7 +29,7 @@ impl Op for LstmNonlin {
 
 impl StatelessOp for LstmNonlin {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        use tract_core::ndarray::*;
+        use tract_ndarray::*;
 
         let sigmoid = (tract_linalg::ops().ssigmoid)();
         let tanh = (tract_linalg::ops().stanh)();
@@ -112,30 +111,29 @@ impl InferenceRulesOp for LstmNonlin {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        use tract_core::ndarray;
-        use tract_core::ops::math::add::bin_typed as add;
-        use tract_core::ops::math::mul::bin_typed as mul;
-        use tract_core::ops::{array, math, nn};
-        use tract_core::ops::array::ConcatSlice;
+        use tract_hir::ops::array::ConcatSlice;
+        use tract_hir::ops::{array, math, nn};
+        use math::add::bin_typed as add;
+        use math::mul::bin_typed as mul;
 
         let params =
-            self.peepholes_params.to_array_view::<f32>()?.into_dimensionality::<ndarray::Ix2>()?;
+            self.peepholes_params.to_array_view::<f32>()?.into_dimensionality::<tract_ndarray::Ix2>()?;
         let w_ic: OutletId = target
             .add_const(
                 format!("{})-w_ic", node.name),
-                params.index_axis(ndarray::Axis(0), 0).to_owned(),
+                params.index_axis(tract_ndarray::Axis(0), 0).to_owned(),
             )?
             .into();
         let w_fc: OutletId = target
             .add_const(
                 format!("{}-w_fc", node.name),
-                params.index_axis(ndarray::Axis(0), 1).to_owned(),
+                params.index_axis(tract_ndarray::Axis(0), 1).to_owned(),
             )?
             .into();
         let w_oc: OutletId = target
             .add_const(
                 format!("{}-w_oc", node.name),
-                params.index_axis(ndarray::Axis(0), 2).to_owned(),
+                params.index_axis(tract_ndarray::Axis(0), 2).to_owned(),
             )?
             .into();
 
@@ -187,11 +185,7 @@ impl InferenceRulesOp for LstmNonlin {
         wire!(tanh_c_t = math::tanh(), c_t);
         wire!(m_t = mul(), o_t, tanh_c_t);
 
-        wire!(
-            output = array::Concat::new(1, tvec!(ConcatSlice::Var, ConcatSlice::Var)),
-            c_t,
-            m_t
-        );
+        wire!(output = array::TypedConcat::new(1, tvec!(ConcatSlice::Var, ConcatSlice::Var)), c_t, m_t);
 
         Ok(tvec!(output))
     }

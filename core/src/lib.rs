@@ -59,7 +59,7 @@ extern crate log;
 #[macro_use]
 pub extern crate ndarray;
 extern crate num_integer;
-extern crate num_traits;
+pub extern crate num_traits;
 #[macro_use]
 extern crate maplit;
 #[cfg(test)]
@@ -73,7 +73,7 @@ extern crate smallvec;
 #[macro_use]
 extern crate serde_derive;
 
-extern crate tract_linalg;
+pub extern crate tract_linalg;
 
 #[macro_use]
 pub mod macros;
@@ -108,14 +108,14 @@ pub mod prelude {
     pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor};
     pub use crate::tvec;
     pub use std::sync::Arc;
+
+    pub use ndarray as tract_ndarray;
+    pub use num_traits as tract_num_traits;
+    pub use tract_linalg;
 }
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
-    pub use { as_op, not_a_pulsed_op, not_a_typed_op, op_as_typed_op, to_typed };
-    pub use { dispatch_copy, dispatch_datum, dispatch_numbers };
-    pub use { shapefactoid, tvec };
-    pub use { args_1, args_2, args_3, args_4, args_5, args_6  };
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
@@ -131,6 +131,13 @@ pub mod internal {
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tract_linalg::f16::f16;
+    pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
+    pub use {
+        as_op, not_a_pulsed_op, not_a_typed_op, op_as_typed_op, pulsed_op_to_typed_op, to_typed,
+    };
+    pub use {bin_to_super_type, element_wise, element_wise_oop};
+    pub use {dispatch_copy, dispatch_datum, dispatch_floatlike, dispatch_numbers};
+    pub use {shapefactoid, tvec};
 }
 
 #[cfg(test)]

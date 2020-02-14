@@ -2,8 +2,7 @@ use bit_set::BitSet;
 use itertools::Itertools;
 use std::collections::BTreeMap;
 
-use tract_core::internal::*;
-use tract_core::infer::*;
+use tract_hir::internal::*;
 
 #[derive(Clone, Debug, new)]
 pub struct Memory {
@@ -132,14 +131,14 @@ fn incorporate_memory_ops_as_scans(
             )?;
             node_id_old_to_new.insert(mem, id.node);
 
-            let zeroes = Tensor::from(tract_core::ndarray::Array2::<f32>::zeros((
+            let zeroes = Tensor::from(tract_ndarray::Array2::<f32>::zeros((
                 (-op.offset) as usize,
                 channel,
             )));
-            mapped_inputs.push(tract_core::ops::scan::InputMapping::State {
-                initializer: tract_core::ops::scan::StateInitializer::Value(zeroes.into()),
+            mapped_inputs.push(tract_hir::ops::scan::InputMapping::State {
+                initializer: tract_hir::ops::scan::StateInitializer::Value(zeroes.into()),
             });
-            mapped_outputs.push(tract_core::ops::scan::OutputMapping {
+            mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: true,
                 axis: 0,
                 chunk: (),
@@ -158,12 +157,12 @@ fn incorporate_memory_ops_as_scans(
                 InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(_, channel)),
             )?;
             node_id_old_to_new.insert(scan_input.node, new_id.node);
-            mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan {
+            mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan {
                 axis: 0,
                 chunk: (),
                 slot: ix,
             });
-            mapped_outputs.push(tract_core::ops::scan::OutputMapping {
+            mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: false,
                 axis: 0,
                 chunk: (),
@@ -210,7 +209,7 @@ fn incorporate_memory_ops_as_scans(
         inner_model.set_output_outlets(&inner_outputs)?;
 
         // prepare patch
-        let scan = tract_core::hir::scan::InferenceScan::new(
+        let scan = tract_hir::ops::scan::InferenceScan::new(
             inner_model,
             mapped_inputs,
             mapped_outputs,

@@ -1,9 +1,8 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::internal::*;
-use tract_hir::cnn::*;
-use tract_hir::tract_core::ops::nn::*;
+use tract_hir::internal::*;
+use tract_hir::ops::cnn::*;
+use tract_hir::ops::nn::*;
 
 pub fn depthwise_conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let data_format = super::data_format(pb)?;

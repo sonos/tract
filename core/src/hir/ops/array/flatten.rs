@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::infer::*;
 
-use crate::ops::array::Flatten;
+pub use crate::ops::array::Flatten;
 
 impl InferenceRulesOp for Flatten {
     fn rules<'r, 'p: 'r, 's: 'r>(

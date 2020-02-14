@@ -1,11 +1,9 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use proptest::*;
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ndarray::*;
-use tract_core::ops::array::PadMode;
-use tract_core::shapefactoid;
+use tract_hir::internal::*;
+use tract_hir::ops::array::{Pad, PadMode};
+use tract_ndarray::*;
 
 use super::*;
 
@@ -65,8 +63,7 @@ impl Arbitrary for PadPlusConvProblem {
 
 impl PadPlusConvProblem {
     pub fn run(&self) -> TestCaseResult {
-        use tract_core::ops::array::Pad;
-        use tract_core::hir::cnn::*;
+        use tract_hir::ops::cnn::*;
         let mut model = InferenceModel::default();
         let mut wire = model
             .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, 1, S)))

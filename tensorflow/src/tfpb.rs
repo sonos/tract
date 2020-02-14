@@ -1,3 +1,5 @@
+use tract_hir::internal::*;
+
 use std::fs;
 
 mod google {
@@ -15,8 +17,6 @@ use self::tensorflow::attr_value::Value;
 use self::tensorflow::{AttrValue, DataType, GraphDef, NodeDef, TensorProto, TensorShapeProto};
 
 use std::convert::TryInto;
-
-use tract_hir::tract_core::internal::*;
 
 pub fn graph() -> GraphDef {
     GraphDef { library: None, node: vec![], version: 0, versions: None }
@@ -167,13 +167,13 @@ impl NodeDef {
         Ok(None)
     }
 
-    pub fn get_attr_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
+    pub fn get_attr_int<T: tract_num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
         Ok(self.get_attr_opt_int(name)?.ok_or_else(|| {
             format!("Node {} ({}) expected int attribute '{}'", self.name, self.op, name)
         })?)
     }
 
-    pub fn get_attr_opt_int<T: ::num_traits::FromPrimitive>(
+    pub fn get_attr_opt_int<T: tract_num_traits::FromPrimitive>(
         &self,
         name: &str,
     ) -> TractResult<Option<T>> {
@@ -185,13 +185,13 @@ impl NodeDef {
         Ok(None)
     }
 
-    pub fn get_attr_float<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
+    pub fn get_attr_float<T: tract_num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
         Ok(self.get_attr_opt_float(name)?.ok_or_else(|| {
             format!("Node {} ({}) expected int attribute '{}'", self.name, self.op, name)
         })?)
     }
 
-    pub fn get_attr_opt_float<T: ::num_traits::FromPrimitive>(
+    pub fn get_attr_opt_float<T: tract_num_traits::FromPrimitive>(
         &self,
         name: &str,
     ) -> TractResult<Option<T>> {
@@ -203,7 +203,7 @@ impl NodeDef {
         Ok(None)
     }
 
-    pub fn get_attr_list_int<T: ::num_traits::FromPrimitive>(
+    pub fn get_attr_list_int<T: tract_num_traits::FromPrimitive>(
         &self,
         name: &str,
     ) -> TractResult<Vec<T>> {
@@ -212,7 +212,7 @@ impl NodeDef {
         })?)
     }
 
-    pub fn get_attr_opt_list_int<T: ::num_traits::FromPrimitive>(
+    pub fn get_attr_opt_list_int<T: tract_num_traits::FromPrimitive>(
         &self,
         name: &str,
     ) -> TractResult<Option<Vec<T>>> {

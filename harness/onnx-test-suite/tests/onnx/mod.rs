@@ -7,6 +7,7 @@ use prost::Message;
 
 use tract_onnx::pb::TensorProto;
 use tract_onnx::prelude::*;
+use tract_onnx::tract_hir;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
@@ -98,7 +99,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                             actual_input = Some((outlet, inputs[ix].clone()));
                         } else {
                             model.node_mut(outlet.node).op =
-                                Box::new(tract_core::ops::konst::Const::new(
+                                Box::new(tract_hir::ops::konst::Const::new(
                                     inputs[ix].clone().into_arc_tensor(),
                                 ));
                         }
@@ -111,7 +112,8 @@ pub fn run_one<P: AsRef<path::Path>>(
                                 .input_outlets()
                                 .unwrap()
                                 .iter()
-                                .map(|n| model.node_name(n.node)).collect::<Vec<_>>()
+                                .map(|n| model.node_name(n.node))
+                                .collect::<Vec<_>>()
                         )
                     });
                     model.set_input_outlets(&[*outlet]).unwrap();
@@ -160,7 +162,7 @@ where
         );
     }
     for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
-        use tract_core::error_chain::ChainedError;
+        use tract_hir::tract_core::error_chain::ChainedError;
         //                println!("computed: {:?}", computed[ix].dump(true));
         //                println!("expected: {:?}", expected[ix].dump(true));
         if let Err(e) = a.close_enough(b, true) {

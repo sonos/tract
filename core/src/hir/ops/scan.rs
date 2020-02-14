@@ -1,7 +1,8 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
-use crate::ops::scan::*;
+pub use crate::ops::scan::TypedScan;
+pub use crate::ops::scan::{InputMapping, OutputMapping, StateInitializer};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct InferenceScan {
@@ -94,10 +95,16 @@ impl InferenceScan {
         let rank =
             outer.shape.rank().concretize().or(inner.shape.rank().concretize()).map(|r| r as usize);
         if let Some(rank) = rank {
-            if outer.shape.unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank as usize)))? {
+            if outer
+                .shape
+                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank as usize)))?
+            {
                 changed = true;
             }
-            if inner.shape.unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank as usize)))? {
+            if inner
+                .shape
+                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank as usize)))?
+            {
                 changed = true;
             }
             for axis in 0..rank {

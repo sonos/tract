@@ -1,7 +1,7 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
-use crate::ops::array::concat as typed;
+pub use crate::ops::array::concat::{ ConcatSlice, TypedConcat};
 
 /// Concat: high level concat op
 #[derive(Debug, Clone, new)]
@@ -65,9 +65,7 @@ impl InferenceRulesOp for Concat {
         s.given(&inputs[0].rank, move |s, rank| {
             let axis = self.resolve_axis(rank as i64)?;
             s.equals(
-                rules::expr::SumExp::new(
-                    (0..n).map(|i| (&inputs[i].shape[axis]).bex()).collect(),
-                ),
+                rules::expr::SumExp::new((0..n).map(|i| (&inputs[i].shape[axis]).bex()).collect()),
                 &outputs[0].shape[axis],
             )?;
             for axis in 0..axis {
@@ -107,13 +105,14 @@ impl InferenceRulesOp for Concat {
 
         let axis = self.resolve_axis(facts[0].shape.rank() as i64)?;
 
-        let mut slices: TVec<typed::ConcatSlice> = tvec![];
+        let mut slices: TVec<ConcatSlice> = tvec![];
         let mut kept_inputs: TVec<OutletId> = tvec![];
         for (ix, (fact, outlet)) in facts.iter().zip(mapped_inputs.iter()).enumerate() {
             match &fact.konst {
                 Some(c_input) => {
-                    slices
-                        .push(typed::ConcatSlice::Const(c_input.cast_to_dt(super_type)?.into_owned()));
+                    slices.push(ConcatSlice::Const(
+                        c_input.cast_to_dt(super_type)?.into_owned(),
+                    ));
                 }
                 None => {
                     let casted = target.wire_node(
@@ -122,14 +121,13 @@ impl InferenceRulesOp for Concat {
                         &[*outlet],
                     )?[0];
                     kept_inputs.push(casted);
-                    slices.push(typed::ConcatSlice::Var)
+                    slices.push(ConcatSlice::Var)
                 }
             }
         }
-        let op = typed::Concat::new(axis, slices);
+        let op = TypedConcat::new(axis, slices);
         target.wire_node(&*node.name, op, &*kept_inputs)
     }
 
     as_op!();
 }
-

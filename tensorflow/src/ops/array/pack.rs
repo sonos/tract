@@ -1,6 +1,4 @@
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::ndarray;
+use tract_hir::internal::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
@@ -34,7 +32,7 @@ impl Pack {
             .collect();
         let mut shape = views[0].shape().to_vec();
         shape[self.axis] = views.iter().map(|v| v.shape()[self.axis]).sum();
-        let mut array = ndarray::Array::<T, _>::default(&*shape);
+        let mut array = tract_ndarray::Array::<T, _>::default(&*shape);
         let mut offset = 0;
         for v in views {
             let len = v.shape()[self.axis];
@@ -128,9 +126,9 @@ impl InferenceRulesOp for Pack {
             .collect::<TractResult<TVec<OutletId>>>()?;
         target.wire_node(
             &*node.name,
-            tract_hir::tract_core::ops::array::Concat::new(
+            tract_hir::ops::array::TypedConcat::new(
                 self.axis as usize,
-                tvec!(tract_hir::tract_core::ops::array::ConcatSlice::Var; node.inputs.len()),
+                tvec!(tract_hir::ops::array::ConcatSlice::Var; node.inputs.len()),
             ),
             &*inputs,
         )
@@ -141,7 +139,7 @@ impl InferenceRulesOp for Pack {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use num_traits::Zero;
+    use tract_num_traits::Zero;
 
     #[test]
     fn pack_0() {

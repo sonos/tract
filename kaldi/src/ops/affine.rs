@@ -1,6 +1,4 @@
-use tract_core::internal::*;
-use tract_core::infer::*;
-use tract_core::ndarray;
+use tract_hir::internal::*;
 
 use crate::model::NodeLine;
 use crate::model::ParsingContext;
@@ -20,7 +18,7 @@ pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn
     // O•TI -> t -> TI•O -> T•I•O = HWIO
     let o_ti = kernel.to_array_view::<f32>()?;
     let t_i_o_shape = (kernel_len, kernel.len() / kernel_len / bias.len(), bias.len());
-    let t_i_o = ndarray::Array::from_shape_vec(t_i_o_shape, o_ti.t().iter().cloned().collect())?;
+    let t_i_o = tract_ndarray::Array::from_shape_vec(t_i_o_shape, o_ti.t().iter().cloned().collect())?;
     Ok(Box::new(Affine {
         kernel_len,
         dilation,
@@ -38,8 +36,8 @@ struct Affine {
 }
 
 impl Affine {
-    fn as_conv(&self) -> tract_core::hir::cnn::Conv {
-        use tract_core::hir::cnn::*;
+    fn as_conv(&self) -> tract_hir::ops::cnn::Conv {
+        use tract_hir::ops::cnn::*;
         Conv::default()
             .hwc()
             .hwio()

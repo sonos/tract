@@ -1,5 +1,4 @@
-use tract_core::internal::*;
-use tract_core::hir::source::Source;
+use tract_hir::internal::*;
 
 use crate::display_graph;
 use crate::{CliResult, Parameters};
@@ -25,7 +24,7 @@ pub fn handle(params: &Parameters, _options: display_graph::DisplayOptions) -> C
             optimized_state.model().node_by_name(name).ok().map(|node| node.id)
         };
         if let Some(optim) = optim {
-            if original_state.model().nodes()[orig].op_is::<Source>() {
+            if original_state.model().nodes()[orig].op_is::<tract_core::ops::source::TypedSource>() {
                 continue;
             }
             let orig_result: TVec<_> =
