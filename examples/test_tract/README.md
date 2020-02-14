@@ -1,1 +1,0 @@
-A simple example of training a Tensorflow model with Python in a Jupyter notebook, then loading it into Tract to make predictions.
