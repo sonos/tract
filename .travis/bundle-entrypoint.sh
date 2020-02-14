@@ -34,7 +34,7 @@ fi
 
 if [ -x example-tensorflow-mobilenet-v2 ]
 then
-    binary_size_cli=`stat -c "%s" example-tensorflow-mobilet-v2`
+    binary_size_cli=`stat -c "%s" example-tensorflow-mobilenet-v2`
     echo binary_size.example_tensorflow_mobilenet_v2 $binary_size_cli >> metrics
 fi
 
