@@ -1,25 +1,24 @@
-use tract_core::internal::*;
-use tract_core::infer::*;
-use tract_core::ops as tractops;
-use tract_core::ops::cnn::PaddingSpec;
-use tract_core::ops::nn::DataFormat;
-use tract_core::hir;
+use tract_hir::internal::*;
+use tract_hir::ops;
+use tract_hir::ops::{cnn, nn};
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
-use num_traits::AsPrimitive;
-use tractops::nn::Reducer;
+use tract_num_traits::AsPrimitive;
 
 mod batch_norm;
 mod dropout;
 mod lrn;
 
-fn reduce(node: &NodeProto, reducer: Reducer) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+fn reduce(
+    node: &NodeProto,
+    reducer: nn::Reducer,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axes = node.get_attr_opt_vec("axes")?;
     let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
-    Ok((Box::new(hir::nn::Reduce::new(axes, keep_dims, reducer)), vec![]))
+    Ok((Box::new(ops::nn::Reduce::new(axes, keep_dims, reducer)), vec![]))
 }
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -32,12 +31,10 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Dropout", dropout::dropout);
     reg.insert("Elu", elu);
     reg.insert("GlobalAveragePool", |_, _| {
-        Ok((Box::new(tractops::nn::GlobalAvgPool::default()), vec![]))
+        Ok((Box::new(ops::nn::GlobalAvgPool::default()), vec![]))
     });
     reg.insert("GlobalLpPool", global_lp_pool);
-    reg.insert("GlobalMaxPool", |_, _| {
-        Ok((Box::new(tractops::nn::GlobalMaxPool::default()), vec![]))
-    });
+    reg.insert("GlobalMaxPool", |_, _| Ok((Box::new(ops::nn::GlobalMaxPool::default()), vec![])));
     reg.insert("Hardmax", layer_hard_max);
     reg.insert("HardSigmoid", hard_sigmoid);
     reg.insert("LeakyRelu", leaky_relu);
@@ -47,31 +44,31 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ParametricSoftplus", parametric_softplus);
     reg.insert("QLinearConv", conv_qlinear);
     reg.insert("PRelu", |_, _| Ok((Box::new(prelu::bin()), vec![])));
-    reg.insert("ReduceL1", |_, node| reduce(node, Reducer::L1));
-    reg.insert("ReduceL2", |_, node| reduce(node, Reducer::L2));
-    reg.insert("ReduceLogSum", |_, node| reduce(node, Reducer::LogSum));
-    reg.insert("ReduceLogSumExp", |_, node| reduce(node, Reducer::LogSumExp));
-    reg.insert("ReduceMax", |_, node| reduce(node, Reducer::Max));
-    reg.insert("ReduceMean", |_, node| reduce(node, Reducer::Mean));
-    reg.insert("ReduceMin", |_, node| reduce(node, Reducer::Min));
-    reg.insert("ReduceProd", |_, node| reduce(node, Reducer::Prod));
-    reg.insert("ReduceSum", |_, node| reduce(node, Reducer::Sum));
-    reg.insert("ReduceSumSquare", |_, node| reduce(node, Reducer::SumSquare));
-    reg.insert("Relu", |_, _| Ok((Box::new(tractops::math::scalar_max((0.0).into())), vec![])));
+    reg.insert("ReduceL1", |_, node| reduce(node, nn::Reducer::L1));
+    reg.insert("ReduceL2", |_, node| reduce(node, nn::Reducer::L2));
+    reg.insert("ReduceLogSum", |_, node| reduce(node, nn::Reducer::LogSum));
+    reg.insert("ReduceLogSumExp", |_, node| reduce(node, nn::Reducer::LogSumExp));
+    reg.insert("ReduceMax", |_, node| reduce(node, nn::Reducer::Max));
+    reg.insert("ReduceMean", |_, node| reduce(node, nn::Reducer::Mean));
+    reg.insert("ReduceMin", |_, node| reduce(node, nn::Reducer::Min));
+    reg.insert("ReduceProd", |_, node| reduce(node, nn::Reducer::Prod));
+    reg.insert("ReduceSum", |_, node| reduce(node, nn::Reducer::Sum));
+    reg.insert("ReduceSumSquare", |_, node| reduce(node, nn::Reducer::SumSquare));
+    reg.insert("Relu", |_, _| Ok((Box::new(ops::math::scalar_max((0.0).into())), vec![])));
     reg.insert("ScaledTanh", scaled_tanh);
     reg.insert("Shrink", shrink);
     reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
-    reg.insert("Sigmoid", |_, _| Ok((Box::new(tractops::nn::sigmoid()), vec![])));
+    reg.insert("Sigmoid", |_, _| Ok((Box::new(ops::nn::sigmoid()), vec![])));
     reg.insert("Softmax", layer_soft_max);
-    reg.insert("Softplus", |_, _| Ok((Box::new(tractops::nn::softplus()), vec![])));
-    reg.insert("Softsign", |_, _| Ok((Box::new(tractops::nn::softsign()), vec![])));
+    reg.insert("Softplus", |_, _| Ok((Box::new(ops::nn::softplus()), vec![])));
+    reg.insert("Softsign", |_, _| Ok((Box::new(ops::nn::softsign()), vec![])));
 }
 
-fn pad(node: &NodeProto) -> TractResult<PaddingSpec> {
+fn pad(node: &NodeProto) -> TractResult<cnn::PaddingSpec> {
     if let Some(pads) = node.get_attr_opt_tvec("pads")? {
         let len = pads.len();
-        return Ok(PaddingSpec::Explicit(
+        return Ok(cnn::PaddingSpec::Explicit(
             pads.iter().cloned().take(len / 2).collect(),
             pads.iter().cloned().skip(len / 2).collect(),
         ));
@@ -82,15 +79,15 @@ fn pad(node: &NodeProto) -> TractResult<PaddingSpec> {
             node.check_value(
                 "auto_pad",
                 match s {
-                    "NOTSET" => Ok(PaddingSpec::Valid),
-                    "VALID" => Ok(PaddingSpec::Valid),
-                    "SAME_UPPER" => Ok(PaddingSpec::SameUpper),
-                    "SAME_LOWER" => Ok(PaddingSpec::SameLower),
+                    "NOTSET" => Ok(cnn::PaddingSpec::Valid),
+                    "VALID" => Ok(cnn::PaddingSpec::Valid),
+                    "SAME_UPPER" => Ok(cnn::PaddingSpec::SameUpper),
+                    "SAME_LOWER" => Ok(cnn::PaddingSpec::SameLower),
                     _ => Err(s),
                 },
             )
         })?
-        .unwrap_or(PaddingSpec::Valid))
+        .unwrap_or(cnn::PaddingSpec::Valid))
 }
 
 fn dilations(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
@@ -108,7 +105,7 @@ pub fn arg_max_min(
     let max = node.op_type == "ArgMax";
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let keepdims = node.get_attr_opt("keepdims")?.unwrap_or(true);
-    Ok((Box::new(tract_core::hir::nn::ArgMaxMin::new(max, axis, keepdims)), vec![]))
+    Ok((Box::new(ops::nn::ArgMaxMin::new(max, axis, keepdims)), vec![]))
 }
 
 pub fn batch_normalization(
@@ -118,11 +115,11 @@ pub fn batch_normalization(
     let epsilon = node.get_attr_opt("epsilon")?.unwrap_or(1e-5);
     let spatial = node.get_attr_opt("spatial")?.unwrap_or(0);
     assert_eq!(spatial, 0);
-    Ok((Box::new(batch_norm::BatchNorm::new(DataFormat::NCHW, epsilon, spatial != 0)), vec![]))
+    Ok((Box::new(batch_norm::BatchNorm::new(nn::DataFormat::NCHW, epsilon, spatial != 0)), vec![]))
 }
 
-fn common_conv(node: &NodeProto) -> TractResult<tract_core::hir::cnn::Conv> {
-    let mut op = tract_core::hir::cnn::Conv::default().padding(pad(node)?);
+fn common_conv(node: &NodeProto) -> TractResult<cnn::Conv> {
+    let mut op = ops::cnn::Conv::default().padding(pad(node)?);
     if let Some(kernel_shape) = node.get_attr_opt_tvec("kernel_shape")? {
         op = op.kernel_shape(kernel_shape);
     }
@@ -193,8 +190,8 @@ pub fn average_pool(
     let strides = strides(node)?;
     let count_include_pad = node.get_attr_opt("count_include_pad")?.unwrap_or(false);
     Ok((
-        Box::new(tractops::cnn::AvgPool::new(
-            tractops::cnn::PoolSpec::new(DataFormat::NCHW, kernel_shape, pad, None, strides, None),
+        Box::new(cnn::AvgPool::new(
+            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, None, strides, None),
             count_include_pad,
         )),
         vec![],
@@ -206,7 +203,7 @@ pub fn elu(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
-    Ok((Box::new(tractops::nn::elu(alpha)), vec![]))
+    Ok((Box::new(nn::elu(alpha)), vec![]))
 }
 
 pub fn global_lp_pool(
@@ -214,7 +211,7 @@ pub fn global_lp_pool(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let p: usize = node.get_attr_opt("p")?.unwrap_or(2);
-    Ok((Box::new(tractops::nn::GlobalLpPool::new(p)), vec![]))
+    Ok((Box::new(ops::nn::GlobalLpPool::new(p)), vec![]))
 }
 
 pub fn hard_sigmoid(
@@ -223,7 +220,7 @@ pub fn hard_sigmoid(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.2);
     let beta = node.get_attr_opt("beta")?.unwrap_or(0.5);
-    Ok((Box::new(tractops::nn::hard_sigmoid(alpha, beta)), vec![]))
+    Ok((Box::new(nn::hard_sigmoid(alpha, beta)), vec![]))
 }
 
 pub fn layer_hard_max(
@@ -231,7 +228,7 @@ pub fn layer_hard_max(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
-    Ok((Box::new(tractops::nn::LayerHardmax::new(axis)), vec![]))
+    Ok((Box::new(ops::nn::LayerHardmax::new(axis)), vec![]))
 }
 
 pub fn layer_log_soft_max(
@@ -239,7 +236,7 @@ pub fn layer_log_soft_max(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
-    Ok((Box::new(tractops::nn::LayerLogSoftmax::new(axis)), vec![]))
+    Ok((Box::new(ops::nn::LayerLogSoftmax::new(axis)), vec![]))
 }
 
 pub fn layer_soft_max(
@@ -247,7 +244,7 @@ pub fn layer_soft_max(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
-    Ok((Box::new(tractops::nn::LayerSoftmax::new(axis)), vec![]))
+    Ok((Box::new(ops::nn::LayerSoftmax::new(axis)), vec![]))
 }
 
 pub fn leaky_relu(
@@ -255,7 +252,7 @@ pub fn leaky_relu(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.01);
-    Ok((Box::new(tractops::nn::leaky_relu(alpha)), vec![]))
+    Ok((Box::new(nn::leaky_relu(alpha)), vec![]))
 }
 
 pub fn lrn(
@@ -277,8 +274,8 @@ pub fn max_pool(
     let pad = pad(node)?;
     let strides = strides(node)?;
     Ok((
-        Box::new(tractops::cnn::MaxPool::new(
-            tractops::cnn::PoolSpec::new(DataFormat::NCHW, kernel_shape, pad, None, strides, None),
+        Box::new(cnn::MaxPool::new(
+            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, None, strides, None),
             if node.output.len() == 2 { Some(DatumType::I64) } else { None },
         )),
         vec![],
@@ -291,7 +288,7 @@ pub fn parametric_softplus(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr("alpha")?;
     let beta = node.get_attr("beta")?;
-    Ok((Box::new(tractops::nn::parametric_softplus(alpha, beta)), vec![]))
+    Ok((Box::new(ops::nn::parametric_softplus(alpha, beta)), vec![]))
 }
 
 bin_to_super_type!(prelu, Prelu, declutter_bin: prelu_to_prelu_unary,
@@ -328,7 +325,7 @@ pub fn scaled_tanh(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr("alpha")?;
     let beta = node.get_attr("beta")?;
-    Ok((Box::new(tractops::nn::scaled_tanh(alpha, beta)), vec![]))
+    Ok((Box::new(ops::nn::scaled_tanh(alpha, beta)), vec![]))
 }
 
 element_wise!(shrink_op, Shrink { bias: f32, lambd: f32 },
@@ -339,8 +336,8 @@ element_wise!(shrink_op, Shrink { bias: f32, lambd: f32 },
 
 fn shrink_value<T>(x: T, s: &Shrink) -> T
 where
-    T: Datum + ::num_traits::Float,
-    f32: ::num_traits::AsPrimitive<T>,
+    T: Datum + tract_num_traits::Float,
+    f32: tract_num_traits::AsPrimitive<T>,
 {
     if x < -s.lambd.as_() {
         x + s.bias.as_()
@@ -366,7 +363,7 @@ pub fn selu(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.67326);
     let gamma = node.get_attr_opt("gamma")?.unwrap_or(1.0507);
-    Ok((Box::new(tractops::nn::selu(alpha, gamma)), vec![]))
+    Ok((Box::new(ops::nn::selu(alpha, gamma)), vec![]))
 }
 
 pub fn thresholded_relu(
@@ -374,5 +371,5 @@ pub fn thresholded_relu(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
-    Ok((Box::new(tractops::nn::threshold_relu(alpha)), vec![]))
+    Ok((Box::new(ops::nn::threshold_relu(alpha)), vec![]))
 }

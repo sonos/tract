@@ -1,4 +1,4 @@
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 use nom::combinator::*;
 use nom::IResult;

@@ -1,9 +1,8 @@
 use crate::model::{ParseResult, ParsingContext};
 use crate::pb::*;
-use tract_core::internal::*;
-use tract_core::infer::*;
+use tract_hir::internal::*;
 
-use tract_core::hir::scan::InferenceScan;
+use tract_hir::ops;
 
 pub fn scan(
     ctx: &ParsingContext,
@@ -23,10 +22,10 @@ pub fn scan(
     let mut mapped_inputs = vec![];
     let mut mapped_outputs = vec![];
     for ix in 0..num_hidden_state {
-        mapped_inputs.push(tract_core::ops::scan::InputMapping::State {
-            initializer: tract_core::ops::scan::StateInitializer::FromInput(ix),
+        mapped_inputs.push(ops::scan::InputMapping::State {
+            initializer: ops::scan::StateInitializer::FromInput(ix),
         });
-        mapped_outputs.push(tract_core::ops::scan::OutputMapping {
+        mapped_outputs.push(ops::scan::OutputMapping {
             state: true,
             last_value_slot: Some(ix),
             full_slot: None,
@@ -37,7 +36,7 @@ pub fn scan(
     }
 
     for (ix, ax) in scan_input_axes.iter().enumerate() {
-        let op = tract_core::hir::array::RmDims::new(vec![*ax]);
+        let op = ops::array::RmDims::new(vec![*ax]);
         let outlet = model.input_outlets()?[num_hidden_state + ix];
         InferenceModelPatch::intercept(
             &model,
@@ -48,7 +47,7 @@ pub fn scan(
         )?
         .apply(&mut model)?;
         model.set_outlet_fact(outlet, InferenceFact::default())?;
-        mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan {
+        mapped_inputs.push(ops::scan::InputMapping::Scan {
             axis: *ax,
             slot: ix + num_hidden_state,
             chunk: (),
@@ -56,7 +55,7 @@ pub fn scan(
     }
 
     for (ix, ax) in scan_output_axes.iter().enumerate() {
-        let op = tract_core::hir::array::AddDims::new(vec![*ax]);
+        let op = ops::array::AddDims::new(vec![*ax]);
         let outlet = model.output_outlets()?[num_hidden_state + ix];
         InferenceModelPatch::intercept(
             &model,
@@ -66,7 +65,7 @@ pub fn scan(
             InferenceFact::default(),
         )?
         .apply(&mut model)?;
-        mapped_outputs.push(tract_core::ops::scan::OutputMapping {
+        mapped_outputs.push(ops::scan::OutputMapping {
             state: false,
             axis: *ax,
             full_slot: Some(ix + num_hidden_state),
@@ -77,7 +76,7 @@ pub fn scan(
     }
 
     Ok((
-        Box::new(InferenceScan::new(
+        Box::new(ops::scan::InferenceScan::new(
             model,
             mapped_inputs,
             mapped_outputs,

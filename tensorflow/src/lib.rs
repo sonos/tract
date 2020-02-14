@@ -42,7 +42,6 @@ extern crate error_chain;
 extern crate log;
 #[cfg(any(test, featutre = "conform"))]
 extern crate env_logger;
-extern crate num_traits;
 extern crate prost;
 extern crate prost_types;
 pub extern crate tract_hir;

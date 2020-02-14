@@ -1,8 +1,8 @@
 use crate::pb::*;
 use attribute_proto::AttributeType;
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
-use num_traits::{AsPrimitive, Bounded};
+use tract_num_traits::{AsPrimitive, Bounded};
 
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Display};

@@ -1,8 +1,7 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ops::quant::*;
+use tract_hir::internal::*;
+use tract_hir::ops::quant::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("QuantizeLinear", quantize_linear);
@@ -93,6 +92,7 @@ impl InferenceRulesOp for QuantizeLinear {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
+        use tract_hir::ops::quant::*;
         let scale = target
             .outlet_fact(mapping[&node.inputs[1]])?
             .konst
@@ -120,7 +120,6 @@ impl InferenceRulesOp for QuantizeLinear {
 
     as_op!();
 }
-
 
 #[derive(Debug, Clone, new, Default)]
 pub struct DequantizeLinear {

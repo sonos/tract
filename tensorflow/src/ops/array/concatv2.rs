@@ -1,7 +1,6 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::infer::*;
+use tract_hir::internal::*;
 
 pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     Ok(Box::new(ConcatV2))
@@ -13,7 +12,7 @@ pub struct ConcatV2;
 impl StatelessOp for ConcatV2 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let axis: i32 = *inputs.pop().unwrap().to_scalar::<i32>()?;
-        tract_hir::array::Concat::new(axis as _).eval(inputs)
+        tract_hir::ops::array::Concat::new(axis as _).eval(inputs)
     }
 }
 
@@ -81,7 +80,7 @@ impl InferenceRulesOp for ConcatV2 {
                 model,
                 node,
                 &node.inputs[..node.inputs.len() - 1],
-                tract_hir::array::Concat::new(*axis as _),
+                tract_hir::ops::array::Concat::new(*axis as _),
             )?))
         } else {
             Ok(None)

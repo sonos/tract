@@ -4,10 +4,8 @@ use proptest::prelude::*;
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use proptest::*;
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ndarray::*;
-use tract_core::shapefactoid;
+use tract_hir::internal::*;
+use tract_ndarray::*;
 
 mod conv_plus_conv;
 mod delay_plus_pool;
@@ -92,7 +90,7 @@ fn proptest_regular_against_pulse(
 proptest! {
     #[test]
     fn proptest_crop(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
-        use tract_core::ops::array::Slice;
+        use tract_hir::ops::array::Slice;
         let full_len = input_len + begin + end;
         let mut model = InferenceModel::default();
         let a = model
@@ -107,7 +105,7 @@ proptest! {
 
     #[test]
     fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
-        use tract_core::ops::array::{ Pad, PadMode };
+        use tract_hir::ops::array::{ Pad, PadMode };
         let mut model = InferenceModel::default();
         let a = model
             .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
@@ -128,7 +126,7 @@ fn vec(len: impl Strategy<Value = usize>) -> impl Strategy<Value = Vec<f32>> {
 
 #[test]
 fn test_simple_conv() {
-    use tract_core::hir::cnn::*;
+    use tract_hir::ops::cnn::*;
 
     let mut model = InferenceModel::default();
     let ker = model.add_const("kernel", tensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();
@@ -145,7 +143,7 @@ fn test_simple_conv() {
 
 #[test]
 fn test_crop_after_1() {
-    use tract_core::ops::array::Slice;
+    use tract_hir::ops::array::Slice;
     let mut model = InferenceModel::default();
     let a =
         model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S))).unwrap();
@@ -158,7 +156,7 @@ fn test_crop_after_1() {
 
 #[test]
 fn test_pad_after_1() {
-    use tract_core::ops::array::{Pad, PadMode};
+    use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
     let a =
         model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S))).unwrap();
@@ -177,7 +175,7 @@ fn test_pad_after_1() {
 
 #[test]
 fn test_pad_before_1() {
-    use tract_core::ops::array::{Pad, PadMode};
+    use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
     let a =
         model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S))).unwrap();
@@ -196,7 +194,7 @@ fn test_pad_before_1() {
 
 #[test]
 fn test_pad_before_2() {
-    use tract_core::ops::array::{Pad, PadMode};
+    use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
     let a =
         model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S))).unwrap();

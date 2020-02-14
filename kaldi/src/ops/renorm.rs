@@ -1,6 +1,4 @@
-use tract_core::internal::*;
-use tract_core::infer::*;
-use tract_core::ndarray;
+use tract_hir::internal::*;
 
 use crate::model::ParsingContext;
 
@@ -30,8 +28,8 @@ impl Op for Renorm {
 impl StatelessOp for Renorm {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let mut input: ndarray::Array2<f32> =
-            input.into_tensor().into_array()?.into_dimensionality::<ndarray::Ix2>()?;
+        let mut input: tract_ndarray::Array2<f32> =
+            input.into_tensor().into_array()?.into_dimensionality::<tract_ndarray::Ix2>()?;
         let rms_sqrt_d = self.target_rms * (input.shape()[1] as f32).sqrt();
         input.genrows_mut().into_iter().for_each(|mut row| {
             let factor = rms_sqrt_d

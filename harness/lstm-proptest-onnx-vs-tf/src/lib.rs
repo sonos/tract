@@ -2,9 +2,9 @@
 
 use proptest::prelude::*;
 
-use tract_core::internal::*;
-use tract_core::infer::*;
-use tract_core::ndarray::*;
+use tract_onnx::prelude::*;
+use tract_onnx::tract_hir;
+use tract_ndarray::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct LstmProblem {
@@ -112,23 +112,23 @@ impl LstmProblem {
 
         let last_h = model.wire_node(
             "last_h",
-            ::tract_core::hir::array::Split::new(0, 2, Some(vec![self.length - 1, 1])),
+            tract_hir::ops::array::Split::new(0, 2, Some(vec![self.length - 1, 1])),
             &[lstm[6]],
         )?[1];
         let last_h_squeezed = model.wire_node(
             "last_h_squeezed",
-            ::tract_core::hir::array::RmDims::new(vec![0]),
+            tract_hir::ops::array::RmDims::new(vec![0]),
             &[last_h],
         )?[0];
 
         let last_cs = model.wire_node(
             "last_cs",
-            ::tract_core::hir::array::Split::new(0, 2, Some(vec![self.length - 1, 1])),
+            tract_hir::ops::array::Split::new(0, 2, Some(vec![self.length - 1, 1])),
             &[lstm[1]],
         )?[1];
         let last_cs_squeezed = model.wire_node(
             "last_cs_squeezed",
-            ::tract_core::hir::array::RmDims::new(vec![0]),
+            tract_hir::ops::array::RmDims::new(vec![0]),
             &[last_cs],
         )?[0];
 

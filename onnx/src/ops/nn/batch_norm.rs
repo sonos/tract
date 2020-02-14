@@ -1,9 +1,6 @@
-use num_traits::AsPrimitive;
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ndarray;
-use tract_core::ndarray::Axis;
-use tract_core::ops::nn::DataFormat;
+use tract_hir::internal::*;
+use tract_hir::ops::nn::DataFormat;
+use tract_num_traits::AsPrimitive;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct BatchNorm {
@@ -22,7 +19,7 @@ impl BatchNorm {
         var: &Tensor,
     ) -> TractResult<(Tensor, Tensor)>
     where
-        T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ndarray::ScalarOperand,
+        T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + tract_ndarray::ScalarOperand,
         f32: AsPrimitive<T>,
     {
         let scale = scale.to_array_view::<T>()?.into_shape((c_dim,))?;
@@ -39,7 +36,7 @@ impl BatchNorm {
 
     fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
     where
-        T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ndarray::ScalarOperand,
+        T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + tract_ndarray::ScalarOperand,
         f32: AsPrimitive<T>,
     {
         let (x, scale, beta, mean, var) = args_5!(&mut inputs);
@@ -54,7 +51,7 @@ impl BatchNorm {
         let mut x = x.into_tensor().into_array::<T>()?;
 
         for c in 0..c_dim {
-            x.slice_axis_mut(Axis(c_axis), (c..=c).into())
+            x.slice_axis_mut(tract_ndarray::Axis(c_axis), (c..=c).into())
                 .mapv_inplace(|x| x * slope[c] + intercept[c]);
         }
         return Ok(tvec!(x.into_arc_tensor()));
@@ -127,9 +124,10 @@ impl InferenceRulesOp for BatchNorm {
             let c_axis = self.data_format.shape(&x_shape).c_axis();
             let c_dim = self.data_format.shape(&x_shape).c_dim().to_integer()? as usize;
 
-            let (mut slope, mut inter) = dispatch_floatlike!(Self::to_slope_and_inter(x.datum_type)(
-                self, c_dim, &scale, &beta, &mean, &var
-            ))?;
+            let (mut slope, mut inter) =
+                dispatch_floatlike!(Self::to_slope_and_inter(x.datum_type)(
+                    self, c_dim, &scale, &beta, &mean, &var
+                ))?;
 
             while c_axis + slope.rank() < x_shape.len() {
                 slope.insert_axis(slope.rank())?;
@@ -142,13 +140,13 @@ impl InferenceRulesOp for BatchNorm {
             let wire = mapping[&node.inputs[0]];
             let wire = target.wire_node(
                 format!("{}-mul", node.name),
-                tract_core::ops::math::mul::bin_typed(),
-                &[wire, slope]
+                tract_hir::ops::math::mul::bin_typed(),
+                &[wire, slope],
             )?[0];
             return target.wire_node(
                 &*node.name,
-                tract_core::ops::math::add::bin_typed(),
-                &[wire, inter]
+                tract_hir::ops::math::add::bin_typed(),
+                &[wire, inter],
             );
         }
         bail!("Params are not const")

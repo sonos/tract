@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-use crate::ops::nn::{GlobalAvgPool, GlobalLpPool, GlobalMaxPool};
+pub use crate::ops::nn::{GlobalAvgPool, GlobalLpPool, GlobalMaxPool};
 
 impl InferenceRulesOp for GlobalAvgPool {
     fn rules<'r, 'p: 'r, 's: 'r>(

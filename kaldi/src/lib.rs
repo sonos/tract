@@ -4,8 +4,6 @@ extern crate derive_new;
 extern crate error_chain;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate tract_core;
 
 pub mod model;
 mod ops;

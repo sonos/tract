@@ -1,57 +1,55 @@
-use tract_core::ops as tractops;
-
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::hir::binary::Nary;
+use tract_hir::internal::*;
+use tract_hir::ops;
+use tract_hir::ops::binary::Nary;
 
 mod mat_mul_integer;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("Add", |_, _| Ok((Box::new(tractops::math::add::bin()), vec![])));
-    reg.insert("Sub", |_, _| Ok((Box::new(tractops::math::sub::bin()), vec![])));
-    reg.insert("Mul", |_, _| Ok((Box::new(tractops::math::mul::bin()), vec![])));
-    reg.insert("Div", |_, _| Ok((Box::new(tractops::math::div::bin()), vec![])));
+    reg.insert("Add", |_, _| Ok((Box::new(ops::math::add::bin()), vec![])));
+    reg.insert("Sub", |_, _| Ok((Box::new(ops::math::sub::bin()), vec![])));
+    reg.insert("Mul", |_, _| Ok((Box::new(ops::math::mul::bin()), vec![])));
+    reg.insert("Div", |_, _| Ok((Box::new(ops::math::div::bin()), vec![])));
 
-    reg.insert("Sum", |_, _| Ok((Box::new(Nary(Box::new(tractops::math::Add), false)), vec![])));
-    reg.insert("Max", |_, _| Ok((Box::new(Nary(Box::new(tractops::math::Max), false)), vec![])));
-    reg.insert("Min", |_, _| Ok((Box::new(Nary(Box::new(tractops::math::Min), false)), vec![])));
-    reg.insert("Mean", |_, _| Ok((Box::new(Nary(Box::new(tractops::math::Add), true)), vec![])));
+    reg.insert("Sum", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Add), false)), vec![])));
+    reg.insert("Max", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Max), false)), vec![])));
+    reg.insert("Min", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Min), false)), vec![])));
+    reg.insert("Mean", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Add), true)), vec![])));
 
-    reg.insert("Abs", |_, _| Ok((Box::new(tractops::math::abs()), vec![])));
-    reg.insert("Ceil", |_, _| Ok((Box::new(tractops::math::ceil()), vec![])));
-    reg.insert("Floor", |_, _| Ok((Box::new(tractops::math::floor()), vec![])));
+    reg.insert("Abs", |_, _| Ok((Box::new(ops::math::abs()), vec![])));
+    reg.insert("Ceil", |_, _| Ok((Box::new(ops::math::ceil()), vec![])));
+    reg.insert("Floor", |_, _| Ok((Box::new(ops::math::floor()), vec![])));
     reg.insert("Clip", clip);
 
-    reg.insert("Cos", |_, _| Ok((Box::new(tractops::math::cos()), vec![])));
-    reg.insert("Sin", |_, _| Ok((Box::new(tractops::math::sin()), vec![])));
-    reg.insert("Tan", |_, _| Ok((Box::new(tractops::math::tan()), vec![])));
-    reg.insert("Acos", |_, _| Ok((Box::new(tractops::math::acos()), vec![])));
-    reg.insert("Asin", |_, _| Ok((Box::new(tractops::math::asin()), vec![])));
-    reg.insert("Atan", |_, _| Ok((Box::new(tractops::math::atan()), vec![])));
+    reg.insert("Cos", |_, _| Ok((Box::new(ops::math::cos()), vec![])));
+    reg.insert("Sin", |_, _| Ok((Box::new(ops::math::sin()), vec![])));
+    reg.insert("Tan", |_, _| Ok((Box::new(ops::math::tan()), vec![])));
+    reg.insert("Acos", |_, _| Ok((Box::new(ops::math::acos()), vec![])));
+    reg.insert("Asin", |_, _| Ok((Box::new(ops::math::asin()), vec![])));
+    reg.insert("Atan", |_, _| Ok((Box::new(ops::math::atan()), vec![])));
 
-    reg.insert("Cosh", |_, _| Ok((Box::new(tractops::math::cosh()), vec![])));
-    reg.insert("Sinh", |_, _| Ok((Box::new(tractops::math::sinh()), vec![])));
-    reg.insert("Tanh", |_, _| Ok((Box::new(tractops::math::tanh()), vec![])));
-    reg.insert("Acosh", |_, _| Ok((Box::new(tractops::math::acosh()), vec![])));
-    reg.insert("Asinh", |_, _| Ok((Box::new(tractops::math::asinh()), vec![])));
-    reg.insert("Atanh", |_, _| Ok((Box::new(tractops::math::atanh()), vec![])));
+    reg.insert("Cosh", |_, _| Ok((Box::new(ops::math::cosh()), vec![])));
+    reg.insert("Sinh", |_, _| Ok((Box::new(ops::math::sinh()), vec![])));
+    reg.insert("Tanh", |_, _| Ok((Box::new(ops::math::tanh()), vec![])));
+    reg.insert("Acosh", |_, _| Ok((Box::new(ops::math::acosh()), vec![])));
+    reg.insert("Asinh", |_, _| Ok((Box::new(ops::math::asinh()), vec![])));
+    reg.insert("Atanh", |_, _| Ok((Box::new(ops::math::atanh()), vec![])));
 
     reg.insert("Erf", |_, _| Ok((Box::new(erf()), vec![])));
-    reg.insert("Exp", |_, _| Ok((Box::new(tractops::math::exp()), vec![])));
-    reg.insert("Log", |_, _| Ok((Box::new(tractops::math::ln()), vec![])));
-    reg.insert("Sqrt", |_, _| Ok((Box::new(tractops::math::sqrt()), vec![])));
-    reg.insert("Rsqrt", |_, _| Ok((Box::new(tractops::math::rsqrt()), vec![])));
+    reg.insert("Exp", |_, _| Ok((Box::new(ops::math::exp()), vec![])));
+    reg.insert("Log", |_, _| Ok((Box::new(ops::math::ln()), vec![])));
+    reg.insert("Sqrt", |_, _| Ok((Box::new(ops::math::sqrt()), vec![])));
+    reg.insert("Rsqrt", |_, _| Ok((Box::new(ops::math::rsqrt()), vec![])));
 
     reg.insert("IsNaN", |_, _| Ok((Box::new(is_nan()), vec![])));
-    reg.insert("Neg", |_, _| Ok((Box::new(tractops::math::neg()), vec![])));
-    reg.insert("Sign", |_, _| Ok((Box::new(tractops::math::sign()), vec![])));
-    reg.insert("Reciprocal", |_, _| Ok((Box::new(tractops::math::recip()), vec![])));
+    reg.insert("Neg", |_, _| Ok((Box::new(ops::math::neg()), vec![])));
+    reg.insert("Sign", |_, _| Ok((Box::new(ops::math::sign()), vec![])));
+    reg.insert("Reciprocal", |_, _| Ok((Box::new(ops::math::recip()), vec![])));
 
-    reg.insert("Pow", |_, _| Ok((Box::new(tractops::math::pow::bin()), vec![])));
+    reg.insert("Pow", |_, _| Ok((Box::new(ops::math::pow::bin()), vec![])));
 
-    reg.insert("MatMul", |_, _| Ok((Box::new(tractops::matmul::MatMul::default()), vec![])));
+    reg.insert("MatMul", |_, _| Ok((Box::new(ops::matmul::MatMul::default()), vec![])));
     reg.insert("MatMulInteger", mat_mul_integer::mat_mul_integer);
     reg.insert("QLinearMatMul", mat_mul_integer::q_linear_mat_mul);
     reg.insert("Gemm", gemm);
@@ -64,10 +62,10 @@ pub fn clip(
     let min: Option<f32> = node.get_attr_opt("min")?;
     let max: Option<f32> = node.get_attr_opt("max")?;
     let op: Box<dyn InferenceOp> = match (min, max) {
-        (Some(min), Some(max)) => Box::new(tractops::math::scalar_min_max(max.into(), min.into())),
-        (None, Some(max)) => Box::new(tractops::math::scalar_min(max.into())),
-        (Some(min), None) => Box::new(tractops::math::scalar_max(min.into())),
-        (None, None) => Box::new(tractops::identity::Identity::default()),
+        (Some(min), Some(max)) => Box::new(ops::math::scalar_min_max(max.into(), min.into())),
+        (None, Some(max)) => Box::new(ops::math::scalar_min(max.into())),
+        (Some(min), None) => Box::new(ops::math::scalar_max(min.into())),
+        (None, None) => Box::new(ops::identity::Identity::default()),
     };
     Ok((op, vec![]))
 }
@@ -170,7 +168,6 @@ impl InferenceRulesOp for Gemm {
         model: &InferenceModel,
         node: &InferenceNode,
     ) -> TractResult<Option<InferenceModelPatch>> {
-        use tract_core::ops;
         let mut patch = InferenceModelPatch::default();
         let a = patch.tap_model(model, node.inputs[0])?;
         let b = patch.tap_model(model, node.inputs[1])?;

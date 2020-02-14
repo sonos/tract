@@ -5,7 +5,7 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2018"
 
 [dependencies]
-tract-core = { path = "../../core" }
+tract-hir = { path = "../../hir" }
 env_logger = "0.7.0"
 
 [dev-dependencies]

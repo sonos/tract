@@ -1,7 +1,7 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
-pub use crate::ops::array::Pad;
+pub use crate::ops::array::{Pad, PadMode};
 
 impl InferenceRulesOp for Pad {
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -23,4 +23,3 @@ impl InferenceRulesOp for Pad {
     as_op!();
     to_typed!();
 }
-

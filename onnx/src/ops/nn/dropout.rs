@@ -1,9 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::infer::*;
-use tract_core::internal::*;
-use tract_core::ndarray::*;
-use tract_core::ops::identity::Identity;
+use tract_hir::internal::*;
 
 pub fn dropout(
     _ctx: &ParsingContext,
@@ -30,7 +27,7 @@ impl StatelessOp for Dropout {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         if self.output_mask {
             let input = args_1!(inputs);
-            let mask = ArrayD::from_elem(input.shape(), true);
+            let mask = tract_ndarray::ArrayD::from_elem(input.shape(), true);
             Ok(tvec!(input, mask.into_arc_tensor()))
         } else {
             Ok(inputs)
@@ -76,7 +73,11 @@ impl TypedOp for Dropout {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if node.outputs.len() == 1 || node.outputs[1].successors.len() == 0 {
-            Ok(Some(TypedModelPatch::single_unary_op(model, node, Identity)?))
+            Ok(Some(TypedModelPatch::single_unary_op(
+                model,
+                node,
+                tract_hir::ops::identity::Identity,
+            )?))
         } else {
             Ok(None)
         }

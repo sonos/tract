@@ -1,8 +1,7 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::internal::*;
-use tract_hir::array::Squeeze;
+use tract_hir::internal::*;
+use tract_hir::ops::array::Squeeze;
 
 pub fn squeeze(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;
@@ -19,7 +18,6 @@ pub fn squeeze(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract_hir::prelude::*;
     use tract_ndarray::Array;
 
     fn run<I>(op: Squeeze, input: I) -> Tensor

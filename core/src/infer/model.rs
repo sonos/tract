@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::factoid::Factoid;
 use super::{InferenceFact, InferenceModel, InferenceNode, InferenceOp};
 use crate::errors::*;
-use crate::hir::dummy::Dummy;
+use crate::hir::ops::dummy::Dummy;
 use crate::model::dsl::ModelSpecialOps;
 use crate::model::translator::Translate;
 use crate::model::NormalizedModel;
@@ -109,14 +109,14 @@ impl ModelSpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
         name: impl Into<String>,
         fact: InferenceFact,
     ) -> TractResult<OutletId> {
-        let id = self.add_node(name, crate::hir::source::Source::new(), tvec!(fact))?;
+        let id = self.add_node(name, crate::hir::ops::source::Source::new(), tvec!(fact))?;
         let id = OutletId::new(id, 0);
         self.inputs.push(id);
         Ok(id)
     }
 
     fn is_source(op: &dyn Op) -> bool {
-        op.downcast_ref::<crate::hir::source::Source>().is_some()
+        op.downcast_ref::<crate::hir::ops::source::Source>().is_some()
     }
 
     fn create_dummy(&self) -> Box<dyn InferenceOp> {

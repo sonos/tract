@@ -1,5 +1,4 @@
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::infer::*;
+use tract_hir::internal::*;
 
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
@@ -27,9 +26,9 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     vars::register_all_ops(reg);
     reg.insert("Cast", cast);
     reg.insert("Const", konst);
-    reg.insert("Identity", |_, _| Ok(Box::new(tract_hir::tract_core::ops::identity::Identity)));
+    reg.insert("Identity", |_, _| Ok(Box::new(tract_hir::ops::identity::Identity)));
     reg.insert("NoOp", |_, _| Ok(Box::new(Noop)));
-    reg.insert("Placeholder", |_, _| Ok(Box::new(::tract_hir::source::Source::new())));
+    reg.insert("Placeholder", |_, _| Ok(Box::new(tract_hir::ops::source::Source::new())));
 }
 
 fn cast(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

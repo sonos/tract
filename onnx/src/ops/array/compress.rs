@@ -1,7 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
-use tract_core::internal::*;
-use tract_core::infer::*;
+use tract_hir::internal::*;
 
 pub fn compress(
     _ctx: &ParsingContext,
@@ -17,7 +16,7 @@ pub struct Compress {
 
 impl Compress {
     fn eval_t<T: Datum>(&self, input: Arc<Tensor>, conds: &[bool]) -> TractResult<Arc<Tensor>> {
-        use tract_core::ndarray::*;
+        use tract_ndarray::*;
         let compressed_dim = conds.iter().filter(|c| **c).count();
         if let Some(ax) = self.axis {
             let input = input.to_array_view::<T>()?;

@@ -2,9 +2,7 @@ use std::convert::TryInto;
 
 use std::collections::HashMap;
 
-use tract_core::hir::framework::Framework;
-use tract_core::infer::*;
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 use crate::pb;
 use prost::Message;
@@ -109,7 +107,7 @@ impl<'a> ParsingContext<'a> {
             let (op, closures) = match self.framework.op_register.0.get(&pbnode.op_type) {
                 Some(builder) => (builder)(&ctx, pbnode)?,
                 None => (
-                    tract_core::ops::unimpl::UnimplementedOp::new(
+                    tract_hir::ops::unimpl::UnimplementedOp::new(
                         pbnode.output.len(),
                         &*pbnode.op_type,
                         format!("{:?}", pbnode),

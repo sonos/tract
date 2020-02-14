@@ -11,7 +11,7 @@ mod slice;
 mod tile;
 
 pub use self::broadcast::MultiBroadcastTo;
-pub use self::concat::{Concat, ConcatSlice};
+pub use self::concat::{ConcatSlice, TypedConcat};
 pub use self::flatten::Flatten;
 pub use self::gather::Gather;
 pub use self::pad::{Pad, PadMode};

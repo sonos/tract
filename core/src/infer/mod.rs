@@ -16,6 +16,7 @@ mod optim;
 
 pub use crate::dim::TDim;
 
+pub use wrap;
 pub use self::fact::InferenceFact;
 pub use self::factoid::*;
 pub use self::ops::InferenceOp;

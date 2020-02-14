@@ -1,8 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::internal::*;
-use tract_core::infer::*;
-use tract_core::ndarray;
+use tract_hir::internal::*;
 
 pub fn slice(
     ctx: &ParsingContext,
@@ -43,8 +41,8 @@ impl Slice1 {
             let b = if b > input.shape()[axis] as isize { input.shape()[axis] as isize } else { b };
             let e = if e > input.shape()[axis] as isize { input.shape()[axis] as isize } else { e };
             input.slice_axis_inplace(
-                ndarray::Axis(axis),
-                ndarray::Slice::from((b as isize)..(e as isize)),
+                tract_ndarray::Axis(axis),
+                tract_ndarray::Slice::from((b as isize)..(e as isize)),
             );
         }
         Ok(Tensor::from(input.to_owned()).into())
@@ -132,7 +130,7 @@ impl InferenceRulesOp for Slice1 {
                 if b > 0 || e < dim as usize {
                     wire = target.wire_node(
                         format!("{}-axis-{}", node.name, axis),
-                        tract_core::ops::array::Slice::new(axis, b, e),
+                        tract_hir::ops::array::Slice::new(axis, b, e),
                         [wire].as_ref(),
                     )?[0];
                 }
@@ -153,7 +151,7 @@ fn slice10(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let mut optional_inputs = crate::model::optional_inputs(node).skip(3);
     Ok((
-        Box::new(tract_core::hir::array::StridedSlice::onnx10(
+        Box::new(tract_hir::ops::array::StridedSlice::onnx10(
             optional_inputs.next().unwrap(),
             optional_inputs.next().unwrap(),
         )),

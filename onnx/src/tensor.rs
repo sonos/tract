@@ -2,9 +2,7 @@ use crate::pb::tensor_proto::DataType;
 use crate::pb::*;
 use prost::Message;
 use std::convert::{TryFrom, TryInto};
-use tract_core::internal::*;
-use tract_core::infer::*;
-use tract_core::*;
+use tract_hir::internal::*;
 
 impl TryFrom<DataType> for DatumType {
     type Error = TractError;
@@ -84,7 +82,7 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                 }
             }
         } else {
-            use ndarray::Array;
+            use tract_ndarray::Array;
             let it = match dt {
                 DatumType::Bool => {
                     Array::from_shape_vec(&*shape, t.int32_data.iter().map(|&x| x != 0).collect())?

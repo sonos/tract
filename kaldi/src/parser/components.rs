@@ -1,4 +1,4 @@
-use tract_core::prelude::*;
+use tract_hir::prelude::*;
 
 use maplit::hashmap;
 use std::collections::HashMap;
@@ -61,7 +61,7 @@ impl KaldiAttributeKind {
         } else {
             map(
                 map_res(many_m_n(len, len, le_f32), move |buf| {
-                    tract_core::ndarray::Array2::from_shape_vec((rows as usize, cols as usize), buf)
+                    tract_ndarray::Array2::from_shape_vec((rows as usize, cols as usize), buf)
                 }),
                 Tensor::from,
             )(i)

@@ -28,12 +28,12 @@ impl ConcatSlice {
 }
 
 #[derive(new, Debug, Clone)]
-pub struct Concat {
+pub struct TypedConcat {
     pub axis: usize,
     pub slices: TVec<ConcatSlice>,
 }
 
-impl Concat {
+impl TypedConcat {
     fn to_codegen_op<T: Datum>(&self, input_shapes: &[&[usize]]) -> TractResult<Box<dyn TypedOp>> {
         let mut fixed_slices: TVec<FixedConcatSlice<T>> = tvec![];
         let mut input_idx = 0;
@@ -69,7 +69,7 @@ impl Concat {
     }
 }
 
-impl Op for Concat {
+impl Op for TypedConcat {
     fn name(&self) -> Cow<str> {
         "Concat".into()
     }
@@ -78,7 +78,7 @@ impl Op for Concat {
     not_a_pulsed_op!();
 }
 
-impl TypedOp for Concat {
+impl TypedOp for TypedConcat {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
@@ -207,7 +207,7 @@ impl TypedOp for Concat {
     }
 }
 
-impl StatelessOp for Concat {
+impl StatelessOp for TypedConcat {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let dts = inputs
@@ -230,7 +230,7 @@ impl StatelessOp for Concat {
     }
 }
 
-impl Concat {
+impl TypedConcat {
     fn pulsify_along_concat_axis_t<T: Datum>(
         &self,
         _source: &NormalizedModel,
