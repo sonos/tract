@@ -6,10 +6,10 @@ use std::fmt::{Debug, Display};
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
 pub fn eval_order<
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 >(
-    model: &super::ModelImpl<TI, O>,
+    model: &super::ModelImpl<F, O>,
 ) -> TractResult<Vec<usize>> {
     let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
@@ -17,8 +17,8 @@ pub fn eval_order<
 }
 
 /// Find a working evaluation order for a list of nodes.
-pub fn eval_order_for_nodes<TI: Fact, O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op>>(
-    nodes: &[BaseNode<TI, O>],
+pub fn eval_order_for_nodes<F: Fact, O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op>>(
+    nodes: &[BaseNode<F, O>],
     inputs: &[usize],
     targets: &[usize],
 ) -> TractResult<Vec<usize>> {

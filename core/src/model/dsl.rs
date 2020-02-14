@@ -5,15 +5,15 @@ use std::fmt;
 
 pub use super::{InletId, ModelImpl, Node, OutletId};
 
-pub trait ModelSpecialOps<TI, O>
+pub trait ModelSpecialOps<F, O>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// Adds a source op to the network.
     ///
     /// The model will assume this is an input.
-    fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<OutletId>;
+    fn add_source(&mut self, name: impl Into<String>, fact: F) -> TractResult<OutletId>;
     fn is_source(op: &dyn Op) -> bool;
 
     fn create_dummy(&self) -> O;
@@ -56,29 +56,29 @@ impl ModelSpecialOps<PulsedFact, Box<dyn TypedOp>> for PulsedModel {
 }
 
 /// Extensions on ModelImpl to explore and build graph models more easily.
-pub trait ModelDsl<TI, O>
+pub trait ModelDsl<F, O>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// Find the lone precursor of a node, if applicable.
-    fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
+    fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>>;
     /// Find the count-th precursor of a node `id` in a chain of single tensor
     /// operation, if applicable.
-    fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
+    fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<F, O>>>;
     /// Find the lone succesor of a node, if applicable.
-    fn single_succ(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
+    fn single_succ(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>>;
     /// Find the count-th successor of a node `id` in a chain of single tensor
     /// operation, if applicable.
-    fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
+    fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<F, O>>>;
 }
 
-impl<TI, O> ModelDsl<TI, O> for ModelImpl<TI, O>
+impl<F, O> ModelDsl<F, O> for ModelImpl<F, O>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>> {
+    fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
         let node = &self.nodes()[id];
         if node.inputs.len() != 1 {
             return Ok(None);
@@ -90,7 +90,7 @@ where
         Ok(Some(prec))
     }
 
-    fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<TI, O>>> {
+    fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<F, O>>> {
         let mut node = self.node(id);
         for _ in 0..count {
             if let Some(next) = self.single_prec(node.id)? {
@@ -102,7 +102,7 @@ where
         Ok(Some(node))
     }
 
-    fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<TI, O>>> {
+    fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<F, O>>> {
         let mut node = self.node(id);
         for _ in 0..count {
             if let Some(next) = self.single_succ(node.id)? {
@@ -114,7 +114,7 @@ where
         Ok(Some(node))
     }
 
-    fn single_succ(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>> {
+    fn single_succ(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
         let node = &self.nodes()[id];
         if node.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
             return Ok(None);
@@ -138,9 +138,9 @@ pub trait ModelDslConst {
     ) -> TractResult<OutletId>;
 }
 
-impl<TI: Fact + Clone + 'static, O> ModelDslConst for ModelImpl<TI, O>
+impl<F: Fact + Clone + 'static, O> ModelDslConst for ModelImpl<F, O>
 where
-    TI: Fact + Clone + 'static + From<Arc<Tensor>>,
+    F: Fact + Clone + 'static + From<Arc<Tensor>>,
     O: fmt::Debug
         + fmt::Display
         + From<crate::ops::konst::Const>
@@ -155,14 +155,14 @@ where
         v: impl IntoArcTensor,
     ) -> TractResult<OutletId> {
         let v = v.into_arc_tensor();
-        let fact = TI::from(v.clone());
+        let fact = F::from(v.clone());
         self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }
 }
 
-pub trait ModelWireNode<TI, O>
+pub trait ModelWireNode<F, O>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn wire_node(

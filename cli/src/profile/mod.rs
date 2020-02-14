@@ -55,9 +55,9 @@ impl ProfileData {
         }
     }
 
-    pub fn print_most_consuming_ops<TI, O>(&self, model: &ModelImpl<TI, O>) -> CliResult<()>
+    pub fn print_most_consuming_ops<F, O>(&self, model: &ModelImpl<F, O>) -> CliResult<()>
     where
-        TI: Fact + Clone + 'static,
+        F: Fact + Clone + 'static,
         O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
     {
         let sum = self.summed();

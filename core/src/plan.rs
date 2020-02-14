@@ -14,36 +14,36 @@ pub struct SessionState {
 }
 
 #[derive(Debug, Clone)]
-pub struct SimplePlan<TI, O, M>
+pub struct SimplePlan<F, O, M>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<ModelImpl<TI, O>>,
+    M: Borrow<ModelImpl<F, O>>,
 {
     pub model: M,
     pub outputs: Vec<OutletId>,
     pub order: Vec<usize>,
     pub flush_lists: Vec<TVec<usize>>,
-    _casper: PhantomData<(TI, O)>,
+    _casper: PhantomData<(F, O)>,
 }
 
-impl<TI, O, M> SimplePlan<TI, O, M>
+impl<F, O, M> SimplePlan<F, O, M>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<ModelImpl<TI, O>>,
+    M: Borrow<ModelImpl<F, O>>,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
-    pub fn new(model: M) -> TractResult<SimplePlan<TI, O, M>> {
+    pub fn new(model: M) -> TractResult<SimplePlan<F, O, M>> {
         let outputs = model.borrow().output_outlets()?.iter().cloned().collect::<Vec<OutletId>>();
         Self::new_for_outputs(model, &outputs)
     }
     /// This contructor returns a plan that will compute the specified output.
-    pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<TI, O, M>> {
+    pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<F, O, M>> {
         Self::new_for_outputs(model, &[output])
     }
     /// This contructor returns a plan that will compute all specified outputs in one pass.
-    pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<TI, O, M>> {
+    pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<F, O, M>> {
         let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
         let order = eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes)?;
@@ -76,34 +76,34 @@ where
         state.run(inputs)
     }
 
-    pub fn model(&self) -> &ModelImpl<TI, O> {
+    pub fn model(&self) -> &ModelImpl<F, O> {
         self.model.borrow()
     }
 }
 
 #[derive(Debug)]
-pub struct SimpleState<TI, O, M, P>
+pub struct SimpleState<F, O, M, P>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<ModelImpl<TI, O>>,
-    P: Borrow<SimplePlan<TI, O, M>>,
+    M: Borrow<ModelImpl<F, O>>,
+    P: Borrow<SimplePlan<F, O, M>>,
 {
     plans: Vec<P>,
     pub states: Vec<Option<Box<dyn OpState>>>,
     pub session_state: SessionState,
     pub values: Vec<Option<TVec<Arc<Tensor>>>>,
-    _phantom: PhantomData<(M, TI, O)>,
+    _phantom: PhantomData<(M, F, O)>,
 }
 
-impl<TI, O, M, P> Clone for SimpleState<TI, O, M, P>
+impl<F, O, M, P> Clone for SimpleState<F, O, M, P>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<ModelImpl<TI, O>>,
-    P: Borrow<SimplePlan<TI, O, M>> + Clone,
+    M: Borrow<ModelImpl<F, O>>,
+    P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
-    fn clone(&self) -> SimpleState<TI, O, M, P> {
+    fn clone(&self) -> SimpleState<F, O, M, P> {
         let states = self
             .states
             .iter()
@@ -121,25 +121,25 @@ where
     }
 }
 
-impl<TI, O, M, P> SimpleState<TI, O, M, P>
+impl<F, O, M, P> SimpleState<F, O, M, P>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<ModelImpl<TI, O>>,
-    P: Borrow<SimplePlan<TI, O, M>> + Clone,
+    M: Borrow<ModelImpl<F, O>>,
+    P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
-    pub fn new(plan: P) -> TractResult<SimpleState<TI, O, M, P>> {
+    pub fn new(plan: P) -> TractResult<SimpleState<F, O, M, P>> {
         Self::new_multiplan(vec![plan])
     }
 
-    pub fn new_multiplan(plans: Vec<P>) -> TractResult<SimpleState<TI, O, M, P>> {
+    pub fn new_multiplan(plans: Vec<P>) -> TractResult<SimpleState<F, O, M, P>> {
         let values = vec![None; plans[0].borrow().model.borrow().nodes().len()];
         let mut session = SessionState::default();
         let model = plans[0].borrow().model();
         let states = model
             .nodes()
             .iter()
-            .map(|n: &BaseNode<TI, O>| n.op().state(&mut session, n.id))
+            .map(|n: &BaseNode<F, O>| n.op().state(&mut session, n.id))
             .collect::<TractResult<_>>()?;
         Ok(SimpleState { plans, states, session_state: session, values, _phantom: PhantomData })
     }
@@ -380,11 +380,11 @@ where
             .collect())
     }
 
-    pub fn plan(&self) -> &SimplePlan<TI, O, M> {
+    pub fn plan(&self) -> &SimplePlan<F, O, M> {
         &self.plans[0].borrow()
     }
 
-    pub fn model(&self) -> &ModelImpl<TI, O> {
+    pub fn model(&self) -> &ModelImpl<F, O> {
         self.plan().model()
     }
 }

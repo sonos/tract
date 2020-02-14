@@ -6,14 +6,14 @@ use std::fmt;
 ///
 /// Parameterized by a Fact class.
 #[derive(Clone, Debug)]
-pub struct ModelImpl<TI, O>
+pub struct ModelImpl<F, O>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     pub label: Option<String>,
     /// all nodes in the model
-    pub nodes: Vec<BaseNode<TI, O>>,
+    pub nodes: Vec<BaseNode<F, O>>,
     /// index of nodes per name
     nodes_by_name: HashMap<String, usize>,
     /// model inputs
@@ -24,12 +24,12 @@ where
     pub outlet_labels: HashMap<OutletId, String>,
 }
 
-impl<TI, O> Default for ModelImpl<TI, O>
+impl<F, O> Default for ModelImpl<F, O>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    fn default() -> ModelImpl<TI, O> {
+    fn default() -> ModelImpl<F, O> {
         ModelImpl {
             label: None,
             nodes: vec![],
@@ -41,17 +41,17 @@ where
     }
 }
 
-impl<TI, O> ModelImpl<TI, O>
+impl<F, O> ModelImpl<F, O>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    ModelImpl<TI, O>: Model,
+    ModelImpl<F, O>: Model,
 {
     pub fn add_node(
         &mut self,
         name: impl Into<String>,
         op: impl Into<O>,
-        output_facts: TVec<TI>,
+        output_facts: TVec<F>,
     ) -> TractResult<usize> {
         let op = op.into();
         let name = name.into();
@@ -116,19 +116,19 @@ where
     }
 
     /// Get the `ix`-th input tensor type information.
-    pub fn input_fact(&self, ix: usize) -> TractResult<&TI> {
+    pub fn input_fact(&self, ix: usize) -> TractResult<&F> {
         let input = self.input_outlets()?[ix];
         self.outlet_fact(input)
     }
 
     /// Get the `ix`-th input tensor type information, mutably.
-    pub fn input_fact_mut(&mut self, ix: usize) -> TractResult<&mut TI> {
+    pub fn input_fact_mut(&mut self, ix: usize) -> TractResult<&mut F> {
         let input = self.input_outlets()?[ix];
         self.outlet_fact_mut(input)
     }
 
     /// Set the `ix`-th input tensor type information.
-    pub fn set_input_fact(&mut self, input: usize, fact: TI) -> TractResult<()> {
+    pub fn set_input_fact(&mut self, input: usize, fact: F) -> TractResult<()> {
         let outlet = self.inputs[input];
         self.set_outlet_fact(outlet, fact)
     }
@@ -177,19 +177,19 @@ where
     }
 
     /// Get the `ix`-th input tensor type information.
-    pub fn output_fact(&self, ix: usize) -> TractResult<&TI> {
+    pub fn output_fact(&self, ix: usize) -> TractResult<&F> {
         let output = self.output_outlets()?[ix];
         self.outlet_fact(output)
     }
 
     /// Get the `ix`-th input tensor type information, mutably.
-    pub fn output_fact_mut(&mut self, ix: usize) -> TractResult<&mut TI> {
+    pub fn output_fact_mut(&mut self, ix: usize) -> TractResult<&mut F> {
         let output = self.output_outlets()?[ix];
         self.outlet_fact_mut(output)
     }
 
     /// Set the `ix`-th output tensor type information.
-    pub fn set_output_fact(&mut self, output: usize, fact: TI) -> TractResult<()> {
+    pub fn set_output_fact(&mut self, output: usize, fact: F) -> TractResult<()> {
         let outlet = self.outputs[output];
         self.set_outlet_fact(outlet, fact)
     }
@@ -202,13 +202,13 @@ where
     }
 
     /// Find a node by its name.
-    pub fn node_by_name<S: AsRef<str>>(&self, name: S) -> TractResult<&BaseNode<TI, O>> {
+    pub fn node_by_name<S: AsRef<str>>(&self, name: S) -> TractResult<&BaseNode<F, O>> {
         let id: usize = self.node_id_by_name(name.as_ref())?;
         Ok(&self.nodes[id])
     }
 
     /// Borrow mutably a node by its name.
-    pub fn node_by_name_mut(&mut self, name: &str) -> TractResult<&mut BaseNode<TI, O>> {
+    pub fn node_by_name_mut(&mut self, name: &str) -> TractResult<&mut BaseNode<F, O>> {
         let id: &usize =
             self.nodes_by_name.get(name).ok_or_else(|| format!("Node named {} not found", name))?;
         Ok(&mut self.nodes[*id])
@@ -221,44 +221,44 @@ where
     }
 
     /// Find a node by its id.
-    pub fn node(&self, id: usize) -> &BaseNode<TI, O> {
+    pub fn node(&self, id: usize) -> &BaseNode<F, O> {
         &self.nodes[id]
     }
 
     /// Find a node by its id.
-    pub fn node_mut(&mut self, id: usize) -> &mut BaseNode<TI, O> {
+    pub fn node_mut(&mut self, id: usize) -> &mut BaseNode<F, O> {
         &mut self.nodes[id]
     }
 
     /// Access the nodes table.
-    pub fn nodes(&self) -> &[BaseNode<TI, O>] {
+    pub fn nodes(&self) -> &[BaseNode<F, O>] {
         &*self.nodes
     }
 
     /// Access the nodes table.
-    pub fn nodes_mut(&mut self) -> &mut [BaseNode<TI, O>] {
+    pub fn nodes_mut(&mut self) -> &mut [BaseNode<F, O>] {
         &mut *self.nodes
     }
 
     /// Get input and output tensor information for a node.
-    pub fn node_facts(&self, id: usize) -> TractResult<(TVec<&TI>, TVec<&TI>)> {
+    pub fn node_facts(&self, id: usize) -> TractResult<(TVec<&F>, TVec<&F>)> {
         Ok((self.node_input_facts(id)?, self.node_output_facts(id)?))
     }
 
     /// Get input tensor information for a node.
-    pub fn node_input_facts(&self, node_id: usize) -> TractResult<TVec<&TI>> {
+    pub fn node_input_facts(&self, node_id: usize) -> TractResult<TVec<&F>> {
         self.nodes[node_id].inputs.iter().map(|o| self.outlet_fact(*o)).collect()
     }
 
     /// Get output tensor information for a node.
-    pub fn node_output_facts(&self, node_id: usize) -> TractResult<TVec<&TI>> {
+    pub fn node_output_facts(&self, node_id: usize) -> TractResult<TVec<&F>> {
         Ok(self.nodes[node_id].outputs.iter().map(|o| &o.fact).collect())
     }
 
     // outlets
 
     /// Get tensor information for a single outlet.
-    pub fn outlet_fact(&self, outlet: OutletId) -> TractResult<&TI> {
+    pub fn outlet_fact(&self, outlet: OutletId) -> TractResult<&F> {
         let outlets = &self.nodes[outlet.node].outputs;
         outlets
             .get(outlet.slot)
@@ -267,7 +267,7 @@ where
     }
 
     /// Get tensor information for a single outlet.
-    pub fn outlet_fact_mut(&mut self, outlet: OutletId) -> TractResult<&mut TI> {
+    pub fn outlet_fact_mut(&mut self, outlet: OutletId) -> TractResult<&mut F> {
         let outlets = &mut self.nodes[outlet.node].outputs;
         outlets
             .get_mut(outlet.slot)
@@ -276,19 +276,19 @@ where
     }
 
     /// Get multiple mutable tensor information for outlets.
-    pub fn outlets_fact_mut(&mut self, outlets: &[OutletId]) -> TractResult<TVec<&mut TI>> {
+    pub fn outlets_fact_mut(&mut self, outlets: &[OutletId]) -> TractResult<TVec<&mut F>> {
         use itertools::Itertools;
         assert!(outlets.iter().tuple_combinations().all(|(a, b)| a != b));
         Ok(unsafe {
             outlets
                 .iter()
-                .map(|o| &mut *(&self.nodes[o.node].outputs[o.slot].fact as *const TI as *mut TI))
+                .map(|o| &mut *(&self.nodes[o.node].outputs[o.slot].fact as *const F as *mut F))
                 .collect()
         })
     }
 
     /// Set tensor information for a single outlet.
-    pub fn set_outlet_fact(&mut self, outlet: OutletId, fact: TI) -> TractResult<()> {
+    pub fn set_outlet_fact(&mut self, outlet: OutletId, fact: F) -> TractResult<()> {
         let outlets = &mut self.nodes[outlet.node].outputs;
         if outlets.len() <= outlet.slot {
             bail!("Invalid outlet refererence: {:?}", outlet)
@@ -353,9 +353,9 @@ where
     }
 }
 
-impl<TI, O> Model for ModelImpl<TI, O>
+impl<F, O> Model for ModelImpl<F, O>
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn model_label(&self) -> Option<&str> {

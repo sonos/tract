@@ -8,7 +8,7 @@ pub enum InOut {
 }
 
 impl InOut {
-    pub fn as_outlet<TI: Clone + Fact, O: Clone>(&self, node: &BaseNode<TI, O>) -> OutletId {
+    pub fn as_outlet<F: Clone + Fact, O: Clone>(&self, node: &BaseNode<F, O>) -> OutletId {
         match self {
             InOut::In(ix) => node.inputs[*ix],
             InOut::Out(ix) => OutletId::new(node.id, *ix),
