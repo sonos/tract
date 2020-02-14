@@ -1,8 +1,7 @@
 use crate::display_graph::*;
 use crate::errors::*;
 use crate::{Model, Parameters};
-use tract_core::infer::*;
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 pub fn handle(params: &Parameters, options: DisplayOptions, _inner: Vec<String>) -> CliResult<()> {
     let tract = &params.tract_model;

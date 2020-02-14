@@ -3,9 +3,7 @@ use std::io::Read;
 use std::str::FromStr;
 
 use crate::CliResult;
-use tract_core::internal::*;
-use tract_core::infer::*;
-use tract_core::ndarray;
+use tract_hir::internal::*;
 
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     let splits = size.split("x").collect::<Vec<_>>();
@@ -48,7 +46,7 @@ fn parse_values<'a, T: Datum + FromStr>(shape: &[usize], it: Vec<&'a str>) -> Cl
         .into_iter()
         .map(|v| Ok(v.parse::<T>().map_err(|_| format!("Failed to parse {}", v))?))
         .collect::<CliResult<Vec<T>>>()?;
-    Ok(ndarray::Array::from_shape_vec(shape, values)?.into())
+    Ok(tract_ndarray::Array::from_shape_vec(shape, values)?.into())
 }
 
 fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
@@ -100,26 +98,26 @@ fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
 }
 
 pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractResult<Tensor> {
-    fn rewrap<T: Datum>(array: ndarray::ArrayD<T>) -> Tensor {
+    fn rewrap<T: Datum>(array: tract_ndarray::ArrayD<T>) -> Tensor {
         let shape = array.shape().to_vec();
         unsafe {
             let vec = array.into_raw_vec();
             tract_core::ndarray::ArrayD::from_shape_vec_unchecked(shape, vec).into_tensor()
         }
     }
-    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<f64>, tract_ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<f32>, tract_ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<i8>, ndarray::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<i8>, tract_ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<u8>, ndarray::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<u8>, tract_ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<i32>, ndarray::IxDyn>(name) {
+    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<i32>, tract_ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
     bail!("Can not extract tensor from {}", name);

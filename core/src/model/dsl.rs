@@ -1,14 +1,14 @@
 use crate::internal::*;
 use crate::ops::dummy::Dummy;
 use crate::pulse::PulsedFact;
-use std::fmt::{Debug, Display};
+use std::fmt;
 
 pub use super::{InletId, ModelImpl, Node, OutletId};
 
 pub trait ModelSpecialOps<TI, O>
 where
     TI: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// Adds a source op to the network.
     ///
@@ -59,7 +59,7 @@ impl ModelSpecialOps<PulsedFact, Box<dyn TypedOp>> for PulsedModel {
 pub trait ModelDsl<TI, O>
 where
     TI: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// Find the lone precursor of a node, if applicable.
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
@@ -76,7 +76,7 @@ where
 impl<TI, O> ModelDsl<TI, O> for ModelImpl<TI, O>
 where
     TI: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>> {
         let node = &self.nodes()[id];
@@ -138,10 +138,32 @@ pub trait ModelDslConst {
     ) -> TractResult<OutletId>;
 }
 
+impl<TI: Fact + Clone + 'static, O> ModelDslConst for ModelImpl<TI, O>
+where
+    TI: Fact + Clone + 'static + From<Arc<Tensor>>,
+    O: fmt::Debug
+        + fmt::Display
+        + From<crate::ops::konst::Const>
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + 'static,
+{
+    fn add_const(
+        &mut self,
+        name: impl Into<String>,
+        v: impl IntoArcTensor,
+    ) -> TractResult<OutletId> {
+        let v = v.into_arc_tensor();
+        let fact = TI::from(v.clone());
+        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
+    }
+}
+
 pub trait ModelWireNode<TI, O>
 where
     TI: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn wire_node(
         &mut self,
