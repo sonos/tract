@@ -9,9 +9,10 @@ fn main() -> TractResult<()> {
     let mut model = tract_tensorflow::tensorflow().model_for_path("./my_model.pb")?;
 
     // specify input type and shape
-    //model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(_, 100)))?;
-
     model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec![10, 100]))?;
+    let model = model.into_optimized()?;
+
+
     // Generate some input data for the model
     let mut rng = thread_rng();
     let vals: Vec<_> = (0..1000).map(|_| rng.gen::<f32>()).collect();
