@@ -8,15 +8,15 @@
 //! # extern crate tract_core;
 //! # fn main() {
 //! use tract_core::internal::*;
-//! use tract_core::infer::*;
 //!
 //! // build a simple model that just add 3 to each input component
-//! let mut model = InferenceModel::default();
+//! let mut model = TypedModel::default();
 //!
-//! let input = model.add_source("input", InferenceFact::default()).unwrap();
+//! let input_fact = TypedFact::dt_shape(f32::datum_type(), [3].as_ref()).unwrap();
+//! let input = model.add_source("input", input_fact).unwrap();
 //! let three = model.add_const("three".to_string(), tensor0(3f32)).unwrap();
 //! let add = model.wire_node("add".to_string(),
-//!     tract_core::ops::math::add::bin(),
+//!     tract_core::ops::math::add::bin_typed(),
 //!     [input, three].as_ref()
 //!     ).unwrap();
 //!
@@ -46,7 +46,7 @@ extern crate bit_set;
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
-extern crate downcast_rs;
+pub extern crate downcast_rs;
 #[macro_use]
 pub extern crate error_chain;
 #[allow(unused_imports)]
@@ -78,11 +78,7 @@ pub extern crate tract_linalg;
 #[macro_use]
 pub mod macros;
 #[macro_use]
-pub mod infer;
-#[macro_use]
 pub mod ops;
-#[macro_use]
-pub mod hir;
 
 pub mod broadcast;
 pub mod datum;
@@ -127,17 +123,17 @@ pub mod internal {
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use crate::pulse::{PulsedFact, PulsedModel, PulsedNode};
+    pub use downcast_rs as tract_downcast_rs;
+    pub use error_chain::bail;
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tract_linalg::f16::f16;
+    pub use tvec;
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
-    pub use {
-        as_op, not_a_pulsed_op, not_a_typed_op, op_as_typed_op, pulsed_op_to_typed_op, to_typed,
-    };
+    pub use {as_op, not_a_pulsed_op, not_a_typed_op, op_as_typed_op, pulsed_op_to_typed_op};
     pub use {bin_to_super_type, element_wise, element_wise_oop};
     pub use {dispatch_copy, dispatch_datum, dispatch_floatlike, dispatch_numbers};
-    pub use {shapefactoid, tvec};
 }
 
 #[cfg(test)]

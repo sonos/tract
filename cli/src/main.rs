@@ -17,6 +17,9 @@ extern crate tract_onnx;
 #[cfg(feature = "tf")]
 extern crate tract_tensorflow;
 
+#[macro_use]
+mod macros;
+
 #[allow(unused_imports)]
 use itertools::Itertools;
 use std::process;
@@ -25,9 +28,8 @@ use std::str::FromStr;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
 use tract_core::internal::*;
-use tract_core::infer::*;
 use tract_core::model::{NormalizedModel, TypedModel};
-use tract_core::hir::prelude::*;
+use tract_hir::internal::*;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;

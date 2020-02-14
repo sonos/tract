@@ -10,11 +10,8 @@ use criterion::Criterion;
 use tract_core::model::*;
 use tract_core::*;
 
-use tract_core::infer::*;
 use tract_core::internal::*;
-use tract_core::ops::cnn::ConvUnary;
-
-use std::convert::TryInto;
+use tract_core::ops::{cnn, nn};
 
 #[derive(Debug, new)]
 struct Problem {
@@ -55,27 +52,33 @@ impl Problem {
         tvec!(1, self.h, self.w, self.ci)
     }
 
-    pub fn image_fact(&self) -> InferenceFact {
-        InferenceFact::dt_shape(DatumType::F32, self.image_shape())
+    pub fn image_fact(&self) -> TypedFact {
+        TypedFact::dt_shape(DatumType::F32, &*self.image_shape()).unwrap()
     }
 
     pub fn image_type(&self) -> TypedFact {
         TypedFact::dt_shape(f32::datum_type(), &*self.image_shape()).unwrap()
     }
 
-    pub fn to_unary(&self) -> Box<ConvUnary> {
+    pub fn to_unary(&self) -> Box<cnn::ConvUnary> {
         let kernel =
             Tensor::from(ndarray::Array4::<f32>::zeros((self.kh, self.kw, self.ci, self.co)));
-        let conv = tract_core::hir::ops::cnn::Conv::default()
-            .nhwc()
-            .hwio()
-            .dilations(tvec!(self.dil_h, self.dil_w))
-            .kernel_shape(kernel.shape()[0..2].into())
-            .strides(tvec!(self.stride_h, self.stride_w));
-        let kernel_fact: TypedFact = TypedFact::from(kernel);
-        let image_fact: TypedFact = (&self.image_fact()).try_into().unwrap();
-        let unary = conv.to_unary(&[&image_fact, &kernel_fact]).unwrap();
-        Box::new(unary.unwrap())
+        let conv = cnn::ConvUnary {
+            pool_spec: cnn::PoolSpec {
+                data_format: nn::DataFormat::NHWC,
+                kernel_shape: tvec!(self.kh, self.kw),
+                padding: cnn::PaddingSpec::Valid,
+                dilations: None,
+                strides: None,
+                output_channel_override: None,
+            },
+            kernel_fmt: cnn::KernelFormat::HWIO,
+            kernel: kernel.into_arc_tensor(),
+            group: 1,
+            bias: None,
+            q_params: None,
+        };
+        Box::new(conv)
     }
 
     pub fn to_plan(&self, direct: bool) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {

@@ -11,17 +11,17 @@ where
     TI: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    pub(super) label: Option<String>,
+    pub label: Option<String>,
     /// all nodes in the model
-    pub(super) nodes: Vec<BaseNode<TI, O>>,
+    pub nodes: Vec<BaseNode<TI, O>>,
     /// index of nodes per name
     nodes_by_name: HashMap<String, usize>,
     /// model inputs
-    pub(crate) inputs: Vec<OutletId>,
+    pub inputs: Vec<OutletId>,
     /// model outputs
-    pub(crate) outputs: Vec<OutletId>,
+    pub outputs: Vec<OutletId>,
     /// outlet labels
-    pub(crate) outlet_labels: HashMap<OutletId, String>,
+    pub outlet_labels: HashMap<OutletId, String>,
 }
 
 impl<TI, O> Default for ModelImpl<TI, O>
