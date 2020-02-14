@@ -1,5 +1,6 @@
 pub extern crate tract_core;
 
+pub use tract_core::prelude::tract_ndarray;
 pub use tract_core::hir::ops;
 
 pub mod prelude {

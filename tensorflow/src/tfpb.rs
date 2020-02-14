@@ -149,16 +149,13 @@ impl NodeDef {
         Ok(None)
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_hir::tract_core::internal::Tensor> {
+    pub fn get_attr_tensor(&self, name: &str) -> TractResult<Tensor> {
         Ok(self.get_attr_opt_tensor(name)?.ok_or_else(|| {
             format!("Node {} ({}) expected tensor attribute '{}'", self.name, self.op, name)
         })?)
     }
 
-    pub fn get_attr_opt_tensor(
-        &self,
-        name: &str,
-    ) -> TractResult<Option<tract_hir::tract_core::internal::Tensor>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<Tensor>> {
         if let Some(a) = self.attr.get(name) {
             if let Value::Tensor(ref t) = a.value.as_ref().unwrap() {
                 return Ok(Some(t.try_into()?));

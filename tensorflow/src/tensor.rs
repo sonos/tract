@@ -1,9 +1,10 @@
+use tract_hir::internal::*;
+
 use crate::tfpb::tensorflow::tensor_shape_proto::Dim;
 use crate::tfpb::tensorflow::{TensorProto, TensorShapeProto};
 
 use crate::tfpb::tensorflow::DataType;
 use std::convert::TryFrom;
-use tract_hir::tract_core::internal::*;
 
 impl TryFrom<DataType> for DatumType {
     type Error = TractError;
@@ -65,9 +66,9 @@ impl TryFrom<DatumType> for DataType {
 
 fn tensor_from_repeated_field<T: Datum>(shape: &[usize], data: Vec<T>) -> TractResult<Tensor> {
     let t = if data.len() == 1 {
-        tract_hir::tract_core::ndarray::ArrayD::from_elem(shape, data[0].clone()).into()
+        tract_ndarray::ArrayD::from_elem(shape, data[0].clone()).into()
     } else {
-        tract_hir::tract_core::ndarray::ArrayD::from_shape_vec(shape, data.to_vec())?.into()
+        tract_ndarray::ArrayD::from_shape_vec(shape, data.to_vec())?.into()
     };
     Ok(t)
 }

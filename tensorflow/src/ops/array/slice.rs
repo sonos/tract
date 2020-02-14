@@ -1,6 +1,4 @@
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::ndarray;
+use tract_hir::internal::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Slice;
@@ -25,7 +23,7 @@ impl Slice {
                     size[i]
                 );
             }
-            input.slice_axis_inplace(ndarray::Axis(i), (b..e).into());
+            input.slice_axis_inplace(tract_ndarray::Axis(i), (b..e).into());
         }
         Ok(input.into_arc_tensor())
     }

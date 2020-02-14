@@ -1,10 +1,8 @@
-use tract_hir::tract_core::ndarray;
-use tract_hir::tract_core::ndarray::*;
+use tract_hir::internal::*;
+use tract_ndarray::prelude::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::internal::*;
 
 pub fn block_lstm(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let forget_bias = node.get_attr_opt_float("forget_bias")?.unwrap_or(1.0);
@@ -81,7 +79,7 @@ impl StatelessOp for BlockLSTM {
             let mut co = co.index_axis_mut(Axis(0), n);
             let mut h = h.index_axis_mut(Axis(0), n);
 
-            let xh = ndarray::stack(Axis(1), &[x, h_prev.view()])?;
+            let xh = tract_ndarray::stack(Axis(1), &[x, h_prev.view()])?;
 
             let i_ci_f_o = xh.dot(&w) + &bias;
 

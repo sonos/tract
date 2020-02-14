@@ -43,6 +43,6 @@ pub fn mat_mul(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
     let trans_a = pb.get_attr_bool("transpose_a")?;
     let trans_b = pb.get_attr_bool("transpose_b")?;
     Ok(Box::new(
-        tract_hir::tract_core::ops::matmul::MatMul::default().with_a_trans(trans_a).with_b_trans(trans_b),
+        ops::matmul::MatMul::default().with_a_trans(trans_a).with_b_trans(trans_b),
     ))
 }

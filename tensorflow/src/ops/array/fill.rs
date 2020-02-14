@@ -1,8 +1,6 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::ndarray;
+use tract_hir::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Fill {
@@ -20,7 +18,7 @@ impl Fill {
         let value = value.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
         let shape = shape.to_array_view::<i32>()?;
-        let array = ndarray::Array::from_shape_fn(
+        let array = tract_ndarray::Array::from_shape_fn(
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
             |_| value.clone(),
         );

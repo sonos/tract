@@ -5,7 +5,7 @@
 error_chain! {
     foreign_links {
         Io(::std::io::Error);
-        NdarrayShape(tract_hir::tract_core::ndarray::ShapeError);
+        NdarrayShape(tract_hir::tract_ndarray::ShapeError);
         StrUtf8(::std::str::Utf8Error);
     }
     links {
@@ -27,7 +27,7 @@ pub mod tf;
 use crate::tfpb;
 use crate::tfpb::tensorflow::tensor_shape_proto::Dim;
 use crate::tfpb::tensorflow::{DataType, TensorProto, TensorShapeProto};
-use tract_hir::tract_core::internal::*;
+use tract_hir::internal::*;
 use std::convert::TryInto;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
