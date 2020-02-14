@@ -10,11 +10,10 @@ extern crate tract_tensorflow;
 mod utils;
 
 use crate::utils::*;
-use ndarray::prelude::*;
 use proptest::prelude::*;
-use tract_hir::tract_core::ndarray;
-use tract_hir::tract_core::prelude::*;
+use tract_ndarray::prelude::*;
 use tract_tensorflow::conform::*;
+use tract_tensorflow::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
 

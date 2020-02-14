@@ -11,9 +11,8 @@ mod utils;
 
 use crate::utils::*;
 use proptest::prelude::*;
-use tract_hir::tract_core::ndarray::prelude::*;
-use tract_hir::tract_core::prelude::*;
 use tract_tensorflow::conform::*;
+use tract_tensorflow::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::DataType::DtInt32;
 
@@ -42,12 +41,16 @@ fn strided_slice_strat(
         let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
         let size: i32 = shape.iter().map(|d| *d as i32).product();
         (
-            Tensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
-            Array::from(dims.iter().map(|d| if d.4 { d.1 - d.0 } else { d.1 }).collect::<Vec<_>>())
-                .into(),
-            Array::from(dims.iter().map(|d| if d.5 { d.2 - d.0 } else { d.2 }).collect::<Vec<_>>())
-                .into(),
-            Array::from(
+            Tensor::from(tract_ndarray::Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
+            tract_ndarray::Array::from(
+                dims.iter().map(|d| if d.4 { d.1 - d.0 } else { d.1 }).collect::<Vec<_>>(),
+            )
+            .into(),
+            tract_ndarray::Array::from(
+                dims.iter().map(|d| if d.5 { d.2 - d.0 } else { d.2 }).collect::<Vec<_>>(),
+            )
+            .into(),
+            tract_ndarray::Array::from(
                 dims.iter()
                     .enumerate()
                     .map(|(ix, d)| {

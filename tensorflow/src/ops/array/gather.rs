@@ -1,8 +1,5 @@
-use tract_hir::tract_core::ndarray;
-use tract_hir::tract_core::ndarray::*;
-
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::internal::*;
+use tract_hir::internal::*;
+use tract_ndarray::prelude::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
@@ -34,7 +31,7 @@ impl GatherNd {
         let data = data.to_array_view::<T>()?;
         let shape = self.compute_shape(&data.shape(), &indices.shape())?;
         let mut array = unsafe { T::uninitialized_array(&*shape) };
-        for prefix in ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
+        for prefix in tract_ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
             let mut dst = array.view_mut();
             let mut coords = indices.view();
             for &x in prefix.slice().iter() {

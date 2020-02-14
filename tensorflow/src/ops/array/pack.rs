@@ -23,7 +23,7 @@ pub struct Pack {
 impl Pack {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        use tract_hir::tract_core::ndarray::Axis;
+        use tract_ndarray::Axis;
         let arrays =
             inputs.iter().map(|m| Ok(m.cast_to::<T>()?)).collect::<TractResult<Vec<_>>>()?;
         let views: Vec<_> = arrays

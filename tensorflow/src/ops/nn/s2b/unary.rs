@@ -1,6 +1,7 @@
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::ndarray::*;
-use tract_hir::tract_core::ops::cnn::{ConvUnary, PoolSpec};
+use tract_hir::internal::*;
+use tract_ndarray::prelude::*;
+
+use tract_hir::ops::cnn::{ConvUnary, PoolSpec};
 
 #[derive(Debug, Copy, Clone)]
 pub enum PaddingStrat {
@@ -79,7 +80,7 @@ impl TypedOp for SpaceToBatchUnary {
                         kernel: conv_op.kernel.clone(),
                         group: conv_op.group,
                         bias: None,
-                        q_params: None
+                        q_params: None,
                     };
                     let mut patch = TypedModelPatch::default();
                     let tap = patch.tap_model(&model, node.inputs[0])?;

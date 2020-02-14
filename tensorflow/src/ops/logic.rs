@@ -1,19 +1,19 @@
+use tract_hir::internal::*;
+use tract_hir::ops;
+
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 use crate::tfpb::tensorflow::NodeDef;
 use std::collections::HashSet;
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::ops as tractops;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Equal", |_, _| Ok(Box::new(tractops::logic::equals::bin())));
-    reg.insert("Greater", |_, _| Ok(Box::new(tractops::logic::greater::bin())));
-    reg.insert("GreaterEqual", |_, _| Ok(Box::new(tractops::logic::greater_equal::bin())));
-    reg.insert("Less", |_, _| Ok(Box::new(tractops::logic::lesser::bin())));
-    reg.insert("LessEqual", |_, _| Ok(Box::new(tractops::logic::lesser_equal::bin())));
-    reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::and::bin())));
-    reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::or::bin())));
+    reg.insert("Equal", |_, _| Ok(Box::new(ops::logic::equals::bin())));
+    reg.insert("Greater", |_, _| Ok(Box::new(ops::logic::greater::bin())));
+    reg.insert("GreaterEqual", |_, _| Ok(Box::new(ops::logic::greater_equal::bin())));
+    reg.insert("Less", |_, _| Ok(Box::new(ops::logic::lesser::bin())));
+    reg.insert("LessEqual", |_, _| Ok(Box::new(ops::logic::lesser_equal::bin())));
+    reg.insert("LogicalAnd", |_, _| Ok(Box::new(ops::logic::and::bin())));
+    reg.insert("LogicalOr", |_, _| Ok(Box::new(ops::logic::or::bin())));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
 }

@@ -11,11 +11,10 @@ extern crate tract_tensorflow;
 mod utils;
 
 use crate::utils::*;
-use ndarray::prelude::*;
 use proptest::prelude::*;
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::ndarray;
+use tract_ndarray::prelude::*;
 use tract_tensorflow::conform::*;
+use tract_tensorflow::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
 
@@ -83,6 +82,7 @@ proptest! {
 }
 
 fn batch_to_space_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
+    use tract_tensorflow::tract_hir::internal::StatefullOp;
     space_to_batch_strat()
         .prop_map(|(i, bs, p)| {
             let batches: Tensor =
@@ -118,7 +118,6 @@ proptest! {
 
 #[test]
 fn space_to_batch_1() {
-    use ndarray::*;
     let graph = tfpb::graph()
         .node(placeholder_f32("input"))
         .node(const_i32("block_shape", &Tensor::from(arr1(&[2i32, 2]))))
@@ -140,7 +139,6 @@ fn space_to_batch_1() {
 
 #[test]
 fn batch_to_space_1() {
-    use ndarray::*;
     let graph = tfpb::graph()
         .node(placeholder_f32("input"))
         .node(const_i32("block_shape", &Tensor::from(arr1(&[2i32, 2]))))

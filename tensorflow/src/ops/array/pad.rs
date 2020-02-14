@@ -1,10 +1,8 @@
-use tract_hir::tract_core::ndarray::{Array, ArrayView2};
+use tract_hir::internal::*;
+use tract_ndarray::{Array, ArrayView2};
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::internal::*;
 
 #[derive(Debug, Clone, Default, new)]
 pub struct Pad;

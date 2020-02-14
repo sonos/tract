@@ -1,6 +1,4 @@
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::ndarray;
+use tract_hir::internal::*;
 
 use crate::model::{ParsingContext, TfOpRegister};
 use crate::tfpb::tensorflow::NodeDef;
@@ -78,7 +76,7 @@ impl StatefullOp for VariableV2 {
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
-            ndarray::ArrayD::<T>::default(shape).into()
+            tract_ndarray::ArrayD::<T>::default(shape).into()
         }
 
         let tensor = dispatch_datum!(make_buffer(self.dt)(&self.shape));

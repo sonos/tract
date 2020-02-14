@@ -1,8 +1,7 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_hir::tract_core::infer::*;
-use tract_hir::tract_core::internal::*;
-use tract_hir::tract_core::ops::cnn::*;
+use tract_hir::internal::*;
+use tract_hir::ops::cnn::*;
 
 pub fn avgpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let ksize: Vec<usize> = pb.get_attr_list_int("ksize")?;

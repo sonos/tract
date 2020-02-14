@@ -12,8 +12,8 @@ mod utils;
 use crate::utils::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use tract_hir::tract_core::prelude::*;
 use tract_tensorflow::conform::*;
+use tract_tensorflow::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::DataType;
 
