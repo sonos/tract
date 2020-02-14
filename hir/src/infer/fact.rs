@@ -133,7 +133,6 @@ impl fmt::Debug for InferenceFact {
     }
 }
 
-
 use crate::infer::factoid::Factoid;
 
 impl Fact for InferenceFact {
@@ -165,7 +164,6 @@ impl<'a> From<&'a InferenceFact> for InferenceFact {
         t.clone()
     }
 }
-
 
 impl<'a> From<&'a TypedFact> for InferenceFact {
     fn from(t: &'a TypedFact) -> InferenceFact {

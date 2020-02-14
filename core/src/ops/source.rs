@@ -52,7 +52,12 @@ impl TypedOp for TypedSource {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let mut fact = self.fact.clone();
         change.change_shape(&mut fact.shape)?;
-        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(TypedSource::new(fact))), change)))
+        Ok(Some(AxisChangeConsequence::new(
+            model,
+            node,
+            Some(Box::new(TypedSource::new(fact))),
+            change,
+        )))
     }
 
     fn pulsify(

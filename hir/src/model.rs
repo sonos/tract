@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 impl ModelWireNode<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
     fn wire_node(
@@ -19,4 +19,3 @@ impl ModelWireNode<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
         Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
     }
 }
-

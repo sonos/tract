@@ -1,8 +1,8 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
-pub use tract_core::ops::matmul::MatMul;
 pub use tract_core::ops::matmul::compute_shapes;
+pub use tract_core::ops::matmul::MatMul;
 
 impl InferenceRulesOp for MatMul {
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -30,4 +30,3 @@ impl InferenceRulesOp for MatMul {
     as_op!();
     to_typed!();
 }
-

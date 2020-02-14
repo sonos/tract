@@ -21,7 +21,7 @@ impl DataFormat {
         match self {
             &DataFormat::NCHW => DataFormat::CHW,
             &DataFormat::NHWC => DataFormat::HWC,
-            _ => panic!("Attempt at removing N axis on {:?}", self)
+            _ => panic!("Attempt at removing N axis on {:?}", self),
         }
     }
 

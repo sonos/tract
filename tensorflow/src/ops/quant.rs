@@ -103,11 +103,8 @@ impl InferenceRulesOp for FakeQuantWithMinMaxVars {
                 ops::math::mul::unary(bc(step.recip())?),
                 &[wire],
             )?[0];
-            let wire = target.wire_node(
-                format!("{}-round", &*node.name),
-                ops::math::round(),
-                &[wire],
-            )?[0];
+            let wire =
+                target.wire_node(format!("{}-round", &*node.name), ops::math::round(), &[wire])?[0];
             let wire = target.wire_node(
                 format!("{}-mul-step", &*node.name),
                 ops::math::mul::unary(bc(step)?),
@@ -125,4 +122,3 @@ impl InferenceRulesOp for FakeQuantWithMinMaxVars {
 
     as_op!();
 }
-

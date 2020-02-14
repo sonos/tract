@@ -1,4 +1,3 @@
-
 #[macro_export]
 macro_rules! to_typed {
     () => {
@@ -22,8 +21,7 @@ macro_rules! typefact {
         $crate::infer::TypeFactoid::default()
     };
     ($arg:expr) => {{
-        let fact: $crate::infer::TypeFactoid =
-            $crate::infer::GenericFactoid::Only($arg);
+        let fact: $crate::infer::TypeFactoid = $crate::infer::GenericFactoid::Only($arg);
         fact
     }};
 }
@@ -62,8 +60,7 @@ macro_rules! valuefact {
         $crate::infer::ValueFact::default()
     };
     ($arg:expr) => {{
-        let fact: $crate::infer::ValueFact =
-            $crate::infer::GenericFactoid::Only($arg);
+        let fact: $crate::infer::ValueFact = $crate::infer::GenericFactoid::Only($arg);
         fact
     }};
 }
@@ -110,7 +107,11 @@ mod tests {
     fn shape_macro_closed_5() {
         assert_eq!(
             shapefactoid![(1 + 1), _, 2],
-            ShapeFactoid::closed(vec![GenericFactoid::Only(2), GenericFactoid::Any, GenericFactoid::Only(2),])
+            ShapeFactoid::closed(vec![
+                GenericFactoid::Only(2),
+                GenericFactoid::Any,
+                GenericFactoid::Only(2),
+            ])
         );
     }
 
@@ -141,7 +142,11 @@ mod tests {
     fn shape_macro_open_5() {
         assert_eq!(
             shapefactoid![(1 + 1), _, 2; ..],
-            ShapeFactoid::open(tvec![GenericFactoid::Only(2), GenericFactoid::Any, GenericFactoid::Only(2),])
+            ShapeFactoid::open(tvec![
+                GenericFactoid::Only(2),
+                GenericFactoid::Any,
+                GenericFactoid::Only(2),
+            ])
         );
     }
 }

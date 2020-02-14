@@ -634,4 +634,3 @@ test_mmm_kernel_f32!(crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>,
 test_mmm_kernel_i8!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i8, i32>, test_GenericMmmTest3x2_i8, true);
 test_mmm_kernel_u8!(crate::generic::mmm::GenericMmmTest3x2<u8, u8, u8, i32>, test_GenericMmmTest3x2_u8, true);
 test_mmm_kernel_i8_i32!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, test_GenericMmmTest3x2_i8_i32, true);
-

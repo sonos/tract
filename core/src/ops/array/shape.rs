@@ -35,4 +35,3 @@ impl TypedOp for Shape {
 
     as_op!();
 }
-

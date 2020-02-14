@@ -2,7 +2,7 @@ use crate::infer::*;
 use tract_core::ops::nn::*;
 
 use tract_core::ops::nn::Reduce as TypedReduce;
-pub use tract_core::ops::nn::Reducer as Reducer;
+pub use tract_core::ops::nn::Reducer;
 
 #[derive(Clone, Debug, new)]
 pub struct Reduce {
@@ -143,4 +143,3 @@ impl InferenceRulesOp for Reduce {
         Ok(wire)
     }
 }
-

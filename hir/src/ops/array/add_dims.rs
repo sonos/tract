@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct AddDims {

@@ -44,9 +44,9 @@ extern crate log;
 extern crate env_logger;
 extern crate prost;
 extern crate prost_types;
-pub extern crate tract_hir;
 #[cfg(feature = "conform")]
 extern crate tensorflow;
+pub extern crate tract_hir;
 
 #[cfg(feature = "conform")]
 pub mod conform;
@@ -66,8 +66,8 @@ pub fn tensorflow() -> Tensorflow {
 
 pub use tract_hir::tract_core;
 pub mod prelude {
-    pub use tract_hir::prelude::*;
     pub use crate::tensorflow;
+    pub use tract_hir::prelude::*;
 }
 
 #[cfg(test)]

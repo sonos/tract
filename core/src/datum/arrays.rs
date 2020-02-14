@@ -1,12 +1,15 @@
-use crate::dim::TDim;
 use crate::datum::Blob;
+use crate::dim::TDim;
+use crate::prelude::*;
 use crate::TractResult;
 use ndarray::*;
 use tract_linalg::f16::f16;
-use crate::prelude::*;
 
 pub trait ArrayDatum: Sized {
-    fn stack_tensors(axis: usize, tensors:&[impl std::borrow::Borrow<Tensor>]) -> TractResult<Tensor>;
+    fn stack_tensors(
+        axis: usize,
+        tensors: &[impl std::borrow::Borrow<Tensor>],
+    ) -> TractResult<Tensor>;
     fn stack_views(axis: usize, views: &[ArrayViewD<Self>]) -> TractResult<ArrayD<Self>>;
     unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D>
     where

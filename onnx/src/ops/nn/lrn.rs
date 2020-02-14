@@ -10,7 +10,9 @@ pub struct Lrn {
 }
 
 impl Lrn {
-    fn eval_t<T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + ::std::iter::Sum>(
+    fn eval_t<
+        T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + ::std::iter::Sum,
+    >(
         &self,
         input: Arc<Tensor>,
     ) -> TractResult<TVec<Arc<Tensor>>> {

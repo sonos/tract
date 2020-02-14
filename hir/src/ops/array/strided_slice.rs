@@ -525,7 +525,9 @@ mod tests {
         assert_eq!(
             input_facts,
             tvec![
-                InferenceFact::default().with_datum_type(DatumType::F32).with_shape(shapefactoid![..]),
+                InferenceFact::default()
+                    .with_datum_type(DatumType::F32)
+                    .with_shape(shapefactoid![..]),
                 begin,
                 end,
                 strides,
@@ -553,7 +555,9 @@ mod tests {
         assert_eq!(
             input_facts,
             tvec![
-                InferenceFact::default().with_datum_type(DatumType::F32).with_shape(shapefactoid![..]),
+                InferenceFact::default()
+                    .with_datum_type(DatumType::F32)
+                    .with_shape(shapefactoid![..]),
                 begin,
                 end,
                 strides,
@@ -582,7 +586,10 @@ mod tests {
 
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 4), 16))]
+            tvec![InferenceFact::dt_shape(
+                DatumType::F32,
+                shapefactoid!(1, (TDim::stream() - 4), 16)
+            )]
         );
     }
 
@@ -601,7 +608,10 @@ mod tests {
 
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 4), 16))]
+            tvec![InferenceFact::dt_shape(
+                DatumType::F32,
+                shapefactoid!(1, (TDim::stream() - 4), 16)
+            )]
         );
     }
 }

@@ -586,8 +586,12 @@ impl TypedOp for ConvUnary {
         }
         let mut kernel = self.kernel.clone().into_tensor();
         match change {
-            AxisOp::Rm(axis) => kernel.remove_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?,
-            AxisOp::Add(axis) => kernel.insert_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?,
+            AxisOp::Rm(axis) => {
+                kernel.remove_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?
+            }
+            AxisOp::Add(axis) => {
+                kernel.insert_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?
+            }
             AxisOp::Permute(_) => AxisOp::Permute(kernel_perm).change_tensor(&mut kernel)?,
         };
         let new_op = ConvUnary {

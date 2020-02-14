@@ -88,9 +88,9 @@ impl InferenceRulesOp for Switch {
                 }
             }
             let tap = patch.tap_model(model, node.inputs[0])?;
-            patch.shunt_outside(OutletId::new(node.id, 0) , tap)?;
-            patch.shunt_outside(OutletId::new(node.id, 1) , tap)?;
-            return Ok(Some(patch))
+            patch.shunt_outside(OutletId::new(node.id, 0), tap)?;
+            patch.shunt_outside(OutletId::new(node.id, 1), tap)?;
+            return Ok(Some(patch));
         }
         Ok(None)
     }
@@ -101,7 +101,6 @@ impl InferenceRulesOp for Switch {
 
     as_op!();
 }
-
 
 fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let inputs = pb.get_attr_int::<i32>("N")?;

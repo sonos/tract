@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 use tract_core::broadcast::multi_broadcast;
 pub use tract_core::ops::logic::*;

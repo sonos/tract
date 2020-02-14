@@ -1,5 +1,5 @@
-use std::fmt;
 use crate::infer::*;
+use std::fmt;
 
 pub fn incorporate() -> Vec<Box<dyn IncorporatePass>> {
     vec![Box::new(IncorporateOps)]
@@ -45,4 +45,3 @@ impl IncorporatePass for IncorporateOps {
         Ok(done_something)
     }
 }
-

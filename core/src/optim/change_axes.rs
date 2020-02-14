@@ -1,7 +1,7 @@
 use super::TypedPass;
+use crate::internal::*;
 use crate::model::*;
 use crate::TractResult;
-use crate::internal::*;
 
 use crate::ops::change_axes::*;
 

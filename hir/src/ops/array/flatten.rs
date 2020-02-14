@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 pub use tract_core::ops::array::Flatten;
 
@@ -20,4 +20,3 @@ impl InferenceRulesOp for Flatten {
     as_op!();
     to_typed!();
 }
-

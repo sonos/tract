@@ -38,4 +38,3 @@ test_mmm_kernel_f32!(
     test_SMatMatMul16x6,
     is_x86_feature_detected!("fma")
 );
-

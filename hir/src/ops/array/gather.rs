@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 pub use tract_core::ops::array::Gather;
 
@@ -26,4 +26,3 @@ impl InferenceRulesOp for Gather {
     as_op!();
     to_typed!();
 }
-

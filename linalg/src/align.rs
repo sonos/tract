@@ -56,4 +56,3 @@ impl<T: Copy> Clone for Buffer<T> {
         Buffer::realign_data(self, self.layout.align())
     }
 }
-

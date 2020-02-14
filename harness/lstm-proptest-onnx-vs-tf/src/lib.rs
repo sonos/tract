@@ -2,9 +2,9 @@
 
 use proptest::prelude::*;
 
+use tract_ndarray::prelude::*;
 use tract_onnx::prelude::*;
 use tract_onnx::tract_hir;
-use tract_ndarray::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct LstmProblem {

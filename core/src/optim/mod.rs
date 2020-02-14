@@ -17,12 +17,7 @@ pub trait TypedPass: Debug + Send + Sync {
 }
 
 pub fn declutter() -> Vec<Box<dyn TypedPass>> {
-    vec![
-        Box::new(PropConst),
-        Box::new(DeclutterOps),
-        Box::new(PushSplitDown),
-        Box::new(ChangeAxes),
-    ]
+    vec![Box::new(PropConst), Box::new(DeclutterOps), Box::new(PushSplitDown), Box::new(ChangeAxes)]
 }
 
 pub fn codegen() -> Vec<Box<dyn TypedPass>> {

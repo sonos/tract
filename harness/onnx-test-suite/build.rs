@@ -95,10 +95,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
             writeln!(
                 rs,
                 "crate::onnx::run_one({:?}, {:?}, {:?}, &{:?})",
-                node_tests,
-                t,
-                optim,
-                more
+                node_tests, t, optim, more
             )
             .unwrap();
             writeln!(rs, "}}").unwrap();

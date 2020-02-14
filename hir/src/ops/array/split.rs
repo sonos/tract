@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 use tract_ndarray::*;
 
 #[derive(Debug, Clone, new, Default)]

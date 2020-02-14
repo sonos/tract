@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 use tract_core::ops::array::TypedReshape;
 
@@ -90,4 +90,3 @@ impl InferenceRulesOp for Reshape {
 
     as_op!();
 }
-

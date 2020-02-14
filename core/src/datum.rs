@@ -91,7 +91,9 @@ impl DatumType {
         }
     }
 
-    pub fn super_type_for(i: impl IntoIterator<Item = impl std::borrow::Borrow<DatumType>>) -> Option<DatumType> {
+    pub fn super_type_for(
+        i: impl IntoIterator<Item = impl std::borrow::Borrow<DatumType>>,
+    ) -> Option<DatumType> {
         let mut iter = i.into_iter();
         let mut current = match iter.next() {
             None => return None,
@@ -119,13 +121,13 @@ impl DatumType {
 
     pub fn is_integer(&self) -> bool {
         match self {
-            DatumType::U8 |
-            DatumType::U16 |
-            DatumType::I8 |
-            DatumType::I16 |
-            DatumType::I32 |
-            DatumType::I64 => true,
-            _ => false
+            DatumType::U8
+            | DatumType::U16
+            | DatumType::I8
+            | DatumType::I16
+            | DatumType::I32
+            | DatumType::I64 => true,
+            _ => false,
         }
     }
 

@@ -10,7 +10,8 @@ use crate::frame::{PackA, PackB};
 use super::fuse::ScratchSpaceFusedNonLinear;
 use super::*;
 
-pub trait MatMatMul<TA, TB, TC, TI>: Debug + fmt::Display + dyn_clone::DynClone + Send + Sync
+pub trait MatMatMul<TA, TB, TC, TI>:
+    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync
 where
     TA: Copy + Zero,
     TB: Copy + Zero,

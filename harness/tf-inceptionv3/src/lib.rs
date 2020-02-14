@@ -46,7 +46,8 @@ pub fn imagenet_slim_labels() -> path::PathBuf {
 
 pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
     let image = image::open(&p).unwrap().to_rgb();
-    let resized = image::imageops::resize(&image, 299, 299, ::image::imageops::FilterType::Triangle);
+    let resized =
+        image::imageops::resize(&image, 299, 299, ::image::imageops::FilterType::Triangle);
     let image = tract_ndarray::Array4::from_shape_fn((1, 299, 299, 3), |(_, y, x, c)| {
         resized[(x as _, y as _)][c] as f32 / 255.0
     })
@@ -79,9 +80,7 @@ mod tests {
         download();
         // setup_test_logger();
         println!("{:?}", inception_v3_2016_08_28_frozen());
-        let tfd = tensorflow()
-            .model_for_path(inception_v3_2016_08_28_frozen())
-            .unwrap();
+        let tfd = tensorflow().model_for_path(inception_v3_2016_08_28_frozen()).unwrap();
         let plan = SimplePlan::new(&tfd).unwrap();
         let input = load_image(hopper());
         let outputs = plan.run(tvec![input]).unwrap();

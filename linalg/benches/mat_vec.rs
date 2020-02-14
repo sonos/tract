@@ -20,7 +20,9 @@ fn mat_vec_mul(c: &mut Criterion) {
                 let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
                 let b = vec![0.0; k];
                 let mut c = vec![0.0; m];
-                unsafe { mm.b_vec_from_data(); }
+                unsafe {
+                    mm.b_vec_from_data();
+                }
                 be.iter(move || unsafe { mm.run(pa, b.as_ptr(), c.as_mut_ptr(), &[]) });
             },
         );

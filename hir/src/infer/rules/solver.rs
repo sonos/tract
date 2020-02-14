@@ -692,8 +692,10 @@ mod tests {
 
         let any = InferenceFact::new();
         let facts = solver.infer_facts((tvec![&any], tvec![])).unwrap();
-        let expected =
-            (tvec![InferenceFact { shape: shapefactoid![_, 0; ..], ..InferenceFact::new() }], tvec![]);
+        let expected = (
+            tvec![InferenceFact { shape: shapefactoid![_, 0; ..], ..InferenceFact::new() }],
+            tvec![],
+        );
 
         assert_eq!(facts, expected);
     }
@@ -708,8 +710,10 @@ mod tests {
 
         let any = InferenceFact::new();
         let facts = solver.infer_facts((tvec![&any], tvec![])).unwrap();
-        let expected =
-            (tvec![InferenceFact { shape: shapefactoid![3, 3, 3], ..InferenceFact::new() }], tvec![]);
+        let expected = (
+            tvec![InferenceFact { shape: shapefactoid![3, 3, 3], ..InferenceFact::new() }],
+            tvec![],
+        );
 
         assert_eq!(facts, expected);
     }

@@ -9,7 +9,11 @@ pub struct UnimplementedOp {
 
 impl UnimplementedOp {
     pub fn new(outputs: usize, name: impl AsRef<str>, message: impl AsRef<str>) -> UnimplementedOp {
-        UnimplementedOp { outputs, name: name.as_ref().to_string(), message: message.as_ref().to_string() }
+        UnimplementedOp {
+            outputs,
+            name: name.as_ref().to_string(),
+            message: message.as_ref().to_string(),
+        }
     }
 }
 

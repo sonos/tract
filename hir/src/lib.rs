@@ -47,7 +47,7 @@ pub mod internal {
     pub use super::prelude::*;
     pub use crate::infer::*;
     pub use tract_core::internal::*;
-    pub use {to_typed, shapefactoid};
+    pub use {shapefactoid, to_typed};
 }
 
 #[cfg(test)]

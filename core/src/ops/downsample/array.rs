@@ -13,7 +13,7 @@ where
     TDim: From<D>,
 {
     if down_op.axis != slice_op.axis {
-        return Ok(None)
+        return Ok(None);
     }
     let modulo = (down_op.modulo + slice_op.start.to_integer()? as usize) % down_op.stride;
     let left = (down_op.modulo + slice_op.start.to_integer()? as usize) / down_op.stride;
@@ -75,8 +75,10 @@ mod tests {
         let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
         let model = {
             let mut model = TypedModel::default();
-            let input =
-                model.add_source("input", TypedFact::dt_shape(i32::datum_type(), [len].as_ref()).unwrap())?;
+            let input = model.add_source(
+                "input",
+                TypedFact::dt_shape(i32::datum_type(), [len].as_ref()).unwrap(),
+            )?;
             let crop =
                 model.wire_node("crop", ops::array::Slice::new(0, left, len - right), &[input])?;
             let down = model.wire_node("down", Downsample::new(0, stride, modulo), &crop)?;

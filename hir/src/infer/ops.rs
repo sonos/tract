@@ -1,7 +1,7 @@
-use std::fmt;
-use crate::infer::*;
-use tract_core::downcast_rs::Downcast;
 use super::Factoid;
+use crate::infer::*;
+use std::fmt;
+use tract_core::downcast_rs::Downcast;
 
 tract_core::dyn_clone::clone_trait_object!(InferenceOp);
 
@@ -148,4 +148,3 @@ impl AsMut<dyn Op> for Box<dyn InferenceOp> {
         self.as_op_mut()
     }
 }
-
