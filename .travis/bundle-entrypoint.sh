@@ -25,17 +25,9 @@ aws s3 sync s3://tract-ci-builds/model $CACHEDIR
 )
 
 touch metrics
-
-if [ -x tract ]
+if [ -e sizes ]
 then
-    binary_size_cli=`stat -c "%s" tract`
-    echo binary_size.cli $binary_size_cli >> metrics
-fi
-
-if [ -x example-tensorflow-mobilenet-v2 ]
-then
-    binary_size_cli=`stat -c "%s" example-tensorflow-mobilenet-v2`
-    echo binary_size.example_tensorflow_mobilenet_v2 $binary_size_cli >> metrics
+    cat sizes >> metrics
 fi
 
 if [ -e benches ]

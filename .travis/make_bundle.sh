@@ -21,8 +21,24 @@ echo "export TIMESTAMP=$timestamp" >> $TASK_NAME/vars
 echo "export PLATFORM=$PLATFORM" >> $TASK_NAME/vars
 
 mkdir $TASK_NAME/benches
-cp target/$RUSTC_TRIPLE/release/example-tensorflow-mobilenet-v2 $TASK_NAME
+
+touch sizes
+for bin in example-tensorflow-mobilenet-v2 tract
+do
+    if [ -e target/$RUSTC_TRIPLE/release/$bin ]
+    then
+        binary_size_cli=$(stat -c "%s" target/$RUSTC_TRIPLE/release/$bin)
+        token=$(cat $bin | tr '-' '_')
+        if [ "$bin" == tract ]
+        then
+            token=cli
+        fi
+        echo binary_size.$token $binary_size_cli >> sizes
+    fi
+done
+
 cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
+cp sizes $TASK_NAME
 for bench in mm_for_wavenet_hw conv_for_wavenet_hw mm_for_asr_am
 do
     exe=`ls -t target/$RUSTC_TRIPLE/release/$bench-???????????????? | head -1`
