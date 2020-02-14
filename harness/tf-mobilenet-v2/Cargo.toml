@@ -1,5 +1,5 @@
 [package]
-name = "tf-mobilenetv2"
+name = "harness-tensorflow-mobilenet-v2"
 version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 

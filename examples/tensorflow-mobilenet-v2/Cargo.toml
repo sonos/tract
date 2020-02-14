@@ -1,5 +1,5 @@
 [package]
-name = "tract-mobilenet-v2-example"
+name = "example-tensorflow-mobilenet-v2"
 version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2018"

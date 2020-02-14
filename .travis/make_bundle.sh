@@ -21,6 +21,7 @@ echo "export TIMESTAMP=$timestamp" >> $TASK_NAME/vars
 echo "export PLATFORM=$PLATFORM" >> $TASK_NAME/vars
 
 mkdir $TASK_NAME/benches
+cp target/$RUSTC_TRIPLE/release/example-tensorflow-mobilenet-v2 $TASK_NAME
 cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
 for bench in mm_for_wavenet_hw conv_for_wavenet_hw mm_for_asr_am
 do
