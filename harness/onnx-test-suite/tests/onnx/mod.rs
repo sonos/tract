@@ -144,9 +144,9 @@ pub fn run_one<P: AsRef<path::Path>>(
     }
 }
 
-fn run_model<TI, O>(model: ModelImpl<TI, O>, inputs: TVec<Tensor>, data_path: &path::Path)
+fn run_model<F, O>(model: ModelImpl<F, O>, inputs: TVec<Tensor>, data_path: &path::Path)
 where
-    TI: Fact + Clone + 'static,
+    F: Fact + Clone + 'static,
     O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let plan = SimplePlan::new(&model).unwrap();

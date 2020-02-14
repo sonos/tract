@@ -16,7 +16,7 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 /// model.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct BaseNode<TI: Fact, O> {
+pub struct BaseNode<F: Fact, O> {
     /// node id in the model
     ///
     /// Caution: this id will not be persistent during networks transformation
@@ -33,19 +33,19 @@ pub struct BaseNode<TI: Fact, O> {
     #[cfg_attr(feature = "serialize", serde(skip))]
     pub op: O,
     /// List of ouputs, with their descendant and tensor type information.
-    pub outputs: TVec<OutletFact<TI>>,
+    pub outputs: TVec<OutletFact<F>>,
 }
 
-impl<TI: Fact, O: std::fmt::Display> fmt::Display for BaseNode<TI, O> {
+impl<F: Fact, O: std::fmt::Display> fmt::Display for BaseNode<F, O> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op)
     }
 }
 
-pub type Node<TI> = BaseNode<TI, Box<dyn Op>>;
+pub type Node<F> = BaseNode<F, Box<dyn Op>>;
 
-impl<TI: Fact, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op>>
-    BaseNode<TI, NodeOp>
+impl<F: Fact, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op>>
+    BaseNode<F, NodeOp>
 {
     /// Access the op of the node
     pub fn op(&self) -> &dyn Op {
@@ -68,7 +68,7 @@ impl<TI: Fact, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<d
     }
 
     /// Check that this node produce the same outputs as `other`.
-    pub fn same_as(&self, other: &BaseNode<TI, NodeOp>) -> bool {
+    pub fn same_as(&self, other: &BaseNode<F, NodeOp>) -> bool {
         self.inputs == other.inputs && self.op().same_as(other.op())
     }
 }
@@ -76,14 +76,14 @@ impl<TI: Fact, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<d
 /// Information for each outlet of a node
 #[derive(Clone, Default)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct OutletFact<TI: Fact> {
+pub struct OutletFact<F: Fact> {
     /// the tensor type information
-    pub fact: TI,
+    pub fact: F,
     /// where this outlet is used.
     pub successors: TVec<InletId>,
 }
 
-impl<TI: Fact> fmt::Debug for OutletFact<TI> {
+impl<F: Fact> fmt::Debug for OutletFact<F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,
