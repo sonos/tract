@@ -45,7 +45,7 @@ case "$PLATFORM" in
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > $HOME/.dinghy.toml
-        cargo dinghy --platform $PLATFORM build --release -p tract
+        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
     ;;
 
@@ -126,7 +126,7 @@ case "$PLATFORM" in
         rustup target add $RUSTC_TRIPLE
         cargo dinghy --platform $PLATFORM test --release -p tract-linalg -- --nocapture
         cargo dinghy --platform $PLATFORM test --release -p tract-core
-        cargo dinghy --platform $PLATFORM build --release -p tract
+        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
     ;;
     *)
