@@ -16,7 +16,6 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 bytes = "0.5"
 derive-new = "0.5"
-error-chain = "0.12"
 itertools = "0.8"
 log = "0.4"
 prost = "0.6"
