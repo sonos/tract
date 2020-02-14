@@ -131,10 +131,8 @@ fn incorporate_memory_ops_as_scans(
             )?;
             node_id_old_to_new.insert(mem, id.node);
 
-            let zeroes = Tensor::from(tract_ndarray::Array2::<f32>::zeros((
-                (-op.offset) as usize,
-                channel,
-            )));
+            let zeroes =
+                Tensor::from(tract_ndarray::Array2::<f32>::zeros(((-op.offset) as usize, channel)));
             mapped_inputs.push(tract_hir::ops::scan::InputMapping::State {
                 initializer: tract_hir::ops::scan::StateInitializer::Value(zeroes.into()),
             });
@@ -202,8 +200,7 @@ fn incorporate_memory_ops_as_scans(
             .collect::<TractResult<_>>()?;
 
         for output in &scan_outputs {
-            inner_outputs
-                .push(OutletId::new(node_id_old_to_new[&output.node], output.slot));
+            inner_outputs.push(OutletId::new(node_id_old_to_new[&output.node], output.slot));
         }
 
         inner_model.set_output_outlets(&inner_outputs)?;
@@ -226,11 +223,7 @@ fn incorporate_memory_ops_as_scans(
 
         let name =
             format!("scan-{}", scan_inputs.iter().map(|li| &model.node(li.node).name).join("-"));
-        let scan_id = patch.add_node(
-            name,
-            scan,
-            output_facts
-        )?;
+        let scan_id = patch.add_node(name, scan, output_facts)?;
 
         for (ix, input) in scan_inputs.iter().enumerate() {
             let tapped = patch.tap_model(model, *input)?;

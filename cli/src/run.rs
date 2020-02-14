@@ -66,7 +66,8 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     let mut result = tract_ndarray::ArrayD::<f32>::default(output_shape);
     let input = input.to_array_view::<f32>()?;
     for ix in 0..input_dim.div_ceil(pulse) {
-        let chunk = input.slice_axis(tract_ndarray::Axis(axis), (ix * pulse..(ix + 1) * pulse).into());
+        let chunk =
+            input.slice_axis(tract_ndarray::Axis(axis), (ix * pulse..(ix + 1) * pulse).into());
         let input = if chunk.shape()[input_fact.axis] < pulse {
             let mut chunk_shape = chunk.shape().to_vec();
             chunk_shape[input_fact.axis] = pulse;
@@ -91,6 +92,7 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
             .assign(&result_chunk);
     }
     result.slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (output_fact.delay..).into());
-    result.slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
+    result
+        .slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
     Ok(tvec!(result.into_arc_tensor()))
 }

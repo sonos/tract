@@ -115,7 +115,8 @@ fn set_tensorfacts_path(
         // Set the number of facts in the set.
         [-1] => {
             // Conversion is checked.
-            let value = IntFactoid::from_wrapped(value)?.concretize().map(|v| v.to_usize().unwrap());
+            let value =
+                IntFactoid::from_wrapped(value)?.concretize().map(|v| v.to_usize().unwrap());
 
             if value.is_some() && value.unwrap() != facts.len() {
                 bail!(

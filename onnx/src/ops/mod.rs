@@ -14,9 +14,7 @@ pub mod rec;
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast);
     reg.insert("Constant", konst);
-    reg.insert("Identity", |_, _| {
-        Ok((Box::new(ops::identity::Identity::default()), vec![]))
-    });
+    reg.insert("Identity", |_, _| Ok((Box::new(ops::identity::Identity::default()), vec![])));
     array::register_all_ops(reg);
     category_mapper::register_all_ops(reg);
     logic::register_all_ops(reg);

@@ -1,7 +1,7 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
-pub use tract_core::ops::nn::{LayerHardmax, LayerLogSoftmax, LayerSoftmax };
+pub use tract_core::ops::nn::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};
 
 impl InferenceRulesOp for LayerHardmax {
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -56,4 +56,3 @@ fn rules<'r, 'p: 'r, 's: 'r>(
     s.equals(&outputs[0].shape, &inputs[0].shape)?;
     Ok(())
 }
-

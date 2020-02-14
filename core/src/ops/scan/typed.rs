@@ -1,4 +1,4 @@
-use super::codegen::{ Codegen, CodegenOpParams };
+use super::codegen::{Codegen, CodegenOpParams};
 
 use super::*;
 
@@ -50,7 +50,12 @@ impl TypedScan {
             })
             .collect::<TractResult<_>>()?;
 
-        Ok(Codegen::new(Arc::new(CodegenOpParams::new(self.skip, Arc::new(plan), input_mapping, output_mapping))))
+        Ok(Codegen::new(Arc::new(CodegenOpParams::new(
+            self.skip,
+            Arc::new(plan),
+            input_mapping,
+            output_mapping,
+        ))))
     }
 
     pub fn new(
@@ -100,7 +105,9 @@ impl TypedScan {
             }
         }
         for suggestion in suggestions.into_iter() {
-            if let Some(op) = self.try_body_axes_change(suggestion, true)?.and_then(|c| c.substitute_op) {
+            if let Some(op) =
+                self.try_body_axes_change(suggestion, true)?.and_then(|c| c.substitute_op)
+            {
                 return Ok(Some(TypedModelPatch::replace_single_op(
                     model,
                     node,
@@ -508,7 +515,7 @@ impl TypedScan {
                     if let Some(new_axis) = change.transform_axis(m.axis) {
                         m.axis = new_axis;
                     } else {
-                        return Ok(None)
+                        return Ok(None);
                     }
                 }
             };

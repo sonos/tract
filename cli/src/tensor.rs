@@ -30,7 +30,9 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     let shape = ShapeFactoid::closed(
         shape
             .iter()
-            .map(|&s| Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(s.parse()?) }))
+            .map(|&s| {
+                Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(s.parse()?) })
+            })
             .collect::<TractResult<TVec<DimFact>>>()?,
     );
 

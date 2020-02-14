@@ -59,11 +59,10 @@ pub use self::order::eval_order;
 pub use self::patch::ModelPatch;
 pub use crate::ops::{Op, TypedOp};
 
-
 use crate::model::translator::Translate;
+use crate::ops::invariants;
 use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
-use crate::ops::invariants;
 
 /// Common methods for all variants of model.
 pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
@@ -187,8 +186,6 @@ impl TypedModel {
     pub fn invariants(&self) -> TractResult<invariants::Invariants> {
         invariants::for_model(self)
     }
-
-
 
     /// Attempt to convert the network to a NormalizedModel.
     pub fn into_normalized(self) -> TractResult<NormalizedModel> {

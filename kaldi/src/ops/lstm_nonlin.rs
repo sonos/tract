@@ -111,13 +111,15 @@ impl InferenceRulesOp for LstmNonlin {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        use tract_hir::ops::array::ConcatSlice;
-        use tract_hir::ops::{array, math, nn};
         use math::add::bin_typed as add;
         use math::mul::bin_typed as mul;
+        use tract_hir::ops::array::ConcatSlice;
+        use tract_hir::ops::{array, math, nn};
 
-        let params =
-            self.peepholes_params.to_array_view::<f32>()?.into_dimensionality::<tract_ndarray::Ix2>()?;
+        let params = self
+            .peepholes_params
+            .to_array_view::<f32>()?
+            .into_dimensionality::<tract_ndarray::Ix2>()?;
         let w_ic: OutletId = target
             .add_const(
                 format!("{})-w_ic", node.name),
@@ -185,7 +187,11 @@ impl InferenceRulesOp for LstmNonlin {
         wire!(tanh_c_t = math::tanh(), c_t);
         wire!(m_t = mul(), o_t, tanh_c_t);
 
-        wire!(output = array::TypedConcat::new(1, tvec!(ConcatSlice::Var, ConcatSlice::Var)), c_t, m_t);
+        wire!(
+            output = array::TypedConcat::new(1, tvec!(ConcatSlice::Var, ConcatSlice::Var)),
+            c_t,
+            m_t
+        );
 
         Ok(tvec!(output))
     }

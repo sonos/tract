@@ -2,8 +2,8 @@ use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 use std::ops::{Add, Div, Mul, Sub};
 use tract_hir::internal::*;
-use tract_num_traits::AsPrimitive;
 use tract_ndarray::prelude::*;
+use tract_num_traits::AsPrimitive;
 
 #[derive(Debug, Clone, new)]
 pub struct Range {

@@ -56,7 +56,7 @@ impl StatefullOp for Codegen {
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(State {
-                mutable: MutableState {
+            mutable: MutableState {
                 position: 0,
                 hidden_state: tvec!(),
                 model_state: TypedSimpleState::new(Arc::clone(&self.plan))?,
@@ -69,7 +69,7 @@ impl StatefullOp for Codegen {
 #[derive(Debug, Clone)]
 struct State {
     op: Arc<CodegenOpParams>,
-    mutable: MutableState
+    mutable: MutableState,
 }
 
 #[derive(Debug, Clone)]
@@ -174,7 +174,9 @@ impl OpState for State {
                     .and_then(|d| d.to_integer().ok().map(|i| i as usize))
                     .unwrap_or(shape[output.axis] * iters);
                 shape[output.axis] = scanning_dim;
-                let t = dispatch_datum!(MutableState::alloc_output_t(fact.datum_type)(mutable, &*shape))?;
+                let t = dispatch_datum!(MutableState::alloc_output_t(fact.datum_type)(
+                    mutable, &*shape
+                ))?;
                 outputs.push((slot, t));
             }
             if let Some(slot) = output.last_value_slot {
@@ -197,15 +199,15 @@ impl OpState for State {
                 .map(|m| {
                     Ok(match m {
                         InputMapping::State { .. } => Some(mutable.hidden_state.pop().unwrap()),
-                        InputMapping::Scan { slot, axis, chunk } => {
-                            Some(dispatch_datum!(MutableState::slice_input_t(inputs[*slot].datum_type())(
+                        InputMapping::Scan { slot, axis, chunk } => Some(dispatch_datum!(
+                            MutableState::slice_input_t(inputs[*slot].datum_type())(
                                 mutable,
                                 inputs[*slot].as_ref(),
                                 *axis,
                                 i,
                                 *chunk
-                            ))?)
-                        }
+                            )
+                        )?),
                         InputMapping::Full { slot } => Some(inputs[*slot].clone().into_tensor()),
                     })
                 })

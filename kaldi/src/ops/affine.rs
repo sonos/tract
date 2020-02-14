@@ -18,7 +18,8 @@ pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn
     // O•TI -> t -> TI•O -> T•I•O = HWIO
     let o_ti = kernel.to_array_view::<f32>()?;
     let t_i_o_shape = (kernel_len, kernel.len() / kernel_len / bias.len(), bias.len());
-    let t_i_o = tract_ndarray::Array::from_shape_vec(t_i_o_shape, o_ti.t().iter().cloned().collect())?;
+    let t_i_o =
+        tract_ndarray::Array::from_shape_vec(t_i_o_shape, o_ti.t().iter().cloned().collect())?;
     Ok(Box::new(Affine {
         kernel_len,
         dilation,

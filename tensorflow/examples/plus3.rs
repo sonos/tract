@@ -2,8 +2,8 @@ extern crate tract_tensorflow;
 use std::convert::TryFrom;
 use tract_hir::prelude::*;
 use tract_tensorflow::tfpb;
-use tract_tensorflow::tfpb::tensorflow::TensorProto;
 use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
+use tract_tensorflow::tfpb::tensorflow::TensorProto;
 
 fn main() {
     let plus3 =

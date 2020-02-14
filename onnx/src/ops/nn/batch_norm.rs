@@ -19,7 +19,10 @@ impl BatchNorm {
         var: &Tensor,
     ) -> TractResult<(Tensor, Tensor)>
     where
-        T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + tract_ndarray::ScalarOperand,
+        T: Datum
+            + tract_num_traits::Float
+            + tract_num_traits::FromPrimitive
+            + tract_ndarray::ScalarOperand,
         f32: AsPrimitive<T>,
     {
         let scale = scale.to_array_view::<T>()?.into_shape((c_dim,))?;
@@ -36,7 +39,10 @@ impl BatchNorm {
 
     fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
     where
-        T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + tract_ndarray::ScalarOperand,
+        T: Datum
+            + tract_num_traits::Float
+            + tract_num_traits::FromPrimitive
+            + tract_ndarray::ScalarOperand,
         f32: AsPrimitive<T>,
     {
         let (x, scale, beta, mean, var) = args_5!(&mut inputs);

@@ -74,7 +74,9 @@ impl InferenceRulesOp for ConcatV2 {
         model: &InferenceModel,
         node: &InferenceNode,
     ) -> TractResult<Option<InferenceModelPatch>> {
-        if let Some(ref axis) = model.outlet_fact(node.inputs[node.inputs.len() - 1])?.value.concretize() {
+        if let Some(ref axis) =
+            model.outlet_fact(node.inputs[node.inputs.len() - 1])?.value.concretize()
+        {
             let axis = axis.to_scalar::<i32>()?;
             Ok(Some(InferenceModelPatch::replace_single_op(
                 model,

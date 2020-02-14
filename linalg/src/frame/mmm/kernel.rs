@@ -261,14 +261,16 @@ pub mod test {
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
-        let expected:Vec<TC> = (0..v.len()).map(|ix| {
-            let row = ix / K::nr();
-            let col = ix % K::nr();
-            (0..k)
-                .map(|i| pa[K::mr() * i + row].as_() * b[t * i + col].as_())
-                .fold(TI::zero(), |s, a| s + a)
-                .as_()
-        }).collect();
+        let expected: Vec<TC> = (0..v.len())
+            .map(|ix| {
+                let row = ix / K::nr();
+                let col = ix % K::nr();
+                (0..k)
+                    .map(|i| pa[K::mr() * i + row].as_() * b[t * i + col].as_())
+                    .fold(TI::zero(), |s, a| s + a)
+                    .as_()
+            })
+            .collect();
         assert_eq!(v, expected);
     }
 

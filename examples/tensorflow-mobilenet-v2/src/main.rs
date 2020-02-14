@@ -14,7 +14,8 @@ fn main() -> TractResult<()> {
 
     // open image, resize it and make a Tensor out of it
     let image = image::open("grace_hopper.jpg").unwrap().to_rgb();
-    let resized = image::imageops::resize(&image, 224, 224, ::image::imageops::FilterType::Triangle);
+    let resized =
+        image::imageops::resize(&image, 224, 224, ::image::imageops::FilterType::Triangle);
     let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
         resized[(x as _, y as _)][c] as f32 / 255.0
     })

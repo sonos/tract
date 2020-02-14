@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 pub use tract_core::ops::downsample::Downsample;
 
@@ -34,4 +34,3 @@ impl InferenceRulesOp for Downsample {
     as_op!();
     to_typed!();
 }
-

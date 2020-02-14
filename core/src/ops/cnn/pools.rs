@@ -35,8 +35,10 @@ impl PoolSpec {
     pub fn compute_geo(&self, input_full_shape: &[usize]) -> (DataShape, Patch, DataShape) {
         let input_shape = self.data_format.shape(input_full_shape.into());
         let output_inner_stride = match self.data_format {
-            DataFormat::NCHW|DataFormat::CHW => 1,
-            DataFormat::NHWC|DataFormat::HWC => self.output_channel_override.clone().unwrap_or(*input_shape.c()),
+            DataFormat::NCHW | DataFormat::CHW => 1,
+            DataFormat::NHWC | DataFormat::HWC => {
+                self.output_channel_override.clone().unwrap_or(*input_shape.c())
+            }
         };
         let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)
             .with_output_inner_stride(output_inner_stride)
@@ -117,10 +119,7 @@ impl PoolSpec {
     }
 
     pub fn dispose_n_axis(&self) -> PoolSpec {
-        PoolSpec {
-            data_format: self.data_format.dispose_n_axis(),
-            .. self.clone()
-        }
+        PoolSpec { data_format: self.data_format.dispose_n_axis(), ..self.clone() }
     }
 
     pub fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {

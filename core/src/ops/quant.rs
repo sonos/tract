@@ -238,14 +238,20 @@ impl TypedOp for DequantizeLinearF32 {
                         .add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
                     let mut next = model.single_succ(dequant.id)?.unwrap();
                     // plug in dequant
-                    wire = adhoc_model.wire_node(&*dequant.name, dequant.op.clone(), [wire].as_ref())?[0];
+                    wire = adhoc_model.wire_node(
+                        &*dequant.name,
+                        dequant.op.clone(),
+                        [wire].as_ref(),
+                    )?[0];
                     while next.id != quant.id {
                         wire =
-                            adhoc_model.wire_node(&*next.name, next.op.clone(), [wire].as_ref())?[0];
+                            adhoc_model.wire_node(&*next.name, next.op.clone(), [wire].as_ref())?
+                                [0];
                         next = model.single_succ(next.id)?.unwrap();
                     }
                     // plug in quant
-                    wire = adhoc_model.wire_node(&*quant.name, quant.op.clone(), [wire].as_ref())?[0];
+                    wire =
+                        adhoc_model.wire_node(&*quant.name, quant.op.clone(), [wire].as_ref())?[0];
                     adhoc_model.set_output_outlets(&[wire])?;
                     let input = (0u8..=255).collect::<Vec<u8>>();
                     let input = match dt {

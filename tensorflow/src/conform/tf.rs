@@ -232,9 +232,7 @@ fn convert_output(
     macro_rules! convert {
         ($dt:ident) => {
             match step.fetch(output) {
-                Err(r) => {
-                        Err(r)?
-                }
+                Err(r) => Err(r)?,
                 Ok(output) => tensor_to_array::<$dt>(&output)?.into(),
             }
         };

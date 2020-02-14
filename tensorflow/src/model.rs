@@ -1,11 +1,11 @@
-use prost::Message;
 use crate::tfpb::tensorflow::{GraphDef, NodeDef, SavedModel};
+use prost::Message;
 use std::{fs, path};
 use tract_hir::internal::*;
 
 #[derive(Default)]
 pub struct ParsingContext {
-    pub node_output_arities: HashMap<String, usize>
+    pub node_output_arities: HashMap<String, usize>,
 }
 
 #[derive(Clone, Default)]
@@ -58,14 +58,14 @@ impl Tensorflow {
     }
 
     pub fn read_frozen_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
-        let mut v = vec!();
+        let mut v = vec![];
         r.read_to_end(&mut v)?;
         let b = bytes::Bytes::from(v);
         Ok(GraphDef::decode(b).map_err(|e| format!("{:?}", e))?)
     }
 
     pub fn open_saved_model(&self, r: &mut dyn std::io::Read) -> TractResult<SavedModel> {
-        let mut v = vec!();
+        let mut v = vec![];
         r.read_to_end(&mut v)?;
         let b = bytes::Bytes::from(v);
         Ok(SavedModel::decode(b).map_err(|e| format!("{:?}", e))?)
@@ -130,7 +130,8 @@ impl Framework<GraphDef> for Tensorflow {
                 .into(),
             };
 
-            let noutputs = op.nboutputs()?.max(context.node_output_arities.get(name).cloned().unwrap_or(1));
+            let noutputs =
+                op.nboutputs()?.max(context.node_output_arities.get(name).cloned().unwrap_or(1));
             let facts = tvec!(InferenceFact::default(); noutputs);
 
             let node_id = model.add_node(name.clone(), op, facts)?;

@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 use tract_core::ops::element_wise::ElementWiseOp;
 

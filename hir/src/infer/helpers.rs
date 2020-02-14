@@ -1,5 +1,5 @@
-use super::*;
 use super::factoid::*;
+use super::*;
 
 /// Infers every possible fact when all the values are concrete.
 pub fn infer_forward_concrete(

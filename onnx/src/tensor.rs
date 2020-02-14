@@ -22,7 +22,6 @@ impl TryFrom<DataType> for DatumType {
             _ => Err(format!("Unknown DatumType {:?}", t))?,
         }
     }
-
 }
 
 impl<'a> TryFrom<&'a type_proto::Tensor> for InferenceFact {
@@ -106,18 +105,10 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                     t.int32_data.iter().map(|&x| x as i16).collect(),
                 )?
                 .into(),
-                DatumType::I32 => {
-                    Array::from_shape_vec(&*shape, t.int32_data.to_vec())?.into()
-                }
-                DatumType::I64 => {
-                    Array::from_shape_vec(&*shape, t.int64_data.to_vec())?.into()
-                }
-                DatumType::F32 => {
-                    Array::from_shape_vec(&*shape, t.float_data.to_vec())?.into()
-                }
-                DatumType::F64 => {
-                    Array::from_shape_vec(&*shape, t.double_data.to_vec())?.into()
-                }
+                DatumType::I32 => Array::from_shape_vec(&*shape, t.int32_data.to_vec())?.into(),
+                DatumType::I64 => Array::from_shape_vec(&*shape, t.int64_data.to_vec())?.into(),
+                DatumType::F32 => Array::from_shape_vec(&*shape, t.float_data.to_vec())?.into(),
+                DatumType::F64 => Array::from_shape_vec(&*shape, t.double_data.to_vec())?.into(),
                 DatumType::String => {
                     let strings = t
                         .string_data

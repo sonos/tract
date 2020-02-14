@@ -83,7 +83,12 @@ fn proptest_regular_against_pulse(
         .to_owned()
         .into_tensor();
 
-    prop_assert!(&pulsed_output.close_enough(&*outputs[0], true).is_ok(), "{:?} == {:?}", pulsed_output, outputs[0]);
+    prop_assert!(
+        &pulsed_output.close_enough(&*outputs[0], true).is_ok(),
+        "{:?} == {:?}",
+        pulsed_output,
+        outputs[0]
+    );
     Ok(())
 }
 
@@ -145,8 +150,9 @@ fn test_simple_conv() {
 fn test_crop_after_1() {
     use tract_hir::ops::array::Slice;
     let mut model = InferenceModel::default();
-    let a =
-        model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S))).unwrap();
+    let a = model
+        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
+        .unwrap();
     model.wire_node("slice", Slice::new(0, 0, 0), &[a]).unwrap();
     model.auto_outputs().unwrap();
 
@@ -158,8 +164,9 @@ fn test_crop_after_1() {
 fn test_pad_after_1() {
     use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let a =
-        model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S))).unwrap();
+    let a = model
+        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
+        .unwrap();
     model
         .wire_node(
             "pad",
@@ -177,8 +184,9 @@ fn test_pad_after_1() {
 fn test_pad_before_1() {
     use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let a =
-        model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S))).unwrap();
+    let a = model
+        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
+        .unwrap();
     model
         .wire_node(
             "pad",
@@ -196,8 +204,9 @@ fn test_pad_before_1() {
 fn test_pad_before_2() {
     use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let a =
-        model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S))).unwrap();
+    let a = model
+        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
+        .unwrap();
     model
         .wire_node(
             "pad",

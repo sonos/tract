@@ -1,7 +1,7 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
-use tract_core::ops::source::{ SourceState, TypedSource };
+use tract_core::ops::source::{SourceState, TypedSource};
 
 #[derive(Debug, Clone, new)]
 pub struct Source;

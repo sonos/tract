@@ -25,11 +25,11 @@ use itertools::Itertools;
 use std::process;
 use std::str::FromStr;
 
-#[cfg(feature = "tf")]
-use tract_tensorflow::tfpb::tensorflow::GraphDef;
 use tract_core::internal::*;
 use tract_core::model::{NormalizedModel, TypedModel};
 use tract_hir::internal::*;
+#[cfg(feature = "tf")]
+use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
@@ -542,7 +542,9 @@ impl Parameters {
                     input_values.push(Some(t));
                 }
                 for input in raw_model.node(outlet.node).inputs.clone() {
-                    raw_model.node_mut(input.node).outputs[input.slot].successors.retain(|s| s.node != outlet.node);
+                    raw_model.node_mut(input.node).outputs[input.slot]
+                        .successors
+                        .retain(|s| s.node != outlet.node);
                 }
                 raw_model.node_mut(outlet.node).inputs.clear();
                 raw_model.node_mut(outlet.node).op =

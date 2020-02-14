@@ -53,8 +53,11 @@ where
                     for c in 0..*self.input_shape.c() {
                         let input_offset = input_offset + c_stride_i * c;
                         for m in 0..mult {
-                            let mut sum =
-                                if let Some(b) = &self.bias { *b.get_unchecked(m + c * mult) } else { T::zero() };
+                            let mut sum = if let Some(b) = &self.bias {
+                                *b.get_unchecked(m + c * mult)
+                            } else {
+                                T::zero()
+                            };
                             let output_offset = output_offset + c_stride_o * (m + c * mult);
                             let kptr = self
                                 .kernel_chw

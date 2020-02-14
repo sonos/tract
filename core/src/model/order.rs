@@ -31,10 +31,7 @@ pub fn eval_order_for_nodes<F: Fact, O: Debug + Display + AsRef<dyn Op> + AsMut<
         let mut current_stack: Vec<(usize, usize)> = vec![(target, 0)];
         let mut pending = bit_set::BitSet::with_capacity(nodes.len());
         while let Some((current_node, current_input)) = current_stack.pop() {
-            if inputs.contains(&current_node)
-                || current_input
-                    == nodes[current_node].inputs.len()
-            {
+            if inputs.contains(&current_node) || current_input == nodes[current_node].inputs.len() {
                 order.push(current_node);
                 done.insert(current_node);
                 pending.remove(current_node);
@@ -70,7 +67,9 @@ mod tests {
     #[test]
     fn simple() {
         let mut model = TypedModel::default();
-        let a = model.add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap()).unwrap();
+        let a = model
+            .add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap())
+            .unwrap();
         let b = model.add_const("b", Tensor::from(12.0f32)).unwrap();
         let add = model.wire_node("add", math::add::bin_typed(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
@@ -80,7 +79,9 @@ mod tests {
     #[test]
     fn diamond() {
         let mut model = TypedModel::default();
-        let a = model.add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap()).unwrap();
+        let a = model
+            .add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap())
+            .unwrap();
         let add = model.wire_node("add", math::add::bin_typed(), &[a, a]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, add.node));
@@ -89,7 +90,9 @@ mod tests {
     #[test]
     fn dodge_loop() {
         let mut model = TypedModel::default();
-        let a = model.add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap()).unwrap();
+        let a = model
+            .add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap())
+            .unwrap();
         let add = model.wire_node("add", math::add::bin_typed(), &[a, a]).unwrap()[0];
         let neg = model.wire_node("neg", math::add::bin_typed(), &[add, a]).unwrap()[0];
         model.add_edge(neg, InletId::new(add.node, 1)).unwrap();

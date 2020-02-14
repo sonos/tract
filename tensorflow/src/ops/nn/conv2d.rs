@@ -7,7 +7,8 @@ use crate::tfpb::tensorflow::NodeDef;
 
 pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let strides = super::strides(pb)?;
-    let mut op = cnn::Conv::default().hwio().padding(super::padding(pb)?).strides(strides[1..3].into());
+    let mut op =
+        cnn::Conv::default().hwio().padding(super::padding(pb)?).strides(strides[1..3].into());
     if super::data_format(pb)? == DataFormat::NHWC {
         op = op.nhwc()
     }
@@ -18,8 +19,8 @@ pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infere
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract_ndarray::*;
     use tract_hir::ops::cnn::{Conv, PaddingSpec};
+    use tract_ndarray::*;
 
     fn mk(sizes: &[usize]) -> Tensor {
         Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)

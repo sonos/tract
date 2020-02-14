@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use crate::internal::*;
 use super::factoid::Factoid;
 use super::{InferenceFact, InferenceModel, InferenceNode, InferenceOp};
+use crate::internal::*;
+use crate::prelude::TVec;
 use tract_core::model::compact;
 use tract_core::model::translator::Translate;
-use crate::prelude::TVec;
 
 pub trait InferenceModelExt {
     /// Analyse all nodes of the graph.

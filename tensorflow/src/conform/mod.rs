@@ -27,8 +27,8 @@ pub mod tf;
 use crate::tfpb;
 use crate::tfpb::tensorflow::tensor_shape_proto::Dim;
 use crate::tfpb::tensorflow::{DataType, TensorProto, TensorShapeProto};
-use tract_hir::internal::*;
 use std::convert::TryInto;
+use tract_hir::internal::*;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,
@@ -50,7 +50,7 @@ pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
 }
 
 pub fn const_f32(name: &str, t: &Tensor) -> tfpb::tensorflow::NodeDef {
-    let tf:TensorProto = t.cast_to::<f32>().unwrap().as_ref().try_into().unwrap();
+    let tf: TensorProto = t.cast_to::<f32>().unwrap().as_ref().try_into().unwrap();
     tfpb::node().name(name).op("Const").attr("dtype", DataType::DtFloat).attr("value", tf)
 }
 
@@ -59,7 +59,7 @@ pub fn placeholder_f32(name: &str) -> tfpb::tensorflow::NodeDef {
 }
 
 pub fn const_i32(name: &str, t: &Tensor) -> tfpb::tensorflow::NodeDef {
-    let tf:TensorProto = t.cast_to::<i32>().unwrap().as_ref().try_into().unwrap();
+    let tf: TensorProto = t.cast_to::<i32>().unwrap().as_ref().try_into().unwrap();
     tfpb::node().name(name).op("Const").attr("dtype", DataType::DtInt32).attr("value", tf)
 }
 

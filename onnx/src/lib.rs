@@ -16,7 +16,6 @@ pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/prost/onnx.rs"));
 }
 
-
 pub mod pb_helpers;
 pub mod tensor;
 
@@ -24,8 +23,8 @@ pub use model::Onnx;
 
 pub use tract_hir::tract_core;
 pub mod prelude {
-    pub use tract_hir::prelude::*;
     pub use crate::onnx;
+    pub use tract_hir::prelude::*;
 }
 
 use tract_hir::prelude::*;

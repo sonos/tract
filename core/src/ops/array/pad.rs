@@ -89,11 +89,7 @@ impl Op for Pad {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!(
-            "Mode: {:?}, pads: {:?})",
-            self.mode,
-            self.pads,
-        )))
+        Ok(vec![format!("Mode: {:?}, pads: {:?})", self.mode, self.pads,)])
     }
 
     canonic!();
@@ -125,7 +121,7 @@ impl TypedOp for Pad {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.pads.iter().all(|p| p.0 == 0 && p.1 == 0 ) {
+        if self.pads.iter().all(|p| p.0 == 0 && p.1 == 0) {
             Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
         } else {
             Ok(None)
@@ -285,13 +281,10 @@ impl<T: Datum + Copy> Op for PulsePad<T> {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!(
+        Ok(vec![format!(
             "Mode: {:?}, axis: {} before: {} after: {}",
-            self.mode,
-            self.axis,
-            self.before,
-            self.after,
-        )))
+            self.mode, self.axis, self.before, self.after,
+        )])
     }
 
     canonic!();

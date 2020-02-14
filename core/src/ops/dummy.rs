@@ -25,4 +25,3 @@ impl TypedOp for Dummy {
         Ok(tvec!())
     }
 }
-

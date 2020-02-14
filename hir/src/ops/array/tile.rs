@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::infer::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Tile;
@@ -79,4 +79,3 @@ impl InferenceRulesOp for Tile {
 
     as_op!();
 }
-

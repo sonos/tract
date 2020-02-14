@@ -29,4 +29,3 @@ macro_rules! dispatch_model_no_pulse {
         }
     };
 }
-
