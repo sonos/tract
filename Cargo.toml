@@ -7,6 +7,7 @@ members = [
     "kaldi",
     "cli",
     "examples/tensorflow-mobilenet-v2",
+    "examples/jupyter-keras-tract",
     "harness/core-proptest-pulse",
     "harness/lstm-proptest-onnx-vs-tf",
     "harness/onnx-test-suite",
