@@ -19,6 +19,7 @@ data through it.
 ## Quick start
 
 * [MobileNet v2 with TensorFlow](examples/tensorflow-mobilenet-v2)
+* [From Keras in Jupyter to tract](examples/jupyter-keras-tract)
 
 ## Real-time streaming support
 

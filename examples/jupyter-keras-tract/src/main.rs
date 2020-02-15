@@ -1,8 +1,6 @@
+use rand::*;
 use tract_core::ndarray;
 use tract_core::prelude::*;
-use rand::*;
-//use tract_core::analyser::types::shapefact;
-//use tract_core::analyser::types::*;
 
 fn main() -> TractResult<()> {
     // load the model
@@ -11,7 +9,6 @@ fn main() -> TractResult<()> {
     // specify input type and shape
     model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec![10, 100]))?;
     let model = model.into_optimized()?;
-
 
     // Generate some input data for the model
     let mut rng = thread_rng();
@@ -27,4 +24,3 @@ fn main() -> TractResult<()> {
     println!("result: {:?}", to_show);
     Ok(())
 }
-    

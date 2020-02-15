@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Notable
+
+* New jupyter/keras/tf example
+
 ## 0.5.9 - 2020-02-07
 
 ### Breaking
