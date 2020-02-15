@@ -38,10 +38,13 @@ extern crate derive_new;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
-#[cfg(any(test, featutre = "conform"))]
+#[cfg(test)]
 extern crate env_logger;
 extern crate prost;
 extern crate prost_types;
+#[cfg(feature = "conform")]
+#[macro_use]
+extern crate error_chain;
 #[cfg(feature = "conform")]
 extern crate tensorflow;
 pub extern crate tract_hir;
