@@ -21,13 +21,14 @@ log = "0.4"
 prost = "0.6"
 prost-types = "0.6"
 tensorflow = { version = "0", optional = true }
+error-chain = { version = "0.12", optional = true }
 tract-hir = { path = "../hir" }
 
 [build-dependencies]
 prost-build = "0.6"
 
 [features]
-conform = [ "tensorflow" ]
+conform = [ "tensorflow", "error-chain" ]
 
 [dev-dependencies]
 criterion = "0.3"
