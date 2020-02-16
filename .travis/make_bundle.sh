@@ -29,7 +29,7 @@ do
     then
         binary_size_cli=$(stat -c "%s" target/$RUSTC_TRIPLE/release/$bin)
         token=$(echo $bin | tr '-' '_')
-        if [ "$bin" == tract ]
+        if [ "$bin" = "tract" ]
         then
             token=cli
         fi
