@@ -23,16 +23,15 @@ impl GatherNd {
         Ok(shape)
     }
 
-    fn eval_t<T: Datum>(
+    unsafe fn eval_t<T: Datum>(
         &self,
-        data: &Arc<Tensor>,
+        output: &mut Tensor,
+        data: &Tensor,
         indices: &ArrayViewD<i32>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        let data = data.to_array_view::<T>()?;
-        let shape = self.compute_shape(&data.shape(), &indices.shape())?;
-        let mut array = unsafe { Tensor::uninitialized::<T>(&*shape) }?;
+    ) {
+        let data = data.to_array_view_unchecked::<T>();
         for prefix in tract_ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
-            let mut dst = array.to_array_view_mut()?;
+            let mut dst = output.to_array_view_mut_unchecked();
             let mut coords = indices.view();
             for &x in prefix.slice().iter() {
                 dst.index_axis_inplace(Axis(0), x);
@@ -44,7 +43,6 @@ impl GatherNd {
             }
             dst.assign(&src);
         }
-        Ok(tvec![array.into_arc_tensor()])
     }
 }
 
@@ -59,9 +57,19 @@ impl Op for GatherNd {
 impl StatelessOp for GatherNd {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, indices) = args_2!(inputs);
+        let shape = self.compute_shape(&data.shape(), &indices.shape())?;
         let indices = indices.cast_to::<i32>()?;
         let indices = indices.to_array_view::<i32>()?;
-        dispatch_datum!(Self::eval_t(data.datum_type())(self, &data, &indices))
+        unsafe {
+            let mut output = Tensor::uninitialized_dt(data.datum_type(), &*shape)?;
+            dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
+                self,
+                &mut output,
+                &data,
+                &indices
+            ));
+            Ok(tvec!(output.into_arc_tensor()))
+        }
     }
 }
 
