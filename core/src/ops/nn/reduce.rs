@@ -1,6 +1,22 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
+macro_rules! r {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
+        match $dt {
+            DatumType::U8   => $($path)::*::<u8,_>($($args),*),
+            DatumType::U16  => $($path)::*::<u16,_>($($args),*),
+            DatumType::I8   => $($path)::*::<i8,_>($($args),*),
+            DatumType::I16  => $($path)::*::<i16,_>($($args),*),
+            DatumType::I32  => $($path)::*::<i32,_>($($args),*),
+            DatumType::I64  => $($path)::*::<i64,_>($($args),*),
+            DatumType::F32  => $($path)::*::<f32,_>($($args),*),
+            DatumType::F64  => $($path)::*::<f64,_>($($args),*),
+            _ => bail!("{:?} is not a number", $dt)
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum Reducer {
     Max,
@@ -11,6 +27,7 @@ pub enum Reducer {
 
 impl Reducer {
     pub fn reduce(&self, axes: &[usize], input: &Tensor) -> TractResult<Tensor> {
+        use Reducer::*;
         let dt = input.datum_type();
         let output_shape: Vec<usize> = input
             .shape()
@@ -18,88 +35,70 @@ impl Reducer {
             .enumerate()
             .map(|(ax, &d)| if axes.contains(&ax) { 1 } else { d })
             .collect();
-        unsafe {
-            let mut output = Tensor::uninitialized_dt(dt, &*output_shape)?;
-            let ostrides = output.strides();
-            let istrides = input.strides();
-            dispatch_numbers!(Reducer::init_t(dt)(self, &mut output))?;
-            let reduced_shape = input
-                .shape()
+        Ok(unsafe {
+            match self {
+                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t)),
+                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t)),
+                Prod => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t)),
+                Sum => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, sum_t)),
+            }
+        })
+    }
+
+    unsafe fn reduce_t<T, F>(
+        &self,
+        axes: &[usize],
+        output_shape: &[usize],
+        input: &Tensor,
+        f: F,
+    ) -> Tensor
+    where
+        F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
+        T: Copy + Datum,
+    {
+        use ndarray::*;
+        let input = input.to_array_view_unchecked::<T>();
+        let result = Array::from_shape_fn(output_shape, |coords| {
+            let slice_spec: Vec<SliceOrIndex> = coords
+                .slice()
                 .iter()
                 .enumerate()
-                .map(|(ix, d)| if axes.contains(&ix) { *d } else { 1 })
-                .collect::<TVec<_>>();
-            ndarray::indices(&*output_shape).into_iter().for_each(|output_indices| {
-                let o_offset =
-                    izip!(&*ostrides, output_indices.slice()).map(|(a, b)| a * b).sum::<usize>();
-                ndarray::indices(&*reduced_shape).into_iter().for_each(|reduced_indices| {
-                    let i_offset =
-                        izip!(&*istrides, output_indices.slice(), reduced_indices.slice())
-                            .map(|(s, o, r)| s * (o + r))
-                            .sum::<usize>();
-                    dispatch_numbers!(Reducer::fold_t(dt)(
-                        self,
-                        &mut output,
-                        input,
-                        o_offset,
-                        i_offset
-                    ))
-                    .unwrap();
-                });
-            });
-            Ok(output)
-        }
+                .map(|(ax, &d)| if axes.contains(&ax) { (..).into() } else { d.into() })
+                .collect();
+            let slice_info = SliceInfo::new(&slice_spec).unwrap();
+            let slice = input.slice(slice_info.as_ref());
+            f(slice)
+        });
+        result.into_tensor()
     }
+}
 
-    unsafe fn init_t<T>(&self, output: &mut Tensor) -> TractResult<()>
-    where
-        T: Copy + Datum + num_traits::Bounded + num_traits::One + num_traits::Zero,
-    {
-        use Reducer::*;
-        let v = match self {
-            Min => T::max_value(),
-            Max => T::min_value(),
-            Prod => T::one(),
-            Sum => T::zero(),
-        };
-        output.as_slice_mut_unchecked::<T>().iter_mut().for_each(|s| *s = v);
-        Ok(())
-    }
+fn max_t<'a, T>(v: ArrayViewD<'a, T>) -> T
+where
+    T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
+{
+    v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
+}
 
-    unsafe fn fold_t<T>(
-        &self,
-        output: &mut Tensor,
-        input: &Tensor,
-        o: usize,
-        i: usize,
-    ) -> TractResult<()>
-    where
-        T: Copy
-            + Datum
-            + num_traits::Bounded
-            + num_traits::One
-            + num_traits::Zero
-            + std::cmp::PartialOrd,
-    {
-        use Reducer::*;
-        let i = &input.as_slice_unchecked::<T>()[i];
-        let o = &mut output.as_slice_mut_unchecked::<T>()[o];
-        match self {
-            Min => {
-                if *i < *o {
-                    *o = *i
-                }
-            }
-            Max => {
-                if *i > *o {
-                    *o = *i
-                }
-            }
-            Sum => *o = *o + *i,
-            Prod => *o = *o * *i,
-        }
-        Ok(())
-    }
+fn min_t<'a, T>(v: ArrayViewD<'a, T>) -> T
+where
+    T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
+{
+    v.fold(T::max_value(), |acc, &v| if acc < v { acc } else { v })
+}
+
+fn prod_t<'a, T>(v: ArrayViewD<'a, T>) -> T
+where
+    T: Copy + Datum + num_traits::One,
+{
+    v.fold(T::one(), |acc, &v| acc * v)
+}
+
+fn sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
+where
+    T: Copy + Datum + num_traits::Zero,
+{
+    v.scalar_sum()
 }
 
 #[derive(Clone, Debug, new)]
