@@ -133,7 +133,7 @@ pub mod internal {
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
     pub use {as_op, not_a_pulsed_op, not_a_typed_op, op_as_typed_op, pulsed_op_to_typed_op};
     pub use {bin_to_super_type, element_wise, element_wise_oop};
-    pub use {dispatch_copy, dispatch_datum, dispatch_floatlike, dispatch_numbers};
+    pub use {dispatch_copy, dispatch_datum, dispatch_datum_by_size, dispatch_floatlike, dispatch_numbers};
 }
 
 #[cfg(test)]

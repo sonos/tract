@@ -232,6 +232,28 @@ macro_rules! dispatch_datum {
 }
 
 #[macro_export]
+macro_rules! dispatch_datum_by_size {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::datum::DatumType;
+        match $dt {
+            DatumType::Bool => $($path)::*::<i8>($($args),*),
+            DatumType::U8   => $($path)::*::<i8>($($args),*),
+            DatumType::U16  => $($path)::*::<i16>($($args),*),
+            DatumType::I8   => $($path)::*::<i8>($($args),*),
+            DatumType::I16  => $($path)::*::<i16>($($args),*),
+            DatumType::I32  => $($path)::*::<i32>($($args),*),
+            DatumType::I64  => $($path)::*::<i64>($($args),*),
+            DatumType::F16  => $($path)::*::<i16>($($args),*),
+            DatumType::F32  => $($path)::*::<i32>($($args),*),
+            DatumType::F64  => $($path)::*::<i64>($($args),*),
+            DatumType::Blob => $($path)::*::<Blob>($($args),*),
+            DatumType::TDim => $($path)::*::<TDim>($($args),*),
+            DatumType::String => $($path)::*::<String>($($args),*),
+        }
+    } }
+}
+
+#[macro_export]
 macro_rules! dispatch_copy {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::datum::DatumType;

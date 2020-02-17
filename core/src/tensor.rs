@@ -328,6 +328,16 @@ impl Tensor {
         unsafe { Ok(std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut()?, self.len())) }
     }
 
+    /// Access the data as a slice.
+    pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &[D] {
+        std::slice::from_raw_parts::<D>(self.data as *const D, self.len())
+    }
+
+    /// Access the data as a mutable slice.
+    pub unsafe fn as_slice_mut_unchecked<D: Datum>(&mut self) -> &mut [D] {
+        std::slice::from_raw_parts_mut::<D>(self.data as *mut D, self.len())
+    }
+
     /// Access the data as a scalar.
     pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<&D> {
         unsafe { Ok(&*(self.as_ptr::<D>()?)) }
