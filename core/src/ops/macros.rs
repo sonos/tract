@@ -287,7 +287,7 @@ macro_rules! dispatch_numbers {
             DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
-            _ => bail!("{:?} is not a number", $dt)
+            _ => Err(format!("{:?} is not a number", $dt).into())
         }
     } }
 }
