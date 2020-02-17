@@ -136,6 +136,13 @@ element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| {
     validation: Validation::Rounding
 );
 
+element_wise!(square, Square, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.powi(2));
+    Ok(())
+};
+    validation: Validation::Rounding
+);
+
 element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sqrt());
     Ok(())

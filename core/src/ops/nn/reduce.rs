@@ -1,6 +1,5 @@
 use crate::internal::*;
 use ndarray::prelude::*;
-use num_traits::cast::AsPrimitive;
 
 macro_rules! reduce_numbers {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
@@ -18,58 +17,22 @@ macro_rules! reduce_numbers {
     }
 }
 
-macro_rules! reduce_floatlike {
-    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
-        match $dt {
-            DatumType::F32  => $($path)::*::<f32,_>($($args),*),
-            DatumType::F64  => $($path)::*::<f64,_>($($args),*),
-            _ => bail!("{:?} is not float like", $dt)
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub enum Reducer {
-    L1,
-    L2,
-    LogSum,
-    LogSumExp,
     Max,
-    Mean,
     Min,
     Prod,
     Sum,
-    SumSquare,
 }
 
 impl Reducer {
     pub fn reduce(&self, axes: &[usize], input: Arc<Tensor>) -> TractResult<Tensor> {
         let dt = input.datum_type();
         match self {
-            Reducer::L1 => match dt {
-                DatumType::U8 => self.reduce_t::<u8, _>(axes, input, l1u_t),
-                DatumType::U16 => self.reduce_t::<u16, _>(axes, input, l1u_t),
-                DatumType::I8 => self.reduce_t::<i8, _>(axes, input, l1s_t),
-                DatumType::I16 => self.reduce_t::<i16, _>(axes, input, l1s_t),
-                DatumType::I32 => self.reduce_t::<i32, _>(axes, input, l1s_t),
-                DatumType::I64 => self.reduce_t::<i64, _>(axes, input, l1s_t),
-                DatumType::F32 => self.reduce_t::<f32, _>(axes, input, l1s_t),
-                DatumType::F64 => self.reduce_t::<f64, _>(axes, input, l1s_t),
-                _ => bail!("{:?} is not a number valid for L1 norm", dt),
-            },
-            Reducer::L2 => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, l2_t)),
-            Reducer::LogSum => reduce_floatlike!(Self::reduce_t(dt)(self, axes, input, log_sum_t)),
-            Reducer::LogSumExp => {
-                reduce_floatlike!(Self::reduce_t(dt)(self, axes, input, log_sum_exp_t))
-            }
-            Reducer::Mean => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, mean_t)),
             Reducer::Min => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, min_t)),
             Reducer::Max => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, max_t)),
             Reducer::Prod => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, prod_t)),
             Reducer::Sum => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, sum_t)),
-            Reducer::SumSquare => {
-                reduce_numbers!(Self::reduce_t(dt)(self, axes, input, sum_square_t))
-            }
         }
     }
 
@@ -101,57 +64,11 @@ impl Reducer {
     }
 }
 
-fn l1s_t<'a, T>(v: ArrayViewD<'a, T>) -> T
-where
-    T: Copy + Datum + num_traits::Signed + num_traits::Zero,
-{
-    v.fold(T::zero(), |acc, &v| acc + v.abs())
-}
-
-fn l1u_t<'a, T>(v: ArrayViewD<'a, T>) -> T
-where
-    T: Copy + Datum + num_traits::Unsigned + num_traits::Zero,
-{
-    v.fold(T::zero(), |acc, &v| acc + v)
-}
-
-fn l2_t<'a, T>(v: ArrayViewD<'a, T>) -> T
-where
-    T: Copy + Datum + AsPrimitive<f64>,
-    f64: AsPrimitive<T>,
-{
-    v.fold(0.0f64, |acc, &v| acc + (v.as_()).powi(2)).sqrt().as_()
-}
-
-fn log_sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
-where
-    T: Copy + Datum + num_traits::Zero + num_traits::Float,
-{
-    v.scalar_sum().ln()
-}
-
-fn log_sum_exp_t<'a, T>(v: ArrayViewD<'a, T>) -> T
-where
-    T: Copy + Datum + num_traits::Zero + num_traits::Float,
-{
-    let max = v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v });
-    max + v.fold(T::zero(), |acc, &v| acc + (v - max).exp()).ln()
-}
-
 fn max_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
-}
-
-fn mean_t<'a, T>(v: ArrayViewD<'a, T>) -> T
-where
-    T: Copy + Datum + num_traits::Zero + ::std::ops::Div<Output = T>,
-    usize: AsPrimitive<T>,
-{
-    let (sum, count) = v.fold((T::zero(), 0), |acc, &v| (acc.0 + v, acc.1 + 1));
-    sum / count.as_()
 }
 
 fn min_t<'a, T>(v: ArrayViewD<'a, T>) -> T
@@ -173,13 +90,6 @@ where
     T: Copy + Datum + num_traits::Zero,
 {
     v.scalar_sum()
-}
-
-fn sum_square_t<'a, T>(v: ArrayViewD<'a, T>) -> T
-where
-    T: Copy + Datum + num_traits::Zero + ::std::ops::Mul<T, Output = T>,
-{
-    v.fold(T::zero(), |acc, &v| acc + v * v)
 }
 
 #[derive(Clone, Debug, new)]
