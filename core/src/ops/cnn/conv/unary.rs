@@ -676,14 +676,10 @@ impl TypedOp for ConvUnary {
                         &[wire],
                     )?[0];
                     if let Some(ref bias) = self.bias {
-                        let bias: Arc<Tensor> = if input_c_is_last {
-                            bias.clone()
-                        } else {
-                            bias.clone()
-                                .into_tensor()
-                                .into_shape(&[bias.len(), 1])?
-                                .into_arc_tensor()
-                        };
+                        let bias_shape =
+                            if input_c_is_last { [1, 1, bias.len()] } else { [1, bias.len(), 1] };
+                        let bias =
+                            bias.clone().into_tensor().into_shape(&bias_shape)?.into_arc_tensor();
                         wire = patch.wire_node(
                             format!("{}-bias", node.name),
                             crate::ops::math::add::unary(bias),

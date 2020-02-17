@@ -1,13 +1,11 @@
 mod arg_max_min;
 mod data_formats;
 mod global_pools;
-mod layer_max;
 mod reduce;
 
 pub use self::arg_max_min::ArgMaxMin;
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape};
 pub use self::global_pools::{GlobalAvgPool, GlobalLpPool, GlobalMaxPool};
-pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};
 pub use self::reduce::{Reduce, Reducer};
 
 use num_traits::{AsPrimitive, Float};

@@ -307,7 +307,9 @@ impl StatelessOp for UnaryOp {
 
 impl TypedOp for UnaryOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        debug_assert_eq!(self.a.rank(), inputs[0].rank());
+        if self.a.rank() != inputs[0].rank() {
+            bail!("Rank mismatch: constant: {:?}, input: {:?}", self.a, inputs[0]);
+        }
         Ok(tvec!(TypedFact::dt_shape(
             self.mini_op.result_datum_type(self.a.datum_type(), inputs[0].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
