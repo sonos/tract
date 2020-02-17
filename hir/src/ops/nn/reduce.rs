@@ -1,8 +1,104 @@
-use crate::infer::*;
-use tract_core::ops::nn::*;
+use crate::internal::*;
 
-use tract_core::ops::nn::Reduce as TypedReduce;
-pub use tract_core::ops::nn::Reducer;
+use tract_core::ops::nn::Reduce as TReduce;
+use tract_core::ops::nn::Reducer as TReducer;
+
+#[derive(Clone, Copy, Debug)]
+pub enum Reducer {
+    L1,
+    L2,
+    LogSum,
+    LogSumExp,
+    Max,
+    Mean,
+    Min,
+    Prod,
+    Sum,
+    SumSquare,
+}
+
+impl Reducer {
+    pub fn wire(
+        &self,
+        axes: TVec<usize>,
+        name: &str,
+        target: &mut TypedModel,
+        mut wire: OutletId,
+    ) -> TractResult<OutletId> {
+        use tract_core::ops::math;
+        use Reducer::*;
+        match self {
+            Max => wire = target.wire_node(name, TReduce::new(axes, TReducer::Max), &[wire])?[0],
+            Min => wire = target.wire_node(name, TReduce::new(axes, TReducer::Min), &[wire])?[0],
+            Sum => wire = target.wire_node(name, TReduce::new(axes, TReducer::Sum), &[wire])?[0],
+            Prod => wire = target.wire_node(name, TReduce::new(axes, TReducer::Prod), &[wire])?[0],
+
+            L1 => {
+                wire = target.wire_node(format!("{}-abs", name), math::abs(), &[wire])?[0];
+                wire = target.wire_node(
+                    format!("{}-sum", name),
+                    TReduce::new(axes, TReducer::Sum),
+                    &[wire],
+                )?[0];
+            }
+            L2 => {
+                wire = target.wire_node(format!("{}-sq", name), math::square(), &[wire])?[0];
+                wire = target.wire_node(
+                    format!("{}-sum", name),
+                    TReduce::new(axes, TReducer::Sum),
+                    &[wire],
+                )?[0];
+                wire = target.wire_node(format!("{}-sqrt", name), math::sqrt(), &[wire])?[0];
+            }
+            LogSum => {
+                wire = target.wire_node(
+                    format!("{}-sum", name),
+                    TReduce::new(axes, TReducer::Sum),
+                    &[wire],
+                )?[0];
+                wire = target.wire_node(format!("{}-ln", name), math::ln(), &[wire])?[0];
+            }
+            LogSumExp => {
+                wire = target.wire_node(format!("{}-exp", name), math::exp(), &[wire])?[0];
+                wire = target.wire_node(
+                    format!("{}-sum", name),
+                    TReduce::new(axes, TReducer::Sum),
+                    &[wire],
+                )?[0];
+                wire = target.wire_node(format!("{}-ln", name), math::ln(), &[wire])?[0];
+            }
+            SumSquare => {
+                wire = target.wire_node(format!("{}-sq", name), math::square(), &[wire])?[0];
+                wire = target.wire_node(
+                    format!("{}-sum", name),
+                    TReduce::new(axes, TReducer::Sum),
+                    &[wire],
+                )?[0]
+            }
+            Mean => {
+                let fact = target.outlet_fact(wire)?.clone();
+                wire =
+                    target.wire_node(name, TReduce::new(axes.clone(), TReducer::Sum), &[wire])?[0];
+                let size =
+                    axes.iter().map(|ax| fact.shape.dim(*ax)).product::<TDim>().to_integer()?
+                        as f64;
+                let size = unsafe {
+                    tensor0(size)
+                        .cast_to_dt(fact.datum_type)?
+                        .into_owned()
+                        .into_shape(&*tvec!(1; fact.rank()))?
+                };
+                let size = target.add_const("{}-divisor", size)?;
+                wire = target.wire_node(
+                    format!("{}-norm", name),
+                    math::div::bin_typed(),
+                    &[wire, size],
+                )?[0];
+            }
+        };
+        Ok(wire)
+    }
+}
 
 #[derive(Clone, Debug, new)]
 pub struct Reduce {
@@ -63,6 +159,23 @@ impl Reduce {
         axes.sort();
         Ok(axes)
     }
+
+    fn wire(&self, name: &str, target: &mut TypedModel, input: OutletId) -> TractResult<OutletId> {
+        let fact = target.outlet_fact(input)?;
+        let mut axes = self.resolve_axes(fact.rank())?;
+        axes.sort();
+        let mut wire = self.reducer.wire(axes.clone(), name, target, input)?;
+        if !self.keep_dims {
+            for axis in axes.into_iter().rev() {
+                wire = target.wire_node(
+                    format!("{}-dispose-dims-{}", name, axis),
+                    AxisOp::Rm(axis),
+                    &[wire],
+                )?[0];
+            }
+        }
+        Ok(wire)
+    }
 }
 
 impl Op for Reduce {
@@ -77,17 +190,12 @@ impl Op for Reduce {
 }
 
 impl StatelessOp for Reduce {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let axes = self.resolve_axes(inputs[0].shape().len())?;
-        let mut result = self.reducer.reduce(&*axes, args_1!(inputs))?;
-        if !self.keep_dims {
-            let mut final_shape: TVec<usize> = result.shape().into();
-            for &ax in axes.iter().rev() {
-                final_shape.remove(ax);
-            }
-            result = unsafe { result.into_shape(&*final_shape)? };
-        }
-        Ok(tvec!(result.into_arc_tensor()))
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let mut adhoc = TypedModel::default();
+        let source = adhoc.add_source("adhoc-source", inputs[0].as_ref().into())?;
+        let wire = self.wire("adhoc", &mut adhoc, source)?;
+        adhoc.set_output_outlets(&[wire])?;
+        SimplePlan::new(adhoc)?.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
     }
 }
 
@@ -123,23 +231,7 @@ impl InferenceRulesOp for Reduce {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let input = target.outlet_fact(mapping[&node.inputs[0]])?;
-        let mut axes = self.resolve_axes(input.shape.rank())?;
-        let mut wire = target.wire_node(
-            &*node.name,
-            TypedReduce::new(axes.clone(), self.reducer.clone()),
-            [mapping[&node.inputs[0]]].as_ref(),
-        )?;
-        if !self.keep_dims {
-            axes.sort();
-            for axis in axes.into_iter().rev() {
-                wire = target.wire_node(
-                    format!("{}-dispose-dims-{}", node.name, axis),
-                    AxisOp::Rm(axis),
-                    &wire,
-                )?;
-            }
-        }
-        Ok(wire)
+        let wire = self.wire(&*node.name, target, mapping[&node.inputs[0]])?;
+        Ok(tvec!(wire))
     }
 }
