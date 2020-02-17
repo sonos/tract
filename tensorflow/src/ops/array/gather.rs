@@ -30,9 +30,9 @@ impl GatherNd {
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let data = data.to_array_view::<T>()?;
         let shape = self.compute_shape(&data.shape(), &indices.shape())?;
-        let mut array = unsafe { T::uninitialized_array(&*shape) };
+        let mut array = unsafe { Tensor::uninitialized::<T>(&*shape) }?;
         for prefix in tract_ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
-            let mut dst = array.view_mut();
+            let mut dst = array.to_array_view_mut()?;
             let mut coords = indices.view();
             for &x in prefix.slice().iter() {
                 dst.index_axis_inplace(Axis(0), x);

@@ -110,6 +110,37 @@ impl Tensor {
         Ok(Tensor { layout, dt, shape: shape.into(), data })
     }
 
+    pub fn stack_tensors(
+        axis: usize,
+        tensors: &[impl std::borrow::Borrow<Tensor>],
+    ) -> TractResult<Tensor> {
+        use crate::datum::ArrayDatum;
+        let dt = tensors[0].borrow().datum_type();
+        if tensors.iter().any(|t| t.borrow().datum_type() != dt) {
+            bail!("Inconsistent datum type in stack.")
+        }
+        // map all copy types to the i* of the same size
+        let mut tensor = unsafe {
+            match dt {
+                DatumType::F16 => i16::stack_tensors(axis, &tensors),
+                DatumType::F32 => i32::stack_tensors(axis, &tensors),
+                DatumType::F64 => i64::stack_tensors(axis, &tensors),
+                DatumType::Bool => i8::stack_tensors(axis, &tensors),
+                DatumType::U8 => i8::stack_tensors(axis, &tensors),
+                DatumType::U16 => i16::stack_tensors(axis, &tensors),
+                DatumType::I8 => i8::stack_tensors(axis, &tensors),
+                DatumType::I16 => i16::stack_tensors(axis, &tensors),
+                DatumType::I32 => i32::stack_tensors(axis, &tensors),
+                DatumType::I64 => i64::stack_tensors(axis, &tensors),
+                DatumType::TDim => TDim::stack_tensors(axis, &tensors),
+                DatumType::Blob => Blob::stack_tensors(axis, &tensors),
+                DatumType::String => String::stack_tensors(axis, &tensors),
+            }
+        }?;
+        tensor.dt = dt;
+        Ok(tensor)
+    }
+
     /// Create an tensor from raw data.
     ///
     /// It copies the data, aligning it to the size of T.
@@ -248,23 +279,31 @@ impl Tensor {
 
     /// Transform the data as a `ndarray::Array`.
     pub fn to_array_view<'a, D: Datum>(&'a self) -> TractResult<ArrayViewD<'a, D>> {
-        if self.len() != 0 {
-            unsafe {
-                return Ok(ArrayViewD::from_shape_ptr(&*self.shape, self.as_ptr()?));
-            }
-        } else {
-            return Ok(ArrayViewD::from_shape(&*self.shape, &[])?);
-        }
+        self.check_for_access::<D>()?;
+        unsafe { Ok(self.to_array_view_unchecked()) }
     }
 
     /// Transform the data as a mutable `ndarray::Array`.
     pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
+        self.check_for_access::<D>()?;
+        unsafe { Ok(self.to_array_view_mut_unchecked()) }
+    }
+
+    /// Transform the data as a `ndarray::Array`.
+    pub unsafe fn to_array_view_unchecked<'a, D: Datum>(&'a self) -> ArrayViewD<'a, D> {
         if self.len() != 0 {
-            unsafe {
-                return Ok(ArrayViewMutD::from_shape_ptr(&*self.shape, self.data as *mut D));
-            }
+            ArrayViewD::from_shape_ptr(&*self.shape, self.data as *const D)
         } else {
-            return Ok(ArrayViewMutD::from_shape(&*self.shape, &mut [])?);
+            ArrayViewD::from_shape(&*self.shape, &[]).unwrap()
+        }
+    }
+
+    /// Transform the data as a mutable `ndarray::Array`.
+    pub unsafe fn to_array_view_mut_unchecked<'a, D: Datum>(&'a mut self) -> ArrayViewMutD<'a, D> {
+        if self.len() != 0 {
+            ArrayViewMutD::from_shape_ptr(&*self.shape, self.data as *mut D)
+        } else {
+            ArrayViewMutD::from_shape(&*self.shape, &mut []).unwrap()
         }
     }
 

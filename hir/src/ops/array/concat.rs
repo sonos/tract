@@ -19,12 +19,6 @@ impl Concat {
             bail!("Illegal combination of values for rank and axis: {} and {}", rank, self.axis)
         }
     }
-
-    fn eval<T: Datum>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let axis = self.resolve_axis(inputs[0].shape().len() as i64)?;
-        let tensors = inputs.iter().map(|t| t.cast_to::<T>()).collect::<TractResult<TVec<_>>>()?;
-        Ok(tvec!(T::stack_tensors(axis, &*tensors)?.into_arc_tensor()))
-    }
 }
 
 impl Op for Concat {
@@ -42,7 +36,10 @@ impl StatelessOp for Concat {
         let super_type: DatumType =
             DatumType::super_type_for(inputs.iter().map(|x| x.datum_type()))
                 .ok_or_else(|| format!("No supertype found for {:?}", inputs))?;
-        dispatch_datum!(Self::eval(super_type)(self, inputs))
+        let axis = self.resolve_axis(inputs[0].shape().len() as i64)?;
+        let tensors =
+            inputs.iter().map(|t| t.cast_to_dt(super_type)).collect::<TractResult<TVec<_>>>()?;
+        Ok(tvec!(Tensor::stack_tensors(axis, &*tensors)?.into_arc_tensor()))
     }
 }
 
@@ -110,12 +107,14 @@ impl InferenceRulesOp for Concat {
         for (ix, (fact, outlet)) in facts.iter().zip(mapped_inputs.iter()).enumerate() {
             match &fact.konst {
                 Some(c_input) => {
-                    slices.push(ConcatSlice::Const(c_input.cast_to_dt(super_type)?.into_owned()));
+                    slices.push(ConcatSlice::Const(
+                        c_input.cast_to_dt(super_type)?.into_owned().into_arc_tensor(),
+                    ));
                 }
                 None => {
                     let casted = target.wire_node(
                         format!("{}-Cast-{}", node.name, ix),
-                        crate::ops::cast::cast(super_type),
+                        crate::ops::cast(super_type),
                         &[*outlet],
                     )?[0];
                     kept_inputs.push(casted);

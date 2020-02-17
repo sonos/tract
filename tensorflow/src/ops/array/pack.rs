@@ -112,15 +112,23 @@ impl InferenceRulesOp for Pack {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
+        let dt = node.inputs.iter().map(|i| Ok(target.outlet_fact(mapping[i])?.datum_type)).collect::<TractResult<TVec<DatumType>>>()?;
+        let dt = DatumType::super_type_for(dt.iter()).ok_or("No supertype")?;
         let inputs: TVec<OutletId> = node
             .inputs
             .iter()
             .enumerate()
             .map(|(ix, &o)| {
+                let wire = mapping[&o];
+                let wire = target.wire_node(
+                    format!("{}-cast-{}", node.name, ix),
+                    tract_hir::ops::cast(dt),
+                    &[wire]
+                )?[0];
                 Ok(target.wire_node(
                     format!("{}-add_dims-{}", node.name, ix),
                     AxisOp::Add(self.axis),
-                    [mapping[&o]].as_ref(),
+                    [wire].as_ref(),
                 )?[0])
             })
             .collect::<TractResult<TVec<OutletId>>>()?;

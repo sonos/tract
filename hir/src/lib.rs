@@ -18,7 +18,7 @@ pub use tract_core::prelude::tract_num_traits;
 pub mod ops {
     pub mod array;
     pub mod binary;
-    pub use tract_core::ops::cast;
+    pub use tract_core::ops::cast::cast;
     pub mod cnn;
     pub mod downsample;
     pub mod dummy;
