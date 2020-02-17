@@ -6,17 +6,17 @@ use crate::internal::*;
 use super::binary::commute;
 
 bin_to_super_type!(and, And, flip: commute,
-     [bool, u8, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
+                   [bool, u8, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
 bin_to_super_type!(or, Or, flip: commute,
-     [bool, u8, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
+                   [bool, u8, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
 bin_to_super_type!(xor, Xor, flip: commute, [bool] => |c, &a, &b| *c = a ^ b);
 bin_to_bool!(equals, Equals, flip: commute,
-     [bool, u8, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
-);
+             [bool, u8, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
+            );
 
 bin_to_bool!(lesser, Lesser, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
 bin_to_bool!(lesser_equal, LesserEqual, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
-bin_to_bool!(greater, Greatser, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
+bin_to_bool!(greater, Greater, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
 bin_to_bool!(greater_equal, GreaterEqual, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
 
 element_wise!(not, Not, [bool] => |_, vs| {
@@ -28,19 +28,17 @@ element_wise!(not, Not, [bool] => |_, vs| {
 pub struct Iff;
 
 impl Iff {
-    pub fn eval_t<T: Datum>(
-        shape: &[usize],
+    pub unsafe fn eval_t<T: Datum>(
         cond: &ArrayViewD<bool>,
-        t: Arc<Tensor>,
-        f: Arc<Tensor>,
-    ) -> TractResult<Tensor> {
-        let mut result = unsafe { Tensor::uninitialized::<T>(shape)? };
-        Zip::from(result.to_array_view_mut::<T>()?)
+        out: &mut Tensor,
+        t: &Tensor,
+        f: &Tensor,
+    ) {
+        Zip::from(out.to_array_view_mut_unchecked::<T>())
             .and_broadcast(cond)
-            .and_broadcast(t.to_array_view::<T>()?)
-            .and_broadcast(f.to_array_view::<T>()?)
-            .apply(|r, c, t, f| *r = if *c { t.clone() } else { f.clone() });
-        Ok(result)
+            .and_broadcast(t.to_array_view_unchecked::<T>())
+            .and_broadcast(f.to_array_view_unchecked::<T>())
+            .apply(|r, c, t, f| *r = if *c { t.clone() } else { f.clone() })
     }
 }
 
@@ -64,9 +62,12 @@ impl StatelessOp for Iff {
                     f.shape()
                 )
             })?;
-        let cond = cond.to_array_view::<bool>()?;
-        let c = dispatch_datum!(Self::eval_t(t.datum_type())(&*shape, &cond, t, f))?;
-        Ok(tvec!(c.into_arc_tensor()))
+        unsafe {
+            let mut result = Tensor::uninitialized_dt(t.datum_type(), &*shape)?;
+            let cond = cond.to_array_view::<bool>()?;
+            dispatch_datum!(Self::eval_t(t.datum_type())(&cond, &mut result, &t, &f));
+            Ok(tvec!(result.into_arc_tensor()))
+        }
     }
 }
 
