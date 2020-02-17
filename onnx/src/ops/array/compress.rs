@@ -22,11 +22,11 @@ impl Compress {
             let input = input.to_array_view::<T>()?;
             let mut shape: TVec<usize> = input.shape().into();
             shape[self.axis.unwrap()] = compressed_dim;
-            let mut array: ArrayD<T> = unsafe { T::uninitialized_array(&*shape) };
+            let mut array = unsafe { Tensor::uninitialized::<T>(&*shape)? };
             for (ixo, ixi) in
                 conds.iter().enumerate().filter(|(_, c)| **c).map(|(ix, _)| ix).enumerate()
             {
-                array.index_axis_mut(Axis(ax), ixo).assign(&input.index_axis(Axis(ax), ixi));
+                array.to_array_view_mut::<T>()?.index_axis_mut(Axis(ax), ixo).assign(&input.index_axis(Axis(ax), ixi));
             }
             Ok(array.into_arc_tensor())
         } else {

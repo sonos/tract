@@ -159,7 +159,7 @@ impl DatumType {
 }
 
 pub trait Datum:
-    Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq + ArrayDatum
+    Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;

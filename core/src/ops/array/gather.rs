@@ -64,11 +64,12 @@ impl Gather {
                 .into_arc_tensor());
         }
 
-        let mut output: Array<T, _> = unsafe {
-            T::uninitialized_array(&*self.compute_output_shape(data.shape(), indices.shape())?)
+        let mut output = unsafe {
+            Tensor::uninitialized::<T>(&*self.compute_output_shape(data.shape(), indices.shape())?)?
         };
-        for (pattern, index) in indices.to_array_view::<i64>()?.indexed_iter() {
-            {
+        {
+            let mut output = output.to_array_view_mut::<T>()?;
+            for (pattern, index) in indices.to_array_view::<i64>()?.indexed_iter() {
                 let mut to_update = output.index_axis_mut(Axis(axis), pattern[0]);
                 for idx in 1..pattern.ndim() {
                     to_update = to_update.index_axis_move(Axis(0), pattern[idx]);
