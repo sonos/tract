@@ -197,6 +197,11 @@ impl Tensor {
         self.dt
     }
 
+    /// Set the datum type of the tensor.
+    pub unsafe fn set_datum_type(&mut self, dt: DatumType) {
+        self.dt = dt
+    }
+
     /// Dump the tensor in a human readable form.
     ///
     /// `force_full` will force the tensor to be dump in full even if it is big.

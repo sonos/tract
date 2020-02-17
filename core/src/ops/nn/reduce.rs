@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-macro_rules! reduce_numbers {
+macro_rules! r {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
         match $dt {
             DatumType::U8   => $($path)::*::<u8,_>($($args),*),
@@ -26,30 +26,39 @@ pub enum Reducer {
 }
 
 impl Reducer {
-    pub fn reduce(&self, axes: &[usize], input: Arc<Tensor>) -> TractResult<Tensor> {
+    pub fn reduce(&self, axes: &[usize], input: &Tensor) -> TractResult<Tensor> {
+        use Reducer::*;
         let dt = input.datum_type();
-        match self {
-            Reducer::Min => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, min_t)),
-            Reducer::Max => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, max_t)),
-            Reducer::Prod => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, prod_t)),
-            Reducer::Sum => reduce_numbers!(Self::reduce_t(dt)(self, axes, input, sum_t)),
-        }
-    }
-
-    fn reduce_t<T, F>(&self, axes: &[usize], input: Arc<Tensor>, f: F) -> TractResult<Tensor>
-    where
-        F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
-        T: Copy + Datum,
-    {
-        use ndarray::*;
-        let input = input.to_array_view::<T>()?;
-        let full_output_shape: Vec<usize> = input
+        let output_shape: Vec<usize> = input
             .shape()
             .iter()
             .enumerate()
             .map(|(ax, &d)| if axes.contains(&ax) { 1 } else { d })
             .collect();
-        let result = Array::from_shape_fn(&*full_output_shape, |coords| {
+        Ok(unsafe {
+            match self {
+                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t)),
+                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t)),
+                Prod => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t)),
+                Sum => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, sum_t)),
+            }
+        })
+    }
+
+    unsafe fn reduce_t<T, F>(
+        &self,
+        axes: &[usize],
+        output_shape: &[usize],
+        input: &Tensor,
+        f: F,
+    ) -> Tensor
+    where
+        F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
+        T: Copy + Datum,
+    {
+        use ndarray::*;
+        let input = input.to_array_view_unchecked::<T>();
+        let result = Array::from_shape_fn(output_shape, |coords| {
             let slice_spec: Vec<SliceOrIndex> = coords
                 .slice()
                 .iter()
@@ -60,7 +69,7 @@ impl Reducer {
             let slice = input.slice(slice_info.as_ref());
             f(slice)
         });
-        Ok(result.into_tensor())
+        result.into_tensor()
     }
 }
 
@@ -111,8 +120,8 @@ impl Op for Reduce {
 }
 
 impl StatelessOp for Reduce {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec!(self.reducer.reduce(&*self.axes, args_1!(inputs))?.into_arc_tensor()))
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        Ok(tvec!(self.reducer.reduce(&*self.axes, inputs[0].as_ref())?.into_arc_tensor()))
     }
 }
 
