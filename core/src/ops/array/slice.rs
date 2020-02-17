@@ -9,16 +9,12 @@ pub struct Slice<D: DimLike + ToDim> {
 }
 
 impl<D: DimLike + ToDim> Slice<D> {
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
-        let mut input = input.to_array_view::<T>()?;
+    unsafe fn eval_t<T: Datum>(&self, input: &Tensor) -> TractResult<Tensor> {
+        let mut input = input.to_array_view_unchecked::<T>();
         input.slice_axis_inplace(
             Axis(self.axis),
             ::ndarray::Slice::from((self.start.to_integer()?)..(self.end.to_integer()?)),
         );
-        if self.start == self.end {
-            // dodge a bug in ndarray :/
-            unsafe { return Ok(Tensor::from_raw::<T>(input.shape(), &[])?.into()) }
-        }
         Ok(Tensor::from(input.to_owned()).into())
     }
 }
@@ -41,7 +37,11 @@ impl<D: DimLike + ToDim> StatelessOp for Slice<D> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, input))?))
+        unsafe {
+            let mut tensor = dispatch_datum_by_size!(Self::eval_t(input.datum_type())(self, &input))?;
+            tensor.set_datum_type(input.datum_type());
+            Ok(tvec!(tensor.into_arc_tensor()))
+        }
     }
 }
 
