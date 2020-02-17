@@ -170,16 +170,6 @@ impl Tensor {
         &self.shape
     }
 
-    pub fn strides(&self) -> TVec<usize> {
-        let mut stride = tvec!(1);
-        for d in 0..self.rank() - 1 {
-            let s = stride[d] * self.shape[self.rank() - 1 - d];
-            stride.push(s);
-        }
-        stride.reverse();
-        stride
-    }
-
     /// Get the number of valeus in the tensor.
     pub fn len(&self) -> usize {
         self.shape.iter().cloned().product::<usize>()
