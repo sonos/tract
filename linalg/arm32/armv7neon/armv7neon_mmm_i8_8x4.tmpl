@@ -14,10 +14,10 @@
 
     .arm
     .text
-    .global armv7neon_i8_mmm_8x4
-    .type armv7neon_i8_mmm_8x4, %function
+    .global armv7neon_mmm_i8_8x4
+    .type armv7neon_mmm_i8_8x4, %function
 
-armv7neon_i8_mmm_8x4:
+armv7neon_mmm_i8_8x4:
 
     pld     [r0]
     push    { r4-r12 }

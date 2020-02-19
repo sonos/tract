@@ -43,7 +43,7 @@ fn eval(
         }
     } else if (a.datum_type(), b.datum_type()) == (f32::datum_type(), f32::datum_type()) {
         return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-            MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n))
+            MMMWrapper::Plain((tract_linalg::ops().mmm_f32)(m, k, n))
         });
     }
     bail!(
@@ -686,7 +686,7 @@ impl TypedOp for MatMulUnary {
                         self.b_trans,
                         self.c_trans,
                         self.q_params.as_ref(),
-                        &|m, k, n| MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n)),
+                        &|m, k, n| MMMWrapper::Plain((tract_linalg::ops().mmm_f32)(m, k, n)),
                     )?
                 } else if (
                     self.a.datum_type(),

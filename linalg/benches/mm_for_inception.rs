@@ -10,7 +10,7 @@ pub fn vec(len: usize, align: usize) -> *mut f32 {
 }
 
 fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
-    let mm = (tract_linalg::ops().smmm)(m, k, n);
+    let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
     let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
     let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
     let mut c = vec![0.0; m * n];

@@ -9,7 +9,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
         let data_offsets: Vec<_> = (0..pulse).map(|x| x as isize).collect();
         let kernel_offsets: Vec<_> =
             (0..ci).flat_map(|ici| (0..3).map(move |x| (ici * t * 3 + x * t) as isize)).collect();
-        let mut conv = (tract_linalg::ops().smmm)(co, kernel_offsets.len(), data_offsets.len());
+        let mut conv = (tract_linalg::ops().mmm_f32)(co, kernel_offsets.len(), data_offsets.len());
         unsafe {
             conv.c_from_data_and_strides(t as _, 1);
         }
