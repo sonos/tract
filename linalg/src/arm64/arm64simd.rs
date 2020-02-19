@@ -4,7 +4,7 @@ use crate::frame::tanh::*;
 
 extern "C" {
     #[no_mangle]
-    fn arm64simd_smmm_8x8(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
+    fn arm64simd_mmm_f32_8x8(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
     #[no_mangle]
     fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize);
     #[no_mangle]
@@ -12,9 +12,9 @@ extern "C" {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct SMatMatMul8x8;
+pub struct MatMatMulF32x8x8;
 
-impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul8x8 {
+impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -35,7 +35,7 @@ impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul8x8 {
     }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
-        unsafe { arm64simd_smmm_8x8(op) }
+        unsafe { arm64simd_mmm_f32_8x8(op) }
     }
 }
 
@@ -85,7 +85,7 @@ impl TanhKer<f32> for STanh4 {
 
 #[cfg(test)]
 mod tests {
-    test_mmm_kernel_f32!(crate::arm64::arm64simd::SMatMatMul8x8, test_SMatMatMul8x8, true);
+    test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8, test_MatMatMulF32x8x8, true);
     sigmoid_frame_tests!(true, crate::arm64::arm64simd::SSigmoid4);
     tanh_frame_tests!(true, crate::arm64::arm64simd::STanh4);
 }

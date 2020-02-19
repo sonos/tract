@@ -11,7 +11,7 @@ pub fn vec(len: usize, align: usize) -> *mut f32 {
 
 fn pack_a(c: &mut Criterion, m: usize, k: usize, n: usize) {
     c.bench_function(&format!("pack_a_{}x{}x{}", m, k, n), move |b| {
-        let mm = (tract_linalg::ops().smmm)(m, k, n);
+        let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
         let a = vec(m * k, 4);
         let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
         b.iter(move || mm.a_pack().pack(pa, a, k as _, 1))
@@ -20,7 +20,7 @@ fn pack_a(c: &mut Criterion, m: usize, k: usize, n: usize) {
 
 fn pack_b(c: &mut Criterion, m: usize, k: usize, n: usize) {
     c.bench_function(&format!("pack_b_{}x{}x{}", m, k, n), move |be| {
-        let mm = (tract_linalg::ops().smmm)(m, k, n);
+        let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
         let b = vec(n * k, 4);
         let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
         be.iter(move || mm.b_pack().pack(pb, b, n as _, 1))
@@ -29,7 +29,7 @@ fn pack_b(c: &mut Criterion, m: usize, k: usize, n: usize) {
 
 fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {
     c.bench_function(&format!("mat_mul_prepacked_{}x{}x{}", m, k, n), move |be| {
-        let mm = (tract_linalg::ops().smmm)(m, k, n);
+        let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
         let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
         let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
         let mut c = vec![0.0; m * n];

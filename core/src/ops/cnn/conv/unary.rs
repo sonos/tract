@@ -136,7 +136,7 @@ impl ConvUnary {
         let b = model.outlet_fact(wire)?.datum_type;
         if (a, b) == (f32::datum_type(), f32::datum_type()) {
             return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
-                MMMWrapper::Plain((tract_linalg::ops().smmm)(m, k, n))
+                MMMWrapper::Plain((tract_linalg::ops().mmm_f32)(m, k, n))
             });
         } else if (a, b) == (u8::datum_type(), u8::datum_type()) {
             return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {

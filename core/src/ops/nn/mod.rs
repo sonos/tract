@@ -23,7 +23,7 @@ element_wise!(softsign, Softsign, [f32] => |_, xs| {
 });
 
 element_wise!(sigmoid, Sigmoid, [f32] => |_, xs| {
-    (tract_linalg::ops().ssigmoid)().run(xs);
+    (tract_linalg::ops().sigmoid_f32)().run(xs);
     Ok(())
 };
     cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}

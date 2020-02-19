@@ -4,19 +4,19 @@ use crate::frame::tanh::*;
 
 extern "C" {
     #[no_mangle]
-    fn armv7neon_i8_mmm_8x4(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
+    fn armv7neon_mmm_i8_8x4(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
     #[no_mangle]
-    fn armv7neon_smmm_8x4(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
+    fn armv7neon_mmm_f32_8x4(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
     #[no_mangle]
-    fn armv7neon_ssigmoid_4(ptr: *mut f32, count: usize);
+    fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize);
     #[no_mangle]
-    fn armv7neon_stanh_4(ptr: *mut f32, count: usize);
+    fn armv7neon_tanh_f32_4n(ptr: *mut f32, count: usize);
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct I8MatMatMul8x4;
+pub struct MatMatMulI8x8x4;
 
-impl MatMatMulKer<i8, i8, i8, i32> for I8MatMatMul8x4 {
+impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "neon"
@@ -37,14 +37,14 @@ impl MatMatMulKer<i8, i8, i8, i32> for I8MatMatMul8x4 {
     }
     #[inline(never)]
     fn kernel(spec: &MatMatMulKerSpec<i8, i8, i8, i32>) -> isize {
-        unsafe { armv7neon_i8_mmm_8x4(spec) }
+        unsafe { armv7neon_mmm_i8_8x4(spec) }
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct SMatMatMul8x4;
+pub struct MatMatMulF32x8x4;
 
-impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul8x4 {
+impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "neon"
@@ -65,14 +65,14 @@ impl MatMatMulKer<f32, f32, f32, f32> for SMatMatMul8x4 {
     }
     #[inline(never)]
     fn kernel(spec: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
-        unsafe { armv7neon_smmm_8x4(spec) }
+        unsafe { armv7neon_mmm_f32_8x4(spec) }
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct SSigmoid4;
+pub struct SigmoidF32x4n;
 
-impl SigmoidKer<f32> for SSigmoid4 {
+impl SigmoidKer<f32> for SigmoidF32x4n {
     #[inline(always)]
     fn name() -> &'static str {
         "neon"
@@ -87,14 +87,14 @@ impl SigmoidKer<f32> for SSigmoid4 {
     }
     #[inline(never)]
     fn run(buf: &mut [f32]) {
-        unsafe { armv7neon_ssigmoid_4(buf.as_mut_ptr(), buf.len()) }
+        unsafe { armv7neon_sigmoid_f32_4n(buf.as_mut_ptr(), buf.len()) }
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct STanh4;
+pub struct TanhF32x4n;
 
-impl TanhKer<f32> for STanh4 {
+impl TanhKer<f32> for TanhF32x4n {
     #[inline(always)]
     fn name() -> &'static str {
         "neon"
@@ -109,23 +109,23 @@ impl TanhKer<f32> for STanh4 {
     }
     #[inline(never)]
     fn run(buf: &mut [f32]) {
-        unsafe { armv7neon_stanh_4(buf.as_mut_ptr(), buf.len()) }
+        unsafe { armv7neon_tanh_f32_4n(buf.as_mut_ptr(), buf.len()) }
     }
 }
 
 test_mmm_kernel_f32!(
-    crate::arm32::armv7neon::SMatMatMul8x4,
-    test_SMatMatMul8x4,
+    crate::arm32::armv7neon::MatMatMulF32x8x4,
+    test_MatMatMulF32x8x4,
     crate::arm32::has_neon()
 );
 test_mmm_kernel_i8!(
-    crate::arm32::armv7neon::I8MatMatMul8x4,
-    test_I8MatMatMul8x4,
+    crate::arm32::armv7neon::MatMatMulI8x8x4,
+    test_MatMatMulI8x8x4,
     crate::arm32::has_neon()
 );
 
 #[cfg(test)]
 mod test_neon_fn {
-    sigmoid_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SSigmoid4);
-    tanh_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::STanh4);
+    sigmoid_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SigmoidF32x4n);
+    tanh_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::TanhF32x4n);
 }

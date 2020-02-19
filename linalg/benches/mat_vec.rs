@@ -16,7 +16,7 @@ fn mat_vec_mul(c: &mut Criterion) {
             BenchmarkId::from_parameter(format!("{}x{}", m, k)),
             &(m, k),
             |be, (&m, &k)| {
-                let mut mm = (tract_linalg::ops().smmm)(m, k, 1);
+                let mut mm = (tract_linalg::ops().mmm_f32)(m, k, 1);
                 let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
                 let b = vec![0.0; k];
                 let mut c = vec![0.0; m];
