@@ -40,9 +40,9 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8 {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct SSigmoid4;
+pub struct SigmoidF32x4n;
 
-impl SigmoidKer<f32> for SSigmoid4 {
+impl SigmoidKer<f32> for SigmoidF32x4n {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -62,9 +62,9 @@ impl SigmoidKer<f32> for SSigmoid4 {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct STanh4;
+pub struct TanhF32x4n;
 
-impl TanhKer<f32> for STanh4 {
+impl TanhKer<f32> for TanhF32x4n {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -86,6 +86,6 @@ impl TanhKer<f32> for STanh4 {
 #[cfg(test)]
 mod tests {
     test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8, test_MatMatMulF32x8x8, true);
-    sigmoid_frame_tests!(true, crate::arm64::arm64simd::SSigmoid4);
-    tanh_frame_tests!(true, crate::arm64::arm64simd::STanh4);
+    sigmoid_frame_tests!(true, crate::arm64::arm64simd::SigmoidF32x4n);
+    tanh_frame_tests!(true, crate::arm64::arm64simd::TanhF32x4n);
 }

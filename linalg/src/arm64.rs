@@ -11,6 +11,6 @@ pub fn plug(ops: &mut Ops) {
     ops.mmm_f32 = Box::new(|m, k, n| {
         Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32, f32, f32, f32>::new(m, k, n))
     });
-    ops.ssigmoid = Box::new(|| Box::new(SigmoidImpl::<arm64simd::SSigmoid4, f32>::new()));
-    ops.stanh = Box::new(|| Box::new(TanhImpl::<arm64simd::STanh4, f32>::new()));
+    ops.sigmoid_f32 = Box::new(|| Box::new(SigmoidImpl::<arm64simd::SigmoidF32x4n, f32>::new()));
+    ops.tanh_f32 = Box::new(|| Box::new(TanhImpl::<arm64simd::TanhF32x4n, f32>::new()));
 }
