@@ -31,8 +31,8 @@ impl StatelessOp for LstmNonlin {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         use tract_ndarray::*;
 
-        let sigmoid = (tract_linalg::ops().ssigmoid)();
-        let tanh = (tract_linalg::ops().stanh)();
+        let sigmoid = (tract_linalg::ops().sigmoid_f32)();
+        let tanh = (tract_linalg::ops().tanh_f32)();
 
         let input = args_1!(inputs);
         let input = input.to_array_view::<f32>()?.into_dimensionality()?;
