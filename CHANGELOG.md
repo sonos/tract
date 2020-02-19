@@ -1,8 +1,9 @@
-## Unreleased
+## 0.6.0 - 2020-02-19
 
 ### Notable
 
 * New jupyter/keras/tf example
+* ARMv8 tanh / sigmoid optimisation
 
 ### API Breaking
 
