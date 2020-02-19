@@ -5,12 +5,12 @@
 .text
 .align 4
 {% if os == "ios" %}
-    .global _arm64simd_sigmoid_f32_4n
-    _arm64simd_sigmoid_f32_4n:
+    .global _arm64simd_tanh_f32_4n
+    _arm64simd_tanh_f32_4n:
 {% else %}
     .cpu generic+fp+simd
-    .global arm64simd_sigmoid_f32_4n
-    arm64simd_sigmoid_f32_4n:
+    .global arm64simd_tanh_f32_4n
+    arm64simd_tanh_f32_4n:
 {% endif %}
 
     cmp         x1, #0
@@ -20,7 +20,6 @@
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2]
     dup         v5.4s, v0.s[0]              // v5 <- low, broadcasted
     dup         v6.4s, v0.s[1]              // v6 <- high, broadcasted
-    dup         v7.4s, v3.s[1]              // v7 <- 0.5, broadcasted
 
 .loop:
     ld1         { v16.4s }, [x0]
@@ -37,21 +36,20 @@
     fmla        v24.4s, v20.4s, v28.4s
     dup         v28.4s, v1.s[2]
     fmla        v28.4s, v20.4s, v24.4s
+    dup         v24.4s, v1.s[3]
+    fmla        v24.4s, v20.4s, v28.4s
+    dup         v28.4s, v2.s[0]
+    fmla        v28.4s, v20.4s, v24.4s
     fmul        v16.4s, v16.4s, v28.4s      // v16 <- numerator
 
-    dup         v24.4s, v2.s[0]
-    fmla        v24.4s, v20.4s, v1.s[3]
-    dup         v28.4s, v2.s[1]
-    fmla        v28.4s, v20.4s, v24.4s
     dup         v24.4s, v2.s[2]
-    fmla        v24.4s, v20.4s, v28.4s
+    fmla        v24.4s, v20.4s, v2.s[1]
     dup         v28.4s, v2.s[3]
     fmla        v28.4s, v20.4s, v24.4s
     dup         v24.4s, v3.s[0]
     fmla        v24.4s, v20.4s, v28.4s      // v24 <- denum
 
     fdiv        v16.4s, v16.4s, v24.4s
-    fadd        v16.4s, v16.4s, v7.4s
 
     st1         { v16.4s }, [x0], #16
 
@@ -62,20 +60,19 @@
     ret
 
 .coeffs_num:
-    .float -18.0                    // low          v0
-    .float 18.0                     // high         
-    .float 4.37031012579801e-11     // alpha_9      
-    .float 1.15627324459942e-07     // alpha_7      
-    .float 6.08574864600143e-05     // alpha_5      v1
-    .float 8.51377133304701e-03     // alpha_3      
-    .float 2.48287947061529e-01     // alpha_1      
-    .float 6.10247389755681e-13     // beta_10      
-    .float 5.76102136993427e-09     // beta_8       v2
-    .float 6.29106785017040e-06     // beta_6       
-    .float 1.70198817374094e-03     // beta_4       
-    .float 1.16817656904453e-01     // beta_2       
-    .float 9.93151921023180e-01     // beta_0       v3
-    .float 0.5                      //              
-    .float 0.0                      // padding
-    .float 0.0
-
+    .float -9.0                     // low       v0
+    .float 9.0                      // high      
+    .float -2.76076847742355e-16    // alpha_13  
+    .float 2.00018790482477e-13     // alpha_11  
+    .float -8.60467152213735e-11    // alpha_9   v1
+    .float 5.12229709037114e-08     // alpha_7   
+    .float 1.48572235717979e-05     // alpha_5   
+    .float 6.37261928875436e-04     // alpha_3   
+    .float 4.89352455891786e-03     // alpha_1   v2
+    .float 1.19825839466702e-06     // beta_6    
+    .float 1.18534705686654e-04     // beta_4    
+    .float 2.26843463243900e-03     // beta_2    
+    .float 4.89352518554385e-03     // beta_0    v3
+    .float 0                        // padding
+    .float 0                        // padding
+    .float 0                        // padding
