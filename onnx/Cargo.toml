@@ -1,6 +1,6 @@
 [package]
 name = "tract-onnx"
-version = "0.6.0"
+version = "0.6.1-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -22,7 +22,7 @@ log = "0.4"
 num-integer = "0.1"
 prost = "0.6"
 smallvec = "1"
-tract-hir = "0.6.0"
+tract-hir = { path = "../hir" }
 
 [build-dependencies]
 prost-build = "0.6"
