@@ -25,8 +25,8 @@ Windows ABI:
 .intel_syntax noprefix
 .text
 .p2align 5
-.globl _fma_smmm16x6
-_fma_smmm16x6:
+.globl _fma_mmm_i8_16x6
+_fma_mmm_i8_16x6:
 .cfi_startproc
 
 {% elsif family == "unix" %}
@@ -34,14 +34,14 @@ _fma_smmm16x6:
 .intel_syntax noprefix
 .text
 .p2align 5
-.globl fma_smmm16x6
-fma_smmm16x6:
+.globl fma_mmm_i8_16x6
+fma_mmm_i8_16x6:
 .cfi_startproc
 
 {% elsif family == "windows" %}
 
 _text segment
-fma_smmm16x6 proc
+fma_mmm_i8_16x6 proc
 
 {% endif %}
 
@@ -522,7 +522,7 @@ fma_smmm16x6 proc
     jmp    {{L}}non_linear_loop
 
 {% if family == "windows" %}
-fma_smmm16x6 endp
+fma_mmm_i8_16x6 endp
 _text ends
 end
 {% endif %}

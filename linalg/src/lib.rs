@@ -107,7 +107,7 @@ pub fn best() -> Ops {
         if is_x86_feature_detected!("fma") {
             ops.smmm = Box::new(|m, k, n| {
                 Box::new(
-                    mmm::MatMatMulImpl::<x86_64_fma::mmm::SMatMatMul16x6, f32, f32, f32, f32>::new(
+                    mmm::MatMatMulImpl::<x86_64_fma::mmm::MatMatMulF32x16x6, f32, f32, f32, f32>::new(
                         m, k, n,
                     ),
                 )
