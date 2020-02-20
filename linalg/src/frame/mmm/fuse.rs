@@ -250,6 +250,20 @@ pub mod test {
                 }
 
                 #[test]
+                fn return_c_max() {
+                    if $cond {
+                        test::return_c_max::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
+
+                #[test]
+                fn return_c_min() {
+                    if $cond {
+                        test::return_c_min::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
+
+                #[test]
                 fn return_c_scalar_mul() {
                     if $cond {
                         test::return_c_scalar_mul::<$ker, $ta, $tb, $tc, $ti>()
@@ -513,6 +527,60 @@ pub mod test {
         assert!(found.iter().enumerate().all(|(ix, &a)| {
             let ix: TI = ix.as_();
             a == (ix * 5.as_()).as_()
+        }));
+    }
+
+    pub fn return_c_max<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + PartialEq + 'static,
+        TI: Copy
+            + Add
+            + Mul<Output = TI>
+            + std::cmp::PartialOrd
+            + Zero
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::Max(5.as_())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let ix: TI = ix.as_();
+            a == if ix > 5.as_() { ix.as_() } else { 5.as_() }
+        }));
+    }
+
+    pub fn return_c_min<K, TA, TB, TC, TI>()
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy,
+        TB: Copy,
+        TC: Copy + PartialEq + 'static,
+        TI: Copy
+            + Add
+            + Mul<Output = TI>
+            + std::cmp::PartialOrd
+            + Zero
+            + Debug
+            + fmt::Display
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::Min(5.as_())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let ix: TI = ix.as_();
+            a == if ix < 5.as_() { ix.as_() } else { 5.as_() }
         }));
     }
 

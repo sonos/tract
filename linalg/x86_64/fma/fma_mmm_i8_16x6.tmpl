@@ -124,7 +124,7 @@ fma_mmm_i8_16x6 proc
     mov     r11,    [rsi + 24]
     mov     r12,    [rsi + 32]
     mov     r13,    [rsi + 40]
- 
+
 {{L}}main_loop_packed_tops_and_offsets:
     mov             rsi,    [rbx]   // rsi: current row offset
 
@@ -272,7 +272,8 @@ fma_mmm_i8_16x6 proc
         {% endif %}
         {% for row in (0..3) %}
             {% for i in (0..5) %}
-                vextractps  dword ptr [r{{i | plus: 8}}], xmm{{i | times:2}}, {{row}}
+                vextractps  ebx, xmm{{i | times:2}}, {{row}}
+                movb        byte ptr [r{{i | plus: 8}}], bl
                 add         r{{i | plus: 8}}, rsi
             {% endfor %}
         {% endfor %}
@@ -401,14 +402,25 @@ fma_mmm_i8_16x6 proc
     lea             r8, [ r10 + rsi * 8 ]
 
 {% for i in (0..5) %}
+
     vpcmpeqd        ymm15,  ymm15, ymm15
     vgatherdps      ymm12,  [ r10 + ymm14 ],      ymm15
     vpcmpeqd        ymm15,  ymm15, ymm15
     vgatherdps      ymm13,  [ r8  + ymm14 ],      ymm15
-    add     r10, rbx
-    add     r8, rbx
-    vaddps          ymm{{i | times:2 }},   ymm{{i | times:2}},   ymm12
-    vaddps          ymm{{i | times:2 | plus: 1}}, ymm{{i | times:2 | plus:1 }},   ymm13
+    {% for x in (0..1) %}
+        {% for reg in (12..13) %}
+            {% for i in (0..3) %}
+                pextrd      edx, xmm{{reg}}, {{i}}
+                movsx       edx, dl
+                pinsrd      xmm{{reg}}, edx, {{i}}
+            {% endfor %}
+            vperm2i128  ymm{{reg}}, ymm{{reg}}, ymm{{reg}}, 1
+        {% endfor %}
+    {% endfor %}
+    add             r10, rbx
+    add             r8, rbx
+    vpaddd          ymm{{i | times:2 }},   ymm{{i | times:2}},   ymm12
+    vpaddd          ymm{{i | times:2 | plus: 1}}, ymm{{i | times:2 | plus:1 }},   ymm13
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
@@ -418,7 +430,7 @@ fma_mmm_i8_16x6 proc
 {{L}}max:
     vbroadcastss    ymm12, dword ptr [rcx + 8]
 {% for i in (0..11) %}
-    vmaxps          ymm{{i}}, ymm{{i}}, ymm12
+    vpmaxsd         ymm{{i}}, ymm{{i}}, ymm12
 {% endfor %}
     jmp    {{L}}non_linear_loop
 
@@ -427,7 +439,7 @@ fma_mmm_i8_16x6 proc
 {{L}}min:
     vbroadcastss    ymm12, dword ptr [rcx + 8]
 {% for i in (0..11) %}
-    vminps          ymm{{i}}, ymm{{i}}, ymm12
+    vpminsd         ymm{{i}}, ymm{{i}}, ymm12
 {% endfor %}
     jmp    {{L}}non_linear_loop
 
@@ -440,8 +452,8 @@ fma_mmm_i8_16x6 proc
     vmovups         ymm13,  [rax + 32]
 
 {% for i in (0..5) %}
-    vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm13
+    vpmulld         ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vpmulld         ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm13
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
@@ -455,8 +467,8 @@ fma_mmm_i8_16x6 proc
     vmovups         ymm13,  [rax + 32]
 
 {% for i in (0..5) %}
-    vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm13
+    vpaddd          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vpaddd          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm13
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
@@ -468,8 +480,8 @@ fma_mmm_i8_16x6 proc
 
 {% for i in (0..5) %}
     vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
-    vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+    vpmulld         ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vpmulld         ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
@@ -481,8 +493,8 @@ fma_mmm_i8_16x6 proc
 
 {% for i in (0..5) %}
     vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
-    vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+    vpaddd          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vpaddd          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
@@ -496,8 +508,10 @@ fma_mmm_i8_16x6 proc
 
 {% for i in (0..5) %}
     vbroadcastss    ymm14, dword ptr [rbx + {{i|times:4}} ]
-    vfmadd231ps     ymm{{i|times:2}},   ymm12, ymm14
-    vfmadd231ps     ymm{{i|times:2|plus:1}}, ymm13, ymm14
+    vpmulld         ymm15, ymm12, ymm14
+    vpmulld         ymm14, ymm13, ymm14
+    vpaddd          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm15
+    vpaddd          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm14
 {% endfor %}
     jmp    {{L}}non_linear_loop
 
@@ -505,18 +519,18 @@ fma_mmm_i8_16x6 proc
     vbroadcastss    ymm12, dword ptr [rcx + 8]
 
 {% for i in (0..5) %}
-    vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+    vpmulld         ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vpmulld         ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
 
 {{L}}scalar_add:
-    vbroadcastss    ymm12, dword ptr [rcx + 8]
+    vpbroadcastd    ymm12, dword ptr [rcx + 8]
 
 {% for i in (0..5) %}
-    vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+    vpaddd          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vpaddd          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
