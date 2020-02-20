@@ -375,6 +375,9 @@ fma_mmm_i8_16x6 proc
     cmp     rax,    10
     je      {{L}}scalar_add
 
+    cmp     rax,    12
+    je      {{L}}q_torwards_plusinf
+
     jmp     {{L}}unimplemented
 
 // NON LINEAR / ADDC
@@ -526,6 +529,16 @@ fma_mmm_i8_16x6 proc
     jmp    {{L}}non_linear_loop
 
 {{L}}scalar_add:
+    vpbroadcastd    ymm12, dword ptr [rcx + 8]
+
+{% for i in (0..5) %}
+    vpaddd          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vpaddd          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_torwards_plusinf:
     vpbroadcastd    ymm12, dword ptr [rcx + 8]
 
 {% for i in (0..5) %}

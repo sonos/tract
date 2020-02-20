@@ -706,11 +706,14 @@ pub mod test {
             &*v,
             &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QTowardsPlusInf((1 << 30).as_(), 2)],
         );
-        assert!(found.iter().zip(v.iter()).all(|(&found, input)| {
-            let input: TI = input.as_();
-            let input: i64 = input.as_();
-            let trunc = ((input >> 1) + 1) >> 1;
-            trunc.as_() == found
-        }));
+        let expected =
+            v.iter()
+            .map(|input| {
+                let input: TI = input.as_();
+                let input: i64 = input.as_();
+                (((input >> 1) + 1) >> 1).as_()
+            })
+            .collect::<Vec<TC>>();
+        assert_eq!(found, expected);
     }
 }

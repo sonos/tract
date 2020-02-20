@@ -204,7 +204,7 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy + One,
         TB: Copy + One,
-        TC: Copy + PartialEq + Zero + 'static,
+        TC: Copy + PartialEq + Zero + 'static + Debug,
         TI: Copy + Add + Mul + Zero + Debug + fmt::Display,
         usize: AsPrimitive<TC>,
     {
@@ -221,7 +221,8 @@ pub mod test {
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
-        assert!(v.iter().all(|&a| a == k.as_()));
+        let expected = vec![k.as_(); len];
+        assert_eq!(v, expected);
     }
 
     pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> PanelStore<T> {
@@ -300,6 +301,7 @@ pub mod test {
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
-        assert!(c.iter().all(|&a| a == k.as_()));
+        let expected = vec![k.as_(); K::mr()];
+        assert_eq!(c, expected);
     }
 }
