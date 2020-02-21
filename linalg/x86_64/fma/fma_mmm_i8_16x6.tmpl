@@ -538,13 +538,50 @@ fma_mmm_i8_16x6 proc
 
     jmp    {{L}}non_linear_loop
 
-{{L}}q_torwards_plusinf:
-    vpbroadcastd    ymm12, dword ptr [rcx + 8]
+{{L}}q_torwards_plusinf:     // (((x * arg1) >> (30 + arg2)) as i32 + 1) >> 1
+    vpbroadcastd    ymm12, dword ptr [rcx + 8]  // ymm12 <- mult // 8x32b
 
-{% for i in (0..5) %}
-    vpaddd          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
-    vpaddd          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+    mov             r8, 1
+    push            r8
+
+    mov             r8, [rcx + 16]
+    add             r8, 30                      // r8 <- 30 + arg2
+    mov             r9, 64
+    sub             r9, r8                      // r9 <- 64 - (30 + arg2)
+
+    vpxor       ymm13, ymm13, ymm13             // ymm13 <- 0
+
+{% for i in (0..11) %}
+    vpsrldq     ymm15, ymm{{i}}, 4          // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm15, ymm15, ymm12         // ymm15 <- a1*c, a3*c, a5*c, a7*c
+    vpmuldq     ymm{{i}}, ymm{{i}}, ymm12   // ymmi  <- a0*c, a2*c, a4*c, a6*c
+
+    // arithmetic shift for ymm{{i}}
+    vpxor       ymm14, ymm14, ymm14
+    vpcmpgtq    ymm14, ymm14, ymm{{i}}      // ymm14 <- sign(ymmi)
+    pinsrq      xmm13, r8, 0
+    vpsrlq      ymm{{i}}, ymm{{i}}, xmm13   // *logical* shift
+    pinsrq      xmm13, r9, 0
+    vpsllq      ymm14, ymm14, xmm13         // sign extension prefix
+    vpor        ymm{{i}}, ymm{{i}}, ymm14
+
+    // arithmetic shift for ymm15
+    vpxor       ymm14, ymm14, ymm14
+    vpcmpgtq    ymm14, ymm14, ymm15         // ymm14 <- sign(ymm15)
+    pinsrq      xmm13, r8, 0
+    vpsrlq      ymm15, ymm15, xmm13         // *logical* shift
+    pinsrq      xmm13, r9, 0
+    vpsllq      ymm14, ymm14, xmm13         // sign extension prefix
+    vpor        ymm15, ymm15, ymm14
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm{{i}}, ymm15, ymm{{i}}, 0x55   // ymmi <- ymmi::ymm15 (back to i32)
+    vpbroadcastd    ymm14, dword ptr [rsp]
+    vpaddd      ymm{{i}}, ymm{{i}}, ymm14   // +=1
+    vpsrad      ymm{{i}}, ymm{{i}}, 1       // >>=1
 {% endfor %}
+
+    pop             r8
 
     jmp    {{L}}non_linear_loop
 
