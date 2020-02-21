@@ -541,9 +541,6 @@ fma_mmm_i8_16x6 proc
 {{L}}q_torwards_plusinf:     // (((x * arg1) >> (30 + arg2)) as i32 + 1) >> 1
     vpbroadcastd    ymm12, dword ptr [rcx + 8]  // ymm12 <- mult // 8x32b
 
-    mov             r8, 1
-    push            r8
-
     mov             r8, [rcx + 16]
     add             r8, 30                      // r8 <- 30 + arg2
     mov             r9, 64
@@ -576,12 +573,17 @@ fma_mmm_i8_16x6 proc
 
     vpslldq     ymm15, ymm15, 4
     vpblendd    ymm{{i}}, ymm15, ymm{{i}}, 0x55   // ymmi <- ymmi::ymm15 (back to i32)
+{% endfor %}
+
+    mov             r8, 1
+    push            r8
     vpbroadcastd    ymm14, dword ptr [rsp]
+    pop             r8
+
+{% for i in (0..11) %}
     vpaddd      ymm{{i}}, ymm{{i}}, ymm14   // +=1
     vpsrad      ymm{{i}}, ymm{{i}}, 1       // >>=1
 {% endfor %}
-
-    pop             r8
 
     jmp    {{L}}non_linear_loop
 
