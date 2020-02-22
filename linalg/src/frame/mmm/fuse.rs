@@ -200,6 +200,7 @@ pub mod test {
             mod fuse {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::fuse::test;
+                use proptest::prelude::*;
 
                 #[test]
                 fn return_zeros() {
@@ -212,6 +213,15 @@ pub mod test {
                 fn return_c() {
                     if $cond {
                         test::return_c::<$ker, $ta, $tb, $tc, $ti>()
+                    }
+                }
+
+                proptest::proptest! {
+                    #[test]
+                    fn return_c_prop(pb in any::<test::ReturnCProblem<$ker, $ta, $tb, $tc, $ti>>()) {
+                        if $cond {
+                            prop_assert_eq!(pb.run(), pb.c)
+                        }
                     }
                 }
 
@@ -284,7 +294,7 @@ pub mod test {
     #[macro_export]
     macro_rules! qmmm_kernel_fuse_tests {
         ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
-            mod kernelq {
+            mod fuseq {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::fuse::test;
                 use crate::frame::mmm::fuse::test::QTowardsPlusInfProblem;
@@ -707,26 +717,8 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
-        TC: Copy
-            + PartialEq
-            + 'static
-            + Bounded
-            + Debug
-            + Sub<Output = TC>
-            + AsPrimitive<TI>
-            + Mul<Output = TC>,
-        TI: Copy
-            + Add
-            + Sub<Output = TI>
-            + Mul<Output = TI>
-            + Debug
-            + fmt::Display
-            + Ord
-            + PartialEq
-            + 'static
-            + AsPrimitive<TC>
-            + AsPrimitive<i64>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        TC: Copy + Debug + 'static,
+        TI: Copy + Debug,
         i64: AsPrimitive<TC>,
     {
         pub c: Vec<TC>,
@@ -738,33 +730,15 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
-        TC: Copy
-            + PartialEq
-            + 'static
-            + Bounded
-            + Debug
-            + Sub<Output = TC>
-            + AsPrimitive<TI>
-            + Mul<Output = TC>,
-        TI: Copy
-            + Add
-            + Sub<Output = TI>
-            + Mul<Output = TI>
-            + Debug
-            + fmt::Display
-            + Ord
-            + PartialEq
-            + 'static
-            + AsPrimitive<TC>
-            + AsPrimitive<i64>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        TC: Copy + Debug + 'static,
+        TI: Copy + Debug,
         i64: AsPrimitive<TC>,
     {
         type Parameters = ();
         type Strategy = BoxedStrategy<Self>;
         fn arbitrary_with(_p: ()) -> Self::Strategy {
             let len = K::mr() * K::nr();
-            proptest::collection::vec((-100i64..100).prop_map(|i| i.as_()), len..=len)
+            proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len)
                 .prop_map(|c| QTowardsPlusInfProblem { c, boo: std::marker::PhantomData })
                 .boxed()
         }
@@ -775,25 +749,8 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
-        TC: Copy
-            + PartialEq
-            + 'static
-            + Bounded
-            + Debug
-            + Sub<Output = TC>
-            + AsPrimitive<TI>
-            + Mul<Output = TC>,
-        TI: Copy
-            + Add
-            + Sub<Output = TI>
-            + Mul<Output = TI>
-            + Debug
-            + fmt::Display
-            + Ord
-            + PartialEq
-            + 'static
-            + AsPrimitive<TC>
-            + AsPrimitive<i64>,
+        TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
+        TI: Copy + Debug + 'static + AsPrimitive<i64>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
         i64: AsPrimitive<TC>,
     {
@@ -816,6 +773,51 @@ pub mod test {
                     FusedKerSpec::QTowardsPlusInf((1 << 30).as_(), 2),
                 ],
             )
+        }
+    }
+
+    #[derive(Debug, new)]
+    pub struct ReturnCProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static,
+        TI: Copy + Debug,
+    {
+        pub c: Vec<TC>,
+        pub boo: std::marker::PhantomData<(K, TA, TB, TC, TI)>,
+    }
+
+    impl<K, TA, TB, TC, TI> Arbitrary for ReturnCProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static + Arbitrary,
+        TI: Copy + Debug,
+    {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+        fn arbitrary_with(_p: ()) -> Self::Strategy {
+            let len = K::mr() * K::nr();
+            proptest::collection::vec(any::<TC>(), len..=len)
+                .prop_map(|c| ReturnCProblem { c, boo: std::marker::PhantomData })
+                .boxed()
+        }
+    }
+
+    impl<K, TA, TB, TC, TI> ReturnCProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
+        TI: Copy + Debug + 'static + AsPrimitive<i64>,
+        usize: AsPrimitive<TC>,
+    {
+        pub fn run(&self) -> Vec<TC> {
+            fused_ops::<K, TA, TB, TC, TI>(&*self.c, &[])
         }
     }
 }
