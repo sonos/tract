@@ -17,6 +17,9 @@ fn main() {
             lib_exe.arg(format!("/out:{}", out_dir.join("x86_64_fma.lib").to_str().unwrap()));
             for f in files {
                 let mut obj = f.clone();
+                for (i, l) in std::fs::read_to_string(&f).unwrap().lines().enumerate() {
+                    println!("{:8} {}", i, l);
+                }
                 obj.set_extension("o");
                 let mut ml_exe = cc::windows_registry::find(&*target, "ml64.exe")
                     .expect("Could not find ml64.exe");
