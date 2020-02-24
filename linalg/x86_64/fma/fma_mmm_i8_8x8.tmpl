@@ -390,43 +390,33 @@ fma_mmm_i8_8x8 proc
     pinsrd  xmm14, eax, {{i}}
     add     eax,    esi
 {% endfor %}
+    vpermq          ymm14, ymm14, 0b01001110
 {% for i in (0..3) %}
-    pinsrd  xmm15, eax, {{i}}
+    pinsrd  xmm14, eax, {{i}}
     add     eax,    esi
 {% endfor %}
+    vpermq          ymm14, ymm14, 0b01001110
 
-    vperm2f128      ymm14,  ymm14, ymm15,         32 // ymm14 <- xmm14::xmm15
-
-    mov     r9,     0xffffffffffffffff
-    push    r9
-    mov     r11,    0x0c080400ffffffff
-    push    r11
-    push    r9
-    mov     r11,    0xffffffff0c080400
-    push    r11
+    vpbroadcastd    ymm10, [ rip + {{L}}byte_shuffle ]
+    vmovups         ymm11, [ rip + {{L}}i128_shuffle ]
 
 {% for i in (0..7) %}
     vpcmpeqd        ymm15, ymm15, ymm15
     vgatherdps      ymm12, [ r10 + ymm14 ], ymm15   // 0xxx 1xxx 2xxx 3xxx 4xxx 5xxx 6xxx 7xxx
 
     // we need to go through vpmovsxbd, shuffling naively erases signs
-    vpshufb         ymm12, ymm12, [rsp]             // 0123 0000 0000 0000 0000 4567 0000 0000
-    vpshufb         ymm13, ymm13, [rsp]
-
-    vperm2i128      ymm15, ymm12, ymm12, 1          // 0000 4567 0000 0000 0000 0000 0000 0000
-    vpor            ymm12, ymm12, ymm15             // 0123 4567
-    vpmovsxbd       ymm12, xmm12                    // 0004 0005 0006 0007
+    vpshufb         ymm12, ymm12, ymm10             // 0123 0123 0123 0123 4567 4567 4567 4567
+    vpermd          ymm12, ymm11, ymm12             // 0123 4567
+    vpmovsxbd       ymm12, xmm12                    // sign extend
 
     vpaddd          ymm{{i}},   ymm{{i}},   ymm12
     add             r10, rbx
 {% endfor %}
 
-    pop r9
-    pop r9
-    pop r9
-    pop r9
-
     jmp    {{L}}non_linear_loop
+
+{{L}}byte_shuffle: .int            0x0c080400
+{{L}}i128_shuffle: .int            0x0, 0x4
 
 // NON LINEAR / MAX
 
@@ -531,11 +521,16 @@ fma_mmm_i8_8x8 proc
     vpbroadcastd    ymm12, dword ptr [rcx + 8]  // ymm12 <- mult // 8x32b
 
     mov             r8, [rcx + 16]
-    add             r8, 30                      // r8 <- 30 + arg2
+    add             r8, 30                  // r8 <- 30 + arg2
     mov             r9, 64
-    sub             r9, r8                      // r9 <- 64 - (30 + arg2)
+    sub             r9, r8                  // r9 <- 64 - (30 + arg2)
 
-    vpxor       ymm13, ymm13, ymm13             // ymm13 <- 0
+    vpxor       ymm9, ymm0, ymm0            // ymm9 <- 0
+    pinsrq      xmm9, r8, 0
+    vpxor       ymm10, ymm0, ymm0           // ymm10 <- 0
+    pinsrq      xmm10, r9, 0
+
+    vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit]
 
 {% for i in (0..7) %}
     vpsrldq     ymm15, ymm{{i}}, 4          // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
@@ -543,40 +538,30 @@ fma_mmm_i8_8x8 proc
     vpmuldq     ymm{{i}}, ymm{{i}}, ymm12   // ymmi  <- a0*c, a2*c, a4*c, a6*c
 
     // arithmetic shift for ymm{{i}}
-    vpxor       ymm14, ymm14, ymm14
+    vpxor       ymm14, ymm0, ymm0
     vpcmpgtq    ymm14, ymm14, ymm{{i}}      // ymm14 <- sign(ymmi)
-    pinsrq      xmm13, r8, 0
-    vpsrlq      ymm{{i}}, ymm{{i}}, xmm13   // *logical* shift
-    pinsrq      xmm13, r9, 0
-    vpsllq      ymm14, ymm14, xmm13         // sign extension prefix
+    vpsrlq      ymm{{i}}, ymm{{i}}, xmm9    // *logical* shift
+    vpsllq      ymm14, ymm14, xmm10         // sign extension prefix
     vpor        ymm{{i}}, ymm{{i}}, ymm14
 
     // arithmetic shift for ymm15
-    vpxor       ymm14, ymm14, ymm14
+    vpxor       ymm14, ymm0, ymm0
     vpcmpgtq    ymm14, ymm14, ymm15         // ymm14 <- sign(ymm15)
-    pinsrq      xmm13, r8, 0
-    vpsrlq      ymm15, ymm15, xmm13         // *logical* shift
-    pinsrq      xmm13, r9, 0
-    vpsllq      ymm14, ymm14, xmm13         // sign extension prefix
+    vpsrlq      ymm15, ymm15, xmm9          // *logical* shift
+    vpsllq      ymm14, ymm14, xmm10         // sign extension prefix
     vpor        ymm15, ymm15, ymm14
 
     vpslldq     ymm15, ymm15, 4
     vpblendd    ymm{{i}}, ymm15, ymm{{i}}, 0x55   // ymmi <- ymmi::ymm15 (back to i32)
-{% endfor %}
 
-    mov             r8, 1
-    push            r8
-    vpbroadcastd    ymm14, dword ptr [rsp]
-    pop             r8
-
-{% for i in (0..7) %}
     vpaddd      ymm{{i}}, ymm{{i}}, ymm14   // +=1
-{% endfor %}
-{% for i in (0..7) %}
     vpsrad      ymm{{i}}, ymm{{i}}, 1       // >>=1
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
+
+{{L}}one_32bit:
+    .int    1
 
 {% if family == "windows" %}
 fma_mmm_i8_8x8 endp
