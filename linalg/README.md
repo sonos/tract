@@ -17,7 +17,7 @@ low-level, architecture dependant optimisations used by tract-core.
 # Implementations
 
                 |  generic fallback  |  arm v6, vfp  |     armv7 neon    |    armv8 simd     |     x64 FMA  
---------------- | ------------------ | ------------- | ----------------- | ----------------- | ----------------
+----------------|--------------------|---------------|-------------------|-------------------|-----------------
 MatMatMul f32   |                    |      4x4      |         8x4       |       8x8         |       16x6   
 MatMatMul  i8   |                    |               |         8x4       |                   |              
 sigmoid f32     |                    |               |         4n        |        4n         |              
