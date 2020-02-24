@@ -261,13 +261,13 @@ fma_mmm_i8_8x8 proc
         mov r10,    r9
         {% for row in (0..3) %}
             vextractps  ebx, xmm{{col}}, {{row}}
-            movb        byte ptr [r10], bl
+            mov         byte ptr [r10], bl
             add         r10, rsi
         {% endfor %}
         vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
         {% for row in (0..3) %}
             vextractps  ebx, xmm{{col}}, {{row}}
-            movb        byte ptr [r10], bl
+            mov         byte ptr [r10], bl
             add         r10, rsi
         {% endfor %}
         add r9, rdx
@@ -283,13 +283,13 @@ fma_mmm_i8_8x8 proc
 
     {% for row in (0..3) %}
         vextractps  ebx, xmm0, {{row}}
-        movb        byte ptr [r8], bl
+        mov         byte ptr [r8], bl
         add         r8, rsi
     {% endfor %}
     vperm2f128  ymm0,   ymm0,   ymm1,  1
     {% for row in (0..3) %}
         vextractps  ebx, xmm0, {{row}}
-        movb        byte ptr [r8], bl
+        mov         byte ptr [r8], bl
         add         r8, rsi
     {% endfor %}
 
