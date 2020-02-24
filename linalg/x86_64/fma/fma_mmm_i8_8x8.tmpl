@@ -390,12 +390,12 @@ fma_mmm_i8_8x8 proc
     pinsrd  xmm14, eax, {{i}}
     add     eax,    esi
 {% endfor %}
-    vpermq          ymm14, ymm14, 0b01001110
+    vpermq          ymm14, ymm14, 78 // 0b01001110
 {% for i in (0..3) %}
     pinsrd  xmm14, eax, {{i}}
     add     eax,    esi
 {% endfor %}
-    vpermq          ymm14, ymm14, 0b01001110
+    vpermq          ymm14, ymm14, 78 // 0b01001110
 
     vpbroadcastd    ymm10, [ rip + {{L}}byte_shuffle ]
     vmovups         ymm11, [ rip + {{L}}i128_shuffle ]
@@ -415,8 +415,8 @@ fma_mmm_i8_8x8 proc
 
     jmp    {{L}}non_linear_loop
 
-{{L}}byte_shuffle: .int            0x0c080400
-{{L}}i128_shuffle: .int            0x0, 0x4
+{{L}}byte_shuffle: .int            201851904 // 0x0c080400
+{{L}}i128_shuffle: .int            0, 4
 
 // NON LINEAR / MAX
 
@@ -518,19 +518,19 @@ fma_mmm_i8_8x8 proc
     jmp    {{L}}non_linear_loop
 
 {{L}}q_torwards_plusinf:     // (((x * arg1) >> (30 + arg2)) as i32 + 1) >> 1
-    vpbroadcastd    ymm12, dword ptr [rcx + 8]  // ymm12 <- mult // 8x32b
 
-    mov             r8, [rcx + 16]
-    add             r8, 30                  // r8 <- 30 + arg2
-    mov             r9, 64
-    sub             r9, r8                  // r9 <- 64 - (30 + arg2)
+    vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
+    vpbroadcastd    ymm12, dword ptr [rcx + 8]  // mult // broatcasted x 8
 
+    mov         r8, [rcx + 16]
+    add         r8, 30                      // r8 <- 30 + arg2
+    mov         r9, 64
+    sub         r9, r8                      // r9 <- 64 - (30 + arg2)
+
+    vpxor       ymm8, ymm0, ymm0            // ymm8 <- 0
+    pinsrq      xmm8, r8, 0
     vpxor       ymm9, ymm0, ymm0            // ymm9 <- 0
-    pinsrq      xmm9, r8, 0
-    vpxor       ymm10, ymm0, ymm0           // ymm10 <- 0
-    pinsrq      xmm10, r9, 0
-
-    vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit]
+    pinsrq      xmm9, r9, 0
 
 {% for i in (0..7) %}
     vpsrldq     ymm15, ymm{{i}}, 4          // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
@@ -540,21 +540,21 @@ fma_mmm_i8_8x8 proc
     // arithmetic shift for ymm{{i}}
     vpxor       ymm14, ymm0, ymm0
     vpcmpgtq    ymm14, ymm14, ymm{{i}}      // ymm14 <- sign(ymmi)
-    vpsrlq      ymm{{i}}, ymm{{i}}, xmm9    // *logical* shift
-    vpsllq      ymm14, ymm14, xmm10         // sign extension prefix
+    vpsrlq      ymm{{i}}, ymm{{i}}, xmm8    // *logical* shift
+    vpsllq      ymm14, ymm14, xmm9          // sign extension prefix
     vpor        ymm{{i}}, ymm{{i}}, ymm14
 
     // arithmetic shift for ymm15
     vpxor       ymm14, ymm0, ymm0
     vpcmpgtq    ymm14, ymm14, ymm15         // ymm14 <- sign(ymm15)
-    vpsrlq      ymm15, ymm15, xmm9          // *logical* shift
-    vpsllq      ymm14, ymm14, xmm10         // sign extension prefix
+    vpsrlq      ymm15, ymm15, xmm8          // *logical* shift
+    vpsllq      ymm14, ymm14, xmm9          // sign extension prefix
     vpor        ymm15, ymm15, ymm14
 
     vpslldq     ymm15, ymm15, 4
     vpblendd    ymm{{i}}, ymm15, ymm{{i}}, 0x55   // ymmi <- ymmi::ymm15 (back to i32)
 
-    vpaddd      ymm{{i}}, ymm{{i}}, ymm14   // +=1
+    vpaddd      ymm{{i}}, ymm{{i}}, ymm11   // +=1
     vpsrad      ymm{{i}}, ymm{{i}}, 1       // >>=1
 {% endfor %}
 
