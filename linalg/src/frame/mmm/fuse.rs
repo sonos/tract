@@ -220,7 +220,9 @@ pub mod test {
                     #[test]
                     fn return_c_prop(pb in any::<test::ReturnCProblem<$ker, $ta, $tb, $tc, $ti>>()) {
                         if $cond {
-                            prop_assert_eq!(pb.run(), pb.c)
+                            let got = pb.run();
+                            prop_assert!(got.iter().zip(pb.c.iter()).all(|(g,e)| (*g as f32 - *e as f32).abs() < 1e-7),
+                                "got: {:?}\nexpected: {:?}", pb.run(), pb.c)
                         }
                     }
                 }
