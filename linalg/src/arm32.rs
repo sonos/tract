@@ -37,7 +37,8 @@ pub fn plug(ops: &mut Ops) {
                 i32,
             >::new(m, k, n)))
         });
-        ops.sigmoid_f32 = Box::new(|| Box::new(SigmoidImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
+        ops.sigmoid_f32 =
+            Box::new(|| Box::new(SigmoidImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(TanhImpl::<armv7neon::TanhF32x4n, f32>::new()));
     } else {
         log::info!("armvfpv2 activated for smmm");

@@ -12,8 +12,7 @@ pub mod tanh;
 pub use pack_a::PackA;
 pub use pack_b::PackB;
 
-pub use self::mmm::MatMatMul;
-//pub use self::qmmm::Q
+pub use self::mmm::{MatMatMul, MatMatMulImpl, QMatMatMul, QMatMatMulImpl};
 
 pub use self::sigmoid::SigmoidImpl;
 pub use self::tanh::TanhImpl;
