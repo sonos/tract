@@ -415,8 +415,13 @@ fma_mmm_i8_8x8 proc
 
     jmp    {{L}}non_linear_loop
 
+{% if family == "windows" %}
+{{L}}byte_shuffle: dd              201851904 // 0x0c080400
+{{L}}i128_shuffle: dd              0, 4
+{% else %}
 {{L}}byte_shuffle: .int            201851904 // 0x0c080400
 {{L}}i128_shuffle: .int            0, 4
+{% endif %}
 
 // NON LINEAR / MAX
 
@@ -561,7 +566,11 @@ fma_mmm_i8_8x8 proc
     jmp    {{L}}non_linear_loop
 
 {{L}}one_32bit:
+{% if family == "windows" %}
+    dd      1
+{% else ‰}
     .int    1
+{% endif %}
 
 {% if family == "windows" %}
 fma_mmm_i8_8x8 endp
