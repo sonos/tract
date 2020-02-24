@@ -397,8 +397,13 @@ fma_mmm_i8_8x8 proc
 {% endfor %}
     vpermq          ymm14, ymm14, 78 // 0b01001110
 
+{% if family == "windows" %}
+    vpbroadcastd    ymm10, [ offset byte_shuffle ]
+    vmovups         ymm11, [ offset i128_shuffle ]
+{% else %}
     vpbroadcastd    ymm10, [ rip + {{L}}byte_shuffle ]
     vmovups         ymm11, [ rip + {{L}}i128_shuffle ]
+{% endif %}
 
 {% for i in (0..7) %}
     vpcmpeqd        ymm15, ymm15, ymm15
@@ -416,8 +421,10 @@ fma_mmm_i8_8x8 proc
     jmp    {{L}}non_linear_loop
 
 {% if family == "windows" %}
-{{L}}byte_shuffle: dd              201851904 // 0x0c080400
-{{L}}i128_shuffle: dd              0, 4
+.data
+byte_shuffle dd              201851904 // 0x0c080400
+i128_shuffle dd              0, 4
+.code
 {% else %}
 {{L}}byte_shuffle: .int            201851904 // 0x0c080400
 {{L}}i128_shuffle: .int            0, 4
