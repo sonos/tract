@@ -398,8 +398,8 @@ fma_mmm_i8_8x8 proc
     vpermq          ymm14, ymm14, 78 // 0b01001110
 
 {% if family == "windows" %}
-    vpbroadcastd    ymm10, [ offset byte_shuffle ]
-    vmovups         ymm11, [ offset i128_shuffle ]
+    vpbroadcastd    ymm10, dword ptr [ offset byte_shuffle ]
+    vmovups         ymm11, dword ptr [ offset i128_shuffle ]
 {% else %}
     vpbroadcastd    ymm10, [ rip + {{L}}byte_shuffle ]
     vmovups         ymm11, [ rip + {{L}}i128_shuffle ]
@@ -531,7 +531,12 @@ i128_shuffle dd              0, 4
 
 {{L}}q_torwards_plusinf:     // (((x * arg1) >> (30 + arg2)) as i32 + 1) >> 1
 
+{% if family == "windows" %}
+    vpbroadcastd    ymm11, dword ptr [offset one_32bit] // 1, broadcasted x8
+{% else %}
     vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
+{% endif %}
+
     vpbroadcastd    ymm12, dword ptr [rcx + 8]  // mult // broatcasted x 8
 
     mov         r8, [rcx + 16]
@@ -564,7 +569,7 @@ i128_shuffle dd              0, 4
     vpor        ymm15, ymm15, ymm14
 
     vpslldq     ymm15, ymm15, 4
-    vpblendd    ymm{{i}}, ymm15, ymm{{i}}, 0x55   // ymmi <- ymmi::ymm15 (back to i32)
+    vpblendd    ymm{{i}}, ymm15, ymm{{i}}, 85   // 0x55 ymmi <- ymmi::ymm15 (back to i32)
 
     vpaddd      ymm{{i}}, ymm{{i}}, ymm11   // +=1
     vpsrad      ymm{{i}}, ymm{{i}}, 1       // >>=1
