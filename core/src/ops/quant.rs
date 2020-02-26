@@ -150,7 +150,7 @@ impl DequantizeLinearF32 {
 
 impl Op for DequantizeLinearF32 {
     fn name(&self) -> Cow<str> {
-        "DequantizeLinear".into()
+        "DequantizeLinearF32".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -186,8 +186,17 @@ impl TypedOp for DequantizeLinearF32 {
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let a = model.outlet_fact(node.inputs[0])?;
-        Ok((0..a.shape.rank()).into_iter().map(|axis| AxisInfo::simple(axis)).collect())
+        Invariants::new_element_wise(model, node)
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
     }
 
     fn declutter(
