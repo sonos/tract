@@ -133,15 +133,69 @@ pub fn ops() -> &'static Ops {
 }
 
 #[cfg(test)]
-pub(crate) fn check_close(
-    found: &[f32],
-    expected: &[f32],
-) -> proptest::test_runner::TestCaseResult {
-    proptest::prop_assert!(
-        found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
-        "found: {:?} expected: {:?}",
-        found,
-        expected
-    );
-    Ok(())
+mod test {
+    use num_traits::*;
+    use proptest::prelude::*;
+    use std::fmt::Debug;
+    use std::ops::*;
+
+    pub trait Datum:
+        Sized
+        + Debug
+        + Copy
+        + Clone
+        + Zero
+        + One
+        + 'static
+        + Add
+        + Sub
+        + Mul
+        + AddAssign
+        + MulAssign
+        + PartialOrd
+        + Bounded
+    {
+        fn strat() -> BoxedStrategy<Self>;
+        fn close(&self, other: &Self) -> bool;
+    }
+
+    impl Datum for f32 {
+        fn strat() -> BoxedStrategy<Self> {
+            (-1000isize..1000).prop_map(|i| i as f32 / 1000.0).boxed()
+        }
+        fn close(&self, other: &Self) -> bool {
+            (self - other).abs() < 0.001
+        }
+    }
+
+    impl Datum for i8 {
+        fn strat() -> BoxedStrategy<Self> {
+            any::<i8>().boxed()
+        }
+        fn close(&self, other: &Self) -> bool {
+            self == other
+        }
+    }
+
+    impl Datum for i32 {
+        fn strat() -> BoxedStrategy<Self> {
+            any::<i32>().boxed()
+        }
+        fn close(&self, other: &Self) -> bool {
+            self == other
+        }
+    }
+
+    pub(crate) fn check_close<T: Datum>(
+        found: &[T],
+        expected: &[T],
+    ) -> proptest::test_runner::TestCaseResult {
+        proptest::prop_assert!(
+            found.iter().zip(expected.iter()).all(|(a, b)| a.close(b)),
+            "found: {:?} expected: {:?}",
+            found,
+            expected
+        );
+        Ok(())
+    }
 }
