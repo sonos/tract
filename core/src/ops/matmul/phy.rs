@@ -114,7 +114,7 @@ where
             self.mmm.as_mmm().n(),
             self.c_trans
         )];
-        infos.push(format!("{}", self.mmm));
+        infos.push(format!("Mult: {}", self.mmm));
         if let Some(f) = &self.fused_ops {
             infos.push(format!("{:?}", f));
         }

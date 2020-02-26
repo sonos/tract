@@ -304,8 +304,8 @@ where
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,
-            "A:{}, B:{} C:{} (m:{}, k:{}, n:{})",
-            self.a_storage, self.b_storage, self.c_storage, self.m, self.k, self.n
+            "A:{}, B:{} C:{} (m:{}, k:{}, n:{}) ({} {}x{})",
+            self.a_storage, self.b_storage, self.c_storage, self.m, self.k, self.n, K::name(), K::mr(), K::nr()
         )
     }
 }

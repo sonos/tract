@@ -130,21 +130,25 @@ fma_mmm_i8_8x8 proc
     mov             rsi,    [rbx]   // rsi: current row offset
 
     vmovups         ymm8,   [rax]
-    vpmovsxbd       ymm8,   xmm8
+    vpmovsxbw       ymm8,   xmm8
 
     vpbroadcastb    ymm9, byte ptr [r8 + rsi]           // broadcast 1 byte from B
     vpbroadcastb    ymm10, byte ptr [r9 + rsi]      // broadcast 1 byte from B
     vpbroadcastb    ymm11, byte ptr [r10 + rsi]      // broadcast 1 byte from B
     vpbroadcastb    ymm12, byte ptr [r11 + rsi]      // broadcast 1 byte from B
-    vpmovsxbd       ymm9, xmm9                     // promote byte to i32x8
-    vpmovsxbd       ymm10, xmm10                   // promote byte to i32x8
-    vpmovsxbd       ymm11, xmm11                   // promote byte to i32x8
-    vpmovsxbd       ymm12, xmm12                   // promote byte to i32x8
+    vpmovsxbw       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxbw       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxbw       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxbw       ymm12, xmm12                   // promote byte to i32x8
 
-    vpmulld         ymm9, ymm9, ymm8
-    vpmulld         ymm10, ymm10, ymm8
-    vpmulld         ymm11, ymm11, ymm8
-    vpmulld         ymm12, ymm12, ymm8
+    vpmullw         ymm9, ymm9, ymm8
+    vpmullw         ymm10, ymm10, ymm8
+    vpmullw         ymm11, ymm11, ymm8
+    vpmullw         ymm12, ymm12, ymm8
+    vpmovsxwd       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxwd       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxwd       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxwd       ymm12, xmm12                   // promote byte to i32x8
     vpaddd          ymm0, ymm0, ymm9
     vpaddd          ymm1, ymm1, ymm10
     vpaddd          ymm2, ymm2, ymm11
@@ -154,15 +158,19 @@ fma_mmm_i8_8x8 proc
     vpbroadcastb    ymm10, byte ptr [r13 + rsi]
     vpbroadcastb    ymm11, byte ptr [r14 + rsi]
     vpbroadcastb    ymm12, byte ptr [r15 + rsi]
-    vpmovsxbd       ymm9, xmm9
-    vpmovsxbd       ymm10, xmm10
-    vpmovsxbd       ymm11, xmm11
-    vpmovsxbd       ymm12, xmm12
+    vpmovsxbw       ymm9, xmm9
+    vpmovsxbw       ymm10, xmm10
+    vpmovsxbw       ymm11, xmm11
+    vpmovsxbw       ymm12, xmm12
 
-    vpmulld         ymm9, ymm9, ymm8
-    vpmulld         ymm10, ymm10, ymm8
-    vpmulld         ymm11, ymm11, ymm8
-    vpmulld         ymm12, ymm12, ymm8
+    vpmullw         ymm9, ymm9, ymm8
+    vpmullw         ymm10, ymm10, ymm8
+    vpmullw         ymm11, ymm11, ymm8
+    vpmullw         ymm12, ymm12, ymm8
+    vpmovsxwd       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxwd       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxwd       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxwd       ymm12, xmm12                   // promote byte to i32x8
     vpaddd          ymm4, ymm4, ymm9
     vpaddd          ymm5, ymm5, ymm10
     vpaddd          ymm6, ymm6, ymm11
@@ -182,21 +190,25 @@ fma_mmm_i8_8x8 proc
 
 {{L}}main_loop_packed_packed:
     vmovups         xmm8, [rax]                    // load 16 bytes from A (will only use first 8)
-    vpmovsxbd       ymm8, xmm8                     // promote byte to i32x8
+    vpmovsxbw       ymm8, xmm8                     // promote byte to i32x8
 
     vpbroadcastb    ymm9, byte ptr [rbx]           // broadcast 1 byte from B
     vpbroadcastb    ymm10, byte ptr [rbx + 1]      // broadcast 1 byte from B
     vpbroadcastb    ymm11, byte ptr [rbx + 2]      // broadcast 1 byte from B
     vpbroadcastb    ymm12, byte ptr [rbx + 3]      // broadcast 1 byte from B
-    vpmovsxbd       ymm9, xmm9                     // promote byte to i32x8
-    vpmovsxbd       ymm10, xmm10                   // promote byte to i32x8
-    vpmovsxbd       ymm11, xmm11                   // promote byte to i32x8
-    vpmovsxbd       ymm12, xmm12                   // promote byte to i32x8
+    vpmovsxbw       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxbw       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxbw       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxbw       ymm12, xmm12                   // promote byte to i32x8
 
-    vpmulld         ymm9, ymm9, ymm8
-    vpmulld         ymm10, ymm10, ymm8
-    vpmulld         ymm11, ymm11, ymm8
-    vpmulld         ymm12, ymm12, ymm8
+    vpmullw         ymm9, ymm9, ymm8
+    vpmullw         ymm10, ymm10, ymm8
+    vpmullw         ymm11, ymm11, ymm8
+    vpmullw         ymm12, ymm12, ymm8
+    vpmovsxwd       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxwd       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxwd       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxwd       ymm12, xmm12                   // promote byte to i32x8
     vpaddd          ymm0, ymm0, ymm9
     vpaddd          ymm1, ymm1, ymm10
     vpaddd          ymm2, ymm2, ymm11
@@ -206,15 +218,19 @@ fma_mmm_i8_8x8 proc
     vpbroadcastb    ymm10, byte ptr [rbx + 5]
     vpbroadcastb    ymm11, byte ptr [rbx + 6]
     vpbroadcastb    ymm12, byte ptr [rbx + 7]
-    vpmovsxbd       ymm9, xmm9
-    vpmovsxbd       ymm10, xmm10
-    vpmovsxbd       ymm11, xmm11
-    vpmovsxbd       ymm12, xmm12
+    vpmovsxbw       ymm9, xmm9
+    vpmovsxbw       ymm10, xmm10
+    vpmovsxbw       ymm11, xmm11
+    vpmovsxbw       ymm12, xmm12
 
-    vpmulld         ymm9, ymm9, ymm8
-    vpmulld         ymm10, ymm10, ymm8
-    vpmulld         ymm11, ymm11, ymm8
-    vpmulld         ymm12, ymm12, ymm8
+    vpmullw         ymm9, ymm9, ymm8
+    vpmullw         ymm10, ymm10, ymm8
+    vpmullw         ymm11, ymm11, ymm8
+    vpmullw         ymm12, ymm12, ymm8
+    vpmovsxwd       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxwd       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxwd       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxwd       ymm12, xmm12                   // promote byte to i32x8
     vpaddd          ymm4, ymm4, ymm9
     vpaddd          ymm5, ymm5, ymm10
     vpaddd          ymm6, ymm6, ymm11
@@ -234,11 +250,12 @@ fma_mmm_i8_8x8 proc
 
 {{L}}packed_vec_loop:
     vpbroadcastb    ymm14,  byte ptr [rbx]
-    vpmovsxbd       ymm14,  xmm14
+    vpmovsxbw       ymm14,  xmm14
     vmovups         ymm12,  [rax]
-    vpmovsxbd       ymm12,  xmm12
+    vpmovsxbw       ymm12,  xmm12
 
-    vpmulld         ymm12,  ymm12, ymm14
+    vpmullw         ymm12,  ymm12, ymm14
+    vpmovsxwd       ymm12,  xmm12
     vpaddd          ymm0, ymm0, ymm12
 
     add             rbx,    rsi
