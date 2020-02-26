@@ -112,7 +112,19 @@ pub fn best() -> Ops {
                     ),
                 )
             });
-            log::info!("x86_64/fma activated");
+            log::info!("mmm_f32 x86_64/fma activated");
+        }
+        if is_x86_feature_detected!("avx2") {
+            ops.qmmm_i8_i8 = Box::new(|m, k, n| {
+                Box::new(mmm::QMatMatMulImpl::from(mmm::MatMatMulImpl::<
+                    x86_64_fma::mmm::MatMatMulI8x8x8,
+                    i8,
+                    i8,
+                    i8,
+                    i32,
+                >::new(m, k, n)))
+            });
+            log::info!("mmm_i8_i8 x86_64/fma activated");
         }
     }
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
