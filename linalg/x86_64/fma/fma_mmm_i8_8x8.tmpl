@@ -233,15 +233,16 @@ fma_mmm_i8_8x8 proc
     mov     rbx,   [rbx + 8]    // B ptr
 
 {{L}}packed_vec_loop:
-    vbroadcastss    ymm14,  dword ptr [rbx]
-    vmovaps         ymm12,  [rax]
-    vmovaps         ymm13,  [rax + 32]
+    vpbroadcastb    ymm14,  byte ptr [rbx]
+    vpmovsxbd       ymm14,  xmm14
+    vmovups         ymm12,  [rax]
+    vpmovsxbd       ymm12,  xmm12
 
-    vfmadd231ps     ymm0,   ymm12, ymm14
-    vfmadd231ps     ymm1,   ymm13, ymm14
+    vpmullw         ymm12,  ymm12, ymm14
+    vpaddq          ymm0, ymm0, ymm12
 
     add             rbx,    rsi
-    add             rax,    64
+    add             rax,    8
     dec             rcx
     jnz             {{L}}packed_vec_loop
 

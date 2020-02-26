@@ -512,7 +512,7 @@ pub mod test {
                 }
 
                 #[test]
-                fn q_mat_mul_1_sat() {
+                fn q_mat_mul_sat_1() {
                     if $cond {
                         let pb = QMatMulProblem {
                             m: 1,
@@ -522,6 +522,23 @@ pub mod test {
                             a: vec![3],
                             b0: QuantizedParam::Vector(vec![43]),
                             b: vec![0],
+                            boo: PhantomData,
+                        };
+                        assert_eq!(pb.run::<$ker>(), pb.reference());
+                    }
+                }
+                #[test]
+
+                fn q_mat_mul_sat_2() {
+                    if $cond {
+                        let pb = QMatMulProblem {
+                            m: 1,
+                            k: 1,
+                            n: 1,
+                            a0: QuantizedParam::Vector(vec![0]),
+                            a: vec![<$ta>::min_value()],
+                            b0: QuantizedParam::Vector(vec![0]),
+                            b: vec![1],
                             boo: PhantomData,
                         };
                         assert_eq!(pb.run::<$ker>(), pb.reference());
