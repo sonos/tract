@@ -41,7 +41,7 @@ pub struct MatMatMulI8x8x8;
 impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x8 {
     #[inline(always)]
     fn name() -> &'static str {
-        "fma"
+        "avx2"
     }
     #[inline(always)]
     fn mr() -> usize {
@@ -69,7 +69,7 @@ pub struct MatMatMulI8xI32x8x8;
 impl MatMatMulKer<i8, i8, i32, i32> for MatMatMulI8xI32x8x8 {
     #[inline(always)]
     fn name() -> &'static str {
-        "fma"
+        "avx2"
     }
     #[inline(always)]
     fn mr() -> usize {

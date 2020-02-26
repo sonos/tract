@@ -324,11 +324,7 @@ where
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            fmt,
-            "A:{}, B:{} C:{} (m:{}, k:{}, n:{})",
-            self.a_storage, self.b_storage, self.c_storage, self.m, self.k, self.n
-        )
+        write!(fmt, "{}", self.mmm)
     }
 }
 
