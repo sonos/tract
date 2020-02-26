@@ -268,6 +268,10 @@ fma_mmm_i8_8x8 proc
     mov     r8,     [rcx + 8]           // c ptr
     mov     rsi,    [rcx + 16]          // row stride
     mov     rdx,    [rcx + 24]          // col stride
+    mov     rdi,    [rcx + 32]          // item size
+
+    cmp     rdi,    4
+    je      {{L}}store_strides_i32
 
     mov     r9,     r8                  // current col
     {% for col in (0..7) %}
@@ -289,10 +293,35 @@ fma_mmm_i8_8x8 proc
     mov     rax,    0
     jmp     {{L}}return
 
+{{L}}store_strides_i32:
+    mov     r9,     r8                  // current col
+    {% for col in (0..7) %}
+        mov r10,    r9
+        {% for row in (0..3) %}
+            vextractps  ebx, xmm{{col}}, {{row}}
+            mov         dword ptr [r10], ebx
+            add         r10, rsi
+        {% endfor %}
+        vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
+        {% for row in (0..3) %}
+            vextractps  ebx, xmm{{col}}, {{row}}
+            mov         dword ptr [r10], ebx
+            add         r10, rsi
+        {% endfor %}
+        add r9, rdx
+    {% endfor %}
+
+    mov     rax,    0
+    jmp     {{L}}return
+
 {{L}}store_vec_strides:
 
     mov     r8,     [rcx + 8]           // c ptr
     mov     rsi,    [rcx + 16]          // stride
+    mov     rdi,    [rcx + 24]          // item size
+
+    cmp     rdi,    4
+    je      {{L}}store_vec_strides_i32
 
     {% for row in (0..3) %}
         vextractps  ebx, xmm0, {{row}}
@@ -303,6 +332,23 @@ fma_mmm_i8_8x8 proc
     {% for row in (0..3) %}
         vextractps  ebx, xmm0, {{row}}
         mov         byte ptr [r8], bl
+        add         r8, rsi
+    {% endfor %}
+
+    mov     rax,    0
+    jmp     {{L}}return
+
+{{L}}store_vec_strides_i32:
+
+    {% for row in (0..3) %}
+        vextractps  ebx, xmm0, {{row}}
+        mov         dword ptr [r8], ebx
+        add         r8, rsi
+    {% endfor %}
+    vperm2f128  ymm0,   ymm0,   ymm1,  1
+    {% for row in (0..3) %}
+        vextractps  ebx, xmm0, {{row}}
+        mov         dword ptr [r8], ebx
         add         r8, rsi
     {% endfor %}
 
@@ -397,6 +443,7 @@ fma_mmm_i8_8x8 proc
     mov     r10,    [rax + 8]           // c ptr
     mov     rsi,    [rax + 16]          // row stride
     mov     rbx,    [rax + 24]          // col stride
+    mov     r8,     [rax + 32]          // item size
 
     mov     eax,    0
 {% for i in (0..3) %}
@@ -409,6 +456,9 @@ fma_mmm_i8_8x8 proc
     add     eax,    esi
 {% endfor %}
     vpermq          ymm14, ymm14, 78 // 0b01001110
+
+    cmp     r8,    4
+    je      {{L}}non_linear_addc_i32
 
 {% if family == "windows" %}
     vpbroadcastd    ymm10, dword ptr [ offset byte_shuffle ]
@@ -427,6 +477,17 @@ fma_mmm_i8_8x8 proc
     vpermd          ymm12, ymm11, ymm12             // 0123 4567
     vpmovsxbd       ymm12, xmm12                    // sign extend
 
+    vpaddd          ymm{{i}},   ymm{{i}},   ymm12
+    add             r10, rbx
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}non_linear_addc_i32:
+
+{% for i in (0..7) %}
+    vpcmpeqd        ymm15, ymm15, ymm15
+    vgatherdps      ymm12, [ r10 + ymm14 ], ymm15
     vpaddd          ymm{{i}},   ymm{{i}},   ymm12
     add             r10, rbx
 {% endfor %}

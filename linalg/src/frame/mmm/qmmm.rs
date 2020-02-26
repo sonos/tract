@@ -426,7 +426,6 @@ pub mod test {
         i32: AsPrimitive<TI>,
     {
         pub fn reference(&self) -> Vec<TC> {
-            dbg!(&self);
             let mut i = vec![TI::zero(); self.m * self.n];
             for m in 0..self.m {
                 for n in 0..self.n {
@@ -445,11 +444,9 @@ pub mod test {
                     }
                 }
             }
-            dbg!(&i);
-            let r = i.iter()
+            i.iter()
                 .map(|i| i.max(&TC::min_value().as_()).min(&TC::max_value().as_()).as_())
-                .collect();
-            dbg!(r)
+                .collect()
         }
 
         pub fn run<K: MatMatMulKer<TA, TB, TC, TI>>(&self) -> Vec<TC> {
@@ -582,7 +579,7 @@ pub mod test {
                     }
                 }
             }
-        }
+        };
     }
 
     #[macro_export]
@@ -610,7 +607,6 @@ pub mod test {
                         assert_eq!(pb.run::<$ker>(), pb.reference());
                     }
                 }
-
             }
         };
     }
