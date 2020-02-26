@@ -154,10 +154,10 @@ fma_mmm_i8_8x8 proc
     vpbroadcastb    ymm10, byte ptr [r13 + rsi]
     vpbroadcastb    ymm11, byte ptr [r14 + rsi]
     vpbroadcastb    ymm12, byte ptr [r15 + rsi]
-    vpmovsxbw       ymm9, xmm9
-    vpmovsxbw       ymm10, xmm10
-    vpmovsxbw       ymm11, xmm11
-    vpmovsxbw       ymm12, xmm12
+    vpmovsxbd       ymm9, xmm9
+    vpmovsxbd       ymm10, xmm10
+    vpmovsxbd       ymm11, xmm11
+    vpmovsxbd       ymm12, xmm12
 
     vpmulld         ymm9, ymm9, ymm8
     vpmulld         ymm10, ymm10, ymm8
@@ -206,10 +206,10 @@ fma_mmm_i8_8x8 proc
     vpbroadcastb    ymm10, byte ptr [rbx + 5]
     vpbroadcastb    ymm11, byte ptr [rbx + 6]
     vpbroadcastb    ymm12, byte ptr [rbx + 7]
-    vpmovsxbw       ymm9, xmm9
-    vpmovsxbw       ymm10, xmm10
-    vpmovsxbw       ymm11, xmm11
-    vpmovsxbw       ymm12, xmm12
+    vpmovsxbd       ymm9, xmm9
+    vpmovsxbd       ymm10, xmm10
+    vpmovsxbd       ymm11, xmm11
+    vpmovsxbd       ymm12, xmm12
 
     vpmulld         ymm9, ymm9, ymm8
     vpmulld         ymm10, ymm10, ymm8
