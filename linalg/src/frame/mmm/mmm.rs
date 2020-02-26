@@ -316,7 +316,7 @@ pub mod test {
     use super::*;
     use crate::align::Buffer;
     use crate::test::*;
-    use num_traits::{AsPrimitive, Zero};
+    use num_traits::AsPrimitive;
     use proptest::prelude::*;
 
     #[macro_export]
@@ -360,6 +360,19 @@ pub mod test {
                         let b: Vec<$tb> =
                             [-8isize, 5, 5, -3, 5, 7, -8, -1].iter().map(|x| x.as_()).collect();
                         test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(3, 4, 2, &*a, &*b)
+                            .unwrap()
+                    }
+                }
+
+                #[test]
+                fn mat_mul_2() {
+                    if $cond {
+                        let a: Vec<$ta> = [-1isize, -1, 0, 0]
+                            .iter()
+                            .map(|x| x.as_())
+                            .collect();
+                        let b: Vec<$tb> = [0isize, 1, 0, 1].iter().map(|x| x.as_()).collect();
+                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(2, 2, 2, &*a, &*b)
                             .unwrap()
                     }
                 }
