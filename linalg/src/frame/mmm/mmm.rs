@@ -345,7 +345,7 @@ pub mod test {
                     #[test]
                     fn conv_prepacked(pb in strat_conv_1d()) {
                         if $cond {
-                            crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*pb.expected())?;
+                            crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*pb.expected::<$tc, $ti>())?;
                         }
                     }
                 }
@@ -372,7 +372,7 @@ pub mod test {
                             2,
                             1,
                             &[<$ta>::zero(), <$ta>::one()],
-                            &[<$ta>::zero(), <$ta>::one()],
+                            &[<$tb>::zero(), <$tb>::one()],
                         )
                         .unwrap()
                     }
@@ -383,7 +383,7 @@ pub mod test {
                     if $cond {
                         let filters: Vec<$ta> = vec![1isize.as_()];
                         let data: Vec<$tb> = vec![0.as_(), 1.as_()];
-                        let pb = ConvProblem {
+                        let pb = ConvProblem::<$ta, $tb> {
                             ci: 1,
                             co: 1,
                             kt: 1,
@@ -392,7 +392,8 @@ pub mod test {
                             filters,
                             data,
                         };
-                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*pb.expected()).unwrap();
+                        let expected:Vec<$tc> = pb.expected::<$tc, $ti>();
+                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
                     }
                 }
 
@@ -403,7 +404,7 @@ pub mod test {
                         filters[13 * 6 + 5] = <$ta>::one();
                         let mut data = vec![<$tb>::zero(); 3 * 10];
                         data[8 + 2 * 10] = <$tb>::one(); // last used input
-                        let pb = ConvProblem {
+                        let pb = ConvProblem::<$ta, $tb> {
                             ci: 3,
                             co: 14,
                             kt: 2,
@@ -412,7 +413,8 @@ pub mod test {
                             filters,
                             data,
                         };
-                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*pb.expected()).unwrap();
+                        let expected:Vec<$tc> = pb.expected::<$tc, $ti>();
+                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
                     }
                 }
 
@@ -527,15 +529,8 @@ pub mod test {
                     expected[x + y * n] = v.as_();
                 }
             }
-
-            proptest::prop_assert!(
-                found.iter().zip(expected.iter()).all(|(&a, &b)| a.close(&b)),
-                "found: {:?} expected: {:?}",
-                found,
-                expected
-            );
+            crate::test::check_close(&*found, &*expected)
         }
-        Ok(())
     }
 
     pub fn test_mat_vec_mul_prep<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
@@ -572,14 +567,8 @@ pub mod test {
                 expected[y] = inter.as_();
             }
 
-            proptest::prop_assert!(
-                found.iter().zip(expected.iter()).all(|(&a, &b)| a.close(&b)),
-                "found: {:?} expected: {:?}",
-                found,
-                expected
-            );
+            crate::test::check_close(&*found, &*expected)
         }
-        Ok(())
     }
 
     pub unsafe fn fused_op<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI, F: Fn(&mut [TI])>(
@@ -622,13 +611,7 @@ pub mod test {
         expect(&mut inter);
         let expected: Vec<TC> = inter.into_iter().map(|i| i.as_()).collect();
 
-        proptest::prop_assert!(
-            found.iter().zip(expected.iter()).all(|(a, b)| a.close(b)),
-            "found: {:?} expected: {:?}",
-            found,
-            expected
-        );
-        Ok(())
+        crate::test::check_close(&*found, &*expected)
     }
 
     pub unsafe fn row_add<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
@@ -756,7 +739,7 @@ pub mod test {
     }
 
     #[derive(Clone, Debug)]
-    pub struct ConvProblem<TA, TB> {
+    pub struct ConvProblem<TA: Datum, TB: Datum> {
         pub ci: usize,
         pub co: usize,
         pub kt: usize,
@@ -799,13 +782,14 @@ pub mod test {
                 .collect()
         }
 
-        pub fn expected<TC>(&self) -> Vec<TC>
+        pub fn expected<TC, TI>(&self) -> Vec<TC>
         where
-            TC: Copy + Add + Mul<Output = TC> + Zero + Debug + fmt::Display + PartialEq + 'static,
-            TA: AsPrimitive<TC>,
-            TB: AsPrimitive<TC>,
+            TA: Datum + AsPrimitive<TI>,
+            TB: Datum + AsPrimitive<TI>,
+            TC: Datum,
+            TI: Datum + AsPrimitive<TC>,
         {
-            let mut expect = vec![TC::zero(); self.co * self.output_width()];
+            let mut expect = vec![TI::zero(); self.co * self.output_width()];
             for x in 0..self.output_width() {
                 for ico in 0..self.co {
                     for ikt in 0..self.kt {
@@ -814,12 +798,12 @@ pub mod test {
                             let d = self.data
                                 [x * self.stride + ikt * self.dilation + ici * self.input_width()];
                             let ref mut pv = expect[x + ico * self.output_width()];
-                            *pv = *pv + f.as_() * d.as_();
+                            *pv += f.as_() * d.as_();
                         }
                     }
                 }
             }
-            expect
+            expect.into_iter().map(|ti| ti.as_()).collect()
         }
 
         pub fn run<K: MatMatMulKer<TA, TB, TC, TI>, TC, TI>(&self) -> Vec<TC>
