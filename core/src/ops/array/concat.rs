@@ -119,6 +119,33 @@ impl TypedOp for TypedConcat {
         }
     }
 
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        let axis =
+            if let Some(axis) = change.transform_axis(self.axis) { axis } else { return Ok(None) };
+        let op = TypedConcat {
+            axis,
+            slices: self
+                .slices
+                .iter()
+                .map(|s| match s {
+                    ConcatSlice::Var => Ok(ConcatSlice::Var),
+                    ConcatSlice::Const(c) => {
+                        let mut c = c.clone().into_tensor();
+                        change.change_tensor(&mut c)?;
+                        Ok(ConcatSlice::Const(c.into_arc_tensor()))
+                    }
+                })
+                .collect::<TractResult<_>>()?,
+        };
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+    }
+
     fn slice_output(
         &self,
         model: &TypedModel,
