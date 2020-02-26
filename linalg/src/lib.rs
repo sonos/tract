@@ -124,7 +124,16 @@ pub fn best() -> Ops {
                     i32,
                 >::new(m, k, n)))
             });
-            log::info!("mmm_i8_i8 x86_64/fma activated");
+            ops.qmmm_i8_i32 = Box::new(|m, k, n| {
+                Box::new(mmm::QMatMatMulImpl::from(mmm::MatMatMulImpl::<
+                    x86_64_fma::mmm::MatMatMulI8xI32x8x8,
+                    i8,
+                    i8,
+                    i32,
+                    i32,
+                >::new(m, k, n)))
+            });
+            log::info!("mmm_i8_i8 and mmm_i8_i32 x86_64/fma activated");
         }
     }
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]

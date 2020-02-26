@@ -233,6 +233,7 @@ pub mod test {
             ptr: v.as_mut_ptr(),
             row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
             col_byte_stride: std::mem::size_of::<T>() as isize,
+            item_size: std::mem::size_of::<T>(),
         }
     }
 
@@ -295,10 +296,12 @@ pub mod test {
             b: &PanelStore::VecStride {
                 ptr: b.as_ptr(),
                 byte_stride: std::mem::size_of::<TB>() as isize,
+                item_size: std::mem::size_of::<TB>(),
             },
             c: &PanelStore::VecStride {
                 ptr: c.as_ptr(),
                 byte_stride: std::mem::size_of::<TC>() as isize,
+                item_size: std::mem::size_of::<TC>(),
             },
             linear: &LinearSpec::k(k),
             non_linear: std::ptr::null(),

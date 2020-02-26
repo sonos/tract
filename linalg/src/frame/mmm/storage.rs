@@ -72,6 +72,7 @@ impl<'a, T: Copy> MatrixStore<'a, T> {
                     PanelStore::VecStride {
                         ptr: ptr.offset((panel_len * i) as isize),
                         byte_stride: (nr * std::mem::size_of::<T>()) as isize,
+                        item_size: std::mem::size_of::<T>(),
                     }
                 } else {
                     PanelStore::Packed { ptr: ptr.offset((panel_len * i) as isize) }
@@ -83,9 +84,11 @@ impl<'a, T: Copy> MatrixStore<'a, T> {
                     col_ptrs: col_ptrs.as_ptr().offset((nr * i) as isize),
                 }
             }
-            MatrixStore::VecStride { ptr, byte_stride, .. } => {
-                PanelStore::VecStride { ptr: *ptr, byte_stride: *byte_stride }
-            }
+            MatrixStore::VecStride { ptr, byte_stride, .. } => PanelStore::VecStride {
+                ptr: *ptr,
+                byte_stride: *byte_stride,
+                item_size: std::mem::size_of::<T>(),
+            },
             _ => unimplemented!(),
         }
     }
@@ -100,6 +103,7 @@ impl<'a, T: Copy> MatrixStore<'a, T> {
                             as isize) as *mut T,
                     row_byte_stride: *row_byte_stride,
                     col_byte_stride: *col_byte_stride,
+                    item_size: std::mem::size_of::<T>(),
                 }
             }
             _ => unimplemented!(),
@@ -143,8 +147,8 @@ impl<'a, T: Copy> MatrixStore<'a, T> {
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum PanelStore<T: Copy> {
-    Strides { ptr: *mut T, row_byte_stride: isize, col_byte_stride: isize },
+    Strides { ptr: *mut T, row_byte_stride: isize, col_byte_stride: isize, item_size: usize },
     Packed { ptr: *const T },
     OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const T },
-    VecStride { ptr: *const T, byte_stride: isize },
+    VecStride { ptr: *const T, byte_stride: isize, item_size: usize },
 }
