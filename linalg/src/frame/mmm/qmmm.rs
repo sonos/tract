@@ -426,6 +426,7 @@ pub mod test {
         i32: AsPrimitive<TI>,
     {
         pub fn reference(&self) -> Vec<TC> {
+            dbg!(&self);
             let mut i = vec![TI::zero(); self.m * self.n];
             for m in 0..self.m {
                 for n in 0..self.n {
@@ -444,9 +445,11 @@ pub mod test {
                     }
                 }
             }
-            i.iter()
+            dbg!(&i);
+            let r = i.iter()
                 .map(|i| i.max(&TC::min_value().as_()).min(&TC::max_value().as_()).as_())
-                .collect()
+                .collect();
+            dbg!(r)
         }
 
         pub fn run<K: MatMatMulKer<TA, TB, TC, TI>>(&self) -> Vec<TC> {
@@ -578,6 +581,36 @@ pub mod test {
                         assert_eq!(pb.run::<$ker>(), pb.reference());
                     }
                 }
+            }
+        }
+    }
+
+    #[macro_export]
+    macro_rules! qmmm_s_frame_tests {
+        ($cond:expr, $ker:ty, $ta: ty, $tb: ty, $tc: ty, $ti: ty) => {
+            mod qframe_s {
+                use std::marker::PhantomData;
+                #[allow(unused_imports)]
+                use $crate::frame::mmm::qmmm::test::*;
+                use $crate::frame::mmm::qmmm::QuantizedParam;
+
+                #[test]
+                fn q_mat_mul_1_1_5() {
+                    if $cond {
+                        let pb = QMatMulProblem {
+                            m: 1,
+                            k: 1,
+                            n: 5,
+                            a: vec![-1],
+                            a0: QuantizedParam::Scalar(0),
+                            b: vec![0, 0, 0, 0, -2],
+                            b0: QuantizedParam::Scalar(0),
+                            boo: PhantomData,
+                        };
+                        assert_eq!(pb.run::<$ker>(), pb.reference());
+                    }
+                }
+
             }
         };
     }

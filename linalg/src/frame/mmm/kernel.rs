@@ -70,6 +70,7 @@ macro_rules! test_mmm_kernel_i8 {
             mmm_frame_tests!($cond, $k, i8, i8, i8, i32);
             qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
             qmmm_frame_tests!($cond, $k, i8, i8, i8, i32);
+            qmmm_s_frame_tests!($cond, $k, i8, i8, i8, i32);
         }
     };
 }
