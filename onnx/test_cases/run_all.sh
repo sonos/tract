@@ -30,7 +30,6 @@ do
             $tc/model.onnx$suffix \
             --output-node output \
             --input-bundle $tc/io.npz \
-            --kaldi-downsample 1 \
             --kaldi-left-context $left_context \
             --kaldi-right-context $right_context \
             --kaldi-adjust-final-offset $adjust_final_offset \
