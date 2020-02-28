@@ -7,17 +7,20 @@ pub struct PermuteAxes {
 }
 
 impl PermuteAxes {
-    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
+    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {
+            if input.len() != axes.len() {
+                bail!("Op expects tensor of rank {}, input is actually of rank {}.", axes.len(), input.len());
+            }
             let mut new_shape = tvec![D::zero(); input.len()];
             for (ix, &d) in axes.iter().enumerate() {
                 new_shape[ix] = input[d].clone();
             }
-            new_shape
+            Ok(new_shape)
         } else {
             let mut new_shape: TVec<D> = input.iter().cloned().collect();
             new_shape.reverse();
-            new_shape
+            Ok(new_shape)
         }
     }
 
@@ -66,9 +69,13 @@ impl InferenceRulesOp for PermuteAxes {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let output_shape = self.compute_shape(&shape);
+            let output_shape = self.compute_shape(&shape)?;
             s.equals(&outputs[0].shape, output_shape)
-        })
+        })?;
+        if let Some(axes) = &self.axes {
+            s.equals(&outputs[0].rank, axes.len() as i32)?;
+        }
+        Ok(())
     }
 
     #[allow(unused_variables)]
@@ -79,15 +86,17 @@ impl InferenceRulesOp for PermuteAxes {
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
+        let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
         if let Some(axes) = &self.axes {
+            if fact.rank() != axes.len() {
+                bail!("Op expects tensor of rank {}, input is actually of rank {}.", axes.len(), fact.rank());
+            }
             let op = AxisOp::Permute(axes.iter().cloned().collect());
             target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
-        } else if let Some(rank) = source.outlet_fact(node.inputs[0])?.shape.rank().concretize() {
-            let axes = (0..rank as usize).rev().collect();
+        } else {
+            let axes = (0..fact.rank()).rev().collect();
             let op = AxisOp::Permute(axes);
             target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
-        } else {
-            bail!("Can not typed: no known input rank, and no permutation specified")
         }
     }
 
