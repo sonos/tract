@@ -34,16 +34,23 @@ fi
 
 export CACHEDIR
 
-cargo check --workspace --all-targets --all-features
+if [ `arch` = "x86_64" ]
+then
+	ALL_FEATURES=--all-features
+fi
+
+cargo check --workspace --all-targets $ALL_FEATURES
 
 # useful as debug_asserts will come into play
-cargo test -p tract-core --all-features
+cargo test -p tract-core $ALL_FEATURES
 cargo test -p onnx-test-suite -- --skip real_
-
-cargo test --release --all-features
+cargo test --release $ALL_FEATURES
 cargo build --release --bin tract
 
-export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
+if [ `arch` = "x86_64" ]
+then
+	export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
+fi
 
 if [ -n "$TRAVIS" -a -n "$PARTIAL_CI" ]
 then

@@ -73,45 +73,47 @@
     ldp         x25, x26, [x4], #16
 
 .packed_tops_and_offsets_loop_1:
-    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+    ld1	        { v0.8b }, [ x1 ], #8
+    sshll       v0.8h, v0.8b, 0
 
     ldr         x4, [ x2 ], #8
 
     add         x9, x4, x19
-    ld1         {v4.s}[0], [ x9 ]
+    ld1         {v4.b}[0], [ x9 ]
     add         x10, x4, x20
-    ld1         {v4.s}[1], [ x10 ]
+    ld1         {v4.b}[1], [ x10 ]
     add         x11, x4, x21
-    ld1         {v4.s}[2], [ x11 ]
+    ld1         {v4.b}[2], [ x11 ]
     add         x12, x4, x22
-    ld1         {v4.s}[3], [ x12 ]
+    ld1         {v4.b}[3], [ x12 ]
     add         x13, x4, x23
-    ld1         {v5.s}[0], [ x13 ]
+    ld1         {v4.b}[4], [ x13 ]
     add         x14, x4, x24
-    ld1         {v5.s}[1], [ x14 ]
+    ld1         {v4.b}[5], [ x14 ]
     add         x15, x4, x25
-    ld1         {v5.s}[2], [ x15 ]
+    ld1         {v4.b}[6], [ x15 ]
     add         x9, x4, x26
-    ld1         {v5.s}[3], [ x9 ]
+    ld1         {v4.b}[7], [ x9 ]
 
+    sshll        v4.8h, v4.8b, 0
 
-    fmla        v16.4s, v0.4s, v4.s[0]
-    fmla        v17.4s, v1.4s, v4.s[0]
-    fmla        v18.4s, v0.4s, v4.s[1]
-    fmla        v19.4s, v1.4s, v4.s[1]
-    fmla        v20.4s, v0.4s, v4.s[2]
-    fmla        v21.4s, v1.4s, v4.s[2]
-    fmla        v22.4s, v0.4s, v4.s[3]
-    fmla        v23.4s, v1.4s, v4.s[3]
+    smlal        v16.4s, v0.4h, v4.h[0]
+    smlal2       v17.4s, v0.8h, v4.h[0]
+    smlal        v18.4s, v0.4h, v4.h[1]
+    smlal2       v19.4s, v0.8h, v4.h[1]
+    smlal        v20.4s, v0.4h, v4.h[2]
+    smlal2       v21.4s, v0.8h, v4.h[2]
+    smlal        v22.4s, v0.4h, v4.h[3]
+    smlal2       v23.4s, v0.8h, v4.h[3]
 
-    fmla        v24.4s, v0.4s, v5.s[0]
-    fmla        v25.4s, v1.4s, v5.s[0]
-    fmla        v26.4s, v0.4s, v5.s[1]
-    fmla        v27.4s, v1.4s, v5.s[1]
-    fmla        v28.4s, v0.4s, v5.s[2]
-    fmla        v29.4s, v1.4s, v5.s[2]
-    fmla        v30.4s, v0.4s, v5.s[3]
-    fmla        v31.4s, v1.4s, v5.s[3]
+    smlal        v24.4s, v0.4h, v4.h[4]
+    smlal2       v25.4s, v0.8h, v4.h[4]
+    smlal        v26.4s, v0.4h, v4.h[5]
+    smlal2       v27.4s, v0.8h, v4.h[5]
+    smlal        v28.4s, v0.4h, v4.h[6]
+    smlal2       v29.4s, v0.8h, v4.h[6]
+    smlal        v30.4s, v0.4h, v4.h[7]
+    smlal2       v31.4s, v0.8h, v4.h[7]
 
     subs        x3, x3, #1
     bne         .packed_tops_and_offsets_loop_1
@@ -119,6 +121,7 @@
     b           .store
 
 .packed_packed:
+/*
     cmp         x3, #4
     blt         .packed_packed_loop_1
 
@@ -213,29 +216,32 @@
 
     cmp x3, #0
     beq .non_linear
+*/
 
 .packed_packed_loop_1:
 
-    ld1         { v0.4s, v1.4s }, [ x1 ], #32
-    ld1         { v4.4s, v5.4s }, [ x2 ], #32
+    ld1	        { v0.8b }, [ x1 ], #8
+    sshll       v0.8h, v0.8b, 0
+    ld1         { v4.8b }, [ x2 ], #8
+    sshll        v4.8h, v4.8b, 0
 
-    fmla        v16.4s, v0.4s, v4.s[0]
-    fmla        v17.4s, v1.4s, v4.s[0]
-    fmla        v18.4s, v0.4s, v4.s[1]
-    fmla        v19.4s, v1.4s, v4.s[1]
-    fmla        v20.4s, v0.4s, v4.s[2]
-    fmla        v21.4s, v1.4s, v4.s[2]
-    fmla        v22.4s, v0.4s, v4.s[3]
-    fmla        v23.4s, v1.4s, v4.s[3]
+    smlal        v16.4s, v0.4h, v4.h[0]
+    smlal2       v17.4s, v0.8h, v4.h[0]
+    smlal        v18.4s, v0.4h, v4.h[1]
+    smlal2       v19.4s, v0.8h, v4.h[1]
+    smlal        v20.4s, v0.4h, v4.h[2]
+    smlal2       v21.4s, v0.8h, v4.h[2]
+    smlal        v22.4s, v0.4h, v4.h[3]
+    smlal2       v23.4s, v0.8h, v4.h[3]
 
-    fmla        v24.4s, v0.4s, v5.s[0]
-    fmla        v25.4s, v1.4s, v5.s[0]
-    fmla        v26.4s, v0.4s, v5.s[1]
-    fmla        v27.4s, v1.4s, v5.s[1]
-    fmla        v28.4s, v0.4s, v5.s[2]
-    fmla        v29.4s, v1.4s, v5.s[2]
-    fmla        v30.4s, v0.4s, v5.s[3]
-    fmla        v31.4s, v1.4s, v5.s[3]
+    smlal        v24.4s, v0.4h, v4.h[4]
+    smlal2       v25.4s, v0.8h, v4.h[4]
+    smlal        v26.4s, v0.4h, v4.h[5]
+    smlal2       v27.4s, v0.8h, v4.h[5]
+    smlal        v28.4s, v0.4h, v4.h[6]
+    smlal2       v29.4s, v0.8h, v4.h[6]
+    smlal        v30.4s, v0.4h, v4.h[7]
+    smlal2       v31.4s, v0.8h, v4.h[7]
 
     subs        x3, x3, #1
     bne .packed_packed_loop_1
@@ -245,7 +251,7 @@
 .packed_vec_strides:
     // x2 ->  b ptr
     ldr         x4, [x8, #16]    // b stride
-
+/*
     cmp         x3, #4
     blt         .packed_vec_strides_loop_1
 
@@ -280,14 +286,17 @@
 
     cmp         x3, #0
     beq         .non_linear
+*/
 
 .packed_vec_strides_loop_1:
 
-    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+    ld1         { v0.8b }, [ x1 ], #8
+    sshll       v0.8h, v0.8b, 0
     ld1         {v4.s}[0], [ x2 ], x4
+    sshll       v4.8h, v4.8b, 0
 
-    fmla        v16.4s, v0.4s, v4.s[0]
-    fmla        v17.4s, v1.4s, v4.s[0]
+    smlal       v16.4s, v0.4h, v4.h[0]
+    smlal2      v17.4s, v0.8h, v4.h[0]
 
     subs        x3, x3, #1
     bne         .packed_vec_strides_loop_1
@@ -314,14 +323,14 @@
     ldr         x7, [x3, #24]               // csc
     ldr         x8, [x3, #32]               // item size
 
-    cmp         x8, #8
+    cmp         x8, #4
     beq         store_strides_i32
 
     {% for col in (8..15) %}
         mov x4, x5
         {% for reg in (0..1) %}
             {% for lane in (0..3) %}
-                st1 { v{{col | times:2 | plus: reg}}.b }[{{lane}}], [ x4 ], x6
+                st1 { v{{col | times:2 | plus: reg}}.b }[{{lane|times:4}}], [ x4 ], x6
             {% endfor %}
         {% endfor %}
         add x5, x5, x7
@@ -347,7 +356,21 @@ store_strides_i32:
 .store_vec_strides:
     ldr         x5, [x3, #8]                // c base ptr
     ldr         x6, [x3, #16]               // c stride
+    ldr         x7, [x3, #24]               // item size
 
+    cmp         x7, #4
+    beq         .store_vec_strides_i32
+
+    {% for reg in (0..1) %}
+        {% for lane in (0..3) %}
+            st1 { v{{reg| plus:16}}.b }[{{lane|times:4}}], [ x5 ], x6
+        {% endfor %}
+    {% endfor %}
+
+    mov         x0, #0
+    b           .return
+
+.store_vec_strides_i32:
     {% for reg in (0..1) %}
         {% for lane in (0..3) %}
             st1 { v{{reg| plus:16}}.s }[{{lane}}], [ x5 ], x6
@@ -392,25 +415,25 @@ store_strides_i32:
     beq         .scalar_mul
     cmp         x2, #10
     beq         .scalar_add
+    cmp         x2, #12
+    beq         .q_towards_plusinf
 
     b           .unsupported
 
 .min:
     add         x2, x1, #8
-    ld1         {v0.s}[0], [ x2 ]
-    dup         v0.4s, v0.s[0]
+    ld1r        {v0.4s}, [ x2 ]
     {% for reg in (16..31) %}
-        fmin        v{{reg}}.4s, v{{reg}}.4s, v0.4s
+        smin        v{{reg}}.4s, v{{reg}}.4s, v0.4s
     {% endfor %}
 
     b           .non_linear_loop
 
 .max:
     add         x2, x1, #8
-    ld1         {v0.s}[0], [ x2 ]
-    dup         v0.4s, v0.s[0]
+    ld1r        {v0.4s}, [ x2 ]
     {% for reg in (16..31) %}
-        fmax        v{{reg}}.4s, v{{reg}}.4s, v0.4s
+        smax        v{{reg}}.4s, v{{reg}}.4s, v0.4s
     {% endfor %}
 
     b           .non_linear_loop
@@ -426,7 +449,7 @@ store_strides_i32:
     ldr         x7, [x3, #24]               // csc
     ldr         x8, [x3, #32]               // item size
 
-    cmp         x8, #8
+    cmp         x8, #4
     beq         non_linear_addc_i32
 
     {% for col in (8..15) %}
@@ -460,12 +483,11 @@ non_linear_addc_i32:
 
 .per_col_mul:
     ldr         x2, [x1, #8]
-    ldr         q0, [ x2 ], #16
-    ldr         q1, [ x2 ], #16
+    ld1         { v0.4s, v1.4s }, [ x2 ]
 
     {% for col in (0..7) %}
         {% for reg in (0..1) %}
-            fmul v{{col | times:2 | plus: reg|plus:16}}.4s, v{{col | times:2 | plus: reg|plus:16}}.4s, v{{col|divided_by:4}}.s[{{col|modulo:4}}]
+            mul v{{col | times:2 | plus: reg|plus:16}}.4s, v{{col | times:2 | plus: reg|plus:16}}.4s, v{{col|divided_by:4}}.s[{{col|modulo:4}}]
         {% endfor %}
     {% endfor %}
 
@@ -473,13 +495,12 @@ non_linear_addc_i32:
 
 .per_col_add:
     ldr         x2, [x1, #8]
-    ldr         q0, [ x2 ], #16
-    ldr         q1, [ x2 ], #16
+    ld1         { v0.4s, v1.4s }, [ x2 ]
 
     {% for col in (0..7) %}
 	dup v2.4s, v{{col|divided_by:4}}.s[{{col|modulo:4}}]
         {% for reg in (0..1) %}
-            fadd v{{col | times:2 | plus: reg|plus:16}}.4s, v{{col | times:2 | plus: reg|plus:16}}.4s, v2.4s
+            add v{{col | times:2 | plus: reg|plus:16}}.4s, v{{col | times:2 | plus: reg|plus:16}}.4s, v2.4s
 	{% endfor %}
     {% endfor %}
 
@@ -487,12 +508,11 @@ non_linear_addc_i32:
 
 .per_row_mul:
     ldr         x2, [x1, #8]
-    ldr         q0, [ x2 ], #16
-    ldr         q1, [ x2 ], #16
+    ld1         { v0.4s, v1.4s }, [ x2 ]
 
     {% for col in (8..15) %}
         {% for reg in (0..1) %}
-            fmul v{{col | times:2 | plus: reg}}.4s, v{{col | times:2 | plus: reg}}.4s, v{{reg}}.4s
+            mul v{{col | times:2 | plus: reg}}.4s, v{{col | times:2 | plus: reg}}.4s, v{{reg}}.4s
         {% endfor %}
     {% endfor %}
 
@@ -500,12 +520,11 @@ non_linear_addc_i32:
 
 .per_row_add:
     ldr         x2, [x1, #8]
-    ldr         q0, [ x2 ], #16
-    ldr         q1, [ x2 ], #16
+    ld1         { v0.4s, v1.4s }, [ x2 ]
 
     {% for col in (8..15) %}
         {% for reg in (0..1) %}
-            fadd v{{col | times:2 | plus: reg}}.4s, v{{col | times:2 | plus: reg}}.4s, v{{reg}}.4s
+            add v{{col | times:2 | plus: reg}}.4s, v{{col | times:2 | plus: reg}}.4s, v{{reg}}.4s
         {% endfor %}
     {% endfor %}
 
@@ -515,48 +534,67 @@ non_linear_addc_i32:
     ldr     x2, [x1, #8]
     ldr     x3, [x1, #16]
 
-    ld1         { v0.4s, v1.4s }, [ x2 ], #32
-    ld1         { v4.4s, v5.4s }, [ x3 ], #32
+    ld1         { v0.4s, v1.4s }, [ x2 ]
+    ld1         { v4.4s, v5.4s }, [ x3 ]
 
-    fmla        v16.4s, v0.4s, v4.s[0]
-    fmla        v17.4s, v1.4s, v4.s[0]
-    fmla        v18.4s, v0.4s, v4.s[1]
-    fmla        v19.4s, v1.4s, v4.s[1]
-    fmla        v20.4s, v0.4s, v4.s[2]
-    fmla        v21.4s, v1.4s, v4.s[2]
-    fmla        v22.4s, v0.4s, v4.s[3]
-    fmla        v23.4s, v1.4s, v4.s[3]
+    xtn         v0.4h, v0.4s
+    xtn         v1.4h, v1.4s
+    xtn         v4.4h, v4.4s
+    xtn         v5.4h, v5.4s
 
-    fmla        v24.4s, v0.4s, v5.s[0]
-    fmla        v25.4s, v1.4s, v5.s[0]
-    fmla        v26.4s, v0.4s, v5.s[1]
-    fmla        v27.4s, v1.4s, v5.s[1]
-    fmla        v28.4s, v0.4s, v5.s[2]
-    fmla        v29.4s, v1.4s, v5.s[2]
-    fmla        v30.4s, v0.4s, v5.s[3]
-    fmla        v31.4s, v1.4s, v5.s[3]
+    smlal        v16.4s, v0.4h, v4.h[0]
+    smlal        v17.4s, v1.4h, v4.h[0]
+    smlal        v18.4s, v0.4h, v4.h[1]
+    smlal        v19.4s, v1.4h, v4.h[1]
+    smlal        v20.4s, v0.4h, v4.h[2]
+    smlal        v21.4s, v1.4h, v4.h[2]
+    smlal        v22.4s, v0.4h, v4.h[3]
+    smlal        v23.4s, v1.4h, v4.h[3]
+
+    smlal        v24.4s, v0.4h, v5.h[0]
+    smlal        v25.4s, v1.4h, v5.h[0]
+    smlal        v26.4s, v0.4h, v5.h[1]
+    smlal        v27.4s, v1.4h, v5.h[1]
+    smlal        v28.4s, v0.4h, v5.h[2]
+    smlal        v29.4s, v1.4h, v5.h[2]
+    smlal        v30.4s, v0.4h, v5.h[3]
+    smlal        v31.4s, v1.4h, v5.h[3]
 
     b           .non_linear_loop
 
 .scalar_mul:
     add         x2, x1, #8
-    ld1         {v0.s}[0], [ x2 ]
-    dup         v0.4s, v0.s[0]
+    ld1r         {v0.4s}, [ x2 ]
     {% for reg in (16..31) %}
-        fmul        v{{reg}}.4s, v{{reg}}.4s, v0.4s
+        mul       v{{reg}}.4s, v{{reg}}.4s, v0.s[0]
     {% endfor %}
 
     b           .non_linear_loop
 
 .scalar_add:
     add         x2, x1, #8
-    ld1         {v0.s}[0], [ x2 ]
-    dup         v0.4s, v0.s[0]
+    ld1r         {v0.4s}, [ x2 ]
     {% for reg in (16..31) %}
-        fadd        v{{reg}}.4s, v{{reg}}.4s, v0.4s
+        add        v{{reg}}.4s, v{{reg}}.4s, v0.4s
     {% endfor %}
 
     b           .non_linear_loop
+
+.q_towards_plusinf:
+    add         x2, x1, #8
+    ld1r        { v0.4s }, [ x2 ]
+    add         x2, x1, #16
+    ld1r        { v1.4s }, [ x2 ]
+    neg         v1.4s, v1.4s
+
+    {% for q in (16..31) %}
+        sqrdmulh    v{{q}}.4s, v{{q}}.4s, v0.4s
+    {% endfor %}
+    {% for q in (16..31) %}
+        sqrshl  v{{q}}.4s, v{{q}}.4s, v1.4s
+    {% endfor %}
+
+    b .non_linear_loop
 
 .unsupported:
     mov         x0, #1
