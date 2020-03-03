@@ -603,6 +603,23 @@ pub mod test {
                         assert_eq!(pb.run::<$ker>(), pb.reference());
                     }
                 }
+
+                #[test]
+                fn q_mat_mul_1_1_1() {
+                    if $cond {
+                        let pb = QMatMulProblem {
+                            m: 1,
+                            k: 1,
+                            n: 1,
+                            a: vec![11],
+                            a0: QuantizedParam::Scalar(10),
+                            b: vec![-1],
+                            b0: QuantizedParam::Scalar(0),
+                            boo: PhantomData,
+                        };
+                        assert_eq!(pb.run::<$ker>(), pb.reference());
+                    }
+                }
             }
         };
     }

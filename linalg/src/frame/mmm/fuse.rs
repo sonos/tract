@@ -371,7 +371,7 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
-        TC: Copy + Bounded + Zero,
+        TC: Copy + Debug + Bounded + Zero + PartialEq,
         TI: Copy + Debug,
     {
         let mut v = vec![TC::max_value(); K::mr() * K::nr()];
@@ -384,7 +384,8 @@ pub mod test {
             non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
-        assert!(v.iter().all(|&a| a.is_zero()));
+        let expected = vec!(TC::zero(); v.len());
+        assert_eq!(v, expected);
     }
 
     pub fn fused_ops<K, TA, TB, TC, TI>(c: &[TC], ops: &[FusedKerSpec<TI>]) -> Vec<TC>
@@ -433,7 +434,7 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
-        TC: Copy + 'static + PartialEq,
+        TC: Copy + Debug + 'static + PartialEq,
         TI: Copy + Add + Mul<Output = TI> + Zero + Debug + fmt::Display + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
@@ -441,11 +442,12 @@ pub mod test {
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
         let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerRowMul(bias.as_ptr())]);
-        assert!(found.iter().enumerate().all(|(ix, &a)| {
+        let expected = (0..found.len()).map(|ix| {
             let row = ix / K::nr();
             let ix: TI = ix.as_();
-            a == (ix * bias[row]).as_()
-        }));
+            (ix * bias[row]).as_()
+        }).collect::<Vec<TC>>();
+        assert_eq!(found, expected);
     }
 
     pub fn return_c_add_row<K, TA, TB, TC, TI>()
@@ -525,7 +527,7 @@ pub mod test {
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
-        TC: Copy + PartialEq + 'static,
+        TC: Copy + Debug + PartialEq + 'static,
         TI: Copy
             + Add
             + Mul<Output = TI>
@@ -545,12 +547,15 @@ pub mod test {
             &*v,
             &[FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr())],
         );
-        assert!(found.iter().enumerate().all(|(ix, &a)| {
+        let expected = (0..found.len())
+            .map(|ix| {
             let row = ix / K::nr();
             let col = ix % K::nr();
             let ix: TI = ix.as_();
-            a == (ix + cols[col] * rows[row]).as_()
-        }));
+            (ix + cols[col] * rows[row]).as_()
+})
+            .collect::<Vec<TC>>();
+        assert_eq!(found, expected);
     }
 
     pub fn return_c_scalar_mul<K, TA, TB, TC, TI>()
