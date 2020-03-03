@@ -195,6 +195,12 @@ where
         Ok(tvec!(self.c_fact.clone()))
     }
 
+    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let mmm = self.mmm.as_mmm();
+        let mul = self.c_prefix_dim_and_stride.as_ref().map(|c| c.0.iter().product()).unwrap_or(1);
+        Ok(tvec!((Cost::FMA(TI::datum_type()), (mul * mmm.m() * mmm.n() * mmm.k()).to_dim())))
+    }
+
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
         if let Some(succ) = model.single_succ(node.id)? {
