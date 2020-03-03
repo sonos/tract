@@ -43,7 +43,7 @@ cargo test -p onnx-test-suite -- --skip real_
 cargo test --release --all-features
 cargo build --release --bin tract
 
-export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so))):$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
 
 if [ -n "$TRAVIS" -a -n "$PARTIAL_CI" ]
 then
