@@ -465,6 +465,9 @@ armv7neon_mmm_i8_8x4:
     b       .unsupported
 
 .store_strides:
+    ldr     r8, [ r3, #16 ]
+    cmp     r8, #4
+    beq     .store_strides_i32
 
     // r5,r6,r7 are c,src,csc
     {% for reg in (8..15) %}
@@ -479,6 +482,23 @@ armv7neon_mmm_i8_8x4:
             vst1.s8     d{{d}}[1], [ r8 ], r6
             vst1.s8     d{{d}}[2], [ r8 ], r6
             vst1.s8     d{{d}}[3], [ r8 ], r6
+        {% endfor %}
+        {% if col < 3 %}
+            add r5, r5, r7
+        {% endif %}
+    {% endfor %}
+
+    mov         r0,     #0
+    b           .return
+
+.store_strides_i32:
+
+    {% for col in (0..3) %}
+        mov         r8, r5
+        {% for reg in (0..3) %}
+            {% for lane in (0..1) %}
+                vst1.s32     d{{col | times: 4 | plus: reg | plus: 16}}[{{lane}}], [ r8 ], r6
+            {% endfor %}
         {% endfor %}
         {% if col < 3 %}
             add r5, r5, r7
@@ -557,6 +577,10 @@ armv7neon_mmm_i8_8x4:
     ldr     r4, [r3, #4]   // C ptr
     ldr     r5, [r3, #8]   // rsc
     ldr     r6, [r3, #12]  // csc
+    ldr     r7, [r3, #16]  // item size
+
+    cmp     r7, #4
+    beq     .non_linear_addc_i32
 
     {% for col in (0..3) %}
         mov         r7, r4
@@ -568,6 +592,22 @@ armv7neon_mmm_i8_8x4:
             vadd.i32    d{{col | times: 4 | plus: reg | plus : 16}}, d0
         {% endfor %}
         add r4, r4, r6
+    {% endfor %}
+
+    b .non_linear_loop
+
+.non_linear_addc_i32:
+
+    {% for col in (0..3) %}
+        mov         r7, r4
+        {% for reg in (0..3) %}
+            vld1.s32    d0[0], [ r7 ], r5
+            vld1.s32    d0[1], [ r7 ], r5
+            vadd.i32    d{{col | times: 4 | plus: reg | plus : 16}}, d0
+        {% endfor %}
+        {% if col < 3 %}
+            add r4, r4, r6
+        {% endif %}
     {% endfor %}
 
     b .non_linear_loop
@@ -722,7 +762,7 @@ armv7neon_mmm_i8_8x4:
         vqrdmulh.s32    q{{q}}, q{{q}}, d0[0]
     {% endfor %}
     {% for q in (8..15) %}
-        vqrshl.s8  q{{q}}, q{{q}}, q1
+        vqrshl.s32  q{{q}}, q{{q}}, q1
     {% endfor %}
 
     b .non_linear_loop
