@@ -2,8 +2,8 @@
 
 set -ex
 
+ROOT=$(dirname $(dirname $(realpath $0)))
 export DEBIAN_FRONTEND=noninteractive
-
 
 if [ `whoami` != "root" ]
 then
@@ -117,12 +117,12 @@ case "$PLATFORM" in
 
         export TARGET_CC=$DEBIAN_TRIPLE-gcc
 
-        mkdir -p target/$RUSTC_TRIPLE
+        mkdir -p $ROOT/target/$RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\ndeb_multiarch='$DEBIAN_TRIPLE'\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
-        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
+        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
 
-        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > target/$RUSTC_TRIPLE/qemu
-        chmod +x target/$RUSTC_TRIPLE/qemu
+        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu
+        chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu
 
         $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
