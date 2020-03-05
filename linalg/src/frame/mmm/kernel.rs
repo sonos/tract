@@ -55,6 +55,7 @@ macro_rules! test_mmm_kernel_f32 {
             mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
             mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
             mmm_kernel_fuse_tests!($cond, $k, f32, f32, f32, f32);
+            mmm_s_frame_tests!($cond, $k, f32, f32, f32, f32);
         }
     };
 }
@@ -68,6 +69,7 @@ macro_rules! test_mmm_kernel_i8 {
             mmm_kernel_tests!($cond, $k, i8, i8, i8, i32);
             mmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
             mmm_frame_tests!($cond, $k, i8, i8, i8, i32);
+            mmm_s_frame_tests!($cond, $k, i8, i8, i8, i32);
             qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
             qmmm_frame_tests!($cond, $k, i8, i8, i8, i32);
             qmmm_s_frame_tests!($cond, $k, i8, i8, i8, i32);
@@ -84,6 +86,7 @@ macro_rules! test_mmm_kernel_i8_i32 {
             mmm_kernel_tests!($cond, $k, i8, i8, i32, i32);
             mmm_kernel_fuse_tests!($cond, $k, i8, i8, i32, i32);
             mmm_frame_tests!($cond, $k, i8, i8, i32, i32);
+            mmm_s_frame_tests!($cond, $k, i8, i8, i32, i32);
             qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i32, i32);
             qmmm_frame_tests!($cond, $k, i8, i8, i32, i32);
         }

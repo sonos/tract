@@ -329,23 +329,25 @@ pub mod test {
 
                 proptest::proptest! {
                     #[test]
-                    fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mat_mul()) {
+                    fn mat_mul_prepacked_prop((m, k, n, ref a, ref b) in strat_mat_mat_mul()) {
                         if $cond {
                             test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &**a, &*b)?
                         }
                     }
 
                     #[test]
-                    fn mat_vec_prepacked((m, k, ref a, ref b) in strat_mat_vec_mul()) {
+                    fn mat_vec_prepacked_prop((m, k, ref a, ref b) in strat_mat_vec_mul()) {
                         if $cond {
                             test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, a, b)?
                         }
                     }
 
                     #[test]
-                    fn conv_prepacked(pb in strat_conv_1d()) {
+                    fn conv_prepacked_prop(pb in strat_conv_1d()) {
                         if $cond {
-                            crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*pb.expected::<$tc, $ti>())?;
+                            let found = pb.run::<$ker, $tc, $ti>();
+                            let expected = pb.expected::<$tc, $ti>();
+                            crate::test::check_close(&found, &expected)?;
                         }
                     }
                 }
@@ -470,6 +472,38 @@ pub mod test {
                 fn min_2_1_3() {
                     if $cond {
                         unsafe { min::<$ker, $ta, $tb, $tc, $ti>(2, 3, 3).unwrap() }
+                    }
+                }
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! mmm_s_frame_tests {
+        ($cond:expr, $ker:ty, $ta: ty, $tb: ty, $tc: ty, $ti: ty) => {
+            mod frame_s {
+                use $crate::frame::mmm::mmm::test::ConvProblem;
+                #[allow(unused_imports)]
+                use num_traits::*;
+                use std::ops::Neg;
+
+                #[test]
+                fn conv_prepacked_3() {
+                    if $cond {
+                        let mut filters = vec![<$ta>::zero(); 4];
+                        filters[3] = <$ta>::one().neg();
+                        let data = vec![<$tb>::zero(); 4];
+                        let pb = ConvProblem::<$ta, $tb> {
+                            ci: 1,
+                            co: 1,
+                            kt: 1,
+                            stride: 1,
+                            dilation: 1,
+                            filters,
+                            data,
+                        };
+                        let expected:Vec<$tc> = pb.expected::<$tc, $ti>();
+                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
                     }
                 }
             }
