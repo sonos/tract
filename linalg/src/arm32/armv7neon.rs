@@ -42,6 +42,34 @@ impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x4 {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub struct MatMatMulI8xI32x8x4;
+
+impl MatMatMulKer<i8, i8, i32, i32> for MatMatMulI8xI32x8x4 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "neon"
+    }
+    #[inline(always)]
+    fn mr() -> usize {
+        8
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        4
+    }
+    fn alignment_bytes_packed_a() -> usize {
+        4
+    }
+    fn alignment_bytes_packed_b() -> usize {
+        4
+    }
+    #[inline(never)]
+    fn kernel(spec: &MatMatMulKerSpec<i8, i8, i32, i32>) -> isize {
+        unsafe { armv7neon_mmm_i8_8x4(spec as *const _ as _) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct MatMatMulF32x8x4;
 
 impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x4 {
@@ -123,6 +151,12 @@ test_mmm_kernel_i8!(
     test_MatMatMulI8x8x4,
     crate::arm32::has_neon()
 );
+test_mmm_kernel_i8_i32!(
+    crate::arm32::armv7neon::MatMatMulI8xI32x8x4,
+    test_MatMatMulI8xI32x8x4,
+    crate::arm32::has_neon()
+);
+
 
 #[cfg(test)]
 mod test_neon_fn {
