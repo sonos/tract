@@ -2,7 +2,6 @@
 
 set -ex
 
-ROOT=$(dirname $(dirname $(realpath $0)))
 export DEBIAN_FRONTEND=noninteractive
 
 if [ `whoami` != "root" ]
@@ -19,7 +18,11 @@ then
         $SUDO apt-get -y upgrade
         $SUDO apt-get install -y unzip wget curl python awscli build-essential
     fi
+else
+    brew install coreutils
 fi
+
+ROOT=$(dirname $(dirname $(realpath $0)))
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
