@@ -107,6 +107,7 @@ case "$PLATFORM" in
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
+                export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
             ;;
             *)
                 echo "unsupported platform $PLATFORM"
@@ -116,16 +117,17 @@ case "$PLATFORM" in
 
         export TARGET_CC=$DEBIAN_TRIPLE-gcc
 
-        echo "[platforms.$PLATFORM]\ndeb_multiarch='$DEBIAN_TRIPLE'\nrustc_triple='$RUSTC_TRIPLE'" > $HOME/.dinghy.toml
-        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$HOME/qemu-$ARCH'" >> $HOME/.dinghy.toml
+        mkdir -p target
+        echo "[platforms.$PLATFORM]\ndeb_multiarch='$DEBIAN_TRIPLE'\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
+        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
 
-        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $HOME/qemu-$ARCH
-        chmod +x $HOME/qemu-$ARCH
+        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > target/$RUSTC_TRIPLE/qemu
+        chmod +x target/$RUSTC_TRIPLE/qemu
 
         $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
-        cargo dinghy --platform $PLATFORM test --release -p tract-linalg -- --nocapture
-        cargo dinghy --platform $PLATFORM test --release -p tract-core
+        cargo dinghy --platform $PLATFORM test --release -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
+        cargo dinghy --platform $PLATFORM test --release -p tract-core $DINGHY_TEST_ARGS
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
     ;;
