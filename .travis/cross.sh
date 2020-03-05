@@ -117,7 +117,7 @@ case "$PLATFORM" in
 
         export TARGET_CC=$DEBIAN_TRIPLE-gcc
 
-        mkdir -p target
+        mkdir -p target/$RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\ndeb_multiarch='$DEBIAN_TRIPLE'\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
         echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
 
