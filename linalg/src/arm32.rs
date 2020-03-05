@@ -37,6 +37,15 @@ pub fn plug(ops: &mut Ops) {
                 i32,
             >::new(m, k, n)))
         });
+        ops.qmmm_i8_i32 = Box::new(|m, k, n| {
+            Box::new(QMatMatMulImpl::from(MatMatMulImpl::<
+                armv7neon::MatMatMulI8xI32x8x4,
+                i8,
+                i8,
+                i32,
+                i32,
+            >::new(m, k, n)))
+        });
         ops.sigmoid_f32 =
             Box::new(|| Box::new(SigmoidImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(TanhImpl::<armv7neon::TanhF32x4n, f32>::new()));
