@@ -246,6 +246,7 @@ impl TypedOp for DequantizeLinearF32 {
                     let mut wire = adhoc_model
                         .add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
                     let mut next = model.single_succ(dequant.id)?.unwrap();
+                    let mut name = None;
                     // plug in dequant
                     wire = adhoc_model.wire_node(
                         &*dequant.name,
@@ -253,6 +254,7 @@ impl TypedOp for DequantizeLinearF32 {
                         [wire].as_ref(),
                     )?[0];
                     while next.id != quant.id {
+                        name.get_or_insert_with(|| &*next.name);
                         wire =
                             adhoc_model.wire_node(&*next.name, next.op.clone(), [wire].as_ref())?
                                 [0];
@@ -279,7 +281,7 @@ impl TypedOp for DequantizeLinearF32 {
                     let op = lookup_table((tract_linalg::ops().lut_u8)(table));
                     let mut patch = TypedModelPatch::default();
                     let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?.into();
-                    wire = patch.wire_node(&*dequant.name, op, [wire].as_ref())?[0];
+                    wire = patch.wire_node(name.unwrap_or(&*dequant.name), op, [wire].as_ref())?[0];
                     patch.shunt_outside(model, OutletId::new(quant.id, 0), wire)?;
                     return Ok(Some(patch));
                 }
