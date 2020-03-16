@@ -608,7 +608,7 @@ impl TypedOp for MatMulUnary {
                         &[wire, *w],
                     )?[0];
                 }
-                patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 return Ok(Some(patch));
             }
         }
@@ -869,7 +869,7 @@ where
         },
         &[wire],
     )?[0];
-    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
     Ok(patch)
 }
 

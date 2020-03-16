@@ -40,10 +40,7 @@ impl TypedPass for DeclutterOps {
                         .chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
-                    {
-                        let node = &model.nodes()[id];
-                        debug!("Apply a model patch for {:?}: {}", self, node);
-                    }
+                    debug!("Apply a model patch for {:?} {}", self, model.nodes()[id]);
                     red.apply(model)?;
                     if cfg!(debug_assertions) {
                         model.check_edges()?;
@@ -77,10 +74,7 @@ impl TypedPass for CodegenOps {
                         .chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
-                    {
-                        let node = &model.nodes()[id];
-                        debug!("Apply a model patch for {:?} {}", self, node);
-                    }
+                    debug!("Apply a model patch for {:?} {}", self, model.nodes()[id]);
                     red.apply(model)?;
                     if cfg!(debug_assertions) {
                         model.check_edges()?;
@@ -112,10 +106,7 @@ impl TypedPass for FuseOps {
                     node.op.fuse(model, node).chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
-                    {
-                        let node = &model.nodes()[id];
-                        debug!("Apply a model patch for {:?} {}", self, node);
-                    }
+                    debug!("Apply a model patch for {:?} {}", self, model.nodes()[id]);
                     red.apply(model)?;
                     if cfg!(debug_assertions) {
                         model.check_edges()?;

@@ -200,8 +200,9 @@ impl Conv {
             };
             let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kvalue, group, bias, qp);
             return Ok(Some(reduced));
+        } else {
+            bail!("Kernel should be a const, found {:?}", kernel)
         }
-        Ok(None)
     }
 }
 
@@ -305,7 +306,7 @@ impl InferenceRulesOp for Conv {
         let unary = {
             let facts: TVec<&TypedFact> =
                 inputs.iter().map(|t| target.outlet_fact(*t)).collect::<TractResult<_>>()?;
-            self.to_unary(&*facts)?.ok_or_else(|| {
+            self.to_unary(&*facts)?.chain_err(|| {
                 format!("Can not make {} into a typed op. (inputs facts: {:?})", node, facts)
             })?
         };

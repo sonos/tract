@@ -85,7 +85,7 @@ impl TypedOp for SpaceToBatchUnary {
                     let mut patch = TypedModelPatch::default();
                     let tap = patch.tap_model(&model, node.inputs[0])?;
                     let out = patch.model.wire_node(&*conv_node.name, op, &[tap])?[0];
-                    patch.shunt_outside(OutletId::new(b2s_node.id, 0), out)?;
+                    patch.shunt_outside(model, OutletId::new(b2s_node.id, 0), out)?;
                     return Ok(Some(patch));
                 }
             }

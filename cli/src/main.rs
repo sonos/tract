@@ -512,7 +512,7 @@ impl Parameters {
                     op.clone(),
                     &[tap],
                 )?[0];
-                patch.shunt_outside(*input, pad)?;
+                patch.shunt_outside(&raw_model, *input, pad)?;
             }
             patch.apply(&mut raw_model)?;
         }

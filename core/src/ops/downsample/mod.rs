@@ -144,7 +144,7 @@ fn pull_downsample_up(
                 inputs.push(ds[0]);
             }
             let other = patch.wire_node(&*prec.name, prec.op.clone(), &*inputs)?;
-            patch.shunt_outside(OutletId::new(down_node.id, 0), other[0])?;
+            patch.shunt_outside(model, OutletId::new(down_node.id, 0), other[0])?;
             return Ok(Some(patch));
         }
     }

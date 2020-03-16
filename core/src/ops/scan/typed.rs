@@ -275,9 +275,9 @@ impl TypedScan {
                 let wires = patch.wire_node(&*node.name, op, &inputs)?;
                 for oix in 0..node.outputs.len() {
                     if oix < ix {
-                        patch.shunt_outside(OutletId::new(node.id, oix), wires[oix])?;
+                        patch.shunt_outside(model, OutletId::new(node.id, oix), wires[oix])?;
                     } else if oix > ix {
-                        patch.shunt_outside(OutletId::new(node.id, oix), wires[oix - 1])?;
+                        patch.shunt_outside(model, OutletId::new(node.id, oix), wires[oix - 1])?;
                     }
                 }
                 return Ok(Some(patch));
@@ -294,18 +294,18 @@ impl TypedScan {
         for (model_input, input) in self.input_mapping.iter().enumerate() {
             if let Some((slot, axis, chunk)) = input.as_scan() {
                 let scan_source = self.body.input_outlets()?[model_input];
+                dbg!(self.body.outlet_fact(scan_source)?);
                 let scan_source_node = self.body.node(scan_source.node);
+                dbg!(scan_source_node);
                 for successor in &scan_source_node.outputs[0].successors {
                     let successor_node = self.body.node(successor.node);
+                    dbg!(successor_node);
                     if successor_node.inputs.len() != 1 || successor_node.outputs.len() != 1 {
                         continue;
                     }
-                    let invariants = successor_node
-                        .op()
-                        .as_typed()
-                        .unwrap()
-                        .invariants(&self.body, &successor_node)?;
+                    let invariants = successor_node.op.invariants(&self.body, &successor_node)?;
                     if let Some(axis_after) = invariants.unary_track_axis_down(axis, false) {
+                        println!("pulling out to input: {:#?}", successor_node);
                         let mut outside_patch = TypedModelPatch::default();
                         let mut patch_inputs = node
                             .inputs
@@ -323,6 +323,7 @@ impl TypedScan {
                         let mut new_input_inner_fact = new_input_outer_fact.clone();
                         new_input_inner_fact.shape.set_dim(axis_after, chunk.clone())?;
 
+                        dbg!(&new_input_inner_fact);
                         let mut new_body = self.body.clone();
                         let new_source_wire = new_body.add_source(
                             format!("{}-extracted-{}", node.name, successor_node.name),
@@ -331,7 +332,9 @@ impl TypedScan {
                         let mut inner_patch = TypedModelPatch::default();
                         let new_source_wire_in_patch =
                             inner_patch.tap_model(&new_body, new_source_wire)?;
+                        dbg!(inner_patch.outlet_fact(new_source_wire_in_patch));
                         inner_patch.shunt_outside(
+                            model,
                             OutletId::new(successor.node, 0),
                             new_source_wire_in_patch,
                         )?;
@@ -355,8 +358,13 @@ impl TypedScan {
                         let output_wires =
                             outside_patch.wire_node(&*node.name, new_op, &patch_inputs)?;
                         for w in output_wires {
-                            outside_patch.shunt_outside(OutletId::new(node.id, w.slot), w)?;
+                            outside_patch.shunt_outside(
+                                model,
+                                OutletId::new(node.id, w.slot),
+                                w,
+                            )?;
                         }
+                        println!(" *** do pull out");
                         return Ok(Some(outside_patch));
                     }
                 }
@@ -412,9 +420,13 @@ impl TypedScan {
             )?[0];
             for ix in 0..node.outputs.len() {
                 if ix == slot {
-                    outside_patch.shunt_outside(OutletId::new(node.id, ix), wire)?;
+                    outside_patch.shunt_outside(model, OutletId::new(node.id, ix), wire)?;
                 } else {
-                    outside_patch.shunt_outside(OutletId::new(node.id, ix), scan_outputs[ix])?;
+                    outside_patch.shunt_outside(
+                        model,
+                        OutletId::new(node.id, ix),
+                        scan_outputs[ix],
+                    )?;
                 }
             }
             return Ok(Some(outside_patch));

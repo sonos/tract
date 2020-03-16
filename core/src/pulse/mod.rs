@@ -32,6 +32,14 @@ impl Fact for PulsedFact {
     fn to_typed_fact(&self) -> TractResult<TypedFact> {
         Ok(self.into())
     }
+
+    fn same_as(&self, other: &dyn Fact) -> bool {
+        if let Some(other) = other.downcast_ref::<PulsedFact>() {
+            other == self
+        } else {
+            false
+        }
+    }
 }
 
 impl<'a> From<&'a PulsedFact> for TypedFact {
