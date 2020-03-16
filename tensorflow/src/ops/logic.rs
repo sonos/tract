@@ -76,7 +76,7 @@ impl InferenceRulesOp for Switch {
                     if model.node(succ.node).op_is::<Merge>() {
                         let outlet = model.node(succ.node).inputs[(succ.slot == 0) as usize];
                         let tap = patch.tap_model(model, outlet)?;
-                        patch.shunt_outside(succ.node.into(), tap)?;
+                        patch.shunt_outside(model, succ.node.into(), tap)?;
                     } else {
                         for slot in 0..model.node(succ.node).outputs.len() {
                             let new = OutletId::new(succ.node, slot);
@@ -88,8 +88,8 @@ impl InferenceRulesOp for Switch {
                 }
             }
             let tap = patch.tap_model(model, node.inputs[0])?;
-            patch.shunt_outside(OutletId::new(node.id, 0), tap)?;
-            patch.shunt_outside(OutletId::new(node.id, 1), tap)?;
+            patch.shunt_outside(model, OutletId::new(node.id, 0), tap)?;
+            patch.shunt_outside(model, OutletId::new(node.id, 1), tap)?;
             return Ok(Some(patch));
         }
         Ok(None)

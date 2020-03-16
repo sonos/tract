@@ -102,7 +102,7 @@ impl InferenceRulesOp for Affine {
             self.as_conv(),
             [input, lin.into(), bias.into()].as_ref(),
         )?[0];
-        patch.shunt_outside(node.id.into(), wire)?;
+        patch.shunt_outside(model, node.id.into(), wire)?;
         Ok(Some(patch))
     }
 

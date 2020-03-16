@@ -108,7 +108,7 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
             start,
             end,
         )? {
-            patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
             return Ok(Some(patch));
         }
         Ok(None)

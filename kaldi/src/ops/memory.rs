@@ -231,7 +231,7 @@ fn incorporate_memory_ops_as_scans(
         }
 
         for (ix, output) in scan_outputs.iter().enumerate() {
-            patch.shunt_outside(*output, OutletId::new(scan_id, ix))?;
+            patch.shunt_outside(model, *output, OutletId::new(scan_id, ix))?;
         }
 
         for mem in coupled_mem_ops {

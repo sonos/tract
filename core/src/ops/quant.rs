@@ -225,7 +225,7 @@ impl TypedOp for DequantizeLinearF32 {
                         break;
                     }
                     if next.id == current.id {
-                        patch.shunt_outside(OutletId::new(quant.id, 0), wire)?;
+                        patch.shunt_outside(model, OutletId::new(quant.id, 0), wire)?;
                         return Ok(Some(patch));
                     } else {
                         next = model.single_succ(next.id)?.unwrap();
@@ -271,7 +271,7 @@ impl TypedOp for DequantizeLinearF32 {
                     let mut patch = TypedModelPatch::default();
                     let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?.into();
                     wire = patch.wire_node(&*dequant.name, op, [wire].as_ref())?[0];
-                    patch.shunt_outside(OutletId::new(quant.id, 0), wire)?;
+                    patch.shunt_outside(model, OutletId::new(quant.id, 0), wire)?;
                     return Ok(Some(patch));
                 }
             }
