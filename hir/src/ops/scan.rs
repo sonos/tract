@@ -44,7 +44,15 @@ impl StatefullOp for InferenceScan {
 
 impl InferenceScan {
     pub(super) fn to_typed_scan(&self) -> TractResult<Box<TypedScan>> {
+        if cfg!(debug_assertions) {
+            self.body.check_edges()
+                .chain_err(|| "preliminary check, in InferenceScan::to_typed")?;
+        }
         let typed_model = self.body.clone().into_typed()?;
+        if cfg!(debug_assertions) {
+            typed_model.check_edges()
+                .chain_err(|| "inner typed model check, in  InferenceScan::to_typed")?;
+        }
         let input_mapping = self
             .input_mapping
             .iter()

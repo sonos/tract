@@ -127,9 +127,9 @@ pub fn handle_pbdir(
     ))
 }
 
-pub fn compare<F, O>(
+pub fn compare<F, O, C>(
     cumulative: bool,
-    tract: &ModelImpl<F, O>,
+    tract: &ModelImpl<F, O, C>,
     all_values: &HashMap<String, CliResult<Tensor>>,
     params: &Parameters,
     output_params: DisplayOptions,
@@ -137,7 +137,8 @@ pub fn compare<F, O>(
 where
     F: Fact + Clone + for<'a> From<&'a Tensor>,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
-    ModelImpl<F, O>: Model,
+    C: ModelChecker<F, O>,
+    ModelImpl<F, O, C>: Model,
 {
     let eval_order = ::tract_core::model::eval_order(&tract)?;
 

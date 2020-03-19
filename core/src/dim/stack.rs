@@ -342,6 +342,29 @@ mod tests {
     }
 
     #[test]
+    fn reduce_div_bug_0() {
+        let e1:Stack = (Stack::sym('S') + 23) / 2 - 1;
+        let e2:Stack = (Stack::sym('S') + 21) / 2;
+        assert_eq!(e1, e2);
+    }
+
+    #[test]
+    fn reduce_div_bug_1() {
+        let e1:Stack = (Stack::sym('S') + -1) / 2;
+        let e2:Stack = (Stack::sym('S') + 1) / 2 - 1;
+        assert_eq!(e1, e2);
+    }
+
+    /*
+    #[test]
+    fn reduce_div_bug_2() {
+        let e1:Stack = ((Stack::sym('S') + 1) / 2 + 1) / 2;
+        let e2:Stack = (Stack::sym('S') + 3) / 4;
+        assert_eq!(e1, e2);
+    }
+    */
+
+    #[test]
     fn reduce_mul_div() {
         let e: Stack = Stack::sym('S') * 2 / 2;
         assert_eq!(e, Stack::sym('S'));

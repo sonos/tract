@@ -224,6 +224,22 @@ fn conv_8() {
 }
 
 #[test]
+fn conv_9() {
+    PadPlusConvProblem {
+        pad_before: 13,
+        pad_after: 9,
+        pad_mode: PadMode::Constant(rctensor0(9999f32)),
+        stride: 2,
+        dilation: 2,
+        pulse: 2,
+        ker: arr3(&[[[0.0f32, 0.0]]]),
+        input: arr3(&[[[0.0f32, 0.0, 0.0, 0.0]]]),
+    }
+    .run()
+    .unwrap()
+}
+
+#[test]
 fn conv_kaldi_librispeech() {
     PadPlusConvProblem {
         pad_before: 5,

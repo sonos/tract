@@ -87,7 +87,15 @@ impl PulsedFact {
     }
 }
 
-pub type PulsedModel = ModelImpl<PulsedFact, Box<dyn PulsedOp>>;
+#[derive(Clone, Debug)]
+pub struct PulsedModelChecker;
+impl ModelChecker<PulsedFact, Box<dyn PulsedOp>> for PulsedModelChecker {
+    fn check(m: &PulsedModel) -> TractResult<()> {
+        unimplemented!();
+    }
+}
+
+pub type PulsedModel = ModelImpl<PulsedFact, Box<dyn PulsedOp>, PulsedModelChecker>;
 pub type PulsedNode = BaseNode<PulsedFact, Box<dyn PulsedOp>>;
 
 impl PulsedModel {
@@ -113,8 +121,10 @@ impl
     crate::model::translator::Translate<
         NormalizedFact,
         Box<dyn TypedOp>,
-        crate::pulse::PulsedFact,
+        crate::model::NormalizedModelChecker,
+        PulsedFact,
         Box<dyn PulsedOp>,
+        PulsedModelChecker,
     > for Pulsifier
 {
     fn translate_node(

@@ -2,14 +2,23 @@ use super::*;
 use crate::ops::Op;
 use std::fmt;
 
+pub trait ModelChecker<F, O>: fmt::Debug + Clone + 'static
+where
+    F: Fact + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
+    fn check(m: &ModelImpl<F, O, Self>) -> TractResult<()>;
+}
+
 /// Main model class
 ///
 /// Parameterized by a Fact class.
 #[derive(Clone, Debug)]
-pub struct ModelImpl<F, O>
+pub struct ModelImpl<F, O, C>
 where
     F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    C: ModelChecker<F, O>
 {
     pub label: Option<String>,
     /// all nodes in the model
@@ -22,14 +31,16 @@ where
     pub outputs: Vec<OutletId>,
     /// outlet labels
     pub outlet_labels: HashMap<OutletId, String>,
+    _phantom_data: std::marker::PhantomData<C>
 }
 
-impl<F, O> Default for ModelImpl<F, O>
+impl<F, O, C> Default for ModelImpl<F, O, C>
 where
     F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    C: ModelChecker<F, O>
 {
-    fn default() -> ModelImpl<F, O> {
+    fn default() -> ModelImpl<F, O, C> {
         ModelImpl {
             label: None,
             nodes: vec![],
@@ -37,15 +48,17 @@ where
             inputs: vec![],
             outputs: vec![],
             outlet_labels: HashMap::new(),
+            _phantom_data: std::marker::PhantomData,
         }
     }
 }
 
-impl<F, O> ModelImpl<F, O>
+impl<F, O, C> ModelImpl<F, O, C>
 where
     F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    ModelImpl<F, O>: Model,
+    C: crate::model::ModelChecker<F, O>,
+    ModelImpl<F, O, C>: Model,
 {
     pub fn add_node(
         &mut self,
@@ -321,7 +334,7 @@ where
         eval_order(&self)
     }
 
-    /// Performs a sanity check on network connections.
+    /// Performs a sanity check on network connections and associated types.
     pub fn check_edges(&self) -> TractResult<()> {
         for node in self.eval_order()? {
             let node = &self.nodes[node];
@@ -349,14 +362,15 @@ where
                 }
             }
         }
-        Ok(())
+        C::check(self)
     }
 }
 
-impl<F, O> Model for ModelImpl<F, O>
+impl<F, O, C> Model for ModelImpl<F, O, C>
 where
     F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    C: crate::model::ModelChecker<F, O>,
 {
     fn model_label(&self) -> Option<&str> {
         self.label.as_ref().map(|s| &**s)

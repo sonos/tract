@@ -99,8 +99,15 @@ impl InferenceModelExt for InferenceModel {
 
         #[derive(Debug)]
         struct ToTypedTranslator;
-        impl Translate<InferenceFact, Box<dyn InferenceOp>, TypedFact, Box<dyn TypedOp>>
-            for ToTypedTranslator
+        impl
+            Translate<
+                InferenceFact,
+                Box<dyn InferenceOp>,
+                InferenceModelChecker,
+                TypedFact,
+                Box<dyn TypedOp>,
+                TypedModelChecker,
+            > for ToTypedTranslator
         {
             fn translate_node(
                 &self,
@@ -113,7 +120,11 @@ impl InferenceModelExt for InferenceModel {
             }
         }
 
-        ToTypedTranslator.translate_model(&m)
+        let model = ToTypedTranslator.translate_model(&m)?;
+        if cfg!(debug_assertions) {
+            model.check_edges()?
+        }
+        Ok(model)
     }
 
     /// Attempt full analyse, decluttering and conversion to NormalizedModel.

@@ -64,6 +64,9 @@ impl TypedScan {
         output_mapping: Vec<OutputMapping<TDim, TDim>>,
         seq_length_input_slot: Option<usize>,
     ) -> TractResult<TypedScan> {
+        if cfg!(debug_assertions) {
+            body.check_edges().chain_err(|| "TypedScan::new preliminary check")?
+        }
         assert_eq!(input_mapping.len(), body.input_outlets()?.len());
         assert_eq!(output_mapping.len(), body.output_outlets()?.len());
         Ok(TypedScan {
@@ -82,6 +85,9 @@ impl TypedScan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if !self.decluttered {
+            if cfg!(debug_assertions) {
+                self.body.check_edges().chain_err(|| "TypedScan::declutter_body preliminary check")?
+            }
             let mut new = self.clone();
             new.body = self.body.clone().declutter()?;
             new.decluttered = true;
@@ -472,6 +478,9 @@ impl TypedScan {
         locked_interface: bool,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let mut body = self.body.clone();
+        if cfg!(debug_assertions) {
+            body.check_edges().chain_err(|| "TypedScan::try_body_axes_change preliminary check")?
+        }
         let interface = self.body_exposed_outlets()?;
         let body_changed_wires = if let Some(changes) = crate::ops::change_axes::change_axes(
             &mut body,
@@ -483,6 +492,9 @@ impl TypedScan {
         } else {
             return Ok(None);
         };
+        if cfg!(debug_assertions) {
+            body.check_edges().chain_err(|| "TypedScan::try_body_axes_change middle check")?
+        }
         let mut wire_changes = tvec!();
         let mut input_mapping: Vec<InputMapping<TDim>> = self.input_mapping.clone();
         for (ix, m) in input_mapping.iter_mut().enumerate() {

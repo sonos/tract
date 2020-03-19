@@ -123,8 +123,10 @@ pub fn run_one<P: AsRef<path::Path>>(
             info!("Analyse");
             trace!("Model:\n{:#?}", model);
             model.analyse(false).unwrap();
+            model.check_edges().unwrap();
             info!("Incorporate");
             let model = model.incorporate().unwrap();
+            model.check_edges().unwrap();
             info!("Test model (optim: {:?}) {:#?}", optim, path);
             if optim {
                 info!("Check full inference");
@@ -133,6 +135,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                 }
                 info!("Into type");
                 let model = model.into_typed().unwrap();
+                model.check_edges().unwrap();
                 let optimized = model.into_optimized().unwrap();
                 trace!("Run optimized model:\n{:#?}", optimized);
                 run_model(optimized, inputs, &data_path)
@@ -144,10 +147,11 @@ pub fn run_one<P: AsRef<path::Path>>(
     }
 }
 
-fn run_model<F, O>(model: ModelImpl<F, O>, inputs: TVec<Tensor>, data_path: &path::Path)
+fn run_model<F, O, C>(model: ModelImpl<F, O, C>, inputs: TVec<Tensor>, data_path: &path::Path)
 where
     F: Fact + Clone + 'static,
     O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    C: ModelChecker<F, O>,
 {
     let plan = SimplePlan::new(&model).unwrap();
     let expected = load_half_dataset("output", data_path);

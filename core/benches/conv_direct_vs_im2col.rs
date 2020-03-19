@@ -81,7 +81,7 @@ impl Problem {
         Box::new(conv)
     }
 
-    pub fn to_plan(&self, direct: bool) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
+    pub fn to_plan(&self, direct: bool) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModelChecker, TypedModel> {
         let unary = self.to_unary();
         let mut model_im2col = TypedModel::default();
         let input = model_im2col.add_source("input", self.image_type()).unwrap();

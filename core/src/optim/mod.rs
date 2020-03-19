@@ -12,38 +12,62 @@ use self::push_split_down::PushSplitDown;
 
 use crate::errors::TractResultExt;
 
-pub trait TypedPass: Debug + Send + Sync {
+pub trait TypedPass: Debug {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool>;
 }
 
 pub fn declutter() -> Vec<Box<dyn TypedPass>> {
-    vec![Box::new(PropConst), Box::new(DeclutterOps), Box::new(PushSplitDown), Box::new(ChangeAxes)]
+    vec![
+        Box::new(PropConst),
+        Box::new(TypedNodeByNodePass(Box::new(DeclutterOps))),
+        Box::new(PushSplitDown),
+        Box::new(ChangeAxes),
+    ]
 }
 
 pub fn codegen() -> Vec<Box<dyn TypedPass>> {
-    vec![Box::new(CodegenOps), Box::new(PushSplitDown), Box::new(FuseOps)]
+    vec![
+        Box::new(TypedNodeByNodePass(Box::new(CodegenOps))),
+        Box::new(PushSplitDown),
+        Box::new(TypedNodeByNodePass(Box::new(FuseOps))),
+    ]
+}
+
+trait NodePatch: Debug + 'static {
+    fn pass_one(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>>;
 }
 
 #[derive(Debug)]
-pub struct DeclutterOps;
+struct TypedNodeByNodePass(Box<dyn NodePatch>);
 
-impl TypedPass for DeclutterOps {
+impl TypedPass for TypedNodeByNodePass {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
+        if cfg!(debug_assertions) {
+            model.check_edges().chain_err(|| format!("preliminary check, {:?}", self))?
+        }
         let mut done_something = false;
         loop {
             let mut done_something_this_time = false;
             for id in model.eval_order()? {
-                let reduced = {
+                let patch = {
                     let node = &model.nodes()[id];
-                    node.op
-                        .declutter(model, node)
+                    self.0
+                        .pass_one(model, node)
                         .chain_err(|| format!("{:?} node {}", self, node))?
                 };
-                if let Some(red) = reduced {
-                    debug!("Apply a model patch for {:?} {}", self, model.nodes()[id]);
-                    red.apply(model)?;
+                if let Some(patch) = patch {
                     if cfg!(debug_assertions) {
-                        model.check_edges()?;
+                        let saved = model.clone();
+                        let saved_patch = patch.clone();
+                        patch.apply(model).and_then(|_| model.check_edges()).chain_err(|| {
+                            format!("Applying patch {:#?} to {:#?}", saved_patch, saved)
+                        })?
+                    } else {
+                        patch.apply(model)?
                     }
                     done_something_this_time = true
                 }
@@ -54,71 +78,44 @@ impl TypedPass for DeclutterOps {
             }
         }
         Ok(done_something)
+    }
+}
+
+#[derive(Debug)]
+pub struct DeclutterOps;
+
+impl NodePatch for DeclutterOps {
+    fn pass_one(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        node.op.declutter(model, node)
     }
 }
 
 #[derive(Debug)]
 pub struct CodegenOps;
 
-impl TypedPass for CodegenOps {
-    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
-        let mut done_something = false;
-        loop {
-            let mut done_something_this_time = false;
-            for id in model.eval_order()? {
-                let reduced = {
-                    let node = &model.nodes()[id];
-                    debug!("Codegen {}", node);
-                    node.op
-                        .codegen(model, node)
-                        .chain_err(|| format!("{:?} node {}", self, node))?
-                };
-                if let Some(red) = reduced {
-                    debug!("Apply a model patch for {:?} {}", self, model.nodes()[id]);
-                    red.apply(model)?;
-                    if cfg!(debug_assertions) {
-                        model.check_edges()?;
-                    }
-                    done_something_this_time = true
-                }
-            }
-            done_something = done_something || done_something_this_time;
-            if !done_something_this_time {
-                break;
-            }
-        }
-        Ok(done_something)
+impl NodePatch for CodegenOps {
+    fn pass_one(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        node.op.codegen(model, node)
     }
 }
 
 #[derive(Debug)]
 pub struct FuseOps;
 
-impl TypedPass for FuseOps {
-    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
-        let mut done_something = false;
-        loop {
-            let mut done_something_this_time = false;
-            for id in model.eval_order()? {
-                let reduced = {
-                    let node = &model.nodes()[id];
-                    debug!("Fuse {}", node);
-                    node.op.fuse(model, node).chain_err(|| format!("{:?} node {}", self, node))?
-                };
-                if let Some(red) = reduced {
-                    debug!("Apply a model patch for {:?} {}", self, model.nodes()[id]);
-                    red.apply(model)?;
-                    if cfg!(debug_assertions) {
-                        model.check_edges()?;
-                    }
-                    done_something_this_time = true
-                }
-            }
-            done_something = done_something || done_something_this_time;
-            if !done_something_this_time {
-                break;
-            }
-        }
-        Ok(done_something)
+impl NodePatch for FuseOps {
+    fn pass_one(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        node.op.fuse(model, node)
     }
 }

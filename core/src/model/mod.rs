@@ -62,7 +62,7 @@ pub use crate::ops::{Op, TypedOp};
 use crate::model::translator::Translate;
 use crate::ops::invariants;
 use crate::plan::{SimplePlan, SimpleState};
-use crate::TractResult;
+use crate::{TractResult, TractResultExt};
 
 /// Common methods for all variants of model.
 pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
@@ -117,33 +117,71 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
 
 impl_downcast!(Model);
 
+#[derive(Clone, Debug)]
+pub struct TypedModelChecker;
+impl ModelChecker<TypedFact, Box<dyn TypedOp>> for TypedModelChecker {
+    fn check(m: &TypedModel) -> TractResult<()> {
+        for node in m.nodes() {
+            let (input_facts, output_facts) = m.node_facts(node.id)?;
+            let op_output_facts = node.op.output_facts(&input_facts)?;
+            if !output_facts
+                .iter()
+                .zip(op_output_facts.iter())
+                .all(|(a, b)| a.datum_type == b.datum_type && a.shape == b.shape)
+            {
+                bail!(
+                    "Inconsistent output facts for node {}. Model says: {:?}, op says: {:?}",
+                    node,
+                    output_facts,
+                    op_output_facts
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
 /// A model with completely determined types and shapes.
-pub type TypedModel = ModelImpl<TypedFact, Box<dyn TypedOp>>;
+pub type TypedModel = ModelImpl<TypedFact, Box<dyn TypedOp>, TypedModelChecker>;
 /// Node for TypedModel graph
 pub type TypedNode = BaseNode<TypedFact, Box<dyn TypedOp>>;
 /// A ModelPatch for TypedModel.
-pub type TypedModelPatch = ModelPatch<TypedFact, Box<dyn TypedOp>>;
+pub type TypedModelPatch = ModelPatch<TypedFact, Box<dyn TypedOp>, TypedModelChecker>;
 /// An execution plan for TypedModel.
-pub type TypedSimplePlan<M> = SimplePlan<TypedFact, Box<dyn TypedOp>, M>;
+pub type TypedSimplePlan<M> = SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModelChecker, M>;
 /// An execution state for TypedModel.
-pub type TypedSimpleState<M, P> = SimpleState<TypedFact, Box<dyn TypedOp>, M, P>;
+pub type TypedSimpleState<M, P> = SimpleState<TypedFact, Box<dyn TypedOp>, TypedModelChecker, M, P>;
+
+#[derive(Clone, Debug)]
+pub struct NormalizedModelChecker;
+impl ModelChecker<NormalizedFact, Box<dyn TypedOp>> for NormalizedModelChecker {
+    fn check(m: &NormalizedModel) -> TractResult<()> {
+        unimplemented!();
+    }
+}
 
 /// A model with determined types and shapes, where constant have been
 /// eleminated from the graph.
-pub type NormalizedModel = ModelImpl<NormalizedFact, Box<dyn TypedOp>>;
+pub type NormalizedModel = ModelImpl<NormalizedFact, Box<dyn TypedOp>, NormalizedModelChecker>;
 /// A Node for NormalizedModel.
 pub type NormalizedNode = BaseNode<NormalizedFact, Box<dyn TypedOp>>;
 /// A ModelPatch for NormalizedModel.
-pub type NormalizedModelPatch = ModelPatch<NormalizedFact, Box<dyn TypedOp>>;
+pub type NormalizedModelPatch =
+    ModelPatch<NormalizedFact, Box<dyn TypedOp>, NormalizedModelChecker>;
 /// An execution plan for NormalizedModel.
-pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedFact, Box<dyn TypedOp>, M>;
+pub type NormalizedSimplePlan<M> =
+    SimplePlan<NormalizedFact, Box<dyn TypedOp>, NormalizedModelChecker, M>;
 /// An execution state for TypedModel.
-pub type NormalizedSimpleState<M, P> = SimpleState<NormalizedFact, Box<dyn TypedOp>, M, P>;
+pub type NormalizedSimpleState<M, P> =
+    SimpleState<NormalizedFact, Box<dyn TypedOp>, NormalizedModelChecker, M, P>;
 
 impl TypedModel {
     /// Perform declutter pass on the network.
     pub fn declutter(self) -> TractResult<TypedModel> {
         let mut model = self;
+        if cfg!(debug_assertions) {
+            model.check_edges().chain_err(|| "preliminary check, TypedModel::declutter")?;
+        }
         let model_inputs = model.input_outlets()?.len();
         let model_outputs = model.output_outlets()?.len();
         loop {
@@ -194,6 +232,10 @@ impl TypedModel {
 
     /// Declutter as much as possible, then translate to optimized operators.
     pub fn into_optimized(self) -> TractResult<TypedModel> {
+        if cfg!(debug_assertions) {
+            self.check_edges()
+                .chain_err(|| "preliminary check, TypedModel::into_optimized")?;
+        }
         let model = self.declutter()?;
         let model = model.codegen()?;
         let model = compact::compact(&model)?;

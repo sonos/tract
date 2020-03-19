@@ -8,8 +8,9 @@ use std::fmt::{Debug, Display};
 pub fn eval_order<
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    C: crate::model::ModelChecker<F, O>,
 >(
-    model: &super::ModelImpl<F, O>,
+    model: &super::ModelImpl<F, O, C>,
 ) -> TractResult<Vec<usize>> {
     let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();

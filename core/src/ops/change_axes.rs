@@ -304,7 +304,10 @@ pub fn change_axes(
     locked: &[OutletId],
     bounds: &[TVec<OutletId>],
 ) -> TractResult<Option<HashMap<OutletId, AxisOp>>> {
-    debug!("Trying to apply change {:?}", change);
+    if cfg!(debug_assertions) {
+        model.check_edges().chain_err(|| format!("preliminary check, change_axes {:?}", change))?;
+    }
+    debug!("Attempting to apply change {:?}", change);
     let mut todo_changes = vec![change.clone()];
     let mut changed_wires = HashMap::new();
     changed_wires.insert(change.outlet, change.op.clone());
@@ -356,12 +359,17 @@ pub fn change_axes(
             }
         }
     }
-    for (node_id, op) in changed_ops.into_iter() {
-        model.node_mut(node_id).op = op;
+    for node_id in model.eval_order()? {
+        if let Some(new_op) = changed_ops.remove(&node_id) {
+            model.node_mut(node_id).op = new_op;
+            let output_facts = model.node(node_id).op.output_facts(&model.node_input_facts(node_id)?)?;
+            for (ix, f) in output_facts.into_iter().enumerate() {
+                model.set_outlet_fact(OutletId::new(node_id, ix), f)?;
+            }
+        }
     }
-    for (outlet, axis_op) in &changed_wires {
-        let node = model.node_mut(outlet.node);
-        axis_op.change_shape(&mut node.outputs[outlet.slot].fact.shape)?;
+    if cfg!(debug_assertions) {
+        model.check_edges().chain_err(|| format!("final check applying {:?}", change))?;
     }
     debug!("Applied change {:?}", change);
     Ok(Some(changed_wires))

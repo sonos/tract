@@ -4,29 +4,31 @@ use std::collections::HashMap;
 use std::convert::*;
 use std::fmt;
 
-pub trait Translate<TI1, O1, TI2, O2>: fmt::Debug
+pub trait Translate<TI1, O1, C1, TI2, O2, C2>: fmt::Debug
 where
     TI1: Fact + Clone + 'static,
     TI2: Fact + Clone + 'static,
     O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    C1: ModelChecker<TI1, O1>,
+    C2: ModelChecker<TI2, O2>,
 {
     fn translate_node(
         &self,
-        source: &ModelImpl<TI1, O1>,
+        source: &ModelImpl<TI1, O1, C1>,
         node: &BaseNode<TI1, O1>,
-        target: &mut ModelImpl<TI2, O2>,
+        target: &mut ModelImpl<TI2, O2, C2>,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>>;
 
-    fn translate_model(&self, source: &ModelImpl<TI1, O1>) -> TractResult<ModelImpl<TI2, O2>> {
+    fn translate_model(&self, source: &ModelImpl<TI1, O1, C1>) -> TractResult<ModelImpl<TI2, O2, C2>> {
         Ok(self.translate_model_with_mappings(source)?.0)
     }
 
     fn translate_model_with_mappings(
         &self,
-        source: &ModelImpl<TI1, O1>,
-    ) -> TractResult<(ModelImpl<TI2, O2>, HashMap<OutletId, OutletId>)> {
+        source: &ModelImpl<TI1, O1, C1>,
+    ) -> TractResult<(ModelImpl<TI2, O2, C2>, HashMap<OutletId, OutletId>)> {
         let mut target = ModelImpl::default();
         let mut mapping = HashMap::new();
         for old_id in source.eval_order()? {
@@ -62,7 +64,7 @@ where
 
 #[derive(Debug)]
 pub struct IntoTranslator;
-impl<TI1, O1, TI2, O2, EO, ETI> Translate<TI1, O1, TI2, O2> for IntoTranslator
+impl<TI1, O1, C1, TI2, O2, C2, EO, ETI> Translate<TI1, O1, C1, TI2, O2, C2> for IntoTranslator
 where
     TractError: From<EO> + From<ETI>,
     TI1: Fact + Clone + 'static,
@@ -75,12 +77,14 @@ where
         + AsMut<dyn Op>
         + Clone
         + 'static,
+    C1: ModelChecker<TI1, O1>,
+    C2: ModelChecker<TI2, O2>,
 {
     fn translate_node(
         &self,
-        _source: &ModelImpl<TI1, O1>,
+        _source: &ModelImpl<TI1, O1, C1>,
         node: &BaseNode<TI1, O1>,
-        target: &mut ModelImpl<TI2, O2>,
+        target: &mut ModelImpl<TI2, O2, C2>,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let new_op = O2::try_from(&node.op)?;

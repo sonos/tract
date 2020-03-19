@@ -55,10 +55,11 @@ impl ProfileData {
         }
     }
 
-    pub fn print_most_consuming_ops<F, O>(&self, model: &ModelImpl<F, O>) -> CliResult<()>
+    pub fn print_most_consuming_ops<F, O, C>(&self, model: &ModelImpl<F, O, C>) -> CliResult<()>
     where
         F: Fact + Clone + 'static,
         O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
+        C: ModelChecker<F, O>,
     {
         let sum = self.summed();
         println!("Most time consuming operations:");

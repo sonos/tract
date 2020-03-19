@@ -14,7 +14,7 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 ///
 /// Parameterized by a Fact implementation matching the one used in the
 /// model.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct BaseNode<F: Fact, O> {
     /// node id in the model
@@ -39,6 +39,20 @@ pub struct BaseNode<F: Fact, O> {
 impl<F: Fact, O: std::fmt::Display> fmt::Display for BaseNode<F, O> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op)
+    }
+}
+
+impl<F: Fact, O: fmt::Display + fmt::Debug> fmt::Debug for BaseNode<F, O> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.pad(&format!("#{} \"{}\"", self.id, self.name))?;
+        for i in &self.inputs {
+            fmt.pad(&format!(" {:?}", i))?;
+        }
+        fmt.pad(&format!(" {:?}", &self.op))?;
+        for o in &self.outputs {
+            fmt.pad(&format!(" {:?}", o))?;
+        }
+        Ok(())
     }
 }
 

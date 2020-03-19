@@ -3,20 +3,21 @@ use crate::prelude::*;
 use std::collections::HashMap;
 use std::fmt;
 
-trait GraphRewriter<F, O>
+trait GraphRewriter<F, O, C>
 where
     F: Fact + Clone + 'static,
     O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    C: crate::model::ModelChecker<F, O>,
 {
     fn wire_node(
         &self,
-        old: &ModelImpl<F, O>,
-        new: &mut ModelImpl<F, O>,
+        old: &ModelImpl<F, O, C>,
+        new: &mut ModelImpl<F, O, C>,
         map: &HashMap<OutletId, OutletId>,
         node: &BaseNode<F, O>,
     ) -> TractResult<TVec<OutletId>>;
 
-    fn rewrite_model(&self, old: &ModelImpl<F, O>) -> TractResult<ModelImpl<F, O>> {
+    fn rewrite_model(&self, old: &ModelImpl<F, O, C>) -> TractResult<ModelImpl<F, O, C>> {
         let mut new = ModelImpl::default();
         let mut map = HashMap::new();
         for old_id in old.eval_order()? {
@@ -52,16 +53,17 @@ where
 }
 
 struct NoopRewriter;
-impl<F, O> GraphRewriter<F, O> for NoopRewriter
+impl<F, O, C> GraphRewriter<F, O, C> for NoopRewriter
 where
     F: Fact + Clone + 'static,
     O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    ModelImpl<F, O>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
+    C: crate::model::ModelChecker<F, O>,
+    ModelImpl<F, O, C>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
 {
     fn wire_node(
         &self,
-        old: &ModelImpl<F, O>,
-        new: &mut ModelImpl<F, O>,
+        old: &ModelImpl<F, O, C>,
+        new: &mut ModelImpl<F, O, C>,
         map: &HashMap<OutletId, OutletId>,
         node: &BaseNode<F, O>,
     ) -> TractResult<TVec<OutletId>> {
@@ -76,11 +78,12 @@ where
     }
 }
 
-pub fn compact<F, O>(old: &ModelImpl<F, O>) -> TractResult<ModelImpl<F, O>>
+pub fn compact<F, O, C>(old: &ModelImpl<F, O, C>) -> TractResult<ModelImpl<F, O, C>>
 where
     F: Fact + Clone + 'static,
     O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    ModelImpl<F, O>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
+    C: crate::model::ModelChecker<F, O>,
+    ModelImpl<F, O, C>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
 {
     NoopRewriter.rewrite_model(old)
 }

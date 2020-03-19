@@ -73,10 +73,11 @@ where
     fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<F, O>>>;
 }
 
-impl<F, O> ModelDsl<F, O> for ModelImpl<F, O>
+impl<F, O, C> ModelDsl<F, O> for ModelImpl<F, O, C>
 where
     F: Fact + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    C: crate::model::ModelChecker<F, O>,
 {
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
         let node = &self.nodes()[id];
@@ -138,7 +139,7 @@ pub trait ModelDslConst {
     ) -> TractResult<OutletId>;
 }
 
-impl<F: Fact + Clone + 'static, O> ModelDslConst for ModelImpl<F, O>
+impl<F, O, C> ModelDslConst for ModelImpl<F, O, C>
 where
     F: Fact + Clone + 'static + From<Arc<Tensor>>,
     O: fmt::Debug
@@ -148,6 +149,7 @@ where
         + AsMut<dyn Op>
         + Clone
         + 'static,
+    C: crate::model::ModelChecker<F, O>,
 {
     fn add_const(
         &mut self,

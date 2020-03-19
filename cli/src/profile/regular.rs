@@ -21,10 +21,11 @@ pub fn handle_benching(params: &Parameters, profiling: ProfilingMode) -> CliResu
     dispatch_model!(params.tract_model, |m| handle_benching_t(m, &params, profiling))
 }
 
-pub fn make_inputs_for_model<F, O>(model: &ModelImpl<F, O>) -> CliResult<TVec<Tensor>>
+pub fn make_inputs_for_model<F, O, C>(model: &ModelImpl<F, O, C>) -> CliResult<TVec<Tensor>>
 where
     F: Fact + Clone + 'static,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
+    C: ModelChecker<F, O>,
 {
     Ok(make_inputs(
         &*model
@@ -35,14 +36,15 @@ where
     )?)
 }
 
-fn handle_benching_t<F, O>(
-    model: &ModelImpl<F, O>,
+fn handle_benching_t<F, O, C>(
+    model: &ModelImpl<F, O, C>,
     params: &Parameters,
     profiling: ProfilingMode,
 ) -> CliResult<()>
 where
     F: Fact + Clone + 'static,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
+    C: ModelChecker<F, O>,
 {
     let (max_iters, max_time) =
         if let ProfilingMode::RegularBenching { max_iters, max_time } = profiling {
@@ -83,8 +85,8 @@ pub fn handle(
 }
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle_t<F, O>(
-    model: &ModelImpl<F, O>,
+pub fn handle_t<F, O, C>(
+    model: &ModelImpl<F, O, C>,
     params: &Parameters,
     profiling: ProfilingMode,
     mut display_options: DisplayOptions,
@@ -92,7 +94,8 @@ pub fn handle_t<F, O>(
 where
     F: Fact + Clone + 'static,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
-    ModelImpl<F, O>: Model,
+    C: ModelChecker<F, O>,
+    ModelImpl<F, O, C>: Model,
 {
     let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
         (max_iters, max_time)
@@ -116,7 +119,7 @@ where
 
     let mut profile = ProfileData::default();
 
-    let mut queue: Vec<(&ModelImpl<F, O>, TVec<usize>, f32)> = vec![(model, tvec!(), 1f32)];
+    let mut queue: Vec<(&ModelImpl<F, O, C>, TVec<usize>, f32)> = vec![(model, tvec!(), 1f32)];
     while let Some((model, prefix, multiplier)) = queue.pop() {
         let plan = SimplePlan::new(model)?;
         let mut state = SimpleState::new(&plan)?;
@@ -171,7 +174,7 @@ where
                 model.node_op(n).as_typed().unwrap().nested_model_multipliers(&*ref_inputs);
 
             for (ix, (_name, m, _, _)) in model.node_op(n).nested_models().iter().enumerate() {
-                if let Some(m) = m.downcast_ref::<ModelImpl<F, O>>() {
+                if let Some(m) = m.downcast_ref::<ModelImpl<F, O, C>>() {
                     let mut prefix: TVec<usize> = prefix.clone();
                     prefix.push(n);
                     queue.push((m, prefix, multiplier * nested_multis[ix].1));

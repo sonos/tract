@@ -42,14 +42,37 @@ pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResu
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct InferenceModelChecker;
+impl ModelChecker<InferenceFact, Box<dyn InferenceOp>> for InferenceModelChecker {
+    fn check(model: &InferenceModel) -> TractResult<()> {
+        for node in model.nodes() {
+            let (inputs, outputs) = model.node_facts(node.id)?;
+            let observed: TVec<&InferenceFact> = node
+                .op
+                .observe_outlets(&model, &node)?
+                .iter()
+                .map(|o| model.outlet_fact(*o))
+                .collect::<TractResult<_>>()?;
+            // may be hugely expensive but this code is not meant to run in release
+            let mut op = node.op.clone();
+            op.infer_facts(inputs, outputs, observed)?;
+        }
+        Ok(())
+    }
+}
+
 /// A model with partially types and shapes, as produced by parsing ONNX or
 /// Tensorflow graphs.
-pub type InferenceModel = ModelImpl<InferenceFact, Box<dyn InferenceOp>>;
+pub type InferenceModel = ModelImpl<InferenceFact, Box<dyn InferenceOp>, InferenceModelChecker>;
 /// Node for InferenceModel graph
 pub type InferenceNode = BaseNode<InferenceFact, Box<dyn InferenceOp>>;
 /// A ModelPatch for InferenceModel.
-pub type InferenceModelPatch = ModelPatch<InferenceFact, Box<dyn InferenceOp>>;
+pub type InferenceModelPatch =
+    ModelPatch<InferenceFact, Box<dyn InferenceOp>, InferenceModelChecker>;
 /// An execution plan for InferenceModel.
-pub type InferenceSimplePlan<M> = SimplePlan<InferenceFact, Box<dyn InferenceOp>, M>;
+pub type InferenceSimplePlan<M> =
+    SimplePlan<InferenceFact, Box<dyn InferenceOp>, InferenceModelChecker, M>;
 /// An execution state for InferenceModel.
-pub type InferenceSimpleState<M, P> = SimpleState<InferenceFact, Box<dyn InferenceOp>, M, P>;
+pub type InferenceSimpleState<M, P> =
+    SimpleState<InferenceFact, Box<dyn InferenceOp>, InferenceModelChecker, M, P>;
