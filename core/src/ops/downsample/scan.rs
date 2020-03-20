@@ -65,7 +65,7 @@ pub fn pull_downsample_over_scan(
                 if chunk.to_integer()? as usize % down_op.stride != 0 {
                     return Ok(None);
                 }
-                *chunk = chunk.div_ceil(down_op.stride.to_dim())
+                *chunk = chunk.div_ceil(down_op.stride as i32)
             }
             _ => (),
         }
@@ -75,7 +75,7 @@ pub fn pull_downsample_over_scan(
             return Ok(None);
         }
         output.full_dim_hint.as_mut().map(|d| *d = down_op.transform_dim(d));
-        output.chunk = output.chunk.div_ceil(down_op.stride.to_dim());
+        output.chunk = output.chunk.div_ceil(down_op.stride as i32);
     }
 
     let mut patch = TypedModelPatch::default();

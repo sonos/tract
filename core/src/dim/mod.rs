@@ -127,8 +127,8 @@ impl TDim {
     }
 
     /// Integer division rounding above.
-    pub fn div_ceil(&self, other: TDim) -> TDim {
-        TDim(self.0.clone().div_ceil(&other.0))
+    pub fn div_ceil(&self, other: i32) -> TDim {
+        TDim(self.0.clone().div_ceil(other))
     }
 }
 
@@ -238,59 +238,9 @@ impl<'a> ops::MulAssign<&'a TDim> for TDim {
     }
 }
 
-impl ops::Div<TDim> for TDim {
-    type Output = Self;
-    fn div(mut self, rhs: TDim) -> TDim {
-        self /= rhs;
-        self
-    }
-}
-
-impl<'a> ops::Div<&'a TDim> for TDim {
-    type Output = Self;
-    fn div(mut self, rhs: &'a TDim) -> TDim {
-        self /= rhs;
-        self
-    }
-}
-
-impl ops::DivAssign<TDim> for TDim {
-    fn div_assign(&mut self, rhs: TDim) {
-        self.0 /= rhs.0
-    }
-}
-
-impl<'a> ops::DivAssign<&'a TDim> for TDim {
-    fn div_assign(&mut self, rhs: &'a TDim) {
-        self.0 /= &rhs.0
-    }
-}
-
-impl ops::Rem<TDim> for TDim {
-    type Output = Self;
-    fn rem(mut self, rhs: TDim) -> TDim {
-        self %= rhs;
-        self
-    }
-}
-
-impl<'a> ops::Rem<&'a TDim> for TDim {
-    type Output = Self;
-    fn rem(mut self, rhs: &'a TDim) -> TDim {
-        self %= rhs;
-        self
-    }
-}
-
-impl ops::RemAssign<TDim> for TDim {
-    fn rem_assign(&mut self, rhs: TDim) {
-        self.0 %= rhs.0
-    }
-}
-
-impl<'a> ops::RemAssign<&'a TDim> for TDim {
-    fn rem_assign(&mut self, rhs: &'a TDim) {
-        self.0 %= &rhs.0
+impl ops::DivAssign<i32> for TDim {
+    fn div_assign(&mut self, rhs: i32) {
+        self.0 /= rhs
     }
 }
 
@@ -342,14 +292,14 @@ impl<I: AsPrimitive<i32>> ops::Mul<I> for TDim {
 impl<I: AsPrimitive<i32>> ops::Div<I> for TDim {
     type Output = Self;
     fn div(self, rhs: I) -> Self {
-        self / Self::from(rhs.as_())
+        TDim(self.0 / rhs.as_())
     }
 }
 
 impl<I: AsPrimitive<i32>> ops::Rem<I> for TDim {
     type Output = Self;
     fn rem(self, rhs: I) -> Self {
-        self % Self::from(rhs.as_())
+        TDim(self.0 % rhs.as_())
     }
 }
 
