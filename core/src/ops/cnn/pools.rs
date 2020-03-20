@@ -144,7 +144,7 @@ impl PoolSpec {
         let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
         let stride = self.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
         fact.delay /= stride;
-        fact.dim = (fact.dim.clone() - kernel_len.to_dim()).div_ceil(stride.to_dim());
+        fact.dim = (fact.dim.clone() - kernel_len.to_dim()).div_ceil(stride as i32);
         fact.shape = oshape.shape;
         Ok(tvec!(fact))
     }

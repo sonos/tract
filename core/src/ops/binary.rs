@@ -656,6 +656,7 @@ macro_rules! bin_to_super_type {
      $(declutter_bin: $declutter_bin:expr,)?
      $(declutter_unary: $declutter_unary:expr,)?
      $(flip: $flip:expr,)?
+     $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone)]
@@ -680,10 +681,11 @@ macro_rules! bin_to_super_type {
                     }
                     )*
                 )*
-                bail!("{} does not support {:?}", self.name(), a.datum_type());
+                bail!("{} does not support {:?} (inplace)", self.name(), a.datum_type());
             }
 
             fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
+                $(if $out_of_place(c, a, b)? { return Ok(()) } )?
                 $(
                     $(if c.datum_type() == $typ::datum_type() {
                         let a = a.to_array_view::<$typ>()?;
@@ -694,7 +696,7 @@ macro_rules! bin_to_super_type {
                     }
                     )*
                 )*
-                bail!("{} does not support {:?}", self.name(), c.datum_type());
+                bail!("{} does not support {:?} (out of place)", self.name(), c.datum_type());
             }
 
             fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {

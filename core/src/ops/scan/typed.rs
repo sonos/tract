@@ -582,7 +582,7 @@ impl TypedOp for TypedScan {
         let iters = {
             let (outside_slot, axis, chunk) =
                 self.input_mapping.iter().flat_map(|it| it.as_scan()).next().unwrap();
-            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.to_dim())
+            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.to_integer()?)
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.body.output_fact(ix)?;
