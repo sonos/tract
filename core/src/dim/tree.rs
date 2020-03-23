@@ -11,9 +11,9 @@ pub enum ExpNode {
     Val(i32),
     Add(Vec<ExpNode>),
     Mul(i32, Vec<ExpNode>),
-    Div(Box<ExpNode>, i32),
-    Rem(Box<ExpNode>, i32),
-    DivCeil(Box<ExpNode>, i32),
+    Div(Box<ExpNode>, u32),
+    Rem(Box<ExpNode>, u32),
+    DivCeil(Box<ExpNode>, u32),
 }
 
 impl fmt::Debug for ExpNode {
@@ -70,7 +70,7 @@ impl ExpNode {
                 }
                 Mul(v) => {
                     let a = stack.pop().expect("Too short stack");
-                    stack.push(ExpNode::Mul(*v, vec!(a)));
+                    stack.push(ExpNode::Mul(*v, vec![a]));
                 }
             }
         }
@@ -136,19 +136,19 @@ impl ExpNode {
                 let red_a = a.reduce();
                 match (red_a, b) {
                     (a, 1) => a,
-                    (Val(a), b) => Val(a / b),
+                    (Val(a), b) => Val(a / b as i32),
                     (Add(vals), b) => {
                         let mut out: Vec<ExpNode> = vec![];
                         let mut kept: Vec<ExpNode> = vec![];
                         for val in vals {
                             match val {
-                                Val(num) if num % b == 0 => {
-                                    out.push(Val(num / b));
+                                Val(num) if num % b as i32 == 0 => {
+                                    out.push(Val(num / b as i32));
                                     continue;
                                 }
                                 Mul(m, factors) => {
-                                    if m % b == 0 {
-                                        out.push(Mul(m / b, factors));
+                                    if m % b as i32 == 0 {
+                                        out.push(Mul(m / b as i32, factors));
                                     } else {
                                         kept.push(Mul(m, factors))
                                     }
@@ -171,13 +171,13 @@ impl ExpNode {
                     }
                     (Mul(v, factors), b) => {
                         use num_integer::Integer;
-                        let gcd = v.gcd(&b);
-                        if gcd == b {
+                        let gcd = v.abs().gcd(&(b as i32));
+                        if gcd == b as i32 {
                             Mul(v / gcd, factors).reduce()
                         } else if gcd == 1 {
                             Mul(v, vec![Div(b!(Mul(1, factors).reduce()), b)])
                         } else {
-                            Div(b!(Mul(v / gcd, factors)), b / gcd)
+                            Div(b!(Mul(v / gcd, factors)), b / gcd as u32)
                         }
                     }
                     (a, b) => Div(b!(a), b),
@@ -189,13 +189,13 @@ impl ExpNode {
                 if b == 1 {
                     ExpNode::Val(0)
                 } else {
-                    Add(vec![a.clone(), Mul(-b, vec![Div(b!(a.clone()), b)])]).reduce()
+                    Add(vec![a.clone(), Mul(-(b as i32), vec![Div(b!(a.clone()), b)])]).reduce()
                 }
             }
             DivCeil(a, b) => {
                 // ceiling(j/m) = floor(j+m-1/m)
                 let red_a = a.reduce();
-                Div(b!(Add(vec![red_a, Val(b), Val(-1)])), b).reduce()
+                Div(b!(Add(vec![red_a, Val(b as i32), Val(-1)])), b).reduce()
             }
             Add(mut vec) => {
                 use std::collections::HashMap;
@@ -297,7 +297,7 @@ mod tests {
         mul(-1, a)
     }
 
-    fn rem(a: &ExpNode, b: i32) -> ExpNode {
+    fn rem(a: &ExpNode, b: u32) -> ExpNode {
         ExpNode::Rem(Box::new(a.clone()), b)
     }
 
@@ -309,7 +309,7 @@ mod tests {
         ExpNode::Mul(a, vec![b.clone()])
     }
 
-    fn div(a: &ExpNode, b: i32) -> ExpNode {
+    fn div(a: &ExpNode, b: u32) -> ExpNode {
         ExpNode::Div(Box::new(a.clone()), b)
     }
 

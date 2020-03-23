@@ -14,10 +14,10 @@ pub enum StackOp {
     Val(i32),
     Neg,
     Add,
-    Div(i32),
-    DivCeil(i32),
+    Div(u32),
+    DivCeil(u32),
     Mul(i32),
-    Rem(i32)
+    Rem(u32)
 }
 
 impl fmt::Debug for Stack {
@@ -75,16 +75,16 @@ impl Stack {
                     *stack.last_mut().ok_or("Too short stack")? *= v;
                 }
                 Div(v) => {
-                    *stack.last_mut().ok_or("Too short stack")? /= v;
+                    *stack.last_mut().ok_or("Too short stack")? /= *v as i32;
                 }
                 DivCeil(v) => {
                     use num_integer::Integer;
                     let a = stack.pop().ok_or("Too short stack")?;
-                    let (d, r) = a.div_rem(v);
+                    let (d, r) = a.div_rem(&(*v as i32));
                     stack.push(d + (r > 0) as i32);
                 }
                 Rem(v) => {
-                    *stack.last_mut().ok_or("Too short stack")? %= v;
+                    *stack.last_mut().ok_or("Too short stack")? %= *v as i32;
                 }
             }
         }
@@ -133,7 +133,7 @@ impl Stack {
         return None;
     }
 
-    pub fn div_ceil(self, rhs: i32) -> Stack {
+    pub fn div_ceil(self, rhs: u32) -> Stack {
         ExpNode::DivCeil(Box::new(self.to_tree()), rhs).reduce().to_stack()
     }
 
@@ -255,31 +255,31 @@ where
     }
 }
 
-impl ops::DivAssign<i32> for Stack {
-    fn div_assign(&mut self, rhs: i32) {
+impl ops::DivAssign<u32> for Stack {
+    fn div_assign(&mut self, rhs: u32) {
         *self = ExpNode::Div(Box::new(self.to_tree()), rhs).reduce().to_stack()
     }
 }
 
-impl ops::Div<i32> for Stack
+impl ops::Div<u32> for Stack
 {
     type Output = Self;
-    fn div(mut self, rhs: i32) -> Self {
+    fn div(mut self, rhs: u32) -> Self {
         self /= rhs;
         self
     }
 }
 
-impl ops::RemAssign<i32> for Stack {
-    fn rem_assign(&mut self, rhs: i32) {
+impl ops::RemAssign<u32> for Stack {
+    fn rem_assign(&mut self, rhs: u32) {
         *self = ExpNode::Rem(Box::new(self.to_tree()), rhs).reduce().to_stack()
     }
 }
 
-impl ops::Rem<i32> for Stack
+impl ops::Rem<u32> for Stack
 {
     type Output = Self;
-    fn rem(mut self, rhs: i32) -> Self {
+    fn rem(mut self, rhs: u32) -> Self {
         self %= rhs;
         self
     }
