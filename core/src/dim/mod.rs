@@ -35,8 +35,6 @@ pub trait DimLike:
     + ops::Sub<usize, Output = Self>
     + for<'a> ops::Sub<&'a Self, Output = Self>
     + ops::Mul<usize, Output = Self>
-    + ops::Mul<Self, Output = Self>
-    + for<'a> ops::Mul<&'a Self, Output = Self>
     + ops::Div<usize, Output = Self>
     + ops::Rem<usize, Output = Self>
     + Send
