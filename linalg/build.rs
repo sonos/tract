@@ -95,25 +95,24 @@ fn preprocess_files(input: impl AsRef<path::Path>) -> Vec<path::PathBuf> {
 fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>) {
     let family = var("CARGO_CFG_TARGET_FAMILY").unwrap();
     let os = var("CARGO_CFG_TARGET_OS").unwrap();
-    let mut globals = liquid::value::Object::new();
-    globals.insert("family".into(), liquid::value::Value::scalar(family.clone()));
-    globals.insert("os".into(), liquid::value::Value::scalar(os.clone()));
     let mut input = fs::read_to_string(input).unwrap();
     if family == "windows" {
         input =
             input.lines().map(|line| line.replace("//", ";")).collect::<Vec<String>>().join("\n");
     }
-    globals.insert(
-        "L".into(),
-        liquid::value::Value::scalar(if os == "macos" {
-            "L"
-        } else if family == "windows" {
-            ""
-        } else {
-            "."
-        }),
-    );
-    liquid::ParserBuilder::with_liquid()
+    let l = if os == "macos" {
+        "L"
+    } else if family == "windows" {
+        ""
+    } else {
+        "."
+    }.to_owned();
+    let globals = liquid::object!({
+        "family": family,
+        "os": os,
+        "L": l,
+    });
+    liquid::ParserBuilder::with_stdlib()
         .build()
         .unwrap()
         .parse(&*input)
