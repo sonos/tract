@@ -133,12 +133,17 @@ impl Stack {
         return None;
     }
 
-    pub fn div_ceil(self, rhs: u32) -> Stack {
-        ExpNode::DivCeil(Box::new(self.to_tree()), rhs).reduce().to_stack()
+    pub fn div_ceil(mut self, rhs: u32) -> Stack {
+        self.0.push(StackOp::DivCeil(rhs));
+        self.reduce()
     }
 
     pub fn to_tree(&self) -> ExpNode {
         ExpNode::from_ops(self)
+    }
+
+    fn reduce(self) -> Stack {
+        self.to_tree().reduce().to_stack()
     }
 }
 
@@ -272,7 +277,8 @@ impl ops::Div<u32> for Stack
 
 impl ops::RemAssign<u32> for Stack {
     fn rem_assign(&mut self, rhs: u32) {
-        *self = ExpNode::Rem(Box::new(self.to_tree()), rhs).reduce().to_stack()
+        self.0.push(StackOp::Rem(rhs));
+        self.0 = self.to_tree().reduce().to_stack().0
     }
 }
 

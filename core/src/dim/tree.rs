@@ -12,8 +12,6 @@ pub enum ExpNode {
     Add(Vec<ExpNode>),
     Mul(i32, Vec<ExpNode>),
     Div(Box<ExpNode>, u32),
-    Rem(Box<ExpNode>, u32),
-    DivCeil(Box<ExpNode>, u32),
 }
 
 impl fmt::Debug for ExpNode {
@@ -28,21 +26,19 @@ impl fmt::Debug for ExpNode {
             }
             Mul(a, b) => write!(fmt, "{}.{}", a, b.iter().map(|x| format!("{:?}", x)).join("")),
             Div(a, b) => write!(fmt, "{:?}/{:?}", a, b),
-            Rem(a, b) => write!(fmt, "{:?}%{:?}", a, b),
-            DivCeil(a, b) => write!(fmt, "({:?}/{:?}).ceil()", a, b),
         }
     }
 }
 
 impl ExpNode {
     pub fn from_ops(ops: &Stack) -> ExpNode {
-        use self::StackOp::*;
+        use ExpNode::*;
         let mut stack: Vec<ExpNode> = vec![];
         for op in ops.as_ops().iter() {
             match op {
-                Val(v) => stack.push(ExpNode::Val(*v)),
-                Sym(v) => stack.push(ExpNode::Sym(*v)),
-                Add => {
+                StackOp::Val(v) => stack.push(ExpNode::Val(*v)),
+                StackOp::Sym(v) => stack.push(ExpNode::Sym(*v)),
+                StackOp::Add => {
                     let b = stack.pop().expect("Too short stack");
                     let a = stack.pop().expect("Too short stack");
                     if let ExpNode::Add(mut items) = a {
@@ -52,23 +48,24 @@ impl ExpNode {
                         stack.push(ExpNode::Add(vec![a, b]));
                     }
                 }
-                Neg => {
+                StackOp::Neg => {
                     let a = stack.pop().expect("Too short stack");
-                    stack.push(ExpNode::Mul(-1, vec![a]));
+                    stack.push(Mul(-1, vec![a]));
                 }
-                Div(v) => {
+                StackOp::Div(v) => {
                     let a = stack.pop().expect("Too short stack");
-                    stack.push(ExpNode::Div(Box::new(a), *v));
+                    stack.push(Div(Box::new(a), *v));
                 }
-                DivCeil(v) => {
+                StackOp::DivCeil(v) => {
                     let a = stack.pop().expect("Too short stack");
-                    stack.push(ExpNode::DivCeil(Box::new(a), *v));
+                    stack.push(Div(b!(Add(vec![a, Val(*v as i32), Val(-1)])), *v))
                 }
-                Rem(v) => {
+                StackOp::Rem(v) => {
+                    // a%b = a - b*(a/b)
                     let a = stack.pop().expect("Too short stack");
-                    stack.push(ExpNode::Rem(b!(a), *v));
+                    stack.push(Add(vec!(a.clone(), Mul(-(*v as i32), vec!(Div(b!(a), *v))))))
                 }
-                Mul(v) => {
+                StackOp::Mul(v) => {
                     let a = stack.pop().expect("Too short stack");
                     stack.push(ExpNode::Mul(*v, vec![a]));
                 }
@@ -95,35 +92,10 @@ impl ExpNode {
                 let mut it = vec[0].to_stack();
                 it.push(StackOp::Mul(*v));
                 it
-                /*
-                if *v != 1 {
-                    it.push(StackOp::Val(*v));
-                }
-                let (first, rest) = vec.split_first().expect("Empty mul node");
-                it.push_all(first.to_stack().as_ops());
-                for other in rest {
-                    it.push_all(other.to_stack().as_ops());
-                    it.push(StackOp::Mul);
-                }
-                if *v != 1 {
-                    it.push(StackOp::Mul);
-                }
-                it
-                */
             }
             ExpNode::Div(a, b) => {
                 let mut it = a.to_stack();
                 it.push(StackOp::Div(*b));
-                it
-            }
-            ExpNode::Rem(a, b) => {
-                let mut it = a.to_stack();
-                it.push(StackOp::Rem(*b));
-                it
-            }
-            ExpNode::DivCeil(a, b) => {
-                let mut it = a.to_stack();
-                it.push(StackOp::DivCeil(*b));
                 it
             }
         }
@@ -183,6 +155,7 @@ impl ExpNode {
                     (a, b) => Div(b!(a), b),
                 }
             }
+            /*
             Rem(a, b) => {
                 // a%b = a - b*(a/b)
                 let a = a.reduce();
@@ -192,11 +165,7 @@ impl ExpNode {
                     Add(vec![a.clone(), Mul(-(b as i32), vec![Div(b!(a.clone()), b)])]).reduce()
                 }
             }
-            DivCeil(a, b) => {
-                // ceiling(j/m) = floor(j+m-1/m)
-                let red_a = a.reduce();
-                Div(b!(Add(vec![red_a, Val(b as i32), Val(-1)])), b).reduce()
-            }
+            */
             Add(mut vec) => {
                 use std::collections::HashMap;
                 let mut reduced: HashMap<ExpNode, i32> = HashMap::new();
@@ -295,10 +264,6 @@ mod tests {
 
     fn neg(a: &ExpNode) -> ExpNode {
         mul(-1, a)
-    }
-
-    fn rem(a: &ExpNode, b: u32) -> ExpNode {
-        ExpNode::Rem(Box::new(a.clone()), b)
     }
 
     fn add(a: &ExpNode, b: &ExpNode) -> ExpNode {
@@ -433,10 +398,5 @@ mod tests {
     #[test]
     fn reduce_mul_div_1() {
         assert_eq!(mul(2, &div(&mul(-1, &Sym('S')), 3)).reduce(), mul(-2, &div(&Sym('S'), 3)))
-    }
-
-    #[test]
-    fn reduce_rem_div() {
-        assert_eq!(div(&rem(&Sym('S'), 2), 2).reduce(), Val(0))
     }
 }
