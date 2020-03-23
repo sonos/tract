@@ -16,7 +16,7 @@ pub enum StackOp {
     Add,
     Div(i32),
     DivCeil(i32),
-    Mul,
+    Mul(i32),
     Rem(i32)
 }
 
@@ -71,9 +71,8 @@ impl Stack {
                     let b = stack.pop().ok_or("Too short stack")?;
                     *stack.last_mut().ok_or("Too short stack")? += b;
                 }
-                Mul => {
-                    let b = stack.pop().ok_or("Too short stack")?;
-                    *stack.last_mut().ok_or("Too short stack")? *= b;
+                Mul(v) => {
+                    *stack.last_mut().ok_or("Too short stack")? *= v;
                 }
                 Div(v) => {
                     *stack.last_mut().ok_or("Too short stack")? /= v;

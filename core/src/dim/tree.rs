@@ -3,6 +3,8 @@ use std::fmt;
 
 use super::stack::*;
 
+macro_rules! b( ($e:expr) => { Box::new($e) } );
+
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum ExpNode {
     Sym(char),
@@ -64,12 +66,11 @@ impl ExpNode {
                 }
                 Rem(v) => {
                     let a = stack.pop().expect("Too short stack");
-                    stack.push(ExpNode::Rem(Box::new(a), *v));
+                    stack.push(ExpNode::Rem(b!(a), *v));
                 }
-                Mul => {
-                    let b = stack.pop().expect("Too short stack");
+                Mul(v) => {
                     let a = stack.pop().expect("Too short stack");
-                    stack.push(ExpNode::Mul(1, vec![a, b]));
+                    stack.push(ExpNode::Mul(*v, vec!(a)));
                 }
             }
         }
@@ -90,7 +91,11 @@ impl ExpNode {
                 it
             }
             ExpNode::Mul(v, vec) => {
-                let mut it = Stack::empty();
+                assert!(vec.len() == 1);
+                let mut it = vec[0].to_stack();
+                it.push(StackOp::Mul(*v));
+                it
+                /*
                 if *v != 1 {
                     it.push(StackOp::Val(*v));
                 }
@@ -104,6 +109,7 @@ impl ExpNode {
                     it.push(StackOp::Mul);
                 }
                 it
+                */
             }
             ExpNode::Div(a, b) => {
                 let mut it = a.to_stack();
@@ -124,7 +130,6 @@ impl ExpNode {
     }
 
     pub fn reduce(self) -> ExpNode {
-        macro_rules! b( ($e:expr) => { Box::new($e) } );
         use self::ExpNode::*;
         let res = match self {
             Div(a, b) => {
