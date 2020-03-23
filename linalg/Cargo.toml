@@ -24,7 +24,7 @@ dyn-clone = "1"
 
 [build-dependencies]
 cc = "1.0"
-liquid = "0.19"
+liquid = "0.20"
 unicode-normalization = "0.1"
 smallvec = "1"
 
