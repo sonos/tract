@@ -53,7 +53,7 @@ pub fn rules_for_shape<'r, 'p: 'r, 's: 'r>(
 ) -> InferenceResult {
     s.equals(&outputs[0].rank, &inputs[0].rank)?;
     s.given(&inputs[0].shape, move |s, ishape| {
-        let ishape = pool_spec.data_format.shape(ishape);
+        let ishape = pool_spec.data_format.shape(ishape)?;
         let ones = tvec![1; ishape.hw_rank()];
         let computed = pool_spec.padding.compute(
             ishape.hw_dims(),

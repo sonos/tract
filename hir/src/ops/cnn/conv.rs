@@ -83,7 +83,7 @@ impl Conv {
         Conv { override_output_datum_type: Some(override_output_datum_type), ..self }
     }
 
-    pub fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[usize]) -> TVec<D> {
+    pub fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[usize]) -> TractResult<TVec<D>> {
         debug_assert_eq!(
             ishape.len()
                 + (self.data_format == DataFormat::HWC || self.data_format == DataFormat::CHW)
@@ -92,7 +92,7 @@ impl Conv {
             "Input and kernel ranks are inconsistent"
         );
         let mut result: TVec<D> = ishape.into();
-        let ishape = self.data_format.shape(ishape);
+        let ishape = self.data_format.shape(ishape)?;
         let spatial_rank = ishape.hw_rank();
         let ones = tvec![1; spatial_rank];
         let kernel_spatial_shape = &kshape[self.kernel_fmt.h_axis()..][..spatial_rank];
@@ -110,13 +110,13 @@ impl Conv {
         for (ix, d) in computed.iter().enumerate() {
             result[ishape.h_axis() + ix] = d.output.clone();
         }
-        result
+        Ok(result)
     }
 
     pub fn to_unary(&self, inputs: &[&TypedFact]) -> TractResult<Option<ConvUnary>> {
         let input = &inputs[0].borrow();
         let kernel = &inputs[self.k_input.unwrap_or(1)].borrow();
-        let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>());
+        let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>())?;
         let kshape = kernel.shape.iter().collect::<TVec<_>>();
         let channels_in = match self.kernel_fmt {
             KernelFormat::OIHW => kshape[1].clone() * self.group.unwrap_or(1),
@@ -285,7 +285,7 @@ impl InferenceRulesOp for Conv {
             if kshape.iter().all(|d| d.to_integer().is_ok()) {
                 let kshape: TVec<usize> =
                     kshape.iter().map(|d| d.to_integer().unwrap() as _).collect();
-                let oshape = self.output_shape(&*ishape, &*kshape);
+                let oshape = self.output_shape(&*ishape, &*kshape)?;
                 s.equals(&outputs[0].shape, oshape)?;
             }
             Ok(())

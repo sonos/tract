@@ -45,7 +45,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
         ci_per_group: usize,
         b_pack: PackB<T>,
         pad_value: T,
-    ) -> Im2Col<T> {
+    ) -> TractResult<Im2Col<T>> {
         let patcher = if !patch.padded && patch.rank() == 2 {
             Patcher::Valid2d
         } else if patch.rank() == 2 {
@@ -56,8 +56,8 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
             Patcher::Generic
         };
         let output_shape =
-            input_shape.fmt.shape(tvec!(*input_shape.n_dim().unwrap_or(&1), group, b_pack.len()));
-        Im2Col {
+            input_shape.fmt.shape(tvec!(*input_shape.n_dim().unwrap_or(&1), group, b_pack.len()))?;
+        Ok(Im2Col {
             patch,
             input_shape,
             output_shape,
@@ -69,7 +69,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
             b_pack,
             patcher,
             pad_value,
-        }
+        })
     }
 
     pub fn output_shape(&self) -> &[usize] {

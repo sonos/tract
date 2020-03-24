@@ -887,7 +887,7 @@ fn cost<A: ToDim + Clone, B: ToDim + Clone>(
         b_trans,
         false,
     )?;
-    let mul = bc_c_shape.iter().rev().skip(2).cloned().product::<TDim>();
+    let mul = bc_c_shape.iter().rev().skip(2).cloned().maybe_product()?;
     let m = &bc_a_shape[bc_a_shape.len() - 2 + a_trans as usize];
     let k = &bc_a_shape[bc_a_shape.len() - 1 - a_trans as usize];
     let n = &bc_b_shape[bc_b_shape.len() - 1 - b_trans as usize];

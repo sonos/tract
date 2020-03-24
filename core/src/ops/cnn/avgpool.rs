@@ -21,7 +21,7 @@ impl AvgPool {
     where
         usize: AsPrimitive<T>,
     {
-        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_shape);
+        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_shape)?;
         let op = AvgPoolFixed::<T>::new(patch, input_shape, output_shape, self.count_include_pad);
         Ok(Box::new(op))
     }

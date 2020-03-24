@@ -40,9 +40,10 @@ pub trait DimLike:
     + Send
     + Sync
     + 'static
-    + std::iter::Product
     + std::iter::Sum
 {
+    fn maybe_mul(&self, other: &Self) -> TractResult<Self>;
+
     /// Integer divise, rounding up to next integer.
     fn div_ceil(&self, other: usize) -> Self {
         (self.clone() + other - 1) / other
@@ -53,14 +54,38 @@ pub trait DimLike:
 }
 
 impl DimLike for TDim {
+    fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
+        if let Ok(d) = other.to_integer() {
+            Ok(TDim(self.0.clone() * d))
+        } else if let Ok(a) = self.to_integer() {
+            Ok(other.clone() * a)
+        } else {
+            bail!("product with too many symbols")
+        }
+    }
+
     fn to_integer(&self) -> TractResult<i32> {
         TDim::to_integer(self)
     }
 }
 
 impl DimLike for usize {
+    fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
+        Ok(self * other)
+    }
+
     fn to_integer(&self) -> TractResult<i32> {
         Ok(*self as i32)
+    }
+}
+
+pub trait MaybeProduct<D> {
+    fn maybe_product(self) -> TractResult<D>;
+}
+
+impl<D: DimLike, A: std::borrow::Borrow<D>, I: Iterator<Item = A>> MaybeProduct<D> for I {
+    fn maybe_product(mut self) -> TractResult<D> {
+        self.try_fold(D::one(), |acc, d| acc.maybe_mul(d.borrow()))
     }
 }
 
@@ -122,6 +147,11 @@ impl TDim {
     /// Convert to integer if possible.
     pub fn to_integer(&self) -> TractResult<i32> {
         self.0.eval(&hashmap!())
+    }
+
+    /// Integer division rounding above.
+    pub fn mul(&self, other: u32) -> TDim {
+        TDim(self.0.clone().div_ceil(other))
     }
 
     /// Integer division rounding above.
@@ -245,12 +275,6 @@ impl ops::DivAssign<u32> for TDim {
 impl ::std::iter::Sum for TDim {
     fn sum<I: Iterator<Item = TDim>>(iter: I) -> TDim {
         iter.fold(0.to_dim(), |a, b| a + b)
-    }
-}
-
-impl ::std::iter::Product for TDim {
-    fn product<I: Iterator<Item = TDim>>(iter: I) -> TDim {
-        iter.fold(1.to_dim(), |a, b| a * b)
     }
 }
 

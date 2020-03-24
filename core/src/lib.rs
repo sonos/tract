@@ -113,7 +113,7 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
-    pub use crate::dim::{DimLike, TDim, ToDim};
+    pub use crate::dim::{DimLike, TDim, ToDim, MaybeProduct};
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;

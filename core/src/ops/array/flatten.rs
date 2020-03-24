@@ -21,16 +21,7 @@ impl Flatten {
         if shape.iter().filter(|d| d.to_integer().is_err()).count() > 1 {
             bail!("Can not compute a shape with square of symbols")
         }
-        let shape_left: usize =
-            shape[..self.axis].iter().fold(1, |acc, v| acc * v.to_integer().unwrap_or(1)) as usize;
-        let shape_right: usize =
-            shape[self.axis..].iter().fold(1, |acc, v| acc * v.to_integer().unwrap_or(1)) as usize;
-        let stream = shape.iter().position(|d| d.to_integer().is_err());
-        Ok(match stream {
-            None => [D::from(shape_left), D::from(shape_right)],
-            Some(ix) if ix < self.axis => [shape[ix].clone() * shape_left, shape_right.into()],
-            Some(ix) => [shape_left.into(), shape[ix].clone() * shape_right],
-        })
+        Ok([shape[..self.axis].iter().maybe_product()?, shape[self.axis..].iter().maybe_product()?])
     }
 }
 

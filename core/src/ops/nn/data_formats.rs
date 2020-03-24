@@ -1,5 +1,4 @@
-use crate::dim::DimLike;
-use crate::model::TVec;
+use crate::internal::*;
 use std::fmt;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -25,7 +24,7 @@ impl DataFormat {
         }
     }
 
-    pub fn shape<D, S>(&self, shape: S) -> BaseDataShape<D, S>
+    pub fn shape<D, S>(&self, shape: S) -> TractResult<BaseDataShape<D, S>>
     where
         D: DimLike,
         S: AsRef<[D]> + fmt::Debug,
@@ -33,28 +32,16 @@ impl DataFormat {
         if shape.as_ref().iter().filter(|d| d.to_integer().is_err()).count() > 1 {
             panic!("Can not work out a data format with two actual symbolic dim")
         }
-        let mut strides: Vec<i32> = vec![1];
+        let mut strides: Vec<D> = vec![D::one()];
         for dim in shape.as_ref().iter().skip(1).rev() {
             let previous = strides.last().unwrap().clone();
-            strides.push(previous * dim.to_integer().unwrap_or(1));
+            strides.push(previous.maybe_mul(dim)?)
         }
         strides.reverse();
-        let stream_index = shape.as_ref().iter().position(|d| d.to_integer().is_err()).unwrap_or(0);
-        let strides = strides
-            .iter()
-            .enumerate()
-            .map(|(ix, d)| {
-                if ix < stream_index {
-                    shape.as_ref()[stream_index].clone() * *d as usize
-                } else {
-                    (*d as usize).into()
-                }
-            })
-            .collect();
-        BaseDataShape { fmt: *self, shape, strides }
+        Ok(BaseDataShape { fmt: *self, shape, strides })
     }
 
-    pub fn from_n_c_hw<D, S>(&self, n: D, c: D, shape: S) -> BaseDataShape<D, TVec<D>>
+    pub fn from_n_c_hw<D, S>(&self, n: D, c: D, shape: S) -> TractResult<BaseDataShape<D, TVec<D>>>
     where
         D: DimLike,
         S: AsRef<[D]> + fmt::Debug,

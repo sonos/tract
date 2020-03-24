@@ -174,7 +174,7 @@ impl ConvUnary {
     {
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =
-            self.pool_spec.compute_geo(&*model.outlet_fact(wire)?.shape.as_finite().unwrap());
+            self.pool_spec.compute_geo(&*model.outlet_fact(wire)?.shape.as_finite().unwrap())?;
 
         trace!("input: {:?}", input_shape);
 
@@ -233,7 +233,7 @@ impl ConvUnary {
                         .map(|t| t.to_scalar::<TB>().map(|x| *x))
                         .transpose()?
                         .unwrap_or(TB::default()),
-                ),
+                )?,
                 &[wire],
             )?[0];
         }
@@ -272,7 +272,7 @@ impl ConvUnary {
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + PartialEq + Sum,
     {
-        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape);
+        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape)?;
         let bias =
             if let Some(b) = self.bias.as_ref() { Some(b.as_slice::<T>()?.to_vec()) } else { None };
         let op = DepthWise::<T>::new(
@@ -306,7 +306,7 @@ impl ConvUnary {
             let mut patch = TypedModelPatch::default();
             let tap = patch.tap_model(model, node.inputs[0])?;
             let shape =
-                self.pool_spec.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>());
+                self.pool_spec.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>())?;
             let down = patch.wire_node(
                 format!("Downsample-{}", node.name),
                 crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0),
@@ -327,7 +327,7 @@ impl ConvUnary {
         use crate::ops::matmul::MatMulUnary;
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let full_input_shape = input_fact.shape.to_tvec();
-        let input_shape = self.pool_spec.data_format.shape(&full_input_shape);
+        let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
         if input_shape.hw_rank() == 1
             && self.group == 1
             && self.pool_spec.stride(0) == 1
@@ -451,7 +451,7 @@ impl TypedOp for ConvUnary {
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let fact = model.outlet_fact(node.inputs[0])?;
-        let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
+        let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
         let mut axes = vec![];
         if let Some(n_axis) = shape.n_axis() {
             axes.push(AxisInfo::simple(n_axis).disposable(true));
@@ -481,7 +481,7 @@ impl TypedOp for ConvUnary {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec());
+        let shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let output_dims = self.pool_spec.padding.compute(
@@ -490,7 +490,7 @@ impl TypedOp for ConvUnary {
             &*self.pool_spec.dilations.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
             &*self.pool_spec.strides.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
         );
-        let n_output_points: TDim = output_dims.iter().map(|d| d.output.clone()).product::<TDim>();
+        let n_output_points: TDim = output_dims.iter().map(|d| d.output.clone()).maybe_product()?;
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         let one = 1.to_dim();
@@ -513,7 +513,7 @@ impl TypedOp for ConvUnary {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
-        let shape = self.pool_spec.data_format.shape(full_input_shape.clone());
+        let shape = self.pool_spec.data_format.shape(full_input_shape.clone())?;
         // remove n
         if let Some(n) = shape.n_axis() {
             assert_eq!(n, 0);
@@ -555,7 +555,7 @@ impl TypedOp for ConvUnary {
             }
         };
         // geo axes
-        let new_shape = new_data_format.shape(new_full_input_shape);
+        let new_shape = new_data_format.shape(new_full_input_shape)?;
         let mut dilations = tvec!(1; new_shape.hw_rank());
         let mut strides = tvec!(1; new_shape.hw_rank());
         let mut new_kernel_spatial_shape = tvec!(1; new_shape.hw_rank());
@@ -633,7 +633,7 @@ impl TypedOp for ConvUnary {
     ) -> TractResult<Option<TypedModelPatch>> {
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_fact = model.outlet_fact(node.inputs[0])?;
-        let input_shape = self.pool_spec.data_format.shape(&full_input_shape);
+        let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
         let spatial_rank = input_shape.hw_rank();
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         if let Some(shape) = input_fact.shape.as_finite() {
@@ -650,7 +650,7 @@ impl TypedOp for ConvUnary {
                     let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
                     let mut reshaped_input = tvec!(
                         input_shape.n().cloned().unwrap_or(1.to_dim()),
-                        input_shape.hw_dims().iter().cloned().product::<TDim>(),
+                        input_shape.hw_dims().iter().cloned().maybe_product()?,
                         input_shape.c().clone(),
                     );
                     if !input_c_is_last {
