@@ -588,8 +588,10 @@ impl TypedOp for TypedScan {
             let fact = self.body.output_fact(ix)?;
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();
-                let scanning_dim =
-                    output.full_dim_hint.clone().unwrap_or(shape.dim(output.axis) * &iters);
+                let scanning_dim = output
+                    .full_dim_hint
+                    .clone()
+                    .unwrap_or(shape.dim(output.axis).maybe_mul(&iters)?);
                 shape.set_dim(output.axis, scanning_dim)?;
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }

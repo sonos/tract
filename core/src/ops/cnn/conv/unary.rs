@@ -305,8 +305,10 @@ impl ConvUnary {
             new_op.pool_spec.strides.as_mut().unwrap()[axis] /= downsample_factor;
             let mut patch = TypedModelPatch::default();
             let tap = patch.tap_model(model, node.inputs[0])?;
-            let shape =
-                self.pool_spec.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>())?;
+            let shape = self
+                .pool_spec
+                .data_format
+                .shape(input_fact.shape.iter().collect::<TVec<TDim>>())?;
             let down = patch.wire_node(
                 format!("Downsample-{}", node.name),
                 crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0),
@@ -496,11 +498,13 @@ impl TypedOp for ConvUnary {
         let one = 1.to_dim();
         Ok(tvec!((
             Cost::FMA(inputs[0].datum_type),
-            shape.n().unwrap_or(&one).clone()
-                * shape.c()
-                * n_output_channels
-                * n_output_points
-                * kernel_surface
+            shape
+                .n()
+                .unwrap_or(&one)
+                .maybe_mul(shape.c())?
+                .maybe_mul(&n_output_channels)?
+                .maybe_mul(&n_output_points)?
+                .maybe_mul(&kernel_surface)?
                 / self.group
         )))
     }

@@ -4,7 +4,6 @@ use std::ops;
 use std::str::FromStr;
 
 use num_traits::cast::AsPrimitive;
-use num_traits::One;
 use num_traits::Zero;
 
 mod stack;
@@ -24,7 +23,6 @@ pub trait DimLike:
     + Default
     + PartialEq
     + From<usize>
-    + ::num_traits::One
     + ::num_traits::Zero
     + fmt::Debug
     + fmt::Display
@@ -51,6 +49,9 @@ pub trait DimLike:
 
     /// Convert to regular integer.
     fn to_integer(&self) -> TractResult<i32>;
+
+    /// do not use num_traits::Mul as it implies a regular Mul
+    fn one() -> Self;
 }
 
 impl DimLike for TDim {
@@ -67,6 +68,10 @@ impl DimLike for TDim {
     fn to_integer(&self) -> TractResult<i32> {
         TDim::to_integer(self)
     }
+
+    fn one() -> Self {
+        Self::from(1)
+    }
 }
 
 impl DimLike for usize {
@@ -76,6 +81,10 @@ impl DimLike for usize {
 
     fn to_integer(&self) -> TractResult<i32> {
         Ok(*self as i32)
+    }
+
+    fn one() -> usize {
+        1
     }
 }
 
@@ -149,7 +158,6 @@ impl TDim {
         self.0.eval(&hashmap!())
     }
 
-    /// Integer division rounding above.
     pub fn mul(&self, other: u32) -> TDim {
         TDim(self.0.clone().div_ceil(other))
     }
@@ -166,12 +174,6 @@ impl Zero for TDim {
     }
     fn is_zero(&self) -> bool {
         *self == Self::zero()
-    }
-}
-
-impl One for TDim {
-    fn one() -> Self {
-        Self::from(1)
     }
 }
 
@@ -238,34 +240,6 @@ impl<'a> ops::SubAssign<&'a TDim> for TDim {
     }
 }
 
-impl ops::Mul<TDim> for TDim {
-    type Output = Self;
-    fn mul(mut self, rhs: TDim) -> Self {
-        self *= rhs;
-        self
-    }
-}
-
-impl<'a> ops::Mul<&'a TDim> for TDim {
-    type Output = Self;
-    fn mul(mut self, rhs: &'a TDim) -> Self {
-        self *= rhs;
-        self
-    }
-}
-
-impl ops::MulAssign<TDim> for TDim {
-    fn mul_assign(&mut self, rhs: TDim) {
-        self.0 *= rhs.0
-    }
-}
-
-impl<'a> ops::MulAssign<&'a TDim> for TDim {
-    fn mul_assign(&mut self, rhs: &'a TDim) {
-        self.0 *= &rhs.0
-    }
-}
-
 impl ops::DivAssign<u32> for TDim {
     fn div_assign(&mut self, rhs: u32) {
         self.0 /= rhs
@@ -307,7 +281,7 @@ impl<I: AsPrimitive<i32>> ops::Sub<I> for TDim {
 impl<I: AsPrimitive<i32>> ops::Mul<I> for TDim {
     type Output = Self;
     fn mul(self, rhs: I) -> Self {
-        self * Self::from(rhs.as_())
+        TDim(self.0 * rhs.as_())
     }
 }
 

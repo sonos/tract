@@ -891,7 +891,7 @@ fn cost<A: ToDim + Clone, B: ToDim + Clone>(
     let m = &bc_a_shape[bc_a_shape.len() - 2 + a_trans as usize];
     let k = &bc_a_shape[bc_a_shape.len() - 1 - a_trans as usize];
     let n = &bc_b_shape[bc_b_shape.len() - 1 - b_trans as usize];
-    Ok(tvec!((Cost::FMA(dt), (mul * m * k * n))))
+    Ok(tvec!((Cost::FMA(dt), [mul, m.clone(), k.clone(), n.clone()].iter().maybe_product()?)))
 }
 
 #[cfg(test)]
