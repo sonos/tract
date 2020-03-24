@@ -286,8 +286,8 @@ impl Factoid for ShapeFactoid {
     fn unify(&self, other: &Self) -> TractResult<Self> {
         let (x, y) = (self, other);
 
-        use itertools::EitherOrBoth::{Both, Left, Right};
-        use itertools::Itertools;
+        use tract_itertools::EitherOrBoth::{Both, Left, Right};
+        use tract_itertools::Itertools;
 
         let xi = x.dims();
         let yi = y.dims();

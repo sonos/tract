@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 
 use ansi_term::Color::*;
-use itertools::Itertools;
 
 use tract_core::internal::*;
+use tract_itertools::Itertools;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;

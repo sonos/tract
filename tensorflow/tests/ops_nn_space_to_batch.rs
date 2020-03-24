@@ -51,11 +51,11 @@ fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
                 .unwrap();
                 let block_size = Array1::from_shape_fn(sd.len(), |i| bs[i] as i32).into_dyn();
                 let padding = Array2::<i32>::from_shape_fn((sd.len(), 2), |(d, locus)| {
-                    (if locus == 0 {
+                    if locus == 0 {
                         left_pad[d] as i32
                     } else {
                         block_size[d] - (sd[d] + left_pad[d]) as i32 % block_size[d]
-                    })
+                    }
                 });
                 (input.into(), block_size.into(), padding.into_dyn().into())
             },
