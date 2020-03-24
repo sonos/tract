@@ -17,7 +17,7 @@ pub enum StackOp {
     Div(u32),
     DivCeil(u32),
     Mul(i32),
-    Rem(u32)
+    Rem(u32),
 }
 
 impl fmt::Debug for Stack {
@@ -234,27 +234,15 @@ where
     }
 }
 
-impl<'a> ops::MulAssign<&'a Stack> for Stack {
-    fn mul_assign(&mut self, rhs: &'a Stack) {
-        *self = ExpNode::Mul(1, vec![self.to_tree(), rhs.to_tree()]).reduce().to_stack()
+impl ops::MulAssign<i32> for Stack {
+    fn mul_assign(&mut self, rhs: i32) {
+        *self = ExpNode::Mul(rhs, Box::new(self.to_tree())).reduce().to_stack()
     }
 }
 
-impl<I> ops::MulAssign<I> for Stack
-where
-    I: Into<Stack>,
-{
-    fn mul_assign(&mut self, rhs: I) {
-        *self = ExpNode::Mul(1, vec![self.to_tree(), rhs.into().to_tree()]).reduce().to_stack()
-    }
-}
-
-impl<I> ops::Mul<I> for Stack
-where
-    I: Into<Stack>,
-{
+impl ops::Mul<i32> for Stack {
     type Output = Self;
-    fn mul(mut self, rhs: I) -> Self {
+    fn mul(mut self, rhs: i32) -> Self {
         self *= rhs;
         self
     }
@@ -266,8 +254,7 @@ impl ops::DivAssign<u32> for Stack {
     }
 }
 
-impl ops::Div<u32> for Stack
-{
+impl ops::Div<u32> for Stack {
     type Output = Self;
     fn div(mut self, rhs: u32) -> Self {
         self /= rhs;
@@ -282,8 +269,7 @@ impl ops::RemAssign<u32> for Stack {
     }
 }
 
-impl ops::Rem<u32> for Stack
-{
+impl ops::Rem<u32> for Stack {
     type Output = Self;
     fn rem(mut self, rhs: u32) -> Self {
         self %= rhs;
@@ -364,13 +350,13 @@ mod tests {
     #[test]
     fn reduce_div_mul() {
         let e: Stack = Stack::sym('S') / 2 * 2;
-        assert_eq!(e, Stack::from(2) * (Stack::sym('S') / 2));
+        assert_ne!(e, Stack::sym('S'));
     }
 
     #[test]
     fn reduce_neg_mul_() {
-        let e: Stack = Stack::from(1) - Stack::from(2) * Stack::sym('S');
-        assert_eq!(e, Stack::from(1) + -Stack::from(2) * Stack::sym('S'));
+        let e: Stack = Stack::from(1) - Stack::sym('S') * 2;
+        assert_eq!(e, Stack::from(1) + Stack::sym('S') * -2);
     }
 
     #[test]
