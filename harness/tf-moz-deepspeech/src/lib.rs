@@ -10,7 +10,6 @@ use std::str::FromStr;
 
 use tract_tensorflow::prelude::*;
 
-#[allow(dead_code)]
 #[cfg(test)]
 fn setup_test_logger() {
     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
