@@ -1,5 +1,5 @@
 use bit_set::BitSet;
-use itertools::Itertools;
+use tract_itertools::Itertools;
 use std::collections::BTreeMap;
 
 use tract_hir::internal::*;

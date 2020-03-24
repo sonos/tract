@@ -51,7 +51,7 @@ pub extern crate downcast_rs;
 pub extern crate error_chain;
 #[allow(unused_imports)]
 #[macro_use]
-extern crate itertools;
+pub extern crate itertools;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
@@ -107,6 +107,7 @@ pub mod prelude {
 
     pub use ndarray as tract_ndarray;
     pub use num_traits as tract_num_traits;
+    pub use itertools as tract_itertools;
     pub use tract_linalg;
 }
 

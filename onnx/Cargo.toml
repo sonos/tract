@@ -17,7 +17,6 @@ maintenance = { status = "actively-developed" }
 bytes = "0.5"
 derive-new = "0.5"
 error-chain = "0.12"
-itertools = "0.8"
 log = "0.4"
 num-integer = "0.1"
 prost = "0.6"

@@ -21,10 +21,10 @@ fn category_mapper(
             (default_int, default_string)
         ),
         (Some(def), None) => {
-            Box::new(CategoryMapper::new(itertools::zip(strings, ints).collect(), def))
+            Box::new(CategoryMapper::new(tract_itertools::zip(strings, ints).collect(), def))
         }
         (None, Some(def)) => {
-            Box::new(CategoryMapper::new(itertools::zip(ints, strings).collect(), def.to_string()))
+            Box::new(CategoryMapper::new(tract_itertools::zip(ints, strings).collect(), def.to_string()))
         }
     };
     Ok((op, vec![]))

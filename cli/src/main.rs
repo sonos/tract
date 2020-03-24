@@ -3,7 +3,6 @@ extern crate box_drawing;
 extern crate clap;
 #[macro_use]
 extern crate error_chain;
-extern crate itertools;
 #[macro_use]
 extern crate log;
 extern crate atty;
@@ -21,7 +20,7 @@ extern crate tract_tensorflow;
 mod macros;
 
 #[allow(unused_imports)]
-use itertools::Itertools;
+use tract_itertools::Itertools;
 use std::process;
 use std::str::FromStr;
 

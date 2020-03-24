@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use crate::model::{Component, KaldiProtoModel};
 
-use itertools::Itertools;
+use tract_itertools::Itertools;
 
 mod bin;
 mod components;

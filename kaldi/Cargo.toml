@@ -18,7 +18,6 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 bit-set="0.5"
 derive-new = "0.5"
-itertools = "0.8"
 lazy_static = "1"
 log = "0.4"
 maplit = "1"

@@ -2,7 +2,7 @@ use crate::rusage::Duration;
 use ansi_term::Colour::*;
 
 #[allow(unused_imports)]
-use itertools::Itertools;
+use tract_core::itertools::Itertools;
 
 /// Format a rusage::Duration showing avgtime in ms.
 pub fn dur_avg_oneline(measure: Duration) -> String {

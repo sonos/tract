@@ -29,13 +29,6 @@ fn cachedir() -> path::PathBuf {
 pub fn load_labels() -> Vec<String> {
     fs::read_to_string(imagenet_slim_labels()).unwrap().lines().map(|s| s.into()).collect()
 }
-
-#[allow(dead_code)]
-fn mobilenet_v2() -> path::PathBuf {
-    download();
-    cachedir().join("mobilenet_v2_1.4_224_frozen.pb")
-}
-
 pub fn imagenet_slim_labels() -> path::PathBuf {
     download();
     cachedir().join("imagenet_slim_labels.txt")
@@ -48,7 +41,7 @@ pub fn grace_hopper() -> path::PathBuf {
 
 pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
     let image = image::open(&p).unwrap().to_rgb();
-    let resized = image::imageops::resize(&image, 224, 224, image::FilterType::Triangle);
+    let resized = image::imageops::resize(&image, 224, 224, image::imageops::FilterType::Triangle);
     let image = tract_ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
         resized[(x as _, y as _)][c] as f32 / 255.0
     })
@@ -63,6 +56,11 @@ mod tests {
     use tract_tensorflow::prelude::*;
 
     use super::*;
+
+    fn mobilenet_v2() -> path::PathBuf {
+        download();
+        cachedir().join("mobilenet_v2_1.4_224_frozen.pb")
+    }
 
     pub fn argmax(input: tract_ndarray::ArrayViewD<f32>) -> usize {
         input

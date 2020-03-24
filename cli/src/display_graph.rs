@@ -3,7 +3,7 @@ use crate::CliResult;
 use crate::SomeGraphDef;
 use ansi_term::Color::*;
 use ansi_term::Style;
-use itertools::Itertools;
+use tract_core::itertools::Itertools;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 #[allow(unused_imports)]

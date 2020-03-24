@@ -24,7 +24,7 @@ impl FusedBatchNorm {
         mean: &[f32],
         variance: &[f32],
     ) -> TractResult<(Vec<f32>, Vec<f32>)> {
-        use itertools::izip;
+        use tract_itertools::izip;
         let alpha = izip!(variance, scale).map(|(v, s)| s / (v + self.epsilon).sqrt()).collect();
         let beta = izip!(offset, mean, &alpha).map(|(o, m, s)| o - m * s).collect();
         Ok((alpha, beta))
