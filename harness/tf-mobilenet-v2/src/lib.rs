@@ -29,13 +29,6 @@ fn cachedir() -> path::PathBuf {
 pub fn load_labels() -> Vec<String> {
     fs::read_to_string(imagenet_slim_labels()).unwrap().lines().map(|s| s.into()).collect()
 }
-
-#[allow(dead_code)]
-fn mobilenet_v2() -> path::PathBuf {
-    download();
-    cachedir().join("mobilenet_v2_1.4_224_frozen.pb")
-}
-
 pub fn imagenet_slim_labels() -> path::PathBuf {
     download();
     cachedir().join("imagenet_slim_labels.txt")
@@ -63,6 +56,11 @@ mod tests {
     use tract_tensorflow::prelude::*;
 
     use super::*;
+
+    fn mobilenet_v2() -> path::PathBuf {
+        download();
+        cachedir().join("mobilenet_v2_1.4_224_frozen.pb")
+    }
 
     pub fn argmax(input: tract_ndarray::ArrayViewD<f32>) -> usize {
         input
