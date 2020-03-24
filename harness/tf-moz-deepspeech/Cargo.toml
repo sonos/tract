@@ -5,6 +5,8 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2018"
 
 [dependencies]
-env_logger = "0.7"
 log = "0.4"
 tract-tensorflow = { path = "../../tensorflow" }
+
+[dev-dependencies]
+env_logger = "0.7"

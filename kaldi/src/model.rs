@@ -225,11 +225,11 @@ impl Framework<KaldiProtoModel> for Kaldi {
                         let op = match self.op_register.0.get(&*component.klass) {
                             Some(builder) => (builder)(&ctx, name)?,
                             None => {
-                                (Box::new(tract_hir::ops::unimpl::UnimplementedOp::new(
+                                Box::new(tract_hir::ops::unimpl::UnimplementedOp::new(
                                     1,
                                     component.klass.to_string(),
                                     format!("{:?}", line),
-                                )))
+                                ))
                             }
                         };
                         let id = model.add_node(

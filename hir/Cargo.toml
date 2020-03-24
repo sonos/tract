@@ -15,7 +15,9 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 derive-new = "0.5"
-env_logger = "0.7"
 itertools = "0.8"
 log = "0.4"
 tract-core = { path = "../core" }
+
+[dev-dependencies]
+env_logger = "0.7"
