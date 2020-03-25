@@ -14,7 +14,7 @@ pub struct MaxPool {
 
 impl MaxPool {
     fn to_fixed<T: Datum + Float>(&self, input_shape: &[usize]) -> TractResult<Box<dyn TypedOp>> {
-        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_shape);
+        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_shape)?;
         let op = MaxPoolFixed::<T>::new(patch, input_shape, output_shape, self.with_index_outputs);
         Ok(Box::new(op))
     }

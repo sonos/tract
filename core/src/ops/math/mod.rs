@@ -14,7 +14,21 @@ bin_to_super_type!(mul, Mul,
         cost: |dt| tvec!((Cost::FMA(dt), 1)),
         declutter_unary: declutter_mul_as_shift,
         flip: commute,
-     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() * b);
+        out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
+            if c.datum_type() == TDim::datum_type() &&
+                a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
+                let a = a.to_array_view::<TDim>()?;
+                let b = b.cast_to::<i32>()?;
+                let b = b.to_array_view::<i32>()?;
+                let c = c.to_array_view_mut::<TDim>()?;
+                crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).apply(|c,a,b| *c = a.clone() * *b);
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        },
+     [f32, i8, i16, i32, i64, u8, u16, f16, f64] => |c, a, b| *c = a.clone() * b
+);
 
 bin_to_super_type!(div, Div,
         cost: |dt| tvec!((Cost::Div(dt), 1)),

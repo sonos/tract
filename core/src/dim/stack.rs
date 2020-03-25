@@ -14,10 +14,10 @@ pub enum StackOp {
     Val(i32),
     Neg,
     Add,
-    Div(i32),
-    DivCeil(i32),
-    Mul,
-    Rem(i32)
+    Div(u32),
+    DivCeil(u32),
+    Mul(i32),
+    Rem(u32),
 }
 
 impl fmt::Debug for Stack {
@@ -71,21 +71,20 @@ impl Stack {
                     let b = stack.pop().ok_or("Too short stack")?;
                     *stack.last_mut().ok_or("Too short stack")? += b;
                 }
-                Mul => {
-                    let b = stack.pop().ok_or("Too short stack")?;
-                    *stack.last_mut().ok_or("Too short stack")? *= b;
+                Mul(v) => {
+                    *stack.last_mut().ok_or("Too short stack")? *= v;
                 }
                 Div(v) => {
-                    *stack.last_mut().ok_or("Too short stack")? /= v;
+                    *stack.last_mut().ok_or("Too short stack")? /= *v as i32;
                 }
                 DivCeil(v) => {
                     use num_integer::Integer;
                     let a = stack.pop().ok_or("Too short stack")?;
-                    let (d, r) = a.div_rem(v);
+                    let (d, r) = a.div_rem(&(*v as i32));
                     stack.push(d + (r > 0) as i32);
                 }
                 Rem(v) => {
-                    *stack.last_mut().ok_or("Too short stack")? %= v;
+                    *stack.last_mut().ok_or("Too short stack")? %= *v as i32;
                 }
             }
         }
@@ -134,12 +133,17 @@ impl Stack {
         return None;
     }
 
-    pub fn div_ceil(self, rhs: i32) -> Stack {
-        ExpNode::DivCeil(Box::new(self.to_tree()), rhs).reduce().to_stack()
+    pub fn div_ceil(mut self, rhs: u32) -> Stack {
+        self.0.push(StackOp::DivCeil(rhs));
+        self.reduce()
     }
 
     pub fn to_tree(&self) -> ExpNode {
         ExpNode::from_ops(self)
+    }
+
+    fn reduce(self) -> Stack {
+        self.to_tree().reduce().to_stack()
     }
 }
 
@@ -230,57 +234,44 @@ where
     }
 }
 
-impl<'a> ops::MulAssign<&'a Stack> for Stack {
-    fn mul_assign(&mut self, rhs: &'a Stack) {
-        *self = ExpNode::Mul(1, vec![self.to_tree(), rhs.to_tree()]).reduce().to_stack()
+impl ops::MulAssign<i32> for Stack {
+    fn mul_assign(&mut self, rhs: i32) {
+        *self = ExpNode::Mul(rhs, Box::new(self.to_tree())).reduce().to_stack()
     }
 }
 
-impl<I> ops::MulAssign<I> for Stack
-where
-    I: Into<Stack>,
-{
-    fn mul_assign(&mut self, rhs: I) {
-        *self = ExpNode::Mul(1, vec![self.to_tree(), rhs.into().to_tree()]).reduce().to_stack()
-    }
-}
-
-impl<I> ops::Mul<I> for Stack
-where
-    I: Into<Stack>,
-{
+impl ops::Mul<i32> for Stack {
     type Output = Self;
-    fn mul(mut self, rhs: I) -> Self {
+    fn mul(mut self, rhs: i32) -> Self {
         self *= rhs;
         self
     }
 }
 
-impl ops::DivAssign<i32> for Stack {
-    fn div_assign(&mut self, rhs: i32) {
+impl ops::DivAssign<u32> for Stack {
+    fn div_assign(&mut self, rhs: u32) {
         *self = ExpNode::Div(Box::new(self.to_tree()), rhs).reduce().to_stack()
     }
 }
 
-impl ops::Div<i32> for Stack
-{
+impl ops::Div<u32> for Stack {
     type Output = Self;
-    fn div(mut self, rhs: i32) -> Self {
+    fn div(mut self, rhs: u32) -> Self {
         self /= rhs;
         self
     }
 }
 
-impl ops::RemAssign<i32> for Stack {
-    fn rem_assign(&mut self, rhs: i32) {
-        *self = ExpNode::Rem(Box::new(self.to_tree()), rhs).reduce().to_stack()
+impl ops::RemAssign<u32> for Stack {
+    fn rem_assign(&mut self, rhs: u32) {
+        self.0.push(StackOp::Rem(rhs));
+        self.0 = self.to_tree().reduce().to_stack().0
     }
 }
 
-impl ops::Rem<i32> for Stack
-{
+impl ops::Rem<u32> for Stack {
     type Output = Self;
-    fn rem(mut self, rhs: i32) -> Self {
+    fn rem(mut self, rhs: u32) -> Self {
         self %= rhs;
         self
     }
@@ -359,13 +350,19 @@ mod tests {
     #[test]
     fn reduce_div_mul() {
         let e: Stack = Stack::sym('S') / 2 * 2;
-        assert_eq!(e, Stack::from(2) * (Stack::sym('S') / 2));
+        assert_ne!(e, Stack::sym('S'));
+    }
+
+    #[test]
+    fn reduce_add_div() {
+        let e: Stack = Stack::sym('S') / 2 + 1;
+        assert_eq!(e, ((Stack::sym('S') + 2) / 2).reduce());
     }
 
     #[test]
     fn reduce_neg_mul_() {
-        let e: Stack = Stack::from(1) - Stack::from(2) * Stack::sym('S');
-        assert_eq!(e, Stack::from(1) + -Stack::from(2) * Stack::sym('S'));
+        let e: Stack = Stack::from(1) - Stack::sym('S') * 2;
+        assert_eq!(e, Stack::from(1) + Stack::sym('S') * -2);
     }
 
     #[test]

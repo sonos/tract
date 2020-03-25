@@ -32,15 +32,15 @@ impl PoolSpec {
         self.strides.as_ref().map(|s| s[geo_axis]).unwrap_or(1)
     }
 
-    pub fn compute_geo(&self, input_full_shape: &[usize]) -> (DataShape, Patch, DataShape) {
-        let input_shape = self.data_format.shape(input_full_shape.into());
+    pub fn compute_geo(&self, input_full_shape: &[usize]) -> TractResult<(DataShape, Patch, DataShape)> {
+        let input_shape = self.data_format.shape(input_full_shape.into())?;
         let output_inner_stride = match self.data_format {
             DataFormat::NCHW | DataFormat::CHW => 1,
             DataFormat::NHWC | DataFormat::HWC => {
                 self.output_channel_override.clone().unwrap_or(*input_shape.c())
             }
         };
-        let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)
+        let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)?
             .with_output_inner_stride(output_inner_stride)
             .with_kernel_shape(self.kernel_shape.clone())
             .with_padding(self.padding.clone());
@@ -55,12 +55,12 @@ impl PoolSpec {
             *input_shape.n().unwrap_or(&1),
             self.output_channel_override.unwrap_or(*input_shape.c()),
             &*patch.output_shape,
-        );
-        (input_shape, patch, output_shape)
+        )?;
+        Ok((input_shape, patch, output_shape))
     }
 
     pub fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let ishape = self.data_format.shape(inputs[0].shape.to_tvec());
+        let ishape = self.data_format.shape(inputs[0].shape.to_tvec())?;
         let ones = tvec![1; ishape.hw_rank()];
         let computed = self.padding.compute(
             ishape.hw_dims(),
@@ -73,7 +73,7 @@ impl PoolSpec {
             ishape.n().cloned().unwrap_or(1.to_dim()),
             self.output_channel_override.map(|i| i.to_dim()).unwrap_or(ishape.c().clone()),
             spatial_dims,
-        );
+        )?;
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*oshape.shape)?))
     }
 
@@ -87,7 +87,7 @@ impl PoolSpec {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?.clone();
-        let input_shape = self.data_format.shape(&*fact.shape);
+        let input_shape = self.data_format.shape(&*fact.shape)?;
         if Some(fact.axis) == input_shape.n_axis() {
             target.wire_node(&*node.name, dyn_clone::clone_box(op), &[input])
         } else if fact.axis == input_shape.c_axis() {
@@ -123,7 +123,7 @@ impl PoolSpec {
     }
 
     pub fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let ishape = self.data_format.shape(&inputs[0].shape);
+        let ishape = self.data_format.shape(&inputs[0].shape)?;
         let ones = tvec![1; ishape.hw_rank()];
         let computed = self.padding.compute(
             ishape.hw_dims(),
@@ -136,15 +136,15 @@ impl PoolSpec {
             ishape.n().cloned().unwrap_or(1),
             self.output_channel_override.unwrap_or(*ishape.c()),
             spatial_dims,
-        );
+        )?;
         let mut fact = inputs[0].clone();
-        let input_shape = self.data_format.shape(&*fact.shape);
+        let input_shape = self.data_format.shape(&*fact.shape)?;
         let geo_axis = fact.axis - input_shape.h_axis();
         let dilation = self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
         let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
         let stride = self.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
         fact.delay /= stride;
-        fact.dim = (fact.dim.clone() - kernel_len.to_dim()).div_ceil(stride as i32);
+        fact.dim = (fact.dim.clone() - kernel_len.to_dim()).div_ceil(stride as u32);
         fact.shape = oshape.shape;
         Ok(tvec!(fact))
     }

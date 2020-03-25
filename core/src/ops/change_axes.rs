@@ -72,14 +72,14 @@ impl AxisOp {
         })
     }
 
-    pub fn change_shape_array<T: Clone + Default + num_traits::One>(&self, shape: &mut TVec<T>) {
+    pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) {
         match self {
-            AxisOp::Add(ix) => shape.insert(*ix, num_traits::One::one()),
+            AxisOp::Add(ix) => shape.insert(*ix, D::one()),
             AxisOp::Rm(ix) => {
                 shape.remove(*ix);
             }
             AxisOp::Permute(perm) => {
-                let mut new_shape: TVec<T> = tvec!(T::default(); shape.len());
+                let mut new_shape: TVec<D> = tvec!(D::default(); shape.len());
                 for (ix, &from) in perm.iter().enumerate() {
                     new_shape[ix] = shape[from].clone();
                 }

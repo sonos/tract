@@ -120,7 +120,7 @@ impl TypedOp for ElementWiseOp {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = inputs[0].shape.iter().product();
+        let count: TDim = inputs[0].shape.iter().maybe_product()?;
         Ok(self
             .0
             .cost_per_element(inputs[0].datum_type)

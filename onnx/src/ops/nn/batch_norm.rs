@@ -47,8 +47,9 @@ impl BatchNorm {
     {
         let (x, scale, beta, mean, var) = args_5!(&mut inputs);
 
-        let c_axis = self.data_format.shape(x.shape()).c_axis();
-        let c_dim = *self.data_format.shape(x.shape()).c_dim();
+        let shape = self.data_format.shape(x.shape())?;
+        let c_axis = shape.c_axis();
+        let c_dim = *shape.c_dim();
 
         let (slope, intercept) = self.to_slope_and_inter::<T>(c_dim, &scale, &beta, &mean, &var)?;
 
@@ -103,7 +104,7 @@ impl InferenceRulesOp for BatchNorm {
             &inputs[4].shape
         ))?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let shape = self.data_format.shape(shape);
+            let shape = self.data_format.shape(shape)?;
             s.equals(&inputs[1].shape[0], shape.c_dim())
         })?;
         Ok(())
@@ -127,8 +128,8 @@ impl InferenceRulesOp for BatchNorm {
             (params[0].as_ref(), params[1].as_ref(), params[2].as_ref(), params[3].as_ref())
         {
             let x_shape = x.shape.to_tvec();
-            let c_axis = self.data_format.shape(&x_shape).c_axis();
-            let c_dim = self.data_format.shape(&x_shape).c_dim().to_integer()? as usize;
+            let c_axis = self.data_format.shape(&x_shape)?.c_axis();
+            let c_dim = self.data_format.shape(&x_shape)?.c_dim().to_integer()? as usize;
 
             let (mut slope, mut inter) =
                 dispatch_floatlike!(Self::to_slope_and_inter(x.datum_type)(

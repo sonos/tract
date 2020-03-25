@@ -261,7 +261,7 @@ impl TypedOp for Codegen {
                 })
                 .next()
                 .unwrap();
-            inputs[outside_slot].shape.dim(axis).div_ceil(chunk as i32)
+            inputs[outside_slot].shape.dim(axis).div_ceil(chunk as u32)
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;
@@ -271,7 +271,7 @@ impl TypedOp for Codegen {
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();
                 let scanning_dim =
-                    output.full_dim_hint.clone().unwrap_or(shape.dim(output.axis) * &iters);
+                    output.full_dim_hint.clone().unwrap_or(shape.dim(output.axis).maybe_mul(&iters)?);
                 shape.set_dim(output.axis, scanning_dim)?;
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }

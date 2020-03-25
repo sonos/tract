@@ -4,7 +4,6 @@ use std::ops;
 use std::str::FromStr;
 
 use num_traits::cast::AsPrimitive;
-use num_traits::One;
 use num_traits::Zero;
 
 mod stack;
@@ -24,7 +23,6 @@ pub trait DimLike:
     + Default
     + PartialEq
     + From<usize>
-    + ::num_traits::One
     + ::num_traits::Zero
     + fmt::Debug
     + fmt::Display
@@ -35,16 +33,15 @@ pub trait DimLike:
     + ops::Sub<usize, Output = Self>
     + for<'a> ops::Sub<&'a Self, Output = Self>
     + ops::Mul<usize, Output = Self>
-    + ops::Mul<Self, Output = Self>
-    + for<'a> ops::Mul<&'a Self, Output = Self>
     + ops::Div<usize, Output = Self>
     + ops::Rem<usize, Output = Self>
     + Send
     + Sync
     + 'static
-    + std::iter::Product
     + std::iter::Sum
 {
+    fn maybe_mul(&self, other: &Self) -> TractResult<Self>;
+
     /// Integer divise, rounding up to next integer.
     fn div_ceil(&self, other: usize) -> Self {
         (self.clone() + other - 1) / other
@@ -52,17 +49,52 @@ pub trait DimLike:
 
     /// Convert to regular integer.
     fn to_integer(&self) -> TractResult<i32>;
+
+    /// do not use num_traits::Mul as it implies a regular Mul
+    fn one() -> Self;
 }
 
 impl DimLike for TDim {
+    fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
+        if let Ok(d) = other.to_integer() {
+            Ok(TDim(self.0.clone() * d))
+        } else if let Ok(a) = self.to_integer() {
+            Ok(other.clone() * a)
+        } else {
+            bail!("product with too many symbols")
+        }
+    }
+
     fn to_integer(&self) -> TractResult<i32> {
         TDim::to_integer(self)
+    }
+
+    fn one() -> Self {
+        Self::from(1)
     }
 }
 
 impl DimLike for usize {
+    fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
+        Ok(self * other)
+    }
+
     fn to_integer(&self) -> TractResult<i32> {
         Ok(*self as i32)
+    }
+
+    fn one() -> usize {
+        1
+    }
+}
+
+pub trait MaybeProduct<D> {
+    fn maybe_product(self) -> TractResult<D>;
+}
+
+impl<D: DimLike, A: std::borrow::Borrow<D>, I: Iterator<Item = A>> MaybeProduct<D> for I {
+    fn maybe_product(mut self) -> TractResult<D> {
+        self.try_fold(D::one(), |acc, d| acc.maybe_mul(d.borrow()))
     }
 }
 
@@ -126,8 +158,12 @@ impl TDim {
         self.0.eval(&hashmap!())
     }
 
+    pub fn mul(&self, other: u32) -> TDim {
+        TDim(self.0.clone().div_ceil(other))
+    }
+
     /// Integer division rounding above.
-    pub fn div_ceil(&self, other: i32) -> TDim {
+    pub fn div_ceil(&self, other: u32) -> TDim {
         TDim(self.0.clone().div_ceil(other))
     }
 }
@@ -138,12 +174,6 @@ impl Zero for TDim {
     }
     fn is_zero(&self) -> bool {
         *self == Self::zero()
-    }
-}
-
-impl One for TDim {
-    fn one() -> Self {
-        Self::from(1)
     }
 }
 
@@ -210,36 +240,8 @@ impl<'a> ops::SubAssign<&'a TDim> for TDim {
     }
 }
 
-impl ops::Mul<TDim> for TDim {
-    type Output = Self;
-    fn mul(mut self, rhs: TDim) -> Self {
-        self *= rhs;
-        self
-    }
-}
-
-impl<'a> ops::Mul<&'a TDim> for TDim {
-    type Output = Self;
-    fn mul(mut self, rhs: &'a TDim) -> Self {
-        self *= rhs;
-        self
-    }
-}
-
-impl ops::MulAssign<TDim> for TDim {
-    fn mul_assign(&mut self, rhs: TDim) {
-        self.0 *= rhs.0
-    }
-}
-
-impl<'a> ops::MulAssign<&'a TDim> for TDim {
-    fn mul_assign(&mut self, rhs: &'a TDim) {
-        self.0 *= &rhs.0
-    }
-}
-
-impl ops::DivAssign<i32> for TDim {
-    fn div_assign(&mut self, rhs: i32) {
+impl ops::DivAssign<u32> for TDim {
+    fn div_assign(&mut self, rhs: u32) {
         self.0 /= rhs
     }
 }
@@ -247,12 +249,6 @@ impl ops::DivAssign<i32> for TDim {
 impl ::std::iter::Sum for TDim {
     fn sum<I: Iterator<Item = TDim>>(iter: I) -> TDim {
         iter.fold(0.to_dim(), |a, b| a + b)
-    }
-}
-
-impl ::std::iter::Product for TDim {
-    fn product<I: Iterator<Item = TDim>>(iter: I) -> TDim {
-        iter.fold(1.to_dim(), |a, b| a * b)
     }
 }
 
@@ -285,18 +281,18 @@ impl<I: AsPrimitive<i32>> ops::Sub<I> for TDim {
 impl<I: AsPrimitive<i32>> ops::Mul<I> for TDim {
     type Output = Self;
     fn mul(self, rhs: I) -> Self {
-        self * Self::from(rhs.as_())
+        TDim(self.0 * rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<i32>> ops::Div<I> for TDim {
+impl<I: AsPrimitive<u32>> ops::Div<I> for TDim {
     type Output = Self;
     fn div(self, rhs: I) -> Self {
         TDim(self.0 / rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<i32>> ops::Rem<I> for TDim {
+impl<I: AsPrimitive<u32>> ops::Rem<I> for TDim {
     type Output = Self;
     fn rem(self, rhs: I) -> Self {
         TDim(self.0 % rhs.as_())
