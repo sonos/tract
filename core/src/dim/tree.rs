@@ -111,39 +111,41 @@ impl ExpNode {
         }
     }
 
-    fn wiggle(&self) -> Vec<ExpNode> {
+    fn wiggle(&self) -> Box<dyn Iterator<Item = ExpNode>> {
         use self::ExpNode::*;
+        use crate::prelude::TVec;
         match self {
-            Sym(_) | Val(_) => vec![self.clone()],
-            Add(terms) => terms
+            Sym(_) | Val(_) => Box::new(Some(self.clone()).into_iter()),
+            Add(terms) => b!(terms
                 .iter()
-                .map(|e| e.wiggle())
+                .map(|e| e.wiggle().collect::<TVec<_>>())
                 .multi_cartesian_product()
-                .map(|terms| Add(terms))
-                .collect(),
+                .map(|terms| Add(terms))),
             Mul(p, a) => {
-                let mut forms = vec![];
-                for a in a.wiggle() {
+                let p = *p;
+                b!(a.wiggle().flat_map(move |a| {
+                    let mut forms = tvec!();
                     if let Add(a) = &a {
-                        forms.push(Add(a.clone().into_iter().map(|a| Mul(*p, b!(a))).collect()))
+                        forms.push(Add(a.clone().into_iter().map(|a| Mul(p, b!(a))).collect()))
                     }
-                    forms.push(Mul(*p, b!(a)));
-                }
-                forms
+                    forms.push(Mul(p, b!(a)));
+                    forms.into_iter()
+                }))
             }
             Div(a, q) => {
-                let mut forms = vec![];
-                for a in a.wiggle() {
+                let q = *q;
+                b!(a.wiggle().flat_map(move |a| {
+                    let mut forms = tvec!();
                     if let Add(a) = &a {
                         let (integer, non_integer): (Vec<_>, Vec<_>) =
                             a.clone().into_iter().partition(|a| a.gcd() % q == 0);
-                        let mut terms = integer.iter().map(|i| i.div(*q)).collect::<Vec<_>>();
-                        terms.push(Div(b!(Add(non_integer)), *q));
+                        let mut terms = integer.iter().map(|i| i.div(q)).collect::<Vec<_>>();
+                        terms.push(Div(b!(Add(non_integer)), q));
                         forms.push(Add(terms))
                     }
-                    forms.push(Div(b!(a), *q));
-                }
-                forms
+                    forms.push(Div(b!(a), q));
+                    forms.into_iter()
+                }))
             }
         }
     }
