@@ -15,7 +15,14 @@ pub struct TypedScan {
 impl TypedScan {
     pub fn to_codegen_op(&self) -> TractResult<Codegen> {
         trace!("Optimizing(Codegen) inner model");
-        let plan = SimplePlan::new(self.body.clone().into_optimized()?)?;
+        if cfg!(debug_assertions) {
+            self.body.check_edges().chain_err(|| "TypedScan::to_codegen_op preliminary check")?
+        }
+        let optimized = self.body.clone().into_optimized()?;
+        if cfg!(debug_assertions) {
+            optimized.check_edges().chain_err(|| "TypedScan::to_codegen_op after optimised check")?
+        }
+        let plan = SimplePlan::new(optimized)?;
         trace!("Optimizing(Codegen) inner model done");
         let input_mapping = self
             .input_mapping
@@ -90,6 +97,9 @@ impl TypedScan {
             }
             let mut new = self.clone();
             new.body = self.body.clone().declutter()?;
+            if cfg!(debug_assertions) {
+                new.body.check_edges().chain_err(|| "TypedScan::declutter_body final check")?
+            }
             new.decluttered = true;
             Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
         } else {
@@ -300,12 +310,9 @@ impl TypedScan {
         for (model_input, input) in self.input_mapping.iter().enumerate() {
             if let Some((slot, axis, chunk)) = input.as_scan() {
                 let scan_source = self.body.input_outlets()?[model_input];
-                dbg!(self.body.outlet_fact(scan_source)?);
                 let scan_source_node = self.body.node(scan_source.node);
-                dbg!(scan_source_node);
                 for successor in &scan_source_node.outputs[0].successors {
                     let successor_node = self.body.node(successor.node);
-                    dbg!(successor_node);
                     if successor_node.inputs.len() != 1 || successor_node.outputs.len() != 1 {
                         continue;
                     }
@@ -338,7 +345,6 @@ impl TypedScan {
                         let mut inner_patch = TypedModelPatch::default();
                         let new_source_wire_in_patch =
                             inner_patch.tap_model(&new_body, new_source_wire)?;
-                        dbg!(inner_patch.outlet_fact(new_source_wire_in_patch));
                         inner_patch.shunt_outside(
                             model,
                             OutletId::new(successor.node, 0),

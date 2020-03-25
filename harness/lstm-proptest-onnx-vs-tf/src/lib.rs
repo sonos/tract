@@ -235,14 +235,22 @@ fn strat() -> BoxedStrategy<LstmProblem> {
 proptest::proptest! {
     #[test]
     fn test(pb in strat()) {
+        setup_test_logger();
         let o = pb.onnx_run().unwrap();
         let t = pb.tf_run().unwrap();
         prop_assert!(o.close_enough(&t, true).is_ok(), "\nonnx:{:?}\n tf :{:?}\n", o, t);
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
+fn setup_test_logger() {
+    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
+}
+
 #[test]
 fn test_x() {
+    setup_test_logger();
     let pb = LstmProblem {
         length: 1,
         batch_size: 1,
@@ -260,6 +268,7 @@ fn test_x() {
 
 #[test]
 fn test_seq() {
+    setup_test_logger();
     let pb = LstmProblem {
         length: 2,
         batch_size: 1,
@@ -277,6 +286,7 @@ fn test_seq() {
 
 #[test]
 fn test_c0() {
+    setup_test_logger();
     let pb = LstmProblem {
         length: 1,
         batch_size: 1,
@@ -294,6 +304,7 @@ fn test_c0() {
 
 #[test]
 fn test_b() {
+    setup_test_logger();
     let pb = LstmProblem {
         length: 1,
         batch_size: 1,
@@ -311,6 +322,7 @@ fn test_b() {
 
 #[test]
 fn test_w() {
+    setup_test_logger();
     let pb = LstmProblem {
         length: 2,
         batch_size: 1,

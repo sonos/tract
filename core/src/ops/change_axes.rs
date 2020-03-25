@@ -362,10 +362,10 @@ pub fn change_axes(
     for node_id in model.eval_order()? {
         if let Some(new_op) = changed_ops.remove(&node_id) {
             model.node_mut(node_id).op = new_op;
-            let output_facts = model.node(node_id).op.output_facts(&model.node_input_facts(node_id)?)?;
-            for (ix, f) in output_facts.into_iter().enumerate() {
-                model.set_outlet_fact(OutletId::new(node_id, ix), f)?;
-            }
+        }
+        let output_facts = model.node(node_id).op.output_facts(&model.node_input_facts(node_id)?)?;
+        for (ix, f) in output_facts.into_iter().enumerate() {
+            model.set_outlet_fact(OutletId::new(node_id, ix), f)?;
         }
     }
     if cfg!(debug_assertions) {
