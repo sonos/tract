@@ -318,7 +318,6 @@ impl TypedScan {
                     }
                     let invariants = successor_node.op.invariants(&self.body, &successor_node)?;
                     if let Some(axis_after) = invariants.unary_track_axis_down(axis, false) {
-                        println!("pulling out to input: {:#?}", successor_node);
                         let mut outside_patch = TypedModelPatch::default();
                         let mut patch_inputs = node
                             .inputs
@@ -336,7 +335,6 @@ impl TypedScan {
                         let mut new_input_inner_fact = new_input_outer_fact.clone();
                         new_input_inner_fact.shape.set_dim(axis_after, chunk.clone())?;
 
-                        dbg!(&new_input_inner_fact);
                         let mut new_body = self.body.clone();
                         let new_source_wire = new_body.add_source(
                             format!("{}-extracted-{}", node.name, successor_node.name),
@@ -376,7 +374,6 @@ impl TypedScan {
                                 w,
                             )?;
                         }
-                        println!(" *** do pull out");
                         return Ok(Some(outside_patch));
                     }
                 }
