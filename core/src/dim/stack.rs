@@ -354,6 +354,12 @@ mod tests {
     }
 
     #[test]
+    fn reduce_add_div() {
+        let e: Stack = Stack::sym('S') / 2 + 1;
+        assert_eq!(e, ((Stack::sym('S') + 2) / 2).reduce());
+    }
+
+    #[test]
     fn reduce_neg_mul_() {
         let e: Stack = Stack::from(1) - Stack::sym('S') * 2;
         assert_eq!(e, Stack::from(1) + Stack::sym('S') * -2);

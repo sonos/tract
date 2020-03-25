@@ -5,7 +5,7 @@ use super::stack::*;
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
-#[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
 pub enum ExpNode {
     Sym(char),
     Val(i32),
@@ -14,15 +14,15 @@ pub enum ExpNode {
     Div(Box<ExpNode>, u32),
 }
 
-impl fmt::Debug for ExpNode {
+impl fmt::Display for ExpNode {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use self::ExpNode::*;
         match &self {
             Sym(it) => write!(fmt, "{}", it),
             Val(it) => write!(fmt, "{}", it),
-            Add(it) => write!(fmt, "({})", it.iter().map(|x| format!("{:?}", x)).join("+")),
-            Mul(a, b) => write!(fmt, "{}.{:?}", a, b),
-            Div(a, b) => write!(fmt, "{:?}/{:?}", a, b),
+            Add(it) => write!(fmt, "{}", it.iter().map(|x| format!("{}", x)).join("+")),
+            Mul(a, b) => write!(fmt, "{}.{}", a, b),
+            Div(a, b) => write!(fmt, "({})/{}", a, b),
         }
     }
 }
@@ -60,7 +60,7 @@ impl ExpNode {
                 StackOp::Rem(v) => {
                     // a%b = a - b*(a/b)
                     let a = stack.pop().expect("Too short stack");
-                    stack.push(Add(vec!(a.clone(), Mul(-(*v as i32), b!(Div(b!(a), *v))))))
+                    stack.push(Add(vec![a.clone(), Mul(-(*v as i32), b!(Div(b!(a), *v)))]))
                 }
                 StackOp::Mul(v) => {
                     let a = stack.pop().expect("Too short stack");
@@ -98,67 +98,69 @@ impl ExpNode {
     }
 
     pub fn reduce(self) -> ExpNode {
+        self.simplify().wiggle().into_iter().map(|e| e.simplify()).min_by_key(|e| e.cost()).unwrap()
+    }
+
+    fn cost(&self) -> usize {
         use self::ExpNode::*;
-        let res = match self {
-            Div(a, b) => {
-                let red_a = a.reduce();
-                match (red_a, b) {
-                    (a, 1) => a,
-                    (Val(a), b) => Val(a / b as i32),
-                    (Add(vals), b) => {
-                        let mut out: Vec<ExpNode> = vec![];
-                        let mut kept: Vec<ExpNode> = vec![];
-                        for val in vals {
-                            match val {
-                                Val(num) if num % b as i32 == 0 => {
-                                    out.push(Val(num / b as i32));
-                                    continue;
-                                }
-                                Mul(m, factors) => {
-                                    if m % b as i32 == 0 {
-                                        out.push(Mul(m / b as i32, factors));
-                                    } else {
-                                        kept.push(Mul(m, factors))
-                                    }
-                                }
-                                v => kept.push(v),
-                            }
-                        }
-                        if kept.len() == 1 {
-                            out.push(Div(b!(kept.remove(0)), b));
-                        } else if kept.len() > 1 {
-                            kept.sort();
-                            out.push(Div(b!(Add(kept)), b));
-                        }
-                        if out.len() == 1 {
-                            out.remove(0)
-                        } else {
-                            out.sort();
-                            Add(out).reduce()
-                        }
+        match self {
+            Sym(_) | Val(_) => 1,
+            Add(terms) => 2 * terms.iter().map(ExpNode::cost).sum::<usize>(),
+            Div(a, _) => 3 * a.cost(),
+            Mul(_, a) => 2 * a.cost(),
+        }
+    }
+
+    fn wiggle(&self) -> Vec<ExpNode> {
+        use self::ExpNode::*;
+        match self {
+            Sym(_) | Val(_) => vec![self.clone()],
+            Add(terms) => terms
+                .iter()
+                .map(|e| e.wiggle())
+                .multi_cartesian_product()
+                .map(|terms| Add(terms))
+                .collect(),
+            Mul(p, a) => {
+                let mut forms = vec![];
+                for a in a.wiggle() {
+                    if let Add(a) = &a {
+                        forms.push(Add(a.clone().into_iter().map(|a| Mul(*p, b!(a))).collect()))
                     }
-                    (Mul(v, factor), b) => {
-                        use num_integer::Integer;
-                        let gcd = v.abs().gcd(&(b as i32));
-                        if gcd == b as i32 {
-                            Mul(v / gcd, factor).reduce()
-                        } else if gcd == 1 {
-                            Mul(v, b![Div(b!(Mul(1, factor).reduce()), b)])
-                        } else {
-                            Div(b!(Mul(v / gcd, factor)), b / gcd as u32)
-                        }
-                    }
-                    (a, b) => Div(b!(a), b),
+                    forms.push(Mul(*p, b!(a)));
                 }
+                forms
             }
-            Add(mut vec) => {
+            Div(a, q) => {
+                let mut forms = vec![];
+                for a in a.wiggle() {
+                    if let Add(a) = &a {
+                        let (integer, non_integer): (Vec<_>, Vec<_>) =
+                            a.clone().into_iter().partition(|a| a.gcd() % q == 0);
+                        let mut terms = integer.iter().map(|i| i.div(*q)).collect::<Vec<_>>();
+                        terms.push(Div(b!(Add(non_integer)), *q));
+                        forms.push(Add(terms))
+                    }
+                    forms.push(Div(b!(a), *q));
+                }
+                forms
+            }
+        }
+    }
+
+    fn simplify(self) -> ExpNode {
+        use self::ExpNode::*;
+        use num_integer::Integer;
+        match self {
+            Add(mut terms) => {
                 use std::collections::HashMap;
                 let mut reduced: HashMap<ExpNode, i32> = HashMap::new();
-                while let Some(item) = vec.pop() {
-                    let red = item.reduce();
-                    match red {
+                // factorize common sub-expr
+                while let Some(item) = terms.pop() {
+                    let term = item.simplify();
+                    match term {
                         Add(items) => {
-                            vec.extend(items.into_iter());
+                            terms.extend(items.into_iter());
                             continue;
                         }
                         Val(0) => (),
@@ -192,24 +194,82 @@ impl ExpNode {
                     members.remove(0)
                 }
             }
-            Mul(scale, inner) => {
-                let inner = inner.reduce();
-                if scale == 0 {
+            Mul(p, a) => {
+                let a = a.simplify();
+                if p == 0 {
                     Val(0)
-                } else if scale == 1 {
-                    inner
-                } else if let Val(b) = inner {
-                    Val(scale * b)
-                } else if let Mul(scale2, inner) = inner {
-                    Mul(scale * scale2, inner)
+                } else if p == 1 {
+                    a
+                } else if let Val(p2) = a {
+                    Val(p * p2)
+                } else if let Mul(p2, a) = a {
+                    Mul(p * p2, a)
                 } else {
-                    Mul(scale, b!(inner))
+                    Mul(p, b!(a))
                 }
             }
-            it => it,
-        };
+            Div(a, q) => {
+                let a = a.simplify();
+                if let Val(a) = a {
+                    Val(a / q as i32)
+                } else if let Mul(-1, a) = a {
+                    Mul(-1, b!(Div(a, q)))
+                } else {
+                    let gcd = a.gcd().gcd(&q);
+                    let a = a.div(gcd);
+                    let q = q / gcd;
+                    if q == 1 {
+                        a
+                    } else {
+                        Div(b!(a), q)
+                    }
+                }
+            }
+            _ => self,
+        }
+    }
 
-        res
+    fn gcd(&self) -> u32 {
+        use self::ExpNode::*;
+        use num_integer::Integer;
+        match self {
+            Val(v) => v.abs() as u32,
+            Sym(_) => 1,
+            Add(terms) => {
+                let (head, tail) = terms.split_first().unwrap();
+                tail.iter().fold(head.gcd(), |a, b| a.gcd(&b.gcd()))
+            }
+            Mul(p, a) => a.gcd() * p.abs() as u32,
+            Div(a, q) => {
+                if a.gcd() % *q == 0 {
+                    a.gcd() / *q
+                } else {
+                    1
+                }
+            }
+        }
+    }
+
+    fn div(&self, d: u32) -> ExpNode {
+        use self::ExpNode::*;
+        use num_integer::Integer;
+        if d == 1 {
+            return self.clone();
+        }
+        match self {
+            Val(v) => Val(v / d as i32),
+            Sym(_) => panic!(),
+            Add(terms) => Add(terms.iter().map(|t| t.div(d)).collect()),
+            Mul(p, a) => {
+                if *p == d as i32 {
+                    (**a).clone()
+                } else {
+                    let gcd = (p.abs() as u32).gcd(&d);
+                    Mul(p / gcd as i32, b!(a.div(d / gcd)))
+                }
+            }
+            Div(a, q) => Div(a.clone(), q * d),
+        }
     }
 }
 
