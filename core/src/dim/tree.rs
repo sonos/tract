@@ -98,7 +98,12 @@ impl ExpNode {
     }
 
     pub fn reduce(self) -> ExpNode {
-        self.simplify().wiggle().into_iter().map(|e| e.simplify()).min_by_key(|e| e.cost()).unwrap()
+        self.simplify()
+            .wiggle()
+            .into_iter()
+            .map(|e| e.simplify())
+            .min_by_key(|e| e.cost())
+            .unwrap()
     }
 
     fn cost(&self) -> usize {
@@ -111,41 +116,53 @@ impl ExpNode {
         }
     }
 
-    fn wiggle(&self) -> Box<dyn Iterator<Item = ExpNode>> {
+    fn wiggle(&self) -> Vec<ExpNode> {
         use self::ExpNode::*;
-        use crate::prelude::TVec;
         match self {
-            Sym(_) | Val(_) => Box::new(Some(self.clone()).into_iter()),
-            Add(terms) => b!(terms
-                .iter()
-                .map(|e| e.wiggle().collect::<TVec<_>>())
-                .multi_cartesian_product()
-                .map(|terms| Add(terms))),
-            Mul(p, a) => {
-                let p = *p;
-                b!(a.wiggle().flat_map(move |a| {
-                    let mut forms = tvec!();
-                    if let Add(a) = &a {
-                        forms.push(Add(a.clone().into_iter().map(|a| Mul(p, b!(a))).collect()))
+            Sym(_) | Val(_) => vec![self.clone()],
+            Add(terms) => {
+                let mut forms = vec![];
+                let sub_wiggle = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
+                for sub in sub_wiggle {
+                    for (ix, num, q) in sub
+                        .iter()
+                        .enumerate()
+                        .filter_map(
+                            |(ix, t)| if let Div(a, q) = t { Some((ix, a, q)) } else { None },
+                        )
+                        .next()
+                    {
+                        let new_num = sub
+                            .iter()
+                            .enumerate()
+                            .map(|(ix2, t)| {
+                                if ix2 != ix {
+                                    Mul(*q as i32, b!(t.clone()))
+                                } else {
+                                    (**num).clone()
+                                }
+                            })
+                            .collect();
+                        forms.push(Div(b!(Add(new_num)), *q))
                     }
-                    forms.push(Mul(p, b!(a)));
-                    forms.into_iter()
-                }))
+                    forms.push(Add(sub));
+                }
+                forms
             }
+            Mul(p, a) => a.wiggle().into_iter().map(|a| Mul(*p, b!(a))).collect(),
             Div(a, q) => {
-                let q = *q;
-                b!(a.wiggle().flat_map(move |a| {
-                    let mut forms = tvec!();
-                    if let Add(a) = &a {
+                let mut forms = vec![];
+                for num in a.wiggle() {
+                    if let Add(terms) = &num {
                         let (integer, non_integer): (Vec<_>, Vec<_>) =
-                            a.clone().into_iter().partition(|a| a.gcd() % q == 0);
-                        let mut terms = integer.iter().map(|i| i.div(q)).collect::<Vec<_>>();
-                        terms.push(Div(b!(Add(non_integer)), q));
-                        forms.push(Add(terms))
+                            terms.into_iter().cloned().partition(|a| a.gcd() % q == 0);
+                        let mut new_terms = integer.iter().map(|i| i.div(*q)).collect::<Vec<_>>();
+                        new_terms.push(Div(b!(Add(non_integer)), *q));
+                        forms.push(Add(new_terms))
                     }
-                    forms.push(Div(b!(a), q));
-                    forms.into_iter()
-                }))
+                    forms.push(Div(b!(num), *q))
+                }
+                forms
             }
         }
     }
@@ -197,11 +214,18 @@ impl ExpNode {
                 }
             }
             Mul(p, a) => {
+                if let Mul(p2, a) = *a {
+                    return Mul(p * p2, a).simplify();
+                } else if let Val(p2) = *a {
+                    return Val(p * p2);
+                }
                 let a = a.simplify();
                 if p == 0 {
                     Val(0)
                 } else if p == 1 {
                     a
+                } else if let Add(terms) = &a {
+                    Add(terms.clone().into_iter().map(|a| Mul(p, b!(a)).simplify()).collect())
                 } else if let Val(p2) = a {
                     Val(p * p2)
                 } else if let Mul(p2, a) = a {
@@ -211,20 +235,66 @@ impl ExpNode {
                 }
             }
             Div(a, q) => {
+                if let Div(a, q2) = *a {
+                    return Div(a, q * q2).simplify();
+                }
                 let a = a.simplify();
                 if let Val(a) = a {
                     Val(a / q as i32)
+                } else if q == 1 {
+                    a
                 } else if let Mul(-1, a) = a {
                     Mul(-1, b!(Div(a, q)))
-                } else {
-                    let gcd = a.gcd().gcd(&q);
-                    let a = a.div(gcd);
-                    let q = q / gcd;
-                    if q == 1 {
-                        a
+                } else if let Add(mut terms) = a {
+                    if let Some(v) = terms
+                        .iter()
+                        .filter_map(|t| if let Val(v) = t { Some(*v) } else { None })
+                        .next()
+                    {
+                        let offset = if v >= q as i32 {
+                            Some(v / q as i32)
+                        } else if v < 0 {
+                            Some(-(-v).div_ceil(&(q as i32)))
+                        } else {
+                            None
+                        };
+                        if let Some(val) = offset {
+                            terms.push(Val(-val * q as i32));
+                            Add(vec![Val(val), Div(b!(Add(terms).simplify()), q)])
+                        } else {
+                            Div(b!(Add(terms)), q)
+                        }
                     } else {
-                        Div(b!(a), q)
+                        Div(b!(Add(terms)), q)
                     }
+                } else if let Mul(p, a) = a {
+                    let gcd = p.abs().gcd(&(q as i32));
+                    if gcd == p {
+                        Div(a, q / gcd as u32)
+                    } else if gcd == q as i32 {
+                        Mul(p / gcd, a)
+                    } else if gcd > 1 {
+                        Div(b!(Mul(p / gcd, a)), q / gcd as u32)
+                    } else {
+                        Div(b!(Mul(p, a)), q)
+                    }
+                /*
+                let (integer, non_integer): (Vec<_>, Vec<_>) =
+                terms.into_iter().partition(|a| a.gcd() % q == 0);
+                if integer.len() > 0 && non_integer.len() > 0 {
+                let mut terms = integer.iter().map(|i| i.div(q)).collect::<Vec<_>>();
+                terms.push(Div(b!(Add(non_integer)), q));
+                Add(terms).simplify()
+                } else if integer.len() == 0 {
+                Div(b!(Add(non_integer)), q)
+                } else if non_integer.len() == 0 {
+                Add(integer).simplify()
+                } else {
+                Val(0)
+                }
+                */
+                } else {
+                    Div(b!(a), q)
                 }
             }
             _ => self,

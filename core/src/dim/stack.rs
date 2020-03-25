@@ -98,7 +98,7 @@ impl Stack {
     }
 
     pub fn format(&self) -> TractResult<String> {
-        Ok(format!("{:?}", ExpNode::from_ops(&self)))
+        Ok(format!("{}", ExpNode::from_ops(&self)))
     }
 
     pub fn as_ops(&self) -> &[StackOp] {
@@ -352,7 +352,7 @@ mod tests {
     fn reduce_div_bug_1() {
         let e1:Stack = (Stack::sym('S') + -1) / 2;
         let e2:Stack = (Stack::sym('S') + 1) / 2 - 1;
-        assert_eq!(e1, e2);
+        assert_eq!(e1.reduce(), e2.reduce());
     }
 
     #[test]

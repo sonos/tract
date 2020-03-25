@@ -183,7 +183,7 @@ impl TryFrom<&[usize]> for ShapeFact {
 impl fmt::Debug for ShapeFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use itertools::Itertools;
-        write!(fmt, "{}", self.iter().join("x"))
+        write!(fmt, "{}", self.iter().map(|d| format!("{}", d)).join("x"))
     }
 }
 
