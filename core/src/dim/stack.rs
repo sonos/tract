@@ -4,9 +4,6 @@ use crate::TractResult;
 use std::collections::HashMap;
 use std::{fmt, ops};
 
-#[derive(Clone)]
-pub struct Stack(TVec<StackOp>);
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum StackOp {
@@ -20,12 +17,18 @@ pub enum StackOp {
     Rem(u32),
 }
 
+#[derive(Clone)]
+pub struct Stack(TVec<StackOp>);
+
+impl fmt::Display for Stack {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.to_tree().fmt(fmt)
+    }
+}
+
 impl fmt::Debug for Stack {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.format() {
-            Ok(s) => write!(fmt, "{}", s),
-            Err(e) => write!(fmt, "{:?}", e),
-        }
+        self.to_tree().fmt(fmt)
     }
 }
 
@@ -95,10 +98,6 @@ impl Stack {
             bail!("Too short stack")
         }
         Ok(stack[0])
-    }
-
-    pub fn format(&self) -> TractResult<String> {
-        Ok(format!("{:?}", ExpNode::from_ops(&self)))
     }
 
     pub fn as_ops(&self) -> &[StackOp] {

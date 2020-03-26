@@ -118,7 +118,7 @@ impl fmt::Debug for TDim {
 
 impl fmt::Display for TDim {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{:?}", self.0)
+        write!(fmt, "{}", self.0)
     }
 }
 
