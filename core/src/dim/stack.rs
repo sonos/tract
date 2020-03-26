@@ -43,7 +43,7 @@ impl Eq for Stack {}
 
 impl PartialEq for Stack {
     fn eq(&self, other: &Stack) -> bool {
-        self.as_ops() == other.as_ops()
+        self.as_ops() == other.as_ops() || self.clone().reduce().as_ops() == other.clone().reduce().as_ops()
     }
 }
 
@@ -359,6 +359,13 @@ mod tests {
     fn reduce_div_bug_2() {
         let e1:Stack = ((Stack::sym('S') + 1) / 2 + 1) / 2;
         let e2:Stack = (Stack::sym('S') + 3) / 4;
+        assert_eq!(e1, e2);
+    }
+
+    #[test]
+    fn reduce_div_bug_3() {
+        let e1:Stack = (Stack::sym('S') / 2) * -4 ;
+        let e2:Stack = (Stack::sym('S') / 2) * -4 / 1;
         assert_eq!(e1, e2);
     }
 
