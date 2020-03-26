@@ -20,7 +20,9 @@ impl TypedScan {
         }
         let optimized = self.body.clone().into_optimized()?;
         if cfg!(debug_assertions) {
-            optimized.check_edges().chain_err(|| "TypedScan::to_codegen_op after optimised check")?
+            optimized
+                .check_edges()
+                .chain_err(|| "TypedScan::to_codegen_op after optimised check")?
         }
         let plan = SimplePlan::new(optimized)?;
         trace!("Optimizing(Codegen) inner model done");
@@ -93,7 +95,9 @@ impl TypedScan {
     ) -> TractResult<Option<TypedModelPatch>> {
         if !self.decluttered {
             if cfg!(debug_assertions) {
-                self.body.check_edges().chain_err(|| "TypedScan::declutter_body preliminary check")?
+                self.body
+                    .check_edges()
+                    .chain_err(|| "TypedScan::declutter_body preliminary check")?
             }
             let mut new = self.clone();
             new.body = self.body.clone().declutter()?;
@@ -324,12 +328,13 @@ impl TypedScan {
                             .iter()
                             .map(|&i| outside_patch.tap_model(model, i))
                             .collect::<TractResult<TVec<_>>>()?;
-                        let input = outside_patch.tap_model(&model, node.inputs[slot])?;
+                        let input = patch_inputs[slot];
                         let new_input_wire = outside_patch.wire_node(
                             format!("{}-extracted-{}", node.name, successor_node.name),
                             successor_node.op.clone(),
                             &[input],
                         )?[0];
+                        // batching input is added as a new input, in last position
                         patch_inputs.push(new_input_wire);
                         let new_input_outer_fact = outside_patch.outlet_fact(new_input_wire)?;
                         let mut new_input_inner_fact = new_input_outer_fact.clone();
@@ -344,10 +349,10 @@ impl TypedScan {
                         let new_source_wire_in_patch =
                             inner_patch.tap_model(&new_body, new_source_wire)?;
                         inner_patch.shunt_outside(
-                            model,
+                            &new_body,
                             OutletId::new(successor.node, 0),
                             new_source_wire_in_patch,
-                        )?;
+                        ).chain_err(|| "inner patch")?;
                         inner_patch.apply(&mut new_body)?;
 
                         let mut input_mapping = self.input_mapping.clone();
@@ -372,7 +377,7 @@ impl TypedScan {
                                 model,
                                 OutletId::new(node.id, w.slot),
                                 w,
-                            )?;
+                            ).chain_err(|| "inner patch")?;
                         }
                         return Ok(Some(outside_patch));
                     }
@@ -697,19 +702,25 @@ impl TypedOp for TypedScan {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        for dec in &[
-            Self::declutter_body,
-            Self::declutter_body_axes,
-            Self::declutter_discard_unused_input_mapping,
-            Self::declutter_pull_batcheable_input,
-            Self::declutter_pull_batcheable_output,
-            Self::declutter_const_initializer,
-            Self::declutter_discard_useless_outer_output,
-        ] {
-            if let Some(r) = dec(&self, model, node)? {
-                return Ok(Some(r));
-            }
+        if cfg!(debug_assertions) {
+            self.body.check_edges().chain_err(|| "TypedScan::declutter preliminary check")?
         }
+        macro_rules! dec {
+            ($n:ident) => {
+                if let Some(p) =
+                    self.$n(model, node).chain_err(|| format!("running {},", stringify!($n)))?
+                {
+                    return Ok(Some(p));
+                }
+            };
+        };
+        dec!(declutter_body);
+        dec!(declutter_body_axes);
+        dec!(declutter_discard_unused_input_mapping);
+        dec!(declutter_pull_batcheable_input);
+        dec!(declutter_pull_batcheable_output);
+        dec!(declutter_const_initializer);
+        dec!(declutter_discard_useless_outer_output);
         Ok(None)
     }
 

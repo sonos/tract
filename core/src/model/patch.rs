@@ -105,7 +105,15 @@ where
         let original_fact = model.outlet_fact(outlet)?;
         let new_fact = self.model.outlet_fact(by)?;
         if !original_fact.same_as(new_fact) {
-            bail!("Trying to substitute a {:?} by {:?}.\n{:?}", original_fact, new_fact, self);
+            bail!(
+                "Trying to substitute outer {:?} {:?} by inner {:?} {:?}.\n{:#?},{:#?}",
+                outlet,
+                original_fact,
+                by,
+                new_fact,
+                self,
+                model
+            );
         }
         self.shunt_outlet_by.insert(outlet, by);
         Ok(())
