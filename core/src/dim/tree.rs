@@ -278,21 +278,6 @@ impl ExpNode {
                     } else {
                         Div(b!(Mul(p, a)), q)
                     }
-                /*
-                let (integer, non_integer): (Vec<_>, Vec<_>) =
-                terms.into_iter().partition(|a| a.gcd() % q == 0);
-                if integer.len() > 0 && non_integer.len() > 0 {
-                let mut terms = integer.iter().map(|i| i.div(q)).collect::<Vec<_>>();
-                terms.push(Div(b!(Add(non_integer)), q));
-                Add(terms).simplify()
-                } else if integer.len() == 0 {
-                Div(b!(Add(non_integer)), q)
-                } else if non_integer.len() == 0 {
-                Add(integer).simplify()
-                } else {
-                Val(0)
-                }
-                */
                 } else {
                     Div(b!(a), q)
                 }

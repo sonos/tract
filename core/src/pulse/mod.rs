@@ -90,8 +90,9 @@ impl PulsedFact {
 #[derive(Clone, Debug)]
 pub struct PulsedModelChecker;
 impl ModelChecker<PulsedFact, Box<dyn PulsedOp>> for PulsedModelChecker {
-    fn check(m: &PulsedModel) -> TractResult<()> {
-        unimplemented!();
+    fn check(_m: &PulsedModel) -> TractResult<()> {
+        warn!("PulsedModelChecker invoked. This is new (and unexpected) behaviour.");
+        Ok(())
     }
 }
 

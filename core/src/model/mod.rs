@@ -155,8 +155,9 @@ pub type TypedSimpleState<M, P> = SimpleState<TypedFact, Box<dyn TypedOp>, Typed
 #[derive(Clone, Debug)]
 pub struct NormalizedModelChecker;
 impl ModelChecker<NormalizedFact, Box<dyn TypedOp>> for NormalizedModelChecker {
-    fn check(m: &NormalizedModel) -> TractResult<()> {
-        unimplemented!();
+    fn check(_m: &NormalizedModel) -> TractResult<()> {
+        warn!("NormalizedModelChecker invoked. This is new (and unexpected) behaviour.");
+        Ok(())
     }
 }
 
