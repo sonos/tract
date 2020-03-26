@@ -741,6 +741,7 @@ impl TypedOp for MatMulUnary {
 impl PulsedOp for MatMulUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
+        fact.datum_type = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         fact.shape = compute_shapes(
             self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             inputs[0].shape.iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
