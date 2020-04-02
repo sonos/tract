@@ -19,10 +19,10 @@ extern crate tract_tensorflow;
 #[macro_use]
 mod macros;
 
-#[allow(unused_imports)]
-use tract_itertools::Itertools;
 use std::process;
 use std::str::FromStr;
+#[allow(unused_imports)]
+use tract_itertools::Itertools;
 
 use tract_core::internal::*;
 use tract_core::model::{NormalizedModel, TypedModel};
@@ -32,6 +32,8 @@ use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
+
+use readings_probe::*;
 
 mod compare;
 mod cost;
@@ -48,11 +50,16 @@ mod stream_check;
 mod tensor;
 mod utils;
 
+readings_probe::instrumented_allocator!();
+
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: u64 = 100_000;
 const DEFAULT_MAX_TIME: u64 = 5000;
 
-fn info_usage(stage: &str) {
+fn info_usage(stage: &str, probe: Option<&Probe>) {
+    if let Some(mon) = probe {
+        let _ = mon.log_event(stage);
+    }
     if log::log_enabled!(log::Level::Info) {
         let usage = rusage::get_usage().unwrap();
         info!(
@@ -66,74 +73,76 @@ fn info_usage(stage: &str) {
 fn main() {
     use clap::*;
     let mut app = clap_app!(("tract") =>
-        (author: "Romain Liautaud <romain.liautaud@snips.ai>")
-        (author: "Mathieu Poumeyrol <mathieu.poumeyrol@snips.ai>")
-        (version: crate_version!())
-        (about: "Tract command line interface")
+    (author: "Romain Liautaud <romain.liautaud@snips.ai>")
+    (author: "Mathieu Poumeyrol <mathieu.poumeyrol@snips.ai>")
+    (version: crate_version!())
+    (about: "Tract command line interface")
 
-        (@setting DeriveDisplayOrder)
-        (@setting AllowLeadingHyphen)
+    (@setting DeriveDisplayOrder)
+    (@setting AllowLeadingHyphen)
 
-        (@arg model: +takes_value "Sets the model to use")
+    (@arg readings: --readings "Start readings instrumentation")
 
-        (@arg format: -f +takes_value
-            "Hint the model format ('kaldi', 'onnx' or 'tf') instead of guess from extension.")
+    (@arg model: +takes_value "Sets the model to use")
 
-        (@arg input: -i --input +takes_value +multiple number_of_values(1)
-            "Set input shape and type (@file.pb or @file.npz:thing.npy or 3x4xi32).")
+    (@arg format: -f +takes_value
+     "Hint the model format ('kaldi', 'onnx' or 'tf') instead of guess from extension.")
 
-        (@arg const_input: --("const-input") +takes_value +multiple number_of_values(1)
-            "Treat input as a Const (by name), retaining its value.")
+    (@arg input: -i --input +takes_value +multiple number_of_values(1)
+     "Set input shape and type (@file.pb or @file.npz:thing.npy or 3x4xi32).")
 
-        (@arg input_bundle: --("input-bundle") +takes_value +multiple number_of_values(1)
-            "Path to an input container (.npz)")
+    (@arg const_input: --("const-input") +takes_value +multiple number_of_values(1)
+     "Treat input as a Const (by name), retaining its value.")
 
-        (@arg stream_axis: -s --("stream-axis") +takes_value
-            "Set Axis number to stream upon (first is 0)")
+    (@arg input_bundle: --("input-bundle") +takes_value +multiple number_of_values(1)
+     "Path to an input container (.npz)")
 
-        (@arg kaldi_adjust_final_offset: --("kaldi-adjust-final-offset") +takes_value
-            "Adjust value of final offset in network (for reproducibility)")
+    (@arg stream_axis: -s --("stream-axis") +takes_value
+     "Set Axis number to stream upon (first is 0)")
 
-        (@arg kaldi_downsample: --("kaldi-downsample") +takes_value
-            "Add a subsampling to output on axis 0")
+    (@arg kaldi_adjust_final_offset: --("kaldi-adjust-final-offset") +takes_value
+     "Adjust value of final offset in network (for reproducibility)")
 
-        (@arg kaldi_left_context: --("kaldi-left-context") +takes_value
-            "Add lines of left context to input (dupping first time frame)")
+    (@arg kaldi_downsample: --("kaldi-downsample") +takes_value
+     "Add a subsampling to output on axis 0")
 
-        (@arg kaldi_right_context: --("kaldi-right-context") +takes_value
-            "Add lines of right context to input (dupping last time frame)")
+    (@arg kaldi_left_context: --("kaldi-left-context") +takes_value
+     "Add lines of left context to input (dupping first time frame)")
 
-        (@arg input_node: --("input-node") +takes_value +multiple number_of_values(1)
-            "Override input nodes names (auto-detects otherwise).")
+    (@arg kaldi_right_context: --("kaldi-right-context") +takes_value
+     "Add lines of right context to input (dupping last time frame)")
 
-        (@arg output_node: --("output-node") +takes_value +multiple number_of_values(1)
-            "Override output nodes name (auto-detects otherwise).")
+    (@arg input_node: --("input-node") +takes_value +multiple number_of_values(1)
+     "Override input nodes names (auto-detects otherwise).")
 
-        (@arg override_fact: --("override-fact") +takes_value +multiple number_of_values(1)
-            "Override a fact.")
+    (@arg output_node: --("output-node") +takes_value +multiple number_of_values(1)
+     "Override output nodes name (auto-detects otherwise).")
 
-        (@arg analyse_fail_fast: --("analyse-fail-fast") "Stop analyse at first error.")
-        (@arg recursive: --recursive "Apply to sub graphes")
+    (@arg override_fact: --("override-fact") +takes_value +multiple number_of_values(1)
+     "Override a fact.")
 
-        (@arg proto: --proto "Keep proto model around after parse")
-        (@arg determinize: --determinize "Enforce a seed in random operator")
+    (@arg analyse_fail_fast: --("analyse-fail-fast") "Stop analyse at first error.")
+    (@arg recursive: --recursive "Apply to sub graphes")
 
-        (@arg partial: --partial "Before analyse, eliminate dead branches")
+    (@arg proto: --proto "Keep proto model around after parse")
+    (@arg determinize: --determinize "Enforce a seed in random operator")
 
-        (@arg pass: --pass +takes_value
-            possible_values(&["load", "analyse", "incorporate", "type", "declutter",
-                            "pulse-normalized", "pulse", "pulse-to-type", "pulse-declutter",
-                            "optimize"])
-         "Pass to stop preprocessing after.")
+    (@arg partial: --partial "Before analyse, eliminate dead branches")
 
-        (@arg optimize: -O --optimize "Optimize before running")
-        (@arg pulse: --pulse +takes_value "Translate to pulse network")
+    (@arg pass: --pass +takes_value
+     possible_values(&["load", "analyse", "incorporate", "type", "declutter",
+                     "pulse-normalized", "pulse", "pulse-to-type", "pulse-declutter",
+                     "optimize"])
+     "Pass to stop preprocessing after.")
 
-        (@arg verbosity: -v ... "Sets the level of verbosity.")
+    (@arg optimize: -O --optimize "Optimize before running")
+    (@arg pulse: --pulse +takes_value "Translate to pulse network")
 
-        (@arg machine_friendly: --("machine-friendly") "Machine friendly output")
+    (@arg verbosity: -v ... "Sets the level of verbosity.")
 
-        (@arg list_ops: --("list-ops") "List all known operators")
+    (@arg machine_friendly: --("machine-friendly") "Machine friendly output")
+
+    (@arg list_ops: --("list-ops") "List all known operators")
     );
 
     let compare = clap::SubCommand::with_name("compare")
@@ -249,10 +258,10 @@ fn main() {
         .long_about("Compute a cost on (some) operations.")
         .arg(
             Arg::with_name("assert-cost")
-                .takes_value(true)
-                .long("assert-cost")
-                .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
-        );
+            .takes_value(true)
+            .long("assert-cost")
+            .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
+            );
     app = app.subcommand(output_options(cost));
 
     let optimize = clap::SubCommand::with_name("optimize").help("Optimize the graph");
@@ -268,6 +277,16 @@ fn main() {
 
     let matches = app.get_matches();
 
+    let probe = if matches.is_present("readings") {
+        let file = std::fs::File::create("readings.out").unwrap();
+        let mut probe = Probe::new(file).unwrap();
+        probe.register_i64("progress").unwrap();
+        probe.spawn_heartbeat(std::time::Duration::from_millis(5)).unwrap();
+        Some(probe)
+    } else {
+        None
+    };
+
     if ::std::env::var("RUST_LOG").is_err() {
         let level = match matches.occurrences_of("verbosity") {
             0 => "cli=warn,tract=warn",
@@ -281,16 +300,16 @@ fn main() {
     let env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn");
 
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
-    info_usage("init");
+    info_usage("init", probe.as_ref());
 
-    if let Err(e) = handle(matches) {
+    if let Err(e) = handle(matches, probe.as_ref()) {
         use error_chain::ChainedError;
         error!("{}", e);
         eprintln!("{}", e.display_chain());
         process::exit(1)
     }
 
-    info_usage("done");
+    info_usage("done", probe.as_ref());
 }
 
 fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
@@ -374,7 +393,10 @@ pub struct Parameters {
 
 impl Parameters {
     /// Parses the command-line arguments.
-    pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<Parameters> {
+    pub fn from_clap(
+        matches: &clap::ArgMatches,
+        probe: Option<&Probe>,
+    ) -> CliResult<Parameters> {
         let name = matches.value_of("model").ok_or("Model argument required")?;
         let format = matches.value_of("format").unwrap_or(if name.ends_with(".onnx") {
             "onnx"
@@ -385,7 +407,7 @@ impl Parameters {
             #[cfg(feature = "kaldi")]
             "kaldi" => {
                 let kaldi = tract_kaldi::kaldi();
-                info_usage("load framework (kaldi)");
+                info_usage("load framework (kaldi)", probe);
                 let mut graph = kaldi.proto_model_for_path(&name)?;
                 if let Some(i) = matches.value_of("kaldi_adjust_final_offset") {
                     graph.adjust_final_offset = i.parse()?;
@@ -396,7 +418,7 @@ impl Parameters {
             #[cfg(feature = "onnx")]
             "onnx" => {
                 let onnx = tract_onnx::onnx();
-                info_usage("load framework (onnx)");
+                info_usage("load framework (onnx)", probe);
                 let graph = onnx.proto_model_for_path(&name)?;
                 let parsed = onnx.parse(&graph)?;
                 let tract = parsed.model.clone();
@@ -405,7 +427,7 @@ impl Parameters {
             #[cfg(feature = "tf")]
             "tf" => {
                 let tf = tract_tensorflow::tensorflow();
-                info_usage("load framework (tf)");
+                info_usage("load framework (tf)", probe);
                 let mut graph = tf.proto_model_for_path(&name)?;
                 if matches.is_present("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
@@ -420,7 +442,9 @@ impl Parameters {
         };
 
         info!("Model {:?} loaded", name);
-        info_usage("model loaded");
+        info_usage("model loaded", probe);
+
+        std::thread::sleep(std::time::Duration::from_secs_f32(0.5));
 
         #[cfg(feature = "conform")]
         let tf_model = if format == "tf" {
@@ -612,7 +636,7 @@ impl Parameters {
                 if stop_at == "load" {
                     return Ok(Box::new(raw_model) as _);
                 }
-                info_usage("after load");
+                info_usage("after load", probe);
                 info!("Running 'analyse'");
                 let r = raw_model.analyse(!matches.is_present("analyse_fail_fast"));
                 if let Err(e) = r {
@@ -622,52 +646,52 @@ impl Parameters {
                 if stop_at == "analyse" || r.is_err() {
                     return Ok(Box::new(raw_model) as _);
                 }
-                info_usage("after analyse");
+                info_usage("after analyse", probe);
                 info!("Running 'incorporate'");
                 let model = raw_model.incorporate()?;
                 if stop_at == "incorporate" {
                     return Ok(Box::new(model) as _);
                 }
-                info_usage("after incorporate");
+                info_usage("after incorporate", probe);
                 info!("Running 'type'");
                 let model = model.into_typed()?;
                 typed_model = Some(model.clone());
                 if stop_at == "type" {
                     return Ok(Box::new(model) as _);
                 }
-                info_usage("after type");
+                info_usage("after type", probe);
                 info!("Running 'declutter'");
                 let mut model = model.declutter()?;
                 typed_model = Some(model.clone());
                 if stop_at == "declutter" {
                     return Ok(Box::new(model) as _);
                 }
-                info_usage("after declutter");
+                info_usage("after declutter", probe);
                 if let Some(pulse) = pulse {
                     info!("Running 'pulse-normalize'");
                     let normalized_model = model.clone().into_normalized()?;
                     if stop_at == "pulse-normalize" {
                         return Ok(Box::new(normalized_model) as _);
                     }
-                    info_usage("after pulse-normalize");
+                    info_usage("after pulse-normalize", probe);
                     info!("Running 'pulse' ({})", pulse);
                     let pulsed = ::tract_core::pulse::PulsedModel::new(&normalized_model, pulse)?;
                     if stop_at == "pulse" {
                         return Ok(Box::new(pulsed) as _);
                     }
-                    info_usage("after pulse");
-                    info!("Running 'pulse-to-type'");
+                    info_usage("after pulse", probe);
+                    info!("Running 'pulse-to-type'",);
                     model = pulsed.into_typed()?;
                     if stop_at == "pulse-to-type" {
                         return Ok(Box::new(model) as _);
                     }
-                    info_usage("after pulse-to-type");
+                    info_usage("after pulse-to-type", probe);
                     info!("Running 'pulse-declutter'");
                     model = model.declutter()?;
                     if stop_at == "pulse-declutter" {
                         return Ok(Box::new(model) as _);
                     }
-                    info_usage("after pulse-declutter");
+                    info_usage("after pulse-declutter", probe);
                 }
                 info!("Running 'optimize'");
                 model = model.clone().codegen()?;
@@ -676,7 +700,7 @@ impl Parameters {
         };
 
         info!("Model ready");
-        info_usage("model ready");
+        info_usage("model ready", probe);
 
         Ok(Parameters {
             analyse_error,
@@ -781,7 +805,7 @@ impl Assertions {
 }
 
 /// Handles the command-line input.
-fn handle(matches: clap::ArgMatches) -> CliResult<()> {
+fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
     if matches.is_present("list_ops") {
         #[cfg(feature = "onnx")]
         {
@@ -802,7 +826,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         return Ok(());
     }
 
-    let mut params = Parameters::from_clap(&matches)?;
+    let mut params = Parameters::from_clap(&matches, probe)?;
 
     match matches.subcommand() {
         #[cfg(feature = "conform")]
@@ -867,6 +891,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
                 &params,
                 ProfilingMode::from_clap(&m)?,
                 display_options_from_clap(&matches, m)?,
+                probe,
             )
         }
 

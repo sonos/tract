@@ -17,8 +17,14 @@ use crate::tensor::make_inputs;
 
 use tract_hir::internal::*;
 
-pub fn handle_benching(params: &Parameters, profiling: ProfilingMode) -> CliResult<()> {
-    dispatch_model!(params.tract_model, |m| handle_benching_t(m, &params, profiling))
+use readings_probe::*;
+
+pub fn handle_benching(
+    params: &Parameters,
+    profiling: ProfilingMode,
+    probe: Option<&Probe>,
+) -> CliResult<()> {
+    dispatch_model!(params.tract_model, |m| handle_benching_t(m, &params, profiling, probe))
 }
 
 pub fn make_inputs_for_model<F, O>(model: &ModelImpl<F, O>) -> CliResult<TVec<Tensor>>
@@ -39,6 +45,7 @@ fn handle_benching_t<F, O>(
     model: &ModelImpl<F, O>,
     params: &Parameters,
     profiling: ProfilingMode,
+    probe: Option<&Probe>,
 ) -> CliResult<()>
 where
     F: Fact + Clone + 'static,
@@ -53,10 +60,17 @@ where
 
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(plan)?;
+    let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
+        if let Some(mon) = probe {
+            let _ = mon.log_event(&format!("loop_{}", iters));
+        }
+        if let Some(p) = &progress {
+            p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
+        }
         state.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
