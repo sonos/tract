@@ -21,19 +21,17 @@ clap = "2.31"
 env_logger = "0.7"
 error-chain = "0.12"
 lazy_static = "1.0"
-libc = "0.2"
 log = "0.4"
 ndarray-npy = { version = "0.5", features = [ "compressed_npz" ] }
 pbr = "1.0"
 py_literal = "0.2"
 rand = "0.7"
-readings-probe = { path = "../../readings/probe" }
+readings-probe = "0.1.1"
 tract-core = { path = "../core" }
 tract-hir = { path = "../hir" }
 tract-kaldi = { optional = true, path = "../kaldi" }
 tract-onnx = { optional = true, path = "../onnx" }
 tract-tensorflow = { optional = true, path = "../tensorflow" }
-winapi = "0.3"
 
 [features]
 default = ["kaldi", "onnx", "tf"]

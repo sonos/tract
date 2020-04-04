@@ -7,7 +7,6 @@ extern crate error_chain;
 extern crate log;
 extern crate atty;
 extern crate env_logger;
-extern crate libc;
 extern crate pbr;
 #[macro_use]
 extern crate tract_core;
@@ -52,16 +51,12 @@ mod utils;
 
 readings_probe::instrumented_allocator!();
 
-/// The default maximum for iterations and time.
-const DEFAULT_MAX_ITERS: u64 = 100_000;
-const DEFAULT_MAX_TIME: u64 = 5000;
-
 fn info_usage(stage: &str, probe: Option<&Probe>) {
     if let Some(mon) = probe {
         let _ = mon.log_event(stage);
     }
     if log::log_enabled!(log::Level::Info) {
-        let usage = rusage::get_usage().unwrap();
+        let usage = readings_probe::get_os_readings().unwrap();
         info!(
             "Resource usage {}: vsz:{} rsz:{} rszmax:{}",
             stage, usage.virtual_size, usage.resident_size, usage.resident_size_max
@@ -718,8 +713,8 @@ impl Parameters {
 }
 
 pub enum ProfilingMode {
-    Regular { max_iters: u64, max_time: u64 },
-    RegularBenching { max_iters: u64, max_time: u64 },
+    Regular { max_iters: u64, max_time: std::time::Duration },
+    RegularBenching { max_iters: u64, max_time: std::time::Duration },
 }
 
 impl ProfilingMode {
@@ -728,12 +723,13 @@ impl ProfilingMode {
             .value_of("max_iters")
             .map(u64::from_str)
             .transpose()?
-            .unwrap_or(DEFAULT_MAX_ITERS);
+            .unwrap_or(100_000);
         let max_time = matches
             .value_of("max-time")
             .map(u64::from_str)
             .transpose()?
-            .unwrap_or(DEFAULT_MAX_TIME);
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(5));
         let mode = if matches.is_present("bench") {
             ProfilingMode::RegularBenching { max_iters, max_time }
         } else {
