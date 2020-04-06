@@ -439,8 +439,6 @@ impl Parameters {
         info!("Model {:?} loaded", name);
         info_usage("model loaded", probe);
 
-        std::thread::sleep(std::time::Duration::from_secs_f32(0.5));
-
         #[cfg(feature = "conform")]
         let tf_model = if format == "tf" {
             info!("Tensorflow version: {}", tract_tensorflow::conform::tf::version());
