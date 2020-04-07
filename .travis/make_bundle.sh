@@ -41,7 +41,7 @@ cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
 cp sizes $TASK_NAME
 for bench in mm_for_wavenet_hw conv_for_wavenet_hw mm_for_asr_am
 do
-    exe=`ls -t target/$RUSTC_TRIPLE/release/$bench-???????????????? | head -1`
+    exe=`find target/$RUSTC_TRIPLE/release/ -name "$bench*" -type f -executable | head -1`
     cp $exe $TASK_NAME/benches/$bench
 done
 cp .travis/bundle-entrypoint.sh $TASK_NAME/entrypoint.sh
