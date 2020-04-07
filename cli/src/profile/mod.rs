@@ -101,9 +101,10 @@ pub fn handle(
     params: &Parameters,
     profiling: ProfilingMode,
     display_options: DisplayOptions,
+    monitor: Option<&readings_probe::Probe>,
 ) -> CliResult<()> {
     match &profiling {
         ProfilingMode::Regular { .. } => regular::handle(params, profiling, display_options),
-        ProfilingMode::RegularBenching { .. } => regular::handle_benching(params, profiling),
+        ProfilingMode::RegularBenching { .. } => regular::handle_benching(params, profiling, monitor),
     }
 }

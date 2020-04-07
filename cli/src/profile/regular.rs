@@ -17,8 +17,14 @@ use crate::tensor::make_inputs;
 
 use tract_hir::internal::*;
 
-pub fn handle_benching(params: &Parameters, profiling: ProfilingMode) -> CliResult<()> {
-    dispatch_model!(params.tract_model, |m| handle_benching_t(m, &params, profiling))
+use readings_probe::*;
+
+pub fn handle_benching(
+    params: &Parameters,
+    profiling: ProfilingMode,
+    probe: Option<&Probe>,
+) -> CliResult<()> {
+    dispatch_model!(params.tract_model, |m| handle_benching_t(m, &params, profiling, probe))
 }
 
 pub fn make_inputs_for_model<F, O>(model: &ModelImpl<F, O>) -> CliResult<TVec<Tensor>>
@@ -39,6 +45,7 @@ fn handle_benching_t<F, O>(
     model: &ModelImpl<F, O>,
     params: &Parameters,
     profiling: ProfilingMode,
+    probe: Option<&Probe>,
 ) -> CliResult<()>
 where
     F: Fact + Clone + 'static,
@@ -53,10 +60,17 @@ where
 
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(plan)?;
+    let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
     let mut iters = 0;
     let start = Instant::now();
-    while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
+    while iters < max_iters && start.elapsed_real() < max_time {
+        if let Some(mon) = probe {
+            let _ = mon.log_event(&format!("loop_{}", iters));
+        }
+        if let Some(p) = &progress {
+            p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
+        }
         state.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
@@ -64,9 +78,9 @@ where
     dur /= iters as f64;
 
     if params.machine_friendly {
-        println!("real: {}", dur.avg_real());
-        println!("user: {}", dur.avg_user());
-        println!("sys: {}", dur.avg_sys());
+        println!("real: {}", dur.avg_real().as_secs_f64());
+        println!("user: {}", dur.avg_user().as_secs_f64());
+        println!("sys: {}", dur.avg_sys().as_secs_f64());
     } else {
         println!("Bench ran {} times.\n{}", iters, dur_avg_multiline(dur));
     }
@@ -104,7 +118,7 @@ where
     let plan = SimplePlan::new(model)?;
     let mut iters = 0;
     let start = Instant::now();
-    while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
+    while iters < max_iters && start.elapsed_real() < max_time {
         let _ = plan.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
@@ -112,7 +126,7 @@ where
     entire /= iters as f64;
 
     info!("Running {} iterations max. for each node.", max_iters);
-    info!("Running for {} ms max. for each node.", max_time);
+    info!("Running for {} ms max. for each node.", max_time.as_millis());
 
     let mut profile = ProfileData::default();
 
@@ -148,7 +162,7 @@ where
             let mut iters = 0;
             let start = Instant::now();
 
-            while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
+            while iters < max_iters && start.elapsed_real() < max_time {
                 state.compute_one(n)?;
                 iters += 1;
             }
@@ -210,7 +224,7 @@ where
     if log_enabled!(Info) {
         println!(
             "(Real: {} in total, with max_iters={:e} and max_time={:?}ms.)",
-            White.paint(format!("{:.3} ms", profile.summed().total_real * 1e3)),
+            White.paint(format!("{:.3} ms", profile.summed().total_real.as_secs_f64() * 1e3)),
             max_iters as f32,
             max_time,
         );
