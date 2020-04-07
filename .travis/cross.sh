@@ -34,11 +34,12 @@ if [ `uname` = "Darwin" ]
 then
     NAME=macos
 else
-    NAME=travis
+    NAME=linux
 fi
-wget -q https://github.com/snipsco/dinghy/releases/download/0.4.16/cargo-dinghy-$NAME.tgz -O cargo-dinghy.tgz
+VERSION=0.4.31
+wget -q https://github.com/snipsco/dinghy/releases/download/v$VERSION/cargo-dinghy-$NAME-$VERSION.tgz cargo-dinghy.tgz
 tar vzxf cargo-dinghy.tgz --strip-components 1
-mv /tmp/cargo-dinghy/cargo-dinghy $HOME/.cargo/bin
+mv cargo-dinghy $HOME/.cargo/bin
 )
 
 case "$PLATFORM" in
