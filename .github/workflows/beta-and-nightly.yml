@@ -1,4 +1,4 @@
-name: Native Linux
+name: Beta and nightly Rust
 
 on:
   push:
@@ -9,7 +9,8 @@ jobs:
   linux:
     strategy:
       matrix:
-        rust: [ 1.39.0, stable ]
+        rust: [ beta, nightly ]
+      fail-fast: false
 
     runs-on: ubuntu-latest
 
