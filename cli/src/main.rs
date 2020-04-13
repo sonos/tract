@@ -549,10 +549,6 @@ impl Parameters {
         let mut input_values = vec![];
 
         if let Some(inputs) = matches.values_of("input") {
-            let const_inputs = matches
-                .values_of("const_input")
-                .map(|cis| cis.map(|s| s.to_string()).collect())
-                .unwrap_or(vec![]);
             for (ix, v) in inputs.enumerate() {
                 let (name, mut t) = tensor::for_string(v)?;
                 let outlet = if let Some(name) = name.filter(|s| s.len() > 0) {
@@ -575,9 +571,6 @@ impl Parameters {
                 raw_model.node_mut(outlet.node).inputs.clear();
                 raw_model.node_mut(outlet.node).op =
                     Box::new(tract_hir::ops::source::Source::new());
-                if !const_inputs.contains(&raw_model.node_name(outlet.node).to_string()) {
-                    t.value = GenericFactoid::Any;
-                }
                 if let Some(s) = matches.value_of("stream_axis") {
                     t.shape.set_dim(s.parse()?, TDim::s());
                 }
@@ -611,6 +604,19 @@ impl Parameters {
                         input_values[ix] = Some(t.into_arc_tensor());
                     }
                 }
+            }
+        }
+
+        for i in (0..raw_model.inputs.len()).rev() {
+            let input = raw_model.inputs[i];
+            let const_inputs = matches
+                .values_of("const_input")
+                .map(|cis| cis.collect())
+                .unwrap_or(vec![]);
+            if const_inputs.contains(&raw_model.node_name(input.node)) {
+                let t = raw_model.outlet_fact(input.node.into())?.value.concretize().unwrap();
+                raw_model.node_mut(input.node).op = Box::new(tract_core::ops::konst::Const::new(t));
+                raw_model.inputs.remove(i);
             }
         }
 

@@ -155,7 +155,9 @@ impl TypedModel {
         loop {
             let mut done_something = false;
             for p in crate::optim::declutter() {
+                debug!("done_something {:?} before {:?}", done_something, p);
                 done_something = done_something || p.pass(&mut model)?;
+                debug!("done_something {:?} after {:?}", done_something, p);
                 if cfg!(debug_assertions) {
                     model.check_edges()?;
                     assert_eq!(model.input_outlets()?.len(), model_inputs);
