@@ -55,13 +55,14 @@ $TRACT --machine-friendly $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
 arm_ml_kws_cnn_m=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
 
-# $TRACT --machine-friendly $CACHEDIR/deepspeech-0.4.1.pb \
-#     --input-node input_node -i 1x16x19x26xf32 \
-#     --input-node input_lengths -i 1xi32=16 --const-input input_lengths \
-#     -O profile --bench \
-#     > tract.out
-# deepspeech_0_4_1=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-# echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics
+$TRACT --machine-friendly $CACHEDIR/deepspeech-0.4.1.pb \
+    --input-node input_node -i 1x16x19x26xf32 \
+    --input-node input_lengths -i 1xi32=16 --const-input input_lengths \
+    --tf-initializer-output-node initialize_state \
+    -O profile --bench \
+    > tract.out
+deepspeech_0_4_1=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics
 
 $TRACT --machine-friendly $CACHEDIR/hey_snips_v1.pb \
     -O -i 80x40xf32 profile --bench \
