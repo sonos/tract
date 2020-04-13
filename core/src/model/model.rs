@@ -416,7 +416,7 @@ where
     }
 
     fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>> {
-        crate::model::order::eval_order_for_nodes(&self.nodes, inputs, outputs)
+        crate::model::order::eval_order_for_nodes(&self.nodes, inputs, outputs, &[])
     }
 
     fn input_outlets(&self) -> &[OutletId] {

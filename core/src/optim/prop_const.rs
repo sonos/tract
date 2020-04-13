@@ -32,6 +32,7 @@ impl super::TypedPass for PropConst {
                             model.nodes(),
                             &model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<_>>(),
                             &[source.node],
+                            &[]
                         )?
                         .into_iter()
                         .all(|n| model.nodes()[n].op().as_stateless().is_some())

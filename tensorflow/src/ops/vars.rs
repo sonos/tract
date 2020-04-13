@@ -27,7 +27,7 @@ fn variable_v2(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inf
             }
         })
         .collect::<TractResult<TVec<usize>>>()?;
-    Ok(Box::new(VariableV2::new(container, shared_name, name, id, shape, dt)))
+    Ok(Box::new(VariableV2::new(container, shared_name, name, id, shape, dt, None)))
 }
 
 #[derive(Clone, Debug, new)]
@@ -59,6 +59,7 @@ pub struct VariableV2 {
     pub id: String,
     shape: TVec<usize>,
     dt: DatumType,
+    pub initializer: Option<Arc<Tensor>>,
 }
 
 tract_linalg::impl_dyn_hash!(VariableV2);
@@ -66,6 +67,14 @@ tract_linalg::impl_dyn_hash!(VariableV2);
 impl Op for VariableV2 {
     fn name(&self) -> Cow<str> {
         "tf.VariableV2".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        if let Some(init) = &self.initializer {
+            Ok(vec!(format!("Initialized to {:?}", init)))
+        } else {
+            Ok(vec!(format!("Uninitialized")))
+        }
     }
 
     op_as_typed_op!();
@@ -77,11 +86,11 @@ impl StatefullOp for VariableV2 {
         state: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
-            tract_ndarray::ArrayD::<T>::default(shape).into()
-        }
-
-        let tensor = dispatch_datum!(make_buffer(self.dt)(&self.shape));
+        let tensor = if let Some(init) = &self.initializer {
+            init.clone().into_tensor()
+        } else {
+            unsafe { Tensor::uninitialized_dt(self.dt, &self.shape)? }
+        };
         state.tensors.insert(self.id.clone(), tensor);
         Ok(Some(Box::new(VariableV2State)))
     }
@@ -148,20 +157,7 @@ impl OpState for AssignState {
         } else {
             bail!("Assign has not been linked to var")
         };
-        fn assign<T: Datum>(
-            session: &mut SessionState,
-            var_id: &str,
-            t: &Tensor,
-        ) -> TractResult<()> {
-            session
-                .tensors
-                .get_mut(var_id)
-                .unwrap()
-                .to_array_view_mut::<T>()?
-                .assign(&t.to_array_view::<T>()?);
-            Ok(())
-        }
-        dispatch_datum!(assign(new.datum_type())(session, var_id, &new))?;
+        *session.tensors.get_mut(var_id).unwrap() = new.clone().into_tensor();
         Ok(tvec!(new))
     }
 }
@@ -216,7 +212,7 @@ mod tests {
         let var = model
             .add_node(
                 "var",
-                VariableV2::new(None, None, "var".into(), "xxx".into(), tvec![], f32::datum_type()),
+                VariableV2::new(None, None, "var".into(), "xxx".into(), tvec![], f32::datum_type(), None),
                 tvec!(InferenceFact::default()),
             )
             .unwrap();
