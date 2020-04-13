@@ -110,6 +110,9 @@ fn main() {
     (@arg input_node: --("input-node") +takes_value +multiple number_of_values(1)
      "Override input nodes names (auto-detects otherwise).")
 
+    (@arg tf_initializer_output_node: --("tf-initializer-output-node") +takes_value +multiple number_of_values(1)
+     "Set an initializer node")
+
     (@arg output_node: --("output-node") +takes_value +multiple number_of_values(1)
      "Override output nodes name (auto-detects otherwise).")
 
@@ -398,7 +401,7 @@ impl Parameters {
         } else {
             "tf"
         });
-        let (mut graph, mut raw_model) = match format {
+        let (mut graph, mut raw_model, tf_model_extensions) = match format {
             #[cfg(feature = "kaldi")]
             "kaldi" => {
                 let kaldi = tract_kaldi::kaldi();
@@ -408,7 +411,7 @@ impl Parameters {
                     graph.adjust_final_offset = i.parse()?;
                 }
                 let parsed = kaldi.model_for_proto_model(&graph)?;
-                (SomeGraphDef::Kaldi(graph), parsed)
+                (SomeGraphDef::Kaldi(graph), parsed, None)
             }
             #[cfg(feature = "onnx")]
             "onnx" => {
@@ -417,7 +420,7 @@ impl Parameters {
                 let graph = onnx.proto_model_for_path(&name)?;
                 let parsed = onnx.parse(&graph)?;
                 let tract = parsed.model.clone();
-                (SomeGraphDef::Onnx(graph, parsed), tract)
+                (SomeGraphDef::Onnx(graph, parsed), tract, None)
             }
             #[cfg(feature = "tf")]
             "tf" => {
@@ -427,8 +430,15 @@ impl Parameters {
                 if matches.is_present("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
                 }
-                let tract = tf.model_for_proto_model(&graph)?;
-                (SomeGraphDef::Tf(graph), tract)
+                let mut model_and_ext = tf.parse_graph(&graph)?;
+                model_and_ext.1.initializing_nodes = matches
+                    .values_of("tf_initializer_output_node")
+                    .map(|values| values
+                    .map(|name| model_and_ext.0.node_id_by_name(name))
+                    .collect::<TractResult<Vec<usize>>>())
+                    .transpose()?
+                    .unwrap_or(vec!());
+                (SomeGraphDef::Tf(graph), model_and_ext.0, Some(model_and_ext.1))
             }
             _ => bail!(
                 "Format {} not supported. You may need to recompile tract with the right features.",
@@ -640,6 +650,14 @@ impl Parameters {
                     return Ok(Box::new(raw_model) as _);
                 }
                 info_usage("after analyse", probe);
+                if let Some(ext) = tf_model_extensions {
+                    info!("Running 'tf-preproc'");
+                    raw_model = ext.preproc(raw_model)?;
+                    if stop_at == "tf-preproc" {
+                        return Ok(Box::new(raw_model) as _);
+                    }
+                    info_usage("after tf-preproc", probe);
+                }
                 info!("Running 'incorporate'");
                 let model = raw_model.incorporate()?;
                 if stop_at == "incorporate" {

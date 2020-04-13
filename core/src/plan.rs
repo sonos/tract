@@ -39,15 +39,21 @@ where
         let outputs = model.borrow().output_outlets()?.iter().cloned().collect::<Vec<OutletId>>();
         Self::new_for_outputs(model, &outputs)
     }
+
     /// This contructor returns a plan that will compute the specified output.
     pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<F, O, M>> {
-        Self::new_for_outputs(model, &[output])
+        Self::new_for_outputs_and_deps(model, &[output], &[])
     }
+
     /// This contructor returns a plan that will compute all specified outputs in one pass.
     pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<F, O, M>> {
+        Self::new_for_outputs_and_deps(model, outputs, &[])
+    }
+
+    pub fn new_for_outputs_and_deps(model: M, outputs: &[OutletId], deps: &[(usize, usize)]) -> TractResult<SimplePlan<F, O, M>> {
         let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
-        let order = eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes)?;
+        let order = eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?;
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
         for step in 0..order.len() {
             for i in &model.borrow().node(order[step]).inputs {
