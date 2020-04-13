@@ -212,7 +212,7 @@ mod tests {
         let var = model
             .add_node(
                 "var",
-                VariableV2::new(None, None, "var".into(), "xxx".into(), tvec![], f32::datum_type(), None),
+                VariableV2::new(None, None, "var".into(), "xxx".into(), tvec![], f32::datum_type(), Some(rctensor0(-1.0f32))),
                 tvec!(InferenceFact::default()),
             )
             .unwrap();
@@ -241,7 +241,7 @@ mod tests {
         let mut state = SimpleState::new_multiplan(vec![plan_read, plan_set, plan_reset]).unwrap();
 
         let read = state.run_plan(tvec!(), 0).unwrap(); // read
-        assert_eq!(read, tvec!(Tensor::from(0.0f32).into()));
+        assert_eq!(read, tvec!(Tensor::from(-1.0f32).into()));
         let read = state.run_plan(tvec!(), 1).unwrap(); // set
         assert_eq!(read, tvec!(Tensor::from(1.0f32).into()));
         let read = state.run_plan(tvec!(), 0).unwrap(); // read

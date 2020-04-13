@@ -75,6 +75,7 @@ impl LstmProblem {
                 "h".into(),
                 memory_shape.clone(),
                 f32::datum_type(),
+                None,
             ),
             &[],
         )?[0];
@@ -87,6 +88,7 @@ impl LstmProblem {
                 "cs".into(),
                 memory_shape.clone(),
                 f32::datum_type(),
+                None,
             ),
             &[],
         )?[0];
@@ -331,22 +333,3 @@ fn test_w() {
     assert_eq!(o, t)
 }
 
-/*
-#[test]
-fn test_loops() {
-    let pb = LstmProblem {
-        loops: 2,
-        chunk_length: 1,
-        batch_size: 1,
-        cell_size: 1,
-        x: vec![rctensor3(&[[[0.0f32]]]), rctensor3(&[[[0.0f32]]])],
-        w_xh_icfo: Array2::<f32>::zeros((2, 4)).into(),
-        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
-        h0: arr2(&[[0.0f32]]),
-        c0: arr2(&[[1.0f32]]),
-    };
-    let o = pb.onnx_run().unwrap();
-    let t = pb.tf_run().unwrap();
-    assert_eq!(o, t)
-}
-*/
