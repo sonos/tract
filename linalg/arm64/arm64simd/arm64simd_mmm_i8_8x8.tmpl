@@ -118,7 +118,7 @@
     subs        x3, x3, #1
     bne         .packed_tops_and_offsets_loop_1
 
-    b           .store
+    b           .non_linear
 
 .packed_packed:
 /* TODO packed_packed_loop_4 (?)

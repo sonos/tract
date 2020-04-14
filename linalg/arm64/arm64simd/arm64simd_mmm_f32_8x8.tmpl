@@ -116,7 +116,7 @@
     subs        x3, x3, #1
     bne         .packed_tops_and_offsets_loop_1
 
-    b           .store
+    b           .non_linear
 
 .packed_packed:
     cmp         x3, #4
