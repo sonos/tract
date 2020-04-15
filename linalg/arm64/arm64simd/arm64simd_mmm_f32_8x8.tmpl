@@ -299,9 +299,6 @@
     cmp         x1, #0
     bne         .non_linear_loop_entry
 
-    cmp         x0, #0
-    beq         .store
-
 .store:
     ldr         x3, [x0, #16]               // c
     ldr         x4, [x3]                    // c disc
@@ -377,7 +374,8 @@
     cmp         x2, #10
     beq         .scalar_add
 
-    b           .unsupported
+    add         x0, x2, #4000
+    b           .return
 
 .min:
     add         x2, x1, #8

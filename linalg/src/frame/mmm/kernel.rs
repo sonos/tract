@@ -131,6 +131,7 @@ pub mod test {
     macro_rules! mmm_kernel_tests {
         ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
             mod kernel {
+                use num_traits::Zero;
                 use proptest::prelude::*;
                 #[allow(unused_imports)]
                 use crate::frame::mmm::kernel::test;
@@ -144,9 +145,7 @@ pub mod test {
                             prop_assert_eq!(pb.run(), pb.reference())
                         }
                     }
-                }
 
-                proptest::proptest! {
                     #[test]
                     fn packed_offsets_prop(pb in any::<PackedOffsetsProblem<$ker, $ta, $tb, $tc, $ti>>()) {
                         if $cond {
@@ -173,6 +172,32 @@ pub mod test {
                 fn packed_packed_13() {
                     if $cond {
                         test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(13)
+                    }
+                }
+
+                #[test]
+                fn packed_packed_bug_1() {
+                    if $cond {
+                        let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
+                            1,
+                            vec!(<$ta>::zero(); <$ker>::mr()),
+                            vec!(<$tb>::zero(); <$ker>::nr()),
+                            true,
+                            true);
+                        assert_eq!(pb.run(), pb.reference())
+                    }
+                }
+
+                #[test]
+                fn packed_offsets_bug_1() {
+                    if $cond {
+                        let pb = PackedOffsetsProblem::<$ker, $ta, $tb, $tc, $ti>::new(
+                            vec!(<$ta>::zero(); <$ker>::mr()),
+                            vec!(<$tb>::zero()),
+                            vec!(0usize; <$ker>::nr()),
+                            vec!(0usize),
+                            true);
+                        assert_eq!(pb.run(), pb.reference())
                     }
                 }
 
@@ -228,7 +253,7 @@ pub mod test {
         };
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, new)]
     pub struct PackedPackedProblem<K, TA, TB, TC, TI>
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
@@ -238,12 +263,12 @@ pub mod test {
         TI: Copy + Add + Mul + Zero + Debug + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
-        k: usize,
-        a: Vec<TA>,
-        b: Vec<TB>,
-        trans_c: bool,
-        add_one: bool,
-        _phantom: PhantomData<(K, TC, TI)>,
+        pub k: usize,
+        pub a: Vec<TA>,
+        pub b: Vec<TB>,
+        pub trans_c: bool,
+        pub add_one: bool,
+        pub _phantom: PhantomData<(K, TC, TI)>,
     }
 
     impl<K, TA, TB, TC, TI> Arbitrary for PackedPackedProblem<K, TA, TB, TC, TI>
@@ -267,7 +292,14 @@ pub mod test {
                     let b = (0usize..10).prop_map(|x| x.as_());
                     (Just(k), Just(trans_c), Just(add_one), vec(a, m..=m), vec(b, n..=n))
                 })
-                .prop_map(|(k, trans_c, add_one, a, b)| Self { k, a, b, trans_c,add_one, _phantom: PhantomData })
+                .prop_map(|(k, trans_c, add_one, a, b)| Self {
+                    k,
+                    a,
+                    b,
+                    trans_c,
+                    add_one,
+                    _phantom: PhantomData,
+                })
                 .boxed()
         }
     }
@@ -309,7 +341,7 @@ pub mod test {
                 mmm_stride_storage(&mut v, K::nr(), 1)
             };
             let non_linear = if self.add_one {
-                [ FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done ].as_ptr()
+                [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done].as_ptr()
             } else {
                 std::ptr::null()
             };
@@ -325,7 +357,7 @@ pub mod test {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, new)]
     pub struct PackedOffsetsProblem<K, TA, TB, TC, TI>
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
@@ -364,7 +396,13 @@ pub mod test {
                     let b = (0usize..10).prop_map(|x| x.as_());
                     let len =
                         rows_offsets.iter().max().unwrap() + cols_offsets.iter().max().unwrap() + 1;
-                    (vec(a, m..=m), vec(b, len..=len), Just(rows_offsets), Just(cols_offsets), Just(add_one))
+                    (
+                        vec(a, m..=m),
+                        vec(b, len..=len),
+                        Just(rows_offsets),
+                        Just(cols_offsets),
+                        Just(add_one),
+                    )
                 })
                 .prop_map(|(a, b, rows_offsets, cols_offsets, add_one)| Self {
                     a,
@@ -418,7 +456,7 @@ pub mod test {
             let mut v = vec![TC::zero(); K::mr() * K::nr()];
             let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
             let non_linear = if self.add_one {
-                [ FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done ].as_ptr()
+                [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done].as_ptr()
             } else {
                 std::ptr::null()
             };
