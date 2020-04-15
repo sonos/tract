@@ -340,8 +340,9 @@ pub mod test {
             } else {
                 mmm_stride_storage(&mut v, K::nr(), 1)
             };
+            let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
             let non_linear = if self.add_one {
-                [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done].as_ptr()
+                non_linear_ops.as_ptr()
             } else {
                 std::ptr::null()
             };
@@ -455,8 +456,9 @@ pub mod test {
             };
             let mut v = vec![TC::zero(); K::mr() * K::nr()];
             let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
+            let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
             let non_linear = if self.add_one {
-                [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done].as_ptr()
+                non_linear_ops.as_ptr()
             } else {
                 std::ptr::null()
             };
