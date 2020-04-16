@@ -647,8 +647,16 @@ impl Parameters {
                 }
                 info_usage("after incorporate", probe);
                 info!("Running 'type'");
-                let model = model.into_typed()?;
-                typed_model = Some(model.clone());
+                let model = match model.clone().into_typed() {
+                    Ok(typed) => {
+                        typed_model = Some(typed.clone());
+                        typed
+                    }
+                    Err(e) => {
+                        error!("{:?}", e);
+                        return Ok(Box::new(model) as _);
+                    }
+                };
                 if stop_at == "type" {
                     return Ok(Box::new(model) as _);
                 }
@@ -863,6 +871,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
 
         ("cost", Some(m)) => {
             crate::cost::handle(&params, display_options_from_clap(&matches, m)?, m)
+        }
+
+        ("", None) => {
+            dump::handle(&params, display_options_from_clap(&matches, &clap::ArgMatches::default())?, vec!())
         }
 
         ("dump", Some(m)) => {
