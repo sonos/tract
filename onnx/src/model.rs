@@ -201,7 +201,9 @@ impl Onnx {
         let graph = &proto.graph;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
         if onnx_operator_set_version < 9 || onnx_operator_set_version > 10 {
-            info!("ONNX operator for your model is {}, tract is tested against operator set 9 and 10 only. Your model may still work so this is not a hard fail.", onnx_operator_set_version);
+            warn!("ONNX operator for your model is {}, tract is tested against \
+                  operator set 9 and 10 only. Your model may still work so this is not a hard fail.",
+                  onnx_operator_set_version);
         }
         let ctx = ParsingContext {
             framework: self,
