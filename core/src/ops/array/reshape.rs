@@ -15,7 +15,7 @@ impl Op for TypedReshape {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("to shape: {}", self.shape.iter().map(|d| format!("{:?}", d)).join("x"))])
+        Ok(vec![format!("to shape: {}", self.shape.iter().join("x"))])
     }
 
     op_as_typed_op!();
