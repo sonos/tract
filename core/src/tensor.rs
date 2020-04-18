@@ -168,6 +168,16 @@ impl Tensor {
         Ok(tensor)
     }
 
+    pub fn zero<T: Datum + num_traits::Zero>(shape: &[usize]) -> TractResult<Tensor> {
+        let mut t = unsafe { Tensor::uninitialized::<T>(shape)? };
+        t.as_slice_mut::<T>().unwrap().iter_mut().for_each(|item| *item = T::zero());
+        Ok(t)
+    }
+
+    pub fn zero_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
+        dispatch_numbers!(Self::zero(dt)(shape))
+    }
+
     /// Create an tensor from raw data.
     ///
     /// It copies the data, aligning it to the size of T.
