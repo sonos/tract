@@ -40,6 +40,7 @@ do
             --assert-output-bundle $tc/io.npz"
 
         # if $($cmd 2> /dev/null > /dev/null)
+        echo $cmd
         if $($cmd)
         then
             echo -e "\e[92mOK\e[39m"

@@ -358,7 +358,6 @@ impl TypedScan {
                                 w,
                             ).chain_err(|| "patching outer model")?;
                         }
-                        println!(" *** do pull out");
                         return Ok(Some(outside_patch));
                     }
                 }

@@ -1,7 +1,7 @@
+use crate::prelude::TractResult;
 use itertools::Itertools;
+use std::collections::HashMap;
 use std::fmt;
-
-use super::stack::*;
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
@@ -14,9 +14,10 @@ pub enum ExpNode {
     Div(Box<ExpNode>, u32),
 }
 
+use ExpNode::*;
+
 impl fmt::Display for ExpNode {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use self::ExpNode::*;
         match &self {
             Sym(it) => write!(fmt, "{}", it),
             Val(it) => write!(fmt, "{}", it),
@@ -28,77 +29,28 @@ impl fmt::Display for ExpNode {
 }
 
 impl ExpNode {
-    pub fn from_ops(ops: &Stack) -> ExpNode {
-        use ExpNode::*;
-        let mut stack: Vec<ExpNode> = vec![];
-        for op in ops.as_ops().iter() {
-            match op {
-                StackOp::Val(v) => stack.push(ExpNode::Val(*v)),
-                StackOp::Sym(v) => stack.push(ExpNode::Sym(*v)),
-                StackOp::Add => {
-                    let b = stack.pop().expect("Too short stack");
-                    let a = stack.pop().expect("Too short stack");
-                    if let ExpNode::Add(mut items) = a {
-                        items.push(b);
-                        stack.push(ExpNode::Add(items));
-                    } else {
-                        stack.push(ExpNode::Add(vec![a, b]));
-                    }
-                }
-                StackOp::Neg => {
-                    let a = stack.pop().expect("Too short stack");
-                    stack.push(Mul(-1, b![a]));
-                }
-                StackOp::Div(v) => {
-                    let a = stack.pop().expect("Too short stack");
-                    stack.push(Div(Box::new(a), *v));
-                }
-                StackOp::DivCeil(v) => {
-                    let a = stack.pop().expect("Too short stack");
-                    stack.push(Div(b!(Add(vec![a, Val(*v as i32), Val(-1)])), *v))
-                }
-                StackOp::Rem(v) => {
-                    // a%b = a - b*(a/b)
-                    let a = stack.pop().expect("Too short stack");
-                    stack.push(Add(vec![a.clone(), Mul(-(*v as i32), b!(Div(b!(a), *v)))]))
-                }
-                StackOp::Mul(v) => {
-                    let a = stack.pop().expect("Too short stack");
-                    stack.push(ExpNode::Mul(*v, b![a]));
-                }
-            }
-        }
-        stack.remove(0)
-    }
-
-    pub fn to_stack(&self) -> Stack {
-        match self {
-            ExpNode::Val(i) => Stack::from(*i),
-            ExpNode::Sym(c) => Stack::sym(*c),
-            ExpNode::Add(vec) => {
-                let (first, rest) = vec.split_first().expect("Empty add node");
-                let mut it = first.to_stack();
-                for other in rest {
-                    it.push_all(other.to_stack().as_ops());
-                    it.push(StackOp::Add);
-                }
-                it
-            }
-            ExpNode::Mul(v, inner) => {
-                let mut it = inner.to_stack();
-                it.push(StackOp::Mul(*v));
-                it
-            }
-            ExpNode::Div(a, b) => {
-                let mut it = a.to_stack();
-                it.push(StackOp::Div(*b));
-                it
-            }
-        }
+    pub fn eval(&self, values: &HashMap<char, i32>) -> TractResult<i32> {
+        Ok(match self {
+            Sym(v) => *values.get(v).ok_or(format!("Unresolved value {:?}", v))?,
+            Val(v) => *v,
+            Add(terms) => terms
+                .iter()
+                .try_fold(0i32, |acc, it| -> TractResult<i32> { Ok(acc + it.eval(values)?) })?,
+            Div(a, q) => a.eval(values)? / *q as i32,
+            Mul(p, a) => p * a.eval(values)?,
+        })
     }
 
     pub fn reduce(self) -> ExpNode {
-        self.simplify().wiggle().into_iter().map(|e| e.simplify()).min_by_key(|e| e.cost()).unwrap()
+        self
+            .simplify()
+            .wiggle()
+            .into_iter()
+            .sorted()
+            .unique()
+            .map(|e| e.simplify())
+            .min_by_key(|e| e.cost())
+            .unwrap()
     }
 
     fn cost(&self) -> usize {
@@ -111,51 +63,64 @@ impl ExpNode {
         }
     }
 
-    fn wiggle(&self) -> Box<dyn Iterator<Item = ExpNode>> {
+    fn wiggle(&self) -> Vec<ExpNode> {
         use self::ExpNode::*;
-        use crate::prelude::TVec;
         match self {
-            Sym(_) | Val(_) => Box::new(Some(self.clone()).into_iter()),
-            Add(terms) => b!(terms
-                .iter()
-                .map(|e| e.wiggle().collect::<TVec<_>>())
-                .multi_cartesian_product()
-                .map(|terms| Add(terms))),
-            Mul(p, a) => {
-                let p = *p;
-                b!(a.wiggle().flat_map(move |a| {
-                    let mut forms = tvec!();
-                    if let Add(a) = &a {
-                        forms.push(Add(a.clone().into_iter().map(|a| Mul(p, b!(a))).collect()))
+            Sym(_) | Val(_) => vec![self.clone()],
+            Add(terms) => {
+                let mut forms = vec![];
+                let sub_wiggle = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
+                for sub in sub_wiggle {
+                    for (ix, num, q) in sub
+                        .iter()
+                        .enumerate()
+                        .filter_map(
+                            |(ix, t)| if let Div(a, q) = t { Some((ix, a, q)) } else { None },
+                        )
+                        .next()
+                    {
+                        let new_num = sub
+                            .iter()
+                            .enumerate()
+                            .map(|(ix2, t)| {
+                                if ix2 != ix {
+                                    Mul(*q as i32, b!(t.clone()))
+                                } else {
+                                    (**num).clone()
+                                }
+                            })
+                            .collect();
+                        forms.push(Div(b!(Add(new_num)), *q))
                     }
-                    forms.push(Mul(p, b!(a)));
-                    forms.into_iter()
-                }))
+                    forms.push(Add(sub.into()));
+                }
+                forms
             }
+            Mul(p, a) => a.wiggle().into_iter().map(|a| Mul(*p, b!(a))).collect(),
             Div(a, q) => {
-                let q = *q;
-                b!(a.wiggle().flat_map(move |a| {
-                    let mut forms = tvec!();
-                    if let Add(a) = &a {
+                let mut forms = vec![];
+                for num in a.wiggle() {
+                    if let Add(terms) = &num {
                         let (integer, non_integer): (Vec<_>, Vec<_>) =
-                            a.clone().into_iter().partition(|a| a.gcd() % q == 0);
-                        let mut terms = integer.iter().map(|i| i.div(q)).collect::<Vec<_>>();
-                        terms.push(Div(b!(Add(non_integer)), q));
-                        forms.push(Add(terms))
+                            terms.into_iter().cloned().partition(|a| a.gcd() % q == 0);
+                        let mut new_terms = integer.iter().map(|i| i.div(*q)).collect::<Vec<_>>();
+                        if non_integer.len() > 0 {
+                            new_terms.push(Div(b!(Add(non_integer)), *q));
+                        }
+                        forms.push(Add(new_terms))
                     }
-                    forms.push(Div(b!(a), q));
-                    forms.into_iter()
-                }))
+                    forms.push(Div(b!(num), *q))
+                }
+                forms
             }
         }
     }
 
-    fn simplify(self) -> ExpNode {
+    pub fn simplify(self) -> ExpNode {
         use self::ExpNode::*;
         use num_integer::Integer;
         match self {
             Add(mut terms) => {
-                use std::collections::HashMap;
                 let mut reduced: HashMap<ExpNode, i32> = HashMap::new();
                 // factorize common sub-expr
                 while let Some(item) = terms.pop() {
@@ -197,11 +162,18 @@ impl ExpNode {
                 }
             }
             Mul(p, a) => {
+                if let Mul(p2, a) = *a {
+                    return Mul(p * p2, a).simplify();
+                } else if let Val(p2) = *a {
+                    return Val(p * p2);
+                }
                 let a = a.simplify();
                 if p == 0 {
                     Val(0)
                 } else if p == 1 {
                     a
+                } else if let Add(terms) = &a {
+                    Add(terms.clone().into_iter().map(|a| Mul(p, b!(a)).simplify()).collect())
                 } else if let Val(p2) = a {
                     Val(p * p2)
                 } else if let Mul(p2, a) = a {
@@ -211,20 +183,55 @@ impl ExpNode {
                 }
             }
             Div(a, q) => {
+                if q == 1 {
+                    return a.simplify();
+                } else if let Div(a, q2) = *a {
+                    return Div(a, q * q2).simplify();
+                }
                 let a = a.simplify();
                 if let Val(a) = a {
                     Val(a / q as i32)
                 } else if let Mul(-1, a) = a {
                     Mul(-1, b!(Div(a, q)))
-                } else {
-                    let gcd = a.gcd().gcd(&q);
-                    let a = a.div(gcd);
-                    let q = q / gcd;
-                    if q == 1 {
-                        a
+                } else if let Add(mut terms) = a {
+                    if let Some(v) = terms
+                        .iter()
+                        .filter_map(|t| if let Val(v) = t { Some(*v) } else { None })
+                        .next()
+                    {
+                        let offset = if v >= q as i32 {
+                            Some(v / q as i32)
+                        } else if v < 0 {
+                            Some(-(-v).div_ceil(&(q as i32)))
+                        } else {
+                            None
+                        };
+                        if let Some(val) = offset {
+                            terms.push(Val(-val * q as i32));
+                            Add(vec![Val(val), Div(b!(Add(terms).simplify()), q)])
+                        } else {
+                            Div(b!(Add(terms)), q)
+                        }
                     } else {
-                        Div(b!(a), q)
+                        Div(b!(Add(terms)), q)
                     }
+                } else if let Mul(p, a) = a {
+                    if p == q as i32 {
+                        a.simplify()
+                    } else {
+                        let gcd = p.abs().gcd(&(q as i32));
+                        if gcd == p {
+                            Div(a, q / gcd as u32)
+                        } else if gcd == q as i32 {
+                            Mul(p / gcd, a)
+                        } else if gcd > 1 {
+                            Div(b!(Mul(p / gcd, a)), q / gcd as u32).simplify()
+                        } else {
+                            Div(b!(Mul(p, a)), q)
+                        }
+                    }
+                } else {
+                    Div(b!(a), q)
                 }
             }
             _ => self,
@@ -277,7 +284,6 @@ impl ExpNode {
 
 #[cfg(test)]
 mod tests {
-    use super::ExpNode::*;
     use super::*;
 
     macro_rules! b( ($e:expr) => { Box::new($e) } );
@@ -296,48 +302,6 @@ mod tests {
 
     fn div(a: &ExpNode, b: u32) -> ExpNode {
         ExpNode::Div(b!(a.clone()), b)
-    }
-
-    #[test]
-    fn back_and_forth_1() {
-        let e = Stack::from(2) + 3;
-        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
-    }
-
-    #[test]
-    fn back_and_forth_2() {
-        let e = Stack::from(2) + 3;
-        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
-    }
-
-    #[test]
-    fn back_and_forth_3() {
-        let e = Stack::from(2) * 3;
-        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
-    }
-
-    #[test]
-    fn back_and_forth_4() {
-        let e = Stack::sym('S') * 3;
-        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
-    }
-
-    #[test]
-    fn back_and_forth_5() {
-        let e = Stack::from(5) / 2;
-        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
-    }
-
-    #[test]
-    fn back_and_forth_6() {
-        let e = Stack::from(5) % 2;
-        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
-    }
-
-    #[test]
-    fn back_and_forth_7() {
-        let e = Stack::from(5).div_ceil(2);
-        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
     }
 
     #[test]
