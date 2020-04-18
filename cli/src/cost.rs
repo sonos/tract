@@ -61,7 +61,7 @@ fn handle_t(
                     .inspect(|(c, i)| {
                         *total.entry(*c).or_insert(0.to_dim()) += i.clone() * multiplier as usize
                     })
-                    .map(|(c, i)| format!("{:?} {:?}", c, i))
+                    .map(|(c, i)| format!("{:?} {}", c, i))
                     .collect();
                 display_graph.add_node_section(&full_id, rows)?;
             }
