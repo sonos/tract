@@ -34,17 +34,11 @@ pub struct StreamFact {
 /// Tensors in tract can have one streaming dimension. TDim generalize the
 /// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
 /// (sometimes hypothetical) tensor length on the streaming axis.
-#[derive(Clone, Hash)]
+#[derive(Clone, PartialEq, Hash)]
 pub struct ShapeFact {
     shape: TVec<usize>,
     /// Optional information for streaming tensors. None for regular tensors.
     pub stream_info: Option<StreamFact>,
-}
-
-impl PartialEq for ShapeFact {
-    fn eq(&self, other: &ShapeFact) -> bool {
-        self.shape.len() == other.shape.len() && self.iter().zip(other.iter()).all(|(a, b)| a == b)
-    }
 }
 
 impl ShapeFact {
