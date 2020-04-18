@@ -28,8 +28,8 @@ fn konst(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let v = node.get_attr("value")?;
-    Ok((Box::new(tract_hir::ops::konst::Const::for_tensor(v)), vec![]))
+    let v = node.get_attr::<Tensor>("value")?;
+    Ok((Box::new(tract_hir::ops::konst::Const(v.into())), vec![]))
 }
 
 fn cast(

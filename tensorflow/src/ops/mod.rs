@@ -44,7 +44,7 @@ fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inference
         bail!("Const node {:?} doesn't have the expected {:?} type.", mat, dtype);
     }
 
-    Ok(Box::new(::tract_hir::ops::konst::Const::for_tensor(mat)))
+    Ok(Box::new(::tract_hir::ops::konst::Const(mat.into())))
 }
 
 #[derive(Clone, Debug, new, Hash)]
