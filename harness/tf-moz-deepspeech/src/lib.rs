@@ -11,7 +11,6 @@ use std::str::FromStr;
 use tract_tensorflow::model::TfModelAndExtensions;
 use tract_tensorflow::prelude::*;
 
-#[allow(dead_code)]
 #[cfg(test)]
 fn setup_test_logger() {
     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
@@ -54,9 +53,7 @@ fn cachedir() -> path::PathBuf {
     ::std::env::var("CACHEDIR").ok().unwrap_or("../../.cached".to_string()).into()
 }
 
-#[test]
-fn deepspeech() -> TractResult<()> {
-    setup_test_logger();
+fn initialized_model() -> TractResult<TypedModel> {
     download();
     let tf = tract_tensorflow::tensorflow();
     let graph =
@@ -68,9 +65,13 @@ fn deepspeech() -> TractResult<()> {
     model.set_input_fact(1, InferenceFact::dt_shape(i32::datum_type(), tvec!(1)))?;
     model.set_output_names(&["logits", "Assign_2", "Assign_3"])?;
 
-    let model = extensions.preproc(model)?;
-    let model = model.into_typed()?;
-    trace!("{:#?}", &model);
+    extensions.preproc(model)?.into_typed()
+}
+
+#[test]
+fn deepspeech_raw() -> TractResult<()> {
+    setup_test_logger();
+    let model = initialized_model()?;
 
     let logits = model.node_id_by_name("logits")?;
     let lstm = model.node_id_by_name("lstm_fused_cell/BlockLSTM")?;
@@ -81,8 +82,6 @@ fn deepspeech() -> TractResult<()> {
         model,
         &[logits.into(), (lstm, 1).into(), (lstm, 6).into(), assign_2.into(), assign_3.into()],
     )?;
-
-    dbg!(&plan.outputs);
 
     let mut state = SimpleState::new(plan)?;
 
@@ -115,6 +114,53 @@ fn deepspeech() -> TractResult<()> {
                 (outputs.next().unwrap(), outputs.next().unwrap(), outputs.next().unwrap());
             h.take().unwrap().close_enough(&h_, true).unwrap();
             cs.take().unwrap().close_enough(&cs_, true).unwrap();
+            logits.take().unwrap().close_enough(&logits_, true).unwrap();
+            println!("chunk ok");
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn deepspeech_decluttered() -> TractResult<()> {
+    deepspeech_run(false)
+}
+
+#[test]
+fn deepspeech_optimized() -> TractResult<()> {
+    deepspeech_run(true)
+}
+
+#[cfg(test)]
+fn deepspeech_run(opt: bool) -> TractResult<()> {
+    setup_test_logger();
+    let mut model = initialized_model()?.declutter()?;
+    if opt {
+        model = model.into_optimized()?;
+    }
+
+    let plan = SimplePlan::new(model)?;
+    let mut state = SimpleState::new(plan)?;
+
+    let mut inputs = tvec!(tensor0(0), tensor0(1));
+    let mut logits = None;
+
+    for line in fs::read_to_string(cachedir().join("deepspeech-0.4.1-smoketest.txt"))?.split("\n") {
+        if line.starts_with("INPUT_NODE") {
+            let tensor = parse_tensor::<f32>(line)?;
+            inputs[0] = tensor;
+        }
+        if line.starts_with("INPUT_LENGTH") {
+            let length = parse_scalar::<i32>(line)?;
+            inputs[1] = tensor1(&[*length.to_scalar::<i32>()?]);
+        }
+        if line.starts_with("LOGITS") {
+            logits = Some(parse_tensor::<f32>(line)?);
+        }
+        if logits.is_some() {
+            let mut outputs = state.run(inputs.clone())?.into_iter();
+            let logits_ = outputs.next().unwrap();
             logits.take().unwrap().close_enough(&logits_, true).unwrap();
             println!("chunk ok");
         }
