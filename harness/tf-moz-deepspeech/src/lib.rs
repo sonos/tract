@@ -8,6 +8,7 @@ use std::path;
 use std::rc::Rc;
 use std::str::FromStr;
 
+use tract_tensorflow::model::TfModelAndExtensions;
 use tract_tensorflow::prelude::*;
 
 #[allow(dead_code)]
@@ -53,37 +54,38 @@ fn cachedir() -> path::PathBuf {
     ::std::env::var("CACHEDIR").ok().unwrap_or("../../.cached".to_string()).into()
 }
 
-#[ignore]
 #[test]
 fn deepspeech() -> TractResult<()> {
     setup_test_logger();
     download();
     let tf = tract_tensorflow::tensorflow();
-    //    let mut model = tf.model_for_path("deepspeech-0.4.1-models/output_graph.pb")?;
-    let mut model = tf.model_for_path(cachedir().join("deepspeech-0.4.1.pb"))?;
+    let graph =
+        tf.read_frozen_model(&mut std::fs::File::open(cachedir().join("deepspeech-0.4.1.pb"))?)?;
+    let TfModelAndExtensions(mut model, mut extensions) = tf.parse_graph(&graph)?;
+    extensions.initializing_nodes = vec![model.node_id_by_name("initialize_state")?];
     model.set_input_names(&["input_node", "input_lengths"])?;
     model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 16, 19, 26)))?;
     model.set_input_fact(1, InferenceFact::dt_shape(i32::datum_type(), tvec!(1)))?;
-    model.set_output_names(&["initialize_state", "logits"])?;
-    trace!("{:#?}", &model);
+    model.set_output_names(&["logits", "Assign_2", "Assign_3"])?;
+
+    let model = extensions.preproc(model)?;
     let model = model.into_typed()?;
-    let model = Rc::new(model);
     trace!("{:#?}", &model);
 
-    let init_node = model.node_by_name("initialize_state")?.id;
-    let init_plan = SimplePlan::new_for_output(model.clone(), OutletId::new(init_node, 0))?;
-    //    let logit_node = model.node_by_name("logits")?.id;
-    let logit_node = model.node_by_name("logits")?.id;
-    let lstm_node = model.node_by_name("lstm_fused_cell/BlockLSTM")?.id;
-    let logit_plan = SimplePlan::new_for_outputs(
-        model.clone(),
-        &[OutletId::new(logit_node, 0), OutletId::new(lstm_node, 1), OutletId::new(lstm_node, 6)],
+    let logits = model.node_id_by_name("logits")?;
+    let lstm = model.node_id_by_name("lstm_fused_cell/BlockLSTM")?;
+    let assign_2 = model.node_id_by_name("Assign_2")?;
+    let assign_3 = model.node_id_by_name("Assign_3")?;
+
+    let plan = SimplePlan::new_for_outputs(
+        model,
+        &[logits.into(), (lstm, 1).into(), (lstm, 6).into(), assign_2.into(), assign_3.into()],
     )?;
 
-    let mut state = SimpleState::new_multiplan(vec![init_plan, logit_plan])?;
+    dbg!(&plan.outputs);
 
-    // initialize_state
-    state.run_plan(tvec!(), 0)?;
+    let mut state = SimpleState::new(plan)?;
+
     let mut inputs = tvec!(tensor0(0), tensor0(1));
     let mut h = None;
     let mut cs = None;
@@ -108,7 +110,7 @@ fn deepspeech() -> TractResult<()> {
             logits = Some(parse_tensor::<f32>(line)?);
         }
         if h.is_some() && cs.is_some() && logits.is_some() {
-            let mut outputs = state.run_plan(inputs.clone(), 1)?.into_iter();
+            let mut outputs = state.run(inputs.clone())?.into_iter();
             let (logits_, cs_, h_) =
                 (outputs.next().unwrap(), outputs.next().unwrap(), outputs.next().unwrap());
             h.take().unwrap().close_enough(&h_, true).unwrap();

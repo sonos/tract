@@ -54,8 +54,6 @@ impl TfModelExtensions {
 
 pub struct TfModelAndExtensions(pub InferenceModel, pub TfModelExtensions);
 
-
-
 impl Tensorflow {
     // From the node_def.proto documentation:
     // Each input is "node:src_output" with "node" being a string name and
@@ -87,7 +85,7 @@ impl Tensorflow {
     }
 
     pub fn read_frozen_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
-        let mut v = vec![];
+        let mut v = vec!();
         r.read_to_end(&mut v)?;
         let b = bytes::Bytes::from(v);
         Ok(GraphDef::decode(b).map_err(|e| format!("{:?}", e))?)

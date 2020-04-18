@@ -205,7 +205,7 @@ where
                 }
 
                 for flush in &plan.flush_lists[step] {
-                    trace!("  flushing node {} {}", flush, node);
+                    trace!("  Ran {} can now flush {}", node, model.node(*flush));
                     values[*flush] = None;
                 }
 
@@ -269,6 +269,7 @@ where
                 values[node.id] = Some(vs);
             }
             for output in &plan.outputs {
+                trace!("Extracting value {:?} ({})", output, model.node(output.node));
                 result.push(values[output.node].as_ref().unwrap()[output.slot].clone())
             }
         }
