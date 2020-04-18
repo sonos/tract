@@ -46,7 +46,7 @@ impl Eq for Stack {}
 
 impl PartialEq for Stack {
     fn eq(&self, other: &Stack) -> bool {
-        self.as_ops() == other.as_ops()
+        self.as_ops() == other.as_ops() || self.to_tree().reduce() == other.to_tree().reduce()
     }
 }
 
