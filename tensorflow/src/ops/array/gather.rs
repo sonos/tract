@@ -116,6 +116,41 @@ impl TypedOp for GatherNd {
         let shape = self.compute_shape(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec())?;
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)?))
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(indices) = &model.outlet_fact(node.inputs[1])?.konst {
+            if indices.rank() == 2 && indices.shape()[0] == 1 {
+                let mut patch = TypedModelPatch::default();
+                let mut wire = patch.tap_model(model, node.inputs[0])?;
+                for (axis, &i) in indices.cast_to::<i32>()?.as_slice::<i32>()?.iter().enumerate() {
+                    wire = patch.wire_node(
+                        format!("{}-slice-axis-{}", node.name, axis),
+                        tract_hir::ops::array::Slice::new(axis, i as usize, (i + 1) as usize),
+                        &[wire],
+                    )?[0];
+                }
+                for i in (0..indices.shape()[1]).rev() {
+                    wire = patch.wire_node(
+                        format!("{}-remove_axis_{}", node.name, i),
+                        tract_hir::tract_core::ops::change_axes::AxisOp::Rm(i),
+                        &[wire],
+                    )?[0];
+                }
+                wire = patch.wire_node(
+                    format!("{}-add_axis", node.name),
+                    tract_hir::tract_core::ops::change_axes::AxisOp::Add(0),
+                    &[wire],
+                )?[0];
+                patch.shunt_outside(node.id.into(), wire)?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

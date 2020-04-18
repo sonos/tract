@@ -60,6 +60,7 @@ impl Op for TypedConcat {
 
     op_as_typed_op!();
     not_a_pulsed_op!();
+    canonic!();
 }
 
 impl TypedOp for TypedConcat {
