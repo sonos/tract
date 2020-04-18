@@ -91,7 +91,10 @@ impl AxisOp {
     pub fn change_shape(&self, shape: &mut ShapeFact) -> TractResult<()> {
         match self {
             AxisOp::Add(ix) => shape.insert_axis(*ix),
-            AxisOp::Rm(ix) => shape.remove_axis(*ix),
+            AxisOp::Rm(ix) => {
+                debug_assert_eq!(shape.dim(*ix), 1.to_dim());
+                shape.remove_axis(*ix)
+            }
             AxisOp::Permute(perm) => {
                 let orig = shape.clone();
                 for (ix, &from) in perm.iter().enumerate() {

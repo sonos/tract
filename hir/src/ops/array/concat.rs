@@ -25,7 +25,7 @@ impl Concat {
 
 impl Op for Concat {
     fn name(&self) -> Cow<str> {
-        "Concat".into()
+        "InferenceConcat".into()
     }
 
     not_a_typed_op!();
