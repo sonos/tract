@@ -35,6 +35,8 @@ impl Op for BlockLSTM {
 
 impl StatelessOp for BlockLSTM {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        eprintln!("entering eval");
+        eprintln!("{:?}", inputs);
         let len = *inputs[0].cast_to::<i32>()?.to_scalar::<i32>()? as usize;
 
         let x = inputs[1].to_array_view::<f32>()?.into_dimensionality::<Ix3>()?;
@@ -55,11 +57,6 @@ impl StatelessOp for BlockLSTM {
         let mut h_prev = h_prev.to_owned();
         let mut cs_prev = cs_prev.to_owned();
 
-        /*
-        dbg!(&h_prev);
-        dbg!(&cs_prev);
-        */
-
         let sigmoid = (tract_linalg::ops().sigmoid_f32)();
         let sigmoid_f32 = |f: f32| -> f32 {
             let mut f = [f];
@@ -74,6 +71,7 @@ impl StatelessOp for BlockLSTM {
             f[0]
         };
 
+        eprintln!("before loop");
         for n in 0..len {
             let x = x.index_axis(Axis(0), n);
             let mut i = i.index_axis_mut(Axis(0), n);
@@ -113,6 +111,8 @@ impl StatelessOp for BlockLSTM {
             h_prev *= &o;
             h.assign(&h_prev);
         }
+
+        eprintln!("after loop");
         if x.shape()[0] > len as usize {
             i.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);
             cs.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);
@@ -122,6 +122,7 @@ impl StatelessOp for BlockLSTM {
             co.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);
             h.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);
         }
+        eprintln!("after assigns");
         Ok(tvec!(
             i.into_arc_tensor(),
             cs.into_arc_tensor(),
