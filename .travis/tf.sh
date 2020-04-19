@@ -1,7 +1,5 @@
 #!/bin/sh
 
-export CI=true
-
 set -ex
 
 if [ -z "$CACHEDIR" ]

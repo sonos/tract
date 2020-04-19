@@ -1,6 +1,5 @@
 #!/bin/sh
 
-export CI=true
 set -ex
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -55,11 +54,6 @@ fi
 if [ `arch` = "x86_64" ]
 then
 	export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
-fi
-
-if [ -n "$TRAVIS" -a -n "$PARTIAL_CI" ]
-then
-    exit 0
 fi
 
 ./.travis/cache_file.sh \
