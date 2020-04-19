@@ -13,6 +13,8 @@ pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync +
     fn matches(&self, t: &Tensor) -> TractResult<bool> {
         self.to_typed_fact()?.matches(t)
     }
+
+    fn same_as(&self, _other: &dyn Fact) -> bool;
 }
 
 impl_downcast!(Fact);
@@ -231,6 +233,14 @@ impl Fact for TypedFact {
     fn matches(&self, t: &Tensor) -> TractResult<bool> {
         Ok(self.datum_type == t.datum_type() && t.shape() == &*self.shape.shape)
     }
+
+    fn same_as(&self, other: &dyn Fact) -> bool {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self == other
+        } else {
+            false
+        }
+    }
 }
 
 impl From<Tensor> for TypedFact {
@@ -313,6 +323,14 @@ impl NormalizedFact {
 impl Fact for NormalizedFact {
     fn to_typed_fact(&self) -> TractResult<TypedFact> {
         Ok(self.into())
+    }
+
+    fn same_as(&self, other: &dyn Fact) -> bool {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self == other
+        } else {
+            false
+        }
     }
 }
 

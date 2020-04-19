@@ -275,9 +275,9 @@ impl TypedScan {
                 let wires = patch.wire_node(&*node.name, op, &inputs)?;
                 for oix in 0..node.outputs.len() {
                     if oix < ix {
-                        patch.shunt_outside(OutletId::new(node.id, oix), wires[oix])?;
+                        patch.shunt_outside(model, OutletId::new(node.id, oix), wires[oix])?;
                     } else if oix > ix {
-                        patch.shunt_outside(OutletId::new(node.id, oix), wires[oix - 1])?;
+                        patch.shunt_outside(model, OutletId::new(node.id, oix), wires[oix - 1])?;
                     }
                 }
                 return Ok(Some(patch));
@@ -300,11 +300,7 @@ impl TypedScan {
                     if successor_node.inputs.len() != 1 || successor_node.outputs.len() != 1 {
                         continue;
                     }
-                    let invariants = successor_node
-                        .op()
-                        .as_typed()
-                        .unwrap()
-                        .invariants(&self.body, &successor_node)?;
+                    let invariants = successor_node.op.invariants(&self.body, &successor_node)?;
                     if let Some(axis_after) = invariants.unary_track_axis_down(axis, false) {
                         let mut outside_patch = TypedModelPatch::default();
                         let mut patch_inputs = node
@@ -312,7 +308,7 @@ impl TypedScan {
                             .iter()
                             .map(|&i| outside_patch.tap_model(model, i))
                             .collect::<TractResult<TVec<_>>>()?;
-                        let input = outside_patch.tap_model(&model, node.inputs[slot])?;
+                        let input = patch_inputs[slot];
                         let new_input_wire = outside_patch.wire_node(
                             format!("{}-extracted-{}", node.name, successor_node.name),
                             successor_node.op.clone(),
@@ -332,9 +328,10 @@ impl TypedScan {
                         let new_source_wire_in_patch =
                             inner_patch.tap_model(&new_body, new_source_wire)?;
                         inner_patch.shunt_outside(
+                            &new_body,
                             OutletId::new(successor.node, 0),
                             new_source_wire_in_patch,
-                        )?;
+                        ).chain_err(|| "patching inner model")?;
                         inner_patch.apply(&mut new_body)?;
 
                         let mut input_mapping = self.input_mapping.clone();
@@ -355,7 +352,11 @@ impl TypedScan {
                         let output_wires =
                             outside_patch.wire_node(&*node.name, new_op, &patch_inputs)?;
                         for w in output_wires {
-                            outside_patch.shunt_outside(OutletId::new(node.id, w.slot), w)?;
+                            outside_patch.shunt_outside(
+                                model,
+                                OutletId::new(node.id, w.slot),
+                                w,
+                            ).chain_err(|| "patching outer model")?;
                         }
                         return Ok(Some(outside_patch));
                     }
@@ -412,9 +413,13 @@ impl TypedScan {
             )?[0];
             for ix in 0..node.outputs.len() {
                 if ix == slot {
-                    outside_patch.shunt_outside(OutletId::new(node.id, ix), wire)?;
+                    outside_patch.shunt_outside(model, OutletId::new(node.id, ix), wire)?;
                 } else {
-                    outside_patch.shunt_outside(OutletId::new(node.id, ix), scan_outputs[ix])?;
+                    outside_patch.shunt_outside(
+                        model,
+                        OutletId::new(node.id, ix),
+                        scan_outputs[ix],
+                    )?;
                 }
             }
             return Ok(Some(outside_patch));

@@ -203,7 +203,7 @@ impl InferenceRulesOp for Gemm {
             )?[0];
         }
         patch.node_mut(result.node).name = node.name.clone();
-        patch.shunt_outside(node.id.into(), result)?;
+        patch.shunt_outside(model, node.id.into(), result)?;
         Ok(Some(patch))
     }
     as_op!();

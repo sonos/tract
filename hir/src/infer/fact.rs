@@ -143,6 +143,14 @@ impl Fact for InferenceFact {
     fn matches(&self, t: &Tensor) -> TractResult<bool> {
         Ok(self.unify(&InferenceFact::from(t)).is_ok())
     }
+
+    fn same_as(&self, other: &dyn Fact) -> bool {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.unify(other).is_ok()
+        } else {
+            false
+        }
+    }
 }
 
 impl<'a> TryFrom<&'a InferenceFact> for TypedFact {

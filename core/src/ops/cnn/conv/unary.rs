@@ -315,7 +315,7 @@ impl ConvUnary {
                 &[tap],
             )?;
             let id = patch.wire_node(&*node.name, new_op, &down)?[0];
-            patch.shunt_outside(OutletId::new(node.id, 0), id)?;
+            patch.shunt_outside(model, OutletId::new(node.id, 0), id)?;
             return Ok(Some(patch));
         }
         Ok(None)
@@ -400,7 +400,7 @@ impl ConvUnary {
                 };
                 wire = patch.wire_node(format!("{}-quant", node.name), op, &[wire])?[0];
             }
-            patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
             return Ok(Some(patch));
         }
         Ok(None)
@@ -448,7 +448,11 @@ impl StatelessOp for ConvUnary {
 
 impl TypedOp for ConvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        self.pool_spec.output_facts(inputs)
+        let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
+        if let Some(q_params) = &self.q_params {
+            fact.datum_type = q_params.c_datum_type;
+        }
+        Ok(tvec!(fact))
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
@@ -695,7 +699,7 @@ impl TypedOp for ConvUnary {
                         TypedReshape::new(node.outputs[0].fact.shape.to_tvec()),
                         &[wire],
                     )?[0];
-                    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
                 } else if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
                     && self.group == 1
@@ -703,7 +707,7 @@ impl TypedOp for ConvUnary {
                     let mut patch = TypedModelPatch::default();
                     let wire = patch.tap_model(model, node.inputs[0])?;
                     let wire = self.wire_as_im2col_pair(&mut patch, &*node.name, wire, true)?;
-                    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
                 } else if self.group != 1 && self.group == self.output_channels() {
                     return Ok(Some(TypedModelPatch::single_unary_op(
@@ -715,7 +719,7 @@ impl TypedOp for ConvUnary {
                     let mut patch = TypedModelPatch::default();
                     let wire = patch.tap_model(model, node.inputs[0])?;
                     let wire = self.wire_as_im2col_pair(&mut patch, &*node.name, wire, false)?;
-                    patch.shunt_outside(OutletId::new(node.id, 0), wire)?;
+                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
                 }
             }

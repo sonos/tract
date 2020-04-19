@@ -89,7 +89,7 @@ pub fn pull_downsample_over_scan(
     for ix in 0..scan_node.outputs.len() {
         // FIXME need to check earlier on that all output are followed by a ds
         let succ = scan_node.outputs[ix].successors[0].node;
-        patch.shunt_outside(OutletId::new(succ, 0), scan[ix])?;
+        patch.shunt_outside(model, OutletId::new(succ, 0), scan[ix])?;
     }
     Ok(Some(patch))
 }

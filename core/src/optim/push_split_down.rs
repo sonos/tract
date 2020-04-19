@@ -21,7 +21,7 @@ impl super::TypedPass for PushSplitDown {
                         if a.same_as(b) {
                             for slot in 0..b.outputs.len() {
                                 let tap = patch.tap_model(model, OutletId::new(a.id, slot))?;
-                                patch.shunt_outside(OutletId::new(b.id, slot), tap)?;
+                                patch.shunt_outside(model, OutletId::new(b.id, slot), tap)?;
                                 patch.obliterate(b.id)?;
                             }
                         }

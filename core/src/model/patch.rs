@@ -91,7 +91,17 @@ where
     }
 
     /// Replace an Outlet in the target model by one from the patch.
-    pub fn shunt_outside(&mut self, outlet: OutletId, by: OutletId) -> TractResult<()> {
+    pub fn shunt_outside(
+        &mut self,
+        model: &ModelImpl<F, O>,
+        outlet: OutletId,
+        by: OutletId,
+    ) -> TractResult<()> {
+        let original_fact = model.outlet_fact(outlet)?;
+        let new_fact = self.model.outlet_fact(by)?;
+        if !original_fact.same_as(new_fact) {
+            bail!("Trying to substitute a {:?} by {:?}.\n{:?}", original_fact, new_fact, self);
+        }
         self.shunt_outlet_by.insert(outlet, by);
         Ok(())
     }
@@ -117,7 +127,11 @@ where
             patch.add_edge(o, InletId::new(by, ix))?;
         }
         for ix in 0..node.outputs.len() {
-            patch.shunt_outside(OutletId::new(node.id, ix), OutletId::new(by, ix))?;
+            patch.shunt_outside(
+                patched_model,
+                OutletId::new(node.id, ix),
+                OutletId::new(by, ix),
+            )?;
         }
         Ok(patch)
     }
@@ -141,7 +155,11 @@ where
             patch.add_edge(o, InletId::new(by, ix))?;
         }
         for ix in 0..node.outputs.len() {
-            patch.shunt_outside(OutletId::new(succ.id, ix), OutletId::new(by, ix))?;
+            patch.shunt_outside(
+                patched_model,
+                OutletId::new(succ.id, ix),
+                OutletId::new(by, ix),
+            )?;
         }
         Ok(patch)
     }
@@ -153,7 +171,7 @@ where
     ) -> TractResult<ModelPatch<F, O>> {
         let mut patch = ModelPatch::default();
         let tap = patch.tap_model(patched_model, node.inputs[0])?;
-        patch.shunt_outside(OutletId::new(node.id, 0), tap)?;
+        patch.shunt_outside(patched_model, OutletId::new(node.id, 0), tap)?;
         Ok(patch)
     }
 
@@ -178,7 +196,7 @@ where
         let tap = patch.tap_model(patched_model, outlet)?;
         let new_id = patch.add_node(name, new_op, tvec!(fact))?;
         patch.add_edge(tap, InletId::new(new_id, 0))?;
-        patch.shunt_outside(outlet, OutletId::new(new_id, 0))?;
+        patch.shunt_outside(patched_model, outlet, OutletId::new(new_id, 0))?;
         Ok(patch)
     }
 

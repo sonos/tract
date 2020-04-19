@@ -65,7 +65,18 @@ impl TypedOp for TypedConcat {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = inputs[0].clone();
+        let mut fact = inputs
+            .get(0)
+            .cloned()
+            .cloned()
+            .or_else(|| {
+                if let ConcatSlice::Const(t) = &self.slices[0] {
+                    Some(TypedFact::dt_shape(t.datum_type(), t.shape()).unwrap())
+                } else {
+                    None
+                }
+            })
+            .unwrap();
         let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
             + self
                 .slices
