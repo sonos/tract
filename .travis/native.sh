@@ -43,13 +43,16 @@ cargo check --workspace --all-targets $ALL_FEATURES
 # useful as debug_asserts will come into play
 cargo test -p tract-core $ALL_FEATURES
 cargo test -p onnx-test-suite -- --skip real_
+cargo clean
+
 cargo test --release $ALL_FEATURES
-cargo build --release --bin tract
 
 if [ -n "$CI" ]
 then
     rm -rf $CACHEDIR/onnx
 fi
+
+cargo build --release --bin tract
 
 if [ `arch` = "x86_64" ]
 then
