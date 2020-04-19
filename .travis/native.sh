@@ -47,6 +47,11 @@ cargo test -p onnx-test-suite -- --skip real_
 cargo test --release $ALL_FEATURES
 cargo build --release --bin tract
 
+if [ -n "$CI" ]
+then
+    rm -rf $CACHEDIR/onnx
+fi
+
 if [ `arch` = "x86_64" ]
 then
 	export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
