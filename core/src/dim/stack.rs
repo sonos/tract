@@ -10,10 +10,15 @@ use ExpNode::*;
 #[derive(Clone, new)]
 pub struct Stack {
     it: ExpNode,
-    reduced: bool,
 }
 
 impl fmt::Debug for Stack {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.it.fmt(fmt)
+    }
+}
+
+impl fmt::Display for Stack {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         self.it.fmt(fmt)
     }
@@ -33,7 +38,7 @@ impl Eq for Stack {}
 
 impl PartialEq for Stack {
     fn eq(&self, other: &Stack) -> bool {
-        self.it == other.it // || self.reduced().it == other.reduced().it
+        self.it == other.it
     }
 }
 
@@ -43,25 +48,24 @@ impl Stack {
     }
 
     pub fn sym(s: char) -> Stack {
-        Stack::new(ExpNode::Sym(s), true)
+        Stack::new(ExpNode::Sym(s))
     }
 
     pub fn div_ceil(mut self, rhs: u32) -> Stack {
         self.it = ExpNode::Div(Box::new(Add(vec![self.it, Val(rhs as i32 - 1)])), rhs).reduce();
-        self.reduced = false;
         self
     }
 }
 
 impl From<i32> for Stack {
     fn from(v: i32) -> Stack {
-        Stack::new(ExpNode::Val(v), true)
+        Stack::new(ExpNode::Val(v))
     }
 }
 
 impl From<char> for Stack {
     fn from(s: char) -> Stack {
-        Stack::new(ExpNode::Sym(s), true)
+        Stack::new(ExpNode::Sym(s))
     }
 }
 
@@ -69,7 +73,6 @@ impl ops::Neg for Stack {
     type Output = Self;
     fn neg(mut self) -> Self {
         self.it = ExpNode::Mul(-1, Box::new(self.it)).reduce();
-        self.reduced = false;
         self
     }
 }
@@ -79,7 +82,6 @@ impl<'a> ops::AddAssign<&'a Stack> for Stack {
         let mut me = ExpNode::Val(0);
         std::mem::swap(&mut me, &mut self.it);
         self.it = ExpNode::Add(vec![me, rhs.it.clone()]).reduce();
-        self.reduced = false;
     }
 }
 
@@ -137,7 +139,6 @@ impl ops::MulAssign<i32> for Stack {
         let mut me = ExpNode::Val(0);
         std::mem::swap(&mut me, &mut self.it);
         self.it = ExpNode::Mul(rhs, Box::new(me)).reduce();
-        self.reduced = false;
     }
 }
 
@@ -154,7 +155,6 @@ impl ops::DivAssign<u32> for Stack {
         let mut me = ExpNode::Val(0);
         std::mem::swap(&mut me, &mut self.it);
         self.it = ExpNode::Div(Box::new(me), rhs).reduce();
-        self.reduced = false;
     }
 }
 
