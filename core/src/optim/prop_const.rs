@@ -47,7 +47,7 @@ impl super::TypedPass for PropConst {
                             continue;
                         }
                         let k = patch.add_const(&*knode.name, k)?;
-                        patch.shunt_outside(outlet, k)?;
+                        patch.shunt_outside(model, outlet, k)?;
                         replaced += 1;
                     }
                 }
