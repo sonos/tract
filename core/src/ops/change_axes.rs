@@ -310,11 +310,11 @@ pub fn change_axes(
     bounds: &[TVec<OutletId>],
 ) -> TractResult<Option<HashMap<OutletId, AxisOp>>> {
     debug!("Trying to apply change {:?}", change);
-    let mut todo_changes = vec![change.clone()];
+    let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires = HashMap::new();
     changed_wires.insert(change.outlet, change.op.clone());
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
-    while let Some(c) = todo_changes.pop() {
+    while let Some((c, emitter)) = todo_changes.pop() {
         let outlets = if let Some(group) = bounds.iter().find(|b| b.contains(&c.outlet)) {
             group.clone()
         } else {
@@ -330,6 +330,9 @@ pub fn change_axes(
                 nodes.push((inlet.node, InOut::In(inlet.slot)));
             }
             for (node_id, io) in nodes {
+                if Some(node_id) == emitter {
+                    continue;
+                }
                 let node = model.node(node_id);
                 let more = node
                     .op
@@ -355,7 +358,7 @@ pub fn change_axes(
                     let outlet = wire.as_outlet(node);
                     if !changed_wires.contains_key(&outlet) {
                         changed_wires.insert(outlet, op.clone());
-                        todo_changes.push(AxisChange { outlet, op });
+                        todo_changes.push((AxisChange { outlet, op }, Some(node_id)));
                     }
                 }
             }

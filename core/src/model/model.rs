@@ -448,6 +448,65 @@ where
     }
 }
 
+impl<F, O> fmt::Display for ModelImpl<F, O>
+where
+    F: Fact + Hash + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+{
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for i in 0..self.nodes_len() {
+            let input_1 =
+                self.node_inputs(i).get(0).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
+            let input_2 =
+                self.node_inputs(i).get(1).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
+            let output_1 = self
+                .outlet_successors(OutletId::new(i, 0))
+                .get(0)
+                .map(|o| format!("{:?}", o))
+                .unwrap_or("".to_string());
+            let output_2 = self
+                .outlet_successors(OutletId::new(i, 0))
+                .get(1)
+                .map(|o| format!("{:?}", o))
+                .unwrap_or("".to_string());
+            writeln!(
+                fmt,
+                "{:8} {:8} -> {:5} -> {:8} {:8} | {:15} {}",
+                input_1,
+                input_2,
+                i,
+                output_1,
+                output_2,
+                self.node_op(i).name(),
+                self.node_name(i),
+            )?;
+            if self.node_inputs(i).len() > 2 {
+                writeln!(
+                    fmt,
+                    "                                                |   * inputs: {}",
+                    self.node_inputs(i).iter().map(|s| format!("{:?}", s)).join(", ")
+                )?;
+            }
+            if self.node_output_count(i) > 1 || self.outlet_successors((i, 0).into()).len() > 2 {
+                for o in 0..self.node_output_count(i) {
+                    if self.outlet_successors((i,o).into()).len() > 0 {
+                        writeln!(
+                            fmt,
+                            "                                                |   * output #{}: {}",
+                            o,
+                            self.outlet_successors((i, o).into())
+                                .iter()
+                                .map(|s| format!("{:?}", s))
+                                .join(", ")
+                        )?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::internal::*;
