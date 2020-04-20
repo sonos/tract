@@ -42,6 +42,8 @@
 use std::collections::HashMap;
 use std::str;
 
+use itertools::Itertools;
+
 pub mod compact;
 pub mod dsl;
 mod fact;
@@ -88,7 +90,10 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
     fn nodes_len(&self) -> usize;
 
     /// Formatted node label
-    fn node_format(&self, id: usize) -> String;
+    fn node_display(&self, id: usize) -> String;
+
+    /// Formatted node label
+    fn node_debug(&self, id: usize) -> String;
 
     /// Eval order for the model
     fn eval_order(&self) -> TractResult<Vec<usize>>;
@@ -198,6 +203,59 @@ impl TypedModel {
         let model = model.codegen()?;
         let model = compact::compact(&model)?;
         Ok(model)
+    }
+}
+
+impl std::fmt::Display for &dyn Model {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for i in 0..self.nodes_len() {
+            let input_1 =
+                self.node_inputs(i).get(0).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
+            let input_2 =
+                self.node_inputs(i).get(1).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
+            let output_1 = self
+                .outlet_successors(OutletId::new(i, 0))
+                .get(0)
+                .map(|o| format!("{:?}", o))
+                .unwrap_or("".to_string());
+            let output_2 = self
+                .outlet_successors(OutletId::new(i, 0))
+                .get(1)
+                .map(|o| format!("{:?}", o))
+                .unwrap_or("".to_string());
+            writeln!(
+                fmt,
+                "{:8} {:8} -> {:5} -> {:8} {:8} | {:15} {}",
+                input_1,
+                input_2,
+                i,
+                output_1,
+                output_2,
+                self.node_op(i).name(),
+                self.node_name(i),
+            )?;
+            if self.node_inputs(i).len() > 2 {
+                writeln!(
+                    fmt,
+                    "                                                | * inputs: {}",
+                    self.node_inputs(i).iter().map(|s| format!("{:?}", s)).join(", ")
+                )?;
+            }
+            if self.node_output_count(i) > 1 || self.outlet_successors((i, 0).into()).len() > 2 {
+                for o in 0..self.node_output_count(i) {
+                    writeln!(
+                        fmt,
+                        "                                                | * output #{}: {}",
+                        o,
+                        self.outlet_successors((i, o).into())
+                            .iter()
+                            .map(|s| format!("{:?}", s))
+                            .join(", ")
+                    )?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 

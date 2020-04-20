@@ -277,7 +277,6 @@ where
 
     /// Get multiple mutable tensor information for outlets.
     pub fn outlets_fact_mut(&mut self, outlets: &[OutletId]) -> TractResult<TVec<&mut F>> {
-        use itertools::Itertools;
         assert!(outlets.iter().tuple_combinations().all(|(a, b)| a != b));
         Ok(unsafe {
             outlets
@@ -386,7 +385,11 @@ where
         self.nodes.len()
     }
 
-    fn node_format(&self, id: usize) -> String {
+    fn node_display(&self, id: usize) -> String {
+        format!("{}", self.nodes[id])
+    }
+
+    fn node_debug(&self, id: usize) -> String {
         format!("{:?}", self.nodes[id])
     }
 
