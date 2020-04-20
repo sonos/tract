@@ -156,7 +156,7 @@ fn declutter_bin_div(
         let denum = patch.tap_model(model, node.inputs[1])?;
         let denum = patch.wire_node(format!("{}-recip", node.name), recip(), &[denum])?[0];
         let out = patch.wire_node(&node.name, mul::bin_typed(), &[num, denum])?[0];
-        patch.shunt_outside(node.id.into(), out)?;
+        patch.shunt_outside(model, node.id.into(), out)?;
         return Ok(Some(patch))
     }
     Ok(None)

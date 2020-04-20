@@ -145,7 +145,7 @@ impl TypedOp for GatherNd {
                     tract_hir::tract_core::ops::change_axes::AxisOp::Add(0),
                     &[wire],
                 )?[0];
-                patch.shunt_outside(node.id.into(), wire)?;
+                patch.shunt_outside(model, node.id.into(), wire)?;
                 return Ok(Some(patch));
             }
         }
