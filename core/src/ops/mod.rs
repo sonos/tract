@@ -202,9 +202,16 @@ pub trait TypedOp:
         let outlet = OutletId::new(node.id, output_slot);
         let output = model.outlet_fact(outlet)?;
         if start == 0 && Some(end as i32) == output.shape.dim(axis).to_integer().ok() {
-            return Ok(Some(patch.tap_model(model, outlet)?));
+            Ok(Some(patch.tap_model(model, outlet)?))
+        } else {
+            let wire = patch.tap_model(model, outlet)?;
+            let wire = patch.wire_node(
+                &node.name,
+                crate::ops::array::Slice { start, axis, end },
+                &[wire],
+            )?[0];
+            Ok(Some(wire))
         }
-        Ok(None)
     }
 
     /// Transforms the op in an equivalent one, operating on dt (i8 or u8).
