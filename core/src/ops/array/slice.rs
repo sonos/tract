@@ -1,8 +1,8 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Default, Hash)]
-pub struct Slice<D: DimLike + ToDim + Hash> {
+#[derive(Debug, Clone, new, Default, PartialEq, Hash)]
+pub struct Slice<D: DimLike + ToDim> {
     pub axis: usize,
     pub start: D,
     pub end: D,
@@ -37,6 +37,15 @@ impl<D: DimLike + ToDim + Hash> Op for Slice<D> {
     canonic!();
     op_as_typed_op!();
     op_as_pulsed_op!();
+
+    fn same_as(&self, other: &dyn Op) -> bool {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            other == self
+        } else {
+            false
+        }
+    }
+
 }
 
 impl<D: DimLike + ToDim + Hash> StatelessOp for Slice<D> {
@@ -44,7 +53,8 @@ impl<D: DimLike + ToDim + Hash> StatelessOp for Slice<D> {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         unsafe {
-            let mut tensor = dispatch_datum_by_size!(Self::eval_t(input.datum_type())(self, &input))?;
+            let mut tensor =
+                dispatch_datum_by_size!(Self::eval_t(input.datum_type())(self, &input))?;
             tensor.set_datum_type(input.datum_type());
             Ok(tvec!(tensor.into_arc_tensor()))
         }
@@ -92,6 +102,16 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let prec = model.node(node.inputs[0].node);
+        if let Some(tdim) = node.op_as::<Slice<TDim>>() {
+            if let (Ok(start), Ok(end)) = (tdim.start.to_integer(), tdim.end.to_integer()) {
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &node.inputs,
+                    Slice { start: start as usize, end: end as usize, axis: self.axis },
+                )?));
+            }
+        }
         if self.start == D::zero()
             && (self.end.clone().to_dim()
                 == model.outlet_fact(node.inputs[0])?.shape.dim(self.axis))
@@ -105,6 +125,7 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
             return Ok(None);
         };
         let mut patch = TypedModelPatch::default();
+//        println!("declutter slice {}", node);
         if let Some(wire) = prec.op().as_typed().unwrap().slice_output(
             model,
             prec,
@@ -115,6 +136,11 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
             end,
         )? {
             patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+//            dbg!(&patch);
+//            dbg!(&self);
+            if patch.model.nodes.len() == 2 && patch.model.node(1).op().same_as(self) {
+                return Ok(None);
+            }
             return Ok(Some(patch));
         }
         Ok(None)
@@ -138,6 +164,41 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
             dyn_clone::clone_box(self)
         };
         target.wire_node(&*node.name, op, &[input])
+    }
+
+    fn slice_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        patch: &mut TypedModelPatch,
+        _output_slot: usize,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<OutletId>> {
+//        eprintln!("  {}", node);
+        let prec = model.node(node.inputs[0].node);
+        if axis != self.axis {
+            return prec
+                .op()
+                .as_typed()
+                .unwrap()
+                .slice_output(model, &prec, patch, node.inputs[0].slot, axis, start, end)?
+                .map(|w| Ok(patch.wire_node(&node.name, self.clone(), &[w])?[0]))
+                .transpose();
+        } else {
+            let wire = patch.tap_model(model, node.inputs[0])?;
+            let wire = patch.wire_node(
+                &node.name,
+                Self {
+                    start: self.start.clone() + start,
+                    axis: self.axis,
+                    end: self.start.clone() + end,
+                },
+                &[wire],
+            )?[0];
+            Ok(Some(wire))
+        }
     }
 
     as_op!();
