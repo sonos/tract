@@ -18,11 +18,12 @@ impl GlobalAvgPool {
         for dim in final_shape[2..].iter_mut() {
             *dim = 1;
         }
-        let divisor = array.len() / (n * c);
+        let divisor_int = array.len() / (n * c);
+        let divisor = D::from(divisor_int).unwrap().recip();
         let result: Tensor = array
-            .into_shape(((n * c), divisor))?
+            .into_shape(((n * c), divisor_int))?
             .sum_axis(Axis(1))
-            .map(|x| *x / D::from_usize(divisor).unwrap())
+            .map(|x| *x * divisor)
             .into_shape(final_shape)?
             .into();
         Ok(tvec!(result.into()))
@@ -74,15 +75,15 @@ impl GlobalLpPool {
         }
         let divisor = array.len() / (n * c);
         let input = array.into_shape(((n * c), divisor))?;
-        let divisor = D::from(divisor).unwrap();
+        let divisor = D::from(divisor).unwrap().recip();
         let result = if self.p == 1 {
-            input.fold_axis(Axis(1), D::zero(), |&a, &b| a + b.abs()).map(|a| *a / divisor)
+            input.fold_axis(Axis(1), D::zero(), |&a, &b| a + b.abs()).map(|a| *a * divisor)
         } else if self.p == 2 {
-            input.fold_axis(Axis(1), D::zero(), |&a, &b| a + b * b).map(|a| a.sqrt() / divisor)
+            input.fold_axis(Axis(1), D::zero(), |&a, &b| a + b * b).map(|a| a.sqrt() * divisor)
         } else {
             input
                 .fold_axis(Axis(1), D::zero(), |&a, &b| a + b.abs().powi(self.p as i32))
-                .map(|a| a.powf(D::from(self.p).unwrap().recip()) / divisor)
+                .map(|a| a.powf(D::from(self.p).unwrap().recip()) * divisor)
         };
         Ok(tvec!(result.into_shape(final_shape)?.into_arc_tensor()))
     }
