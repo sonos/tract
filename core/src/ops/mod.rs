@@ -93,8 +93,6 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
     }
 }
 
-pub type TractHasher = std::collections::hash_map::DefaultHasher;
-
 /// A base operation
 pub trait Op:
     fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp + DynHash

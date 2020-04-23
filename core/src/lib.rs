@@ -123,7 +123,7 @@ pub mod internal {
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
     pub use crate::ops::{
-        AxisInfo, Cost, Invariants, Op, TractHasher, OpState, PulsedOp, StatefullOp, StatelessOp, Validation,
+        AxisInfo, Cost, Invariants, Op, OpState, PulsedOp, StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
