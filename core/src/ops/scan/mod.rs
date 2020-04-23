@@ -6,7 +6,7 @@ mod typed;
 
 pub use typed::TypedScan;
 
-#[derive(Clone, new)]
+#[derive(Clone, new, Hash)]
 pub enum InputMapping<C: Clone> {
     Full { slot: usize },
     State { initializer: StateInitializer },
@@ -62,7 +62,7 @@ impl<C: Clone + fmt::Debug> fmt::Debug for InputMapping<C> {
     }
 }
 
-#[derive(Clone, new)]
+#[derive(Clone, new, Hash)]
 pub struct OutputMapping<C: Clone, F: Clone> {
     pub full_slot: Option<usize>,
     pub axis: usize,
@@ -94,7 +94,7 @@ impl<C: Clone, F: Clone> fmt::Debug for OutputMapping<C, F> {
     }
 }
 
-#[derive(Clone, new)]
+#[derive(Clone, new, Hash)]
 pub enum StateInitializer {
     FromInput(usize),
     Value(Arc<Tensor>),

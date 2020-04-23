@@ -71,7 +71,7 @@ impl InferenceRulesOp for mir::binary::InferenceBinOp {
     as_op!();
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct Nary(pub Box<dyn mir::binary::BinMiniOp>, pub bool);
 
 impl Nary {

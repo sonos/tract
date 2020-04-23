@@ -22,7 +22,7 @@ pub fn rnn(
     Ok((Box::new(rnn), vec![]))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct RNN {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,

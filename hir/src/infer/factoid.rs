@@ -7,7 +7,7 @@ use tract_num_traits::Zero;
 use crate::internal::*;
 
 /// Partial information about any value.
-pub trait Factoid: fmt::Debug + Clone + PartialEq + Default {
+pub trait Factoid: fmt::Debug + Clone + PartialEq + Default + Hash {
     type Concrete: fmt::Debug;
 
     /// Tries to transform the fact into a concrete value.
@@ -78,15 +78,15 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default {
 
 /// Partial information about a value of type T.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Clone, PartialEq)]
-pub enum GenericFactoid<T: fmt::Debug + Clone + PartialEq> {
+#[derive(Clone, PartialEq, Hash)]
+pub enum GenericFactoid<T: fmt::Debug + Clone + PartialEq + Hash> {
     Only(T),
     Any,
 }
 
-impl<T: Copy + Clone + fmt::Debug + PartialEq> Copy for GenericFactoid<T> {}
+impl<T: Copy + Clone + fmt::Debug + PartialEq + Hash> Copy for GenericFactoid<T> {}
 
-impl<T: fmt::Debug + Clone + PartialEq> Factoid for GenericFactoid<T> {
+impl<T: fmt::Debug + Clone + PartialEq + Hash> Factoid for GenericFactoid<T> {
     type Concrete = T;
 
     /// Tries to transform the fact into a concrete value.
@@ -110,19 +110,19 @@ impl<T: fmt::Debug + Clone + PartialEq> Factoid for GenericFactoid<T> {
     }
 }
 
-impl<T: fmt::Debug + Clone + PartialEq> Default for GenericFactoid<T> {
+impl<T: fmt::Debug + Clone + PartialEq + Hash> Default for GenericFactoid<T> {
     fn default() -> Self {
         GenericFactoid::Any
     }
 }
 
-impl<T: fmt::Debug + Clone + PartialEq> From<T> for GenericFactoid<T> {
+impl<T: fmt::Debug + Clone + PartialEq + Hash> From<T> for GenericFactoid<T> {
     fn from(t: T) -> Self {
         GenericFactoid::Only(t)
     }
 }
 
-impl<T: fmt::Debug + Clone + PartialEq> fmt::Debug for GenericFactoid<T> {
+impl<T: fmt::Debug + Clone + PartialEq + Hash> fmt::Debug for GenericFactoid<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GenericFactoid::Any => write!(formatter, "?"),
@@ -144,7 +144,7 @@ pub type TypeFactoid = GenericFactoid<DatumType>;
 /// shape that starts with `[1, 2]` (e.g. `[1, 2, i]` or `[1, 2, i, j]`), while
 /// `shapefactoid![..]` matches any shape.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Hash)]
 pub struct ShapeFactoid {
     pub(super) open: bool,
     pub(super) dims: TVec<GenericFactoid<i32>>,
@@ -379,7 +379,7 @@ pub type IntFactoid = GenericFactoid<i32>;
 
 impl<T> Zero for GenericFactoid<T>
 where
-    T: Add<T, Output = T> + Zero + PartialEq + Clone + ::std::fmt::Debug,
+    T: Add<T, Output = T> + Zero + PartialEq + Clone + ::std::fmt::Debug + Hash,
 {
     fn zero() -> GenericFactoid<T> {
         GenericFactoid::Only(T::zero())
@@ -394,7 +394,7 @@ where
 
 impl<T> Neg for GenericFactoid<T>
 where
-    T: Neg<Output = T> + PartialEq + Clone + ::std::fmt::Debug,
+    T: Neg<Output = T> + PartialEq + Clone + ::std::fmt::Debug + Hash,
 {
     type Output = GenericFactoid<T>;
     fn neg(self) -> GenericFactoid<T> {
@@ -407,7 +407,7 @@ where
 
 impl<T, I> Add<I> for GenericFactoid<T>
 where
-    T: Add<T, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
+    T: Add<T, Output = T> + PartialEq + Clone + ::std::fmt::Debug + Hash,
     I: Into<GenericFactoid<T>>,
 {
     type Output = GenericFactoid<T>;
@@ -421,7 +421,7 @@ where
 
 impl<T> Sub<GenericFactoid<T>> for GenericFactoid<T>
 where
-    T: Sub<T, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
+    T: Sub<T, Output = T> + PartialEq + Clone + ::std::fmt::Debug + Hash,
 {
     type Output = GenericFactoid<T>;
     fn sub(self, rhs: GenericFactoid<T>) -> Self::Output {
@@ -434,7 +434,7 @@ where
 
 impl<T, R> Mul<R> for GenericFactoid<T>
 where
-    T: Mul<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
+    T: Mul<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug + Hash,
 {
     type Output = GenericFactoid<T>;
     fn mul(self, rhs: R) -> Self::Output {
@@ -448,7 +448,7 @@ where
 
 impl<T, R> Div<R> for GenericFactoid<T>
 where
-    T: Div<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
+    T: Div<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug + Hash,
 {
     type Output = GenericFactoid<T>;
     fn div(self, rhs: R) -> Self::Output {
@@ -462,7 +462,7 @@ where
 
 impl<T, R> Rem<R> for GenericFactoid<T>
 where
-    T: Rem<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
+    T: Rem<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug + Hash,
 {
     type Output = GenericFactoid<T>;
     fn rem(self, rhs: R) -> Self::Output {

@@ -13,13 +13,15 @@ pub struct SessionState {
     pub tensors: HashMap<String, Tensor>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
 pub struct SimplePlan<F, O, M>
 where
     F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
     M: Borrow<ModelImpl<F, O>>,
 {
+    #[educe(Hash(ignore))]
     pub model: M,
     pub outputs: Vec<OutletId>,
     pub order: Vec<usize>,
@@ -30,7 +32,7 @@ where
 impl<F, O, M> SimplePlan<F, O, M>
 where
     F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
     M: Borrow<ModelImpl<F, O>>,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
@@ -85,7 +87,7 @@ where
 pub struct SimpleState<F, O, M, P>
 where
     F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
     M: Borrow<ModelImpl<F, O>>,
     P: Borrow<SimplePlan<F, O, M>>,
 {
@@ -99,7 +101,7 @@ where
 impl<F, O, M, P> Clone for SimpleState<F, O, M, P>
 where
     F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
     M: Borrow<ModelImpl<F, O>>,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
@@ -124,7 +126,7 @@ where
 impl<F, O, M, P> SimpleState<F, O, M, P>
 where
     F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
     M: Borrow<ModelImpl<F, O>>,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {

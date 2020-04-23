@@ -48,6 +48,8 @@ extern crate derive_new;
 #[macro_use]
 pub extern crate downcast_rs;
 #[macro_use]
+extern crate educe;
+#[macro_use]
 pub extern crate error_chain;
 #[allow(unused_imports)]
 #[macro_use]
@@ -119,7 +121,7 @@ pub mod internal {
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
     pub use crate::ops::{
-        AxisInfo, Cost, Invariants, Op, OpState, PulsedOp, StatefullOp, StatelessOp, Validation,
+        AxisInfo, Cost, Invariants, Op, OpHash, TractHasher, OpState, PulsedOp, StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
@@ -128,6 +130,7 @@ pub mod internal {
     pub use error_chain::bail;
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
+    pub use std::hash::Hash;
     pub use std::marker::PhantomData;
     pub use tract_linalg::f16::f16;
     pub use tvec;

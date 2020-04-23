@@ -1,28 +1,26 @@
 use crate::internal::*;
-use ndarray::prelude::*;
-use num_traits::{AsPrimitive, Float};
+use num_traits::AsPrimitive;
 use std::iter::Sum;
 
 use crate::ops::cnn::pools::PoolSpec;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct AvgPool {
     pub pool_spec: PoolSpec,
     pub count_include_pad: bool,
 }
 
 impl AvgPool {
-    fn to_fixed<T: Datum + Float + Sum>(
+    fn to_fixed(
         &self,
+        datum_type: DatumType,
         input_shape: &[usize],
-    ) -> TractResult<Box<dyn TypedOp>>
-    where
-        usize: AsPrimitive<T>,
-    {
+    ) -> TractResult<Box<dyn TypedOp>> {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_shape)?;
-        let op = AvgPoolFixed::<T>::new(patch, input_shape, output_shape, self.count_include_pad);
+        let op =
+            AvgPoolFixed::new(patch, input_shape, output_shape, datum_type, self.count_include_pad);
         Ok(Box::new(op))
     }
 }
@@ -47,10 +45,7 @@ impl Op for AvgPool {
 
 impl StatelessOp for AvgPool {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let op = dispatch_floatlike!(AvgPool::to_fixed(inputs[0].datum_type())(
-            self,
-            inputs[0].shape()
-        ))?;
+        let op = self.to_fixed(inputs[0].datum_type(), inputs[0].shape())?;
         op.as_stateless().unwrap().eval(inputs)
     }
 }
@@ -78,8 +73,7 @@ impl TypedOp for AvgPool {
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(shape) = inputs[0].shape.as_finite() {
-            let dt = inputs[0].datum_type;
-            let op = dispatch_floatlike!(AvgPool::to_fixed(dt)(self, shape))?;
+            let op = self.to_fixed(inputs[0].datum_type, shape)?;
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
@@ -97,40 +91,26 @@ impl PulsedOp for AvgPool {
     pulsed_op_to_typed_op!();
 }
 
-#[derive(Debug, Clone, new)]
-pub struct AvgPoolFixed<T: Datum + Float + Sum>
-where
-    usize: AsPrimitive<T>,
-{
+#[derive(Debug, Clone, new, Hash)]
+pub struct AvgPoolFixed {
     patch: Patch,
     input_shape: DataShape,
     output_shape: DataShape,
+    datum_type: DatumType,
     count_include_pad: bool,
-    _casper: PhantomData<T>,
 }
 
-impl<T: Datum + Float + Sum> Op for AvgPoolFixed<T>
-where
-    usize: AsPrimitive<T>,
-{
-    fn name(&self) -> Cow<str> {
-        format!("AvgPool::Fixed<{:?}>", T::datum_type()).into()
-    }
+impl AvgPoolFixed {
+    fn eval_t<T: Copy + Datum + num_traits::Float + Sum>(
+        &self,
+        input: &Tensor,
+        values_ptr: *mut T,
+    ) -> TractResult<()>
+    where
+        usize: AsPrimitive<T>,
+    {
+        let input_ptr = input.as_ptr::<T>()?;
 
-    op_as_typed_op!();
-    not_a_pulsed_op!();
-}
-
-impl<T: Datum + Float + Sum> StatelessOp for AvgPoolFixed<T>
-where
-    usize: AsPrimitive<T>,
-{
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        let input: ArrayViewD<T> = input.to_array_view()?;
-        let input_ptr = input.as_ptr();
-
-        let mut values = unsafe { ArrayD::<T>::uninitialized(&*self.output_shape.shape) };
         let n = *self.input_shape.n().unwrap_or(&1);
         let n_stride_i = self.input_shape.n_stride().unwrap_or(&0);
         let n_stride_o = self.output_shape.n_stride().unwrap_or(&0);
@@ -153,23 +133,38 @@ where
                             .map(|v| *input_ptr.offset(v + input_offset as isize))
                             .sum::<T>();
 
-                        *values
-                            .as_mut_ptr()
-                            .offset(output_offset as isize + visitor.output_offset) = sum * div;
+                        *values_ptr.offset(output_offset as isize + visitor.output_offset) =
+                            sum * div;
                     }
                 }
             });
         }
+        Ok(())
+    }
+}
+
+impl Op for AvgPoolFixed {
+    fn name(&self) -> Cow<str> {
+        "AvgPool::Fixed".into()
+    }
+
+    op_as_typed_op!();
+    not_a_pulsed_op!();
+}
+
+impl StatelessOp for AvgPoolFixed {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let mut values =
+            unsafe { Tensor::uninitialized_dt(self.datum_type, &*self.output_shape.shape)? };
+        let input = args_1!(inputs);
+        dispatch_floatlike!(Self::eval_t(input.datum_type())(self, &*input, values.as_ptr_mut()?))?;
         Ok(tvec!(values.into_arc_tensor()))
     }
 }
 
-impl<T: Datum + Float + Sum> TypedOp for AvgPoolFixed<T>
-where
-    usize: AsPrimitive<T>,
-{
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
+impl TypedOp for AvgPoolFixed {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))
     }
 
     as_op!();

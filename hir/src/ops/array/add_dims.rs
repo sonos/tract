@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct AddDims {
     pub axes: Vec<usize>,
 }

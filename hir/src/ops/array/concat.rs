@@ -4,7 +4,7 @@ use crate::internal::*;
 pub use tract_core::ops::array::{ConcatSlice, TypedConcat};
 
 /// Concat: high level concat op
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Concat {
     axis: i64,
 }

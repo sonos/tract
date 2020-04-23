@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct MultiBroadcastTo {
     shape: TVec<TDim>,
 }

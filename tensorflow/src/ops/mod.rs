@@ -47,7 +47,7 @@ fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inference
     Ok(Box::new(::tract_hir::ops::konst::Const::for_tensor(mat)))
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Hash)]
 pub struct Noop;
 
 impl Op for Noop {

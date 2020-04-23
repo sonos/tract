@@ -24,7 +24,7 @@ element_wise!(not, Not, [bool] => |_, vs| {
     Ok(())
 });
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Iff;
 
 impl Iff {

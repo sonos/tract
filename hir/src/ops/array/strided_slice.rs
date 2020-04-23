@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_ndarray::prelude::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct StridedSlice {
     pub optional_axes_input: Option<usize>,
     pub optional_steps_input: Option<usize>,

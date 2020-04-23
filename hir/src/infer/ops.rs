@@ -7,7 +7,7 @@ tract_core::dyn_clone::clone_trait_object!(InferenceOp);
 
 /// An operation with tensor type inference
 pub trait InferenceOp:
-    Op + fmt::Debug + tract_core::dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp
+    Op + fmt::Debug + tract_core::dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp + OpHash
 {
     /// Infers properties about the input and output tensors.
     ///
@@ -110,6 +110,20 @@ pub trait InferenceOp:
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         bail!("Operator can not be made a TypedOp.")
+    }
+}
+
+impl Hash for Box<dyn InferenceOp> {
+    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+        std::hash::Hash::hash(&self.type_id(), state);
+        OpHash::dhash(self, &mut state)
+    }
+}
+
+impl<'a> Hash for &'a dyn InferenceOp {
+    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+        std::hash::Hash::hash(&self.type_id(), state);
+        OpHash::dhash(self, &mut state)
     }
 }
 

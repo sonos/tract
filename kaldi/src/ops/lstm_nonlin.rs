@@ -14,7 +14,7 @@ pub fn lstm_nonlin(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn Infe
     Ok(Box::new(LstmNonlin { peepholes_params: params.to_owned() }))
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Hash)]
 pub struct LstmNonlin {
     peepholes_params: Tensor,
 }

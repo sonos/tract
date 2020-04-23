@@ -7,7 +7,7 @@ pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn Infere
     Ok(Box::new(ExpandDims))
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct ExpandDims;
 
 impl ExpandDims {

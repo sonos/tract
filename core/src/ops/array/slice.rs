@@ -1,14 +1,14 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Default)]
-pub struct Slice<D: DimLike + ToDim> {
+#[derive(Debug, Clone, new, Default, Hash)]
+pub struct Slice<D: DimLike + ToDim + Hash> {
     pub axis: usize,
     pub start: D,
     pub end: D,
 }
 
-impl<D: DimLike + ToDim> Slice<D> {
+impl<D: DimLike + ToDim + Hash> Slice<D> {
     unsafe fn eval_t<T: Datum>(&self, input: &Tensor) -> TractResult<Tensor> {
         let mut input = input.to_array_view_unchecked::<T>();
         input.slice_axis_inplace(
@@ -19,7 +19,7 @@ impl<D: DimLike + ToDim> Slice<D> {
     }
 }
 
-impl<D: DimLike + ToDim> Op for Slice<D> {
+impl<D: DimLike + ToDim + Hash> Op for Slice<D> {
     fn name(&self) -> Cow<str> {
         "Slice".into()
     }
@@ -33,7 +33,7 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
     op_as_pulsed_op!();
 }
 
-impl<D: DimLike + ToDim> StatelessOp for Slice<D> {
+impl<D: DimLike + ToDim + Hash> StatelessOp for Slice<D> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
@@ -45,7 +45,7 @@ impl<D: DimLike + ToDim> StatelessOp for Slice<D> {
     }
 }
 
-impl<D: DimLike + ToDim> TypedOp for Slice<D> {
+impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape.set_dim(self.axis, (self.end.clone() - &self.start).to_dim())?;
@@ -137,7 +137,7 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
     as_op!();
 }
 
-impl<D: DimLike + ToDim> PulsedOp for Slice<D> {
+impl<D: DimLike + ToDim + Hash> PulsedOp for Slice<D> {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.delay += self.start.to_integer()? as usize;
@@ -149,7 +149,7 @@ impl<D: DimLike + ToDim> PulsedOp for Slice<D> {
     pulsed_op_to_typed_op!();
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct PulsedAxisSlice {
     pub axis: usize,
     pub skip: usize,

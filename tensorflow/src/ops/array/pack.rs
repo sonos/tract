@@ -13,7 +13,7 @@ pub fn pack(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferenc
 
 //TODO: incorporate as Concat
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Pack {
     t: DatumType,
     n: usize, // The number of inputs

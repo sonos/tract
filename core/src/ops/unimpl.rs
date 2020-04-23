@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct UnimplementedOp {
     outputs: usize,
     name: String,

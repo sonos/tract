@@ -8,7 +8,7 @@ pub use super::{InletId, ModelImpl, Node, OutletId};
 pub trait ModelSpecialOps<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
 {
     /// Adds a source op to the network.
     ///
@@ -76,7 +76,7 @@ where
 impl<F, O> ModelDsl<F, O> for ModelImpl<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
 {
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
         let node = &self.nodes()[id];
@@ -147,6 +147,7 @@ where
         + AsRef<dyn Op>
         + AsMut<dyn Op>
         + Clone
+        + OpHash
         + 'static,
 {
     fn add_const(

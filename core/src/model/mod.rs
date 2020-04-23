@@ -67,7 +67,7 @@ use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
 
 /// Common methods for all variants of model.
-pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
+pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone + crate::ops::OpHash {
     /// Model label
     fn model_label(&self) -> Option<&str>;
 

@@ -9,7 +9,7 @@ use tract_core::ops::cnn::{PaddingSpec, PoolSpec};
 use tract_core::ops::nn::DataFormat;
 use tract_core::ops::quant::QParams;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct Conv {
     pub data_format: DataFormat,
     pub kernel_fmt: KernelFormat,

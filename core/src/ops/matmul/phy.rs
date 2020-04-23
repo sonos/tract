@@ -10,11 +10,13 @@ use tract_linalg::mmm::FusedSpec;
 
 use tract_linalg::frame::PackB;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Educe)]
+#[educe(Hash)]
 pub struct MatMatMulPackB<T>
 where
     T: Copy + Datum + Zero,
 {
+    #[educe(Hash(ignore))]
     pub(crate) pack_b: PackB<T>,
     pub(crate) row_stride: isize,
     pub(crate) col_stride: isize,
@@ -77,7 +79,8 @@ where
     as_op!();
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
 pub(crate) struct MatMatMulUnaryFinite<TA, TB, TC, TI>
 where
     TA: Datum + Copy + Zero,
@@ -90,7 +93,9 @@ where
     pub(crate) c_fact: TypedFact,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
+    #[educe(Hash(ignore))]
     pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec<TI>>>>,
+    #[educe(Hash(ignore))]
     pub(crate) mmm: MMMWrapper<TA, TB, TC, TI>,
 }
 

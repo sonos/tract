@@ -3,7 +3,7 @@ use crate::internal::*;
 
 use tract_core::ops::array::TypedReshape;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Reshape {}
 
 impl Reshape {

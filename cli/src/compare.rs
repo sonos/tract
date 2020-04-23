@@ -136,7 +136,7 @@ pub fn compare<F, O>(
 ) -> CliResult<()>
 where
     F: Fact + Clone + for<'a> From<&'a Tensor>,
-    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
+    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + OpHash,
     ModelImpl<F, O>: Model,
 {
     let eval_order = ::tract_core::model::eval_order(&tract)?;

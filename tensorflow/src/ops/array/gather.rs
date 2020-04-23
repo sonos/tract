@@ -4,7 +4,7 @@ use tract_ndarray::prelude::*;
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct GatherNd {}
 
 pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

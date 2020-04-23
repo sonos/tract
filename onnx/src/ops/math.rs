@@ -118,9 +118,12 @@ pub fn gemm(
     Ok((Box::new(Gemm::new(alpha, beta, trans_a, trans_b)), vec![]))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Educe)]
+#[educe(Hash)]
 pub struct Gemm {
+    #[educe(Hash(method="tract_hir::tract_core::ops::hash_f32"))]
     alpha: f32,
+    #[educe(Hash(method="tract_hir::tract_core::ops::hash_f32"))]
     beta: f32,
     trans_a: bool,
     trans_b: bool,

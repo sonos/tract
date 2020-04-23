@@ -3,7 +3,7 @@ use tract_ndarray::*;
 use crate::infer::*;
 use crate::internal::*;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct ConstantOfShape {
     scalar: Arc<Tensor>,
 }

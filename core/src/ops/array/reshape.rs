@@ -3,7 +3,7 @@ use itertools::Itertools;
 
 // FIXME: try to recanonicalize as flatten (maybe extended) / add_dims / rm_dims ?
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct TypedReshape {
     shape: TVec<TDim>,
 }
@@ -59,7 +59,7 @@ impl TypedOp for TypedReshape {
     }
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct FiniteReshape {
     pub shape: TVec<usize>,
 }

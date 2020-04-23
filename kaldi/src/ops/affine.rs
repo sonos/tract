@@ -28,7 +28,7 @@ pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn
     }))
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Hash)]
 struct Affine {
     kernel_len: usize,
     dilation: usize,

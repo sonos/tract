@@ -3,7 +3,7 @@ use tract_hir::internal::*;
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Transpose {
     t: DatumType,
     t_perm: DatumType,

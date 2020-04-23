@@ -16,7 +16,7 @@ impl InOut {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub enum AxisOp {
     Add(usize),
     Rm(usize),

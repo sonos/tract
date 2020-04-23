@@ -4,7 +4,7 @@ use crate::internal::*;
 pub use tract_core::ops::scan::TypedScan;
 pub use tract_core::ops::scan::{InputMapping, OutputMapping, StateInitializer};
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct InferenceScan {
     pub body: InferenceModel,
     pub input_mapping: Vec<InputMapping<()>>,

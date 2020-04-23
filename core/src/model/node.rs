@@ -14,7 +14,7 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 ///
 /// Parameterized by a Fact implementation matching the one used in the
 /// model.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct BaseNode<F: Fact, O> {
     /// node id in the model
@@ -74,7 +74,7 @@ impl<F: Fact, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dy
 }
 
 /// Information for each outlet of a node
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct OutletFact<F: Fact> {
     /// the tensor type information

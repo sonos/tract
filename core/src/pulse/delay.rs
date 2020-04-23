@@ -61,7 +61,7 @@ impl OpState for DelayState {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub struct Delay {
     datum_type: DatumType,
     buffer_shape: TVec<usize>,

@@ -8,7 +8,8 @@ use crate::ops::nn::DataShape;
 
 use num_traits::Zero;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
 pub struct Im2Col<T: Copy + Datum + Zero> {
     pub patch: Patch,
     pub input_shape: DataShape,
@@ -18,9 +19,10 @@ pub struct Im2Col<T: Copy + Datum + Zero> {
     pub n: usize,
     pub group: usize,
     pub ci_per_group: usize,
+    #[educe(Hash(ignore))]
     pub b_pack: PackB<T>,
     patcher: Patcher,
-    pad_value: T,
+    pad_value: Tensor,
 }
 
 impl<T: Copy + Datum + Zero> PartialEq for Im2Col<T> {
@@ -31,6 +33,7 @@ impl<T: Copy + Datum + Zero> PartialEq for Im2Col<T> {
             && self.k == other.k
             && self.group == other.group
             && self.b_pack == other.b_pack
+            && self.pad_value == other.pad_value
     }
 }
 
@@ -55,8 +58,12 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
         } else {
             Patcher::Generic
         };
-        let output_shape =
-            input_shape.fmt.shape(tvec!(*input_shape.n_dim().unwrap_or(&1), group, b_pack.len()))?;
+        let output_shape = input_shape.fmt.shape(tvec!(
+            *input_shape.n_dim().unwrap_or(&1),
+            group,
+            b_pack.len()
+        ))?;
+        let pad_value = tensor0(pad_value);
         Ok(Im2Col {
             patch,
             input_shape,
@@ -80,6 +87,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
         let mut packed = unsafe {
             Tensor::uninitialized_aligned::<T>(&*self.output_shape.shape, self.b_pack.alignment())?
         };
+        let pad_value = *self.pad_value.to_scalar()?;
         for i in 0..*self.input_shape.n_dim().unwrap_or(&1) {
             for g in 0..self.group {
                 let mut packed = packed.to_array_view_mut::<T>()?;
@@ -90,7 +98,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
                 } else {
                     input.view()
                 };
-                self.patcher.patch(self, &input, packed.as_slice_mut().unwrap(), g, self.pad_value);
+                self.patcher.patch(self, &input, packed.as_slice_mut().unwrap(), g, pad_value);
             }
         }
         Ok(packed)
@@ -131,7 +139,7 @@ impl<T: Copy + Datum + Zero> TypedOp for Im2Col<T> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash)]
 enum Patcher {
     Generic,
     Valid1d,

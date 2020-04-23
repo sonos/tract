@@ -2,9 +2,11 @@ use tract_hir::internal::*;
 use tract_hir::ops::nn::DataFormat;
 use tract_num_traits::AsPrimitive;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Educe)]
+#[educe(Hash)]
 pub struct BatchNorm {
     data_format: DataFormat,
+    #[educe(Hash(method = "tract_hir::tract_core::ops::hash_f32"))]
     epsilon: f32,
     spatial: bool,
 }

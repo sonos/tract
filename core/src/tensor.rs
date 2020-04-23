@@ -24,6 +24,12 @@ pub struct Tensor {
 unsafe impl Send for Tensor {}
 unsafe impl Sync for Tensor {}
 
+impl Hash for Tensor {
+    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {
+        unimplemented!()
+    }
+}
+
 impl Clone for Tensor {
     fn clone(&self) -> Tensor {
         self.deep_clone()

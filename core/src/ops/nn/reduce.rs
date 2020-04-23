@@ -17,7 +17,7 @@ macro_rules! r {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash)]
 pub enum Reducer {
     Max,
     Min,
@@ -101,7 +101,7 @@ where
     v.scalar_sum()
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Hash)]
 pub struct Reduce {
     axes: TVec<usize>,
     reducer: Reducer,

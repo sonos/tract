@@ -6,7 +6,7 @@ pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn Infere
     Ok(Box::new(ConcatV2))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct ConcatV2;
 
 impl StatelessOp for ConcatV2 {

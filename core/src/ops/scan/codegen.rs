@@ -2,7 +2,7 @@ use ndarray::*;
 
 use super::*;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct CodegenOpParams {
     pub skip: usize,
     pub plan: Arc<TypedSimplePlan<TypedModel>>,
@@ -10,7 +10,7 @@ pub struct CodegenOpParams {
     pub output_mapping: Vec<OutputMapping<usize, TDim>>,
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Codegen(Arc<CodegenOpParams>);
 
 impl std::ops::Deref for Codegen {

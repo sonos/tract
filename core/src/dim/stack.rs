@@ -7,7 +7,7 @@ use crate::errors::TractResultExt;
 
 use ExpNode::*;
 
-#[derive(Clone, new)]
+#[derive(Clone, new, Hash)]
 pub struct Stack {
     it: ExpNode,
 }

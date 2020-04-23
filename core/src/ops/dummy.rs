@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Dummy;
 
 impl Op for Dummy {

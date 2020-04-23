@@ -26,7 +26,7 @@ fn slice1(
     Ok((Box::new(Slice1::new(axes, begin, end)), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Slice1 {
     axes: Option<Vec<usize>>,
     starts: Vec<isize>,

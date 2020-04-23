@@ -1,12 +1,13 @@
 use crate::model::{Fact, ModelImpl, OutletId};
 use crate::prelude::*;
+use crate::ops::OpHash;
 use std::collections::HashMap;
 use std::fmt;
 
 trait GraphRewriter<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
 {
     fn wire_node(
         &self,
@@ -55,7 +56,7 @@ struct NoopRewriter;
 impl<F, O> GraphRewriter<F, O> for NoopRewriter
 where
     F: Fact + Clone + 'static,
-    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
     ModelImpl<F, O>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
 {
     fn wire_node(
@@ -79,7 +80,7 @@ where
 pub fn compact<F, O>(old: &ModelImpl<F, O>) -> TractResult<ModelImpl<F, O>>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
     ModelImpl<F, O>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
 {
     NoopRewriter.rewrite_model(old)

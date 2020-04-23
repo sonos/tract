@@ -1,7 +1,7 @@
 use crate::internal::*;
 use std::fmt;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Hash)]
 pub enum DataFormat {
     NCHW,
     NHWC,
@@ -63,7 +63,7 @@ impl DataFormat {
 
 pub type DataShape = BaseDataShape<usize, TVec<usize>>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub struct BaseDataShape<D, S>
 where
     D: DimLike,
