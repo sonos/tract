@@ -1,5 +1,6 @@
 //! `Tensor`, tract main data object of interest.
 use crate::internal::*;
+use crate::dim::TDim;
 use ndarray::prelude::*;
 use std::alloc;
 use std::fmt;
@@ -25,8 +26,28 @@ unsafe impl Send for Tensor {}
 unsafe impl Sync for Tensor {}
 
 impl Hash for Tensor {
-    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {
-        unimplemented!()
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        use DatumType::*;
+        self.dt.hash(state);
+        self.shape.hash(state);
+        self.layout.align().hash(state);
+        unsafe {
+            match self.dt {
+                Bool => self.as_slice_unchecked::<bool>().hash(state),
+                I8 => self.as_slice_unchecked::<i8>().hash(state),
+                I16 => self.as_slice_unchecked::<i16>().hash(state),
+                I32 => self.as_slice_unchecked::<i32>().hash(state),
+                I64 => self.as_slice_unchecked::<i64>().hash(state),
+                U8 => self.as_slice_unchecked::<u8>().hash(state),
+                U16 => self.as_slice_unchecked::<u16>().hash(state),
+                F16 => self.as_slice_unchecked::<i16>().hash(state),
+                F32 => self.as_slice_unchecked::<i32>().hash(state),
+                F64 => self.as_slice_unchecked::<i64>().hash(state),
+                TDim => self.as_slice_unchecked::<crate::dim::TDim>().hash(state),
+                String => self.as_slice_unchecked::<std::string::String>().hash(state),
+                Blob => self.as_slice_unchecked::<crate::datum::Blob>().hash(state),
+            }
+        }
     }
 }
 
