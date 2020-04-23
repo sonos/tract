@@ -7,7 +7,7 @@ use std::fmt::{Debug, Display};
 /// as boundaries.
 pub fn eval_order<
     F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 >(
     model: &super::ModelImpl<F, O>,
 ) -> TractResult<Vec<usize>> {

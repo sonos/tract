@@ -298,7 +298,7 @@ bin_to_super_type!(prelu, Prelu, declutter_bin: prelu_to_prelu_unary,
 
 element_wise!(prelu_unary,
     PreluUnary {
-        #[educe(Hash(method = "tract_hir::tract_core::ops::hash_f32"))]
+        #[educe(Hash(method = "hash_f32"))]
         b: f32
     },
     [f32] => |op, xs| {
@@ -336,9 +336,9 @@ pub fn scaled_tanh(
 
 element_wise!(shrink_op,
     Shrink {
-        #[educe(Hash(method = "tract_hir::tract_core::ops::hash_f32"))]
+        #[educe(Hash(method = "hash_f32"))]
         bias: f32,
-        #[educe(Hash(method = "tract_hir::tract_core::ops::hash_f32"))]
+        #[educe(Hash(method = "hash_f32"))]
         lambd: f32
     },
     [f16,f32,f64] => |s, xs| {

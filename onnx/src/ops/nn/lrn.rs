@@ -4,11 +4,11 @@ use tract_ndarray::prelude::*;
 #[derive(Debug, Clone, new, Default, Educe)]
 #[educe(Hash)]
 pub struct Lrn {
-    #[educe(Hash(method = "tract_hir::tract_core::ops::hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     alpha: f32,
-    #[educe(Hash(method = "tract_hir::tract_core::ops::hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     beta: f32,
-    #[educe(Hash(method = "tract_hir::tract_core::ops::hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     bias: f32,
     size: usize,
 }

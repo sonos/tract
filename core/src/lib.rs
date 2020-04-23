@@ -86,6 +86,7 @@ pub mod broadcast;
 pub mod datum;
 pub mod dim;
 pub mod errors;
+pub mod hash;
 pub mod model;
 mod optim;
 pub mod plan;
@@ -116,12 +117,13 @@ pub mod prelude {
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
     pub use crate::dim::{DimLike, TDim, ToDim, MaybeProduct};
+    pub use crate::hash::{ hash_f32, DynHash };
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
     pub use crate::ops::{
-        AxisInfo, Cost, Invariants, Op, OpHash, TractHasher, OpState, PulsedOp, StatefullOp, StatelessOp, Validation,
+        AxisInfo, Cost, Invariants, Op, TractHasher, OpState, PulsedOp, StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;

@@ -6,7 +6,7 @@ use tract_num_traits::AsPrimitive;
 #[educe(Hash)]
 pub struct BatchNorm {
     data_format: DataFormat,
-    #[educe(Hash(method = "tract_hir::tract_core::ops::hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     epsilon: f32,
     spatial: bool,
 }

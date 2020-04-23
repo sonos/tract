@@ -7,7 +7,7 @@ use std::fmt;
 
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
-pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static + OpHash {
+pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static + DynHash {
     fn to_typed_fact(&self) -> TractResult<TypedFact>;
 
     fn matches(&self, t: &Tensor) -> TractResult<bool> {

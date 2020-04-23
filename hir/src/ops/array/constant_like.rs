@@ -5,7 +5,7 @@ use tract_num_traits::{AsPrimitive, One, Zero};
 #[derive(Debug, Clone, new, Default, Educe)]
 #[educe(Hash)]
 pub struct ConstantLike {
-    #[educe(Hash(method = "tract_core::ops::hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     value: f32,
 }
 

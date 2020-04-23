@@ -3,7 +3,7 @@ use downcast_rs::Downcast;
 use std::fmt;
 
 pub trait ElementWiseMiniOp:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + OpHash
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
 {
     fn name(&self) -> String;
     fn prefix(&self) -> &'static str {
@@ -55,7 +55,7 @@ pub trait ElementWiseMiniOp:
 impl Hash for Box<dyn ElementWiseMiniOp> {
     fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
         std::hash::Hash::hash(&self.type_id(), state);
-        OpHash::dhash(self, &mut state)
+        DynHash::dhash(self, &mut state)
     }
 }
 

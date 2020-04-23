@@ -11,7 +11,7 @@ pub fn fused_batch_norm(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<
 #[derive(Debug, Clone, new, Educe)]
 #[educe(Hash)]
 struct FusedBatchNorm {
-    #[educe(Hash(method="tract_hir::tract_core::ops::hash_f32"))]
+    #[educe(Hash(method="hash_f32"))]
     epsilon: f32,
 }
 

@@ -8,8 +8,6 @@ pub use self::data_formats::{BaseDataShape, DataFormat, DataShape};
 pub use self::global_pools::{GlobalAvgPool, GlobalLpPool, GlobalMaxPool};
 pub use self::reduce::{Reduce, Reducer};
 
-use crate::ops::hash_f32;
-
 use num_traits::{AsPrimitive, Float};
 
 pub use crate::internal::*;

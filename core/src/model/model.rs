@@ -1,7 +1,7 @@
 use super::*;
 use crate::ops::Op;
 use std::fmt;
-use crate::ops::OpHash;
+use crate::hash::DynHash;
 
 /// Main model class
 ///
@@ -11,7 +11,7 @@ use crate::ops::OpHash;
 pub struct ModelImpl<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
     pub label: Option<String>,
     /// all nodes in the model
@@ -32,7 +32,7 @@ where
 impl<F, O> Default for ModelImpl<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
     fn default() -> ModelImpl<F, O> {
         ModelImpl {
@@ -49,7 +49,7 @@ where
 impl<F, O> ModelImpl<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     ModelImpl<F, O>: Model,
 {
     pub fn add_node(
@@ -360,7 +360,7 @@ where
 impl<F, O> Model for ModelImpl<F, O>
 where
     F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + OpHash,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
     fn model_label(&self) -> Option<&str> {
         self.label.as_ref().map(|s| &**s)

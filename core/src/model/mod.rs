@@ -65,9 +65,10 @@ use crate::model::translator::Translate;
 use crate::ops::invariants;
 use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
+use crate::hash::DynHash;
 
 /// Common methods for all variants of model.
-pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone + crate::ops::OpHash {
+pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone + DynHash {
     /// Model label
     fn model_label(&self) -> Option<&str>;
 

@@ -15,7 +15,7 @@ pub fn renorm(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn Inference
 #[derive(Clone, Debug, new, Educe)]
 #[educe(Hash)]
 struct Renorm {
-    #[educe(Hash(method="tract_hir::tract_core::ops::hash_f32"))]
+    #[educe(Hash(method="hash_f32"))]
     target_rms: f32,
 }
 

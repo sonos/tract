@@ -3,7 +3,7 @@ use crate::ops::invariants::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + OpHash {
+pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash {
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
         Validation::Accurate
@@ -68,7 +68,7 @@ downcast_rs::impl_downcast!(BinMiniOp);
 impl Hash for Box<dyn BinMiniOp> {
     fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
         std::hash::Hash::hash(&self.type_id(), state);
-        OpHash::dhash(self, &mut state)
+        DynHash::dhash(self, &mut state)
     }
 }
 
