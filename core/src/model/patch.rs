@@ -13,7 +13,7 @@ use crate::model::*;
 #[derive(Clone, Debug)]
 pub struct ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
@@ -26,7 +26,7 @@ where
 
 impl<F, O> Default for ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
@@ -42,7 +42,7 @@ where
 
 impl<F, O> Deref for ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
@@ -54,7 +54,7 @@ where
 
 impl<F, O> DerefMut for ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
@@ -65,7 +65,7 @@ where
 
 impl<F, O> ModelPatch<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {

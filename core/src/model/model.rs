@@ -1,7 +1,8 @@
 use super::*;
 use crate::ops::Op;
 use std::fmt;
-use crate::hash::DynHash;
+use std::hash::Hash;
+use tract_linalg::hash::DynHash;
 
 /// Main model class
 ///
@@ -10,12 +11,11 @@ use crate::hash::DynHash;
 #[educe(Hash)]
 pub struct ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
     pub label: Option<String>,
     /// all nodes in the model
-    #[educe(Hash(ignore))]
     pub nodes: Vec<BaseNode<F, O>>,
     /// index of nodes per name
     #[educe(Hash(ignore))]
@@ -25,13 +25,17 @@ where
     /// model outputs
     pub outputs: Vec<OutletId>,
     /// outlet labels
-    #[educe(Hash(ignore))]
+    #[educe(Hash(method="hash_outlet_labels"))]
     pub outlet_labels: HashMap<OutletId, String>,
+}
+
+fn hash_outlet_labels<H: std::hash::Hasher>(it: &HashMap<OutletId, String>, state: &mut H) {
+    it.iter().sorted().for_each(|ol| ol.hash(state))
 }
 
 impl<F, O> Default for ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
     fn default() -> ModelImpl<F, O> {
@@ -48,7 +52,7 @@ where
 
 impl<F, O> ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     ModelImpl<F, O>: Model,
 {
@@ -359,7 +363,7 @@ where
 
 impl<F, O> Model for ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
     fn model_label(&self) -> Option<&str> {

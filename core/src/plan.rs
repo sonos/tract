@@ -17,7 +17,7 @@ pub struct SessionState {
 #[educe(Hash)]
 pub struct SimplePlan<F, O, M>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     M: Borrow<ModelImpl<F, O>> + Hash,
 {
@@ -30,7 +30,7 @@ where
 
 impl<F, O, M> SimplePlan<F, O, M>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     M: Borrow<ModelImpl<F, O>> + Hash,
 {
@@ -85,7 +85,7 @@ where
 #[derive(Debug)]
 pub struct SimpleState<F, O, M, P>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     M: Borrow<ModelImpl<F, O>> + Hash,
     P: Borrow<SimplePlan<F, O, M>>,
@@ -99,7 +99,7 @@ where
 
 impl<F, O, M, P> Clone for SimpleState<F, O, M, P>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     M: Borrow<ModelImpl<F, O>> + Hash,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
@@ -124,7 +124,7 @@ where
 
 impl<F, O, M, P> SimpleState<F, O, M, P>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     M: Borrow<ModelImpl<F, O>> + Hash,
     P: Borrow<SimplePlan<F, O, M>> + Clone,

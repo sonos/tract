@@ -7,7 +7,7 @@ pub use super::{InletId, ModelImpl, Node, OutletId};
 
 pub trait ModelSpecialOps<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
     /// Adds a source op to the network.
@@ -58,8 +58,8 @@ impl ModelSpecialOps<PulsedFact, Box<dyn TypedOp>> for PulsedModel {
 /// Extensions on ModelImpl to explore and build graph models more easily.
 pub trait ModelDsl<F, O>
 where
-    F: Fact + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
     /// Find the lone precursor of a node, if applicable.
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>>;
@@ -75,7 +75,7 @@ where
 
 impl<F, O> ModelDsl<F, O> for ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
@@ -140,7 +140,7 @@ pub trait ModelDslConst {
 
 impl<F: Fact + Clone + 'static, O> ModelDslConst for ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static + From<Arc<Tensor>>,
+    F: Fact + Clone + 'static + From<Arc<Tensor>> + Hash,
     O: fmt::Debug
         + fmt::Display
         + From<crate::ops::konst::Const>
@@ -163,7 +163,7 @@ where
 
 pub trait ModelWireNode<F, O>
 where
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn wire_node(

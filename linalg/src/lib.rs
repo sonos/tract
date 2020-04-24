@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate derive_new;
+#[macro_use]
+extern crate educe;
 extern crate lazy_static;
 extern crate libc;
 extern crate log;
@@ -8,6 +10,7 @@ extern crate num_traits;
 extern crate proptest;
 
 pub mod align;
+pub mod hash;
 pub mod f16;
 #[macro_use]
 pub mod frame;

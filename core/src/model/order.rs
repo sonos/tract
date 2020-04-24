@@ -6,7 +6,7 @@ use std::fmt::{Debug, Display};
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
 pub fn eval_order<
-    F: Fact + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 >(
     model: &super::ModelImpl<F, O>,
@@ -17,7 +17,7 @@ pub fn eval_order<
 }
 
 /// Find a working evaluation order for a list of nodes.
-pub fn eval_order_for_nodes<F: Fact, O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op>>(
+pub fn eval_order_for_nodes<F: Fact + Hash, O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + DynHash>(
     nodes: &[BaseNode<F, O>],
     inputs: &[usize],
     targets: &[usize],

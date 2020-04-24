@@ -2,7 +2,8 @@ use num_traits::Zero;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Educe)]
+#[educe(Hash)]
 pub struct PackB<T: Copy + Zero> {
     k: usize,
     n: usize,
@@ -15,6 +16,7 @@ impl<T: Copy + Zero + Debug> PackB<T> {
     pub fn new(k: usize, n: usize, nr: usize, alignment: usize) -> PackB<T> {
         PackB { k, n, nr, alignment, _boo: PhantomData }
     }
+
     pub fn alignment(&self) -> usize {
         self.alignment
     }

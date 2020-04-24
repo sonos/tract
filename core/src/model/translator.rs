@@ -6,8 +6,8 @@ use std::fmt;
 
 pub trait Translate<TI1, O1, TI2, O2>: fmt::Debug
 where
-    TI1: Fact + Clone + 'static,
-    TI2: Fact + Clone + 'static,
+    TI1: Fact + Clone + 'static + Hash,
+    TI2: Fact + Clone + 'static + Hash,
     O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
 {
@@ -65,8 +65,8 @@ pub struct IntoTranslator;
 impl<TI1, O1, TI2, O2, EO, ETI> Translate<TI1, O1, TI2, O2> for IntoTranslator
 where
     TractError: From<EO> + From<ETI>,
-    TI1: Fact + Clone + 'static,
-    TI2: Fact + for<'a> TryFrom<&'a TI1, Error = EO> + Clone + 'static,
+    TI1: Fact + Clone + 'static + Hash,
+    TI2: Fact + for<'a> TryFrom<&'a TI1, Error = EO> + Clone + 'static + Hash,
     O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
     O2: fmt::Display
         + for<'a> TryFrom<&'a O1, Error = ETI>

@@ -68,7 +68,7 @@ downcast_rs::impl_downcast!(BinMiniOp);
 impl Hash for Box<dyn BinMiniOp> {
     fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
         std::hash::Hash::hash(&self.type_id(), state);
-        DynHash::dhash(self, &mut state)
+        DynHash::dyn_hash(self, &mut state)
     }
 }
 

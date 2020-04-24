@@ -65,7 +65,7 @@ use crate::model::translator::Translate;
 use crate::ops::invariants;
 use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
-use crate::hash::DynHash;
+use tract_linalg::hash::DynHash;
 
 /// Common methods for all variants of model.
 pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone + DynHash {

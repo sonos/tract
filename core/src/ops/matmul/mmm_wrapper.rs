@@ -7,7 +7,8 @@ use crate::ops::quant::QParams;
 
 use tract_linalg::mmm::{FusedSpec, MatMatMul, QMatMatMul};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Educe)]
+#[educe(Hash)]
 pub enum MMMWrapper<TA, TB, TC, TI>
 where
     TA: Datum + Copy + Zero,

@@ -8,12 +8,12 @@ use super::MatMatMul;
 use super::*;
 
 pub trait QMatMatMul<TA, TB, TC, TI>:
-    fmt::Debug + fmt::Display + dyn_clone::DynClone + Send + Sync
+    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + fmt::Debug,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
 {
     fn as_mmm(&self) -> &dyn MatMatMul<TA, TB, TC, TI>;
     fn as_mmm_mut(&mut self) -> &mut dyn MatMatMul<TA, TB, TC, TI>;
@@ -30,10 +30,10 @@ where
 }
 
 dyn_clone::clone_trait_object!(<TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + fmt::Debug,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
 );
 
 #[derive(Debug, Clone)]
@@ -45,11 +45,11 @@ pub enum QuantizedParam<TI> {
 #[derive(Debug, Clone)]
 pub struct QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + fmt::Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     pub mmm: MatMatMulImpl<K, TA, TB, TC, TI>,
     pub zero_point_a: Option<QuantizedParam<TA>>,
@@ -62,10 +62,10 @@ where
 impl<K, TA, TB, TC, TI> QMatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero + AsPrimitive<TI>,
-    TB: Copy + Zero + AsPrimitive<TI> + fmt::Debug,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + fmt::Debug + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TB: Copy + Zero + AsPrimitive<TI> + Debug + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     fn sum_a_over_k(&self, mut a: *const TA) -> Vec<TI> {
         match &self.mmm.a_storage {
@@ -141,11 +141,11 @@ where
 
 impl<K, TA, TB, TC, TI> From<MatMatMulImpl<K, TA, TB, TC, TI>> for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + fmt::Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     fn from(mmm: MatMatMulImpl<K, TA, TB, TC, TI>) -> QMatMatMulImpl<K, TA, TB, TC, TI> {
         QMatMatMulImpl {
@@ -160,11 +160,11 @@ where
 
 impl<K, TA, TB, TC, TI> Deref for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + fmt::Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     type Target = MatMatMulImpl<K, TA, TB, TC, TI>;
     fn deref(&self) -> &Self::Target {
@@ -174,31 +174,31 @@ where
 
 unsafe impl<K, TA, TB, TC, TI> Send for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + fmt::Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
 }
 
 unsafe impl<K, TA, TB, TC, TI> Sync for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + fmt::Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
 }
 
 impl<K, TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + fmt::Debug + AsPrimitive<TI>,
-    TB: Copy + Zero + fmt::Debug + AsPrimitive<TI>,
-    TC: Copy + fmt::Debug + Bounded + AsPrimitive<TI>,
-    TI: Copy + Add + Mul<Output = TI> + Zero + Neg<Output = TI> + fmt::Debug + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + Debug + AsPrimitive<TI> + 'static,
+    TB: Copy + Zero + Debug + AsPrimitive<TI> + 'static,
+    TC: Copy + Debug + Bounded + AsPrimitive<TI> + 'static,
+    TI: Copy + Add + Mul<Output = TI> + Zero + Neg<Output = TI> + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
     usize: AsPrimitive<TI>,
     i32: AsPrimitive<TI>,
 {
@@ -317,16 +317,31 @@ where
 
 impl<K, TA, TB, TC, TI> fmt::Display for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + fmt::Debug,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.mmm)
     }
 }
+
+impl<TA, TB, TC, TI> std::hash::Hash for Box<dyn QMatMatMul<TA, TB, TC,TI>>
+where
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+{
+    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+        use std::any::Any;
+        std::hash::Hash::hash(&self.type_id(), state);
+        crate::hash::DynHash::dyn_hash(self, &mut state)
+    }
+}
+
 
 #[cfg(test)]
 #[allow(dead_code)]
@@ -366,10 +381,10 @@ pub mod test {
 
     impl<TA, TB, TC, TI> Arbitrary for QMatMulProblem<TA, TB, TC, TI>
     where
-        TA: Arbitrary + 'static + Debug,
-        TB: Arbitrary + 'static + Debug,
-        TC: Arbitrary + 'static + Debug,
-        TI: Arbitrary + 'static + Debug,
+        TA: Arbitrary + 'static + Debug + 'static,
+        TB: Arbitrary + 'static + Debug + 'static,
+        TC: Arbitrary + 'static + Debug + 'static,
+        TI: Arbitrary + 'static + Debug + 'static,
     {
         type Parameters = ();
         type Strategy = BoxedStrategy<Self>;
@@ -405,7 +420,7 @@ pub mod test {
     where
         TA: Arbitrary + 'static + Debug + AsPrimitive<TI> + Zero + Copy,
         TB: Arbitrary + 'static + Debug + AsPrimitive<TI> + Zero + Copy,
-        TC: Arbitrary + 'static + Debug + Copy + Bounded + AsPrimitive<TI> + Zero,
+        TC: Arbitrary + 'static + Debug + Copy + Bounded + AsPrimitive<TI> + Zero + 'static,
         TI: Arbitrary
             + 'static
             + Debug

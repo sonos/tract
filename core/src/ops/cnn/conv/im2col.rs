@@ -19,7 +19,6 @@ pub struct Im2Col<T: Copy + Datum + Zero> {
     pub n: usize,
     pub group: usize,
     pub ci_per_group: usize,
-    #[educe(Hash(ignore))]
     pub b_pack: PackB<T>,
     patcher: Patcher,
     pad_value: Tensor,

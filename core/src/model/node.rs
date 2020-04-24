@@ -3,6 +3,7 @@ use crate::ops::Op;
 use itertools::Itertools;
 use std::fmt;
 use std::fmt::{Debug, Display};
+use std::hash::Hash;
 
 /// A Smallvec instantiation with 4 embeddable values.
 ///
@@ -14,9 +15,10 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 ///
 /// Parameterized by a Fact implementation matching the one used in the
 /// model.
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct BaseNode<F: Fact, O> {
+pub struct BaseNode<F: Fact + Hash, O: DynHash> {
     /// node id in the model
     ///
     /// Caution: this id will not be persistent during networks transformation
@@ -31,12 +33,17 @@ pub struct BaseNode<F: Fact, O> {
     pub inputs: Vec<OutletId>,
     /// The actual operation the node performs.
     #[cfg_attr(feature = "serialize", serde(skip))]
+    #[educe(Hash(method = "hash_op"))]
     pub op: O,
     /// List of ouputs, with their descendant and tensor type information.
     pub outputs: TVec<OutletFact<F>>,
 }
 
-impl<F: Fact, O: std::fmt::Display> fmt::Display for BaseNode<F, O> {
+fn hash_op<O: DynHash, H: std::hash::Hasher>(o:&O, h: &mut H) {
+    o.dyn_hash(h)
+}
+
+impl<F: Fact + Hash, O: std::fmt::Display + DynHash> fmt::Display for BaseNode<F, O> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op)
     }
@@ -44,7 +51,7 @@ impl<F: Fact, O: std::fmt::Display> fmt::Display for BaseNode<F, O> {
 
 pub type Node<F> = BaseNode<F, Box<dyn Op>>;
 
-impl<F: Fact, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op>>
+impl<F: Fact + Hash, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> + DynHash>
     BaseNode<F, NodeOp>
 {
     /// Access the op of the node
@@ -99,7 +106,7 @@ impl<F: Fact> fmt::Debug for OutletFact<F> {
 /// This happens to be a unique identifier of any variable tensor in the graph
 /// (as the graph typically connect one single node output to one or several
 /// inputs slots)
-#[derive(Clone, Copy, PartialEq, Eq, Hash, new)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, new)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct OutletId {
     /// node identifier in the graph

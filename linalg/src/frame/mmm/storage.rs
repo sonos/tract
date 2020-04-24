@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Debug;
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum MatrixStoreSpec {
     Packed { panel_len: usize },
     Strides { row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
