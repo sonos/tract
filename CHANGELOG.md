@@ -1,4 +1,10 @@
-## Unrealeased
+## Unreleased
+
+## 0.6.3 - 2020-04-25
+
+* Lock ndarray version to dodge rustc/llvm issue (https://github.com/rust-lang/rust/issues/71506)
+
+## 0.6.2 - 2020-04-15
 
 * Use http://gihub.com/kali/readings for instrumentation.
 
