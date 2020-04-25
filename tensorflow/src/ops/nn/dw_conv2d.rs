@@ -15,7 +15,7 @@ pub fn depthwise_conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<
     Ok(Box::new(DepthwiseConv2d::new(data_format, padding, strides, dilations)))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct DepthwiseConv2d {
     data_format: DataFormat,
     padding: PaddingSpec,

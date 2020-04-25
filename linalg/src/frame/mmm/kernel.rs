@@ -31,7 +31,7 @@ impl LinearSpec {
     }
 }
 
-pub trait MatMatMulKer<TA, TB, TC, TI>: Copy + Clone + Debug + Send + Sync
+pub trait MatMatMulKer<TA, TB, TC, TI>: Copy + Clone + Debug + Send + Sync + 'static
 where
     TA: Copy,
     TB: Copy,

@@ -3,7 +3,7 @@ use downcast_rs::Downcast;
 use std::fmt;
 
 pub trait ElementWiseMiniOp:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
 {
     fn name(&self) -> String;
     fn prefix(&self) -> &'static str {
@@ -52,10 +52,17 @@ pub trait ElementWiseMiniOp:
     }
 }
 
+impl Hash for Box<dyn ElementWiseMiniOp> {
+    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+        std::hash::Hash::hash(&self.type_id(), state);
+        DynHash::dyn_hash(self, &mut state)
+    }
+}
+
 dyn_clone::clone_trait_object!(ElementWiseMiniOp);
 downcast_rs::impl_downcast!(ElementWiseMiniOp);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
 
 impl Op for ElementWiseOp {
@@ -174,15 +181,16 @@ impl PulsedOp for ElementWiseOp {
 
 #[macro_export]
 macro_rules! element_wise {
-    ($func:ident, $Op:ident $({$($var: ident : $var_typ: path),*})?,
+    ($func:ident, $Op:ident $({$( $(#[$meta: meta])? $var: ident : $var_typ: path),*})?,
         $( [$($typ:ident),*] => $f:expr ),*
         $(; cost: $cost:expr )?
         $(; prefix: $prefix:expr )?
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
-        #[derive(Debug, Clone)]
-        pub struct $Op { $( $(pub $var: $var_typ),* )? }
+        #[derive(Debug, Clone, Educe)]
+        #[educe(Hash)]
+        pub struct $Op { $( $( $(#[$meta])? pub $var: $var_typ),* )? }
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
@@ -232,7 +240,7 @@ macro_rules! element_wise {
 
 #[macro_export]
 macro_rules! element_wise_oop {
-    ($func:ident, $Op:ident $({$($var: ident : $var_typ: path),*})?,
+    ($func:ident, $Op:ident $({$( $(#[$meta: meta])? $var: ident : $var_typ: path),*})?,
         $( [$($typ:ident),*] => $typ_dst:ident $f:expr ),*
         $(; cost: $cost:expr )?
         $(; info: $info:expr )?
@@ -240,8 +248,9 @@ macro_rules! element_wise_oop {
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
-        #[derive(Debug, Clone)]
-        pub struct $Op { $( $(pub $var: $var_typ),* )? }
+        #[derive(Debug, Clone, Educe)]
+        #[educe(Hash)]
+        pub struct $Op { $( $($(#[$meta])? pub $var: $var_typ),* )? }
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))

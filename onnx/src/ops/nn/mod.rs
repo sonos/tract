@@ -296,7 +296,11 @@ pub fn parametric_softplus(
 bin_to_super_type!(prelu, Prelu, declutter_bin: prelu_to_prelu_unary,
   [f16,f32,f64] => |c, &a, &b| *c = if a < 0f32.into() { a * b } else { a });
 
-element_wise!(prelu_unary, PreluUnary { b: f32 },
+element_wise!(prelu_unary,
+    PreluUnary {
+        #[educe(Hash(method = "hash_f32"))]
+        b: f32
+    },
     [f32] => |op, xs| {
         xs.iter_mut().for_each(|x| *x = if *x < 0.0 { *x * op.b } else { *x });
         Ok(())
@@ -330,7 +334,13 @@ pub fn scaled_tanh(
     Ok((Box::new(ops::nn::scaled_tanh(alpha, beta)), vec![]))
 }
 
-element_wise!(shrink_op, Shrink { bias: f32, lambd: f32 },
+element_wise!(shrink_op,
+    Shrink {
+        #[educe(Hash(method = "hash_f32"))]
+        bias: f32,
+        #[educe(Hash(method = "hash_f32"))]
+        lambd: f32
+    },
     [f16,f32,f64] => |s, xs| {
         xs.iter_mut().for_each(|x| *x = shrink_value(*x, s));
         Ok(())

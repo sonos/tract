@@ -2,7 +2,7 @@ use crate::infer::*;
 use crate::internal::*;
 use tract_ndarray::*;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Split {
     axis: usize,
     outputs: usize,

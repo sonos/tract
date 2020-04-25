@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct GlobalAvgPool {
     //    data_is_nhwc: bool, // default is nchw (onnx)
 }
@@ -56,7 +56,7 @@ impl TypedOp for GlobalAvgPool {
     }
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct GlobalLpPool {
     p: usize, //    data_is_nhwc: bool, // default is nchw (onnx)
 }
@@ -114,7 +114,7 @@ impl TypedOp for GlobalLpPool {
     }
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct GlobalMaxPool {
     //    data_is_nhwc: bool, // default is nchw (onnx)
 }

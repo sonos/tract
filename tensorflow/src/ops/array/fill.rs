@@ -2,7 +2,7 @@ use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 use tract_hir::internal::*;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Fill {
     dt: DatumType,
 }

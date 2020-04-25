@@ -8,7 +8,7 @@ pub enum InOut {
 }
 
 impl InOut {
-    pub fn as_outlet<F: Clone + Fact, O: Clone>(&self, node: &BaseNode<F, O>) -> OutletId {
+    pub fn as_outlet<F: Clone + Fact + Hash, O: Clone + DynHash>(&self, node: &BaseNode<F, O>) -> OutletId {
         match self {
             InOut::In(ix) => node.inputs[*ix],
             InOut::Out(ix) => OutletId::new(node.id, *ix),
@@ -16,7 +16,7 @@ impl InOut {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub enum AxisOp {
     Add(usize),
     Rm(usize),

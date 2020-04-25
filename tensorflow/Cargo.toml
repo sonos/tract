@@ -16,6 +16,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 bytes = "0.5"
 derive-new = "0.5"
+educe = "0.4"
 log = "0.4"
 prost = "0.6"
 prost-types = "0.6"

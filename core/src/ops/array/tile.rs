@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::*;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Tile {
     multipliers: TVec<usize>,
 }

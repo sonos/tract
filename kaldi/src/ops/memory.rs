@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use tract_hir::internal::*;
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Hash)]
 pub struct Memory {
     pub name: String,
     pub offset: isize,

@@ -3,7 +3,7 @@ use crate::internal::*;
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
 use crate::ops::nn::{DataFormat, DataShape};
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct PoolSpec {
     pub data_format: DataFormat,
     pub kernel_shape: TVec<usize>,

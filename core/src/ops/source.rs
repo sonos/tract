@@ -14,7 +14,7 @@ impl OpState for SourceState {
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct TypedSource {
     fact: TypedFact,
 }
@@ -77,7 +77,7 @@ impl TypedOp for TypedSource {
     as_op!();
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct PulsedSource {
     fact: PulsedFact,
 }

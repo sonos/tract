@@ -3,7 +3,7 @@ use crate::ops::invariants::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
+pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash {
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
         Validation::Accurate
@@ -65,7 +65,14 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
 dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
-#[derive(Debug, Clone)]
+impl Hash for Box<dyn BinMiniOp> {
+    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+        std::hash::Hash::hash(&self.type_id(), state);
+        DynHash::dyn_hash(self, &mut state)
+    }
+}
+
+#[derive(Debug, Clone, Hash)]
 pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
 
 impl Op for InferenceBinOp {
@@ -87,7 +94,7 @@ impl StatelessOp for InferenceBinOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
 
 impl Op for TypedBinOp {
@@ -274,7 +281,7 @@ fn pulsify_bin(
     target.wire_node(&*node.name, dyn_clone::clone_box(op), &*inputs)
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct UnaryOp {
     pub mini_op: Box<dyn BinMiniOp>,
     pub a: Arc<Tensor>,
@@ -433,7 +440,7 @@ impl PulsedOp for UnaryOp {
     pulsed_op_to_typed_op!();
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct MergeOp(pub Box<dyn BinMiniOp>);
 
 impl Op for MergeOp {
@@ -598,7 +605,7 @@ impl PulsedOp for MergeOp {
     pulsed_op_to_typed_op!();
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
 
 impl Op for MergeOpUnicast {
@@ -659,7 +666,7 @@ macro_rules! bin_to_super_type {
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Hash)]
         pub struct $Op;
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
@@ -762,7 +769,7 @@ macro_rules! bin_to_bool {
      $( cost: $cost:expr, )?
      $( flip: $flip:expr, )?
      $( [$($typ:ident),*] => $cab:expr),*) => {
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Hash)]
         pub struct $Op;
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {

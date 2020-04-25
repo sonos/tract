@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct LayerHardmax {
     axis: isize,
 }
@@ -76,7 +76,7 @@ impl TypedOp for LayerHardmax {
     as_op!();
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct LayerLogSoftmax {
     axis: isize,
 }
@@ -144,7 +144,7 @@ impl InferenceRulesOp for LayerLogSoftmax {
     }
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct LayerSoftmax {
     axis: isize,
 }

@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Tile;
 
 impl Op for Tile {

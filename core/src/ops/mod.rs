@@ -95,7 +95,7 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
 
 /// A base operation
 pub trait Op:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp + DynHash
 {
     fn name(&self) -> Cow<str>;
 
@@ -256,7 +256,7 @@ pub trait TypedOp:
 }
 
 pub trait PulsedOp:
-    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp
+    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp + DynHash
 {
     /// Reinterpret the PulsedOp as an Op.
     fn as_op(&self) -> &dyn Op;

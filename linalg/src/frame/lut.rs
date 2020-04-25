@@ -3,6 +3,7 @@ use std::fmt;
 use std::marker::PhantomData;
 
 pub trait Lut: fmt::Debug + dyn_clone::DynClone + Send + Sync {
+    fn table(&self) -> &[u8];
     fn run(&self, buf: &mut [u8]);
 }
 
@@ -33,6 +34,10 @@ impl<K> Lut for LutImpl<K>
 where
     K: LutKer,
 {
+    fn table(&self) -> &[u8] {
+        &self.table
+    }
+
     fn run(&self, buf: &mut [u8]) {
         let align = K::input_alignment_bytes();
         let aligned_start = (buf.as_ptr() as usize + align - 1) / align * align;

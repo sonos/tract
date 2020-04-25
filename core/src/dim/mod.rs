@@ -26,6 +26,7 @@ pub trait DimLike:
     + ::num_traits::Zero
     + fmt::Debug
     + fmt::Display
+    + std::hash::Hash
     + ops::Add<Self, Output = Self>
     + ops::Add<usize, Output = Self>
     + for<'a> ops::Sub<&'a Self, Output = Self>
@@ -100,7 +101,7 @@ impl<D: DimLike, A: std::borrow::Borrow<D>, I: Iterator<Item = A>> MaybeProduct<
 
 /// An arithmetic expression built with integer and the special value S for
 /// the streaming dimension.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct TDim(Stack);
 

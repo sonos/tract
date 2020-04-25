@@ -298,7 +298,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct MatMul {
     pub a_trans: bool,
     pub b_trans: bool,
@@ -405,7 +405,7 @@ impl TypedOp for MatMul {
     as_op!();
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct MatMulUnary {
     a: Arc<Tensor>,
     a_trans: bool,

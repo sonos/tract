@@ -29,8 +29,8 @@ pub fn handle_benching(
 
 pub fn make_inputs_for_model<F, O>(model: &ModelImpl<F, O>) -> CliResult<TVec<Tensor>>
 where
-    F: Fact + Clone + 'static,
-    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
+    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static + DynHash,
 {
     Ok(make_inputs(
         &*model
@@ -48,8 +48,8 @@ fn handle_benching_t<F, O>(
     probe: Option<&Probe>,
 ) -> CliResult<()>
 where
-    F: Fact + Clone + 'static,
-    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
+    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static + DynHash,
 {
     let (max_iters, max_time) =
         if let ProfilingMode::RegularBenching { max_iters, max_time } = profiling {
@@ -104,8 +104,8 @@ pub fn handle_t<F, O>(
     mut display_options: DisplayOptions,
 ) -> CliResult<()>
 where
-    F: Fact + Clone + 'static,
-    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
+    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static + DynHash,
     ModelImpl<F, O>: Model,
 {
     let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {

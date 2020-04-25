@@ -3,7 +3,7 @@ use crate::internal::*;
 
 use super::RmDims;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Squeeze {
     axes: Option<Vec<usize>>,
 }

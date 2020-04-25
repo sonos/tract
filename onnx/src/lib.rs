@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 #[macro_use]
 extern crate derive_new;
+#[macro_use]
+extern crate educe;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;

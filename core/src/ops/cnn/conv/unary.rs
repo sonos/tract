@@ -23,7 +23,7 @@ use tract_linalg::frame::PackA;
 
 use std::iter::Sum;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct ConvUnary {
     pub pool_spec: PoolSpec,
     pub kernel_fmt: KernelFormat,
@@ -273,14 +273,12 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + PartialEq + Sum,
     {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape)?;
-        let bias =
-            if let Some(b) = self.bias.as_ref() { Some(b.as_slice::<T>()?.to_vec()) } else { None };
-        let op = DepthWise::<T>::new(
+        let op = DepthWise::new(
             patch,
             input_shape,
             output_shape,
-            self.kernel_as_group_o_ihw()?.into_dyn(),
-            bias,
+            self.kernel_as_group_o_ihw::<T>()?.into_arc_tensor(),
+            self.bias.clone()
         );
         Ok(Box::new(op))
     }

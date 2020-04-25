@@ -18,7 +18,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Switch;
 
 impl Op for Switch {
@@ -107,7 +107,7 @@ fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp
     Ok(Box::new(Merge::new(inputs as usize)))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Merge {
     n: usize,
 }

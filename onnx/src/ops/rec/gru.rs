@@ -22,7 +22,7 @@ pub fn gru(
     Ok((Box::new(gru), vec![]))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct GRU {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,

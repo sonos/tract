@@ -8,8 +8,10 @@ pub fn fused_batch_norm(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<
     Ok(Box::new(FusedBatchNorm::new(epsilon)))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Educe)]
+#[educe(Hash)]
 struct FusedBatchNorm {
+    #[educe(Hash(method="hash_f32"))]
     epsilon: f32,
 }
 

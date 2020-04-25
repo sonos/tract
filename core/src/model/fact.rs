@@ -7,7 +7,7 @@ use std::fmt;
 
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
-pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
+pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static + DynHash {
     fn to_typed_fact(&self) -> TractResult<TypedFact>;
 
     fn matches(&self, t: &Tensor) -> TractResult<bool> {
@@ -21,7 +21,7 @@ impl_downcast!(Fact);
 dyn_clone::clone_trait_object!(Fact);
 
 /// Streaming information for a streamed tensor.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Hash)]
 pub struct StreamFact {
     /// Streaming axis
     pub axis: usize,
@@ -34,7 +34,7 @@ pub struct StreamFact {
 /// Tensors in tract can have one streaming dimension. TDim generalize the
 /// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
 /// (sometimes hypothetical) tensor length on the streaming axis.
-#[derive(Clone)]
+#[derive(Clone, Hash)]
 pub struct ShapeFact {
     shape: TVec<usize>,
     /// Optional information for streaming tensors. None for regular tensors.
@@ -188,7 +188,7 @@ impl fmt::Debug for ShapeFact {
 }
 
 /// Fully determined tensor information for TypedModel.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Hash)]
 pub struct TypedFact {
     /// tensor element type
     pub datum_type: DatumType,
@@ -294,7 +294,7 @@ impl fmt::Debug for TypedFact {
 ///
 /// Constant value is not allowed, as all tensors in normalized forms are
 /// variables.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Hash)]
 pub struct NormalizedFact {
     /// tensor element type
     pub datum_type: DatumType,

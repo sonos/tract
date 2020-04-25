@@ -1,6 +1,6 @@
 use tract_hir::internal::*;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Slice;
 
 impl Slice {

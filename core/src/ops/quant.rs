@@ -4,13 +4,19 @@ use num_traits::AsPrimitive;
 use num_traits::Zero;
 use tract_linalg::lut::Lut;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Educe)]
+#[educe(Hash)]
 pub struct QParams {
     pub c_datum_type: DatumType,
     pub zero_point_a: Option<Arc<Tensor>>,
     pub zero_point_b: Option<Arc<Tensor>>,
     pub zero_point_c: Option<Arc<Tensor>>,
+    #[educe(Hash(method = "hash_scale"))]
     pub scale_factor: Option<f32>,
+}
+
+fn hash_scale<H: std::hash::Hasher>(it: &Option<f32>, state: &mut H) {
+    Hash::hash(&it.clone().unwrap_or(1.0).to_bits(), state)
 }
 
 fn cleanup_zeropoint(zp: &Arc<Tensor>) -> Option<Arc<Tensor>> {
@@ -92,7 +98,12 @@ pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
         .min(i8::max_value() as i32) as i8
 }
 
-element_wise_oop!(quantize_linear_u8, QuantizeLinearU8 {scale: f32, zero_point: u8},
+element_wise_oop!(quantize_linear_u8,
+    QuantizeLinearU8 {
+        #[educe(Hash(method="hash_f32"))]
+        scale: f32,
+        zero_point: u8
+    },
     [f32,i32] => u8 |op, xs, ys| {
         xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
             *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
@@ -111,7 +122,12 @@ fn info_quantize_linear_u8(q: &QuantizeLinearU8) -> TractResult<Vec<String>> {
     )])
 }
 
-element_wise_oop!(quantize_linear_i8, QuantizeLinearI8 {scale: f32, zero_point: i8},
+element_wise_oop!(quantize_linear_i8,
+    QuantizeLinearI8 {
+        #[educe(Hash(method="hash_f32"))]
+        scale: f32,
+        zero_point: i8
+    },
     [f32,i32] => i8 |op, xs, ys| {
         xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
             *y = quantize_linear_f32_i8(*x as f32, op.scale, op.zero_point as i32)
@@ -130,8 +146,10 @@ fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
     )])
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Educe)]
+#[educe(Hash)]
 pub struct DequantizeLinearF32 {
+    #[educe(Hash(method="hash_f32"))]
     scale: f32,
     zero_point: i32,
 }
@@ -311,7 +329,11 @@ impl PulsedOp for DequantizeLinearF32 {
     pulsed_op_to_typed_op!();
 }
 
-element_wise_oop!(lookup_table, LookupTable {table: Box<dyn Lut>},
+element_wise_oop!(lookup_table,
+    LookupTable {
+        #[educe(Hash(method="hash_lookup_table"))]
+        table: Box<dyn Lut>
+    },
     [i8] => i8 |op, xs, ys| {
         ys.copy_from_slice(xs);
         unsafe {
@@ -326,3 +348,7 @@ element_wise_oop!(lookup_table, LookupTable {table: Box<dyn Lut>},
         Ok(())
     }
 );
+
+fn hash_lookup_table<H: std::hash::Hasher>(lut: &Box<dyn Lut>, h: &mut H) {
+    Hash::hash_slice(lut.table(), h)
+}

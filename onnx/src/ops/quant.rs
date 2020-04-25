@@ -24,7 +24,7 @@ fn dequantize_linear(
     Ok((Box::new(op), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct QuantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
@@ -121,7 +121,7 @@ impl InferenceRulesOp for QuantizeLinear {
     as_op!();
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct DequantizeLinear {
     optional_zero_point_input: Option<usize>,
 }

@@ -12,9 +12,12 @@ pub fn block_lstm(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn 
     Ok(Box::new(BlockLSTM::new(forget_bias, cell_clip, t, use_peephole)))
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Educe)]
+#[educe(Hash)]
 pub struct BlockLSTM {
+    #[educe(Hash(method="hash_f32"))]
     forget_bias: f32,
+    #[educe(Hash(method="hash_f32"))]
     cell_clip: f32,
     t: DatumType,
     use_peephole: bool,

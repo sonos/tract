@@ -10,7 +10,8 @@ use tract_linalg::mmm::FusedSpec;
 
 use tract_linalg::frame::PackB;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Educe)]
+#[educe(Hash)]
 pub struct MatMatMulPackB<T>
 where
     T: Copy + Datum + Zero,
@@ -77,7 +78,8 @@ where
     as_op!();
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
 pub(crate) struct MatMatMulUnaryFinite<TA, TB, TC, TI>
 where
     TA: Datum + Copy + Zero,

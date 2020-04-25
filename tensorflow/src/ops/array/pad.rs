@@ -4,7 +4,7 @@ use tract_ndarray::{Array, ArrayView2};
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
-#[derive(Debug, Clone, Default, new)]
+#[derive(Debug, Clone, Default, new, Hash)]
 pub struct Pad;
 
 pub fn pad(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {

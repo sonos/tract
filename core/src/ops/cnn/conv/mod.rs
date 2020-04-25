@@ -5,7 +5,7 @@ mod unary;
 pub use self::im2col::Im2Col;
 pub use self::unary::ConvUnary;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash)]
 pub enum KernelFormat {
     OIHW,
     HWIO,

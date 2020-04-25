@@ -2,7 +2,7 @@ use crate::internal::*;
 
 // TODO: canonicalize as Reshape
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Flatten {
     axis: usize,
 }

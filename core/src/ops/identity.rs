@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct Identity;
 
 impl Op for Identity {

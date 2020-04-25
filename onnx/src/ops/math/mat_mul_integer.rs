@@ -25,7 +25,7 @@ fn cleanup_zero_point(mut t: Tensor) -> TractResult<Option<Tensor>> {
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 struct MatMulInteger {
     pub optional_a_zero_point_input: Option<usize>,
     pub optional_b_zero_point_input: Option<usize>,
@@ -127,7 +127,7 @@ pub fn q_linear_mat_mul(
     Ok((Box::new(QLinearMatMul), vec![]))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 struct QLinearMatMul;
 
 impl Op for QLinearMatMul {

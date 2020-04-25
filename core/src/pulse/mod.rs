@@ -4,7 +4,7 @@ use std::fmt;
 
 pub mod delay;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Hash)]
 pub struct PulsedFact {
     pub datum_type: DatumType,
     pub shape: TVec<usize>,

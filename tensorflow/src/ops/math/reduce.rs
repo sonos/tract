@@ -4,7 +4,7 @@ use tract_hir::ops::nn;
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Reduce {
     t: DatumType,
     t_idx: DatumType,

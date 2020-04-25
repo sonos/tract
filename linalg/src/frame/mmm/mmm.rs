@@ -11,12 +11,12 @@ use super::fuse::ScratchSpaceFusedNonLinear;
 use super::*;
 
 pub trait MatMatMul<TA, TB, TC, TI>:
-    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync
+    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + crate::hash::DynHash + std::any::Any
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
 {
     fn a_pack(&self) -> PackA<TA>;
     fn b_pack(&self) -> PackB<TB>;
@@ -43,20 +43,21 @@ where
 }
 
 dyn_clone::clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
 );
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
 pub struct MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     pub m: usize,
     pub k: usize,
@@ -71,31 +72,31 @@ where
 
 unsafe impl<K, TA, TB, TC, TI> Send for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
 }
 
 unsafe impl<K, TA, TB, TC, TI> Sync for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
 }
 
 impl<K, TA, TB, TC, TI> MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TA, TB, TC, TI> {
         MatMatMulImpl {
@@ -117,11 +118,11 @@ where
 
 impl<K, TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + Debug,
-    TB: Copy + Zero + Debug,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + Debug + 'static,
+    TB: Copy + Zero + Debug + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     fn a_pack(&self) -> PackA<TA> {
         PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a())
@@ -295,10 +296,10 @@ where
 
 impl<K, TA, TB, TC, TI> fmt::Display for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -309,6 +310,36 @@ where
         )
     }
 }
+
+impl<TA, TB, TC, TI> std::hash::Hash for Box<dyn MatMatMul<TA, TB, TC,TI>>
+where
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+{
+    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+        use std::any::Any;
+        std::hash::Hash::hash(&self.type_id(), state);
+        crate::hash::DynHash::dyn_hash(self, &mut state)
+    }
+}
+
+/*
+impl<'a, TA, TB, TC, TI> std::hash::Hash for &'a dyn MatMatMul<TA, TB, TC,TI>
+where
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+{
+    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+        use std::any::Any;
+        std::hash::Hash::hash(&self.type_id(), state);
+        crate::hash::DynHash::dyn_hash(self, &mut state)
+    }
+}
+*/
 
 #[cfg(test)]
 #[macro_use]
@@ -539,7 +570,7 @@ pub mod test {
             .boxed()
     }
 
-    pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
+    pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
@@ -547,10 +578,10 @@ pub mod test {
         b: &[TB],
     ) -> Result<(), proptest::test_runner::TestCaseError>
     where
-        TA: Datum + AsPrimitive<TI>,
-        TB: Datum + AsPrimitive<TI>,
-        TC: Datum,
-        TI: Datum + AsPrimitive<TC>,
+        TA: Datum + AsPrimitive<TI> + 'static,
+        TB: Datum + AsPrimitive<TI> + 'static,
+        TC: Datum + 'static,
+        TI: Datum + AsPrimitive<TC> + 'static,
     {
         let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
         unsafe {
@@ -580,17 +611,17 @@ pub mod test {
         }
     }
 
-    pub fn test_mat_vec_mul_prep<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
+    pub fn test_mat_vec_mul_prep<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         a: &[TA],
         b: &[TB],
     ) -> Result<(), proptest::test_runner::TestCaseError>
     where
-        TA: Datum + AsPrimitive<TI>,
-        TB: Datum + AsPrimitive<TI>,
-        TC: Datum,
-        TI: Datum + AsPrimitive<TC>,
+        TA: Datum + AsPrimitive<TI> + 'static,
+        TB: Datum + AsPrimitive<TI> + 'static,
+        TC: Datum + 'static,
+        TI: Datum + AsPrimitive<TC> + 'static,
     {
         unsafe {
             let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, 1);
@@ -618,7 +649,7 @@ pub mod test {
         }
     }
 
-    pub unsafe fn fused_op<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI, F: Fn(&mut [TI])>(
+    pub unsafe fn fused_op<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI, F: Fn(&mut [TI])>(
         m: usize,
         k: usize,
         n: usize,
@@ -661,7 +692,7 @@ pub mod test {
         crate::test::check_close(&*found, &*expected)
     }
 
-    pub unsafe fn row_add<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
+    pub unsafe fn row_add<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
@@ -683,7 +714,7 @@ pub mod test {
         })
     }
 
-    pub unsafe fn row_mul<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
+    pub unsafe fn row_mul<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
@@ -705,7 +736,7 @@ pub mod test {
         })
     }
 
-    pub unsafe fn col_add<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
+    pub unsafe fn col_add<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
@@ -727,7 +758,7 @@ pub mod test {
         })
     }
 
-    pub unsafe fn col_mul<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
+    pub unsafe fn col_mul<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,

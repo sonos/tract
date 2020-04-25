@@ -2,7 +2,7 @@ use super::codegen::{Codegen, CodegenOpParams};
 
 use super::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct TypedScan {
     pub skip: usize,
     pub body: TypedModel,

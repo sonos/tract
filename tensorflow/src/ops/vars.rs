@@ -51,7 +51,7 @@ impl OpState for VariableV2State {
     }
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Hash)]
 pub struct VariableV2 {
     container: Option<String>,
     shared_name: Option<String>,
@@ -116,7 +116,7 @@ impl TypedOp for VariableV2 {
 #[derive(Clone, Debug, new)]
 struct AssignState;
 
-#[derive(Clone, Debug, new, Default)]
+#[derive(Clone, Debug, new, Default, Hash)]
 pub struct Assign {
     pub var_id: Option<String>,
 }

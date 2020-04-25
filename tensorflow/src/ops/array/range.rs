@@ -5,7 +5,7 @@ use tract_hir::internal::*;
 use tract_ndarray::prelude::*;
 use tract_num_traits::AsPrimitive;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Range {
     dtype: DatumType,
 }

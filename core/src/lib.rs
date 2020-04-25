@@ -48,6 +48,8 @@ extern crate derive_new;
 #[macro_use]
 pub extern crate downcast_rs;
 #[macro_use]
+extern crate educe;
+#[macro_use]
 pub extern crate error_chain;
 #[allow(unused_imports)]
 #[macro_use]
@@ -84,6 +86,7 @@ pub mod broadcast;
 pub mod datum;
 pub mod dim;
 pub mod errors;
+pub mod hash;
 pub mod model;
 mod optim;
 pub mod plan;
@@ -114,6 +117,7 @@ pub mod prelude {
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
     pub use crate::dim::{DimLike, TDim, ToDim, MaybeProduct};
+    pub use tract_linalg::hash::{ hash_f32, DynHash };
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
@@ -128,6 +132,7 @@ pub mod internal {
     pub use error_chain::bail;
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
+    pub use std::hash::Hash;
     pub use std::marker::PhantomData;
     pub use tract_linalg::f16::f16;
     pub use tvec;

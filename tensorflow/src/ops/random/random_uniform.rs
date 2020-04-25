@@ -21,7 +21,7 @@ pub fn random_uniform_int(
     Ok(Box::new(RandomUniformInt::new(dtype, seed, seed2)))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct RandomUniform {
     t: DatumType,
     seed1: u64,
@@ -99,7 +99,7 @@ impl InferenceRulesOp for RandomUniform {
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct TypedRandomUniform {
     t: DatumType,
     seed1: u64,
@@ -160,7 +160,7 @@ pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<Arc<Tens
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct RandomUniformInt {
     t: DatumType,
     seed1: u64,

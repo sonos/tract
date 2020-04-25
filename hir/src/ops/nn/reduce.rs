@@ -3,7 +3,7 @@ use crate::internal::*;
 use tract_core::ops::nn::Reduce as TReduce;
 use tract_core::ops::nn::Reducer as TReducer;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash)]
 pub enum Reducer {
     L1,
     L2,
@@ -100,7 +100,7 @@ impl Reducer {
     }
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Hash)]
 pub struct Reduce {
     axes: Option<Vec<i64>>,
     keep_dims: bool,
