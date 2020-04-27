@@ -147,8 +147,16 @@ pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedFact, Box<dyn TypedOp>, 
 pub type NormalizedSimpleState<M, P> = SimpleState<NormalizedFact, Box<dyn TypedOp>, M, P>;
 
 impl TypedModel {
+    pub fn signature(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Perform declutter pass on the network.
     pub fn declutter(self) -> TractResult<TypedModel> {
+        let started = self.signature();
         let mut model = self;
         let model_inputs = model.input_outlets()?.len();
         let model_outputs = model.output_outlets()?.len();
@@ -164,7 +172,7 @@ impl TypedModel {
                     assert_eq!(model.output_outlets()?.len(), model_outputs);
                 }
             }
-            if !done_something {
+            if !done_something || model.signature() == started {
                 break;
             }
             model = compact::compact(&model)?;
