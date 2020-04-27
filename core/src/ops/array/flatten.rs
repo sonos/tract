@@ -6,6 +6,7 @@ use crate::internal::*;
 pub struct Flatten {
     axis: usize,
 }
+tract_linalg::impl_dyn_hash!(Flatten);
 
 impl Flatten {
     /// Evaluates the operation given the input tensors.

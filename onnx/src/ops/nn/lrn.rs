@@ -13,6 +13,8 @@ pub struct Lrn {
     size: usize,
 }
 
+tract_linalg::impl_dyn_hash!(Lrn);
+
 impl Lrn {
     fn eval_t<
         T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + ::std::iter::Sum,

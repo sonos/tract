@@ -20,6 +20,7 @@ pub struct Pad {
     pub pads: Vec<(usize, usize)>,
     mode: PadMode,
 }
+tract_linalg::impl_dyn_hash!(Pad);
 
 impl Pad {
     fn eval_t<T>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>>
@@ -283,6 +284,8 @@ struct PulsePad {
     end_input: TDim,
     mode: PadMode,
 }
+
+tract_linalg::impl_dyn_hash!(PulsePad);
 
 impl Op for PulsePad {
     fn name(&self) -> Cow<str> {

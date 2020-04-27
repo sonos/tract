@@ -70,6 +70,8 @@ pub struct Delay {
     overlap: usize,
 }
 
+tract_linalg::impl_dyn_hash!(Delay);
+
 impl Delay {
     pub fn new(input_fact: &PulsedFact, delay: usize, overlap: usize) -> Delay {
         let axis = input_fact.axis;

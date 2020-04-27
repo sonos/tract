@@ -134,7 +134,7 @@ pub trait Op:
 }
 
 pub trait TypedOp:
-    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp
+    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp + DynHash
 {
     /// Reinterpret the TypedOp as an Op.
     fn as_op(&self) -> &dyn Op;

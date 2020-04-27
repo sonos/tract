@@ -55,7 +55,7 @@ pub trait ElementWiseMiniOp:
 impl Hash for Box<dyn ElementWiseMiniOp> {
     fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
         std::hash::Hash::hash(&self.type_id(), state);
-        DynHash::dyn_hash(self, &mut state)
+        self.dyn_hash(&mut state)
     }
 }
 
@@ -82,6 +82,8 @@ impl Op for ElementWiseOp {
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
+
+tract_linalg::impl_dyn_hash!(ElementWiseOp);
 
 impl StatelessOp for ElementWiseOp {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
@@ -191,6 +193,7 @@ macro_rules! element_wise {
         #[derive(Debug, Clone, Educe)]
         #[educe(Hash)]
         pub struct $Op { $( $( $(#[$meta])? pub $var: $var_typ),* )? }
+        tract_linalg::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
@@ -251,6 +254,7 @@ macro_rules! element_wise_oop {
         #[derive(Debug, Clone, Educe)]
         #[educe(Hash)]
         pub struct $Op { $( $($(#[$meta])? pub $var: $var_typ),* )? }
+        tract_linalg::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))

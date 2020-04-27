@@ -12,6 +12,8 @@ pub struct DepthWise {
     bias: Option<Arc<Tensor>>,
 }
 
+tract_linalg::impl_dyn_hash!(DepthWise);
+
 impl Op for DepthWise {
     fn name(&self) -> Cow<str> {
         "Conv::DepthWise".into()

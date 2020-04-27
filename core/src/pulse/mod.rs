@@ -13,6 +13,8 @@ pub struct PulsedFact {
     pub delay: usize,
 }
 
+tract_linalg::impl_dyn_hash!(PulsedFact);
+
 impl fmt::Debug for PulsedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use itertools::Itertools;

@@ -61,6 +61,8 @@ pub struct VariableV2 {
     dt: DatumType,
 }
 
+tract_linalg::impl_dyn_hash!(VariableV2);
+
 impl Op for VariableV2 {
     fn name(&self) -> Cow<str> {
         "tf.VariableV2".into()
@@ -120,6 +122,8 @@ struct AssignState;
 pub struct Assign {
     pub var_id: Option<String>,
 }
+
+tract_linalg::impl_dyn_hash!(Assign);
 
 impl Op for Assign {
     fn name(&self) -> Cow<str> {

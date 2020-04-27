@@ -3,6 +3,8 @@ use tract_hir::internal::*;
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Slice;
 
+tract_linalg::impl_dyn_hash!(Slice);
+
 impl Slice {
     pub fn eval_t<T: Datum>(
         &self,

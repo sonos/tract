@@ -49,6 +49,18 @@ dyn_clone::clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
     TI: Copy + Add + Mul + Zero + Debug + 'static,
 );
 
+impl<TA, TB, TC, TI> std::hash::Hash for Box<dyn MatMatMul<TA, TB, TC,TI>>
+where
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.dyn_hash(state)
+    }
+}
+
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
 pub struct MatMatMulImpl<K, TA, TB, TC, TI>
@@ -294,6 +306,19 @@ where
     }
 }
 
+impl<K, TA, TB, TC, TI> crate::hash::DynHash for MatMatMulImpl<K, TA, TB, TC, TI>
+where
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI>,
+{
+    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
+        crate::hash::dyn_hash(self, hasher)
+    }
+}
+
 impl<K, TA, TB, TC, TI> fmt::Display for MatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero + 'static,
@@ -310,36 +335,6 @@ where
         )
     }
 }
-
-impl<TA, TB, TC, TI> std::hash::Hash for Box<dyn MatMatMul<TA, TB, TC,TI>>
-where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
-    TC: Copy + Debug + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
-{
-    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
-        use std::any::Any;
-        std::hash::Hash::hash(&self.type_id(), state);
-        crate::hash::DynHash::dyn_hash(self, &mut state)
-    }
-}
-
-/*
-impl<'a, TA, TB, TC, TI> std::hash::Hash for &'a dyn MatMatMul<TA, TB, TC,TI>
-where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
-    TC: Copy + Debug + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
-{
-    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
-        use std::any::Any;
-        std::hash::Hash::hash(&self.type_id(), state);
-        crate::hash::DynHash::dyn_hash(self, &mut state)
-    }
-}
-*/
 
 #[cfg(test)]
 #[macro_use]

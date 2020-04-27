@@ -114,16 +114,9 @@ pub trait InferenceOp:
 }
 
 impl Hash for Box<dyn InferenceOp> {
-    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::hash::Hash::hash(&self.type_id(), state);
-        DynHash::dyn_hash(self, &mut state)
-    }
-}
-
-impl<'a> Hash for &'a dyn InferenceOp {
-    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
-        std::hash::Hash::hash(&self.type_id(), state);
-        DynHash::dyn_hash(self, &mut state)
+        self.dyn_hash(state)
     }
 }
 

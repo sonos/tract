@@ -6,6 +6,8 @@ pub struct LayerHardmax {
     axis: isize,
 }
 
+tract_linalg::impl_dyn_hash!(LayerHardmax);
+
 impl LayerHardmax {
     fn eval_t<D: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive>(
         &self,
@@ -81,6 +83,8 @@ pub struct LayerLogSoftmax {
     axis: isize,
 }
 
+tract_linalg::impl_dyn_hash!(LayerLogSoftmax);
+
 impl LayerLogSoftmax {
     fn eval_t<
         T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + ::std::iter::Sum,
@@ -148,6 +152,8 @@ impl InferenceRulesOp for LayerLogSoftmax {
 pub struct LayerSoftmax {
     axis: isize,
 }
+
+tract_linalg::impl_dyn_hash!(LayerSoftmax);
 
 impl LayerSoftmax {
     fn eval_t<

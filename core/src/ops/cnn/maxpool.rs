@@ -12,6 +12,8 @@ pub struct MaxPool {
     pub with_index_outputs: Option<DatumType>,
 }
 
+tract_linalg::impl_dyn_hash!(MaxPool);
+
 impl MaxPool {
     fn to_fixed<T: Datum + Float>(&self, input_shape: &[usize]) -> TractResult<Box<dyn TypedOp>> {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_shape)?;
@@ -95,6 +97,8 @@ impl PulsedOp for MaxPool {
     as_op!();
     pulsed_op_to_typed_op!();
 }
+
+tract_linalg::impl_dyn_hash!(MaxPoolFixed);
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct MaxPoolFixed {

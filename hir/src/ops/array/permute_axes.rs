@@ -6,6 +6,8 @@ pub struct PermuteAxes {
     pub axes: Option<Vec<usize>>,
 }
 
+tract_linalg::impl_dyn_hash!(PermuteAxes);
+
 impl PermuteAxes {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {

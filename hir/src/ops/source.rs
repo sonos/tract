@@ -6,6 +6,8 @@ use tract_core::ops::source::{SourceState, TypedSource};
 #[derive(Debug, Clone, new, Hash)]
 pub struct Source;
 
+tract_linalg::impl_dyn_hash!(Source);
+
 impl Op for Source {
     fn name(&self) -> Cow<str> {
         "Source".into()

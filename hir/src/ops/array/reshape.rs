@@ -6,6 +6,8 @@ use tract_core::ops::array::TypedReshape;
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Reshape {}
 
+tract_linalg::impl_dyn_hash!(Reshape);
+
 impl Reshape {
     fn compute_shape<D: DimLike>(&self, input: &[D], shape: &[isize]) -> TractResult<TVec<D>> {
         if shape.iter().all(|d| *d > 0) {

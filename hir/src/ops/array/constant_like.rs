@@ -9,6 +9,8 @@ pub struct ConstantLike {
     value: f32,
 }
 
+tract_linalg::impl_dyn_hash!(ConstantLike);
+
 impl ConstantLike {
     pub fn make<T>(&self, shape: &[usize]) -> TractResult<Arc<Tensor>>
     where
@@ -76,6 +78,8 @@ pub struct EyeLike {
     dt: Option<DatumType>,
     k: isize,
 }
+
+tract_linalg::impl_dyn_hash!(EyeLike);
 
 impl EyeLike {
     pub fn make<T>(&self, (r, c): (usize, usize)) -> TractResult<Arc<Tensor>>

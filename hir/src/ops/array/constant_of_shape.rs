@@ -8,6 +8,8 @@ pub struct ConstantOfShape {
     scalar: Arc<Tensor>,
 }
 
+tract_linalg::impl_dyn_hash!(ConstantOfShape);
+
 impl Op for ConstantOfShape {
     fn name(&self) -> Cow<str> {
         "ConstantOfShape".into()

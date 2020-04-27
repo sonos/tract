@@ -8,6 +8,12 @@ pub struct Slice<D: DimLike + ToDim + Hash> {
     pub end: D,
 }
 
+impl<D: DimLike + ToDim + Hash> DynHash for Slice<D> {
+    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
+        tract_linalg::hash::dyn_hash(&self, hasher)
+    }
+}
+
 impl<D: DimLike + ToDim + Hash> Slice<D> {
     unsafe fn eval_t<T: Datum>(&self, input: &Tensor) -> TractResult<Tensor> {
         let mut input = input.to_array_view_unchecked::<T>();
@@ -155,6 +161,8 @@ pub struct PulsedAxisSlice {
     pub skip: usize,
     pub take: TDim,
 }
+
+tract_linalg::impl_dyn_hash!(PulsedAxisSlice);
 
 impl Op for PulsedAxisSlice {
     fn name(&self) -> Cow<str> {

@@ -9,7 +9,6 @@ use prost::Message;
 use tract_onnx::pb::TensorProto;
 use tract_onnx::prelude::*;
 use tract_onnx::tract_hir;
-use tract_onnx::tract_core::internal::DynHash;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
@@ -149,7 +148,7 @@ pub fn run_one<P: AsRef<path::Path>>(
 fn run_model<F, O>(model: ModelImpl<F, O>, inputs: TVec<Tensor>, data_path: &path::Path)
     where
     F: Fact + Clone + 'static + Hash,
-    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     let plan = SimplePlan::new(&model).unwrap();
     let expected = load_half_dataset("output", data_path);

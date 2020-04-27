@@ -86,7 +86,7 @@ pub mod broadcast;
 pub mod datum;
 pub mod dim;
 pub mod errors;
-pub mod hash;
+mod hash;
 pub mod model;
 mod optim;
 pub mod plan;

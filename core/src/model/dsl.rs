@@ -8,7 +8,7 @@ pub use super::{InletId, ModelImpl, Node, OutletId};
 pub trait ModelSpecialOps<F, O>
 where
     F: Fact + Clone + 'static + Hash,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     /// Adds a source op to the network.
     ///
@@ -59,7 +59,7 @@ impl ModelSpecialOps<PulsedFact, Box<dyn TypedOp>> for PulsedModel {
 pub trait ModelDsl<F, O>
 where
     F: Fact + Clone + 'static + Hash,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     /// Find the lone precursor of a node, if applicable.
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>>;
@@ -76,7 +76,7 @@ where
 impl<F, O> ModelDsl<F, O> for ModelImpl<F, O>
 where
     F: Fact + Clone + 'static + Hash,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
         let node = &self.nodes()[id];
@@ -147,7 +147,7 @@ where
         + AsRef<dyn Op>
         + AsMut<dyn Op>
         + Clone
-        + DynHash
+        + Hash
         + 'static,
 {
     fn add_const(

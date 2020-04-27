@@ -44,6 +44,8 @@ impl Downsample {
     }
 }
 
+tract_linalg::impl_dyn_hash!(Downsample);
+
 impl Op for Downsample {
     fn name(&self) -> Cow<str> {
         "Downsample".into()

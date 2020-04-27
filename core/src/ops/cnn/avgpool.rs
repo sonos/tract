@@ -43,6 +43,8 @@ impl Op for AvgPool {
     op_as_pulsed_op!();
 }
 
+tract_linalg::impl_dyn_hash!(AvgPool);
+
 impl StatelessOp for AvgPool {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let op = self.to_fixed(inputs[0].datum_type(), inputs[0].shape())?;
@@ -99,6 +101,8 @@ pub struct AvgPoolFixed {
     datum_type: DatumType,
     count_include_pad: bool,
 }
+
+tract_linalg::impl_dyn_hash!(AvgPoolFixed);
 
 impl AvgPoolFixed {
     fn eval_t<T: Copy + Datum + num_traits::Float + Sum>(

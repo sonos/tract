@@ -1,16 +1,68 @@
-use std::hash::Hash;
+use std::hash::{ Hash, Hasher };
 
-pub trait DynHash {
-    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher);
+pub trait SloppyHash {
+    fn sloppy_hash<S: Hasher>(&self, state: &mut S);
 }
 
-pub fn hash_f32<H: std::hash::Hasher>(s: &f32, state: &mut H) {
+impl SloppyHash for crate::f16::f16 {
+    fn sloppy_hash<S: Hasher>(&self, state: &mut S) {
+        unsafe { std::mem::transmute_copy::<crate::f16::f16, i16>(self).hash(state) }
+    }
+}
+
+impl SloppyHash for f32 {
+    fn sloppy_hash<S: Hasher>(&self, state: &mut S) {
+        self.to_bits().hash(state)
+    }
+}
+
+impl SloppyHash for f64 {
+    fn sloppy_hash<S: Hasher>(&self, state: &mut S) {
+        self.to_bits().hash(state)
+    }
+}
+
+macro_rules! impl_sloppy_hash {
+    ($t: ty) => {
+        impl SloppyHash for $t {
+            fn sloppy_hash<S: Hasher>(&self, state: &mut S) {
+                self.hash(state)
+            }
+        }
+    }
+}
+
+impl_sloppy_hash!(bool);
+impl_sloppy_hash!(i8);
+impl_sloppy_hash!(i16);
+impl_sloppy_hash!(i32);
+impl_sloppy_hash!(i64);
+impl_sloppy_hash!(u8);
+impl_sloppy_hash!(u16);
+impl_sloppy_hash!(String);
+
+#[macro_export]
+macro_rules! impl_dyn_hash {
+    ($t: ty) => {
+        impl DynHash for $t {
+            fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+                $crate::hash::dyn_hash(self, state)
+            }
+        }
+    }
+}
+
+pub trait DynHash {
+    fn dyn_hash(&self, state: &mut dyn Hasher);
+}
+
+pub fn hash_f32<H: Hasher>(s: &f32, state: &mut H) {
     Hash::hash(&s.to_bits(), state)
 }
 
-struct WrappedHasher<'a>(&'a mut dyn std::hash::Hasher);
+struct WrappedHasher<'a>(&'a mut dyn Hasher);
 
-impl<'a> std::hash::Hasher for WrappedHasher<'a> {
+impl<'a> Hasher for WrappedHasher<'a> {
     fn finish(&self) -> u64 {
         self.0.finish()
     }
@@ -19,8 +71,6 @@ impl<'a> std::hash::Hasher for WrappedHasher<'a> {
     }
 }
 
-impl<O: std::hash::Hash> DynHash for O {
-    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
-        self.hash(&mut WrappedHasher(state))
-    }
+pub fn dyn_hash<H: Hash>(h: H, s: &mut dyn Hasher) {
+    h.hash(&mut WrappedHasher(s))
 }

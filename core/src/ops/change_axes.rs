@@ -8,7 +8,7 @@ pub enum InOut {
 }
 
 impl InOut {
-    pub fn as_outlet<F: Clone + Fact + Hash, O: Clone + DynHash>(&self, node: &BaseNode<F, O>) -> OutletId {
+    pub fn as_outlet<F: Clone + Fact + Hash, O: Clone + Hash>(&self, node: &BaseNode<F, O>) -> OutletId {
         match self {
             InOut::In(ix) => node.inputs[*ix],
             InOut::Out(ix) => OutletId::new(node.id, *ix),
@@ -192,6 +192,8 @@ impl Op for AxisOp {
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
+
+tract_linalg::impl_dyn_hash!(AxisOp);
 
 impl StatelessOp for AxisOp {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {

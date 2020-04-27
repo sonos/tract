@@ -18,7 +18,7 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct BaseNode<F: Fact + Hash, O: DynHash> {
+pub struct BaseNode<F: Fact + Hash, O: Hash> {
     /// node id in the model
     ///
     /// Caution: this id will not be persistent during networks transformation
@@ -33,17 +33,12 @@ pub struct BaseNode<F: Fact + Hash, O: DynHash> {
     pub inputs: Vec<OutletId>,
     /// The actual operation the node performs.
     #[cfg_attr(feature = "serialize", serde(skip))]
-    #[educe(Hash(method = "hash_op"))]
     pub op: O,
     /// List of ouputs, with their descendant and tensor type information.
     pub outputs: TVec<OutletFact<F>>,
 }
 
-fn hash_op<O: DynHash, H: std::hash::Hasher>(o:&O, h: &mut H) {
-    o.dyn_hash(h)
-}
-
-impl<F: Fact + Hash, O: std::fmt::Display + DynHash> fmt::Display for BaseNode<F, O> {
+impl<F: Fact + Hash, O: Hash + std::fmt::Display> fmt::Display for BaseNode<F, O> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op)
     }
@@ -51,7 +46,7 @@ impl<F: Fact + Hash, O: std::fmt::Display + DynHash> fmt::Display for BaseNode<F
 
 pub type Node<F> = BaseNode<F, Box<dyn Op>>;
 
-impl<F: Fact + Hash, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> + DynHash>
+impl<F: Fact + Hash, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> + Hash>
     BaseNode<F, NodeOp>
 {
     /// Access the op of the node
@@ -81,16 +76,17 @@ impl<F: Fact + Hash, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + A
 }
 
 /// Information for each outlet of a node
-#[derive(Clone, Default, Hash)]
+#[derive(Clone, Default, Educe)]
+#[educe(Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct OutletFact<F: Fact> {
+pub struct OutletFact<F: Fact + Hash> {
     /// the tensor type information
     pub fact: F,
     /// where this outlet is used.
     pub successors: TVec<InletId>,
 }
 
-impl<F: Fact> fmt::Debug for OutletFact<F> {
+impl<F: Fact + Hash> fmt::Debug for OutletFact<F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,

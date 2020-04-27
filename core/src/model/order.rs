@@ -5,23 +5,26 @@ use std::fmt::{Debug, Display};
 
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
-pub fn eval_order<
-    F: Fact + Clone + 'static + Hash,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
->(
-    model: &super::ModelImpl<F, O>,
-) -> TractResult<Vec<usize>> {
+pub fn eval_order<F, O>(model: &super::ModelImpl<F, O>) -> TractResult<Vec<usize>>
+where
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+{
     let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     eval_order_for_nodes(model.nodes(), &inputs, &targets)
 }
 
 /// Find a working evaluation order for a list of nodes.
-pub fn eval_order_for_nodes<F: Fact + Hash, O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + DynHash>(
+pub fn eval_order_for_nodes<F, O>(
     nodes: &[BaseNode<F, O>],
     inputs: &[usize],
     targets: &[usize],
-) -> TractResult<Vec<usize>> {
+) -> TractResult<Vec<usize>>
+where
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+{
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
     let mut order: Vec<usize> = vec![];
     for &target in targets {

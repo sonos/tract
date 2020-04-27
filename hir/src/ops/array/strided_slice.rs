@@ -10,6 +10,8 @@ pub struct StridedSlice {
     pub shrink_axis_mask: i64,
 }
 
+tract_linalg::impl_dyn_hash!(StridedSlice);
+
 #[derive(Debug, Clone)]
 struct Dim {
     begin: TDim,

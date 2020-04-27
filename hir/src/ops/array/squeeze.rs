@@ -8,6 +8,8 @@ pub struct Squeeze {
     axes: Option<Vec<usize>>,
 }
 
+tract_linalg::impl_dyn_hash!(Squeeze);
+
 impl Squeeze {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {

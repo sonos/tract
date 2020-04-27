@@ -23,6 +23,8 @@ pub struct DepthwiseConv2d {
     dilations: TVec<usize>,
 }
 
+tract_linalg::impl_dyn_hash!(DepthwiseConv2d);
+
 impl DepthwiseConv2d {
     fn to_core(&self, input_shape: &[TDim], kernel_shape: &[usize]) -> TractResult<Conv> {
         let shape = self.data_format.shape(&input_shape)?;

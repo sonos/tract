@@ -15,6 +15,8 @@ impl Op for MultiBroadcastTo {
     not_a_pulsed_op!();
 }
 
+tract_linalg::impl_dyn_hash!(MultiBroadcastTo);
+
 impl StatelessOp for MultiBroadcastTo {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {

@@ -33,6 +33,8 @@ pub struct RNN {
     pub back: Box<dyn TypedOp>,
 }
 
+tract_linalg::impl_dyn_hash!(RNN);
+
 impl Default for RNN {
     fn default() -> RNN {
         RNN {

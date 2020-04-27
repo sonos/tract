@@ -7,6 +7,7 @@ use itertools::Itertools;
 pub struct TypedReshape {
     shape: TVec<TDim>,
 }
+tract_linalg::impl_dyn_hash!(TypedReshape);
 
 impl Op for TypedReshape {
     fn name(&self) -> Cow<str> {
@@ -76,6 +77,8 @@ impl Op for FiniteReshape {
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
+
+tract_linalg::impl_dyn_hash!(FiniteReshape);
 
 impl StatelessOp for FiniteReshape {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {

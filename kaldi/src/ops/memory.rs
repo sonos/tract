@@ -10,6 +10,8 @@ pub struct Memory {
     pub offset: isize,
 }
 
+tract_linalg::impl_dyn_hash!(Memory);
+
 impl Op for Memory {
     fn name(&self) -> Cow<str> {
         "kaldi.Memory".into()

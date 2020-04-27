@@ -23,6 +23,8 @@ pub struct BlockLSTM {
     use_peephole: bool,
 }
 
+tract_linalg::impl_dyn_hash!(BlockLSTM);
+
 impl Op for BlockLSTM {
     fn name(&self) -> Cow<str> {
         "tf.BlockLSTM".into()

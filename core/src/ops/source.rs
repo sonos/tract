@@ -19,6 +19,9 @@ pub struct TypedSource {
     fact: TypedFact,
 }
 
+
+tract_linalg::impl_dyn_hash!(TypedSource);
+
 impl Op for TypedSource {
     fn name(&self) -> Cow<str> {
         "TypedSource".into()
@@ -81,6 +84,8 @@ impl TypedOp for TypedSource {
 pub struct PulsedSource {
     fact: PulsedFact,
 }
+
+tract_linalg::impl_dyn_hash!(PulsedSource);
 
 impl Op for PulsedSource {
     fn name(&self) -> Cow<str> {

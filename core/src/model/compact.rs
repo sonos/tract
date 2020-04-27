@@ -6,7 +6,7 @@ use std::fmt;
 trait GraphRewriter<F, O>
 where
     F: Fact + Clone + 'static + Hash,
-    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     fn wire_node(
         &self,
@@ -55,7 +55,7 @@ struct NoopRewriter;
 impl<F, O> GraphRewriter<F, O> for NoopRewriter
 where
     F: Fact + Clone + 'static + Hash,
-    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     ModelImpl<F, O>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
 {
     fn wire_node(
@@ -79,7 +79,7 @@ where
 pub fn compact<F, O>(old: &ModelImpl<F, O>) -> TractResult<ModelImpl<F, O>>
 where
     F: Fact + Clone + 'static + Hash,
-    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     ModelImpl<F, O>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
 {
     NoopRewriter.rewrite_model(old)

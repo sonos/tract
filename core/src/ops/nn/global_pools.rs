@@ -30,6 +30,8 @@ impl GlobalAvgPool {
     }
 }
 
+tract_linalg::impl_dyn_hash!(GlobalAvgPool);
+
 impl Op for GlobalAvgPool {
     fn name(&self) -> Cow<str> {
         "GlobalAvgPool".into()
@@ -60,6 +62,8 @@ impl TypedOp for GlobalAvgPool {
 pub struct GlobalLpPool {
     p: usize, //    data_is_nhwc: bool, // default is nchw (onnx)
 }
+
+tract_linalg::impl_dyn_hash!(GlobalLpPool);
 
 impl GlobalLpPool {
     fn eval_t<D: Datum + ::num_traits::Float>(
@@ -118,6 +122,8 @@ impl TypedOp for GlobalLpPool {
 pub struct GlobalMaxPool {
     //    data_is_nhwc: bool, // default is nchw (onnx)
 }
+
+tract_linalg::impl_dyn_hash!(GlobalMaxPool);
 
 impl GlobalMaxPool {
     fn eval_t<D: Datum + ::num_traits::Float>(

@@ -28,6 +28,8 @@ pub struct RandomUniform {
     seed2: u64,
 }
 
+tract_linalg::impl_dyn_hash!(RandomUniform);
+
 impl Op for RandomUniform {
     fn name(&self) -> Cow<str> {
         "RandomUniform".into()
@@ -107,6 +109,8 @@ pub struct TypedRandomUniform {
     shape: TVec<TDim>,
 }
 
+tract_linalg::impl_dyn_hash!(TypedRandomUniform);
+
 impl Op for TypedRandomUniform {
     fn name(&self) -> Cow<str> {
         "TypedRandomUniform".into()
@@ -166,6 +170,8 @@ pub struct RandomUniformInt {
     seed1: u64,
     seed2: u64,
 }
+
+tract_linalg::impl_dyn_hash!(RandomUniformInt);
 
 impl RandomUniformInt {
     pub fn make_i32(&self, shape: &[usize], lo: i32, hi: i32) -> TractResult<Arc<Tensor>> {
