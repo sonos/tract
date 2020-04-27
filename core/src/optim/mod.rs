@@ -29,31 +29,38 @@ pub struct DeclutterOps;
 
 impl TypedPass for DeclutterOps {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
-        let mut done_something = false;
+        let mut hashset = std::collections::HashSet::new();
+        let initial = model.signature();
+        hashset.insert(initial);
+
+        let mut new = model.clone();
         loop {
-            let mut done_something_this_time = false;
-            for id in model.eval_order()? {
+            for id in new.eval_order()? {
                 let reduced = {
-                    let node = &model.nodes()[id];
+                    let node = &new.nodes()[id];
                     node.op
-                        .declutter(model, node)
+                        .declutter(&new, node)
                         .chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
-                    debug!("Apply a model patch for {:?} {}", self, model.nodes()[id]);
-                    red.apply(model)?;
+                    debug!("Apply a model patch for {:?} {}", self, new.nodes()[id]);
+                    red.apply(&mut new)?;
                     if cfg!(debug_assertions) {
-                        model.check_edges()?;
+                        new.check_edges()?;
                     }
-                    done_something_this_time = true
                 }
             }
-            done_something = done_something || done_something_this_time;
-            if !done_something_this_time {
+
+            new = crate::model::compact::compact(&new)?;
+            let sig = new.signature();
+            if hashset.contains(&sig) {
                 break;
+            } else {
+                hashset.insert(sig);
             }
         }
-        Ok(done_something)
+        std::mem::swap(model, &mut new);
+        Ok(model.signature() != initial)
     }
 }
 

@@ -474,6 +474,7 @@ mod tests {
         let decluttered = model.declutter()?;
         let result = SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[16, 32], [64, 68]])))?;
         assert_eq!(result[0], rctensor2(&[[4, 8], [16, 17]]));
+        println!("{:#?}", decluttered);
         let op = decluttered.node_op(1).downcast_ref::<UnaryOp>().unwrap();
         assert!(op.mini_op.downcast_ref::<FlippedShiftRight>().is_some());
         Ok(())
