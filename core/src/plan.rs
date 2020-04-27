@@ -17,8 +17,8 @@ pub struct SessionState {
 #[educe(Hash)]
 pub struct SimplePlan<F, O, M>
 where
-    F: Fact + Clone + 'static + Hash,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     M: Borrow<ModelImpl<F, O>> + Hash,
 {
     pub model: M,
@@ -30,8 +30,8 @@ where
 
 impl<F, O, M> SimplePlan<F, O, M>
 where
-    F: Fact + Clone + 'static + Hash,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     M: Borrow<ModelImpl<F, O>> + Hash,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
@@ -85,8 +85,8 @@ where
 #[derive(Debug)]
 pub struct SimpleState<F, O, M, P>
 where
-    F: Fact + Clone + 'static + Hash,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     M: Borrow<ModelImpl<F, O>> + Hash,
     P: Borrow<SimplePlan<F, O, M>>,
 {
@@ -99,8 +99,8 @@ where
 
 impl<F, O, M, P> Clone for SimpleState<F, O, M, P>
 where
-    F: Fact + Clone + 'static + Hash,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     M: Borrow<ModelImpl<F, O>> + Hash,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
@@ -124,8 +124,8 @@ where
 
 impl<F, O, M, P> SimpleState<F, O, M, P>
 where
-    F: Fact + Clone + 'static + Hash,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     M: Borrow<ModelImpl<F, O>> + Hash,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {

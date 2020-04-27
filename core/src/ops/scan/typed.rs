@@ -12,6 +12,8 @@ pub struct TypedScan {
     pub output_mapping: Vec<OutputMapping<TDim, TDim>>,
 }
 
+tract_linalg::impl_dyn_hash!(TypedScan);
+
 impl TypedScan {
     pub fn to_codegen_op(&self) -> TractResult<Codegen> {
         trace!("Optimizing(Codegen) inner model");

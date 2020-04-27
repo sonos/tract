@@ -5,6 +5,7 @@ use ndarray::*;
 pub struct Gather {
     axis: i64,
 }
+tract_linalg::impl_dyn_hash!(Gather);
 
 impl Op for Gather {
     fn name(&self) -> Cow<str> {

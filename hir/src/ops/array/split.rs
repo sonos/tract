@@ -9,6 +9,8 @@ pub struct Split {
     split: Option<Vec<usize>>,
 }
 
+tract_linalg::impl_dyn_hash!(Split);
+
 impl Split {
     fn split_dims<D: DimLike>(&self, input: D) -> TractResult<TVec<D>> {
         if let Some(ref split) = self.split.as_ref() {

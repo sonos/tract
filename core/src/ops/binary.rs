@@ -66,9 +66,9 @@ dyn_clone::clone_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
 impl Hash for Box<dyn BinMiniOp> {
-    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::hash::Hash::hash(&self.type_id(), state);
-        DynHash::dyn_hash(self, &mut state)
+        self.dyn_hash(state)
     }
 }
 
@@ -88,6 +88,8 @@ impl Op for InferenceBinOp {
     not_a_pulsed_op!();
 }
 
+tract_linalg::impl_dyn_hash!(InferenceBinOp);
+
 impl StatelessOp for InferenceBinOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         self.0.eval_broadcast_and_typecast(inputs)
@@ -96,6 +98,7 @@ impl StatelessOp for InferenceBinOp {
 
 #[derive(Debug, Clone, Hash)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
+tract_linalg::impl_dyn_hash!(TypedBinOp);
 
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
@@ -286,6 +289,7 @@ pub struct UnaryOp {
     pub mini_op: Box<dyn BinMiniOp>,
     pub a: Arc<Tensor>,
 }
+tract_linalg::impl_dyn_hash!(UnaryOp);
 
 impl Op for UnaryOp {
     fn name(&self) -> Cow<str> {
@@ -442,6 +446,7 @@ impl PulsedOp for UnaryOp {
 
 #[derive(Debug, Clone, Hash)]
 pub struct MergeOp(pub Box<dyn BinMiniOp>);
+tract_linalg::impl_dyn_hash!(MergeOp);
 
 impl Op for MergeOp {
     fn name(&self) -> Cow<str> {
@@ -607,6 +612,7 @@ impl PulsedOp for MergeOp {
 
 #[derive(Debug, Clone, Hash)]
 pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
+tract_linalg::impl_dyn_hash!(MergeOpUnicast);
 
 impl Op for MergeOpUnicast {
     fn name(&self) -> Cow<str> {
@@ -668,6 +674,7 @@ macro_rules! bin_to_super_type {
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
+        tract_linalg::impl_dyn_hash!($Op);
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
@@ -771,6 +778,7 @@ macro_rules! bin_to_bool {
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
+        tract_linalg::impl_dyn_hash!($Op);
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)

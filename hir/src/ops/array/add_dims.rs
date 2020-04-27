@@ -28,6 +28,8 @@ impl Op for AddDims {
     not_a_typed_op!();
 }
 
+tract_linalg::impl_dyn_hash!(AddDims);
+
 impl StatelessOp for AddDims {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);

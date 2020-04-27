@@ -22,6 +22,15 @@ where
     pub(crate) output_shape: TVec<usize>,
 }
 
+impl<T> DynHash for MatMatMulPackB<T>
+where
+    T: Copy + Datum + Zero,
+{
+    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
+        tract_linalg::hash::dyn_hash(&self, hasher)
+    }
+}
+
 impl<T> Op for MatMatMulPackB<T>
 where
     T: Copy + Datum + Zero,
@@ -94,6 +103,18 @@ where
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
     pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec<TI>>>>,
     pub(crate) mmm: MMMWrapper<TA, TB, TC, TI>,
+}
+
+impl<TA, TB, TC, TI> DynHash for MatMatMulUnaryFinite<TA, TB, TC, TI>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
+    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
+        tract_linalg::hash::dyn_hash(&self, hasher)
+    }
 }
 
 impl<TA, TB, TC, TI> Op for MatMatMulUnaryFinite<TA, TB, TC, TI>

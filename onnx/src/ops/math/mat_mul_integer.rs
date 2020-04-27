@@ -31,6 +31,8 @@ struct MatMulInteger {
     pub optional_b_zero_point_input: Option<usize>,
 }
 
+tract_linalg::impl_dyn_hash!(MatMulInteger);
+
 impl Op for MatMulInteger {
     fn name(&self) -> Cow<str> {
         "onnx.MatMulInteger".into()
@@ -129,6 +131,8 @@ pub fn q_linear_mat_mul(
 
 #[derive(Debug, Clone, new, Hash)]
 struct QLinearMatMul;
+
+tract_linalg::impl_dyn_hash!(QLinearMatMul);
 
 impl Op for QLinearMatMul {
     fn name(&self) -> Cow<str> {

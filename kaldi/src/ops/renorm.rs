@@ -19,6 +19,8 @@ struct Renorm {
     target_rms: f32,
 }
 
+tract_linalg::impl_dyn_hash!(Renorm);
+
 impl Op for Renorm {
     fn name(&self) -> std::borrow::Cow<str> {
         "kaldi.Renorm".into()

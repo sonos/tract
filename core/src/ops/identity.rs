@@ -12,6 +12,8 @@ impl Op for Identity {
     op_as_pulsed_op!();
 }
 
+tract_linalg::impl_dyn_hash!(Identity);
+
 impl StatelessOp for Identity {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {

@@ -20,6 +20,8 @@ impl std::ops::Deref for Codegen {
     }
 }
 
+tract_linalg::impl_dyn_hash!(Codegen);
+
 impl Op for Codegen {
     fn name(&self) -> Cow<str> {
         "Codegen".into()

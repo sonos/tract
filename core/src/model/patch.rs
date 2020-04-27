@@ -14,7 +14,7 @@ use crate::model::*;
 pub struct ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
     /// the model-like 'pagch' of nodes to add to the model
@@ -27,7 +27,7 @@ where
 impl<F, O> Default for ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
     fn default() -> ModelPatch<F, O> {
@@ -43,7 +43,7 @@ where
 impl<F, O> Deref for ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
     type Target = ModelImpl<F, O>;
@@ -55,7 +55,7 @@ where
 impl<F, O> DerefMut for ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
     fn deref_mut(&mut self) -> &mut ModelImpl<F, O> {
@@ -66,7 +66,7 @@ where
 impl<F, O> ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
     pub fn is_empty(&self) -> bool {

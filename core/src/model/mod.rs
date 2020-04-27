@@ -68,7 +68,7 @@ use crate::TractResult;
 use tract_linalg::hash::DynHash;
 
 /// Common methods for all variants of model.
-pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone + DynHash {
+pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
     /// Model label
     fn model_label(&self) -> Option<&str>;
 

@@ -38,6 +38,12 @@ struct CategoryMapper<Src: Datum + Hash + Eq, Dst: Datum + Hash> {
     default: Dst,
 }
 
+impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> DynHash for CategoryMapper<Src, Dst> {
+     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
+         tract_linalg::hash::dyn_hash(self, hasher)
+     }
+}
+
 impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> Hash for CategoryMapper<Src, Dst> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.hash.iter().sorted_by_key(|s| s.0).for_each(|v| std::hash::Hash::hash(&v, state));

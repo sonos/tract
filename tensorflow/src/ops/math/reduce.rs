@@ -12,6 +12,8 @@ pub struct Reduce {
     reducer: nn::Reducer,
 }
 
+tract_linalg::impl_dyn_hash!(Reduce);
+
 pub fn max(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     reduce(pb, nn::Reducer::Max)
 }

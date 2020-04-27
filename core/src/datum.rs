@@ -4,6 +4,7 @@ use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TractResult;
 use std::{fmt, ops};
+use std::hash::Hash;
 
 use tract_linalg::f16::f16;
 
@@ -13,7 +14,8 @@ pub use arrays::ArrayDatum;
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Educe)]
+#[educe(Hash)]
 pub struct Blob(pub Vec<u8>);
 
 impl ops::Deref for Blob {
@@ -33,6 +35,12 @@ impl std::str::FromStr for Blob {
     type Err = ();
     fn from_str(s: &str) -> Result<Blob, ()> {
         Ok(Blob(s.as_bytes().to_vec()))
+    }
+}
+
+impl tract_linalg::hash::SloppyHash for Blob {
+    fn sloppy_hash<S: std::hash::Hasher>(&self, state: &mut S) {
+        self.0.hash(state)
     }
 }
 
@@ -159,7 +167,15 @@ impl DatumType {
 }
 
 pub trait Datum:
-    Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq
+    Clone
+    + Send
+    + Sync
+    + fmt::Debug
+    + fmt::Display
+    + Default
+    + 'static
+    + PartialEq
+    + tract_linalg::hash::SloppyHash
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
@@ -263,6 +279,12 @@ impl TryInto<i32> for TDim {
 impl TryInto<i64> for TDim {
     fn try_into(&self) -> TractResult<i64> {
         self.to_integer().map(|i| i as i64)
+    }
+}
+
+impl tract_linalg::hash::SloppyHash for TDim {
+    fn sloppy_hash<S: std::hash::Hasher>(&self, state: &mut S) {
+        self.hash(state)
     }
 }
 

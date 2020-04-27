@@ -29,6 +29,8 @@ pub struct QuantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
 
+tract_linalg::impl_dyn_hash!(QuantizeLinear);
+
 impl Op for QuantizeLinear {
     fn name(&self) -> Cow<str> {
         "onnx.QuantizeLinear".into()
@@ -125,6 +127,8 @@ impl InferenceRulesOp for QuantizeLinear {
 pub struct DequantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
+
+tract_linalg::impl_dyn_hash!(DequantizeLinear);
 
 impl Op for DequantizeLinear {
     fn name(&self) -> Cow<str> {

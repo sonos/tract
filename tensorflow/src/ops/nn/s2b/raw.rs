@@ -6,6 +6,8 @@ pub struct SpaceToBatch {
     datum_type: DatumType,
 }
 
+tract_linalg::impl_dyn_hash!(SpaceToBatch);
+
 impl Op for SpaceToBatch {
     fn name(&self) -> Cow<str> {
         "SpaceToBatch".into()
@@ -95,6 +97,8 @@ impl InferenceRulesOp for SpaceToBatch {
 pub struct BatchToSpace {
     datum_type: DatumType,
 }
+
+tract_linalg::impl_dyn_hash!(BatchToSpace);
 
 impl Op for BatchToSpace {
     fn name(&self) -> Cow<str> {

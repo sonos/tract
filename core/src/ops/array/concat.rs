@@ -32,6 +32,7 @@ pub struct TypedConcat {
     pub axis: usize,
     pub slices: TVec<ConcatSlice>,
 }
+tract_linalg::impl_dyn_hash!(TypedConcat);
 
 impl TypedConcat {
     pub fn offsets(&self, inputs: &[&TypedFact]) -> TractResult<Vec<TDim>> {
@@ -311,6 +312,7 @@ pub struct PulsedSameAxisConcat {
     input_delay: usize,
     input_len: TDim,
 }
+tract_linalg::impl_dyn_hash!(PulsedSameAxisConcat);
 
 impl Op for PulsedSameAxisConcat {
     fn name(&self) -> Cow<str> {

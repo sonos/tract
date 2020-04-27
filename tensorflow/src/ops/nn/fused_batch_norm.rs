@@ -15,6 +15,8 @@ struct FusedBatchNorm {
     epsilon: f32,
 }
 
+tract_linalg::impl_dyn_hash!(FusedBatchNorm);
+
 impl FusedBatchNorm {
     // (x - mean)*rsqrt_var*scale+offset
     // x*(rsqrt_var*scale) + (offset - mean*rsqrt_var*scale)

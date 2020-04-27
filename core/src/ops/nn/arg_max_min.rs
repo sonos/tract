@@ -8,6 +8,8 @@ pub struct ArgMaxMin {
     pub keepdims: bool,
 }
 
+tract_linalg::impl_dyn_hash!(ArgMaxMin);
+
 impl ArgMaxMin {
     fn eval_t<T: Datum + PartialOrd>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         use std::cmp::Ordering;

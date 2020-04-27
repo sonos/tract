@@ -2,7 +2,6 @@ use super::*;
 use crate::ops::Op;
 use std::fmt;
 use std::hash::Hash;
-use tract_linalg::hash::DynHash;
 
 /// Main model class
 ///
@@ -11,8 +10,8 @@ use tract_linalg::hash::DynHash;
 #[educe(Hash)]
 pub struct ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static + Hash,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    F: Fact + Hash + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     pub label: Option<String>,
     /// all nodes in the model
@@ -33,10 +32,20 @@ fn hash_outlet_labels<H: std::hash::Hasher>(it: &HashMap<OutletId, String>, stat
     it.iter().sorted().for_each(|ol| ol.hash(state))
 }
 
+impl<F, O> DynHash for ModelImpl<F, O>
+where
+    F: Fact + Hash + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+{
+    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
+        tract_linalg::hash::dyn_hash(self, hasher)
+    }
+}
+
 impl<F, O> Default for ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static + Hash,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    F: Fact + Hash + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     fn default() -> ModelImpl<F, O> {
         ModelImpl {
@@ -52,8 +61,8 @@ where
 
 impl<F, O> ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static + Hash,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    F: Fact + Hash + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     ModelImpl<F, O>: Model,
 {
     pub fn add_node(
@@ -363,8 +372,8 @@ where
 
 impl<F, O> Model for ModelImpl<F, O>
 where
-    F: Fact + Clone + 'static + Hash,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    F: Fact + Hash + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     fn model_label(&self) -> Option<&str> {
         self.label.as_ref().map(|s| &**s)
@@ -436,5 +445,18 @@ where
 
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
         &self.nodes[outlet.node].outputs[outlet.slot].successors
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::internal::*;
+
+    #[test]
+    fn hashable() {
+        let mut model = TypedModel::default();
+        let _s = model.add_source("source", TypedFact::dt_shape(DatumType::F32, [1,2,3].as_ref()).unwrap()).unwrap();
+        let mut hasher = std::collections::hash_map::DefaultHasher::default();
+        model.hash(&mut hasher);
     }
 }

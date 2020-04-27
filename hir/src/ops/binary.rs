@@ -73,6 +73,7 @@ impl InferenceRulesOp for mir::binary::InferenceBinOp {
 
 #[derive(Debug, Clone, Hash)]
 pub struct Nary(pub Box<dyn mir::binary::BinMiniOp>, pub bool);
+tract_linalg::impl_dyn_hash!(Nary);
 
 impl Nary {
     fn normalize_t<T>(t: &mut Tensor, n: usize) -> TractResult<()>

@@ -8,6 +8,8 @@ pub struct Crop {
     pub end: usize,
 }
 
+tract_linalg::impl_dyn_hash!(Crop);
+
 impl Op for Crop {
     fn name(&self) -> Cow<str> {
         "Crop".into()

@@ -6,6 +6,8 @@ pub struct Tile {
     multipliers: TVec<usize>,
 }
 
+tract_linalg::impl_dyn_hash!(Tile);
+
 impl Tile {
     fn eval_t<T: Datum>(&self, data: &Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         let data = data.to_array_view::<T>()?;

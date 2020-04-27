@@ -20,6 +20,8 @@ pub struct Pack {
     axis: usize,
 }
 
+tract_linalg::impl_dyn_hash!(Pack);
+
 impl Pack {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {

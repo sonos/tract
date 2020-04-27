@@ -1,15 +1,15 @@
-use crate::model::{Fact, ModelImpl, OutletId};
 use crate::internal::*;
+use crate::model::{Fact, ModelImpl, OutletId};
 use std::collections::HashMap;
 use std::convert::*;
 use std::fmt;
 
 pub trait Translate<TI1, O1, TI2, O2>: fmt::Debug
 where
-    TI1: Fact + Clone + 'static + Hash,
-    TI2: Fact + Clone + 'static + Hash,
-    O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
-    O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    TI1: Fact + Hash + Clone + 'static,
+    TI2: Fact + Hash + Clone + 'static,
+    O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     fn translate_node(
         &self,
@@ -65,16 +65,16 @@ pub struct IntoTranslator;
 impl<TI1, O1, TI2, O2, EO, ETI> Translate<TI1, O1, TI2, O2> for IntoTranslator
 where
     TractError: From<EO> + From<ETI>,
-    TI1: Fact + Clone + 'static + Hash,
-    TI2: Fact + for<'a> TryFrom<&'a TI1, Error = EO> + Clone + 'static + Hash,
-    O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + DynHash,
+    TI1: Fact + Hash + Clone + 'static,
+    TI2: Fact + Hash + for<'a> TryFrom<&'a TI1, Error = EO> + Clone + 'static,
+    O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     O2: fmt::Display
         + for<'a> TryFrom<&'a O1, Error = ETI>
         + fmt::Debug
         + AsRef<dyn Op>
         + AsMut<dyn Op>
         + Clone
-        + DynHash
+        + Hash
         + 'static,
 {
     fn translate_node(

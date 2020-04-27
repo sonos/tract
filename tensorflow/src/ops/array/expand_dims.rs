@@ -10,6 +10,8 @@ pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn Infere
 #[derive(Debug, Clone, Hash)]
 pub struct ExpandDims;
 
+tract_linalg::impl_dyn_hash!(ExpandDims);
+
 impl ExpandDims {
     fn eval_t<T: Datum>(
         &self,

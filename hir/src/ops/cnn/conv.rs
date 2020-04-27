@@ -34,6 +34,8 @@ pub struct Conv {
     pub override_bias_datum_type: Option<DatumType>,
 }
 
+tract_linalg::impl_dyn_hash!(Conv);
+
 impl Conv {
     pub fn hwc(self) -> Conv {
         Conv { data_format: DataFormat::HWC, ..self }

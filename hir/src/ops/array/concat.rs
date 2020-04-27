@@ -9,6 +9,8 @@ pub struct Concat {
     axis: i64,
 }
 
+tract_linalg::impl_dyn_hash!(Concat);
+
 impl Concat {
     fn resolve_axis(&self, rank: i64) -> TractResult<usize> {
         if 0 <= self.axis && self.axis <= rank - 1 {

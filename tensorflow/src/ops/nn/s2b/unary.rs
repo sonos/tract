@@ -19,6 +19,8 @@ pub struct SpaceToBatchUnary {
     pub pad: TVec<PaddingStrat>,
 }
 
+tract_linalg::impl_dyn_hash!(SpaceToBatchUnary);
+
 impl Op for SpaceToBatchUnary {
     fn name(&self) -> Cow<str> {
         "SpaceToBatchUnary".into()
@@ -104,6 +106,8 @@ pub struct BatchToSpaceUnary {
     block_shape: Array1<i32>,
     pad: Vec<PaddingStrat>,
 }
+
+tract_linalg::impl_dyn_hash!(BatchToSpaceUnary);
 
 impl Op for BatchToSpaceUnary {
     fn name(&self) -> Cow<str> {

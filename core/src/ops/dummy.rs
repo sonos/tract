@@ -12,6 +12,8 @@ impl Op for Dummy {
     not_a_pulsed_op!();
 }
 
+tract_linalg::impl_dyn_hash!(Dummy);
+
 impl StatelessOp for Dummy {
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         bail!("eval() called on a Dummy op. This is a bug.")

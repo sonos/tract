@@ -5,6 +5,8 @@ pub struct Const {
     pub value: Arc<Tensor>,
 }
 
+tract_linalg::impl_dyn_hash!(Const);
+
 impl Const {
     pub fn for_tensor(tensor: Tensor) -> Const {
         Const { value: tensor.into() }

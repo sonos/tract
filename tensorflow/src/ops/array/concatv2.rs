@@ -9,6 +9,8 @@ pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn Infere
 #[derive(Debug, Clone, new, Hash)]
 pub struct ConcatV2;
 
+tract_linalg::impl_dyn_hash!(ConcatV2);
+
 impl StatelessOp for ConcatV2 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let axis: i32 = *inputs.pop().unwrap().to_scalar::<i32>()?;

@@ -6,6 +6,8 @@ pub struct RmDims {
     pub axes: Vec<usize>,
 }
 
+tract_linalg::impl_dyn_hash!(RmDims);
+
 impl RmDims {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
         input

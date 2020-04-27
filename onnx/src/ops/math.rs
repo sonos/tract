@@ -129,6 +129,8 @@ pub struct Gemm {
     trans_b: bool,
 }
 
+tract_linalg::impl_dyn_hash!(Gemm);
+
 impl Op for Gemm {
     fn name(&self) -> Cow<str> {
         "Gemm".into()

@@ -107,6 +107,8 @@ pub struct Reduce {
     reducer: Reducer,
 }
 
+tract_linalg::impl_dyn_hash!(Reduce);
+
 impl Op for Reduce {
     fn name(&self) -> Cow<str> {
         format!("Reduce<{:?}>", self.reducer).into()

@@ -33,6 +33,8 @@ pub struct Slice1 {
     ends: Vec<isize>,
 }
 
+tract_linalg::impl_dyn_hash!(Slice1);
+
 impl Slice1 {
     fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         let mut input = input.to_array_view::<T>()?;

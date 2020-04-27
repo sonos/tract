@@ -7,6 +7,8 @@ use crate::tfpb::tensorflow::NodeDef;
 #[derive(Debug, Clone, Default, new, Hash)]
 pub struct Pad;
 
+tract_linalg::impl_dyn_hash!(Pad);
+
 pub fn pad(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     Ok(Box::new(Pad))
 }
