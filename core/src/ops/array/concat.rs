@@ -35,6 +35,10 @@ pub struct TypedConcat {
 tract_linalg::impl_dyn_hash!(TypedConcat);
 
 impl TypedConcat {
+    pub fn concat_vars(axis: usize, n: usize) -> TypedConcat {
+        TypedConcat { axis, slices: std::iter::repeat(ConcatSlice::Var).take(n).collect() }
+    }
+
     pub fn offsets(&self, inputs: &[&TypedFact]) -> TractResult<Vec<TDim>> {
         let mut offsets = vec![0.to_dim()];
         let mut input = 0;
