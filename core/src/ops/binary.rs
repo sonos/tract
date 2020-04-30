@@ -128,7 +128,7 @@ impl TypedOp for TypedBinOp {
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
             ])
-            .unwrap()
+            .ok_or_else(|| format!("Can not broadcast shapes a:{:?} b:{:?}", &inputs[0], &inputs[1]))?
         )?))
     }
 
