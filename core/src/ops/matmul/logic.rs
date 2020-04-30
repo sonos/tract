@@ -7,6 +7,8 @@ use crate::ops::matmul::*;
 use crate::ops::quant::QParams;
 use ndarray::*;
 
+use itertools::Itertools;
+
 fn eval(
     a: &Tensor,
     b: &Tensor,
@@ -167,9 +169,9 @@ pub fn compute_shapes<D: DimLike>(
     }
     if ka != kb {
         bail!(
-            "Inconsistent malmul: a: {:?} b: {:?}, a_trans: {} b_trans: {} c_trans: {}",
-            ashape,
-            bshape,
+            "Inconsistent matmul: a: {} b: {}, a_trans: {} b_trans: {} c_trans: {}",
+            ashape.iter().join("x"),
+            bshape.iter().join("x"),
             a_trans,
             b_trans,
             c_trans

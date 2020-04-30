@@ -83,6 +83,19 @@ impl TypedOp for TypedConcat {
                 }
             })
             .unwrap();
+        for input in inputs {
+            if input.rank() != fact.rank()
+                || input
+                    .shape
+                    .iter()
+                    .zip(fact.shape.iter())
+                    .enumerate()
+                    .filter(|(ax, _)| *ax != self.axis)
+                    .any(|(_, (i, f))| i != f)
+            {
+                bail!("Inconsistent concat {:?} inputs: {:?}", self, inputs);
+            }
+        }
         let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
             + self
                 .slices
