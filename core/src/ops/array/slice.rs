@@ -176,7 +176,6 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
         start: usize,
         end: usize,
     ) -> TractResult<Option<OutletId>> {
-//        eprintln!("  {}", node);
         let prec = model.node(node.inputs[0].node);
         if axis != self.axis {
             return prec
@@ -186,19 +185,8 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
                 .slice_output(model, &prec, patch, node.inputs[0].slot, axis, start, end)?
                 .map(|w| Ok(patch.wire_node(&node.name, self.clone(), &[w])?[0]))
                 .transpose();
-        } else {
-            let wire = patch.tap_model(model, node.inputs[0])?;
-            let wire = patch.wire_node(
-                &node.name,
-                Self {
-                    start: self.start.clone() + start,
-                    axis: self.axis,
-                    end: self.start.clone() + end,
-                },
-                &[wire],
-            )?[0];
-            Ok(Some(wire))
         }
+        Ok(None)
     }
 
     as_op!();
