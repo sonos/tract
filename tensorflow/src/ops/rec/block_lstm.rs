@@ -224,6 +224,7 @@ impl TypedOp for BlockLSTM {
 
         let seq_len = patch.tap_model(model, node.inputs[0])?;
         outer_inputs.push(seq_len);
+
         // X: body input 0: X, new outside input 0 (was 1)
         let outside_x = patch.tap_model(model, node.inputs[1])?;
         outer_inputs.push(outside_x);
@@ -234,24 +235,27 @@ impl TypedOp for BlockLSTM {
         wire!(x = AxisOp::Rm(0), x_source);
 
         // CS: body input 1
+        let mut cs = cs_initializer.into_tensor();
+        cs.insert_axis(0)?;
+        let cs_source =
+            body.add_source("cs_source", TypedFact::dt_shape(cs.datum_type(), cs.shape())?)?;
         input_mapping.push(scan::InputMapping::State {
-            initializer: scan::StateInitializer::Value(cs_initializer.clone()),
+            initializer: scan::StateInitializer::Value(cs.into_arc_tensor()),
         });
-        let cs_source = body.add_source(
-            "cs_source",
-            TypedFact::dt_shape(cs_initializer.datum_type(), cs_initializer.shape())?,
-        )?;
+        wire!(cs_prev = AxisOp::Rm(0), cs_source);
 
         // H: body input 2
+        let mut h = h_initializer.into_tensor();
+        h.insert_axis(0)?;
+        let h_source =
+            body.add_source("h_source", TypedFact::dt_shape(h.datum_type(), h.shape())?)?;
         input_mapping.push(scan::InputMapping::State {
-            initializer: scan::StateInitializer::Value(h_initializer.clone()),
+            initializer: scan::StateInitializer::Value(h.into_arc_tensor()),
         });
-        let h_source = body.add_source(
-            "h_source",
-            TypedFact::dt_shape(h_initializer.datum_type(), h_initializer.shape())?,
-        )?;
+        wire!(h_prev = AxisOp::Rm(0), h_source);
 
-        wire!(xh = array::TypedConcat::concat_vars(1, 2), x, h_source);
+        wire!(xh = array::TypedConcat::concat_vars(1, 2), x, h_prev);
+
         wire!(i_ci_f_o_1 = matmul::logic::MatMulUnary::new(w, true, true, true, None), xh);
         wire!(i_ci_f_o = math::add::unary(b.into_arc_tensor()), i_ci_f_o_1);
 
@@ -269,7 +273,7 @@ impl TypedOp for BlockLSTM {
         wire!(o = nn::sigmoid(), o_1);
 
         wire!(ci_i = math::mul::bin_typed(), ci, i);
-        wire!(cs_1 = math::mul::bin_typed(), cs_source, f);
+        wire!(cs_1 = math::mul::bin_typed(), cs_prev, f);
         wire!(cs = math::add::bin_typed(), cs_1, ci_i);
 
         wire!(co = math::tanh(), cs);
