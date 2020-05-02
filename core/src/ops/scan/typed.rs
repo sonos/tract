@@ -656,8 +656,11 @@ impl TypedOp for TypedScan {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let body_leading_outlet = match io {
             InOut::In(ix) => {
-                let input = self.input_mapping.iter().position(|im| im.slot() == Some(ix)).unwrap();
-                self.body.input_outlets()?[input]
+                if let Some(input) = self.input_mapping.iter().position(|im| im.slot() == Some(ix)) {
+                    self.body.input_outlets()?[input]
+                } else {
+                    return Ok(None)
+                }
             }
             InOut::Out(ix) => {
                 let output = self

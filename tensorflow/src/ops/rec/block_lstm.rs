@@ -206,8 +206,13 @@ impl TypedOp for BlockLSTM {
         let mut input_mapping = vec![];
         let mut output_mapping = vec![];
 
+        /*
+        dbg!(&model.node_input_facts(node.id));
         let cs_initializer = some_or_else!(self.inline_var_assign(model, node, 2, 1, &mut patch)?);
+        dbg!(&cs_initializer);
         let h_initializer = some_or_else!(self.inline_var_assign(model, node, 3, 6, &mut patch)?);
+        dbg!(&h_initializer);
+        */
         let w = some_or_else!(model.outlet_fact(node.inputs[4])?.konst.clone());
         let b = some_or_else!(model.outlet_fact(node.inputs[8])?.konst.clone());
         let cell_size = w.shape()[1] / 4;
@@ -235,23 +240,23 @@ impl TypedOp for BlockLSTM {
         wire!(x = AxisOp::Rm(0), x_source);
 
         // CS: body input 1
-        let mut cs = cs_initializer.into_tensor();
-        cs.insert_axis(0)?;
-        let cs_source =
-            body.add_source("cs_source", TypedFact::dt_shape(cs.datum_type(), cs.shape())?)?;
-        input_mapping.push(scan::InputMapping::State {
-            initializer: scan::StateInitializer::Value(cs.into_arc_tensor()),
-        });
+        let cs = patch.tap_model(model, node.inputs[2])?;
+        let cs = patch.wire_node(format!("{}-cs-axis", node.name), AxisOp::Add(0), &[cs])?[0];
+        outer_inputs.push(cs);
+        let cs_fact = patch.outlet_fact(cs)?.clone();
+        let cs_source = body.add_source("cs_source", cs_fact)?;
+        input_mapping
+            .push(scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(2) });
         wire!(cs_prev = AxisOp::Rm(0), cs_source);
 
         // H: body input 2
-        let mut h = h_initializer.into_tensor();
-        h.insert_axis(0)?;
-        let h_source =
-            body.add_source("h_source", TypedFact::dt_shape(h.datum_type(), h.shape())?)?;
-        input_mapping.push(scan::InputMapping::State {
-            initializer: scan::StateInitializer::Value(h.into_arc_tensor()),
-        });
+        let h = patch.tap_model(model, node.inputs[3])?;
+        let h = patch.wire_node(format!("{}-h-axis", node.name), AxisOp::Add(0), &[h])?[0];
+        outer_inputs.push(h);
+        let h_fact = patch.outlet_fact(h)?.clone();
+        let h_source = body.add_source("h_source", h_fact)?;
+        input_mapping
+            .push(scan::InputMapping::State { initializer: scan::StateInitializer::FromInput(3) });
         wire!(h_prev = AxisOp::Rm(0), h_source);
 
         wire!(xh = array::TypedConcat::concat_vars(1, 2), x, h_prev);
@@ -309,6 +314,8 @@ impl TypedOp for BlockLSTM {
     }
 }
 
+/* 
+// TODO: rewrite this logic as a tf.Assign declutter ?
 impl BlockLSTM {
     fn inline_var_assign(
         &self,
@@ -368,3 +375,4 @@ impl BlockLSTM {
         Ok(var_2_op.initializer.clone())
     }
 }
+*/
