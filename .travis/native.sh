@@ -45,7 +45,12 @@ cargo test -p tract-core $ALL_FEATURES
 cargo test -p onnx-test-suite -- --skip real_
 cargo clean
 
-cargo test --release $ALL_FEATURES
+cargo build --release $ALL_FEATURES
+
+if [ `arch` = "x86_64" ]
+then
+    export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
+fi
 
 if [ -n "$CI" ]
 then
@@ -53,11 +58,6 @@ then
 fi
 
 cargo build --release --bin tract
-
-if [ `arch` = "x86_64" ]
-then
-	export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
-fi
 
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
