@@ -91,15 +91,15 @@ net_bench kaldi_librispeech_clean_tdnn_lstm_1e_256 2600ms \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     -i 264x40
 
-net_bench kaldi_librispeech_clean_tdnn_lstm_1e_256 240ms \
+net_bench kaldi_librispeech_clean_tdnn_lstm_1e_256 pulse_240ms \
     $CACHEDIR/en_libri_real/model.raw -f kaldi  --output-node output \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     -i Sx40 --pulse 24 \
 
 net_bench mdl-en-2019-Q3-librispeech_onnx 2600ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i 264x40
-net_bench mdl-en-2019-Q3-librispeech_onnx 240ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i Sx40 --pulse 24
+net_bench mdl-en-2019-Q3-librispeech_onnx pulse_240ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i Sx40 --pulse 24
 net_bench en_tdnn_lstm_bn_q7 2600ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i 264x40
-net_bench en_tdnn_lstm_bn_q7 2400ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i Sx40 --pulse 24
+net_bench en_tdnn_lstm_bn_q7 pulse_240ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i Sx40 --pulse 24
 
 net_bench spearker_id pulse8 $CACHEDIR/speaker-id-2019-03.onnx -i 1xSx40xf32 --output-node 257 --partial --pulse 8
 
