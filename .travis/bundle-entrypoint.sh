@@ -58,6 +58,13 @@ net_bench() {
     $TRACT "$@" $TAIL > tract.out
     v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
     echo net.$net.evaltime.$pb $v >> metrics
+    v=$(grep model_ready readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 1 -d ' ')
+    echo net.$net.time_to_model_ready.$pb $v >> metrics
+    v=$(grep model_ready readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 4 -d ' ')
+    echo net.$net.rsz_at_model_ready.$pb $v >> metrics
+    f=$(grep model_ready readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 11 -d ' ')
+    a=$(grep model_ready readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 10 -d ' ')
+    echo net.$net.active_at_model_ready.$pb $(($a-$f)) >> metrics
 }
 
 net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49x10xf32 --partial --input-node Mfcc
