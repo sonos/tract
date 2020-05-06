@@ -101,7 +101,7 @@ net_bench mdl-en-2019-Q3-librispeech_onnx pulse_240ms $CACHEDIR/en_libri_real/mo
 net_bench en_tdnn_lstm_bn_q7 2600ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i 264x40
 net_bench en_tdnn_lstm_bn_q7 pulse_240ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i Sx40 --pulse 24
 
-net_bench spearker_id pulse8 $CACHEDIR/speaker-id-2019-03.onnx -i 1xSx40xf32 --output-node 257 --partial --pulse 8
+net_bench speaker_id pulse8 $CACHEDIR/speaker-id-2019-03.onnx -i 1xSx40xf32 --output-node 257 --partial --pulse 8
 
 net_bench voicecom_fake_quant 2sec $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb -i 200x10xf32
 net_bench voicecom_float 2sec $CACHEDIR/snips-voice-commands-cnn-float.pb -i 200x10xf32
