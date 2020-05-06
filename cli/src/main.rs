@@ -77,6 +77,8 @@ fn main() {
     (@setting AllowLeadingHyphen)
 
     (@arg readings: --readings "Start readings instrumentation")
+    (@arg readings_heartbeat: --("readings-heartbeat") +takes_value
+        default_value("0.5") "Set heartbeat (ms)")
 
     (@arg model: +takes_value "Sets the model to use")
 
@@ -279,7 +281,8 @@ fn main() {
         let file = std::fs::File::create("readings.out").unwrap();
         let mut probe = Probe::new(file).unwrap();
         probe.register_i64("progress").unwrap();
-        probe.spawn_heartbeat(std::time::Duration::from_millis(5)).unwrap();
+        let heartbeat = matches.value_of("readings_heartbeat").unwrap().parse::<f32>().unwrap();
+        probe.spawn_heartbeat(std::time::Duration::from_secs_f32(heartbeat / 1000.0)).unwrap();
         Some(probe)
     } else {
         None
@@ -391,10 +394,7 @@ pub struct Parameters {
 
 impl Parameters {
     /// Parses the command-line arguments.
-    pub fn from_clap(
-        matches: &clap::ArgMatches,
-        probe: Option<&Probe>,
-    ) -> CliResult<Parameters> {
+    pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
         let name = matches.value_of("model").ok_or("Model argument required")?;
         let format = matches.value_of("format").unwrap_or(if name.ends_with(".onnx") {
             "onnx"
@@ -433,11 +433,13 @@ impl Parameters {
                 let mut model_and_ext = tf.parse_graph(&graph)?;
                 model_and_ext.1.initializing_nodes = matches
                     .values_of("tf_initializer_output_node")
-                    .map(|values| values
-                    .map(|name| model_and_ext.0.node_id_by_name(name))
-                    .collect::<TractResult<Vec<usize>>>())
+                    .map(|values| {
+                        values
+                            .map(|name| model_and_ext.0.node_id_by_name(name))
+                            .collect::<TractResult<Vec<usize>>>()
+                    })
                     .transpose()?
-                    .unwrap_or(vec!());
+                    .unwrap_or(vec![]);
                 (SomeGraphDef::Tf(graph), model_and_ext.0, Some(model_and_ext.1))
             }
             _ => bail!(
@@ -609,10 +611,8 @@ impl Parameters {
 
         for i in (0..raw_model.inputs.len()).rev() {
             let input = raw_model.inputs[i];
-            let const_inputs = matches
-                .values_of("const_input")
-                .map(|cis| cis.collect())
-                .unwrap_or(vec![]);
+            let const_inputs =
+                matches.values_of("const_input").map(|cis| cis.collect()).unwrap_or(vec![]);
             if const_inputs.contains(&raw_model.node_name(input.node)) {
                 let t = raw_model.outlet_fact(input.node.into())?.value.concretize().unwrap();
                 raw_model.node_mut(input.node).op = Box::new(tract_core::ops::konst::Const::new(t));
@@ -749,11 +749,8 @@ pub enum ProfilingMode {
 
 impl ProfilingMode {
     pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<ProfilingMode> {
-        let max_iters = matches
-            .value_of("max_iters")
-            .map(u64::from_str)
-            .transpose()?
-            .unwrap_or(100_000);
+        let max_iters =
+            matches.value_of("max_iters").map(u64::from_str).transpose()?.unwrap_or(100_000);
         let max_time = matches
             .value_of("max-time")
             .map(u64::from_str)
@@ -897,9 +894,11 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             crate::cost::handle(&params, display_options_from_clap(&matches, m)?, m)
         }
 
-        ("", None) => {
-            dump::handle(&params, display_options_from_clap(&matches, &clap::ArgMatches::default())?, vec!())
-        }
+        ("", None) => dump::handle(
+            &params,
+            display_options_from_clap(&matches, &clap::ArgMatches::default())?,
+            vec![],
+        ),
 
         ("dump", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m, &*params.output_names)?);
