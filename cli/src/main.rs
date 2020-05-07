@@ -401,6 +401,10 @@ impl Parameters {
         } else {
             "tf"
         });
+
+        let need_graph =
+            matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
+
         let (mut graph, mut raw_model, tf_model_extensions) = match format {
             #[cfg(feature = "kaldi")]
             "kaldi" => {
@@ -411,7 +415,11 @@ impl Parameters {
                     graph.adjust_final_offset = i.parse()?;
                 }
                 let parsed = kaldi.model_for_proto_model(&graph)?;
-                (SomeGraphDef::Kaldi(graph), parsed, None)
+                if need_graph {
+                    (SomeGraphDef::Kaldi(graph), parsed, None)
+                } else {
+                    (SomeGraphDef::NoGraphDef, parsed, None)
+                }
             }
             #[cfg(feature = "onnx")]
             "onnx" => {
@@ -419,8 +427,11 @@ impl Parameters {
                 info_usage("load framework (onnx)", probe);
                 let graph = onnx.proto_model_for_path(&name)?;
                 let parsed = onnx.parse(&graph)?;
-                let tract = parsed.model.clone();
-                (SomeGraphDef::Onnx(graph, parsed), tract, None)
+                if need_graph {
+                    (SomeGraphDef::Onnx(graph, parsed.clone()), parsed.model, None)
+                } else {
+                    (SomeGraphDef::NoGraphDef, parsed.model, None)
+                }
             }
             #[cfg(feature = "tf")]
             "tf" => {
@@ -440,7 +451,11 @@ impl Parameters {
                     })
                     .transpose()?
                     .unwrap_or(vec![]);
-                (SomeGraphDef::Tf(graph), model_and_ext.0, Some(model_and_ext.1))
+                if need_graph {
+                    (SomeGraphDef::Tf(graph), model_and_ext.0, Some(model_and_ext.1))
+                } else {
+                    (SomeGraphDef::NoGraphDef, model_and_ext.0, Some(model_and_ext.1))
+                }
             }
             _ => bail!(
                 "Format {} not supported. You may need to recompile tract with the right features.",
@@ -694,7 +709,7 @@ impl Parameters {
                 info_usage("after declutter", probe);
                 if let Some(pulse) = pulse {
                     info!("Running 'pulse-normalize'");
-                    let normalized_model = model.clone().into_normalized()?;
+                    let normalized_model = model.into_normalized()?;
                     if stop_at == "pulse-normalize" {
                         return Ok(Box::new(normalized_model) as _);
                     }
@@ -719,7 +734,8 @@ impl Parameters {
                     info_usage("after pulse-declutter", probe);
                 }
                 info!("Running 'optimize'");
-                model = model.clone().codegen()?;
+                model = model.codegen()?;
+                info_usage("after optimize", probe);
                 Ok(Box::new(model) as _)
             })()?
         };
