@@ -1,3 +1,4 @@
+use std::{ fs, path };
 use std::convert::TryInto;
 
 use std::collections::HashMap;
@@ -216,6 +217,12 @@ impl Onnx {
 }
 
 impl Framework<pb::ModelProto> for Onnx {
+    fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
+        let f = fs::File::open(p)?;
+        let map = unsafe { memmap::Mmap::map(&f)? };
+        Ok(crate::pb::ModelProto::decode(&*map).map_err(|e| format!("{:?}", e))?)
+    }
+
     fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<pb::ModelProto> {
         let mut v = vec![];
         r.read_to_end(&mut v)?;

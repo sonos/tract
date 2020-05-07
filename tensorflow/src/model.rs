@@ -84,6 +84,12 @@ impl Tensorflow {
         Ok(())
     }
 
+    pub fn read_frozen_from_path(&self, p: impl AsRef<path::Path>) -> TractResult<GraphDef> {
+        let f = fs::File::open(p)?;
+        let map = unsafe { memmap::Mmap::map(&f)? };
+        Ok(GraphDef::decode(&*map).map_err(|e| format!("{:?}", e))?)
+    }
+
     pub fn read_frozen_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
         let mut v = vec!();
         r.read_to_end(&mut v)?;
