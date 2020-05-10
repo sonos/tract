@@ -75,9 +75,9 @@ impl std::ops::AddAssign for Duration {
 impl std::ops::SubAssign for Duration {
     fn sub_assign(&mut self, other: Duration) {
         *self = Duration {
-            total_real: self.total_real - other.total_real,
-            total_user: self.total_user - other.total_user,
-            total_sys: self.total_sys - other.total_sys,
+            total_real: self.total_real.max(other.total_real) - other.total_real,
+            total_user: self.total_user.max(other.total_user) - other.total_user,
+            total_sys: self.total_sys.max(other.total_sys) - other.total_sys,
         };
     }
 }
