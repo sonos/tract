@@ -415,8 +415,9 @@ impl Parameters {
             #[cfg(feature = "kaldi")]
             "kaldi" => {
                 let kaldi = tract_kaldi::kaldi();
-                info_usage("load framework (kaldi)", probe);
+                info_usage("loaded framework (kaldi)", probe);
                 let mut graph = kaldi.proto_model_for_path(&name)?;
+                info_usage("proto model loaded", probe);
                 if let Some(i) = matches.value_of("kaldi_adjust_final_offset") {
                     graph.adjust_final_offset = i.parse()?;
                 }
@@ -430,8 +431,9 @@ impl Parameters {
             #[cfg(feature = "onnx")]
             "onnx" => {
                 let onnx = tract_onnx::onnx();
-                info_usage("load framework (onnx)", probe);
+                info_usage("loaded framework (onnx)", probe);
                 let graph = onnx.proto_model_for_path(&name)?;
+                info_usage("proto model loaded", probe);
                 let parsed = onnx.parse(&graph)?;
                 if need_graph {
                     (SomeGraphDef::Onnx(graph, parsed.clone()), parsed.model, Option::<TfExt>::None)
@@ -442,8 +444,9 @@ impl Parameters {
             #[cfg(feature = "tf")]
             "tf" => {
                 let tf = tract_tensorflow::tensorflow();
-                info_usage("load framework (tf)", probe);
+                info_usage("loaded framework (tf)", probe);
                 let mut graph = tf.proto_model_for_path(&name)?;
+                info_usage("proto model loaded", probe);
                 if matches.is_present("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
                 }
