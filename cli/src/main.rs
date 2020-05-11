@@ -392,7 +392,13 @@ pub struct Parameters {
     machine_friendly: bool,
 }
 
+#[cfg(feature = "tf")]
+type TfExt = tract_tensorflow::model::TfModelExtensions;
+#[cfg(not(feature = "tf"))]
+type TfExt = ();
+
 impl Parameters {
+    #[allow(unused_variables)]
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
         let name = matches.value_of("model").ok_or("Model argument required")?;
@@ -416,9 +422,9 @@ impl Parameters {
                 }
                 let parsed = kaldi.model_for_proto_model(&graph)?;
                 if need_graph {
-                    (SomeGraphDef::Kaldi(graph), parsed, None)
+                    (SomeGraphDef::Kaldi(graph), parsed, Option::<TfExt>::None)
                 } else {
-                    (SomeGraphDef::NoGraphDef, parsed, None)
+                    (SomeGraphDef::NoGraphDef, parsed, Option::<TfExt>::None)
                 }
             }
             #[cfg(feature = "onnx")]
@@ -428,9 +434,9 @@ impl Parameters {
                 let graph = onnx.proto_model_for_path(&name)?;
                 let parsed = onnx.parse(&graph)?;
                 if need_graph {
-                    (SomeGraphDef::Onnx(graph, parsed.clone()), parsed.model, None)
+                    (SomeGraphDef::Onnx(graph, parsed.clone()), parsed.model, Option::<TfExt>::None)
                 } else {
-                    (SomeGraphDef::NoGraphDef, parsed.model, None)
+                    (SomeGraphDef::NoGraphDef, parsed.model, Option::<TfExt>::None)
                 }
             }
             #[cfg(feature = "tf")]
@@ -671,13 +677,15 @@ impl Parameters {
                     return Ok(Box::new(raw_model) as _);
                 }
                 info_usage("after analyse", probe);
-                if let Some(ext) = tf_model_extensions {
-                    info!("Running 'tf-preproc'");
-                    raw_model = ext.preproc(raw_model)?;
-                    if stop_at == "tf-preproc" {
-                        return Ok(Box::new(raw_model) as _);
+                #[cfg(feature = "tf")] {
+                    if let Some(ext) = tf_model_extensions {
+                        info!("Running 'tf-preproc'");
+                        raw_model = ext.preproc(raw_model)?;
+                        if stop_at == "tf-preproc" {
+                            return Ok(Box::new(raw_model) as _);
+                        }
+                        info_usage("after tf-preproc", probe);
                     }
-                    info_usage("after tf-preproc", probe);
                 }
                 info!("Running 'incorporate'");
                 let model = raw_model.incorporate()?;
