@@ -78,9 +78,9 @@ where
     dur /= iters as f64;
 
     if params.machine_friendly {
-        println!("real: {}", dur.avg_real().as_secs_f64());
-        println!("user: {}", dur.avg_user().as_secs_f64());
-        println!("sys: {}", dur.avg_sys().as_secs_f64());
+        println!("real: {}", dur.avg_real());
+        println!("user: {}", dur.avg_user());
+        println!("sys: {}", dur.avg_sys());
     } else {
         println!("Bench ran {} times.\n{}", iters, dur_avg_multiline(dur));
     }
@@ -224,7 +224,7 @@ where
     if log_enabled!(Info) {
         println!(
             "(Real: {} in total, with max_iters={:e} and max_time={:?}ms.)",
-            White.paint(format!("{:.3} ms", profile.summed().total_real.as_secs_f64() * 1e3)),
+            White.paint(format!("{:.3} ms", profile.summed().total_real * 1e3)),
             max_iters as f32,
             max_time,
         );

@@ -34,30 +34,30 @@ impl Instant {
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Duration {
-    pub total_real: StdDuration,
-    pub total_user: StdDuration,
-    pub total_sys: StdDuration,
+    pub total_real: f64,
+    pub total_user: f64,
+    pub total_sys: f64,
 }
 
 impl Duration {
     /// Returns a measure from a given instant and iterations.
     pub fn since(start: &Instant) -> Duration {
-        let total_real = start.elapsed_real();
-        let total_user = start.elapsed_user();
-        let total_sys = start.elapsed_sys();
+        let total_real = start.elapsed_real().as_secs_f64();
+        let total_user = start.elapsed_user().as_secs_f64();
+        let total_sys = start.elapsed_sys().as_secs_f64();
 
         Duration { total_real, total_user, total_sys }
     }
 
-    pub fn avg_real(&self) -> StdDuration {
+    pub fn avg_real(&self) -> f64 {
         self.total_real
     }
 
-    pub fn avg_user(&self) -> StdDuration {
+    pub fn avg_user(&self) -> f64 {
         self.total_user
     }
 
-    pub fn avg_sys(&self) -> StdDuration {
+    pub fn avg_sys(&self) -> f64 {
         self.total_sys
     }
 }
@@ -85,9 +85,9 @@ impl std::ops::SubAssign for Duration {
 impl std::ops::MulAssign<f64> for Duration {
     fn mul_assign(&mut self, other: f64) {
         *self = Duration {
-            total_real: StdDuration::from_secs_f64(self.total_real.as_secs_f64() * other),
-            total_user: StdDuration::from_secs_f64(self.total_user.as_secs_f64() * other),
-            total_sys: StdDuration::from_secs_f64(self.total_sys.as_secs_f64() * other),
+            total_real: self.total_real * other,
+            total_user: self.total_user * other,
+            total_sys: self.total_sys * other,
         };
     }
 }
@@ -95,9 +95,9 @@ impl std::ops::MulAssign<f64> for Duration {
 impl std::ops::DivAssign<f64> for Duration {
     fn div_assign(&mut self, other: f64) {
         *self = Duration {
-            total_real: StdDuration::from_secs_f64(self.total_real.as_secs_f64() / other),
-            total_user: StdDuration::from_secs_f64(self.total_user.as_secs_f64() / other),
-            total_sys: StdDuration::from_secs_f64(self.total_sys.as_secs_f64() / other),
+            total_real: self.total_real / other,
+            total_user: self.total_user / other,
+            total_sys: self.total_sys / other,
         };
     }
 }
