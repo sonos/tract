@@ -1,9 +1,6 @@
 use std::fmt::{Debug, Display};
 
 use ansi_term::Colour::*;
-use atty;
-use pbr::ProgressBar;
-
 use log::Level::Info;
 
 use crate::display_graph::DisplayOptions;
@@ -12,8 +9,8 @@ use crate::{Model, Parameters, ProfilingMode};
 
 use crate::format::*;
 use crate::profile::ProfileData;
-use crate::rusage::{Duration, Instant};
 use crate::tensor::make_inputs;
+use std::time::{Duration, Instant};
 
 use tract_hir::internal::*;
 
@@ -64,7 +61,7 @@ where
     info!("Starting bench itself");
     let mut iters = 0;
     let start = Instant::now();
-    while iters < max_iters && start.elapsed_real() < max_time {
+    while iters < max_iters && start.elapsed() < max_time {
         if let Some(mon) = probe {
             let _ = mon.log_event(&format!("loop_{}", iters));
         }
@@ -74,13 +71,11 @@ where
         state.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
-    let mut dur = Duration::since(&start);
-    dur /= iters as f64;
+    let dur = start.elapsed();
+    let dur = Duration::from_secs_f64(dur.as_secs_f64() / iters as f64);
 
     if params.machine_friendly {
-        println!("real: {}", dur.avg_real());
-        println!("user: {}", dur.avg_user());
-        println!("sys: {}", dur.avg_sys());
+        println!("real: {}", dur.as_secs_f64());
     } else {
         println!("Bench ran {} times.\n{}", iters, dur_avg_multiline(dur));
     }
@@ -114,89 +109,108 @@ where
         bail!("Expecting regular profile mode")
     };
 
+    let mut profile = ProfileData::default();
+
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
+    let mut state = SimpleState::new(&plan)?;
     let mut iters = 0;
     let start = Instant::now();
-    while iters < max_iters && start.elapsed_real() < max_time {
-        let _ = plan.run(make_inputs_for_model(model)?)?;
+    dbg!(&max_iters);
+    dbg!(&max_time);
+    while iters < max_iters && start.elapsed() < max_time {
+        let _ = state.run_plan_with_eval(
+            make_inputs_for_model(model)?,
+            0,
+            |session_state, state, node, input| {
+                let start = Instant::now();
+                let r = tract_core::plan::eval(session_state, state, node, input);
+                let elapsed = start.elapsed();
+                profile.add([node.id].as_ref(), elapsed)?;
+                r
+            },
+        )?;
         iters += 1;
     }
-    let mut entire = Duration::since(&start);
-    entire /= iters as f64;
+    let entire = Duration::from_secs_f64(start.elapsed().as_secs_f64() / iters as f64);
+    profile.scale((iters as f64).recip());
 
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time.as_millis());
 
-    let mut profile = ProfileData::default();
-
-    let mut queue: Vec<(&ModelImpl<F, O>, TVec<usize>, f32)> = vec![(model, tvec!(), 1f32)];
-    while let Some((model, prefix, multiplier)) = queue.pop() {
-        let plan = SimplePlan::new(model)?;
-        let mut state = SimpleState::new(&plan)?;
-        let mut progress = ProgressBar::new(plan.order.len() as u64);
-        let mut full_id: TVec<usize> = prefix.iter().cloned().collect();
-        if prefix.len() != 0 {
-            info!("Doing subnet {:?}", prefix);
-        }
-        full_id.push(0);
-
-        state.set_inputs(make_inputs_for_model(model)?)?;
-
-        for &n in &plan.order {
-            let node = &model.nodes()[n];
-
-            if atty::is(atty::Stream::Stdout) {
-                progress.inc();
+    /*
+        let mut queue: Vec<(&ModelImpl<F, O>, TVec<usize>, f32)> = vec![(model, tvec!(), 1f32)];
+        while let Some((model, prefix, multiplier)) = queue.pop() {
+            let plan = SimplePlan::new(model)?;
+            let mut state = SimpleState::new(&plan)?;
+            let mut progress = ProgressBar::new(plan.order.len() as u64);
+            let mut full_id: TVec<usize> = prefix.iter().cloned().collect();
+            if prefix.len() != 0 {
+                info!("Doing subnet {:?}", prefix);
             }
+            full_id.push(0);
 
-            if node.op.as_ref().name() == "Source" {
-                continue;
-            }
+            state.set_inputs(make_inputs_for_model(model)?)?;
 
-            if !display_options.filter(model, &*prefix, node.id)? {
-                continue;
-            }
-            state.compute_recursively(n)?;
+            for &n in &plan.order {
+                let node = &model.nodes()[n];
 
-            let mut iters = 0;
-            let start = Instant::now();
+                if atty::is(atty::Stream::Stdout) {
+                    progress.inc();
+                }
 
-            while iters < max_iters && start.elapsed_real() < max_time {
-                state.compute_one(n)?;
-                iters += 1;
-            }
+                if node.op.as_ref().name() == "Source" {
+                    continue;
+                }
 
-            let mut measure = Duration::since(&start);
-            measure *= multiplier as f64 / iters as f64;
-            full_id[prefix.len()] = n;
-            profile.add(&*full_id, measure)?;
-            if prefix.len() > 0 {
-                profile.sub(&*prefix, measure)?;
-            }
+                if !display_options.filter(model, &*prefix, node.id)? {
+                    continue;
+                }
+                state.compute_recursively(n)?;
 
-            let inputs: TVec<TypedFact> = model
-                .node_input_facts(n)?
-                .iter()
-                .map(|&i| i.to_typed_fact())
-                .collect::<TractResult<_>>()?;
-            let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
-            let nested_multis =
-                model.node_op(n).as_typed().unwrap().nested_model_multipliers(&*ref_inputs);
+                let inputs = state.prepare_inputs(n)?;
+                let single_start = Instant::now();
+                let _ = state.compute_one_with_inputs(n, inputs.clone())?;
+                let single_run = single_start.elapsed();
 
-            for (ix, (_name, m, _, _)) in model.node_op(n).nested_models().iter().enumerate() {
-                if let Some(m) = m.downcast_ref::<ModelImpl<F, O>>() {
-                    let mut prefix: TVec<usize> = prefix.clone();
-                    prefix.push(n);
-                    queue.push((m, prefix, multiplier * nested_multis[ix].1));
+                let n_iters = max_iters.min((max_time.as_secs_f64() / single_run.total_real) as u64);
+
+                let start_iter = Instant::now();
+                for _ in 0..n_iters {
+                    state.compute_one_with_inputs(n, inputs.clone())?;
+                }
+                let mut measure = start_iter.elapsed();
+
+                measure *= multiplier as f64 / iters as f64;
+                full_id[prefix.len()] = n;
+                profile.add(&*full_id, measure)?;
+                if prefix.len() > 0 {
+                    profile.sub(&*prefix, measure)?;
+                }
+
+                let inputs: TVec<TypedFact> = model
+                    .node_input_facts(n)?
+                    .iter()
+                    .map(|&i| i.to_typed_fact())
+                    .collect::<TractResult<_>>()?;
+                let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
+                let nested_multis =
+                    model.node_op(n).as_typed().unwrap().nested_model_multipliers(&*ref_inputs);
+
+                for (ix, (_name, m, _, _)) in model.node_op(n).nested_models().iter().enumerate() {
+                    if let Some(m) = m.downcast_ref::<ModelImpl<F, O>>() {
+                        let mut prefix: TVec<usize> = prefix.clone();
+                        prefix.push(n);
+                        queue.push((m, prefix, multiplier * nested_multis[ix].1));
+                    }
                 }
             }
-        }
 
-        if atty::is(atty::Stream::Stdout) {
-            progress.finish_print("");
+            if atty::is(atty::Stream::Stdout) {
+                progress.finish_print("");
+            }
         }
-    }
+    */
 
     if display_options == DisplayOptions::default() {
         display_options.node_ids = Some(profile.most_consuming_nodes()?);
@@ -224,7 +238,7 @@ where
     if log_enabled!(Info) {
         println!(
             "(Real: {} in total, with max_iters={:e} and max_time={:?}ms.)",
-            White.paint(format!("{:.3} ms", profile.summed().total_real * 1e3)),
+            White.paint(format!("{:.3} ms", profile.summed().as_secs_f64() * 1e3)),
             max_iters as f32,
             max_time,
         );

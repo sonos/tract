@@ -44,7 +44,7 @@ mod format;
 mod optimize_check;
 mod profile;
 mod run;
-mod rusage;
+// mod rusage;
 mod stream_check;
 mod tensor;
 mod utils;

@@ -50,7 +50,11 @@ where
         Self::new_for_outputs_and_deps(model, outputs, &[])
     }
 
-    pub fn new_for_outputs_and_deps(model: M, outputs: &[OutletId], deps: &[(usize, usize)]) -> TractResult<SimplePlan<F, O, M>> {
+    pub fn new_for_outputs_and_deps(
+        model: M,
+        outputs: &[OutletId],
+        deps: &[(usize, usize)],
+    ) -> TractResult<SimplePlan<F, O, M>> {
         let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
         let order = eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?;
@@ -179,6 +183,23 @@ where
         inputs: TVec<Tensor>,
         plan: usize,
     ) -> TractResult<TVec<Arc<Tensor>>> {
+        self.run_plan_with_eval(inputs, plan, self::eval)
+    }
+
+    pub fn run_plan_with_eval<Eval>(
+        &mut self,
+        inputs: TVec<Tensor>,
+        plan: usize,
+        mut eval: Eval,
+    ) -> TractResult<TVec<Arc<Tensor>>>
+    where
+        Eval: for<'a, 'b, 'c> FnMut(
+            &'a mut SessionState,
+            Option<&'b mut (dyn OpState + 'static)>,
+            &'c BaseNode<F, O>,
+            TVec<Arc<Tensor>>,
+        ) -> TractResult<TVec<Arc<Tensor>>>,
+    {
         let mut result = tvec!();
         {
             self.set_inputs(inputs)?;
@@ -232,11 +253,8 @@ where
                     }
                 }
 
-                let vs = match states[node.id] {
-                    Some(ref mut state) => state.eval(session_state, node.op(), inputs),
-                    None => node.op().as_stateless().expect("as_stateless").eval(inputs),
-                }
-                .chain_err(|| format!("Evaluating {}", node))?;
+                let vs =
+                    eval(session_state, states[node.id].as_mut().map(|s| &mut **s), node, inputs)?;
 
                 if cfg!(debug_assertions) {
                     let facts = model.node_output_facts(node.id)?;
@@ -318,8 +336,8 @@ where
         self.set_values(id, tvec!(value))
     }
 
-    pub fn compute_one(&mut self, node: usize) -> TractResult<()> {
-        let SimpleState { ref plans, ref mut session_state, ref mut values, .. } = self;
+    pub fn prepare_inputs(&self, node: usize) -> TractResult<TVec<Arc<Tensor>>> {
+        let SimpleState { ref plans, ref values, .. } = self;
         let plan = plans[0].borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
@@ -329,8 +347,25 @@ where
             let prec = values[i.node]
                 .as_ref()
                 .ok_or_else(|| format!("Computing {}, precursor {} not done.", node, prec_node))?;
-            inputs.push(prec[i.slot].clone().into())
+            inputs.push(prec[i.slot].clone().into_tensor().into_arc_tensor())
         }
+        Ok(inputs)
+    }
+
+    pub fn compute_one(&mut self, node: usize) -> TractResult<()> {
+        let inputs = self.prepare_inputs(node)?;
+        self.compute_one_with_inputs(node, inputs)
+    }
+
+    pub fn compute_one_with_inputs(
+        &mut self,
+        node: usize,
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<()> {
+        let SimpleState { ref plans, ref mut session_state, ref mut values, .. } = self;
+        let plan = plans[0].borrow();
+        let nodes = plan.model().nodes();
+        let node = &nodes[node];
         let vs = match self.states[node.id] {
             Some(ref mut state) => state.eval(session_state, node.op(), inputs),
             None => node.op().as_stateless().unwrap().eval(inputs),
@@ -393,4 +428,21 @@ where
     pub fn model(&self) -> &ModelImpl<F, O> {
         self.plan().model()
     }
+}
+
+pub fn eval<F, O>(
+    session_state: &mut SessionState,
+    mut state: Option<&mut (dyn OpState + 'static)>,
+    node: &BaseNode<F, O>,
+    input: TVec<Arc<Tensor>>,
+) -> TractResult<TVec<Arc<Tensor>>>
+where
+    F: Fact + Hash + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+{
+    match state {
+        Some(ref mut state) => state.eval(session_state, node.op(), input),
+        None => node.op().as_stateless().expect("as_stateless").eval(input),
+    }
+    .chain_err(|| format!("Evaluating {}", node))
 }
