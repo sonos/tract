@@ -116,8 +116,6 @@ where
     let mut state = SimpleState::new(&plan)?;
     let mut iters = 0;
     let start = Instant::now();
-    dbg!(&max_iters);
-    dbg!(&max_time);
     while iters < max_iters && start.elapsed() < max_time {
         let _ = state.run_plan_with_eval(
             make_inputs_for_model(model)?,
