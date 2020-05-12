@@ -9,8 +9,8 @@ use tract_itertools::Itertools;
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
 use crate::format::*;
-use crate::rusage::Duration;
 use crate::{Parameters, ProfilingMode};
+use std::time::Duration;
 
 mod regular;
 //mod streaming;
@@ -26,17 +26,13 @@ impl ProfileData {
         Ok(())
     }
 
-    pub fn sub(&mut self, node_id: &[usize], dur: Duration) -> ::tract_core::TractResult<()> {
-        *self.nodes.entry(node_id.into()).or_insert(Duration::default()) -= dur;
-        Ok(())
-    }
-
     pub fn most_consuming_nodes(&self) -> CliResult<Vec<TVec<usize>>> {
         let top = self
             .nodes
             .iter()
             .sorted_by(|(_, a), (_, b)| {
-                a.avg_real().partial_cmp(&b.avg_real()).unwrap_or(::std::cmp::Ordering::Greater)
+                //a.avg_real().partial_cmp(&b.avg_real()).unwrap_or(::std::cmp::Ordering::Greater)
+                a.cmp(b)
             })
             .into_iter()
             .rev()
@@ -72,10 +68,13 @@ impl ProfileData {
         let mut operations: Vec<(&str, Duration)> =
             operations.iter().map(|(s, d)| (&**s, *d)).collect();
         operations.sort_by(|(_, a), (_, b)| {
-            a.avg_real()
-                .partial_cmp(&b.avg_real())
-                .unwrap_or(::std::cmp::Ordering::Greater)
-                .reverse()
+            /*
+                a.avg_real()
+                    .partial_cmp(&b.avg_real())
+                    .unwrap_or(::std::cmp::Ordering::Greater)
+                    .reverse()
+            }*/
+            b.cmp(&a)
         });
         for (operation, measure) in operations.iter().take(5) {
             println!(
@@ -89,10 +88,11 @@ impl ProfileData {
     }
 
     pub fn summed(&self) -> Duration {
-        let total_real = self.nodes.values().map(|n| n.avg_real()).sum();
-        let total_sys = self.nodes.values().map(|n| n.avg_sys()).sum();
-        let total_user = self.nodes.values().map(|n| n.avg_user()).sum();
-        Duration { total_real, total_sys, total_user }
+        self.nodes.values().sum()
+    }
+
+    pub fn scale(&mut self, factor: f64) {
+        self.nodes.values_mut().for_each(|n| *n = Duration::from_secs_f64(n.as_secs_f64() * factor))
     }
 }
 
@@ -105,6 +105,8 @@ pub fn handle(
 ) -> CliResult<()> {
     match &profiling {
         ProfilingMode::Regular { .. } => regular::handle(params, profiling, display_options),
-        ProfilingMode::RegularBenching { .. } => regular::handle_benching(params, profiling, monitor),
+        ProfilingMode::RegularBenching { .. } => {
+            regular::handle_benching(params, profiling, monitor)
+        }
     }
 }
