@@ -4,7 +4,6 @@ use std::fmt::{Debug, Display};
 use ansi_term::Color::*;
 
 use tract_core::internal::*;
-use tract_itertools::Itertools;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
@@ -14,6 +13,16 @@ use std::time::Duration;
 
 mod regular;
 //mod streaming;
+
+trait Scalable {
+    fn scale(self, scale: f32) -> Self;
+}
+
+impl Scalable for std::time::Duration {
+    fn scale(self, scale: f32) -> Duration {
+        Duration::from_secs_f32(scale * self.as_secs_f32())
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct ProfileData {
@@ -31,17 +40,8 @@ impl ProfileData {
         Ok(())
     }
 
-    pub fn most_consuming_nodes(&self) -> CliResult<Vec<TVec<usize>>> {
-        let top = self
-            .nodes
-            .iter()
-            .sorted_by(|(_, a), (_, b)| a.cmp(b))
-            .into_iter()
-            .rev()
-            .take(20)
-            .map(|a| a.0.iter().cloned().collect())
-            .collect();
-        Ok(top)
+    pub fn nodes_above(&self, dur: Duration) -> CliResult<Vec<TVec<usize>>> {
+        Ok(self.nodes.iter().filter(|n| *n.1 > dur).map(|n| n.0.clone()).collect())
     }
 
     fn op_name_for_id(model: &dyn Model, id: &[usize]) -> CliResult<String> {
