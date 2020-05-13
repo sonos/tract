@@ -26,14 +26,16 @@ impl ProfileData {
         Ok(())
     }
 
+    pub fn sub(&mut self, node_id: &[usize], dur: Duration) -> ::tract_core::TractResult<()> {
+        *self.nodes.entry(node_id.into()).or_insert(Duration::default()) -= dur;
+        Ok(())
+    }
+
     pub fn most_consuming_nodes(&self) -> CliResult<Vec<TVec<usize>>> {
         let top = self
             .nodes
             .iter()
-            .sorted_by(|(_, a), (_, b)| {
-                //a.avg_real().partial_cmp(&b.avg_real()).unwrap_or(::std::cmp::Ordering::Greater)
-                a.cmp(b)
-            })
+            .sorted_by(|(_, a), (_, b)| a.cmp(b))
             .into_iter()
             .rev()
             .take(20)
@@ -67,15 +69,7 @@ impl ProfileData {
         }
         let mut operations: Vec<(&str, Duration)> =
             operations.iter().map(|(s, d)| (&**s, *d)).collect();
-        operations.sort_by(|(_, a), (_, b)| {
-            /*
-                a.avg_real()
-                    .partial_cmp(&b.avg_real())
-                    .unwrap_or(::std::cmp::Ordering::Greater)
-                    .reverse()
-            }*/
-            b.cmp(&a)
-        });
+        operations.sort_by(|(_, a), (_, b)| b.cmp(&a));
         for (operation, measure) in operations.iter().take(5) {
             println!(
                 "{:20} {:3} nodes: {}",
