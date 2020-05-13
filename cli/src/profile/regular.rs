@@ -8,7 +8,7 @@ use crate::errors::*;
 use crate::{Model, Parameters, ProfilingMode};
 
 use crate::format::*;
-use crate::profile::ProfileData;
+use crate::profile::{ ProfileData, Scalable };
 use crate::tensor::make_inputs;
 use std::time::{Duration, Instant};
 
@@ -180,7 +180,7 @@ where
     profile.scale((iters as f64).recip());
 
     if display_options == DisplayOptions::default() {
-        display_options.node_ids = Some(profile.most_consuming_nodes()?);
+        display_options.node_ids = Some(profile.nodes_above(entire.scale(0.01))?);
     };
 
     let mut display_graph = crate::display_graph::DisplayGraph::from_model_and_options(
