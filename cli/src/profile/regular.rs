@@ -131,84 +131,53 @@ where
         iters += 1;
     }
     let entire = Duration::from_secs_f64(start.elapsed().as_secs_f64() / iters as f64);
-    profile.scale((iters as f64).recip());
 
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time.as_millis());
 
-    /*
-        let mut queue: Vec<(&ModelImpl<F, O>, TVec<usize>, f32)> = vec![(model, tvec!(), 1f32)];
-        while let Some((model, prefix, multiplier)) = queue.pop() {
-            let plan = SimplePlan::new(model)?;
-            let mut state = SimpleState::new(&plan)?;
-            let mut progress = ProgressBar::new(plan.order.len() as u64);
-            let mut full_id: TVec<usize> = prefix.iter().cloned().collect();
-            if prefix.len() != 0 {
-                info!("Doing subnet {:?}", prefix);
-            }
-            full_id.push(0);
-
-            state.set_inputs(make_inputs_for_model(model)?)?;
-
-            for &n in &plan.order {
-                let node = &model.nodes()[n];
-
-                if atty::is(atty::Stream::Stdout) {
-                    progress.inc();
-                }
-
-                if node.op.as_ref().name() == "Source" {
-                    continue;
-                }
-
-                if !display_options.filter(model, &*prefix, node.id)? {
-                    continue;
-                }
-                state.compute_recursively(n)?;
-
-                let inputs = state.prepare_inputs(n)?;
-                let single_start = Instant::now();
-                let _ = state.compute_one_with_inputs(n, inputs.clone())?;
-                let single_run = single_start.elapsed();
-
-                let n_iters = max_iters.min((max_time.as_secs_f64() / single_run.total_real) as u64);
-
-                let start_iter = Instant::now();
-                for _ in 0..n_iters {
-                    state.compute_one_with_inputs(n, inputs.clone())?;
-                }
-                let mut measure = start_iter.elapsed();
-
-                measure *= multiplier as f64 / iters as f64;
-                full_id[prefix.len()] = n;
-                profile.add(&*full_id, measure)?;
-                if prefix.len() > 0 {
-                    profile.sub(&*prefix, measure)?;
-                }
-
-                let inputs: TVec<TypedFact> = model
-                    .node_input_facts(n)?
-                    .iter()
-                    .map(|&i| i.to_typed_fact())
-                    .collect::<TractResult<_>>()?;
-                let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
-                let nested_multis =
-                    model.node_op(n).as_typed().unwrap().nested_model_multipliers(&*ref_inputs);
-
-                for (ix, (_name, m, _, _)) in model.node_op(n).nested_models().iter().enumerate() {
-                    if let Some(m) = m.downcast_ref::<ModelImpl<F, O>>() {
-                        let mut prefix: TVec<usize> = prefix.clone();
-                        prefix.push(n);
-                        queue.push((m, prefix, multiplier * nested_multis[ix].1));
+    for &outer_node in &plan.order {
+        if let Some(m) =
+            (model as &dyn Model).downcast_ref::<ModelImpl<TypedFact, Box<dyn TypedOp>>>()
+        {
+            let outer_node = m.node(outer_node);
+            let inputs: TVec<TypedFact> = model
+                .node_input_facts(outer_node.id)?
+                .iter()
+                .map(|&i| i.to_typed_fact())
+                .collect::<TractResult<_>>()?;
+            let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
+            for ((_name, inner_model, _, _), (_name_, multiplier)) in outer_node
+                .op
+                .nested_models()
+                .iter()
+                .zip(outer_node.op.nested_model_multipliers(&ref_inputs).iter())
+            {
+                if let Some(inner_model) = inner_model.downcast_ref::<TypedModel>() {
+                    for _ in 0..iters {
+                        let inner_plan = SimplePlan::new(inner_model)?;
+                        let mut state = SimpleState::new(inner_plan)?;
+                        let _ = state.run_plan_with_eval(
+                            make_inputs_for_model(inner_model)?,
+                            0,
+                            |session_state, state, node, input| {
+                                let start = Instant::now();
+                                let r = tract_core::plan::eval(session_state, state, node, input);
+                                let elapsed = start.elapsed();
+                                let elapsed = Duration::from_secs_f64(
+                                    elapsed.as_secs_f64() * *multiplier as f64,
+                                );
+                                profile.add([outer_node.id, node.id].as_ref(), elapsed)?;
+                                profile.sub([outer_node.id].as_ref(), elapsed)?;
+                                r
+                            },
+                        )?;
                     }
                 }
             }
-
-            if atty::is(atty::Stream::Stdout) {
-                progress.finish_print("");
-            }
         }
-    */
+    }
+
+    profile.scale((iters as f64).recip());
 
     if display_options == DisplayOptions::default() {
         display_options.node_ids = Some(profile.most_consuming_nodes()?);
