@@ -75,7 +75,7 @@ impl ProfileData {
                 "{:20} {:3} nodes: {}",
                 Blue.bold().paint(*operation),
                 counters[&**operation],
-                dur_avg_oneline_ratio(*measure, sum)
+                dur_avg_ratio(*measure, sum)
             );
         }
         Ok(())
