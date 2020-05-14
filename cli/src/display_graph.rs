@@ -3,17 +3,30 @@ use crate::CliResult;
 use crate::SomeGraphDef;
 use ansi_term::Color::*;
 use ansi_term::Style;
-use tract_core::itertools::Itertools;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 #[allow(unused_imports)]
 use std::convert::TryFrom;
 use std::sync::Arc;
 use tract_core::internal::*;
+use tract_core::itertools::Itertools;
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Io {
+    None,
+    Short,
+    Long,
+}
+
+impl Default for Io {
+    fn default() -> Io {
+        Io::Short
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DisplayOptions {
@@ -27,7 +40,8 @@ pub struct DisplayOptions {
     pub node_name: Option<String>,
     pub expect_canonic: bool,
     pub outlet_labels: bool,
-    //    pub successors: Option<TVec<usize>>,
+    pub io: Io,
+    pub info: bool,
 }
 
 impl DisplayOptions {
@@ -52,7 +66,7 @@ impl DisplayOptions {
         }
         /*
         if let Some(successor) = self.successors {
-            return Ok(model.node_inputs(node_id).iter().any(|i| i.node == successor));
+        return Ok(model.node_inputs(node_id).iter().any(|i| i.node == successor));
         }
         */
         Ok(model.node_op(node_id).name() != "Const" || self.konst)
@@ -159,67 +173,97 @@ impl<'a> DisplayGraph<'a> {
             prefix!();
             println!("  * {}", label);
         }
-        for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
-            let star = if ix == 0 { '*' } else { ' ' };
-            prefix!();
-            println!(
-                "  {} input fact  #{}: {} {}",
-                star,
-                ix,
-                White.bold().paint(format!("{:?}", i)),
-                model.outlet_fact_format(*i),
-            );
-        }
-        for ix in 0..model.node_output_count(node_id) {
-            let star = if ix == 0 { '*' } else { ' ' };
-            let io = if let Some(id) = self
-                .model
-                .borrow()
-                .input_outlets()
-                .iter()
-                .position(|n| n.node == node_id && n.slot == ix)
-            {
-                format!(
-                    "{} {}",
-                    Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string(),
-                    self.model_input_labels.get(&id).map(|s| &**s).unwrap_or("")
-                )
-            } else if let Some(id) = self
-                .model
-                .borrow()
-                .output_outlets()
-                .iter()
-                .position(|n| n.node == node_id && n.slot == ix)
-            {
-                format!(
-                    "{} {}",
-                    Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string(),
-                    self.model_output_labels.get(&id).map(|s| &**s).unwrap_or("")
-                )
-            } else {
-                "".to_string()
-            };
-            let outlet = OutletId::new(node_id, ix);
-            let successors = model.outlet_successors(outlet);
-            prefix!();
-            println!(
-                "  {} output fact #{}: {} {} {}",
-                star,
-                ix,
-                model.outlet_fact_format(outlet),
-                White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
-                io
-            );
-            if self.options.outlet_labels {
-                if let Some(label) = model.outlet_label(OutletId::new(node_id, ix)) {
+        match self.options.io {
+            Io::Long => {
+                for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
+                    let star = if ix == 0 { '*' } else { ' ' };
                     prefix!();
-                    println!("            {} ", White.italic().paint(label));
+                    println!(
+                        "  {} input fact  #{}: {} {}",
+                        star,
+                        ix,
+                        White.bold().paint(format!("{:?}", i)),
+                        model.outlet_fact_format(*i),
+                    );
+                }
+                for ix in 0..model.node_output_count(node_id) {
+                    let star = if ix == 0 { '*' } else { ' ' };
+                    let io = if let Some(id) = self
+                        .model
+                        .borrow()
+                        .input_outlets()
+                        .iter()
+                        .position(|n| n.node == node_id && n.slot == ix)
+                    {
+                        format!(
+                            "{} {}",
+                            Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string(),
+                            self.model_input_labels.get(&id).map(|s| &**s).unwrap_or("")
+                        )
+                    } else if let Some(id) = self
+                        .model
+                        .borrow()
+                        .output_outlets()
+                        .iter()
+                        .position(|n| n.node == node_id && n.slot == ix)
+                    {
+                        format!(
+                            "{} {}",
+                            Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string(),
+                            self.model_output_labels.get(&id).map(|s| &**s).unwrap_or("")
+                        )
+                    } else {
+                        "".to_string()
+                    };
+                    let outlet = OutletId::new(node_id, ix);
+                    let successors = model.outlet_successors(outlet);
+                    prefix!();
+                    println!(
+                        "  {} output fact #{}: {} {} {}",
+                        star,
+                        ix,
+                        model.outlet_fact_format(outlet),
+                        White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
+                        io
+                    );
+                    if self.options.outlet_labels {
+                        if let Some(label) = model.outlet_label(OutletId::new(node_id, ix)) {
+                            prefix!();
+                            println!("            {} ", White.italic().paint(label));
+                        }
+                    }
                 }
             }
+            Io::Short => {
+                let same = model.node_inputs(node_id).len() > 0
+                    && model.node_output_count(node_id) == 1
+                    && model.outlet_fact_format(node_id.into())
+                        == model.outlet_fact_format(model.node_inputs(node_id)[0]);
+                if !same {
+                    let style = if let Some(ds) = drawing_state {
+                        ds.wires.last().unwrap().color.unwrap()
+                    } else {
+                        White.into()
+                    };
+                    for ix in 0..model.node_output_count(node_id) {
+                        prefix!();
+                        println!(
+                            "  {}{}{} {}",
+                            style.paint(box_drawing::heavy::HORIZONTAL),
+                            style.paint(box_drawing::heavy::HORIZONTAL),
+                            style.paint(box_drawing::heavy::HORIZONTAL),
+                            model.outlet_fact_format((node_id, ix).into())
+                        );
+                    }
+                }
+            }
+            Io::None => (),
         }
-        for info in model.node_op(node_id).info()? {
-            prefix!();
-            println!("  * {}", info);
+        if self.options.info {
+            for info in model.node_op(node_id).info()? {
+                prefix!();
+                println!("  * {}", info);
+            }
         }
         if self.options.invariants {
             if let Some(typed) = model.downcast_ref::<TypedModel>() {
