@@ -112,7 +112,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
 
 impl<T: Copy + Datum + Zero> Op for Im2Col<T> {
     fn name(&self) -> Cow<str> {
-        "Conv::Im2col".into()
+        "Im2col".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -124,6 +124,7 @@ impl<T: Copy + Datum + Zero> Op for Im2Col<T> {
         )])
     }
 
+    op_core_lir!();
     impl_op_same_as!();
     op_as_typed_op!();
     not_a_pulsed_op!();

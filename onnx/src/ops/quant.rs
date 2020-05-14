@@ -33,9 +33,10 @@ tract_linalg::impl_dyn_hash!(QuantizeLinear);
 
 impl Op for QuantizeLinear {
     fn name(&self) -> Cow<str> {
-        "onnx.QuantizeLinear".into()
+        "QuantizeLinear".into()
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 
@@ -132,9 +133,10 @@ tract_linalg::impl_dyn_hash!(DequantizeLinear);
 
 impl Op for DequantizeLinear {
     fn name(&self) -> Cow<str> {
-        "onnx.DequantizeLinear".into()
+        "DequantizeLinear".into()
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 

@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-pub use tract_core::ops::scan::TypedScan;
+pub use tract_core::ops::scan::Scan;
 pub use tract_core::ops::scan::{InputMapping, OutputMapping, StateInitializer};
 
 #[derive(Debug, Clone, new, Default, Hash)]
@@ -18,7 +18,7 @@ tract_linalg::impl_dyn_hash!(InferenceScan);
 
 impl Op for InferenceScan {
     fn name(&self) -> Cow<str> {
-        "Scan::Inference".into()
+        "Scan".into()
     }
 
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
@@ -30,6 +30,7 @@ impl Op for InferenceScan {
         )]
     }
 
+    op_hir!();
     not_a_typed_op!();
     not_a_pulsed_op!();
 }
@@ -40,12 +41,12 @@ impl StatefullOp for InferenceScan {
         session: &mut SessionState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        self.to_typed_scan()?.state(session, node_id)
+        self.to_mir_scan()?.state(session, node_id)
     }
 }
 
 impl InferenceScan {
-    pub(super) fn to_typed_scan(&self) -> TractResult<Box<TypedScan>> {
+    pub(super) fn to_mir_scan(&self) -> TractResult<Box<Scan>> {
         let typed_model = self.body.clone().into_typed()?;
         let input_mapping = self
             .input_mapping
@@ -80,7 +81,7 @@ impl InferenceScan {
                 })
             })
             .collect::<TractResult<_>>()?;
-        Ok(Box::new(TypedScan::new(
+        Ok(Box::new(Scan::new(
             typed_model,
             input_mapping,
             output_mapping,
@@ -316,7 +317,7 @@ impl InferenceOp for InferenceScan {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
-        target.wire_node(&*node.name, self.to_typed_scan()? as Box<dyn TypedOp>, &*inputs)
+        target.wire_node(&*node.name, self.to_mir_scan()? as Box<dyn TypedOp>, &*inputs)
     }
 
     fn nboutputs(&self) -> TractResult<usize> {

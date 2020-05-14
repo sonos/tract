@@ -30,9 +30,10 @@ impl Fill {
 
 impl Op for Fill {
     fn name(&self) -> Cow<str> {
-        "tf.Fill".into()
+        "Fill".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

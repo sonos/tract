@@ -43,9 +43,10 @@ impl DepthwiseConv2d {
 
 impl Op for DepthwiseConv2d {
     fn name(&self) -> Cow<str> {
-        "tf.DepthwiseConv2dNative".into()
+        "DepthwiseConv2dNative".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

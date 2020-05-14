@@ -20,6 +20,7 @@ impl Op for MultiBroadcastTo {
     }
 
     canonic!();
+    op_core_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

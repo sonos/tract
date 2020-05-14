@@ -50,9 +50,10 @@ impl GatherNd {
 
 impl Op for GatherNd {
     fn name(&self) -> Cow<str> {
-        "tf.GatherNd".into()
+        "GatherNd".into()
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 

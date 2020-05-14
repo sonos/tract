@@ -13,9 +13,10 @@ tract_linalg::impl_dyn_hash!(GatherV2);
 
 impl Op for GatherV2 {
     fn name(&self) -> Cow<str> {
-        "tf.GatherV2".into()
+        "GatherV2".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

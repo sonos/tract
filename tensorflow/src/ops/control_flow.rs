@@ -24,9 +24,10 @@ tract_linalg::impl_dyn_hash!(LoopGate);
 
 impl Op for LoopGate {
     fn name(&self) -> Cow<str> {
-        format!("tf.{:?}", self.0).into()
+        format!("{:?}", self.0).into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 
@@ -72,6 +73,7 @@ impl Op for NextIteration {
         format!("{:?}({})", self.role, self.name).into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

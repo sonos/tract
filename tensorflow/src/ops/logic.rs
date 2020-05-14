@@ -25,9 +25,10 @@ tract_linalg::impl_dyn_hash!(Switch);
 
 impl Op for Switch {
     fn name(&self) -> Cow<str> {
-        "tf.Switch".into()
+        "Switch".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 
@@ -118,9 +119,10 @@ tract_linalg::impl_dyn_hash!(Merge);
 
 impl Op for Merge {
     fn name(&self) -> Cow<str> {
-        "tf.Merge".into()
+        "Merge".into()
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 

@@ -180,6 +180,7 @@ impl Op for DequantizeLinearF32 {
     }
 
     canonic!();
+    op_core_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }

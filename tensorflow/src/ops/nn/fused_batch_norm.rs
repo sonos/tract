@@ -37,13 +37,14 @@ impl FusedBatchNorm {
 
 impl Op for FusedBatchNorm {
     fn name(&self) -> Cow<str> {
-        "tf.FusedBatchNorm".into()
+        "FusedBatchNorm".into()
     }
 
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

@@ -69,6 +69,7 @@ impl Op for LSTM {
         Validation::Rounding
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 
@@ -425,7 +426,7 @@ impl InferenceRulesOp for LSTM {
 
         let scan_outputs = target.wire_node(
             &*node.name,
-            scan::TypedScan::new(
+            scan::Scan::new(
                 body,
                 input_mapping,
                 vec![h_mapping, c_mapping],

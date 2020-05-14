@@ -32,6 +32,7 @@ impl Op for MaxPool {
     }
 
     canonic!();
+    op_core_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
@@ -110,9 +111,10 @@ pub struct MaxPoolFixed {
 
 impl Op for MaxPoolFixed {
     fn name(&self) -> Cow<str> {
-        "MaxPoolFixed".into()
+        "MaxPool".into()
     }
 
+    op_core_lir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

@@ -47,6 +47,8 @@ impl Op for Lrn {
     fn name(&self) -> Cow<str> {
         "Lrn".into()
     }
+
+    op_onnx!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

@@ -51,9 +51,10 @@ impl Pad {
 
 impl Op for Pad {
     fn name(&self) -> Cow<str> {
-        "tf.Pad".into()
+        "Pad".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

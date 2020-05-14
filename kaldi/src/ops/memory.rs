@@ -14,9 +14,10 @@ tract_linalg::impl_dyn_hash!(Memory);
 
 impl Op for Memory {
     fn name(&self) -> Cow<str> {
-        "kaldi.Memory".into()
+        "Memory".into()
     }
 
+    op_kaldi!();
     not_a_typed_op!();
 }
 

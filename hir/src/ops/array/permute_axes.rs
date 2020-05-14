@@ -49,6 +49,7 @@ impl Op for PermuteAxes {
         Ok(vec![format!("{:?}", self.axes)])
     }
 
+    op_hir!();
     not_a_typed_op!();
     not_a_pulsed_op!();
 }

@@ -57,6 +57,42 @@ macro_rules! not_a_pulsed_op {
 }
 
 #[macro_export]
+macro_rules! op_core {
+    () => {
+        fn op_families(&self) -> &'static [ &'static str ] {
+            &[ "core" ]
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! op_core_mir {
+    () => {
+        fn op_families(&self) -> &'static [ &'static str ] {
+            &[ "core", "mir" ]
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! op_core_lir {
+    () => {
+        fn op_families(&self) -> &'static [ &'static str ] {
+            &[ "core", "lir" ]
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! op_core_lir_mir {
+    () => {
+        fn op_families(&self) -> &'static [ &'static str ] {
+            &[ "core", "lir", "mir" ]
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! canonic {
     () => {
         fn is_canonic(&self) -> bool {

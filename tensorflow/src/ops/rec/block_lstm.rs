@@ -30,9 +30,10 @@ tract_linalg::impl_dyn_hash!(BlockLSTM);
 
 impl Op for BlockLSTM {
     fn name(&self) -> Cow<str> {
-        "tf.BlockLSTM".into()
+        "BlockLSTM".into()
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 
@@ -261,7 +262,7 @@ impl TypedOp for BlockLSTM {
 
         wire!(xh = array::TypedConcat::concat_vars(1, 2), x, h_prev);
 
-        wire!(i_ci_f_o_1 = matmul::logic::MatMulUnary::new(w, true, true, true, None), xh);
+        wire!(i_ci_f_o_1 = matmul::mir::MatMulUnary::new(w, true, true, true, None), xh);
         wire!(i_ci_f_o = math::add::unary(b.into_arc_tensor()), i_ci_f_o_1);
 
         wire!(i_1 = array::Slice::new(1, 0, cell_size), i_ci_f_o);
@@ -303,7 +304,7 @@ impl TypedOp for BlockLSTM {
             })
         }
 
-        let scan = scan::TypedScan::new(body, input_mapping, output_mapping, Some(0))?;
+        let scan = scan::Scan::new(body, input_mapping, output_mapping, Some(0))?;
         let scan = patch.wire_node(&*node.name, scan, &*outer_inputs)?;
 
         for (ix, o) in scan.iter().enumerate() {

@@ -60,6 +60,7 @@ impl Op for GRU {
         Validation::Rounding
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 
@@ -310,7 +311,7 @@ impl InferenceRulesOp for GRU {
 
         let scan_outputs = target.wire_node(
             &*node.name,
-            ops::scan::TypedScan::new(
+            ops::scan::Scan::new(
                 body,
                 input_mapping,
                 vec![output_mapping],

@@ -1,4 +1,13 @@
 #[macro_export]
+macro_rules! op_hir {
+    () => {
+        fn op_families(&self) -> &'static [ &'static str ] {
+            &[ "core" ]
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! to_typed {
     () => {
         fn to_typed(

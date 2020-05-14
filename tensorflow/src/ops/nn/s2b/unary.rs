@@ -26,6 +26,7 @@ impl Op for SpaceToBatchUnary {
         "SpaceToBatchUnary".into()
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 
@@ -114,6 +115,7 @@ impl Op for BatchToSpaceUnary {
         "BatchToSpaceUnary".into()
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 

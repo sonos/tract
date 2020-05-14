@@ -116,6 +116,7 @@ impl Op for Reduce {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axes: {:?}", self.axes)])
     }
+    op_core_mir!();
     canonic!();
     op_as_typed_op!();
     op_as_pulsed_op!();

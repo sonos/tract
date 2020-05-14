@@ -94,6 +94,7 @@ impl Op for Delay {
     }
 
     canonic!();
+    op_core_lir_mir!();
     impl_op_same_as!();
     op_as_typed_op!();
     op_as_pulsed_op!();

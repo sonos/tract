@@ -23,9 +23,10 @@ tract_linalg::impl_dyn_hash!(Renorm);
 
 impl Op for Renorm {
     fn name(&self) -> std::borrow::Cow<str> {
-        "kaldi.Renorm".into()
+        "Renorm".into()
     }
 
+    op_kaldi!();
     op_as_typed_op!();
 }
 

@@ -65,7 +65,7 @@ impl BatchNorm {
             x.slice_axis_mut(tract_ndarray::Axis(c_axis), (c..=c).into())
                 .mapv_inplace(|x| x * slope[c] + intercept[c]);
         }
-        return Ok(tvec!(x.into_arc_tensor()));
+        Ok(tvec!(x.into_arc_tensor()))
     }
 }
 
@@ -74,6 +74,7 @@ impl Op for BatchNorm {
         "BatchNorm".into()
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 

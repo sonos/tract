@@ -255,7 +255,7 @@ impl ConvUnary {
 
         wire = model.wire_node(
             format!("{}-matmatmul", name),
-            matmul::phy::MatMatMulUnaryFinite {
+            matmul::lir::MatMatMulUnaryFinite {
                 c_trans: true,
                 bc_c_shape: output_shape.shape.clone(),
                 c_fact: TypedFact::dt_shape(TC::datum_type(), &*output_shape.shape)?,
@@ -409,7 +409,7 @@ impl ConvUnary {
 
 impl Op for ConvUnary {
     fn name(&self) -> Cow<str> {
-        "ConvUnary".into()
+        "Conv".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -430,6 +430,7 @@ impl Op for ConvUnary {
     }
 
     canonic!();
+    op_core_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }

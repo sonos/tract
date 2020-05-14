@@ -24,7 +24,7 @@ tract_linalg::impl_dyn_hash!(Codegen);
 
 impl Op for Codegen {
     fn name(&self) -> Cow<str> {
-        "Codegen".into()
+        "Scan".into()
     }
 
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
@@ -47,6 +47,7 @@ impl Op for Codegen {
         Ok(lines)
     }
 
+    op_core_lir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

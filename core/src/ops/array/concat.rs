@@ -62,6 +62,7 @@ impl Op for TypedConcat {
         "Concat".into()
     }
 
+    op_core_lir_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
     canonic!();
@@ -364,6 +365,7 @@ impl Op for PulsedSameAxisConcat {
         "PulsedSameAxisConcat".into()
     }
 
+    op_core_lir_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }

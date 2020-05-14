@@ -136,6 +136,7 @@ impl Op for Gemm {
         "Gemm".into()
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 

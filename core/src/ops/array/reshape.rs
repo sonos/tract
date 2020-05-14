@@ -18,6 +18,7 @@ impl Op for TypedReshape {
         Ok(vec![format!("to shape: {}", self.shape.iter().join("x"))])
     }
 
+    op_core_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -67,13 +68,14 @@ pub struct FiniteReshape {
 
 impl Op for FiniteReshape {
     fn name(&self) -> Cow<str> {
-        "FiniteReshape".into()
+        "Reshape".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("to shape: {}", self.shape.iter().join("x"))])
     }
 
+    op_core_lir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

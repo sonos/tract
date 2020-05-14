@@ -40,9 +40,10 @@ impl Range {
 
 impl Op for Range {
     fn name(&self) -> Cow<str> {
-        "tf.Range".into()
+        "Range".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 
