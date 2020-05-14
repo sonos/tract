@@ -348,6 +348,9 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
                 .help("Select one node to dump"),
         )
         .arg(Arg::with_name("const").long("const").help("also display consts nodes"))
+        .arg(Arg::with_name("info").long("info").help("show op inner information"))
+        .arg(Arg::with_name("io-long").long("io-long").help("show full i/o information"))
+        .arg(Arg::with_name("io-none").long("io-none").help("hide i/o information"))
         .arg(Arg::with_name("outlet-labels").long("outlet-labels").help("display outlet labels"))
         .arg(
             Arg::with_name("invariants")
@@ -362,10 +365,10 @@ pub enum SomeGraphDef {
     NoGraphDef,
     #[cfg(feature = "kaldi")]
     Kaldi(tract_kaldi::KaldiProtoModel),
-    #[cfg(feature = "tf")]
-    Tf(GraphDef),
     #[cfg(feature = "onnx")]
     Onnx(tract_onnx::pb::ModelProto, tract_onnx::model::ParseResult),
+    #[cfg(feature = "tf")]
+    Tf(GraphDef),
 }
 
 /// Structure holding the parsed parameters.
@@ -680,7 +683,8 @@ impl Parameters {
                     return Ok(Box::new(raw_model) as _);
                 }
                 info_usage("after analyse", probe);
-                #[cfg(feature = "tf")] {
+                #[cfg(feature = "tf")]
+                {
                     if let Some(ext) = tf_model_extensions {
                         info!("Running 'tf-preproc'");
                         raw_model = ext.preproc(raw_model)?;
@@ -812,6 +816,14 @@ pub fn display_options_from_clap(
         expect_canonic: root_matches.value_of("pass").unwrap_or("declutter") == "declutter"
             && !root_matches.is_present("optimize"),
         outlet_labels: matches.is_present("outlet-labels"),
+        io: if matches.is_present("io-long") {
+            display_graph::Io::Long
+        } else if matches.is_present("io-none") {
+            display_graph::Io::None
+        } else {
+            display_graph::Io::Short
+        },
+        info: matches.is_present("info"),
     })
 }
 

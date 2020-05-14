@@ -8,11 +8,11 @@ use tract_core::model::{InletId, OutletId};
 use tract_core::ops::konst::Const;
 
 #[derive(Clone)]
-struct Wire {
-    outlet: OutletId,
-    color: Option<Style>,
-    should_change_color: bool,
-    successors: Vec<InletId>,
+pub struct Wire {
+    pub outlet: OutletId,
+    pub color: Option<Style>,
+    pub should_change_color: bool,
+    pub successors: Vec<InletId>,
 }
 
 impl fmt::Debug for Wire {
@@ -28,9 +28,9 @@ impl fmt::Debug for Wire {
 
 #[derive(Clone, Default)]
 pub struct DrawingState {
-    current_color: Style,
-    latest_node_color: Style,
-    wires: Vec<Wire>,
+    pub current_color: Style,
+    pub latest_node_color: Style,
+    pub wires: Vec<Wire>,
 }
 
 impl DrawingState {

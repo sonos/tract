@@ -2,6 +2,7 @@ use crate::display_graph::*;
 use crate::errors::*;
 use crate::{Model, Parameters};
 use tract_hir::internal::*;
+use tract_core::itertools::Itertools;
 
 fn parse_costs(spec: &str) -> TVec<(Cost, usize)> {
     spec.split(",")
@@ -61,9 +62,9 @@ fn handle_t(
                     .inspect(|(c, i)| {
                         *total.entry(*c).or_insert(0.to_dim()) += i.clone() * multiplier as usize
                     })
-                    .map(|(c, i)| format!("{:?} {}", c, i))
-                    .collect();
-                display_graph.add_node_section(&full_id, rows)?;
+                    .map(|(c, i)| format!("{:?}: {}", c, i))
+                    .join(", ");
+                display_graph.add_node_section(&full_id, vec!(rows))?;
             }
 
             assert_eq!(
@@ -85,7 +86,7 @@ fn handle_t(
     }
     display_graph.render()?;
     for (c, i) in &total {
-        println!("{:?}: {:?}", c, i);
+        println!("{:?}: {}", c, i);
     }
     if let Some(assert) = assert {
         let assert: HashMap<Cost, TDim> = assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();
