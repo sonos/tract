@@ -77,7 +77,7 @@ where
     if params.machine_friendly {
         println!("real: {}", dur.as_secs_f64());
     } else {
-        println!("Bench ran {} times.\n{}", iters, dur_avg_multiline(dur));
+        println!("Bench ran {} times, {}.", iters, dur_avg(dur));
     }
 
     Ok(())
@@ -191,7 +191,7 @@ where
 
     let sum = profile.summed();
     for (ix, measure) in profile.nodes.iter() {
-        display_graph.add_node_label(&ix, dur_avg_oneline_ratio(*measure, sum))?;
+        display_graph.add_node_label(&ix, dur_avg_ratio(*measure, sum))?;
     }
 
     display_graph.render()?;
@@ -199,8 +199,8 @@ where
 
     profile.print_most_consuming_ops(model)?;
 
-    println!("Entire network performance: {}", dur_avg_oneline(entire));
-    println!("Accounted by ops: {}", dur_avg_oneline_ratio(profile.summed(), entire));
+    println!("Entire network performance: {}", dur_avg(entire));
+    println!("Accounted by ops: {}", dur_avg_ratio(profile.summed(), entire));
 
     if log_enabled!(Info) {
         println!(

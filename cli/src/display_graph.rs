@@ -240,11 +240,10 @@ impl<'a> DisplayGraph<'a> {
                     && model.outlet_fact_format(node_id.into())
                         == model.outlet_fact_format(model.node_inputs(node_id)[0]);
                 if !same {
-                    let style = if let Some(ds) = drawing_state {
-                        ds.wires.last().unwrap().color.unwrap()
-                    } else {
-                        White.into()
-                    };
+                    let style = drawing_state
+                        .and_then(|w| w.wires.last())
+                        .and_then(|w| w.color)
+                        .unwrap_or(White.into());
                     for ix in 0..model.node_output_count(node_id) {
                         prefix!();
                         println!(
