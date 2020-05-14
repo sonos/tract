@@ -187,6 +187,7 @@ impl Op for Reduce {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axes: {:?} keep_dims: {}", self.axes, self.keep_dims)])
     }
+    op_hir!();
     not_a_typed_op!();
     not_a_pulsed_op!();
 }

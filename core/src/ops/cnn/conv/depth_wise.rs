@@ -16,9 +16,10 @@ tract_linalg::impl_dyn_hash!(DepthWise);
 
 impl Op for DepthWise {
     fn name(&self) -> Cow<str> {
-        "Conv::DepthWise".into()
+        "DepthWiseConv".into()
     }
 
+    op_core_lir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

@@ -39,6 +39,7 @@ impl Op for GlobalAvgPool {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+    op_core_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -100,6 +101,7 @@ impl Op for GlobalLpPool {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+    op_core_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -151,6 +153,7 @@ impl Op for GlobalMaxPool {
     fn name(&self) -> Cow<str> {
         "GlobalMaxPool".into()
     }
+    op_core_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

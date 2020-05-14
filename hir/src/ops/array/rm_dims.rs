@@ -34,6 +34,7 @@ impl Op for RmDims {
         Ok(vec![format!("axes: {:?}", self.axes)])
     }
 
+    op_hir!();
     not_a_typed_op!();
 }
 

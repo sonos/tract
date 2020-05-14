@@ -33,9 +33,10 @@ impl Slice {
 
 impl Op for Slice {
     fn name(&self) -> Cow<str> {
-        "tf.Slice".into()
+        "Slice".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

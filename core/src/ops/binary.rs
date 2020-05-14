@@ -72,18 +72,20 @@ impl Hash for Box<dyn BinMiniOp> {
     }
 }
 
+// FIXME: should move to hir ?
 #[derive(Debug, Clone, Hash)]
 pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
 
 impl Op for InferenceBinOp {
     fn name(&self) -> Cow<str> {
-        format!("{}Inference", self.0.name()).into()
+        self.0.name().into()
     }
 
     fn validation(&self) -> Validation {
         self.0.validation()
     }
 
+    op_core!();
     not_a_typed_op!();
     not_a_pulsed_op!();
 }
@@ -102,7 +104,7 @@ tract_linalg::impl_dyn_hash!(TypedBinOp);
 
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
-        format!("{}TypedBinOp", self.0.name()).into()
+        self.0.name().into()
     }
 
     fn validation(&self) -> Validation {
@@ -110,6 +112,7 @@ impl Op for TypedBinOp {
     }
 
     canonic!();
+    op_core_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
@@ -293,7 +296,7 @@ tract_linalg::impl_dyn_hash!(UnaryOp);
 
 impl Op for UnaryOp {
     fn name(&self) -> Cow<str> {
-        format!("{}Unary", self.mini_op.name()).into()
+        self.mini_op.name().into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -305,6 +308,7 @@ impl Op for UnaryOp {
     }
 
     canonic!();
+    op_core_lir_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
@@ -450,7 +454,7 @@ tract_linalg::impl_dyn_hash!(MergeOp);
 
 impl Op for MergeOp {
     fn name(&self) -> Cow<str> {
-        format!("{}Merge", self.0.name()).into()
+        self.0.name().into()
     }
 
     fn validation(&self) -> Validation {
@@ -458,6 +462,7 @@ impl Op for MergeOp {
     }
 
     canonic!();
+    op_core_lir_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
@@ -619,6 +624,7 @@ impl Op for MergeOpUnicast {
         format!("{}MergeUnicast", self.0.name()).into()
     }
 
+    op_core_lir_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }

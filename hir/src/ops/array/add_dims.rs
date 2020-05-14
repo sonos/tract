@@ -25,6 +25,7 @@ impl Op for AddDims {
         Ok(vec![format!("Axes: {:?}", self.axes)])
     }
 
+    op_hir!();
     not_a_typed_op!();
 }
 

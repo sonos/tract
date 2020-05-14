@@ -58,6 +58,7 @@ impl Op for RNN {
         Validation::Rounding
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 
@@ -263,7 +264,7 @@ impl InferenceRulesOp for RNN {
 
         let scan_outputs = target.wire_node(
             &*node.name,
-            scan::TypedScan::new(
+            scan::Scan::new(
                 body,
                 input_mapping,
                 vec![output_mapping],

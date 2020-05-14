@@ -221,9 +221,10 @@ impl StatelessOp for StridedSlice {
 
 impl Op for StridedSlice {
     fn name(&self) -> Cow<str> {
-        "tf.StridedSliceD".into()
+        "StridedSlice".into()
     }
 
+    op_hir!();
     not_a_typed_op!();
 }
 

@@ -19,6 +19,7 @@ impl Op for ConstantOfShape {
         Ok(vec![format!("{:?}", self.scalar)])
     }
 
+    op_hir!();
     not_a_typed_op!();
     not_a_pulsed_op!();
 }

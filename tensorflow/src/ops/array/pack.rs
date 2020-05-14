@@ -47,9 +47,10 @@ impl Pack {
 
 impl Op for Pack {
     fn name(&self) -> Cow<str> {
-        "tf.Pack".into()
+        "Pack".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

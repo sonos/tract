@@ -94,6 +94,7 @@ impl Op for Pad {
     }
 
     canonic!();
+    op_core_lir_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -300,6 +301,7 @@ impl Op for PulsePad {
     }
 
     canonic!();
+    op_core_lir_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }

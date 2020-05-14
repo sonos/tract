@@ -43,9 +43,10 @@ pub fn reduce(pb: &NodeDef, op: nn::Reducer) -> TractResult<Box<dyn InferenceOp>
 
 impl Op for Reduce {
     fn name(&self) -> Cow<str> {
-        format!("tf.{:?}", self.reducer).into()
+        format!("{:?}", self.reducer).into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

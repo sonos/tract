@@ -24,9 +24,10 @@ tract_linalg::impl_dyn_hash!(TypedSource);
 
 impl Op for TypedSource {
     fn name(&self) -> Cow<str> {
-        "TypedSource".into()
+        "Source".into()
     }
     canonic!();
+    op_core_lir_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -92,6 +93,7 @@ impl Op for PulsedSource {
         "PulsedSource".into()
     }
     canonic!();
+    op_core_lir_mir!();
     not_a_typed_op!();
     op_as_pulsed_op!();
 }

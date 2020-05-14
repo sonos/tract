@@ -35,9 +35,10 @@ tract_linalg::impl_dyn_hash!(MatMulInteger);
 
 impl Op for MatMulInteger {
     fn name(&self) -> Cow<str> {
-        "onnx.MatMulInteger".into()
+        "MatMulInteger".into()
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 
@@ -136,9 +137,10 @@ tract_linalg::impl_dyn_hash!(QLinearMatMul);
 
 impl Op for QLinearMatMul {
     fn name(&self) -> Cow<str> {
-        "onnx.QLinearMatMul".into()
+        "QLinearMatMul".into()
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 

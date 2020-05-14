@@ -20,9 +20,10 @@ impl StatelessOp for ConcatV2 {
 
 impl Op for ConcatV2 {
     fn name(&self) -> Cow<str> {
-        "tf.ConcatV2".into()
+        "ConcatV2".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

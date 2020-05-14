@@ -66,7 +66,7 @@ tract_linalg::impl_dyn_hash!(VariableV2);
 
 impl Op for VariableV2 {
     fn name(&self) -> Cow<str> {
-        "tf.VariableV2".into()
+        "VariableV2".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -77,6 +77,7 @@ impl Op for VariableV2 {
         }
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 
@@ -136,9 +137,10 @@ tract_linalg::impl_dyn_hash!(Assign);
 
 impl Op for Assign {
     fn name(&self) -> Cow<str> {
-        "tf.Assign".into()
+        "Assign".into()
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 

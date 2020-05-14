@@ -53,9 +53,10 @@ impl Slice1 {
 
 impl Op for Slice1 {
     fn name(&self) -> Cow<str> {
-        "onnx.Slice1".into()
+        "Slice1".into()
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 

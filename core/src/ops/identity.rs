@@ -8,6 +8,7 @@ impl Op for Identity {
         "Identity".into()
     }
 
+    op_core_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }

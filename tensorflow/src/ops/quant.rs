@@ -38,9 +38,10 @@ impl FakeQuantWithMinMaxVars {
 
 impl Op for FakeQuantWithMinMaxVars {
     fn name(&self) -> Cow<str> {
-        "tf.FakeQuantWithMinMaxVars".into()
+        "FakeQuantWithMinMaxVars".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

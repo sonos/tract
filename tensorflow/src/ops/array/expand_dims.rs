@@ -25,9 +25,10 @@ impl ExpandDims {
 
 impl Op for ExpandDims {
     fn name(&self) -> Cow<str> {
-        "tf.ExpandDims".into()
+        "ExpandDims".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

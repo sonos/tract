@@ -35,6 +35,7 @@ impl<D: DimLike + ToDim + Hash> Op for Slice<D> {
     }
 
     canonic!();
+    op_core_lir_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 
@@ -222,6 +223,7 @@ impl Op for PulsedAxisSlice {
         Ok(vec![format!("axis:{}, skip:{} take:{}", self.axis, self.skip, self.take)])
     }
 
+    op_core_lir_mir!();
     not_a_typed_op!();
     op_as_pulsed_op!();
 }

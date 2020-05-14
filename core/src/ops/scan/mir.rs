@@ -1,9 +1,9 @@
-use super::codegen::{Codegen, CodegenOpParams};
+use super::lir::{Codegen, CodegenOpParams};
 
 use super::*;
 
 #[derive(Debug, Clone, Default, Hash)]
-pub struct TypedScan {
+pub struct Scan {
     pub skip: usize,
     pub body: TypedModel,
     decluttered: bool,
@@ -12,9 +12,9 @@ pub struct TypedScan {
     pub output_mapping: Vec<OutputMapping<TDim, TDim>>,
 }
 
-tract_linalg::impl_dyn_hash!(TypedScan);
+tract_linalg::impl_dyn_hash!(Scan);
 
-impl TypedScan {
+impl Scan {
     pub fn to_codegen_op(&self) -> TractResult<Codegen> {
         trace!("Optimizing(Codegen) inner model");
         let plan = SimplePlan::new(self.body.clone().into_optimized()?)?;
@@ -65,10 +65,10 @@ impl TypedScan {
         input_mapping: Vec<InputMapping<TDim>>,
         output_mapping: Vec<OutputMapping<TDim, TDim>>,
         seq_length_input_slot: Option<usize>,
-    ) -> TractResult<TypedScan> {
+    ) -> TractResult<Scan> {
         assert_eq!(input_mapping.len(), body.input_outlets()?.len());
         assert_eq!(output_mapping.len(), body.output_outlets()?.len());
-        Ok(TypedScan {
+        Ok(Scan {
             skip: 0,
             body,
             decluttered: false,
@@ -527,7 +527,7 @@ impl TypedScan {
                 }
             };
         }
-        let op = Some(Box::new(TypedScan {
+        let op = Some(Box::new(Scan {
             body,
             input_mapping,
             output_mapping,
@@ -538,9 +538,9 @@ impl TypedScan {
     }
 }
 
-impl Op for TypedScan {
+impl Op for Scan {
     fn name(&self) -> Cow<str> {
-        "Scan::Typed".into()
+        "Scan".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -567,11 +567,13 @@ impl Op for TypedScan {
         Validation::Rounding
     }
 
+    op_core_mir!();
+    canonic!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
 
-impl StatefullOp for TypedScan {
+impl StatefullOp for Scan {
     fn state(
         &self,
         session: &mut SessionState,
@@ -581,7 +583,7 @@ impl StatefullOp for TypedScan {
     }
 }
 
-impl TypedOp for TypedScan {
+impl TypedOp for Scan {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
@@ -750,7 +752,7 @@ impl TypedOp for TypedScan {
     }
 }
 
-impl PulsedOp for TypedScan {
+impl PulsedOp for Scan {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let (output_body_ix, output_mapping) = self
             .output_mapping

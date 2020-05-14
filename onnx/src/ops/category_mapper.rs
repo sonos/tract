@@ -53,9 +53,12 @@ impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> Hash for CategoryMapper<Sr
 
 impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> Op for CategoryMapper<Src, Dst> {
     fn name(&self) -> Cow<str> {
-        format!("onnx-ml.CategoryMapper<{:?},{:?}>", Src::datum_type(), Dst::datum_type()).into()
+        format!("CategoryMapper<{:?},{:?}>", Src::datum_type(), Dst::datum_type()).into()
     }
 
+    fn op_families(&self) -> &'static [ &'static str ] {
+        &[ "onnx-ml" ]
+    }
     op_as_typed_op!();
 }
 

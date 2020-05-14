@@ -46,6 +46,7 @@ impl Op for Split {
         "Split".into()
     }
 
+    op_hir!();
     not_a_typed_op!();
     not_a_pulsed_op!();
 }

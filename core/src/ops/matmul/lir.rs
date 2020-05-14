@@ -43,6 +43,7 @@ where
         other.downcast_ref::<Self>().map(|other| other == self).unwrap_or(false)
     }
 
+    op_core_lir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -125,7 +126,7 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn name(&self) -> Cow<str> {
-        "MatMatMulUnaryFinite".into()
+        "MatMatMul".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -144,6 +145,7 @@ where
         Ok(infos)
     }
 
+    op_core_lir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

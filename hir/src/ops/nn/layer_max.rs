@@ -46,6 +46,7 @@ impl Op for LayerHardmax {
         Ok(vec![format!("axis: {}", self.axis)])
     }
 
+    op_hir!();
     op_as_typed_op!();
 }
 
@@ -108,6 +109,7 @@ impl Op for LayerLogSoftmax {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+    op_hir!();
     not_a_typed_op!();
 }
 
@@ -193,6 +195,7 @@ impl Op for LayerSoftmax {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+    op_hir!();
     not_a_typed_op!();
 }
 

@@ -23,9 +23,10 @@ tract_linalg::impl_dyn_hash!(LstmNonlin);
 
 impl Op for LstmNonlin {
     fn name(&self) -> std::borrow::Cow<str> {
-        "kaldi.LstmNonlin".into()
+        "LstmNonlin".into()
     }
 
+    op_kaldi!();
     op_as_typed_op!();
 }
 

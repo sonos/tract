@@ -333,6 +333,7 @@ impl Op for MatMul {
         "MatMul".into()
     }
 
+    op_core_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -422,7 +423,7 @@ tract_linalg::impl_dyn_hash!(MatMulUnary);
 
 impl Op for MatMulUnary {
     fn name(&self) -> Cow<str> {
-        "MatMulUnary".into()
+        "MatMul".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -440,6 +441,7 @@ impl Op for MatMulUnary {
     }
 
     canonic!();
+    op_core_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
@@ -835,7 +837,7 @@ where
         packed_b_shape.push(geo.mm.as_mmm().b_pack().len());
         wire = patch.wire_node(
             format!("{}-pack", &*node.name),
-            phy::MatMatMulPackB {
+            lir::MatMatMulPackB {
                 pack_b: geo.mm.as_mmm().b_pack().clone(),
                 col_stride: if b_trans { *b_shape.last().unwrap() as isize } else { 1 },
                 row_stride: if b_trans { 1 } else { *b_shape.last().unwrap() as isize },
@@ -865,7 +867,7 @@ where
     };
     wire = patch.wire_node(
         format!("{}-matmatmul", &*node.name),
-        phy::MatMatMulUnaryFinite {
+        lir::MatMatMulUnaryFinite {
             c_trans,
             bc_c_shape: geo.bc_c_shape,
             c_fact: TypedFact::dt_shape(TC::datum_type(), &*geo.final_c_shape)?,

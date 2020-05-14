@@ -55,6 +55,7 @@ impl Op for Downsample {
         Ok(vec![format!("axis:{} stride:{} modulo:{}", self.axis, self.stride, self.modulo)])
     }
 
+    op_core_mir!();
     impl_op_same_as!();
     op_as_typed_op!();
     op_as_pulsed_op!();
@@ -133,7 +134,7 @@ fn pull_downsample_up(
             return array::pull_downsample_over_axis_op(model, prec, other_op, down_node, down_op);
         } else if let Some(conv_op) = prec.op_as::<ops::cnn::conv::ConvUnary>() {
             return conv::fuse_downsample_into_conv(model, prec, conv_op, down_node, down_op);
-        } else if let Some(other_op) = prec.op_as::<ops::scan::TypedScan>() {
+        } else if let Some(other_op) = prec.op_as::<ops::scan::Scan>() {
             return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
         } else if let Some(above_axis) = invariants.unary_track_axis_up(down_op.axis, false) {
             let mut patch = TypedModelPatch::default();

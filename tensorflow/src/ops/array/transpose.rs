@@ -37,9 +37,10 @@ impl Transpose {
 
 impl Op for Transpose {
     fn name(&self) -> Cow<str> {
-        "tf.Transpose".into()
+        "Transpose".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 

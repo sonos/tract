@@ -52,9 +52,10 @@ impl Affine {
 
 impl Op for Affine {
     fn name(&self) -> std::borrow::Cow<str> {
-        "kaldi.Affine".into()
+        "Affine".into()
     }
 
+    op_kaldi!();
     not_a_typed_op!();
 }
 

@@ -39,6 +39,7 @@ impl Op for AvgPool {
     }
 
     canonic!();
+    op_core_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }
@@ -149,9 +150,10 @@ impl AvgPoolFixed {
 
 impl Op for AvgPoolFixed {
     fn name(&self) -> Cow<str> {
-        "AvgPool::Fixed".into()
+        "AvgPool".into()
     }
 
+    op_core_lir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }

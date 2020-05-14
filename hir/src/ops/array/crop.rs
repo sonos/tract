@@ -15,6 +15,7 @@ impl Op for Crop {
         "Crop".into()
     }
 
+    op_hir!();
     not_a_typed_op!();
     not_a_pulsed_op!();
 }

@@ -1,10 +1,10 @@
 use crate::internal::*;
 use std::fmt;
 
-mod codegen;
-mod typed;
+mod lir;
+mod mir;
 
-pub use typed::TypedScan;
+pub use mir::Scan;
 
 #[derive(Clone, new, Hash)]
 pub enum InputMapping<C: Clone> {

@@ -44,9 +44,10 @@ impl Compress {
 
 impl Op for Compress {
     fn name(&self) -> Cow<str> {
-        "onnx.Compress".into()
+        "Compress".into()
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 

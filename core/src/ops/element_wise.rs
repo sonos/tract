@@ -79,6 +79,7 @@ impl Op for ElementWiseOp {
     }
 
     canonic!();
+    op_core_lir_mir!();
     op_as_typed_op!();
     op_as_pulsed_op!();
 }

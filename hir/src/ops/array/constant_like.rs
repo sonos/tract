@@ -26,6 +26,7 @@ impl Op for ConstantLike {
         "ConstantLike".into()
     }
 
+    op_hir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
@@ -103,6 +104,7 @@ impl Op for EyeLike {
         "EyeLike".into()
     }
 
+    op_hir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
 }
