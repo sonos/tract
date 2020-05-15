@@ -621,7 +621,7 @@ tract_linalg::impl_dyn_hash!(MergeOpUnicast);
 
 impl Op for MergeOpUnicast {
     fn name(&self) -> Cow<str> {
-        format!("{}MergeUnicast", self.0.name()).into()
+        self.0.name().into()
     }
 
     op_core_lir_mir!();

@@ -283,7 +283,7 @@ impl TypedOp for Codegen {
         Ok(outputs)
     }
 
-    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f32)> {
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f64)> {
         let iters = {
             let (outside_slot, axis, chunk) = self
                 .input_mapping
@@ -294,8 +294,10 @@ impl TypedOp for Codegen {
                 })
                 .next()
                 .unwrap();
-            inputs[outside_slot].shape.dim(axis).to_integer().unwrap() as f32 / chunk as f32
+            let big = 1_000_000;
+            let dominator = inputs[outside_slot].shape.dim(axis).eval(big).unwrap() as f64 / big as f64;
+            dominator / chunk as f64
         };
-        vec![("loop".into(), iters as f32)]
+        vec![("loop".into(), iters as f64)]
     }
 }

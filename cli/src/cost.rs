@@ -48,7 +48,7 @@ fn handle_t(
         DisplayGraph::from_model_and_options(model as &dyn Model, options.into())?
             .with_graph_def(&params.graph)?;
 
-    let mut queue: Vec<(&TypedModel, TVec<usize>, f32)> = vec![(model, tvec!(), 1f32)];
+    let mut queue: Vec<(&TypedModel, TVec<usize>, f64)> = vec![(model, tvec!(), 1.0)];
     while let Some((model, prefix, multiplier)) = queue.pop() {
         let mut full_id: TVec<usize> = prefix.iter().cloned().collect();
         full_id.push(0);

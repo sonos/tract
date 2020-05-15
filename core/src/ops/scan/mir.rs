@@ -729,7 +729,7 @@ impl TypedOp for Scan {
         target.wire_node(&*node.name, op, &pulse_inputs)
     }
 
-    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f32)> {
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f64)> {
         self.to_codegen_op()
             .unwrap()
             .nested_model_multipliers(inputs)
