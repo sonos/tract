@@ -371,6 +371,14 @@ impl<'a> DisplayGraph<'a> {
         Ok(())
     }
 
+    pub fn node_name(&self, id: &[usize]) -> CliResult<&str> {
+        if id.len() == 1 {
+            Ok(self.model.node_name(id[0]))
+        } else {
+            self.node_nested_graphs.get(&id[0]).unwrap()[0].1.node_name(&id[1..])
+        }
+    }
+
     pub fn add_left_column_label<S: Into<String>>(&mut self, id: &[usize], label: S) -> CliResult<()> {
         if id.len() == 1 {
             self.left_column_labels.entry(id[0]).or_insert(vec![]).push(label.into());

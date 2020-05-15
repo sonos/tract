@@ -1,4 +1,6 @@
+use std::collections::HashSet;
 use std::fmt::{Debug, Display};
+use tract_itertools::Itertools;
 
 use ansi_term::Colour::*;
 use log::Level::Info;
@@ -179,12 +181,6 @@ where
 
     profile.scale((iters as f64).recip());
 
-    /*
-    if display_options == DisplayOptions::default() {
-        display_options.node_ids = Some(profile.nodes_above(entire.scale(0.01))?);
-    };
-    */
-
     display_options.left_column_width = 20;
 
     let mut display_graph = crate::display_graph::DisplayGraph::from_model_and_options(
@@ -194,8 +190,18 @@ where
     .with_graph_def(&params.graph)?;
 
     let sum = profile.summed();
+    let max = profile.nodes.values().max().unwrap();
     for (ix, measure) in profile.nodes.iter() {
-        display_graph.add_left_column_label(&ix, format!("{}  ", dur_avg_ratio(*measure, sum)))?;
+        let ratio = measure.as_secs_f64() / sum.as_secs_f64();
+        let ratio_for_color = measure.as_secs_f64() / max.as_secs_f64();
+        let color = colorous::RED_YELLOW_GREEN.eval_continuous(1.0 - ratio_for_color);
+        let color = ansi_term::Color::RGB(color.r, color.g, color.b);
+        let label = format!(
+            "{:7.3} ms/i {}  ",
+            measure.as_secs_f64() * 1e3,
+            color.bold().paint(format!("{:>4.1}%", ratio * 100.0))
+        );
+        display_graph.add_left_column_label(&ix, label)?;
     }
 
     display_graph.render()?;
@@ -203,8 +209,47 @@ where
 
     profile.print_most_consuming_ops(model)?;
 
+    let prefixes = profile
+        .nodes
+        .keys()
+        .map(|ids| display_graph.node_name(ids).unwrap())
+        .flat_map(prefixes_for)
+        .collect::<HashSet<String>>()
+        .into_iter()
+        .sorted()
+        .collect::<Vec<String>>();
+
+    let mut by_prefix = prefixes
+        .iter()
+        .map(|p| (p.clone(), Duration::default()))
+        .collect::<HashMap<String, Duration>>();
+    for (long_id, dur) in profile.nodes.iter() {
+        let name = display_graph.node_name(long_id)?;
+        for p in &*prefixes {
+            if name.starts_with(p) {
+                by_prefix.get_mut(p).map(|p| *p = *p + *dur);
+            }
+        }
+    }
+
+    println!("");
+    println!("Logical groups:");
+    for prefix in prefixes {
+        let measure = by_prefix[&*prefix];
+        let ratio = measure.as_secs_f64() / sum.as_secs_f64();
+        let color = colorous::RED_YELLOW_GREEN.eval_continuous(1.0 - ratio);
+        let color = ansi_term::Color::RGB(color.r, color.g, color.b);
+        let label = format!(
+            "{:7.3} ms/i {}  ",
+            measure.as_secs_f64() * 1e3,
+            color.bold().paint(format!("{:>4.1}%", ratio * 100.0))
+        );
+        println!("{} {:>3$} {}", label, "", prefix, prefix.split(".").count() * 3 );
+    }
+
+    println!("");
+    println!("Not accounted by ops: {}", dur_avg_ratio(entire - profile.summed(), entire));
     println!("Entire network performance: {}", dur_avg(entire));
-    println!("Accounted by ops: {}", dur_avg_ratio(profile.summed(), entire));
 
     if log_enabled!(Info) {
         println!(
@@ -216,4 +261,9 @@ where
     }
 
     Ok(())
+}
+
+fn prefixes_for(s: &str) -> impl Iterator<Item = String> + '_ {
+    let split = s.split(".").count() - 1;
+    (0..split).map(move |n| s.split(".").take(n).join("."))
 }

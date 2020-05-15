@@ -32,6 +32,7 @@ tract-hir = { path = "../hir" }
 tract-kaldi = { optional = true, path = "../kaldi" }
 tract-onnx = { optional = true, path = "../onnx" }
 tract-tensorflow = { optional = true, path = "../tensorflow" }
+colorous = "1.0.2"
 
 [features]
 default = ["kaldi", "onnx", "tf"]
