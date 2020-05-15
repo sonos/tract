@@ -40,9 +40,11 @@ impl ProfileData {
         Ok(())
     }
 
+    /*
     pub fn nodes_above(&self, dur: Duration) -> CliResult<Vec<TVec<usize>>> {
         Ok(self.nodes.iter().filter(|n| *n.1 > dur).map(|n| n.0.clone()).collect())
     }
+    */
 
     fn op_name_for_id(model: &dyn Model, id: &[usize]) -> CliResult<String> {
         if id.len() == 1 {
@@ -72,8 +74,8 @@ impl ProfileData {
         operations.sort_by(|(_, a), (_, b)| b.cmp(&a));
         for (operation, measure) in operations.iter().take(5) {
             println!(
-                "{:20} {:3} nodes: {}",
-                Blue.bold().paint(*operation),
+                "{} {:3} nodes: {}",
+                Blue.bold().paint(format!("{:20}", operation)),
                 counters[&**operation],
                 dur_avg_ratio(*measure, sum)
             );

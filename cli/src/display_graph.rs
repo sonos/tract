@@ -42,6 +42,7 @@ pub struct DisplayOptions {
     pub outlet_labels: bool,
     pub io: Io,
     pub info: bool,
+    pub left_column_width: usize,
 }
 
 impl DisplayOptions {
@@ -82,6 +83,7 @@ pub struct DisplayGraph<'a> {
     model: &'a dyn Model,
     prefix: TVec<usize>,
     pub options: Arc<DisplayOptions>,
+    left_column_labels: HashMap<usize, Vec<String>>,
     node_color: HashMap<usize, Style>,
     node_labels: HashMap<usize, Vec<String>>,
     node_sections: HashMap<usize, Vec<Vec<String>>>,
@@ -133,9 +135,10 @@ impl<'a> DisplayGraph<'a> {
         let node_name = model.node_name(node_id);
         let node_op_name = model.node_op(node_id).name();
         // println!("{:?}", model.node_format(node_id));
+        let left_column_pad = format!("{:>1$}", "", self.options.left_column_width);
         if let Some(ref mut ds) = &mut drawing_state {
             for l in ds.draw_node_vprefix(model, node_id, &self.options)? {
-                println!("{}{} ", prefix, l);
+                println!("{}{}{} ", left_column_pad, prefix, l);
             }
         }
         let mut drawing_lines: Box<dyn Iterator<Item = String>> = if let Some(ds) =
@@ -146,11 +149,14 @@ impl<'a> DisplayGraph<'a> {
             let filler = ds.draw_node_vfiller(model, node_id)?;
             Box::new(body.into_iter().chain(suffix.into_iter()).chain(std::iter::repeat(filler)))
         } else {
-            Box::new(std::iter::repeat(String::new()))
+            Box::new(std::iter::repeat(left_column_pad.clone()))
         };
+        let empty = vec!();
+        let mut left_column_labels = self.left_column_labels.get(&node_id).unwrap_or(&empty).iter();
         macro_rules! prefix {
             () => {
-                print!("{}{} ", prefix, drawing_lines.next().unwrap(),)
+                let left = left_column_labels.next().unwrap_or(&left_column_pad);
+                print!("{}{}{} ", left, prefix, drawing_lines.next().unwrap(),)
             };
         };
         prefix!();
@@ -336,6 +342,7 @@ impl<'a> DisplayGraph<'a> {
         }
         Ok(DisplayGraph {
             model,
+            left_column_labels: HashMap::new(),
             prefix: prefix.into(),
             options,
             node_color: HashMap::new(),
@@ -362,6 +369,15 @@ impl<'a> DisplayGraph<'a> {
     pub fn set_node_color<S: Into<Style>>(&mut self, id: usize, color: S) -> CliResult<()> {
         self.node_color.insert(id, color.into());
         Ok(())
+    }
+
+    pub fn add_left_column_label<S: Into<String>>(&mut self, id: &[usize], label: S) -> CliResult<()> {
+        if id.len() == 1 {
+            self.left_column_labels.entry(id[0]).or_insert(vec![]).push(label.into());
+            Ok(())
+        } else {
+            self.node_nested_graphs.get_mut(&id[0]).unwrap()[0].1.add_left_column_label(&id[1..], label)
+        }
     }
 
     pub fn add_node_label<S: Into<String>>(&mut self, id: &[usize], label: S) -> CliResult<()> {

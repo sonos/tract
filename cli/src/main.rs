@@ -803,6 +803,7 @@ pub fn display_options_from_clap(
 ) -> CliResult<DisplayOptions> {
     Ok(DisplayOptions {
         konst: matches.is_present("const"),
+        left_column_width: 0,
         invariants: matches.is_present("invariants"),
         quiet: matches.is_present("quiet"),
         natural_order: matches.is_present("natural-order"),
