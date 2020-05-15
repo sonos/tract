@@ -8,7 +8,7 @@ use crate::errors::*;
 use crate::{Model, Parameters, ProfilingMode};
 
 use crate::format::*;
-use crate::profile::{ ProfileData, Scalable };
+use crate::profile::ProfileData;
 use crate::tensor::make_inputs;
 use std::time::{Duration, Instant};
 
@@ -179,9 +179,13 @@ where
 
     profile.scale((iters as f64).recip());
 
+    /*
     if display_options == DisplayOptions::default() {
         display_options.node_ids = Some(profile.nodes_above(entire.scale(0.01))?);
     };
+    */
+
+    display_options.left_column_width = 20;
 
     let mut display_graph = crate::display_graph::DisplayGraph::from_model_and_options(
         model,
@@ -191,7 +195,7 @@ where
 
     let sum = profile.summed();
     for (ix, measure) in profile.nodes.iter() {
-        display_graph.add_node_label(&ix, dur_avg_ratio(*measure, sum))?;
+        display_graph.add_left_column_label(&ix, format!("{}  ", dur_avg_ratio(*measure, sum)))?;
     }
 
     display_graph.render()?;
