@@ -157,6 +157,16 @@ pub fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<
     values.iter().map(|v| tensor_for_fact(v.borrow(), None)).collect()
 }
 
+pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
+    Ok(make_inputs(
+        &*model
+            .input_outlets()
+            .iter()
+            .map(|&t| model.outlet_typedfact(t))
+            .collect::<TractResult<Vec<TypedFact>>>()?,
+    )?)
+}
+
 pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
     if let Some(value) = &fact.konst {
         Ok(value.clone().into_tensor())

@@ -1,21 +1,28 @@
 use crate::display_graph::*;
+use crate::display_params::*;
 use crate::errors::*;
-use crate::{Model, Parameters};
+use crate::{BenchLimits, Parameters};
 use tract_hir::internal::*;
 
-pub fn handle(params: &Parameters, options: DisplayOptions, _inner: Vec<String>) -> CliResult<()> {
-    let tract = &params.tract_model;
-    handle_model(&**tract, &params, options)
-}
-
-pub fn handle_model(
-    model: &dyn Model,
+pub fn handle(
     params: &Parameters,
-    options: DisplayOptions,
+    options: &DisplayParams,
+    matches: &clap::ArgMatches,
+    bench_limits: &BenchLimits,
+    _inner: Vec<String>,
 ) -> CliResult<()> {
-    let display_graph = DisplayGraph::from_model_and_options(model, Arc::new(options))?
-        .with_graph_def(&params.graph)?;
-    display_graph.render()?;
+    let model = &params.tract_model;
+    let mut display_graph = DisplayGraph::from_model_and_options(model.as_ref(), options)?
+        .with_graph_def(model.as_ref(), &params.graph)?;
+    if options.profile {
+        let model = params
+            .tract_model
+            .downcast_ref::<TypedModel>()
+            .ok_or("Can only profile typed models")?;
+        crate::profile::profile(model, bench_limits, &mut display_graph)?;
+    }
+
+    display_graph.render(model.as_ref())?;
 
     if let Some(asserts) = &params.assertions {
         if let Some(asserts) = &asserts.assert_output_facts {
@@ -28,18 +35,39 @@ pub fn handle_model(
         }
     }
 
-    Ok(())
-}
-
-/*
-fn handle_inner(tract: &TypedModel, params: &Parameters, options: DisplayOptions, inner: Vec<String>) -> CliResult<()> {
-    if let Some(node) = inner.get(0) {
-        let node = tract.node(node.parse()?);
-        if let Some(scan) = node.op_as::<tract_core::ops::rec::scan::Scan<TypedFact, Box<Op>>>() {
-            let model = &scan.body;
-            handle_model(model, params, options)?
+    /*
+    if options.cost {
+        let total: HashMap<Cost, TDim> = display_graph.total_cost()?;
+        println!("{}", White.bold().paint("Cost summary"));
+        for (c, i) in &total {
+            println!(" * {:?}: {}", c, i);
+        }
+        let assert = matches.value_of("assert-cost").map(|a| crate::cost::parse_costs(a));
+        if let Some(assert) = assert {
+            let assert: HashMap<Cost, TDim> =
+                assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();
+            if assert != total {
+                bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);
+            }
         }
     }
+
+    if let Some(profile) = display_graph.profile_data.as_ref() {
+        println!("{}", White.bold().paint("Most time consuming operations"));
+        for (op, (dur, n)) in profile
+            .by_ops(model.as_ref())?
+            .into_iter()
+            .sorted_by(|(_, (a, _)), (_, (b, _))| b.cmp(&a))
+        {
+            println!(
+                " * {} {:3} nodes: {}",
+                Blue.bold().paint(format!("{:20}", op)),
+                n,
+                crate::format::dur_avg_ratio(dur, profile.sum)
+            );
+        }
+    }
+    */
+
     Ok(())
 }
-*/

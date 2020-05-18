@@ -108,7 +108,7 @@ cargo build --release --bin tract
      -O run -q --assert-output-fact 1x3xf32
 
 ./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb \
-     -i Sx20xf32 --pulse 8 cost -q \
+     -i Sx20xf32 --pulse 8 dump --cost -q \
      --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920"
 
 [ ! -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 --pass type dump --op-name AddAxis)" ]

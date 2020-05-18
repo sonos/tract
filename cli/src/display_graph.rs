@@ -1,3 +1,4 @@
+use crate::display_params::*;
 use crate::draw::DrawingState;
 use crate::CliResult;
 use crate::SomeGraphDef;
@@ -7,7 +8,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 #[allow(unused_imports)]
 use std::convert::TryFrom;
-use std::sync::Arc;
+use std::time::Duration;
 use tract_core::internal::*;
 use tract_core::itertools::Itertools;
 #[cfg(feature = "onnx")]
@@ -15,132 +16,143 @@ use tract_onnx::pb::ModelProto;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Io {
-    None,
-    Short,
-    Long,
-}
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct NodeQId(pub TVec<(usize, String)>, pub usize);
 
-impl Default for Io {
-    fn default() -> Io {
-        Io::Short
+impl From<usize> for NodeQId {
+    fn from(id: usize) -> NodeQId {
+        NodeQId(tvec!(), id)
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DisplayOptions {
-    pub konst: bool,
-    pub invariants: bool,
-    pub quiet: bool,
-    pub natural_order: bool,
-    pub debug_op: bool,
-    pub node_ids: Option<Vec<TVec<usize>>>,
-    pub op_name: Option<String>,
-    pub node_name: Option<String>,
-    pub expect_canonic: bool,
-    pub outlet_labels: bool,
-    pub io: Io,
-    pub info: bool,
-    pub left_column_width: usize,
-}
-
-impl DisplayOptions {
-    pub fn filter(
-        &self,
-        model: &dyn Model,
-        current_prefix: &[usize],
-        node_id: usize,
-    ) -> CliResult<bool> {
-        if let Some(nodes) = self.node_ids.as_ref() {
-            return Ok(nodes.iter().any(|n| {
-                n.len() == current_prefix.len() + 1
-                    && &n[0..current_prefix.len()] == current_prefix
-                    && *n.last().unwrap() == node_id
-            }));
-        }
-        if let Some(node_name) = self.node_name.as_ref() {
-            return Ok(model.node_name(node_id).starts_with(&*node_name));
-        }
-        if let Some(op_name) = self.op_name.as_ref() {
-            return Ok(model.node_op(node_id).name().starts_with(op_name));
-        }
-        /*
-        if let Some(successor) = self.successors {
-        return Ok(model.node_inputs(node_id).iter().any(|i| i.node == successor));
-        }
-        */
-        Ok(model.node_op(node_id).name() != "Const" || self.konst)
-    }
-
-    pub fn should_draw(&self) -> bool {
-        !self.natural_order
-    }
+#[derive(Debug, Default, Clone)]
+pub struct NodeTags {
+    pub cost: Option<Vec<(Cost, TDim)>>,
+    pub style: Option<Style>,
+    pub labels: Vec<String>,
+    pub sections: Vec<Vec<String>>,
+    pub profile: Option<Duration>,
+    pub model_input: Option<String>,
+    pub model_output: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DisplayGraph<'a> {
-    model: &'a dyn Model,
-    prefix: TVec<usize>,
-    pub options: Arc<DisplayOptions>,
-    left_column_labels: HashMap<usize, Vec<String>>,
-    node_color: HashMap<usize, Style>,
-    node_labels: HashMap<usize, Vec<String>>,
-    node_sections: HashMap<usize, Vec<Vec<String>>>,
-    node_nested_graphs: HashMap<usize, Vec<(String, DisplayGraph<'a>)>>,
-    model_input_labels: HashMap<usize, String>,
-    model_output_labels: HashMap<usize, String>,
+    options: &'a DisplayParams,
+    pub tags: HashMap<NodeQId, NodeTags>,
+    pub profile_summary: Option<crate::profile::ProfileSummary>,
 }
 
 impl<'a> DisplayGraph<'a> {
-    pub fn render(&self) -> CliResult<()> {
-        self.render_prefixed("")
+    pub fn node_mut(&mut self, qid: NodeQId) -> &mut NodeTags {
+        self.tags.entry(qid).or_default()
+    }
+}
+
+/*
+node_nested_graphs: HashMap<usize, Vec<(String, DisplayGraph<'a>)>>,
+
+
+cost: Option<Vec<Vec<(Cost, TDim)>>>,
+
+node_color: HashMap<usize, Style>,
+node_labels: HashMap<usize, Vec<String>>,
+node_sections: HashMap<usize, Vec<Vec<String>>>,
+model_input_labels: HashMap<usize, String>,
+model_output_labels: HashMap<usize, String>,
+}
+*/
+
+impl<'a> DisplayGraph<'a> {
+    pub fn render(&self, model: &dyn Model) -> CliResult<()> {
+        self.render_prefixed(model, "", &[])
     }
 
-    pub fn render_prefixed(&self, prefix: &str) -> CliResult<()> {
+    pub fn render_node(&self, model: &dyn Model, node_id: usize) -> CliResult<()> {
+        self.render_node_prefixed(model, "", &[], node_id, None)
+    }
+
+    fn render_prefixed(
+        &self,
+        model: &dyn Model,
+        prefix: &str,
+        scope: &[(usize, String)],
+    ) -> CliResult<()> {
         if self.options.quiet {
             return Ok(());
         }
         let mut drawing_state =
             if self.options.should_draw() { Some(DrawingState::default()) } else { None };
         let node_ids = if self.options.natural_order {
-            (0..self.model.nodes_len()).collect()
+            (0..model.nodes_len()).collect()
         } else {
-            self.model.eval_order()?
+            model.eval_order()?
         };
         for node in node_ids {
-            if self.options.filter(self.model, &*self.prefix, node)? {
-                self.render_node_prefixed(node, prefix, drawing_state.as_mut())?
+            if self.options.filter(model, scope, node)? {
+                self.render_node_prefixed(model, prefix, scope, node, drawing_state.as_mut())?
             } else if let Some(ref mut ds) = drawing_state {
-                let _prefix = ds.draw_node_vprefix(self.model, node, &self.options)?;
-                let _body = ds.draw_node_body(self.model, node, &self.options)?;
-                let _suffix = ds.draw_node_vsuffix(self.model, node, &self.options)?;
+                let _prefix = ds.draw_node_vprefix(model, node, &self.options)?;
+                let _body = ds.draw_node_body(model, node, &self.options)?;
+                let _suffix = ds.draw_node_vsuffix(model, node, &self.options)?;
             }
         }
         Ok(())
     }
 
-    pub fn render_node(&self, node_id: usize) -> CliResult<()> {
-        self.render_node_prefixed(node_id, "", None)
-    }
-
-    pub fn render_node_prefixed(
+    fn render_node_prefixed(
         &self,
-        node_id: usize,
+        model: &dyn Model,
         prefix: &str,
+        scope: &[(usize, String)],
+        node_id: usize,
         mut drawing_state: Option<&mut DrawingState>,
     ) -> CliResult<()> {
-        let model = self.model.borrow();
-        let name_color = self.node_color.get(&node_id).cloned().unwrap_or(White.into());
+        let model = model.borrow();
+        let qid = NodeQId(scope.into(), node_id);
+        let tags = self.tags.get(&qid).cloned().unwrap_or_default();
+        let name_color = tags.style.clone().unwrap_or(White.into());
         let node_name = model.node_name(node_id);
         let node_op_name = model.node_op(node_id).name();
-        // println!("{:?}", model.node_format(node_id));
-        let left_column_pad = format!("{:>1$}", "", self.options.left_column_width);
+        let cost_column_pad = format!("{:>1$}", "", self.options.cost as usize * 25);
+        let profile_column_pad = format!("{:>1$}", "", self.options.profile as usize * 20);
+
         if let Some(ref mut ds) = &mut drawing_state {
             for l in ds.draw_node_vprefix(model, node_id, &self.options)? {
-                println!("{}{}{} ", left_column_pad, prefix, l);
+                println!("{}{}{}{} ", cost_column_pad, profile_column_pad, prefix, l);
             }
         }
+
+        // cost column
+        let mut cost_column = if self.options.cost {
+            Some(
+                tags.cost
+                    .as_deref()
+                    .unwrap_or(&[])
+                    .iter()
+                    .map(|c| format!("{:1$}", format!("{:?}:{}", c.0, c.1), 25))
+                    .peekable(),
+            )
+        } else {
+            None
+        };
+
+        // profile column
+        let mut profile_column = tags.profile.map(|measure| {
+            let ratio = measure.as_secs_f64() / self.profile_summary.as_ref().unwrap().sum.as_secs_f64();
+            let ratio_for_color =
+                measure.as_secs_f64() / self.profile_summary.as_ref().unwrap().max.as_secs_f64();
+            let color = colorous::RED_YELLOW_GREEN.eval_continuous(1.0 - ratio_for_color);
+            let color = ansi_term::Color::RGB(color.r, color.g, color.b);
+            let label = format!(
+                "{:7.3} ms/i {}  ",
+                measure.as_secs_f64() * 1e3,
+                color.bold().paint(format!("{:>4.1}%", ratio * 100.0))
+            );
+            std::iter::once(label)
+        });
+
+        // drawing column
         let mut drawing_lines: Box<dyn Iterator<Item = String>> = if let Some(ds) =
             drawing_state.as_mut()
         {
@@ -149,16 +161,23 @@ impl<'a> DisplayGraph<'a> {
             let filler = ds.draw_node_vfiller(model, node_id)?;
             Box::new(body.into_iter().chain(suffix.into_iter()).chain(std::iter::repeat(filler)))
         } else {
-            Box::new(std::iter::repeat(left_column_pad.clone()))
+            Box::new(std::iter::repeat(cost_column_pad.clone()))
         };
-        let empty = vec!();
-        let mut left_column_labels = self.left_column_labels.get(&node_id).unwrap_or(&empty).iter();
+
         macro_rules! prefix {
             () => {
-                let left = left_column_labels.next().unwrap_or(&left_column_pad);
-                print!("{}{}{} ", left, prefix, drawing_lines.next().unwrap(),)
+                let cost = cost_column
+                    .as_mut()
+                    .map(|it| it.next().unwrap_or_else(|| cost_column_pad.to_string()))
+                    .unwrap_or("".to_string());
+                let profile = profile_column
+                    .as_mut()
+                    .map(|it| it.next().unwrap_or_else(|| profile_column_pad.to_string()))
+                    .unwrap_or("".to_string());
+                print!("{}{}{}{} ", cost, profile, prefix, drawing_lines.next().unwrap(),)
             };
         };
+
         prefix!();
         println!(
             "{} {} {}",
@@ -175,7 +194,7 @@ impl<'a> DisplayGraph<'a> {
             .paint(node_op_name),
             name_color.italic().paint(node_name)
         );
-        for label in self.node_labels.get(&node_id).unwrap_or(&vec![]).iter() {
+        for label in tags.labels.iter() {
             prefix!();
             println!("  * {}", label);
         }
@@ -194,21 +213,15 @@ impl<'a> DisplayGraph<'a> {
                 }
                 for ix in 0..model.node_output_count(node_id) {
                     let star = if ix == 0 { '*' } else { ' ' };
-                    let io = if let Some(id) = self
-                        .model
-                        .borrow()
-                        .input_outlets()
-                        .iter()
-                        .position(|n| n.node == node_id && n.slot == ix)
+                    let io = if let Some(id) =
+                        model.input_outlets().iter().position(|n| n.node == node_id && n.slot == ix)
                     {
                         format!(
                             "{} {}",
                             Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string(),
-                            self.model_input_labels.get(&id).map(|s| &**s).unwrap_or("")
+                            tags.model_input.as_deref().unwrap_or("")
                         )
-                    } else if let Some(id) = self
-                        .model
-                        .borrow()
+                    } else if let Some(id) = model
                         .output_outlets()
                         .iter()
                         .position(|n| n.node == node_id && n.slot == ix)
@@ -216,7 +229,7 @@ impl<'a> DisplayGraph<'a> {
                         format!(
                             "{} {}",
                             Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string(),
-                            self.model_output_labels.get(&id).map(|s| &**s).unwrap_or("")
+                            tags.model_output.as_deref().unwrap_or("")
                         )
                     } else {
                         "".to_string()
@@ -281,142 +294,167 @@ impl<'a> DisplayGraph<'a> {
             prefix!();
             println!("  * {:?}", model.node_op(node_id));
         }
-        if let Some(node_sections) = self.node_sections.get(&node_id) {
-            for section in node_sections {
-                if section.is_empty() {
-                    continue;
-                }
+        for section in tags.sections {
+            if section.is_empty() {
+                continue;
+            }
+            prefix!();
+            println!("  * {}", section[0]);
+            for s in &section[1..] {
                 prefix!();
-                println!("  * {}", section[0]);
-                for s in &section[1..] {
-                    prefix!();
-                    println!("    {}", s);
-                }
+                println!("    {}", s);
             }
         }
-        for (label, sub) in self.node_nested_graphs.get(&node_id).unwrap_or(&vec![]) {
-            let prefix = drawing_lines.next().unwrap();
-            sub.render_prefixed(&format!("{} [{}] ", prefix, label))?
+        if let Some(tmodel) = model.downcast_ref::<TypedModel>() {
+            for (label, sub, _, _) in tmodel.node(node_id).op.nested_models() {
+                let prefix = drawing_lines.next().unwrap();
+                let mut scope: TVec<_> = scope.into();
+                scope.push((node_id, label.to_string()));
+                self.render_prefixed(sub, &format!("{} [{}] ", prefix, label), &*scope)?
+            }
+        }
+        while cost_column.as_mut().map(|cost| cost.peek().is_some()).unwrap_or(false) {
+            prefix!();
+            println!("");
         }
         Ok(())
     }
 
     pub fn from_model_and_options(
         model: &'a dyn Model,
-        options: Arc<DisplayOptions>,
+        options: &'a DisplayParams,
     ) -> CliResult<DisplayGraph<'a>> {
         Self::from_model_prefix_and_options(model, [].as_ref(), options)
     }
 
     fn from_model_prefix_and_options(
         model: &'a dyn Model,
-        prefix: &[usize],
-        options: Arc<DisplayOptions>,
+        prefix: &[(usize, String)],
+        options: &'a DisplayParams,
     ) -> CliResult<DisplayGraph<'a>> {
-        let mut node_nested_graphs = HashMap::new();
         for n in 0..model.nodes_len() {
-            let subs = model.node_op(n).nested_models();
-            if subs.len() > 0 {
-                let mut prefix: TVec<usize> = prefix.into();
-                prefix.push(n);
-                node_nested_graphs.insert(
-                    n,
-                    subs.into_iter()
-                        .map(|(label, sub, inputs, outputs)| {
-                            let mut dg = Self::from_model_prefix_and_options(
-                                sub,
-                                &*prefix,
-                                Arc::clone(&options),
-                            )?;
-                            inputs.into_iter().enumerate().for_each(|(ix, i)| {
-                                dg.model_input_labels.insert(ix, i);
-                            });
-                            outputs.into_iter().enumerate().for_each(|(ix, o)| {
-                                dg.model_output_labels.insert(ix, o);
-                            });
-                            Ok((label.into_owned(), dg))
-                        })
-                        .collect::<CliResult<_>>()?,
-                );
+            for (label, sub, ins, outs) in model.node_op(n).nested_models() {
+                let mut prefix: TVec<(usize, String)> = prefix.into();
+                prefix.push((n, label.to_string()));
+                let mut dg = Self::from_model_prefix_and_options(sub, &*prefix, options)?;
+                ins.into_iter().enumerate().for_each(|(ix, i)| {
+                    let qid = NodeQId(prefix.clone(), ix);
+                    dg.tags.entry(qid).or_default().model_input = Some(i);
+                });
+                outs.into_iter().enumerate().for_each(|(ix, o)| {
+                    let qid = NodeQId(prefix.clone(), ix);
+                    dg.tags.entry(qid).or_default().model_output = Some(o);
+                });
             }
         }
-        Ok(DisplayGraph {
-            model,
-            left_column_labels: HashMap::new(),
-            prefix: prefix.into(),
-            options,
-            node_color: HashMap::new(),
-            node_labels: HashMap::new(),
-            node_sections: HashMap::new(),
-            model_input_labels: HashMap::new(),
-            model_output_labels: HashMap::new(),
-            node_nested_graphs,
-        })
+        let mut dg = DisplayGraph { tags: HashMap::new(), options, profile_summary: None };
+        if dg.options.cost && prefix.len() == 0 {
+            dg.extract_costs(model, &[], 1.0)?;
+        }
+        Ok(dg)
     }
 
-    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<'a>> {
+    pub fn with_graph_def(
+        self,
+        model: &dyn Model,
+        graph_def: &SomeGraphDef,
+    ) -> CliResult<DisplayGraph<'a>> {
         match graph_def {
             SomeGraphDef::NoGraphDef => Ok(self),
             #[cfg(feature = "kaldi")]
-            SomeGraphDef::Kaldi(kaldi) => self.with_kaldi(kaldi),
+            SomeGraphDef::Kaldi(kaldi) => self.with_kaldi(model, kaldi),
             #[cfg(feature = "onnx")]
-            SomeGraphDef::Onnx(onnx, _) => self.with_onnx_model(onnx),
+            SomeGraphDef::Onnx(onnx, _) => self.with_onnx_model(model, onnx),
             #[cfg(feature = "tf")]
-            SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
+            SomeGraphDef::Tf(tf) => self.with_tf_graph_def(model, tf),
         }
     }
 
-    pub fn set_node_color<S: Into<Style>>(&mut self, id: usize, color: S) -> CliResult<()> {
-        self.node_color.insert(id, color.into());
+    /*
+    fn get_context(&self, id: &[(usize, String)]) -> (&DisplayGraph<'a>, usize) {
+    use std::ops::Deref;
+    if id.len() == 1 {
+    (&self, id[0].0)
+    } else {
+    self.node_nested_graphs
+    .get(&id[0].0)
+    .unwrap()
+    .deref()
+    .iter()
+    .find(|sub| sub.0 == id[0].1)
+    .unwrap()
+    .1
+    .get_context(&id[1..])
+    }
+    }
+    */
+
+    /*
+    fn get_context_mut(&mut self, id: &[(usize, String)]) -> (&mut DisplayGraph<'a>, usize) {
+        use std::ops::DerefMut;
+        if id.len() == 1 {
+            (&mut *self, id[0].0)
+        } else {
+            self.node_nested_graphs
+                .get_mut(&id[0].0)
+                .unwrap()
+                .deref_mut()
+                .iter_mut()
+                .find(|sub| sub.0 == id[0].1)
+                .unwrap()
+                .1
+                .get_context_mut(&id[1..])
+        }
+    }
+    */
+
+    /*
+    pub fn node_name(&self, id: &[(usize, String)]) -> &str {
+    let (ctx, id) = self.get_context(id);
+    ctx.model.node_name(id)
+    }
+
+    pub fn add_node_label<S: Into<String>>(
+        &mut self,
+        id: &[(usize, String)],
+        label: S,
+    ) -> CliResult<()> {
+        let (ctx, id) = self.get_context_mut(id);
+        ctx.node_labels.entry(id).or_insert(vec![]).push(label.into());
         Ok(())
     }
 
-    pub fn node_name(&self, id: &[usize]) -> CliResult<&str> {
-        if id.len() == 1 {
-            Ok(self.model.node_name(id[0]))
-        } else {
-            self.node_nested_graphs.get(&id[0]).unwrap()[0].1.node_name(&id[1..])
-        }
+    pub fn add_node_section(
+        &mut self,
+        id: &[(usize, String)],
+        section: Vec<String>,
+    ) -> CliResult<()> {
+        let (ctx, id) = self.get_context_mut(id);
+        ctx.node_sections.entry(id).or_insert(vec![]).push(section);
+        Ok(())
     }
 
-    pub fn add_left_column_label<S: Into<String>>(&mut self, id: &[usize], label: S) -> CliResult<()> {
-        if id.len() == 1 {
-            self.left_column_labels.entry(id[0]).or_insert(vec![]).push(label.into());
-            Ok(())
-        } else {
-            self.node_nested_graphs.get_mut(&id[0]).unwrap()[0].1.add_left_column_label(&id[1..], label)
-        }
+    pub fn set_node_color<S: Into<Style>>(
+        &mut self,
+        id: &[(usize, String)],
+        color: S,
+    ) -> CliResult<()> {
+        let (ctx, id) = self.get_context_mut(id);
+        ctx.node_color.insert(id, color.into());
+        Ok(())
     }
-
-    pub fn add_node_label<S: Into<String>>(&mut self, id: &[usize], label: S) -> CliResult<()> {
-        if id.len() == 1 {
-            self.node_labels.entry(id[0]).or_insert(vec![]).push(label.into());
-            Ok(())
-        } else {
-            self.node_nested_graphs.get_mut(&id[0]).unwrap()[0].1.add_node_label(&id[1..], label)
-        }
-    }
-
-    pub fn add_node_section(&mut self, id: &[usize], section: Vec<String>) -> CliResult<()> {
-        if id.len() == 1 {
-            self.node_sections.entry(id[0]).or_insert(vec![]).push(section);
-            Ok(())
-        } else {
-            self.node_nested_graphs.get_mut(&id[0]).unwrap()[0]
-                .1
-                .add_node_section(&id[1..], section)
-        }
-    }
+    */
 
     #[cfg(feature = "kaldi")]
     pub fn with_kaldi(
         mut self,
+        model: &dyn Model,
         proto_model: &tract_kaldi::KaldiProtoModel,
     ) -> CliResult<DisplayGraph<'a>> {
         use tract_kaldi::model::NodeLine;
         let bold = Style::new().bold();
         for (name, proto_node) in &proto_model.config_lines.nodes {
-            if let Ok(node_id) = self.model.borrow().node_id_by_name(&*name) {
+            if let Ok(node_id) = model.node_id_by_name(&*name) {
                 let mut vs = vec![];
                 match proto_node {
                     NodeLine::Component(compo) => {
@@ -428,17 +466,21 @@ impl<'a> DisplayGraph<'a> {
                     }
                     _ => (),
                 }
-                self.add_node_section(&[node_id], vs)?;
+                self.node_mut(node_id.into()).sections.push(vs)
             }
         }
         Ok(self)
     }
 
     #[cfg(feature = "tf")]
-    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<'a>> {
+    pub fn with_tf_graph_def(
+        mut self,
+        model: &dyn Model,
+        graph_def: &GraphDef,
+    ) -> CliResult<DisplayGraph<'a>> {
         let bold = Style::new().bold();
         for gnode in graph_def.node.iter() {
-            if let Ok(node_id) = self.model.borrow().node_id_by_name(&gnode.name) {
+            if let Ok(node_id) = model.node_id_by_name(&gnode.name) {
                 let mut v = vec![];
                 for a in gnode.attr.iter() {
                     let value = if let Some(
@@ -451,21 +493,25 @@ impl<'a> DisplayGraph<'a> {
                     };
                     v.push(format!("Attr {}: {:.240}", bold.paint(a.0), value));
                 }
-                self.add_node_section(&[node_id], v)?;
+                self.node_mut(node_id.into()).sections.push(v);
             }
         }
         Ok(self)
     }
 
     #[cfg(feature = "onnx")]
-    pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<'a>> {
+    pub fn with_onnx_model(
+        mut self,
+        model: &dyn Model,
+        model_proto: &ModelProto,
+    ) -> CliResult<DisplayGraph<'a>> {
         let bold = Style::new().bold();
         for gnode in model_proto.graph.as_ref().unwrap().node.iter() {
             let mut node_name = &gnode.name;
             if node_name == "" && gnode.output.len() > 0 {
                 node_name = &gnode.output[0];
             }
-            if let Ok(id) = self.model.borrow().node_id_by_name(&*node_name) {
+            if let Ok(id) = model.node_id_by_name(&*node_name) {
                 let mut v = vec![];
                 for a in gnode.attribute.iter() {
                     let value = if let Some(t) = &a.t {
@@ -475,9 +521,63 @@ impl<'a> DisplayGraph<'a> {
                     };
                     v.push(format!("Attr {}: {:.240}", bold.paint(&a.name), value));
                 }
-                self.add_node_section(&[id], v)?;
+                self.node_mut(id.into()).sections.push(v);
             }
         }
         Ok(self)
     }
+
+    /*
+    pub fn with_profiling_results(self, profile_data: ProfileData) -> DisplayGraph<'a> {
+        DisplayGraph { profile_data: Some(profile_data), ..self }
+    }
+    */
+
+    fn extract_costs(
+        &mut self,
+        model: &dyn Model,
+        prefix: &[(usize, String)],
+        multiplier: f64,
+    ) -> CliResult<()> {
+        if let Some(model) = model.downcast_ref::<TypedModel>() {
+            for node_id in 0..model.nodes().len() {
+                let inputs = model.node_input_facts(node_id)?;
+                let cost = model.node(node_id).op.cost(&*inputs)?;
+                self.node_mut(NodeQId(prefix.into(), node_id))
+                    .cost
+                    .replace(cost.into_iter().map(|(k, v)| (k, v * multiplier)).collect());
+
+                let nested_subs = model.node(node_id).op.nested_models();
+                let nested_multis = model.node(node_id).op.nested_model_multipliers(&*inputs);
+                for ((name, sub, _,_), (_name, multi)) in nested_subs.iter().zip(nested_multis.iter()) {
+                    let mut prefix:TVec<_> = prefix.into();
+                    prefix.push((node_id, name.to_string()));
+                    self.extract_costs(*sub, &*prefix, multiplier * multi)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /*
+    pub fn total_cost(&self) -> CliResult<HashMap<Cost, TDim>> {
+        use tract_num_traits::Zero;
+        let mut total: HashMap<Cost, TDim> = HashMap::default();
+        fn sum_cost(total: &mut HashMap<Cost, TDim>, dg: &DisplayGraph) {
+            for nodes in dg.cost.as_ref().unwrap() {
+                for cost in nodes {
+                    let s = total.entry(cost.0).or_insert(TDim::zero());
+                    *s = s.clone() + &cost.1;
+                }
+            }
+            for node in dg.node_nested_graphs.values() {
+                for sub in node {
+                    sum_cost(total, &sub.1);
+                }
+            }
+        }
+        sum_cost(&mut total, self);
+        Ok(total)
+    }
+    */
 }

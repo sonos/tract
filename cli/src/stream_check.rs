@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use tract_core::itertools::Itertools;
 use tract_core::ndarray::{ArrayD, Axis};
 
@@ -8,9 +6,10 @@ use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::pulse::PulsedModel;
 
 use crate::display_graph;
+use crate::display_params::DisplayParams;
 use crate::{CliResult, Parameters};
 
-pub fn handle(params: &Parameters, options: display_graph::DisplayOptions) -> CliResult<()> {
+pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
     let pulsed = params.tract_model.downcast_ref::<PulsedModel>().unwrap();
 
     let fixed = params.normalized_model.clone().unwrap();
@@ -19,11 +18,9 @@ pub fn handle(params: &Parameters, options: display_graph::DisplayOptions) -> Cl
     let pulsed_input_fact = pulsed.input_fact(0)?;
     let input_pulse = pulsed_input_fact.pulse();
 
-    let display_graph = display_graph::DisplayGraph::from_model_and_options(
-        &*params.tract_model,
-        Arc::new(options),
-    )?
-    .with_graph_def(&params.graph)?;
+    let display_graph =
+        display_graph::DisplayGraph::from_model_and_options(&*params.tract_model, options)?
+            .with_graph_def(&*params.tract_model, &params.graph)?;
 
     let eval_order = ::tract_core::model::eval_order(&fixed)?;
 
@@ -104,7 +101,7 @@ pub fn handle(params: &Parameters, options: display_graph::DisplayOptions) -> Cl
                 let valid_fixed_result =
                     fixed_result.slice_axis(Axis(output_axis), (f_o..f_o + count).into());
                 if valid_pulse_result != valid_fixed_result {
-                    display_graph.render_node(pulsed_node)?;
+                    display_graph.render_node(&*params.tract_model, pulsed_node)?;
                     println!("pulse: {} ({}..{})", i, i * output_pulse, (i + 1) * output_pulse);
                     println!(
                         "expected: {}",

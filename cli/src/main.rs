@@ -9,6 +9,8 @@ extern crate atty;
 extern crate env_logger;
 extern crate pbr;
 #[macro_use]
+extern crate serde_derive;
+#[macro_use]
 extern crate tract_core;
 #[cfg(feature = "onnx")]
 extern crate tract_onnx;
@@ -29,17 +31,20 @@ use tract_hir::internal::*;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
-use crate::display_graph::DisplayOptions;
+use crate::display_params::DisplayParams;
 use crate::errors::*;
 
 use readings_probe::*;
 
+mod bench;
 mod compare;
 mod cost;
 mod display_graph;
+mod display_params;
 mod draw;
 mod dump;
 mod errors;
+mod export;
 mod format;
 mod optimize_check;
 mod profile;
@@ -78,7 +83,7 @@ fn main() {
 
     (@arg readings: --readings "Start readings instrumentation")
     (@arg readings_heartbeat: --("readings-heartbeat") +takes_value
-        default_value("0.5") "Set heartbeat (ms)")
+     default_value("0.5") "Set heartbeat (ms)")
 
     (@arg model: +takes_value "Sets the model to use")
 
@@ -185,51 +190,45 @@ fn main() {
         .arg(Arg::with_name("pbdir").takes_value(true).required(true).help("protobuf dir"));
     app = app.subcommand(output_options(compare_pbdir));
 
+    let bench = clap::SubCommand::with_name("bench")
+        .long_about("Benchmarks tract on randomly generated input.");
+    let bench = output_options(bench);
+    let bench = benchlimits_options(bench);
+    app = app.subcommand(bench);
+
     let dump = clap::SubCommand::with_name("dump")
         .long_about("Dumps the Tensorflow graph in human readable form.")
+        .arg(Arg::with_name("cost").long("cost").help("Include const information"))
+        .arg(Arg::with_name("profile").long("profile").help("Include results for profile run"))
+        .arg(
+            Arg::with_name("assert-cost")
+            .takes_value(true)
+            .long("assert-cost")
+            .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
+            )
         .arg(
             Arg::with_name("assert-output")
-                .takes_value(true)
-                .long("assert-output")
-                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
-        )
+            .takes_value(true)
+            .long("assert-output")
+            .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+            )
         .arg(
             Arg::with_name("assert-output-fact")
-                .takes_value(true)
-                .long("assert-output-fact")
-                .help("Infered shape and datum type must match exactly this"),
-        )
+            .takes_value(true)
+            .long("assert-output-fact")
+            .help("Infered shape and datum type must match exactly this"),
+            )
         .arg(
             Arg::with_name("inner")
-                .takes_value(true)
-                .number_of_values(1)
-                .multiple(true)
-                .long("inner")
-                .help("Navigate to a sub-model"),
-        );
-    app = app.subcommand(output_options(dump));
-
-    let profile =
-        clap::SubCommand::with_name("profile")
-            .long_about("Benchmarks tract on randomly generated input.")
-            .arg(Arg::with_name("bench").long("bench").help("Run as an overall bench"))
-            .arg(
-                Arg::with_name("max_iters").takes_value(true).long("max-iters").short("n").help(
-                    "Sets the maximum number of iterations for each node [default: 100_000].",
-                ),
-            )
-            .arg(
-                Arg::with_name("max-time")
-                    .takes_value(true)
-                    .long("max-time")
-                    .help("Sets the maximum execution time for each node (in ms) [default: 5000]."),
-            )
-            .arg(
-                Arg::with_name("buffering")
-                    .short("b")
-                    .help("Run the stream network without inner instrumentations"),
+            .takes_value(true)
+            .number_of_values(1)
+            .multiple(true)
+            .long("inner")
+            .help("Navigate to a sub-model"),
             );
-    app = app.subcommand(output_options(profile));
+    let dump = output_options(dump);
+    let dump = benchlimits_options(dump);
+    app = app.subcommand(dump);
 
     let run = clap::SubCommand::with_name("run")
         .long_about("Run the graph")
@@ -253,16 +252,6 @@ fn main() {
                 .help("Infered shape and datum type must match exactly this"),
         );
     app = app.subcommand(output_options(run));
-
-    let cost = clap::SubCommand::with_name("cost")
-        .long_about("Compute a cost on (some) operations.")
-        .arg(
-            Arg::with_name("assert-cost")
-            .takes_value(true)
-            .long("assert-cost")
-            .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
-            );
-    app = app.subcommand(output_options(cost));
 
     let optimize = clap::SubCommand::with_name("optimize").help("Optimize the graph");
     app = app.subcommand(output_options(optimize));
@@ -311,6 +300,24 @@ fn main() {
     }
 
     info_usage("done", probe.as_ref());
+}
+
+fn benchlimits_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+    use clap::*;
+    command
+        .arg(
+            Arg::with_name("max_iters")
+                .takes_value(true)
+                .long("max-iters")
+                .short("n")
+                .help("Sets the maximum number of iterations for each node [default: 100_000]."),
+        )
+        .arg(
+            Arg::with_name("max-time")
+                .takes_value(true)
+                .long("max-time")
+                .help("Sets the maximum execution time for each node (in ms) [default: 5000]."),
+        )
 }
 
 fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
@@ -773,13 +780,13 @@ impl Parameters {
     }
 }
 
-pub enum ProfilingMode {
-    Regular { max_iters: u64, max_time: std::time::Duration },
-    RegularBenching { max_iters: u64, max_time: std::time::Duration },
+pub struct BenchLimits {
+    max_iters: u64,
+    max_time: std::time::Duration,
 }
 
-impl ProfilingMode {
-    pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<ProfilingMode> {
+impl BenchLimits {
+    pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<BenchLimits> {
         let max_iters =
             matches.value_of("max_iters").map(u64::from_str).transpose()?.unwrap_or(100_000);
         let max_time = matches
@@ -788,28 +795,25 @@ impl ProfilingMode {
             .transpose()?
             .map(std::time::Duration::from_millis)
             .unwrap_or(std::time::Duration::from_secs(5));
-        let mode = if matches.is_present("bench") {
-            ProfilingMode::RegularBenching { max_iters, max_time }
-        } else {
-            ProfilingMode::Regular { max_iters, max_time }
-        };
-        Ok(mode)
+        Ok(BenchLimits { max_iters, max_time })
     }
 }
 
-pub fn display_options_from_clap(
+pub fn display_params_from_clap(
     root_matches: &clap::ArgMatches,
     matches: &clap::ArgMatches,
-) -> CliResult<DisplayOptions> {
-    Ok(DisplayOptions {
+) -> CliResult<DisplayParams> {
+    Ok(DisplayParams {
         konst: matches.is_present("const"),
+        cost: matches.is_present("cost"),
+        profile: matches.is_present("profile"),
         left_column_width: 0,
         invariants: matches.is_present("invariants"),
         quiet: matches.is_present("quiet"),
         natural_order: matches.is_present("natural-order"),
         debug_op: matches.is_present("debug-op"),
-        node_ids: matches.values_of("node_id").map(|id| {
-            id.map(|id| id.split("/").map(|i| i.parse::<usize>().unwrap()).collect()).collect()
+        node_ids: matches.values_of("node_id").map(|values| {
+            values.map(|id| tvec!((id.parse::<usize>().unwrap(), "".to_string()))).collect()
         }),
         node_name: matches.value_of("node_name").map(String::from),
         op_name: matches.value_of("op_name").map(String::from),
@@ -818,11 +822,11 @@ pub fn display_options_from_clap(
             && !root_matches.is_present("optimize"),
         outlet_labels: matches.is_present("outlet-labels"),
         io: if matches.is_present("io-long") {
-            display_graph::Io::Long
+            display_params::Io::Long
         } else if matches.is_present("io-none") {
-            display_graph::Io::None
+            display_params::Io::None
         } else {
-            display_graph::Io::Short
+            display_params::Io::Short
         },
         info: matches.is_present("info"),
     })
@@ -897,7 +901,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             m.is_present("cumulative"),
             m.is_present("resilient"),
             &mut params,
-            display_options_from_clap(&matches, m)?,
+            display_params_from_clap(&matches, m)?,
         ),
         #[cfg(not(feature = "conform"))]
         ("compare", _) => bail!("Need conform feature to be able to run comparison"),
@@ -906,7 +910,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             m.is_present("cumulative"),
             m.value_of("npz").unwrap(),
             &params,
-            display_options_from_clap(&matches, m)?,
+            display_params_from_clap(&matches, m)?,
         ),
 
         #[cfg(feature = "onnx")]
@@ -914,7 +918,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             m.is_present("cumulative"),
             m.value_of("pbdir").unwrap(),
             &params,
-            display_options_from_clap(&matches, m)?,
+            display_params_from_clap(&matches, m)?,
         ),
 
         ("run", Some(m)) => {
@@ -923,20 +927,18 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         }
 
         ("optimize-check", Some(m)) => {
-            optimize_check::handle(&params, display_options_from_clap(&matches, m)?)
+            optimize_check::handle(&params, display_params_from_clap(&matches, m)?)
         }
 
         ("stream-check", Some(m)) => {
-            stream_check::handle(&params, display_options_from_clap(&matches, m)?)
-        }
-
-        ("cost", Some(m)) => {
-            crate::cost::handle(&params, display_options_from_clap(&matches, m)?, m)
+            stream_check::handle(&params, &display_params_from_clap(&matches, m)?)
         }
 
         ("", None) => dump::handle(
             &params,
-            display_options_from_clap(&matches, &clap::ArgMatches::default())?,
+            &display_params_from_clap(&matches, &clap::ArgMatches::default())?,
+            &clap::ArgMatches::default(),
+            &BenchLimits::from_clap(&clap::ArgMatches::default())?,
             vec![],
         ),
 
@@ -946,22 +948,23 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
                 .values_of("inner")
                 .map(|ss| ss.map(|s| s.to_string()).collect())
                 .unwrap_or(vec![]);
-            dump::handle(&params, display_options_from_clap(&matches, m)?, inner)
+            dump::handle(
+                &params,
+                &display_params_from_clap(&matches, m)?,
+                m,
+                &BenchLimits::from_clap(&m)?,
+                inner,
+            )
         }
 
-        ("profile", Some(m)) => {
+        ("bench", Some(m)) => {
             if !matches.is_present("optimize") {
                 warn!("Profiling un-optimized network. Consider adding -O.");
             }
             if cfg!(debug_assertions) {
                 warn!("Profiling a debug build of tract!");
             }
-            profile::handle(
-                &params,
-                ProfilingMode::from_clap(&m)?,
-                display_options_from_clap(&matches, m)?,
-                probe,
-            )
+            bench::handle(&params, &BenchLimits::from_clap(&m)?, probe)
         }
 
         (s, _) => bail!("Unknown subcommand {}.", s),

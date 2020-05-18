@@ -7,7 +7,7 @@ use ansi_term::Color::*;
 use log::Level::Info;
 use tract_core::internal::*;
 
-use crate::display_graph::DisplayOptions;
+use crate::display_params::DisplayParams;
 use crate::*;
 
 #[cfg(feature = "conform")]
@@ -15,7 +15,7 @@ pub fn handle_tensorflow(
     cumulative: bool,
     resilient: bool,
     params: &mut Parameters,
-    output_params: DisplayOptions,
+    output_params: DisplayParams,
 ) -> CliResult<()> {
     let tract = &params.tract_model;
     let mut tf = params.tf_model.take().unwrap();
@@ -84,7 +84,7 @@ pub fn handle_npz(
     cumulative: bool,
     npz: &str,
     params: &Parameters,
-    output_params: DisplayOptions,
+    output_params: DisplayParams,
 ) -> CliResult<()> {
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
     let mut values = HashMap::new();
@@ -108,7 +108,7 @@ pub fn handle_pbdir(
     cumulative: bool,
     pbdir: &str,
     params: &Parameters,
-    output_params: DisplayOptions,
+    output_params: DisplayParams,
 ) -> CliResult<()> {
     let mut values: HashMap<String, CliResult<Tensor>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
@@ -132,7 +132,7 @@ pub fn compare<F, O>(
     tract: &ModelImpl<F, O>,
     all_values: &HashMap<String, CliResult<Tensor>>,
     params: &Parameters,
-    output_params: DisplayOptions,
+    output_params: DisplayParams,
 ) -> CliResult<()>
 where
     F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,
@@ -153,9 +153,9 @@ where
 
     let mut display_graph = crate::display_graph::DisplayGraph::from_model_and_options(
         tract as &dyn Model,
-        output_params.into(),
+        &output_params,
     )?
-    .with_graph_def(&params.graph)?;
+    .with_graph_def(tract, &params.graph)?;
 
     let mut failing = vec![];
     let mut ok = 0;
@@ -164,14 +164,16 @@ where
         let node = &tract.nodes()[n];
         let mut ok_node = true;
 
+        let mut tags = display_graph.node_mut(n.into());
+
         if tract.input_outlets()?.iter().any(|o| o.node == n) {
-            display_graph.set_node_color(n, Blue)?;
+            tags.style = Some(Blue.into());
         } else if node.op().validation() == Validation::Random {
-            display_graph.set_node_color(n, Blue)?;
-            display_graph.add_node_label(&[n], Blue.paint("Random").to_string())?;
+            tags.style = Some(Blue.into());
+            tags.labels.push(Blue.paint("Random").to_string());
         } else if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
-            display_graph.set_node_color(n, Red)?;
-            display_graph.add_node_label(&[n], Red.paint("Unimplemented").to_string())?;
+            tags.style = Some(Red.into());
+            tags.labels.push(Red.paint("Unimplemented").to_string());
             failing.push(n);
         } else {
             debug!("Computing {} in tract", node);
@@ -187,9 +189,8 @@ where
                 .collect::<Vec<_>>();
             if let Some(e) = error {
                 failing.push(n);
-                display_graph.set_node_color(n, Red.bold())?;
-                display_graph
-                    .add_node_label(&[n], format!("{}: {}", Red.bold().paint("ERROR"), e))?;
+                tags.style = Some(Red.into());
+                tags.labels.push(format!("{}: {}", Red.bold().paint("ERROR"), e));
             } else {
                 for ix in 0..node.outputs.len() {
                     if let Some(ref_value) =
@@ -203,7 +204,7 @@ where
                                 {
                                     failing.push(n);
                                     ok_node = false;
-                                    display_graph.set_node_color(n, Red.bold())?;
+                                    tags.style = Some(Red.bold());
                                     let mut msg = vec![Red
                                         .bold()
                                         .paint(format!("Wrong value for output {}, {}", ix, e))
@@ -211,7 +212,7 @@ where
                                     msg.push(format!("got     : {:?}", found));
                                     msg.push(format!("ref     : {:?}", t));
                                     msg.push(format!("check   : {:?}", node.op().validation()));
-                                    display_graph.add_node_section(&[n], msg)?;
+                                    tags.sections.push(msg);
                                 }
                                 if !cumulative {
                                     // Use the output from reference to keep tract from drifting.
@@ -222,25 +223,19 @@ where
                             Err(e) => {
                                 failing.push(n);
                                 ok_node = false;
-                                display_graph.set_node_color(n, Red.bold())?;
-                                display_graph.add_node_label(
-                                    &[n],
-                                    format!("{}: {}", Red.bold().paint("ERROR"), e),
-                                )?;
+                                tags.style = Some(Red.bold());
+                                tags.labels.push(format!("{}: {}", Red.bold().paint("ERROR"), e));
                             }
                         }
                     } else {
                         ok_node = false;
-                        display_graph.set_node_color(n, Yellow.bold())?;
-                        display_graph.add_node_label(
-                            &[n],
-                            Yellow.paint("Not matched against reference").to_string(),
-                        )?;
+                        tags.style = Some(Yellow.bold());
+                        tags.labels.push(Yellow.paint("Not matched against reference").to_string());
                     }
                 }
-                display_graph.add_node_section(&[n], inputs)?;
+                tags.sections.push(inputs);
                 if ok_node {
-                    display_graph.set_node_color(n, Green.bold())?;
+                    tags.style = Some(Green.bold());
                     ok += 1;
                 }
             }
@@ -248,10 +243,10 @@ where
     }
 
     if log_enabled!(Info) {
-        display_graph.render()?;
+        display_graph.render(tract)?;
     } else {
         for f in &failing {
-            display_graph.render_node(*f)?;
+            display_graph.render_node(tract, *f)?;
         }
     }
 
