@@ -1,7 +1,7 @@
-use crate::display_graph::DisplayOptions;
+use crate::display_params::DisplayParams;
 use crate::{CliResult, Model};
 use ansi_term::{Color, Style};
-use box_drawing::light::*;
+use box_drawing::heavy::*;
 use std::fmt;
 use std::fmt::Write;
 use tract_core::model::{InletId, OutletId};
@@ -80,7 +80,7 @@ impl DrawingState {
         &mut self,
         model: &dyn Model,
         node: usize,
-        _opts: &DisplayOptions,
+        _opts: &DisplayParams,
     ) -> CliResult<Vec<String>> {
         let mut lines = vec![String::new()];
         macro_rules! p { ($($args: expr),*) => { write!(lines.last_mut().unwrap(), $($args),*)?;} }
@@ -171,7 +171,7 @@ impl DrawingState {
         &mut self,
         model: &dyn Model,
         node: usize,
-        opts: &DisplayOptions,
+        opts: &DisplayParams,
     ) -> CliResult<Vec<String>> {
         let mut lines = vec![String::new()];
         macro_rules! p { ($($args: expr),*) => { write!(lines.last_mut().unwrap(), $($args),*)?;} }
@@ -204,17 +204,17 @@ impl DrawingState {
             };
             match (inputs.len(), node_output_count) {
                 (0, 1) => p!("{}", self.latest_node_color.paint(DOWN_RIGHT)),
-                (1, 0) => p!("{}", self.latest_node_color.paint("╵")),
+                (1, 0) => p!("{}", self.latest_node_color.paint("╹")),
                 (u, d) => {
-                    p!("{}", self.latest_node_color.paint("┝"));
+                    p!("{}", self.latest_node_color.paint(VERTICAL_RIGHT));
                     for _ in 1..u.min(d) {
-                        p!("{}", self.latest_node_color.paint("┿"));
+                        p!("{}", self.latest_node_color.paint(VERTICAL_HORIZONTAL));
                     }
                     for _ in u..d {
-                        p!("{}", self.latest_node_color.paint("┯"));
+                        p!("{}", self.latest_node_color.paint(DOWN_HORIZONTAL));
                     }
                     for _ in d..u {
-                        p!("{}", self.latest_node_color.paint("┷"));
+                        p!("{}", self.latest_node_color.paint(UP_HORIZONTAL));
                     }
                 }
             }
@@ -243,7 +243,7 @@ impl DrawingState {
         &mut self,
         model: &dyn Model,
         node: usize,
-        opts: &DisplayOptions,
+        opts: &DisplayParams,
     ) -> CliResult<Vec<String>> {
         let mut lines = vec![];
         let passthrough_count = self.passthrough_count(node);

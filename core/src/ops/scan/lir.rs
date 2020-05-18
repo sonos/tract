@@ -294,9 +294,14 @@ impl TypedOp for Codegen {
                 })
                 .next()
                 .unwrap();
-            let big = 1_000_000;
-            let dominator = inputs[outside_slot].shape.dim(axis).eval(big).unwrap() as f64 / big as f64;
-            dominator / chunk as f64
+            let outside_dim = inputs[outside_slot].shape.dim(axis);
+            if let Ok(i) = outside_dim.to_integer() {
+                i as f64 / chunk as f64
+            } else {
+                let big = 1_000_000;
+                let dominator = inputs[outside_slot].shape.dim(axis).eval(big).unwrap() as f64 / big as f64;
+                dominator / chunk as f64
+            }
         };
         vec![("loop".into(), iters as f64)]
     }

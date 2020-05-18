@@ -49,7 +49,7 @@ then
     done
 fi
 
-TAIL="--readings --machine-friendly -O profile --bench"
+TAIL="--readings --machine-friendly -O bench"
 
 net_bench() {
     net=$1
