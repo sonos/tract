@@ -29,6 +29,7 @@ pub struct DisplayParams {
     pub expect_canonic: bool,
     pub outlet_labels: bool,
     pub io: Io,
+    pub json: bool,
     pub info: bool,
     pub left_column_width: usize,
 }

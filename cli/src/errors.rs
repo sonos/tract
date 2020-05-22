@@ -18,5 +18,6 @@ error_chain! {
         NumParseInt(::std::num::ParseIntError);
         NdarrayShape(ndarray::ShapeError);
         NdarrayNpyReadNpz(ndarray_npy::ReadNpzError);
+        SerdeJson(serde_json::error::Error);
     }
 }

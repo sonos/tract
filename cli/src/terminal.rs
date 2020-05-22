@@ -174,7 +174,7 @@ fn render_node_prefixed(
                     format!(
                         "{} {}",
                         Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string(),
-                        tags.model_input.as_deref().unwrap_or("")
+                        tags.model_input.as_ref().map(|s| &**s).unwrap_or("")
                     )
                 } else if let Some(id) =
                     model.output_outlets().iter().position(|n| n.node == node_id && n.slot == ix)
@@ -182,7 +182,7 @@ fn render_node_prefixed(
                     format!(
                         "{} {}",
                         Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string(),
-                        tags.model_output.as_deref().unwrap_or("")
+                        tags.model_output.as_ref().map(|s| &**s).unwrap_or("")
                     )
                 } else {
                     "".to_string()
