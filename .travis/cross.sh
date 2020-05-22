@@ -135,7 +135,14 @@ case "$PLATFORM" in
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
     ;;
+    "wasm32-unknown-unknown")
+        rustup target add wasm32-unknown-unknown
+        cargo check --target wasm32-unknown-unknown -p tract-onnx -p tract-tensorflow
+    ;;
     *)
+        echo "Don't know what to do for platform: $PLATFORM"
+        exit 2
+    ;;
 esac
 
 if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
