@@ -5,8 +5,8 @@ use tract_core::model::{Fact, OutletId};
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::pulse::PulsedModel;
 
-use crate::display_graph;
 use crate::display_params::DisplayParams;
+use crate::terminal;
 use crate::{CliResult, Parameters};
 
 pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
@@ -18,9 +18,8 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
     let pulsed_input_fact = pulsed.input_fact(0)?;
     let input_pulse = pulsed_input_fact.pulse();
 
-    let display_graph =
-        display_graph::DisplayGraph::from_model_and_options(&*params.tract_model, options)?
-            .with_graph_def(&*params.tract_model, &params.graph)?;
+    let annotations = crate::annotations::Annotations::from_model(&*params.tract_model)?
+        .with_graph_def(&*params.tract_model, &params.graph)?;
 
     let eval_order = ::tract_core::model::eval_order(&fixed)?;
 
@@ -101,7 +100,12 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
                 let valid_fixed_result =
                     fixed_result.slice_axis(Axis(output_axis), (f_o..f_o + count).into());
                 if valid_pulse_result != valid_fixed_result {
-                    display_graph.render_node(&*params.tract_model, pulsed_node)?;
+                    terminal::render_node(
+                        &*params.tract_model,
+                        pulsed_node,
+                        &annotations,
+                        options,
+                    )?;
                     println!("pulse: {} ({}..{})", i, i * output_pulse, (i + 1) * output_pulse);
                     println!(
                         "expected: {}",

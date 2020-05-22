@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 
-use crate::display_graph::*;
+use crate::annotations::*;
 use crate::errors::*;
 use crate::BenchLimits;
 use std::time::{Duration, Instant};
@@ -22,77 +22,10 @@ pub struct ProfileSummary {
     pub entire: Duration,
 }
 
-/*
-#[derive(Clone, Debug, Default)]
-pub struct ProfileData {
-pub nodes: HashMap<TVec<(usize, String)>, Duration>,
-pub sum: Duration,
-pub entire: Duration,
-}
-
-impl ProfileData {
-pub fn add(
-&mut self,
-node_id: &[(usize, String)],
-dur: Duration,
-) -> ::tract_core::TractResult<()> {
- *self.nodes.entry(node_id.into()).or_insert(Duration::default()) += dur;
- self.sum += dur;
- Ok(())
- }
-
- pub fn sub(
- &mut self,
- node_id: &[(usize, String)],
- dur: Duration,
- ) -> ::tract_core::TractResult<()> {
- *self.nodes.entry(node_id.into()).or_insert(Duration::default()) -= dur;
- self.sum -= dur;
- Ok(())
- }
-
- fn op_name_for_id(model: &dyn Model, id: &[(usize, String)]) -> CliResult<String> {
- if id.len() == 1 {
- Ok(model.node_op(id[0].0).name().into_owned())
- } else {
- let token = &id[0];
- let model = model
- .node_op(token.0)
- .as_typed()
- .unwrap()
- .nested_models()
- .iter()
- .find(|m| m.0 == token.1)
- .unwrap()
- .1;
- Self::op_name_for_id(model, &id[1..])
- }
- }
-
- pub fn by_ops(&self, model: &dyn Model) -> CliResult<HashMap<String, (Duration, usize)>> {
- let mut operations = HashMap::new();
- for (node, dur) in &self.nodes {
- let op_name = Self::op_name_for_id(model, node)?;
- let entry = operations.entry(op_name.clone()).or_insert((Duration::default(), 1));
- entry.0 += *dur;
- entry.1 += 1;
- }
- Ok(operations)
- }
-
- pub fn scale(&mut self, factor: f32) {
- self.nodes.values_mut().for_each(|n| {
- n.scale(factor);
- });
- self.sum.scale(factor);
- }
- }
- */
-
 pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
-    dg: &mut DisplayGraph,
+    dg: &mut Annotations,
 ) -> CliResult<()> {
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
@@ -165,19 +98,13 @@ pub fn profile(
     }
     let denum = (iters as f32).recip();
     let entire = entire.scale(denum);
-    dg.tags.values_mut().for_each(|t| {
-        t.profile.as_mut().map(|d| d.scale(denum));
-    });
+    for d in dg.tags.values_mut() {
+        if let Some(d) = d.profile.as_mut() {
+            *d = d.scale(denum);
+        }
+    }
     let max = dg.tags.values().filter_map(|t| t.profile).max().unwrap();
     let sum = dg.tags.values().filter_map(|t| t.profile).sum::<Duration>();
     dg.profile_summary = Some(ProfileSummary { max, sum, entire });
     Ok(())
 }
-
-/*
-fn prefixes_for(s: &str) -> impl Iterator<Item = String> + '_ {
-use tract_itertools::*;
-let split = s.split(".").count() - 1;
-(0..split).map(move |n| s.split(".").take(n).join("."))
-}
-*/
