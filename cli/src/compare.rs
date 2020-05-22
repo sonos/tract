@@ -151,11 +151,8 @@ where
         state.set_input(ix, value.clone())?;
     }
 
-    let mut display_graph = crate::display_graph::DisplayGraph::from_model_and_options(
-        tract as &dyn Model,
-        &output_params,
-    )?
-    .with_graph_def(tract, &params.graph)?;
+    let mut annotations = crate::annotations::Annotations::from_model(tract as &dyn Model)?
+        .with_graph_def(tract, &params.graph)?;
 
     let mut failing = vec![];
     let mut ok = 0;
@@ -164,7 +161,7 @@ where
         let node = &tract.nodes()[n];
         let mut ok_node = true;
 
-        let mut tags = display_graph.node_mut(n.into());
+        let mut tags = annotations.node_mut(n.into());
 
         if tract.input_outlets()?.iter().any(|o| o.node == n) {
             tags.style = Some(Blue.into());
@@ -243,10 +240,10 @@ where
     }
 
     if log_enabled!(Info) {
-        display_graph.render(tract)?;
+        terminal::render(tract, &annotations, &output_params)?;
     } else {
         for f in &failing {
-            display_graph.render_node(tract, *f)?;
+            terminal::render_node(tract, *f, &annotations, &output_params)?;
         }
     }
 

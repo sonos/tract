@@ -44,7 +44,7 @@ impl tract_linalg::hash::SloppyHash for Blob {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DatumType {
     Bool,

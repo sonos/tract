@@ -45,7 +45,7 @@ pub enum Validation {
     Accurate,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum Cost {
     Div(DatumType),
     FMA(DatumType),

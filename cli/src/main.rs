@@ -36,22 +36,22 @@ use crate::errors::*;
 
 use readings_probe::*;
 
+mod annotations;
 mod bench;
 mod compare;
 mod cost;
-mod display_graph;
 mod display_params;
 mod draw;
 mod dump;
 mod errors;
 mod export;
-mod format;
 mod optimize_check;
 mod profile;
 mod run;
 // mod rusage;
 mod stream_check;
 mod tensor;
+mod terminal;
 mod utils;
 
 readings_probe::instrumented_allocator!();
