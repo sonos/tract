@@ -218,8 +218,10 @@ impl Onnx {
 
 impl Framework<pb::ModelProto> for Onnx {
     fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
-        let f = fs::File::open(p)?;
-        let map = unsafe { memmap::Mmap::map(&f)? };
+        #[cfg(not(target_arch = "wasm32"))]
+        let map = unsafe { memmap::Mmap::map(&fs::File::open(p)?)? };
+        #[cfg(target_arch = "wasm32")]
+        let map = fs::read(p)?;
         Ok(crate::pb::ModelProto::decode(&*map).map_err(|e| format!("{:?}", e))?)
     }
 

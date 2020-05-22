@@ -85,8 +85,10 @@ impl Tensorflow {
     }
 
     pub fn read_frozen_from_path(&self, p: impl AsRef<path::Path>) -> TractResult<GraphDef> {
-        let f = fs::File::open(p)?;
-        let map = unsafe { memmap::Mmap::map(&f)? };
+        #[cfg(not(target_arch = "wasm32"))]
+        let map = unsafe { memmap::Mmap::map(&fs::File::open(p)?)? };
+        #[cfg(target_arch = "wasm32")]
+        let map = fs::read(p)?;
         Ok(GraphDef::decode(&*map).map_err(|e| format!("{:?}", e))?)
     }
 
