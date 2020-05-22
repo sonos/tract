@@ -20,6 +20,7 @@ pub struct ProfileSummary {
     pub max: Duration,
     pub sum: Duration,
     pub entire: Duration,
+    pub iters: usize,
 }
 
 pub fn profile(
@@ -30,7 +31,7 @@ pub fn profile(
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(&plan)?;
-    let mut iters = 0;
+    let mut iters = 0usize;
     let start = Instant::now();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
         let _ = state.run_plan_with_eval(
@@ -105,6 +106,6 @@ pub fn profile(
     }
     let max = dg.tags.values().filter_map(|t| t.profile).max().unwrap();
     let sum = dg.tags.values().filter_map(|t| t.profile).sum::<Duration>();
-    dg.profile_summary = Some(ProfileSummary { max, sum, entire });
+    dg.profile_summary = Some(ProfileSummary { max, sum, entire, iters });
     Ok(())
 }

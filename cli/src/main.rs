@@ -358,6 +358,7 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         .arg(Arg::with_name("info").long("info").help("show op inner information"))
         .arg(Arg::with_name("io-long").long("io-long").help("show full i/o information"))
         .arg(Arg::with_name("io-none").long("io-none").help("hide i/o information"))
+        .arg(Arg::with_name("json").long("json").help("dump performance info as json"))
         .arg(Arg::with_name("outlet-labels").long("outlet-labels").help("display outlet labels"))
         .arg(
             Arg::with_name("invariants")
@@ -781,14 +782,14 @@ impl Parameters {
 }
 
 pub struct BenchLimits {
-    max_iters: u64,
+    max_iters: usize,
     max_time: std::time::Duration,
 }
 
 impl BenchLimits {
     pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<BenchLimits> {
         let max_iters =
-            matches.value_of("max_iters").map(u64::from_str).transpose()?.unwrap_or(100_000);
+            matches.value_of("max_iters").map(usize::from_str).transpose()?.unwrap_or(100_000);
         let max_time = matches
             .value_of("max-time")
             .map(u64::from_str)
@@ -829,6 +830,7 @@ pub fn display_params_from_clap(
             display_params::Io::Short
         },
         info: matches.is_present("info"),
+        json: matches.is_present("json"),
     })
 }
 
