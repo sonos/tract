@@ -8,6 +8,7 @@
     * new "compact" graph dumper, profile visual hints
     * `dump --cost --profile --json` output profiling and cost information
     * show logical names for ops instead of the Op struct names (not 100% sure it's right)
+* WASM support for tract-onnx and tract-tensorflow targets (CI)
 
 ## 0.6.3 - 2020-04-25
 
