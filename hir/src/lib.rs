@@ -25,6 +25,7 @@ pub mod ops {
     pub mod downsample;
     pub mod dummy;
     pub mod element_wise;
+    pub mod expandable;
     pub mod identity;
     pub mod konst;
     pub mod logic;
