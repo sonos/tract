@@ -117,7 +117,12 @@ pub fn batch_normalization(
     if spatial != 0 {
         bail!("BatchNormalization: attribute 'spatial' is not supported (deprecated by ONNX operator set 9)")
     }
-    Ok((Box::new(batch_norm::BatchNorm::new(nn::DataFormat::NCHW, epsilon, spatial != 0)), vec![]))
+    Ok((
+        Box::new(tract_hir::ops::expandable::Expandable::new(Box::new(
+            batch_norm::BatchNorm::new(nn::DataFormat::NCHW, epsilon, spatial != 0),
+        ))),
+        vec![],
+    ))
 }
 
 fn common_conv(node: &NodeProto) -> TractResult<cnn::Conv> {

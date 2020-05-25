@@ -40,51 +40,15 @@ impl BatchNorm {
         let intercept = beta.to_owned() - (&mean * &scale) / denominator;
         Ok((slope.into_tensor(), intercept.into_tensor()))
     }
-
-    fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
-    where
-        T: Datum
-            + tract_num_traits::Float
-            + tract_num_traits::FromPrimitive
-            + tract_ndarray::ScalarOperand,
-        f32: AsPrimitive<T>,
-    {
-        let (x, scale, beta, mean, var) = args_5!(&mut inputs);
-
-        let shape = self.data_format.shape(x.shape())?;
-        let c_axis = shape.c_axis();
-        let c_dim = *shape.c_dim();
-
-        let (slope, intercept) = self.to_slope_and_inter::<T>(c_dim, &scale, &beta, &mean, &var)?;
-
-        let slope = slope.as_slice::<T>()?;
-        let intercept = intercept.as_slice::<T>()?;
-        let mut x = x.into_tensor().into_array::<T>()?;
-
-        for c in 0..c_dim {
-            x.slice_axis_mut(tract_ndarray::Axis(c_axis), (c..=c).into())
-                .mapv_inplace(|x| x * slope[c] + intercept[c]);
-        }
-        Ok(tvec!(x.into_arc_tensor()))
-    }
 }
 
-impl Op for BatchNorm {
-    fn name(&self) -> Cow<str> {
-        "BatchNorm".into()
+impl tract_hir::ops::expandable::Expansion for BatchNorm {
+    fn name(&self) -> &'static str {
+        "BatchNorm"
     }
 
     op_onnx!();
-    not_a_typed_op!();
-}
 
-impl StatelessOp for BatchNorm {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
-    }
-}
-
-impl InferenceRulesOp for BatchNorm {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -115,18 +79,15 @@ impl InferenceRulesOp for BatchNorm {
         Ok(())
     }
 
-    as_op!();
-
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let x = target.outlet_fact(mapping[&node.inputs[0]])?;
+        let x = target.outlet_fact(inputs[0])?;
         let params = (1..5)
-            .map(|i| Ok(target.outlet_fact(mapping[&node.inputs[i]])?.konst.clone()))
+            .map(|i| Ok(target.outlet_fact(inputs[i])?.konst.clone()))
             .collect::<TractResult<TVec<Option<Arc<Tensor>>>>>()?;
 
         if let (Some(scale), Some(beta), Some(mean), Some(var)) =
@@ -146,17 +107,16 @@ impl InferenceRulesOp for BatchNorm {
                 inter.insert_axis(inter.rank())?;
             }
 
-            let slope = target.add_const(format!("{}-slope", &*node.name), slope)?;
-            let inter = target.add_const(format!("{}-inter", &*node.name), inter)?;
+            let slope = target.add_const(format!("{}.slope", &*prefix), slope)?;
+            let inter = target.add_const(format!("{}.inter", &*prefix), inter)?;
 
-            let wire = mapping[&node.inputs[0]];
             let wire = target.wire_node(
-                format!("{}-mul", node.name),
+                format!("{}.mul", prefix),
                 tract_hir::ops::math::mul::bin_typed(),
-                &[wire, slope],
+                &[inputs[0], slope],
             )?[0];
             return target.wire_node(
-                &*node.name,
+                prefix,
                 tract_hir::ops::math::add::bin_typed(),
                 &[wire, inter],
             );
