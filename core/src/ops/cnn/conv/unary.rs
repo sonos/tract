@@ -702,6 +702,7 @@ impl TypedOp for ConvUnary {
                     )?[0];
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
+                    /*
                 } else if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
                     && self.group == 1
                 {
@@ -710,6 +711,7 @@ impl TypedOp for ConvUnary {
                     let wire = self.wire_as_im2col_pair(&mut patch, &*node.name, wire, true)?;
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
+                    */
                 } else if self.group != 1 && self.group == self.output_channels() {
                     return Ok(Some(TypedModelPatch::single_unary_op(
                         model,
