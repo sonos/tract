@@ -3,6 +3,7 @@
 use proptest::prelude::*;
 
 use tract_ndarray::prelude::*;
+use tract_hir::internal::*;
 use tract_onnx::prelude::*;
 use tract_onnx::tract_hir;
 
@@ -54,7 +55,7 @@ impl LstmProblem {
         let b = model.add_const("b", b_iofc)?;
         let h0 = model.add_const("h0", self.h0.clone().insert_axis(Axis(0)))?;
         let c0 = model.add_const("c0", self.c0.clone().insert_axis(Axis(0)))?;
-        let lstm = model.wire_node("lstm", op, &[x, w, r, b, h0, c0]).unwrap();
+        let lstm = model.wire_node("lstm", expand(op), &[x, w, r, b, h0, c0]).unwrap();
         model.set_output_outlets(&lstm).unwrap();
         model.analyse(false)?;
         Ok(model.into_typed()?)
