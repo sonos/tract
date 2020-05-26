@@ -49,7 +49,7 @@ then
     done
 fi
 
-TAIL="--readings --machine-friendly -O bench"
+TAIL="--readings --readings-heartbeat 1000 --machine-friendly -O bench"
 
 net_bench() {
     net=$1
