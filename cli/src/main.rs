@@ -83,7 +83,7 @@ fn main() {
 
     (@arg readings: --readings "Start readings instrumentation")
     (@arg readings_heartbeat: --("readings-heartbeat") +takes_value
-     default_value("0.5") "Set heartbeat (ms)")
+     default_value("5") "Set heartbeat (ms)")
 
     (@arg model: +takes_value "Sets the model to use")
 
