@@ -320,6 +320,27 @@ impl TryInto<f64> for bool {
     }
 }
 
+macro_rules! cast_to_and_from_bool {
+    ($t: ty) => {
+        impl TryInto<bool> for $t {
+            fn try_into(&self) -> TractResult<bool> {
+                Ok(*self == 0)
+            }
+        }
+
+        impl TryInto<$t> for bool {
+            fn try_into(&self) -> TractResult<$t> {
+                Ok(*self as usize as _)
+            }
+        }
+    }
+}
+cast_to_and_from_bool!(i8);
+cast_to_and_from_bool!(i16);
+cast_to_and_from_bool!(i32);
+cast_to_and_from_bool!(i64);
+
+
 impl TryInto<f32> for f16 {
     fn try_into(&self) -> TractResult<f32> {
         Ok(self.0.to_f32())
@@ -402,5 +423,11 @@ mod tests {
     fn test_cast_i32_to_dim() {
         let t_i32: Tensor = tensor1(&[0i32, 0]);
         t_i32.cast_to::<TDim>().unwrap();
+    }
+
+    #[test]
+    fn test_cast_i64_to_bool() {
+        let t_i64: Tensor = tensor1(&[0i64]);
+        t_i64.cast_to::<bool>().unwrap();
     }
 }
