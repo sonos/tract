@@ -448,6 +448,16 @@ impl Tensor {
             (I32, I64) => self.cast::<i32, i64>()?,
             (I64, I32) => self.cast::<i64, i32>()?,
 
+            (I8, Bool) => self.cast::<i8, bool>()?,
+            (I16, Bool) => self.cast::<i16, bool>()?,
+            (I32, Bool) => self.cast::<i32, bool>()?,
+            (I64, Bool) => self.cast::<i64, bool>()?,
+
+            (Bool, I8) => self.cast::<bool, i8>()?,
+            (Bool, I16) => self.cast::<bool, i16>()?,
+            (Bool, I32) => self.cast::<bool, i32>()?,
+            (Bool, I64) => self.cast::<bool, i64>()?,
+
             (Bool, F32) => self.cast::<bool, f32>()?,
             (I8, F32) => self.cast::<i8, f32>()?,
             (I16, F32) => self.cast::<i16, f32>()?,
