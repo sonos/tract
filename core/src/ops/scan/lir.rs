@@ -219,9 +219,11 @@ impl OpState for State {
                 .collect();
 
             trace!("iter_inputs: {:?}", iter_inputs);
+            dbg!(&iter_inputs);
             let iter_outputs =
                 mutable.model_state.run(iter_inputs).chain_err(|| "Evaluating inner body")?;
             trace!("iter_outputs: {:?}", iter_outputs);
+            dbg!(&iter_outputs);
 
             for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
                 if let Some(slot) = mapping.full_slot {
