@@ -19,10 +19,6 @@ fn eval(
 ) -> TractResult<Tensor> {
     if let Some(q) = q_params {
         if (a.datum_type(), b.datum_type()) == (i8::datum_type(), i8::datum_type()) {
-            return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-                MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
-            });
-        } else if (a.datum_type(), b.datum_type()) == (i8::datum_type(), i8::datum_type()) {
             if q.c_datum_type == i32::datum_type() {
                 return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
                     MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
