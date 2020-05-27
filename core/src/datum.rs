@@ -324,7 +324,7 @@ macro_rules! cast_to_and_from_bool {
     ($t: ty) => {
         impl TryInto<bool> for $t {
             fn try_into(&self) -> TractResult<bool> {
-                Ok(*self == 0)
+                Ok(*self != 0)
             }
         }
 
