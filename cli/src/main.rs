@@ -616,7 +616,7 @@ impl Parameters {
                     t.shape.set_dim(s.parse()?, TDim::s());
                 }
                 info!("Input #{}: {:?}", ix, t);
-                raw_model.set_outlet_fact(outlet, t)?;
+                raw_model.set_outlet_fact(outlet, t.without_value())?;
             }
         }
 
@@ -638,7 +638,7 @@ impl Parameters {
                         if let Some(s) = matches.value_of("stream_axis") {
                             fact.shape.set_dim(s.parse()?, TDim::s());
                         }
-                        raw_model.set_input_fact(ix, fact)?;
+                        raw_model.set_input_fact(ix, fact.without_value())?;
                         while input_values.len() <= ix {
                             input_values.push(None);
                         }
@@ -653,8 +653,8 @@ impl Parameters {
             let const_inputs =
                 matches.values_of("const_input").map(|cis| cis.collect()).unwrap_or(vec![]);
             if const_inputs.contains(&raw_model.node_name(input.node)) {
-                let t = raw_model.outlet_fact(input.node.into())?.value.concretize().unwrap();
-                raw_model.node_mut(input.node).op = Box::new(tract_core::ops::konst::Const::new(t));
+                raw_model.node_mut(input.node).op =
+                    Box::new(tract_core::ops::konst::Const::new(input_values.remove(i).unwrap()));
                 raw_model.inputs.remove(i);
             }
         }
