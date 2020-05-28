@@ -20,6 +20,7 @@ data through it.
 
 * [MobileNet v2 with TensorFlow](examples/tensorflow-mobilenet-v2)
 * [From Keras in Jupyter to tract](examples/jupyter-keras-tract)
+* [ResNet with PyTorch](examples/pytorch-resnet)
 
 ## Real-time streaming support
 
