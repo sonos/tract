@@ -329,7 +329,7 @@ pub fn render_summaries(
         }
         println!(
             "Not accounted by ops: {}",
-            dur_avg_ratio(summary.entire - summary.sum, summary.entire)
+            dur_avg_ratio(summary.entire - summary.sum.min(summary.entire), summary.entire)
         );
         println!("Entire network performance: {}", dur_avg(summary.entire));
     }

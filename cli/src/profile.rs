@@ -86,9 +86,10 @@ pub fn profile(
                                 *dg.node_mut(NodeQId(prefix.clone(), node.id))
                                     .profile
                                     .get_or_insert(Duration::default()) += elapsed;
-                                *dg.node_mut(NodeQId(tvec!(), outer_node.id))
+                                let parent = dg.node_mut(NodeQId(tvec!(), outer_node.id))
                                     .profile
-                                    .get_or_insert(Duration::default()) -= elapsed;
+                                    .get_or_insert(Duration::default());
+                                *parent -= elapsed.min(*parent);
                                 r
                             },
                         )?;
