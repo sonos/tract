@@ -1,5 +1,5 @@
 [package]
-name = "pytorch-resnet"
+name = "example-pytorch-resnet"
 version = "0.1.0"
 authors = ["Teddy Koker <teddy.koker@gmail.com>"]
 edition = "2018"
