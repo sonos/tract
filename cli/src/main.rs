@@ -897,6 +897,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
 
     let mut params = Parameters::from_clap(&matches, probe)?;
 
+    let mut need_optimisations = false;
+
     match matches.subcommand() {
         #[cfg(feature = "conform")]
         ("compare", Some(m)) => compare::handle_tensorflow(
@@ -946,6 +948,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
 
         ("dump", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m, &*params.output_names)?);
+            need_optimisations = m.is_present("profile");
             let inner = m
                 .values_of("inner")
                 .map(|ss| ss.map(|s| s.to_string()).collect())
@@ -960,17 +963,23 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         }
 
         ("bench", Some(m)) => {
-            if !matches.is_present("optimize") {
-                warn!("Profiling un-optimized network. Consider adding -O.");
-            }
-            if cfg!(debug_assertions) {
-                warn!("Profiling a debug build of tract!");
-            }
+            need_optimisations = true;
             bench::handle(&params, &BenchLimits::from_clap(&m)?, probe)
         }
 
         (s, _) => bail!("Unknown subcommand {}.", s),
     }?;
+
+    if need_optimisations {
+        let style = ansi_term::Style::new().fg(ansi_term::Color::Red).bold();
+        if !matches.is_present("optimize") {
+            warn!("{}", style.paint("Profiling an un-optimized network. Consider adding -O."));
+        }
+        if cfg!(debug_assertions) {
+            warn!("{}", style.paint("Profiling a debug build of tract!"));
+        }
+    }
+
     if let Some(e) = params.analyse_error {
         Err(e)?
     }
