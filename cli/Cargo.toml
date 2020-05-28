@@ -26,6 +26,7 @@ ndarray-npy = { version = "0.5", features = [ "compressed_npz" ] }
 pbr = "1.0"
 py_literal = "0.2"
 rand = "0.7"
+regex = "=1.3.7" # locked for 1.39 compat
 readings-probe = "0.1.1"
 tract-core = { path = "../core" }
 tract-hir = { path = "../hir" }
