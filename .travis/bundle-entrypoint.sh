@@ -68,13 +68,18 @@ net_bench() {
     echo net.$net.active_at_model_ready.$pb $(($a-$f)) >> metrics
 }
 
-net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49x10xf32 --partial --input-node Mfcc
+mem=$(free -m | grep Mem | awk '{ print $2 }')
 
-net_bench deepspeech_0_4_1 pass \
-    $CACHEDIR/deepspeech-0.4.1.pb \
-    --input-node input_node -i 1x16x19x26xf32 \
-    --input-node input_lengths -i 1xi32=16 --const-input input_lengths \
-    --tf-initializer-output-node initialize_state
+if [ $mem -gt 600 ]
+then
+    net_bench deepspeech_0_4_1 pass \
+        $CACHEDIR/deepspeech-0.4.1.pb \
+        --input-node input_node -i 1x16x19x26xf32 \
+        --input-node input_lengths -i 1xi32=16 --const-input input_lengths \
+        --tf-initializer-output-node initialize_state
+fi
+
+net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49x10xf32 --partial --input-node Mfcc
 
 net_bench hey_snips_v1 400ms $CACHEDIR/hey_snips_v1.pb -i 80x40xf32
 net_bench hey_snips_v31 400ms $CACHEDIR/hey_snips_v3.1.pb -i 40x40xf32
