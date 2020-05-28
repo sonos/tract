@@ -9,55 +9,44 @@ use criterion::*;
 use tract_core::model::*;
 use tract_core::*;
 
+use nn::DataFormat::{CHW, HWC};
 use tract_core::internal::*;
 use tract_core::ops::{cnn, nn};
 
 #[derive(Debug, new)]
 struct Problem {
-    input_geo: TVec<usize>,
-    ci: usize,
+    input: nn::DataShape,
     kernel_geo: TVec<usize>,
     co: usize,
     strides: TVec<usize>,
     dil: TVec<usize>,
 }
 
-impl Default for Problem {
-    fn default() -> Problem {
-        Problem::new(tvec!(64, 64), 32, tvec!(3, 3), 32, tvec!(1, 1), tvec!(1, 1))
-    }
-}
-
 impl Problem {
     pub fn image(&self) -> Tensor {
-        Tensor::from(ndarray::ArrayD::<f32>::zeros(&*self.image_shape()))
-    }
-    pub fn image_shape(&self) -> TVec<usize> {
-        let mut shape = self.input_geo.clone();
-        shape.push(self.ci);
-        shape
+        Tensor::from(ndarray::ArrayD::<f32>::zeros(&*self.input.shape))
     }
 
     pub fn image_fact(&self) -> TypedFact {
-        TypedFact::dt_shape(DatumType::F32, &*self.image_shape()).unwrap()
+        TypedFact::dt_shape(DatumType::F32, &*self.input.shape).unwrap()
     }
 
     pub fn image_type(&self) -> TypedFact {
-        TypedFact::dt_shape(f32::datum_type(), &*self.image_shape()).unwrap()
+        TypedFact::dt_shape(f32::datum_type(), &*self.input.shape).unwrap()
     }
 
     pub fn to_plan(&self, direct: bool) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {
-        assert_eq!(self.input_geo.len(), self.kernel_geo.len());
-        assert_eq!(self.input_geo.len(), self.dil.len());
-        assert_eq!(self.input_geo.len(), self.strides.len());
+        assert_eq!(self.input.hw_rank(), self.kernel_geo.len());
+        assert_eq!(self.input.hw_rank(), self.dil.len());
+        assert_eq!(self.input.hw_rank(), self.strides.len());
 
         let mut full_kernel_shape = self.kernel_geo.clone();
-        full_kernel_shape.push(self.ci);
+        full_kernel_shape.push(*self.input.c());
         full_kernel_shape.push(self.co);
         let kernel = Tensor::zero::<f32>(&*full_kernel_shape).unwrap();
         let conv = cnn::ConvUnary {
             pool_spec: cnn::PoolSpec {
-                data_format: nn::DataFormat::HWC,
+                data_format: self.input.fmt,
                 kernel_shape: self.kernel_geo.clone(),
                 padding: cnn::PaddingSpec::Valid,
                 dilations: Some(self.dil.clone()),
@@ -94,18 +83,30 @@ fn b(c: &mut Criterion, name: &str, pbs: Vec<(usize, Problem)>) {
         let args = tvec!(image.clone().into());
         let output = direct_plan.run(args.clone()).unwrap();
         let len = output[0].len();
-        let tp = Throughput::Elements((len * pb.ci * pb.kernel_geo.iter().product::<usize>()) as _);
-        group
-            .bench_with_input(BenchmarkId::new("im2col", i), &pb, |b, pb| pb.bench(b, false))
-            .bench_with_input(BenchmarkId::new("direct", i), &pb, |b, pb| pb.bench(b, true))
-            .throughput(tp);
+        let tp = Throughput::Elements(
+            (len * pb.input.c() * pb.kernel_geo.iter().product::<usize>()) as _,
+        );
+        group.throughput(tp);
+        group.bench_with_input(BenchmarkId::new("im2col", i), &pb, |b, pb| pb.bench(b, false));
+        group.bench_with_input(BenchmarkId::new("direct", i), &pb, |b, pb| pb.bench(b, true));
     }
 }
 
 fn size(c: &mut Criterion) {
     let pbs = [16, 32, 64, 128]
         .iter()
-        .map(|&s| (s, Problem::new(tvec!(s, s), 32, tvec!(3, 3), 32, tvec!(1, 1), tvec!(1, 1))))
+        .map(|&s| {
+            (
+                s,
+                Problem::new(
+                    HWC.from_n_c_hw(1, 32, &[s, s]).unwrap(),
+                    tvec!(3, 3),
+                    32,
+                    tvec!(1, 1),
+                    tvec!(1, 1),
+                ),
+            )
+        })
         .collect();
     b(c, "size", pbs);
 }
@@ -113,7 +114,18 @@ fn size(c: &mut Criterion) {
 fn kernel_sq(c: &mut Criterion) {
     let pbs = [1, 2, 3, 4, 5]
         .iter()
-        .map(|&s| (s, Problem::new(tvec!(64, 64), 32, tvec!(s, s), 32, tvec!(1, 1), tvec!(1, 1))))
+        .map(|&s| {
+            (
+                s,
+                Problem::new(
+                    HWC.from_n_c_hw(1, 32, &[64, 64]).unwrap(),
+                    tvec!(s, s),
+                    32,
+                    tvec!(1, 1),
+                    tvec!(1, 1),
+                ),
+            )
+        })
         .collect();
     b(c, "kernel_sq", pbs);
 }
@@ -121,7 +133,18 @@ fn kernel_sq(c: &mut Criterion) {
 fn kernel_1d(c: &mut Criterion) {
     let pbs = [1, 3, 5, 8, 10, 15, 20, 30, 40]
         .iter()
-        .map(|&s| (s, Problem::new(tvec!(64), 32, tvec!(s), 32, tvec!(1), tvec!(1))))
+        .map(|&s| {
+            (
+                s,
+                Problem::new(
+                    HWC.from_n_c_hw(1, 32, &[64]).unwrap(),
+                    tvec!(s),
+                    32,
+                    tvec!(1),
+                    tvec!(1),
+                ),
+            )
+        })
         .collect();
     b(c, "kernel_1d", pbs);
 }
@@ -129,7 +152,18 @@ fn kernel_1d(c: &mut Criterion) {
 fn ci(c: &mut Criterion) {
     let pbs = [1, 2, 4, 8, 16, 32, 64]
         .iter()
-        .map(|&s| (s, Problem::new(tvec!(64, 64), s, tvec!(3, 3), 32, tvec!(1, 1), tvec!(1, 1))))
+        .map(|&s| {
+            (
+                s,
+                Problem::new(
+                    HWC.from_n_c_hw(1, s, &[64, 64]).unwrap(),
+                    tvec!(3, 3),
+                    32,
+                    tvec!(1, 1),
+                    tvec!(1, 1),
+                ),
+            )
+        })
         .collect();
     b(c, "ci", pbs);
 }
@@ -137,37 +171,52 @@ fn ci(c: &mut Criterion) {
 fn co(c: &mut Criterion) {
     let pbs = [1, 2, 4, 8, 16, 32, 64]
         .iter()
-        .map(|&s| (s, Problem::new(tvec!(64, 64), 32, tvec!(3, 3), s, tvec!(1, 1), tvec!(1, 1))))
+        .map(|&s| {
+            (
+                s,
+                Problem::new(
+                    HWC.from_n_c_hw(1, 32, &[64, 64]).unwrap(),
+                    tvec!(3, 3),
+                    s,
+                    tvec!(1, 1),
+                    tvec!(1, 1),
+                ),
+            )
+        })
         .collect();
     b(c, "co", pbs);
 }
 
-macro_rules! b {
-    ($id:ident, $($args:expr),*) => {
-        #[allow(non_snake_case)]
-        fn $id(c: &mut Criterion) {
-            b(c, stringify!($id), vec!((1, Problem::new($($args),*))));
+#[rustfmt::skip]
+mod b {
+    use super::*;
+    macro_rules! b {
+        ($id:ident, $($args:expr),*) => {
+            #[allow(non_snake_case)]
+            pub fn $id(c: &mut Criterion) {
+                b(c, stringify!($id), vec!((1, Problem::new($($args),*))));
+            }
         }
     }
-}
 
-b!(ARM_ML_KWS_CNN_M_0, tvec!(49, 10), 1, tvec!(10, 4), 64, tvec!(1, 1), tvec!(1, 1));
-b!(ARM_ML_KWS_CNN_M_1, tvec!(40, 7), 64, tvec!(10, 4), 48, tvec!(2, 1), tvec!(1, 1));
-b!(Hey_Snips_v4_dil1, tvec!(10, 16), 1, tvec!(3, 1), 64, tvec!(1, 1), tvec!(1, 1));
-b!(Hey_Snips_v4_dil2, tvec!(12, 16), 1, tvec!(3, 1), 64, tvec!(1, 1), tvec!(2, 1));
-b!(Hey_Snips_v4_dil4, tvec!(16, 16), 1, tvec!(3, 1), 64, tvec!(1, 1), tvec!(4, 1));
-b!(Hey_Snips_v4_dil8, tvec!(24, 16), 1, tvec!(3, 1), 64, tvec!(1, 1), tvec!(8, 1));
-b!(Conv2d_2a_3x3, tvec!(149, 149), 32, tvec!(3, 3), 32, tvec!(1, 1), tvec!(1, 1));
+    b!(ARM_ML_KWS_CNN_M_0, HWC.from_n_c_hw(1, 1,  &[49, 10]).unwrap(),   tvec!(10, 4), 64, tvec!(1, 1), tvec!(1, 1));
+    b!(ARM_ML_KWS_CNN_M_1, HWC.from_n_c_hw(1, 64, &[40, 7]).unwrap(),    tvec!(10, 4), 48, tvec!(2, 1), tvec!(1, 1));
+    b!(Hey_Snips_v4_dil1,  HWC.from_n_c_hw(1, 16, &[10]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(1));
+    b!(Hey_Snips_v4_dil2,  HWC.from_n_c_hw(1, 16, &[12]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(2));
+    b!(Hey_Snips_v4_dil4,  HWC.from_n_c_hw(1, 16, &[16]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(4));
+    b!(Hey_Snips_v4_dil8,  HWC.from_n_c_hw(1, 16, &[24]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(8));
+    b!(Conv2d_2a_3x3,      HWC.from_n_c_hw(1, 32, &[149, 149]).unwrap(), tvec!(3, 3),  32, tvec!(1, 1), tvec!(1, 1));
+}
 
 criterion_group!(
     benches,
-    ARM_ML_KWS_CNN_M_0,
-    ARM_ML_KWS_CNN_M_1,
-    Hey_Snips_v4_dil1,
-    Hey_Snips_v4_dil2,
-    Hey_Snips_v4_dil4,
-    Hey_Snips_v4_dil8,
-    Conv2d_2a_3x3,
+    b::ARM_ML_KWS_CNN_M_0,
+    b::ARM_ML_KWS_CNN_M_1,
+    b::Hey_Snips_v4_dil1,
+    b::Hey_Snips_v4_dil2,
+    b::Hey_Snips_v4_dil4,
+    b::Hey_Snips_v4_dil8,
+    b::Conv2d_2a_3x3,
     size,
     kernel_sq,
     kernel_1d,
