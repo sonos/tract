@@ -1,3 +1,4 @@
+use tract_ndarray::Array;
 use tract_onnx::prelude::*;
 
 fn main() -> TractResult<()> {
@@ -9,12 +10,18 @@ fn main() -> TractResult<()> {
     let model = model.into_optimized()?;
     let plan = SimplePlan::new(model)?;
 
+    // Imagenet mean and standard deviation
+    let mean = Array::from_shape_vec((1, 3, 1, 1), vec![0.485, 0.456, 0.406])?;
+    let std = Array::from_shape_vec((1, 3, 1, 1), vec![0.229, 0.224, 0.225])?;
+
     let img = image::open("elephants.jpg").unwrap().to_rgb();
     let resized = image::imageops::resize(&img, 224, 224, ::image::imageops::FilterType::Triangle);
-    let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, 224, 224), |(_, c, y, x)| {
-        resized[(x as _, y as _)][c] as f32 / 255.0
-    })
-    .into();
+    let image: Tensor =
+        ((tract_ndarray::Array4::from_shape_fn((1, 3, 224, 224), |(_, c, y, x)| {
+            resized[(x as _, y as _)][c] as f32 / 255.0
+        }) - mean)
+            / std)
+            .into();
 
     let result = plan.run(tvec!(image))?;
 
