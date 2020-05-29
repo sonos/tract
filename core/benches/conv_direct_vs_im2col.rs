@@ -149,23 +149,24 @@ fn kernel_1d(c: &mut Criterion) {
     b(c, "kernel_1d", pbs);
 }
 
-fn ci(c: &mut Criterion) {
-    let pbs = [1, 2, 4, 8, 16, 32, 64]
+fn hey_snips_ci(c: &mut Criterion) {
+    let dil = 1;
+    let pbs = [1, 2, 3, 4, 6, 8, 16, 20, 24, 32, 48, 64, 72, 96, 128]
         .iter()
         .map(|&s| {
             (
                 s,
                 Problem::new(
-                    HWC.from_n_c_hw(1, s, &[64, 64]).unwrap(),
-                    tvec!(3, 3),
-                    32,
-                    tvec!(1, 1),
-                    tvec!(1, 1),
+                    HWC.from_n_c_hw(1, s, &[8 + 2 * dil]).unwrap(),
+                    tvec!(10),
+                    64,
+                    tvec!(1),
+                    tvec!(dil),
                 ),
             )
         })
         .collect();
-    b(c, "ci", pbs);
+    b(c, "hey_snips_ci", pbs);
 }
 
 fn co(c: &mut Criterion) {
@@ -227,10 +228,12 @@ criterion_group!(
     b::Conv2d_2a_3x3,
     b::AM_2M_tdnn2,
     b::AM_2M_lda,
+    b::AM_2M_tdnn3,
+    b::AM_2M_tdnn4_5,
     size,
     kernel_sq,
     kernel_1d,
-    ci,
+    hey_snips_ci,
     co,
 );
 criterion_main!(benches);
