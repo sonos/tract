@@ -157,7 +157,6 @@ test_mmm_kernel_i8_i32!(
     crate::arm32::has_neon()
 );
 
-
 #[cfg(test)]
 mod test_neon_fn {
     sigmoid_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SigmoidF32x4n);

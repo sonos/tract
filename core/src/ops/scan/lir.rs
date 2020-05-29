@@ -272,8 +272,10 @@ impl TypedOp for Codegen {
             }
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();
-                let scanning_dim =
-                    output.full_dim_hint.clone().unwrap_or(shape.dim(output.axis).maybe_mul(&iters)?);
+                let scanning_dim = output
+                    .full_dim_hint
+                    .clone()
+                    .unwrap_or(shape.dim(output.axis).maybe_mul(&iters)?);
                 shape.set_dim(output.axis, scanning_dim)?;
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }
@@ -299,7 +301,8 @@ impl TypedOp for Codegen {
                 i as f64 / chunk as f64
             } else {
                 let big = 1_000_000;
-                let dominator = inputs[outside_slot].shape.dim(axis).eval(big).unwrap() as f64 / big as f64;
+                let dominator =
+                    inputs[outside_slot].shape.dim(axis).eval(big).unwrap() as f64 / big as f64;
                 dominator / chunk as f64
             }
         };

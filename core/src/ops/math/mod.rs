@@ -11,44 +11,44 @@ bin_to_super_type!(sub, Sub, flip:flip_sub,
                    [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
 bin_to_super_type!(mul, Mul,
-                   cost: |dt| tvec!((Cost::FMA(dt), 1)),
-                   declutter_unary: declutter_unary_mul,
-                   flip: commute,
-                   out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
-                       if c.datum_type() == TDim::datum_type() &&
-                           a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                               let a = a.to_array_view::<TDim>()?;
-                               let b = b.cast_to::<i32>()?;
-                               let b = b.to_array_view::<i32>()?;
-                               let c = c.to_array_view_mut::<TDim>()?;
-                               crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).apply(|c,a,b| *c = a.clone() * *b);
-                               Ok(true)
-                           } else {
-                               Ok(false)
-                           }
-                   },
-                   [f32, i8, i16, i32, i64, u8, u16, f16, f64] => |c, a, b| *c = a.clone() * b
-                  );
+ cost: |dt| tvec!((Cost::FMA(dt), 1)),
+ declutter_unary: declutter_unary_mul,
+ flip: commute,
+ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
+     if c.datum_type() == TDim::datum_type() &&
+         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
+             let a = a.to_array_view::<TDim>()?;
+             let b = b.cast_to::<i32>()?;
+             let b = b.to_array_view::<i32>()?;
+             let c = c.to_array_view_mut::<TDim>()?;
+             crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).apply(|c,a,b| *c = a.clone() * *b);
+             Ok(true)
+         } else {
+             Ok(false)
+         }
+ },
+ [f32, i8, i16, i32, i64, u8, u16, f16, f64] => |c, a, b| *c = a.clone() * b
+);
 
 bin_to_super_type!(div, Div,
-                   cost: |dt| tvec!((Cost::Div(dt), 1)),
-                   declutter_bin: declutter_bin_div,
-                   flip: flip_div,
-                   out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
-                       if c.datum_type() == TDim::datum_type() &&
-                           a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                               let a = a.to_array_view::<TDim>()?;
-                               let b = b.cast_to::<i32>()?;
-                               let b = b.to_array_view::<i32>()?;
-                               let c = c.to_array_view_mut::<TDim>()?;
-                               crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).apply(|c,a,b| *c = a.clone() / *b);
-                               Ok(true)
-                           } else {
-                               Ok(false)
-                           }
-                   },
-                   [f32, i8, i16, i32, i64, u8, u16, f16, f64] => |c, a, b| *c = a.clone() / b
-                  );
+ cost: |dt| tvec!((Cost::Div(dt), 1)),
+ declutter_bin: declutter_bin_div,
+ flip: flip_div,
+ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
+     if c.datum_type() == TDim::datum_type() &&
+         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
+             let a = a.to_array_view::<TDim>()?;
+             let b = b.cast_to::<i32>()?;
+             let b = b.to_array_view::<i32>()?;
+             let c = c.to_array_view_mut::<TDim>()?;
+             crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).apply(|c,a,b| *c = a.clone() / *b);
+             Ok(true)
+         } else {
+             Ok(false)
+         }
+ },
+ [f32, i8, i16, i32, i64, u8, u16, f16, f64] => |c, a, b| *c = a.clone() / b
+);
 
 bin_to_super_type!(rem, Rem,
                    out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
@@ -114,7 +114,7 @@ fn declutter_unary_mul(
     model: &TypedModel,
     node: &TypedNode,
     a: &Arc<Tensor>,
-    ) -> TractResult<Option<TypedModelPatch>> {
+) -> TractResult<Option<TypedModelPatch>> {
     if let Some(patch) = declutter_as_shift(model, node, a, Box::new(FlippedShiftLeft))? {
         Ok(Some(patch))
     } else if let Some(patch) = declutter_unary_mul_magic_values(model, node, a)? {
@@ -128,14 +128,19 @@ fn declutter_unary_mul_magic_values(
     model: &TypedModel,
     node: &TypedNode,
     a: &Arc<Tensor>,
-    ) -> TractResult<Option<TypedModelPatch>> {
+) -> TractResult<Option<TypedModelPatch>> {
     if a.cast_to::<f64>()?.as_slice::<f64>()?.iter().all(|v| *v == 1.0) {
-        return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
     } else if a.cast_to::<f64>()?.as_slice::<f64>()?.iter().all(|v| *v == 0.0) {
         let fact = model.outlet_fact(node.inputs[0])?;
         if let Some(shape) = fact.shape.as_finite() {
             let zeros = Tensor::zero_dt(fact.datum_type, shape)?;
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &[], crate::ops::konst::Const(zeros.into()))?))
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &[],
+                crate::ops::konst::Const(zeros.into()),
+            )?));
         }
     }
     Ok(None)
@@ -145,19 +150,22 @@ fn declutter_bin_div(
     _op: &Div,
     model: &TypedModel,
     node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
+) -> TractResult<Option<TypedModelPatch>> {
     if let Some(p) = declutter_div_as_shift(model, node)? {
-        return Ok(Some(p))
+        return Ok(Some(p));
     }
     let fact = model.outlet_fact(node.inputs[0])?;
-    if fact.datum_type == f32::datum_type() || fact.datum_type == f64::datum_type() || fact.datum_type == f16::datum_type() {
+    if fact.datum_type == f32::datum_type()
+        || fact.datum_type == f64::datum_type()
+        || fact.datum_type == f16::datum_type()
+    {
         let mut patch = TypedModelPatch::default();
         let num = patch.tap_model(model, node.inputs[0])?;
         let denum = patch.tap_model(model, node.inputs[1])?;
         let denum = patch.wire_node(format!("{}-recip", node.name), recip(), &[denum])?[0];
         let out = patch.wire_node(&node.name, mul::bin_typed(), &[num, denum])?[0];
         patch.shunt_outside(model, node.id.into(), out)?;
-        return Ok(Some(patch))
+        return Ok(Some(patch));
     }
     Ok(None)
 }
@@ -165,7 +173,7 @@ fn declutter_bin_div(
 fn declutter_div_as_shift(
     model: &TypedModel,
     node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
+) -> TractResult<Option<TypedModelPatch>> {
     let a = model.node_input_facts(node.id)?[1];
     if let Some(a) = &a.konst {
         declutter_as_shift(model, node, a, Box::new(FlippedShiftRight))
@@ -179,7 +187,7 @@ fn declutter_as_shift(
     node: &TypedNode,
     t: &Arc<Tensor>,
     mini_op: Box<dyn BinMiniOp>,
-    ) -> TractResult<Option<TypedModelPatch>> {
+) -> TractResult<Option<TypedModelPatch>> {
     let input = model.node_input_facts(node.id)?[0];
     if t.len() > 0 && t.datum_type().is_integer() && input.datum_type.is_integer() {
         let arg = t.cast_to::<i64>()?;
@@ -190,14 +198,14 @@ fn declutter_as_shift(
                 .iter_mut()
                 .for_each(|i| *i = (63 - i.abs().leading_zeros()) as _);
             return Ok(Some(TypedModelPatch::replace_single_op(
-                        model,
-                        node,
-                        &node.inputs[0..=0],
-                        UnaryOp {
-                            a: shift.cast_to_dt(input.datum_type)?.into_owned().into_arc_tensor(),
-                            mini_op,
-                        },
-                        )?));
+                model,
+                node,
+                &node.inputs[0..=0],
+                UnaryOp {
+                    a: shift.cast_to_dt(input.datum_type)?.into_owned().into_arc_tensor(),
+                    mini_op,
+                },
+            )?));
         }
     }
     Ok(None)
@@ -267,27 +275,27 @@ element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
 });
 
 element_wise!(scalar_min_max, ScalarMinMax { min: Tensor, max: Tensor },
-              [f32, f64] => |m, xs| {
-                  let max = m.max.cast_to_scalar()?;
-                  let min = m.min.cast_to_scalar()?;
-                  xs.iter_mut().for_each(|x| { *x = x.max(max).min(min) });
-                  Ok(())
-              },
-              [i8, u8] => |m, xs| {
-                  let max = m.max.cast_to_scalar()?;
-                  let min = m.min.cast_to_scalar()?;
-                  xs.iter_mut().for_each(|x| *x = std::cmp::max(std::cmp::min(*x, min), max));
-                  Ok(())
-              };
-              quantize: quantize_scalar_min_max
-             );
+ [f32, f64] => |m, xs| {
+     let max = m.max.cast_to_scalar()?;
+     let min = m.min.cast_to_scalar()?;
+     xs.iter_mut().for_each(|x| { *x = x.max(max).min(min) });
+     Ok(())
+ },
+ [i8, u8] => |m, xs| {
+     let max = m.max.cast_to_scalar()?;
+     let min = m.min.cast_to_scalar()?;
+     xs.iter_mut().for_each(|x| *x = std::cmp::max(std::cmp::min(*x, min), max));
+     Ok(())
+ };
+ quantize: quantize_scalar_min_max
+);
 
 fn quantize_scalar_min_max(
     op: &ScalarMinMax,
     dt: DatumType,
     scale: f32,
     zero_point: i32,
-    ) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
+) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
     use crate::ops::quant::*;
     let min = op.min.cast_to_scalar::<f32>()?;
     let max = op.max.cast_to_scalar::<f32>()?;
@@ -295,36 +303,36 @@ fn quantize_scalar_min_max(
         DatumType::U8 => (
             tensor0(quantize_linear_f32_u8(min, scale, zero_point)),
             tensor0(quantize_linear_f32_u8(max, scale, zero_point)),
-            ),
+        ),
         DatumType::I8 => (
             tensor0(quantize_linear_f32_i8(min, scale, zero_point)),
             tensor0(quantize_linear_f32_i8(max, scale, zero_point)),
-            ),
+        ),
         dt => bail!("Unsupported Q type: {:?}", dt),
     };
     Ok(Some(Box::new(ScalarMinMax { min, max })))
 }
 
 element_wise!(scalar_min, ScalarMin { min: Tensor },
-              [f32, f64] => |m, xs| {
-                  let min = m.min.cast_to_scalar()?;
-                  xs.iter_mut().for_each(|x| *x = x.min(min));
-                  Ok(())
-              },
-              [i8, u8] => |m, xs| {
-                  let min = m.min.cast_to_scalar()?;
-                  xs.iter_mut().for_each(|x| *x = std::cmp::min(*x, min));
-                  Ok(())
-              };
-              quantize: quantize_scalar_min
-             );
+ [f32, f64] => |m, xs| {
+     let min = m.min.cast_to_scalar()?;
+     xs.iter_mut().for_each(|x| *x = x.min(min));
+     Ok(())
+ },
+ [i8, u8] => |m, xs| {
+     let min = m.min.cast_to_scalar()?;
+     xs.iter_mut().for_each(|x| *x = std::cmp::min(*x, min));
+     Ok(())
+ };
+ quantize: quantize_scalar_min
+);
 
 fn quantize_scalar_min(
     op: &ScalarMin,
     dt: DatumType,
     scale: f32,
     zero_point: i32,
-    ) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
+) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
     use crate::ops::quant::*;
     let min = op.min.cast_to_scalar::<f32>()?;
     let min = match dt {
@@ -336,25 +344,25 @@ fn quantize_scalar_min(
 }
 
 element_wise!(scalar_max, ScalarMax { max: Tensor },
-              [f32, f64] => |m, xs| {
-                  let max = m.max.cast_to_scalar()?;
-                  xs.iter_mut().for_each(|x| *x = x.max(max));
-                  Ok(())
-              },
-              [i8, u8] => |m, xs| {
-                  let max = m.max.cast_to_scalar()?;
-                  xs.iter_mut().for_each(|x| *x = std::cmp::max(*x, max));
-                  Ok(())
-              };
-              quantize: quantize_scalar_max
-             );
+ [f32, f64] => |m, xs| {
+     let max = m.max.cast_to_scalar()?;
+     xs.iter_mut().for_each(|x| *x = x.max(max));
+     Ok(())
+ },
+ [i8, u8] => |m, xs| {
+     let max = m.max.cast_to_scalar()?;
+     xs.iter_mut().for_each(|x| *x = std::cmp::max(*x, max));
+     Ok(())
+ };
+ quantize: quantize_scalar_max
+);
 
 fn quantize_scalar_max(
     op: &ScalarMax,
     dt: DatumType,
     scale: f32,
     zero_point: i32,
-    ) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
+) -> TractResult<Option<Box<dyn ElementWiseMiniOp>>> {
     use crate::ops::quant::*;
     let max = op.max.cast_to_scalar::<f32>()?;
     let max = match dt {
@@ -406,10 +414,10 @@ element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| {
 });
 
 element_wise!(tanh, Tanh,
-              [f32] => |_, xs| { (tract_linalg::ops().tanh_f32)().run(xs); Ok(()) },
-              [f16, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
-              cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
-             );
+ [f32] => |_, xs| { (tract_linalg::ops().tanh_f32)().run(xs); Ok(()) },
+ [f16, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
+ cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
+);
 
 element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.acosh()); Ok(()) });
 element_wise!(asinh, Asinh, [f16, f32, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.asinh()); Ok(()) });

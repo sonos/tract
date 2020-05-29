@@ -1,5 +1,5 @@
-use std::{ fs, path };
 use std::convert::TryInto;
+use std::{fs, path};
 
 use std::collections::HashMap;
 

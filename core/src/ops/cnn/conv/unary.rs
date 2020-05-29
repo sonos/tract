@@ -280,7 +280,7 @@ impl ConvUnary {
             input_shape,
             output_shape,
             self.kernel_as_group_o_ihw::<T>()?.into_arc_tensor(),
-            self.bias.clone()
+            self.bias.clone(),
         );
         Ok(Box::new(op))
     }

@@ -1,5 +1,5 @@
-use crate::model::{Fact, ModelImpl, OutletId};
 use crate::internal::*;
+use crate::model::{Fact, ModelImpl, OutletId};
 use std::collections::HashMap;
 use std::fmt;
 

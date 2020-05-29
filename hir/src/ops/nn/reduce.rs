@@ -80,8 +80,7 @@ impl Reducer {
                 wire =
                     target.wire_node(name, TReduce::new(axes.clone(), TReducer::Sum), &[wire])?[0];
                 let size =
-                    axes.iter().map(|ax| fact.shape.dim(*ax)).maybe_product()?.to_integer()?
-                        as f64;
+                    axes.iter().map(|ax| fact.shape.dim(*ax)).maybe_product()?.to_integer()? as f64;
                 let size = unsafe {
                     tensor0(size)
                         .cast_to_dt(fact.datum_type)?

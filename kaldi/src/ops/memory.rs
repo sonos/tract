@@ -1,6 +1,6 @@
 use bit_set::BitSet;
-use tract_itertools::Itertools;
 use std::collections::BTreeMap;
+use tract_itertools::Itertools;
 
 use tract_hir::internal::*;
 

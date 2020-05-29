@@ -120,7 +120,10 @@ impl Op for MaxPoolFixed {
 }
 
 impl MaxPoolFixed {
-    fn eval_t<T: Datum + Copy + num_traits::Bounded + PartialOrd>(&self, input: &Tensor) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_t<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
+        &self,
+        input: &Tensor,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let input: ArrayViewD<T> = input.to_array_view()?;
         let input_ptr = input.as_ptr();
 
@@ -180,7 +183,8 @@ impl TypedOp for MaxPoolFixed {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut facts = tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?);
+        let mut facts =
+            tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?);
         if let Some(idt) = self.with_index_outputs {
             facts.push(facts[0].clone());
             facts[1].datum_type = idt;

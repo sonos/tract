@@ -3,8 +3,8 @@ use crate::dim::TDim;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TractResult;
-use std::{fmt, ops};
 use std::hash::Hash;
+use std::{fmt, ops};
 
 use tract_linalg::f16::f16;
 
@@ -333,13 +333,12 @@ macro_rules! cast_to_and_from_bool {
                 Ok(*self as usize as _)
             }
         }
-    }
+    };
 }
 cast_to_and_from_bool!(i8);
 cast_to_and_from_bool!(i16);
 cast_to_and_from_bool!(i32);
 cast_to_and_from_bool!(i64);
-
 
 impl TryInto<f32> for f16 {
     fn try_into(&self) -> TractResult<f32> {

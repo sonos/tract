@@ -19,7 +19,6 @@ pub struct TypedSource {
     fact: TypedFact,
 }
 
-
 tract_linalg::impl_dyn_hash!(TypedSource);
 
 impl Op for TypedSource {

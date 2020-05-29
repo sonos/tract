@@ -341,11 +341,7 @@ pub mod test {
                 mmm_stride_storage(&mut v, K::nr(), 1)
             };
             let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
-            let non_linear = if self.add_one {
-                non_linear_ops.as_ptr()
-            } else {
-                std::ptr::null()
-            };
+            let non_linear = if self.add_one { non_linear_ops.as_ptr() } else { std::ptr::null() };
             let err = K::kernel(&MatMatMulKerSpec {
                 a: &PanelStore::Packed { ptr: pa.as_ptr() },
                 b: &PanelStore::Packed { ptr: pb.as_ptr() },
@@ -457,11 +453,7 @@ pub mod test {
             let mut v = vec![TC::zero(); K::mr() * K::nr()];
             let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
             let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
-            let non_linear = if self.add_one {
-                non_linear_ops.as_ptr()
-            } else {
-                std::ptr::null()
-            };
+            let non_linear = if self.add_one { non_linear_ops.as_ptr() } else { std::ptr::null() };
             let err = K::kernel(&MatMatMulKerSpec {
                 a: &PanelStore::Packed { ptr: pa.as_ptr() },
                 b: &PanelStore::OffsetsAndPtrs {

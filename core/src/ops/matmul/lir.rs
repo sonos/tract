@@ -126,11 +126,7 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn name(&self) -> Cow<str> {
-        if self.mmm.as_mmm().n() == 1 {
-            "MatVecMul"
-        } else {
-            "MatMatMul"
-        }.into()
+        if self.mmm.as_mmm().n() == 1 { "MatVecMul" } else { "MatMatMul" }.into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {

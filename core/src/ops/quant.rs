@@ -149,7 +149,7 @@ fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
 #[derive(Clone, Debug, new, Educe)]
 #[educe(Hash)]
 pub struct DequantizeLinearF32 {
-    #[educe(Hash(method="hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     scale: f32,
     zero_point: i32,
 }

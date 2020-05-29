@@ -1,5 +1,5 @@
 use crate::errors::*;
-use crate::{BenchLimits, Parameters, terminal};
+use crate::{terminal, BenchLimits, Parameters};
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;

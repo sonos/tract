@@ -10,8 +10,8 @@ extern crate num_traits;
 extern crate proptest;
 
 pub mod align;
-pub mod hash;
 pub mod f16;
+pub mod hash;
 #[macro_use]
 pub mod frame;
 mod generic;

@@ -11,8 +11,8 @@ bin_to_super_type!(or, Or, flip: commute,
                    [bool, u8, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
 bin_to_super_type!(xor, Xor, flip: commute, [bool] => |c, &a, &b| *c = a ^ b);
 bin_to_bool!(equals, Equals, flip: commute,
-             [bool, u8, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
-            );
+ [bool, u8, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
+);
 
 bin_to_bool!(lesser, Lesser, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
 bin_to_bool!(lesser_equal, LesserEqual, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);

@@ -1,6 +1,6 @@
 use std::convert::TryInto;
-use std::{fs, path};
 use std::hash::Hash;
+use std::{fs, path};
 
 use log::*;
 
@@ -37,7 +37,7 @@ pub fn run_one<P: AsRef<path::Path>>(
     test: &str,
     optim: bool,
     more: &'static [&'static str],
-    ) {
+) {
     setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
@@ -87,66 +87,66 @@ pub fn run_one<P: AsRef<path::Path>>(
         let d = d.unwrap();
         if d.metadata().unwrap().is_dir()
             && d.file_name().to_str().unwrap().starts_with("test_data_set_")
-            {
-                let data_path = d.path();
-                let mut inputs = load_half_dataset("input", &data_path);
-                for setup in more {
-                    if setup.starts_with("input:") {
-                        let input = setup.split(":").nth(1).unwrap();
-                        let mut actual_input = None;
-                        let input_outlets = model.input_outlets().unwrap().to_vec();
-                        for (ix, outlet) in input_outlets.iter().enumerate() {
-                            if model.node_name(outlet.node) == input {
-                                actual_input = Some((outlet, inputs[ix].clone()));
-                            } else {
-                                model.node_mut(outlet.node).op =
-                                    Box::new(tract_hir::ops::konst::Const::new(
-                                            inputs[ix].clone().into_arc_tensor(),
-                                            ));
-                            }
+        {
+            let data_path = d.path();
+            let mut inputs = load_half_dataset("input", &data_path);
+            for setup in more {
+                if setup.starts_with("input:") {
+                    let input = setup.split(":").nth(1).unwrap();
+                    let mut actual_input = None;
+                    let input_outlets = model.input_outlets().unwrap().to_vec();
+                    for (ix, outlet) in input_outlets.iter().enumerate() {
+                        if model.node_name(outlet.node) == input {
+                            actual_input = Some((outlet, inputs[ix].clone()));
+                        } else {
+                            model.node_mut(outlet.node).op =
+                                Box::new(tract_hir::ops::konst::Const::new(
+                                    inputs[ix].clone().into_arc_tensor(),
+                                ));
                         }
-                        let (outlet, value) = actual_input.unwrap_or_else(|| {
-                            panic!(
-                                "specified input: {}, input names: {:?}",
-                                setup,
-                                model
+                    }
+                    let (outlet, value) = actual_input.unwrap_or_else(|| {
+                        panic!(
+                            "specified input: {}, input names: {:?}",
+                            setup,
+                            model
                                 .input_outlets()
                                 .unwrap()
                                 .iter()
                                 .map(|n| model.node_name(n.node))
                                 .collect::<Vec<_>>()
-                                )
-                        });
-                        model.set_input_outlets(&[*outlet]).unwrap();
-                        inputs = tvec!(value);
-                    }
+                        )
+                    });
+                    model.set_input_outlets(&[*outlet]).unwrap();
+                    inputs = tvec!(value);
                 }
-                info!("Analyse");
-                trace!("Model:\n{:#?}", model);
-                model.analyse(false).unwrap();
-                info!("Incorporate");
-                let model = model.incorporate().unwrap();
-                info!("Test model (optim: {:?}) {:#?}", optim, path);
-                if optim {
-                    info!("Check full inference");
-                    if model.missing_type_shape().unwrap().len() != 0 {
-                        panic!("Incomplete inference {:?}", model.missing_type_shape());
-                    }
-                    info!("Into type");
-                    let model = model.into_typed().unwrap();
-                    let optimized = model.into_optimized().unwrap();
-                    trace!("Run optimized model:\n{:#?}", optimized);
-                    run_model(optimized, inputs, &data_path)
-                } else {
-                    trace!("Run analysed model:\n{:#?}", model);
-                    run_model(model, inputs, &data_path)
-                };
             }
+            info!("Analyse");
+            trace!("Model:\n{:#?}", model);
+            model.analyse(false).unwrap();
+            info!("Incorporate");
+            let model = model.incorporate().unwrap();
+            info!("Test model (optim: {:?}) {:#?}", optim, path);
+            if optim {
+                info!("Check full inference");
+                if model.missing_type_shape().unwrap().len() != 0 {
+                    panic!("Incomplete inference {:?}", model.missing_type_shape());
+                }
+                info!("Into type");
+                let model = model.into_typed().unwrap();
+                let optimized = model.into_optimized().unwrap();
+                trace!("Run optimized model:\n{:#?}", optimized);
+                run_model(optimized, inputs, &data_path)
+            } else {
+                trace!("Run analysed model:\n{:#?}", model);
+                run_model(model, inputs, &data_path)
+            };
+        }
     }
 }
 
 fn run_model<F, O>(model: ModelImpl<F, O>, inputs: TVec<Tensor>, data_path: &path::Path)
-    where
+where
     F: Fact + Clone + 'static + Hash,
     O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
@@ -160,7 +160,7 @@ fn run_model<F, O>(model: ModelImpl<F, O>, inputs: TVec<Tensor>, data_path: &pat
             data_path,
             computed.len(),
             expected.len()
-            );
+        );
     }
     for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
         use tract_hir::tract_core::error_chain::ChainedError;
@@ -174,7 +174,7 @@ fn run_model<F, O>(model: ModelImpl<F, O>, inputs: TVec<Tensor>, data_path: &pat
                 a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
                 b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
                 e.display_chain()
-                )
+            )
         }
     }
 }

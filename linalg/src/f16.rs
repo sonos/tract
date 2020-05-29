@@ -7,10 +7,10 @@ pub struct f16(pub half::f16);
 
 macro_rules! binary_f16 {
     ($f:ident) => {
-        fn $f(self, other:f16) -> f16 {
+        fn $f(self, other: f16) -> f16 {
             (self.0).to_f32().$f((other.0).to_f32()).into()
         }
-    }
+    };
 }
 
 macro_rules! unary_as_f32 {
@@ -26,7 +26,7 @@ macro_rules! unary_f16 {
         fn $f(self) -> $t {
             (self.0).$f()
         }
-    }
+    };
 }
 
 macro_rules! const_f16 {

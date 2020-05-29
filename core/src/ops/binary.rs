@@ -3,7 +3,9 @@ use crate::ops::invariants::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash {
+pub trait BinMiniOp:
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
+{
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
         Validation::Accurate
@@ -131,7 +133,10 @@ impl TypedOp for TypedBinOp {
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
             ])
-            .ok_or_else(|| format!("Can not broadcast shapes a:{:?} b:{:?}", &inputs[0], &inputs[1]))?
+            .ok_or_else(|| format!(
+                "Can not broadcast shapes a:{:?} b:{:?}",
+                &inputs[0], &inputs[1]
+            ))?
         )?))
     }
 

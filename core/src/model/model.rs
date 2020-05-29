@@ -24,7 +24,7 @@ where
     /// model outputs
     pub outputs: Vec<OutletId>,
     /// outlet labels
-    #[educe(Hash(method="hash_outlet_labels"))]
+    #[educe(Hash(method = "hash_outlet_labels"))]
     pub outlet_labels: HashMap<OutletId, String>,
 }
 
@@ -489,7 +489,7 @@ where
             }
             if self.node_output_count(i) > 1 || self.outlet_successors((i, 0).into()).len() > 2 {
                 for o in 0..self.node_output_count(i) {
-                    if self.outlet_successors((i,o).into()).len() > 0 {
+                    if self.outlet_successors((i, o).into()).len() > 0 {
                         writeln!(
                             fmt,
                             "                                                |   * output #{}: {}",
@@ -514,7 +514,9 @@ mod test {
     #[test]
     fn hashable() {
         let mut model = TypedModel::default();
-        let _s = model.add_source("source", TypedFact::dt_shape(DatumType::F32, [1,2,3].as_ref()).unwrap()).unwrap();
+        let _s = model
+            .add_source("source", TypedFact::dt_shape(DatumType::F32, [1, 2, 3].as_ref()).unwrap())
+            .unwrap();
         let mut hasher = std::collections::hash_map::DefaultHasher::default();
         model.hash(&mut hasher);
     }

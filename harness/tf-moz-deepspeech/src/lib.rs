@@ -139,7 +139,8 @@ fn deepspeech_run(opt: bool) -> TractResult<()> {
     if opt {
         model = model.into_optimized()?;
     }
-    if model.nodes().iter().any(|n| n.op_is::<tract_tensorflow::ops::rec::block_lstm::BlockLSTM>()) {
+    if model.nodes().iter().any(|n| n.op_is::<tract_tensorflow::ops::rec::block_lstm::BlockLSTM>())
+    {
         panic!("{:#?}", model);
     }
 

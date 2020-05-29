@@ -12,7 +12,11 @@ impl PermuteAxes {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {
             if input.len() != axes.len() {
-                bail!("Op expects tensor of rank {}, input is actually of rank {}.", axes.len(), input.len());
+                bail!(
+                    "Op expects tensor of rank {}, input is actually of rank {}.",
+                    axes.len(),
+                    input.len()
+                );
             }
             let mut new_shape = tvec![D::zero(); input.len()];
             for (ix, &d) in axes.iter().enumerate() {
@@ -92,7 +96,11 @@ impl InferenceRulesOp for PermuteAxes {
         let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
         if let Some(axes) = &self.axes {
             if fact.rank() != axes.len() {
-                bail!("Op expects tensor of rank {}, input is actually of rank {}.", axes.len(), fact.rank());
+                bail!(
+                    "Op expects tensor of rank {}, input is actually of rank {}.",
+                    axes.len(),
+                    fact.rank()
+                );
             }
             let op = AxisOp::Permute(axes.iter().cloned().collect());
             target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])

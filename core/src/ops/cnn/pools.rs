@@ -32,7 +32,10 @@ impl PoolSpec {
         self.strides.as_ref().map(|s| s[geo_axis]).unwrap_or(1)
     }
 
-    pub fn compute_geo(&self, input_full_shape: &[usize]) -> TractResult<(DataShape, Patch, DataShape)> {
+    pub fn compute_geo(
+        &self,
+        input_full_shape: &[usize],
+    ) -> TractResult<(DataShape, Patch, DataShape)> {
         let input_shape = self.data_format.shape(input_full_shape.into())?;
         let output_inner_stride = match self.data_format {
             DataFormat::NCHW | DataFormat::CHW => 1,

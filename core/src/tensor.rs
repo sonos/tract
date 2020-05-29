@@ -1,6 +1,6 @@
 //! `Tensor`, tract main data object of interest.
-use crate::internal::*;
 use crate::dim::TDim;
+use crate::internal::*;
 use ndarray::prelude::*;
 use std::alloc;
 use std::fmt;

@@ -329,11 +329,13 @@ impl Scan {
                         let mut inner_patch = TypedModelPatch::default();
                         let new_source_wire_in_patch =
                             inner_patch.tap_model(&new_body, new_source_wire)?;
-                        inner_patch.shunt_outside(
-                            &new_body,
-                            OutletId::new(successor.node, 0),
-                            new_source_wire_in_patch,
-                        ).chain_err(|| "patching inner model")?;
+                        inner_patch
+                            .shunt_outside(
+                                &new_body,
+                                OutletId::new(successor.node, 0),
+                                new_source_wire_in_patch,
+                            )
+                            .chain_err(|| "patching inner model")?;
                         inner_patch.apply(&mut new_body)?;
 
                         let mut input_mapping = self.input_mapping.clone();
@@ -354,11 +356,9 @@ impl Scan {
                         let output_wires =
                             outside_patch.wire_node(&*node.name, new_op, &patch_inputs)?;
                         for w in output_wires {
-                            outside_patch.shunt_outside(
-                                model,
-                                OutletId::new(node.id, w.slot),
-                                w,
-                            ).chain_err(|| "patching outer model")?;
+                            outside_patch
+                                .shunt_outside(model, OutletId::new(node.id, w.slot), w)
+                                .chain_err(|| "patching outer model")?;
                         }
                         return Ok(Some(outside_patch));
                     }
@@ -658,10 +658,11 @@ impl TypedOp for Scan {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let body_leading_outlet = match io {
             InOut::In(ix) => {
-                if let Some(input) = self.input_mapping.iter().position(|im| im.slot() == Some(ix)) {
+                if let Some(input) = self.input_mapping.iter().position(|im| im.slot() == Some(ix))
+                {
                     self.body.input_outlets()?[input]
                 } else {
-                    return Ok(None)
+                    return Ok(None);
                 }
             }
             InOut::Out(ix) => {

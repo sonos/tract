@@ -3,10 +3,10 @@ use crate::model::KaldiOpRegister;
 #[macro_export]
 macro_rules! op_kaldi {
     () => {
-        fn op_families(&self) -> &'static [ &'static str ] {
-            &[ "core" ]
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core"]
         }
-    }
+    };
 }
 
 pub(crate) mod affine;

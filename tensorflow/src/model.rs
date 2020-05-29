@@ -35,8 +35,10 @@ pub struct TfModelExtensions {
 impl TfModelExtensions {
     pub fn preproc(&self, mut original: InferenceModel) -> TractResult<InferenceModel> {
         if self.initializing_nodes.len() > 0 {
-            let as_outlets = self.initializing_nodes.iter().map(|n| OutletId::new(*n,0)).collect::<Vec<_>>();
-            let plan = SimplePlan::new_for_outputs_and_deps(&original, &as_outlets, &self.control_inputs)?;
+            let as_outlets =
+                self.initializing_nodes.iter().map(|n| OutletId::new(*n, 0)).collect::<Vec<_>>();
+            let plan =
+                SimplePlan::new_for_outputs_and_deps(&original, &as_outlets, &self.control_inputs)?;
             let mut state = SimpleState::new(plan)?;
             let _outputs = state.run(tvec!())?;
             let tensors = state.session_state.tensors;
@@ -93,7 +95,7 @@ impl Tensorflow {
     }
 
     pub fn read_frozen_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
-        let mut v = vec!();
+        let mut v = vec![];
         r.read_to_end(&mut v)?;
         let b = bytes::Bytes::from(v);
         Ok(GraphDef::decode(b).map_err(|e| format!("{:?}", e))?)

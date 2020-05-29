@@ -5,10 +5,10 @@ use tract_hir::ops;
 
 macro_rules! op_onnx {
     () => {
-        fn op_families(&self) -> &'static [ &'static str ] {
-            &[ "onnx" ]
+        fn op_families(&self) -> &'static [&'static str] {
+            &["onnx"]
         }
-    }
+    };
 }
 
 mod array;

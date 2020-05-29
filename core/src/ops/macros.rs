@@ -8,7 +8,7 @@ macro_rules! as_op {
         fn as_op_mut(&mut self) -> &mut dyn Op {
             self
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -17,7 +17,7 @@ macro_rules! pulsed_op_to_typed_op {
         fn to_typed(&self) -> Box<dyn TypedOp> {
             $crate::dyn_clone::clone_box(self)
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -26,7 +26,7 @@ macro_rules! op_as_typed_op {
         fn as_typed(&self) -> Option<&dyn TypedOp> {
             Some(self)
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -35,7 +35,7 @@ macro_rules! not_a_typed_op {
         fn as_typed(&self) -> Option<&dyn TypedOp> {
             None
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -44,7 +44,7 @@ macro_rules! op_as_pulsed_op {
         fn as_pulsed(&self) -> Option<&dyn PulsedOp> {
             Some(self)
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -53,43 +53,43 @@ macro_rules! not_a_pulsed_op {
         fn as_pulsed(&self) -> Option<&dyn PulsedOp> {
             None
         }
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! op_core {
     () => {
-        fn op_families(&self) -> &'static [ &'static str ] {
-            &[ "core" ]
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core"]
         }
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! op_core_mir {
     () => {
-        fn op_families(&self) -> &'static [ &'static str ] {
-            &[ "core", "mir" ]
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core", "mir"]
         }
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! op_core_lir {
     () => {
-        fn op_families(&self) -> &'static [ &'static str ] {
-            &[ "core", "lir" ]
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core", "lir"]
         }
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! op_core_lir_mir {
     () => {
-        fn op_families(&self) -> &'static [ &'static str ] {
-            &[ "core", "lir", "mir" ]
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core", "lir", "mir"]
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -98,7 +98,7 @@ macro_rules! canonic {
         fn is_canonic(&self) -> bool {
             true
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -369,7 +369,7 @@ macro_rules! impl_op_same_as {
                 false
             }
         }
-    }
+    };
 }
 
 #[macro_export]

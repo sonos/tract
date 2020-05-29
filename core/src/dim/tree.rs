@@ -42,8 +42,7 @@ impl ExpNode {
     }
 
     pub fn reduce(self) -> ExpNode {
-        self
-            .simplify()
+        self.simplify()
             .wiggle()
             .into_iter()
             .sorted()

@@ -2,8 +2,8 @@ use super::tree::ExpNode;
 use crate::TractResult;
 use std::{fmt, ops};
 
-use std::collections::HashMap;
 use crate::errors::TractResultExt;
+use std::collections::HashMap;
 
 use ExpNode::*;
 

@@ -106,7 +106,8 @@ fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>
         ""
     } else {
         "."
-    }.to_owned();
+    }
+    .to_owned();
     let globals = liquid::object!({
         "family": family,
         "os": os,
