@@ -280,7 +280,7 @@ impl ConvUnary {
             input_shape,
             output_shape,
             self.kernel_as_group_o_ihw::<T>()?.into_arc_tensor(),
-            self.bias.clone()
+            self.bias.clone(),
         );
         Ok(Box::new(op))
     }
@@ -702,7 +702,6 @@ impl TypedOp for ConvUnary {
                     )?[0];
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
-                    /*
                 } else if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
                     && self.group == 1
                 {
@@ -711,8 +710,16 @@ impl TypedOp for ConvUnary {
                     let wire = self.wire_as_im2col_pair(&mut patch, &*node.name, wire, true)?;
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
-                    */
-                } else if self.group != 1 && self.group == self.output_channels() {
+                } else if self.group != 1
+                    && self.group == self.output_channels()
+                    && self
+                        .pool_spec
+                        .dilations
+                        .as_ref()
+                        .map(|d| d.iter().product::<usize>())
+                        .unwrap_or(1)
+                        > 1
+                {
                     return Ok(Some(TypedModelPatch::single_unary_op(
                         model,
                         node,
