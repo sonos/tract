@@ -9,7 +9,7 @@ use criterion::*;
 use tract_core::model::*;
 use tract_core::*;
 
-use nn::DataFormat::{CHW, HWC};
+use nn::DataFormat::HWC;
 use tract_core::internal::*;
 use tract_core::ops::{cnn, nn};
 
@@ -87,8 +87,8 @@ fn b(c: &mut Criterion, name: &str, pbs: Vec<(usize, Problem)>) {
             (len * pb.input.c() * pb.kernel_geo.iter().product::<usize>()) as _,
         );
         group.throughput(tp);
-        group.bench_with_input(BenchmarkId::new("im2col", i), &pb, |b, pb| pb.bench(b, false));
         group.bench_with_input(BenchmarkId::new("direct", i), &pb, |b, pb| pb.bench(b, true));
+        group.bench_with_input(BenchmarkId::new("im2col", i), &pb, |b, pb| pb.bench(b, false));
     }
 }
 
@@ -205,7 +205,15 @@ mod b {
     b!(Hey_Snips_v4_dil2,  HWC.from_n_c_hw(1, 16, &[12]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(2));
     b!(Hey_Snips_v4_dil4,  HWC.from_n_c_hw(1, 16, &[16]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(4));
     b!(Hey_Snips_v4_dil8,  HWC.from_n_c_hw(1, 16, &[24]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(8));
+
+    // inception (?)
     b!(Conv2d_2a_3x3,      HWC.from_n_c_hw(1, 32, &[149, 149]).unwrap(), tvec!(3, 3),  32, tvec!(1, 1), tvec!(1, 1));
+
+    // 2M acoustic model conv
+    b!(AM_2M_lda,          HWC.from_n_c_hw(1, 40, &[28]).unwrap(),       tvec!(5),    200, tvec!(1),    tvec!(1));
+    b!(AM_2M_tdnn2,        HWC.from_n_c_hw(1, 256, &[26]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
+    b!(AM_2M_tdnn3,        HWC.from_n_c_hw(1, 256, &[24]).unwrap(),      tvec!(3),    256, tvec!(3),    tvec!(1));
+    b!(AM_2M_tdnn4_5,      HWC.from_n_c_hw(1, 256, &[10]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
 }
 
 criterion_group!(
@@ -217,6 +225,8 @@ criterion_group!(
     b::Hey_Snips_v4_dil4,
     b::Hey_Snips_v4_dil8,
     b::Conv2d_2a_3x3,
+    b::AM_2M_tdnn2,
+    b::AM_2M_lda,
     size,
     kernel_sq,
     kernel_1d,
