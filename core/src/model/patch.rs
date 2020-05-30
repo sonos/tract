@@ -233,7 +233,7 @@ where
                 }
             }
             if let Some(label) = target.outlet_label(outlet).map(|s| s.to_string()) {
-                target.set_outlet_label(fixed_by, label);
+                target.set_outlet_label(fixed_by, label)?;
             }
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);

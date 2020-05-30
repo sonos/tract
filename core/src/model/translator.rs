@@ -38,7 +38,7 @@ where
             for (ix, outlet) in outlets.into_iter().enumerate() {
                 mapping.insert(OutletId::new(node.id, ix), outlet);
                 if let Some(label) = source.outlet_label(OutletId::new(node.id, ix)) {
-                    target.set_outlet_label(outlet, label.to_string());
+                    target.set_outlet_label(outlet, label.to_string())?;
                 }
             }
         }
