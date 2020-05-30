@@ -15,7 +15,7 @@ use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
 use crate::ops::matmul;
 use crate::ops::matmul::mmm_wrapper::MMMWrapper;
-use crate::ops::nn::DataFormat;
+use crate::ops::nn::{DataFormat, DataShape};
 use crate::ops::quant::QParams;
 
 use tract_linalg::frame::mmm::FusedSpec;
@@ -702,26 +702,17 @@ impl TypedOp for ConvUnary {
                     )?[0];
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
-                } else if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
-                    && self.group == 1
-                    && (0..spatial_rank).all(|d|
-                                             self.pool_spec.dilation(d) * self.pool_spec.kernel_shape[d] < 4)
-                    && self
-                        .pool_spec
-                        .dilations
-                        .as_ref()
-                        .map(|d| d.iter().product::<usize>())
-                        .unwrap_or(1)
-                        > 1
-                {
+                } else if should_use_direct(
+                    &self.pool_spec.data_format.shape(shape.into())?,
+                    &self.pool_spec,
+                    self.group,
+                ) {
                     let mut patch = TypedModelPatch::default();
                     let wire = patch.tap_model(model, node.inputs[0])?;
                     let wire = self.wire_as_im2col_pair(&mut patch, &*node.name, wire, true)?;
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
-                } else if self.group != 1
-                    && self.group == self.output_channels()
-                {
+                } else if self.group != 1 && self.group == self.output_channels() {
                     return Ok(Some(TypedModelPatch::single_unary_op(
                         model,
                         node,
@@ -749,4 +740,109 @@ impl PulsedOp for ConvUnary {
 
     as_op!();
     pulsed_op_to_typed_op!();
+}
+
+fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
+    let spatial_rank = input_shape.hw_rank();
+    (0..spatial_rank).all(|ax| pool_spec.padding.valid_dim(ax))
+        && group == 1
+        && (0..spatial_rank).any(|d| pool_spec.kernel_shape[d] > 2)
+        && pool_spec.dilations.as_ref().map(|d| d.iter().product::<usize>()).unwrap_or(1) > 1
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn conv_vs_direct_hey_snips_v31() {
+        use crate::ops::cnn::PaddingSpec;
+        use DataFormat::HWC;
+
+        fn dil_use_direct(size: usize, d: usize) -> bool {
+            let input = HWC.from_n_c_hw(1, 128, &[size]).unwrap();
+            let pool = {
+                PoolSpec::new(
+                    HWC,
+                    tvec!(2),
+                    PaddingSpec::Valid,
+                    Some(tvec!(d)),
+                    Some(tvec!(1)),
+                    Some(64),
+                )
+            };
+            should_use_direct(&input, &pool, 1)
+        }
+        assert!(!dil_use_direct(36, 1));
+        assert!(!dil_use_direct(33, 2));
+        assert!(!dil_use_direct(27, 4));
+        assert!(!dil_use_direct(18, 8));
+    }
+
+    #[test]
+    fn conv_vs_direct_hey_snips_v4() {
+        use crate::ops::cnn::PaddingSpec;
+        use DataFormat::HWC;
+
+        fn dil_use_direct(d: usize) -> bool {
+            let input = HWC.from_n_c_hw(1, 16, &[8 + 2 * d]).unwrap();
+            let pool = {
+                PoolSpec::new(
+                    HWC,
+                    tvec!(3),
+                    PaddingSpec::Valid,
+                    Some(tvec!(d)),
+                    Some(tvec!(1)),
+                    Some(64),
+                )
+            };
+            should_use_direct(&input, &pool, 1)
+        }
+        assert!(!dil_use_direct(1));
+        assert!(dil_use_direct(2));
+        assert!(dil_use_direct(4));
+        assert!(dil_use_direct(8));
+    }
+
+    #[test]
+    fn conv_vs_direct_am_lda() {
+        use crate::ops::cnn::PaddingSpec;
+        use DataFormat::HWC;
+        let pool = {
+            PoolSpec::new(
+                HWC,
+                tvec!(5),
+                PaddingSpec::Valid,
+                Some(tvec!(1)),
+                Some(tvec!(1)),
+                Some(200),
+            )
+        };
+        let input = HWC.from_n_c_hw(1, 40, &[28]).unwrap();
+        assert!(!should_use_direct(&input, &pool, 1));
+    }
+
+    #[test]
+    fn conv_vs_direct_hey_am_tdnn() {
+        use crate::ops::cnn::PaddingSpec;
+        use DataFormat::HWC;
+
+        fn use_direct(size: usize, stride: usize) -> bool {
+            let input = HWC.from_n_c_hw(1, 256, &[size]).unwrap();
+            let pool = {
+                PoolSpec::new(
+                    HWC,
+                    tvec!(3),
+                    PaddingSpec::Valid,
+                    Some(tvec!(1)),
+                    Some(tvec!(stride)),
+                    Some(64),
+                )
+            };
+            should_use_direct(&input, &pool, 1)
+        }
+        assert!(!use_direct(26, 1));
+        assert!(!use_direct(24, 3));
+        assert!(!use_direct(10, 1));
+    }
 }
