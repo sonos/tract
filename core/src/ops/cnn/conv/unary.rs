@@ -704,6 +704,8 @@ impl TypedOp for ConvUnary {
                     return Ok(Some(patch));
                 } else if (0..spatial_rank).all(|ax| self.pool_spec.padding.valid_dim(ax))
                     && self.group == 1
+                    && (0..spatial_rank).all(|d|
+                                             self.pool_spec.dilation(d) * self.pool_spec.kernel_shape[d] < 4)
                     && self
                         .pool_spec
                         .dilations
