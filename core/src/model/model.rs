@@ -368,6 +368,10 @@ where
         }
         Ok(())
     }
+
+    pub fn into_runnable(self) -> TractResult<RunnableModel<F, O, Self>> {
+        SimplePlan::new(self)
+    }
 }
 
 impl<F, O> Model for ModelImpl<F, O>
