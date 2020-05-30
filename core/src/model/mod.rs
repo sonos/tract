@@ -135,7 +135,7 @@ pub type TypedSimplePlan<M> = SimplePlan<TypedFact, Box<dyn TypedOp>, M>;
 pub type TypedSimpleState<M, P> = SimpleState<TypedFact, Box<dyn TypedOp>, M, P>;
 
 /// A model with determined types and shapes, where constant have been
-/// eleminated from the graph.
+/// eliminated from the graph.
 pub type NormalizedModel = ModelImpl<NormalizedFact, Box<dyn TypedOp>>;
 /// A Node for NormalizedModel.
 pub type NormalizedNode = BaseNode<NormalizedFact, Box<dyn TypedOp>>;
@@ -145,6 +145,9 @@ pub type NormalizedModelPatch = ModelPatch<NormalizedFact, Box<dyn TypedOp>>;
 pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedFact, Box<dyn TypedOp>, M>;
 /// An execution state for TypedModel.
 pub type NormalizedSimpleState<M, P> = SimpleState<NormalizedFact, Box<dyn TypedOp>, M, P>;
+
+/// A runnable model with fixed inputs and outputs.
+pub type RunnableModel<F, O, M> = SimplePlan<F, O, M>;
 
 impl TypedModel {
     pub fn signature(&self) -> u64 {
