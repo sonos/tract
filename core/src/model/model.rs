@@ -117,6 +117,12 @@ where
         Ok(())
     }
 
+    /// Change model inputs and return `self`.
+    pub fn with_input_outlets(mut self, inputs: &[OutletId]) -> TractResult<Self> {
+        self.set_input_outlets(inputs)?;
+        Ok(self)
+    }
+
     /// Set model inputs by the node name.
     pub fn set_input_names(
         &mut self,
@@ -131,6 +137,15 @@ where
         }
         self.inputs = ids;
         Ok(())
+    }
+
+    /// Set model inputs by the node name and return `self`.
+    pub fn with_input_names(
+        mut self,
+        inputs: impl IntoIterator<Item = impl AsRef<str>>
+    ) -> TractResult<Self> {
+        self.set_input_names(inputs)?;
+        Ok(self)
     }
 
     /// Get the `ix`-th input tensor type information.
@@ -149,6 +164,12 @@ where
     pub fn set_input_fact(&mut self, input: usize, fact: F) -> TractResult<()> {
         let outlet = self.inputs[input];
         self.set_outlet_fact(outlet, fact)
+    }
+
+    /// Set the `ix`-th input tensor type information and return `self`.
+    pub fn with_input_fact(mut self, input: usize, fact: F) -> TractResult<Self> {
+        self.set_input_fact(input, fact)?;
+        Ok(self)
     }
 
     // Outputs
@@ -181,6 +202,12 @@ where
         Ok(())
     }
 
+    /// Change model outputs and return `self`.
+    pub fn with_output_outlets(mut self, outputs: &[OutletId]) -> TractResult<Self> {
+        self.set_output_outlets(outputs)?;
+        Ok(self)
+    }
+
     /// Set model outputs by node names.
     pub fn set_output_names(
         &mut self,
@@ -192,6 +219,15 @@ where
             .collect::<TractResult<_>>()?;
         self.outputs = ids;
         Ok(())
+    }
+
+    /// Set model outputs by node names and return `self`.
+    pub fn with_output_names(
+        mut self,
+        outputs: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> TractResult<Self> {
+        self.set_output_names(outputs)?;
+        Ok(self)
     }
 
     /// Get the `ix`-th input tensor type information.
@@ -210,6 +246,12 @@ where
     pub fn set_output_fact(&mut self, output: usize, fact: F) -> TractResult<()> {
         let outlet = self.outputs[output];
         self.set_outlet_fact(outlet, fact)
+    }
+
+    /// Set the `ix`-th output tensor type information and return `self`.
+    pub fn with_output_fact(mut self, output: usize, fact: F) -> TractResult<Self> {
+        self.set_output_fact(output, fact)?;
+        Ok(self)
     }
 
     // nodes and their facts
@@ -314,6 +356,12 @@ where
         Ok(())
     }
 
+    /// Set tensor information for a single outlet and return `self`.
+    pub fn with_outlet_fact(mut self, outlet: OutletId, fact: F) -> TractResult<Self> {
+        self.set_outlet_fact(outlet, fact)?;
+        Ok(self)
+    }
+
     // outlet labels
 
     /// Get label for an outlet.
@@ -322,8 +370,15 @@ where
     }
 
     /// Set label for an outlet.
-    pub fn set_outlet_label(&mut self, outlet: OutletId, label: String) {
+    pub fn set_outlet_label(&mut self, outlet: OutletId, label: String) -> TractResult<()> {
         self.outlet_labels.insert(outlet, label);
+        Ok(())
+    }
+
+    /// Set label for an outlet and return `self`.
+    pub fn with_outlet_label(mut self, outlet: OutletId, label: String) -> TractResult<Self> {
+        self.set_outlet_label(outlet, label)?;
+        Ok(self)
     }
 
     /// Find outlet by label.

@@ -25,7 +25,7 @@ where
             for (ix, &o) in outlets.iter().enumerate() {
                 map.insert(OutletId::new(old_id, ix), o);
                 if let Some(label) = old.outlet_label(OutletId::new(old_id, ix)) {
-                    new.set_outlet_label(o, label.to_string());
+                    new.set_outlet_label(o, label.to_string())?;
                 }
             }
             if old.input_outlets()?.contains(&OutletId::new(old_node.id, 0)) {
