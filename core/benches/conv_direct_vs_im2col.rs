@@ -202,6 +202,14 @@ mod b {
 
     b!(ARM_ML_KWS_CNN_M_0, HWC.from_n_c_hw(1, 1,  &[49, 10]).unwrap(),   tvec!(10, 4), 64, tvec!(1, 1), tvec!(1, 1));
     b!(ARM_ML_KWS_CNN_M_1, HWC.from_n_c_hw(1, 64, &[40, 7]).unwrap(),    tvec!(10, 4), 48, tvec!(2, 1), tvec!(1, 1));
+
+    // Hey_Snips_v3
+    b!(Hey_Snips_v3_tdnn1_dil3, HWC.from_n_c_hw(1, 128, &[36]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(3));
+    b!(Hey_Snips_v3_tdnn1_dil6, HWC.from_n_c_hw(1, 128, &[33]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(6));
+    b!(Hey_Snips_v3_tdnn1_dil9, HWC.from_n_c_hw(1, 128, &[27]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(9));
+    b!(Hey_Snips_v3_tdnn1_dil12,HWC.from_n_c_hw(1, 128, &[18]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(12));
+
+    // Hey_Snips_v4
     b!(Hey_Snips_v4_dil1,  HWC.from_n_c_hw(1, 16, &[10]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(1));
     b!(Hey_Snips_v4_dil2,  HWC.from_n_c_hw(1, 16, &[12]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(2));
     b!(Hey_Snips_v4_dil4,  HWC.from_n_c_hw(1, 16, &[16]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(4));
@@ -225,6 +233,10 @@ criterion_group!(
     b::Hey_Snips_v4_dil2,
     b::Hey_Snips_v4_dil4,
     b::Hey_Snips_v4_dil8,
+    b::Hey_Snips_v3_tdnn1_dil3,
+    b::Hey_Snips_v3_tdnn1_dil6,
+    b::Hey_Snips_v3_tdnn1_dil9,
+    b::Hey_Snips_v3_tdnn1_dil12,
     b::Conv2d_2a_3x3,
     b::AM_2M_tdnn2,
     b::AM_2M_lda,
