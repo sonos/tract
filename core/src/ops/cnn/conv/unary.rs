@@ -747,15 +747,13 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
     if group != 1 || !(0..spatial_rank).all(|ax| pool_spec.padding.valid_dim(ax)) {
         return false
     }
-    dbg!(&input_shape);
-    dbg!(pool_spec);
     let direct =
         // no real rationale here, pure heuristic to force "right" pick in
         // both hey_snips v3 and v4. just hope this will generalize ok
         (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
         // that one kind of make sense, better use direct that generate a huge
         // im2col matrix (when both kernel and input are big)
-        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 65536;
+        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 524288;
         direct
 }
 
@@ -876,8 +874,8 @@ mod test {
             };
             should_use_direct(&input, &pool, 1)
         }
-        assert!(!use_direct(26, 1));
-        assert!(!use_direct(24, 3));
-        assert!(!use_direct(10, 1));
+        assert!(!use_direct(26, 1)); // tdnn2
+        // assert!(!use_direct(24, 3)); // tdnn3 is neutral
+        assert!(!use_direct(10, 1)); // tdnn4,5
     }
 }
