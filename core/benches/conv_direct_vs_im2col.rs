@@ -9,7 +9,7 @@ use criterion::*;
 use tract_core::model::*;
 use tract_core::*;
 
-use nn::DataFormat::HWC;
+use nn::DataFormat::{ HWC, NHWC };
 use tract_core::internal::*;
 use tract_core::ops::{cnn, nn};
 
@@ -200,8 +200,8 @@ mod b {
         }
     }
 
-    b!(ARM_ML_KWS_CNN_M_0, HWC.from_n_c_hw(1, 1,  &[49, 10]).unwrap(),   tvec!(10, 4), 64, tvec!(1, 1), tvec!(1, 1));
-    b!(ARM_ML_KWS_CNN_M_1, HWC.from_n_c_hw(1, 64, &[40, 7]).unwrap(),    tvec!(10, 4), 48, tvec!(2, 1), tvec!(1, 1));
+    b!(ARM_ML_KWS_CNN_M_0, NHWC.from_n_c_hw(1, 1,  &[49, 10]).unwrap(),   tvec!(10, 4), 64, tvec!(1, 1), tvec!(1, 1));
+    b!(ARM_ML_KWS_CNN_M_1, NHWC.from_n_c_hw(1, 64, &[40, 7]).unwrap(),    tvec!(10, 4), 48, tvec!(2, 1), tvec!(1, 1));
 
     // Hey_Snips_v3
     b!(Hey_Snips_v3_tdnn1_dil3, HWC.from_n_c_hw(1, 128, &[36]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(3));
