@@ -1,16 +1,11 @@
 use tract_tensorflow::prelude::*;
 
 fn main() -> TractResult<()> {
-    // load the model
-    let mut model =
-        tract_tensorflow::tensorflow().model_for_path("mobilenet_v2_1.4_224_frozen.pb")?;
-
-    // specify input type and shape
-    model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?;
-
-    // optimize the model and get an execution plan
-    let model = model.into_optimized()?;
-    let plan = SimplePlan::new(&model)?;
+    let model = tract_tensorflow::tensorflow()
+        .model_for_path("mobilenet_v2_1.4_224_frozen.pb")? // load the model
+        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))? // specify input type and shape
+        .into_optimized()? // optimize the model
+        .into_runnable()?; // make the model runnable and fix its inputs and outputs
 
     // open image, resize it and make a Tensor out of it
     let image = image::open("grace_hopper.jpg").unwrap().to_rgb();
@@ -21,8 +16,8 @@ fn main() -> TractResult<()> {
     })
     .into();
 
-    // run the plan on the input
-    let result = plan.run(tvec!(image))?;
+    // run the model on the input
+    let result = model.run(tvec!(image))?;
 
     // find and display the max value with its index
     let best = result[0]

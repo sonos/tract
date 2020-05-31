@@ -2,13 +2,11 @@ use tract_ndarray::Array;
 use tract_onnx::prelude::*;
 
 fn main() -> TractResult<()> {
-    let mut model = tract_onnx::onnx().model_for_path("resnet.onnx")?;
-
-    model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 3, 224, 224)))?;
-
-    // optimize the model and get an execution plan
-    let model = model.into_optimized()?;
-    let plan = SimplePlan::new(model)?;
+    let model = tract_onnx::onnx()
+        .model_for_path("resnet.onnx")? // load the model
+        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 3, 224, 224)))? // specify input type and shape
+        .into_optimized()? // optimize the model
+        .into_runnable()?; // make the model runnable and fix its inputs and outputs
 
     // Imagenet mean and standard deviation
     let mean = Array::from_shape_vec((1, 3, 1, 1), vec![0.485, 0.456, 0.406])?;
@@ -23,7 +21,7 @@ fn main() -> TractResult<()> {
             / std)
             .into();
 
-    let result = plan.run(tvec!(image))?;
+    let result = model.run(tvec!(image))?;
 
     // find and display the max value with its index
     let best = result[0]
