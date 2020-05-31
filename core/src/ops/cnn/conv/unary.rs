@@ -753,10 +753,11 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
         (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
         // that one kind of make sense, better use direct that generate a huge
         // im2col matrix (when both kernel and input are big)
-        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 524288;
+        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
         direct
 }
 
+#[allow(non_snake_case)]
 #[cfg(test)]
 mod test {
     use super::*;
@@ -843,7 +844,7 @@ mod test {
     }
 
     #[test]
-    fn conv_vs_direct_am_lda() {
+    fn conv_vs_direct_am_lda_2M() {
         let pool = {
             PoolSpec::new(
                 HWC,
@@ -859,7 +860,7 @@ mod test {
     }
 
     #[test]
-    fn conv_vs_direct_hey_am_tdnn() {
+    fn conv_vs_direct_hey_am_tdnn_2M() {
         fn use_direct(size: usize, stride: usize) -> bool {
             let input = HWC.from_n_c_hw(1, 256, &[size]).unwrap();
             let pool = {
