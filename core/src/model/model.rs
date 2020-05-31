@@ -424,6 +424,7 @@ where
         Ok(())
     }
 
+    /// Converts the model into a `RunnableModel` which fixes the inputs and outputs and allows passing data through the model.
     pub fn into_runnable(self) -> TractResult<RunnableModel<F, O, Self>> {
         SimplePlan::new(self)
     }
