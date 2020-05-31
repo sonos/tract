@@ -61,32 +61,36 @@ $ cat -n imagenet_slim_labels.txt | grep -C 3 654
 Everything happens in [src/main.rs](src/main.rs).
 
 ```rust
-let model = tract_tensorflow::tensorflow()
-    .model_for_path("mobilenet_v2_1.4_224_frozen.pb")? // load the model
-    .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))? // specify input type and shape
-    .into_optimized()? // optimize the model
-    .into_runnable()?; // make the model runnable and fix its inputs and outputs
+    let model = tract_tensorflow::tensorflow()
+        // load the model
+        .model_for_path("mobilenet_v2_1.4_224_frozen.pb")?
+        // specify input type and shape
+        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?
+        // optimize the model
+        .into_optimized()?
+        // make the model runnable and fix its inputs and outputs
+        .into_runnable()?;
 
-// open image, resize it and make a Tensor out of it
-let image = image::open("grace_hopper.jpg").unwrap().to_rgb();
-let resized =
-    image::imageops::resize(&image, 224, 224, ::image::imageops::FilterType::Triangle);
-let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
-    resized[(x as _, y as _)][c] as f32 / 255.0
-})
-.into();
+    // open image, resize it and make a Tensor out of it
+    let image = image::open("grace_hopper.jpg").unwrap().to_rgb();
+    let resized =
+        image::imageops::resize(&image, 224, 224, ::image::imageops::FilterType::Triangle);
+    let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
+        resized[(x as _, y as _)][c] as f32 / 255.0
+    })
+    .into();
 
-// run the model on the input
-let result = model.run(tvec!(image))?;
+    // run the model on the input
+    let result = model.run(tvec!(image))?;
 
-// find and display the max value with its index
-let best = result[0]
-    .to_array_view::<f32>()?
-    .iter()
-    .cloned()
-    .zip(1..)
-    .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-println!("result: {:?}", best);
+    // find and display the max value with its index
+    let best = result[0]
+        .to_array_view::<f32>()?
+        .iter()
+        .cloned()
+        .zip(1..)
+        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    println!("result: {:?}", best);
 ```
 
 It uses three crates:
@@ -105,9 +109,9 @@ This line creates a tract-tensorflow context, and uses it to load the protobuf
 model.
 
 ```rust
-let model = tract_tensorflow::tensorflow()
-    .model_for_path("mobilenet_v2_1.4_224_frozen.pb")?
-// ..
+    let model = tract_tensorflow::tensorflow()
+        .model_for_path("mobilenet_v2_1.4_224_frozen.pb")?
+    // ..
 ```
 
 ### Specifying input size and optimizing.
@@ -122,10 +126,10 @@ RGB (C=3) pictures. We will only process one image at a time (N=1).
 And it operates on single precision floats (aka `f32`).
 
 ```rust
-// ..
-    .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?
-    .into_optimized()?
-    .into_runnable()?;
+    // ..
+        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?
+        .into_optimized()?
+        .into_runnable()?;
 ```
 
 Now the model is ready to run, we have an execution plan, so let's prepare the
@@ -139,11 +143,11 @@ normalizing the `u8` input to the `0..1` range. This array is then converted
 into a Tensor.
 
 ```rust
-let image = image::open("grace_hopper.jpg").unwrap().to_rgb();
-let resized = image::imageops::resize(&image, 224, 224, ::image::FilterType::Triangle);
-let image: Tensor = ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
-    resized[(x as _, y as _)][c] as f32 / 255.0
-}).into();
+    let image = image::open("grace_hopper.jpg").unwrap().to_rgb();
+    let resized = image::imageops::resize(&image, 224, 224, ::image::FilterType::Triangle);
+    let image: Tensor = ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
+        resized[(x as _, y as _)][c] as f32 / 255.0
+    }).into();
 ```
 
 Note that `tract-core` re-export the excellent `ndarray` crate so that it is
@@ -152,7 +156,7 @@ easy to get the right version for tract conversion to work.
 ### Run the network!
 
 ```rust
-let result = model.run(tvec!(image))?;
+    let result = model.run(tvec!(image))?;
 ```
 
 ### Interpret the result
@@ -163,12 +167,12 @@ category scores (1000 labels plus the dummy one). We need pick the maximum
 score, with its index, and diplay it...
 
 ```rust
-let best = result[0]
-    .to_array_view::<f32>()?
-    .iter()
-    .cloned()
-    .enumerate()
-    .zip(1..)
-    .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-println!("result: {:?}", best);
+    let best = result[0]
+        .to_array_view::<f32>()?
+        .iter()
+        .cloned()
+        .enumerate()
+        .zip(1..)
+        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    println!("result: {:?}", best);
 ```

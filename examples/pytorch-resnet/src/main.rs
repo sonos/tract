@@ -3,10 +3,14 @@ use tract_onnx::prelude::*;
 
 fn main() -> TractResult<()> {
     let model = tract_onnx::onnx()
-        .model_for_path("resnet.onnx")? // load the model
-        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 3, 224, 224)))? // specify input type and shape
-        .into_optimized()? // optimize the model
-        .into_runnable()?; // make the model runnable and fix its inputs and outputs
+        // load the model
+        .model_for_path("resnet.onnx")?
+        // specify input type and shape
+        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(1, 3, 224, 224)))?
+        // optimize the model
+        .into_optimized()?
+        // make the model runnable and fix its inputs and outputs
+        .into_runnable()?;
 
     // Imagenet mean and standard deviation
     let mean = Array::from_shape_vec((1, 3, 1, 1), vec![0.485, 0.456, 0.406])?;
