@@ -416,12 +416,21 @@ impl Parameters {
     #[allow(unused_variables)]
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
-        let name = matches.value_of("model").ok_or("Model argument required")?;
-        let format = matches.value_of("format").unwrap_or(if name.ends_with(".onnx") {
-            "onnx"
-        } else {
-            "tf"
-        });
+        let filename = matches.value_of("model").ok_or("Model argument required")?;
+        let filename = std::path::PathBuf::from(filename);
+        let (filename, onnx_tc) =
+            if std::fs::metadata(&filename)?.is_dir() && filename.join("model.onnx").exists() {
+                (filename.join("model.onnx"), true)
+            } else {
+                (filename, false)
+            };
+        let format = matches.value_of("format").unwrap_or(
+            if filename.extension().and_then(|s| s.to_str()) == Some("onnx") {
+                "onnx"
+            } else {
+                "tf"
+            },
+        );
 
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
@@ -431,7 +440,7 @@ impl Parameters {
             "kaldi" => {
                 let kaldi = tract_kaldi::kaldi();
                 info_usage("loaded framework (kaldi)", probe);
-                let mut graph = kaldi.proto_model_for_path(&name)?;
+                let mut graph = kaldi.proto_model_for_path(&filename)?;
                 info_usage("proto model loaded", probe);
                 if let Some(i) = matches.value_of("kaldi_adjust_final_offset") {
                     graph.adjust_final_offset = i.parse()?;
@@ -447,7 +456,7 @@ impl Parameters {
             "onnx" => {
                 let onnx = tract_onnx::onnx();
                 info_usage("loaded framework (onnx)", probe);
-                let graph = onnx.proto_model_for_path(&name)?;
+                let graph = onnx.proto_model_for_path(&filename)?;
                 info_usage("proto model loaded", probe);
                 let parsed = onnx.parse(&graph)?;
                 if need_graph {
@@ -460,7 +469,7 @@ impl Parameters {
             "tf" => {
                 let tf = tract_tensorflow::tensorflow();
                 info_usage("loaded framework (tf)", probe);
-                let mut graph = tf.proto_model_for_path(&name)?;
+                let mut graph = tf.proto_model_for_path(&filename)?;
                 info_usage("proto model loaded", probe);
                 if matches.is_present("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
@@ -487,7 +496,7 @@ impl Parameters {
             ),
         };
 
-        info!("Model {:?} loaded", name);
+        info!("Model {:?} loaded", filename);
         info_usage("model loaded", probe);
 
         #[cfg(feature = "conform")]
@@ -501,7 +510,7 @@ impl Parameters {
                     unreachable!()
                 }
             } else {
-                Some(tract_tensorflow::conform::tf::for_path(&name)?)
+                Some(tract_tensorflow::conform::tf::for_path(&filename)?)
             }
         } else {
             None
@@ -587,7 +596,7 @@ impl Parameters {
 
         let machine_friendly = matches.is_present("machine_friendly");
 
-        let mut input_values = vec![];
+        let mut input_values = vec![None; raw_model.inputs.len()];
 
         if let Some(inputs) = matches.values_of("input") {
             for (ix, v) in inputs.enumerate() {
@@ -598,12 +607,7 @@ impl Parameters {
                 } else {
                     raw_model.input_outlets()?[ix]
                 };
-                while input_values.len() < ix {
-                    input_values.push(None);
-                }
-                if let Some(t) = t.value.concretize() {
-                    input_values.push(Some(t));
-                }
+                input_values[ix] = t.value.concretize();
                 for input in raw_model.node(outlet.node).inputs.clone() {
                     raw_model.node_mut(input.node).outputs[input.slot]
                         .successors
@@ -639,22 +643,50 @@ impl Parameters {
                             fact.shape.set_dim(s.parse()?, TDim::s());
                         }
                         raw_model.set_input_fact(ix, fact.without_value())?;
-                        while input_values.len() <= ix {
-                            input_values.push(None);
-                        }
                         input_values[ix] = Some(t.into_arc_tensor());
                     }
                 }
             }
         }
 
+        if onnx_tc {
+            let inputs_dir = filename.parent().unwrap().join("test_data_set_0");
+            for file in inputs_dir.read_dir()? {
+                let file = file?;
+                let filename = file
+                    .file_name()
+                    .into_string()
+                    .map_err(|s| format!("Can't convert OSString to String ({:?})", s))?;
+                if filename.starts_with("input_") {
+                    let ix =
+                        std::str::from_utf8(&filename.split(".").next().unwrap().as_bytes()[6..])
+                            .unwrap()
+                            .parse::<usize>()?;
+                    let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
+                    let ix = raw_model
+                        .inputs
+                        .iter()
+                        .position(|i| &raw_model.node(i.node).name == name.as_ref().unwrap())
+                        .unwrap();
+                    input_values[ix] = tensor.value.concretize();
+                };
+            }
+        }
+
+        let const_inputs = matches.values_of("const_input").map(|c| c.collect()).unwrap_or(vec![]);
         for i in (0..raw_model.inputs.len()).rev() {
             let input = raw_model.inputs[i];
-            let const_inputs =
-                matches.values_of("const_input").map(|cis| cis.collect()).unwrap_or(vec![]);
             if const_inputs.contains(&raw_model.node_name(input.node)) {
-                raw_model.node_mut(input.node).op =
-                    Box::new(tract_core::ops::konst::Const::new(input_values.remove(i).unwrap()));
+                if let Some(v) = input_values[i].take() {
+                    raw_model.node_mut(input.node).op = Box::new(
+                        tract_core::ops::konst::Const::new(v),
+                    );
+                } else {
+                    bail!(
+                        "Don't have value for input {}, can't make it const",
+                        raw_model.node_name(input.node)
+                    );
+                }
                 raw_model.inputs.remove(i);
             }
         }
