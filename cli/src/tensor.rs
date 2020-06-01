@@ -78,7 +78,7 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 }
 
 /// Parses the `data` command-line argument.
-fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
+pub fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
     #[allow(unused_imports)]
     use std::convert::TryFrom;
     if filename.ends_with(".pb") {
