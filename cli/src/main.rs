@@ -114,6 +114,9 @@ fn main() {
     (@arg kaldi_right_context: --("kaldi-right-context") +takes_value
      "Add lines of right context to input (dupping last time frame)")
 
+    (@arg onnx_test_data_set: --("onnx-test-data-set") +takes_value
+     "Use onnx-test data-set as input (expect test_data_set_N dir with input_X.pb, etc. inside)")
+
     (@arg input_node: --("input-node") +takes_value +multiple number_of_values(1)
      "Override input nodes names (auto-detects otherwise).")
 
@@ -649,8 +652,7 @@ impl Parameters {
             }
         }
 
-        if onnx_tc {
-            let inputs_dir = filename.parent().unwrap().join("test_data_set_0");
+        let mut use_onnx_test_case_data_set = |inputs_dir: &std::path::Path| -> CliResult<()> {
             for file in inputs_dir.read_dir()? {
                 let file = file?;
                 let filename = file
@@ -671,6 +673,15 @@ impl Parameters {
                     input_values[ix] = tensor.value.concretize();
                 };
             }
+            Ok(())
+        };
+
+        if onnx_tc {
+            use_onnx_test_case_data_set(filename.parent().unwrap().join("test_data_set_0").as_path())?
+        }
+
+        if let Some(tc) = matches.value_of("onnx_test_data_set") {
+            use_onnx_test_case_data_set(&std::path::Path::new(tc))?
         }
 
         let const_inputs = matches.values_of("const_input").map(|c| c.collect()).unwrap_or(vec![]);
