@@ -424,6 +424,7 @@ impl Expansion for LSTM {
                 input_mapping,
                 vec![h_mapping, c_mapping],
                 self.optional_sequence_lens_input,
+                false,
             )?,
             &outer_inputs,
         )?;

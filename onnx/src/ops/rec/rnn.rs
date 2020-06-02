@@ -262,6 +262,7 @@ impl Expansion for RNN {
                 input_mapping,
                 vec![output_mapping],
                 self.optional_sequence_lens_input,
+                false,
             )?,
             &outer_inputs,
         )?;
