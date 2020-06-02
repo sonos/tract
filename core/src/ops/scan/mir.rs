@@ -16,8 +16,12 @@ pub struct Scan {
 tract_linalg::impl_dyn_hash!(Scan);
 
 impl Scan {
-    pub fn to_codegen_op(&self) -> TractResult<LirScan> {
-        let plan = SimplePlan::new(self.body.clone())?;
+    pub fn to_codegen_op(&self, optimize_inner: bool) -> TractResult<LirScan> {
+        let mut model = self.body.clone();
+        if optimize_inner {
+            model = model.into_optimized()?
+        }
+        let plan = SimplePlan::new(model)?;
         let input_mapping = self
             .input_mapping
             .iter()
@@ -584,7 +588,7 @@ impl StatefullOp for Scan {
         session: &mut SessionState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        self.to_codegen_op()?.state(session, node_id)
+        self.to_codegen_op(false)?.state(session, node_id)
     }
 }
 
@@ -739,7 +743,7 @@ impl TypedOp for Scan {
     }
 
     fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f64)> {
-        self.to_codegen_op()
+        self.to_codegen_op(false)
             .unwrap()
             .nested_model_multipliers(inputs)
             .into_iter()
@@ -756,7 +760,7 @@ impl TypedOp for Scan {
             &model,
             node,
             &node.inputs,
-            self.to_codegen_op()?,
+            self.to_codegen_op(true)?,
         )?))
     }
 }
