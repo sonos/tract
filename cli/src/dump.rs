@@ -49,12 +49,14 @@ pub fn handle(
         }
     }
 
-    if options.json {
-        let export = crate::export::GraphPerfInfo::from(model, &annotations);
-        serde_json::to_writer(std::io::stdout(), &export)?;
-    } else {
-        terminal::render(model, &annotations, options)?;
-        terminal::render_summaries(model, &annotations, options)?;
+    if !options.quiet {
+        if options.json {
+            let export = crate::export::GraphPerfInfo::from(model, &annotations);
+            serde_json::to_writer(std::io::stdout(), &export)?;
+        } else {
+            terminal::render(model, &annotations, options)?;
+            terminal::render_summaries(model, &annotations, options)?;
+        }
     }
 
     Ok(())
