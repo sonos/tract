@@ -60,8 +60,8 @@ impl Default for LSTM {
 }
 
 impl Expansion for LSTM {
-    fn name(&self) -> &'static str {
-        "LSTM"
+    fn name(&self) -> Cow<str> {
+        "LSTM".into()
     }
 
     op_onnx!();
