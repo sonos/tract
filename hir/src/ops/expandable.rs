@@ -13,10 +13,14 @@ pub trait Expansion:
     + tract_core::downcast_rs::Downcast
     + tract_core::internal::DynHash
 {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> Cow<str>;
     fn op_families(&self) -> &'static [&'static str];
     fn validation(&self) -> Validation {
         Validation::Accurate
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![])
     }
 
     fn nboutputs(&self) -> TractResult<usize> {
@@ -55,6 +59,9 @@ impl Op for Box<dyn Expansion> {
     }
     fn op_families(&self) -> &'static [&'static str] {
         self.as_ref().op_families()
+    }
+    fn info(&self) -> TractResult<Vec<String>> {
+        self.as_ref().info()
     }
     not_a_typed_op!();
     not_a_pulsed_op!();

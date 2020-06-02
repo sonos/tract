@@ -161,26 +161,9 @@ impl Reduce {
         axes.sort();
         Ok(axes)
     }
-
-    fn wire(&self, name: &str, target: &mut TypedModel, input: OutletId) -> TractResult<OutletId> {
-        let fact = target.outlet_fact(input)?;
-        let mut axes = self.resolve_axes(fact.rank())?;
-        axes.sort();
-        let mut wire = self.reducer.wire(axes.clone(), name, target, input)?;
-        if !self.keep_dims {
-            for axis in axes.into_iter().rev() {
-                wire = target.wire_node(
-                    format!("{}-dispose-dims-{}", name, axis),
-                    AxisOp::Rm(axis),
-                    &[wire],
-                )?[0];
-            }
-        }
-        Ok(wire)
-    }
 }
 
-impl Op for Reduce {
+impl Expansion for Reduce {
     fn name(&self) -> Cow<str> {
         format!("Reduce<{:?}>", self.reducer).into()
     }
@@ -188,21 +171,7 @@ impl Op for Reduce {
         Ok(vec![format!("axes: {:?} keep_dims: {}", self.axes, self.keep_dims)])
     }
     op_hir!();
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
 
-impl StatelessOp for Reduce {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let mut adhoc = TypedModel::default();
-        let source = adhoc.add_source("adhoc-source", inputs[0].as_ref().into())?;
-        let wire = self.wire("adhoc", &mut adhoc, source)?;
-        adhoc.set_output_outlets(&[wire])?;
-        SimplePlan::new(adhoc)?.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
-    }
-}
-
-impl InferenceRulesOp for Reduce {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -225,16 +194,21 @@ impl InferenceRulesOp for Reduce {
         })
     }
 
-    as_op!();
-
-    fn to_typed(
-        &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let wire = self.wire(&*node.name, target, mapping[&node.inputs[0]])?;
+    fn wire(&self, name: &str, target: &mut TypedModel, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
+        let input = inputs[0];
+        let fact = target.outlet_fact(input)?;
+        let mut axes = self.resolve_axes(fact.rank())?;
+        axes.sort();
+        let mut wire = self.reducer.wire(axes.clone(), name, target, input)?;
+        if !self.keep_dims {
+            for axis in axes.into_iter().rev() {
+                wire = target.wire_node(
+                    format!("{}-dispose-dims-{}", name, axis),
+                    AxisOp::Rm(axis),
+                    &[wire],
+                )?[0];
+            }
+        }
         Ok(tvec!(wire))
     }
 }

@@ -132,8 +132,8 @@ pub struct Gemm {
 tract_linalg::impl_dyn_hash!(Gemm);
 
 impl Expansion for Gemm {
-    fn name(&self) -> &'static str {
-        "Gemm"
+    fn name(&self) -> Cow<str> {
+        "Gemm".into()
     }
 
     op_onnx!();

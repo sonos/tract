@@ -18,7 +18,7 @@ fn reduce(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axes = node.get_attr_opt_vec("axes")?;
     let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
-    Ok((Box::new(ops::nn::Reduce::new(axes, keep_dims, reducer)), vec![]))
+    Ok((expand(ops::nn::Reduce::new(axes, keep_dims, reducer)), vec![]))
 }
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {

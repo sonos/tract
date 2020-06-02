@@ -49,8 +49,8 @@ impl Default for RNN {
 }
 
 impl Expansion for RNN {
-    fn name(&self) -> &'static str {
-        "RNN"
+    fn name(&self) -> Cow<str> {
+        "RNN".into()
     }
 
     fn validation(&self) -> Validation {

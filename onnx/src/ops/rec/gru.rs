@@ -51,8 +51,8 @@ impl Default for GRU {
 }
 
 impl Expansion for GRU {
-    fn name(&self) -> &'static str {
-        "GRU"
+    fn name(&self) -> Cow<str> {
+        "GRU".into()
     }
 
     fn validation(&self) -> Validation {

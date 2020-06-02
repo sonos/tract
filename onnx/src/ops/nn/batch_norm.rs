@@ -43,8 +43,8 @@ impl BatchNorm {
 }
 
 impl tract_hir::ops::expandable::Expansion for BatchNorm {
-    fn name(&self) -> &'static str {
-        "BatchNorm"
+    fn name(&self) -> Cow<str> {
+        "BatchNorm".into()
     }
 
     op_onnx!();
