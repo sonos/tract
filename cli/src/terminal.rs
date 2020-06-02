@@ -268,19 +268,17 @@ fn render_node_prefixed(
             println!("    {}", s);
         }
     }
-    if let Some(tmodel) = model.downcast_ref::<TypedModel>() {
-        for (label, sub, _, _) in tmodel.node(node_id).op.nested_models() {
-            let prefix = drawing_lines.next().unwrap();
-            let mut scope: TVec<_> = scope.into();
-            scope.push((node_id, label.to_string()));
-            render_prefixed(
-                sub,
-                &format!("{} [{}] ", prefix, label),
-                &*scope,
-                annotations,
-                options,
-            )?
-        }
+    for (label, sub, _, _) in model.nested_models(node_id) {
+        let prefix = drawing_lines.next().unwrap();
+        let mut scope: TVec<_> = scope.into();
+        scope.push((node_id, label.to_string()));
+        render_prefixed(
+            sub,
+            &format!("{} [{}] ", prefix, label),
+            &*scope,
+            annotations,
+            options,
+        )?
     }
     while cost_column.as_mut().map(|cost| cost.peek().is_some()).unwrap_or(false) {
         prefix!();

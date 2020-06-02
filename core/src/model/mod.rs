@@ -41,6 +41,7 @@
 //! core operator could be chosen.
 use std::collections::HashMap;
 use std::str;
+use std::borrow::Cow;
 
 use itertools::Itertools;
 
@@ -119,6 +120,9 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
 
     /// List consumers of an outlet
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId];
+
+    /// Nested models, with label (for audit).
+    fn nested_models(&self, node: usize) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)>;
 }
 
 impl_downcast!(Model);
