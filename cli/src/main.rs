@@ -653,27 +653,38 @@ impl Parameters {
         }
 
         let mut use_onnx_test_case_data_set = |inputs_dir: &std::path::Path| -> CliResult<()> {
-            for file in inputs_dir.read_dir()? {
+            let files = inputs_dir.read_dir()?.map(|file| {
                 let file = file?;
                 let filename = file
                     .file_name()
                     .into_string()
                     .map_err(|s| format!("Can't convert OSString to String ({:?})", s))?;
-                if filename.starts_with("input_") {
-                    let ix =
-                        std::str::from_utf8(&filename.split(".").next().unwrap().as_bytes()[6..])
-                            .unwrap()
-                            .parse::<usize>()?;
+                if filename.starts_with("input_") || filename.starts_with("output_") {
+                    let ix = filename.split("_").nth(1).unwrap().split(".").nth(0).unwrap().parse::<usize>()?;
                     let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
-                    debug!("Using {} as input {} ({}): {:?}", filename, ix, name.as_ref().unwrap(), tensor);
-                    let ix = raw_model
-                        .inputs
-                        .iter()
-                        .position(|i| &raw_model.node(i.node).name == name.as_ref().unwrap())
-                        .unwrap();
-                    input_values[ix] = tensor.value.concretize();
-                    raw_model.set_input_fact(ix, tensor.without_value())?;
-                };
+                    Ok(Some((ix, filename.starts_with("input_"), filename, name.unwrap(), tensor)))
+                } else {
+                    Ok(None)
+                }
+            }).collect::<CliResult<Vec<Option<_>>>>()?;
+            let files = files.into_iter().filter_map(|x|x).collect::<Vec<_>>();
+            let (inputs, outputs) = files.iter().partition::<Vec<_>, _>(|f| f.1);
+            let inputs = inputs.into_iter().sorted_by_key(|f|f.0).collect::<Vec<_>>();
+            let outputs = outputs.into_iter().sorted_by_key(|f|f.0).collect::<Vec<_>>();
+            let input_names = inputs.iter().map(|i| &*i.3).collect::<Vec<_>>();
+            let output_names = outputs.iter().map(|i| &*i.3).collect::<Vec<_>>();
+            debug!("input_names from files: {:?}", input_names);
+            debug!("output_names from files: {:?}", output_names);
+            raw_model.set_input_names(input_names)?;
+            raw_model.set_output_names(output_names)?;
+            for (ix, _, filename, name, tensor) in inputs.into_iter() {
+                debug!("Using {} as input {} ({}): {:?}", filename, ix, name, tensor);
+                input_values[*ix] = tensor.value.concretize();
+                raw_model.set_input_fact(*ix, tensor.clone().without_value())?;
+            }
+            for (ix, _, filename, name, tensor) in outputs.into_iter() {
+                debug!("Using {} as output {} ({}): {:?}", filename, ix, name, tensor);
+                // fixme use them as assertions
             }
             Ok(())
         };

@@ -24,7 +24,7 @@ where
     /// model outputs
     pub outputs: Vec<OutletId>,
     /// outlet labels
-    #[educe(Hash(method="hash_outlet_labels"))]
+    #[educe(Hash(method = "hash_outlet_labels"))]
     pub outlet_labels: HashMap<OutletId, String>,
 }
 
@@ -142,7 +142,7 @@ where
     /// Set model inputs by the node name and return `self`.
     pub fn with_input_names(
         mut self,
-        inputs: impl IntoIterator<Item = impl AsRef<str>>
+        inputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<Self> {
         self.set_input_names(inputs)?;
         Ok(self)
@@ -213,9 +213,17 @@ where
         &mut self,
         outputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<()> {
+        let labels: HashMap<&str, OutletId> =
+            self.outlet_labels.iter().map(|(o, s)| (&**s, *o)).collect();
         let ids: Vec<OutletId> = outputs
             .into_iter()
-            .map(|s| self.node_by_name(s.as_ref()).map(|n| OutletId::new(n.id, 0)))
+            .map(|s| {
+                labels
+                    .get(s.as_ref())
+                    .cloned()
+                    .or_else(|| self.nodes_by_name.get(s.as_ref()).map(|&n| n.into()))
+                    .ok_or_else(|| format!("Node {} not found", s.as_ref()).into())
+            })
             .collect::<TractResult<_>>()?;
         self.outputs = ids;
         Ok(())
@@ -551,17 +559,21 @@ where
                     self.node_inputs(i).iter().map(|s| format!("{:?}", s)).join(", ")
                 )?;
             }
-            if self.node_output_count(i) > 1 || self.outlet_successors((i, 0).into()).len() > 2 {
+            if self.node_output_count(i) > 1
+                || self.outlet_successors((i, 0).into()).len() > 2
+                || self.outlet_label(i.into()).is_some()
+            {
                 for o in 0..self.node_output_count(i) {
-                    if self.outlet_successors((i,o).into()).len() > 0 {
+                    if self.outlet_successors((i, o).into()).len() > 0 {
                         writeln!(
                             fmt,
-                            "                                                |   * output #{}: {}",
+                            "                                                |   * output #{}: {} {}",
                             o,
+                            self.outlet_label((i, o).into()).unwrap_or(""),
                             self.outlet_successors((i, o).into())
                                 .iter()
                                 .map(|s| format!("{:?}", s))
-                                .join(", ")
+                                .join(", "),
                         )?;
                     }
                 }
@@ -578,7 +590,9 @@ mod test {
     #[test]
     fn hashable() {
         let mut model = TypedModel::default();
-        let _s = model.add_source("source", TypedFact::dt_shape(DatumType::F32, [1,2,3].as_ref()).unwrap()).unwrap();
+        let _s = model
+            .add_source("source", TypedFact::dt_shape(DatumType::F32, [1, 2, 3].as_ref()).unwrap())
+            .unwrap();
         let mut hasher = std::collections::hash_map::DefaultHasher::default();
         model.hash(&mut hasher);
     }
