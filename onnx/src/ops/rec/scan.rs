@@ -83,6 +83,7 @@ pub fn scan(
             None,
             true,
             GenericFactoid::default(),
+            false,
         )),
         unresolved_inputs,
     ))

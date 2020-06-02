@@ -1,4 +1,4 @@
-use super::lir::{Codegen, CodegenOpParams};
+use super::lir::{LirScan, LirScanOpParams};
 
 use super::*;
 
@@ -10,12 +10,13 @@ pub struct Scan {
     pub seq_length_input_slot: Option<usize>,
     pub input_mapping: Vec<InputMapping<TDim>>,
     pub output_mapping: Vec<OutputMapping<TDim, TDim>>,
+    pub backward: bool,
 }
 
 tract_linalg::impl_dyn_hash!(Scan);
 
 impl Scan {
-    pub fn to_codegen_op(&self) -> TractResult<Codegen> {
+    pub fn to_codegen_op(&self) -> TractResult<LirScan> {
         let plan = SimplePlan::new(self.body.clone())?;
         let input_mapping = self
             .input_mapping
@@ -50,8 +51,9 @@ impl Scan {
             })
             .collect::<TractResult<_>>()?;
 
-        Ok(Codegen::new(Arc::new(CodegenOpParams::new(
+        Ok(LirScan::new(Arc::new(LirScanOpParams::new(
             self.skip,
+            self.backward,
             Arc::new(plan),
             input_mapping,
             output_mapping,
@@ -63,6 +65,7 @@ impl Scan {
         input_mapping: Vec<InputMapping<TDim>>,
         output_mapping: Vec<OutputMapping<TDim, TDim>>,
         seq_length_input_slot: Option<usize>,
+        backward: bool,
     ) -> TractResult<Scan> {
         assert_eq!(input_mapping.len(), body.input_outlets()?.len());
         assert_eq!(output_mapping.len(), body.output_outlets()?.len());
@@ -73,6 +76,7 @@ impl Scan {
             input_mapping,
             output_mapping,
             seq_length_input_slot,
+            backward,
         })
     }
 
@@ -236,6 +240,7 @@ impl Scan {
                     input_mapping: new_mappings,
                     decluttered: true,
                     output_mapping: self.output_mapping.clone(),
+                    backward: self.backward,
                 };
                 return Ok(Some(TypedModelPatch::replace_single_op(model, node, &new_inputs, op)?));
             }
@@ -327,11 +332,13 @@ impl Scan {
                         let mut inner_patch = TypedModelPatch::default();
                         let new_source_wire_in_patch =
                             inner_patch.tap_model(&new_body, new_source_wire)?;
-                        inner_patch.shunt_outside(
-                            &new_body,
-                            OutletId::new(successor.node, 0),
-                            new_source_wire_in_patch,
-                        ).chain_err(|| "patching inner model")?;
+                        inner_patch
+                            .shunt_outside(
+                                &new_body,
+                                OutletId::new(successor.node, 0),
+                                new_source_wire_in_patch,
+                            )
+                            .chain_err(|| "patching inner model")?;
                         inner_patch.apply(&mut new_body)?;
 
                         let mut input_mapping = self.input_mapping.clone();
@@ -348,15 +355,14 @@ impl Scan {
                             body: new_body,
                             skip: self.skip,
                             seq_length_input_slot: self.seq_length_input_slot,
+                            backward: self.backward,
                         };
                         let output_wires =
                             outside_patch.wire_node(&*node.name, new_op, &patch_inputs)?;
                         for w in output_wires {
-                            outside_patch.shunt_outside(
-                                model,
-                                OutletId::new(node.id, w.slot),
-                                w,
-                            ).chain_err(|| "patching outer model")?;
+                            outside_patch
+                                .shunt_outside(model, OutletId::new(node.id, w.slot), w)
+                                .chain_err(|| "patching outer model")?;
                         }
                         return Ok(Some(outside_patch));
                     }
@@ -404,6 +410,7 @@ impl Scan {
                 body: fixed_body,
                 skip: self.skip,
                 seq_length_input_slot: self.seq_length_input_slot,
+                backward: self.backward,
             };
             let scan_outputs = outside_patch.wire_node(&*node.name, new_op, &*inputs)?;
             let wire = outside_patch.wire_node(
@@ -656,10 +663,11 @@ impl TypedOp for Scan {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let body_leading_outlet = match io {
             InOut::In(ix) => {
-                if let Some(input) = self.input_mapping.iter().position(|im| im.slot() == Some(ix)) {
+                if let Some(input) = self.input_mapping.iter().position(|im| im.slot() == Some(ix))
+                {
                     self.body.input_outlets()?[input]
                 } else {
-                    return Ok(None)
+                    return Ok(None);
                 }
             }
             InOut::Out(ix) => {
@@ -704,6 +712,9 @@ impl TypedOp for Scan {
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
+        if self.backward {
+            bail!("Can not pulsify a backward scan.")
+        }
         for input_id in 0..node.inputs.len() {
             let input = mapping[&node.inputs[input_id]];
             let input_fact = target.outlet_fact(input)?;
