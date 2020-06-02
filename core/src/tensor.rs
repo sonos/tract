@@ -229,6 +229,21 @@ impl Tensor {
         Ok(())
     }
 
+    pub fn broadcast_into_rank(mut self, rank: usize) -> TractResult<Tensor> {
+        self.broadcast_to_rank(rank)?;
+        Ok(self)
+    }
+
+    pub fn broadcast_to_rank(&mut self, rank: usize) -> TractResult<()> {
+        if rank < self.rank() {
+            bail!("Can only broadcast to higher rank")
+        }
+        while self.shape.len() < rank {
+            self.shape.insert(0, 1)
+        }
+        Ok(())
+    }
+
     /// Get the datum type of the tensor.
     pub fn datum_type(&self) -> DatumType {
         self.dt

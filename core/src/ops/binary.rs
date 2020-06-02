@@ -3,7 +3,9 @@ use crate::ops::invariants::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash {
+pub trait BinMiniOp:
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
+{
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
         Validation::Accurate
@@ -131,7 +133,10 @@ impl TypedOp for TypedBinOp {
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
             ])
-            .ok_or_else(|| format!("Can not broadcast shapes a:{:?} b:{:?}", &inputs[0], &inputs[1]))?
+            .ok_or_else(|| format!(
+                "Can not broadcast shapes a:{:?} b:{:?}",
+                &inputs[0], &inputs[1]
+            ))?
         )?))
     }
 
@@ -315,6 +320,13 @@ impl Op for UnaryOp {
 
 impl StatelessOp for UnaryOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        if self.a.rank() != inputs[0].rank() {
+            bail!(
+                "Const and input must have the same rank ({} vs {})",
+                self.a.rank(),
+                inputs[0].rank()
+            );
+        }
         debug_assert_eq!(self.a.rank(), inputs[0].rank());
         self.mini_op.eval_broadcast(tvec!(self.a.clone(), inputs[0].clone()))
     }

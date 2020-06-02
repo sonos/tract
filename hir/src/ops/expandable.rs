@@ -95,5 +95,9 @@ impl InferenceRulesOp for Box<dyn Expansion> {
         self.wire(&node.name, target, &inputs)
     }
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        self.as_ref().nboutputs()
+    }
+
     as_op!();
 }

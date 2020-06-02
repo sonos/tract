@@ -115,15 +115,15 @@ pub fn gemm(
     let beta = node.get_attr_opt("beta")?.unwrap_or(1.);
     let trans_a = node.get_attr_opt("transA")?.unwrap_or(false);
     let trans_b = node.get_attr_opt("transB")?.unwrap_or(false);
-    Ok((Box::new(Gemm::new(alpha, beta, trans_a, trans_b)), vec![]))
+    Ok((expand(Gemm::new(alpha, beta, trans_a, trans_b)), vec![]))
 }
 
 #[derive(Debug, Clone, new, Educe)]
 #[educe(Hash)]
 pub struct Gemm {
-    #[educe(Hash(method="hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     alpha: f32,
-    #[educe(Hash(method="hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     beta: f32,
     trans_a: bool,
     trans_b: bool,
@@ -131,22 +131,13 @@ pub struct Gemm {
 
 tract_linalg::impl_dyn_hash!(Gemm);
 
-impl Op for Gemm {
-    fn name(&self) -> Cow<str> {
-        "Gemm".into()
+impl Expansion for Gemm {
+    fn name(&self) -> &'static str {
+        "Gemm"
     }
 
     op_onnx!();
-    not_a_typed_op!();
-}
 
-impl StatelessOp for Gemm {
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        unreachable!();
-    }
-}
-
-impl InferenceRulesOp for Gemm {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -169,48 +160,42 @@ impl InferenceRulesOp for Gemm {
         Ok(())
     }
 
-    fn incorporate(
+    fn wire(
         &self,
-        model: &InferenceModel,
-        node: &InferenceNode,
-    ) -> TractResult<Option<InferenceModelPatch>> {
-        let mut patch = InferenceModelPatch::default();
-        let a = patch.tap_model(model, node.inputs[0])?;
-        let b = patch.tap_model(model, node.inputs[1])?;
-        let mut result = patch.wire_node(
-            format!("{}-ab", node.name),
+        name: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let (a, b, mut c) = (inputs[0], inputs[1], inputs[2]);
+        let mut wire = model.wire_node(
+            format!("{}.ab", name),
             ops::matmul::MatMul::default().with_a_trans(self.trans_a).with_b_trans(self.trans_b),
             &[a, b].as_ref(),
         )?[0];
         if self.alpha != 1.0 {
-            let alpha: OutletId =
-                patch.add_const(format!("{}-alpha", node.name), rctensor0(self.alpha))?.into();
-            result = patch.wire_node(
-                format!("{}-alpha_ab", node.name),
-                ops::math::mul::bin(),
-                &[alpha, result].as_ref(),
+            let alpha = tensor0(self.alpha).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
+            wire = model.wire_node(
+                format!("{}.alpha_ab", self.alpha),
+                ops::math::mul::unary(alpha.into_arc_tensor()),
+                &[wire],
             )?[0];
         }
         if self.beta != 0.0f32 {
-            let mut beta_c: OutletId = patch.tap_model(model, node.inputs[2])?.into();
-            if self.beta != 1.0f32 {
-                let beta: OutletId =
-                    patch.add_const(format!("{}-beta", node.name), rctensor0(self.beta))?.into();
-                beta_c = patch.wire_node(
-                    format!("{}-beta_c", node.name),
-                    ops::math::mul::bin(),
-                    &[beta, beta_c].as_ref(),
+            while model.outlet_fact(wire)?.rank() > model.outlet_fact(c)?.rank() {
+                c = model.wire_node(
+                    format!("{}.c_broadcast_to_{}", self.beta, model.outlet_fact(c)?.rank()),
+                    tract_hir::tract_core::ops::change_axes::AxisOp::Add(0),
+                    &[c],
                 )?[0];
             }
-            result = patch.wire_node(
-                format!("{}-gemm", node.name),
-                ops::math::add::bin(),
-                &[beta_c, result].as_ref(),
+            let beta = tensor0(self.beta).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
+            let beta_c = model.wire_node(
+                format!("{}.beta_c", self.beta),
+                ops::math::mul::unary(beta.into_arc_tensor()),
+                &[c],
             )?[0];
+            wire = model.wire_node(name, ops::math::add::bin_typed(), &[wire, beta_c])?[0];
         }
-        patch.node_mut(result.node).name = node.name.clone();
-        patch.shunt_outside(model, node.id.into(), result)?;
-        Ok(Some(patch))
+        Ok(tvec!(wire))
     }
-    as_op!();
 }
