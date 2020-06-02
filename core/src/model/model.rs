@@ -506,6 +506,10 @@ where
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
         &self.nodes[outlet.node].outputs[outlet.slot].successors
     }
+
+    fn nested_models(&self, node: usize) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
+        self.node(node).op().nested_models()
+    }
 }
 
 impl<F, O> fmt::Display for ModelImpl<F, O>

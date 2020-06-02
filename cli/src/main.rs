@@ -665,12 +665,14 @@ impl Parameters {
                             .unwrap()
                             .parse::<usize>()?;
                     let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
+                    debug!("Using {} as input {} ({}): {:?}", filename, ix, name.as_ref().unwrap(), tensor);
                     let ix = raw_model
                         .inputs
                         .iter()
                         .position(|i| &raw_model.node(i.node).name == name.as_ref().unwrap())
                         .unwrap();
                     input_values[ix] = tensor.value.concretize();
+                    raw_model.set_input_fact(ix, tensor.without_value())?;
                 };
             }
             Ok(())

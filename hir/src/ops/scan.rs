@@ -203,7 +203,7 @@ impl InferenceScan {
             match i {
                 InputMapping::State { .. } => {}
                 InputMapping::Full { slot } => {
-                    if inputs[*slot].unify_with(self.body.input_fact_mut(ix)?)? {
+                    if inputs[*slot].unify_with_mut(self.body.input_fact_mut(ix)?)? {
                         changed = true;
                     }
                 }
