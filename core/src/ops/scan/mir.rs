@@ -16,9 +16,7 @@ tract_linalg::impl_dyn_hash!(Scan);
 
 impl Scan {
     pub fn to_codegen_op(&self) -> TractResult<Codegen> {
-        trace!("Optimizing(Codegen) inner model");
-        let plan = SimplePlan::new(self.body.clone().into_optimized()?)?;
-        trace!("Optimizing(Codegen) inner model done");
+        let plan = SimplePlan::new(self.body.clone())?;
         let input_mapping = self
             .input_mapping
             .iter()
