@@ -41,7 +41,7 @@ pub fn scan(
         InferenceModelPatch::intercept(
             &model,
             outlet,
-            format!("input-{}-adjust-dim", ix),
+            format!("{}.input-{}.adjust-dim", node.name, ix),
             op,
             model.outlet_fact(outlet)?.clone(),
         )?
@@ -54,13 +54,17 @@ pub fn scan(
         });
     }
 
+    for (ix, _input) in unresolved_inputs.iter().enumerate() {
+        mapped_inputs.push(ops::scan::InputMapping::Full{slot: model.input_outlets()?.len() - closure_inputs + ix});
+    }
+
     for (ix, ax) in scan_output_axes.iter().enumerate() {
         let op = ops::array::AddDims::new(vec![*ax]);
         let outlet = model.output_outlets()?[num_hidden_state + ix];
         InferenceModelPatch::intercept(
             &model,
             outlet,
-            format!("output-{}-adjust-dim", ix),
+            format!("{}.output-{}-adjust-dim", node.name, ix),
             op,
             InferenceFact::default(),
         )?
