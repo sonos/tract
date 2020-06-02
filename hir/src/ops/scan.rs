@@ -12,6 +12,7 @@ pub struct InferenceScan {
     pub seq_length_input_slot: Option<usize>,
     pub clean_scan_counts: bool,
     pub iter_count_fact: GenericFactoid<TDim>,
+    pub backward: bool,
 }
 
 tract_linalg::impl_dyn_hash!(InferenceScan);
@@ -86,6 +87,7 @@ impl InferenceScan {
             input_mapping,
             output_mapping,
             self.seq_length_input_slot,
+            self.backward,
         )?))
     }
 

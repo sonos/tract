@@ -304,7 +304,7 @@ impl TypedOp for BlockLSTM {
             })
         }
 
-        let scan = scan::Scan::new(body, input_mapping, output_mapping, Some(0))?;
+        let scan = scan::Scan::new(body, input_mapping, output_mapping, Some(0), false)?;
         let scan = patch.wire_node(&*node.name, scan, &*outer_inputs)?;
 
         for (ix, o) in scan.iter().enumerate() {

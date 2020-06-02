@@ -3,26 +3,27 @@ use ndarray::*;
 use super::*;
 
 #[derive(Debug, Clone, new, Hash)]
-pub struct CodegenOpParams {
+pub struct LirScanOpParams {
     pub skip: usize,
+    pub backward: bool,
     pub plan: Arc<TypedSimplePlan<TypedModel>>,
     pub input_mapping: Vec<InputMapping<usize>>,
     pub output_mapping: Vec<OutputMapping<usize, TDim>>,
 }
 
 #[derive(Debug, Clone, new, Hash)]
-pub struct Codegen(Arc<CodegenOpParams>);
+pub struct LirScan(Arc<LirScanOpParams>);
 
-impl std::ops::Deref for Codegen {
-    type Target = CodegenOpParams;
-    fn deref(&self) -> &CodegenOpParams {
+impl std::ops::Deref for LirScan {
+    type Target = LirScanOpParams;
+    fn deref(&self) -> &LirScanOpParams {
         &self.0
     }
 }
 
-tract_linalg::impl_dyn_hash!(Codegen);
+tract_linalg::impl_dyn_hash!(LirScan);
 
-impl Op for Codegen {
+impl Op for LirScan {
     fn name(&self) -> Cow<str> {
         "Scan".into()
     }
@@ -52,7 +53,7 @@ impl Op for Codegen {
     not_a_pulsed_op!();
 }
 
-impl StatefullOp for Codegen {
+impl StatefullOp for LirScan {
     fn state(
         &self,
         _session: &mut SessionState,
@@ -71,7 +72,7 @@ impl StatefullOp for Codegen {
 
 #[derive(Debug)]
 struct State {
-    op: Arc<CodegenOpParams>,
+    op: Arc<LirScanOpParams>,
     mutable: MutableState,
 }
 
@@ -87,22 +88,35 @@ impl MutableState {
         &self,
         input: &Tensor,
         axis: usize,
-        i: usize,
-        count: usize,
+        chunk_ix: usize,
+        chunk_dim: usize,
+        backward: bool,
     ) -> TractResult<Tensor> {
         let view = input.to_array_view::<T>()?;
         let full_len = view.shape()[axis];
-        if (i + 1) * count > full_len {
-            let remain = full_len - i * count;
+        if backward {
             let mut shape: TVec<usize> = view.shape().into();
-            shape[axis] = count;
+            shape[axis] = chunk_dim;
+            let mut t = ArrayD::<T>::default(&*shape);
+            for i in 0..chunk_dim {
+                if chunk_dim * chunk_ix + i < full_len {
+                    t.index_axis_mut(Axis(axis), chunk_dim - i - 1).assign(
+                        &view.index_axis(Axis(axis), full_len - (chunk_ix * chunk_dim + i)),
+                    );
+                }
+            }
+            Ok(t.into_tensor())
+        } else if (chunk_ix + 1) * chunk_dim > full_len {
+            let remain = full_len - chunk_ix * chunk_dim;
+            let mut shape: TVec<usize> = view.shape().into();
+            shape[axis] = chunk_dim;
             let mut t = ArrayD::<T>::default(&*shape);
             t.slice_axis_mut(Axis(axis), (0..remain).into())
-                .assign(&view.slice_axis(Axis(axis), (i * count..).into()));
+                .assign(&view.slice_axis(Axis(axis), (chunk_ix * chunk_dim..).into()));
             Ok(t.into_tensor())
         } else {
             Ok(view
-                .slice_axis(Axis(axis), (i * count..(i + 1) * count).into())
+                .slice_axis(Axis(axis), (chunk_ix * chunk_dim..(chunk_ix + 1) * chunk_dim).into())
                 .to_owned()
                 .into_tensor())
         }
@@ -121,10 +135,16 @@ impl MutableState {
         axis: usize,
         element_value: &Tensor,
         i: usize,
+        backward: bool,
     ) -> TractResult<()> {
         let mut view = output.to_array_view_mut::<T>()?;
+        let full_len = view.shape()[axis];
         let element = element_value.to_array_view::<T>()?;
-        let offset = i * element_value.shape()[axis];
+        let offset = if backward {
+            full_len - 1 - i * element_value.shape()[axis]
+        } else {
+            i * element_value.shape()[axis]
+        };
         let count = element_value.shape()[axis].min(view.shape()[axis] - offset);
         view.slice_axis_mut(Axis(axis), (offset..offset + count).into())
             .assign(&element.slice_axis(Axis(axis), (..count).into()));
@@ -207,7 +227,8 @@ impl OpState for State {
                                 inputs[*slot].as_ref(),
                                 *axis,
                                 i,
-                                *chunk
+                                *chunk,
+                                op.backward
                             )
                         )?),
                         InputMapping::Full { slot } => Some(inputs[*slot].clone().into_tensor()),
@@ -230,7 +251,8 @@ impl OpState for State {
                         &mut outputs[slot],
                         mapping.axis,
                         v.as_ref(),
-                        i
+                        i,
+                        op.backward
                     ))?;
                 }
                 if i == iters - 1 {
@@ -248,7 +270,7 @@ impl OpState for State {
     }
 }
 
-impl TypedOp for Codegen {
+impl TypedOp for LirScan {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {

@@ -309,6 +309,7 @@ impl Expansion for GRU {
                 input_mapping,
                 vec![output_mapping],
                 self.optional_sequence_lens_input,
+                false,
             )?,
             &outer_inputs,
         )?;
