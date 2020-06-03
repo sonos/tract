@@ -151,14 +151,9 @@ impl<'a> ParsingContext<'a> {
         let mut outputs = vec![];
         for output in graph.output.iter() {
             let fact = output.r#type.as_ref().unwrap().value.as_ref().unwrap();
-            #[allow(irrefutable_let_patterns)]
-            let fact = if let pb::type_proto::Value::TensorType(fact) = fact {
-                fact.try_into()?
-            } else {
-                bail!("Can not parse tensor type");
-            };
+            let pb::type_proto::Value::TensorType(fact) = fact;
             outputs.push(outlets_by_name[&*output.name]);
-            model.set_outlet_fact(outlets_by_name[&*output.name], fact)?;
+            model.set_outlet_fact(outlets_by_name[&*output.name], fact.try_into()?)?;
         }
         model.set_output_outlets(&outputs)?;
         let result = ParseResult { model, unresolved_inputs, outlets_by_name };
