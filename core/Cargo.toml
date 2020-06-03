@@ -27,14 +27,11 @@ ndarray = { version = "=0.13.0" }
 num-integer = "0.1"
 num-traits = "0.2"
 dyn-clone = "1"
-serde = { "version" = "1.0", optional = true }
-serde_derive = { "version" = "1.0", optional = true }
-smallvec = "1"
+serde = "1.0"
+serde_bytes = "0.11"
+serde_derive = "1.0"
+smallvec = { version = "1", features = [ "serde" ] }
 tract-linalg = { path = "../linalg" }
-
-[features]
-default = [ ]
-# serialize = ["serde", "serde_derive", "smallvec/serde", "half/serde" ]
 
 [dev-dependencies]
 criterion = "0.3"

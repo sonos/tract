@@ -68,10 +68,7 @@ extern crate maplit;
 extern crate env_logger;
 #[cfg(test)]
 extern crate proptest;
-#[cfg(feature = "serialize")]
-extern crate serde;
 extern crate smallvec;
-#[cfg(feature = "serialize")]
 #[macro_use]
 extern crate serde_derive;
 

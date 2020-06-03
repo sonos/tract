@@ -1,6 +1,6 @@
 //! `Tensor`, tract main data object of interest.
-use crate::internal::*;
 use crate::dim::TDim;
+use crate::internal::*;
 use ndarray::prelude::*;
 use std::alloc;
 use std::fmt;
@@ -8,11 +8,10 @@ use std::mem::{align_of, size_of};
 
 use tract_linalg::f16::f16;
 
-#[cfg(feature = "serialize")]
-use serde::ser::{Serialize, Serializer};
 use std::sync::Arc;
 
 pub mod litteral;
+pub mod serde;
 
 /// Tensor is a concrete tensor in tract.
 pub struct Tensor {
@@ -190,8 +189,20 @@ impl Tensor {
         shape: &[usize],
         content: &[u8],
     ) -> TractResult<Tensor> {
+        Tensor::from_raw_dt_align(dt, dt.alignment(), shape, content)
+    }
+
+    /// Create an tensor from raw data.
+    ///
+    /// It copies the data, aligning (`align` is in bytes).
+    pub unsafe fn from_raw_dt_align(
+        dt: DatumType,
+        align: usize,
+        shape: &[usize],
+        content: &[u8],
+    ) -> TractResult<Tensor> {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
-        let layout = alloc::Layout::from_size_align(bytes, dt.alignment())?;
+        let layout = alloc::Layout::from_size_align(bytes, align)?;
         let data = alloc::alloc(layout);
         content.as_ptr().copy_to_nonoverlapping(data, bytes);
         Ok(Tensor { dt, shape: shape.into(), data, layout })
@@ -579,38 +590,6 @@ impl fmt::Debug for Tensor {
     }
 }
 
-#[cfg(feature = "serialize")]
-impl Serialize for Tensor {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        macro_rules! serialize_inner {
-            ($type:ident, $m:ident) => {{
-                let data =
-                    (stringify!($type), self.shape(), $m.iter().cloned().collect::<Vec<_>>());
-                data.serialize(serializer)
-            }};
-        };
-
-        use Tensor::*;
-        match self {
-            Bool(m) => serialize_inner!(bool, m),
-            U8(m) => serialize_inner!(u8, m),
-            U16(m) => serialize_inner!(u16, m),
-            I8(m) => serialize_inner!(i8, m),
-            I16(m) => serialize_inner!(i16, m),
-            I32(m) => serialize_inner!(i32, m),
-            I64(m) => serialize_inner!(i64, m),
-            F16(m) => serialize_inner!(f16, m),
-            F32(m) => serialize_inner!(f32, m),
-            F64(m) => serialize_inner!(f64, m),
-            TDim(m) => serialize_inner!(TDim, m),
-            String(m) => serialize_inner!(str, m),
-        }
-    }
-}
-
 impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
     fn from(it: Array<T, D>) -> Tensor {
         Tensor::from_copy_datum(it)
@@ -662,3 +641,4 @@ impl IntoArcTensor for Arc<Tensor> {
         self
     }
 }
+
