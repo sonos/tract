@@ -1,7 +1,7 @@
 use crate::prelude::TractResult;
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::fmt;
+use std::{fmt, ops};
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
@@ -42,8 +42,7 @@ impl ExpNode {
     }
 
     pub fn reduce(self) -> ExpNode {
-        self
-            .simplify()
+        self.simplify()
             .wiggle()
             .into_iter()
             .sorted()
@@ -280,6 +279,127 @@ impl ExpNode {
             Div(a, q) => Div(a.clone(), q * d),
         }
     }
+
+    pub fn div_ceil(self, rhs: u32) -> ExpNode {
+        ExpNode::Div(Box::new(Add(vec![self, Val(rhs as i32 - 1)])), rhs).reduce()
+    }
+
+}
+
+impl From<i32> for ExpNode {
+    fn from(v: i32) -> ExpNode {
+        ExpNode::Val(v)
+    }
+}
+
+impl ops::Neg for ExpNode {
+    type Output = Self;
+    fn neg(self) -> Self {
+        ExpNode::Mul(-1, Box::new(self)).reduce()
+    }
+}
+
+impl<'a> ops::AddAssign<&'a ExpNode> for ExpNode {
+    fn add_assign(&mut self, rhs: &'a ExpNode) {
+        let mut swap = ExpNode::Val(0);
+        std::mem::swap(&mut swap, self);
+        *self = ExpNode::Add(vec![swap, rhs.clone()]).reduce()
+    }
+}
+
+impl<I> ops::AddAssign<I> for ExpNode
+where
+    I: Into<ExpNode>,
+{
+    fn add_assign(&mut self, rhs: I) {
+        let rhs = rhs.into();
+        *self += &rhs
+    }
+}
+
+impl<I> ops::Add<I> for ExpNode
+where
+    I: Into<ExpNode>,
+{
+    type Output = Self;
+    fn add(mut self, rhs: I) -> Self {
+        self += rhs;
+        self
+    }
+}
+
+impl<'a> ops::SubAssign<&'a ExpNode> for ExpNode {
+    fn sub_assign(&mut self, rhs: &'a ExpNode) {
+        use std::ops::Neg;
+        *self += rhs.clone().neg()
+    }
+}
+
+impl<I> ops::SubAssign<I> for ExpNode
+where
+    I: Into<ExpNode>,
+{
+    fn sub_assign(&mut self, rhs: I) {
+        use std::ops::Neg;
+        *self += rhs.into().neg()
+    }
+}
+
+impl<I> ops::Sub<I> for ExpNode
+where
+    I: Into<ExpNode>,
+{
+    type Output = Self;
+    fn sub(mut self, rhs: I) -> Self {
+        self -= rhs;
+        self
+    }
+}
+
+impl ops::MulAssign<i32> for ExpNode {
+    fn mul_assign(&mut self, rhs: i32) {
+        let mut me = ExpNode::Val(0);
+        std::mem::swap(&mut me, self);
+        *self = ExpNode::Mul(rhs, Box::new(me)).reduce()
+    }
+}
+
+impl ops::Mul<i32> for ExpNode {
+    type Output = Self;
+    fn mul(mut self, rhs: i32) -> Self {
+        self *= rhs;
+        self
+    }
+}
+
+impl ops::DivAssign<u32> for ExpNode {
+    fn div_assign(&mut self, rhs: u32) {
+        let mut me = ExpNode::Val(0);
+        std::mem::swap(&mut me, self);
+        *self = ExpNode::Div(Box::new(me), rhs).reduce()
+    }
+}
+
+impl ops::Div<u32> for ExpNode {
+    type Output = Self;
+    fn div(mut self, rhs: u32) -> Self {
+        self /= rhs;
+        self
+    }
+}
+
+impl ops::RemAssign<u32> for ExpNode {
+    fn rem_assign(&mut self, rhs: u32) {
+        *self += -(self.clone() / rhs * rhs as i32);
+    }
+}
+
+impl ops::Rem<u32> for ExpNode {
+    type Output = Self;
+    fn rem(mut self, rhs: u32) -> Self {
+        self %= rhs;
+        self
+    }
 }
 
 #[cfg(test)]
@@ -344,5 +464,131 @@ mod tests {
     #[test]
     fn reduce_mul_div_1() {
         assert_eq!(mul(2, &div(&mul(-1, &Sym('S')), 3)).reduce(), mul(-2, &div(&Sym('S'), 3)))
+    }
+
+    #[test]
+    fn const_and_add() {
+        let e: ExpNode = 2i32.into();
+        assert_eq!(e.eval(&hashmap! {}).unwrap(), 2);
+        let e: ExpNode = ExpNode::from(2) + 3;
+        assert_eq!(e.eval(&hashmap! {}).unwrap(), 5);
+        let e: ExpNode = ExpNode::from(2) - 3;
+        assert_eq!(e.eval(&hashmap! {}).unwrap(), -1);
+        let e: ExpNode = -ExpNode::from(2);
+        assert_eq!(e.eval(&hashmap! {}).unwrap(), -2);
+    }
+
+    #[test]
+    fn substitution() {
+        let e = ExpNode::Sym('x');
+        assert_eq!(e.eval(&hashmap! {'x' => 2}).unwrap(), 2);
+        let e = ExpNode::Sym('x') + 3;
+        assert_eq!(e.eval(&hashmap! {'x' => 2}).unwrap(), 5);
+    }
+
+    #[test]
+    fn reduce_adds() {
+        let e: ExpNode = ExpNode::from(2) + 1;
+        assert_eq!(e, ExpNode::from(3));
+        let e: ExpNode = ExpNode::from(3) + 2;
+        assert_eq!(e, ExpNode::from(5));
+        let e: ExpNode = ExpNode::from(3) + 0;
+        assert_eq!(e, ExpNode::from(3));
+        let e: ExpNode = ExpNode::from(3) + 2 + 1;
+        assert_eq!(e, ExpNode::from(6));
+    }
+
+    #[test]
+    fn reduce_divs() {
+        let e: ExpNode = ExpNode::from(2) / 1;
+        assert_eq!(e, ExpNode::from(2));
+        let e: ExpNode = ExpNode::from(3) / 2;
+        assert_eq!(e, ExpNode::from(1));
+        let e: ExpNode = ExpNode::from(3) % 2;
+        assert_eq!(e, ExpNode::from(1));
+        let e: ExpNode = ExpNode::from(5) / 2;
+        assert_eq!(e, ExpNode::from(2));
+        let e: ExpNode = ExpNode::from(5) % 2;
+        assert_eq!(e, ExpNode::from(1));
+    }
+
+    #[test]
+    fn reduce_div_bug_0() {
+        let e1: ExpNode = (ExpNode::Sym('S') + 23) / 2 - 1;
+        let e2: ExpNode = (ExpNode::Sym('S') + 21) / 2;
+        assert_eq!(e1, e2);
+    }
+
+    #[test]
+    fn reduce_div_bug_1() {
+        let e1: ExpNode = (ExpNode::Sym('S') + -1) / 2;
+        let e2: ExpNode = (ExpNode::Sym('S') + 1) / 2 - 1;
+        assert_eq!(e1, e2);
+    }
+
+    #[test]
+    fn reduce_div_bug_2() {
+        let e1: ExpNode = ((ExpNode::Sym('S') + 1) / 2 + 1) / 2;
+        let e2: ExpNode = (ExpNode::Sym('S') + 3) / 4;
+        assert_eq!(e1, e2);
+    }
+
+    #[test]
+    fn reduce_div_bug_3() {
+        let e1: ExpNode = (ExpNode::Sym('S') / 2) * -4;
+        let e2: ExpNode = (ExpNode::Sym('S') / 2) * -4 / 1;
+        assert_eq!(e1, e2);
+    }
+
+    #[test]
+    fn reduce_mul_div() {
+        let e: ExpNode = ExpNode::Sym('S') * 2 / 2;
+        assert_eq!(e, ExpNode::Sym('S'));
+    }
+
+    #[test]
+    fn reduce_div_mul() {
+        let e: ExpNode = ExpNode::Sym('S') / 2 * 2;
+        assert_ne!(e, ExpNode::Sym('S'));
+    }
+
+    #[test]
+    fn reduce_add_div() {
+        let e: ExpNode = ExpNode::Sym('S') / 2 + 1;
+        assert_eq!(e, ((ExpNode::Sym('S') + 2) / 2));
+    }
+
+    #[test]
+    fn reduce_neg_mul_() {
+        let e: ExpNode = ExpNode::from(1) - ExpNode::Sym('S') * 2;
+        assert_eq!(e, ExpNode::from(1) + ExpNode::Sym('S') * -2);
+    }
+
+    #[test]
+    fn reduce_add_rem_1() {
+        assert_eq!(((ExpNode::Sym('S') + 4) % 2), (ExpNode::Sym('S') % 2));
+    }
+
+    #[test]
+    fn reduce_add_rem_2() {
+        assert_eq!(((ExpNode::Sym('S') - 4) % 2), (ExpNode::Sym('S') % 2));
+    }
+
+    #[test]
+    fn reduce_rem_div() {
+        let e: ExpNode = ExpNode::Sym('S') % 2 / 2;
+        assert_eq!(e, ExpNode::from(0));
+    }
+
+    #[test]
+    fn conv2d_ex_1() {
+        let e = (ExpNode::from(1) - 1 + 1).div_ceil(1);
+        assert_eq!(e, ExpNode::from(1));
+    }
+
+    #[test]
+    fn conv2d_ex_2() {
+        let e = (ExpNode::Sym('S') - 3 + 1).div_ceil(1);
+        assert_eq!(e, ExpNode::Sym('S') + -2);
     }
 }

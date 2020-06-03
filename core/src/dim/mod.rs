@@ -6,10 +6,9 @@ use std::str::FromStr;
 use num_traits::cast::AsPrimitive;
 use num_traits::Zero;
 
-mod stack;
 mod tree;
 
-use self::stack::Stack;
+use self::tree::ExpNode;
 use crate::TractResult;
 
 /// A super-trait for value acting as tensor dimensions in tract.
@@ -102,8 +101,7 @@ impl<D: DimLike, A: std::borrow::Borrow<D>, I: Iterator<Item = A>> MaybeProduct<
 /// An arithmetic expression built with integer and the special value S for
 /// the streaming dimension.
 #[derive(Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct TDim(Stack);
+pub struct TDim(ExpNode);
 
 impl Default for TDim {
     fn default() -> TDim {
@@ -131,7 +129,7 @@ impl TDim {
 
     /// The special value S, for streaming.
     pub fn s() -> TDim {
-        TDim(Stack::sym('S'))
+        TDim(ExpNode::Sym('S'))
     }
 
     /// The special value S, for streaming.
