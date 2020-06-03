@@ -27,11 +27,16 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
         (Some(datum_type), &splits[0..splits.len() - 1])
     };
 
+    dbg!(size);
     let shape = ShapeFactoid::closed(
         shape
             .iter()
             .map(|&s| {
-                Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(s.parse()?) })
+                Ok(if s == "_" {
+                    GenericFactoid::Any
+                } else {
+                    GenericFactoid::Only(s.parse()?)
+                })
             })
             .collect::<TractResult<TVec<DimFact>>>()?,
     );

@@ -1,14 +1,10 @@
 //! Extended dimension support
 use std::fmt;
 use std::ops;
-use std::str::FromStr;
-
-use num_traits::cast::AsPrimitive;
-use num_traits::Zero;
 
 mod tree;
 
-use self::tree::ExpNode;
+pub use self::tree::TDim;
 use crate::TractResult;
 
 /// A super-trait for value acting as tensor dimensions in tract.
@@ -28,7 +24,7 @@ pub trait DimLike:
     + std::hash::Hash
     + ops::Add<Self, Output = Self>
     + ops::Add<usize, Output = Self>
-    + for<'a> ops::Sub<&'a Self, Output = Self>
+    + for<'a> ops::Add<&'a Self, Output = Self>
     + ops::Sub<Self, Output = Self>
     + ops::Sub<usize, Output = Self>
     + for<'a> ops::Sub<&'a Self, Output = Self>
@@ -39,6 +35,7 @@ pub trait DimLike:
     + Sync
     + 'static
     + std::iter::Sum
+    + ToDim
 {
     fn maybe_mul(&self, other: &Self) -> TractResult<Self>;
 
@@ -57,7 +54,7 @@ pub trait DimLike:
 impl DimLike for TDim {
     fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
         if let Ok(d) = other.to_integer() {
-            Ok(TDim(self.0.clone() * d))
+            Ok(self.clone() * d)
         } else if let Ok(a) = self.to_integer() {
             Ok(other.clone() * a)
         } else {
@@ -98,159 +95,6 @@ impl<D: DimLike, A: std::borrow::Borrow<D>, I: Iterator<Item = A>> MaybeProduct<
     }
 }
 
-/// An arithmetic expression built with integer and the special value S for
-/// the streaming dimension.
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct TDim(ExpNode);
-
-impl Default for TDim {
-    fn default() -> TDim {
-        TDim(0.into())
-    }
-}
-
-impl fmt::Debug for TDim {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{:?}", self.0)
-    }
-}
-
-impl fmt::Display for TDim {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{}", self.0)
-    }
-}
-
-impl TDim {
-    /// Is this value One?
-    pub fn is_one(&self) -> bool {
-        self.as_const().map(|i| i == 1).unwrap_or(false)
-    }
-
-    /// The special value S, for streaming.
-    pub fn s() -> TDim {
-        TDim(ExpNode::Sym('S'))
-    }
-
-    /// The special value S, for streaming.
-    pub fn stream() -> TDim {
-        Self::s()
-    }
-
-    /// Try to convert the value to an integer, if it does not contains S.
-    pub fn as_const(&self) -> Option<i32> {
-        self.to_integer().ok()
-    }
-
-    /// Eval the value for a given value of S.
-    pub fn eval(&self, s: i32) -> Option<i32> {
-        self.0.eval(&hashmap!('S' => s)).ok()
-    }
-
-    /// Is the value dependend on S ?
-    pub fn is_stream(&self) -> bool {
-        self.as_const().is_none()
-    }
-
-    /// Convert to integer if possible.
-    pub fn to_integer(&self) -> TractResult<i32> {
-        self.0.eval(&hashmap!())
-    }
-
-    pub fn mul(&self, other: u32) -> TDim {
-        TDim(self.0.clone().div_ceil(other))
-    }
-
-    /// Integer division rounding above.
-    pub fn div_ceil(&self, other: u32) -> TDim {
-        TDim(self.0.clone().div_ceil(other))
-    }
-}
-
-impl Zero for TDim {
-    fn zero() -> Self {
-        Self::from(0)
-    }
-    fn is_zero(&self) -> bool {
-        *self == Self::zero()
-    }
-}
-
-impl ops::Neg for TDim {
-    type Output = Self;
-    fn neg(self) -> Self {
-        TDim(-self.0)
-    }
-}
-
-impl ops::Add<TDim> for TDim {
-    type Output = Self;
-    fn add(mut self, rhs: TDim) -> Self {
-        self += rhs;
-        self
-    }
-}
-
-impl<'a> ops::Add<&'a TDim> for TDim {
-    type Output = Self;
-    fn add(mut self, rhs: &'a TDim) -> Self {
-        self += rhs;
-        self
-    }
-}
-
-impl ops::AddAssign<TDim> for TDim {
-    fn add_assign(&mut self, rhs: TDim) {
-        self.0 += rhs.0
-    }
-}
-
-impl<'a> ops::AddAssign<&'a TDim> for TDim {
-    fn add_assign(&mut self, rhs: &'a TDim) {
-        self.0 += &rhs.0
-    }
-}
-
-impl ops::Sub<TDim> for TDim {
-    type Output = Self;
-    fn sub(mut self, rhs: TDim) -> Self {
-        self -= rhs;
-        self
-    }
-}
-
-impl<'a> ops::Sub<&'a TDim> for TDim {
-    type Output = Self;
-    fn sub(mut self, rhs: &'a TDim) -> Self {
-        self -= rhs;
-        self
-    }
-}
-
-impl ops::SubAssign<TDim> for TDim {
-    fn sub_assign(&mut self, rhs: TDim) {
-        self.0 -= rhs.0
-    }
-}
-
-impl<'a> ops::SubAssign<&'a TDim> for TDim {
-    fn sub_assign(&mut self, rhs: &'a TDim) {
-        self.0 -= &rhs.0
-    }
-}
-
-impl ops::DivAssign<u32> for TDim {
-    fn div_assign(&mut self, rhs: u32) {
-        self.0 /= rhs
-    }
-}
-
-impl ::std::iter::Sum for TDim {
-    fn sum<I: Iterator<Item = TDim>>(iter: I) -> TDim {
-        iter.fold(0.to_dim(), |a, b| a + b)
-    }
-}
-
 /// Convenience trait to convert values to TDim.
 pub trait ToDim {
     /// Convert self to a TDim.
@@ -260,85 +104,5 @@ pub trait ToDim {
 impl<I: Into<TDim>> ToDim for I {
     fn to_dim(self) -> TDim {
         self.into()
-    }
-}
-
-impl<I: AsPrimitive<i32>> ops::Add<I> for TDim {
-    type Output = Self;
-    fn add(self, rhs: I) -> Self {
-        self + Self::from(rhs.as_())
-    }
-}
-
-impl<I: AsPrimitive<i32>> ops::Sub<I> for TDim {
-    type Output = Self;
-    fn sub(self, rhs: I) -> Self {
-        self - Self::from(rhs.as_())
-    }
-}
-
-impl<I: AsPrimitive<i32>> ops::Mul<I> for TDim {
-    type Output = Self;
-    fn mul(self, rhs: I) -> Self {
-        TDim(self.0 * rhs.as_())
-    }
-}
-
-impl<I: AsPrimitive<u32>> ops::Div<I> for TDim {
-    type Output = Self;
-    fn div(self, rhs: I) -> Self {
-        TDim(self.0 / rhs.as_())
-    }
-}
-
-impl<I: AsPrimitive<u32>> ops::Rem<I> for TDim {
-    type Output = Self;
-    fn rem(self, rhs: I) -> Self {
-        TDim(self.0 % rhs.as_())
-    }
-}
-
-impl From<i64> for TDim {
-    fn from(it: i64) -> TDim {
-        TDim((it as i32).into())
-    }
-}
-
-impl From<i32> for TDim {
-    fn from(it: i32) -> TDim {
-        TDim(it.into())
-    }
-}
-
-impl From<isize> for TDim {
-    fn from(it: isize) -> TDim {
-        TDim((it as i32).into())
-    }
-}
-
-impl From<usize> for TDim {
-    fn from(it: usize) -> TDim {
-        TDim((it as i32).into())
-    }
-}
-
-impl<'a> From<&'a usize> for TDim {
-    fn from(it: &'a usize) -> TDim {
-        TDim((*it as i32).into())
-    }
-}
-
-impl FromStr for TDim {
-    type Err = std::num::ParseIntError;
-    fn from_str(s: &str) -> Result<TDim, Self::Err> {
-        if s == "S" {
-            Ok(TDim::s())
-        } else if s.ends_with("S") {
-            let number: String = s.chars().take_while(|c| c.is_digit(10)).collect();
-            let number: i32 = number.parse::<i32>().map(|i| i.into())?;
-            Ok(TDim::s() * number)
-        } else {
-            s.parse::<i32>().map(|i| i.into())
-        }
     }
 }
