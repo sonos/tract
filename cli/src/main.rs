@@ -196,6 +196,10 @@ fn main() {
     let bench = benchlimits_options(bench);
     app = app.subcommand(bench);
 
+    let criterion = clap::SubCommand::with_name("criterion")
+        .long_about("Benchmarks tract on randomly generated input using criterion.");
+    app = app.subcommand(criterion);
+
     let dump = clap::SubCommand::with_name("dump")
         .long_about("Dumps the Tensorflow graph in human readable form.")
         .arg(Arg::with_name("cost").long("cost").help("Include const information"))
@@ -900,6 +904,16 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
     let mut need_optimisations = false;
 
     match matches.subcommand() {
+        ("bench", Some(m)) => {
+            need_optimisations = true;
+            bench::handle(&params, &BenchLimits::from_clap(&m)?, probe)
+        }
+
+        ("criterion", _) => {
+            need_optimisations = true;
+            bench::criterion(&params)
+        }
+
         #[cfg(feature = "conform")]
         ("compare", Some(m)) => compare::handle_tensorflow(
             m.is_present("cumulative"),
@@ -960,11 +974,6 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
                 &BenchLimits::from_clap(&m)?,
                 inner,
             )
-        }
-
-        ("bench", Some(m)) => {
-            need_optimisations = true;
-            bench::handle(&params, &BenchLimits::from_clap(&m)?, probe)
         }
 
         (s, _) => bail!("Unknown subcommand {}.", s),
