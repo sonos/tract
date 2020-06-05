@@ -109,7 +109,7 @@ impl PoolSpec {
                 let align_to = (overlap + fact.delay).div_ceil(stride) * stride;
                 let delay = align_to - overlap - fact.delay;
                 wire = target.wire_node(
-                    format!("{}/Delay", node.name),
+                    format!("{}.Delay", node.name),
                     crate::pulse::delay::Delay::new(&fact, delay, overlap),
                     &[wire],
                 )?[0];

@@ -277,7 +277,7 @@ fn pulsify_bin(
         if fact.delay < delay {
             let add_delay = delay - fact.delay;
             input = target.wire_node(
-                format!("{}/Delay", &*node.name),
+                format!("{}.Delay", &*node.name),
                 Delay::new(&fact, add_delay, 0),
                 &[input],
             )?[0];
@@ -381,7 +381,7 @@ impl TypedOp for UnaryOp {
         };
         Ok(Some(
             patch.wire_node(
-                format!("{}-sliced-{}-{}", node.name, start, end),
+                format!("{}.sliced-{}-{}", node.name, start, end),
                 UnaryOp::new(self.mini_op.clone(), a),
                 &[wire],
             )?[0],

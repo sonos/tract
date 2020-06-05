@@ -160,7 +160,7 @@ impl TypedOp for Pad {
         };
         if extra_delay > 0 {
             input = target.wire_node(
-                format!("{}/Delay", node.name),
+                format!("{}.Delay", node.name),
                 Delay::new(&fact.clone(), extra_delay, 0),
                 &[input],
             )?[0];

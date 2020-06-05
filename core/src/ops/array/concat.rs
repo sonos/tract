@@ -256,7 +256,7 @@ impl TypedConcat {
         let before = pre.shape()[self.axis];
         if fact.delay < before {
             input = target.wire_node(
-                format!("{}/Delay", node.name),
+                format!("{}.Delay", node.name),
                 Delay::new(&fact.clone(), before - fact.delay, 0),
                 &[input],
             )?[0];
