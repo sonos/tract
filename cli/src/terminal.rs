@@ -4,6 +4,7 @@ use crate::annotations::*;
 use crate::display_params::*;
 use crate::draw::DrawingState;
 use crate::CliResult;
+use ansi_term::ANSIString;
 use ansi_term::Color::*;
 #[allow(unused_imports)]
 use std::convert::TryFrom;
@@ -87,7 +88,16 @@ fn render_node_prefixed(
     // cost column
     let mut cost_column = if options.cost {
         Some(
-            tags.cost.iter().map(|c| format!("{:1$}", format!("{:?}:{}", c.0, c.1), 25)).peekable(),
+            tags.cost
+                .iter()
+                .map(|c| {
+                    let key = format!("{:?}:", c.0);
+                    let value = render_tdim(&c.1);
+                    let value_visible_len = c.1.to_string().len();
+                    let padding = 25usize.saturating_sub(value_visible_len + key.len());
+                    key + &value + &*std::iter::repeat(' ').take(padding).join("")
+                })
+                .peekable(),
         )
     } else {
         None
@@ -289,7 +299,7 @@ pub fn render_summaries(
     if options.cost {
         println!("{}", White.bold().paint("Cost summary"));
         for (c, i) in &total.cost {
-            println!(" * {:?}: {}", c, i);
+            println!(" * {:?}: {}", c, render_tdim(i));
         }
     }
 
@@ -352,4 +362,27 @@ pub fn dur_avg_ratio(measure: Duration, global: Duration) -> String {
             .bold()
             .paint(format!("{:>4.1}%", measure.as_secs_f64() / global.as_secs_f64() * 100.)),
     )
+}
+
+fn render_tdim(d: &TDim) -> ANSIString<'static> {
+    if let Ok(i) = d.to_integer() {
+        render_big_integer(i as i64)
+    } else {
+        d.to_string().into()
+    }
+}
+
+fn render_big_integer(i: i64) -> ansi_term::ANSIString<'static> {
+    let raw = i.to_string();
+    let mut blocks = raw
+        .chars()
+        .rev()
+        .chunks(3)
+        .into_iter()
+        .map(|mut c| c.join("").chars().rev().join(""))
+        .enumerate()
+        .map(|(ix, s)| if ix % 2 == 1 { White.bold().paint(s).to_string() } else { s })
+        .collect::<Vec<_>>();
+    blocks.reverse();
+    blocks.into_iter().join("").into()
 }
