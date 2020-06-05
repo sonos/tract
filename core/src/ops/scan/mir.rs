@@ -312,7 +312,7 @@ impl Scan {
                             .collect::<TractResult<TVec<_>>>()?;
                         let input = patch_inputs[slot];
                         let new_input_wire = outside_patch.wire_node(
-                            format!("{}-extracted-{}", node.name, successor_node.name),
+                            format!("{}.extracted.{}", node.name, successor_node.name),
                             successor_node.op.clone(),
                             &[input],
                         )?[0];
@@ -323,7 +323,7 @@ impl Scan {
 
                         let mut new_body = self.body.clone();
                         let new_source_wire = new_body.add_source(
-                            format!("{}-extracted-{}", node.name, successor_node.name),
+                            format!("{}.extracted.{}", node.name, successor_node.name),
                             new_input_inner_fact,
                         )?;
                         let mut inner_patch = TypedModelPatch::default();

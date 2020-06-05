@@ -637,7 +637,7 @@ impl TypedOp for MatMulUnary {
             let wire = patch.tap_model(model, node.inputs[0])?;
             return Ok(Some(
                 patch.wire_node(
-                    format!("{}-sliced-m-{}-{}", node.name, start, end),
+                    format!("{}.sliced-m-{}-{}", node.name, start, end),
                     Self { a, ..self.clone() },
                     &[wire],
                 )?[0],
@@ -862,7 +862,7 @@ where
         None
     };
     wire = patch.wire_node(
-        format!("{}-matmatmul", &*node.name),
+        format!("{}.matmatmul", &*node.name),
         lir::MatMatMulUnaryFinite {
             c_trans,
             bc_c_shape: geo.bc_c_shape,

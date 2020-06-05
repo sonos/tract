@@ -219,7 +219,7 @@ impl ConvUnary {
                 } else {
                     let c_dim = *input_shape.c_dim();
                     wire = model.wire_node(
-                        format!("{}-im2col", name),
+                        format!("{}.im2col", name),
                         Im2Col::new(
                             geo.clone(),
                             input_shape,
@@ -254,7 +254,7 @@ impl ConvUnary {
                 };
 
                 wire = model.wire_node(
-                    format!("{}-matmatmul", name),
+                    format!("{}.matmatmul", name),
                     matmul::lir::MatMatMulUnaryFinite {
                         c_trans: true,
                         bc_c_shape: output_shape.shape.clone(),
@@ -310,7 +310,7 @@ impl ConvUnary {
                 .data_format
                 .shape(input_fact.shape.iter().collect::<TVec<TDim>>())?;
             let down = patch.wire_node(
-                format!("Downsample-{}", node.name),
+                format!("{}.downsample", node.name),
                 crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0),
                 &[tap],
                 )?;
@@ -370,7 +370,7 @@ impl ConvUnary {
                         bias_shape[input_shape.c_axis()] = co;
                         let b = unsafe { b.clone().into_tensor().into_shape(&bias_shape)? };
                         wire = patch.wire_node(
-                            format!("{}-bias", node.name),
+                            format!("{}?bias", node.name),
                             crate::ops::math::add::unary(b.into_arc_tensor()),
                             &[wire],
                             )?[0];
@@ -398,7 +398,7 @@ impl ConvUnary {
                                 ),
                             _ => unimplemented!("Unexpected quant type"),
                         };
-                        wire = patch.wire_node(format!("{}-quant", node.name), op, &[wire])?[0];
+                        wire = patch.wire_node(format!("{}.quant", node.name), op, &[wire])?[0];
                     }
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
@@ -690,7 +690,7 @@ impl TypedOp for ConvUnary {
                                 let bias =
                                     bias.clone().into_tensor().into_shape(&bias_shape)?.into_arc_tensor();
                                 wire = patch.wire_node(
-                                    format!("{}-bias", node.name),
+                                    format!("{}.bias", node.name),
                                     crate::ops::math::add::unary(bias),
                                     &[wire],
                                     )?[0];
