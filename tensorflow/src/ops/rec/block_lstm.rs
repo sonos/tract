@@ -187,9 +187,13 @@ macro_rules! some_or_else {
     };
 }
 
-#[typetag::serde]
 impl TypedOp for BlockLSTM {
     as_op!();
+
+    fn typetag_name(&self) -> &'static str {
+        "BlockLSTM"
+    }
+    fn typetag_deserialize(&self) {}
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(std::iter::repeat(inputs[1].clone()).take(7).collect())
