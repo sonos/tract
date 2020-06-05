@@ -305,6 +305,7 @@ pub fn render_summaries(
 
     if options.profile {
         let summary = annotations.profile_summary.as_ref().unwrap();
+
         println!("{}", White.bold().paint("Most time consuming operations"));
         for (op, (dur, n)) in annotations
             .tags
@@ -336,6 +337,37 @@ pub fn render_summaries(
                 n,
                 dur_avg_ratio(dur, summary.sum)
             );
+        }
+
+        println!("{}", White.bold().paint("By prefix"));
+        fn prefixes_for(s: &str) -> impl Iterator<Item = String> + '_ {
+            use tract_itertools::*;
+            let split = s.split(".").count();
+            (0..split).map(move |n| s.split(".").take(n).join("."))
+        }
+        let all_prefixes = annotations
+            .tags
+            .keys()
+            .flat_map(|id| prefixes_for(id.model(model).unwrap().node_name(id.1)))
+            .filter(|s| s.len() > 0)
+            .sorted()
+            .unique()
+            .collect::<Vec<String>>();
+        for prefix in &all_prefixes {
+            let sum = annotations
+                .tags
+                .iter()
+                .filter(|(k, _v)| k.model(model).unwrap().node_name(k.1).starts_with(prefix))
+                .map(|(_k,v)| v)
+                .sum::<NodeTags>();
+            if sum.profile.unwrap_or(Duration::default()).as_secs_f64() / summary.entire.as_secs_f64() < 0.01 {
+                continue;
+            }
+            print!("{}    ", dur_avg_ratio(sum.profile.unwrap_or(Duration::default()), summary.sum));
+            for _ in prefix.chars().filter(|c| *c == '.') {
+                print!("   ");
+            }
+            println!("{}", prefix);
         }
         println!(
             "Not accounted by ops: {}",
