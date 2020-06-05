@@ -17,12 +17,15 @@ maintenance = { status = "actively-developed" }
 bytes = "0.5"
 derive-new = "0.5"
 educe = "0.4"
+error-chain = { version = "0.12", optional = true }
 log = "0.4"
 prost = "0.6"
 prost-types = "0.6"
+serde = { version = "1.0", features = ["rc"] }
+serde_derive = "1.0"
 tensorflow = { version = "0", optional = true }
-error-chain = { version = "0.12", optional = true }
 tract-hir = { path = "../hir" }
+typetag = "0.1.5"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 memmap = "0.7"

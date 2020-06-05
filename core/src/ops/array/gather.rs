@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct Gather {
     axis: i64,
 }
@@ -84,6 +84,7 @@ impl Gather {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Gather {
     as_op!();
 

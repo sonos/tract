@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct GlobalAvgPool {
     //    data_is_nhwc: bool, // default is nchw (onnx)
 }
@@ -51,6 +51,7 @@ impl StatelessOp for GlobalAvgPool {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for GlobalAvgPool {
     as_op!();
 
@@ -59,7 +60,7 @@ impl TypedOp for GlobalAvgPool {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct GlobalLpPool {
     p: usize, //    data_is_nhwc: bool, // default is nchw (onnx)
 }
@@ -112,6 +113,8 @@ impl StatelessOp for GlobalLpPool {
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
 }
+
+#[typetag::serde]
 impl TypedOp for GlobalLpPool {
     as_op!();
 
@@ -120,7 +123,7 @@ impl TypedOp for GlobalLpPool {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct GlobalMaxPool {
     //    data_is_nhwc: bool, // default is nchw (onnx)
 }
@@ -165,6 +168,7 @@ impl StatelessOp for GlobalMaxPool {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for GlobalMaxPool {
     as_op!();
 

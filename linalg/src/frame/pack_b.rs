@@ -2,9 +2,9 @@ use num_traits::Zero;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-#[derive(Clone, Debug, Eq, PartialEq, Educe)]
+#[derive(Clone, Debug, Eq, PartialEq, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
-pub struct PackB<T: Copy + Zero> {
+pub struct PackB<T> {
     k: usize,
     n: usize,
     nr: usize,

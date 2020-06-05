@@ -3,14 +3,14 @@ use tract_ndarray::prelude::*;
 
 use tract_hir::ops::cnn::{ConvUnary, PoolSpec};
 
-#[derive(Debug, Copy, Clone, Hash)]
+#[derive(Debug, Copy, Clone, Hash, Serialize, Deserialize)]
 pub enum PaddingStrat {
     FlexFixed(usize),
     FixedFlex(usize),
     FixedFixed(usize, usize),
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct SpaceToBatchUnary {
     pub datum_type: DatumType,
     pub space_shape: TVec<TDim>,
@@ -55,6 +55,7 @@ impl StatelessOp for SpaceToBatchUnary {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for SpaceToBatchUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.batch_shape)?))
@@ -99,7 +100,7 @@ impl TypedOp for SpaceToBatchUnary {
     as_op!();
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct BatchToSpaceUnary {
     datum_type: DatumType,
     batch_shape: TVec<TDim>,
@@ -144,6 +145,7 @@ impl StatelessOp for BatchToSpaceUnary {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for BatchToSpaceUnary {
     as_op!();
 

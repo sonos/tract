@@ -6,7 +6,7 @@ mod mir;
 
 pub use mir::Scan;
 
-#[derive(Clone, new, Hash)]
+#[derive(Clone, new, Hash, Serialize, Deserialize)]
 pub enum InputMapping<C: Clone> {
     Full { slot: usize },
     State { initializer: StateInitializer },
@@ -62,7 +62,7 @@ impl<C: Clone + fmt::Debug> fmt::Debug for InputMapping<C> {
     }
 }
 
-#[derive(Clone, new, Hash)]
+#[derive(Clone, new, Hash, Serialize, Deserialize)]
 pub struct OutputMapping<C: Clone, F: Clone> {
     pub full_slot: Option<usize>,
     pub axis: usize,
@@ -94,7 +94,7 @@ impl<C: Clone, F: Clone> fmt::Debug for OutputMapping<C, F> {
     }
 }
 
-#[derive(Clone, new, Hash)]
+#[derive(Clone, new, Hash, Serialize, Deserialize)]
 pub enum StateInitializer {
     FromInput(usize),
     Value(Arc<Tensor>),

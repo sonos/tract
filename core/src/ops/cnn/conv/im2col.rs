@@ -10,7 +10,7 @@ use num_traits::Zero;
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
-pub struct Im2Col<T: Copy + Datum + Zero> {
+pub struct Im2Col<T> {
     pub patch: Patch,
     pub input_shape: DataShape,
     pub output_shape: DataShape,
@@ -22,6 +22,24 @@ pub struct Im2Col<T: Copy + Datum + Zero> {
     pub b_pack: PackB<T>,
     patcher: Patcher,
     pad_value: Tensor,
+}
+
+impl<T> serde::Serialize for Im2Col<T> {
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        unimplemented!();
+    }
+}
+
+impl<'de, T> serde::Deserialize<'de> for Im2Col<T> {
+    fn deserialize<DE>(_deserializer: DE) -> Result<Self, DE::Error>
+    where
+        DE: serde::Deserializer<'de>,
+    {
+        unimplemented!();
+    }
 }
 
 impl<T: Copy + Datum + Zero> DynHash for Im2Col<T> {
@@ -138,6 +156,13 @@ impl<T: Copy + Datum + Zero> StatelessOp for Im2Col<T> {
 }
 
 impl<T: Copy + Datum + Zero> TypedOp for Im2Col<T> {
+    fn typetag_name(&self) -> &'static str {
+        "Im2Col"
+    }
+
+    fn typetag_deserialize(&self) {
+    }
+
     as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {

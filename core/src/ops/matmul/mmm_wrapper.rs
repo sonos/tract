@@ -9,7 +9,7 @@ use tract_linalg::mmm::{FusedSpec, MatMatMul, QMatMatMul};
 
 #[derive(Clone, Debug, Educe)]
 #[educe(Hash)]
-pub enum MMMWrapper<TA, TB, TC, TI>
+pub enum MMMWrapper<TA, TB, TC, TI> 
 where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,

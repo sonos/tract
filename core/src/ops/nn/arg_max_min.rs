@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::*;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct ArgMaxMin {
     pub max: bool,
     pub axis: usize,
@@ -45,6 +45,7 @@ impl StatelessOp for ArgMaxMin {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for ArgMaxMin {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape = inputs[0].shape.to_tvec();

@@ -4,7 +4,7 @@ use num_traits::AsPrimitive;
 use num_traits::Zero;
 use tract_linalg::lut::Lut;
 
-#[derive(Clone, Debug, Educe)]
+#[derive(Clone, Debug, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
 pub struct QParams {
     pub c_datum_type: DatumType,
@@ -99,18 +99,18 @@ pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
 }
 
 element_wise_oop!(quantize_linear_u8,
-    QuantizeLinearU8 {
-        #[educe(Hash(method="hash_f32"))]
-        scale: f32,
-        zero_point: u8
-    },
-    [f32,i32] => u8 |op, xs, ys| {
-        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
-        );
-        Ok(())
-    };
-    info: info_quantize_linear_u8
+ QuantizeLinearU8 {
+     #[educe(Hash(method="hash_f32"))]
+     scale: f32,
+     zero_point: u8
+ },
+ [f32,i32] => u8 |op, xs, ys| {
+     xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+                                           *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
+                                          );
+     Ok(())
+ };
+ info: info_quantize_linear_u8
 );
 
 fn info_quantize_linear_u8(q: &QuantizeLinearU8) -> TractResult<Vec<String>> {
@@ -123,18 +123,18 @@ fn info_quantize_linear_u8(q: &QuantizeLinearU8) -> TractResult<Vec<String>> {
 }
 
 element_wise_oop!(quantize_linear_i8,
-    QuantizeLinearI8 {
-        #[educe(Hash(method="hash_f32"))]
-        scale: f32,
-        zero_point: i8
-    },
-    [f32,i32] => i8 |op, xs, ys| {
-        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = quantize_linear_f32_i8(*x as f32, op.scale, op.zero_point as i32)
-        );
-        Ok(())
-    };
-    info: info_quantize_linear_i8
+ QuantizeLinearI8 {
+     #[educe(Hash(method="hash_f32"))]
+     scale: f32,
+     zero_point: i8
+ },
+ [f32,i32] => i8 |op, xs, ys| {
+     xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+                                           *y = quantize_linear_f32_i8(*x as f32, op.scale, op.zero_point as i32)
+                                          );
+     Ok(())
+ };
+ info: info_quantize_linear_i8
 );
 
 fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
@@ -146,10 +146,10 @@ fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
     )])
 }
 
-#[derive(Clone, Debug, new, Educe)]
+#[derive(Clone, Debug, new, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
 pub struct DequantizeLinearF32 {
-    #[educe(Hash(method="hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     scale: f32,
     zero_point: i32,
 }
@@ -199,6 +199,7 @@ impl StatelessOp for DequantizeLinearF32 {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for DequantizeLinearF32 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
@@ -344,24 +345,43 @@ impl PulsedOp for DequantizeLinearF32 {
 }
 
 element_wise_oop!(lookup_table,
-    LookupTable {
-        #[educe(Hash(method="hash_lookup_table"))]
-        table: Box<dyn Lut>
-    },
-    [i8] => i8 |op, xs, ys| {
-        ys.copy_from_slice(xs);
-        unsafe {
-            let casted = std::slice::from_raw_parts_mut(ys.as_mut_ptr() as *mut u8, ys.len());
-            op.table.run(casted);
-        }
-        Ok(())
-    },
-    [u8] => u8 |op, xs, ys| {
-        ys.copy_from_slice(xs);
-        op.table.run(ys);
-        Ok(())
-    }
+ LookupTable {
+     #[educe(Hash(method="hash_lookup_table"))]
+     #[serde(with="lookup_table_serde")]
+     table: Box<dyn Lut>
+ },
+ [i8] => i8 |op, xs, ys| {
+     ys.copy_from_slice(xs);
+     unsafe {
+         let casted = std::slice::from_raw_parts_mut(ys.as_mut_ptr() as *mut u8, ys.len());
+         op.table.run(casted);
+     }
+     Ok(())
+ },
+ [u8] => u8 |op, xs, ys| {
+     ys.copy_from_slice(xs);
+     op.table.run(ys);
+     Ok(())
+ }
 );
+
+mod lookup_table_serde {
+    use tract_linalg::lut::Lut;
+
+    pub fn serialize<S>(_it: &Box<dyn Lut>, _ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        unimplemented!();
+    }
+
+    pub fn deserialize<'de, D>(_de: D) -> Result<Box<dyn Lut>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        unimplemented!();
+    }
+}
 
 fn hash_lookup_table<H: std::hash::Hasher>(lut: &Box<dyn Lut>, h: &mut H) {
     Hash::hash_slice(lut.table(), h)

@@ -102,7 +102,7 @@ impl InferenceRulesOp for RandomUniform {
     }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct TypedRandomUniform {
     t: DatumType,
     seed1: u64,
@@ -144,6 +144,7 @@ impl StatelessOp for TypedRandomUniform {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for TypedRandomUniform {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(self.t, &*self.shape)?))

@@ -15,13 +15,15 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 derive-new = "0.5"
+dyn-clone = "1"
 educe = "0.4"
-half = "1.3"
+half = { version = "1.3", features = [ "serialize" ] }
 lazy_static = "1.3"
 libc = "0.2"
 log = "0.4"
 num-traits = "0.2"
-dyn-clone = "1"
+serde = "1.0"
+serde_derive = "1.0"
 
 [build-dependencies]
 cc = "1.0"

@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::*;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct Tile {
     multipliers: TVec<usize>,
 }
@@ -44,6 +44,7 @@ impl StatelessOp for Tile {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Tile {
     as_op!();
 

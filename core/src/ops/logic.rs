@@ -24,7 +24,7 @@ element_wise!(not, Not, [bool] => |_, vs| {
     Ok(())
 });
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct Iff;
 
 tract_linalg::impl_dyn_hash!(Iff);
@@ -74,6 +74,7 @@ impl StatelessOp for Iff {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Iff {
     as_op!();
 

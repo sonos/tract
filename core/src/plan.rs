@@ -13,14 +13,9 @@ pub struct SessionState {
     pub tensors: HashMap<String, Tensor>,
 }
 
-#[derive(Debug, Clone, Educe)]
+#[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
-pub struct SimplePlan<F, O, M>
-where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<ModelImpl<F, O>> + Hash,
-{
+pub struct SimplePlan<F, O, M: Hash> {
     pub model: M,
     pub outputs: Vec<OutletId>,
     pub order: Vec<usize>,

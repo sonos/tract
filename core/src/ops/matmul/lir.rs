@@ -10,12 +10,9 @@ use tract_linalg::mmm::FusedSpec;
 
 use tract_linalg::frame::PackB;
 
-#[derive(Debug, Clone, PartialEq, Educe)]
+#[derive(Debug, Clone, PartialEq, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
-pub struct MatMatMulPackB<T>
-where
-    T: Copy + Datum + Zero,
-{
+pub struct MatMatMulPackB<T> {
     pub(crate) pack_b: PackB<T>,
     pub(crate) row_stride: isize,
     pub(crate) col_stride: isize,
@@ -81,6 +78,12 @@ impl<T> TypedOp for MatMatMulPackB<T>
 where
     T: Copy + Datum + Zero,
 {
+    fn typetag_name(&self) -> &'static str {
+        "MatMatMulPackB"
+    }
+
+    fn typetag_deserialize(&self) {}
+
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape)?))
     }
@@ -90,7 +93,7 @@ where
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
-pub(crate) struct MatMatMulUnaryFinite<TA, TB, TC, TI>
+pub(crate) struct MatMatMulUnaryFinite<TA, TB, TC, TI: Copy + std::fmt::Debug>
 where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
@@ -106,7 +109,37 @@ where
     pub(crate) mmm: MMMWrapper<TA, TB, TC, TI>,
 }
 
-impl<TA, TB, TC, TI> DynHash for MatMatMulUnaryFinite<TA, TB, TC, TI>
+impl<TA, TB, TC, TI> serde::Serialize for MatMatMulUnaryFinite<TA, TB, TC, TI>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        unimplemented!("Serialization")
+    }
+}
+
+impl<'de, TA, TB, TC, TI> serde::Deserialize<'de> for MatMatMulUnaryFinite<TA, TB, TC, TI>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        unimplemented!("Serialization")
+    }
+}
+
+impl<TA, TB, TC, TI: Copy + std::fmt::Debug> DynHash for MatMatMulUnaryFinite<TA, TB, TC, TI>
 where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
@@ -126,11 +159,7 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn name(&self) -> Cow<str> {
-        if self.mmm.as_mmm().n() == 1 {
-            "MatVecMul"
-        } else {
-            "MatMatMul"
-        }.into()
+        if self.mmm.as_mmm().n() == 1 { "MatVecMul" } else { "MatMatMul" }.into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -220,6 +249,12 @@ where
     TC: Datum + Copy,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
+    fn typetag_name(&self) -> &'static str {
+        "MatMatMulPackB"
+    }
+
+    fn typetag_deserialize(&self) {}
+
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.c_fact.clone()))
     }

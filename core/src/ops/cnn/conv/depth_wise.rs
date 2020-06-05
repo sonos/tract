@@ -3,7 +3,7 @@ use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 use ndarray::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct DepthWise {
     patch: Patch,
     input_shape: DataShape,
@@ -80,6 +80,7 @@ impl DepthWise {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for DepthWise {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))

@@ -23,4 +23,7 @@ lazy_static = "1"
 log = "0.4"
 maplit = "1"
 nom = "5.0.0-beta3"
+serde = { version = "1.0", features = ["rc"] }
+serde_derive = "1.0"
 tract-hir = { path = "../hir" }
+typetag = "0.1.5"

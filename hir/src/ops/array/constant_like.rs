@@ -2,7 +2,7 @@ use crate::internal::*;
 use tract_ndarray::*;
 use tract_num_traits::{AsPrimitive, One, Zero};
 
-#[derive(Debug, Clone, new, Default, Educe)]
+#[derive(Debug, Clone, new, Default, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
 pub struct ConstantLike {
     #[educe(Hash(method = "hash_f32"))]
@@ -66,6 +66,7 @@ impl InferenceRulesOp for ConstantLike {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for ConstantLike {
     as_op!();
 
@@ -74,7 +75,7 @@ impl TypedOp for ConstantLike {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct EyeLike {
     dt: Option<DatumType>,
     k: isize,
@@ -155,6 +156,7 @@ impl InferenceRulesOp for EyeLike {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for EyeLike {
     as_op!();
 

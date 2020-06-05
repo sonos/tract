@@ -3,7 +3,7 @@ use itertools::Itertools;
 
 // FIXME: try to recanonicalize as flatten (maybe extended) / add_dims / rm_dims ?
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct TypedReshape {
     shape: TVec<TDim>,
 }
@@ -33,6 +33,7 @@ impl StatelessOp for TypedReshape {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for TypedReshape {
     as_op!();
 
@@ -61,7 +62,7 @@ impl TypedOp for TypedReshape {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct FiniteReshape {
     pub shape: TVec<usize>,
 }
@@ -90,6 +91,7 @@ impl StatelessOp for FiniteReshape {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for FiniteReshape {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))

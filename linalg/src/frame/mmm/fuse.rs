@@ -6,7 +6,7 @@ use num_traits::Zero;
 use super::MatMatMulKer;
 
 #[derive(PartialEq, Clone)]
-pub enum FusedSpec<TI: Copy + Debug> {
+pub enum FusedSpec<TI> {
     Min(TI),
     Max(TI),
     AddC,
@@ -41,29 +41,31 @@ impl<TI: Copy + Debug> Debug for FusedSpec<TI> {
 }
 
 impl<TI: Copy + Debug> std::hash::Hash for FusedSpec<TI> {
-    fn hash<H>(&self, state: &mut H) where H: std::hash::Hasher {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
         use FusedSpec::*;
         fn h<TI: Copy, H: std::hash::Hasher>(it: &[TI], state: &mut H) {
             unsafe {
                 it.len().hash(state);
-                let bytes:&[u8] = std::slice::from_raw_parts(it.as_ptr() as _, it.len() * std::mem::size_of::<TI>());
+                let bytes: &[u8] = std::slice::from_raw_parts(
+                    it.as_ptr() as _,
+                    it.len() * std::mem::size_of::<TI>(),
+                );
                 bytes.hash(state)
             }
         }
         std::mem::discriminant(self).hash(state);
         match self {
             AddC => (),
-            Min(a) | Max(a) | ScalarMul(a) | ScalarAdd(a) => {
-                h(&[*a], state)
-            },
-            PerRowMul(a)| PerRowAdd(a)| PerColMul(a)| PerColAdd(a) => {
-                h(&*a, state)
-            },
+            Min(a) | Max(a) | ScalarMul(a) | ScalarAdd(a) => h(&[*a], state),
+            PerRowMul(a) | PerRowAdd(a) | PerColMul(a) | PerColAdd(a) => h(&*a, state),
             AddRowColProducts(a, b) => {
                 h(&*a, state);
                 h(&*b, state);
-            },
-            QTowardsEven(a,b ) | QTowardsPlusInf(a, b) => {
+            }
+            QTowardsEven(a, b) | QTowardsPlusInf(a, b) => {
                 h(&[*a], state);
                 h(&[*b], state);
             }
@@ -106,104 +108,104 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         specs: &[FusedSpec<TI>],
         down: usize,
         right: usize,
-        ) -> *const FusedKerSpec<TI>
-        where
+    ) -> *const FusedKerSpec<TI>
+    where
         TA: Copy,
         TB: Copy,
         TC: Copy + Debug,
         TI: Copy + Debug + Zero,
-        {
-            self.uspecs.clear();
-            for spec in specs {
-                let s = match spec {
-                    FusedSpec::Min(m) => FusedKerSpec::Min(*m),
-                    FusedSpec::Max(m) => FusedKerSpec::Max(*m),
-                    FusedSpec::AddC => FusedKerSpec::AddC,
-                    FusedSpec::PerRowMul(v) => {
-                        let have = v.len() - down * K::mr();
-                        let ptr = if have < K::mr() {
-                            let mut buf = vec![TI::zero(); K::mr()];
-                            buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
-                            let ptr = buf.as_ptr();
-                            self.non_linear_buffers.push(buf);
-                            ptr
-                        } else {
-                            v.as_ptr().add(down * K::mr())
-                        };
-                        FusedKerSpec::PerRowMul(ptr)
-                    }
-                    FusedSpec::PerRowAdd(v) => {
-                        let have = v.len() - down * K::mr();
-                        let ptr = if have < K::mr() {
-                            let mut buf = vec![TI::zero(); K::mr()];
-                            buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
-                            let ptr = buf.as_ptr();
-                            self.non_linear_buffers.push(buf);
-                            ptr
-                        } else {
-                            v.as_ptr().add(down * K::mr())
-                        };
-                        FusedKerSpec::PerRowAdd(ptr)
-                    }
-                    FusedSpec::PerColMul(v) => {
-                        let have = v.len() - right * K::nr();
-                        let ptr = if have < K::nr() {
-                            let mut buf = vec![TI::zero(); K::nr()];
-                            buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
-                            let ptr = buf.as_ptr();
-                            self.non_linear_buffers.push(buf);
-                            ptr
-                        } else {
-                            v.as_ptr().add(right * K::nr())
-                        };
-                        FusedKerSpec::PerColMul(ptr)
-                    }
-                    FusedSpec::PerColAdd(v) => {
-                        let have = v.len() - right * K::nr();
-                        let ptr = if have < K::nr() {
-                            let mut buf = vec![TI::zero(); K::nr()];
-                            buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
-                            let ptr = buf.as_ptr();
-                            self.non_linear_buffers.push(buf);
-                            ptr
-                        } else {
-                            v.as_ptr().add(right * K::nr())
-                        };
-                        FusedKerSpec::PerColAdd(ptr)
-                    }
-                    FusedSpec::AddRowColProducts(rows, cols) => {
-                        let have = rows.len() - down * K::mr();
-                        let row_ptr = if have < K::mr() {
-                            let mut buf = vec![TI::zero(); K::mr()];
-                            buf[..have].copy_from_slice(&rows[down * K::mr()..][..have]);
-                            let ptr = buf.as_ptr();
-                            self.non_linear_buffers.push(buf);
-                            ptr
-                        } else {
-                            rows.as_ptr().add(down * K::mr())
-                        };
-                        let have = cols.len() - right * K::nr();
-                        let col_ptr = if have < K::nr() {
-                            let mut buf = vec![TI::zero(); K::nr()];
-                            buf[..have].copy_from_slice(&cols[right * K::nr()..][..have]);
-                            let ptr = buf.as_ptr();
-                            self.non_linear_buffers.push(buf);
-                            ptr
-                        } else {
-                            cols.as_ptr().add(right * K::nr())
-                        };
-                        FusedKerSpec::AddRowColProducts(row_ptr, col_ptr)
-                    }
-                    FusedSpec::ScalarMul(t) => FusedKerSpec::ScalarMul(*t),
-                    FusedSpec::ScalarAdd(t) => FusedKerSpec::ScalarAdd(*t),
-                    FusedSpec::QTowardsEven(m, s) => FusedKerSpec::QTowardsEven(*m, *s),
-                    FusedSpec::QTowardsPlusInf(m, s) => FusedKerSpec::QTowardsPlusInf(*m, *s),
-                };
-                self.uspecs.push(s);
-            }
-            self.uspecs.push(FusedKerSpec::Done);
-            self.uspecs.as_ptr()
+    {
+        self.uspecs.clear();
+        for spec in specs {
+            let s = match spec {
+                FusedSpec::Min(m) => FusedKerSpec::Min(*m),
+                FusedSpec::Max(m) => FusedKerSpec::Max(*m),
+                FusedSpec::AddC => FusedKerSpec::AddC,
+                FusedSpec::PerRowMul(v) => {
+                    let have = v.len() - down * K::mr();
+                    let ptr = if have < K::mr() {
+                        let mut buf = vec![TI::zero(); K::mr()];
+                        buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(down * K::mr())
+                    };
+                    FusedKerSpec::PerRowMul(ptr)
+                }
+                FusedSpec::PerRowAdd(v) => {
+                    let have = v.len() - down * K::mr();
+                    let ptr = if have < K::mr() {
+                        let mut buf = vec![TI::zero(); K::mr()];
+                        buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(down * K::mr())
+                    };
+                    FusedKerSpec::PerRowAdd(ptr)
+                }
+                FusedSpec::PerColMul(v) => {
+                    let have = v.len() - right * K::nr();
+                    let ptr = if have < K::nr() {
+                        let mut buf = vec![TI::zero(); K::nr()];
+                        buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(right * K::nr())
+                    };
+                    FusedKerSpec::PerColMul(ptr)
+                }
+                FusedSpec::PerColAdd(v) => {
+                    let have = v.len() - right * K::nr();
+                    let ptr = if have < K::nr() {
+                        let mut buf = vec![TI::zero(); K::nr()];
+                        buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(right * K::nr())
+                    };
+                    FusedKerSpec::PerColAdd(ptr)
+                }
+                FusedSpec::AddRowColProducts(rows, cols) => {
+                    let have = rows.len() - down * K::mr();
+                    let row_ptr = if have < K::mr() {
+                        let mut buf = vec![TI::zero(); K::mr()];
+                        buf[..have].copy_from_slice(&rows[down * K::mr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        rows.as_ptr().add(down * K::mr())
+                    };
+                    let have = cols.len() - right * K::nr();
+                    let col_ptr = if have < K::nr() {
+                        let mut buf = vec![TI::zero(); K::nr()];
+                        buf[..have].copy_from_slice(&cols[right * K::nr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        cols.as_ptr().add(right * K::nr())
+                    };
+                    FusedKerSpec::AddRowColProducts(row_ptr, col_ptr)
+                }
+                FusedSpec::ScalarMul(t) => FusedKerSpec::ScalarMul(*t),
+                FusedSpec::ScalarAdd(t) => FusedKerSpec::ScalarAdd(*t),
+                FusedSpec::QTowardsEven(m, s) => FusedKerSpec::QTowardsEven(*m, *s),
+                FusedSpec::QTowardsPlusInf(m, s) => FusedKerSpec::QTowardsPlusInf(*m, *s),
+            };
+            self.uspecs.push(s);
         }
+        self.uspecs.push(FusedKerSpec::Done);
+        self.uspecs.as_ptr()
+    }
 }
 
 #[cfg(test)]
@@ -222,7 +224,7 @@ pub mod test {
         assert_eq!(
             std::mem::size_of::<super::FusedKerSpec<f32>>(),
             3 * std::mem::size_of::<usize>()
-            )
+        )
     }
 
     #[macro_export]
@@ -398,131 +400,133 @@ pub mod test {
     }
 
     pub fn return_zeros<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + Debug + Bounded + Zero + PartialEq,
         TI: Copy + Debug,
-        {
-            let mut v = vec![TC::max_value(); K::mr() * K::nr()];
-            let mut c = mmm_stride_storage(&mut v, K::nr());
-            let err = K::kernel(&MatMatMulKerSpec {
-                a: &null_packed_storage(),
-                b: &null_packed_storage(),
-                c: &mut c,
-                linear: &LinearSpec::k(0),
-                non_linear: std::ptr::null(),
-            });
-            assert_eq!(err, 0);
-            let expected = vec!(TC::zero(); v.len());
-            assert_eq!(v, expected);
-        }
+    {
+        let mut v = vec![TC::max_value(); K::mr() * K::nr()];
+        let mut c = mmm_stride_storage(&mut v, K::nr());
+        let err = K::kernel(&MatMatMulKerSpec {
+            a: &null_packed_storage(),
+            b: &null_packed_storage(),
+            c: &mut c,
+            linear: &LinearSpec::k(0),
+            non_linear: std::ptr::null(),
+        });
+        assert_eq!(err, 0);
+        let expected = vec![TC::zero(); v.len()];
+        assert_eq!(v, expected);
+    }
 
     pub fn fused_ops<K, TA, TB, TC, TI>(c: &[TC], ops: &[FusedKerSpec<TI>]) -> Vec<TC>
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + 'static + PartialEq,
         TI: Copy + Debug,
         usize: AsPrimitive<TC>,
-        {
-            assert!(c.len() == K::mr() * K::nr());
-            let mut v = c.to_vec();
-            let mut c = mmm_stride_storage(&mut v, K::nr());
-            let mut ops = ops.to_vec();
-            ops.insert(0, FusedKerSpec::AddC);
-            ops.push(FusedKerSpec::Done);
-            let err = K::kernel(&MatMatMulKerSpec {
-                a: &null_packed_storage(),
-                b: &null_packed_storage(),
-                c: &mut c,
-                linear: &LinearSpec::k(0),
-                non_linear: ops.as_ptr(),
-            });
-            assert_eq!(err, 0);
-            v
-        }
+    {
+        assert!(c.len() == K::mr() * K::nr());
+        let mut v = c.to_vec();
+        let mut c = mmm_stride_storage(&mut v, K::nr());
+        let mut ops = ops.to_vec();
+        ops.insert(0, FusedKerSpec::AddC);
+        ops.push(FusedKerSpec::Done);
+        let err = K::kernel(&MatMatMulKerSpec {
+            a: &null_packed_storage(),
+            b: &null_packed_storage(),
+            c: &mut c,
+            linear: &LinearSpec::k(0),
+            non_linear: ops.as_ptr(),
+        });
+        assert_eq!(err, 0);
+        v
+    }
 
     pub fn return_c<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + Debug + 'static + PartialEq,
         TI: Copy + Debug,
         usize: AsPrimitive<TC>,
-        {
-            let len = K::mr() * K::nr();
-            let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-            let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[]);
-            assert_eq!(found, v);
-        }
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[]);
+        assert_eq!(found, v);
+    }
 
     pub fn return_c_mul_row<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + Debug + 'static + PartialEq,
         TI: Copy + Add + Mul<Output = TI> + Zero + Debug + fmt::Display + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
-        {
-            let len = K::mr() * K::nr();
-            let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-            let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-            let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerRowMul(bias.as_ptr())]);
-            let expected = (0..found.len()).map(|ix| {
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerRowMul(bias.as_ptr())]);
+        let expected = (0..found.len())
+            .map(|ix| {
                 let row = ix / K::nr();
                 let ix: TI = ix.as_();
                 (ix * bias[row]).as_()
-            }).collect::<Vec<TC>>();
-            assert_eq!(found, expected);
-        }
+            })
+            .collect::<Vec<TC>>();
+        assert_eq!(found, expected);
+    }
 
     pub fn return_c_add_row<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + PartialEq + 'static,
         TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
-        {
-            let len = K::mr() * K::nr();
-            let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-            let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-            let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerRowAdd(bias.as_ptr())]);
-            assert!(found.iter().enumerate().all(|(ix, &a)| {
-                let row = ix / K::nr();
-                let ix: TI = ix.as_();
-                a == (ix + bias[row]).as_()
-            }));
-        }
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerRowAdd(bias.as_ptr())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let row = ix / K::nr();
+            let ix: TI = ix.as_();
+            a == (ix + bias[row]).as_()
+        }));
+    }
 
     pub fn return_c_mul_col<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + 'static + PartialEq,
         TI: Copy + Add + Mul<Output = TI> + Zero + Debug + fmt::Display + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
-        {
-            let len = K::mr() * K::nr();
-            let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-            let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
-            let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerColMul(bias.as_ptr())]);
-            assert!(found.iter().enumerate().all(|(ix, &a)| {
-                let col = ix % K::nr();
-                let ix: TI = ix.as_();
-                a == (ix * bias[col]).as_()
-            }));
-        }
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerColMul(bias.as_ptr())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let col = ix % K::nr();
+            let ix: TI = ix.as_();
+            a == (ix * bias[col]).as_()
+        }));
+    }
 
     pub fn return_c_add_col<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
@@ -537,24 +541,24 @@ pub mod test {
             + 'static
             + AsPrimitive<TC>
             + Debug,
-            usize: AsPrimitive<TC> + AsPrimitive<TI>,
-            {
-                let len = K::mr() * K::nr();
-                let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-                let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
-                let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerColAdd(bias.as_ptr())]);
-                let expected = (0..found.len())
-                    .map(|ix| {
-                        let col = ix % K::nr();
-                        let ix: TI = ix.as_();
-                        (ix + bias[col]).as_()
-                    })
-                .collect::<Vec<TC>>();
-                assert_eq!(found, expected);
-            }
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let bias: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::PerColAdd(bias.as_ptr())]);
+        let expected = (0..found.len())
+            .map(|ix| {
+                let col = ix % K::nr();
+                let ix: TI = ix.as_();
+                (ix + bias[col]).as_()
+            })
+            .collect::<Vec<TC>>();
+        assert_eq!(found, expected);
+    }
 
     pub fn return_c_add_row_col_product<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
@@ -568,29 +572,29 @@ pub mod test {
             + PartialEq
             + 'static
             + AsPrimitive<TC>,
-            usize: AsPrimitive<TC> + AsPrimitive<TI>,
-            {
-                let len = K::mr() * K::nr();
-                let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-                let rows: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
-                let cols: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
-                let found = fused_ops::<K, TA, TB, TC, TI>(
-                    &*v,
-                    &[FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr())],
-                    );
-                let expected = (0..found.len())
-                    .map(|ix| {
-                        let row = ix / K::nr();
-                        let col = ix % K::nr();
-                        let ix: TI = ix.as_();
-                        (ix + cols[col] * rows[row]).as_()
-                    })
-                .collect::<Vec<TC>>();
-                assert_eq!(found, expected);
-            }
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let rows: Vec<TI> = (0..K::mr()).map(|f| f.as_()).collect();
+        let cols: Vec<TI> = (0..K::nr()).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(
+            &*v,
+            &[FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr())],
+        );
+        let expected = (0..found.len())
+            .map(|ix| {
+                let row = ix / K::nr();
+                let col = ix % K::nr();
+                let ix: TI = ix.as_();
+                (ix + cols[col] * rows[row]).as_()
+            })
+            .collect::<Vec<TC>>();
+        assert_eq!(found, expected);
+    }
 
     pub fn return_c_scalar_mul<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
@@ -604,19 +608,19 @@ pub mod test {
             + PartialEq
             + 'static
             + AsPrimitive<TC>,
-            usize: AsPrimitive<TC> + AsPrimitive<TI>,
-            {
-                let len = K::mr() * K::nr();
-                let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-                let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::ScalarMul(5.as_())]);
-                assert!(found.iter().enumerate().all(|(ix, &a)| {
-                    let ix: TI = ix.as_();
-                    a == (ix * 5.as_()).as_()
-                }));
-            }
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::ScalarMul(5.as_())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let ix: TI = ix.as_();
+            a == (ix * 5.as_()).as_()
+        }));
+    }
 
     pub fn return_c_max<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
@@ -631,19 +635,19 @@ pub mod test {
             + PartialEq
             + 'static
             + AsPrimitive<TC>,
-            usize: AsPrimitive<TC> + AsPrimitive<TI>,
-            {
-                let len = K::mr() * K::nr();
-                let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-                let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::Max(5.as_())]);
-                assert!(found.iter().enumerate().all(|(ix, &a)| {
-                    let ix: TI = ix.as_();
-                    a == if ix > 5.as_() { ix.as_() } else { 5.as_() }
-                }));
-            }
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::Max(5.as_())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let ix: TI = ix.as_();
+            a == if ix > 5.as_() { ix.as_() } else { 5.as_() }
+        }));
+    }
 
     pub fn return_c_min<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
@@ -658,19 +662,19 @@ pub mod test {
             + PartialEq
             + 'static
             + AsPrimitive<TC>,
-            usize: AsPrimitive<TC> + AsPrimitive<TI>,
-            {
-                let len = K::mr() * K::nr();
-                let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-                let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::Min(5.as_())]);
-                assert!(found.iter().enumerate().all(|(ix, &a)| {
-                    let ix: TI = ix.as_();
-                    a == if ix < 5.as_() { ix.as_() } else { 5.as_() }
-                }));
-            }
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::Min(5.as_())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let ix: TI = ix.as_();
+            a == if ix < 5.as_() { ix.as_() } else { 5.as_() }
+        }));
+    }
 
     pub fn return_c_scalar_add<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
@@ -684,19 +688,19 @@ pub mod test {
             + PartialEq
             + 'static
             + AsPrimitive<TC>,
-            usize: AsPrimitive<TC> + AsPrimitive<TI>,
-            {
-                let len = K::mr() * K::nr();
-                let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-                let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::ScalarAdd(5.as_())]);
-                assert!(found.iter().enumerate().all(|(ix, &a)| {
-                    let ix: TI = ix.as_();
-                    a == (ix + 5.as_()).as_()
-                }));
-            }
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(&*v, &[FusedKerSpec::ScalarAdd(5.as_())]);
+        assert!(found.iter().enumerate().all(|(ix, &a)| {
+            let ix: TI = ix.as_();
+            a == (ix + 5.as_()).as_()
+        }));
+    }
 
     pub fn return_q_towards_even<K, TA, TB, TC, TI>()
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy,
         TB: Copy,
@@ -708,155 +712,155 @@ pub mod test {
             + Sub<Output = TC>
             + AsPrimitive<TI>
             + Mul<Output = TC>,
-            TI: Copy
-                + Add
-                + Sub<Output = TI>
-                + Mul<Output = TI>
-                + Debug
-                + fmt::Display
-                + Ord
-                + PartialEq
-                + 'static
-                + AsPrimitive<TC>
-                + AsPrimitive<i64>,
-                usize: AsPrimitive<TC> + AsPrimitive<TI>,
-                i64: AsPrimitive<TC>,
-                {
-                    let len = K::mr() * K::nr();
-                    let half_len: TI = (len / 2).as_();
-                    let v: Vec<TC> = (0..len)
-                        .map(|f| {
-                            (<usize as AsPrimitive<TI>>::as_(f) - half_len)
-                                .min(TC::max_value().as_())
-                                .max(TC::min_value().as_())
-                                .as_()
-                        })
-                    .collect();
-                    let found = fused_ops::<K, TA, TB, TC, TI>(
-                        &*v,
-                        &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QTowardsEven((1 << 30).as_(), 2)],
-                        );
-                    assert!(found.iter().zip(v.iter()).all(|(&found, input)| {
-                        let input: TI = input.as_();
-                        let input: i64 = input.as_();
-                        let input = input >> 1;
-                        let trunc = input.abs();
-                        let nudge = (trunc & 0x3 == 0x3) as i64;
-                        let mut trunc = (trunc + nudge) >> 1;
-                        if input.is_negative() {
-                            trunc = -trunc;
-                        }
-                        trunc.as_() == found
-                    }));
-                }
+        TI: Copy
+            + Add
+            + Sub<Output = TI>
+            + Mul<Output = TI>
+            + Debug
+            + fmt::Display
+            + Ord
+            + PartialEq
+            + 'static
+            + AsPrimitive<TC>
+            + AsPrimitive<i64>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        i64: AsPrimitive<TC>,
+    {
+        let len = K::mr() * K::nr();
+        let half_len: TI = (len / 2).as_();
+        let v: Vec<TC> = (0..len)
+            .map(|f| {
+                (<usize as AsPrimitive<TI>>::as_(f) - half_len)
+                    .min(TC::max_value().as_())
+                    .max(TC::min_value().as_())
+                    .as_()
+            })
+            .collect();
+        let found = fused_ops::<K, TA, TB, TC, TI>(
+            &*v,
+            &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QTowardsEven((1 << 30).as_(), 2)],
+        );
+        assert!(found.iter().zip(v.iter()).all(|(&found, input)| {
+            let input: TI = input.as_();
+            let input: i64 = input.as_();
+            let input = input >> 1;
+            let trunc = input.abs();
+            let nudge = (trunc & 0x3 == 0x3) as i64;
+            let mut trunc = (trunc + nudge) >> 1;
+            if input.is_negative() {
+                trunc = -trunc;
+            }
+            trunc.as_() == found
+        }));
+    }
 
     #[derive(Debug, new)]
     pub struct QTowardsPlusInfProblem<K, TA, TB, TC, TI>
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
         TC: Copy + Debug + 'static,
         TI: Copy + Debug,
         i64: AsPrimitive<TC>,
-        {
-            pub c: Vec<TC>,
-            pub boo: std::marker::PhantomData<(K, TA, TB, TC, TI)>,
-        }
+    {
+        pub c: Vec<TC>,
+        pub boo: std::marker::PhantomData<(K, TA, TB, TC, TI)>,
+    }
 
     impl<K, TA, TB, TC, TI> Arbitrary for QTowardsPlusInfProblem<K, TA, TB, TC, TI>
-        where
-            K: MatMatMulKer<TA, TB, TC, TI>,
-            TA: Copy + Debug,
-            TB: Copy + Debug,
-            TC: Copy + Debug + 'static,
-            TI: Copy + Debug,
-            i64: AsPrimitive<TC>,
-            {
-                type Parameters = ();
-                type Strategy = BoxedStrategy<Self>;
-                fn arbitrary_with(_p: ()) -> Self::Strategy {
-                    let len = K::mr() * K::nr();
-                    proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len)
-                        .prop_map(|c| QTowardsPlusInfProblem { c, boo: std::marker::PhantomData })
-                        .boxed()
-                }
-            }
-
-    impl<K, TA, TB, TC, TI> QTowardsPlusInfProblem<K, TA, TB, TC, TI>
-        where
-            K: MatMatMulKer<TA, TB, TC, TI>,
-            TA: Copy + Debug,
-            TB: Copy + Debug,
-            TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
-            TI: Copy + Debug + 'static + AsPrimitive<i64>,
-            usize: AsPrimitive<TC> + AsPrimitive<TI>,
-            i64: AsPrimitive<TC>,
-            {
-                pub fn reference(&self) -> Vec<TC> {
-                    self.c
-                        .iter()
-                        .map(|input| {
-                            let input: TI = input.as_();
-                            let input: i64 = input.as_();
-                            (((input >> 1) + 1) >> 1).as_()
-                        })
-                    .collect()
-                }
-
-                pub fn run(&self) -> Vec<TC> {
-                    fused_ops::<K, TA, TB, TC, TI>(
-                        &*self.c,
-                        &[
-                        FusedKerSpec::ScalarMul(2.as_()),
-                        FusedKerSpec::QTowardsPlusInf((1 << 30).as_(), 2),
-                        ],
-                        )
-                }
-            }
-
-    #[derive(Debug, new)]
-    pub struct ReturnCProblem<K, TA, TB, TC, TI>
-        where
+    where
         K: MatMatMulKer<TA, TB, TC, TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
         TC: Copy + Debug + 'static,
         TI: Copy + Debug,
-        {
-            pub c: Vec<TC>,
-            pub boo: std::marker::PhantomData<(K, TA, TB, TC, TI)>,
+        i64: AsPrimitive<TC>,
+    {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+        fn arbitrary_with(_p: ()) -> Self::Strategy {
+            let len = K::mr() * K::nr();
+            proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len)
+                .prop_map(|c| QTowardsPlusInfProblem { c, boo: std::marker::PhantomData })
+                .boxed()
+        }
+    }
+
+    impl<K, TA, TB, TC, TI> QTowardsPlusInfProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
+        TI: Copy + Debug + 'static + AsPrimitive<i64>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        i64: AsPrimitive<TC>,
+    {
+        pub fn reference(&self) -> Vec<TC> {
+            self.c
+                .iter()
+                .map(|input| {
+                    let input: TI = input.as_();
+                    let input: i64 = input.as_();
+                    (((input >> 1) + 1) >> 1).as_()
+                })
+                .collect()
         }
 
+        pub fn run(&self) -> Vec<TC> {
+            fused_ops::<K, TA, TB, TC, TI>(
+                &*self.c,
+                &[
+                    FusedKerSpec::ScalarMul(2.as_()),
+                    FusedKerSpec::QTowardsPlusInf((1 << 30).as_(), 2),
+                ],
+            )
+        }
+    }
+
+    #[derive(Debug, new)]
+    pub struct ReturnCProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static,
+        TI: Copy + Debug,
+    {
+        pub c: Vec<TC>,
+        pub boo: std::marker::PhantomData<(K, TA, TB, TC, TI)>,
+    }
+
     impl<K, TA, TB, TC, TI> Arbitrary for ReturnCProblem<K, TA, TB, TC, TI>
-        where
-            K: MatMatMulKer<TA, TB, TC, TI>,
-            TA: Copy + Debug,
-            TB: Copy + Debug,
-            TC: Copy + Debug + 'static + Arbitrary,
-            TI: Copy + Debug,
-            {
-                type Parameters = ();
-                type Strategy = BoxedStrategy<Self>;
-                fn arbitrary_with(_p: ()) -> Self::Strategy {
-                    let len = K::mr() * K::nr();
-                    proptest::collection::vec(any::<TC>(), len..=len)
-                        .prop_map(|c| ReturnCProblem { c, boo: std::marker::PhantomData })
-                        .boxed()
-                }
-            }
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static + Arbitrary,
+        TI: Copy + Debug,
+    {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+        fn arbitrary_with(_p: ()) -> Self::Strategy {
+            let len = K::mr() * K::nr();
+            proptest::collection::vec(any::<TC>(), len..=len)
+                .prop_map(|c| ReturnCProblem { c, boo: std::marker::PhantomData })
+                .boxed()
+        }
+    }
 
     impl<K, TA, TB, TC, TI> ReturnCProblem<K, TA, TB, TC, TI>
-        where
-            K: MatMatMulKer<TA, TB, TC, TI>,
-            TA: Copy + Debug,
-            TB: Copy + Debug,
-            TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
-            TI: Copy + Debug + 'static + AsPrimitive<i64>,
-            usize: AsPrimitive<TC>,
-            {
-                pub fn run(&self) -> Vec<TC> {
-                    fused_ops::<K, TA, TB, TC, TI>(&*self.c, &[])
-                }
-            }
+    where
+        K: MatMatMulKer<TA, TB, TC, TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
+        TI: Copy + Debug + 'static + AsPrimitive<i64>,
+        usize: AsPrimitive<TC>,
+    {
+        pub fn run(&self) -> Vec<TC> {
+            fused_ops::<K, TA, TB, TC, TI>(&*self.c, &[])
+        }
+    }
 }

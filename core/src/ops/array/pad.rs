@@ -2,7 +2,7 @@ use crate::internal::*;
 use crate::pulse::delay::Delay;
 use ndarray::*;
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub enum PadMode {
     Constant(Arc<Tensor>),
     Reflect,
@@ -15,7 +15,7 @@ impl Default for PadMode {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct Pad {
     pub pads: Vec<(usize, usize)>,
     mode: PadMode,
@@ -107,6 +107,7 @@ impl StatelessOp for Pad {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Pad {
     as_op!();
 
@@ -275,7 +276,7 @@ impl PulsePadOpState {
     }
 }
 
-#[derive(Debug, Clone, Default, new, Hash)]
+#[derive(Debug, Clone, Default, new, Hash, Serialize, Deserialize)]
 struct PulsePad {
     axis: usize,
     pulse: usize,
@@ -316,6 +317,7 @@ impl StatefullOp for PulsePad {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for PulsePad {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))

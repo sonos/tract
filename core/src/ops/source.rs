@@ -14,7 +14,7 @@ impl OpState for SourceState {
     }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct TypedSource {
     fact: TypedFact,
 }
@@ -42,6 +42,7 @@ impl StatefullOp for TypedSource {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for TypedSource {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.fact.clone()))

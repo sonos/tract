@@ -47,6 +47,8 @@ extern crate prost_types;
 #[cfg(feature = "conform")]
 #[macro_use]
 extern crate error_chain;
+#[macro_use]
+extern crate serde_derive;
 #[cfg(feature = "conform")]
 extern crate tensorflow;
 pub extern crate tract_hir;

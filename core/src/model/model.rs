@@ -6,13 +6,9 @@ use std::hash::Hash;
 /// Main model class
 ///
 /// Parameterized by a Fact class.
-#[derive(Clone, Debug, Educe)]
+#[derive(Clone, Debug, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
-pub struct ModelImpl<F, O>
-where
-    F: Fact + Hash + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-{
+pub struct ModelImpl<F: Hash, O: Hash> {
     pub label: Option<String>,
     /// all nodes in the model
     pub nodes: Vec<BaseNode<F, O>>,

@@ -2,7 +2,7 @@ use ndarray::*;
 
 use super::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct CodegenOpParams {
     pub skip: usize,
     pub plan: Arc<TypedSimplePlan<TypedModel>>,
@@ -10,7 +10,7 @@ pub struct CodegenOpParams {
     pub output_mapping: Vec<OutputMapping<usize, TDim>>,
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct Codegen(Arc<CodegenOpParams>);
 
 impl std::ops::Deref for Codegen {
@@ -248,6 +248,7 @@ impl OpState for State {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Codegen {
     as_op!();
 

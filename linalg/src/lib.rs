@@ -8,6 +8,8 @@ extern crate log;
 extern crate num_traits;
 #[cfg(test)]
 extern crate proptest;
+#[macro_use]
+extern crate serde_derive;
 
 pub mod align;
 pub mod hash;

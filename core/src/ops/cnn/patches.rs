@@ -10,7 +10,7 @@ use std::ops::Range;
 use itertools::zip;
 use itertools::Itertools;
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct PatchSpec {
     pub input_shape: TVec<usize>,
     pub input_inner_stride: usize,
@@ -210,7 +210,7 @@ impl PatchSpec {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Patch {
     pub spec: PatchSpec,
     pub pad_before: TVec<usize>,
@@ -316,7 +316,7 @@ impl Patch {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Zone {
     valid: bool,
     input_zone_offset: isize,

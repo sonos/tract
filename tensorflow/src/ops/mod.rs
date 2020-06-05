@@ -55,7 +55,7 @@ fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inference
     Ok(Box::new(::tract_hir::ops::konst::Const(mat.into())))
 }
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, Serialize, Deserialize)]
 pub struct Noop;
 
 tract_linalg::impl_dyn_hash!(Noop);
@@ -92,6 +92,7 @@ impl InferenceRulesOp for Noop {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for Noop {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(bool::datum_type(), ())?))

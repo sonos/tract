@@ -110,7 +110,7 @@ fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp
     Ok(Box::new(Merge::new(inputs as usize)))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct Merge {
     n: usize,
 }
@@ -158,6 +158,7 @@ impl InferenceRulesOp for Merge {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for Merge {
     as_op!();
 

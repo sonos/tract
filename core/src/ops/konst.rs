@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct Const(pub Arc<Tensor>);
 
 tract_linalg::impl_dyn_hash!(Const);
@@ -21,6 +21,7 @@ impl StatelessOp for Const {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Const {
     as_op!();
 

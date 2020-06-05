@@ -36,6 +36,8 @@ pub trait DimLike:
     + 'static
     + std::iter::Sum
     + ToDim
+    + serde::Serialize
+    + for<'de> serde::Deserialize<'de>
 {
     fn maybe_mul(&self, other: &Self) -> TractResult<Self>;
 

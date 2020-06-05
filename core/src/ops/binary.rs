@@ -3,6 +3,7 @@ use crate::ops::invariants::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
+#[typetag::serde(tag = "type")]
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash {
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
@@ -98,7 +99,7 @@ impl StatelessOp for InferenceBinOp {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
 tract_linalg::impl_dyn_hash!(TypedBinOp);
 
@@ -123,6 +124,7 @@ impl StatelessOp for TypedBinOp {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for TypedBinOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(
@@ -287,7 +289,7 @@ fn pulsify_bin(
     target.wire_node(&*node.name, dyn_clone::clone_box(op), &*inputs)
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct UnaryOp {
     pub mini_op: Box<dyn BinMiniOp>,
     pub a: Arc<Tensor>,
@@ -320,6 +322,7 @@ impl StatelessOp for UnaryOp {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for UnaryOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if self.a.rank() != inputs[0].rank() {
@@ -448,7 +451,7 @@ impl PulsedOp for UnaryOp {
     pulsed_op_to_typed_op!();
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct MergeOp(pub Box<dyn BinMiniOp>);
 tract_linalg::impl_dyn_hash!(MergeOp);
 
@@ -473,6 +476,7 @@ impl StatelessOp for MergeOp {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for MergeOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(
@@ -615,7 +619,7 @@ impl PulsedOp for MergeOp {
     pulsed_op_to_typed_op!();
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
 tract_linalg::impl_dyn_hash!(MergeOpUnicast);
 
@@ -638,6 +642,7 @@ impl StatelessOp for MergeOpUnicast {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for MergeOpUnicast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
@@ -678,14 +683,17 @@ macro_rules! bin_to_super_type {
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
-        #[derive(Debug, Clone, Hash)]
+        #[derive(Debug, Clone, Hash, Serialize, Deserialize)]
         pub struct $Op;
         tract_linalg::impl_dyn_hash!($Op);
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
             }
-
+            fn typetag_name(&self) -> &'static str {
+                stringify!($Op)
+            }
+            fn typetag_deserialize(&self) {}
             fn eval_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
@@ -782,14 +790,17 @@ macro_rules! bin_to_bool {
      $( cost: $cost:expr, )?
      $( flip: $flip:expr, )?
      $( [$($typ:ident),*] => $cab:expr),*) => {
-        #[derive(Debug, Clone, Hash)]
+        #[derive(Debug, Clone, Hash, Serialize, Deserialize)]
         pub struct $Op;
         tract_linalg::impl_dyn_hash!($Op);
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
             }
-
+            fn typetag_name(&self) -> &'static str {
+                stringify!($Op)
+            }
+            fn typetag_deserialize(&self) {}
             #[allow(unreachable_code)]
             fn eval_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
                 $(

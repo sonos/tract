@@ -12,7 +12,7 @@ pub fn renorm(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn Inference
     Ok(Box::new(Renorm::new(rms)))
 }
 
-#[derive(Clone, Debug, new, Educe)]
+#[derive(Clone, Debug, new, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
 struct Renorm {
     #[educe(Hash(method="hash_f32"))]
@@ -63,6 +63,7 @@ impl InferenceRulesOp for Renorm {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for Renorm {
     as_op!();
 

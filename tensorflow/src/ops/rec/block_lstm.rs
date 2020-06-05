@@ -15,7 +15,7 @@ pub fn block_lstm(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn 
     Ok(Box::new(BlockLSTM::new(forget_bias, cell_clip, t, use_peephole)))
 }
 
-#[derive(Clone, Debug, new, Educe)]
+#[derive(Clone, Debug, new, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
 pub struct BlockLSTM {
     #[educe(Hash(method = "hash_f32"))]
@@ -187,6 +187,7 @@ macro_rules! some_or_else {
     };
 }
 
+#[typetag::serde]
 impl TypedOp for BlockLSTM {
     as_op!();
 

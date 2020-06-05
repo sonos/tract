@@ -6,7 +6,7 @@ use crate::ops::cnn::pools::PoolSpec;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct AvgPool {
     pub pool_spec: PoolSpec,
     pub count_include_pad: bool,
@@ -53,6 +53,7 @@ impl StatelessOp for AvgPool {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for AvgPool {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         self.pool_spec.output_facts(inputs)
@@ -94,7 +95,7 @@ impl PulsedOp for AvgPool {
     pulsed_op_to_typed_op!();
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct AvgPoolFixed {
     patch: Patch,
     input_shape: DataShape,
@@ -168,6 +169,7 @@ impl StatelessOp for AvgPoolFixed {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for AvgPoolFixed {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))

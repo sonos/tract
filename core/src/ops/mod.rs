@@ -137,6 +137,7 @@ pub trait Op:
     }
 }
 
+#[typetag::serde(tag = "op")]
 pub trait TypedOp:
     Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp + DynHash
 {

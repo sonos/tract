@@ -2,7 +2,7 @@ use crate::internal::*;
 
 // TODO: canonicalize as Reshape
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct Flatten {
     axis: usize,
 }
@@ -44,6 +44,7 @@ impl StatelessOp for Flatten {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Flatten {
     as_op!();
 

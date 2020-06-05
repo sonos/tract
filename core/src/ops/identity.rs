@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, Serialize, Deserialize)]
 pub struct Identity;
 
 impl Op for Identity {
@@ -22,6 +22,7 @@ impl StatelessOp for Identity {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Identity {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))

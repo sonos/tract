@@ -4,6 +4,11 @@ extern crate derive_new;
 extern crate educe;
 #[macro_use]
 extern crate log;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+#[macro_use]
+extern crate typetag;
 
 pub mod model;
 mod ops;

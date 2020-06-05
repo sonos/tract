@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct Size {
     pub dt: DatumType,
 }
@@ -25,6 +25,7 @@ impl StatelessOp for Size {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Size {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(self.dt, [0usize; 0].as_ref())?))

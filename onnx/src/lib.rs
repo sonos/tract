@@ -7,9 +7,13 @@ extern crate educe;
 #[macro_use]
 extern crate log;
 extern crate num_integer;
+#[macro_use]
+extern crate serde_derive;
 #[allow(unused_imports)]
 #[macro_use]
 pub extern crate tract_hir;
+#[macro_use]
+extern crate typetag;
 
 pub mod model;
 pub mod ops;

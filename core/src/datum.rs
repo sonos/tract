@@ -11,10 +11,7 @@ use tract_linalg::f16::f16;
 mod arrays;
 pub use arrays::ArrayDatum;
 
-#[cfg(feature = "serialize")]
-use serde::ser::{Serialize, Serializer};
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, Educe)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
 pub struct Blob(pub Vec<u8>);
 
@@ -175,6 +172,8 @@ pub trait Datum:
     + 'static
     + PartialEq
     + tract_linalg::hash::SloppyHash
+    + serde::Serialize
+    + for<'de> serde::Deserialize<'de>
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;

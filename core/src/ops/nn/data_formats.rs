@@ -1,7 +1,7 @@
 use crate::internal::*;
 use std::fmt;
 
-#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 pub enum DataFormat {
     NCHW,
     NHWC,
@@ -27,7 +27,7 @@ impl DataFormat {
     pub fn shape<D, S>(&self, shape: S) -> TractResult<BaseDataShape<D, S>>
     where
         D: DimLike,
-        S: AsRef<[D]> + fmt::Debug,
+        S: AsRef<[D]> + fmt::Debug
     {
         if shape.as_ref().iter().filter(|d| d.to_integer().is_err()).count() > 1 {
             panic!("Can not work out a data format with two actual symbolic dim")
@@ -64,20 +64,42 @@ impl DataFormat {
 pub type DataShape = BaseDataShape<usize, TVec<usize>>;
 
 #[derive(Clone, Debug, PartialEq, Hash)]
-pub struct BaseDataShape<D, S>
-where
-    D: DimLike,
-    S: AsRef<[D]> + fmt::Debug,
-{
+pub struct BaseDataShape<D, S> {
     pub fmt: DataFormat,
     pub shape: S,
     pub strides: Vec<D>,
 }
 
+impl<D, S> serde::Serialize for BaseDataShape<D, S>
+where
+    D: DimLike,
+    S: AsRef<[D]> + fmt::Debug
+{
+    fn serialize<Ser>(&self, _serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+    where
+        Ser: serde::Serializer,
+    {
+        unimplemented!();
+    }
+}
+
+impl<'de, D, S> serde::Deserialize<'de> for BaseDataShape<D, S>
+where
+    D: DimLike,
+    S: AsRef<[D]> + fmt::Debug
+{
+    fn deserialize<De>(_deserializer: De) -> Result<Self, De::Error>
+    where
+        De: serde::Deserializer<'de>,
+    {
+        unimplemented!("Serialization unsupported on big-endian platforms");
+    }
+}
+
 impl<D, S> BaseDataShape<D, S>
 where
     D: DimLike,
-    S: AsRef<[D]> + fmt::Debug,
+    S: AsRef<[D]> + fmt::Debug
 {
     #[inline]
     pub fn rank(&self) -> usize {

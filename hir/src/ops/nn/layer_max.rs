@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct LayerHardmax {
     axis: isize,
 }
@@ -71,6 +71,7 @@ impl StatelessOp for LayerHardmax {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for LayerHardmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))

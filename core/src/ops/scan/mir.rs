@@ -2,7 +2,7 @@ use super::lir::{Codegen, CodegenOpParams};
 
 use super::*;
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, Serialize, Deserialize)]
 pub struct Scan {
     pub skip: usize,
     pub body: TypedModel,
@@ -583,6 +583,7 @@ impl StatefullOp for Scan {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Scan {
     as_op!();
 

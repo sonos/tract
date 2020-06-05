@@ -21,7 +21,7 @@ impl_downcast!(Fact);
 dyn_clone::clone_trait_object!(Fact);
 
 /// Streaming information for a streamed tensor.
-#[derive(Debug, Clone, Default, PartialEq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Hash, Serialize, Deserialize)]
 pub struct StreamFact {
     /// Streaming axis
     pub axis: usize,
@@ -34,7 +34,7 @@ pub struct StreamFact {
 /// Tensors in tract can have one streaming dimension. TDim generalize the
 /// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
 /// (sometimes hypothetical) tensor length on the streaming axis.
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ShapeFact {
     shape: TVec<usize>,
     /// Optional information for streaming tensors. None for regular tensors.
@@ -182,7 +182,7 @@ impl fmt::Debug for ShapeFact {
 }
 
 /// Fully determined tensor information for TypedModel.
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct TypedFact {
     /// tensor element type
     pub datum_type: DatumType,

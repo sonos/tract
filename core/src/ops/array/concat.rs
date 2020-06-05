@@ -5,7 +5,7 @@ use crate::pulse::delay::Delay;
 use std::ops::Range;
 
 /// ConcatSlice: fully decluttered Concat equivalent
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub enum ConcatSlice {
     Const(Arc<Tensor>),
     Var,
@@ -27,7 +27,7 @@ impl ConcatSlice {
     }
 }
 
-#[derive(new, Debug, Clone, Hash)]
+#[derive(new, Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct TypedConcat {
     pub axis: usize,
     pub slices: TVec<ConcatSlice>,
@@ -68,6 +68,7 @@ impl Op for TypedConcat {
     canonic!();
 }
 
+#[typetag::serde]
 impl TypedOp for TypedConcat {
     as_op!();
 
@@ -350,7 +351,7 @@ pub fn overwrite_part_of_pulse<T: Datum>(
 }
 
 /// Concat with pulse along concat axis
-#[derive(new, Debug, Clone, Hash)]
+#[derive(new, Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct PulsedSameAxisConcat {
     axis: usize,
     pre_slice: Tensor,
@@ -380,6 +381,7 @@ impl StatefullOp for PulsedSameAxisConcat {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for PulsedSameAxisConcat {
     as_op!();
 

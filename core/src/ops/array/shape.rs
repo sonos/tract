@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct Shape {
     pub dt: DatumType,
 }
@@ -25,6 +25,7 @@ impl StatelessOp for Shape {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Shape {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = inputs[0].shape.iter().collect::<TVec<_>>();

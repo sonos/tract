@@ -23,7 +23,7 @@ use tract_linalg::frame::PackA;
 
 use std::iter::Sum;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct ConvUnary {
     pub pool_spec: PoolSpec,
     pub kernel_fmt: KernelFormat,
@@ -447,6 +447,7 @@ impl StatelessOp for ConvUnary {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for ConvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);

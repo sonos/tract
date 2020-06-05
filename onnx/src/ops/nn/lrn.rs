@@ -1,7 +1,7 @@
 use tract_hir::internal::*;
 use tract_ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Default, Educe)]
+#[derive(Debug, Clone, new, Default, Educe, Serialize, Deserialize)]
 #[educe(Hash)]
 pub struct Lrn {
     #[educe(Hash(method = "hash_f32"))]
@@ -78,6 +78,7 @@ impl InferenceRulesOp for Lrn {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for Lrn {
     as_op!();
 

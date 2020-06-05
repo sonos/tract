@@ -4,7 +4,7 @@ use tract_ndarray::prelude::*;
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct GatherNd {}
 
 tract_linalg::impl_dyn_hash!(GatherNd);
@@ -110,6 +110,7 @@ impl InferenceRulesOp for GatherNd {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for GatherNd {
     as_op!();
 

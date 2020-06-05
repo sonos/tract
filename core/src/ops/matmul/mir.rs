@@ -296,7 +296,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, Serialize, Deserialize)]
 pub struct MatMul {
     pub a_trans: bool,
     pub b_trans: bool,
@@ -348,6 +348,7 @@ impl StatelessOp for MatMul {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for MatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
@@ -406,7 +407,7 @@ impl TypedOp for MatMul {
     as_op!();
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct MatMulUnary {
     a: Arc<Tensor>,
     a_trans: bool,
@@ -456,6 +457,7 @@ impl StatelessOp for MatMulUnary {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for MatMulUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(

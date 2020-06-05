@@ -1,8 +1,8 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Default, PartialEq, Hash)]
-pub struct Slice<D: DimLike + ToDim> {
+#[derive(Debug, Clone, new, Default, PartialEq, Hash, Serialize)]
+pub struct Slice<D> {
     pub axis: usize,
     pub start: D,
     pub end: D,
@@ -46,7 +46,6 @@ impl<D: DimLike + ToDim + Hash> Op for Slice<D> {
             false
         }
     }
-
 }
 
 impl<D: DimLike + ToDim + Hash> StatelessOp for Slice<D> {
@@ -62,7 +61,23 @@ impl<D: DimLike + ToDim + Hash> StatelessOp for Slice<D> {
     }
 }
 
+impl<'de, D: DimLike + ToDim + Hash> serde::Deserialize<'de> for Slice<D> {
+    fn deserialize<DE>(_deserializer: DE) -> Result<Self, DE::Error>
+    where
+        DE: serde::Deserializer<'de>,
+    {
+        unimplemented!();
+    }
+}
+
 impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
+    fn typetag_name(&self) -> &'static str {
+        "Slice"
+    }
+
+    fn typetag_deserialize(&self) {
+    }
+
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape.set_dim(self.axis, (self.end.clone() - &self.start).to_dim())?;
@@ -126,7 +141,7 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
             return Ok(None);
         };
         let mut patch = TypedModelPatch::default();
-//        println!("declutter slice {}", node);
+        //        println!("declutter slice {}", node);
         if let Some(wire) = prec.op().as_typed().unwrap().slice_output(
             model,
             prec,
@@ -137,8 +152,8 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
             end,
         )? {
             patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-//            dbg!(&patch);
-//            dbg!(&self);
+            //            dbg!(&patch);
+            //            dbg!(&self);
             if patch.model.nodes.len() == 2 && patch.model.node(1).op().same_as(self) {
                 return Ok(None);
             }

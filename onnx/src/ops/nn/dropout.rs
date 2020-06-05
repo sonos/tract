@@ -9,7 +9,7 @@ pub fn dropout(
     Ok((Box::new(Dropout::new(node.output.len() == 2)), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct Dropout {
     output_mask: bool,
 }
@@ -64,6 +64,7 @@ impl InferenceRulesOp for Dropout {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for Dropout {
     as_op!();
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {

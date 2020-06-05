@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct MultiBroadcastTo {
     shape: TVec<TDim>,
 }
@@ -34,6 +34,7 @@ impl StatelessOp for MultiBroadcastTo {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for MultiBroadcastTo {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))

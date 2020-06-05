@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub enum PaddingSpec {
     Explicit(TVec<usize>, TVec<usize>),
     Valid,

@@ -17,7 +17,7 @@ macro_rules! r {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash)]
+#[derive(Clone, Copy, Debug, Hash, Serialize, Deserialize)]
 pub enum Reducer {
     Max,
     Min,
@@ -101,7 +101,7 @@ where
     v.scalar_sum()
 }
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, Serialize, Deserialize)]
 pub struct Reduce {
     axes: TVec<usize>,
     reducer: Reducer,
@@ -128,6 +128,7 @@ impl StatelessOp for Reduce {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Reduce {
     as_op!();
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {

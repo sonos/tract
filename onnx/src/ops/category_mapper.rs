@@ -38,10 +38,28 @@ struct CategoryMapper<Src: Datum + Hash + Eq, Dst: Datum + Hash> {
     default: Dst,
 }
 
+impl<Src: Datum + Hash + Eq, Dst: Datum + Hash> serde::Serialize for CategoryMapper<Src, Dst> {
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        unimplemented!("Serialization")
+    }
+}
+
+impl<'de, Src: Datum + Hash + Eq, Dst: Datum + Hash> serde::Deserialize<'de> for CategoryMapper<Src, Dst> {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        unimplemented!("Serialization")
+    }
+}
+
 impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> DynHash for CategoryMapper<Src, Dst> {
-     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-         tract_linalg::hash::dyn_hash(self, hasher)
-     }
+    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
+        tract_linalg::hash::dyn_hash(self, hasher)
+    }
 }
 
 impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> Hash for CategoryMapper<Src, Dst> {
@@ -56,15 +74,13 @@ impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> Op for CategoryMapper<Src,
         format!("CategoryMapper<{:?},{:?}>", Src::datum_type(), Dst::datum_type()).into()
     }
 
-    fn op_families(&self) -> &'static [ &'static str ] {
-        &[ "onnx-ml" ]
+    fn op_families(&self) -> &'static [&'static str] {
+        &["onnx-ml"]
     }
     op_as_typed_op!();
 }
 
-impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> StatelessOp
-    for CategoryMapper<Src, Dst>
-{
+impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> StatelessOp for CategoryMapper<Src, Dst> {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let input = input.to_array_view::<Src>()?;
@@ -95,6 +111,10 @@ impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> InferenceRulesOp
 }
 
 impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> TypedOp for CategoryMapper<Src, Dst> {
+    fn typetag_name(&self) -> &'static str {
+        "CategoryMapper"
+    }
+    fn typetag_deserialize(&self) {}
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(Dst::datum_type(), inputs[0].shape.clone())?))
     }

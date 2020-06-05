@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct Dummy;
 
 impl Op for Dummy {
@@ -21,6 +21,7 @@ impl StatelessOp for Dummy {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Dummy {
     as_op!();
 

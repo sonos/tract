@@ -16,7 +16,7 @@ impl InOut {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 pub enum AxisOp {
     Add(usize),
     Rm(usize),
@@ -207,6 +207,7 @@ impl StatelessOp for AxisOp {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for AxisOp {
     as_op!();
 

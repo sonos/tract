@@ -51,7 +51,7 @@ impl OpState for VariableV2State {
     }
 }
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, Serialize, Deserialize)]
 pub struct VariableV2 {
     container: Option<String>,
     shared_name: Option<String>,
@@ -115,6 +115,7 @@ impl InferenceRulesOp for VariableV2 {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for VariableV2 {
     as_op!();
 
@@ -128,7 +129,7 @@ impl TypedOp for VariableV2 {
 #[derive(Clone, Debug, new)]
 struct AssignState;
 
-#[derive(Clone, Debug, new, Default, Hash)]
+#[derive(Clone, Debug, new, Default, Hash, Serialize, Deserialize)]
 pub struct Assign {
     pub var_id: Option<String>,
 }
@@ -200,6 +201,7 @@ impl InferenceRulesOp for Assign {
     to_typed!();
 }
 
+#[typetag::serde]
 impl TypedOp for Assign {
     as_op!();
 

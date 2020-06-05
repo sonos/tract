@@ -6,7 +6,7 @@ use crate::ops::cnn::pools::PoolSpec;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, Serialize, Deserialize)]
 pub struct MaxPool {
     pub pool_spec: PoolSpec,
     pub with_index_outputs: Option<DatumType>,
@@ -47,6 +47,7 @@ impl StatelessOp for MaxPool {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for MaxPool {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut facts = self.pool_spec.output_facts(inputs)?;
@@ -101,7 +102,7 @@ impl PulsedOp for MaxPool {
 
 tract_linalg::impl_dyn_hash!(MaxPoolFixed);
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, Serialize, Deserialize)]
 pub struct MaxPoolFixed {
     patch: Patch,
     input_shape: DataShape,
@@ -176,6 +177,7 @@ impl StatelessOp for MaxPoolFixed {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for MaxPoolFixed {
     as_op!();
 

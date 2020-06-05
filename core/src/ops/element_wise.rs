@@ -2,6 +2,7 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
+#[typetag::serde(tag = "type")]
 pub trait ElementWiseMiniOp:
     fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
 {
@@ -62,7 +63,7 @@ impl Hash for Box<dyn ElementWiseMiniOp> {
 dyn_clone::clone_trait_object!(ElementWiseMiniOp);
 downcast_rs::impl_downcast!(ElementWiseMiniOp);
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
 
 impl Op for ElementWiseOp {
@@ -98,6 +99,7 @@ impl StatelessOp for ElementWiseOp {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for ElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
@@ -191,7 +193,7 @@ macro_rules! element_wise {
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
-        #[derive(Debug, Clone, Educe)]
+        #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
         #[educe(Hash)]
         pub struct $Op { $( $( $(#[$meta])? pub $var: $var_typ),* )? }
         tract_linalg::impl_dyn_hash!($Op);
@@ -199,6 +201,10 @@ macro_rules! element_wise {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
             }
+            fn typetag_name(&self) -> &'static str {
+                stringify!($Op)
+            }
+            fn typetag_deserialize(&self) {}
             fn eval_in_place(&self, t: &mut Tensor) -> TractResult<()> {
                 $(
                     $(if t.datum_type() == $typ::datum_type() {
@@ -244,7 +250,7 @@ macro_rules! element_wise {
 
 #[macro_export]
 macro_rules! element_wise_oop {
-    ($func:ident, $Op:ident $({$( $(#[$meta: meta])? $var: ident : $var_typ: path),*})?,
+    ($func:ident, $Op:ident $({$( $(#[$meta: meta])* $var: ident : $var_typ: path),*})?,
         $( [$($typ:ident),*] => $typ_dst:ident $f:expr ),*
         $(; cost: $cost:expr )?
         $(; info: $info:expr )?
@@ -252,14 +258,18 @@ macro_rules! element_wise_oop {
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
-        #[derive(Debug, Clone, Educe)]
+        #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
         #[educe(Hash)]
-        pub struct $Op { $( $($(#[$meta])? pub $var: $var_typ),* )? }
+        pub struct $Op { $( $($(#[$meta])* pub $var: $var_typ),* )? }
         tract_linalg::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
             }
+            fn typetag_name(&self) -> &'static str {
+                stringify!($Op)
+            }
+            fn typetag_deserialize(&self) {}
             fn output_type(&self, input_type: DatumType) -> Option<DatumType> {
                 $(
                     $(if input_type == $typ::datum_type() {

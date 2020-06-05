@@ -61,7 +61,7 @@ impl OpState for DelayState {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Delay {
     datum_type: DatumType,
     buffer_shape: TVec<usize>,
@@ -111,6 +111,7 @@ impl StatefullOp for Delay {
     }
 }
 
+#[typetag::serde]
 impl TypedOp for Delay {
     as_op!();
 
