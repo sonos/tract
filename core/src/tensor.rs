@@ -490,6 +490,8 @@ impl Tensor {
             (U8, I32) => self.cast::<u8, i32>()?,
             (U16, I32) => self.cast::<u16, i32>()?,
 
+            (U8, I64) => self.cast::<u8, i64>()?,
+
             (F32, Bool) => self.cast::<f32, bool>()?,
             (F32, I8) => self.cast::<f32, i8>()?,
             (F32, I16) => self.cast::<f32, i16>()?,
