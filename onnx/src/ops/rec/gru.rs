@@ -123,14 +123,49 @@ impl Expansion for GRU {
         Ok(self.optional_y_output.is_some() as usize + self.optional_y_h_output.is_some() as usize)
     }
 
-    #[allow(non_snake_case)]
     fn wire(
         &self,
         prefix: &str,
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use ops::{array, math, matmul, scan};
+        use tract_hir::tract_core::ops::array::TypedConcat;
+        let fore = self.wire_one_side(prefix, target, inputs, 0)?;
+        let w_fact = target.outlet_fact(inputs[1])?;
+        if w_fact.shape.dim(0) == 2.into() {
+            let back = self.wire_one_side(&format!("{}.back", prefix), target, inputs, 1)?;
+            let mut outputs = tvec!(0.into(); self.nboutputs()?);
+            if let Some(ix) = self.optional_y_output {
+                outputs[ix] = target.wire_node(
+                    format!("{}.merge_y_output", prefix),
+                    TypedConcat::concat_vars(1, 2),
+                    &[fore[ix], back[ix]],
+                )?[0];
+            }
+            if let Some(ix) = self.optional_y_h_output {
+                outputs[ix] = target.wire_node(
+                    format!("{}.merge_y_h_output", prefix),
+                    TypedConcat::concat_vars(0, 2),
+                    &[fore[ix], back[ix]],
+                )?[0];
+            }
+            Ok(outputs)
+        } else {
+            Ok(fore)
+        }
+    }
+}
+
+impl GRU {
+    #[allow(non_snake_case)]
+    fn wire_one_side(
+        &self,
+        prefix: &str,
+        target: &mut TypedModel,
+        inputs: &[OutletId],
+        dir: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        use tract_hir::ops::{array, math, matmul, scan};
 
         let x_fact = target.outlet_fact(inputs[0])?.clone();
         let r_fact = target.outlet_fact(inputs[2])?;
@@ -173,21 +208,24 @@ impl Expansion for GRU {
 
         // W: onnx interface: [num_directions, 3*hidden_size, input_size]
         // scan interfaces: [3*hidden_size, input_size]
-        target_wire!(w = AxisOp::Rm(0), inputs[1]);
+        target_wire!(w_dir = array::Slice::new(0, dir, dir + 1), inputs[1]);
+        target_wire!(w = AxisOp::Rm(0), w_dir);
         outer_inputs.push(w);
         input_mapping.push(scan::InputMapping::Full { slot: 1 });
         let W = body.add_source("w", target.outlet_fact(w)?.clone())?.into();
 
         // R: onnx interface: [num_directions, 3*hidden_size, hidden_size]
         // scan interfaces: [3*hidden_size, hidden_size]
-        target_wire!(r = AxisOp::Rm(0), inputs[2]);
+        target_wire!(r_dir = array::Slice::new(0, dir, dir + 1), inputs[2]);
+        target_wire!(r = AxisOp::Rm(0), r_dir);
         outer_inputs.push(r);
         input_mapping.push(scan::InputMapping::Full { slot: 2 });
         let R = body.add_source("r", target.outlet_fact(r)?.clone())?.into();
 
         // B: onnx interface: [num_directions, 6*hidden_size]
         let b = if let Some(slot) = self.optional_bias_input {
-            target_wire!(b = AxisOp::Rm(0), inputs[slot]);
+            target_wire!(b_dir = array::Slice::new(0, dir, dir + 1), inputs[slot]);
+            target_wire!(b = AxisOp::Rm(0), b_dir);
             outer_inputs.push(b);
             input_mapping.push(scan::InputMapping::Full { slot });
             let b = body.add_source("b", target.outlet_fact(b)?.clone())?.into();
@@ -309,14 +347,14 @@ impl Expansion for GRU {
                 input_mapping,
                 vec![output_mapping],
                 self.optional_sequence_lens_input,
-                false,
+                dir != 0,
             )?,
             &outer_inputs,
         )?;
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
-            target_wire!(y = AxisOp::Add(0), scan_outputs[slot]);
+            target_wire!(y = AxisOp::Add(1), scan_outputs[slot]);
             result.push(y);
         }
         if let Some(slot) = self.optional_y_h_output {
@@ -326,4 +364,3 @@ impl Expansion for GRU {
         Ok(result)
     }
 }
-
