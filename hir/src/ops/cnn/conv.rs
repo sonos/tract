@@ -31,7 +31,6 @@ pub struct Conv {
     pub bias_input: Option<usize>,
 
     pub override_output_datum_type: Option<DatumType>,
-    pub override_bias_datum_type: Option<DatumType>,
 }
 
 tract_linalg::impl_dyn_hash!(Conv);
@@ -79,10 +78,6 @@ impl Conv {
 
     pub fn k_zero_point_input(self, input: usize) -> Conv {
         Conv { k_zero_point_input: Some(input), ..self }
-    }
-
-    pub fn override_output_datum_type(self, override_output_datum_type: DatumType) -> Conv {
-        Conv { override_output_datum_type: Some(override_output_datum_type), ..self }
     }
 
     pub fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[usize]) -> TractResult<TVec<D>> {
@@ -258,12 +253,8 @@ impl InferenceRulesOp for Conv {
             s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         }
         if let Some(bias) = self.bias_input {
+            // bias datum type is ill-defined. no check
             s.equals(&inputs[bias].rank, 1)?;
-            if let Some(dt) = self.override_bias_datum_type {
-                s.equals(&inputs[bias].datum_type, dt)?;
-            } else {
-                s.equals(&inputs[bias].datum_type, &outputs[0].datum_type)?;
-            }
             s.given(&k_input.rank, move |s, krank| {
                 let filter_o = match self.kernel_fmt {
                     KernelFormat::OIHW => &k_input.shape[0],
