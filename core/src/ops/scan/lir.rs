@@ -101,7 +101,7 @@ impl MutableState {
             for i in 0..chunk_dim {
                 if chunk_dim * chunk_ix + i < full_len {
                     t.index_axis_mut(Axis(axis), chunk_dim - i - 1).assign(
-                        &view.index_axis(Axis(axis), full_len - (chunk_ix * chunk_dim + i)),
+                        &view.index_axis(Axis(axis), full_len - 1 - (chunk_ix * chunk_dim + i)),
                     );
                 }
             }
