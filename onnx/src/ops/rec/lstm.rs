@@ -476,7 +476,7 @@ impl LSTM {
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
-            target_wire!(y = AxisOp::Add(0), scan_outputs[slot]);
+            target_wire!(y = AxisOp::Add(1), scan_outputs[slot]);
             result.push(y);
         }
         if let Some(slot) = self.optional_y_h_output {
