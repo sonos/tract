@@ -6,6 +6,9 @@ use crate::CliResult;
 use tract_hir::internal::*;
 
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
+    if size.len() == 0 {
+        return Ok(InferenceFact::default())
+    }
     let splits = size.split("x").collect::<Vec<_>>();
 
     if splits.len() < 1 {
