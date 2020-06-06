@@ -179,7 +179,6 @@ pub fn conv_qlinear(
     if node.input.len() == 9 {
         op.bias_input = Some(8);
     }
-    op.override_bias_datum_type = Some(i32::datum_type());
     Ok((Box::new(op), vec![]))
 }
 
