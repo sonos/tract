@@ -59,7 +59,7 @@ impl TypedPass for OpOptim {
             for id in new.eval_order()? {
                 let reduced = {
                     let node = &new.nodes()[id];
-                    (self.1)(node.op.as_ref(), model, node)
+                    (self.1)(node.op.as_ref(), &new, node)
                         .chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
