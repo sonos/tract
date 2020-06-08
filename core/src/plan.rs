@@ -107,33 +107,6 @@ where
     _phantom: PhantomData<(M, F, O)>,
 }
 
-/*
-impl<F, O, M, P> Clone for SimpleState<F, O, M, P>
-where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<ModelImpl<F, O>> + Hash,
-    P: Borrow<SimplePlan<F, O, M>> + Clone,
-{
-    fn clone(&self) -> SimpleState<F, O, M, P> {
-        let states = self
-            .states
-            .iter()
-            .map(|opt: &Option<Box<dyn OpState>>| -> Option<Box<dyn OpState>> {
-                opt.as_ref().map(|b| ::dyn_clone::clone_box(&**b))
-            })
-            .collect();
-        SimpleState {
-            plans: self.plans.clone(),
-            states,
-            session_state: SessionState::default(),
-            values: self.values.clone(),
-            _phantom: PhantomData,
-        }
-    }
-}
-*/
-
 impl<F, O, M, P> SimpleState<F, O, M, P>
 where
     F: Fact + Hash + Clone + 'static,
@@ -283,21 +256,25 @@ where
     }
 
     pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> TractResult<()> {
-        let SimpleState { ref plan, ref mut session_state, .. } = self;
-        plan.borrow().model().input_outlets()?.iter().zip(inputs).for_each(|(input, t)| {
-            session_state.inputs.insert(input.node, t.into());
-        });
+        for (ix, t) in inputs.into_iter().enumerate() {
+            self.set_input(ix, t)?
+        }
         Ok(())
     }
 
     pub fn set_input(&mut self, input: usize, t: Tensor) -> TractResult<()> {
-        let id = self
+        let outlet: OutletId = *self
             .model()
             .input_outlets()?
             .get(input)
-            .ok_or_else(|| format!("Invalid input id for model ({}).", input))?
-            .node;
-        self.session_state.inputs.insert(id, t.into());
+            .ok_or_else(|| format!("Invalid input id for model ({}).", input))?;
+        self.plan
+            .borrow()
+            .model()
+            .outlet_fact(outlet)?
+            .matches(&t)
+            .chain_err(|| format!("Setting input {}", input))?;
+        self.session_state.inputs.insert(outlet.node, t.into());
         Ok(())
     }
 
@@ -306,10 +283,7 @@ where
         let mut v = vec![];
         for o in plan.borrow().model().output_outlets()?.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
-                format!(
-                    "Outputs of {:?} are not computed",
-                    &plan.borrow().model().nodes()[o.node]
-                )
+                format!("Outputs of {:?} are not computed", &plan.borrow().model().nodes()[o.node])
             })?;
             v.push(vs[o.slot].clone())
         }
