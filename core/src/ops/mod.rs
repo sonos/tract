@@ -54,7 +54,7 @@ pub enum Cost {
 
 use crate::internal::*;
 
-pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
+pub trait OpState: fmt::Debug + Send {
     fn eval(
         &mut self,
         session: &mut SessionState,
