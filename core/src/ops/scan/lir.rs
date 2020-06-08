@@ -69,13 +69,13 @@ impl StatefullOp for Codegen {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct State {
     op: Arc<CodegenOpParams>,
     mutable: MutableState,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct MutableState {
     position: usize,
     hidden_state: TVec<Tensor>,
