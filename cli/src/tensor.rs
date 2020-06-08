@@ -27,7 +27,6 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
         (Some(datum_type), &splits[0..splits.len() - 1])
     };
 
-    dbg!(size);
     let shape = ShapeFactoid::closed(
         shape
             .iter()
