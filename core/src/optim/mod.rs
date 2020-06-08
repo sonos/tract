@@ -17,17 +17,38 @@ pub trait TypedPass: Debug + Send + Sync {
 }
 
 pub fn declutter() -> Vec<Box<dyn TypedPass>> {
-    vec![Box::new(PropConst), Box::new(DeclutterOps), Box::new(PushSplitDown), Box::new(ChangeAxes)]
+    vec![
+        Box::new(PropConst),
+        Box::new(OpOptim("declutter", TypedOp::declutter)),
+        Box::new(PushSplitDown),
+        Box::new(ChangeAxes),
+    ]
 }
 
 pub fn codegen() -> Vec<Box<dyn TypedPass>> {
-    vec![Box::new(CodegenOps), Box::new(PushSplitDown), Box::new(FuseOps)]
+    vec![
+        Box::new(OpOptim("codegen", TypedOp::codegen)),
+        Box::new(PushSplitDown),
+        Box::new(OpOptim("fuse", TypedOp::fuse)),
+    ]
 }
 
-#[derive(Debug)]
-pub struct DeclutterOps;
+pub struct OpOptim(
+    &'static str,
+    fn(
+        op: &dyn TypedOp,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>>,
+);
 
-impl TypedPass for DeclutterOps {
+impl std::fmt::Debug for OpOptim {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.0.fmt(fmt)
+    }
+}
+
+impl TypedPass for OpOptim {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut hashset = std::collections::HashSet::new();
         let initial = model.signature();
@@ -38,8 +59,7 @@ impl TypedPass for DeclutterOps {
             for id in new.eval_order()? {
                 let reduced = {
                     let node = &new.nodes()[id];
-                    node.op
-                        .declutter(&new, node)
+                    (self.1)(node.op.as_ref(), model, node)
                         .chain_err(|| format!("{:?} node {}", self, node))?
                 };
                 if let Some(red) = reduced {
@@ -61,71 +81,5 @@ impl TypedPass for DeclutterOps {
         }
         std::mem::swap(model, &mut new);
         Ok(model.signature() != initial)
-    }
-}
-
-#[derive(Debug)]
-pub struct CodegenOps;
-
-impl TypedPass for CodegenOps {
-    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
-        let mut done_something = false;
-        loop {
-            let mut done_something_this_time = false;
-            for id in model.eval_order()? {
-                let reduced = {
-                    let node = &model.nodes()[id];
-                    debug!("Codegen {}", node);
-                    node.op
-                        .codegen(model, node)
-                        .chain_err(|| format!("{:?} node {}", self, node))?
-                };
-                if let Some(red) = reduced {
-                    debug!("Apply a model patch for {:?} {}", self, model.nodes()[id]);
-                    red.apply(model)?;
-                    if cfg!(debug_assertions) {
-                        model.check_edges()?;
-                    }
-                    done_something_this_time = true
-                }
-            }
-            done_something = done_something || done_something_this_time;
-            if !done_something_this_time {
-                break;
-            }
-        }
-        Ok(done_something)
-    }
-}
-
-#[derive(Debug)]
-pub struct FuseOps;
-
-impl TypedPass for FuseOps {
-    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
-        let mut done_something = false;
-        loop {
-            let mut done_something_this_time = false;
-            for id in model.eval_order()? {
-                let reduced = {
-                    let node = &model.nodes()[id];
-                    debug!("Fuse {}", node);
-                    node.op.fuse(model, node).chain_err(|| format!("{:?} node {}", self, node))?
-                };
-                if let Some(red) = reduced {
-                    debug!("Apply a model patch for {:?} {}", self, model.nodes()[id]);
-                    red.apply(model)?;
-                    if cfg!(debug_assertions) {
-                        model.check_edges()?;
-                    }
-                    done_something_this_time = true
-                }
-            }
-            done_something = done_something || done_something_this_time;
-            if !done_something_this_time {
-                break;
-            }
-        }
-        Ok(done_something)
     }
 }
