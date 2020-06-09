@@ -8,7 +8,10 @@ pub enum InOut {
 }
 
 impl InOut {
-    pub fn as_outlet<F: Clone + Fact + Hash, O: Clone + Hash>(&self, node: &BaseNode<F, O>) -> OutletId {
+    pub fn as_outlet<F: Clone + Fact + Hash, O: Clone + Hash>(
+        &self,
+        node: &BaseNode<F, O>,
+    ) -> OutletId {
         match self {
             InOut::In(ix) => node.inputs[*ix],
             InOut::Out(ix) => OutletId::new(node.id, *ix),
@@ -92,7 +95,7 @@ impl AxisOp {
         match self {
             AxisOp::Add(ix) => shape.insert_axis(*ix),
             AxisOp::Rm(ix) => {
-                debug_assert_eq!(shape.dim(*ix), 1.to_dim());
+                debug_assert_eq!(shape.dim(*ix), 1.to_dim(), "Removing a non-trivial axis.");
                 shape.remove_axis(*ix)
             }
             AxisOp::Permute(perm) => {
@@ -369,7 +372,8 @@ pub fn change_axes(
         if let Some(new_op) = changed_ops.remove(&node_id) {
             model.node_mut(node_id).op = new_op;
         }
-        let output_facts = model.node(node_id).op.output_facts(&model.node_input_facts(node_id)?)?;
+        let output_facts =
+            model.node(node_id).op.output_facts(&model.node_input_facts(node_id)?)?;
         for (ix, f) in output_facts.into_iter().enumerate() {
             model.set_outlet_fact(OutletId::new(node_id, ix), f)?;
         }
@@ -537,5 +541,130 @@ mod test {
         let op = Rm(1);
         assert_eq!(op.transform_change(&change).unwrap(), Permute(tvec!(0, 1)));
         assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+    /*
+    use proptest::proptest;
+    use proptest::test_runner::TestCaseResult;
+    use proptest::*;
+    */
+
+    use AxisOp::*;
+
+    #[derive(Debug)]
+    struct Problem {
+        input: TVec<usize>,
+        ops: TVec<AxisOp>,
+    }
+
+    impl Arbitrary for AxisOp {
+        type Parameters = TVec<usize>;
+        type Strategy = BoxedStrategy<AxisOp>;
+        fn arbitrary_with(shape: TVec<usize>) -> Self::Strategy {
+            let mut ops: BoxedStrategy<AxisOp> =
+                (0usize..shape.len() + 1).prop_map(|ax| Add(ax)).boxed();
+            if shape.len() > 1 {
+                ops = ops
+                    .prop_union(
+                        Just((0..shape.len()).collect::<Vec<usize>>())
+                            .prop_shuffle()
+                            .prop_filter("trivial permutation", |p| {
+                                !p.windows(2).all(|w| w[0] < w[1])
+                            })
+                            .prop_map(|p| Permute(p.into()))
+                            .boxed(),
+                    )
+                    .boxed();
+            }
+            let rms =
+                (0..shape.len()).filter(|&ax| shape[ax] == 1).map(|ax| Rm(ax)).collect::<Vec<_>>();
+            if rms.len() > 0 {
+                ops = ops
+                    .prop_union((0..rms.len()).prop_map(move |rm| rms[rm].clone()).boxed())
+                    .boxed()
+            }
+            ops
+        }
+    }
+
+    impl Arbitrary for Problem {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Problem>;
+        fn arbitrary_with(_args: ()) -> Self::Strategy {
+            let input = proptest::collection::vec(1usize..4, 1usize..4);
+            fn tail(len: usize, shape: TVec<usize>) -> BoxedStrategy<TVec<AxisOp>> {
+                if len == 0 {
+                    Just(tvec!()).boxed()
+                } else {
+                    AxisOp::arbitrary_with(shape.clone().into())
+                        .prop_flat_map(move |op| {
+                            let mut shape = shape.clone();
+                            op.change_shape_array(&mut shape);
+                            tail(len - 1, shape.clone()).prop_map(move |mut t| {
+                                t.insert(0, op.clone());
+                                t
+                            })
+                        })
+                        .boxed()
+                }
+            }
+            (input, 1usize..=5)
+                .prop_flat_map(|(input, len)| (Just(input.clone()), tail(len, input.into())))
+                .prop_map(|(input, ops)| Problem { input: input.into(), ops })
+                .boxed()
+        }
+    }
+
+    impl Problem {
+        pub fn model(&self) -> TractResult<TypedModel> {
+            let mut model = TypedModel::default();
+            let mut wire = model
+                .add_source("source", TypedFact::dt_shape(i64::datum_type(), &*self.input)?)?;
+            for (ix, op) in self.ops.iter().enumerate() {
+                wire = model.wire_node(format!("op_{}", ix), op.clone(), &[wire])?[0];
+            }
+            model.set_output_outlets(&[wire])?;
+            Ok(model)
+        }
+
+        fn input(&self) -> TractResult<Tensor> {
+            unsafe {
+                let mut t = Tensor::uninitialized::<i64>(&*self.input)?;
+                for i in 0..t.len() {
+                    t.as_slice_mut().unwrap()[i] = i as i64;
+                }
+                Ok(t)
+            }
+        }
+
+        fn check(&self) -> TractResult<()> {
+            crate::setup_test_logger();
+            let input = self.input()?;
+            let model = self.model()?;
+            dbg!(&model);
+            let raw = model.into_runnable()?.run(tvec!(input.clone()))?;
+            let optimized = self.model()?.declutter()?;
+            dbg!(&optimized);
+            let opt = optimized.into_runnable()?.run(tvec!(input))?;
+            opt[0].close_enough(&raw[0], false)
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn axis_ops(pb in any::<Problem>()) {
+            pb.check()?
+        }
+    }
+
+    #[test]
+    fn add_0_permute_1_0() {
+        let pb = Problem { input: tvec![2], ops: tvec![Add(0), Permute(tvec![1, 0])] };
+        pb.check().unwrap();
     }
 }
