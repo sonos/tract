@@ -43,67 +43,51 @@ impl AxisOp {
         }
     }
 
-    pub fn transform_change(&self, change: &AxisOp) -> Option<AxisOp> {
-        let change = match change {
-            Add(add) => Add(match self {
-                Add(me) => add + (add >= me) as usize,
-                Rm(rm) => add - (add > rm) as usize,
-                Permute(_) => {
-                    return None;
-                }
-            }),
-            Rm(rm) => Rm(match self {
-                Add(add) => rm + (add <= rm) as usize,
-                Rm(op) => rm - (op <= rm) as usize,
-                Permute(perm) => perm.iter().position(|d| d == rm).unwrap(),
-            }),
-            Permute(axes) => Permute(match self {
-                Add(add) => {
-                    let mut axes =
-                        axes.iter().map(|d| d + (d >= add) as usize).collect::<TVec<_>>();
-                    axes.insert(*add, *add);
-                    axes
-                }
-                Rm(rm) => axes
-                    .iter()
-                    .filter_map(|d| if d == rm { None } else { Some(d - (d > rm) as usize) })
-                    .collect(),
-                Permute(perm) => (0..perm.len()).collect(),
-            }),
-        };
-        Some(change)
-    }
-
-    pub fn transform_op(&self, op: &AxisOp) -> Option<AxisOp> {
-        let op = match op {
-            Add(other) => Add(match self {
-                Add(me) => other + (me < other) as usize,
-                Rm(me) => other - (me < other) as usize,
-                Permute(_) => return None,
-            }),
-            Rm(other) => Rm(match self {
-                Rm(me) => other - (me < other) as usize,
-                Add(me) => other + (me <= other) as usize,
-                Permute(perm) => perm.iter().position(|it| it == other).unwrap(),
-            }),
-            Permute(perm) => Permute(match self {
-                Add(me) => {
-                    let mut perm =
-                        perm.iter().map(|ax| ax + (ax >= me) as usize).collect::<TVec<_>>();
-                    perm.insert(*me, *me);
-                    perm
-                }
-                Rm(rm) => perm
-                    .iter()
-                    .filter_map(|d| if d == rm { None } else { Some(d - (d > rm) as usize) })
-                    .collect(),
-                Permute(other) => {
-                    let other = Self::recip_perm(other);
-                    perm.iter().map(|d| other[*d]).collect()
-                }
-            }),
-        };
-        Some(op)
+    // if sucessful return Some()
+    // first item is the Op we want to be replaced by. if none, we are now identity.
+    // second item is the change to propagate. if none, the output is not
+    // changed
+    pub fn merge_incoming_change(
+        &self,
+        change: &AxisOp,
+    ) -> Option<(Option<AxisOp>, Option<AxisOp>)> {
+        match (self, change) {
+            (Add(op), Add(c)) => {
+                Some((Some(Add(op + (c < op) as usize)), Some(Add(c + (c >= op) as usize))))
+            }
+            (Add(op), Rm(c)) => {
+                Some((Some(Add(op - (c < op) as usize)), Some(Rm(c + (c >= op) as usize))))
+            }
+            (Rm(op), Add(c)) => {
+                Some((Some(Rm(op + (c <= op) as usize)), Some(Add(c - (op < c) as usize))))
+            }
+            (Rm(op), Rm(c)) => {
+                Some((Some(Rm(op - (c < op) as usize)), Some(Rm(c - (op <= c) as usize))))
+            }
+            (Add(_), Permute(_)) => None,
+            (Permute(_), Add(_)) => None,
+            (Rm(op), Permute(c)) => Some((
+                Some(Rm(c.iter().position(|it| it == op).unwrap())),
+                Some(Permute(
+                    c.iter()
+                        .filter_map(|d| if d == op { None } else { Some(d - (d > op) as usize) })
+                        .collect(),
+                )),
+            )),
+            (Permute(op), Rm(c)) => Some((
+                Some(Permute(
+                    op.iter()
+                        .filter_map(|d| if d == c { None } else { Some(d - (d > c) as usize) })
+                        .collect(),
+                )),
+                Some(Rm(op.iter().position(|d| d == c).unwrap())),
+            )),
+            (Permute(op), Permute(c)) => {
+                let c_r = Self::recip_perm(c);
+                let new_op = Permute(op.iter().map(|d| c_r[*d]).collect());
+                Some((Some(new_op), None))
+            }
+        }
     }
 
     pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) {
@@ -305,26 +289,28 @@ impl TypedOp for AxisOp {
             trace!("  Change {:?} from {:?} cancelling {:?}", &change, io, &self);
             AxisChangeConsequence { substitute_op: Some(Box::new(Identity)), wire_changes: tvec!() }
         } else {
-            let outgoing_change =
-                if let Some(oc) = self.transform_change(&change) { oc } else { return Ok(None) };
-            let new_me =
-                if let Some(op) = change.transform_op(&self) { op } else { return Ok(None) };
+            let (new_op, new_change) = if let Some(pair) = self.merge_incoming_change(change) {
+                pair
+            } else {
+                return Ok(None);
+            };
             trace!(
                 "  Change:{:?} self:{:?} -> change:{:?} op:{:?}",
                 change,
                 self,
-                outgoing_change,
-                new_me
+                new_change,
+                new_op
             );
-            let substitute_op = if &new_me != self { Some(Box::new(new_me) as _) } else { None };
+            let substitute_op: Box<dyn TypedOp> =
+                if let Some(o) = new_op { Box::new(o) as _ } else { Box::new(Identity) };
             let mut wire_changes = tvec!();
             if !change.is_noop() {
                 wire_changes.push((InOut::In(0), change.clone()))
             }
-            if !outgoing_change.is_noop() {
-                wire_changes.push((InOut::Out(0), outgoing_change))
+            if let Some(new_change) = new_change {
+                wire_changes.push((InOut::Out(0), new_change))
             }
-            AxisChangeConsequence { substitute_op, wire_changes }
+            AxisChangeConsequence { substitute_op: Some(substitute_op), wire_changes }
         };
         Ok(Some(op))
     }
@@ -441,6 +427,10 @@ pub fn change_axes(
 mod test {
     use super::*;
 
+    macro_rules! p {
+        ($($d:expr),*) => { Permute(tvec!($($d),*)) }
+    }
+
     // ADD-ADD
 
     //                          Op
@@ -451,8 +441,7 @@ mod test {
     pub fn transform_op_add_0_add_0() {
         let change = Add(0);
         let op = Add(0);
-        assert_eq!(op.transform_change(&change).unwrap(), Add(1));
-        assert_eq!(change.transform_op(&op).unwrap(), Add(0));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Add(0)), Some(Add(1)))));
     }
 
     //                          Op
@@ -463,8 +452,7 @@ mod test {
     pub fn transform_op_add_0_add_1() {
         let change = Add(0);
         let op = Add(1);
-        assert_eq!(op.transform_change(&change).unwrap(), Add(0));
-        assert_eq!(change.transform_op(&op).unwrap(), Add(2));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Add(2)), Some(Add(0)))));
     }
 
     //                          Op
@@ -475,8 +463,7 @@ mod test {
     pub fn transform_op_add_1_add_0() {
         let change = Add(1);
         let op = Add(0);
-        assert_eq!(op.transform_change(&change).unwrap(), Add(2));
-        assert_eq!(change.transform_op(&op).unwrap(), Add(0));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Add(0)), Some(Add(2)))));
     }
 
     //                          Op
@@ -487,8 +474,7 @@ mod test {
     pub fn transform_op_rm_0_rm_1() {
         let change = Rm(0);
         let op = Rm(1);
-        assert_eq!(op.transform_change(&change).unwrap(), Rm(0));
-        assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(0)), Some(Rm(0)))));
     }
 
     //                          Op
@@ -499,8 +485,7 @@ mod test {
     pub fn transform_op_rm_1_rm_0() {
         let change = Rm(1);
         let op = Rm(0);
-        assert_eq!(op.transform_change(&change).unwrap(), Rm(0));
-        assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(0)), Some(Rm(0)))));
     }
 
     // ADD - RM
@@ -513,8 +498,7 @@ mod test {
     pub fn transform_op_add_0_rm_0() {
         let change = Add(0);
         let op = Rm(0);
-        assert_eq!(op.transform_change(&change).unwrap(), Add(0));
-        assert_eq!(change.transform_op(&op).unwrap(), Rm(1));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(1)), Some(Add(0)))));
     }
 
     //                          Op
@@ -525,8 +509,7 @@ mod test {
     pub fn transform_op_add_0_rm_1() {
         let change = Add(0);
         let op = Rm(1);
-        assert_eq!(op.transform_change(&change).unwrap(), Add(0));
-        assert_eq!(change.transform_op(&op).unwrap(), Rm(2));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(2)), Some(Add(0)))));
     }
 
     //                          Op
@@ -537,8 +520,7 @@ mod test {
     pub fn transform_op_add_1_rm_0() {
         let change = Add(1);
         let op = Rm(0);
-        assert_eq!(op.transform_change(&change).unwrap(), Add(0));
-        assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(0)), Some(Add(0)))));
     }
 
     // RM - ADD
@@ -551,8 +533,7 @@ mod test {
     pub fn transform_op_rm_1_add_0() {
         let change = Rm(1);
         let op = Add(0);
-        assert_eq!(op.transform_change(&change).unwrap(), Rm(2));
-        assert_eq!(change.transform_op(&op).unwrap(), Add(0));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Add(0)), Some(Rm(2)))));
     }
 
     //                          Op
@@ -563,41 +544,10 @@ mod test {
     pub fn transform_op_rm_0_add_1() {
         let change = Rm(0);
         let op = Add(1);
-        assert_eq!(op.transform_change(&change).unwrap(), Rm(0));
-        assert_eq!(change.transform_op(&op).unwrap(), Add(0));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Add(0)), Some(Rm(0)))));
     }
 
     // PERMUTE ADD
-
-    /*
-    //                        Op
-    //         a     ------|Perm(0)|----->          a
-    //   Add(1)                                          Add(1)
-    //         a,b   ------|Perm(0,1)|----->        a,b
-    #[test]
-    pub fn transform_permute_0_add_1() {
-        let change = Permute(tvec!(0));
-        let op = Add(1);
-        assert_eq!(op.transform_change(&change).unwrap(), Permute(tvec!(0, 1)));
-        assert_eq!(change.transform_op(&op).unwrap(), Add(1));
-    }
-    */
-
-    /*
-    //                          Op
-    //         a,b     ------|Add(1)|----->        a,X,b
-    //   Perm(1,0)                                          Perm(2,1,0)
-    //         b,a     ------|Add(1)|----->        b,X,a
-    #[test]
-    pub fn transform_permute_10_add_1() {
-        let change = Permute(tvec!(1, 0));
-        let op = Add(1);
-        assert_eq!(op.transform_change(&change).unwrap(), Permute(tvec!(2, 1, 0)));
-        assert_eq!(change.transform_op(&op).unwrap(), Add(1));
-    }
-    */
-
-    // PERMUTE RM
 
     //                           Op
     //         a,b,c     ------|Rm(1)|----->        a,c
@@ -607,8 +557,7 @@ mod test {
     pub fn transform_permute_102_rm_1() {
         let change = Permute(tvec!(1, 0, 2));
         let op = Rm(1);
-        assert_eq!(op.transform_change(&change).unwrap(), Permute(tvec!(0, 1)));
-        assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(0)), Some(p!(0, 1)))));
     }
 
     //                           Op
@@ -619,8 +568,7 @@ mod test {
     pub fn transform_permute_120_rm_0() {
         let change = Permute(tvec!(1, 2, 0));
         let op = Rm(0);
-        assert_eq!(op.transform_change(&change).unwrap(), Permute(tvec!(0, 1)));
-        assert_eq!(change.transform_op(&op).unwrap(), Rm(2));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(2)), Some(p!(0, 1)))));
     }
 
     //                           Op
@@ -631,8 +579,7 @@ mod test {
     pub fn transform_permute_120_rm_1() {
         let change = Permute(tvec!(1, 2, 0));
         let op = Rm(1);
-        assert_eq!(op.transform_change(&change).unwrap(), Permute(tvec!(1, 0)));
-        assert_eq!(change.transform_op(&op).unwrap(), Rm(0));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(0)), Some(p!(1, 0)))));
     }
 
     // RM PERMUTE
@@ -645,8 +592,7 @@ mod test {
     pub fn transform_rm_0_permute_201() {
         let change = Rm(0);
         let op = Permute(tvec!(2, 0, 1));
-        assert_eq!(op.transform_change(&change).unwrap(), Rm(1));
-        assert_eq!(change.transform_op(&op).unwrap(), Permute(tvec!(1, 0)));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(p!(1, 0)), Some(Rm(1)))));
     }
 }
 
@@ -839,7 +785,7 @@ mod proptests {
     }
 
     #[test]
-    fn foo() {
+    fn add_2_perm_120_perm_120() {
         let pb = Problem {
             input: tvec![3, 2],
             ops: tvec![Add(2), Permute(tvec!(1, 2, 0)), Permute(tvec!(1, 2, 0))],
