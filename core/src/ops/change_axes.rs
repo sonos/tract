@@ -261,14 +261,12 @@ impl TypedOp for AxisOp {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let op = if let InOut::Out(0) = io {
-            trace!("  reciprocating {:?} as {:?}", self, self.recip());
             let more =
                 if let Some(more) = self.recip().change_axes(model, node, InOut::In(0), &change)? {
                     more
                 } else {
                     return Ok(None);
                 };
-            trace!("  returned {:?}", more);
             AxisChangeConsequence {
                 substitute_op: more.substitute_op.map(|op| {
                     if let Some(op) = op.as_op().downcast_ref::<AxisOp>() {
@@ -286,7 +284,6 @@ impl TypedOp for AxisOp {
                     .collect(),
             }
         } else if change == self {
-            trace!("  Change {:?} from {:?} cancelling {:?}", &change, io, &self);
             AxisChangeConsequence { substitute_op: Some(Box::new(Identity)), wire_changes: tvec!() }
         } else {
             let (new_op, new_change) = if let Some(pair) = self.merge_incoming_change(change) {
@@ -347,7 +344,7 @@ pub fn change_axes(
     locked: &[OutletId],
     bounds: &[TVec<OutletId>],
 ) -> TractResult<Option<HashMap<OutletId, AxisOp>>> {
-    debug!("Trying to apply change {:?}", change);
+    trace!("Trying to apply change {:?}", change);
     let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires = HashMap::new();
     changed_wires.insert(change.outlet, change.op.clone());
@@ -368,17 +365,14 @@ pub fn change_axes(
                 nodes.push((inlet.node, InOut::In(inlet.slot)));
             }
             for (node_id, io) in nodes {
-                trace!("  node: {:?}", (node_id, io));
                 if Some(node_id) == emitter {
                     continue;
                 }
-                trace!("  yep");
                 let node = model.node(node_id);
                 let more = node
                     .op
                     .change_axes(model, node, io, &c.op)
                     .chain_err(|| format!("Propagating {:?} to node {}", change, node))?;
-                trace!("    more: {:?}", more);
                 if more.is_none() {
                     debug!("    Propagation of {:?} blocked by {}", change, node);
                     return Ok(None);
@@ -405,11 +399,9 @@ pub fn change_axes(
             }
         }
     }
-    trace!("Applying {:?}", change);
-    trace!("  changed_ops: {:?}", changed_ops);
+    debug!("Applying {:?}: {:?}", change, changed_ops);
     for node_id in model.eval_order()? {
         if let Some(new_op) = changed_ops.remove(&node_id) {
-            trace!("{} -> {:?}", node_id, new_op);
             model.node_mut(node_id).op = new_op;
         }
         let output_facts =
@@ -418,8 +410,6 @@ pub fn change_axes(
             model.set_outlet_fact(OutletId::new(node_id, ix), f)?;
         }
     }
-    debug!("Applied change {:?}", change);
-    debug!("{:#?}", &model);
     Ok(Some(changed_wires))
 }
 
