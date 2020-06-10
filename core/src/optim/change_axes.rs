@@ -14,6 +14,7 @@ impl TypedPass for ChangeAxes {
         for n in model.eval_order()? {
             let node = model.node(n);
             for suggestion in node.op.suggested_axis_changes()? {
+                trace!("{} suggests {:?}", node, suggestion);
                 let outlet = suggestion.0.as_outlet(&node);
                 suggestions.push(AxisChange { outlet, op: suggestion.1 })
             }
