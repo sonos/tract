@@ -277,7 +277,10 @@ where
                 let mut new_op = self.clone();
                 new_op
                     .fused_ops
-                    .get_or_insert_with(|| arr0(vec![]).into_dyn())
+                    .get_or_insert_with(|| {
+                        let shape = vec!(1; self.c_prefix_dim_and_stride.as_ref().map(|c| c.0.len()).unwrap_or(0));
+                        ArrayD::from_shape_fn(shape, |_| vec!())
+                    })
                     .map_inplace(|v| v.extend(op.iter().cloned()));
                 return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));
             }
