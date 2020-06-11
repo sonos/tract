@@ -745,7 +745,8 @@ impl TypedOp for MatMulUnary {
 impl PulsedOp for MatMulUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.datum_type = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
+        fact.datum_type =
+            self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         fact.shape = compute_shapes(
             self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             inputs[0].shape.iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
@@ -921,5 +922,30 @@ mod test {
         let op = MatMul::default().with_a_trans(true).with_b_trans(true).with_c_trans(true);
         let c_found = op.eval(tvec!(b, a)).unwrap().pop().unwrap();
         c.close_enough(&c_found, true).unwrap();
+    }
+
+    #[test]
+    fn batch_input() -> TractResult<()> {
+        crate::setup_test_logger();
+        let (batch, len, ci, co) = (2, 3, 4, 5);
+        let mut model = TypedModel::default();
+        let input_shape = tvec!(batch, len, ci);
+        let mut wire =
+            tvec!(model.add_source("s", TypedFact::dt_shape(f32::datum_type(), &*input_shape)?)?);
+        let a = unsafe { Tensor::uninitialized::<f32>(&[ci, co])?.into_arc_tensor() };
+        wire = model.wire_node(
+            "m",
+            MatMulUnary { a, a_trans: true, b_trans: true, c_trans: true, q_params: None },
+            &wire,
+        )?;
+        let b = unsafe { Tensor::uninitialized::<f32>(&[1, 1, co])?.into_arc_tensor() };
+        wire = model.wire_node("a", crate::ops::math::add::unary(b), &wire)?;
+        model.set_output_outlets(&wire)?;
+        let input = unsafe { Tensor::uninitialized::<f32>(&input_shape)? };
+        trace!("running mir");
+        model.clone().into_runnable()?.run(tvec!(input.clone()))?;
+        trace!("running optimized");
+        model.into_optimized()?.into_runnable()?.run(tvec!(input))?;
+        Ok(())
     }
 }
