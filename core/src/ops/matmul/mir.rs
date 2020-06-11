@@ -585,7 +585,7 @@ impl TypedOp for MatMulUnary {
                 for (ix, slice) in concat.slices.iter().enumerate() {
                     let wire = match slice {
                         ConcatSlice::Const(t) => patch.add_const(
-                            format!("{}-const-{}", node.name, ix),
+                            format!("{}.const-{}", node.name, ix),
                             t.clone().into_arc_tensor(),
                         )?,
                         ConcatSlice::Var => {
@@ -598,7 +598,7 @@ impl TypedOp for MatMulUnary {
                         a.remove_axis(0)?;
                     }
                     let wire = patch.wire_node(
-                        format!("{}-k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
+                        format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
                         MatMulUnary { a: a.into_arc_tensor(), ..self.clone() },
                         &[wire],
                     )?[0];
@@ -607,7 +607,7 @@ impl TypedOp for MatMulUnary {
                 let mut wire = wires[0];
                 for (ix, w) in wires[1..].iter().enumerate() {
                     wire = patch.wire_node(
-                        format!("{}-k-add-{}", node.name, ix),
+                        format!("{}.k-add-{}", node.name, ix),
                         crate::ops::binary::TypedBinOp(Box::new(crate::ops::math::Add)),
                         &[wire, *w],
                     )?[0];
@@ -832,7 +832,7 @@ where
         let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
         packed_b_shape.push(geo.mm.as_mmm().b_pack().len());
         wire = patch.wire_node(
-            format!("{}-pack", &*node.name),
+            format!("{}.pack", &*node.name),
             lir::MatMatMulPackB {
                 pack_b: geo.mm.as_mmm().b_pack().clone(),
                 col_stride: if b_trans { *b_shape.last().unwrap() as isize } else { 1 },
