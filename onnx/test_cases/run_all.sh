@@ -26,13 +26,24 @@ do
     do
         [[ "$pass" = "opti" ]] && opti="-O" || opti=""
         echo -n "$tc ($pass) "
+        options=""
+        if [ -n "$left_context" ]
+        then
+            options="$options --kaldi-left-context $left_context"
+        fi
+        if [ -n "right_context" ]
+        then
+            options="$options --kaldi-right-context $right_context"
+        fi
+        if [ -n "adjust_final_offset" ]
+        then
+            options="$options --kaldi-adjust_final_offset $adjust_final_offset"
+        fi
         cmd="$TRACT_RUN \
             $tc/model.onnx$suffix \
             --output-node output \
             --input-bundle $tc/io.npz \
-            --kaldi-left-context $left_context \
-            --kaldi-right-context $right_context \
-            --kaldi-adjust-final-offset $adjust_final_offset \
+            $options \
             $opti \
             run \
             --assert-output-bundle $tc/io.npz"
