@@ -31,13 +31,13 @@ do
         then
             options="$options --kaldi-left-context $left_context"
         fi
-        if [ -n "right_context" ]
+        if [ -n "$right_context" ]
         then
             options="$options --kaldi-right-context $right_context"
         fi
-        if [ -n "adjust_final_offset" ]
+        if [ -n "$adjust_final_offset" ]
         then
-            options="$options --kaldi-adjust_final_offset $adjust_final_offset"
+            options="$options --kaldi-adjust-final-offset $adjust_final_offset"
         fi
         cmd="$TRACT_RUN \
             $tc/model.onnx$suffix \
