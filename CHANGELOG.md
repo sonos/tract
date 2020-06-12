@@ -1,6 +1,6 @@
-## Unreleased
+## 0.7.0 - 2020-06-12
 
-* CLI refactoring
+* CLI refactoring (hopefully stabilizing a bit?)
     * `profile --bench` is now bench
     * profile is now `dump --profile`
     * cost is now `dump --cost`
@@ -8,8 +8,11 @@
     * new "compact" graph dumper, profile visual hints
     * `dump --cost --profile --json` output profiling and cost information
     * show logical names for ops instead of the Op struct names (not 100% sure it's right)
+    * criterion integration
 * WASM support for tract-onnx and tract-tensorflow targets (CI)
 * Convenience methods added to Models to allow model building in fluent style, up to Plan instantiation (SimplePlan now nicknamed RunnableModel). Non breaking.
+* Support for ONNX bidi LSTM (CI), GRU and RNN (untested, consider alpha)
+* Fixes around nets with a non trivial batch size (axis simplification code, matmul op fusion)
 
 ## 0.6.3 - 2020-04-25
 
