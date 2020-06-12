@@ -859,6 +859,9 @@ macro_rules! bin_to_bool {
             pub fn bin() -> $crate::ops::binary::InferenceBinOp {
                 $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
             }
+            pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
+                $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
+            }
             pub fn unary(t: std::sync::Arc<$crate::prelude::Tensor>) -> $crate::ops::binary::UnaryOp {
                 $crate::ops::binary::UnaryOp::new(Box::new(super::$Op), t)
             }

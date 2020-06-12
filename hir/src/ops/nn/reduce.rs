@@ -34,63 +34,65 @@ impl Reducer {
             Prod => wire = target.wire_node(name, TReduce::new(axes, TReducer::Prod), &[wire])?[0],
 
             L1 => {
-                wire = target.wire_node(format!("{}-abs", name), math::abs(), &[wire])?[0];
+                wire = target.wire_node(format!("{}.abs", name), math::abs(), &[wire])?[0];
                 wire = target.wire_node(
-                    format!("{}-sum", name),
+                    format!("{}.sum", name),
                     TReduce::new(axes, TReducer::Sum),
                     &[wire],
                 )?[0];
             }
             L2 => {
-                wire = target.wire_node(format!("{}-sq", name), math::square(), &[wire])?[0];
+                wire = target.wire_node(format!("{}.sq", name), math::square(), &[wire])?[0];
                 wire = target.wire_node(
-                    format!("{}-sum", name),
+                    format!("{}.sum", name),
                     TReduce::new(axes, TReducer::Sum),
                     &[wire],
                 )?[0];
-                wire = target.wire_node(format!("{}-sqrt", name), math::sqrt(), &[wire])?[0];
+                wire = target.wire_node(format!("{}.sqrt", name), math::sqrt(), &[wire])?[0];
             }
             LogSum => {
                 wire = target.wire_node(
-                    format!("{}-sum", name),
+                    format!("{}.sum", name),
                     TReduce::new(axes, TReducer::Sum),
                     &[wire],
                 )?[0];
-                wire = target.wire_node(format!("{}-ln", name), math::ln(), &[wire])?[0];
+                wire = target.wire_node(format!("{}.ln", name), math::ln(), &[wire])?[0];
             }
             LogSumExp => {
-                wire = target.wire_node(format!("{}-exp", name), math::exp(), &[wire])?[0];
+                wire = target.wire_node(format!("{}.exp", name), math::exp(), &[wire])?[0];
                 wire = target.wire_node(
-                    format!("{}-sum", name),
+                    format!("{}.sum", name),
                     TReduce::new(axes, TReducer::Sum),
                     &[wire],
                 )?[0];
-                wire = target.wire_node(format!("{}-ln", name), math::ln(), &[wire])?[0];
+                wire = target.wire_node(format!("{}.ln", name), math::ln(), &[wire])?[0];
             }
             SumSquare => {
-                wire = target.wire_node(format!("{}-sq", name), math::square(), &[wire])?[0];
+                wire = target.wire_node(format!("{}.sq", name), math::square(), &[wire])?[0];
                 wire = target.wire_node(
-                    format!("{}-sum", name),
+                    name.to_string() + ".sum",
                     TReduce::new(axes, TReducer::Sum),
                     &[wire],
                 )?[0]
             }
             Mean => {
                 let fact = target.outlet_fact(wire)?.clone();
-                wire =
-                    target.wire_node(name, TReduce::new(axes.clone(), TReducer::Sum), &[wire])?[0];
+                wire = target.wire_node(
+                    name.to_string() + ".sum",
+                    TReduce::new(axes.clone(), TReducer::Sum),
+                    &[wire],
+                )?[0];
                 let size =
-                    axes.iter().map(|ax| fact.shape.dim(*ax)).maybe_product()?.to_integer()?
-                        as f64;
+                    axes.iter().map(|ax| fact.shape.dim(*ax)).maybe_product()?.to_integer()? as f64;
                 let size = unsafe {
                     tensor0(size)
                         .cast_to_dt(fact.datum_type)?
                         .into_owned()
                         .into_shape(&*tvec!(1; fact.rank()))?
                 };
-                let size = target.add_const("{}-divisor", size)?;
+                let size = target.add_const(name.to_string() + ".divisor", size)?;
                 wire = target.wire_node(
-                    format!("{}-norm", name),
+                    name.to_string() + ".norm",
                     math::div::bin_typed(),
                     &[wire, size],
                 )?[0];
@@ -194,7 +196,12 @@ impl Expansion for Reduce {
         })
     }
 
-    fn wire(&self, name: &str, target: &mut TypedModel, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
+    fn wire(
+        &self,
+        name: &str,
+        target: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
         let input = inputs[0];
         let fact = target.outlet_fact(input)?;
         let mut axes = self.resolve_axes(fact.rank())?;

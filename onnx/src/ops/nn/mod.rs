@@ -61,8 +61,8 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Selu", selu);
     reg.insert("Sigmoid", |_, _| Ok((Box::new(ops::nn::sigmoid()), vec![])));
     reg.insert("Softmax", layer_soft_max);
-    reg.insert("Softplus", |_, _| Ok((Box::new(ops::nn::softplus()), vec![])));
-    reg.insert("Softsign", |_, _| Ok((Box::new(ops::nn::softsign()), vec![])));
+    reg.insert("Softplus", |_, _| Ok((expand(ops::activations::Softplus), vec![])));
+    reg.insert("Softsign", |_, _| Ok((expand(ops::activations::Softsign), vec![])));
 }
 
 fn pad(node: &NodeProto) -> TractResult<cnn::PaddingSpec> {
@@ -204,7 +204,7 @@ pub fn elu(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
-    Ok((Box::new(nn::elu(alpha)), vec![]))
+    Ok((expand(ops::activations::Elu(alpha)), vec![]))
 }
 
 pub fn global_lp_pool(
@@ -221,7 +221,7 @@ pub fn hard_sigmoid(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.2);
     let beta = node.get_attr_opt("beta")?.unwrap_or(0.5);
-    Ok((Box::new(nn::hard_sigmoid(alpha, beta)), vec![]))
+    Ok((expand(ops::activations::HardSigmoid(alpha, beta)), vec![]))
 }
 
 pub fn layer_hard_max(
@@ -253,7 +253,7 @@ pub fn leaky_relu(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.01);
-    Ok((Box::new(nn::leaky_relu(alpha)), vec![]))
+    Ok((expand(ops::activations::LeakyRelu(alpha)), vec![]))
 }
 
 pub fn lrn(
@@ -289,7 +289,7 @@ pub fn parametric_softplus(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr("alpha")?;
     let beta = node.get_attr("beta")?;
-    Ok((Box::new(ops::nn::parametric_softplus(alpha, beta)), vec![]))
+    Ok((expand(ops::activations::ParametricSoftplus(alpha, beta)), vec![]))
 }
 
 bin_to_super_type!(prelu, Prelu, declutter_bin: prelu_to_prelu_unary,
@@ -330,7 +330,7 @@ pub fn scaled_tanh(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr("alpha")?;
     let beta = node.get_attr("beta")?;
-    Ok((Box::new(ops::nn::scaled_tanh(alpha, beta)), vec![]))
+    Ok((expand(ops::activations::ScaledTanh(alpha, beta)), vec![]))
 }
 
 element_wise!(shrink_op,
@@ -374,7 +374,7 @@ pub fn selu(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.67326);
     let gamma = node.get_attr_opt("gamma")?.unwrap_or(1.0507);
-    Ok((Box::new(ops::nn::selu(alpha, gamma)), vec![]))
+    Ok((expand(ops::activations::Selu(alpha, gamma)), vec![]))
 }
 
 pub fn thresholded_relu(
@@ -382,5 +382,5 @@ pub fn thresholded_relu(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
-    Ok((Box::new(ops::nn::threshold_relu(alpha)), vec![]))
+    Ok((expand(ops::activations::ThresholdRelu(alpha)), vec![]))
 }

@@ -18,6 +18,7 @@ pub use tract_core::prelude::tract_ndarray;
 pub use tract_core::prelude::tract_num_traits;
 
 pub mod ops {
+    pub mod activations;
     pub mod array;
     pub mod binary;
     pub use tract_core::ops::cast::cast;
