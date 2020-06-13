@@ -1,3 +1,9 @@
+## 0.8.0 - 2020-06-13
+
+I wish I had seen these issues yesterday. Anyway, version numbers are cheap.
+
+* Bumping minimum rust to 1.41
+
 ## 0.7.0 - 2020-06-12
 
 * CLI refactoring (hopefully stabilizing a bit?)

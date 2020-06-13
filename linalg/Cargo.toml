@@ -31,7 +31,7 @@ smallvec = "1"
 
 [dev-dependencies]
 criterion = "0.3"
-proptest = "0.9"
+proptest = "0.10"
 
 [[bench]]
 name = "mat_vec"

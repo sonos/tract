@@ -36,7 +36,7 @@ conform = [ "tensorflow", "error-chain" ]
 [dev-dependencies]
 criterion = "0.3"
 env_logger = "0.7"
-proptest = "0.9"
+proptest = "0.10"
 rand = "0.7"
 
 # [[bench]]
