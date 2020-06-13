@@ -8,5 +8,5 @@ edition = "2018"
 tract-hir = { path = "../../hir" }
 
 [dev-dependencies]
-proptest = "0.9"
+proptest = "0.10"
 env_logger = "0.7"

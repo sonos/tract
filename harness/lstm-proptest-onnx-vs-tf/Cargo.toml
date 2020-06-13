@@ -5,6 +5,6 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2018"
 
 [dependencies]
-proptest = "0.9"
+proptest = "0.10"
 tract-tensorflow = { path = "../../tensorflow" }
 tract-onnx = { path = "../../onnx" }
