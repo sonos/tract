@@ -43,15 +43,16 @@ pub mod prelude {
     pub use crate::infer::InferenceFact;
     pub use crate::infer::InferenceModel;
     pub use crate::infer::InferenceModelExt;
+    pub use crate::infer::InferenceSimplePlan;
     pub use tract_core::prelude::*;
 }
 
 pub mod internal {
     pub use super::prelude::*;
     pub use crate::infer::*;
+    pub use crate::ops::expandable::{expand, Expansion};
     pub use tract_core::internal::*;
     pub use {shapefactoid, to_typed};
-    pub use crate::ops::expandable::{ expand, Expansion };
 }
 
 #[cfg(test)]
