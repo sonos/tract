@@ -19,18 +19,11 @@
 //! value for the tensor. InferenceModel uses InferenceFact, which can handle
 //! partial information.
 //!
-//! A third type of Model exists and can be useful: TypedModel, using
-//! NormalizedFact. In this case, constant values are no longer allowed:
-//! all tensors exchanged in the network are actual variables.
-//! Parts of the graph producing constant values (like constant weights or
-//! hyper-parameter computation implemented in the graph) have been
-//! eliminated from the graph. This normal form is akin to an IR in compiler
-//! technologies. This is the favourite form on which tract optimisation should
-//! be implemented.
+//! We call `declutter` the process getting the network closer to a normal
+//! form:.  This normal form is akin to an IR in compiler technologies. This is
+//! the favourite form on which tract optimisation is implemented.
 //!
-//! We call `declutter` the process getting the network closer to its normal
-//! form: as we just said, constant must be absorbed by the operator that will
-//! use them. For instance an Add node adding a constant input to a variable
+//! For instance an Add node adding a constant input to a variable
 //! tensor input would be replaced by an unary Add operator taking only the
 //! variable input and for which the constant to add is a fixed construction
 //! attribute. In the same decluttering process, we try and replace proprietary
@@ -39,6 +32,7 @@
 //! network: their interfaces can be different (what is an input, what is an
 //! attribute) and constant propagation may be necessary before the right
 //! core operator could be chosen.
+//!
 use std::collections::HashMap;
 use std::str;
 use std::borrow::Cow;

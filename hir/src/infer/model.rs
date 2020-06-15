@@ -29,9 +29,6 @@ pub trait InferenceModelExt {
     /// Attempt full analyse and conversion to TypedModel.
     fn into_typed(self) -> TractResult<TypedModel>;
 
-    /// Attempt full analyse, decluttering and conversion to TypedModel.
-    fn into_normalized(self) -> TractResult<TypedModel>;
-
     /// Attempt full analyse, decluttering and mapping to optimized operations.
     ///
     /// This will work even if the network can not be normalized.
@@ -114,11 +111,6 @@ impl InferenceModelExt for InferenceModel {
         }
 
         ToTypedTranslator.translate_model(&m)
-    }
-
-    /// Attempt full analyse, decluttering and conversion to TypedModel.
-    fn into_normalized(self) -> TractResult<TypedModel> {
-        self.into_typed()?.declutter()?.into_normalized()
     }
 
     /// Attempt full analyse, decluttering and mapping to optimized operations.
