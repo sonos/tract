@@ -128,6 +128,8 @@ pub type TypedNode = BaseNode<TypedFact, Box<dyn TypedOp>>;
 pub type TypedModelPatch = ModelPatch<TypedFact, Box<dyn TypedOp>>;
 /// An execution plan for TypedModel.
 pub type TypedSimplePlan<M> = SimplePlan<TypedFact, Box<dyn TypedOp>, M>;
+/// A runnable TypedModel (new name for SimplePlan).
+pub type TypedRunnableModel<M> = RunnableModel<TypedFact, Box<dyn TypedOp>, M>;
 /// An execution state for TypedModel.
 pub type TypedSimpleState<M, P> = SimpleState<TypedFact, Box<dyn TypedOp>, M, P>;
 
@@ -142,7 +144,7 @@ impl TypedModel {
         hasher.finish()
     }
 
-    /// Perform declutter pass on the network.
+    /// Perform declutter passes on the network.
     pub fn declutter(self) -> TractResult<TypedModel> {
         let started = self.signature();
         let mut model = self;
@@ -168,8 +170,9 @@ impl TypedModel {
         compact::compact(&model)
     }
 
-    /// Translate the graph to optimized operators.
-    pub fn codegen(self) -> TractResult<TypedModel> {
+
+    /// Translate the graph to locally optimized operators (LIR or MIR ops).
+    pub fn optimize(self) -> TractResult<TypedModel> {
         let mut model = self;
         loop {
             let mut done_something = false;
@@ -189,14 +192,6 @@ impl TypedModel {
 
     pub fn invariants(&self) -> TractResult<invariants::Invariants> {
         invariants::for_model(self)
-    }
-
-    /// Declutter as much as possible, then translate to optimized operators.
-    pub fn into_optimized(self) -> TractResult<TypedModel> {
-        let model = self.declutter()?;
-        let model = model.codegen()?;
-        let model = compact::compact(&model)?;
-        Ok(model)
     }
 }
 

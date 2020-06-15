@@ -19,7 +19,7 @@ impl Scan {
     pub fn to_codegen_op(&self, optimize_inner: bool) -> TractResult<LirScan> {
         let mut model = self.body.clone();
         if optimize_inner {
-            model = model.into_optimized()?
+            model = model.optimize()?;
         }
         let plan = SimplePlan::new(model)?;
         let input_mapping = self

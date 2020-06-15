@@ -825,7 +825,7 @@ impl Parameters {
                     info_usage("after pulse-declutter", probe);
                 }
                 info!("Running 'optimize'");
-                model = model.codegen()?;
+                model = model.optimize()?;
                 info_usage("after optimize", probe);
                 Ok(Box::new(model) as _)
             })()?

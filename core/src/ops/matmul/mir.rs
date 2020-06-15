@@ -945,7 +945,7 @@ mod test {
         trace!("running mir");
         model.clone().into_runnable()?.run(tvec!(input.clone()))?;
         trace!("running optimized");
-        model.into_optimized()?.into_runnable()?.run(tvec!(input))?;
+        model.declutter()?.optimize()?.into_runnable()?.run(tvec!(input))?;
         Ok(())
     }
 }
