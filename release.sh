@@ -54,4 +54,4 @@ git tag -f "$CRATE/$VERSION"
 git push -f --tags
 
 cargo update
-sleep 5
+sleep 10
