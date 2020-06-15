@@ -26,7 +26,7 @@ use std::str::FromStr;
 use tract_itertools::Itertools;
 
 use tract_core::internal::*;
-use tract_core::model::{TypedModel, TypedModel};
+use tract_core::model::TypedModel;
 use tract_hir::internal::*;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
@@ -139,7 +139,7 @@ fn main() {
 
     (@arg pass: --pass +takes_value
      possible_values(&["load", "analyse", "incorporate", "type", "declutter",
-                     "pulse-normalized", "pulse", "pulse-to-type", "pulse-declutter",
+                     "pulse", "pulse-to-type", "pulse-declutter",
                      "optimize"])
      "Pass to stop preprocessing after.")
 
@@ -391,7 +391,6 @@ pub struct Parameters {
     analyse_error: Option<TractError>,
     graph: SomeGraphDef,
     typed_model: Option<TypedModel>,
-    normalized_model: Option<TypedModel>,
     tract_model: Box<dyn Model>,
 
     output_names: Vec<String>,
@@ -653,24 +652,40 @@ impl Parameters {
         }
 
         let mut use_onnx_test_case_data_set = |inputs_dir: &std::path::Path| -> CliResult<()> {
-            let files = inputs_dir.read_dir()?.map(|file| {
-                let file = file?;
-                let filename = file
-                    .file_name()
-                    .into_string()
-                    .map_err(|s| format!("Can't convert OSString to String ({:?})", s))?;
-                if filename.starts_with("input_") || filename.starts_with("output_") {
-                    let ix = filename.split("_").nth(1).unwrap().split(".").nth(0).unwrap().parse::<usize>()?;
-                    let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
-                    Ok(Some((ix, filename.starts_with("input_"), filename, name.unwrap(), tensor)))
-                } else {
-                    Ok(None)
-                }
-            }).collect::<CliResult<Vec<Option<_>>>>()?;
-            let files = files.into_iter().filter_map(|x|x).collect::<Vec<_>>();
+            let files = inputs_dir
+                .read_dir()?
+                .map(|file| {
+                    let file = file?;
+                    let filename = file
+                        .file_name()
+                        .into_string()
+                        .map_err(|s| format!("Can't convert OSString to String ({:?})", s))?;
+                    if filename.starts_with("input_") || filename.starts_with("output_") {
+                        let ix = filename
+                            .split("_")
+                            .nth(1)
+                            .unwrap()
+                            .split(".")
+                            .nth(0)
+                            .unwrap()
+                            .parse::<usize>()?;
+                        let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
+                        Ok(Some((
+                            ix,
+                            filename.starts_with("input_"),
+                            filename,
+                            name.unwrap(),
+                            tensor,
+                        )))
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .collect::<CliResult<Vec<Option<_>>>>()?;
+            let files = files.into_iter().filter_map(|x| x).collect::<Vec<_>>();
             let (inputs, outputs) = files.iter().partition::<Vec<_>, _>(|f| f.1);
-            let inputs = inputs.into_iter().sorted_by_key(|f|f.0).collect::<Vec<_>>();
-            let outputs = outputs.into_iter().sorted_by_key(|f|f.0).collect::<Vec<_>>();
+            let inputs = inputs.into_iter().sorted_by_key(|f| f.0).collect::<Vec<_>>();
+            let outputs = outputs.into_iter().sorted_by_key(|f| f.0).collect::<Vec<_>>();
             let input_names = inputs.iter().map(|i| &*i.3).collect::<Vec<_>>();
             let output_names = outputs.iter().map(|i| &*i.3).collect::<Vec<_>>();
             debug!("input_names from files: {:?}", input_names);
@@ -690,7 +705,9 @@ impl Parameters {
         };
 
         if onnx_tc {
-            use_onnx_test_case_data_set(filename.parent().unwrap().join("test_data_set_0").as_path())?
+            use_onnx_test_case_data_set(
+                filename.parent().unwrap().join("test_data_set_0").as_path(),
+            )?
         }
 
         if let Some(tc) = matches.value_of("onnx_test_data_set") {
@@ -702,9 +719,8 @@ impl Parameters {
             let input = raw_model.inputs[i];
             if const_inputs.contains(&raw_model.node_name(input.node)) {
                 if let Some(v) = input_values[i].take() {
-                    raw_model.node_mut(input.node).op = Box::new(
-                        tract_core::ops::konst::Const::new(v),
-                    );
+                    raw_model.node_mut(input.node).op =
+                        Box::new(tract_core::ops::konst::Const::new(v));
                 } else {
                     bail!(
                         "Don't have value for input {}, can't make it const",
@@ -721,8 +737,6 @@ impl Parameters {
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
         let mut typed_model = None;
-        let normalized_model: Option<TypedModel> = None;
-
         let mut analyse_error = None;
 
         let tract_model: Box<dyn Model> = {
@@ -791,14 +805,8 @@ impl Parameters {
                 }
                 info_usage("after declutter", probe);
                 if let Some(pulse) = pulse {
-                    info!("Running 'pulse-normalize'");
-                    let normalized_model = model.into_normalized()?;
-                    if stop_at == "pulse-normalize" {
-                        return Ok(Box::new(normalized_model) as _);
-                    }
-                    info_usage("after pulse-normalize", probe);
                     info!("Running 'pulse' ({})", pulse);
-                    let pulsed = ::tract_core::pulse::PulsedModel::new(&normalized_model, pulse)?;
+                    let pulsed = ::tract_core::pulse::PulsedModel::new(&model, pulse)?;
                     if stop_at == "pulse" {
                         return Ok(Box::new(pulsed) as _);
                     }
@@ -830,7 +838,6 @@ impl Parameters {
             analyse_error,
             graph,
             typed_model,
-            normalized_model,
             tract_model,
             tf_model,
             input_values,

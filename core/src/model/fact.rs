@@ -262,18 +262,6 @@ impl From<Arc<Tensor>> for TypedFact {
     }
 }
 
-/*
-impl<'a> TryFrom<&'a TypedFact> for NormalizedFact {
-    type Error = TractError;
-    fn try_from(fact: &TypedFact) -> TractResult<NormalizedFact> {
-        match fact.konst {
-            None => Ok(NormalizedFact { shape: fact.shape.clone(), datum_type: fact.datum_type }),
-            _ => bail!("Constant tensor are excluded from declutterd stage: {:?}", fact),
-        }
-    }
-}
-*/
-
 impl<'a> From<&'a TypedFact> for TypedFact {
     fn from(fact: &TypedFact) -> TypedFact {
         fact.clone()
@@ -289,70 +277,3 @@ impl fmt::Debug for TypedFact {
     }
 }
 
-pub type NormalizedFact = TypedFact;
-
-/*
-/// Tensor information for Normalized models.
-///
-/// Constant value is not allowed, as all tensors in normalized forms are
-/// variables.
-#[derive(Clone, PartialEq, Hash)]
-pub struct NormalizedFact {
-    /// tensor element type
-    pub datum_type: DatumType,
-    /// tensor shape
-    pub shape: ShapeFact,
-}
-
-tract_linalg::impl_dyn_hash!(NormalizedFact);
-
-impl NormalizedFact {
-    pub fn shape<T, S, E>(shape: S) -> TractResult<NormalizedFact>
-    where
-        T: Datum,
-        S: TryInto<ShapeFact, Error = E>,
-        TractError: From<E>,
-    {
-        Self::dt_shape(T::datum_type(), shape)
-    }
-    pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<NormalizedFact>
-    where
-        S: TryInto<ShapeFact, Error = E>,
-        TractError: From<E>,
-    {
-        Ok(NormalizedFact { datum_type, shape: shape.try_into()? })
-    }
-}
-
-impl Fact for NormalizedFact {
-    fn to_typed_fact(&self) -> TractResult<TypedFact> {
-        Ok(self.into())
-    }
-
-    fn same_as(&self, other: &dyn Fact) -> bool {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self == other
-        } else {
-            false
-        }
-    }
-}
-
-impl<'a> From<&'a NormalizedFact> for TypedFact {
-    fn from(fact: &NormalizedFact) -> TypedFact {
-        TypedFact { shape: fact.shape.clone(), datum_type: fact.datum_type, konst: None }
-    }
-}
-
-impl fmt::Debug for NormalizedFact {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{:?}x{:?}", self.shape, self.datum_type)
-    }
-}
-
-impl<'t> From<&'t Tensor> for NormalizedFact {
-    fn from(t: &'t Tensor) -> NormalizedFact {
-        NormalizedFact { datum_type: t.datum_type(), shape: t.shape().try_into().unwrap() }
-    }
-}
-*/

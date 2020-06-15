@@ -29,7 +29,7 @@ fn proptest_regular_against_pulse(
     let plan = SimplePlan::new(&ref_model).unwrap();
     let outputs = plan.run(tvec!(input.clone())).unwrap();
 
-    let model = model.into_normalized().unwrap();
+    let model = model.into_typed().unwrap();
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 

@@ -12,7 +12,7 @@ use crate::{CliResult, Parameters};
 pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
     let pulsed = params.tract_model.downcast_ref::<PulsedModel>().unwrap();
 
-    let fixed = params.normalized_model.clone().unwrap();
+    let fixed = params.typed_model.clone().unwrap();
 
     let fixed_input_fact = fixed.input_fact(0)?;
     let pulsed_input_fact = pulsed.input_fact(0)?;

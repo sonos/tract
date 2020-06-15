@@ -57,7 +57,7 @@ impl<'a> From<&'a Box<dyn PulsedOp>> for Box<dyn TypedOp> {
 }
 
 impl PulsedFact {
-    pub fn from_tensor_fact_pulse(tf: &NormalizedFact, pulse: usize) -> TractResult<PulsedFact> {
+    pub fn from_tensor_fact_pulse(tf: &TypedFact, pulse: usize) -> TractResult<PulsedFact> {
         let datum_type = tf.datum_type;
         let stream =
             tf.shape.stream_info.as_ref().ok_or("Can not pulse a tensor with no streaming dim")?;
@@ -70,8 +70,8 @@ impl PulsedFact {
         self.shape[self.axis]
     }
 
-    pub fn to_pulse_fact(&self) -> NormalizedFact {
-        NormalizedFact::dt_shape(self.datum_type, &*self.shape).unwrap()
+    pub fn to_pulse_fact(&self) -> TypedFact {
+        TypedFact::dt_shape(self.datum_type, &*self.shape).unwrap()
     }
 
     pub fn streaming_shape(&self) -> Vec<TDim> {
@@ -82,7 +82,7 @@ impl PulsedFact {
             .collect()
     }
 
-    pub fn to_streaming_fact(&self) -> NormalizedFact {
+    pub fn to_streaming_fact(&self) -> TypedFact {
         let mut info = self.to_pulse_fact();
         info.shape.stream_info = Some(StreamFact { axis: self.axis, len: self.dim.clone() });
         info
@@ -113,7 +113,7 @@ impl PulsedModel {
 struct Pulsifier(usize);
 impl
     crate::model::translator::Translate<
-        NormalizedFact,
+        TypedFact,
         Box<dyn TypedOp>,
         crate::pulse::PulsedFact,
         Box<dyn PulsedOp>,
@@ -141,7 +141,7 @@ mod tests {
             .add_source("a", TypedFact::dt_shape(f32::datum_type(), [1, 2, 3].as_ref()).unwrap())
             .unwrap();
         model.auto_outputs().unwrap();
-        assert!(PulsedModel::new(&model.into_normalized().unwrap(), 4).is_err());
+        assert!(PulsedModel::new(&model, 4).is_err());
 
         let mut model = TypedModel::default();
         let _a = model
@@ -155,7 +155,7 @@ mod tests {
             )
             .unwrap();
         model.auto_outputs().unwrap();
-        let pulse = PulsedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
+        let pulse = PulsedModel::new(&model, 4).unwrap();
         assert_eq!(
             pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_typed_fact().unwrap(),
             TypedFact::dt_shape(DatumType::F32, [1usize, 4, 3].as_ref()).unwrap()
@@ -177,7 +177,7 @@ mod tests {
             .unwrap();
         model.auto_outputs().unwrap();
 
-        let pulse = PulsedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
+        let pulse = PulsedModel::new(&model, 4).unwrap();
 
         assert_eq!(
             pulse.input_fact(0).unwrap().to_typed_fact().unwrap(),

@@ -233,7 +233,7 @@ pub trait TypedOp:
         Ok(None)
     }
 
-    /// Translate an op in a normalized network (no constants) to a pulsing
+    /// Translate an on from a typed network to a pulsing equivalent
     /// form, if possible.
     fn pulsify(
         &self,
