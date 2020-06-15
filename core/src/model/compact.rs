@@ -1,5 +1,5 @@
-use crate::model::{Fact, ModelImpl, OutletId};
 use crate::internal::*;
+use crate::model::{Fact, ModelImpl, OutletId};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -7,6 +7,7 @@ trait GraphRewriter<F, O>
 where
     F: Fact + Clone + 'static + Hash,
     O: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    ModelImpl<F, O>: ModelSpecialOps<F, O>,
 {
     fn wire_node(
         &self,
@@ -19,8 +20,17 @@ where
     fn rewrite_model(&self, old: &ModelImpl<F, O>) -> TractResult<ModelImpl<F, O>> {
         let mut new = ModelImpl::default();
         let mut map = HashMap::new();
+        for i in old.input_outlets()? {
+            let node = old.node(i.node);
+            let new_id = new.add_source(&*node.name, node.outputs[i.slot].fact.clone())?;
+            map.insert(*i, new_id.into());
+        }
         for old_id in old.eval_order()? {
             let old_node = old.node(old_id);
+            // this node is now a source (or several ones), and has been dealt with
+            if (0..old_node.outputs.len()).all(|slot| map.contains_key(&(old_id, slot).into())) {
+                continue;
+            }
             let outlets = self.wire_node(old, &mut new, &map, old_node)?;
             for (ix, &o) in outlets.iter().enumerate() {
                 map.insert(OutletId::new(old_id, ix), o);
@@ -30,18 +40,6 @@ where
             }
             if old.input_outlets()?.contains(&OutletId::new(old_node.id, 0)) {
                 continue;
-            }
-        }
-        for i in old.input_outlets()? {
-            if !map.contains_key(&i) {
-                let node = old.node(i.node);
-                debug!("Translate useless source {}", node);
-                let new_id = new.add_node(
-                    &*node.name,
-                    node.op.clone(),
-                    tvec!(node.outputs[0].fact.clone()),
-                )?;
-                map.insert(*i, new_id.into());
             }
         }
         // maintaining order of i/o interface
