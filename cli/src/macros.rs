@@ -5,7 +5,7 @@ macro_rules! dispatch_model {
             $expr(m)
         } else if let Some(m) = $model.downcast_ref::<TypedModel>() {
             $expr(m)
-        } else if let Some(m) = $model.downcast_ref::<NormalizedModel>() {
+        } else if let Some(m) = $model.downcast_ref::<TypedModel>() {
             $expr(m)
         } else if let Some(m) = $model.downcast_ref::<PulsedModel>() {
             $expr(m)
@@ -22,7 +22,7 @@ macro_rules! dispatch_model_no_pulse {
             $expr(m)
         } else if let Some(m) = $model.downcast_ref::<TypedModel>() {
             $expr(m)
-        } else if let Some(m) = $model.downcast_ref::<NormalizedModel>() {
+        } else if let Some(m) = $model.downcast_ref::<TypedModel>() {
             $expr(m)
         } else {
             bail!("Pulse model are unsupported here")

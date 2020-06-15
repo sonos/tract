@@ -626,8 +626,8 @@ impl TypedOp for ConvUnary {
 
     fn pulsify(
         &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
+        source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,

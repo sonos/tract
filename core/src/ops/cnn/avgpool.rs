@@ -60,8 +60,8 @@ impl TypedOp for AvgPool {
 
     fn pulsify(
         &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
+        source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,

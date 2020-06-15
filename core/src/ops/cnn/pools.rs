@@ -79,8 +79,8 @@ impl PoolSpec {
 
     pub fn pulsify(
         &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
+        _source: &TypedModel,
+        node: &TypedNode,
         op: &dyn PulsedOp,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,

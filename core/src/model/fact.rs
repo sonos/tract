@@ -262,6 +262,7 @@ impl From<Arc<Tensor>> for TypedFact {
     }
 }
 
+/*
 impl<'a> TryFrom<&'a TypedFact> for NormalizedFact {
     type Error = TractError;
     fn try_from(fact: &TypedFact) -> TractResult<NormalizedFact> {
@@ -271,6 +272,7 @@ impl<'a> TryFrom<&'a TypedFact> for NormalizedFact {
         }
     }
 }
+*/
 
 impl<'a> From<&'a TypedFact> for TypedFact {
     fn from(fact: &TypedFact) -> TypedFact {
@@ -287,6 +289,9 @@ impl fmt::Debug for TypedFact {
     }
 }
 
+pub type NormalizedFact = TypedFact;
+
+/*
 /// Tensor information for Normalized models.
 ///
 /// Constant value is not allowed, as all tensors in normalized forms are
@@ -350,3 +355,4 @@ impl<'t> From<&'t Tensor> for NormalizedFact {
         NormalizedFact { datum_type: t.datum_type(), shape: t.shape().try_into().unwrap() }
     }
 }
+*/
