@@ -239,8 +239,8 @@ impl TypedOp for TypedBinOp {
 
     fn pulsify(
         &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
+        _source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
@@ -265,7 +265,7 @@ impl PulsedOp for TypedBinOp {
 }
 
 fn pulsify_bin(
-    node: &NormalizedNode,
+    node: &TypedNode,
     op: &dyn PulsedOp,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
@@ -433,8 +433,8 @@ impl TypedOp for UnaryOp {
 
     fn pulsify(
         &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
+        _source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
@@ -602,8 +602,8 @@ impl TypedOp for MergeOp {
 
     fn pulsify(
         &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
+        _source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,

@@ -26,7 +26,7 @@ use std::str::FromStr;
 use tract_itertools::Itertools;
 
 use tract_core::internal::*;
-use tract_core::model::{NormalizedModel, TypedModel};
+use tract_core::model::{TypedModel, TypedModel};
 use tract_hir::internal::*;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
@@ -391,7 +391,7 @@ pub struct Parameters {
     analyse_error: Option<TractError>,
     graph: SomeGraphDef,
     typed_model: Option<TypedModel>,
-    normalized_model: Option<NormalizedModel>,
+    normalized_model: Option<TypedModel>,
     tract_model: Box<dyn Model>,
 
     output_names: Vec<String>,
@@ -721,7 +721,7 @@ impl Parameters {
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
         let mut typed_model = None;
-        let normalized_model: Option<NormalizedModel> = None;
+        let normalized_model: Option<TypedModel> = None;
 
         let mut analyse_error = None;
 

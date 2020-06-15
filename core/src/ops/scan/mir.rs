@@ -710,8 +710,8 @@ impl TypedOp for Scan {
 
     fn pulsify(
         &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
+        _source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,

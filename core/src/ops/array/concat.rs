@@ -196,8 +196,8 @@ impl TypedOp for TypedConcat {
 
     fn pulsify(
         &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
+        source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
@@ -230,8 +230,8 @@ impl StatelessOp for TypedConcat {
 impl TypedConcat {
     fn pulsify_along_concat_axis(
         &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
+        _source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {

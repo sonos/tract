@@ -19,7 +19,7 @@
 //! value for the tensor. InferenceModel uses InferenceFact, which can handle
 //! partial information.
 //!
-//! A third type of Model exists and can be useful: NormalizedModel, using
+//! A third type of Model exists and can be useful: TypedModel, using
 //! NormalizedFact. In this case, constant values are no longer allowed:
 //! all tensors exchanged in the network are actual variables.
 //! Parts of the graph producing constant values (like constant weights or
@@ -62,7 +62,6 @@ pub use self::order::eval_order;
 pub use self::patch::ModelPatch;
 pub use crate::ops::{Op, TypedOp};
 
-use crate::model::translator::Translate;
 use crate::ops::invariants;
 use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
@@ -138,18 +137,6 @@ pub type TypedSimplePlan<M> = SimplePlan<TypedFact, Box<dyn TypedOp>, M>;
 /// An execution state for TypedModel.
 pub type TypedSimpleState<M, P> = SimpleState<TypedFact, Box<dyn TypedOp>, M, P>;
 
-/// A model with determined types and shapes, where constant have been
-/// eliminated from the graph.
-pub type NormalizedModel = ModelImpl<NormalizedFact, Box<dyn TypedOp>>;
-/// A Node for NormalizedModel.
-pub type NormalizedNode = BaseNode<NormalizedFact, Box<dyn TypedOp>>;
-/// A ModelPatch for NormalizedModel.
-pub type NormalizedModelPatch = ModelPatch<NormalizedFact, Box<dyn TypedOp>>;
-/// An execution plan for NormalizedModel.
-pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedFact, Box<dyn TypedOp>, M>;
-/// An execution state for TypedModel.
-pub type NormalizedSimpleState<M, P> = SimpleState<NormalizedFact, Box<dyn TypedOp>, M, P>;
-
 /// A runnable model with fixed inputs and outputs.
 pub type RunnableModel<F, O, M> = SimplePlan<F, O, M>;
 
@@ -210,26 +197,12 @@ impl TypedModel {
         invariants::for_model(self)
     }
 
-    /// Attempt to convert the network to a NormalizedModel.
-    pub fn into_normalized(self) -> TractResult<NormalizedModel> {
-        crate::model::translator::IntoTranslator.translate_model(&self)
-    }
-
     /// Declutter as much as possible, then translate to optimized operators.
     pub fn into_optimized(self) -> TractResult<TypedModel> {
         let model = self.declutter()?;
         let model = model.codegen()?;
         let model = compact::compact(&model)?;
         Ok(model)
-    }
-}
-
-impl NormalizedModel {
-    /// Convert back to TypedModel.
-    ///
-    /// Can not fail.
-    pub fn into_typed(self) -> TractResult<TypedModel> {
-        translator::IntoTranslator.translate_model(&self)
     }
 }
 
@@ -241,6 +214,5 @@ mod test {
     fn test() {
         fn is_sync<T: Sync>() {}
         is_sync::<TypedModel>();
-        is_sync::<NormalizedModel>();
     }
 }

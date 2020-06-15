@@ -237,8 +237,8 @@ pub trait TypedOp:
     /// form, if possible.
     fn pulsify(
         &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
+        _source: &TypedModel,
+        node: &TypedNode,
         _target: &mut PulsedModel,
         _mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,

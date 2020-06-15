@@ -76,8 +76,8 @@ impl TypedOp for Renorm {
 
     fn pulsify(
         &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
+        _source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,

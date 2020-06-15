@@ -93,12 +93,12 @@ pub type PulsedModel = ModelImpl<PulsedFact, Box<dyn PulsedOp>>;
 pub type PulsedNode = BaseNode<PulsedFact, Box<dyn PulsedOp>>;
 
 impl PulsedModel {
-    pub fn new(source: &NormalizedModel, pulse: usize) -> TractResult<PulsedModel> {
+    pub fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel> {
         Ok(PulsedModel::new_with_mapping(source, pulse)?.0)
     }
 
     pub fn new_with_mapping(
-        source: &NormalizedModel,
+        source: &TypedModel,
         pulse: usize,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
         Pulsifier(pulse).translate_model_with_mappings(source)
@@ -121,8 +121,8 @@ impl
 {
     fn translate_node(
         &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
+        source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {

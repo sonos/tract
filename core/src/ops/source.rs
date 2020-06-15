@@ -66,8 +66,8 @@ impl TypedOp for TypedSource {
 
     fn pulsify(
         &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
+        _source: &TypedModel,
+        node: &TypedNode,
         target: &mut PulsedModel,
         _mapping: &HashMap<OutletId, OutletId>,
         pulse: usize,
