@@ -1,3 +1,13 @@
+## 0.9.0 - 2020-06-15
+
+Still no shortage of version numbers...
+
+### API Breakage
+
+* NormalizedModel (and friends) are gone. They were only useful as a pre-pulse transformation pre-requisite that the current TypedModel (& co) meets.
+* TypedModel::into_optimized() is gone. InferenceModel::into_optimized() stays as an end-to-end shortcut for simple cases. It does .into_typed()?.declutter()?.optimize()).
+* TypedModel::codegen() is now ::optimize()
+
 ## 0.8.0 - 2020-06-13
 
 I wish I had seen these issues yesterday. Anyway, version numbers are cheap.
