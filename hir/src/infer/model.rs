@@ -115,9 +115,11 @@ impl InferenceModelExt for InferenceModel {
 
     /// Attempt full analyse, decluttering and mapping to optimized operations.
     ///
-    /// This will work even if the network can not be normalized.
+    /// This is meant for "simple" networks, where no special model
+    /// transformation needs to happen. Aternaltively, use to_typed() and
+    /// manipulate the TypedModel for more control.
     fn into_optimized(self) -> TractResult<TypedModel> {
-        self.into_typed()?.into_optimized()
+        self.into_typed()?.declutter()?.optimize()
     }
 }
 

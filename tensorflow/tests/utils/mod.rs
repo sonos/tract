@@ -47,7 +47,7 @@ pub fn run_tract<S: AsRef<str>>(
             model = model.declutter()?;
             debug!("decluttered");
         } else if mode == Mode::Opt {
-            model = model.into_optimized()?;
+            model = model.declutter()?.optimize()?;
             debug!("optimized");
         };
         trace!("{:#?}", model);

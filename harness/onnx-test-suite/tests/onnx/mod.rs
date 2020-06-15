@@ -134,7 +134,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                     }
                     info!("Into type");
                     let model = model.into_typed().unwrap();
-                    let optimized = model.into_optimized().unwrap();
+                    let optimized = model.declutter().unwrap().optimize().unwrap();
                     trace!("Run optimized model:\n{:#?}", optimized);
                     run_model(optimized, inputs, &data_path)
                 } else {
