@@ -1,3 +1,7 @@
+## 0.9.1 - 2020-06-16
+
+* fix Reshape with TDim
+
 ## 0.9.0 - 2020-06-15
 
 Still no shortage of version numbers...
