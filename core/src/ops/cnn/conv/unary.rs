@@ -861,7 +861,7 @@ mod test {
             should_use_direct(&input, &pool, 1)
         }
         assert!(!use_direct(26, 1)); // tdnn2
-                                     // assert!(!use_direct(24, 3)); // tdnn3 is neutral
+        assert!(!use_direct(24, 3)); // tdnn3
         assert!(!use_direct(10, 1)); // tdnn4,5
     }
 }
