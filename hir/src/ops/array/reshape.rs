@@ -9,26 +9,47 @@ pub struct Reshape {}
 tract_linalg::impl_dyn_hash!(Reshape);
 
 impl Reshape {
-    fn compute_shape<D: DimLike>(&self, input: &[D], shape: &[isize]) -> TractResult<TVec<D>> {
-        if shape.iter().all(|d| *d > 0) {
-            return Ok(shape.iter().map(|&d| D::from(d as usize)).collect());
-        }
-        let mut result: TVec<D> = shape
-            .iter()
-            .zip(input.iter().chain(std::iter::repeat(&D::from(1))))
-            .map(|(&shape, input)| if shape > 0 { D::from(shape as usize) } else { input.clone() })
-            .collect();
-        if let Some(minus_one) = shape.iter().position(|d| *d == -1) {
-            let prod_input: usize =
-                input.iter().try_fold(1, |acc, dim| dim.to_integer().map(|a| a as usize * acc))?;
-            let prod_shape: usize = result
+    fn compute_shape(&self, input: &[TDim], shape: &Tensor) -> TractResult<TVec<TDim>> {
+        if let (Ok(ishape), Ok(shape)) = (
+            input
                 .iter()
-                .enumerate()
-                .filter(|(ix, _)| *ix != minus_one)
-                .try_fold(1, |acc, (_, dim)| dim.to_integer().map(|a| a as usize * acc))?;
-            result[minus_one] = D::from(prod_input / prod_shape);
+                .map(|d| d.to_integer().map(|d| d as usize))
+                .collect::<TractResult<TVec<usize>>>(),
+            shape
+                .cast_to::<i32>()
+                .map(|t| t.as_slice::<i32>().unwrap().to_vec())
+                .map(|d| d.iter().map(|d| *d as isize).collect::<TVec<_>>()),
+        ) {
+            self.compute_shape_ints(&ishape, &shape).map(|d| d.iter().map(|d| d.to_dim()).collect())
+        } else if shape
+            .cast_to::<TDim>()?
+            .as_slice::<TDim>()?
+            .iter()
+            .any(|d| d.to_integer().map(|d| d > 0).unwrap_or(false))
+        {
+            Ok(shape.cast_to::<TDim>()?.as_slice::<TDim>()?.into())
+        } else {
+            bail!("Can not compute shape with streaming dimension and -1 placeholder")
         }
-        Ok(result)
+    }
+
+    fn compute_shape_ints(&self, input: &[usize], shape: &[isize]) -> TractResult<TVec<usize>> {
+        let mut shape = shape.to_vec();
+        for i in 0..shape.len() {
+            if shape[i] == 0 {
+                shape[i] = *input.get(i).ok_or("Can not use -1 in Reshape shape for axis beyond data rank: input shape: {:?} reshaping to: {:?}")? as isize;
+            }
+        }
+        if shape.iter().all(|d| *d > 0) {
+            return Ok(shape.iter().map(|&d| d as usize).collect());
+        }
+        let volume = input.iter().product::<usize>();
+        let partial_volume = shape.iter().copied().filter(|&d| d > 0).product::<isize>() as usize;
+        Ok(shape
+            .iter()
+            .copied()
+            .map(|d| if d > 0 { d as usize } else { volume / partial_volume })
+            .collect())
     }
 }
 
@@ -47,7 +68,7 @@ impl StatelessOp for Reshape {
         let (input, shape) = args_2!(inputs);
         let shape: Vec<isize> =
             shape.cast_to::<i64>()?.to_array_view::<i64>()?.iter().map(|&i| i as isize).collect();
-        let oshape = self.compute_shape(input.shape(), &shape)?;
+        let oshape = self.compute_shape_ints(input.shape(), &shape)?;
         unsafe { Ok(tvec![input.into_tensor().into_shape(&*oshape)?.into_arc_tensor()]) }
     }
 }
@@ -61,12 +82,6 @@ impl InferenceRulesOp for Reshape {
     ) -> InferenceResult {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, ishape, shape| {
-            let shape: Vec<isize> = shape
-                .cast_to::<i64>()?
-                .to_array_view::<i64>()?
-                .iter()
-                .map(|&i| i as isize)
-                .collect();
             let shape = self.compute_shape(&ishape, &shape)?;
             s.equals(&outputs[0].shape, ShapeFactoid::from(shape))
         })
@@ -82,9 +97,7 @@ impl InferenceRulesOp for Reshape {
         if let Some(ref shape) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
             let input_shape: TVec<TDim> =
                 target.outlet_fact(mapping[&node.inputs[0]])?.shape.to_tvec();
-            let shape_spec: TVec<isize> =
-                shape.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&i| i as isize).collect();
-            let shape = self.compute_shape(&input_shape, &shape_spec)?;
+            let shape = self.compute_shape(&input_shape, &shape)?;
             let op = TypedReshape::new(shape);
             return target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref());
         }
