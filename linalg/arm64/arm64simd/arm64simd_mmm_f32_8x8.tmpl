@@ -65,35 +65,202 @@
     b           .unsupported
 
 .packed_tops_and_offsets:
-    ldr         x4, [x8, #16]
+    ldr         x8, [x8, #16]       // cols ptr ptr (x2 = row offsets ptr)
+    ldr         x4, [ x2 ], #8      // fist row offset
 
-    ldp         x19, x20, [x4], #16 // heads of cols ptrs
-    ldp         x21, x22, [x4], #16
-    ldp         x23, x24, [x4], #16
-    ldp         x25, x26, [x4], #16
+    ldp         x19, x20, [x8], #16 // heads of cols ptrs
+    ldp         x21, x22, [x8], #16
+    ldp         x23, x24, [x8], #16
+    ldp         x25, x26, [x8], #16
+
+    cmp         x3, #4
+    blt         .packed_tops_and_offsets_loop_1
+
+.packed_tops_and_offsets_loop_4:
+    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+    add         x12, x4, x23
+    ld1         {v5.s}[0], [ x12 ]
+    add         x13, x4, x24
+    ld1         {v5.s}[1], [ x13 ]
+    add         x14, x4, x25
+    ld1         {v5.s}[2], [ x14 ]
+    add         x15, x4, x26
+    ld1         {v5.s}[3], [ x15 ]
+
+    ldr         x4, [ x2 ], #8
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+
+    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+    add         x12, x4, x23
+    ld1         {v5.s}[0], [ x12 ]
+    add         x13, x4, x24
+    ld1         {v5.s}[1], [ x13 ]
+    add         x14, x4, x25
+    ld1         {v5.s}[2], [ x14 ]
+    add         x15, x4, x26
+    ld1         {v5.s}[3], [ x15 ]
+
+    ldr         x4, [ x2 ], #8
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+
+    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+    add         x12, x4, x23
+    ld1         {v5.s}[0], [ x12 ]
+    add         x13, x4, x24
+    ld1         {v5.s}[1], [ x13 ]
+    add         x14, x4, x25
+    ld1         {v5.s}[2], [ x14 ]
+    add         x15, x4, x26
+    ld1         {v5.s}[3], [ x15 ]
+
+    ldr         x4, [ x2 ], #8
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+
+    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+    add         x12, x4, x23
+    ld1         {v5.s}[0], [ x12 ]
+    add         x13, x4, x24
+    ld1         {v5.s}[1], [ x13 ]
+    add         x14, x4, x25
+    ld1         {v5.s}[2], [ x14 ]
+    add         x15, x4, x26
+    ld1         {v5.s}[3], [ x15 ]
+
+    ldr         x4, [ x2 ], #8
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+
+    sub x3, x3, #4
+    cmp x3, #4
+    bge .packed_tops_and_offsets_loop_4
+
+    cmp x3, #0
+    beq .non_linear
 
 .packed_tops_and_offsets_loop_1:
     ld1         { v0.4s, v1.4s }, [ x1 ], #32
 
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+    add         x12, x4, x23
+    ld1         {v5.s}[0], [ x12 ]
+    add         x13, x4, x24
+    ld1         {v5.s}[1], [ x13 ]
+    add         x14, x4, x25
+    ld1         {v5.s}[2], [ x14 ]
+    add         x15, x4, x26
+    ld1         {v5.s}[3], [ x15 ]
+
     ldr         x4, [ x2 ], #8
-
-    add         x9, x4, x19
-    ld1         {v4.s}[0], [ x9 ]
-    add         x10, x4, x20
-    ld1         {v4.s}[1], [ x10 ]
-    add         x11, x4, x21
-    ld1         {v4.s}[2], [ x11 ]
-    add         x12, x4, x22
-    ld1         {v4.s}[3], [ x12 ]
-    add         x13, x4, x23
-    ld1         {v5.s}[0], [ x13 ]
-    add         x14, x4, x24
-    ld1         {v5.s}[1], [ x14 ]
-    add         x15, x4, x25
-    ld1         {v5.s}[2], [ x15 ]
-    add         x9, x4, x26
-    ld1         {v5.s}[3], [ x9 ]
-
 
     fmla        v16.4s, v0.4s, v4.s[0]
     fmla        v17.4s, v1.4s, v4.s[0]
