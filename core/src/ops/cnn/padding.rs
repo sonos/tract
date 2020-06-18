@@ -106,7 +106,9 @@ impl PaddingSpec {
         upper: bool,
     ) -> ComputedPaddedDim<D> {
         let output = input.div_ceil(stride);
+        dbg!(&output);
         let kernel_field = (kernel - 1) * dilation + 1;
+        dbg!(&kernel_field);
         let pad = if let Ok(input) = input.to_integer() {
             let pad = (((output.clone() - 1) * stride + kernel_field).to_integer().unwrap()
                 - input)
