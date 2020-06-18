@@ -118,6 +118,7 @@ impl PoolSpec {
             let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
             let mut wire = input;
 
+            dbg!(self);
             let computed_padding = self.padding.compute_one(
                 geo_axis,
                 &fact.dim,
@@ -125,9 +126,13 @@ impl PoolSpec {
                 self.dilation(geo_axis),
                 self.stride(geo_axis),
             );
+            println!("{}", computed_padding.pad_before);
+            println!("100->{:?}", computed_padding.pad_before.eval(100));
+            println!("101->{:?}", computed_padding.pad_before.eval(101));
             let has_padding = computed_padding.pad_before != TDim::zero()
                 || computed_padding.pad_after != TDim::zero();
 
+            /*
             if has_padding {
                 let mut pads = vec![(0, 0); input_shape.rank()];
                 pads[fact.axis] = (
@@ -138,12 +143,17 @@ impl PoolSpec {
                     crate::ops::array::Pad { pads, mode: crate::ops::array::PadMode::default() };
                 wire = pad_op.pulsify(source, node, target, mapping, pulse)?[0];
             }
+            */
 
             let overlap = (kernel_len + 1).saturating_sub(stride);
-            let misalignment = fact.delay % pulse;
-            if overlap > 0 || misalignment > 0 {
-                let align_to = (overlap + fact.delay).div_ceil(stride) * stride;
-                let delay = align_to - overlap - fact.delay;
+            let pad_before = computed_padding.pad_before.to_integer()? as usize;
+            let start_at = pad_before.max(fact.delay + overlap);
+            let padded_start_at = start_at - pad_before;
+            let misalignment = padded_start_at % stride;
+            if overlap > 0 || misalignment > 0 || pad_before > fact.delay {
+                let aligned_padded_start_at = padded_start_at.div_ceil(stride) * stride;
+                let start_at = aligned_padded_start_at + pad_before;
+                let delay = start_at - overlap - fact.delay;
                 wire = target.wire_node(
                     format!("{}.Delay", node.name),
                     crate::pulse::delay::Delay::new(&fact, delay, overlap),
