@@ -225,7 +225,7 @@ impl TDim {
                 } else if let Mul(-1, a) = a {
                     Mul(-1, b!(Div(a, q)))
                 } else if let Add(mut terms) = a {
-                    if terms.iter().any(|t| matches!(t, Mul(-1, it) if it.as_ref() == &Sym('S'))) {
+                    if terms.iter().any(|t| t == &Mul(-1, b!(Sym('S')))) {
                         Mul(
                             -1,
                             b!(
