@@ -631,8 +631,9 @@ impl TypedOp for ConvUnary {
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
-        ) -> TractResult<TVec<OutletId>> {
-        self.pool_spec.pulsify(source, node, self, target, mapping)
+    ) -> TractResult<TVec<OutletId>> {
+        let (wire, pool_spec) = self.pool_spec.pulsify(source, node, target, mapping)?;
+        target.wire_node(&node.name, Self { pool_spec, ..self.clone() }, &[wire])
     }
 
     fn codegen(

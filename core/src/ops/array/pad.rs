@@ -18,7 +18,7 @@ impl Default for PadMode {
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Pad {
     pub pads: Vec<(usize, usize)>,
-    mode: PadMode,
+    pub mode: PadMode,
 }
 tract_linalg::impl_dyn_hash!(Pad);
 
@@ -276,14 +276,14 @@ impl PulsePadOpState {
 }
 
 #[derive(Debug, Clone, Default, new, Hash)]
-struct PulsePad {
-    axis: usize,
-    pulse: usize,
-    before: usize,
-    after: usize,
-    begin_input: usize,
-    end_input: TDim,
-    mode: PadMode,
+pub struct PulsePad {
+    pub axis: usize,
+    pub pulse: usize,
+    pub before: usize,
+    pub after: usize,
+    pub begin_input: usize,
+    pub end_input: TDim,
+    pub mode: PadMode,
 }
 
 tract_linalg::impl_dyn_hash!(PulsePad);
