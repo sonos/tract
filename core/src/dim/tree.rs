@@ -225,7 +225,16 @@ impl TDim {
                 } else if let Mul(-1, a) = a {
                     Mul(-1, b!(Div(a, q)))
                 } else if let Add(mut terms) = a {
-                    if let Some(v) = terms
+                    if terms.iter().any(|t| matches!(t, Mul(-1, it) if it.as_ref() == &Sym('S'))) {
+                        Mul(
+                            -1,
+                            b!(
+                                Div(b!(Add(terms.into_iter().map(|t| Mul(-1, b!(t))).collect())
+                                    .simplify()),
+                                q)
+                            ),
+                        )
+                    } else if let Some(v) = terms
                         .iter()
                         .filter_map(|t| if let Val(v) = t { Some(*v) } else { None })
                         .next()
@@ -505,6 +514,8 @@ mod tests {
 
     macro_rules! b( ($e:expr) => { Box::new($e) } );
 
+    const S: TDim = TDim::Sym('S');
+
     fn neg(a: &TDim) -> TDim {
         mul(-1, a)
     }
@@ -546,6 +557,15 @@ mod tests {
     #[test]
     fn reduce_cplx_ex_3() {
         assert_eq!(div(&Mul(1, b!(Mul(4, b!(Sym('S'))))), 4).reduce(), Sym('S'))
+    }
+
+    #[test]
+    fn reduce_cplx_ex_4() {
+        // (S+1)/2 + (1-S)/2 == 1
+        assert_eq!(
+            add(&div(&add(&S, &Val(1)), 2), &div(&add(&neg(&S), &Val(1)), 2)).reduce(),
+            1.into()
+        );
     }
 
     #[test]
