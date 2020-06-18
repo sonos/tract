@@ -619,7 +619,8 @@ impl PulsedOp for MergeOp {
         let mut fact = inputs[0].clone();
         fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
         fact.shape =
-            crate::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape]).unwrap();
+            crate::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape])
+            .ok_or_else(|| format!("Can not broadcast: {:?} and {:?}", inputs[0].shape, inputs[1].shape))?;
         Ok(tvec!(fact))
     }
 

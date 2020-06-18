@@ -7,7 +7,7 @@ use tract_hir::internal::*;
 
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     if size.len() == 0 {
-        return Ok(InferenceFact::default())
+        return Ok(InferenceFact::default());
     }
     let splits = size.split("x").collect::<Vec<_>>();
 
@@ -34,11 +34,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
         shape
             .iter()
             .map(|&s| {
-                Ok(if s == "_" {
-                    GenericFactoid::Any
-                } else {
-                    GenericFactoid::Only(s.parse()?)
-                })
+                Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(s.parse()?) })
             })
             .collect::<TractResult<TVec<DimFact>>>()?,
     );
@@ -177,12 +173,19 @@ pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
 pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
     if let Some(value) = &fact.konst {
         Ok(value.clone().into_tensor())
-    } else {
-        if fact.shape.stream_info.is_some() && streaming_dim.is_none() {
-            Err("random tensor requires a streaming dim")?
+    } else if fact.shape.stream_info.is_some() {
+        if let Some(dim) = streaming_dim {
+            let shape = fact
+                .shape
+                .iter()
+                .map(|d| d.eval(dim as _).unwrap() as usize)
+                .collect::<TVec<_>>();
+            Ok(random(&shape, fact.datum_type))
+        } else {
+            bail!("random tensor requires a streaming dim")
         }
-        let shape = fact.shape.as_finite().unwrap();
-        Ok(random(shape, fact.datum_type))
+    } else {
+        Ok(random(&fact.shape.as_finite().unwrap(), fact.datum_type))
     }
 }
 

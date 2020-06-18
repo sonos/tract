@@ -4,7 +4,7 @@ use crate::display_params;
 use crate::{CliResult, Parameters};
 
 pub fn handle(params: &Parameters, _options: display_params::DisplayParams) -> CliResult<()> {
-    let plain = params.typed_model.as_ref().unwrap();
+    let plain = params.decluttered_model.as_ref().unwrap();
     let optimized = params
         .tract_model
         .downcast_ref::<TypedModel>()

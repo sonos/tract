@@ -1,5 +1,7 @@
 use crate::internal::*;
 
+use num_traits::Zero;
+
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
 use crate::ops::nn::{DataFormat, DataShape};
 
@@ -28,11 +30,26 @@ impl PoolSpec {
         self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1)
     }
 
+    pub fn dilations(&self) -> Cow<[usize]> {
+        self.dilations
+            .as_deref()
+            .map_or_else(|| vec![1; self.kernel_shape.len()].into(), |d| d.into())
+    }
+
     pub fn stride(&self, geo_axis: usize) -> usize {
         self.strides.as_ref().map(|s| s[geo_axis]).unwrap_or(1)
     }
 
-    pub fn compute_geo(&self, input_full_shape: &[usize]) -> TractResult<(DataShape, Patch, DataShape)> {
+    pub fn strides(&self) -> Cow<[usize]> {
+        self.strides
+            .as_deref()
+            .map_or_else(|| vec![1; self.kernel_shape.len()].into(), |d| d.into())
+    }
+
+    pub fn compute_geo(
+        &self,
+        input_full_shape: &[usize],
+    ) -> TractResult<(DataShape, Patch, DataShape)> {
         let input_shape = self.data_format.shape(input_full_shape.into())?;
         let output_inner_stride = match self.data_format {
             DataFormat::NCHW | DataFormat::CHW => 1,
@@ -61,12 +78,11 @@ impl PoolSpec {
 
     pub fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let ishape = self.data_format.shape(inputs[0].shape.to_tvec())?;
-        let ones = tvec![1; ishape.hw_rank()];
         let computed = self.padding.compute(
             ishape.hw_dims(),
             &*self.kernel_shape,
-            self.dilations.as_ref().unwrap_or(&ones),
-            self.strides.as_ref().unwrap_or(&ones),
+            &self.dilations(),
+            &self.strides(),
         );
         let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<TDim>>();
         let oshape = self.data_format.from_n_c_hw(
@@ -79,17 +95,16 @@ impl PoolSpec {
 
     pub fn pulsify(
         &self,
-        _source: &TypedModel,
+        source: &TypedModel,
         node: &TypedNode,
-        op: &dyn PulsedOp,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
+    ) -> TractResult<(OutletId, PoolSpec)> {
         let input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?.clone();
         let input_shape = self.data_format.shape(&*fact.shape)?;
         if Some(fact.axis) == input_shape.n_axis() {
-            target.wire_node(&*node.name, dyn_clone::clone_box(op), &[input])
+            Ok((input, self.clone()))
         } else if fact.axis == input_shape.c_axis() {
             bail!("Can not pulsify cnn pooling ops along the input channel axis");
         } else {
@@ -101,10 +116,31 @@ impl PoolSpec {
             }
             let dilation = self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
             let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
-            let overlap = (kernel_len + 1).saturating_sub(stride);
-            let misalignment = fact.delay % pulse;
             let mut wire = input;
 
+            let computed_padding = self.padding.compute_one(
+                geo_axis,
+                &fact.dim,
+                self.kernel_shape[geo_axis],
+                self.dilation(geo_axis),
+                self.stride(geo_axis),
+            );
+            let has_padding = computed_padding.pad_before != TDim::zero()
+                || computed_padding.pad_after != TDim::zero();
+
+            if has_padding {
+                let mut pads = vec![(0, 0); input_shape.rank()];
+                pads[fact.axis] = (
+                    computed_padding.pad_before.to_integer()? as usize,
+                    computed_padding.pad_after.to_integer()? as usize,
+                );
+                let pad_op =
+                    crate::ops::array::Pad { pads, mode: crate::ops::array::PadMode::default() };
+                wire = pad_op.pulsify(source, node, target, mapping, pulse)?[0];
+            }
+
+            let overlap = (kernel_len + 1).saturating_sub(stride);
+            let misalignment = fact.delay % pulse;
             if overlap > 0 || misalignment > 0 {
                 let align_to = (overlap + fact.delay).div_ceil(stride) * stride;
                 let delay = align_to - overlap - fact.delay;
@@ -114,7 +150,30 @@ impl PoolSpec {
                     &[wire],
                 )?[0];
             }
-            target.wire_node(&*node.name, dyn_clone::clone_box(op), &[wire])
+
+            if has_padding {
+                let mut bef = tvec!();
+                let mut aft = tvec!();
+                for ix in 0..input_shape.hw_rank() {
+                    if ix == geo_axis {
+                        bef.push(0);
+                        aft.push(0);
+                    } else {
+                        let c = self.padding.compute_one(
+                            ix,
+                            &input_shape.hw_dims()[ix],
+                            self.kernel_shape[ix],
+                            self.dilations()[ix],
+                            self.strides()[ix],
+                        );
+                        bef.push(c.pad_before);
+                        aft.push(c.pad_after);
+                    };
+                }
+                Ok((wire, PoolSpec { padding: PaddingSpec::Explicit(bef, aft), ..self.clone() }))
+            } else {
+                Ok((wire, self.clone()))
+            }
         }
     }
 
@@ -124,12 +183,11 @@ impl PoolSpec {
 
     pub fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let ishape = self.data_format.shape(&inputs[0].shape)?;
-        let ones = tvec![1; ishape.hw_rank()];
         let computed = self.padding.compute(
             ishape.hw_dims(),
             &*self.kernel_shape,
-            self.dilations.as_ref().unwrap_or(&ones),
-            self.strides.as_ref().unwrap_or(&ones),
+            &self.dilations(),
+            &self.strides(),
         );
         let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<usize>>();
         let oshape = self.data_format.from_n_c_hw(

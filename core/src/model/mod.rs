@@ -33,9 +33,9 @@
 //! attribute) and constant propagation may be necessary before the right
 //! core operator could be chosen.
 //!
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::str;
-use std::borrow::Cow;
 
 use itertools::Itertools;
 
@@ -170,6 +170,39 @@ impl TypedModel {
         compact::compact(&model)
     }
 
+    pub fn concretize_stream_dim(&self, dim: usize) -> TractResult<TypedModel> {
+        use crate::model::translator::Translate;
+        #[derive(Debug)]
+        struct ConcretizeStreamDim(usize);
+        impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for ConcretizeStreamDim {
+            fn translate_node(
+                &self,
+                source: &TypedModel,
+                node: &TypedNode,
+                target: &mut TypedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+            ) -> TractResult<TVec<OutletId>> {
+                if let Some(source_outlet) =
+                    source.input_outlets()?.iter().find(|o| o.node == node.id)
+                {
+                    let mut fact = source.outlet_fact(*source_outlet)?.clone();
+                    if let Some(s) = fact.shape.stream_info.clone() {
+                        let evaled = s.len.eval(self.0 as i32).unwrap();
+                        fact.shape.set_dim(s.axis, evaled.into())?;
+                    }
+                    Ok(tvec!(target.add_source(&node.name, fact)?))
+                } else {
+                    let inputs = node
+                        .inputs
+                        .iter()
+                        .map(|i| mapping[&i])
+                        .collect::<TVec<_>>();
+                    target.wire_node(&node.name, node.op.clone(), &inputs)
+                }
+            }
+        }
+        ConcretizeStreamDim(dim).translate_model(&self)
+    }
 
     /// Translate the graph to locally optimized operators (LIR or MIR ops).
     pub fn optimize(self) -> TractResult<TypedModel> {

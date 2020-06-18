@@ -10,7 +10,6 @@ extern crate env_logger;
 extern crate pbr;
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
 extern crate tract_core;
 #[cfg(feature = "onnx")]
 extern crate tract_onnx;
@@ -390,7 +389,10 @@ pub enum SomeGraphDef {
 pub struct Parameters {
     analyse_error: Option<TractError>,
     graph: SomeGraphDef,
-    typed_model: Option<TypedModel>,
+
+    decluttered_model: Option<TypedModel>,
+    pulsed_model: Option<PulsedModel>,
+
     tract_model: Box<dyn Model>,
 
     output_names: Vec<String>,
@@ -736,7 +738,12 @@ impl Parameters {
         }
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
-        let mut typed_model = None;
+
+        let need_decluttered_model = matches.subcommand_name() == Some("stream-check");
+        let need_pulsed_model = matches.subcommand_name() == Some("stream-check");
+
+        let mut decluttered_model = None;
+        let mut pulsed_model = None;
         let mut analyse_error = None;
 
         let tract_model: Box<dyn Model> = {
@@ -785,7 +792,6 @@ impl Parameters {
                 info!("Running 'type'");
                 let model = match model.clone().into_typed() {
                     Ok(typed) => {
-                        typed_model = Some(typed.clone());
                         typed
                     }
                     Err(e) => {
@@ -793,13 +799,16 @@ impl Parameters {
                         return Ok(Box::new(model) as _);
                     }
                 };
+
                 if stop_at == "type" {
                     return Ok(Box::new(model) as _);
                 }
                 info_usage("after type", probe);
                 info!("Running 'declutter'");
                 let mut model = model.declutter()?;
-                typed_model = Some(model.clone());
+                if need_decluttered_model {
+                    decluttered_model = Some(model.clone());
+                }
                 if stop_at == "declutter" {
                     return Ok(Box::new(model) as _);
                 }
@@ -811,6 +820,9 @@ impl Parameters {
                         return Ok(Box::new(pulsed) as _);
                     }
                     info_usage("after pulse", probe);
+                    if need_pulsed_model {
+                        pulsed_model = Some(pulsed.clone());
+                    }
                     info!("Running 'pulse-to-type'",);
                     model = pulsed.into_typed()?;
                     if stop_at == "pulse-to-type" {
@@ -837,7 +849,8 @@ impl Parameters {
         Ok(Parameters {
             analyse_error,
             graph,
-            typed_model,
+            decluttered_model,
+            pulsed_model,
             tract_model,
             tf_model,
             input_values,

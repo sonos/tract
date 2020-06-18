@@ -20,7 +20,7 @@ impl fmt::Debug for PulsedFact {
         use itertools::Itertools;
         write!(
             fmt,
-            "{}x{:?} [pulse axis:{} ∂:{} full dim:{:?}]",
+            "{}x{:?} [pulse axis:{} ∂:{} full dim:{}]",
             self.shape.iter().join("x"),
             self.datum_type,
             self.axis,
