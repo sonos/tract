@@ -9,7 +9,7 @@ jobs:
   linux:
     strategy:
       matrix:
-        rust: [ 1.40.0, stable ]
+        rust: [ 1.41.0, stable ]
 
     runs-on: ubuntu-latest
 
