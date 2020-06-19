@@ -169,7 +169,7 @@ impl TypedOp for Pad {
             fact.axis,
             pulse,
             before,
-            after,
+            after.into(),
             fact.delay + extra_delay,
             fact.delay.to_dim() + extra_delay + fact.dim,
             self.mode.clone(),
@@ -211,9 +211,10 @@ impl PulsePadOpState {
             .known_stream_len
             .map(|s| op.end_input.eval(s as i32).unwrap() as usize)
             .unwrap_or(std::usize::MAX);
+        let after = session.known_stream_len.map(|s| op.after.eval(s as i32).unwrap() as usize).unwrap_or(std::usize::MAX);
 
         if let PadMode::Edge = op.mode {
-            if op.after > 0 && pulse_begin < end_input {
+            if after != 0 && pulse_begin < end_input {
                 let latest_valid_frame = (end_input - pulse_begin).min(op.pulse) - 1;
                 let data = input.to_array_view::<T>()?;
                 self.last_valid_frame = Some(
@@ -228,7 +229,7 @@ impl PulsePadOpState {
         }
         // pulse is entirely before or after output is valid, just forward
         if pulse_end <= op.begin_input - op.before
-            || pulse_begin >= end_input.saturating_add(op.after)
+            || pulse_begin >= end_input.saturating_add(after)
         {
             return Ok(input);
         }
@@ -252,7 +253,7 @@ impl PulsePadOpState {
                 _ => unimplemented!(),
             }
         }
-        if pulse_end > end_input && op.after > 0 {
+        if pulse_end > end_input && after > 0 {
             let fill_from = op.pulse - (pulse_end - end_input).min(op.pulse);
             match &op.mode {
                 PadMode::Constant(c) => {
@@ -280,7 +281,7 @@ pub struct PulsePad {
     pub axis: usize,
     pub pulse: usize,
     pub before: usize,
-    pub after: usize,
+    pub after: TDim,
     pub begin_input: usize,
     pub end_input: TDim,
     pub mode: PadMode,
@@ -327,7 +328,7 @@ impl TypedOp for PulsePad {
 impl PulsedOp for PulsePad {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.dim += (self.before + self.after).to_dim();
+        fact.dim += self.before.to_dim() + &self.after;
         fact.delay -= self.before;
         Ok(tvec!(fact))
     }
