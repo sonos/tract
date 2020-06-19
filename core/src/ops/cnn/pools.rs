@@ -95,95 +95,106 @@ impl PoolSpec {
 
     pub fn pulsify(
         &self,
-        source: &TypedModel,
+        _source: &TypedModel,
         node: &TypedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
+        padding_value: Option<Tensor>,
     ) -> TractResult<(OutletId, PoolSpec)> {
-        let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?.clone();
-        let input_shape = self.data_format.shape(&*fact.shape)?;
+        let mut wire = mapping[&node.inputs[0]];
+        let mut fact: PulsedFact = target.outlet_fact(wire)?.clone();
+        let input_shape = self.data_format.shape(fact.shape.clone())?;
         if Some(fact.axis) == input_shape.n_axis() {
-            Ok((input, self.clone()))
-        } else if fact.axis == input_shape.c_axis() {
+            return Ok((wire, self.clone()));
+        }
+        if fact.axis == input_shape.c_axis() {
             bail!("Can not pulsify cnn pooling ops along the input channel axis");
-        } else {
-            let geo_axis = fact.axis - input_shape.h_axis();
-            let stride = self.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
-            let pulse = fact.pulse();
-            if fact.pulse() % stride != 0 {
-                bail!("Pulsificaton requires pulse to be a stride multiple")
-            }
-            let dilation = self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
-            let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
-            let mut wire = input;
+        }
 
-            dbg!(self);
-            let computed_padding = self.padding.compute_one(
-                geo_axis,
-                &fact.dim,
-                self.kernel_shape[geo_axis],
-                self.dilation(geo_axis),
-                self.stride(geo_axis),
-            );
-            println!("{}", computed_padding.pad_before);
-            println!("100->{:?}", computed_padding.pad_before.eval(100));
-            println!("101->{:?}", computed_padding.pad_before.eval(101));
-            let has_padding = computed_padding.pad_before != TDim::zero()
-                || computed_padding.pad_after != TDim::zero();
+        let geo_axis = fact.axis - input_shape.h_axis();
+        let stride = self.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
+        let pulse = fact.pulse();
+        if pulse % stride != 0 {
+            bail!("Pulsificaton requires pulse to be a stride multiple")
+        }
 
-            /*
-            if has_padding {
-                let mut pads = vec![(0, 0); input_shape.rank()];
-                pads[fact.axis] = (
-                    computed_padding.pad_before.to_integer()? as usize,
-                    computed_padding.pad_after.to_integer()? as usize,
-                );
-                let pad_op =
-                    crate::ops::array::Pad { pads, mode: crate::ops::array::PadMode::default() };
-                wire = pad_op.pulsify(source, node, target, mapping, pulse)?[0];
-            }
-            */
+        let computed_padding = self.padding.compute_one(
+            geo_axis,
+            &fact.dim,
+            self.kernel_shape[geo_axis],
+            self.dilation(geo_axis),
+            self.stride(geo_axis),
+        );
+        let has_padding = computed_padding.pad_before != TDim::zero()
+            || computed_padding.pad_after != TDim::zero();
 
-            let overlap = (kernel_len + 1).saturating_sub(stride);
-            let pad_before = computed_padding.pad_before.to_integer()? as usize;
-            let start_at = pad_before.max(fact.delay + overlap);
-            let padded_start_at = start_at - pad_before;
-            let misalignment = padded_start_at % stride;
-            if overlap > 0 || misalignment > 0 || pad_before > fact.delay {
-                let aligned_padded_start_at = padded_start_at.div_ceil(stride) * stride;
-                let start_at = aligned_padded_start_at + pad_before;
-                let delay = start_at - overlap - fact.delay;
+        if has_padding {
+            use crate::ops::array::{PadMode, PulsePad};
+            let value = if let Some(tensor) = padding_value {
+                tensor.into_arc_tensor()
+            } else {
+                bail!("No padding value for streaming pool operation");
+            };
+            let before = computed_padding.pad_before.to_integer()? as usize;
+            let extra_delay = before.saturating_sub(fact.delay);
+            if extra_delay > 0 {
                 wire = target.wire_node(
-                    format!("{}.Delay", node.name),
-                    crate::pulse::delay::Delay::new(&fact, delay, overlap),
+                    format!("{}.delay-for-pad", node.name),
+                    crate::pulse::delay::Delay::new(&fact.clone(), extra_delay, 0),
                     &[wire],
                 )?[0];
+                fact = target.outlet_fact(wire)?.clone();
             }
+            let op = PulsePad::new(
+                fact.axis,
+                pulse,
+                before,
+                computed_padding.pad_after.clone(),
+                fact.delay,
+                fact.delay.to_dim() + &fact.dim,
+                PadMode::Constant(value),
+            );
+            wire = target.wire_node(&*node.name, op, &[wire])?[0];
+            fact = target.outlet_fact(wire)?.clone();
+        }
 
-            if has_padding {
-                let mut bef = tvec!();
-                let mut aft = tvec!();
-                for ix in 0..input_shape.hw_rank() {
-                    if ix == geo_axis {
-                        bef.push(0);
-                        aft.push(0);
-                    } else {
-                        let c = self.padding.compute_one(
-                            ix,
-                            &input_shape.hw_dims()[ix],
-                            self.kernel_shape[ix],
-                            self.dilations()[ix],
-                            self.strides()[ix],
-                        );
-                        bef.push(c.pad_before);
-                        aft.push(c.pad_after);
-                    };
-                }
-                Ok((wire, PoolSpec { padding: PaddingSpec::Explicit(bef, aft), ..self.clone() }))
-            } else {
-                Ok((wire, self.clone()))
+        let dilation = self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1);
+        let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
+        let overlap = (kernel_len + 1).saturating_sub(stride);
+        let misalignment = fact.delay % pulse;
+
+        if overlap > 0 || misalignment > 0 {
+            let align_to = (overlap + fact.delay).div_ceil(stride) * stride;
+            let delay = align_to - overlap - fact.delay;
+            wire = target.wire_node(
+                format!("{}.delay", node.name),
+                crate::pulse::delay::Delay::new(&fact, delay, overlap),
+                &[wire],
+            )?[0];
+        }
+
+        if has_padding {
+            let mut bef = tvec!();
+            let mut aft = tvec!();
+            for ix in 0..input_shape.hw_rank() {
+                if ix == geo_axis {
+                    bef.push(0);
+                    aft.push(0);
+                } else {
+                    let c = self.padding.compute_one(
+                        ix,
+                        &input_shape.hw_dims()[ix],
+                        self.kernel_shape[ix],
+                        self.dilations()[ix],
+                        self.strides()[ix],
+                    );
+                    bef.push(c.pad_before);
+                    aft.push(c.pad_after);
+                };
             }
+            Ok((wire, PoolSpec { padding: PaddingSpec::Explicit(bef, aft), ..self.clone() }))
+        } else {
+            Ok((wire, self.clone()))
         }
     }
 

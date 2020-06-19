@@ -816,13 +816,13 @@ impl Parameters {
                 if let Some(pulse) = pulse {
                     info!("Running 'pulse' ({})", pulse);
                     let pulsed = ::tract_core::pulse::PulsedModel::new(&model, pulse)?;
+                    if need_pulsed_model {
+                        pulsed_model = Some(pulsed.clone());
+                    }
                     if stop_at == "pulse" {
                         return Ok(Box::new(pulsed) as _);
                     }
                     info_usage("after pulse", probe);
-                    if need_pulsed_model {
-                        pulsed_model = Some(pulsed.clone());
-                    }
                     info!("Running 'pulse-to-type'",);
                     model = pulsed.into_typed()?;
                     if stop_at == "pulse-to-type" {

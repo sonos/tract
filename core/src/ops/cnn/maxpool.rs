@@ -65,7 +65,12 @@ impl TypedOp for MaxPool {
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        let (wire, pool_spec) = self.pool_spec.pulsify(source, node, target, mapping)?;
+        fn min_value<D: Datum + num_traits::Bounded>() -> Tensor {
+            tensor0(D::min_value())
+        }
+        let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
+        let min = dispatch_numbers!(min_value(fact.datum_type)());
+        let (wire, pool_spec) = self.pool_spec.pulsify(source, node, target, mapping, Some(min))?;
         target.wire_node(&node.name, Self { pool_spec, ..self.clone() }, &[wire])
     }
 
