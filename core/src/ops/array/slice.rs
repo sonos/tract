@@ -196,8 +196,12 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
 impl<D: DimLike + ToDim + Hash> PulsedOp for Slice<D> {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.delay += self.start.to_integer()? as usize;
-        fact.dim = (self.end.clone() - &self.start).to_dim();
+        if self.axis == fact.axis {
+            fact.delay += self.start.to_integer()? as usize;
+            fact.dim = (self.end.clone() - &self.start).to_dim();
+        } else {
+            fact.shape[self.axis] = (self.end.to_integer()? - self.start.to_integer()?) as usize;
+        }
         Ok(tvec!(fact))
     }
 
