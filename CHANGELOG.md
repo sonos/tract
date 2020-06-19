@@ -1,3 +1,8 @@
+## 0.9.2 - 2020-06-16
+
+* introduce `TypedModel::method.concretize_stream_dim`
+* various pulsification bugfixes
+
 ## 0.9.1 - 2020-06-16
 
 * fix Reshape with TDim
