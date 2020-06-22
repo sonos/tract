@@ -181,24 +181,8 @@ impl TypedModel {
                 node: &TypedNode,
                 target: &mut TypedModel,
                 mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                if let Some(source_outlet) =
-                    source.input_outlets()?.iter().find(|o| o.node == node.id)
-                {
-                    let mut fact = source.outlet_fact(*source_outlet)?.clone();
-                    if let Some(s) = fact.shape.stream_info.clone() {
-                        let evaled = s.len.eval(self.0 as i32).unwrap();
-                        fact.shape.set_dim(s.axis, evaled.into())?;
-                    }
-                    Ok(tvec!(target.add_source(&node.name, fact)?))
-                } else {
-                    let inputs = node
-                        .inputs
-                        .iter()
-                        .map(|i| mapping[&i])
-                        .collect::<TVec<_>>();
-                    target.wire_node(&node.name, node.op.clone(), &inputs)
-                }
+                ) -> TractResult<TVec<OutletId>> {
+                node.op.concretize_stream_dim(source, node, target, mapping, self.0)
             }
         }
         ConcretizeStreamDim(dim).translate_model(&self)

@@ -48,6 +48,19 @@ impl<C: Clone> InputMapping<C> {
     }
 }
 
+impl<C: Clone + DimLike> InputMapping<C> {
+    pub fn concretize_stream_dim(&self, stream_dim: usize) -> TractResult<InputMapping<C>> {
+        match self {
+            InputMapping::Scan { slot, axis, chunk } => Ok(InputMapping::Scan {
+                slot: *slot,
+                axis: *axis,
+                chunk: chunk.concretize_stream_dim(stream_dim),
+            }),
+            _ => Ok(self.clone()),
+        }
+    }
+}
+
 impl<C: Clone + fmt::Debug> fmt::Debug for InputMapping<C> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -75,6 +88,16 @@ pub struct OutputMapping<C: Clone, F: Clone> {
 impl<C: Clone, F: Clone> OutputMapping<C, F> {
     pub fn invisible(&self) -> bool {
         self.full_slot.is_none() && self.last_value_slot.is_none()
+    }
+}
+
+impl<C: Clone + DimLike, F: Clone + DimLike> OutputMapping<C, F> {
+    pub fn concretize_stream_dim(&self, stream_dim: usize) -> TractResult<OutputMapping<C, F>> {
+        Ok(Self {
+            chunk: self.chunk.concretize_stream_dim(stream_dim),
+            full_dim_hint: self.full_dim_hint.as_ref().map(|h| h.concretize_stream_dim(stream_dim)),
+            ..self.clone()
+        })
     }
 }
 

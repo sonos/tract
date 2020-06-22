@@ -742,6 +742,31 @@ impl TypedOp for Scan {
         target.wire_node(&*node.name, op, &pulse_inputs)
     }
 
+    fn concretize_stream_dim(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        stream_dim: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let op = Self {
+            input_mapping: self
+                .input_mapping
+                .iter()
+                .map(|im| im.concretize_stream_dim(stream_dim))
+                .collect::<TractResult<Vec<_>>>()?,
+            output_mapping: self
+                .output_mapping
+                .iter()
+                .map(|om| om.concretize_stream_dim(stream_dim))
+                .collect::<TractResult<Vec<_>>>()?,
+            ..self.clone()
+        };
+        target.wire_node(&node.name, op, &[input])
+    }
+
     fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f64)> {
         self.to_codegen_op(false)
             .unwrap()

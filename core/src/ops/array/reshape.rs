@@ -40,6 +40,21 @@ impl TypedOp for TypedReshape {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))
     }
 
+    fn concretize_stream_dim(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        stream_dim: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let op = Self {
+            shape: self.shape.iter().map(|d| d.eval(stream_dim as _).unwrap().to_dim()).collect(),
+        };
+        target.wire_node(&node.name, op, &[input])
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,

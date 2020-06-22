@@ -138,12 +138,14 @@ fn main() {
 
     (@arg pass: --pass +takes_value
      possible_values(&["load", "analyse", "incorporate", "type", "declutter",
+                     "concretize-stream-dim", "concretize-stream-dim-declutter",
                      "pulse", "pulse-to-type", "pulse-declutter",
                      "optimize"])
      "Pass to stop preprocessing after.")
 
     (@arg optimize: -O --optimize "Optimize before running")
     (@arg pulse: --pulse +takes_value "Translate to pulse network")
+    (@arg concretize_stream_dim: --("concretize-stream-dim") +takes_value "Replace streaming dim by a concrete value")
 
     (@arg verbosity: -v ... "Sets the level of verbosity.")
 
@@ -741,6 +743,8 @@ impl Parameters {
         }
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
+        let concretize_stream_dim: Option<usize> =
+            matches.value_of("concretize_stream_dim").map(|s| s.parse()).transpose()?;
 
         let need_decluttered_model = matches.subcommand_name() == Some("stream-check");
         let need_pulsed_model = matches.subcommand_name() == Some("stream-check");
@@ -752,6 +756,8 @@ impl Parameters {
         let tract_model: Box<dyn Model> = {
             let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
                 "optimize"
+            } else if concretize_stream_dim.is_some() {
+                "concretize_stream_dim"
             } else if pulse.is_some() {
                 "pulse-declutter"
             } else {
@@ -814,7 +820,20 @@ impl Parameters {
                     return Ok(Box::new(model) as _);
                 }
                 info_usage("after declutter", probe);
-                if let Some(pulse) = pulse {
+                if let Some(concretize_stream_dim) = concretize_stream_dim {
+                    info!("Running 'concretize_stream_dim' ({})", concretize_stream_dim);
+                    model = model.concretize_stream_dim(concretize_stream_dim)?;
+                    if stop_at == "concretize-stream-dim" {
+                        return Ok(Box::new(model) as _);
+                    }
+                    info_usage("after concretize_stream_dim", probe);
+                    info!("Running 'concretize-stream-dim-declutter'");
+                    model = model.declutter()?;
+                    if stop_at == "concretize-stream-dim-declutter" {
+                        return Ok(Box::new(model) as _);
+                    }
+                    info_usage("after concretize-stream-dim-declutter", probe);
+                } else if let Some(pulse) = pulse {
                     info!("Running 'pulse' ({})", pulse);
                     let pulsed = ::tract_core::pulse::PulsedModel::new(&model, pulse)?;
                     if need_pulsed_model {
