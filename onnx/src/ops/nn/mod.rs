@@ -43,7 +43,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("MaxPool", max_pool);
     reg.insert("ParametricSoftplus", parametric_softplus);
     reg.insert("QLinearConv", conv_qlinear);
-    reg.insert("PRelu", |_, _| Ok((Box::new(prelu::bin()), vec![])));
+    reg.insert("PRelu", |_, _| Ok((expand(Prelu), vec![])));
     reg.insert("ReduceL1", |_, node| reduce(node, nn::Reducer::L1));
     reg.insert("ReduceL2", |_, node| reduce(node, nn::Reducer::L2));
     reg.insert("ReduceLogSum", |_, node| reduce(node, nn::Reducer::LogSum));
@@ -54,7 +54,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ReduceProd", |_, node| reduce(node, nn::Reducer::Prod));
     reg.insert("ReduceSum", |_, node| reduce(node, nn::Reducer::Sum));
     reg.insert("ReduceSumSquare", |_, node| reduce(node, nn::Reducer::SumSquare));
-    reg.insert("Relu", |_, _| Ok((expand(ops::activations::Clip::new(Some(0.0), None)), vec!())));
+    reg.insert("Relu", |_, _| Ok((expand(ops::activations::Clip::new(Some(0.0), None)), vec![])));
     reg.insert("ScaledTanh", scaled_tanh);
     reg.insert("Shrink", shrink);
     reg.insert("ThresholdedRelu", thresholded_relu);
@@ -292,35 +292,61 @@ pub fn parametric_softplus(
     Ok((expand(ops::activations::ParametricSoftplus(alpha, beta)), vec![]))
 }
 
-bin_to_super_type!(prelu, Prelu, declutter_bin: prelu_to_prelu_unary,
-  [f16,f32,f64] => |c, &a, &b| *c = if a < 0f32.into() { a * b } else { a });
+#[derive(Debug, Clone, Hash)]
+struct Prelu;
+tract_linalg::impl_dyn_hash!(Prelu);
 
-element_wise!(prelu_unary,
-    PreluUnary {
-        #[educe(Hash(method = "hash_f32"))]
-        b: f32
-    },
-    [f32] => |op, xs| {
-        xs.iter_mut().for_each(|x| *x = if *x < 0.0 { *x * op.b } else { *x });
-        Ok(())
-    },
-    [f64] => |op, xs| {
-        xs.iter_mut().for_each(|x| *x = if *x < 0.0 { *x * op.b as f64 } else { *x });
+impl Expansion for Prelu {
+    fn name(&self) -> Cow<str> {
+        "Prelu".into()
+    }
+
+    op_onnx!();
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(inputs, 2)?;
+        check_output_arity(outputs, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())
     }
-);
 
-fn prelu_to_prelu_unary(
-    _prelu: &Prelu,
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(ref b) = model.outlet_fact(node.inputs[1])?.konst {
-        let b = b.cast_to::<f32>()?;
-        let op = prelu_unary(*b.to_scalar::<f32>()?);
-        Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?))
-    } else {
-        Ok(None)
+    fn wire(
+        &self,
+        name: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let a = inputs[0];
+        let mut b = inputs[1];
+        let rank = model.outlet_fact(a)?.rank();
+        while model.outlet_fact(b)?.rank() < rank {
+            b = model.wire_node(
+                format!("{}.add-axis-{}", name, model.outlet_fact(b)?.rank()),
+                AxisOp::Add(0),
+                &[b],
+            )?[0];
+        }
+        let mut zero = tensor0(0.0).cast_to_dt(model.outlet_fact(a)?.datum_type)?.into_owned();
+        while zero.rank() < rank {
+            zero.insert_axis(0)?;
+        }
+        let ab = model.wire_node(
+            format!("{}.mul", name),
+            tract_hir::ops::math::mul::bin_typed(),
+            &[a, b],
+        )?[0];
+        let test = model.wire_node(
+            name.to_string() + ".test",
+            tract_hir::ops::logic::greater::unary(zero.into_arc_tensor()),
+            &[a],
+        )?;
+        model.wire_node(name.to_string() + ".iff", tract_hir::ops::logic::Iff, &[test[0], ab, a])
     }
 }
 
@@ -334,15 +360,15 @@ pub fn scaled_tanh(
 }
 
 element_wise!(shrink_op,
-    Shrink {
-        #[educe(Hash(method = "hash_f32"))]
-        bias: f32,
-        #[educe(Hash(method = "hash_f32"))]
-        lambd: f32
-    },
-    [f16,f32,f64] => |s, xs| {
-        xs.iter_mut().for_each(|x| *x = shrink_value(*x, s));
-        Ok(())
+Shrink {
+    #[educe(Hash(method = "hash_f32"))]
+    bias: f32,
+    #[educe(Hash(method = "hash_f32"))]
+    lambd: f32
+},
+[f16,f32,f64] => |s, xs| {
+    xs.iter_mut().for_each(|x| *x = shrink_value(*x, s));
+    Ok(())
 });
 
 fn shrink_value<T>(x: T, s: &Shrink) -> T
