@@ -126,11 +126,7 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn name(&self) -> Cow<str> {
-        if self.mmm.as_mmm().n() == 1 {
-            "MatVecMul"
-        } else {
-            "MatMatMul"
-        }.into()
+        if self.mmm.as_mmm().n() == 1 { "MatVecMul" } else { "MatMatMul" }.into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -258,17 +254,12 @@ where
                                 op.a.as_slice::<TI>()?.to_vec(),
                             ))));
                         }
-                    }
-                } else if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>() {
-                    if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMax>() {
-                        return Ok(Some(tvec!(FusedSpec::Max(op.max.cast_to_scalar()?))));
-                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMin>() {
-                        return Ok(Some(tvec!(FusedSpec::Min(op.min.cast_to_scalar()?))));
-                    } else if let Some(op) = op.0.downcast_ref::<ops::math::ScalarMinMax>() {
-                        return Ok(Some(tvec!(
-                            FusedSpec::Min(op.min.cast_to_scalar()?),
-                            FusedSpec::Max(op.max.cast_to_scalar()?),
-                        )));
+                    } else if op.a.len() == 1 {
+                        if op.mini_op.is::<ops::math::Max>() {
+                            return Ok(Some(tvec!(FusedSpec::Max(op.a.cast_to_scalar()?))));
+                        } else if op.mini_op.is::<ops::math::Min>() {
+                            return Ok(Some(tvec!(FusedSpec::Min(op.a.cast_to_scalar()?))));
+                        }
                     }
                 }
                 Ok(None)
@@ -278,8 +269,14 @@ where
                 new_op
                     .fused_ops
                     .get_or_insert_with(|| {
-                        let shape = vec!(1; self.c_prefix_dim_and_stride.as_ref().map(|c| c.0.len()).unwrap_or(0));
-                        ArrayD::from_shape_fn(shape, |_| vec!())
+                        let shape = vec![
+                            1;
+                            self.c_prefix_dim_and_stride
+                                .as_ref()
+                                .map(|c| c.0.len())
+                                .unwrap_or(0)
+                        ];
+                        ArrayD::from_shape_fn(shape, |_| vec![])
                     })
                     .map_inplace(|v| v.extend(op.iter().cloned()));
                 return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));

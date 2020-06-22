@@ -395,8 +395,6 @@ pub struct Parameters {
 
     tract_model: Box<dyn Model>,
 
-    output_names: Vec<String>,
-
     #[cfg(feature = "conform")]
     tf_model: Option<tract_tensorflow::conform::tf::Tensorflow>,
 
@@ -406,7 +404,7 @@ pub struct Parameters {
 
     input_values: Vec<Option<Arc<Tensor>>>,
 
-    assertions: Option<Assertions>,
+    assertions: Assertions,
 
     machine_friendly: bool,
 }
@@ -499,7 +497,6 @@ impl Parameters {
                 format
             ),
         };
-
         info!("Model {:?} loaded", filename);
         info_usage("model loaded", probe);
 
@@ -553,11 +550,13 @@ impl Parameters {
             }
         };
 
-        let output_names = raw_model
+        let output_names: Vec<String> = raw_model
             .output_outlets()?
             .iter()
             .map(|o| raw_model.node(o.node).name.to_string())
             .collect();
+
+        let mut assertions = Assertions::from_clap(matches, &output_names)?;
 
         if let Some(sub) = matches.value_of("kaldi_downsample") {
             let period = sub.parse::<isize>()?;
@@ -699,10 +698,14 @@ impl Parameters {
                 input_values[*ix] = tensor.value.concretize();
                 raw_model.set_input_fact(*ix, tensor.clone().without_value())?;
             }
-            for (ix, _, filename, name, tensor) in outputs.into_iter() {
-                debug!("Using {} as output {} ({}): {:?}", filename, ix, name, tensor);
-                // fixme use them as assertions
-            }
+            let outputs = outputs
+                .into_iter()
+                .inspect(|(ix, _, filename, name, tensor)| {
+                    debug!("Using {} as output {} ({}): {:?}", filename, ix, name, tensor);
+                })
+                .map(|(_, _, _, _, tensor)| tensor.concretize())
+                .collect();
+            assertions.assert_outputs = Some(outputs);
             Ok(())
         };
 
@@ -791,9 +794,7 @@ impl Parameters {
                 info_usage("after incorporate", probe);
                 info!("Running 'type'");
                 let model = match model.clone().into_typed() {
-                    Ok(typed) => {
-                        typed
-                    }
+                    Ok(typed) => typed,
                     Err(e) => {
                         error!("{:?}", e);
                         return Ok(Box::new(model) as _);
@@ -854,8 +855,7 @@ impl Parameters {
             tract_model,
             tf_model,
             input_values,
-            output_names,
-            assertions: None,
+            assertions,
             machine_friendly,
         })
     }
@@ -914,6 +914,7 @@ pub fn display_params_from_clap(
     })
 }
 
+#[derive(Debug)]
 pub struct Assertions {
     assert_outputs: Option<Vec<Option<Arc<Tensor>>>>,
     assert_output_facts: Option<Vec<InferenceFact>>,
@@ -975,6 +976,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         return Ok(());
     }
 
+    #[allow(unused_mut)]
     let mut params = Parameters::from_clap(&matches, probe)?;
 
     let mut need_optimisations = false;
@@ -1015,10 +1017,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             display_params_from_clap(&matches, m)?,
         ),
 
-        ("run", Some(m)) => {
-            params.assertions = Some(Assertions::from_clap(m, &*params.output_names)?);
-            run::handle(&params, m.is_present("dump"))
-        }
+        ("run", Some(m)) => run::handle(&params, m.is_present("dump")),
 
         ("optimize-check", Some(m)) => {
             optimize_check::handle(&params, display_params_from_clap(&matches, m)?)
@@ -1037,7 +1036,6 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         ),
 
         ("dump", Some(m)) => {
-            params.assertions = Some(Assertions::from_clap(m, &*params.output_names)?);
             need_optimisations = m.is_present("profile");
             let inner = m
                 .values_of("inner")

@@ -1,12 +1,13 @@
 use crate::model::KaldiOpRegister;
+use tract_hir::internal::*;
 
 #[macro_export]
 macro_rules! op_kaldi {
     () => {
-        fn op_families(&self) -> &'static [ &'static str ] {
-            &[ "core" ]
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core"]
         }
-    }
+    };
 }
 
 pub(crate) mod affine;
@@ -27,6 +28,6 @@ pub fn register_all_ops(reg: &mut KaldiOpRegister) {
     reg.insert("NormalizeComponent", renorm::renorm);
     reg.insert("LstmNonlinearityComponent", lstm_nonlin::lstm_nonlin);
     reg.insert("RectifiedLinearComponent", |_, _| {
-        Ok(Box::new(tract_hir::ops::math::scalar_max((0.0).into())))
+        Ok(expand(tract_hir::ops::activations::Clip::new(Some(0.0), None)))
     });
 }

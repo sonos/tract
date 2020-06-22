@@ -54,7 +54,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ReduceProd", |_, node| reduce(node, nn::Reducer::Prod));
     reg.insert("ReduceSum", |_, node| reduce(node, nn::Reducer::Sum));
     reg.insert("ReduceSumSquare", |_, node| reduce(node, nn::Reducer::SumSquare));
-    reg.insert("Relu", |_, _| Ok((Box::new(ops::math::scalar_max((0.0).into())), vec![])));
+    reg.insert("Relu", |_, _| Ok((expand(ops::activations::Clip::new(Some(0.0), None)), vec!())));
     reg.insert("ScaledTanh", scaled_tanh);
     reg.insert("Shrink", shrink);
     reg.insert("ThresholdedRelu", thresholded_relu);

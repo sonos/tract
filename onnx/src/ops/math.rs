@@ -61,13 +61,7 @@ pub fn clip(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let min: Option<f32> = node.get_attr_opt("min")?;
     let max: Option<f32> = node.get_attr_opt("max")?;
-    let op: Box<dyn InferenceOp> = match (min, max) {
-        (Some(min), Some(max)) => Box::new(ops::math::scalar_min_max(max.into(), min.into())),
-        (None, Some(max)) => Box::new(ops::math::scalar_min(max.into())),
-        (Some(min), None) => Box::new(ops::math::scalar_max(min.into())),
-        (None, None) => Box::new(ops::identity::Identity::default()),
-    };
-    Ok((op, vec![]))
+    Ok((expand(ops::activations::Clip::new(min, max)), vec!()))
 }
 
 element_wise!(erf, Erf,
