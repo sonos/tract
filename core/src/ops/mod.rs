@@ -233,7 +233,7 @@ pub trait TypedOp:
         Ok(None)
     }
 
-    /// Translate an on from a typed network to a pulsing equivalent
+    /// Translate an op from a typed network to a pulsing equivalent
     /// form, if possible.
     fn pulsify(
         &self,
@@ -245,6 +245,19 @@ pub trait TypedOp:
     ) -> TractResult<TVec<OutletId>> {
         debug!("{:?}", node);
         bail!("Operator {} do not support pulsification", self.name())
+    }
+
+    /// Transform the op into by making the S dimension concrete.
+    fn concretize_stream_dim(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _stream_dim: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+        target.wire_node(&node.name, node.op.clone(), &inputs)
     }
 
     /// Translate the op into the most efficient form possible for execution.

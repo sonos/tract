@@ -78,6 +78,21 @@ impl TypedOp for TypedSource {
         Ok(tvec!(id))
     }
 
+    fn concretize_stream_dim(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+        stream_dim: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let mut fact = self.fact.clone();
+        if let Some(info) = self.fact.shape.stream_info.as_ref() {
+            fact.shape.set_dim(info.axis, fact.shape.dim(info.axis).concretize_stream_dim(stream_dim))?;
+        }
+        target.wire_node(&node.name, Self { fact }, &[])
+    }
+
     as_op!();
 }
 

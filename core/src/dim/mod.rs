@@ -49,6 +49,9 @@ pub trait DimLike:
 
     /// do not use num_traits::Mul as it implies a regular Mul
     fn one() -> Self;
+
+    /// Give streaming dimension its value
+    fn concretize_stream_dim(&self, stream_dim: usize) -> Self;
 }
 
 impl DimLike for TDim {
@@ -69,6 +72,10 @@ impl DimLike for TDim {
     fn one() -> Self {
         Self::from(1)
     }
+
+    fn concretize_stream_dim(&self, stream_dim: usize) -> Self {
+        self.eval(stream_dim as _).unwrap().to_dim()
+    }
 }
 
 impl DimLike for usize {
@@ -82,6 +89,10 @@ impl DimLike for usize {
 
     fn one() -> usize {
         1
+    }
+
+    fn concretize_stream_dim(&self, _stream_dim: usize) -> Self {
+        *self
     }
 }
 
