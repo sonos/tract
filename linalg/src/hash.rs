@@ -60,6 +60,13 @@ pub fn hash_f32<H: Hasher>(s: &f32, state: &mut H) {
     Hash::hash(&s.to_bits(), state)
 }
 
+pub fn hash_opt_f32<H: Hasher>(s: &Option<f32>, state: &mut H) {
+    Hash::hash(&s.is_some(), state);
+    if let Some(s) = s {
+        Hash::hash(&s.to_bits(), state)
+    }
+}
+
 struct WrappedHasher<'a>(&'a mut dyn Hasher);
 
 impl<'a> Hasher for WrappedHasher<'a> {

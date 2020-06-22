@@ -39,6 +39,26 @@ macro_rules! activation {
     };
 }
 
+#[derive(Debug, Clone, new, Educe)]
+#[educe(Hash)]
+pub struct Clip(
+    #[educe(Hash(method = "hash_opt_f32"))] Option<f32>,
+    #[educe(Hash(method = "hash_opt_f32"))] Option<f32>,
+);
+
+activation!(Clip, |op, name: &str, model: &mut TypedModel, inputs| {
+    let mut wire:TVec<OutletId> = inputs.into();
+    if let Some(low) = op.0 {
+        let low = broadcast_scalar(low, model, inputs)?;
+        wire = model.wire_node(name.to_string() + ".low", max::unary(low), &wire)?;
+    }
+    if let Some(high) = op.1 {
+        let high = broadcast_scalar(high, model, inputs)?;
+        wire = model.wire_node(name.to_string() + ".high", min::unary(high), &wire)?;
+    }
+    Ok(wire)
+});
+
 #[derive(Debug, Clone, new, Hash)]
 pub struct Softplus;
 
@@ -101,11 +121,8 @@ activation!(HardSigmoid, |op, name: &str, model: &mut TypedModel, inputs| {
     let zero = broadcast_scalar(0.0, model, inputs)?;
     let wire = model.wire_node(name.to_string() + ".mul_alpha", mul::unary(alpha), inputs)?;
     let wire = model.wire_node(name.to_string() + ".add_beta", add::unary(beta), &wire)?;
-    let wire = model.wire_node(
-        name.to_string() + ".sat",
-        scalar_min_max(one.into_tensor(), zero.into_tensor()),
-        &wire,
-    )?;
+    let wire = model.wire_node(name.to_string() + ".sat-one", min::unary(one), &wire)?;
+    let wire = model.wire_node(name.to_string() + ".sat-zero", max::unary(zero), &wire)?;
     Ok(wire)
 });
 
@@ -199,7 +216,8 @@ activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
 pub struct ThresholdRelu(#[educe(Hash(method = "hash_f32"))] pub f32);
 
 activation!(ThresholdRelu, |op, name: &str, model: &mut TypedModel, inputs| {
-    let zero = model.add_const(name.to_string() + ".zero", broadcast_scalar(0.0, model, inputs)?)?;
+    let zero =
+        model.add_const(name.to_string() + ".zero", broadcast_scalar(0.0, model, inputs)?)?;
     let alpha = broadcast_scalar(op.0, model, inputs)?;
     let test = model.wire_node(
         name.to_string() + ".test",
@@ -213,7 +231,6 @@ activation!(ThresholdRelu, |op, name: &str, model: &mut TypedModel, inputs| {
     )?;
     Ok(wire)
 });
-
 
 fn simple_unary_rules<'r, 'p: 'r, 's: 'r>(
     s: &mut Solver<'r>,

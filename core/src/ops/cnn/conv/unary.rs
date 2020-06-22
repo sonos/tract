@@ -370,7 +370,7 @@ impl ConvUnary {
                 bias_shape[input_shape.c_axis()] = co;
                 let b = unsafe { b.clone().into_tensor().into_shape(&bias_shape)? };
                 wire = patch.wire_node(
-                    format!("{}?bias", node.name),
+                    format!("{}.bias", node.name),
                     crate::ops::math::add::unary(b.into_arc_tensor()),
                     &[wire],
                 )?[0];
