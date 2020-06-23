@@ -351,7 +351,7 @@ impl fmt::Debug for ShapeFactoid {
             }
             if let Some(ref stream) = self.stream {
                 if stream.axis == ix {
-                    write!(formatter, "{:?}", stream.len)?;
+                    write!(formatter, "{}", stream.len)?;
                 } else {
                     write!(formatter, "{:?}", d)?;
                 }
