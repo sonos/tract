@@ -37,6 +37,7 @@ pub trait DimLike:
     + std::iter::Sum
     + ToDim
 {
+    fn maybe_div(&self, other: &Self) -> TractResult<(Self, u32)>;
     fn maybe_mul(&self, other: &Self) -> TractResult<Self>;
 
     /// Integer divise, rounding up to next integer.
@@ -55,6 +56,34 @@ pub trait DimLike:
 }
 
 impl DimLike for TDim {
+    fn maybe_div(&self, other: &Self) -> TractResult<(Self, u32)> {
+        use crate::num_traits::Zero;
+        if self.is_zero() {
+            return Ok((TDim::zero(), 1));
+        } else if other.is_zero() {
+            bail!("Division by zero")
+        }
+        let quotient = match (self.to_integer(), other.to_integer()) {
+            (Ok(p), Ok(q)) => {
+                let (p, q) = tree::reduce_ratio(p, q);
+                (p.into(), q)
+            }
+            (_, Ok(q)) => (self.clone() / q, 1),
+            (_, _) => {
+                let slope_p = self.slope();
+                let slope_q = other.slope();
+                let (p, q) =
+                    tree::reduce_ratio(slope_p.0 * slope_q.1 as i32, slope_q.0 * slope_p.1 as i32);
+                (p.into(), q)
+            }
+        };
+        if self == &(other.clone().maybe_mul(&quotient.0).unwrap() / quotient.1) {
+            Ok(quotient)
+        } else {
+            bail!("Quotient is a non linear expression ({} / {})", self, other)
+        }
+    }
+
     fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
         if let Ok(d) = other.to_integer() {
             Ok(self.clone() * d)
@@ -81,6 +110,12 @@ impl DimLike for TDim {
 impl DimLike for usize {
     fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
         Ok(self * other)
+    }
+
+    fn maybe_div(&self, other: &Self) -> TractResult<(Self, u32)> {
+        use crate::num_integer::Integer;
+        let gcd = self.gcd(other);
+        Ok((self / gcd, (other / gcd) as u32))
     }
 
     fn to_integer(&self) -> TractResult<i32> {
@@ -115,5 +150,35 @@ pub trait ToDim {
 impl<I: Into<TDim>> ToDim for I {
     fn to_dim(self) -> TDim {
         self.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn div() {
+        assert_eq!(TDim::from(12).maybe_div(&TDim::from(4)).unwrap(), (3.into(), 1));
+    }
+
+    #[test]
+    fn div_sym_int() {
+        assert_eq!((TDim::s() * 12).maybe_div(&TDim::from(4)).unwrap(), (TDim::s() * 3, 1));
+    }
+
+    #[test]
+    fn div_sym_sym() {
+        assert_eq!((TDim::s() * 12).maybe_div(&(TDim::s() * 4)).unwrap(), (3.into(), 1));
+    }
+
+    #[test]
+    fn div_sym_sym_ratio() {
+        assert_eq!((TDim::s() * 13).maybe_div(&(TDim::s() * 4)).unwrap(), (13.into(), 4));
+    }
+
+    #[test]
+    fn div_sym_sym_rem() {
+        assert!((TDim::s() + 1).maybe_div(&(TDim::s() * 4)).is_err());
     }
 }
