@@ -218,7 +218,11 @@ impl TypedFact {
     }
 
     pub fn format_dt_shape(&self) -> String {
-        format!("{:?}x{:?}", self.shape, self.datum_type)
+        if self.rank() > 0 {
+            format!("{:?}x{:?}", self.shape, self.datum_type)
+        } else {
+            format!("{:?}", self.datum_type)
+        }
     }
 }
 
@@ -272,7 +276,8 @@ impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.konst {
             Some(ref k) => write!(fmt, "{:?}", k),
-            None => write!(fmt, "{:?}x{:?}", self.shape, self.datum_type),
+            None if self.rank() > 0 => write!(fmt, "{:?}x{:?}", self.shape, self.datum_type),
+            None => write!(fmt, "{:?}", self.datum_type),
         }
     }
 }
