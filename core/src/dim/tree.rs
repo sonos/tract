@@ -228,11 +228,11 @@ impl TDim {
                     if terms.iter().any(|t| t == &Mul(-1, b!(Sym('S')))) {
                         Mul(
                             -1,
-                            b!(
-                                Div(b!(Add(terms.into_iter().map(|t| Mul(-1, b!(t))).collect())
+                            b!(Div(
+                                b!(Add(terms.into_iter().map(|t| Mul(-1, b!(t))).collect())
                                     .simplify()),
-                                q)
-                            ),
+                                q
+                            )),
                         )
                     } else if let Some(v) = terms
                         .iter()
@@ -323,6 +323,43 @@ impl TDim {
 
     pub fn div_ceil(self, rhs: u32) -> TDim {
         TDim::Div(Box::new(Add(vec![self, Val(rhs as i32 - 1)])), rhs).reduce()
+    }
+
+    pub fn slope(&self) -> (i32, u32) {
+        fn slope_rec(d: &TDim) -> (i32, i32) {
+            match d {
+                Val(_) => (0, 1),
+                Sym(_) => (1, 1),
+                Add(terms) => terms
+                    .iter()
+                    .map(slope_rec)
+                    .fold((1, 1), |a, b| ((a.0 * b.1 + a.1 * b.0), (b.1 * a.1))),
+                Mul(p, a) => {
+                    let (n, d) = slope_rec(a);
+                    (p * n, d)
+                }
+                Div(a, q) => {
+                    let (n, d) = slope_rec(a);
+                    (n, d * *q as i32)
+                }
+            }
+        }
+        let (p, q) = slope_rec(self);
+        reduce_ratio(p, q)
+    }
+}
+
+pub(super) fn reduce_ratio(mut p: i32, mut q: i32) -> (i32, u32) {
+    use crate::num_integer::Integer;
+    let gcd = p.abs().gcd(&q.abs());
+    if gcd > 1 {
+        p /= gcd;
+        q /= gcd;
+    }
+    if q < 0 {
+        (-p, (-q) as u32)
+    } else {
+        (p, q as u32)
     }
 }
 
