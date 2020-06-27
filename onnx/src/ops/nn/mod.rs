@@ -235,7 +235,7 @@ pub fn layer_log_soft_max(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
-    Ok((Box::new(ops::nn::LayerLogSoftmax::new(axis)), vec![]))
+    Ok((expand(ops::nn::LayerLogSoftmax::new(axis)), vec![]))
 }
 
 pub fn layer_soft_max(
@@ -243,7 +243,7 @@ pub fn layer_soft_max(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
-    Ok((Box::new(ops::nn::LayerSoftmax::new(axis)), vec![]))
+    Ok((expand(ops::nn::LayerSoftmax::new(axis)), vec![]))
 }
 
 pub fn leaky_relu(
