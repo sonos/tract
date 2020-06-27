@@ -73,6 +73,8 @@ bin_to_super_type!(max, Max, flip:commute,
                    [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a.max(b));
 bin_to_super_type!(pow, Pow,
                    [f32, f64] => |c,a,b| *c = a.powf(*b));
+bin_to_super_type!(flipped_pow, FlippedPow,
+                   [f32, f64] => |c,a,b| *c = b.powf(*a));
 
 bin_to_super_type!(shift_left, ShiftLeft,
                    [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a << *b);
