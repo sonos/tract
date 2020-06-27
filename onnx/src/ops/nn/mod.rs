@@ -30,11 +30,9 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ConvInteger", conv_integer);
     reg.insert("Dropout", dropout::dropout);
     reg.insert("Elu", elu);
-    reg.insert("GlobalAveragePool", |_, _| {
-        Ok((Box::new(ops::nn::GlobalAvgPool::default()), vec![]))
-    });
+    reg.insert("GlobalAveragePool", |_, _| Ok((expand(ops::nn::GlobalAvgPool), vec![])));
     reg.insert("GlobalLpPool", global_lp_pool);
-    reg.insert("GlobalMaxPool", |_, _| Ok((Box::new(ops::nn::GlobalMaxPool::default()), vec![])));
+    reg.insert("GlobalMaxPool", |_, _| Ok((expand(ops::nn::GlobalMaxPool), vec![])));
     reg.insert("Hardmax", layer_hard_max);
     reg.insert("HardSigmoid", hard_sigmoid);
     reg.insert("LeakyRelu", leaky_relu);
@@ -212,7 +210,7 @@ pub fn global_lp_pool(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let p: usize = node.get_attr_opt("p")?.unwrap_or(2);
-    Ok((Box::new(ops::nn::GlobalLpPool::new(p)), vec![]))
+    Ok((expand(ops::nn::GlobalLpPool::new(p)), vec![]))
 }
 
 pub fn hard_sigmoid(
