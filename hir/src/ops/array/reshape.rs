@@ -89,9 +89,14 @@ fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>>
                 }
                 *slot = input_dims.peek().ok_or("Invalid")?.clone().clone();
             }
-            while remaining_dim_input.maybe_div(slot)?.1 != 1 {
-                remaining_dim_input =
-                    remaining_dim_input.maybe_mul(input_dims.next().ok_or("Invalid")?)?;
+            loop {
+                let quotient = remaining_dim_input.maybe_div(slot);
+                if quotient.is_err() || quotient.as_ref().unwrap().1 != 1 {
+                    remaining_dim_input =
+                        remaining_dim_input.maybe_mul(input_dims.next().ok_or("Invalid")?)?;
+                } else {
+                    break;
+                }
             }
             remaining_dim_input = remaining_dim_input.maybe_div(&slot)?.0;
         }
@@ -102,6 +107,7 @@ fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>>
     shape.reverse();
     deal_with_zero(input.iter().rev().peekable(), &mut shape)?;
     shape.reverse();
+
     if let Some(pos) = shape.iter().position(|d| *d == (-1).into()) {
         let input_vol = input.iter().try_fold(1.to_dim(), |a, b| a.maybe_mul(b))?;
         let shape_vol = shape
@@ -143,5 +149,10 @@ mod tests {
     #[test]
     fn reshape_with_trailing_zero() {
         assert_eq!(&*compute_shape(s![3, 4, 5], s!(3, -1, 0)).unwrap(), s![3, 4, 5])
+    }
+
+    #[test]
+    fn reshape_bug_1() {
+        assert_eq!(&*compute_shape(s![TDim::s(), 1, 2, 128], s!(0, 0, -1)).unwrap(), s![TDim::s(), 1, 256])
     }
 }

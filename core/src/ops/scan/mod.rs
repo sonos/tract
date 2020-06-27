@@ -101,7 +101,7 @@ impl<C: Clone + DimLike, F: Clone + DimLike> OutputMapping<C, F> {
     }
 }
 
-impl<C: Clone, F: Clone> fmt::Debug for OutputMapping<C, F> {
+impl<C: Clone, F: Clone + fmt::Display> fmt::Debug for OutputMapping<C, F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         if self.state {
             write!(fmt, "State. ")?;
@@ -111,6 +111,9 @@ impl<C: Clone, F: Clone> fmt::Debug for OutputMapping<C, F> {
         }
         if let Some(full_slot) = self.full_slot {
             write!(fmt, "Full value to outlet {}. ", full_slot)?;
+        }
+        if let Some(full_dim_hint) = &self.full_dim_hint {
+            write!(fmt, "Full len {}. ", full_dim_hint)?;
         }
         write!(fmt, "Axis:{} ", self.axis)?;
         Ok(())
