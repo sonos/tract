@@ -49,7 +49,7 @@ pub fn pull_downsample_over_scan(
         }
     }
 
-    let inner_model = crate::model::compact::compact(&inner_model.declutter()?)?;
+    let inner_model = inner_model.declutter()?.compact()?;
 
     let mut new_scan = scan_op.clone();
     new_scan.body = inner_model;

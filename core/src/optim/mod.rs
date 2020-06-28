@@ -71,7 +71,7 @@ impl TypedPass for OpOptim {
                 }
             }
 
-            new = crate::model::compact::compact(&new)?;
+            new = new.compact()?;
             let sig = new.signature();
             if hashset.contains(&sig) {
                 break;

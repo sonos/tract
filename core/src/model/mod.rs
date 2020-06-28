@@ -39,7 +39,6 @@ use std::str;
 
 use itertools::Itertools;
 
-pub mod compact;
 pub mod dsl;
 mod fact;
 mod model;
@@ -165,9 +164,9 @@ impl TypedModel {
             if !done_something || model.signature() == started {
                 break;
             }
-            model = compact::compact(&model)?;
+            model = model.compact()?;
         }
-        compact::compact(&model)
+        model.compact()
     }
 
     pub fn concretize_stream_dim(&self, dim: usize) -> TractResult<TypedModel> {
@@ -202,7 +201,7 @@ impl TypedModel {
             if !done_something {
                 break;
             }
-            model = compact::compact(&model)?;
+            model = model.compact()?;
         }
         Ok(model)
     }
