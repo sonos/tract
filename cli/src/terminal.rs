@@ -221,10 +221,9 @@ fn render_node_prefixed(
                 && model.node_output_count(node_id) == 1
                 && model.outlet_fact_format(node_id.into())
                     == model.outlet_fact_format(model.node_inputs(node_id)[0]);
-            if !same {
+            if !same || model.output_outlets().iter().any(|o| o.node == node_id) {
                 let style = drawing_state
-                    .and_then(|w| w.wires.last())
-                    .and_then(|w| w.color)
+                    .map(|s| s.wires.last().and_then(|w| w.color).unwrap_or(s.latest_node_color))
                     .unwrap_or(White.into());
                 for ix in 0..model.node_output_count(node_id) {
                     prefix!();
