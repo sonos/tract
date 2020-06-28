@@ -144,29 +144,30 @@ impl TypedModel {
     }
 
     /// Perform declutter passes on the network.
-    pub fn declutter(self) -> TractResult<TypedModel> {
-        let started = self.signature();
-        let mut model = self;
+    pub fn declutter(&self) -> TractResult<TypedModel> {
+        let mut model = self.compact()?;
+        let mut seen = std::collections::HashSet::new();
         let model_inputs = model.input_outlets()?.len();
         let model_outputs = model.output_outlets()?.len();
         loop {
-            let mut done_something = false;
+            let mut done_something_this_time = false;
             for p in crate::optim::declutter() {
-                debug!("done_something {:?} before {:?}", done_something, p);
-                done_something = done_something || p.pass(&mut model)?;
-                debug!("done_something {:?} after {:?}", done_something, p);
+                debug!("done_something {:?} before {:?}", done_something_this_time, p);
+                done_something_this_time = done_something_this_time || p.pass(&mut model)?;
+                debug!("done_something {:?} after {:?}", done_something_this_time, p);
                 if cfg!(debug_assertions) {
                     model.check_edges()?;
                     assert_eq!(model.input_outlets()?.len(), model_inputs);
                     assert_eq!(model.output_outlets()?.len(), model_outputs);
                 }
             }
-            if !done_something || model.signature() == started {
-                break;
+            let sig = model.signature();
+            if !done_something_this_time || seen.contains(&sig) {
+                return Ok(model);
             }
+            seen.insert(sig);
             model = model.compact()?;
         }
-        model.compact()
     }
 
     pub fn concretize_stream_dim(&self, dim: usize) -> TractResult<TypedModel> {

@@ -49,7 +49,7 @@ pub fn pull_downsample_over_scan(
         }
     }
 
-    let inner_model = inner_model.declutter()?.compact()?;
+    let inner_model = inner_model.declutter()?;
 
     let mut new_scan = scan_op.clone();
     new_scan.body = inner_model;
