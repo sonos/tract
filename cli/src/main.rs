@@ -757,7 +757,7 @@ impl Parameters {
             let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
                 "optimize"
             } else if concretize_stream_dim.is_some() {
-                "concretize_stream_dim"
+                "concretize-stream-dim-declutter"
             } else if pulse.is_some() {
                 "pulse-declutter"
             } else {
