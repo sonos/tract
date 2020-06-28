@@ -4,8 +4,6 @@ use super::factoid::Factoid;
 use super::{InferenceFact, InferenceModel, InferenceNode, InferenceOp};
 use crate::internal::*;
 use crate::prelude::TVec;
-use tract_core::model::compact;
-use tract_core::model::translator::Translate;
 
 pub trait InferenceModelExt {
     /// Analyse all nodes of the graph.
@@ -58,7 +56,7 @@ impl InferenceModelExt for InferenceModel {
                 break;
             }
         }
-        model = compact::compact(&model)?;
+        model = model.compact()?;
         model.analyse(false)?;
         Ok(model)
     }
@@ -85,12 +83,14 @@ impl InferenceModelExt for InferenceModel {
     /// Eliminate seemingly dead branches of the graph.
     ///
     /// This may break stateful networks.
-    fn eliminate_dead_branches(mut self) -> TractResult<InferenceModel> {
-        compact::compact(&mut self)
+    fn eliminate_dead_branches(self) -> TractResult<InferenceModel> {
+        self.compact()
     }
 
     /// Attempt full analyse and conversion to TypedModel.
     fn into_typed(mut self) -> TractResult<TypedModel> {
+        use tract_core::internal::translator::Translate;
+
         self.analyse(false)?;
         let m = self.incorporate()?;
 

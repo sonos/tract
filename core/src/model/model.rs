@@ -583,6 +583,27 @@ where
     }
 }
 
+impl<F, O> ModelImpl<F, O>
+where
+    F: Fact + Clone + 'static + std::hash::Hash + for<'a> std::convert::From<&'a F>,
+    O: std::fmt::Display
+        + std::fmt::Debug
+        + Clone
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + 'static
+        + std::hash::Hash
+        + for<'a> std::convert::From<&'a O>,
+    ModelImpl<F, O>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
+{
+    pub fn compact(&self) -> TractResult<Self> {
+        use crate::model::translator::Translate;
+        crate::model::translator::IntoTranslator.translate_model(self)
+    }
+}
+
+
 #[cfg(test)]
 mod test {
     use crate::internal::*;

@@ -53,3 +53,9 @@ pub type InferenceModelPatch = ModelPatch<InferenceFact, Box<dyn InferenceOp>>;
 pub type InferenceSimplePlan<M> = SimplePlan<InferenceFact, Box<dyn InferenceOp>, M>;
 /// An execution state for InferenceModel.
 pub type InferenceSimpleState<M, P> = SimpleState<InferenceFact, Box<dyn InferenceOp>, M, P>;
+
+impl<'a> From<&'a Box<dyn InferenceOp>> for Box<dyn InferenceOp> {
+    fn from(it: &'a Box<dyn InferenceOp>) -> Box<dyn InferenceOp> {
+        tract_core::dyn_clone::clone_box(it.as_ref())
+    }
+}
