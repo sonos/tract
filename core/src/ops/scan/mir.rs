@@ -750,7 +750,7 @@ impl TypedOp for Scan {
         mapping: &HashMap<OutletId, OutletId>,
         stream_dim: usize,
     ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
+        let inputs = node.inputs.iter().map(|o| mapping[&o]).collect::<TVec<_>>();
         let op = Self {
             input_mapping: self
                 .input_mapping
@@ -764,7 +764,7 @@ impl TypedOp for Scan {
                 .collect::<TractResult<Vec<_>>>()?,
             ..self.clone()
         };
-        target.wire_node(&node.name, op, &[input])
+        target.wire_node(&node.name, op, &inputs)
     }
 
     fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f64)> {

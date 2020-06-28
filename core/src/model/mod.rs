@@ -181,7 +181,7 @@ impl TypedModel {
                 node: &TypedNode,
                 target: &mut TypedModel,
                 mapping: &HashMap<OutletId, OutletId>,
-                ) -> TractResult<TVec<OutletId>> {
+            ) -> TractResult<TVec<OutletId>> {
                 node.op.concretize_stream_dim(source, node, target, mapping, self.0)
             }
         }
