@@ -6,6 +6,8 @@ pub struct AddDims {
     pub axes: Vec<usize>,
 }
 
+tract_linalg::impl_dyn_hash!(AddDims);
+
 impl AddDims {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
         let mut shape: TVec<D> = input.iter().cloned().collect();
@@ -16,7 +18,7 @@ impl AddDims {
     }
 }
 
-impl Op for AddDims {
+impl Expansion for AddDims {
     fn name(&self) -> Cow<str> {
         "AddDims".into()
     }
@@ -26,20 +28,7 @@ impl Op for AddDims {
     }
 
     op_hir!();
-    not_a_typed_op!();
-}
 
-tract_linalg::impl_dyn_hash!(AddDims);
-
-impl StatelessOp for AddDims {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        let shape = self.compute_shape(input.shape());
-        Ok(unsafe { tvec![input.into_tensor().into_shape(&*shape)?.into_arc_tensor()] })
-    }
-}
-
-impl InferenceRulesOp for AddDims {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -55,26 +44,19 @@ impl InferenceRulesOp for AddDims {
         })
     }
 
-    #[allow(unused_variables)]
-    fn to_typed(
+    fn wire(
         &self,
-        source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let mut wire = mapping[&node.inputs[0]];
+        let mut wire:TVec<OutletId> = inputs.into();
         let mut axes = self.axes.clone();
         axes.sort();
         for axis in axes {
-            wire = target.wire_node(
-                format!("{}-axis-{}", node.name, axis),
-                AxisOp::Add(axis),
-                &[wire],
-            )?[0];
+            wire =
+                model.wire_node(format!("{}.axis-{}", prefix, axis), AxisOp::Add(axis), &wire)?;
         }
-        Ok(tvec!(wire))
+        Ok(wire)
     }
-
-    as_op!();
 }

@@ -17,36 +17,15 @@ impl RmDims {
             .map(|(_ix, d)| d.clone())
             .collect()
     }
-
-    /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape = self.compute_shape(input.shape());
-        Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(&*shape)?.into_arc_tensor()])
-    }
 }
 
-impl Op for RmDims {
+impl Expansion for RmDims {
     fn name(&self) -> Cow<str> {
         "RmDims".into()
     }
 
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axes: {:?}", self.axes)])
-    }
-
     op_hir!();
-    not_a_typed_op!();
-}
 
-impl StatelessOp for RmDims {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
-    }
-}
-
-impl InferenceRulesOp for RmDims {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -65,25 +44,20 @@ impl InferenceRulesOp for RmDims {
         })
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let mut wire = mapping[&node.inputs[0]];
+        let mut wire = inputs[0];
         let mut axes = self.axes.clone();
         axes.sort();
         for axis in axes.into_iter().rev() {
-            wire = target.wire_node(
-                format!("{}-axis-{}", node.name, axis),
-                AxisOp::Rm(axis),
-                &[wire],
-            )?[0];
+            wire =
+                target.wire_node(format!("{}.axis-{}", prefix, axis), AxisOp::Rm(axis), &[wire])?
+                    [0];
         }
         Ok(tvec!(wire))
     }
-
-    as_op!();
 }
