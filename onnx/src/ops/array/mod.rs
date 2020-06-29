@@ -13,7 +13,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
     reg.insert("ConstantOfShape", constant_of_shape);
-    reg.insert("Expand", |_, _| Ok((Box::new(array::MultiBroadcastTo::default()), vec![])));
+    reg.insert("Expand", |_, _| Ok((expand(array::MultiBroadcastTo::default()), vec![])));
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
@@ -133,7 +133,7 @@ pub fn squeeze(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axes = node.get_attr_opt_vec("axes")?;
-    Ok((Box::new(array::Squeeze::new(axes)), vec![]))
+    Ok((expand(array::Squeeze::new(axes)), vec![]))
 }
 
 pub fn transpose(
@@ -149,5 +149,5 @@ pub fn unsqueeze(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axes = node.get_attr_vec("axes")?;
-    Ok((Box::new(array::AddDims::new(axes)), vec![]))
+    Ok((expand(array::AddDims::new(axes)), vec![]))
 }

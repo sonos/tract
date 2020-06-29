@@ -28,33 +28,15 @@ impl Squeeze {
             Ok(input.into_iter().filter(|&d| d != &D::one()).cloned().collect())
         }
     }
-
-    /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape = self.compute_shape(input.shape())?;
-        Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(&*shape)?.into_arc_tensor()])
-    }
 }
 
-impl Op for Squeeze {
+impl Expansion for Squeeze {
     fn name(&self) -> Cow<str> {
         "Squeeze".into()
     }
 
     op_hir!();
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
 
-impl StatelessOp for Squeeze {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
-    }
-}
-
-impl InferenceRulesOp for Squeeze {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -72,14 +54,13 @@ impl InferenceRulesOp for Squeeze {
         })
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
+        let input = inputs[0];
         let axes = if let Some(axes) = &self.axes {
             axes.clone()
         } else {
@@ -92,8 +73,7 @@ impl InferenceRulesOp for Squeeze {
                 .map(|(ix, _d)| ix)
                 .collect()
         };
-        InferenceOp::to_typed(&RmDims::new(axes), source, node, target, mapping)
+        RmDims::new(axes).wire(prefix, target, inputs)
     }
 
-    as_op!();
 }

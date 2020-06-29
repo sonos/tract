@@ -8,10 +8,10 @@ pub fn squeeze(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
     if let Some(mut squeeze_dims) = squeeze_dims {
         if squeeze_dims.len() > 0 {
             squeeze_dims.sort();
-            return Ok(Box::new(Squeeze::new(Some(squeeze_dims))));
+            return Ok(expand(Squeeze::new(Some(squeeze_dims))));
         }
     }
-    Ok(Box::new(Squeeze::default()))
+    Ok(expand(Squeeze::default()))
 }
 
 #[cfg(test)]
@@ -24,7 +24,14 @@ mod tests {
     where
         I: Into<Tensor>,
     {
-        op.eval(tvec![input.into().into()]).unwrap().pop().unwrap().into_tensor()
+        expand(op)
+            .as_stateless()
+            .unwrap()
+            .eval(tvec![input.into().into()])
+            .unwrap()
+            .pop()
+            .unwrap()
+            .into_tensor()
     }
 
     #[test]
@@ -41,22 +48,5 @@ mod tests {
             run(Squeeze::new(Some(vec![2, 4])), Array::from_elem([1, 2, 1, 3, 1, 1], 0)).shape(),
             &[1, 2, 3, 1]
         );
-    }
-
-    #[test]
-    fn squeeze_inference_1() {
-        let input = InferenceFact::default()
-            .with_datum_type(DatumType::TDim)
-            .with_shape(shapefactoid![1, 1, (TDim::stream() - 2), 16]);
-        let any = InferenceFact::default();
-
-        let mut op = Squeeze::new(Some(vec![1]));
-        let inferred = op.infer_facts(tvec!(&input), tvec!(&any), tvec!()).unwrap();
-
-        let expect: TVec<_> = tvec!(InferenceFact::default()
-            .with_datum_type(DatumType::TDim)
-            .with_shape(shapefactoid![1, (TDim::stream() - 2), 16]));
-
-        assert_eq!(inferred.1, expect);
     }
 }
