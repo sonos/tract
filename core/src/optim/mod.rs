@@ -39,8 +39,30 @@ pub struct OpOptim(
         op: &dyn TypedOp,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>>,
-);
+        ) -> TractResult<Option<TypedModelPatch>>,
+        );
+
+impl OpOptim {
+    fn full_pass(&self, new: &mut TypedModel) -> TractResult<bool> {
+        let mut done_something = false;
+        for id in new.eval_order()? {
+            let reduced = {
+                let node = &new.nodes()[id];
+                (self.1)(node.op.as_ref(), &new, node)
+                    .chain_err(|| format!("{:?} node {}", self, node))?
+            };
+            if let Some(red) = reduced {
+                debug!("Apply a model patch for {:?} {}", self, new.nodes()[id]);
+                red.apply(new)?;
+                if cfg!(debug_assertions) {
+                    new.check_edges()?;
+                }
+                done_something = true;
+            }
+        }
+        Ok(done_something)
+    }
+}
 
 impl std::fmt::Debug for OpOptim {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -50,33 +72,25 @@ impl std::fmt::Debug for OpOptim {
 
 impl TypedPass for OpOptim {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
-        let mut hashset = std::collections::HashSet::new();
         let initial = model.signature();
+        let mut new = model.clone();
+
+        let mut hashset = std::collections::HashSet::new();
         hashset.insert(initial);
 
-        let mut new = model.clone();
-        loop {
-            for id in new.eval_order()? {
-                let reduced = {
-                    let node = &new.nodes()[id];
-                    (self.1)(node.op.as_ref(), &new, node)
-                        .chain_err(|| format!("{:?} node {}", self, node))?
-                };
-                if let Some(red) = reduced {
-                    debug!("Apply a model patch for {:?} {}", self, new.nodes()[id]);
-                    red.apply(&mut new)?;
-                    if cfg!(debug_assertions) {
-                        new.check_edges()?;
-                    }
-                }
+        for pass in 0.. {
+            if !self.full_pass(&mut new)? {
+                break;
             }
 
-            new = new.compact()?;
-            let sig = new.signature();
-            if hashset.contains(&sig) {
-                break;
-            } else {
-                hashset.insert(sig);
+            if pass > 5 {
+                new = new.compact()?;
+                let sig = new.signature();
+                if hashset.contains(&sig) {
+                    break;
+                } else {
+                    hashset.insert(sig);
+                }
             }
         }
         std::mem::swap(model, &mut new);
