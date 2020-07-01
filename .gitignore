@@ -8,3 +8,6 @@ examples/data
 .cached/**
 flamegraph.svg
 perf.data*
+readings.*
+metrics
+tract.out
