@@ -9,43 +9,25 @@ pub fn renorm(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn Inference
         .get("TargetRms")
         .ok_or("missing attributes TargetRms")?
         .to_scalar::<f32>()?;
-    Ok(Box::new(Renorm::new(rms)))
+    Ok(expand(Renorm::new(rms)))
 }
 
 #[derive(Clone, Debug, new, Educe)]
 #[educe(Hash)]
 struct Renorm {
-    #[educe(Hash(method="hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     target_rms: f32,
 }
 
 tract_linalg::impl_dyn_hash!(Renorm);
 
-impl Op for Renorm {
+impl Expansion for Renorm {
     fn name(&self) -> std::borrow::Cow<str> {
         "Renorm".into()
     }
 
     op_kaldi!();
-    op_as_typed_op!();
-}
 
-impl StatelessOp for Renorm {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        let mut input: tract_ndarray::Array2<f32> =
-            input.into_tensor().into_array()?.into_dimensionality::<tract_ndarray::Ix2>()?;
-        let rms_sqrt_d = self.target_rms * (input.shape()[1] as f32).sqrt();
-        input.genrows_mut().into_iter().for_each(|mut row| {
-            let factor = rms_sqrt_d
-                * row.iter().map(|x| x.powi(2)).sum::<f32>().sqrt().max(std::f32::EPSILON).recip();
-            row.mapv_inplace(|row| row * factor)
-        });
-        Ok(tvec!(input.into_arc_tensor()))
-    }
-}
-
-impl InferenceRulesOp for Renorm {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -59,38 +41,43 @@ impl InferenceRulesOp for Renorm {
         Ok(())
     }
 
-    as_op!();
-    to_typed!();
-}
-
-impl TypedOp for Renorm {
-    as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].clone()))
-    }
-
-    fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
-        Ok(vec![AxisInfo::simple(0)].into_iter().collect())
-    }
-
-    fn pulsify(
+    fn wire(
         &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        target.wire_node(&*node.name, self.clone(), &[mapping[&node.inputs[0]]])
+        let input = model.outlet_fact(inputs[0])?.clone();
+        let sqr =
+            model.wire_node(prefix.to_string() + ".sqr", tract_hir::ops::math::square(), inputs)?;
+        let sum = model.wire_node(
+            prefix.to_string() + ".sum",
+            tract_hir::tract_core::ops::nn::Reduce::new(
+                tvec![1],
+                tract_hir::tract_core::ops::nn::Reducer::Sum,
+            ),
+            &sqr,
+        )?;
+        let sqrt =
+            model.wire_node(prefix.to_string() + ".sqrt", tract_hir::ops::math::sqrt(), &sum)?;
+        let epsilon = tensor0(std::f32::EPSILON).broadcast_into_rank(2)?.into_arc_tensor();
+        let epsilon = model.wire_node(
+            prefix.to_string() + ".epsilon",
+            tract_hir::ops::math::max::unary(epsilon),
+            &sqrt,
+        )?;
+        let recip = model.wire_node(
+            prefix.to_string() + ".recip",
+            tract_hir::ops::math::recip(),
+            &epsilon,
+        )?;
+        let rms_sqrt_d = self.target_rms * (input.shape.dim(1).to_integer()? as f32).sqrt();
+        let rms_sqrt_d = tensor0(rms_sqrt_d).broadcast_into_rank(2)?.into_arc_tensor();
+        let mul = model.wire_node(
+            prefix.to_string() + ".mul",
+            tract_hir::ops::math::mul::unary(rms_sqrt_d),
+            &recip,
+        )?;
+        model.wire_node(prefix, tract_hir::ops::math::mul::bin_typed(), &[inputs[0], mul[0]])
     }
-}
-
-impl PulsedOp for Renorm {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        Ok(tvec!(inputs[0].clone()))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }

@@ -23,7 +23,7 @@ fn slice1(
     let axes = node.get_attr_opt_vec("axes")?;
     let begin = node.get_attr_vec("starts")?;
     let end = node.get_attr_vec("ends")?;
-    Ok((Box::new(Slice1::new(axes, begin, end)), vec![]))
+    Ok((expand(Slice1::new(axes, begin, end)), vec![]))
 }
 
 #[derive(Debug, Clone, new, Default, Hash)]
@@ -35,40 +35,13 @@ pub struct Slice1 {
 
 tract_linalg::impl_dyn_hash!(Slice1);
 
-impl Slice1 {
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
-        let mut input = input.to_array_view::<T>()?;
-        for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
-            let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
-            let b = if b > input.shape()[axis] as isize { input.shape()[axis] as isize } else { b };
-            let e = if e > input.shape()[axis] as isize { input.shape()[axis] as isize } else { e };
-            input.slice_axis_inplace(
-                tract_ndarray::Axis(axis),
-                tract_ndarray::Slice::from((b as isize)..(e as isize)),
-            );
-        }
-        Ok(Tensor::from(input.to_owned()).into())
-    }
-}
-
-impl Op for Slice1 {
+impl Expansion for Slice1 {
     fn name(&self) -> Cow<str> {
         "Slice1".into()
     }
 
     op_onnx!();
-    not_a_typed_op!();
-}
 
-impl StatelessOp for Slice1 {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, input))?))
-    }
-}
-
-impl InferenceRulesOp for Slice1 {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -115,15 +88,14 @@ impl InferenceRulesOp for Slice1 {
         Ok(())
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let input = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
-        let mut wire = mapping[&node.inputs[0]];
+        let input = target.outlet_fact(inputs[0])?.clone();
+        let mut wire = inputs[0];
         for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
             let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
             let dim = input.shape.dim(axis);
@@ -132,7 +104,7 @@ impl InferenceRulesOp for Slice1 {
                 let e = (if e >= 0 { e.min(dim as isize) } else { dim as isize + e }) as usize;
                 if b > 0 || e < dim as usize {
                     wire = target.wire_node(
-                        format!("{}-axis-{}", node.name, axis),
+                        format!("{}.axis-{}", prefix, axis),
                         tract_hir::ops::array::Slice::new(axis, b, e),
                         [wire].as_ref(),
                     )?[0];
@@ -141,11 +113,9 @@ impl InferenceRulesOp for Slice1 {
                 bail!("Can't translate slice: axis={} dim={} b={} e={}", axis, dim, b, e)
             }
         }
-        target.rename_node(wire.node, &*node.name)?;
+        target.rename_node(wire.node, &*prefix)?;
         Ok(tvec!(wire))
     }
-
-    as_op!();
 }
 
 fn slice10(
