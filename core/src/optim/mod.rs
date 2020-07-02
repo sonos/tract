@@ -72,9 +72,15 @@ impl std::fmt::Debug for OpOptim {
 
 impl TypedPass for OpOptim {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
-        let initial = model.signature();
         let mut new = model.clone();
+        for i in 0..5 {
+            if !self.full_pass(&mut new)? {
+                std::mem::swap(model, &mut new);
+                return Ok(i>0);
+            }
+        }
 
+        let initial = model.signature();
         let mut hashset = std::collections::HashSet::new();
         hashset.insert(initial);
 
