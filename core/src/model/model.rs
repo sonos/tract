@@ -16,9 +16,6 @@ where
     pub label: Option<String>,
     /// all nodes in the model
     pub nodes: Vec<BaseNode<F, O>>,
-    /// index of nodes per name
-    #[educe(Hash(ignore))]
-    nodes_by_name: HashMap<String, usize>,
     /// model inputs
     pub inputs: Vec<OutletId>,
     /// model outputs
@@ -51,7 +48,6 @@ where
         ModelImpl {
             label: None,
             nodes: vec![],
-            nodes_by_name: HashMap::new(),
             inputs: vec![],
             outputs: vec![],
             outlet_labels: HashMap::new(),
@@ -74,7 +70,6 @@ where
         let op = op.into();
         let name = name.into();
         let id = self.nodes.len();
-        self.nodes_by_name.insert(name.clone(), id);
         let outputs =
             output_facts.into_iter().map(|fact| OutletFact { fact, successors: tvec!() }).collect();
         let node = BaseNode { id, name, op, inputs: vec![], outputs };
@@ -130,7 +125,7 @@ where
     ) -> TractResult<()> {
         let mut ids = vec![];
         for i in inputs.into_iter() {
-            let node = self.node_by_name(i.as_ref())?;
+            let node = self.node_by_name(&i)?;
             for o in 0..node.outputs.len() {
                 ids.push(OutletId::new(node.id, o))
             }
@@ -218,11 +213,12 @@ where
         let ids: Vec<OutletId> = outputs
             .into_iter()
             .map(|s| {
+                let s = s.as_ref();
                 labels
-                    .get(s.as_ref())
+                    .get(s)
                     .cloned()
-                    .or_else(|| self.nodes_by_name.get(s.as_ref()).map(|&n| n.into()))
-                    .ok_or_else(|| format!("Node {} not found", s.as_ref()).into())
+                    .or_else(|| self.nodes.iter().find(|n| n.name == s).map(|n| n.id.into()))
+                    .ok_or_else(|| format!("Node {} not found", s).into())
             })
             .collect::<TractResult<_>>()?;
         self.outputs = ids;
@@ -270,21 +266,19 @@ where
     }
 
     /// Find a node by its name.
-    pub fn node_by_name<S: AsRef<str>>(&self, name: S) -> TractResult<&BaseNode<F, O>> {
+    pub fn node_by_name(&self, name: impl AsRef<str>) -> TractResult<&BaseNode<F, O>> {
         let id: usize = self.node_id_by_name(name.as_ref())?;
         Ok(&self.nodes[id])
     }
 
     /// Borrow mutably a node by its name.
-    pub fn node_by_name_mut(&mut self, name: &str) -> TractResult<&mut BaseNode<F, O>> {
-        let id: &usize =
-            self.nodes_by_name.get(name).ok_or_else(|| format!("Node named {} not found", name))?;
-        Ok(&mut self.nodes[*id])
+    pub fn node_by_name_mut(&mut self, name: impl AsRef<str>) -> TractResult<&mut BaseNode<F, O>> {
+        let id: usize = self.node_id_by_name(name.as_ref())?;
+        Ok(&mut self.nodes[id])
     }
 
     pub fn rename_node(&mut self, id: usize, name: &str) -> TractResult<()> {
         self.node_mut(id).name = name.to_string();
-        self.nodes_by_name.insert(name.to_string(), id);
         Ok(())
     }
 
@@ -448,11 +442,11 @@ where
     }
 
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
-        Ok(self
-            .nodes_by_name
-            .get(name)
-            .ok_or_else(|| format!("No node found for name: \"{}\"", name))
-            .map(|x| *x)?)
+        self.nodes
+            .iter()
+            .find(|n| n.name == name)
+            .map(|n| n.id)
+            .ok_or_else(|| format!("No node found for name: \"{}\"", name).into())
     }
 
     fn node_name(&self, id: usize) -> &str {
@@ -566,15 +560,15 @@ where
                 for o in 0..self.node_output_count(i) {
                     if self.outlet_successors((i, o).into()).len() > 0 {
                         writeln!(
-                            fmt,
-                            "                                                |   * output #{}: {} {}",
-                            o,
-                            self.outlet_label((i, o).into()).unwrap_or(""),
-                            self.outlet_successors((i, o).into())
-                                .iter()
-                                .map(|s| format!("{:?}", s))
-                                .join(", "),
-                        )?;
+                                    fmt,
+                                    "                                                |   * output #{}: {} {}",
+                                    o,
+                                    self.outlet_label((i, o).into()).unwrap_or(""),
+                                    self.outlet_successors((i, o).into())
+                                    .iter()
+                                    .map(|s| format!("{:?}", s))
+                                    .join(", "),
+                                    )?;
                     }
                 }
             }
@@ -602,7 +596,6 @@ where
         crate::model::translator::IntoTranslator.translate_model(self)
     }
 }
-
 
 #[cfg(test)]
 mod test {
