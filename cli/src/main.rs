@@ -422,12 +422,13 @@ impl Parameters {
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
         let filename = matches.value_of("model").ok_or("Model argument required")?;
         let filename = std::path::PathBuf::from(filename);
-        let (filename, onnx_tc) =
-            if std::fs::metadata(&filename)?.is_dir() && filename.join("model.onnx").exists() {
-                (filename.join("model.onnx"), true)
-            } else {
-                (filename, false)
-            };
+        let (filename, onnx_tc) = if !filename.exists() {
+            bail!("model not found: {:?}", filename)
+        } else if std::fs::metadata(&filename)?.is_dir() && filename.join("model.onnx").exists() {
+            (filename.join("model.onnx"), true)
+        } else {
+            (filename, false)
+        };
         let format = matches.value_of("format").unwrap_or(
             if filename.extension().and_then(|s| s.to_str()) == Some("onnx") {
                 "onnx"
