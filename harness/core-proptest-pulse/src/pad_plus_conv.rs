@@ -84,7 +84,7 @@ impl PadPlusConvProblem {
         conv.dilations = Some(tvec!(self.dilation));
         conv.strides = Some(tvec!(self.stride));
         let kernel = model.add_const("kernel", self.ker.clone()).unwrap();
-        let conv = model.wire_node("conv", conv, &[wire, kernel]).unwrap();
+        let conv = model.wire_node("conv", expand(conv), &[wire, kernel]).unwrap();
         model.set_output_outlets(&conv).unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
     }

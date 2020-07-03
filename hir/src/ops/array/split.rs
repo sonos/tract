@@ -1,6 +1,5 @@
 use crate::infer::*;
 use crate::internal::*;
-use tract_ndarray::*;
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Split {
@@ -19,47 +18,15 @@ impl Split {
             Ok(tvec!(input/self.outputs;self. outputs))
         }
     }
-
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
-        let mut current = 0;
-        let input = input.to_array_view::<T>()?;
-        Ok(self
-            .split_dims(input.shape()[self.axis])?
-            .iter()
-            .map(|&d| {
-                let slice = if d > 0 {
-                    input.slice_axis(Axis(self.axis), (current..current + d).into()).to_owned()
-                } else {
-                    let mut shape: TVec<usize> = input.shape().into();
-                    shape[self.axis] = 0;
-                    ArrayD::<T>::default(&*shape)
-                };
-                current += d;
-                slice.into_arc_tensor()
-            })
-            .collect())
-    }
 }
 
-impl Op for Split {
+impl Expansion for Split {
     fn name(&self) -> Cow<str> {
         "Split".into()
     }
 
     op_hir!();
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
 
-impl StatelessOp for Split {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
-    }
-}
-
-impl InferenceRulesOp for Split {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -88,26 +55,22 @@ impl InferenceRulesOp for Split {
         Ok(self.outputs)
     }
 
-    as_op!();
-
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let input = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
-        let wire = mapping[&node.inputs[0]];
+        let input = target.outlet_fact(inputs[0])?.clone();
         let mut outputs = tvec!();
         let mut current = 0.to_dim();
         for len in self.split_dims(input.shape.dim(self.axis))? {
             let end = current.clone() + len;
             outputs.push(
                 target.wire_node(
-                    format!("{}-{}..{}", node.name, current, end),
+                    format!("{}.axis_{}_{}..{}", prefix, self.axis, current, end),
                     crate::ops::array::Slice::new(self.axis, current, end.clone()),
-                    &[wire],
+                    inputs,
                 )?[0],
             );
             current = end;

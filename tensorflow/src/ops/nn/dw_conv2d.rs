@@ -54,7 +54,7 @@ impl StatelessOp for DepthwiseConv2d {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let ishape: TVec<TDim> = inputs[0].shape().iter().map(|i| i.to_dim()).collect();
         let kshape = inputs[1].shape();
-        self.to_core(&*ishape, kshape)?.eval(inputs)
+        expand(self.to_core(&*ishape, kshape)?).as_stateless().unwrap().eval(inputs)
     }
 }
 

@@ -10,29 +10,13 @@ pub struct Crop {
 
 tract_linalg::impl_dyn_hash!(Crop);
 
-impl Op for Crop {
+impl Expansion for Crop {
     fn name(&self) -> Cow<str> {
         "Crop".into()
     }
 
     op_hir!();
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
 
-impl StatelessOp for Crop {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let slice = crate::ops::array::Slice::new(
-            self.axis,
-            self.start,
-            inputs[0].shape()[self.axis] - self.end,
-        );
-        slice.eval(inputs)
-    }
-}
-
-impl InferenceRulesOp for Crop {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -58,24 +42,21 @@ impl InferenceRulesOp for Crop {
         Ok(())
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let len = target.outlet_fact(mapping[&node.inputs[0]])?.shape.dim(self.axis);
+        let len = target.outlet_fact(inputs[0])?.shape.dim(self.axis);
         target.wire_node(
-            &*node.name,
+            prefix,
             crate::ops::array::Slice::new(
                 self.axis as usize,
                 self.start.to_dim(),
                 len - self.end.to_dim(),
             ),
-            [mapping[&node.inputs[0]]].as_ref(),
+            inputs
         )
     }
-
-    as_op!();
 }

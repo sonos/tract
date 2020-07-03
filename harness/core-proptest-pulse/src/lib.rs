@@ -139,7 +139,7 @@ fn test_simple_conv() {
         .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, 1, S))) // NCT
         .unwrap();
 
-    model.wire_node("conv", Conv::default(), &[a, ker]).unwrap();
+    model.wire_node("conv", expand(Conv::default()), &[a, ker]).unwrap();
     model.auto_outputs().unwrap();
 
     let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]);

@@ -20,7 +20,7 @@ impl ConvOp {
         conv.dilations = Some(tvec!(self.dilation));
         conv.strides = Some(tvec!(self.stride));
         conv.padding = self.padding.clone();
-        model.wire_node(name, conv, &[after, filters]).unwrap()[0]
+        model.wire_node(name, expand(conv), &[after, filters]).unwrap()[0]
     }
 }
 

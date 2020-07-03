@@ -1,6 +1,8 @@
 use crate::infer::*;
 use crate::internal::*;
 
+// TODO tricky to re-express in "core" because of the multiple hot point... do
+// we need one more reduce ? 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct LayerHardmax {
     axis: isize,

@@ -143,7 +143,7 @@ pub fn conv(
     if node.input.len() == 3 {
         op = op.bias_input(2);
     }
-    Ok((Box::new(op), vec![]))
+    Ok((expand(op), vec![]))
 }
 
 pub fn conv_integer(
@@ -159,7 +159,7 @@ pub fn conv_integer(
         op = op.k_zero_point_input(i);
     }
     op.override_output_datum_type = Some(i32::datum_type());
-    Ok((Box::new(op), vec![]))
+    Ok((expand(op), vec![]))
 }
 
 pub fn conv_qlinear(
@@ -177,7 +177,7 @@ pub fn conv_qlinear(
     if node.input.len() == 9 {
         op.bias_input = Some(8);
     }
-    Ok((Box::new(op), vec![]))
+    Ok((expand(op), vec![]))
 }
 
 pub fn average_pool(
