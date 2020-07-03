@@ -103,12 +103,12 @@ impl LstmProblem {
         let lstm = model
             .wire_node(
                 "lstm",
-                tract_tensorflow::ops::rec::block_lstm::BlockLSTM::new(
+                expand(tract_tensorflow::ops::rec::block_lstm::BlockLSTM::new(
                     0.0,
                     -1.0,
                     f32::datum_type(),
                     false,
-                ),
+                )),
                 &[seq_length, x, cs, h, w, wc1, wc2, wc3, b],
             )
             .unwrap();
