@@ -68,7 +68,7 @@ pub fn constant_of_shape(
         Some(val) => val.into_arc_tensor(),
         None => make_const::<f32>(&vec![1], 0.0 as f32)?,
     };
-    Ok((Box::new(array::ConstantOfShape::new(value)), vec![]))
+    Ok((expand(array::ConstantOfShape::new(value)), vec![]))
 }
 
 pub fn eye_like(
@@ -125,7 +125,7 @@ pub fn split(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let split = node.get_attr_opt_vec("split")?;
-    Ok((Box::new(array::Split::new(axis, node.output.len(), split)), vec![]))
+    Ok((expand(array::Split::new(axis, node.output.len(), split)), vec![]))
 }
 
 pub fn squeeze(

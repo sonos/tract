@@ -44,7 +44,8 @@ impl DelayPlusPoolProblem {
         let a = model
             .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, S, 1)))
             .unwrap();
-        let crop = model.wire_node("crop", array::Crop::new(1, self.delay, 0), &[a]).unwrap();
+        let crop =
+            model.wire_node("crop", expand(array::Crop::new(1, self.delay, 0)), &[a]).unwrap();
         let pool_spec = cnn::PoolSpec::new(
             nn::DataFormat::NHWC,
             tvec!(self.pool_window),

@@ -115,7 +115,7 @@ impl LstmProblem {
 
         let last_h = model.wire_node(
             "last_h",
-            tract_hir::ops::array::Split::new(0, 2, Some(vec![self.length - 1, 1])),
+            expand(tract_hir::ops::array::Split::new(0, 2, Some(vec![self.length - 1, 1]))),
             &[lstm[6]],
         )?[1];
         let last_h_squeezed = model.wire_node(
@@ -126,7 +126,7 @@ impl LstmProblem {
 
         let last_cs = model.wire_node(
             "last_cs",
-            tract_hir::ops::array::Split::new(0, 2, Some(vec![self.length - 1, 1])),
+            expand(tract_hir::ops::array::Split::new(0, 2, Some(vec![self.length - 1, 1]))),
             &[lstm[1]],
         )?[1];
         let last_cs_squeezed = model.wire_node(

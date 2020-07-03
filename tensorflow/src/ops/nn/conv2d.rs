@@ -12,7 +12,7 @@ pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infere
     if super::data_format(pb)? == DataFormat::NHWC {
         op = op.nhwc()
     }
-    Ok(Box::new(op))
+    Ok(expand(op))
 }
 
 #[cfg(test)]
@@ -30,7 +30,7 @@ mod tests {
     }
 
     fn make_conv(h_stride: usize, v_stride: usize, padding: PaddingSpec) -> Box<dyn InferenceOp> {
-        Box::new(Conv::default().nhwc().hwio().padding(padding).strides(tvec![v_stride, h_stride]))
+        expand(Conv::default().nhwc().hwio().padding(padding).strides(tvec![v_stride, h_stride]))
     }
 
     fn verify(input: Tensor, filter: Tensor, stride: usize, padding: PaddingSpec, expect: &[f32]) {

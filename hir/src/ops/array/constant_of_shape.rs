@@ -10,33 +10,13 @@ pub struct ConstantOfShape {
 
 tract_linalg::impl_dyn_hash!(ConstantOfShape);
 
-impl Op for ConstantOfShape {
+impl Expansion for ConstantOfShape {
     fn name(&self) -> Cow<str> {
         "ConstantOfShape".into()
     }
 
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}", self.scalar)])
-    }
-
     op_hir!();
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
 
-impl StatelessOp for ConstantOfShape {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape = inputs[0].cast_to::<i64>().chain_err(|| TractErrorKind::StreamTensor)?;
-        let shape: TVec<usize> = shape.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
-        Ok(tvec!(dispatch_numbers!(make_from_shape(self.scalar.datum_type())(
-            &shape,
-            &*self.scalar
-        ))?))
-    }
-}
-
-impl InferenceRulesOp for ConstantOfShape {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -51,24 +31,21 @@ impl InferenceRulesOp for ConstantOfShape {
         Ok(())
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(ref fact) = target.outlet_fact(mapping[&node.inputs[0]])?.konst {
+        if let Some(ref fact) = target.outlet_fact(inputs[0])?.konst {
             let shape = fact.cast_to::<i32>()?;
             let shape = shape.as_slice::<i32>()?.iter().map(|&s| s as usize).collect::<TVec<_>>();
             let value =
                 dispatch_copy!(make_from_shape(self.scalar.datum_type())(&*shape, &self.scalar))?;
-            return target.wire_node(&*node.name, crate::ops::konst::Const::new(value), &[]);
+            return target.wire_node(&*prefix, crate::ops::konst::Const::new(value), &[]);
         }
         bail!("shape input is variable")
     }
-
-    as_op!();
 }
 
 fn make_from_shape<T>(shape: &[usize], scalar: &Tensor) -> TractResult<Arc<Tensor>>
