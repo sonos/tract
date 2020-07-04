@@ -276,16 +276,6 @@ impl Tensor {
         dispatch_datum!(Self::dump_t(self.dt)(self, force_full))
     }
 
-    /// Compute a normalized L1 distance between two tensors.
-    pub fn l1(&self, other: &Self) -> TractResult<f64> {
-        let ma = self.cast_to::<f32>()?;
-        let ma = ma.to_array_view::<f32>()?;
-        let mb = other.cast_to::<f32>()?;
-        let mb = mb.to_array_view::<f32>()?;
-        let sum = ma.iter().zip(mb.iter()).map(|(a, b)| (a - b).abs() as f64).sum::<f64>();
-        Ok(sum / self.len() as f64)
-    }
-
     /// Compare two tensors, allowing for rounding errors.
     pub fn close_enough(&self, other: &Self, approx: bool) -> TractResult<()> {
         if self.shape() != other.shape() {
@@ -398,6 +388,11 @@ impl Tensor {
     /// Access the data as a scalar.
     pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<&D> {
         unsafe { Ok(&*(self.as_ptr::<D>()?)) }
+    }
+
+    /// Access the data as a scalar.
+    pub unsafe fn to_scalar_unchecked<'a, D: Datum>(&'a self) -> &D {
+        &*(self.data as *mut D)
     }
 
     fn is_uniform_t<T: Datum>(&self) -> TractResult<bool> {
