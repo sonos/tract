@@ -193,16 +193,46 @@ impl OpState for PulsePadOpState {
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs).into_tensor();
         let op = op.downcast_ref::<PulsePad>().ok_or("Wrong Op type")?;
-        let tensor = dispatch_copy!(Self::eval_t(input.datum_type())(self, session, op, input))?;
+        let tensor = self.pad(session, op, input)?;
         Ok(tvec!(tensor.into_arc_tensor()))
     }
 }
+
 impl PulsePadOpState {
-    fn eval_t<T: Datum + Copy>(
+    unsafe fn save_frame<T: Datum + Copy>(&mut self, op: &PulsePad, input: &Tensor, frame: usize) {
+        let data = input.to_array_view_unchecked::<T>();
+        self.last_valid_frame =
+            Some(data.index_axis(Axis(op.axis), frame).to_owned().into_tensor());
+    }
+
+    unsafe fn fill_slice_constant<T: Datum + Copy>(
+        data: &mut Tensor,
+        constant: &Tensor,
+        axis: usize,
+        range: std::ops::Range<usize>,
+    ) {
+        let c = constant.to_scalar_unchecked::<T>();
+        data.to_array_view_mut_unchecked::<T>().slice_axis_mut(Axis(axis), range.into()).fill(*c);
+    }
+
+    unsafe fn fill_slice_with_frame<T: Datum + Copy>(
+        data: &mut Tensor,
+        axis: usize,
+        valid: &Tensor,
+        range: std::ops::Range<usize>,
+    ) {
+        let mut data = data.to_array_view_mut_unchecked::<T>();
+        let valid = valid.to_array_view_unchecked::<T>();
+        for i in range {
+            data.slice_axis_mut(Axis(axis), (i..i + 1).into()).assign(&valid);
+        }
+    }
+
+    fn pad(
         &mut self,
         session: &mut SessionState,
         op: &PulsePad,
-        input: Tensor,
+        mut input: Tensor,
     ) -> TractResult<Tensor> {
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + op.pulse;
@@ -211,15 +241,22 @@ impl PulsePadOpState {
             .known_stream_len
             .map(|s| op.end_input.eval(s as i32).unwrap() as usize)
             .unwrap_or(std::usize::MAX);
-        let after = session.known_stream_len.map(|s| op.after.eval(s as i32).unwrap() as usize).unwrap_or(std::usize::MAX);
+        let after = session
+            .known_stream_len
+            .map(|s| op.after.eval(s as i32).unwrap() as usize)
+            .unwrap_or(std::usize::MAX);
 
         if let PadMode::Edge = op.mode {
             if after != 0 && pulse_begin < end_input {
                 let latest_valid_frame = (end_input - pulse_begin).min(op.pulse) - 1;
-                let data = input.to_array_view::<T>()?;
-                self.last_valid_frame = Some(
-                    data.index_axis(Axis(op.axis), latest_valid_frame).to_owned().into_tensor(),
-                );
+                unsafe {
+                    dispatch_copy_by_size!(Self::save_frame(input.datum_type())(
+                        self,
+                        op,
+                        &input,
+                        latest_valid_frame
+                    ))
+                }
             }
         }
 
@@ -228,26 +265,31 @@ impl PulsePadOpState {
             return Ok(input);
         }
         // pulse is entirely before or after output is valid, just forward
-        if pulse_end <= op.begin_input - op.before
-            || pulse_begin >= end_input.saturating_add(after)
+        if pulse_end <= op.begin_input - op.before || pulse_begin >= end_input.saturating_add(after)
         {
             return Ok(input);
         }
-        let mut data = input.into_array::<T>()?;
 
         if pulse_begin < op.begin_input {
             let fill_up_to = (op.begin_input - pulse_begin).min(op.pulse);
             match &op.mode {
-                PadMode::Constant(c) => {
-                    let c = c.to_scalar::<T>()?;
-                    data.slice_axis_mut(Axis(op.axis), (0..fill_up_to).into()).fill(*c);
-                }
+                PadMode::Constant(c) => unsafe {
+                    dispatch_copy_by_size!(Self::fill_slice_constant(input.datum_type())(
+                        &mut input,
+                        c,
+                        op.axis,
+                        0..fill_up_to
+                    ))
+                },
                 PadMode::Edge => {
-                    let data = data.view_mut();
-                    let (mut padding, valid) = data.split_at(Axis(op.axis), fill_up_to);
-                    let first_frame = valid.index_axis_move(Axis(op.axis), 0);
-                    for i in 0..fill_up_to {
-                        padding.index_axis_mut(Axis(op.axis), i).assign(&first_frame);
+                    let frame = input.slice(op.axis, fill_up_to, fill_up_to + 1)?;
+                    unsafe {
+                        dispatch_copy_by_size!(Self::fill_slice_with_frame(input.datum_type())(
+                            &mut input,
+                            op.axis,
+                            &frame,
+                            0..fill_up_to
+                        ))
                     }
                 }
                 _ => unimplemented!(),
@@ -256,23 +298,30 @@ impl PulsePadOpState {
         if pulse_end > end_input && after > 0 {
             let fill_from = op.pulse - (pulse_end - end_input).min(op.pulse);
             match &op.mode {
-                PadMode::Constant(c) => {
-                    let c = c.to_scalar::<T>()?;
-                    data.slice_axis_mut(Axis(op.axis), (fill_from..op.pulse).into()).fill(*c);
-                }
+                PadMode::Constant(c) => unsafe {
+                    dispatch_copy_by_size!(Self::fill_slice_constant(input.datum_type())(
+                        &mut input,
+                        c,
+                        op.axis,
+                        fill_from..op.pulse
+                    ))
+                },
                 PadMode::Edge => {
-                    let mut data = data.view_mut();
-                    let last_frame =
-                        self.last_valid_frame.as_ref().unwrap().to_array_view::<T>()?;
-                    for i in fill_from..op.pulse {
-                        data.index_axis_mut(Axis(op.axis), i).assign(&last_frame);
+                    let last_frame = self.last_valid_frame.as_ref().unwrap();
+                    unsafe {
+                        dispatch_copy_by_size!(Self::fill_slice_with_frame(input.datum_type())(
+                            &mut input,
+                            op.axis,
+                            last_frame,
+                            fill_from..op.pulse
+                        ))
                     }
                 }
                 _ => unimplemented!(),
             }
         }
 
-        Ok(data.into_tensor())
+        Ok(input)
     }
 }
 
