@@ -212,6 +212,11 @@ impl Tensor {
         self.shape.iter().cloned().product::<usize>()
     }
 
+    /// Force the tensor shape.
+    pub unsafe fn set_shape(&mut self, shape: &[usize]) {
+        self.shape = shape.into()
+    }
+
     /// Reshape the tensor to `shape`.
     pub unsafe fn into_shape(self, shape: &[usize]) -> TractResult<Tensor> {
         let t = Tensor { shape: shape.into(), ..self };

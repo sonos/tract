@@ -559,6 +559,7 @@ impl TypedOp for MatMulUnary {
                     Ok(None)
                 }
             }
+            AxisOp::Reshape(_, _, _) => return Ok(None),
         }
     }
 
