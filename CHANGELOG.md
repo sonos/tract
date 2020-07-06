@@ -1,3 +1,9 @@
+## Unreleased
+
+### API Breaking
+
+* Tensor::l1 method is gone
+
 ## 0.9.2 - 2020-06-16
 
 * introduce `TypedModel::method.concretize_stream_dim`
