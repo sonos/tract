@@ -25,6 +25,7 @@ pub enum AxisOp {
     Add(usize),
     Rm(usize),
     Permute(TVec<usize>),
+    Reshape(usize, TVec<TDim>, TVec<TDim>),
 }
 use AxisOp::*;
 
@@ -40,6 +41,9 @@ impl AxisOp {
                 }
             }
             Permute(perm) => perm.get(axis).cloned(),
+            Reshape(at, _, _) if axis < *at => Some(axis),
+            Reshape(at, from, to) if axis >= at + from.len() => Some(axis + to.len() - from.len()),
+            Reshape(_, _, _) => None,
         }
     }
 
@@ -64,6 +68,7 @@ impl AxisOp {
             (Rm(op), Rm(c)) => {
                 Some((Some(Rm(op - (c < op) as usize)), Some(Rm(c - (op <= c) as usize))))
             }
+
             (Add(_), Permute(_)) => None,
             (Permute(_), Add(_)) => None,
             (Rm(op), Permute(c)) => Some((
@@ -87,10 +92,37 @@ impl AxisOp {
                 let new_op = Permute(op.iter().map(|d| c_r[*d]).collect());
                 Some((Some(new_op), None))
             }
+
+            (Add(op), Reshape(at, from, to)) => {
+                if op <= at {
+                    Some((Some(Add(*op)), Some(Reshape(at + 1, from.clone(), to.clone()))))
+                } else if *op > at + from.len() {
+                    Some((
+                        Some(Add(*op + to.len() - from.len())),
+                        Some(Reshape(*at, from.clone(), to.clone())),
+                    ))
+                } else {
+                    None
+                }
+            }
+            (Rm(op), Reshape(at, from, to)) => {
+                if op <= at {
+                    Some((Some(Rm(*op)), Some(Reshape(at - 1, from.clone(), to.clone()))))
+                } else if *op > at + from.len() {
+                    Some((
+                        Some(Rm(*op + to.len() - from.len())),
+                        Some(Reshape(*at, from.clone(), to.clone())),
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => todo!(),
         }
     }
 
     pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) {
+        use std::convert::TryInto;
         match self {
             Add(ix) => shape.insert(*ix, D::one()),
             Rm(ix) => {
@@ -102,6 +134,14 @@ impl AxisOp {
                     new_shape[ix] = shape[from].clone();
                 }
                 shape.as_mut().clone_from_slice(&*new_shape);
+            }
+            Reshape(at, from, to) => {
+                for _ in from {
+                    shape.remove(*at);
+                }
+                for d in to.iter().rev() {
+                    shape.insert(*at, d.try_into().unwrap());
+                }
             }
         }
     }
@@ -124,6 +164,13 @@ impl AxisOp {
                 }
                 Ok(())
             }
+            Reshape(_, _, _) => {
+                let mut array = shape.to_tvec();
+                self.change_shape_array(&mut array);
+                let mut new_shape = ShapeFact::from_dims(array).unwrap();
+                std::mem::swap(shape, &mut new_shape);
+                Ok(())
+            }
         }
     }
 
@@ -139,6 +186,12 @@ impl AxisOp {
                 std::mem::swap(tensor, &mut tmp);
                 Ok(())
             }
+            Reshape(_, _, _) => {
+                let mut shape:TVec<usize> = tensor.shape().into();
+                self.change_shape_array(&mut shape);
+                unsafe { tensor.set_shape(&shape) }
+                Ok(())
+            }
         }
     }
 
@@ -151,6 +204,7 @@ impl AxisOp {
             Add(ix) => Rm(*ix),
             Rm(ix) => Add(*ix),
             Permute(axes) => Permute(Self::recip_perm(axes)),
+            _ => todo!(),
         }
     }
 
@@ -199,13 +253,21 @@ impl Op for AxisOp {
             Add(_) => "AddAxis".into(),
             Rm(_) => "RmAxis".into(),
             Permute(_) => "Permute".into(),
+            Reshape(_, _, _) => "Reshape".into(),
         }
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
+        use crate::itertools::Itertools;
         match self {
             Add(axis) | Rm(axis) => Ok(vec![format!("Axis: {}", axis)]),
             Permute(axes) => Ok(vec![format!("Axes: {:?}", axes)]),
+            Reshape(at, from, to) => Ok(vec![format!(
+                "Axes starting at {}: {:?} to {:?}",
+                at,
+                from.iter().join("x"),
+                to.iter().join("x")
+            )]),
         }
     }
 
@@ -621,6 +683,21 @@ mod proptests {
             if rms.len() > 0 {
                 ops = ops
                     .prop_union((0..rms.len()).prop_map(move |rm| rms[rm].clone()).boxed())
+                    .boxed()
+            }
+            let mergeable: Vec<AxisOp> = shape
+                .windows(2)
+                .enumerate()
+                .filter(|(_, w)| w[0] > 1 && w[1] > 1)
+                .map(|(ix, w)| {
+                    Reshape(ix, tvec!(w[0].to_dim(), w[1].to_dim()), tvec!((w[0] * w[1]).to_dim()))
+                })
+                .collect();
+            if mergeable.len() > 1 {
+                ops = ops
+                    .prop_union(
+                        (0..mergeable.len()).prop_map(move |ix| mergeable[ix].clone()).boxed(),
+                    )
                     .boxed()
             }
             ops

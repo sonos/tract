@@ -602,6 +602,7 @@ impl TypedOp for ConvUnary {
                 kernel.insert_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?
             }
             AxisOp::Permute(_) => AxisOp::Permute(kernel_perm).change_tensor(&mut kernel)?,
+            AxisOp::Reshape(_, _, _) => return Ok(None),
         };
         let new_op = ConvUnary {
             pool_spec: PoolSpec {
@@ -637,7 +638,8 @@ impl TypedOp for ConvUnary {
         }
         let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
         let zero = dispatch_numbers!(zero(fact.datum_type)());
-        let (wire, pool_spec) = self.pool_spec.pulsify(source, node, target, mapping, Some(zero))?;
+        let (wire, pool_spec) =
+            self.pool_spec.pulsify(source, node, target, mapping, Some(zero))?;
         target.wire_node(&node.name, Self { pool_spec, ..self.clone() }, &[wire])
     }
 

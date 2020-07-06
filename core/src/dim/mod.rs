@@ -5,7 +5,7 @@ use std::ops;
 mod tree;
 
 pub use self::tree::TDim;
-use crate::TractResult;
+use crate::{ TractError, TractResult};
 
 /// A super-trait for value acting as tensor dimensions in tract.
 ///
@@ -18,6 +18,7 @@ pub trait DimLike:
     + Default
     + PartialEq
     + From<usize>
+    + for <'a> std::convert::TryFrom<&'a TDim, Error=TractError>
     + ::num_traits::Zero
     + fmt::Debug
     + fmt::Display
@@ -107,6 +108,13 @@ impl DimLike for TDim {
     }
 }
 
+impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
+    type Error = crate::errors::TractError;
+    fn try_from(d: &'a TDim) -> TractResult<TDim> {
+        Ok(d.clone())
+    }
+}
+
 impl DimLike for usize {
     fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
         Ok(self * other)
@@ -128,6 +136,13 @@ impl DimLike for usize {
 
     fn concretize_stream_dim(&self, _stream_dim: usize) -> Self {
         *self
+    }
+}
+
+impl<'a> std::convert::TryFrom<&'a TDim> for usize {
+    type Error = crate::errors::TractError;
+    fn try_from(d: &'a TDim) -> TractResult<usize> {
+        d.to_integer().map(|d| d as _)
     }
 }
 
