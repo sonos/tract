@@ -117,7 +117,27 @@ impl AxisOp {
                     None
                 }
             }
-            _ => todo!(),
+            (Reshape(at, from, to), Add(change)) => {
+                if change < at {
+                    Some((Some(Reshape(at + 1, from.clone(), to.clone())), Some(Add(*change))))
+                } else if *change > *at + from.len() {
+                    Some((Some(Reshape(*at, from.clone(), to.clone())), Some(Add(change + to.len() - from.len()))))
+                } else {
+                    None
+                }
+            }
+            (Reshape(at, from, to), Rm(change)) => {
+                if change < at {
+                    Some((Some(Reshape(at - 1, from.clone(), to.clone())), Some(Rm(*change))))
+                } else if *change > *at + from.len() {
+                    Some((Some(Reshape(*at, from.clone(), to.clone())), Some(Rm(change + to.len() - from.len()))))
+                } else {
+                    None
+                }
+            }
+            (Reshape(_, _, _), Permute(_)) => None, // todo, some are manageable
+            (Permute(_), Reshape(_, _, _)) => None, // todo, some are manageable
+            it => todo!("{:?}", it)
         }
     }
 
@@ -204,7 +224,7 @@ impl AxisOp {
             Add(ix) => Rm(*ix),
             Rm(ix) => Add(*ix),
             Permute(axes) => Permute(Self::recip_perm(axes)),
-            _ => todo!(),
+            Reshape(at, from, to) => Reshape(*at, to.clone(), from.clone())
         }
     }
 
