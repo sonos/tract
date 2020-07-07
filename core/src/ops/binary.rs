@@ -153,26 +153,17 @@ impl TypedOp for TypedBinOp {
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let a = model.outlet_fact(node.inputs[0])?;
         let b = model.outlet_fact(node.inputs[1])?;
-        let c = &self.output_facts(&[a, b])?[0];
-        let a_pad = c.shape.rank() - a.shape.rank();
-        let b_pad = c.shape.rank() - b.shape.rank();
-        Ok((0..c.shape.rank())
+        assert!(a.rank() == b.rank());
+        let rank = a.rank();
+        Ok((0..rank)
             .into_iter()
-            .map(|axis| {
-                let mut info = AxisInfo {
-                    inputs: tvec!(None, None),
+            .map(|axis|
+                AxisInfo {
+                    inputs: tvec!(Some(axis), Some(axis)),
                     outputs: tvec!(Some(axis)),
                     period: 1,
                     disposable: true,
-                };
-                if axis >= a_pad && a.shape.dim(axis - a_pad) == 1.to_dim() {
-                    info.inputs[0] = Some(axis - a_pad)
-                }
-                if axis >= b_pad && b.shape.dim(axis - b_pad) == 1.to_dim() {
-                    info.inputs[1] = Some(axis - b_pad)
-                }
-                info
-            })
+                })
             .collect())
     }
 
