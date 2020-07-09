@@ -33,7 +33,7 @@ fi
 
 export CACHEDIR
 
-if [ `arch` = "x86_64" ]
+if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
 then
 	ALL_FEATURES=--all-features
 fi
