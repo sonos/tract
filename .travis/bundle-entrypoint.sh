@@ -54,11 +54,11 @@ net_bench() {
     pb=$2
     shift 2
 
-    $TRACT "$@" --machine-friendly -O bench > tract.out
+    $TRACT "$@" --machine-friendly -O bench $BENCH_OPTS > tract.out
     v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
     echo net.$net.evaltime.$pb $v >> metrics
 
-    $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench > tract.out
+    $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench $BENCH_OPTS > tract.out
     v=$(grep model_ready readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 1 -d ' ')
     echo net.$net.time_to_model_ready.$pb $v >> metrics
     v=$(grep model_ready readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 4 -d ' ')

@@ -120,7 +120,7 @@ impl InferenceRulesOp for DepthwiseConv2d {
         target.wire_node(
             &*node.name,
             conv,
-            [mapping[&node.inputs[0]], mapping[&node.inputs[1]]].as_ref(),
+            [mapping[&node.inputs[0]]].as_ref(),
         )
     }
 }
