@@ -153,11 +153,11 @@ fi
 # these tests require access to private snips models
 if [ -e "$HOME/.aws/credentials" ]
 then
-    sh .travis/bundle-entrypoint.sh
+    BENCH_OPTS="--max-iters 1" sh .travis/bundle-entrypoint.sh
     (
         cd onnx/test_cases
         [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
-        ./run_all.sh en_tdnn_lstm_bn_q7
+        TRACT_RUN=../../target/release/tract ./run_all.sh en_tdnn_lstm_bn_q7
     )
 fi
 
