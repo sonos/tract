@@ -1,8 +1,6 @@
 use crate::infer::*;
 use crate::internal::*;
 
-use tract_core::ops::array::TypedReshape;
-
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Reshape {}
 
@@ -60,9 +58,11 @@ impl InferenceRulesOp for Reshape {
                 target.outlet_fact(mapping[&node.inputs[0]])?.shape.to_tvec();
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
-            let shape = compute_shape(&input_shape, shape)?;
-            let op = TypedReshape::new(shape);
-            return target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref());
+            let mut wire = tvec!(mapping[&node.inputs[0]]);
+            for (ix, op) in to_axis_ops(&input_shape, shape)?.into_iter().enumerate() {
+                wire = target.wire_node(format!("{}.{}", node.name, ix), op, &wire)?;
+            }
+            return Ok(wire)
         }
         bail!("shape input is variable")
     }
@@ -123,36 +123,129 @@ fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>>
     Ok(shape)
 }
 
+fn to_axis_ops(input_orig: &[TDim], output_spec: &[TDim]) -> TractResult<TVec<AxisOp>> {
+    let final_output = compute_shape(input_orig, output_spec)?;
+    let mut stack: TVec<AxisOp> = tvec!();
+    'top: loop {
+        dbg!(&stack);
+        let current_input = stack.iter().fold(TVec::from(input_orig), |shape, op| {
+            let mut shape = shape.into();
+            op.change_shape_array(&mut shape);
+            shape
+        });
+        dbg!(&current_input);
+        if &current_input == &final_output {
+            return Ok(stack);
+        }
+        if let Some(common) =
+            current_input.iter().zip(final_output.iter()).position(|(a, b)| a != b)
+        {
+            if current_input[common].is_one() {
+                stack.push(AxisOp::Rm(common));
+            } else if final_output[common].is_one() {
+                stack.push(AxisOp::Add(common));
+            } else {
+                // actual regrouping. search for a match. this is quadratic, but
+                // rank is expected to be somewhat reasonable
+                for i in common..current_input.len() {
+                    let i_group = &current_input[common..i + 1];
+                    let i_volume: TDim =
+                        if let Ok(v) = i_group.iter().maybe_product() { v } else { break };
+                    for o in common..final_output.len() {
+                        let o_group = &final_output[common..o + 1];
+                        let o_volume: TDim =
+                            if let Ok(v) = o_group.iter().maybe_product() { v } else { break };
+                        if i_volume == o_volume {
+                            stack.push(AxisOp::Reshape(common, i_group.into(), o_group.into()));
+                            continue 'top;
+                        }
+                    }
+                }
+                todo!()
+            }
+        } else {
+            if final_output.len() > current_input.len() {
+                stack.push(AxisOp::Add(current_input.len()));
+            } else {
+                stack.push(AxisOp::Rm(current_input.len() - 1));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use AxisOp::*;
 
     macro_rules! s {
         ($($a:expr),*) => {&[ $($a.into()),* ]}
     }
 
+    macro_rules! r {
+        ($at: expr ; $($from:expr),* => $($to:expr),*) => {
+            AxisOp::Reshape($at, tvec!($($from.into()),*),  tvec!($($to.into()),*))
+        }
+    }
+
     #[test]
-    fn reshape_invalid() {
+    fn compute_invalid() {
         assert!(compute_shape(s![3, 4, 5], s!(100)).is_err());
     }
 
     #[test]
-    fn reshape_with_leading_zero() {
+    fn compute_with_leading_zero() {
         assert_eq!(&*compute_shape(s![3, 4, 5], s!(0, 0, 5)).unwrap(), s![3, 4, 5])
     }
 
     #[test]
-    fn reshape_with_leading_zero_with_flatten() {
+    fn compute_with_leading_zero_with_flatten() {
         assert_eq!(&*compute_shape(s![2, 3, 5, 7], s!(2, 0, 35)).unwrap(), s![2, 3, 35])
     }
 
     #[test]
-    fn reshape_with_trailing_zero() {
+    fn compute_with_trailing_zero() {
         assert_eq!(&*compute_shape(s![3, 4, 5], s!(3, -1, 0)).unwrap(), s![3, 4, 5])
     }
 
     #[test]
-    fn reshape_bug_1() {
-        assert_eq!(&*compute_shape(s![TDim::s(), 1, 2, 128], s!(0, 0, -1)).unwrap(), s![TDim::s(), 1, 256])
+    fn compute_bug_1() {
+        assert_eq!(
+            &*compute_shape(s![TDim::s(), 1, 2, 128], s!(0, 0, -1)).unwrap(),
+            s![TDim::s(), 1, 256]
+        )
+    }
+
+    #[test]
+    fn axis_op_rm_begin() {
+        assert_eq!(&*to_axis_ops(s![1, 2, 3], s!(2, 3)).unwrap(), &[Rm(0)])
+    }
+
+    #[test]
+    fn axis_op_rm_end() {
+        assert_eq!(&*to_axis_ops(s![2, 3, 1], s!(2, 3)).unwrap(), &[Rm(2)])
+    }
+
+    #[test]
+    fn axis_op_insert_begin() {
+        assert_eq!(&*to_axis_ops(s![2, 3], s!(1, 2, 3)).unwrap(), &[Add(0)])
+    }
+
+    #[test]
+    fn axis_op_insert_end() {
+        assert_eq!(&*to_axis_ops(s![2, 3], s!(2, 3, 1)).unwrap(), &[Add(2)])
+    }
+
+    #[test]
+    fn axis_op_merge() {
+        assert_eq!(&*to_axis_ops(s![2, 3, 5, 7], s!(2, 0, 35)).unwrap(), &[r!(2 ; 5,7 => 35 )])
+    }
+
+    #[test]
+    fn axis_op_complex() {
+        assert_eq!(
+            &*to_axis_ops(s![1, 2, 3, 5, 7], s!(2, 1, 3, 35, 1)).unwrap(),
+            &[Rm(0), Add(1), r!(3 ; 5,7 => 35 ), Add(4)]
+        )
     }
 }
