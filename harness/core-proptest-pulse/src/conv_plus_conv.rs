@@ -176,3 +176,24 @@ fn prob_4() {
     };
     cpc.run().unwrap();
 }
+
+#[test]
+fn prob_5() {
+    let cpc = ConvPlusConvProblem {
+        input: Array3::from_shape_fn((1, 1, 4), |(_, _, x)| x as f32),
+        pulse: 2,
+        conv1: ConvOp {
+            stride: 2,
+            dilation: 1,
+            ker: arr3(&[[[0f32]]]),
+            padding: cnn::PaddingSpec::Valid,
+        },
+        conv2: ConvOp {
+            stride: 1,
+            dilation: 2,
+            ker: arr3(&[[[0f32, 0f32]]]),
+            padding: cnn::PaddingSpec::Valid,
+        },
+    };
+    cpc.run().unwrap();
+}

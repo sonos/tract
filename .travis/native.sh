@@ -40,6 +40,11 @@ fi
 
 cargo check --workspace --all-targets $ALL_FEATURES
 
+if [ `arch` = "x86_64" ]
+then
+    export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
+fi
+
 cargo test -p tract-core -p tract-hir -p tract-tensorflow -p tract-onnx $ALL_FEATURES
 # useful as debug_asserts will come into play
 cargo test -p onnx-test-suite -- --skip real_
@@ -51,14 +56,9 @@ do
     HARNESS="$HARNESS -p $p"
 done
 
-cargo test --release $HARNESS
+cargo test --release $HARNESS $ALL_FEATURES
 
-cargo build -p tract --release $ALL_FEATURES
-
-if [ `arch` = "x86_64" ]
-then
-    export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
-fi
+cargo build -p tract --release
 
 if [ -n "$CI" ]
 then

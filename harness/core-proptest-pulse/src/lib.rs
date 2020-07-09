@@ -1,5 +1,8 @@
 #![cfg(test)]
 
+#[macro_use]
+extern crate log;
+
 use proptest::prelude::*;
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
@@ -24,11 +27,13 @@ fn proptest_regular_against_pulse(
 ) -> TestCaseResult {
     setup_test_logger();
     let mut ref_model = model.clone();
+    debug!("Run reference");
     ref_model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape()))?;
     let input = Tensor::from(input_array.clone());
     let plan = SimplePlan::new(&ref_model).unwrap();
     let outputs = plan.run(tvec!(input.clone())).unwrap();
 
+    debug!("Build pulsing model");
     let model = model.into_typed().unwrap();
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
     let output_fact = pulsed.output_fact(0).unwrap().clone();
@@ -44,6 +49,7 @@ fn proptest_regular_against_pulse(
     let mut got: ArrayD<f32> = ArrayD::zeros(&*initial_output_shape);
     let mut output_len = None;
 
+    debug!("Run pulsing model");
     let mut written = 0;
     loop {
         let to_write_in_chunk = pulse.min(input_array.shape()[axis].saturating_sub(written));
