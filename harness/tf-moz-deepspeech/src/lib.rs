@@ -69,6 +69,7 @@ fn initialized_model() -> TractResult<TypedModel> {
 }
 
 #[test]
+#[ignore]
 fn deepspeech_raw() -> TractResult<()> {
     setup_test_logger();
     let model = initialized_model()?;
@@ -123,11 +124,13 @@ fn deepspeech_raw() -> TractResult<()> {
 }
 
 #[test]
+#[ignore]
 fn deepspeech_decluttered() -> TractResult<()> {
     deepspeech_run(false)
 }
 
 #[test]
+#[ignore]
 fn deepspeech_optimized() -> TractResult<()> {
     deepspeech_run(true)
 }

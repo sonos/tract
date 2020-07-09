@@ -503,8 +503,9 @@ impl Parameters {
         info!("Model {:?} loaded", filename);
         info_usage("model loaded", probe);
 
+        let need_tensorflow_model = matches.subcommand_name() == Some("compare");
         #[cfg(feature = "conform")]
-        let tf_model = if format == "tf" {
+        let tf_model = if format == "tf" && need_tensorflow_model {
             info!("Tensorflow version: {}", tract_tensorflow::conform::tf::version());
             if matches.is_present("determinize") {
                 if let SomeGraphDef::Tf(ref graph) = graph {

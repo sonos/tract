@@ -40,12 +40,20 @@ fi
 
 cargo check --workspace --all-targets $ALL_FEATURES
 
+cargo test -p tract-core -p tract-hir -p tract-tensorflow -p tract-onnx $ALL_FEATURES
 # useful as debug_asserts will come into play
-cargo test -p tract-core $ALL_FEATURES
 cargo test -p onnx-test-suite -- --skip real_
 cargo clean
 
-cargo build --release $ALL_FEATURES
+HARNESS=""
+for p in $(ls harness)
+do
+    HARNESS="$HARNESS -p $p"
+done
+
+cargo test --release $HARNESS
+
+cargo build -p tract --release $ALL_FEATURES
 
 if [ `arch` = "x86_64" ]
 then
@@ -56,8 +64,6 @@ if [ -n "$CI" ]
 then
     rm -rf $CACHEDIR/onnx
 fi
-
-cargo build --release --bin tract
 
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
