@@ -137,7 +137,7 @@ impl AxisOp {
             }
             (Reshape(_, _, _), Permute(_)) => None, // todo, some are manageable
             (Permute(_), Reshape(_, _, _)) => None, // todo, some are manageable
-            it => todo!("{:?}", it)
+            (Reshape(_, _, _), Reshape(_, _, _)) => None, // todo, some are manageable
         }
     }
 
