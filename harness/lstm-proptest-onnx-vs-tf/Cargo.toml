@@ -1,5 +1,5 @@
 [package]
-name = "lstm_test"
+name = "lstm-proptest-onnx-vs-tf"
 version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2018"
