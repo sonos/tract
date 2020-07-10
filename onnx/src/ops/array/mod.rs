@@ -141,7 +141,7 @@ pub fn transpose(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let perm = node.get_attr_opt_vec("perm")?;
-    Ok((Box::new(array::PermuteAxes::new(perm)), vec![]))
+    Ok((expand(array::PermuteAxes::new(perm.map(|t| t.into()))), vec![]))
 }
 
 pub fn unsqueeze(
