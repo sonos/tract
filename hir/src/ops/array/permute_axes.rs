@@ -3,7 +3,7 @@ use crate::internal::*;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct PermuteAxes {
-    pub axes: Option<Vec<usize>>,
+    pub axes: Option<TVec<usize>>,
 }
 
 tract_linalg::impl_dyn_hash!(PermuteAxes);
@@ -25,43 +25,19 @@ impl PermuteAxes {
             Ok(new_shape)
         }
     }
-
-    /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
-        if let Some(ref axes) = self.axes {
-            Ok(tvec![input
-                .into_tensor()
-                .into_array::<T>()?
-                .permuted_axes(&**axes)
-                .into_arc_tensor()])
-        } else {
-            Ok(tvec![input.into_tensor().into_array::<T>()?.reversed_axes().into_arc_tensor()])
-        }
-    }
 }
 
-impl Op for PermuteAxes {
+impl Expansion for PermuteAxes {
     fn name(&self) -> Cow<str> {
         "PermuteAxes".into()
     }
+
+    op_hir!();
 
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("{:?}", self.axes)])
     }
 
-    op_hir!();
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
-
-impl StatelessOp for PermuteAxes {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
-    }
-}
-
-impl InferenceRulesOp for PermuteAxes {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -81,27 +57,21 @@ impl InferenceRulesOp for PermuteAxes {
         Ok(())
     }
 
-    #[allow(unused_variables)]
-    fn to_typed(
+    fn wire(
         &self,
-        source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
-        if let Some(axes) = &self.axes {
+        let fact = target.outlet_fact(inputs[0])?;
+        let axes = if let Some(axes) = &self.axes {
             if fact.rank() != axes.len() {
                 bail!("Op expects tensor of rank {}, input is actually of rank {}.", axes.len(), fact.rank());
             }
-            let op = AxisOp::Permute(axes.iter().cloned().collect());
-            target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
+            axes.clone()
         } else {
-            let axes = (0..fact.rank()).rev().collect();
-            let op = AxisOp::Permute(axes);
-            target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
-        }
+            (0..fact.rank()).rev().collect()
+        };
+        target.wire_node(prefix, AxisOp::Permute(axes), inputs)
     }
-
-    as_op!();
 }
