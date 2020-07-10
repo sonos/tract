@@ -1,9 +1,19 @@
 use crate::infer::*;
 use crate::internal::*;
 
-pub use tract_core::ops::array::Shape;
+#[derive(Debug, Clone, new, Hash)]
+pub struct Shape {
+    pub dt: DatumType,
+}
+tract_linalg::impl_dyn_hash!(Shape);
 
-impl InferenceRulesOp for Shape {
+impl Expansion for Shape {
+    fn name(&self) -> Cow<str> {
+        "Shape".into()
+    }
+
+    op_hir!();
+
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -41,6 +51,16 @@ impl InferenceRulesOp for Shape {
         })
     }
 
-    as_op!();
-    to_typed!();
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let shape = tensor1(&model.outlet_fact(inputs[0])?.shape.to_tvec())
+            .cast_to_dt(self.dt)?
+            .into_owned();
+        let wire = model.add_const(prefix, shape)?;
+        Ok(tvec!(wire))
+    }
 }

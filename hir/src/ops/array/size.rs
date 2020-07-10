@@ -1,9 +1,19 @@
 use crate::infer::*;
 use crate::internal::*;
 
-pub use tract_core::ops::array::Size;
+#[derive(Debug, Clone, new, Hash)]
+pub struct Size {
+    pub dt: DatumType,
+}
+tract_linalg::impl_dyn_hash!(Size);
 
-impl InferenceRulesOp for Size {
+impl Expansion for Size {
+    fn name(&self) -> Cow<str> {
+        "Size".into()
+    }
+
+    op_hir!();
+
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -17,6 +27,16 @@ impl InferenceRulesOp for Size {
         Ok(())
     }
 
-    as_op!();
-    to_typed!();
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let shape = tensor0(model.outlet_fact(inputs[0])?.shape.iter().maybe_product()?)
+            .cast_to_dt(self.dt)?
+            .into_owned();
+        let wire = model.add_const(prefix, shape)?;
+        Ok(tvec!(wire))
+    }
 }
