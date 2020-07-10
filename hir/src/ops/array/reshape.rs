@@ -6,31 +6,13 @@ pub struct Reshape {}
 
 tract_linalg::impl_dyn_hash!(Reshape);
 
-impl Op for Reshape {
+impl Expansion for Reshape {
     fn name(&self) -> Cow<str> {
         "Reshape".into()
     }
 
     op_hir!();
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
 
-impl StatelessOp for Reshape {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (input, shape) = args_2!(inputs);
-        let shape = shape.cast_to::<TDim>()?;
-        let shape = shape.as_slice::<TDim>()?;
-        let input_shape = input.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>();
-        let oshape = compute_shape(&input_shape, &shape)?
-            .iter()
-            .map(|d| d.to_integer().map(|d| d as _))
-            .collect::<TractResult<TVec<_>>>()?;
-        unsafe { Ok(tvec![input.into_tensor().into_shape(&*oshape)?.into_arc_tensor()]) }
-    }
-}
-
-impl InferenceRulesOp for Reshape {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -46,28 +28,24 @@ impl InferenceRulesOp for Reshape {
         })
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(ref shape) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
-            let input_shape: TVec<TDim> =
-                target.outlet_fact(mapping[&node.inputs[0]])?.shape.to_tvec();
+        if let Some(ref shape) = model.outlet_fact(inputs[1])?.konst {
+            let input_shape: TVec<TDim> = model.outlet_fact(inputs[0])?.shape.to_tvec();
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
-            let mut wire = tvec!(mapping[&node.inputs[0]]);
+            let mut wire = tvec!(inputs[0]);
             for (ix, op) in to_axis_ops(&input_shape, shape)?.into_iter().enumerate() {
-                wire = target.wire_node(format!("{}.{}", node.name, ix), op, &wire)?;
+                wire = model.wire_node(format!("{}.{}", prefix, ix), op, &wire)?;
             }
-            return Ok(wire)
+            return Ok(wire);
         }
         bail!("shape input is variable")
     }
-
-    as_op!();
 }
 
 fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>> {
