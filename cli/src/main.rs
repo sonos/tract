@@ -858,6 +858,7 @@ impl Parameters {
                     }
                     info_usage("after pulse-declutter", probe);
                 }
+                info_usage("before optimize", probe);
                 info!("Running 'optimize'");
                 model = model.optimize()?;
                 info_usage("after optimize", probe);
