@@ -18,7 +18,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
     reg.insert("Pad", pad);
-    reg.insert("Reshape", |_, _| Ok((Box::new(array::Reshape::default()), vec![])));
+    reg.insert("Reshape", |_, _| Ok((expand(array::Reshape::default()), vec![])));
     reg.insert("Shape", |_, _| Ok((Box::new(array::Shape::new(DatumType::I64)), vec![])));
     reg.insert("Size", |_, _| Ok((Box::new(array::Size::new(DatumType::I64)), vec![])));
     reg.insert("Transpose", transpose);
