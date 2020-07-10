@@ -10,7 +10,6 @@ use crate::model::*;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
-use crate::ops::array::TypedReshape;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::PoolSpec;
 use crate::ops::matmul;
@@ -665,17 +664,16 @@ impl TypedOp for ConvUnary {
                     let mut patch = TypedModelPatch::default();
                     let mut wire = patch.tap_model(model, node.inputs[0])?;
                     let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
-                    let mut reshaped_input = tvec!(
-                        input_shape.n().cloned().unwrap_or(1.to_dim()),
-                        input_shape.hw_dims().iter().cloned().maybe_product()?,
-                        input_shape.c().clone(),
-                    );
-                    if !input_c_is_last {
-                        reshaped_input.swap(1, 2);
-                    }
-                    wire =
-                        patch.wire_node(&*node.name, TypedReshape::new(reshaped_input), &[wire])?
-                            [0];
+                    let geo_dim:TDim = input_shape.hw_dims().iter().maybe_product()?;
+                    wire = patch.wire_node(
+                        &*node.name,
+                        AxisOp::Reshape(
+                            input_shape.h_axis(),
+                            input_shape.hw_dims().into(),
+                            tvec!(geo_dim.clone()),
+                        ),
+                        &[wire],
+                    )?[0];
                     let kernel_shape = match self.kernel_fmt {
                         KernelFormat::HWIO => &self.kernel.shape()[spatial_rank..],
                         KernelFormat::OIHW => &self.kernel.shape()[..2],
@@ -705,7 +703,11 @@ impl TypedOp for ConvUnary {
                     }
                     wire = patch.wire_node(
                         &*node.name,
-                        TypedReshape::new(node.outputs[0].fact.shape.to_tvec()),
+                        AxisOp::Reshape(
+                            input_shape.h_axis(),
+                            tvec!(geo_dim),
+                            input_shape.hw_dims().into(),
+                        ),
                         &[wire],
                     )?[0];
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;

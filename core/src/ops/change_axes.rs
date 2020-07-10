@@ -235,6 +235,14 @@ impl AxisOp {
             false
         }
     }
+
+    pub fn only_shape(&self) -> bool {
+        if let Permute(_) = self {
+            false
+        } else {
+            true
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

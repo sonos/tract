@@ -229,16 +229,17 @@ where
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
         if let Some(succ) = model.single_succ(node.id)? {
-            if let Some(op) = succ.op_as::<ops::array::FiniteReshape>() {
-                let shape = op.shape.clone();
-                return Ok(Some(TypedModelPatch::fuse_with_next(
-                    model,
-                    &node,
-                    Self {
-                        c_fact: TypedFact::dt_shape(self.c_fact.datum_type, &*shape)?,
-                        ..self.clone()
-                    },
-                )?));
+            if let Some(op) = succ.op_as::<ops::AxisOp>() {
+                if op.only_shape() {
+                    return Ok(Some(TypedModelPatch::fuse_with_next(
+                        model,
+                        &node,
+                        Self {
+                            c_fact: succ.outputs[0].fact.clone(),
+                            ..self.clone()
+                        },
+                    )?));
+                }
             }
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
                 if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
