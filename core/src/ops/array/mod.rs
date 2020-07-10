@@ -15,7 +15,7 @@ pub use self::concat::{ConcatSlice, TypedConcat};
 pub use self::flatten::Flatten;
 pub use self::gather::Gather;
 pub use self::pad::{Pad, PadMode, PulsePad};
-pub use self::reshape::{FiniteReshape, TypedReshape};
+pub use self::reshape::TypedReshape;
 pub use self::shape::Shape;
 pub use self::size::Size;
 pub use self::slice::Slice;
