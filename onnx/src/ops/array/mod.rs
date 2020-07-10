@@ -85,7 +85,7 @@ pub fn flatten(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
-    Ok((Box::new(array::Flatten::new(axis)), vec![]))
+    Ok((expand(array::Flatten::new(axis)), vec![]))
 }
 
 pub fn gather(
