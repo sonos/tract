@@ -33,10 +33,11 @@ impl Expansion for Size {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let shape = tensor0(model.outlet_fact(inputs[0])?.shape.iter().maybe_product()?)
-            .cast_to_dt(self.dt)?
-            .into_owned();
-        let wire = model.add_const(prefix, shape)?;
+        let mut size = tensor0(model.outlet_fact(inputs[0])?.shape.iter().maybe_product()?);
+        if let Ok(s) = size.cast_to_dt(self.dt) {
+            size = s.into_owned();
+        }
+        let wire = model.add_const(prefix, size)?;
         Ok(tvec!(wire))
     }
 }
