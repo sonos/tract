@@ -57,9 +57,10 @@ impl Expansion for Shape {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let shape = tensor1(&model.outlet_fact(inputs[0])?.shape.to_tvec())
-            .cast_to_dt(self.dt)?
-            .into_owned();
+        let mut shape = tensor1(&model.outlet_fact(inputs[0])?.shape.to_tvec());
+        if let Ok(s) = shape.cast_to_dt(self.dt) {
+            shape = s.into_owned();
+        };
         let wire = model.add_const(prefix, shape)?;
         Ok(tvec!(wire))
     }
