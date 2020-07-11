@@ -14,7 +14,7 @@ tract_linalg::impl_dyn_hash!(Transpose);
 pub fn transpose(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let t = pb.get_attr_datum_type("T")?;
     let t_perm = pb.get_attr_datum_type("Tperm")?;
-    Ok(Box::new(Transpose::new(t, t_perm)))
+    Ok(expand(Transpose::new(t, t_perm)))
 }
 
 impl Transpose {
@@ -25,35 +25,15 @@ impl Transpose {
         }
         new_shape
     }
-
-    fn eval_t<T: Datum>(
-        &self,
-        input: Arc<Tensor>,
-        perm: &[usize],
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec![input.into_tensor().into_array::<T>()?.permuted_axes(perm).into_arc_tensor()])
-    }
 }
 
-impl Op for Transpose {
+impl Expansion for Transpose {
     fn name(&self) -> Cow<str> {
         "Transpose".into()
     }
 
     op_tf!();
-    not_a_typed_op!();
-}
 
-impl StatelessOp for Transpose {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (data, perm) = args_2!(inputs);
-        let perm: TVec<usize> =
-            perm.cast_to::<i32>()?.as_slice::<i32>()?.iter().map(|&x| x as usize).collect();
-        dispatch_datum!(Self::eval_t(data.datum_type())(self, data, &*perm))
-    }
-}
-
-impl InferenceRulesOp for Transpose {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -75,22 +55,25 @@ impl InferenceRulesOp for Transpose {
         })
     }
 
-    as_op!();
-
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(ref axes) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
-            let axes: TVec<usize> =
-                axes.cast_to::<i32>()?.as_slice::<i32>()?.iter().map(|&ax| ax as usize).collect();
-            let op = AxisOp::Permute(axes);
-            target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]]])
+        if let Some(axes) = &target.outlet_fact(inputs[1])?.konst {
+            let axes:TVec<usize> = axes.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
+            let mut wire = tvec!(inputs[0]);
+            for (from, to) in tract_hir::ops::array::permute_axes::perm_to_atoms(&axes) {
+                wire = target.wire_node(
+                    format!("{}.{}_to_{}", prefix, from, to),
+                    AxisOp::Move(from, to),
+                    &wire,
+                )?;
+            }
+            Ok(wire)
         } else {
-            bail!("Nees axes to be const")
+            bail!("Expect permutation input to be const")
         }
     }
 }

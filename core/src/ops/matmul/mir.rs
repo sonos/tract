@@ -503,8 +503,8 @@ impl TypedOp for MatMulUnary {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let b = &model.outlet_fact(node.inputs[0])?;
         match change {
-            AxisOp::Permute(axes) => {
-                if &**axes == &[1, 0] {
+            AxisOp::Move(from, to) => {
+                if b.rank() == 2 && *from == 0 && *to == 1 {
                     let op = MatMulUnary {
                         b_trans: !self.b_trans,
                         c_trans: !self.c_trans,

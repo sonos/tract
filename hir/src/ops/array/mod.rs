@@ -7,7 +7,7 @@ mod crop;
 mod flatten;
 mod gather;
 mod pad;
-mod permute_axes;
+pub mod permute_axes;
 mod reshape;
 mod rm_dims;
 mod shape;

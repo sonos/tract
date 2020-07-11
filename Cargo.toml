@@ -19,7 +19,7 @@ members = [
 ]
 
 [profile.release]
-lto = true
+# lto = true
 
 [profile.bench]
 debug = true

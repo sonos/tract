@@ -600,7 +600,7 @@ impl TypedOp for ConvUnary {
             AxisOp::Add(axis) => {
                 kernel.insert_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?
             }
-            AxisOp::Permute(_) => AxisOp::Permute(kernel_perm).change_tensor(&mut kernel)?,
+            AxisOp::Move(_, _) => return Ok(None),
             AxisOp::Reshape(_, _, _) => return Ok(None),
         };
         let new_op = ConvUnary {
