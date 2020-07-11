@@ -20,17 +20,38 @@ impl InOut {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq)]
 pub enum AxisOp {
     Add(usize),
     Rm(usize),
-    Permute(TVec<usize>),
+    Move(usize, usize),
     Reshape(usize, TVec<TDim>, TVec<TDim>),
 }
 use AxisOp::*;
 
 impl AxisOp {
+    fn check(&self) {
+        assert!(!self.is_noop());
+        if let Move(from, to) = self {
+            assert!(*from != *to + 1, "Swap must be \"in left to right order\"");
+        }
+    }
+
+    pub fn checked(self) -> Option<AxisOp> {
+        if self.is_noop() {
+            None
+        } else if let Move(from, to) = self {
+            if from == to + 1 {
+                return Some(Move(to, from));
+            }
+            Some(Move(from, to))
+        } else {
+            Some(self)
+        }
+    }
+
     pub fn transform_axis(&self, axis: usize) -> Option<usize> {
+        self.check();
         match self {
             Add(ix) => Some(axis + (axis >= *ix) as usize),
             Rm(ix) => {
@@ -40,7 +61,24 @@ impl AxisOp {
                     Some(axis - (axis > *ix) as usize)
                 }
             }
-            Permute(perm) => perm.get(axis).cloned(),
+            Move(from, to) if from < to => {
+                if axis < *from || axis > *to {
+                    Some(axis)
+                } else if axis == *from {
+                    Some(*to)
+                } else {
+                    Some(axis - 1)
+                }
+            }
+            Move(from, to) => {
+                if axis < *to || axis > *from {
+                    Some(axis)
+                } else if axis == *from {
+                    Some(*to)
+                } else {
+                    Some(axis + 1)
+                }
+            }
             Reshape(at, _, _) if axis < *at => Some(axis),
             Reshape(at, from, to) if axis >= at + from.len() => Some(axis + to.len() - from.len()),
             Reshape(_, _, _) => None,
@@ -55,7 +93,10 @@ impl AxisOp {
         &self,
         change: &AxisOp,
     ) -> Option<(Option<AxisOp>, Option<AxisOp>)> {
-        match (self, change) {
+        self.check();
+        change.check();
+        dbg!(self, change);
+        let r = match (self, change) {
             (Add(op), Add(c)) => {
                 Some((Some(Add(op + (c < op) as usize)), Some(Add(c + (c >= op) as usize))))
             }
@@ -69,28 +110,50 @@ impl AxisOp {
                 Some((Some(Rm(op - (c < op) as usize)), Some(Rm(c - (op <= c) as usize))))
             }
 
-            (Add(_), Permute(_)) => None,
-            (Permute(_), Add(_)) => None,
-            (Rm(op), Permute(c)) => Some((
-                Some(Rm(c.iter().position(|it| it == op).unwrap())),
-                Some(Permute(
-                    c.iter()
-                        .filter_map(|d| if d == op { None } else { Some(d - (d > op) as usize) })
-                        .collect(),
-                )),
-            )),
-            (Permute(op), Rm(c)) => Some((
-                Some(Permute(
-                    op.iter()
-                        .filter_map(|d| if d == c { None } else { Some(d - (d > c) as usize) })
-                        .collect(),
-                )),
-                Some(Rm(op.iter().position(|d| d == c).unwrap())),
-            )),
-            (Permute(op), Permute(c)) => {
-                let c_r = Self::recip_perm(c);
-                let new_op = Permute(op.iter().map(|d| c_r[*d]).collect());
-                Some((Some(new_op), None))
+            (Add(x), Move(from, to)) => {
+                if x <= from.min(to) {
+                    Some((Some(self.clone()), Some(Move(from + 1, to + 1))))
+                } else if x > from.max(to) {
+                    Some((Some(self.clone()), Some(change.clone())))
+                } else {
+                    None
+                }
+            }
+
+            (Move(from, to), Add(x)) => {
+                if x <= from.min(to) {
+                    Some((Some(Move(from + 1, to + 1)), Some(Add(*x))))
+                } else if x > from.max(to) {
+                    Some((Some(Move(*from, *to)), Some(Add(*x))))
+                } else {
+                    None
+                }
+            }
+
+            (Rm(x), Move(from, to)) => {
+                if x == from {
+                    Some((Some(Rm(*to)), None))
+                } else if x < from.min(to) {
+                    Some((Some(self.clone()), Some(Move(from - 1, to - 1))))
+                } else if x > from.max(to) {
+                    Some((Some(self.clone()), Some(change.clone())))
+                } else if from + 1 == *to && x == to {
+                    Some((Some(Rm(*from)), None))
+                } else if from < to && x <= to {
+                    Some((Some(Rm(x - 1)), Move(*from, *to - 1).checked()))
+                } else {
+                    Some((Some(Rm(x + 1)), Move(*from - 1, *to).checked()))
+                }
+            }
+
+            (Move(from, to), Rm(x)) => {
+                if x < from.min(to) {
+                    Some((Some(Move(from - 1, to - 1)), Some(Rm(*x))))
+                } else if x > from.max(to) {
+                    Some((Some(Move(*from, *to)), Some(Rm(*x))))
+                } else {
+                    None
+                }
             }
 
             (Add(op), Reshape(at, from, to)) => {
@@ -121,7 +184,10 @@ impl AxisOp {
                 if change < at {
                     Some((Some(Reshape(at + 1, from.clone(), to.clone())), Some(Add(*change))))
                 } else if *change > *at + from.len() {
-                    Some((Some(Reshape(*at, from.clone(), to.clone())), Some(Add(change + to.len() - from.len()))))
+                    Some((
+                        Some(Reshape(*at, from.clone(), to.clone())),
+                        Some(Add(change + to.len() - from.len())),
+                    ))
                 } else {
                     None
                 }
@@ -130,30 +196,34 @@ impl AxisOp {
                 if change < at {
                     Some((Some(Reshape(at - 1, from.clone(), to.clone())), Some(Rm(*change))))
                 } else if *change > *at + from.len() {
-                    Some((Some(Reshape(*at, from.clone(), to.clone())), Some(Rm(change + to.len() - from.len()))))
+                    Some((
+                        Some(Reshape(*at, from.clone(), to.clone())),
+                        Some(Rm(change + to.len() - from.len())),
+                    ))
                 } else {
                     None
                 }
             }
-            (Reshape(_, _, _), Permute(_)) => None, // todo, some are manageable
-            (Permute(_), Reshape(_, _, _)) => None, // todo, some are manageable
+            (Reshape(_, _, _), Move(_, _)) => None, // todo, some are manageable
+            (Move(_, _), Reshape(_, _, _)) => None, // todo, some are manageable
             (Reshape(_, _, _), Reshape(_, _, _)) => None, // todo, some are manageable
-        }
+            _ => None,
+        };
+        eprintln!("op:{:?} c:{:?} -> {:?}", self, change, r);
+        r
     }
 
     pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) {
+        self.check();
         use std::convert::TryInto;
         match self {
             Add(ix) => shape.insert(*ix, D::one()),
             Rm(ix) => {
                 shape.remove(*ix);
             }
-            Permute(perm) => {
-                let mut new_shape: TVec<D> = tvec!(D::default(); shape.len());
-                for (ix, &from) in perm.iter().enumerate() {
-                    new_shape[ix] = shape[from].clone();
-                }
-                shape.as_mut().clone_from_slice(&*new_shape);
+            Move(from, to) => {
+                let axis = shape.remove(*from);
+                shape.insert(*to, axis);
             }
             Reshape(at, from, to) => {
                 for _ in from {
@@ -167,24 +237,14 @@ impl AxisOp {
     }
 
     pub fn change_shape(&self, shape: &mut ShapeFact) -> TractResult<()> {
+        self.check();
         match self {
             Add(ix) => shape.insert_axis(*ix),
             Rm(ix) => {
                 debug_assert_eq!(shape.dim(*ix), 1.to_dim(), "Removing a non-trivial axis.");
                 shape.remove_axis(*ix)
             }
-            Permute(perm) => {
-                assert_eq!(perm.len(), shape.rank());
-                let orig = shape.clone();
-                for (ix, &from) in perm.iter().enumerate() {
-                    shape.set_dim(ix, orig.dim(from).to_integer().unwrap_or(1).to_dim())?;
-                }
-                if let Some(info) = orig.stream_info {
-                    shape.set_dim(perm.iter().position(|&i| i == info.axis).unwrap(), info.len)?;
-                }
-                Ok(())
-            }
-            Reshape(_, _, _) => {
+            _ => {
                 let mut array = shape.to_tvec();
                 self.change_shape_array(&mut array);
                 let mut new_shape = ShapeFact::from_dims(array).unwrap();
@@ -195,19 +255,24 @@ impl AxisOp {
     }
 
     pub fn change_tensor(&self, tensor: &mut Tensor) -> TractResult<()> {
+        self.check();
         fn permute<T: Datum>(axes: &[usize], input: Tensor) -> TractResult<Tensor> {
             Ok(input.into_array::<T>()?.permuted_axes(axes).into_tensor())
         }
         match self {
             Add(ix) => tensor.insert_axis(*ix),
             Rm(ix) => tensor.remove_axis(*ix),
-            Permute(axes) => {
-                let mut tmp = dispatch_datum!(permute(tensor.datum_type())(axes, tensor.clone()))?;
+            Move(from, to) => {
+                let mut permutation: Vec<usize> = (0..tensor.rank()).collect();
+                permutation.remove(*from);
+                permutation.insert(*to, *from);
+                let mut tmp =
+                    dispatch_datum!(permute(tensor.datum_type())(&permutation, tensor.clone()))?;
                 std::mem::swap(tensor, &mut tmp);
                 Ok(())
             }
             Reshape(_, _, _) => {
-                let mut shape:TVec<usize> = tensor.shape().into();
+                let mut shape: TVec<usize> = tensor.shape().into();
                 self.change_shape_array(&mut shape);
                 unsafe { tensor.set_shape(&shape) }
                 Ok(())
@@ -215,29 +280,34 @@ impl AxisOp {
         }
     }
 
-    fn recip_perm(axes: &[usize]) -> TVec<usize> {
-        (0..axes.len()).map(|axis| axes.iter().position(|i| axis == *i).unwrap()).collect()
-    }
-
     pub fn recip(&self) -> AxisOp {
+        self.check();
         match self {
             Add(ix) => Rm(*ix),
             Rm(ix) => Add(*ix),
-            Permute(axes) => Permute(Self::recip_perm(axes)),
-            Reshape(at, from, to) => Reshape(*at, to.clone(), from.clone())
+            Move(from, to) if from == to => self.clone(),
+            Move(from, to) if *from + 1 == *to => self.clone(),
+            Move(from, to) if *from == *to + 1 => {
+                unreachable!();
+            }
+            Move(from, to) => Move(*to, *from),
+            Reshape(at, from, to) => Reshape(*at, to.clone(), from.clone()),
         }
     }
 
     pub fn is_noop(&self) -> bool {
-        if let Permute(axes) = self {
-            axes.iter().enumerate().all(|(ix, &ax)| ix == ax)
+        if let Move(f, t) = self {
+            f == t
+        } else if let Reshape(_, f, t) = self {
+            f == t
         } else {
             false
         }
     }
 
     pub fn only_shape(&self) -> bool {
-        if let Permute(_) = self {
+        self.check();
+        if let Move(_, _) = self {
             false
         } else {
             true
@@ -280,7 +350,7 @@ impl Op for AxisOp {
         match self {
             Add(_) => "AddAxis".into(),
             Rm(_) => "RmAxis".into(),
-            Permute(_) => "Permute".into(),
+            Move(_, _) => "MoveAxis".into(),
             Reshape(_, _, _) => "Reshape".into(),
         }
     }
@@ -289,7 +359,7 @@ impl Op for AxisOp {
         use crate::itertools::Itertools;
         match self {
             Add(axis) | Rm(axis) => Ok(vec![format!("Axis: {}", axis)]),
-            Permute(axes) => Ok(vec![format!("Axes: {:?}", axes)]),
+            Move(from, to) => Ok(vec![format!("Axis {} to {}", from, to)]),
             Reshape(at, from, to) => Ok(vec![format!(
                 "Axes starting at {}: {:?} to {:?}",
                 at,
@@ -507,10 +577,6 @@ pub fn change_axes(
 mod test {
     use super::*;
 
-    macro_rules! p {
-        ($($d:expr),*) => { Permute(tvec!($($d),*)) }
-    }
-
     // ADD-ADD
 
     //                          Op
@@ -627,53 +693,18 @@ mod test {
         assert_eq!(op.merge_incoming_change(&change), Some((Some(Add(0)), Some(Rm(0)))));
     }
 
-    // PERMUTE ADD
 
-    //                           Op
-    //         a,b,c     ------|Rm(1)|----->        a,c
-    //   Perm(1,0,2)                                        Perm(0,1)
-    //         b,a,c     ------|Rm(0)|----->        a,c
+    //                          Op
+    //         a,b,c   ------|Rm(2)|----->        a,b
+    //   Move(0, 2)                                           Move(0,1)
+    //         b,c,a   ------|Rm(1)|----->        b,a
     #[test]
-    pub fn transform_permute_102_rm_1() {
-        let change = Permute(tvec!(1, 0, 2));
-        let op = Rm(1);
-        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(0)), Some(p!(0, 1)))));
+    pub fn transform_op_mv_02_rm_2() {
+        let change = Move(0, 2);
+        let op = Rm(2);
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(1)), Some(Move(0, 1)))));
     }
 
-    //                           Op
-    //         a,b,c     ------|Rm(0)|----->        b,c
-    //   Perm(1,2,0)                                        Perm(0,1)
-    //         b,c,a     ------|Rm(2)|----->        b,c
-    #[test]
-    pub fn transform_permute_120_rm_0() {
-        let change = Permute(tvec!(1, 2, 0));
-        let op = Rm(0);
-        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(2)), Some(p!(0, 1)))));
-    }
-
-    //                           Op
-    //         a,b,c     ------|Rm(1)|----->        b,c
-    //      Perm(1,2,0)                                 Perm(1, 0)
-    //         b,c,a     ------|Rm(2)|------->      c,a
-    #[test]
-    pub fn transform_permute_120_rm_1() {
-        let change = Permute(tvec!(1, 2, 0));
-        let op = Rm(1);
-        assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(0)), Some(p!(1, 0)))));
-    }
-
-    // RM PERMUTE
-
-    //                           Op
-    //         a,b,c   ------|Perm(2,0,1)|----->       c,b,a
-    //      Rm(0)                                           Rm(1)
-    //         b,c     ------|Perm(1,0)|------->       c,a
-    #[test]
-    pub fn transform_rm_0_permute_201() {
-        let change = Rm(0);
-        let op = Permute(tvec!(2, 0, 1));
-        assert_eq!(op.merge_incoming_change(&change), Some((Some(p!(1, 0)), Some(Rm(1)))));
-    }
 }
 
 #[cfg(test)]
@@ -682,7 +713,7 @@ mod proptests {
     use proptest::prelude::*;
 
     #[derive(Debug)]
-    struct Problem {
+    struct ComposeProblem {
         input: TVec<usize>,
         ops: TVec<AxisOp>,
     }
@@ -696,15 +727,11 @@ mod proptests {
             if shape.len() > 1 {
                 ops = ops
                     .prop_union(
-                        Just((0..shape.len()).collect::<Vec<usize>>())
-                            .prop_shuffle()
-                            .prop_filter("trivial permutation", |p| {
-                                !p.windows(2).all(|w| w[0] < w[1])
-                            })
-                            .prop_map(|p| Permute(p.into()))
+                        (0..shape.len(), 0..shape.len())
+                            .prop_filter_map("trivial", |(a, b)| Move(a, b).checked())
                             .boxed(),
                     )
-                    .boxed();
+                    .boxed()
             }
             let rms =
                 (0..shape.len()).filter(|&ax| shape[ax] == 1).map(|ax| Rm(ax)).collect::<Vec<_>>();
@@ -732,9 +759,9 @@ mod proptests {
         }
     }
 
-    impl Arbitrary for Problem {
+    impl Arbitrary for ComposeProblem {
         type Parameters = ();
-        type Strategy = BoxedStrategy<Problem>;
+        type Strategy = BoxedStrategy<ComposeProblem>;
         fn arbitrary_with(_args: ()) -> Self::Strategy {
             let input = proptest::collection::vec(1usize..4, 1usize..4);
             fn tail(len: usize, shape: TVec<usize>) -> BoxedStrategy<TVec<AxisOp>> {
@@ -755,12 +782,12 @@ mod proptests {
             }
             (input, 1usize..=5)
                 .prop_flat_map(|(input, len)| (Just(input.clone()), tail(len, input.into())))
-                .prop_map(|(input, ops)| Problem { input: input.into(), ops })
+                .prop_map(|(input, ops)| ComposeProblem { input: input.into(), ops })
                 .boxed()
         }
     }
 
-    impl Problem {
+    impl ComposeProblem {
         pub fn model(&self) -> TractResult<TypedModel> {
             let mut model = TypedModel::default();
             let mut wire = model
@@ -786,8 +813,10 @@ mod proptests {
             crate::setup_test_logger();
             let input = self.input()?;
             let model = self.model()?;
+            // dbg!(&model);
             let raw = model.into_runnable()?.run(tvec!(input.clone()))?;
             let optimized = self.model()?.declutter()?;
+            // dbg!(&optimized);
             let opt = optimized.into_runnable()?.run(tvec!(input))?;
             opt[0].close_enough(&raw[0], false)
         }
@@ -795,95 +824,128 @@ mod proptests {
 
     proptest! {
         #[test]
-        fn axis_ops(pb in any::<Problem>()) {
+        fn recip(pb in any::<AxisOp>()) {
+            assert_eq!(pb.recip().recip(), pb);
+        }
+
+        #[test]
+        fn axis_ops(pb in any::<ComposeProblem>()) {
             pb.check()?
         }
     }
 
     #[test]
-    fn add_0_perm_10() {
-        let pb = Problem { input: tvec![2], ops: tvec![Add(0), Permute(tvec![1, 0])] };
+    fn add_0_move_01() {
+        let pb = ComposeProblem { input: tvec![2], ops: tvec![Add(0), Move(0, 1)] };
         pb.check().unwrap();
     }
 
     #[test]
-    fn add_0_add_1_perm_120() {
-        let pb = Problem { input: tvec![2], ops: tvec![Add(0), Add(1), Permute(tvec![1, 2, 0])] };
+    fn add_0_move_01_add_1() {
+        let pb = ComposeProblem { input: tvec![2], ops: tvec![Add(0), Move(0, 1), Add(1)] };
+        pb.check().unwrap();
+    }
+
+    #[test]
+    fn recip_move_01() {
+        let op = Move(1, 0).checked().unwrap();
+        assert_eq!(op.recip().recip(), op);
+    }
+
+    #[test]
+    fn recip_move_20() {
+        let op = Move(2, 0).checked().unwrap();
+        assert_eq!(op.recip().recip(), op);
+    }
+
+    #[test]
+    fn recip_move_02() {
+        let op = Move(0, 2).checked().unwrap();
+        assert_eq!(op.recip().recip(), op);
+    }
+
+    #[test]
+    fn add_0_add_1_move_02() {
+        let pb = ComposeProblem { input: tvec![2], ops: tvec![Add(0), Add(1), Move(0, 2)] };
         pb.check().unwrap();
     }
 
     #[test]
     fn add_0_add_0() {
-        let pb = Problem { input: tvec![1], ops: tvec![Add(0), Add(0)] };
+        let pb = ComposeProblem { input: tvec![1], ops: tvec![Add(0), Add(0)] };
         pb.check().unwrap();
     }
 
     #[test]
-    fn add_0_add_0_perm_120() {
-        let pb = Problem { input: tvec![2], ops: tvec![Add(0), Add(0), Permute(tvec!(1, 2, 0))] };
+    fn add_0_add_0_move_02() {
+        let pb = ComposeProblem { input: tvec![2], ops: tvec![Add(0), Add(0), Move(0, 2)] };
         pb.check().unwrap();
     }
 
     #[test]
-    fn add_0_add_0_perm_120_rm_0() {
+    fn add_0_add_2_move_12() {
+        let pb = ComposeProblem { input: tvec![2], ops: tvec![Add(0), Add(2), Move(1, 2)] };
+        pb.check().unwrap();
+    }
+
+
+    #[test]
+    fn add_0_add_0_move_02_rm_0() {
+        let pb = ComposeProblem { input: tvec![1], ops: tvec![Add(0), Add(0), Move(0, 2), Rm(0)] };
+        pb.check().unwrap();
+    }
+
+    #[test]
+    fn add_0_add_0_move_20_move_20() {
         let pb =
-            Problem { input: tvec![1], ops: tvec![Add(0), Add(0), Permute(tvec!(1, 2, 0)), Rm(0)] };
+            ComposeProblem { input: tvec![2], ops: tvec![Add(0), Add(0), Move(2, 0), Move(2, 0)] };
         pb.check().unwrap();
     }
 
     #[test]
-    fn add_0_add_0_perm_201_perm_201() {
-        let pb = Problem {
-            input: tvec![2],
-            ops: tvec![Add(0), Add(0), Permute(tvec!(2, 0, 1)), Permute(tvec!(2, 0, 1))],
-        };
+    fn move_01_add_0() {
+        let pb = ComposeProblem { input: tvec![1, 1], ops: tvec![Move(0, 1), Add(0)] };
         pb.check().unwrap();
     }
 
     #[test]
-    fn perm_1_0_add_0() {
-        let pb = Problem { input: tvec![1, 1], ops: tvec![Permute(tvec!(1, 0)), Add(0)] };
+    fn add_0_move_02_move_02() {
+        let pb = ComposeProblem { input: tvec![1, 1], ops: tvec![Add(0), Move(0, 2), Move(0, 2),] };
         pb.check().unwrap();
     }
 
     #[test]
-    fn add_0_perm_120_perm_120() {
-        let pb = Problem {
-            input: tvec![1, 1],
-            ops: tvec![Add(0), Permute(tvec!(1, 2, 0)), Permute(tvec!(1, 2, 0)),],
-        };
-        pb.check().unwrap();
-    }
-
-    #[test]
-    fn add_0_add_2_perm_201_perm_021_rm_2() {
-        let pb = Problem {
+    fn add_0_add_2_move_20_move_12_rm_2() {
+        let pb = ComposeProblem {
             input: tvec![3],
-            ops: tvec![Add(0), Add(2), Permute(tvec!(2, 0, 1)), Permute(tvec!(0, 2, 1)), Rm(2)],
+            ops: tvec![Add(0), Add(2), Move(2, 0), Move(1, 2), Rm(2)],
         };
         pb.check().unwrap();
     }
 
     #[test]
-    fn perm_120_perm_120() {
-        let pb = Problem {
-            input: tvec![2, 1, 1],
-            ops: tvec![Permute(tvec!(1, 2, 0)), Permute(tvec!(1, 2, 0))],
-        };
+    fn move_02_move_02() {
+        let pb = ComposeProblem { input: tvec![2, 1, 1], ops: tvec![Move(0, 2), Move(0, 2)] };
         pb.check().unwrap();
     }
 
     #[test]
     fn rm_1_perm_10_add_0() {
-        let pb = Problem { input: tvec![1, 1, 2], ops: tvec![Rm(1), Permute(tvec![1, 0]), Add(0)] };
+        let pb = ComposeProblem { input: tvec![1, 1, 2], ops: tvec![Rm(1), Move(0, 1), Add(0)] };
         pb.check().unwrap();
     }
 
     #[test]
-    fn add_2_perm_120_perm_120() {
-        let pb = Problem {
-            input: tvec![3, 2],
-            ops: tvec![Add(2), Permute(tvec!(1, 2, 0)), Permute(tvec!(1, 2, 0))],
+    fn add_2_move_02_move_02() {
+        let pb = ComposeProblem { input: tvec![3, 2], ops: tvec![Add(2), Move(0, 2), Move(0, 2)] };
+        pb.check().unwrap();
+    }
+
+    #[test]
+    fn move_01_move_20_move_20() {
+        let pb = ComposeProblem {
+            input: tvec![2, 3, 2],
+            ops: tvec![Move(0, 1), Move(2, 0), Move(2, 0)],
         };
         pb.check().unwrap();
     }
