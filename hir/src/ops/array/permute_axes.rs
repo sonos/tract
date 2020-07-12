@@ -141,9 +141,7 @@ pub fn perm_to_atoms(input: &[usize]) -> TVec<(usize, usize)> {
             input.iter().map(|x| reached.iter().position(|y| y == x).unwrap()).collect();
         let cycles = perm_to_cycles(&remaining);
         for cycle in &cycles {
-            dbg!(&cycle);
             if let Some(rot) = is_rotation_cycle(&cycle) {
-                dbg!(&rot);
                 changes.push(rot);
                 continue 'top;
             }
