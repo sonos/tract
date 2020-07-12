@@ -99,8 +99,7 @@ impl AxisOp {
         &self,
         change: &AxisOp,
     ) -> Option<(Option<AxisOp>, Option<AxisOp>)> {
-//        dbg!(self, change);
-        let r = match (self.canonical().as_ref(), change.canonical().as_ref()) {
+        match (self.canonical().as_ref(), change.canonical().as_ref()) {
             (Add(op), Add(c)) => {
                 Some((Some(Add(op + (c < op) as usize)), Some(Add(c + (c >= op) as usize))))
             }
@@ -212,9 +211,7 @@ impl AxisOp {
             (Move(_, _), Reshape(_, _, _)) => None, // todo, some are manageable
             (Reshape(_, _, _), Reshape(_, _, _)) => None, // todo, some are manageable
             _ => None,
-        };
-        eprintln!("op:{:?} c:{:?} -> {:?}", self, change, r);
-        r
+        }
     }
 
     pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) {
@@ -809,10 +806,8 @@ mod proptests {
             crate::setup_test_logger();
             let input = self.input()?;
             let model = self.model()?;
-            // dbg!(&model);
             let raw = model.into_runnable()?.run(tvec!(input.clone()))?;
             let optimized = self.model()?.declutter()?;
-            // dbg!(&optimized);
             let opt = optimized.into_runnable()?.run(tvec!(input))?;
             opt[0].close_enough(&raw[0], false)
         }
