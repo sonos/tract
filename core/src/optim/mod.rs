@@ -73,7 +73,7 @@ impl std::fmt::Debug for OpOptim {
 impl TypedPass for OpOptim {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut new = model.clone();
-        for i in 0..5 {
+        for i in 0..10 {
             if !self.full_pass(&mut new)? {
                 std::mem::swap(model, &mut new);
                 return Ok(i>0);
@@ -84,19 +84,17 @@ impl TypedPass for OpOptim {
         let mut hashset = std::collections::HashSet::new();
         hashset.insert(initial);
 
-        for pass in 0.. {
+        for _ in 0.. {
             if !self.full_pass(&mut new)? {
                 break;
             }
 
-            if pass > 5 {
-                new = new.compact()?;
-                let sig = new.signature();
-                if hashset.contains(&sig) {
-                    break;
-                } else {
-                    hashset.insert(sig);
-                }
+            new = new.compact()?;
+            let sig = new.signature();
+            if hashset.contains(&sig) {
+                break;
+            } else {
+                hashset.insert(sig);
             }
         }
         std::mem::swap(model, &mut new);
