@@ -538,77 +538,62 @@ impl TypedOp for ConvUnary {
                 return Ok(None);
             }
         }
-        let mut new_full_input_shape = full_input_shape.clone();
-        change.change_shape_array(&mut new_full_input_shape);
-        let new_c_axis = if let Some(axis) = change.transform_axis(shape.c_axis()) {
-            axis
-        } else {
-            return Ok(None);
+        // format swap: chw <-> hwc
+        let (new_format, axis_move) = match self.pool_spec.data_format {
+            DataFormat::NCHW => {
+                (DataFormat::NHWC, AxisOp::Move(shape.c_axis(), full_input_shape.len() - 1))
+            }
+            DataFormat::CHW => {
+                (DataFormat::HWC, AxisOp::Move(shape.c_axis(), full_input_shape.len() - 1))
+            }
+            DataFormat::NHWC => (DataFormat::NCHW, AxisOp::Move(shape.c_axis(), 1)),
+            DataFormat::HWC => (DataFormat::CHW, AxisOp::Move(shape.c_axis(), 0)),
         };
-        let new_data_format = if shape.n_axis().is_some() {
-            if new_c_axis == 1 {
-                DataFormat::NCHW
-            } else if new_c_axis == new_full_input_shape.len() - 1 {
-                DataFormat::NHWC
-            } else {
-                return Ok(None);
-            }
-        } else {
-            if new_c_axis == 0 {
-                DataFormat::CHW
-            } else if new_c_axis == new_full_input_shape.len() - 1 {
-                DataFormat::HWC
-            } else {
-                return Ok(None);
-            }
-        };
-        // geo axes
-        let new_shape = new_data_format.shape(new_full_input_shape)?;
-        let mut dilations = tvec!(1; new_shape.hw_rank());
-        let mut strides = tvec!(1; new_shape.hw_rank());
-        let mut new_kernel_spatial_shape = tvec!(1; new_shape.hw_rank());
-        let mut kernel_perm = (0..self.kernel.shape().len()).collect::<TVec<_>>();
-        let old_kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        for old_geo_axis in 0..shape.hw_rank() {
-            let old_axis = old_geo_axis + shape.h_axis();
-            if let Some(new_axis) = change.transform_axis(old_axis) {
-                let new_geo_axis = new_axis - new_shape.h_axis();
-                dilations[new_geo_axis] =
-                    self.pool_spec.dilations.as_ref().map(|dils| dils[old_geo_axis]).unwrap_or(1);
-                strides[new_geo_axis] =
-                    self.pool_spec.strides.as_ref().map(|st| st[old_geo_axis]).unwrap_or(1);
-                new_kernel_spatial_shape[new_geo_axis] = old_kernel_spatial_shape[old_geo_axis];
-                kernel_perm[new_geo_axis + self.kernel_fmt.h_axis()] =
-                    old_geo_axis + self.kernel_fmt.h_axis();
-            } else {
-                // don't remove non trivial axis
-                if self.pool_spec.dilation(old_geo_axis) != 1
-                    || self.pool_spec.stride(old_geo_axis) != 1
-                    || (!self.pool_spec.padding.valid_dim(old_geo_axis)
-                        && old_kernel_spatial_shape[old_geo_axis] != 1)
-                {
-                    return Ok(None);
-                }
-            }
+        if *change == axis_move {
+            let mut new_op = self.clone();
+            new_op.pool_spec.data_format = new_format;
+            return Ok(Some(AxisChangeConsequence {
+                substitute_op: Some(Box::new(new_op)),
+                wire_changes: tvec!(
+                    (InOut::In(0), change.clone()),
+                    (InOut::Out(0), change.clone())
+                ),
+            }));
         }
-        let mut kernel = self.kernel.clone().into_tensor();
-        match change {
-            AxisOp::Rm(axis) => {
-                kernel.remove_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?
+        // geo axis manips
+        use AxisOp::*;
+        let h_axis = shape.h_axis();
+        let hw_axes = shape.hw_axes();
+        let kh_axis = if self.kernel_fmt == KernelFormat::OIHW { 2 } else { 0 };
+        let (geo_adjusted, kernel_adjusted) = match change {
+            Rm(a)
+                if hw_axes.contains(a)
+                    && self.pool_spec.dilation(a - h_axis) == 1
+                    && self.pool_spec.stride(a - h_axis) == 1
+                    && self.kernel.shape()[a - h_axis] == 1 =>
+            {
+                (Rm(a - h_axis), Rm(a - h_axis + kh_axis))
             }
-            AxisOp::Add(axis) => {
-                kernel.insert_axis(*axis - shape.h_axis() + self.kernel_fmt.h_axis())?
+            Add(a) if hw_axes.contains(a) => (Add(a - h_axis), Add(a - h_axis + kh_axis)),
+            Move(f, t) if hw_axes.contains(f) && hw_axes.contains(t) => {
+                (Move(f - h_axis, t - h_axis), Move(f - h_axis + kh_axis, t - h_axis + kh_axis))
             }
-            AxisOp::Move(_, _) => return Ok(None),
-            AxisOp::Reshape(_, _, _) => return Ok(None),
+            _ => return Ok(None),
         };
+        let mut kernel = self.kernel.clone().into_tensor();
+        kernel_adjusted.change_tensor(&mut kernel)?;
+        let mut dilations = self.pool_spec.dilations().into_owned().into();
+        geo_adjusted.change_shape_array(&mut dilations);
+        let mut kernel_shape = self.pool_spec.kernel_shape.clone();
+        geo_adjusted.change_shape_array(&mut kernel_shape);
+        let mut strides = self.pool_spec.strides().into_owned().into();
+        geo_adjusted.change_shape_array(&mut strides);
         let new_op = ConvUnary {
             pool_spec: PoolSpec {
-                data_format: new_data_format,
+                data_format: self.pool_spec.data_format,
                 padding: self.pool_spec.padding.clone(), // fixme (explicit padding)
                 dilations: Some(dilations),
-                kernel_shape: new_kernel_spatial_shape,
+                kernel_shape,
                 strides: Some(strides),
                 output_channel_override: self.pool_spec.output_channel_override,
             },
@@ -664,7 +649,7 @@ impl TypedOp for ConvUnary {
                     let mut patch = TypedModelPatch::default();
                     let mut wire = patch.tap_model(model, node.inputs[0])?;
                     let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
-                    let geo_dim:TDim = input_shape.hw_dims().iter().maybe_product()?;
+                    let geo_dim: TDim = input_shape.hw_dims().iter().maybe_product()?;
                     wire = patch.wire_node(
                         &*node.name,
                         AxisOp::Reshape(

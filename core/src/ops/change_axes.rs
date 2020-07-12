@@ -99,7 +99,7 @@ impl AxisOp {
         &self,
         change: &AxisOp,
     ) -> Option<(Option<AxisOp>, Option<AxisOp>)> {
-        dbg!(self, change);
+//        dbg!(self, change);
         let r = match (self.canonical().as_ref(), change.canonical().as_ref()) {
             (Add(op), Add(c)) => {
                 Some((Some(Add(op + (c < op) as usize)), Some(Add(c + (c >= op) as usize))))
