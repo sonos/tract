@@ -20,7 +20,7 @@ impl InOut {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq)]
+#[derive(Clone, Debug, Hash)]
 pub enum AxisOp {
     Add(usize),
     Rm(usize),
@@ -29,30 +29,36 @@ pub enum AxisOp {
 }
 use AxisOp::*;
 
-impl AxisOp {
-    fn check(&self) {
-        assert!(!self.is_noop());
-        if let Move(from, to) = self {
-            assert!(*from != *to + 1, "Swap must be \"in left to right order\"");
+impl PartialEq for AxisOp {
+    fn eq(&self, other: &AxisOp) -> bool {
+        if self.is_noop() && other.is_noop() {
+            true
+        } else if self.is_noop() != other.is_noop() {
+            false
+        } else {
+            match (self, other) {
+                (Add(a), Add(b)) | (Rm(a), Rm(b)) => a == b,
+                (Move(f1, t1), Move(f2, t2)) => {
+                    (f1 == f2 && t1 == t2)
+                        || ((*t1 == f1 + 1 || *f1 == t1 + 1) && t2 == f1 && t1 == f2)
+                }
+                (Reshape(at1, f1, t1), Reshape(at2, f2, t2)) => at1 == at2 && f1 == f2 && t1 == t2,
+                _ => false,
+            }
         }
     }
+}
 
-    pub fn checked(self) -> Option<AxisOp> {
-        if self.is_noop() {
-            None
-        } else if let Move(from, to) = self {
-            if from == to + 1 {
-                return Some(Move(to, from));
-            }
-            Some(Move(from, to))
-        } else {
-            Some(self)
+impl AxisOp {
+    fn canonical(&self) -> Cow<AxisOp> {
+        match self {
+            Move(from, to) if *from == to + 1 => Cow::Owned(Move(*to, *from)),
+            other => Cow::Borrowed(other),
         }
     }
 
     pub fn transform_axis(&self, axis: usize) -> Option<usize> {
-        self.check();
-        match self {
+        match self.canonical().as_ref() {
             Add(ix) => Some(axis + (axis >= *ix) as usize),
             Rm(ix) => {
                 if axis == *ix {
@@ -93,10 +99,8 @@ impl AxisOp {
         &self,
         change: &AxisOp,
     ) -> Option<(Option<AxisOp>, Option<AxisOp>)> {
-        self.check();
-        change.check();
         dbg!(self, change);
-        let r = match (self, change) {
+        let r = match (self.canonical().as_ref(), change.canonical().as_ref()) {
             (Add(op), Add(c)) => {
                 Some((Some(Add(op + (c < op) as usize)), Some(Add(c + (c >= op) as usize))))
             }
@@ -140,9 +144,9 @@ impl AxisOp {
                 } else if from + 1 == *to && x == to {
                     Some((Some(Rm(*from)), None))
                 } else if from < to && x <= to {
-                    Some((Some(Rm(x - 1)), Move(*from, *to - 1).checked()))
+                    Some((Some(Rm(x - 1)), Some(Move(*from, *to - 1))))
                 } else {
-                    Some((Some(Rm(x + 1)), Move(*from - 1, *to).checked()))
+                    Some((Some(Rm(x + 1)), Some(Move(*from - 1, *to))))
                 }
             }
 
@@ -214,9 +218,8 @@ impl AxisOp {
     }
 
     pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) {
-        self.check();
         use std::convert::TryInto;
-        match self {
+        match self.canonical().as_ref() {
             Add(ix) => shape.insert(*ix, D::one()),
             Rm(ix) => {
                 shape.remove(*ix);
@@ -237,8 +240,7 @@ impl AxisOp {
     }
 
     pub fn change_shape(&self, shape: &mut ShapeFact) -> TractResult<()> {
-        self.check();
-        match self {
+        match self.canonical().as_ref() {
             Add(ix) => shape.insert_axis(*ix),
             Rm(ix) => {
                 debug_assert_eq!(shape.dim(*ix), 1.to_dim(), "Removing a non-trivial axis.");
@@ -255,11 +257,10 @@ impl AxisOp {
     }
 
     pub fn change_tensor(&self, tensor: &mut Tensor) -> TractResult<()> {
-        self.check();
         fn permute<T: Datum>(axes: &[usize], input: Tensor) -> TractResult<Tensor> {
             Ok(input.into_array::<T>()?.permuted_axes(axes).into_tensor())
         }
-        match self {
+        match self.canonical().as_ref() {
             Add(ix) => tensor.insert_axis(*ix),
             Rm(ix) => tensor.remove_axis(*ix),
             Move(from, to) => {
@@ -281,8 +282,7 @@ impl AxisOp {
     }
 
     pub fn recip(&self) -> AxisOp {
-        self.check();
-        match self {
+        match self.canonical().as_ref() {
             Add(ix) => Rm(*ix),
             Rm(ix) => Add(*ix),
             Move(from, to) if from == to => self.clone(),
@@ -296,17 +296,17 @@ impl AxisOp {
     }
 
     pub fn is_noop(&self) -> bool {
-        if let Move(f, t) = self {
-            f == t
-        } else if let Reshape(_, f, t) = self {
-            f == t
-        } else {
-            false
+        match self {
+            Move(f, t) if f == t => true,
+            Reshape(_, f, t) if f == t => true,
+            _ => false,
         }
     }
 
     pub fn only_shape(&self) -> bool {
-        self.check();
+        if self.is_noop() {
+            return true;
+        }
         if let Move(_, _) = self {
             false
         } else {
@@ -693,7 +693,6 @@ mod test {
         assert_eq!(op.merge_incoming_change(&change), Some((Some(Add(0)), Some(Rm(0)))));
     }
 
-
     //                          Op
     //         a,b,c   ------|Rm(2)|----->        a,b
     //   Move(0, 2)                                           Move(0,1)
@@ -704,7 +703,6 @@ mod test {
         let op = Rm(2);
         assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(1)), Some(Move(0, 1)))));
     }
-
 }
 
 #[cfg(test)]
@@ -727,9 +725,7 @@ mod proptests {
             if shape.len() > 1 {
                 ops = ops
                     .prop_union(
-                        (0..shape.len(), 0..shape.len())
-                            .prop_filter_map("trivial", |(a, b)| Move(a, b).checked())
-                            .boxed(),
+                        (0..shape.len(), 0..shape.len()).prop_map(|(a, b)| Move(a, b)).boxed(),
                     )
                     .boxed()
             }
@@ -848,19 +844,19 @@ mod proptests {
 
     #[test]
     fn recip_move_01() {
-        let op = Move(1, 0).checked().unwrap();
+        let op = Move(1, 0);
         assert_eq!(op.recip().recip(), op);
     }
 
     #[test]
     fn recip_move_20() {
-        let op = Move(2, 0).checked().unwrap();
+        let op = Move(2, 0);
         assert_eq!(op.recip().recip(), op);
     }
 
     #[test]
     fn recip_move_02() {
-        let op = Move(0, 2).checked().unwrap();
+        let op = Move(0, 2);
         assert_eq!(op.recip().recip(), op);
     }
 
@@ -887,7 +883,6 @@ mod proptests {
         let pb = ComposeProblem { input: tvec![2], ops: tvec![Add(0), Add(2), Move(1, 2)] };
         pb.check().unwrap();
     }
-
 
     #[test]
     fn add_0_add_0_move_02_rm_0() {
