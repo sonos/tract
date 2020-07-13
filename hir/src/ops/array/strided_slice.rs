@@ -214,7 +214,7 @@ impl StatelessOp for StridedSlice {
         let dt = inputs[0].datum_type();
         let output =
             dispatch_datum!(Self::slice_t(dt)(self, inputs[0].as_ref(), &mid_shape, &bounds))?;
-        let output = unsafe { output.into_shape(&end_shape)? };
+        let output = output.into_shape(&end_shape)?;
         Ok(tvec![output.into_arc_tensor()])
     }
 }

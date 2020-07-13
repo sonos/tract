@@ -25,8 +25,11 @@ tract_linalg::impl_dyn_hash!(FiniteReshape);
 impl StatelessOp for FiniteReshape {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let o = unsafe { input.into_tensor().into_shape(&*self.shape)?.into_arc_tensor() };
-        Ok(tvec!(o))
+        let mut tensor = input.into_tensor();
+        unsafe {
+            tensor.set_shape_unchecked(&*self.shape);
+        }
+        Ok(tvec!(tensor.into_arc_tensor()))
     }
 }
 

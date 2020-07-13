@@ -343,7 +343,7 @@ impl ConvUnary {
             } else {
                 ([co, ci], false)
             };
-            let a = unsafe { ker.into_shape(&a_shape)? }.into_arc_tensor();
+            let a = ker.into_shape(&a_shape)?.into_arc_tensor();
             let trans_data = self.pool_spec.data_format == DataFormat::HWC
                 || self.pool_spec.data_format == DataFormat::NHWC;
             let mut patch = TypedModelPatch::default();
@@ -367,7 +367,7 @@ impl ConvUnary {
             if let Some(b) = &self.bias {
                 let mut bias_shape = tvec!(1; input_shape.rank());
                 bias_shape[input_shape.c_axis()] = co;
-                let b = unsafe { b.clone().into_tensor().into_shape(&bias_shape)? };
+                let b = b.clone().into_tensor().into_shape(&bias_shape)?;
                 wire = patch.wire_node(
                     format!("{}.bias", node.name),
                     crate::ops::math::add::unary(b.into_arc_tensor()),

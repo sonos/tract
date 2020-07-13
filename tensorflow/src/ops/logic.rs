@@ -7,13 +7,13 @@ use crate::tfpb::tensorflow::NodeDef;
 use std::collections::HashSet;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Equal", |_, _| Ok(Box::new(ops::logic::equals::bin())));
-    reg.insert("Greater", |_, _| Ok(Box::new(ops::logic::greater::bin())));
-    reg.insert("GreaterEqual", |_, _| Ok(Box::new(ops::logic::greater_equal::bin())));
-    reg.insert("Less", |_, _| Ok(Box::new(ops::logic::lesser::bin())));
-    reg.insert("LessEqual", |_, _| Ok(Box::new(ops::logic::lesser_equal::bin())));
-    reg.insert("LogicalAnd", |_, _| Ok(Box::new(ops::logic::and::bin())));
-    reg.insert("LogicalOr", |_, _| Ok(Box::new(ops::logic::or::bin())));
+    reg.insert("Equal", |_, _| Ok(ops::logic::Equals.into_hir()));
+    reg.insert("Greater", |_, _| Ok(ops::logic::Greater.into_hir()));
+    reg.insert("GreaterEqual", |_, _| Ok(ops::logic::GreaterEqual.into_hir()));
+    reg.insert("Less", |_, _| Ok(ops::logic::Lesser.into_hir()));
+    reg.insert("LessEqual", |_, _| Ok(ops::logic::LesserEqual.into_hir()));
+    reg.insert("LogicalAnd", |_, _| Ok(ops::logic::And.into_hir()));
+    reg.insert("LogicalOr", |_, _| Ok(ops::logic::Or.into_hir()));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
 }

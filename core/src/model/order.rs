@@ -86,7 +86,7 @@ mod tests {
         let a = model
             .add_source("a", TypedFact::dt_shape(f32::datum_type(), [1].as_ref()).unwrap())
             .unwrap();
-        let b = model.add_const("b", Tensor::from(12.0f32)).unwrap();
+        let b = model.add_const("b", tensor1(&[12.0f32])).unwrap();
         let add = model.wire_node("add", math::add::bin_typed(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, b.node, add.node));

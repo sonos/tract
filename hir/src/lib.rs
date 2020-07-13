@@ -52,6 +52,7 @@ pub mod internal {
     pub use super::prelude::*;
     pub use crate::infer::*;
     pub use crate::ops::expandable::{expand, Expansion};
+    pub use crate::ops::binary::IntoHir;
     pub use tract_core::internal::*;
     pub use {shapefactoid, to_typed};
 }

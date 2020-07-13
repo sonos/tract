@@ -14,9 +14,7 @@ pub fn mat_mul_integer(
 
 fn cleanup_zero_point(mut t: Tensor) -> TractResult<Option<Tensor>> {
     if t.len() == 1 {
-        unsafe {
-            t = t.into_shape(&[])?;
-        }
+        t = t.into_shape(&[])?;
     }
     if t.rank() == 0 && t.cast_to_scalar::<f32>()? == 0.0 {
         Ok(None)

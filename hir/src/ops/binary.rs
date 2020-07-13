@@ -2,8 +2,23 @@ use crate::infer::*;
 use crate::internal::*;
 
 use tract_core::ops as mir;
+use tract_core::ops::binary::BinMiniOp;
 
-impl InferenceRulesOp for mir::binary::InferenceBinOp {
+#[derive(Debug, Clone, Hash)]
+pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
+tract_linalg::impl_dyn_hash!(InferenceBinOp);
+
+impl Expansion for InferenceBinOp {
+    fn name(&self) -> Cow<str> {
+        self.0.name().into()
+    }
+
+    fn validation(&self) -> Validation {
+        self.0.validation()
+    }
+
+    op_hir!();
+
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -29,46 +44,50 @@ impl InferenceRulesOp for mir::binary::InferenceBinOp {
         Ok(())
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let facts = node
-            .inputs
-            .iter()
-            .map(|i| target.outlet_fact(mapping[i]).map(|c| c.clone()))
-            .collect::<TractResult<TVec<_>>>()?;
+        let facts =
+            [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
         let operating_datum_type =
             self.0.operating_datum_type(facts[0].datum_type, facts[1].datum_type)?;
         let max_rank = facts[0].rank().max(facts[1].rank());
-        let mut inputs = tvec!();
+        let mut wires = tvec!();
         for i in 0..2 {
-            let mut wire = mapping[&node.inputs[i]];
+            let mut wire = inputs[i];
             if facts[i].datum_type != operating_datum_type {
                 wire = target.wire_node(
-                    format!("{}Cast{}", &*node.name, i),
+                    format!("{}.cast-{}", prefix, i),
                     mir::element_wise::ElementWiseOp(Box::new(mir::cast::Cast::new(
                         operating_datum_type,
                     ))),
                     &[wire],
                 )?[0];
             }
-            for i in facts[i].rank()..max_rank {
+            for j in facts[i].rank()..max_rank {
                 wire = target.wire_node(
-                    format!("{}-BroadcastToRank-{}", &*node.name, i),
+                    format!("{}.fix-rank-{}-{}", prefix, i, j),
                     AxisOp::Add(0),
                     &[wire],
                 )?[0];
             }
-            inputs.push(wire);
+            wires.push(wire);
         }
-        target.wire_node(&*node.name, mir::binary::TypedBinOp(self.0.clone()), &*inputs)
+        target.wire_node(prefix, mir::binary::TypedBinOp(self.0.clone()), &*wires)
     }
+}
 
-    as_op!();
+pub trait IntoHir {
+    fn into_hir(self) -> Box<dyn InferenceOp>;
+}
+
+impl<B: BinMiniOp> IntoHir for B {
+    fn into_hir(self) -> Box<dyn InferenceOp> {
+        expand(InferenceBinOp(Box::new(self) as _))
+    }
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -154,12 +173,11 @@ impl InferenceRulesOp for Nary {
             )?[0];
         }
         if self.1 {
-            let n = target.add_const(
-                format!("{}-n", node.name),
-                tensor0(inputs.len() as i32)
-                    .cast_to_dt(node.outputs[0].fact.datum_type.concretize().unwrap())?
-                    .into_owned(),
-            )?;
+            let n = tensor0(inputs.len() as i32)
+                .cast_to_dt(node.outputs[0].fact.datum_type.concretize().unwrap())?
+                .into_owned()
+                .broadcast_into_rank(target.outlet_fact(inputs[0])?.rank())?;
+            let n = target.add_const(format!("{}-n", node.name), n.into_arc_tensor())?;
             wire = target.wire_node(
                 format!("{}-norm", node.name),
                 crate::ops::math::div::bin_typed(),

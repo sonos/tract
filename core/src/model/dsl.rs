@@ -182,6 +182,7 @@ impl ModelWireNode<TypedFact, Box<dyn TypedOp>> for TypedModel {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
+        let name = name.into();
         let output_facts = {
             let input_facts =
                 inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
@@ -191,7 +192,7 @@ impl ModelWireNode<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 let outputs = op.as_stateless().unwrap().eval(tensors)?;
                 outputs.into_iter().map(|t| TypedFact::from(t)).collect()
             } else {
-                op.output_facts(&*input_facts)?
+                op.output_facts(&*input_facts).chain_err(|| format!("wiring {}", name))?
             }
         };
         let id = self.add_node(name, op, output_facts)?;

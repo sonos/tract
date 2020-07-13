@@ -53,7 +53,6 @@ impl Expansion for LstmNonlin {
     ) -> TractResult<TVec<OutletId>> {
         use math::add::bin_typed as add;
         use math::mul::bin_typed as mul;
-        use tract_hir::ops::array::ConcatSlice;
         use tract_hir::ops::{array, math, nn};
 
         let params = self
@@ -63,32 +62,30 @@ impl Expansion for LstmNonlin {
         let w_ic: OutletId = target
             .add_const(
                 format!("{}.w_ic", prefix),
-                params.index_axis(tract_ndarray::Axis(0), 0).to_owned(),
+                params.slice_axis(tract_ndarray::Axis(0), (0..1).into()).to_owned(),
             )?
             .into();
         let w_fc: OutletId = target
             .add_const(
                 format!("{}.w_fc", prefix),
-                params.index_axis(tract_ndarray::Axis(0), 1).to_owned(),
+                params.slice_axis(tract_ndarray::Axis(0), (1..2).into()).to_owned(),
             )?
             .into();
         let w_oc: OutletId = target
             .add_const(
                 format!("{}.w_oc", prefix),
-                params.index_axis(tract_ndarray::Axis(0), 2).to_owned(),
+                params.slice_axis(tract_ndarray::Axis(0), (2..3).into()).to_owned(),
             )?
             .into();
 
         let cell_hidden_dim = params.shape()[1];
-
-        let input = inputs[0];
 
         let mut five_parts = (0..5)
             .map(|ix| {
                 Ok(target.wire_node(
                     format!("{}.part-{}", prefix, ix),
                     array::Slice::new(1, cell_hidden_dim * ix, cell_hidden_dim * (ix + 1)),
-                    &*tvec!(input),
+                    inputs
                 )?[0])
             })
             .collect::<TractResult<Vec<_>>>()?;
@@ -127,11 +124,7 @@ impl Expansion for LstmNonlin {
         wire!(tanh_c_t = math::tanh(), c_t);
         wire!(m_t = mul(), o_t, tanh_c_t);
 
-        wire!(
-            output = array::TypedConcat::new(1, tvec!(ConcatSlice::Var, ConcatSlice::Var)),
-            c_t,
-            m_t
-        );
+        wire!(output = array::TypedConcat::concat_vars(1, 2), c_t, m_t);
 
         Ok(tvec!(output))
     }

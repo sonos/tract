@@ -263,8 +263,7 @@ impl LSTM {
 
         // B: onnx interface: [num_directions, 8*hidden_size]
         let b = if let Some(slot) = self.optional_bias_input {
-            target_wire!(b_dir = array::Slice::new(0, dir, dir + 1), inputs[slot]);
-            target_wire!(b = AxisOp::Rm(0), b_dir);
+            target_wire!(b = array::Slice::new(0, dir, dir + 1), inputs[slot]);
             outer_inputs.push(b);
             input_mapping.push(scan::InputMapping::Full { slot });
             let b = body.add_source("b", target.outlet_fact(b)?.clone())?.into();
@@ -320,8 +319,7 @@ impl LSTM {
 
         // P: onnx [num_directions, 3*hidde_size]
         let p = if let Some(slot) = self.optional_p_input {
-            target_wire!(p_dir = array::Slice::new(0, dir, dir + 1), inputs[slot]);
-            target_wire!(p = AxisOp::Rm(0), p_dir);
+            target_wire!(p = array::Slice::new(0, dir, dir + 1), inputs[slot]);
             outer_inputs.push(p);
             input_mapping.push(scan::InputMapping::Full { slot });
             let p = body.add_source("p", target.outlet_fact(p)?.clone())?.into();
@@ -344,15 +342,15 @@ impl LSTM {
         wire!(Rc = array::Slice::new(0, 3 * h_size, 4 * h_size), R);
 
         let biases = if let Some(b) = b {
-            wire!(Wbi = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
-            wire!(Wbo = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
-            wire!(Wbf = array::Slice::new(0, 2 * h_size, 3 * h_size), b);
-            wire!(Wbc = array::Slice::new(0, 3 * h_size, 4 * h_size), b);
+            wire!(Wbi = array::Slice::new(1, 0 * h_size, 1 * h_size), b);
+            wire!(Wbo = array::Slice::new(1, 1 * h_size, 2 * h_size), b);
+            wire!(Wbf = array::Slice::new(1, 2 * h_size, 3 * h_size), b);
+            wire!(Wbc = array::Slice::new(1, 3 * h_size, 4 * h_size), b);
 
-            wire!(Rbi = array::Slice::new(0, 4 * h_size, 5 * h_size), b);
-            wire!(Rbo = array::Slice::new(0, 5 * h_size, 6 * h_size), b);
-            wire!(Rbf = array::Slice::new(0, 6 * h_size, 7 * h_size), b);
-            wire!(Rbc = array::Slice::new(0, 7 * h_size, 8 * h_size), b);
+            wire!(Rbi = array::Slice::new(1, 4 * h_size, 5 * h_size), b);
+            wire!(Rbo = array::Slice::new(1, 5 * h_size, 6 * h_size), b);
+            wire!(Rbf = array::Slice::new(1, 6 * h_size, 7 * h_size), b);
+            wire!(Rbc = array::Slice::new(1, 7 * h_size, 8 * h_size), b);
 
             wire!(bi = math::add::bin_typed(), Wbi, Rbi);
             wire!(bo = math::add::bin_typed(), Wbo, Rbo);
@@ -365,9 +363,9 @@ impl LSTM {
         };
 
         let peepholes = if let Some(p) = p {
-            wire!(pi = array::Slice::new(0, 0 * h_size, 1 * h_size), p);
-            wire!(po = array::Slice::new(0, 1 * h_size, 2 * h_size), p);
-            wire!(pf = array::Slice::new(0, 2 * h_size, 3 * h_size), p);
+            wire!(pi = array::Slice::new(1, 0 * h_size, 1 * h_size), p);
+            wire!(po = array::Slice::new(1, 1 * h_size, 2 * h_size), p);
+            wire!(pf = array::Slice::new(1, 2 * h_size, 3 * h_size), p);
             Some((pi, po, pf))
         } else {
             None

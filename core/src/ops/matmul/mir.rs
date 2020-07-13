@@ -121,7 +121,9 @@ where
             geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), &[]);
         }
     }
-    unsafe { Ok(c.into_tensor().into_shape(&geo.final_c_shape)?) }
+    let mut c = c.into_tensor();
+    unsafe { c.set_shape_unchecked(&*geo.final_c_shape) };
+    Ok(c)
 }
 
 pub fn compute_shapes<D: DimLike>(

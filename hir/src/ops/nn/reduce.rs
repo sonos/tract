@@ -84,12 +84,10 @@ impl Reducer {
                 )?[0];
                 let size =
                     axes.iter().map(|ax| fact.shape.dim(*ax)).maybe_product()?.to_integer()? as f64;
-                let size = unsafe {
-                    tensor0(size)
-                        .cast_to_dt(fact.datum_type)?
-                        .into_owned()
-                        .into_shape(&*tvec!(1; fact.rank()))?
-                };
+                let size = tensor0(size)
+                    .cast_to_dt(fact.datum_type)?
+                    .into_owned()
+                    .into_shape(&*tvec!(1; fact.rank()))?;
                 let size = target.add_const(name.to_string() + ".divisor", size)?;
                 wire = target.wire_node(
                     name.to_string() + ".norm",

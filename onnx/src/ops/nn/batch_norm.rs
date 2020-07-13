@@ -42,7 +42,7 @@ impl BatchNorm {
     }
 }
 
-impl tract_hir::ops::expandable::Expansion for BatchNorm {
+impl Expansion for BatchNorm {
     fn name(&self) -> Cow<str> {
         "BatchNorm".into()
     }
@@ -102,23 +102,21 @@ impl tract_hir::ops::expandable::Expansion for BatchNorm {
                     self, c_dim, &scale, &beta, &mean, &var
                 ))?;
 
-            while c_axis + slope.rank() < x_shape.len() {
-                slope.insert_axis(slope.rank())?;
-                inter.insert_axis(inter.rank())?;
-            }
+            let mut const_shape = tvec!(1; x_shape.len());
+            const_shape[c_axis] = c_dim;
 
-            let slope = target.add_const(format!("{}.slope", &*prefix), slope)?;
-            let inter = target.add_const(format!("{}.inter", &*prefix), inter)?;
+            slope.set_shape(&const_shape)?;
+            inter.set_shape(&const_shape)?;
 
             let wire = target.wire_node(
                 format!("{}.mul", prefix),
-                tract_hir::ops::math::mul::bin_typed(),
-                &[inputs[0], slope],
-            )?[0];
+                tract_hir::ops::math::mul::unary(slope.into_arc_tensor()),
+                &[inputs[0]],
+            )?;
             return target.wire_node(
                 prefix,
-                tract_hir::ops::math::add::bin_typed(),
-                &[wire, inter],
+                tract_hir::ops::math::add::unary(inter.into_arc_tensor()),
+                &wire
             );
         }
         bail!("Params are not const")

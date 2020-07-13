@@ -212,16 +212,24 @@ impl Tensor {
         self.shape.iter().cloned().product::<usize>()
     }
 
+    /// Force the tensor shape, no consistency check.
+    pub unsafe fn set_shape_unchecked(&mut self, shape: &[usize]) {
+        self.shape = shape.into();
+    }
+
     /// Force the tensor shape.
-    pub unsafe fn set_shape(&mut self, shape: &[usize]) {
-        self.shape = shape.into()
+    pub fn set_shape(&mut self, shape: &[usize]) -> TractResult<()> {
+        if self.len() != shape.iter().product() {
+            bail!("Invalid reshape {:?} to {:?}", self.shape, shape);
+        }
+        self.shape = shape.into();
+        Ok(())
     }
 
     /// Reshape the tensor to `shape`.
-    pub unsafe fn into_shape(self, shape: &[usize]) -> TractResult<Tensor> {
-        let t = Tensor { shape: shape.into(), ..self };
-        std::mem::forget(self);
-        Ok(t)
+    pub fn into_shape(mut self, shape: &[usize]) -> TractResult<Tensor> {
+        self.set_shape(shape)?;
+        Ok(self)
     }
 
     pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
