@@ -7,10 +7,10 @@ use tract_hir::ops::binary::Nary;
 mod mat_mul_integer;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("Add", |_, _| Ok((Box::new(ops::math::add::bin()), vec![])));
-    reg.insert("Sub", |_, _| Ok((Box::new(ops::math::sub::bin()), vec![])));
-    reg.insert("Mul", |_, _| Ok((Box::new(ops::math::mul::bin()), vec![])));
-    reg.insert("Div", |_, _| Ok((Box::new(ops::math::div::bin()), vec![])));
+    reg.insert("Add", |_, _| Ok((ops::math::Add.into_hir(), vec![])));
+    reg.insert("Sub", |_, _| Ok((ops::math::Sub.into_hir(), vec![])));
+    reg.insert("Mul", |_, _| Ok((ops::math::Mul.into_hir(), vec![])));
+    reg.insert("Div", |_, _| Ok((ops::math::Div.into_hir(), vec![])));
 
     reg.insert("Sum", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Add), false)), vec![])));
     reg.insert("Max", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Max), false)), vec![])));
@@ -47,7 +47,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Sign", |_, _| Ok((Box::new(ops::math::sign()), vec![])));
     reg.insert("Reciprocal", |_, _| Ok((Box::new(ops::math::recip()), vec![])));
 
-    reg.insert("Pow", |_, _| Ok((Box::new(ops::math::pow::bin()), vec![])));
+    reg.insert("Pow", |_, _| Ok((ops::math::Pow.into_hir(), vec![])));
 
     reg.insert("MatMul", |_, _| Ok((Box::new(ops::matmul::MatMul::default()), vec![])));
     reg.insert("MatMulInteger", mat_mul_integer::mat_mul_integer);

@@ -222,10 +222,9 @@ impl RNN {
         // B: onnx interface: [num_directions, 6*hidden_size]
         let b = if let Some(slot) = self.optional_bias_input {
             target_wire!(b_dir = array::Slice::new(0, dir, dir + 1), inputs[slot]);
-            target_wire!(b = AxisOp::Rm(0), b_dir);
-            outer_inputs.push(b);
+            outer_inputs.push(b_dir);
             input_mapping.push(scan::InputMapping::Full { slot });
-            let b = body.add_source("b", target.outlet_fact(b)?.clone())?.into();
+            let b = body.add_source("b", target.outlet_fact(b_dir)?.clone())?.into();
             Some(b)
         } else {
             None
@@ -260,8 +259,8 @@ impl RNN {
         wire!(Ht_1 = AxisOp::Rm(0), h_source);
 
         let bias = if let Some(b) = b {
-            wire!(Wbi = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
-            wire!(Rbi = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
+            wire!(Wbi = array::Slice::new(1, 0 * h_size, 1 * h_size), b);
+            wire!(Rbi = array::Slice::new(1, 1 * h_size, 2 * h_size), b);
             wire!(bi = math::add::bin_typed(), Wbi, Rbi);
             Some(bi)
         } else {

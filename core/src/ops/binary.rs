@@ -74,32 +74,6 @@ impl Hash for Box<dyn BinMiniOp> {
     }
 }
 
-// FIXME: should move to hir ?
-#[derive(Debug, Clone, Hash)]
-pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
-
-impl Op for InferenceBinOp {
-    fn name(&self) -> Cow<str> {
-        self.0.name().into()
-    }
-
-    fn validation(&self) -> Validation {
-        self.0.validation()
-    }
-
-    op_core!();
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
-
-tract_linalg::impl_dyn_hash!(InferenceBinOp);
-
-impl StatelessOp for InferenceBinOp {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.0.eval_broadcast_and_typecast(inputs)
-    }
-}
-
 #[derive(Debug, Clone, Hash)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
 tract_linalg::impl_dyn_hash!(TypedBinOp);
@@ -121,12 +95,16 @@ impl Op for TypedBinOp {
 
 impl StatelessOp for TypedBinOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        debug_assert_eq!(inputs[0].rank(), inputs[1].rank());
         self.0.eval_broadcast(inputs)
     }
 }
 
 impl TypedOp for TypedBinOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if inputs[0].rank() != inputs[1].rank() {
+            bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
+        }
         Ok(tvec!(TypedFact::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
@@ -157,13 +135,12 @@ impl TypedOp for TypedBinOp {
         let rank = a.rank();
         Ok((0..rank)
             .into_iter()
-            .map(|axis|
-                AxisInfo {
-                    inputs: tvec!(Some(axis), Some(axis)),
-                    outputs: tvec!(Some(axis)),
-                    period: 1,
-                    disposable: true,
-                })
+            .map(|axis| AxisInfo {
+                inputs: tvec!(Some(axis), Some(axis)),
+                outputs: tvec!(Some(axis)),
+                period: 1,
+                disposable: true,
+            })
             .collect())
     }
 
@@ -311,13 +288,6 @@ impl Op for UnaryOp {
 
 impl StatelessOp for UnaryOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        if self.a.rank() != inputs[0].rank() {
-            bail!(
-                "Const and input must have the same rank ({} vs {})",
-                self.a.rank(),
-                inputs[0].rank()
-            );
-        }
         debug_assert_eq!(self.a.rank(), inputs[0].rank());
         self.mini_op.eval_broadcast(tvec!(self.a.clone(), inputs[0].clone()))
     }
@@ -419,9 +389,12 @@ impl TypedOp for UnaryOp {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let mut a = self.a.clone().into_tensor();
-        change.change_tensor(&mut a)?;
-        let op = Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor())) as _);
-        Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+        if change.change_tensor_broadcast_aware(&mut a).is_ok() {
+            let op = Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor())) as _);
+            Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+        } else {
+            Ok(None)
+        }
     }
 
     fn pulsify(
@@ -611,9 +584,10 @@ impl PulsedOp for MergeOp {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
-        fact.shape =
-            crate::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape])
-            .ok_or_else(|| format!("Can not broadcast: {:?} and {:?}", inputs[0].shape, inputs[1].shape))?;
+        fact.shape = crate::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape])
+            .ok_or_else(|| {
+                format!("Can not broadcast: {:?} and {:?}", inputs[0].shape, inputs[1].shape)
+            })?;
         Ok(tvec!(fact))
     }
 
@@ -646,6 +620,7 @@ impl StatelessOp for MergeOpUnicast {
 
 impl TypedOp for MergeOpUnicast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        debug_assert_eq!(inputs[0].shape, inputs[1].shape);
         Ok(tvec!(inputs[0].clone()))
     }
 
@@ -770,9 +745,11 @@ macro_rules! bin_to_super_type {
         }
 
         pub mod $func {
+            /*
             pub fn bin() -> $crate::ops::binary::InferenceBinOp {
                 $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
             }
+            */
             pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
                 $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
             }
@@ -850,9 +827,11 @@ macro_rules! bin_to_bool {
         }
 
         pub mod $func {
+            /*
             pub fn bin() -> $crate::ops::binary::InferenceBinOp {
                 $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
             }
+            */
             pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
                 $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
             }

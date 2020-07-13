@@ -225,10 +225,9 @@ impl GRU {
         // B: onnx interface: [num_directions, 6*hidden_size]
         let b = if let Some(slot) = self.optional_bias_input {
             target_wire!(b_dir = array::Slice::new(0, dir, dir + 1), inputs[slot]);
-            target_wire!(b = AxisOp::Rm(0), b_dir);
-            outer_inputs.push(b);
+            outer_inputs.push(b_dir);
             input_mapping.push(scan::InputMapping::Full { slot });
-            let b = body.add_source("b", target.outlet_fact(b)?.clone())?.into();
+            let b = body.add_source("b", target.outlet_fact(b_dir)?.clone())?.into();
             Some(b)
         } else {
             None
@@ -276,8 +275,8 @@ impl GRU {
         wire!(zt0 = math::add::bin_typed(), Xt_WzT, Ht_1_RzT);
         let mut zt0 = zt0;
         if let Some(b) = b {
-            wire!(Wbz = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
-            wire!(Rbz = array::Slice::new(0, 3 * h_size, 4 * h_size), b);
+            wire!(Wbz = array::Slice::new(1, 0 * h_size, 1 * h_size), b);
+            wire!(Rbz = array::Slice::new(1, 3 * h_size, 4 * h_size), b);
             wire!(Wbz_Rbz = math::add::bin_typed(), Wbz, Rbz);
             wire!(zt0_biased = math::add::bin_typed(), zt0, Wbz_Rbz);
             zt0 = zt0_biased
@@ -290,8 +289,8 @@ impl GRU {
         wire!(rt0 = math::add::bin_typed(), Xt_WrT, Ht_1_RrT);
         let mut rt0 = rt0;
         if let Some(b) = b {
-            wire!(Wbr = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
-            wire!(Rbr = array::Slice::new(0, 4 * h_size, 5 * h_size), b);
+            wire!(Wbr = array::Slice::new(1, 1 * h_size, 2 * h_size), b);
+            wire!(Rbr = array::Slice::new(1, 4 * h_size, 5 * h_size), b);
             wire!(Wbr_Rbr = math::add::bin_typed(), Wbr, Rbr);
             wire!(rt0_biased = math::add::bin_typed(), rt0, Wbr_Rbr);
             rt0 = rt0_biased
@@ -313,8 +312,8 @@ impl GRU {
         wire!(ht0 = math::add::bin_typed(), Xt_WhT, rt_Ht_1_RhT);
         let mut ht0 = ht0;
         if let Some(b) = b {
-            wire!(Wbh = array::Slice::new(0, 2 * h_size, 3 * h_size), b);
-            wire!(Rbh = array::Slice::new(0, 5 * h_size, 6 * h_size), b);
+            wire!(Wbh = array::Slice::new(1, 2 * h_size, 3 * h_size), b);
+            wire!(Rbh = array::Slice::new(1, 5 * h_size, 6 * h_size), b);
             wire!(Wbh_Rbh = math::add::bin_typed(), Wbh, Rbh);
             wire!(ht0_biased = math::add::bin_typed(), ht0, Wbh_Rbh);
             ht0 = ht0_biased
@@ -322,7 +321,7 @@ impl GRU {
         wire!(ht = self.g.clone(), ht0);
 
         // Ht = (1 - zt) (.) ht + zt (.) Ht-1
-        let one: OutletId = body.add_const("one", tensor0(1f32))?.into();
+        let one: OutletId = body.add_const("one", tensor2(&[[1f32]]))?.into();
         wire!(one_sub_zt = math::sub::bin_typed(), one, zt);
         wire!(one_sub_zt_ht = math::mul::bin_typed(), one_sub_zt, ht);
         wire!(zt_Ht_1 = math::mul::bin_typed(), zt, Ht_1);

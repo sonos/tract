@@ -244,7 +244,9 @@ impl AxisOp {
         match self.canonical().as_ref() {
             Add(ix) => shape.insert_axis(*ix),
             Rm(ix) => {
-                debug_assert_eq!(shape.dim(*ix), 1.to_dim(), "Removing a non-trivial axis.");
+                if shape.dim(*ix) != 1.to_dim() {
+                    bail!("Removing a non-trivial axis.");
+                }
                 shape.remove_axis(*ix)
             }
             _ => {
@@ -258,6 +260,14 @@ impl AxisOp {
     }
 
     pub fn change_tensor(&self, tensor: &mut Tensor) -> TractResult<()> {
+        self.change_tensor_broadcast(tensor, false)
+    }
+
+    pub fn change_tensor_broadcast_aware(&self, tensor: &mut Tensor) -> TractResult<()> {
+        self.change_tensor_broadcast(tensor, true)
+    }
+
+    fn change_tensor_broadcast(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
         fn permute<T: Datum>(axes: &[usize], input: Tensor) -> TractResult<Tensor> {
             Ok(input.into_array::<T>()?.permuted_axes(axes).into_tensor())
         }
@@ -273,11 +283,26 @@ impl AxisOp {
                 std::mem::swap(tensor, &mut tmp);
                 Ok(())
             }
-            Reshape(_, _, _) => {
+            Reshape(at, from, to) => {
                 let mut shape: TVec<usize> = tensor.shape().into();
                 self.change_shape_array(&mut shape);
-                unsafe { tensor.set_shape(&shape) }
-                Ok(())
+                if tensor.set_shape(&shape).is_ok() {
+                    Ok(())
+                } else if broadcasting && tensor.shape().iter().skip(*at).take(from.len()).all(|d| *d == 1) {
+                    if from.len() > to.len() {
+                        for _ in to.len()..from.len() {
+                            tensor.insert_axis(*at)?;
+                        }
+                    }
+                    if to.len() > from.len() {
+                        for _ in from.len()..to.len() {
+                            tensor.remove_axis(*at)?;
+                        }
+                    }
+                    Ok(())
+                } else {
+                    bail!("Invalid reshaping: {:?} on tensor {:?} (broadcasting allowed: {:?})", self, tensor, broadcasting)
+                }
             }
         }
     }
