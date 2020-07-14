@@ -94,9 +94,6 @@ fn preprocess_files(input: impl AsRef<path::Path>) -> Vec<path::PathBuf> {
 fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>) {
     let family = var("CARGO_CFG_TARGET_FAMILY").unwrap();
     let os = var("CARGO_CFG_TARGET_OS").unwrap();
-    for (k,v) in std::env::vars() {
-        println!("{:?}", (k,v));
-    }
     let msvc = var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string());
     let mut input = fs::read_to_string(input).unwrap();
     if msvc {
