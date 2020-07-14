@@ -7,11 +7,16 @@ jobs:
     strategy:
       matrix:
         os: [ windows-2016, windows-2019 ]
+        toolchain: [ gnu, msvc ]
 
     runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v1
+    - name: set-up toolchain
+      run: |
+        rustup toolchain add stable-x86_64-pc-windows-${{matrix.toolchain}}
+        rustup default stable-x86_64-pc-windows-${{matrix.toolchain}}
     - name: top level cargo check
       run: cargo check
     - name: linalg and core tests
