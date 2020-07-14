@@ -134,14 +134,18 @@ impl AxisOp {
             }
 
             (Rm(x), Move(from, to)) => {
+                // disabled these two as they kinda break axis tracking
+                // semantics
                 if x == from {
-                    Some((Some(Rm(*to)), None))
+                    None
+                    // Some((Some(Rm(*to)), None))
                 } else if x < from.min(to) {
                     Some((Some(self.clone()), Some(Move(from - 1, to - 1))))
                 } else if x > from.max(to) {
                     Some((Some(self.clone()), Some(change.clone())))
                 } else if from + 1 == *to && x == to {
-                    Some((Some(Rm(*from)), None))
+                    // Some((Some(Rm(*from)), None))
+                    None
                 } else if from < to && x <= to {
                     Some((Some(Rm(x - 1)), Some(Move(*from, *to - 1))))
                 } else {
