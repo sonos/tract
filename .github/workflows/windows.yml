@@ -13,7 +13,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: set-up toolchain
+    - name: Install Rustup using win.rustup.rs
+      run: |
+        # Disable the download progress bar which can cause perf issues
+        $ProgressPreference = "SilentlyContinue"
+        Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
+        .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal
+        del rustup-init.exe
+      shell: powershell
+    - name: Install the target
       run: |
         rustup toolchain add stable-x86_64-pc-windows-${{matrix.toolchain}}
         rustup default stable-x86_64-pc-windows-${{matrix.toolchain}}
