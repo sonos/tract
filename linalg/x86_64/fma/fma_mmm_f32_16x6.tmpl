@@ -521,7 +521,7 @@ fma_mmm_f32_16x6:
 
     jmp    {{L}}non_linear_loop
 
-{% if msvc %}
+{% if msvc2 %}
 fma_mmm_f32_16x6 endp
 _text ends
 end
