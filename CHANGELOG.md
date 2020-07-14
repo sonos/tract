@@ -4,6 +4,10 @@
 
 * Tensor::l1 method is gone
 
+### Windows
+
+* Support for -gnu targets (non-mvsc).
+
 ## 0.9.2 - 2020-06-16
 
 * introduce `TypedModel::method.concretize_stream_dim`
