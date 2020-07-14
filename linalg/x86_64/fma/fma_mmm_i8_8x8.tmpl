@@ -622,7 +622,7 @@ i128_shuffle dd              0, 4
 
 {{L}}q_torwards_plusinf:     // (((x * arg1) >> (30 + arg2)) as i32 + 1) >> 1
 
-{% if family == msvc %}
+{% if msvc %}
     vpbroadcastd    ymm11, dword ptr [offset one_32bit] // 1, broadcasted x8
 {% else %}
     vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
