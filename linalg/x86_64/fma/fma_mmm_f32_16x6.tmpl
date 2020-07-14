@@ -29,7 +29,12 @@ Windows ABI:
 _fma_mmm_f32_16x6:
 .cfi_startproc
 
-{% elsif family == "unix" %}
+{% elsif msvc %}
+
+_text segment
+fma_mmm_f32_16x6 proc
+
+{% else %}
 
 .intel_syntax noprefix
 .text
@@ -37,11 +42,6 @@ _fma_mmm_f32_16x6:
 .globl fma_mmm_f32_16x6
 fma_mmm_f32_16x6:
 .cfi_startproc
-
-{% elsif family == "windows" %}
-
-_text segment
-fma_mmm_f32_16x6 proc
 
 {% endif %}
 
@@ -84,7 +84,7 @@ fma_mmm_f32_16x6 proc
 {% endif %}
 
     stmxcsr     [rsp + 4]
-{% if family == "windows" %}
+{% if msvc %}
     mov         rax, 1FC0h
 {% else %}
     mov         rax, 0x1FC0
@@ -313,16 +313,16 @@ fma_mmm_f32_16x6 proc
     pop rsi
     pop rdi
 
-    vmovaps xmm15, dword ptr [rsp+16*9]
-    vmovaps xmm14, dword ptr [rsp+16*8]
-    vmovaps xmm13, dword ptr [rsp+16*7]
-    vmovaps xmm12, dword ptr [rsp+16*6]
-    vmovaps xmm11, dword ptr [rsp+16*5]
-    vmovaps xmm10, dword ptr [rsp+16*4]
-    vmovaps xmm9, dword ptr [rsp+16*3]
-    vmovaps xmm8, dword ptr [rsp+16*2]
-    vmovaps xmm7, dword ptr [rsp+16*1]
-    vmovaps xmm6, dword ptr [rsp]
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
 {% endif %}
 
     mov rsp, rbp
@@ -521,12 +521,11 @@ fma_mmm_f32_16x6 proc
 
     jmp    {{L}}non_linear_loop
 
-{% if family == "windows" %}
+{% if msvc %}
 fma_mmm_f32_16x6 endp
 _text ends
 end
-{% endif %}
 
-{% if family == "unix" %}
+{% else %} 
 .cfi_endproc
 {% endif %}
