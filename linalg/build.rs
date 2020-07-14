@@ -5,13 +5,12 @@ use std::path;
 
 fn main() {
     let target = var("TARGET").unwrap();
-    let family = var("CARGO_CFG_TARGET_FAMILY").unwrap_or("unknown".to_string());
     let arch = var("CARGO_CFG_TARGET_ARCH").unwrap();
     let os = var("CARGO_CFG_TARGET_OS").unwrap();
     let out_dir = path::PathBuf::from(var("OUT_DIR").unwrap());
     if arch == "x86_64" {
         let files = preprocess_files("x86_64/fma");
-        if family == "windows" {
+        if target == "x86_64-pc-windows-msvc" {
             let mut lib_exe =
                 cc::windows_registry::find(&*target, "lib.exe").expect("Could not find lib.exe");
             lib_exe.arg(format!("/out:{}", out_dir.join("x86_64_fma.lib").to_str().unwrap()));
@@ -95,8 +94,12 @@ fn preprocess_files(input: impl AsRef<path::Path>) -> Vec<path::PathBuf> {
 fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>) {
     let family = var("CARGO_CFG_TARGET_FAMILY").unwrap();
     let os = var("CARGO_CFG_TARGET_OS").unwrap();
+    for (k,v) in std::env::vars() {
+        println!("{:?}", (k,v));
+    }
+    let msvc = var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string());
     let mut input = fs::read_to_string(input).unwrap();
-    if family == "windows" {
+    if msvc {
         input =
             input.lines().map(|line| line.replace("//", ";")).collect::<Vec<String>>().join("\n");
     }
@@ -108,6 +111,7 @@ fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>
         "."
     }.to_owned();
     let globals = liquid::object!({
+        "msvc": msvc,
         "family": family,
         "os": os,
         "L": l,

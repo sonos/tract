@@ -28,7 +28,12 @@ Windows ABI:
 _fma_mmm_i8_8x8:
 .cfi_startproc
 
-{% elsif family == "unix" %}
+{% elsif msvc %}
+
+_text segment
+fma_mmm_i8_8x8 proc
+
+{% else %}
 
 .intel_syntax noprefix
 .text
@@ -36,11 +41,6 @@ _fma_mmm_i8_8x8:
 .globl fma_mmm_i8_8x8
 fma_mmm_i8_8x8:
 .cfi_startproc
-
-{% elsif family == "windows" %}
-
-_text segment
-fma_mmm_i8_8x8 proc
 
 {% endif %}
 
@@ -83,7 +83,7 @@ fma_mmm_i8_8x8 proc
 {% endif %}
 
     stmxcsr     [rsp + 4]
-{% if family == "windows" %}
+{% if msvc %}
     mov         rax, 1FC0h
 {% else %}
     mov         rax, 0x1FC0
@@ -385,16 +385,16 @@ fma_mmm_i8_8x8 proc
     pop rsi
     pop rdi
 
-    vmovaps xmm15, dword ptr [rsp+16*9]
-    vmovaps xmm14, dword ptr [rsp+16*8]
-    vmovaps xmm13, dword ptr [rsp+16*7]
-    vmovaps xmm12, dword ptr [rsp+16*6]
-    vmovaps xmm11, dword ptr [rsp+16*5]
-    vmovaps xmm10, dword ptr [rsp+16*4]
-    vmovaps xmm9, dword ptr [rsp+16*3]
-    vmovaps xmm8, dword ptr [rsp+16*2]
-    vmovaps xmm7, dword ptr [rsp+16*1]
-    vmovaps xmm6, dword ptr [rsp]
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
 {% endif %}
 
     mov rsp, rbp
@@ -477,7 +477,7 @@ fma_mmm_i8_8x8 proc
     cmp     r8,    4
     je      {{L}}non_linear_addc_i32
 
-{% if family == "windows" %}
+{% if msvc %}
     vpbroadcastd    ymm10, dword ptr [ offset byte_shuffle ]
     vmovups         ymm11, dword ptr [ offset i128_shuffle ]
 {% else %}
@@ -511,7 +511,7 @@ fma_mmm_i8_8x8 proc
 
     jmp    {{L}}non_linear_loop
 
-{% if family == "windows" %}
+{% if msvc %}
 .data
 byte_shuffle dd              201851904 // 0x0c080400
 i128_shuffle dd              0, 4
@@ -622,7 +622,7 @@ i128_shuffle dd              0, 4
 
 {{L}}q_torwards_plusinf:     // (((x * arg1) >> (30 + arg2)) as i32 + 1) >> 1
 
-{% if family == "windows" %}
+{% if family == msvc %}
     vpbroadcastd    ymm11, dword ptr [offset one_32bit] // 1, broadcasted x8
 {% else %}
     vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
@@ -669,18 +669,16 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}one_32bit:
-{% if family == "windows" %}
+{% if msvc %}
     dd      1
 {% else %}
     .int    1
 {% endif %}
 
-{% if family == "windows" %}
+{% if msvc %}
 fma_mmm_i8_8x8 endp
 _text ends
 end
-{% endif %}
-
-{% if family == "unix" %}
+{% else %}
 .cfi_endproc
 {% endif %}
