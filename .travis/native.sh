@@ -117,6 +117,17 @@ fi
      -i Sx20xf32 --pulse 8 dump --cost -q \
      --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920"
 
+# fragile test (generated names...) but kinda vital for AM perf
+./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+    -i Sx40 --output-node output dump \
+    --node-name "fastlstm1.c_final.extracted.fastlstm1.four_parts" \
+    | grep -c MatMul | grep 4
+
+./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+    -i Sx40 --output-node output dump \
+    --node-name "fastlstm2.c_final.extracted.fastlstm2.four_parts" \
+    | grep -c MatMul | grep 4
+
 [ ! -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 --pass type dump --op-name AddAxis)" ]
 [ -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 dump --op-name AddAxis)" ]
 
