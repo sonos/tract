@@ -10,8 +10,8 @@ tract_linalg::impl_dyn_hash!(Tile);
 
 impl Tile {
     fn eval_t<T: Datum>(&self, data: &Arc<Tensor>) -> TractResult<Arc<Tensor>> {
-        let data = data.to_array_view::<T>()?;
-        let output_shape: TVec<usize> = data
+        let view = unsafe { data.to_array_view_unchecked::<T>() };
+        let output_shape: TVec<usize> = view
             .shape()
             .iter()
             .zip(self.multipliers.iter())
@@ -20,8 +20,12 @@ impl Tile {
         let output = ndarray::ArrayD::from_shape_fn(&*output_shape, |coords| {
             let coords: TVec<usize> =
                 coords.slice().iter().zip(data.shape().iter()).map(|(&x, &d)| x % d).collect();
-            data[&*coords].clone()
+            view[&*coords].clone()
         });
+        let mut output = output.into_tensor();
+        unsafe {
+            output.set_datum_type(data.datum_type());
+        }
 
         Ok(output.into_arc_tensor())
     }
@@ -39,7 +43,8 @@ impl Op for Tile {
 
 impl StatelessOp for Tile {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let result = dispatch_datum!(Self::eval_t(inputs[0].datum_type())(self, &inputs[0]))?;
+        let result =
+            dispatch_datum_by_size!(Self::eval_t(inputs[0].datum_type())(self, &inputs[0]))?;
         Ok(tvec!(result))
     }
 }

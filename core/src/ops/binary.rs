@@ -453,6 +453,9 @@ impl StatelessOp for MergeOp {
 
 impl TypedOp for MergeOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if inputs[0].rank() != inputs[1].rank() {
+            bail!("MergeOp expect inputs of same rank, got {:?}", inputs);
+        }
         Ok(tvec!(TypedFact::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
@@ -745,11 +748,6 @@ macro_rules! bin_to_super_type {
         }
 
         pub mod $func {
-            /*
-            pub fn bin() -> $crate::ops::binary::InferenceBinOp {
-                $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
-            }
-            */
             pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
                 $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
             }
