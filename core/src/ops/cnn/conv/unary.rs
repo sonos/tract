@@ -375,29 +375,19 @@ impl ConvUnary {
                 )?[0];
             }
             if must_split_quant {
-                use crate::ops::quant::*;
-                let qp = self.q_params.as_ref().unwrap();
-                let scale = qp.scale_factor.unwrap_or(1.0);
-                let op = match output_type {
-                    DatumType::I8 => quantize_linear_i8(
-                        scale,
-                        qp.zero_point_c
-                            .as_ref()
-                            .map(|zp| zp.to_scalar().map(|&x: &i8| x.clone()))
-                            .transpose()?
-                            .unwrap_or(0),
-                    ),
-                    DatumType::U8 => quantize_linear_u8(
-                        scale,
-                        qp.zero_point_c
-                            .as_ref()
-                            .map(|zp| zp.to_scalar().map(|&x: &u8| x.clone()))
-                            .transpose()?
-                            .unwrap_or(0),
-                    ),
-                    _ => unimplemented!("Unexpected quant type"),
-                };
-                wire = patch.wire_node(format!("{}.quant", node.name), op, &[wire])?[0];
+                wire = crate::ops::quant::wire_quant_pipeline(
+                    &node.name,
+                    &mut patch,
+                    self.q_params.as_ref().and_then(|qp| qp.scale_factor).unwrap_or(1.0),
+                    self.q_params
+                        .as_ref()
+                        .and_then(|qp| qp.zero_point_c.as_ref())
+                        .map(|zp| zp.cast_to_scalar::<i32>())
+                        .transpose()?
+                        .unwrap_or(0),
+                    output_type,
+                    &[wire],
+                )?[0]
             }
             patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
             return Ok(Some(patch));

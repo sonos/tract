@@ -1,7 +1,6 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use tract_hir::internal::*;
-use tract_hir::ops::quant::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("QuantizeLinear", quantize_linear);
@@ -46,11 +45,9 @@ impl Expansion for QuantizeLinear {
     ) -> TractResult<()> {
         check_input_arity(&inputs, 2 + self.optional_zero_point_input.is_some() as usize)?;
         check_output_arity(&outputs, 1)?;
-        //         s.equals(&inputs[1].rank, 0)?; broken in Onnx test suite
         s.equals(&inputs[1].datum_type, f32::datum_type())?;
         if self.optional_zero_point_input.is_some() {
             s.equals(&outputs[0].datum_type, &inputs[2].datum_type)?;
-        //            s.equals(&inputs[2].rank, 0)?; // broken in Onnx test suite
         } else {
             s.equals(&outputs[0].datum_type, u8::datum_type())?;
         }
@@ -64,30 +61,28 @@ impl Expansion for QuantizeLinear {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use tract_hir::ops::quant::*;
         let scale = target
             .outlet_fact(inputs[1])?
             .konst
             .as_ref()
             .ok_or("y_scale must be a const")?
-            .as_slice::<f32>()?[0]
+            .as_slice::<f32>()?[0] // bug in onnx test suite
             .recip();
-        let zero_point = if self.optional_zero_point_input.is_some() {
-            target
-                .outlet_fact(inputs[2])?
+        let (dt, zero_point) = if let Some(input) = self.optional_zero_point_input {
+            let tensor = target
+                .outlet_fact(inputs[input])?
                 .konst
                 .as_ref()
-                .ok_or("y_zero_point must be a const")?
-                .clone()
+                .ok_or("y_zero_point must be a const")?;
+            (tensor.datum_type(), tensor.cast_to_scalar::<i32>()?)
         } else {
-            rctensor0(0u8)
+            (DatumType::I8, 0i32)
         };
-        let op: Box<dyn TypedOp> = if zero_point.datum_type() == u8::datum_type() {
-            Box::new(quantize_linear_u8(scale, zero_point.as_slice::<u8>()?[0]))
-        } else {
-            Box::new(quantize_linear_i8(scale, zero_point.as_slice::<i8>()?[0]))
-        };
-        target.wire_node(prefix, op, &[inputs[0]])
+        tract_hir::ops::quant::QuantizeLinear::new(scale, zero_point, dt).wire(
+            prefix,
+            target,
+            &inputs[0..1],
+        )
     }
 }
 
@@ -136,23 +131,20 @@ impl Expansion for DequantizeLinear {
             .as_ref()
             .ok_or("y_scale must be a const")?
             .as_slice::<f32>()?[0];
-        let zero_point = if self.optional_zero_point_input.is_some() {
+        let zero_point = if let Some(input) = self.optional_zero_point_input {
             target
-                .outlet_fact(inputs[2])?
+                .outlet_fact(inputs[input])?
                 .konst
                 .as_ref()
                 .ok_or("y_zero_point must be a const")?
-                .clone()
+                .cast_to_scalar::<i32>()?
         } else {
-            rctensor0(0u8)
+            0
         };
-        let op: Box<dyn TypedOp> = if zero_point.datum_type() == u8::datum_type() {
-            Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<u8>()?[0] as i32))
-        } else if zero_point.datum_type() == i8::datum_type() {
-            Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<i8>()?[0] as i32))
-        } else {
-            Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<i32>()?[0] as i32))
-        };
-        target.wire_node(prefix, op, &[inputs[0]])
+        tract_hir::ops::quant::DequantizeLinear::new(scale, zero_point).wire(
+            prefix,
+            target,
+            &inputs[0..1],
+        )
     }
 }

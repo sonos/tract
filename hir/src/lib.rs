@@ -32,7 +32,7 @@ pub mod ops {
     pub use tract_core::ops::math;
     pub mod matmul;
     pub mod nn;
-    pub use tract_core::ops::quant;
+    pub mod quant;
     pub mod scan;
     pub mod source;
     pub mod unimpl;

@@ -209,6 +209,7 @@ macro_rules! datum {
         }
     };
 }
+
 impl tract_linalg::hash::SloppyHash for TDim {
     fn sloppy_hash<S: std::hash::Hasher>(&self, state: &mut S) {
         self.hash(state)
