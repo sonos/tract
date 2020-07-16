@@ -33,19 +33,17 @@ fi
 
 export CACHEDIR
 
+cargo check --workspace --all-targets
+
 if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
 then
-	ALL_FEATURES=--all-features
+    ALL_FEATURES=--all-features
 fi
 
-cargo check --workspace --all-targets $ALL_FEATURES
 
-if [ `arch` = "x86_64" ]
-then
-    export LD_LIBRARY_PATH=$(realpath $(dirname $(find target/release -name libtensorflow.so | head -1))):$LD_LIBRARY_PATH
-fi
-
-cargo test -p tract-core -p tract-hir -p tract-tensorflow -p tract-onnx $ALL_FEATURES
+cargo test -p tract-core -p tract-hir -p tract-onnx -p tract-linalg
+# doc test are not finding libtensorflow.so
+cargo test -p tract-tensorflow --lib $ALL_FEATURES
 # useful as debug_asserts will come into play
 cargo test -p onnx-test-suite -- --skip real_
 cargo clean
