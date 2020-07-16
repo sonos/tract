@@ -84,17 +84,13 @@ impl QParams {
     }
 }
 
-pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
-    (((x * scale).round() as i32) + zero_point as i32)
-        .max(u8::min_value() as i32)
-        .min(u8::max_value() as i32) as u8
-}
-
-pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
-    (((x * scale).round() as i32) + zero_point as i32)
-        .max(i8::min_value() as i32)
-        .min(i8::max_value() as i32) as i8
-}
+element_wise_oop!(q_scale_i32,
+    QScaleInt32 {
+        #[educe(Hash(method="hash_f32"))]
+        scale: f32
+    },
+    [i32] => i32 |op, xs, ys| { ys.iter_mut().zip(xs.iter()).for_each(|(y,&x)| *y = (x as f32 * op.scale).round() as i32); Ok(()) }
+);
 
 pub fn wire_quant_pipeline(
     prefix: &str,
@@ -107,27 +103,31 @@ pub fn wire_quant_pipeline(
     let fact = model.outlet_fact(wires[0])?.clone();
     let rank = fact.rank();
     let mut wire: TVec<OutletId> = wires.into();
-    if fact.datum_type != f32::datum_type() {
-        wire = model.wire_node(
-            format!("{}.cast-to-f32", prefix),
-            crate::ops::cast::cast(f32::datum_type()),
-            &wire,
-        )?;
+    if fact.datum_type != i32::datum_type() && fact.datum_type != f32::datum_type() {
+        bail!("Only i32 and f32 allowed for quant pipeline");
     }
     if scale != 1.0 {
-        let scale = tensor0(scale).broadcast_into_rank(rank)?;
+        if fact.datum_type == i32::datum_type() {
+            wire = model.wire_node(format!("{}.scale", prefix), q_scale_i32(scale), &wire)?;
+        } else if fact.datum_type == f32::datum_type() {
+            let scale = tensor0(scale).broadcast_into_rank(rank)?;
+            wire = model.wire_node(
+                format!("{}.scale", prefix),
+                crate::ops::math::mul::unary(scale.into_arc_tensor()),
+                &wire,
+            )?;
+        }
+    }
+
+    if model.outlet_fact(wire[0])?.datum_type == f32::datum_type() {
+        wire = model.wire_node(format!("{}.round", prefix), crate::ops::math::round(), &wire)?;
         wire = model.wire_node(
-            format!("{}.scale", prefix),
-            crate::ops::math::mul::unary(scale.into_arc_tensor()),
+            format!("{}.cast-to-i32", prefix),
+            crate::ops::cast::cast(i32::datum_type()),
             &wire,
         )?;
     }
-    wire = model.wire_node(format!("{}.round", prefix), crate::ops::math::round(), &wire)?;
-    wire = model.wire_node(
-        format!("{}.cast-to-i32", prefix),
-        crate::ops::cast::cast(i32::datum_type()),
-        &wire,
-    )?;
+
     if zero_point != 0 {
         let zero_point = tensor0(zero_point).broadcast_into_rank(rank)?;
         wire = model.wire_node(
