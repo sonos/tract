@@ -30,10 +30,26 @@ impl ElementWiseMiniOp for Cast {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if model.outlet_fact(node.inputs[0])?.datum_type == self.to {
-            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
-        } else {
-            Ok(None)
+        let from = model.outlet_fact(node.inputs[0])?.datum_type;
+        if from == self.to {
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
         }
+        return Ok(None)
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let from = model.outlet_fact(node.inputs[0])?.datum_type;
+        if (from == i8::datum_type() || from == u8::datum_type()) && self.to == f32::datum_type() {
+            if let Some(patch) = super::quant::quantize_section(model, node)? {
+                return Ok(Some(patch))
+            }
+        }
+        return Ok(None)
     }
 }
+
+

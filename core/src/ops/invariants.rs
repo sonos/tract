@@ -5,7 +5,7 @@ use std::fmt;
 
 #[derive(Clone, Default)]
 pub struct Invariants {
-    element_wise: bool,
+    pub element_wise: bool,
     pub axes: TVec<AxisInfo>,
 }
 

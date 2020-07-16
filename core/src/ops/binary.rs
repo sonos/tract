@@ -315,13 +315,17 @@ impl TypedOp for UnaryOp {
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
         let b = model.outlet_fact(node.inputs[0])?;
         debug_assert_eq!(self.a.rank(), b.rank());
-        Ok(self
+        let mut invariants: Invariants = self
             .a
             .shape()
             .iter()
             .enumerate()
             .map(|(ix, d)| AxisInfo::simple(ix).with_period(*d))
-            .collect())
+            .collect();
+        if self.a.len() == 1 {
+            invariants.element_wise = true;
+        }
+        Ok(invariants)
     }
 
     fn slice_output(

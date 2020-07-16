@@ -38,6 +38,15 @@ pub trait ElementWiseMiniOp:
     }
 
     #[allow(unused_variables)]
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+
+    #[allow(unused_variables)]
     fn quantize(
         &self,
         dt: DatumType,
@@ -123,6 +132,14 @@ impl TypedOp for ElementWiseOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         self.0.declutter(model, node)
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        self.0.codegen(model, node)
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
