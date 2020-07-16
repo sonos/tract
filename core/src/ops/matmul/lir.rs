@@ -225,7 +225,10 @@ where
         let mul = self.c_prefix_dim_and_stride.as_ref().map(|c| c.0.iter().product()).unwrap_or(1);
         Ok(tvec!(
             (Cost::FMA(TI::datum_type()), (mul * mmm.m() * mmm.n() * mmm.k()).to_dim()),
-            (Cost::Params(TA::datum_type()), self.packed_as.iter().fold(0.to_dim(), |sum, a| sum + a.len()))
+            (
+                Cost::Params(TA::datum_type()),
+                self.packed_as.iter().fold(0.to_dim(), |sum, a| sum + a.len())
+            )
         ))
     }
 
@@ -260,6 +263,8 @@ where
                             return Ok(Some(tvec!(FusedSpec::Max(op.a.cast_to_scalar()?))));
                         } else if op.mini_op.is::<ops::math::Min>() {
                             return Ok(Some(tvec!(FusedSpec::Min(op.a.cast_to_scalar()?))));
+                        } else if op.mini_op.is::<ops::math::Mul>() {
+                            return Ok(Some(tvec!(FusedSpec::ScalarMul(op.a.cast_to_scalar()?))))
                         }
                     }
                 }
