@@ -171,7 +171,7 @@ impl ConvUnary {
         TA: Datum + Copy + Zero,
         TB: Datum + Copy + Zero,
         TC: Datum + Copy,
-        TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+        TI: Datum + Copy + Add + Mul + Zero + fmt::Debug + matmul::FusableOps,
     {
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =

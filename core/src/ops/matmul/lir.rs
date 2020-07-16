@@ -3,12 +3,38 @@ use std::fmt;
 use std::ops::{Add, Mul};
 
 use crate::internal::*;
+use crate::ops;
 use ndarray::*;
 
 use super::MMMWrapper;
 use tract_linalg::mmm::FusedSpec;
 
 use tract_linalg::frame::PackB;
+
+pub trait FusableOps: std::fmt::Debug + Copy {
+    fn fusable_ops(op: &dyn Op) -> Option<TVec<FusedSpec<Self>>>;
+}
+
+impl FusableOps for i32 {
+    fn fusable_ops(op: &dyn Op) -> Option<TVec<FusedSpec<Self>>> {
+        if let Some(op) = op.downcast_ref::<ops::element_wise::ElementWiseOp>() {
+            if let Some(q) = op.0.downcast_ref::<ops::quant::QScaleInt32>() {
+                let pair = i32_optimized_scale_factor(q.scale);
+                Some(tvec!(FusedSpec::QTowardsPlusInf(pair.0, pair.1)))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl FusableOps for f32 {
+    fn fusable_ops(_op: &dyn Op) -> Option<TVec<FusedSpec<Self>>> {
+        None
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Educe)]
 #[educe(Hash)]
@@ -123,7 +149,7 @@ where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
     TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug + FusableOps,
 {
     fn name(&self) -> Cow<str> {
         if self.mmm.as_mmm().n() == 1 { "MatVecMul" } else { "MatMatMul" }.into()
@@ -155,7 +181,7 @@ where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
     TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug + FusableOps,
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
@@ -209,12 +235,22 @@ where
     }
 }
 
+fn i32_optimized_scale_factor(factor: f32) -> (i32, usize) {
+    // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
+    let factor_bits = factor.to_bits();
+    let current_exponent = factor_bits >> 23;
+    let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
+    let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as i32;
+    let shift = 126 - current_exponent;
+    (int_multi, shift as usize)
+}
+
 impl<TA, TB, TC, TI> TypedOp for MatMatMulUnaryFinite<TA, TB, TC, TI>
 where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
     TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug + FusableOps,
 {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.c_fact.clone()))
@@ -233,7 +269,6 @@ where
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops;
         if let Some(succ) = model.single_succ(node.id)? {
             if let Some(op) = succ.op_as::<ops::AxisOp>() {
                 if op.only_shape() {
@@ -270,7 +305,7 @@ where
                     None
                 }
             } else {
-                None
+                TI::fusable_ops(succ.op.as_ref())
             };
             if let Some(op) = fused_micro_op {
                 let mut new_op = self.clone();

@@ -786,7 +786,7 @@ where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
     TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug + FusableOps,
 {
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.tap_model(model, node.inputs[0])?;
