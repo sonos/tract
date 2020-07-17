@@ -500,17 +500,23 @@ impl TypedOp for ConvUnary {
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         let one = 1.to_dim();
-        Ok(tvec!((
-            Cost::FMA(inputs[0].datum_type),
-            shape
-                .n()
-                .unwrap_or(&one)
-                .maybe_mul(shape.c())?
-                .maybe_mul(&n_output_channels)?
-                .maybe_mul(&n_output_points)?
-                .maybe_mul(&kernel_surface)?
-                / self.group
-        )))
+        Ok(tvec!(
+            (
+                Cost::Params(inputs[0].datum_type),
+                (self.kernel.len() + self.bias.as_ref().map(|b| b.len()).unwrap_or(0)).to_dim()
+            ),
+            (
+                Cost::FMA(inputs[0].datum_type),
+                shape
+                    .n()
+                    .unwrap_or(&one)
+                    .maybe_mul(shape.c())?
+                    .maybe_mul(&n_output_channels)?
+                    .maybe_mul(&n_output_points)?
+                    .maybe_mul(&kernel_surface)?
+                    / self.group
+            )
+        ))
     }
 
     fn change_axes(

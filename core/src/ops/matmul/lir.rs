@@ -223,7 +223,10 @@ where
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let mmm = self.mmm.as_mmm();
         let mul = self.c_prefix_dim_and_stride.as_ref().map(|c| c.0.iter().product()).unwrap_or(1);
-        Ok(tvec!((Cost::FMA(TI::datum_type()), (mul * mmm.m() * mmm.n() * mmm.k()).to_dim())))
+        Ok(tvec!(
+            (Cost::FMA(TI::datum_type()), (mul * mmm.m() * mmm.n() * mmm.k()).to_dim()),
+            (Cost::Params(TA::datum_type()), self.packed_as.iter().fold(0.to_dim(), |sum, a| sum + a.len()))
+        ))
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
@@ -234,10 +237,7 @@ where
                     return Ok(Some(TypedModelPatch::fuse_with_next(
                         model,
                         &node,
-                        Self {
-                            c_fact: succ.outputs[0].fact.clone(),
-                            ..self.clone()
-                        },
+                        Self { c_fact: succ.outputs[0].fact.clone(), ..self.clone() },
                     )?));
                 }
             }

@@ -239,8 +239,10 @@ impl Annotations {
                 for node_id in 0..model.nodes().len() {
                     let inputs = model.node_input_facts(node_id)?;
                     let cost = model.node(node_id).op.cost(&*inputs)?;
-                    annotations.node_mut(NodeQId(prefix.into(), node_id)).cost =
-                        cost.into_iter().map(|(k, v)| (k, v * multiplier)).collect();
+                    annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
+                        .into_iter()
+                        .map(|(k, v)| (k, if k.is_compute() { v * multiplier } else { v }))
+                        .collect();
 
                     let nested_subs = model.node(node_id).op.nested_models();
                     let nested_multis = model.node(node_id).op.nested_model_multipliers(&*inputs);

@@ -648,13 +648,15 @@ impl TypedOp for MatMulUnary {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        cost(
+        let mut cost = cost(
             self.a.shape(),
             &inputs[0].shape.to_tvec(),
             self.a.datum_type(),
             self.a_trans,
             self.b_trans,
-        )
+        )?;
+        cost.push((Cost::Params(self.a.datum_type()), self.a.len().to_dim()));
+        Ok(cost)
     }
 
     fn pulsify(

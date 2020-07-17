@@ -1,6 +1,6 @@
 use tract_hir::internal::*;
 
-pub fn parse_costs(spec: &str) -> TVec<(Cost, usize)> {
+pub fn parse_costs(spec: &str) -> TractResult<Vec<(Cost, usize)>> {
     spec.split(",")
         .map(|spec| {
             let mut toks = spec.split("=");
@@ -10,9 +10,10 @@ pub fn parse_costs(spec: &str) -> TVec<(Cost, usize)> {
                 "FMA(F32)" => Cost::FMA(f32::datum_type()),
                 "Div(F32)" => Cost::Div(f32::datum_type()),
                 "Buffer(F32)" => Cost::Buffer(f32::datum_type()),
-                _ => panic!("Unknown cost specifier {}", name),
+                "Params(F32)" => Cost::Params(f32::datum_type()),
+                _ => bail!("Unknown cost specifier {}", name),
             };
-            (c, n)
+            Ok((c, n))
         })
         .collect()
 }
