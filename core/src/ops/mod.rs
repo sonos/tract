@@ -50,6 +50,17 @@ pub enum Cost {
     Div(DatumType),
     FMA(DatumType),
     Buffer(DatumType),
+    Params(DatumType),
+}
+
+impl Cost {
+    pub fn is_compute(&self) -> bool {
+        use Cost::*;
+        match self {
+            FMA(_) | Div(_) => true,
+            Buffer(_) | Params(_) => false,
+        }
+    }
 }
 
 use crate::internal::*;

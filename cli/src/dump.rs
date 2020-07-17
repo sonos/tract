@@ -36,7 +36,8 @@ pub fn handle(
 
     if options.cost {
         let total = annotations.tags.values().sum::<NodeTags>();
-        let assert = matches.value_of("assert-cost").map(|a| crate::cost::parse_costs(a));
+        let assert =
+            matches.value_of("assert-cost").map(|a| crate::cost::parse_costs(a)).transpose()?;
         if let Some(assert) = assert {
             let assert: HashMap<Cost, TDim> =
                 assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();

@@ -113,7 +113,7 @@ fi
 
 ./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb \
      -i Sx20xf32 --pulse 8 dump --cost -q \
-     --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920"
+     --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
 
 # fragile test (generated names...) but kinda vital for AM perf
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
