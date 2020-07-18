@@ -9,6 +9,7 @@ use crate::pb_helpers::OptionExt;
 use tract_num_traits::AsPrimitive;
 
 mod batch_norm;
+mod instance_norm;
 mod dropout;
 mod lrn;
 
@@ -35,6 +36,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("GlobalMaxPool", |_, _| Ok((expand(ops::nn::GlobalMaxPool), vec![])));
     reg.insert("Hardmax", layer_hard_max);
     reg.insert("HardSigmoid", hard_sigmoid);
+    reg.insert("InstanceNormalization", instance_norm::instance_normalization);
     reg.insert("LeakyRelu", leaky_relu);
     reg.insert("LogSoftmax", layer_log_soft_max);
     reg.insert("LRN", lrn);
