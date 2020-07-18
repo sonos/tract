@@ -1,4 +1,3 @@
-# test_maxpool_with_argmax_2d_precomputed_strides
 test_abs
 test_acos
 test_acos_example
@@ -46,8 +45,8 @@ test_averagepool_2d_same_lower
 test_averagepool_2d_same_upper
 test_averagepool_2d_strides
 test_averagepool_3d_default
-test_basic_conv_with_padding                                                        input:x
 test_basic_conv_without_padding                                                     input:x
+test_basic_conv_with_padding                                                        input:x
 test_batchnorm_epsilon                                                              input:x
 test_batchnorm_example                                                              input:x
 test_cast_DOUBLE_to_FLOAT
@@ -80,16 +79,17 @@ test_compress_default_axis                                                      
 test_concat_1d_axis_0
 test_concat_2d_axis_0
 test_concat_2d_axis_1
+test_concat_3d_axis_
 test_concat_3d_axis_0
 test_concat_3d_axis_1
-test_concat_3d_axis_
+test_concat_3d_axis_2
 test_constant
-test_constant_pad
 test_constantlike_ones_with_input
 test_constantlike_threes_with_shape_and_dtype
 test_constantlike_zeros_without_input_dtype
 test_constantofshape_float_ones                                                     dynsize
 test_constantofshape_int_zeros                                                      dynsize
+test_constant_pad
 test_conv_with_strides_and_asymmetric_padding                                       input:x
 test_conv_with_strides_no_padding                                                   input:x
 test_conv_with_strides_padding                                                      input:x
@@ -110,9 +110,9 @@ test_equal
 test_equal_bcast
 test_erf
 test_exp
-test_exp_example
 test_expand_dim_changed                                                             input:data
 test_expand_dim_unchanged                                                           input:data
+test_exp_example
 test_eyelike_populate_off_main_diagonal
 test_eyelike_with_dtype
 test_eyelike_without_dtype
@@ -155,9 +155,6 @@ test_leakyrelu_default
 test_leakyrelu_example
 test_less
 test_less_bcast
-test_lstm_defaults
-test_lstm_with_peepholes
-test_lstm_with_initial_bias
 test_log
 test_log_example
 test_logsoftmax_axis_0
@@ -168,12 +165,14 @@ test_logsoftmax_example_1
 test_logsoftmax_large_number
 test_lrn
 test_lrn_default
+test_lstm_defaults
+test_lstm_with_initial_bias
+test_lstm_with_peepholes
 test_matmul_2d
 test_matmul_3d
 test_matmul_4d
 test_max_example
 test_max_one_input
-test_max_two_inputs
 test_maxpool_1d_default
 test_maxpool_2d_default
 test_maxpool_2d_pads
@@ -185,6 +184,8 @@ test_maxpool_2d_same_upper
 test_maxpool_2d_strides
 test_maxpool_3d_default
 test_maxpool_with_argmax_2d_precomputed_pads
+# test_maxpool_with_argmax_2d_precomputed_strides
+test_max_two_inputs
 test_mean_example
 test_mean_one_input
 test_mean_two_inputs
