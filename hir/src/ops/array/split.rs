@@ -3,7 +3,7 @@ use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Split {
-    axis: usize,
+    axis: isize,
     outputs: usize,
     split: Option<Vec<usize>>,
 }
@@ -40,10 +40,12 @@ impl Expansion for Split {
             s.equals(&inputs[0].rank, &outputs[i].rank)
         })?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let dims = self.split_dims(shape[self.axis].clone())?;
+            let axis =
+                if self.axis < 0 { self.axis + shape.len() as isize } else { self.axis } as usize;
+            let dims = self.split_dims(shape[axis].clone())?;
             for i in 0..self.outputs {
                 let mut shape = shape.clone();
-                shape[self.axis] = dims[i].clone();
+                shape[axis] = dims[i].clone();
                 s.equals(&outputs[i].shape, shape)?;
             }
             Ok(())
@@ -64,12 +66,14 @@ impl Expansion for Split {
         let input = target.outlet_fact(inputs[0])?.clone();
         let mut outputs = tvec!();
         let mut current = 0.to_dim();
-        for len in self.split_dims(input.shape.dim(self.axis))? {
+        let axis =
+            if self.axis < 0 { self.axis + input.rank() as isize } else { self.axis } as usize;
+        for len in self.split_dims(input.shape.dim(axis))? {
             let end = current.clone() + len;
             outputs.push(
                 target.wire_node(
-                    format!("{}.axis_{}_{}..{}", prefix, self.axis, current, end),
-                    crate::ops::array::Slice::new(self.axis, current, end.clone()),
+                    format!("{}.axis_{}_{}..{}", prefix, axis, current, end),
+                    crate::ops::array::Slice::new(axis, current, end.clone()),
                     inputs,
                 )?[0],
             );
