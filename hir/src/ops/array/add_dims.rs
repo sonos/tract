@@ -1,17 +1,24 @@
 use crate::infer::*;
 use crate::internal::*;
+use tract_itertools::Itertools;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct AddDims {
-    pub axes: Vec<usize>,
+    pub axes: Vec<isize>,
 }
 
 tract_linalg::impl_dyn_hash!(AddDims);
 
 impl AddDims {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
+        let rank = input.len() as isize;
         let mut shape: TVec<D> = input.iter().cloned().collect();
-        for &axis in &self.axes {
+        let axes = self
+            .axes
+            .iter()
+            .map(|&axis| if axis < 0 { axis + rank } else { axis } as usize)
+            .sorted();
+        for axis in axes {
             shape.insert(axis, D::one())
         }
         shape
@@ -50,9 +57,13 @@ impl Expansion for AddDims {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let mut wire:TVec<OutletId> = inputs.into();
-        let mut axes = self.axes.clone();
-        axes.sort();
+        let rank = model.outlet_fact(inputs[0])?.rank() as isize;
+        let mut wire: TVec<OutletId> = inputs.into();
+        let axes = self
+            .axes
+            .iter()
+            .map(|&axis| if axis < 0 { axis + rank } else { axis } as usize)
+            .sorted();
         for axis in axes {
             wire =
                 model.wire_node(format!("{}.axis-{}", prefix, axis), AxisOp::Add(axis), &wire)?;

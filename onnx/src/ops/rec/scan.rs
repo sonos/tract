@@ -71,7 +71,7 @@ pub fn scan(
         .apply(&mut model)?;
         mapped_outputs.push(ops::scan::OutputMapping {
             state: false,
-            axis: *ax,
+            axis: *ax as usize,
             full_slot: Some(ix + num_hidden_state),
             chunk: (),
             full_dim_hint: None,

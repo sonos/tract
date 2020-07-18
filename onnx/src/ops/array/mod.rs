@@ -126,6 +126,6 @@ pub fn unsqueeze(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let axes = node.get_attr_vec("axes")?;
+    let axes = node.get_attr_vec::<i64>("axes")?.into_iter().map(|x| x as isize).collect();
     Ok((expand(array::AddDims::new(axes)), vec![]))
 }
