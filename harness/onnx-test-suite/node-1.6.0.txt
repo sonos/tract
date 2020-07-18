@@ -417,8 +417,10 @@ test_unsqueeze_axis_0
 test_unsqueeze_axis_1
 test_unsqueeze_axis_2
 test_unsqueeze_axis_3
+test_unsqueeze_negative_axes
 test_unsqueeze_three_axes
 test_unsqueeze_two_axes
+test_unsqueeze_unsorted_axes
 test_where_example
 test_where_long_example
 test_xor2d
