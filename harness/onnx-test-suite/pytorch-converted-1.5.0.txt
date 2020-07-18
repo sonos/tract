@@ -40,6 +40,7 @@ test_Conv3d_stride_padding
 test_ELU
 test_Embedding
 test_Embedding_sparse
+test_GLU
 test_GLU_dim
 test_LeakyReLU
 test_LeakyReLU
