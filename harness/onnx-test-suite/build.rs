@@ -14,7 +14,7 @@ pub fn ensure_onnx_git_checkout() {
         fs::create_dir_all(dir()).unwrap();
         let lockfile = dir().join(".lock");
         let _lock = fs::File::create(lockfile).unwrap().lock_exclusive();
-        for v in &["1.4.1", "1.5.0"] {
+        for v in &["1.4.1", "1.5.0", "1.6.0", "1.7.0"] {
             let wanted = dir().join(format!("onnx-{}", v));
             if !wanted.join("onnx/backend/test/data").exists() {
                 let tmp = wanted.with_extension("tmp");
@@ -113,7 +113,7 @@ fn main() {
     fs::create_dir_all(&test_dir).unwrap();
     let mut root = fs::File::create(test_dir.join("root.rs")).unwrap();
     for set in "node real simple pytorch-operator pytorch-converted".split_whitespace() {
-        for ver in "1.4.1 1.5.0".split_whitespace() {
+        for ver in "1.4.1 1.5.0 1.6.0 1.7.0".split_whitespace() {
             make_test_file(&mut root, set, ver);
         }
     }

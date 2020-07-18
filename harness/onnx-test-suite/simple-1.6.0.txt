@@ -1,0 +1,7 @@
+test_expand_shape_model1 input:X
+test_expand_shape_model2 input:X
+test_expand_shape_model3 input:X
+test_expand_shape_model4 input:X
+# test_shrink example shape not consistent with network
+test_sign_model
+test_single_relu_model
