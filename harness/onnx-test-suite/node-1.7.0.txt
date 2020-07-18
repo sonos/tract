@@ -69,6 +69,9 @@ test_ceil
 test_ceil_example
 test_clip
 test_clip_default_inbounds
+test_clip_default_int8_inbounds
+test_clip_default_int8_max
+test_clip_default_int8_min
 test_clip_default_max
 test_clip_default_min
 test_clip_example

@@ -4,6 +4,7 @@ use tract_hir::internal::*;
 use tract_hir::ops;
 use tract_hir::ops::binary::Nary;
 
+mod clip;
 mod mat_mul_integer;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -20,7 +21,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Abs", |_, _| Ok((Box::new(ops::math::abs()), vec![])));
     reg.insert("Ceil", |_, _| Ok((Box::new(ops::math::ceil()), vec![])));
     reg.insert("Floor", |_, _| Ok((Box::new(ops::math::floor()), vec![])));
-    reg.insert("Clip", clip);
+    reg.insert("Clip", clip::clip);
 
     reg.insert("Cos", |_, _| Ok((Box::new(ops::math::cos()), vec![])));
     reg.insert("Sin", |_, _| Ok((Box::new(ops::math::sin()), vec![])));
@@ -53,15 +54,6 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("MatMulInteger", mat_mul_integer::mat_mul_integer);
     reg.insert("QLinearMatMul", mat_mul_integer::q_linear_mat_mul);
     reg.insert("Gemm", gemm);
-}
-
-pub fn clip(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let min: Option<f32> = node.get_attr_opt("min")?;
-    let max: Option<f32> = node.get_attr_opt("max")?;
-    Ok((expand(ops::activations::Clip::new(min, max)), vec!()))
 }
 
 element_wise!(erf, Erf,
