@@ -149,6 +149,7 @@ test_hardsigmoid_default
 test_hardsigmoid_example
 test_hardsigmoid_example
 test_identity
+test_instancenorm_example
 test_isnan
 test_leakyrelu
 test_leakyrelu_default
