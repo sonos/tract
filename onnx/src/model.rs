@@ -196,9 +196,9 @@ impl Onnx {
             proto.opset_import.iter().find(|import| import.domain == "").unwrap().version;
         let graph = &proto.graph;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
-        if onnx_operator_set_version < 9 || onnx_operator_set_version > 10 {
+        if onnx_operator_set_version < 9 || onnx_operator_set_version > 12 {
             warn!("ONNX operator for your model is {}, tract is tested against \
-                  operator set 9 and 10 only. Your model may still work so this is not a hard fail.",
+                  operator set 9, 10, 11 and 12 only. Your model may still work so this is not a hard fail.",
                   onnx_operator_set_version);
         }
         let ctx = ParsingContext {
