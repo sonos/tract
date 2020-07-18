@@ -244,32 +244,34 @@ where
                     )?));
                 }
             }
-            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<TI>>>> {
-                if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                    let l =
-                        if self.c_trans { self.mmm.as_mmm().m() } else { self.mmm.as_mmm().n() };
-                    if op.a.len() == l && op.a.shape()[op.a.rank() - 1] == l {
-                        if op.mini_op.is::<ops::math::Mul>() {
-                            return Ok(Some(tvec!(FusedSpec::PerRowMul(
-                                op.a.as_slice::<TI>()?.to_vec(),
-                            ))));
-                        } else if op.mini_op.is::<ops::math::Add>() {
-                            return Ok(Some(tvec!(FusedSpec::PerRowAdd(
-                                op.a.as_slice::<TI>()?.to_vec(),
-                            ))));
-                        }
-                    } else if op.a.len() == 1 {
-                        if op.mini_op.is::<ops::math::Max>() {
-                            return Ok(Some(tvec!(FusedSpec::Max(op.a.cast_to_scalar()?))));
-                        } else if op.mini_op.is::<ops::math::Min>() {
-                            return Ok(Some(tvec!(FusedSpec::Min(op.a.cast_to_scalar()?))));
-                        } else if op.mini_op.is::<ops::math::Mul>() {
-                            return Ok(Some(tvec!(FusedSpec::ScalarMul(op.a.cast_to_scalar()?))))
-                        }
+            let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
+                let m = self.mmm.as_mmm().m();
+                if op.a.len() == m
+                    && op.a.shape()[op.a.rank() - 1 - ((!self.c_trans) as usize)] == m
+                {
+                    if op.mini_op.is::<ops::math::Mul>() {
+                        Some(tvec!(FusedSpec::PerRowMul(op.a.as_slice::<TI>()?.to_vec(),)))
+                    } else if op.mini_op.is::<ops::math::Add>() {
+                        Some(tvec!(FusedSpec::PerRowAdd(op.a.as_slice::<TI>()?.to_vec(),)))
+                    } else {
+                        None
                     }
+                } else if op.a.len() == 1 {
+                    if op.mini_op.is::<ops::math::Max>() {
+                        Some(tvec!(FusedSpec::Max(op.a.cast_to_scalar()?)))
+                    } else if op.mini_op.is::<ops::math::Min>() {
+                        Some(tvec!(FusedSpec::Min(op.a.cast_to_scalar()?)))
+                    } else if op.mini_op.is::<ops::math::Mul>() {
+                        Some(tvec!(FusedSpec::ScalarMul(op.a.cast_to_scalar()?)))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
                 }
-                Ok(None)
-            })()?;
+            } else {
+                None
+            };
             if let Some(op) = fused_micro_op {
                 let mut new_op = self.clone();
                 new_op
