@@ -1,4 +1,5 @@
 mod compress;
+mod pad;
 mod slice;
 
 use tract_hir::internal::*;
@@ -17,7 +18,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
-    reg.insert("Pad", pad);
+    reg.insert("Pad", pad::pad);
     reg.insert("Reshape", |_, _| Ok((expand(array::Reshape::default()), vec![])));
     reg.insert("Shape", |_, _| Ok((expand(array::Shape::new(DatumType::I64)), vec![])));
     reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::I64)), vec![])));
@@ -94,29 +95,6 @@ pub fn gather(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     Ok((Box::new(array::Gather::new(axis)), vec![]))
-}
-
-pub fn pad(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let value: f32 = node.get_attr_opt("value")?.unwrap_or(0.0);
-    let mode = match node.get_attr_opt("mode")? {
-        None | Some("constant") => None,
-        Some(mode) => node.check_value(
-            "mode",
-            match mode {
-                "reflect" => Ok(Some(array::PadMode::Reflect)),
-                "edge" => Ok(Some(array::PadMode::Edge)),
-                _ => Err(mode),
-            },
-        )?,
-    }
-    .unwrap_or_else(|| array::PadMode::Constant(Arc::new(value.into())));
-    let pads = node.get_attr_tvec("pads")?;
-    let rank = pads.len() / 2;
-    let pads = (0..rank).map(|ax| (pads[ax], pads[ax + rank])).collect();
-    Ok((Box::new(array::Pad::new(pads, mode)), vec![]))
 }
 
 pub fn split(

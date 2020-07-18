@@ -85,7 +85,7 @@ test_concat_3d_axis_0
 test_concat_3d_axis_1
 test_concat_3d_axis_2
 test_constant
-test_constant_pad
+test_constant_pad                                                                   input:x
 test_constantlike_ones_with_input
 test_constantlike_threes_with_shape_and_dtype
 test_constantlike_zeros_without_input_dtype
@@ -105,7 +105,7 @@ test_div_bcast
 test_div_example
 test_dropout_default
 test_dropout_random
-test_edge_pad
+test_edge_pad                                                                       input:x
 test_elu
 test_elu_default
 test_elu_example
@@ -281,7 +281,7 @@ test_reduce_sum_square_do_not_keepdims_example
 test_reduce_sum_square_do_not_keepdims_random
 test_reduce_sum_square_keepdims_example
 test_reduce_sum_square_keepdims_random
-test_reflect_pad
+test_reflect_pad                                                                    input:x
 test_relu
 test_reshape_extended_dims                                                          input:data
 test_reshape_negative_dim                                                           input:data
