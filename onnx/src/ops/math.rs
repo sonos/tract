@@ -6,6 +6,7 @@ use tract_hir::ops::binary::Nary;
 
 mod clip;
 mod mat_mul_integer;
+mod pow;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Add", |_, _| Ok((ops::math::Add.into_hir(), vec![])));
@@ -49,7 +50,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Sign", |_, _| Ok((Box::new(ops::math::sign()), vec![])));
     reg.insert("Reciprocal", |_, _| Ok((Box::new(ops::math::recip()), vec![])));
 
-    reg.insert("Pow", |_, _| Ok((ops::math::Pow.into_hir(), vec![])));
+    reg.insert("Pow", |_, _| pow::pow);
 
     reg.insert("MatMul", |_, _| Ok((Box::new(ops::matmul::MatMul::default()), vec![])));
     reg.insert("MatMulInteger", mat_mul_integer::mat_mul_integer);
