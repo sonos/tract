@@ -276,7 +276,7 @@ element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
     Ok(())
 });
 
-const TOINT: f32 = 1.0f32 / f32::EPSILON;
+const TOINT: f32 = 1.0f32 / std::f32::EPSILON;
 
 fn rintf(x: f32) -> f32 {
     let u = x.to_bits();
