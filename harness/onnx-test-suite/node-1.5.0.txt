@@ -198,6 +198,10 @@ test_mean_two_inputs
 test_min_example
 test_min_one_input
 test_min_two_inputs
+test_mod_bcast
+test_mod_float_mixed_sign_example
+test_mod_fmod_mixed_sign_example
+test_mod_int64_mixed_sign_example
 test_mul
 test_mul_bcast
 test_mul_example
