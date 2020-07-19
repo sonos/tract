@@ -132,6 +132,8 @@ test_dropout_default_mask dynsize
 test_dropout_default_old
 test_dropout_random
 test_dropout_random_old
+test_dynamicquantizelinear_max_adjusted_expanded dynsize
+test_dynamicquantizelinear_min_adjusted_expanded dynsize
 test_edge_pad                                                                       input:x
 test_elu
 test_elu_default
@@ -277,9 +279,13 @@ test_pow
 test_pow_bcast_array
 test_pow_bcast_scalar
 test_pow_example
+test_pow_types_float
 test_pow_types_float32_int32
 test_pow_types_float32_int64
 test_pow_types_int
+test_pow_types_int32_float32
+test_pow_types_int64_float32
+test_pow_types_int64_int64
 test_prelu_broadcast
 test_prelu_example
 test_qlinearconv                                                                    dynsize
