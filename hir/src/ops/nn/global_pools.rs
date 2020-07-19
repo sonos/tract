@@ -93,7 +93,7 @@ impl Expansion for GlobalLpPool {
                 .into_arc_tensor();
             wire = target.wire_node(
                 name.to_string() + ".pow",
-                tract_core::ops::math::flipped_pow::unary(pow),
+                tract_core::ops::math::flipped_powf::unary(pow),
                 &wire,
             )?;
         }
@@ -127,7 +127,7 @@ impl Expansion for GlobalLpPool {
                 .into_arc_tensor();
             wire = target.wire_node(
                 name.to_string() + ".antipow",
-                tract_core::ops::math::flipped_pow::unary(anti_pow),
+                tract_core::ops::math::flipped_powf::unary(anti_pow),
                 &wire,
             )?;
         }
