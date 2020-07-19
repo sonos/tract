@@ -11,6 +11,8 @@ impl TryFrom<DataType> for DatumType {
             DataType::Bool => Ok(DatumType::Bool),
             DataType::Uint8 => Ok(DatumType::U8),
             DataType::Uint16 => Ok(DatumType::U16),
+            DataType::Uint32 => Ok(DatumType::U32),
+            DataType::Uint64 => Ok(DatumType::U64),
             DataType::Int8 => Ok(DatumType::I8),
             DataType::Int16 => Ok(DatumType::I16),
             DataType::Int32 => Ok(DatumType::I32),
@@ -66,6 +68,8 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                 match dt {
                     DatumType::U8 => Tensor::from_raw::<u8>(&*shape, &*t.raw_data),
                     DatumType::U16 => Tensor::from_raw::<u16>(&*shape, &*t.raw_data),
+                    DatumType::U32 => Tensor::from_raw::<u32>(&*shape, &*t.raw_data),
+                    DatumType::U64 => Tensor::from_raw::<u64>(&*shape, &*t.raw_data),
                     DatumType::I8 => Tensor::from_raw::<i8>(&*shape, &*t.raw_data),
                     DatumType::I16 => Tensor::from_raw::<i16>(&*shape, &*t.raw_data),
                     DatumType::I32 => Tensor::from_raw::<i32>(&*shape, &*t.raw_data),
@@ -94,6 +98,16 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                 DatumType::U16 => Array::from_shape_vec(
                     &*shape,
                     t.int32_data.iter().map(|&x| x as u16).collect(),
+                )?
+                .into(),
+                DatumType::U32 => Array::from_shape_vec(
+                    &*shape,
+                    t.int32_data.iter().map(|&x| x).collect(),
+                )?
+                .into(),
+                DatumType::U64 => Array::from_shape_vec(
+                    &*shape,
+                    t.int64_data.iter().map(|&x| x).collect(),
                 )?
                 .into(),
                 DatumType::I8 => {
