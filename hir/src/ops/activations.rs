@@ -244,7 +244,7 @@ fn simple_unary_rules<'r, 'p: 'r, 's: 'r>(
     Ok(())
 }
 
-fn broadcast_scalar(f: f32, model: &TypedModel, inputs: &[OutletId]) -> TractResult<Arc<Tensor>> {
+pub fn broadcast_scalar(f: f32, model: &TypedModel, inputs: &[OutletId]) -> TractResult<Arc<Tensor>> {
     let fact = model.outlet_fact(inputs[0])?;
     let mut tensor = tensor0(f).cast_to_dt(fact.datum_type)?.into_owned();
     while tensor.rank() < fact.rank() {

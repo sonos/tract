@@ -241,6 +241,7 @@ fn main() {
     let run = clap::SubCommand::with_name("run")
         .long_about("Run the graph")
         .arg(Arg::with_name("dump").long("dump").help("Show output"))
+        .arg(Arg::with_name("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
             Arg::with_name("assert-output-bundle")
                 .takes_value(true)
@@ -1031,7 +1032,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             display_params_from_clap(&matches, m)?,
         ),
 
-        ("run", Some(m)) => run::handle(&params, m.is_present("dump")),
+        ("run", Some(m)) => run::handle(&params, m.is_present("dump"), m.is_present("steps")),
 
         ("optimize-check", Some(m)) => {
             optimize_check::handle(&params, display_params_from_clap(&matches, m)?)

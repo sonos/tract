@@ -2,11 +2,11 @@ use crate::errors::*;
 use crate::{Model, Parameters};
 use tract_hir::internal::*;
 
-pub fn handle(params: &Parameters, dump: bool) -> CliResult<()> {
+pub fn handle(params: &Parameters, dump: bool, steps: bool) -> CliResult<()> {
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
         run_pulse_t(pulse, &params)?
     } else {
-        dispatch_model!(params.tract_model, |m| run_regular(m, &params))?
+        dispatch_model!(params.tract_model, |m| run_regular(m, &params, steps))?
     };
 
     if dump {
@@ -19,17 +19,19 @@ pub fn handle(params: &Parameters, dump: bool) -> CliResult<()> {
         crate::utils::check_outputs(&*outputs, &asserts)?;
     }
     if let Some(facts) = &params.assertions.assert_output_facts {
-        let outputs: Vec<InferenceFact> = outputs
-            .iter()
-            .map(|t| InferenceFact::dt_shape(t.datum_type(), t.shape()))
-            .collect();
+        let outputs: Vec<InferenceFact> =
+            outputs.iter().map(|t| InferenceFact::dt_shape(t.datum_type(), t.shape())).collect();
         crate::utils::check_inferred(&*outputs, &*facts)?;
     }
 
     Ok(())
 }
 
-fn run_regular(tract: &dyn Model, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
+fn run_regular(
+    tract: &dyn Model,
+    params: &Parameters,
+    steps: bool,
+) -> CliResult<TVec<Arc<Tensor>>> {
     let mut inputs: TVec<Tensor> = tvec!();
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         if let Some(input) = params.input_values.get(ix).and_then(|x| x.as_ref()) {
@@ -39,7 +41,20 @@ fn run_regular(tract: &dyn Model, params: &Parameters) -> CliResult<TVec<Arc<Ten
             inputs.push(crate::tensor::tensor_for_fact(&fact, None)?);
         }
     }
-    Ok(dispatch_model!(tract, |m| SimplePlan::new(m)?.run(inputs))?)
+    dispatch_model!(tract, |m| {
+        let plan = SimplePlan::new(m)?;
+        let mut state = SimpleState::new(plan)?;
+        Ok(state.run_plan_with_eval(inputs, |session_state, state, node, input| {
+            if steps {
+                eprintln!("{}: <{:?}", node, input);
+            }
+            let r = tract_core::plan::eval(session_state, state, node, input);
+            if steps {
+                eprintln!("{}: >{:?}", node, r);
+            }
+            r
+        })?)
+    })
 }
 
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
