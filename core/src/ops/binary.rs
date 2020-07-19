@@ -801,7 +801,7 @@ macro_rules! bin_to_bool {
                     }
                     )*
                 )*
-                bail!("{} does not support {:?}", self.name(), c.datum_type());
+                bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
             fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {

@@ -25,23 +25,7 @@ impl Expansion for InferenceBinOp {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
-
-        s.with(&inputs[0].shape, move |s, a_shape| {
-            s.with(&inputs[1].shape, move |s, b_shape| {
-                if let Ok(Some(c_shape)) =
-                    crate::infer::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape])
-                {
-                    s.equals(&outputs[0].shape, c_shape)?;
-                }
-                Ok(())
-            })
-        })?;
-        s.given_2(&inputs[0].datum_type, &inputs[1].datum_type, move |s, typa, typb| {
-            s.equals(&outputs[0].datum_type, self.0.result_datum_type(typa, typb)?)
-        })?;
-        Ok(())
+        rules(s, inputs, outputs, move |typa, typb| self.0.result_datum_type(typa, typb))
     }
 
     fn wire(
@@ -58,6 +42,31 @@ impl Expansion for InferenceBinOp {
         let wires = wire_cast(prefix, target, &wires, operating_datum_type)?;
         target.wire_node(prefix, mir::binary::TypedBinOp(self.0.clone()), &wires)
     }
+}
+
+pub fn rules<'r, 'p: 'r, 's: 'r, DT: Fn(DatumType, DatumType) -> TractResult<DatumType> + 'p>(
+    s: &mut Solver<'r>,
+    inputs: &'p [TensorProxy],
+    outputs: &'p [TensorProxy],
+    dt: DT,
+) -> InferenceResult {
+    check_input_arity(&inputs, 2)?;
+    check_output_arity(&outputs, 1)?;
+
+    s.with(&inputs[0].shape, move |s, a_shape| {
+        s.with(&inputs[1].shape, move |s, b_shape| {
+            if let Ok(Some(c_shape)) =
+                crate::infer::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape])
+            {
+                s.equals(&outputs[0].shape, c_shape)?;
+            }
+            Ok(())
+        })
+    })?;
+    s.given_2(&inputs[0].datum_type, &inputs[1].datum_type, move |s, typa, typb| {
+        s.equals(&outputs[0].datum_type, dt(typa, typb)?)
+    })?;
+    Ok(())
 }
 
 pub fn wire_rank_broadcast(

@@ -6,9 +6,9 @@ use super::binary::*;
 bin_to_super_type!(add, Add,
                    flip:commute,
                    validation: Validation::Rounding,
-                   [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
+                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
 bin_to_super_type!(sub, Sub, flip:flip_sub,
-                   [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
+                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
 bin_to_super_type!(mul, Mul,
  cost: |dt| tvec!((Cost::FMA(dt), 1)),
@@ -27,7 +27,7 @@ bin_to_super_type!(mul, Mul,
              Ok(false)
          }
  },
- [f32, i8, i16, i32, i64, u8, u16, f16, f64] => |c, a, b| *c = a.clone() * b
+ [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() * b
 );
 
 bin_to_super_type!(div, Div,
@@ -47,7 +47,7 @@ bin_to_super_type!(div, Div,
              Ok(false)
          }
  },
- [f32, i8, i16, i32, i64, u8, u16, f16, f64] => |c, a, b| *c = a.clone() / b
+ [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() / b
 );
 
 bin_to_super_type!(rem, Rem,
@@ -64,13 +64,14 @@ bin_to_super_type!(rem, Rem,
                                Ok(false)
                            }
                    },
-                   [f32, i8, i16, i32, i64, u8, u16, f16, f64] => |c, a, b| *c = a.clone() % b);
+                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
+
 bin_to_super_type!(min, Min, flip:commute,
                    [f32, f64] => |c,a,b| *c = a.min(*b),
-                   [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a.min(b));
+                   [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.min(b));
 bin_to_super_type!(max, Max, flip:commute,
                    [f32, f64] => |c,a,b| *c = a.max(*b),
-                   [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a.max(b));
+                   [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.max(b));
 
 bin_to_super_type!(pow, Pow,
                    [f32, f64] => |c,a,b| *c = a.powf(*b),
@@ -80,13 +81,13 @@ bin_to_super_type!(flipped_pow, FlippedPow,
                    [i32, i64] => |c,a,b| *c = b.pow(*a as u32));
 
 bin_to_super_type!(shift_left, ShiftLeft,
-                   [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a << *b);
+                   [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a << *b);
 bin_to_super_type!(shift_right, ShiftRight,
-                   [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a >> *b);
+                   [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a >> *b);
 bin_to_super_type!(flipped_shift_left, FlippedShiftLeft,
-                   [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *b << *a);
+                   [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *b << *a);
 bin_to_super_type!(flipped_shift_right, FlippedShiftRight,
-                   [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *b >> *a);
+                   [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *b >> *a);
 
 fn flip_sub(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     let mut t = t.clone().into_tensor();
@@ -216,7 +217,7 @@ fn declutter_as_shift(
     Ok(None)
 }
 
-element_wise!(abs, Abs, [f16, f32, i32] => |_, xs| {
+element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, i32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.abs());
     Ok(())
 });
