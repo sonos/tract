@@ -461,6 +461,7 @@ test_split_zero_size_splits dynsize
 test_sqrt
 test_sqrt_example
 test_squeeze
+test_squeeze_negative_axes
 test_sub
 test_sub_bcast
 test_sub_example

@@ -48,7 +48,7 @@ pub fn scan(
         .apply(&mut model)?;
         model.set_outlet_fact(outlet, InferenceFact::default())?;
         mapped_inputs.push(ops::scan::InputMapping::Scan {
-            axis: *ax,
+            axis: *ax as usize,
             slot: ix + num_hidden_state,
             chunk: (),
         });
