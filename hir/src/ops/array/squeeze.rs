@@ -5,7 +5,7 @@ use super::RmDims;
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Squeeze {
-    axes: Option<Vec<usize>>,
+    axes: Option<Vec<isize>>,
 }
 
 tract_linalg::impl_dyn_hash!(Squeeze);
@@ -13,6 +13,10 @@ tract_linalg::impl_dyn_hash!(Squeeze);
 impl Squeeze {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {
+            let axes = axes
+                .iter()
+                .map(|&a| if a < 0 { a + input.len() as isize } else { a } as usize)
+                .collect::<Vec<_>>();
             let mut shape: TVec<D> = input.iter().cloned().collect();
             for &axis in axes.iter().rev() {
                 if shape.remove(axis) != D::one() {
@@ -70,10 +74,9 @@ impl Expansion for Squeeze {
                 .iter()
                 .enumerate()
                 .filter(|(_ix, d)| d == &1.to_dim())
-                .map(|(ix, _d)| ix)
+                .map(|(ix, _d)| ix as isize)
                 .collect()
         };
         RmDims::new(axes).wire(prefix, target, inputs)
     }
-
 }

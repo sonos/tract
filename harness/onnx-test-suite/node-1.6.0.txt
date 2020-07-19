@@ -406,6 +406,7 @@ test_split_variable_parts_default_axis
 test_sqrt
 test_sqrt_example
 test_squeeze
+test_squeeze_negative_axes
 test_sub
 test_sub_bcast
 test_sub_example
