@@ -1,10 +1,10 @@
 //! `Tensor` is the main data container for tract
 use crate::dim::TDim;
+use crate::prelude::TVec;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
-use crate::TractResult;
-use std::{fmt, ops};
 use std::hash::Hash;
+use std::{fmt, ops};
 
 use tract_linalg::f16::f16;
 
@@ -50,6 +50,8 @@ pub enum DatumType {
     Bool,
     U8,
     U16,
+    U32,
+    U64,
     I8,
     I16,
     I32,
@@ -63,39 +65,16 @@ pub enum DatumType {
 }
 
 impl DatumType {
-    pub fn super_types(&self) -> &'static [DatumType] {
-        match self {
-            DatumType::Bool => &[DatumType::Bool],
-            DatumType::U8 => &[
-                DatumType::U8,
-                DatumType::I16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-                DatumType::F32,
-            ],
-            DatumType::U16 => {
-                &[DatumType::U16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32]
-            }
-            DatumType::I8 => &[
-                DatumType::I8,
-                DatumType::I16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-                DatumType::F32,
-            ],
-            DatumType::I16 => {
-                &[DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32]
-            }
-            DatumType::I32 => &[DatumType::I32, DatumType::I64, DatumType::TDim, DatumType::F32],
-            DatumType::I64 => &[DatumType::I64, DatumType::TDim, DatumType::F32],
-            DatumType::F16 => &[DatumType::F16, DatumType::F32, DatumType::F64],
-            DatumType::F32 => &[DatumType::F32, DatumType::F64],
-            DatumType::F64 => &[DatumType::F64],
-            DatumType::String => &[DatumType::String],
-            DatumType::Blob => &[DatumType::Blob],
-            DatumType::TDim => &[DatumType::TDim],
+    pub fn super_types(&self) -> TVec<DatumType> {
+        use DatumType::*;
+        if *self == String || *self == TDim || *self == Blob || *self == Bool {
+            tvec!(*self)
+        } else if self.is_float() {
+            [F16, F32, F64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
+        } else if self.is_signed() {
+            [I8, I16, I32, I64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
+        } else {
+            [U8, U16, U32, U64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         }
     }
 
@@ -120,23 +99,51 @@ impl DatumType {
         for mine in self.super_types() {
             for theirs in rhs.super_types() {
                 if mine == theirs {
-                    return Some(*mine);
+                    return Some(mine);
                 }
             }
         }
         return None;
     }
 
-    pub fn is_integer(&self) -> bool {
+    pub fn is_unsigned(&self) -> bool {
         match self {
-            DatumType::U8
-            | DatumType::U16
-            | DatumType::I8
-            | DatumType::I16
-            | DatumType::I32
-            | DatumType::I64 => true,
+            DatumType::U8 | DatumType::U16 | DatumType::U32 | DatumType::U64 => true,
             _ => false,
         }
+    }
+
+    pub fn is_signed(&self) -> bool {
+        match self {
+            DatumType::I8 | DatumType::I16 | DatumType::I32 | DatumType::I64 => true,
+            _ => false,
+        }
+    }
+
+    pub fn integer(signed: bool, size: usize) -> Self {
+        use DatumType::*;
+        match (signed, size) {
+            (false, 8) => U8,
+            (false, 16) => U16,
+            (false, 32) => U32,
+            (false, 64) => U64,
+            (true, 8) => U8,
+            (true, 16) => U16,
+            (true, 32) => U32,
+            (true, 64) => U64,
+            _ => panic!("No integer for signed:{} size:{}"),
+        }
+    }
+
+    pub fn is_float(&self) -> bool {
+        match self {
+            DatumType::F16 | DatumType::F32 | DatumType::F64 => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_integer(&self) -> bool {
+        self.is_signed() || self.is_unsigned()
     }
 
     pub fn size_of(&self) -> usize {
@@ -144,6 +151,8 @@ impl DatumType {
             DatumType::Bool => std::mem::size_of::<bool>(),
             DatumType::U8 => std::mem::size_of::<u8>(),
             DatumType::U16 => std::mem::size_of::<u16>(),
+            DatumType::U32 => std::mem::size_of::<u32>(),
+            DatumType::U64 => std::mem::size_of::<u64>(),
             DatumType::I8 => std::mem::size_of::<i8>(),
             DatumType::I16 => std::mem::size_of::<i16>(),
             DatumType::I32 => std::mem::size_of::<i32>(),
@@ -181,10 +190,6 @@ pub trait Datum:
     fn datum_type() -> DatumType;
 }
 
-pub(crate) trait TryInto<D> {
-    fn try_into(&self) -> TractResult<D>;
-}
-
 macro_rules! datum {
     ($t:ty, $v:ident) => {
         impl From<$t> for Tensor {
@@ -204,185 +209,9 @@ macro_rules! datum {
         }
     };
 }
-
-macro_rules! try_into {
-    ($f:ty, $t:ty) => {
-        impl TryInto<$t> for $f {
-            fn try_into(&self) -> TractResult<$t> {
-                Ok(*self as $t)
-            }
-        }
-    };
-}
-
-try_into!(i8, i16);
-try_into!(i8, i32);
-try_into!(i8, i64);
-try_into!(i16, i32);
-try_into!(i16, i64);
-try_into!(i32, i64);
-
-try_into!(i16, i8);
-try_into!(i32, i8);
-try_into!(i64, i8);
-try_into!(i32, i16);
-try_into!(i64, i16);
-try_into!(i64, i32);
-
-try_into!(f64, f32);
-try_into!(f32, f64);
-
-try_into!(i8, f32);
-try_into!(i16, f32);
-try_into!(i32, f32);
-try_into!(i64, f32);
-
-try_into!(u8, f32);
-try_into!(u16, f32);
-
-try_into!(u8, i64);
-
-try_into!(u8, i32);
-try_into!(u16, i32);
-
-try_into!(i8, f64);
-try_into!(i16, f64);
-try_into!(i32, f64);
-try_into!(i64, f64);
-
-try_into!(f32, i8);
-try_into!(f32, i16);
-try_into!(f32, i32);
-try_into!(f32, i64);
-
-try_into!(f64, i8);
-try_into!(f64, i16);
-try_into!(f64, i32);
-try_into!(f64, i64);
-
-impl TryInto<TDim> for i32 {
-    fn try_into(&self) -> TractResult<TDim> {
-        Ok((*self).into())
-    }
-}
-
-impl TryInto<TDim> for i64 {
-    fn try_into(&self) -> TractResult<TDim> {
-        Ok((*self).into())
-    }
-}
-
-impl TryInto<i32> for TDim {
-    fn try_into(&self) -> TractResult<i32> {
-        self.to_integer().map(|i| i as i32)
-    }
-}
-
-impl TryInto<i64> for TDim {
-    fn try_into(&self) -> TractResult<i64> {
-        self.to_integer().map(|i| i as i64)
-    }
-}
-
 impl tract_linalg::hash::SloppyHash for TDim {
     fn sloppy_hash<S: std::hash::Hasher>(&self, state: &mut S) {
         self.hash(state)
-    }
-}
-
-impl TryInto<bool> for f32 {
-    fn try_into(&self) -> TractResult<bool> {
-        Ok(*self != 0.0)
-    }
-}
-
-impl TryInto<f32> for bool {
-    fn try_into(&self) -> TractResult<f32> {
-        if *self {
-            Ok(1.0)
-        } else {
-            Ok(0.0)
-        }
-    }
-}
-
-impl TryInto<bool> for f64 {
-    fn try_into(&self) -> TractResult<bool> {
-        Ok(*self != 0.0)
-    }
-}
-
-impl TryInto<f64> for bool {
-    fn try_into(&self) -> TractResult<f64> {
-        if *self {
-            Ok(1.0)
-        } else {
-            Ok(0.0)
-        }
-    }
-}
-
-macro_rules! cast_to_and_from_bool {
-    ($t: ty) => {
-        impl TryInto<bool> for $t {
-            fn try_into(&self) -> TractResult<bool> {
-                Ok(*self != 0)
-            }
-        }
-
-        impl TryInto<$t> for bool {
-            fn try_into(&self) -> TractResult<$t> {
-                Ok(*self as usize as _)
-            }
-        }
-    }
-}
-cast_to_and_from_bool!(i8);
-cast_to_and_from_bool!(i16);
-cast_to_and_from_bool!(i32);
-cast_to_and_from_bool!(i64);
-
-
-impl TryInto<f32> for f16 {
-    fn try_into(&self) -> TractResult<f32> {
-        Ok(self.0.to_f32())
-    }
-}
-
-impl TryInto<f64> for f16 {
-    fn try_into(&self) -> TractResult<f64> {
-        Ok(self.0.to_f64())
-    }
-}
-
-impl TryInto<f16> for f32 {
-    fn try_into(&self) -> TractResult<f16> {
-        Ok(f16(half::f16::from_f32(*self)))
-    }
-}
-
-impl TryInto<f16> for f64 {
-    fn try_into(&self) -> TractResult<f16> {
-        Ok(f16(half::f16::from_f64(*self)))
-    }
-}
-
-impl TryInto<String> for f32 {
-    fn try_into(&self) -> TractResult<String> {
-        Ok(self.to_string())
-    }
-}
-
-impl TryInto<f32> for String {
-    fn try_into(&self) -> TractResult<f32> {
-        // this is onnx casts
-        if self == "INF" || self == "+INF" {
-            Ok(std::f32::INFINITY)
-        } else if self == "-INF" {
-            Ok(-std::f32::INFINITY)
-        } else {
-            Ok(self.parse::<f32>().map_err(|_| format!("Can not parse {} as f32", self))?)
-        }
     }
 }
 
@@ -396,6 +225,8 @@ datum!(i32, I32);
 datum!(i64, I64);
 datum!(u8, U8);
 datum!(u16, U16);
+datum!(u32, U32);
+datum!(u64, U64);
 datum!(TDim, TDim);
 datum!(String, String);
 datum!(Blob, Blob);

@@ -50,34 +50,58 @@ impl Expansion for InferenceBinOp {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let facts =
-            [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
-        let operating_datum_type =
-            self.0.operating_datum_type(facts[0].datum_type, facts[1].datum_type)?;
-        let max_rank = facts[0].rank().max(facts[1].rank());
-        let mut wires = tvec!();
-        for i in 0..2 {
-            let mut wire = inputs[i];
-            if facts[i].datum_type != operating_datum_type {
-                wire = target.wire_node(
-                    format!("{}.cast-{}", prefix, i),
-                    mir::element_wise::ElementWiseOp(Box::new(mir::cast::Cast::new(
-                        operating_datum_type,
-                    ))),
-                    &[wire],
-                )?[0];
-            }
-            for j in facts[i].rank()..max_rank {
-                wire = target.wire_node(
-                    format!("{}.fix-rank-{}-{}", prefix, i, j),
-                    AxisOp::Add(0),
-                    &[wire],
-                )?[0];
-            }
-            wires.push(wire);
-        }
-        target.wire_node(prefix, mir::binary::TypedBinOp(self.0.clone()), &*wires)
+        let operating_datum_type = self.0.operating_datum_type(
+            target.outlet_fact(inputs[0])?.datum_type,
+            target.outlet_fact(inputs[1])?.datum_type,
+        )?;
+        let wires = wire_rank_broadcast(prefix, target, inputs)?;
+        let wires = wire_cast(prefix, target, &wires, operating_datum_type)?;
+        target.wire_node(prefix, mir::binary::TypedBinOp(self.0.clone()), &wires)
     }
+}
+
+pub fn wire_rank_broadcast(
+    prefix: &str,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
+) -> TractResult<TVec<OutletId>> {
+    let facts = [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
+    let max_rank = facts[0].rank().max(facts[1].rank());
+    let mut wires = tvec!();
+    for i in 0..2 {
+        let mut wire = inputs[i];
+        for j in facts[i].rank()..max_rank {
+            wire = target.wire_node(
+                format!("{}.fix-rank-{}-{}", prefix, i, j),
+                AxisOp::Add(0),
+                &[wire],
+            )?[0];
+        }
+        wires.push(wire);
+    }
+    Ok(wires)
+}
+
+pub fn wire_cast(
+    prefix: &str,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
+    operating_datum_type: DatumType,
+) -> TractResult<TVec<OutletId>> {
+    let facts = [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
+    let mut wires = tvec!();
+    for i in 0..inputs.len() {
+        let mut wire = inputs[i];
+        if facts[i].datum_type != operating_datum_type {
+            wire = target.wire_node(
+                format!("{}.cast-{}", prefix, i),
+                mir::cast::cast(operating_datum_type),
+                &[wire],
+            )?[0];
+        }
+        wires.push(wire);
+    }
+    Ok(wires)
 }
 
 pub trait IntoHir {

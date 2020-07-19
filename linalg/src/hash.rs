@@ -39,6 +39,8 @@ impl_sloppy_hash!(i32);
 impl_sloppy_hash!(i64);
 impl_sloppy_hash!(u8);
 impl_sloppy_hash!(u16);
+impl_sloppy_hash!(u32);
+impl_sloppy_hash!(u64);
 impl_sloppy_hash!(String);
 
 #[macro_export]

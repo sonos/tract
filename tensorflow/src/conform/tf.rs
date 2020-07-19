@@ -74,6 +74,8 @@ impl From<Tensor> for TensorHolder {
             DatumType::I64 => TensorHolder::I64(Self::to_tensor(m.into_array().unwrap())),
             DatumType::U8 => TensorHolder::U8(Self::to_tensor(m.into_array().unwrap())),
             DatumType::U16 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::U32 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::U64 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
             DatumType::TDim => {
                 let dims = m.to_array_view::<TDim>().unwrap();
                 if dims.iter().all(|d| d.to_integer().is_ok()) {
