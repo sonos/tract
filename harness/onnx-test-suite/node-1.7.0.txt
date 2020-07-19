@@ -378,6 +378,7 @@ test_reshape_reordered_last_dims dynsize
 test_reshape_zero_and_negative_dim dynsize
 test_reshape_zero_dim dynsize
 test_rnn_seq_length
+test_round
 test_scan9_sum
 test_selu
 test_selu_default

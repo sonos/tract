@@ -21,6 +21,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Abs", |_, _| Ok((Box::new(ops::math::abs()), vec![])));
     reg.insert("Ceil", |_, _| Ok((Box::new(ops::math::ceil()), vec![])));
     reg.insert("Floor", |_, _| Ok((Box::new(ops::math::floor()), vec![])));
+    reg.insert("Round", |_, _| Ok((Box::new(ops::math::round_half_to_even()), vec![])));
     reg.insert("Clip", clip::clip);
 
     reg.insert("Cos", |_, _| Ok((Box::new(ops::math::cos()), vec![])));
