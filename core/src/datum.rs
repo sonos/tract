@@ -72,7 +72,7 @@ impl DatumType {
         } else if self.is_float() {
             [F16, F32, F64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_signed() {
-            [I8, I16, I32, I64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
+            [I8, I16, I32, I64, TDim].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else {
             [U8, U16, U32, U64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         }
