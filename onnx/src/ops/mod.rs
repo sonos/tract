@@ -12,6 +12,7 @@ macro_rules! op_onnx {
 }
 
 mod array;
+mod cast;
 mod category_mapper;
 mod logic;
 mod math;
@@ -20,7 +21,7 @@ mod quant;
 pub mod rec;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("Cast", cast);
+    reg.insert("Cast", cast::cast);
     reg.insert("Constant", konst);
     reg.insert("Identity", |_, _| Ok((Box::new(ops::identity::Identity::default()), vec![])));
     array::register_all_ops(reg);
@@ -38,12 +39,4 @@ fn konst(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let v = node.get_attr::<Tensor>("value")?;
     Ok((Box::new(tract_hir::ops::konst::Const(v.into())), vec![]))
-}
-
-fn cast(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let to = node.get_attr::<DatumType>("to")?;
-    Ok((Box::new(ops::cast(to)), vec![]))
 }
