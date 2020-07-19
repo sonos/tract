@@ -50,7 +50,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Sign", |_, _| Ok((Box::new(ops::math::sign()), vec![])));
     reg.insert("Reciprocal", |_, _| Ok((Box::new(ops::math::recip()), vec![])));
 
-    reg.insert("Pow", |_, _| pow::pow);
+    reg.insert("Pow", pow::pow);
 
     reg.insert("MatMul", |_, _| Ok((Box::new(ops::matmul::MatMul::default()), vec![])));
     reg.insert("MatMulInteger", mat_mul_integer::mat_mul_integer);
@@ -65,6 +65,7 @@ element_wise!(erf, Erf,
     };
     prefix: "onnx."
 );
+
 element_wise_oop!(is_nan, IsNan,
     [f32] => bool |_, xs, ys| {
         xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = x.is_nan());

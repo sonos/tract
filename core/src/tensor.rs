@@ -1,6 +1,6 @@
 //! `Tensor`, tract main data object of interest.
-use crate::internal::*;
 use crate::dim::TDim;
+use crate::internal::*;
 use ndarray::prelude::*;
 use std::alloc;
 use std::fmt;
@@ -40,6 +40,8 @@ impl Hash for Tensor {
                 I64 => self.as_slice_unchecked::<i64>().hash(state),
                 U8 => self.as_slice_unchecked::<u8>().hash(state),
                 U16 => self.as_slice_unchecked::<u16>().hash(state),
+                U32 => self.as_slice_unchecked::<u32>().hash(state),
+                U64 => self.as_slice_unchecked::<u64>().hash(state),
                 F16 => self.as_slice_unchecked::<i16>().hash(state),
                 F32 => self.as_slice_unchecked::<i32>().hash(state),
                 F64 => self.as_slice_unchecked::<i64>().hash(state),
@@ -155,6 +157,8 @@ impl Tensor {
                 DatumType::Bool => i8::stack_tensors(axis, &tensors),
                 DatumType::U8 => i8::stack_tensors(axis, &tensors),
                 DatumType::U16 => i16::stack_tensors(axis, &tensors),
+                DatumType::U32 => i32::stack_tensors(axis, &tensors),
+                DatumType::U64 => i64::stack_tensors(axis, &tensors),
                 DatumType::I8 => i8::stack_tensors(axis, &tensors),
                 DatumType::I16 => i16::stack_tensors(axis, &tensors),
                 DatumType::I32 => i32::stack_tensors(axis, &tensors),
@@ -420,18 +424,50 @@ impl Tensor {
         dispatch_datum!(Tensor::is_uniform_t(self.datum_type())(self))
     }
 
-    /// Convert data to a tensor for a new DatumType.
-    fn cast<Source: Datum + crate::datum::TryInto<Target>, Target: Datum>(
+    unsafe fn natural_cast<
+        Source: Datum + num_traits::AsPrimitive<Target>,
+        Target: Datum + Copy,
+    >(
         &self,
-    ) -> TractResult<Tensor> {
-        let casted_vec: Vec<Target> = self
-            .as_slice::<Source>()?
+        other: &mut Tensor,
+    ) {
+        self.as_slice_unchecked::<Source>()
             .iter()
-            .map(|s| s.try_into())
-            .collect::<TractResult<_>>()
-            .chain_err(|| format!("Casting {:?} to {:?}", self, Target::datum_type()))?;
-        let casted_array = ArrayD::from_shape_vec(&*self.shape, casted_vec)?;
-        Ok(casted_array.into())
+            .zip(other.as_slice_mut_unchecked::<Target>().iter_mut())
+            .for_each(|(s, d)| *d = s.as_());
+    }
+
+    unsafe fn cast_number_to_bool<Source: Datum + num_traits::Zero>(&self, other: &mut Tensor) {
+        self.as_slice_unchecked::<Source>()
+            .iter()
+            .zip(other.as_slice_mut_unchecked::<bool>().iter_mut())
+            .for_each(|(s, d)| *d = !s.is_zero());
+    }
+
+    unsafe fn cast_from_string<Target: Datum + core::str::FromStr>(
+        &self,
+        other: &mut Tensor,
+    ) -> TractResult<()> {
+        for (s, d) in self
+            .as_slice_unchecked::<String>()
+            .iter()
+            .zip(other.as_slice_mut_unchecked::<Target>().iter_mut())
+        {
+            *d = s
+                .parse()
+                .map_err(|_| format!("Could not parse {} as {:?}", s, Target::datum_type()))?
+        }
+        Ok(())
+    }
+
+    unsafe fn cast_to_string<Source: Datum>(&self, other: &mut Tensor) {
+        for (s, d) in self
+            .as_slice_unchecked::<Source>()
+            .iter()
+            .zip(other.as_slice_mut_unchecked::<String>().iter_mut())
+        {
+            *d = s.to_string()
+        }
     }
 
     /// Optionnaly convert data to a tensor for a new DatumType.
@@ -441,83 +477,80 @@ impl Tensor {
 
     /// Optionnaly convert data to a tensor for a new DatumType.
     pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<Cow<Tensor>> {
-        use DatumType::*;
-        if self.dt == dt {
-            return Ok(Cow::Borrowed(self));
+        unsafe {
+            if self.dt == dt {
+                return Ok(Cow::Borrowed(self));
+            }
+            if self.dt == TDim::datum_type() && (dt.is_integer() || dt.is_float()) {
+                let slice = self.as_slice_unchecked::<TDim>();
+                let mut ints = Self::uninitialized::<i32>(&self.shape)?;
+                let ints_slice = ints.as_slice_mut_unchecked::<i32>();
+                for i in 0..self.len() {
+                    ints_slice[i] = slice[i].to_integer()?;
+                }
+                return Ok(Cow::Owned(ints.cast_to_dt(dt)?.into_owned()));
+            }
+            if self.dt == bool::datum_type() && (dt.is_integer() || dt.is_float()) {
+                let slice = self.as_slice_unchecked::<bool>();
+                let mut ints = Self::uninitialized::<i8>(&self.shape)?;
+                let ints_slice = ints.as_slice_mut_unchecked::<i8>();
+                for i in 0..self.len() {
+                    ints_slice[i] = slice[i] as usize as i8;
+                }
+                return Ok(Cow::Owned(ints.cast_to_dt(dt)?.into_owned()));
+            }
+            let mut result = Self::uninitialized_dt(dt, &self.shape)?;
+            if self.dt == DatumType::String {
+                dispatch_datum!(Self::cast_from_string(dt)(self, &mut result))?;
+                return Ok(Cow::Owned(result));
+            }
+            if dt == DatumType::String {
+                dispatch_datum!(Self::cast_to_string(self.dt)(self, &mut result));
+                return Ok(Cow::Owned(result));
+            }
+            macro_rules! n {
+                ($source:ty) => {
+                    if <$source>::datum_type() == self.datum_type() {
+                        match dt {
+                            DatumType::I8 => self.natural_cast::<$source, i8>(&mut result),
+                            DatumType::I16 => self.natural_cast::<$source, i16>(&mut result),
+                            DatumType::I32 => self.natural_cast::<$source, i32>(&mut result),
+                            DatumType::I64 => self.natural_cast::<$source, i64>(&mut result),
+                            DatumType::U8 => self.natural_cast::<$source, u8>(&mut result),
+                            DatumType::U16 => self.natural_cast::<$source, u16>(&mut result),
+                            DatumType::U32 => self.natural_cast::<$source, u32>(&mut result),
+                            DatumType::U64 => self.natural_cast::<$source, u64>(&mut result),
+                            DatumType::F16 => self.natural_cast::<$source, f16>(&mut result),
+                            DatumType::F32 => self.natural_cast::<$source, f32>(&mut result),
+                            DatumType::F64 => self.natural_cast::<$source, f64>(&mut result),
+                            DatumType::TDim => {
+                                let ints = self.cast_to::<i32>()?;
+                                let slice = ints.as_slice_unchecked::<i32>();
+                                let result = result.as_slice_mut_unchecked::<TDim>();
+                                for i in 0..self.len() {
+                                    result[i] = slice[i].into();
+                                }
+                            }
+                            DatumType::Bool => self.cast_number_to_bool::<$source>(&mut result),
+                            _ => todo!(),
+                        }
+                        return Ok(Cow::Owned(result));
+                    };
+                };
+            };
+            n!(u8);
+            n!(u16);
+            n!(u32);
+            n!(u64);
+            n!(i8);
+            n!(i16);
+            n!(i32);
+            n!(i64);
+            n!(f16);
+            n!(f32);
+            n!(f64);
+            bail!("Unsupported cast from {:?} to {:?}", self.dt, dt)
         }
-        let target = match (self.dt, dt) {
-            (TDim, I32) => self.cast::<crate::dim::TDim, i32>()?,
-            (TDim, I64) => self.cast::<crate::dim::TDim, i64>()?,
-            (I32, TDim) => self.cast::<i32, crate::dim::TDim>()?,
-            (I64, TDim) => self.cast::<i64, crate::dim::TDim>()?,
-
-            (F16, F32) => self.cast::<f16, f32>()?,
-            (F32, F16) => self.cast::<f32, f16>()?,
-            (F16, F64) => self.cast::<f16, f64>()?,
-            (F64, F16) => self.cast::<f64, f16>()?,
-            (F32, F64) => self.cast::<f32, f64>()?,
-            (F64, F32) => self.cast::<f64, f32>()?,
-
-            (I8, I16) => self.cast::<i8, i16>()?,
-            (I16, I8) => self.cast::<i16, i8>()?,
-            (I8, I32) => self.cast::<i8, i32>()?,
-            (I32, I8) => self.cast::<i32, i8>()?,
-            (I8, I64) => self.cast::<i8, i64>()?,
-            (I64, I8) => self.cast::<i64, i8>()?,
-            (I16, I32) => self.cast::<i16, i32>()?,
-            (I32, I16) => self.cast::<i32, i16>()?,
-            (I16, I64) => self.cast::<i16, i64>()?,
-            (I64, I16) => self.cast::<i64, i16>()?,
-            (I32, I64) => self.cast::<i32, i64>()?,
-            (I64, I32) => self.cast::<i64, i32>()?,
-
-            (I8, Bool) => self.cast::<i8, bool>()?,
-            (I16, Bool) => self.cast::<i16, bool>()?,
-            (I32, Bool) => self.cast::<i32, bool>()?,
-            (I64, Bool) => self.cast::<i64, bool>()?,
-
-            (Bool, I8) => self.cast::<bool, i8>()?,
-            (Bool, I16) => self.cast::<bool, i16>()?,
-            (Bool, I32) => self.cast::<bool, i32>()?,
-            (Bool, I64) => self.cast::<bool, i64>()?,
-
-            (Bool, F32) => self.cast::<bool, f32>()?,
-            (I8, F32) => self.cast::<i8, f32>()?,
-            (I16, F32) => self.cast::<i16, f32>()?,
-            (I32, F32) => self.cast::<i32, f32>()?,
-            (I64, F32) => self.cast::<i64, f32>()?,
-
-            (Bool, F64) => self.cast::<bool, f64>()?,
-            (I8, F64) => self.cast::<i8, f64>()?,
-            (I16, F64) => self.cast::<i16, f64>()?,
-            (I32, F64) => self.cast::<i32, f64>()?,
-            (I64, F64) => self.cast::<i64, f64>()?,
-
-            (U8, F32) => self.cast::<u8, f32>()?,
-            (U16, F32) => self.cast::<u16, f32>()?,
-            (U8, I32) => self.cast::<u8, i32>()?,
-            (U16, I32) => self.cast::<u16, i32>()?,
-
-            (U8, I64) => self.cast::<u8, i64>()?,
-
-            (F32, Bool) => self.cast::<f32, bool>()?,
-            (F32, I8) => self.cast::<f32, i8>()?,
-            (F32, I16) => self.cast::<f32, i16>()?,
-            (F32, I32) => self.cast::<f32, i32>()?,
-            (F32, I64) => self.cast::<f32, i64>()?,
-
-            (F64, Bool) => self.cast::<f64, bool>()?,
-            (F64, I8) => self.cast::<f64, i8>()?,
-            (F64, I16) => self.cast::<f64, i16>()?,
-            (F64, I32) => self.cast::<f64, i32>()?,
-            (F64, I64) => self.cast::<f64, i64>()?,
-
-            (F32, String) => self.cast::<f32, std::string::String>()?,
-            (String, F32) => self.cast::<std::string::String, f32>()?,
-
-            _ => bail!("Unsupported cast from {:?} to {:?}", self.dt, dt),
-        };
-        Ok(Cow::Owned(target))
     }
 
     /// Access the data as a scalar, after a cast.
