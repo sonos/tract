@@ -54,7 +54,7 @@ impl InferenceRulesOp for Source {
         if let Ok(fact) = TypedFact::try_from(&node.outputs[0].fact) {
             target.wire_node(&*node.name, TypedSource::new(fact), &[])
         } else {
-            bail!("Output type not determined")
+            bail!("Source node without an determined fact. Help: provide explicit input facts to your model.")
         }
     }
 }

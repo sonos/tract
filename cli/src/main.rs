@@ -302,8 +302,7 @@ fn main() {
 
     if let Err(e) = handle(matches, probe.as_ref()) {
         use error_chain::ChainedError;
-        error!("{}", e);
-        eprintln!("{}", e.display_chain());
+        error!("{}", e.display_chain());
         process::exit(1)
     }
 
@@ -801,14 +800,7 @@ impl Parameters {
                 }
                 info_usage("after incorporate", probe);
                 info!("Running 'type'");
-                let model = match model.clone().into_typed() {
-                    Ok(typed) => typed,
-                    Err(e) => {
-                        error!("{:?}", e);
-                        return Ok(Box::new(model) as _);
-                    }
-                };
-
+                let model = model.clone().into_typed()?;
                 if stop_at == "type" {
                     return Ok(Box::new(model) as _);
                 }
