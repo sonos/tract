@@ -18,7 +18,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 bit-set="0.5"
 derive-new = "0.5"
-educe = "0.4"
+educe = "=0.4.11" # locked for rust 1.41.0
 lazy_static = "1"
 log = "0.4"
 maplit = "1"
