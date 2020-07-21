@@ -3,9 +3,6 @@ use tract_hir::tract_core::{downcast_rs, dyn_clone};
 
 /// Common methods for all variants of model.
 pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
-    /// Model label
-    fn model_label(&self) -> Option<&str>;
-
     /// Lookup node id by name
     fn node_id_by_name(&self, name: &str) -> TractResult<usize>;
 
@@ -89,10 +86,6 @@ where
     F: Fact + Hash + Clone + 'static,
     O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
-    fn model_label(&self) -> Option<&str> {
-        self.label.as_ref().map(|s| &**s)
-    }
-
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
         self.nodes
             .iter()
