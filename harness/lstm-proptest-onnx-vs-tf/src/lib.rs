@@ -2,8 +2,8 @@
 
 use proptest::prelude::*;
 
-use tract_ndarray::prelude::*;
 use tract_hir::internal::*;
+use tract_ndarray::prelude::*;
 use tract_onnx::prelude::*;
 use tract_onnx::tract_hir;
 
@@ -167,8 +167,8 @@ impl LstmProblem {
 
         model.set_output_names(&["lstm", "memo"])?;
         let extensions = tract_tensorflow::model::TfModelExtensions {
-            control_inputs: vec!(),
-            initializing_nodes: vec!(init[0].node),
+            control_inputs: vec![],
+            initializing_nodes: vec![init[0].node],
         };
         let model = extensions.preproc(model)?;
 

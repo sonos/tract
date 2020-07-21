@@ -138,7 +138,7 @@ impl AxisOp {
                 // semantics
                 if x == from {
                     None
-                    // Some((Some(Rm(*to)), None))
+                // Some((Some(Rm(*to)), None))
                 } else if x < from.min(to) {
                     Some((Some(self.clone()), Some(Move(from - 1, to - 1))))
                 } else if x > from.max(to) {
@@ -288,7 +288,9 @@ impl AxisOp {
                 self.change_shape_array(&mut shape);
                 if tensor.set_shape(&shape).is_ok() {
                     Ok(())
-                } else if broadcasting && tensor.shape().iter().skip(*at).take(from.len()).all(|d| *d == 1) {
+                } else if broadcasting
+                    && tensor.shape().iter().skip(*at).take(from.len()).all(|d| *d == 1)
+                {
                     if from.len() > to.len() {
                         for _ in to.len()..from.len() {
                             tensor.insert_axis(*at)?;
@@ -301,7 +303,12 @@ impl AxisOp {
                     }
                     Ok(())
                 } else {
-                    bail!("Invalid reshaping: {:?} on tensor {:?} (broadcasting allowed: {:?})", self, tensor, broadcasting)
+                    bail!(
+                        "Invalid reshaping: {:?} on tensor {:?} (broadcasting allowed: {:?})",
+                        self,
+                        tensor,
+                        broadcasting
+                    )
                 }
             }
         }

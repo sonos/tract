@@ -18,21 +18,16 @@ impl TypedPass for ChangeAxes {
                 for suggestion in model.node(n).op.suggested_axis_changes()? {
                     let outlet = suggestion.0.as_outlet(&model.node(n));
                     let change = AxisChange { outlet, op: suggestion.1 };
-                    if change_axes(
-                        model,
-                        &change,
-                        &interfaces,
-                        &[],
-                    )
-                    .chain_err(|| format!("Applying {:?}", change))?
-                    .is_some()
+                    if change_axes(model, &change, &interfaces, &[])
+                        .chain_err(|| format!("Applying {:?}", change))?
+                        .is_some()
                     {
                         done_something = true;
                         continue 'top;
                     }
                 }
             }
-            return Ok(done_something)
+            return Ok(done_something);
         }
     }
 }

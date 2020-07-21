@@ -18,7 +18,9 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("FusedBatchNorm", fused_batch_norm::fused_batch_norm);
     reg.insert("MaxPool", pools::maxpool);
     reg.insert("Relu", |_, _| Ok(expand(tract_hir::ops::activations::Clip::new(Some(0.0), None))));
-    reg.insert("Relu6", |_, _| Ok(expand(tract_hir::ops::activations::Clip::new(Some(0.0), Some(6.0)))));
+    reg.insert("Relu6", |_, _| {
+        Ok(expand(tract_hir::ops::activations::Clip::new(Some(0.0), Some(6.0))))
+    });
     reg.insert("Sigmoid", |_, _| Ok(Box::new(tract_hir::ops::nn::sigmoid())));
     reg.insert("Softmax", |_, _| Ok(expand(LayerSoftmax::new(1))));
     reg.insert("SpaceToBatchND", s2b::space_to_batch_nd);

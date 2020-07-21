@@ -49,7 +49,7 @@ dyn_clone::clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
     TI: Copy + Add + Mul + Zero + Debug + 'static,
 );
 
-impl<TA, TB, TC, TI> std::hash::Hash for Box<dyn MatMatMul<TA, TB, TC,TI>>
+impl<TA, TB, TC, TI> std::hash::Hash for Box<dyn MatMatMul<TA, TB, TC, TI>>
 where
     TA: Copy + Zero + 'static,
     TB: Copy + Zero + 'static,
@@ -331,7 +331,15 @@ where
         write!(
             fmt,
             "A:{}, B:{} C:{} (m:{}, k:{}, n:{}) ({} {}x{})",
-            self.a_storage, self.b_storage, self.c_storage, self.m, self.k, self.n, K::name(), K::mr(), K::nr()
+            self.a_storage,
+            self.b_storage,
+            self.c_storage,
+            self.m,
+            self.k,
+            self.n,
+            K::name(),
+            K::mr(),
+            K::nr()
         )
     }
 }
@@ -351,7 +359,7 @@ pub mod test {
             mod frame {
                 #[allow(unused_imports)]
                 use $crate::frame::mmm::mmm::test::*;
-                use $crate::num_traits::{ AsPrimitive, One, Zero };
+                use $crate::num_traits::{AsPrimitive, One, Zero};
 
                 proptest::proptest! {
                     #[test]
@@ -395,10 +403,7 @@ pub mod test {
                 #[test]
                 fn mat_mul_2() {
                     if $cond {
-                        let a: Vec<$ta> = [-1isize, -1, 0, 0]
-                            .iter()
-                            .map(|x| x.as_())
-                            .collect();
+                        let a: Vec<$ta> = [-1isize, -1, 0, 0].iter().map(|x| x.as_()).collect();
                         let b: Vec<$tb> = [0isize, 1, 0, 1].iter().map(|x| x.as_()).collect();
                         test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(2, 2, 2, &*a, &*b)
                             .unwrap()
@@ -433,7 +438,7 @@ pub mod test {
                             filters,
                             data,
                         };
-                        let expected:Vec<$tc> = pb.expected::<$tc, $ti>();
+                        let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
                         crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
                     }
                 }
@@ -454,7 +459,7 @@ pub mod test {
                             filters,
                             data,
                         };
-                        let expected:Vec<$tc> = pb.expected::<$tc, $ti>();
+                        let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
                         crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
                     }
                 }
@@ -508,10 +513,10 @@ pub mod test {
     macro_rules! mmm_s_frame_tests {
         ($cond:expr, $ker:ty, $ta: ty, $tb: ty, $tc: ty, $ti: ty) => {
             mod frame_s {
-                use $crate::frame::mmm::mmm::test::ConvProblem;
                 #[allow(unused_imports)]
                 use num_traits::*;
                 use std::ops::Neg;
+                use $crate::frame::mmm::mmm::test::ConvProblem;
 
                 #[test]
                 fn conv_prepacked_3() {
@@ -528,7 +533,7 @@ pub mod test {
                             filters,
                             data,
                         };
-                        let expected:Vec<$tc> = pb.expected::<$tc, $ti>();
+                        let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
                         crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
                     }
                 }
@@ -644,7 +649,14 @@ pub mod test {
         }
     }
 
-    pub unsafe fn fused_op<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI, F: Fn(&mut [TI])>(
+    pub unsafe fn fused_op<
+        K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+        TA,
+        TB,
+        TC,
+        TI,
+        F: Fn(&mut [TI]),
+    >(
         m: usize,
         k: usize,
         n: usize,

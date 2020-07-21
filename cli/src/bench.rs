@@ -28,14 +28,14 @@ pub fn handle(params: &Parameters, limits: &BenchLimits, probe: Option<&Probe>) 
     let mut iters = 0;
     let start = Instant::now();
     while iters < limits.max_iters && start.elapsed() < limits.max_time {
-    if let Some(mon) = probe {
-    let _ = mon.log_event(&format!("loop_{}", iters));
-    }
-    if let Some(p) = &progress {
-    p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
-    }
-    state.run(crate::tensor::make_inputs_for_model(model)?)?;
-    iters += 1;
+        if let Some(mon) = probe {
+            let _ = mon.log_event(&format!("loop_{}", iters));
+        }
+        if let Some(p) = &progress {
+            p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
+        }
+        state.run(crate::tensor::make_inputs_for_model(model)?)?;
+        iters += 1;
     }
     let dur = start.elapsed();
     let dur = Duration::from_secs_f64(dur.as_secs_f64() / iters as f64);

@@ -1,8 +1,8 @@
 use super::*;
+use crate::errors::TractResult;
 use crate::ops::Op;
 use std::fmt;
 use std::hash::Hash;
-use crate::errors::TractResult;
 
 use tract_linalg::hash::DynHash;
 
@@ -23,7 +23,7 @@ pub trait SpecialOps<F, O> {
 /// Parameterized by a Fact class.
 #[derive(Clone, Debug, Educe)]
 #[educe(Hash)]
-pub struct ModelImpl<F, O>
+pub struct Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
@@ -43,7 +43,7 @@ fn hash_outlet_labels<H: std::hash::Hasher>(it: &HashMap<OutletId, String>, stat
     it.iter().sorted().for_each(|ol| ol.hash(state))
 }
 
-impl<F, O> DynHash for ModelImpl<F, O>
+impl<F, O> DynHash for Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
@@ -53,21 +53,21 @@ where
     }
 }
 
-impl<F, O> Default for ModelImpl<F, O>
+impl<F, O> Default for Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
-    fn default() -> ModelImpl<F, O> {
-        ModelImpl { nodes: vec![], inputs: vec![], outputs: vec![], outlet_labels: HashMap::new() }
+    fn default() -> Graph<F, O> {
+        Graph { nodes: vec![], inputs: vec![], outputs: vec![], outlet_labels: HashMap::new() }
     }
 }
 
-impl<F, O> ModelImpl<F, O>
+impl<F, O> Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    ModelImpl<F, O>: SpecialOps<F, O>,
+    Graph<F, O>: SpecialOps<F, O>,
 {
     pub fn add_source(&mut self, name: impl Into<String>, fact: F) -> TractResult<OutletId> {
         let source = self.create_source(fact.clone());
@@ -78,7 +78,7 @@ where
     }
 }
 
-impl<F, O> ModelImpl<F, O>
+impl<F, O> Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
@@ -515,7 +515,7 @@ where
     }
 }
 
-impl<F: Fact + Clone + 'static, O> ModelImpl<F, O>
+impl<F: Fact + Clone + 'static, O> Graph<F, O>
 where
     F: Fact + Clone + 'static + From<std::sync::Arc<crate::tensor::Tensor>> + Hash,
     O: fmt::Debug
@@ -538,7 +538,7 @@ where
     }
 }
 
-impl<F, O> fmt::Display for ModelImpl<F, O>
+impl<F, O> fmt::Display for Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
@@ -601,7 +601,7 @@ where
     }
 }
 
-impl<F, O> ModelImpl<F, O>
+impl<F, O> Graph<F, O>
 where
     F: Fact + Clone + 'static + std::hash::Hash + for<'a> std::convert::From<&'a F>,
     O: std::fmt::Display

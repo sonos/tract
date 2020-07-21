@@ -34,8 +34,8 @@ impl Arbitrary for ConvOp {
             1usize..3,
             vec(1usize..3),
             // FIXME
-//            prop_oneof![Just(cnn::PaddingSpec::Valid), Just(cnn::PaddingSpec::SameUpper)],
-            Just(cnn::PaddingSpec::Valid)
+            //            prop_oneof![Just(cnn::PaddingSpec::Valid), Just(cnn::PaddingSpec::SameUpper)],
+            Just(cnn::PaddingSpec::Valid),
         )
             .prop_map(|(stride, dilation, ker, padding)| ConvOp {
                 stride,

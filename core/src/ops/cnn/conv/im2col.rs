@@ -93,7 +93,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
             Tensor::uninitialized_aligned::<T>(&*self.output_shape.shape, self.b_pack.alignment())?
         };
         if self.output_shape.shape.iter().any(|d| d.is_zero()) {
-            return Ok(packed)
+            return Ok(packed);
         }
         let pad_value = *self.pad_value.to_scalar()?;
         for i in 0..*self.input_shape.n_dim().unwrap_or(&1) {

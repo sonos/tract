@@ -192,7 +192,6 @@ pub struct TypedFact {
     pub konst: Option<Arc<Tensor>>,
 }
 
-
 tract_linalg::impl_dyn_hash!(TypedFact);
 
 impl TypedFact {
@@ -281,4 +280,3 @@ impl fmt::Debug for TypedFact {
         }
     }
 }
-

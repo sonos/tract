@@ -31,7 +31,10 @@ impl StatelessOp for DepthWise {
 }
 
 impl DepthWise {
-    fn eval_t<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_t<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
+        &self,
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
         let iptr = img.as_ptr();

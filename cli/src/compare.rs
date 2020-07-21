@@ -129,7 +129,7 @@ pub fn handle_pbdir(
 
 pub fn compare<F, O>(
     cumulative: bool,
-    tract: &ModelImpl<F, O>,
+    tract: &Graph<F, O>,
     all_values: &HashMap<String, CliResult<Tensor>>,
     params: &Parameters,
     output_params: DisplayParams,
@@ -137,7 +137,7 @@ pub fn compare<F, O>(
 where
     F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + Hash,
-    ModelImpl<F, O>: Model,
+    Graph<F, O>: Model,
 {
     let eval_order = ::tract_core::model::eval_order(&tract)?;
 

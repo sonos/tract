@@ -7,7 +7,15 @@ tract_core::dyn_clone::clone_trait_object!(InferenceOp);
 
 /// An operation with tensor type inference
 pub trait InferenceOp:
-    Op + fmt::Debug + tract_core::dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp + DynHash
+    Op
+    + fmt::Debug
+    + tract_core::dyn_clone::DynClone
+    + Send
+    + Sync
+    + 'static
+    + Downcast
+    + StatefullOp
+    + DynHash
 {
     /// Infers properties about the input and output tensors.
     ///

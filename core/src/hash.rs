@@ -1,5 +1,5 @@
-use std::hash::Hash;
 use crate::ops::*;
+use std::hash::Hash;
 
 /*
 impl Hash for Box<dyn Op> {
@@ -16,7 +16,6 @@ impl<'a> Hash for &'a dyn Op {
     }
 }
 */
-
 
 impl Hash for Box<dyn TypedOp> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {

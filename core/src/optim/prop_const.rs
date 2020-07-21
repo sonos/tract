@@ -43,7 +43,8 @@ impl super::TypedPass for PropConst {
                     if let Some(k) = model.node_input_facts(node)?[i].konst.clone() {
                         let outlet = model.node(node).inputs[i];
                         let knode = model.node(outlet.node);
-                        if stateful.contains(knode.id) || knode.op_is::<crate::ops::konst::Const>() {
+                        if stateful.contains(knode.id) || knode.op_is::<crate::ops::konst::Const>()
+                        {
                             continue;
                         }
                         let k = patch.add_const(&*knode.name, k)?;

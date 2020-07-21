@@ -62,7 +62,8 @@ impl Expansion for Transpose {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         if let Some(axes) = &target.outlet_fact(inputs[1])?.konst {
-            let axes:TVec<usize> = axes.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
+            let axes: TVec<usize> =
+                axes.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
             let mut wire = tvec!(inputs[0]);
             for (from, to) in tract_hir::ops::array::permute_axes::perm_to_atoms(&axes) {
                 wire = target.wire_node(

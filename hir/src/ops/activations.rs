@@ -47,7 +47,7 @@ pub struct Clip(
 );
 
 activation!(Clip, |op, name: &str, model: &mut TypedModel, inputs| {
-    let mut wire:TVec<OutletId> = inputs.into();
+    let mut wire: TVec<OutletId> = inputs.into();
     if let Some(low) = op.0 {
         let low = broadcast_scalar(low, model, inputs)?;
         wire = model.wire_node(name.to_string() + ".low", max::unary(low), &wire)?;

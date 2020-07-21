@@ -1,10 +1,10 @@
 #[macro_export]
 macro_rules! op_hir {
     () => {
-        fn op_families(&self) -> &'static [ &'static str ] {
-            &[ "core" ]
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core"]
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -20,7 +20,7 @@ macro_rules! to_typed {
             let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
             target.wire_node(&*node.name, self.clone(), &*inputs)
         }
-    }
+    };
 }
 
 /// Constructs a type fact.

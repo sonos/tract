@@ -75,8 +75,7 @@ impl Expansion for Pack {
             .map(|&i| Ok(model.outlet_fact(i)?.datum_type))
             .collect::<TractResult<TVec<DatumType>>>()?;
         let dt = DatumType::super_type_for(dt.iter()).ok_or("No supertype")?;
-        let inputs: TVec<OutletId> =
-            inputs
+        let inputs: TVec<OutletId> = inputs
             .iter()
             .enumerate()
             .map(|(ix, &o)| {
@@ -88,15 +87,13 @@ impl Expansion for Pack {
                 Ok(model.wire_node(
                     format!("{}.add_dims-{}", prefix, ix),
                     AxisOp::Add(self.axis),
-                    &[wire]
+                    &[wire],
                 )?[0])
             })
             .collect::<TractResult<TVec<OutletId>>>()?;
         model.wire_node(
             prefix,
-            tract_hir::ops::array::TypedConcat::concat_vars(
-                self.axis as usize,
-                inputs.len()),
+            tract_hir::ops::array::TypedConcat::concat_vars(self.axis as usize, inputs.len()),
             &*inputs,
         )
     }

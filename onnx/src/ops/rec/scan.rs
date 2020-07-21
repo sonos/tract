@@ -55,7 +55,9 @@ pub fn scan(
     }
 
     for (ix, _input) in unresolved_inputs.iter().enumerate() {
-        mapped_inputs.push(ops::scan::InputMapping::Full{slot: model.input_outlets()?.len() - closure_inputs + ix});
+        mapped_inputs.push(ops::scan::InputMapping::Full {
+            slot: model.input_outlets()?.len() - closure_inputs + ix,
+        });
     }
 
     for (ix, ax) in scan_output_axes.iter().enumerate() {

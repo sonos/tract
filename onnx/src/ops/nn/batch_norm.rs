@@ -116,7 +116,7 @@ impl Expansion for BatchNorm {
             return target.wire_node(
                 prefix,
                 tract_hir::ops::math::add::unary(inter.into_arc_tensor()),
-                &wire
+                &wire,
             );
         }
         bail!("Params are not const")

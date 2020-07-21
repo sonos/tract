@@ -54,34 +54,38 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
     /// Subnets of a node
     fn nested_models(&self, id: usize) -> Vec<(String, &dyn Model)> {
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            vec!(("loop".into(), lir.plan.model()))
+            vec![("loop".into(), lir.plan.model())]
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            vec!(("loop".into(), &mir.body))
-        } else if let Some(hir) = self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>() {
-            vec!(("loop".into(), &hir.body))
+            vec![("loop".into(), &mir.body)]
+        } else if let Some(hir) =
+            self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>()
+        {
+            vec![("loop".into(), &hir.body)]
         } else {
-            vec!()
+            vec![]
         }
     }
 
     /// Subnets of a node
     fn nested_models_iters(&self, id: usize, input: &[&TypedFact]) -> Vec<Option<TDim>> {
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
-            vec!(lir.iteration_count(input))
+            vec![lir.iteration_count(input)]
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
-            vec!(mir.iteration_count(input))
-        } else if let Some(_) = self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>() {
+            vec![mir.iteration_count(input)]
+        } else if let Some(_) =
+            self.node_op(id).downcast_ref::<tract_hir::ops::scan::InferenceScan>()
+        {
             // if we have typefact, we hopefully have type ops
             unreachable!();
         } else {
-            vec!()
+            vec![]
         }
     }
 }
 
 downcast_rs::impl_downcast!(Model);
 
-impl<F, O> Model for ModelImpl<F, O>
+impl<F, O> Model for Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,

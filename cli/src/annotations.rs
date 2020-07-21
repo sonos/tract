@@ -244,17 +244,23 @@ impl Annotations {
                     let cost = model.node(node_id).op.cost(&*inputs)?;
                     annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
                         .into_iter()
-                        .map(|(k, v)| (k, if k.is_compute() { v.maybe_mul(&multiplier).unwrap() } else { v }))
+                        .map(|(k, v)| {
+                            (k, if k.is_compute() { v.maybe_mul(&multiplier).unwrap() } else { v })
+                        })
                         .collect();
 
                     let nested_subs = model.nested_models(node_id);
-                    let nested_multis = (model as &dyn Model).nested_models_iters(node_id, &*inputs);
-                    for ((name, sub), multi) in
-                        nested_subs.iter().zip(nested_multis.iter())
-                    {
+                    let nested_multis =
+                        (model as &dyn Model).nested_models_iters(node_id, &*inputs);
+                    for ((name, sub), multi) in nested_subs.iter().zip(nested_multis.iter()) {
                         let mut prefix: TVec<_> = prefix.into();
                         prefix.push((node_id, name.to_string()));
-                        extract_costs_rec(annotations, *sub, &*prefix, multiplier.maybe_mul(multi.as_ref().unwrap()).unwrap())?;
+                        extract_costs_rec(
+                            annotations,
+                            *sub,
+                            &*prefix,
+                            multiplier.maybe_mul(multi.as_ref().unwrap()).unwrap(),
+                        )?;
                     }
                 }
             }

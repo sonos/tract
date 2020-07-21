@@ -471,7 +471,15 @@ pub mod test {
     where
         TA: Arbitrary + SloppyHash + 'static + Debug + AsPrimitive<TI> + Zero + Copy,
         TB: Arbitrary + SloppyHash + 'static + Debug + AsPrimitive<TI> + Zero + Copy,
-        TC: Arbitrary + SloppyHash + 'static + Debug + Copy + Bounded + AsPrimitive<TI> + Zero + 'static,
+        TC: Arbitrary
+            + SloppyHash
+            + 'static
+            + Debug
+            + Copy
+            + Bounded
+            + AsPrimitive<TI>
+            + Zero
+            + 'static,
         TI: Arbitrary
             + 'static
             + Debug

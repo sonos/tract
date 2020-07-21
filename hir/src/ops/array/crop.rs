@@ -56,7 +56,7 @@ impl Expansion for Crop {
                 self.start.to_dim(),
                 len - self.end.to_dim(),
             ),
-            inputs
+            inputs,
         )
     }
 }

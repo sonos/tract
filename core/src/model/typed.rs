@@ -1,13 +1,12 @@
-
+use crate::errors::TractResultExt;
 use crate::model::*;
+use crate::ops;
 use crate::ops::invariants;
 use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
-use crate::errors::TractResultExt;
-
 
 /// A model with completely determined types and shapes.
-pub type TypedModel = ModelImpl<TypedFact, Box<dyn TypedOp>>;
+pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;
 /// Node for TypedModel graph
 pub type TypedNode = BaseNode<TypedFact, Box<dyn TypedOp>>;
 /// A ModelPatch for TypedModel.
@@ -24,7 +23,7 @@ pub type RunnableModel<F, O, M> = SimplePlan<F, O, M>;
 
 impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     fn is_source(op: &Box<dyn TypedOp>) -> bool {
-        op.as_op().downcast_ref::<crate::ops::source::TypedSource>().is_some()
+        op.as_op().downcast_ref::<ops::source::TypedSource>().is_some()
     }
 
     fn create_dummy(&self) -> Box<dyn TypedOp> {
@@ -90,7 +89,7 @@ impl TypedModel {
                 }
             }
             if !done_something_this_time {
-                return Ok(model)
+                return Ok(model);
             }
             if i < 10 {
                 continue;

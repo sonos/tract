@@ -1,11 +1,11 @@
 //! N-way tensor broadcast
-use crate::model::TVec;
 use crate::dim::DimLike;
+use crate::model::TVec;
 
 /// Computes a shape, if any, to which all shapes can be broadcasted.
 pub fn multi_broadcast<D>(shapes: &[impl AsRef<[D]>]) -> Option<TVec<D>>
 where
-    D: DimLike
+    D: DimLike,
 {
     let one = D::one();
     let len = shapes.iter().map(|shape| shape.as_ref().len()).max()?;

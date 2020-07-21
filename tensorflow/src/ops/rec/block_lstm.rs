@@ -177,7 +177,7 @@ impl Expansion for BlockLSTM {
     }
 }
 
-/* 
+/*
 // TODO: rewrite this logic as a tf.Assign declutter ?
 impl BlockLSTM {
     fn inline_var_assign(

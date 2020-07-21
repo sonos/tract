@@ -19,7 +19,7 @@ impl Expansion for MultiBroadcastTo {
         s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
-        ) -> InferenceResult {
+    ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
@@ -29,8 +29,8 @@ impl Expansion for MultiBroadcastTo {
                 let dims = dims.cast_to::<TDim>()?;
                 let dims =
                     tract_core::broadcast::multi_broadcast(&[&*dims.as_slice::<TDim>()?, &*shape])
-                    .ok_or("incompatible shapes")
-                    .unwrap();
+                        .ok_or("incompatible shapes")
+                        .unwrap();
                 s.equals(&outputs[0].shape, ShapeFactoid::from(dims))
             })
         })
@@ -41,7 +41,7 @@ impl Expansion for MultiBroadcastTo {
         prefix: &str,
         model: &mut TypedModel,
         inputs: &[OutletId],
-        ) -> TractResult<TVec<OutletId>> {
+    ) -> TractResult<TVec<OutletId>> {
         if let Some(shape) = model.outlet_fact(inputs[1])?.konst.clone() {
             let input_shape = model.outlet_fact(inputs[0])?.shape.to_tvec();
             let shape = shape.cast_to::<TDim>()?;

@@ -46,8 +46,10 @@ impl<F: Fact + Hash, O: Hash + std::fmt::Display> fmt::Display for BaseNode<F, O
 
 pub type Node<F> = BaseNode<F, Box<dyn Op>>;
 
-impl<F: Fact + Hash, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> + Hash>
-    BaseNode<F, NodeOp>
+impl<
+        F: Fact + Hash,
+        NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> + Hash,
+    > BaseNode<F, NodeOp>
 {
     /// Access the op of the node
     pub fn op(&self) -> &dyn Op {

@@ -89,7 +89,7 @@ impl PulsedFact {
     }
 }
 
-pub type PulsedModel = ModelImpl<PulsedFact, Box<dyn PulsedOp>>;
+pub type PulsedModel = Graph<PulsedFact, Box<dyn PulsedOp>>;
 pub type PulsedNode = BaseNode<PulsedFact, Box<dyn PulsedOp>>;
 
 impl PulsedModel {
