@@ -123,24 +123,17 @@ impl InferenceModelExt for InferenceModel {
     }
 }
 
-impl ModelDSL<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
-    fn add_source(
-        &mut self,
-        name: impl Into<String>,
-        fact: InferenceFact,
-    ) -> TractResult<OutletId> {
-        let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
-        let id = OutletId::new(id, 0);
-        self.inputs.push(id);
-        Ok(id)
-    }
-
-    fn is_source(op: &dyn Op) -> bool {
-        op.downcast_ref::<crate::ops::source::Source>().is_some()
+impl SpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
+    fn is_source(op: &Box<dyn InferenceOp>) -> bool {
+        op.as_op().downcast_ref::<crate::ops::source::Source>().is_some()
     }
 
     fn create_dummy(&self) -> Box<dyn InferenceOp> {
         Box::new(tract_core::ops::dummy::Dummy::new())
+    }
+
+    fn create_source(&self, _fact: InferenceFact) -> Box<dyn InferenceOp> {
+        Box::new(crate::ops::source::Source::new())
     }
 
     fn wire_node(

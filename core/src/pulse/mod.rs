@@ -109,6 +109,40 @@ impl PulsedModel {
     }
 }
 
+impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
+    fn is_source(op: &Box<dyn PulsedOp>) -> bool {
+        op.as_op().downcast_ref::<crate::ops::source::PulsedSource>().is_some()
+    }
+
+    fn create_source(&self, fact: PulsedFact) -> Box<dyn PulsedOp> {
+        Box::new(crate::ops::source::PulsedSource::new(fact))
+    }
+
+    fn create_dummy(&self) -> Box<dyn PulsedOp> {
+        Box::new(crate::ops::dummy::Dummy::new())
+    }
+
+    fn wire_node(
+        &mut self,
+        name: impl Into<String>,
+        op: impl Into<Box<dyn PulsedOp>>,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let op = op.into();
+        let output_facts = {
+            let input_facts =
+                inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
+            op.pulsed_output_facts(&*input_facts)?
+        };
+        let id = self.add_node(name, op, output_facts)?;
+        inputs
+            .iter()
+            .enumerate()
+            .try_for_each(|(ix, i)| self.add_edge(*i, InletId::new(id, ix)))?;
+        Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
+    }
+}
+
 #[derive(Debug)]
 struct Pulsifier(usize);
 impl
