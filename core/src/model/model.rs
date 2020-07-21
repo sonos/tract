@@ -430,6 +430,78 @@ where
     pub fn into_runnable(self) -> TractResult<RunnableModel<F, O, Self>> {
         SimplePlan::new(self)
     }
+
+    pub fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
+        let node = &self.nodes()[id];
+        if node.inputs.len() != 1 {
+            return Ok(None);
+        }
+        let prec = &self.nodes()[node.inputs[0].node];
+        if prec.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
+            return Ok(None);
+        }
+        Ok(Some(prec))
+    }
+
+    pub fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<F, O>>> {
+        let mut node = self.node(id);
+        for _ in 0..count {
+            if let Some(next) = self.single_prec(node.id)? {
+                node = next
+            } else {
+                return Ok(None);
+            }
+        }
+        Ok(Some(node))
+    }
+
+    pub fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<F, O>>> {
+        let mut node = self.node(id);
+        for _ in 0..count {
+            if let Some(next) = self.single_succ(node.id)? {
+                node = next
+            } else {
+                return Ok(None);
+            }
+        }
+        Ok(Some(node))
+    }
+
+    pub fn single_succ(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
+        let node = &self.nodes()[id];
+        if node.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
+            return Ok(None);
+        }
+        let succ = node.outputs[0].successors[0];
+        let succ = &self.nodes()[succ.node];
+        if succ.inputs.len() != 1 {
+            return Ok(None);
+        }
+        Ok(Some(succ))
+    }
+}
+
+impl<F: Fact + Clone + 'static, O> ModelImpl<F, O>
+where
+    F: Fact + Clone + 'static + From<std::sync::Arc<crate::tensor::Tensor>> + Hash,
+    O: fmt::Debug
+        + fmt::Display
+        + From<crate::ops::konst::Const>
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + Hash
+        + 'static,
+{
+    pub fn add_const(
+        &mut self,
+        name: impl Into<String>,
+        v: impl crate::tensor::IntoArcTensor,
+    ) -> TractResult<OutletId> {
+        let v = v.into_arc_tensor();
+        let fact = F::from(v.clone());
+        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
+    }
 }
 
 impl<F, O> Model for ModelImpl<F, O>
@@ -589,7 +661,7 @@ where
         + 'static
         + std::hash::Hash
         + for<'a> std::convert::From<&'a O>,
-    ModelImpl<F, O>: ModelWireNode<F, O> + ModelSpecialOps<F, O>,
+    ModelImpl<F, O>: ModelDSL<F, O>,
 {
     pub fn compact(&self) -> TractResult<Self> {
         use crate::model::translator::Translate;

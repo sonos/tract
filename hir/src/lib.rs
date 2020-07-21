@@ -8,7 +8,6 @@ extern crate log;
 #[macro_use]
 pub mod macros;
 pub mod framework;
-pub mod model;
 
 pub mod infer;
 

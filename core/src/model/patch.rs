@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
 use crate::internal::*;
-use crate::model::dsl::ModelSpecialOps;
+use crate::model::dsl::ModelDSL;
 use crate::model::*;
 
 /// A change to apply to a model.
@@ -15,7 +15,7 @@ pub struct ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    ModelImpl<F, O>: ModelSpecialOps<F, O>,
+    ModelImpl<F, O>: ModelDSL<F, O>,
 {
     /// the model-like 'pagch' of nodes to add to the model
     pub model: ModelImpl<F, O>,
@@ -28,7 +28,7 @@ impl<F, O> Default for ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    ModelImpl<F, O>: ModelSpecialOps<F, O>,
+    ModelImpl<F, O>: ModelDSL<F, O>,
 {
     fn default() -> ModelPatch<F, O> {
         ModelPatch {
@@ -44,7 +44,7 @@ impl<F, O> Deref for ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    ModelImpl<F, O>: ModelSpecialOps<F, O>,
+    ModelImpl<F, O>: ModelDSL<F, O>,
 {
     type Target = ModelImpl<F, O>;
     fn deref(&self) -> &ModelImpl<F, O> {
@@ -56,7 +56,7 @@ impl<F, O> DerefMut for ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    ModelImpl<F, O>: ModelSpecialOps<F, O>,
+    ModelImpl<F, O>: ModelDSL<F, O>,
 {
     fn deref_mut(&mut self) -> &mut ModelImpl<F, O> {
         &mut self.model
@@ -67,7 +67,7 @@ impl<F, O> ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    ModelImpl<F, O>: ModelSpecialOps<F, O>,
+    ModelImpl<F, O>: ModelDSL<F, O>,
 {
     pub fn is_empty(&self) -> bool {
         self.model.nodes.is_empty() && self.shunt_outlet_by.is_empty() && self.obliterate.is_empty()
