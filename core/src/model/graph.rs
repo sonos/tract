@@ -2,6 +2,21 @@ use super::*;
 use crate::ops::Op;
 use std::fmt;
 use std::hash::Hash;
+use crate::errors::TractResult;
+
+use tract_linalg::hash::DynHash;
+
+pub trait SpecialOps<F, O> {
+    fn create_dummy(&self) -> O;
+    fn create_source(&self, fact: F) -> O;
+    fn is_source(op: &O) -> bool;
+    fn wire_node(
+        &mut self,
+        name: impl Into<String>,
+        op: impl Into<O>,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>>;
+}
 
 /// Main model class
 ///
@@ -44,12 +59,22 @@ where
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     fn default() -> ModelImpl<F, O> {
-        ModelImpl {
-            nodes: vec![],
-            inputs: vec![],
-            outputs: vec![],
-            outlet_labels: HashMap::new(),
-        }
+        ModelImpl { nodes: vec![], inputs: vec![], outputs: vec![], outlet_labels: HashMap::new() }
+    }
+}
+
+impl<F, O> ModelImpl<F, O>
+where
+    F: Fact + Hash + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    ModelImpl<F, O>: SpecialOps<F, O>,
+{
+    pub fn add_source(&mut self, name: impl Into<String>, fact: F) -> TractResult<OutletId> {
+        let source = self.create_source(fact.clone());
+        let id = self.add_node(name, source, tvec!(fact))?;
+        let id = OutletId::new(id, 0);
+        self.inputs.push(id);
+        Ok(id)
     }
 }
 
@@ -433,7 +458,7 @@ where
 
     /// Converts the model into a `RunnableModel` which fixes the inputs and outputs and allows passing data through the model.
     pub fn into_runnable(self) -> TractResult<RunnableModel<F, O, Self>> {
-        SimplePlan::new(self)
+        crate::plan::SimplePlan::new(self)
     }
 
     pub fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
@@ -588,7 +613,6 @@ where
         + 'static
         + std::hash::Hash
         + for<'a> std::convert::From<&'a O>,
-    ModelImpl<F, O>: ModelDSL<F, O>,
 {
     pub fn compact(&self) -> TractResult<Self> {
         use crate::model::translator::Translate;
