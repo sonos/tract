@@ -55,8 +55,7 @@ pub fn profile(
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
     for &outer_node in &plan.order {
-        if let Some(m) =
-            (model as &dyn Model).downcast_ref::<ModelImpl<TypedFact, Box<dyn TypedOp>>>()
+        if let Some(m) = (model as &dyn Model).downcast_ref::<Graph<TypedFact, Box<dyn TypedOp>>>()
         {
             let outer_node = m.node(outer_node);
             let inputs: TVec<TypedFact> = model
@@ -81,9 +80,7 @@ pub fn profile(
                             |session_state, state, node, input| {
                                 let start = Instant::now();
                                 let r = tract_core::plan::eval(session_state, state, node, input);
-                                let elapsed = start
-                                    .elapsed()
-                                    .scale(multi as _);
+                                let elapsed = start.elapsed().scale(multi as _);
                                 *dg.node_mut(NodeQId(prefix.clone(), node.id))
                                     .profile
                                     .get_or_insert(Duration::default()) += elapsed;

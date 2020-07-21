@@ -315,4 +315,3 @@ impl RNN {
         Ok(result)
     }
 }
-

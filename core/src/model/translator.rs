@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::model::{Fact, ModelImpl, OutletId};
+use crate::model::{Fact, Graph, OutletId};
 use std::collections::HashMap;
 use std::convert::*;
 use std::fmt;
@@ -13,21 +13,21 @@ where
 {
     fn translate_node(
         &self,
-        source: &ModelImpl<TI1, O1>,
+        source: &Graph<TI1, O1>,
         node: &BaseNode<TI1, O1>,
-        target: &mut ModelImpl<TI2, O2>,
+        target: &mut Graph<TI2, O2>,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>>;
 
-    fn translate_model(&self, source: &ModelImpl<TI1, O1>) -> TractResult<ModelImpl<TI2, O2>> {
+    fn translate_model(&self, source: &Graph<TI1, O1>) -> TractResult<Graph<TI2, O2>> {
         Ok(self.translate_model_with_mappings(source)?.0)
     }
 
     fn translate_model_with_mappings(
         &self,
-        source: &ModelImpl<TI1, O1>,
-    ) -> TractResult<(ModelImpl<TI2, O2>, HashMap<OutletId, OutletId>)> {
-        let mut target = ModelImpl::default();
+        source: &Graph<TI1, O1>,
+    ) -> TractResult<(Graph<TI2, O2>, HashMap<OutletId, OutletId>)> {
+        let mut target = Graph::default();
         let mut mapping = HashMap::new();
         for old_id in source.eval_order()? {
             let node = source.node(old_id);
@@ -79,9 +79,9 @@ where
 {
     fn translate_node(
         &self,
-        _source: &ModelImpl<TI1, O1>,
+        _source: &Graph<TI1, O1>,
         node: &BaseNode<TI1, O1>,
-        target: &mut ModelImpl<TI2, O2>,
+        target: &mut Graph<TI2, O2>,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let new_op = O2::try_from(&node.op)?;

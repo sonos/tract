@@ -110,7 +110,7 @@ pub trait Op:
 {
     /// Vector of short strings defining what families the op belongs too.
     /// tract-core defines "core", "mir", "lir".
-    fn op_families(&self) -> &'static [ &'static str ];
+    fn op_families(&self) -> &'static [&'static str];
 
     fn name(&self) -> Cow<str>;
 

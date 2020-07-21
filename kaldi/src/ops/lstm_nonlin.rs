@@ -85,7 +85,7 @@ impl Expansion for LstmNonlin {
                 Ok(target.wire_node(
                     format!("{}.part-{}", prefix, ix),
                     array::Slice::new(1, cell_hidden_dim * ix, cell_hidden_dim * (ix + 1)),
-                    inputs
+                    inputs,
                 )?[0])
             })
             .collect::<TractResult<Vec<_>>>()?;

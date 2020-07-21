@@ -19,7 +19,6 @@ pub struct TypedSource {
     fact: TypedFact,
 }
 
-
 tract_linalg::impl_dyn_hash!(TypedSource);
 
 impl Op for TypedSource {
@@ -88,7 +87,8 @@ impl TypedOp for TypedSource {
     ) -> TractResult<TVec<OutletId>> {
         let mut fact = self.fact.clone();
         if let Some(info) = self.fact.shape.stream_info.as_ref() {
-            fact.shape.set_dim(info.axis, fact.shape.dim(info.axis).concretize_stream_dim(stream_dim))?;
+            fact.shape
+                .set_dim(info.axis, fact.shape.dim(info.axis).concretize_stream_dim(stream_dim))?;
         }
         target.wire_node(&node.name, Self { fact }, &[])
     }

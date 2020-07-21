@@ -39,8 +39,8 @@ pub struct OpOptim(
         op: &dyn TypedOp,
         model: &TypedModel,
         node: &TypedNode,
-        ) -> TractResult<Option<TypedModelPatch>>,
-        );
+    ) -> TractResult<Option<TypedModelPatch>>,
+);
 
 impl OpOptim {
     fn full_pass(&self, new: &mut TypedModel) -> TractResult<bool> {
@@ -76,7 +76,7 @@ impl TypedPass for OpOptim {
         for i in 0..10 {
             if !self.full_pass(&mut new)? {
                 std::mem::swap(model, &mut new);
-                return Ok(i>0);
+                return Ok(i > 0);
             }
         }
 

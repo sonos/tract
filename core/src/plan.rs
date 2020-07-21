@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 use crate::internal::*;
 use crate::model::order::eval_order_for_nodes;
-use crate::model::{Fact, ModelImpl, OutletId};
+use crate::model::{Fact, Graph, OutletId};
 
 #[derive(Debug, Default)]
 pub struct SessionState {
@@ -19,7 +19,7 @@ pub struct SimplePlan<F, O, M>
 where
     F: Fact + Hash + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<ModelImpl<F, O>> + Hash,
+    M: Borrow<Graph<F, O>> + Hash,
 {
     pub model: M,
     pub outputs: Vec<OutletId>,
@@ -32,7 +32,7 @@ impl<F, O, M> SimplePlan<F, O, M>
 where
     F: Fact + Hash + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<ModelImpl<F, O>> + Hash,
+    M: Borrow<Graph<F, O>> + Hash,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: M) -> TractResult<SimplePlan<F, O, M>> {
@@ -87,7 +87,7 @@ where
         state.run(inputs)
     }
 
-    pub fn model(&self) -> &ModelImpl<F, O> {
+    pub fn model(&self) -> &Graph<F, O> {
         self.model.borrow()
     }
 }
@@ -97,7 +97,7 @@ pub struct SimpleState<F, O, M, P>
 where
     F: Fact + Hash + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<ModelImpl<F, O>> + Hash,
+    M: Borrow<Graph<F, O>> + Hash,
     P: Borrow<SimplePlan<F, O, M>>,
 {
     plan: P,
@@ -111,7 +111,7 @@ impl<F, O, M, P> SimpleState<F, O, M, P>
 where
     F: Fact + Hash + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<ModelImpl<F, O>> + Hash,
+    M: Borrow<Graph<F, O>> + Hash,
     P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
     pub fn new(plan: P) -> TractResult<SimpleState<F, O, M, P>> {
@@ -388,7 +388,7 @@ where
         &self.plan.borrow()
     }
 
-    pub fn model(&self) -> &ModelImpl<F, O> {
+    pub fn model(&self) -> &Graph<F, O> {
         self.plan().model()
     }
 }

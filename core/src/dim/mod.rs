@@ -5,7 +5,7 @@ use std::ops;
 mod tree;
 
 pub use self::tree::TDim;
-use crate::{ TractError, TractResult};
+use crate::{TractError, TractResult};
 
 /// A super-trait for value acting as tensor dimensions in tract.
 ///
@@ -18,7 +18,7 @@ pub trait DimLike:
     + Default
     + PartialEq
     + From<usize>
-    + for <'a> std::convert::TryFrom<&'a TDim, Error=TractError>
+    + for<'a> std::convert::TryFrom<&'a TDim, Error = TractError>
     + ::num_traits::Zero
     + fmt::Debug
     + fmt::Display

@@ -1,4 +1,4 @@
-use std::hash::{ Hash, Hasher };
+use std::hash::{Hash, Hasher};
 
 pub trait SloppyHash {
     fn sloppy_hash<S: Hasher>(&self, state: &mut S);
@@ -29,7 +29,7 @@ macro_rules! impl_sloppy_hash {
                 self.hash(state)
             }
         }
-    }
+    };
 }
 
 impl_sloppy_hash!(bool);
@@ -51,7 +51,7 @@ macro_rules! impl_dyn_hash {
                 $crate::hash::dyn_hash(self, state)
             }
         }
-    }
+    };
 }
 
 pub trait DynHash {

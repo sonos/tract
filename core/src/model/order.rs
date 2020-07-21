@@ -5,7 +5,7 @@ use std::fmt::{Debug, Display};
 
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
-pub fn eval_order<F, O>(model: &super::ModelImpl<F, O>) -> TractResult<Vec<usize>>
+pub fn eval_order<F, O>(model: &super::Graph<F, O>) -> TractResult<Vec<usize>>
 where
     F: Fact + Hash + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,

@@ -2,9 +2,9 @@ use std::fs;
 use std::io::Read;
 use std::str::FromStr;
 
+use crate::model::Model;
 use crate::CliResult;
 use tract_hir::internal::*;
-use crate::model::Model;
 
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     if size.len() == 0 {
@@ -176,11 +176,8 @@ pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliRes
         Ok(value.clone().into_tensor())
     } else if fact.shape.stream_info.is_some() {
         if let Some(dim) = streaming_dim {
-            let shape = fact
-                .shape
-                .iter()
-                .map(|d| d.eval(dim as _).unwrap() as usize)
-                .collect::<TVec<_>>();
+            let shape =
+                fact.shape.iter().map(|d| d.eval(dim as _).unwrap() as usize).collect::<TVec<_>>();
             Ok(random(&shape, fact.datum_type))
         } else {
             bail!("random tensor requires a streaming dim")

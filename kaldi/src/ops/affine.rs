@@ -84,8 +84,8 @@ impl Expansion for Affine {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use tract_hir::ops::nn::*;
         use tract_hir::ops::cnn::*;
+        use tract_hir::ops::nn::*;
         use tract_hir::tract_core::ops::cnn::KernelFormat;
         model.wire_node(
             prefix,

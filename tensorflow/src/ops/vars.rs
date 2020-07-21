@@ -71,9 +71,9 @@ impl Op for VariableV2 {
 
     fn info(&self) -> TractResult<Vec<String>> {
         if let Some(init) = &self.initializer {
-            Ok(vec!(format!("Initialized to {:?}", init)))
+            Ok(vec![format!("Initialized to {:?}", init)])
         } else {
-            Ok(vec!(format!("Uninitialized")))
+            Ok(vec![format!("Uninitialized")])
         }
     }
 
@@ -160,8 +160,14 @@ impl OpState for AssignState {
             bail!("Assign has not been linked to var")
         };
         let store = session.tensors.get_mut(var_id).unwrap();
-        if cfg!(debug_assertions) && (store.shape() != new.shape() && store.datum_type() != new.datum_type()) {
-            bail!("Invalid assignment to variable. Store is {:?}, assigned value is {:?}" , store, new);
+        if cfg!(debug_assertions)
+            && (store.shape() != new.shape() && store.datum_type() != new.datum_type())
+        {
+            bail!(
+                "Invalid assignment to variable. Store is {:?}, assigned value is {:?}",
+                store,
+                new
+            );
         }
         *store = new.clone().into_tensor();
         Ok(tvec!(new))

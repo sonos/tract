@@ -117,10 +117,6 @@ impl InferenceRulesOp for DepthwiseConv2d {
             .to_core(&*input_shape, kernel_shape)?
             .to_unary(&[input, kernel])?
             .ok_or("Failed to translate")?;
-        target.wire_node(
-            &*node.name,
-            conv,
-            [mapping[&node.inputs[0]]].as_ref(),
-        )
+        target.wire_node(&*node.name, conv, [mapping[&node.inputs[0]]].as_ref())
     }
 }

@@ -3,8 +3,8 @@ use std::time::Duration;
 use crate::annotations::*;
 use crate::display_params::*;
 use crate::draw::DrawingState;
-use crate::CliResult;
 use crate::model::Model;
+use crate::CliResult;
 use ansi_term::ANSIString;
 use ansi_term::Color::*;
 #[allow(unused_imports)]
@@ -272,13 +272,7 @@ fn render_node_prefixed(
         let prefix = drawing_lines.next().unwrap();
         let mut scope: TVec<_> = scope.into();
         scope.push((node_id, label.to_string()));
-        render_prefixed(
-            sub,
-            &format!("{} [{}] ", prefix, label),
-            &*scope,
-            annotations,
-            options,
-        )?
+        render_prefixed(sub, &format!("{} [{}] ", prefix, label), &*scope, annotations, options)?
     }
     while cost_column.as_mut().map(|cost| cost.peek().is_some()).unwrap_or(false) {
         prefix!();
@@ -356,12 +350,18 @@ pub fn render_summaries(
                 .tags
                 .iter()
                 .filter(|(k, _v)| k.model(model).unwrap().node_name(k.1).starts_with(prefix))
-                .map(|(_k,v)| v)
+                .map(|(_k, v)| v)
                 .sum::<NodeTags>();
-            if sum.profile.unwrap_or(Duration::default()).as_secs_f64() / summary.entire.as_secs_f64() < 0.01 {
+            if sum.profile.unwrap_or(Duration::default()).as_secs_f64()
+                / summary.entire.as_secs_f64()
+                < 0.01
+            {
                 continue;
             }
-            print!("{}    ", dur_avg_ratio(sum.profile.unwrap_or(Duration::default()), summary.sum));
+            print!(
+                "{}    ",
+                dur_avg_ratio(sum.profile.unwrap_or(Duration::default()), summary.sum)
+            );
             for _ in prefix.chars().filter(|c| *c == '.') {
                 print!("   ");
             }

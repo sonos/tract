@@ -16,7 +16,7 @@ where
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     /// the model-like 'pagch' of nodes to add to the model
-    pub model: ModelImpl<F, O>,
+    pub model: Graph<F, O>,
     pub incoming: HashMap<OutletId, OutletId>,
     pub shunt_outlet_by: HashMap<OutletId, OutletId>,
     pub obliterate: Vec<usize>,
@@ -29,7 +29,7 @@ where
 {
     fn default() -> ModelPatch<F, O> {
         ModelPatch {
-            model: ModelImpl::default(),
+            model: Graph::default(),
             incoming: HashMap::new(),
             shunt_outlet_by: HashMap::new(),
             obliterate: vec![],
@@ -42,8 +42,8 @@ where
     F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
-    type Target = ModelImpl<F, O>;
-    fn deref(&self) -> &ModelImpl<F, O> {
+    type Target = Graph<F, O>;
+    fn deref(&self) -> &Graph<F, O> {
         &self.model
     }
 }
@@ -53,7 +53,7 @@ where
     F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
-    fn deref_mut(&mut self) -> &mut ModelImpl<F, O> {
+    fn deref_mut(&mut self) -> &mut Graph<F, O> {
         &mut self.model
     }
 }
@@ -62,7 +62,7 @@ impl<F, O> ModelPatch<F, O>
 where
     F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    ModelImpl<F, O>: SpecialOps<F,O>
+    Graph<F, O>: SpecialOps<F, O>,
 {
     pub fn is_empty(&self) -> bool {
         self.model.nodes.is_empty() && self.shunt_outlet_by.is_empty() && self.obliterate.is_empty()
@@ -71,11 +71,7 @@ where
     /// Draw a tap from a preexisting node.
     ///
     /// returns an OutletId usable in the little "patch" model
-    pub fn tap_model(
-        &mut self,
-        model: &ModelImpl<F, O>,
-        outlet: OutletId,
-    ) -> TractResult<OutletId> {
+    pub fn tap_model(&mut self, model: &Graph<F, O>, outlet: OutletId) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
         let id = self.add_source(
             format!("incoming-{}/{}", outlet.node, outlet.slot),
@@ -88,7 +84,7 @@ where
     /// Replace an Outlet in the target model by one from the patch.
     pub fn shunt_outside(
         &mut self,
-        model: &ModelImpl<F, O>,
+        model: &Graph<F, O>,
         outlet: OutletId,
         by: OutletId,
     ) -> TractResult<()> {
@@ -108,7 +104,7 @@ where
 
     /// Convenience method creating a patch that replace a single operation.
     pub fn replace_single_op<IO: Into<O>>(
-        patched_model: &ModelImpl<F, O>,
+        patched_model: &Graph<F, O>,
         node: &BaseNode<F, O>,
         inputs: &[OutletId],
         new_op: IO,
@@ -133,7 +129,7 @@ where
 
     /// Convenience method creating a patch that replace a single operation.
     pub fn fuse_with_next<IO: Into<O>>(
-        patched_model: &ModelImpl<F, O>,
+        patched_model: &Graph<F, O>,
         node: &BaseNode<F, O>,
         new_op: IO,
     ) -> TractResult<ModelPatch<F, O>> {
@@ -161,7 +157,7 @@ where
 
     /// Convenience method creating a patch that shunt the given node.
     pub fn shunt_one_op(
-        patched_model: &ModelImpl<F, O>,
+        patched_model: &Graph<F, O>,
         node: &BaseNode<F, O>,
     ) -> TractResult<ModelPatch<F, O>> {
         let mut patch = ModelPatch::default();
@@ -172,7 +168,7 @@ where
 
     /// Convenience method creating a patch that replace a single unary operation.
     pub fn single_unary_op<IO: Into<O>>(
-        patched_model: &ModelImpl<F, O>,
+        patched_model: &Graph<F, O>,
         node: &BaseNode<F, O>,
         new_op: IO,
     ) -> TractResult<ModelPatch<F, O>> {
@@ -181,7 +177,7 @@ where
 
     /// Convenience method creating a patch that insert an unary op on an outlet.
     pub fn intercept<IO: Into<O>>(
-        patched_model: &ModelImpl<F, O>,
+        patched_model: &Graph<F, O>,
         outlet: OutletId,
         name: impl Into<String>,
         new_op: IO,
@@ -196,13 +192,13 @@ where
     }
 
     /// Apply all changes in the patch to the target model.
-    pub fn apply(self, target: &mut ModelImpl<F, O>) -> TractResult<()> {
+    pub fn apply(self, target: &mut Graph<F, O>) -> TractResult<()> {
         let prior_target_inputs = target.input_outlets()?.len();
         let prior_target_outputs = target.output_outlets()?.len();
         let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by, obliterate } = self;
         let mut all_inputs = HashMap::new(); // new_id -> [ old_inputs ]
         for node in patch.nodes {
-            if <ModelImpl<F, O>>::is_source(&node.op) {
+            if <Graph<F, O>>::is_source(&node.op) {
                 continue;
             }
             let BaseNode { id, name, inputs, op, outputs } = node;

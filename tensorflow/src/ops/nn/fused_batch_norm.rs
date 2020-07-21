@@ -12,7 +12,7 @@ pub fn fused_batch_norm(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<
 #[derive(Debug, Clone, new, Educe)]
 #[educe(Hash)]
 struct FusedBatchNorm {
-    #[educe(Hash(method="hash_f32"))]
+    #[educe(Hash(method = "hash_f32"))]
     epsilon: f32,
 }
 
@@ -62,7 +62,7 @@ impl Expansion for FusedBatchNorm {
         &self,
         prefix: &str,
         target: &mut TypedModel,
-        inputs:&[OutletId],
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let scale = target.outlet_fact(inputs[1])?;
         let offset = target.outlet_fact(inputs[2])?;
@@ -75,20 +75,21 @@ impl Expansion for FusedBatchNorm {
             let offset = offset.as_slice::<f32>()?;
             let mean = mean.as_slice::<f32>()?;
             let variance = variance.as_slice::<f32>()?;
-            let slope:Vec<f32> = izip!(variance, scale).map(|(v, s)| s / (v + self.epsilon).sqrt()).collect();
-            let inter:Vec<f32> = izip!(offset, mean, &slope).map(|(o, m, s)| o - m * s).collect();
+            let slope: Vec<f32> =
+                izip!(variance, scale).map(|(v, s)| s / (v + self.epsilon).sqrt()).collect();
+            let inter: Vec<f32> = izip!(offset, mean, &slope).map(|(o, m, s)| o - m * s).collect();
             let shape = tvec!(1, 1, 1, scale.len());
             let slope = tensor1(&slope).into_shape(&shape)?;
             let inter = tensor1(&inter).into_shape(&shape)?;
             let wire = target.wire_node(
                 format!("{}.mul", prefix),
                 tract_hir::ops::math::mul::unary(slope.into_arc_tensor()),
-                &[inputs[0]]
+                &[inputs[0]],
             )?;
             return target.wire_node(
                 format!("{}.add", prefix),
                 tract_hir::ops::math::add::unary(inter.into_arc_tensor()),
-                &wire
+                &wire,
             );
         };
         bail!("Batch norm parameters expected to be known")

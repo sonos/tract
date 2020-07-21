@@ -6,10 +6,10 @@ use crate::tfpb::tensorflow::NodeDef;
 
 macro_rules! op_tf {
     () => {
-        fn op_families(&self) -> &'static [ &'static str ] {
-            &[ "tf" ]
+        fn op_families(&self) -> &'static [&'static str] {
+            &["tf"]
         }
-    }
+    };
 }
 
 pub mod array;

@@ -13,7 +13,7 @@
 //!
 //! At this stage, the model can be converted into a `TypedModel`.
 //!
-//! InferanceModel and TypeModel are two variants of `ModelImpl`, Parameterized
+//! InferanceModel and TypeModel are two variants of `Graph`, Parameterized
 //! by a Fact implementation: TypedModel uses TypedFact, enforcing
 //! complete determination of element type and shape, and allowing a constant
 //! value for the tensor. InferenceModel uses InferenceFact, which can handle

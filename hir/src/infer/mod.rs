@@ -44,7 +44,7 @@ pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResu
 
 /// A model with partially types and shapes, as produced by parsing ONNX or
 /// Tensorflow graphs.
-pub type InferenceModel = ModelImpl<InferenceFact, Box<dyn InferenceOp>>;
+pub type InferenceModel = Graph<InferenceFact, Box<dyn InferenceOp>>;
 /// Node for InferenceModel graph
 pub type InferenceNode = BaseNode<InferenceFact, Box<dyn InferenceOp>>;
 /// A ModelPatch for InferenceModel.
