@@ -13,7 +13,6 @@ where
     F: Fact + Hash + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
-    pub label: Option<String>,
     /// all nodes in the model
     pub nodes: Vec<BaseNode<F, O>>,
     /// model inputs
@@ -46,7 +45,6 @@ where
 {
     fn default() -> ModelImpl<F, O> {
         ModelImpl {
-            label: None,
             nodes: vec![],
             inputs: vec![],
             outputs: vec![],
