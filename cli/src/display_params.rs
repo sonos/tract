@@ -1,6 +1,8 @@
 use crate::errors::*;
 use tract_core::prelude::*;
 
+use crate::model::Model;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Io {
     None,

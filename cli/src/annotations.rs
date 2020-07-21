@@ -11,6 +11,8 @@ use tract_onnx::pb::ModelProto;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
+use crate::model::Model;
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct NodeQId(pub TVec<(usize, String)>, pub usize);
 
@@ -27,11 +29,10 @@ impl NodeQId {
                 Some(model)
             } else {
                 model
-                    .node_op(path[0].0)
-                    .nested_models()
+                    .nested_models(path[0].0)
                     .iter()
-                    .find(|(name, _, _, _)| name == &*path[0].1)
-                    .map(|(_, sub, _, _)| *sub)
+                    .find(|(name, _)| name == &*path[0].1)
+                    .map(|(_, sub)| *sub)
             }
         }
         scope(&*self.0, model)
@@ -111,18 +112,20 @@ impl Annotations {
             annotations: &mut Annotations,
         ) {
             for n in 0..model.nodes_len() {
-                for (label, sub, ins, outs) in model.node_op(n).nested_models() {
+                for (label, sub /*, ins, outs*/) in model.nested_models(n) {
                     let mut prefix: TVec<(usize, String)> = prefix.into();
                     prefix.push((n, label.to_string()));
                     set_subio_labels(sub, &*prefix, annotations);
+                    /*
                     ins.into_iter().enumerate().for_each(|(ix, i)| {
-                        let qid = NodeQId(prefix.clone(), ix);
-                        annotations.tags.entry(qid).or_default().model_input = Some(i);
+                    let qid = NodeQId(prefix.clone(), ix);
+                    annotations.tags.entry(qid).or_default().model_input = Some(i);
                     });
                     outs.into_iter().enumerate().for_each(|(ix, o)| {
-                        let qid = NodeQId(prefix.clone(), ix);
-                        annotations.tags.entry(qid).or_default().model_output = Some(o);
+                    let qid = NodeQId(prefix.clone(), ix);
+                    annotations.tags.entry(qid).or_default().model_output = Some(o);
                     });
+                    */
                 }
             }
         }
@@ -233,7 +236,7 @@ impl Annotations {
             annotations: &mut Annotations,
             model: &dyn Model,
             prefix: &[(usize, String)],
-            multiplier: f64,
+            multiplier: TDim,
         ) -> CliResult<()> {
             if let Some(model) = model.downcast_ref::<TypedModel>() {
                 for node_id in 0..model.nodes().len() {
@@ -241,22 +244,22 @@ impl Annotations {
                     let cost = model.node(node_id).op.cost(&*inputs)?;
                     annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
                         .into_iter()
-                        .map(|(k, v)| (k, if k.is_compute() { v * multiplier } else { v }))
+                        .map(|(k, v)| (k, if k.is_compute() { v.maybe_mul(&multiplier).unwrap() } else { v }))
                         .collect();
 
-                    let nested_subs = model.node(node_id).op.nested_models();
-                    let nested_multis = model.node(node_id).op.nested_model_multipliers(&*inputs);
-                    for ((name, sub, _, _), (_name, multi)) in
+                    let nested_subs = model.nested_models(node_id);
+                    let nested_multis = (model as &dyn Model).nested_models_iters(node_id, &*inputs);
+                    for ((name, sub), multi) in
                         nested_subs.iter().zip(nested_multis.iter())
                     {
                         let mut prefix: TVec<_> = prefix.into();
                         prefix.push((node_id, name.to_string()));
-                        extract_costs_rec(annotations, *sub, &*prefix, multiplier * multi)?;
+                        extract_costs_rec(annotations, *sub, &*prefix, multiplier.maybe_mul(multi.as_ref().unwrap()).unwrap())?;
                     }
                 }
             }
             Ok(())
         }
-        extract_costs_rec(self, model, &[], 1.0)
+        extract_costs_rec(self, model, &[], 1.into())
     }
 }

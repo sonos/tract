@@ -1,6 +1,7 @@
 use crate::annotations::Annotations;
 use std::collections::HashMap;
-use tract_core::prelude::*;
+
+use crate::model::Model;
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct GraphPerfInfo {
@@ -17,10 +18,10 @@ pub struct Node {
     op_name: String,
     node_name: String,
 
-    #[serde(skip_serializing_if = "HashMap::is_empty")] 
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     cost: HashMap<String, usize>,
 
-    #[serde(skip_serializing_if = "Option::is_none")] 
+    #[serde(skip_serializing_if = "Option::is_none")]
     secs_per_iter: Option<f64>,
 }
 
