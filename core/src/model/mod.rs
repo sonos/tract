@@ -33,7 +33,6 @@
 //! attribute) and constant propagation may be necessary before the right
 //! core operator could be chosen.
 //!
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::str;
 
@@ -59,65 +58,6 @@ use crate::ops::invariants;
 use crate::plan::{SimplePlan, SimpleState};
 use crate::TractResult;
 use tract_linalg::hash::DynHash;
-
-/// Common methods for all variants of model.
-pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
-    /// Model label
-    fn model_label(&self) -> Option<&str>;
-
-    /// Lookup node id by name
-    fn node_id_by_name(&self, name: &str) -> TractResult<usize>;
-
-    /// Node name by id
-    fn node_name(&self, id: usize) -> &str;
-
-    /// Node op by id
-    fn node_op(&self, id: usize) -> &dyn Op;
-
-    /// Node inputs by id
-    fn node_inputs(&self, id: usize) -> &[OutletId];
-
-    /// Number of outputs for a node, by id.
-    fn node_output_count(&self, id: usize) -> usize;
-
-    /// Number nodes
-    fn nodes_len(&self) -> usize;
-
-    /// Formatted node label
-    fn node_display(&self, id: usize) -> String;
-
-    /// Formatted node label
-    fn node_debug(&self, id: usize) -> String;
-
-    /// Eval order for the model
-    fn eval_order(&self) -> TractResult<Vec<usize>>;
-
-    /// Eval order for the model overriding input and outputs node
-    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>>;
-
-    /// Inputs of the model
-    fn input_outlets(&self) -> &[OutletId];
-
-    /// Outputs of the model
-    fn output_outlets(&self) -> &[OutletId];
-
-    /// Tensorfact for an outlet
-    fn outlet_typedfact(&self, outlet: OutletId) -> TractResult<TypedFact>;
-
-    /// Short outlet formatter (id plus fact)
-    fn outlet_fact_format(&self, outlet: OutletId) -> String;
-
-    /// Labels for an outlet
-    fn outlet_label(&self, id: OutletId) -> Option<&str>;
-
-    /// List consumers of an outlet
-    fn outlet_successors(&self, outlet: OutletId) -> &[InletId];
-
-    /// Nested models, with label (for audit).
-    fn nested_models(&self, node: usize) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)>;
-}
-
-impl_downcast!(Model);
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = ModelImpl<TypedFact, Box<dyn TypedOp>>;

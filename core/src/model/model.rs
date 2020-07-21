@@ -59,7 +59,6 @@ impl<F, O> ModelImpl<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    ModelImpl<F, O>: Model,
 {
     pub fn add_node(
         &mut self,
@@ -263,6 +262,14 @@ where
     /// Iterate over all node names.
     pub fn node_names(&self) -> impl Iterator<Item = &str> {
         self.nodes.iter().map(|s| &*s.name)
+    }
+
+    pub fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
+        self.nodes
+            .iter()
+            .find(|n| n.name == name)
+            .map(|n| n.id)
+            .ok_or_else(|| format!("No node found for name: \"{}\"", name).into())
     }
 
     /// Find a node by its name.
@@ -479,6 +486,10 @@ where
         }
         Ok(Some(succ))
     }
+
+    pub fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
+        &self.nodes[outlet.node].outputs[outlet.slot].successors
+    }
 }
 
 impl<F: Fact + Clone + 'static, O> ModelImpl<F, O>
@@ -504,99 +515,17 @@ where
     }
 }
 
-impl<F, O> Model for ModelImpl<F, O>
-where
-    F: Fact + Hash + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-{
-    fn model_label(&self) -> Option<&str> {
-        self.label.as_ref().map(|s| &**s)
-    }
-
-    fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
-        self.nodes
-            .iter()
-            .find(|n| n.name == name)
-            .map(|n| n.id)
-            .ok_or_else(|| format!("No node found for name: \"{}\"", name).into())
-    }
-
-    fn node_name(&self, id: usize) -> &str {
-        &*self.nodes[id].name
-    }
-
-    fn node_inputs(&self, id: usize) -> &[OutletId] {
-        &*self.nodes[id].inputs
-    }
-
-    fn node_output_count(&self, id: usize) -> usize {
-        self.nodes[id].outputs.len()
-    }
-
-    fn nodes_len(&self) -> usize {
-        self.nodes.len()
-    }
-
-    fn node_display(&self, id: usize) -> String {
-        format!("{}", self.nodes[id])
-    }
-
-    fn node_debug(&self, id: usize) -> String {
-        format!("{:?}", self.nodes[id])
-    }
-
-    fn eval_order(&self) -> TractResult<Vec<usize>> {
-        crate::model::eval_order(&self)
-    }
-
-    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>> {
-        crate::model::order::eval_order_for_nodes(&self.nodes, inputs, outputs, &[])
-    }
-
-    fn input_outlets(&self) -> &[OutletId] {
-        &*self.inputs
-    }
-
-    fn output_outlets(&self) -> &[OutletId] {
-        &*self.outputs
-    }
-
-    fn node_op(&self, id: usize) -> &dyn Op {
-        self.nodes[id].op.as_ref()
-    }
-
-    fn outlet_typedfact(&self, outlet: OutletId) -> TractResult<TypedFact> {
-        self.outlet_fact(outlet)?.to_typed_fact()
-    }
-
-    fn outlet_fact_format(&self, outlet: OutletId) -> String {
-        format!("{:?}", self.outlet_fact(outlet).unwrap())
-    }
-
-    fn outlet_label(&self, id: OutletId) -> Option<&str> {
-        self.outlet_label(id)
-    }
-
-    fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
-        &self.nodes[outlet.node].outputs[outlet.slot].successors
-    }
-
-    fn nested_models(&self, node: usize) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
-        self.node(node).op().nested_models()
-    }
-}
-
 impl<F, O> fmt::Display for ModelImpl<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        for i in 0..self.nodes_len() {
+        for i in 0..self.nodes.len() {
             let input_1 =
-                self.node_inputs(i).get(0).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
+                self.nodes[i].inputs.get(0).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
             let input_2 =
-                self.node_inputs(i).get(1).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
+                self.nodes[i].inputs.get(1).map(|o| format!("{:?}", o)).unwrap_or("".to_string());
             let output_1 = self
                 .outlet_successors(OutletId::new(i, 0))
                 .get(0)
@@ -615,21 +544,21 @@ where
                 i,
                 output_1,
                 output_2,
-                self.node_op(i).name(),
-                self.node_name(i),
+                self.nodes[i].op().name(),
+                self.nodes[i].name
             )?;
-            if self.node_inputs(i).len() > 2 {
+            if self.nodes[i].inputs.len() > 2 {
                 writeln!(
                     fmt,
                     "                                                |   * inputs: {}",
-                    self.node_inputs(i).iter().map(|s| format!("{:?}", s)).join(", ")
+                    self.nodes[i].inputs.iter().map(|s| format!("{:?}", s)).join(", ")
                 )?;
             }
-            if self.node_output_count(i) > 1
+            if self.nodes[i].outputs.len() > 1
                 || self.outlet_successors((i, 0).into()).len() > 2
                 || self.outlet_label(i.into()).is_some()
             {
-                for o in 0..self.node_output_count(i) {
+                for o in 0..self.nodes[i].outputs.len() {
                     if self.outlet_successors((i, o).into()).len() > 0 {
                         writeln!(
                                     fmt,

@@ -114,11 +114,6 @@ pub trait Op:
 
     fn name(&self) -> Cow<str>;
 
-    /// Nested models, with label (for audit).
-    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
-        vec![]
-    }
-
     /// The kind of accuracy check that should be performed on operation when
     /// testing them.
     fn validation(&self) -> Validation {

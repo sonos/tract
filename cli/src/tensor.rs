@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use crate::CliResult;
 use tract_hir::internal::*;
+use crate::model::Model;
 
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     if size.len() == 0 {

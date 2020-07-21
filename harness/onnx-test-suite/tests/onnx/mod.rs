@@ -96,7 +96,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                         let mut actual_input = None;
                         let input_outlets = model.input_outlets().unwrap().to_vec();
                         for (ix, outlet) in input_outlets.iter().enumerate() {
-                            if model.node_name(outlet.node) == input {
+                            if model.node(outlet.node).name == input {
                                 actual_input = Some((outlet, inputs[ix].clone()));
                             } else {
                                 model.node_mut(outlet.node).op =
@@ -113,7 +113,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                                 .input_outlets()
                                 .unwrap()
                                 .iter()
-                                .map(|n| model.node_name(n.node))
+                                .map(|n| &model.node(n.node).name)
                                 .collect::<Vec<_>>()
                                 )
                         });

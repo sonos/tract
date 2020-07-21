@@ -23,18 +23,25 @@ impl std::ops::Deref for LirScan {
 
 tract_linalg::impl_dyn_hash!(LirScan);
 
+impl LirScan {
+    pub fn iteration_count(&self, inputs: &[&TypedFact]) -> Option<TDim> {
+        let (outside_slot, axis, chunk) = self
+            .input_mapping
+            .iter()
+            .filter_map(|it| match it {
+                InputMapping::Scan { axis, slot, chunk } => Some((*slot, *axis, *chunk)),
+                _ => None,
+            })
+            .next()
+            .unwrap();
+        let outside_dim = inputs[outside_slot].shape.dim(axis);
+        Some(outside_dim / chunk)
+    }
+}
+
 impl Op for LirScan {
     fn name(&self) -> Cow<str> {
         "Scan".into()
-    }
-
-    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
-        vec![(
-            "loop".into(),
-            self.plan.model(),
-            self.input_mapping.iter().map(|m| format!("{:?}", m)).collect(),
-            self.output_mapping.iter().map(|m| format!("{:?}", m)).collect(),
-        )]
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -305,29 +312,5 @@ impl TypedOp for LirScan {
         outputs.sort_by_key(|a| a.0);
         let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
         Ok(outputs)
-    }
-
-    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f64)> {
-        let iters = {
-            let (outside_slot, axis, chunk) = self
-                .input_mapping
-                .iter()
-                .filter_map(|it| match it {
-                    InputMapping::Scan { axis, slot, chunk } => Some((*slot, *axis, *chunk)),
-                    _ => None,
-                })
-                .next()
-                .unwrap();
-            let outside_dim = inputs[outside_slot].shape.dim(axis);
-            if let Ok(i) = outside_dim.to_integer() {
-                i as f64 / chunk as f64
-            } else {
-                let big = 1_000_000;
-                let dominator =
-                    inputs[outside_slot].shape.dim(axis).eval(big).unwrap() as f64 / big as f64;
-                dominator / chunk as f64
-            }
-        };
-        vec![("loop".into(), iters as f64)]
     }
 }

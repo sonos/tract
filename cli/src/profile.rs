@@ -2,6 +2,7 @@ use tract_core::internal::*;
 
 use crate::annotations::*;
 use crate::errors::*;
+use crate::model::Model;
 use crate::BenchLimits;
 use std::time::{Duration, Instant};
 
@@ -64,12 +65,12 @@ pub fn profile(
                 .map(|&i| i.to_typed_fact())
                 .collect::<TractResult<_>>()?;
             let ref_inputs: TVec<&TypedFact> = inputs.iter().collect();
-            for ((inner_model_name, inner_model, _, _), (_name_, multiplier)) in outer_node
-                .op
-                .nested_models()
+            for ((inner_model_name, inner_model), multiplier) in model
+                .nested_models(outer_node.id)
                 .iter()
-                .zip(outer_node.op.nested_model_multipliers(&ref_inputs).iter())
+                .zip(model.nested_models_iters(outer_node.id, &ref_inputs).iter())
             {
+                let multi = multiplier.as_ref().unwrap().to_integer().unwrap();
                 let prefix = tvec!((outer_node.id, inner_model_name.to_string()));
                 if let Some(inner_model) = inner_model.downcast_ref::<TypedModel>() {
                     for _ in 0..iters {
@@ -80,11 +81,14 @@ pub fn profile(
                             |session_state, state, node, input| {
                                 let start = Instant::now();
                                 let r = tract_core::plan::eval(session_state, state, node, input);
-                                let elapsed = start.elapsed().scale(*multiplier as _);
+                                let elapsed = start
+                                    .elapsed()
+                                    .scale(multi as _);
                                 *dg.node_mut(NodeQId(prefix.clone(), node.id))
                                     .profile
                                     .get_or_insert(Duration::default()) += elapsed;
-                                let parent = dg.node_mut(NodeQId(tvec!(), outer_node.id))
+                                let parent = dg
+                                    .node_mut(NodeQId(tvec!(), outer_node.id))
                                     .profile
                                     .get_or_insert(Duration::default());
                                 *parent -= elapsed.min(*parent);

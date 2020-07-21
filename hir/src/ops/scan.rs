@@ -33,15 +33,6 @@ impl Op for InferenceScan {
         Ok(lines)
     }
 
-    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
-        vec![(
-            "loop".into(),
-            &self.body,
-            self.input_mapping.iter().map(|m| format!("{:?}", m)).collect(),
-            self.output_mapping.iter().map(|m| format!("{:?}", m)).collect(),
-        )]
-    }
-
     op_hir!();
     not_a_typed_op!();
     not_a_pulsed_op!();

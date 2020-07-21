@@ -32,6 +32,7 @@ use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
 use crate::display_params::DisplayParams;
 use crate::errors::*;
+use crate::model::Model;
 
 use readings_probe::*;
 
@@ -44,6 +45,7 @@ mod draw;
 mod dump;
 mod errors;
 mod export;
+mod model;
 mod optimize_check;
 mod profile;
 mod run;

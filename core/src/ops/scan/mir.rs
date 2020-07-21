@@ -84,6 +84,10 @@ impl Scan {
         })
     }
 
+    pub fn iteration_count(&self, inputs: &[&TypedFact]) -> Option<TDim> {
+        self.to_codegen_op(false).unwrap().iteration_count(inputs)
+    }
+
     fn declutter_body(
         &self,
         model: &TypedModel,
@@ -563,15 +567,6 @@ impl Op for Scan {
         Ok(lines)
     }
 
-    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model, Vec<String>, Vec<String>)> {
-        vec![(
-            "loop".into(),
-            &self.body,
-            self.input_mapping.iter().map(|m| format!("{:?}", m)).collect(),
-            self.output_mapping.iter().map(|m| format!("{:?}", m)).collect(),
-        )]
-    }
-
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
@@ -765,15 +760,6 @@ impl TypedOp for Scan {
             ..self.clone()
         };
         target.wire_node(&node.name, op, &inputs)
-    }
-
-    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f64)> {
-        self.to_codegen_op(false)
-            .unwrap()
-            .nested_model_multipliers(inputs)
-            .into_iter()
-            .map(|(c, n)| (c.into_owned().into(), n))
-            .collect()
     }
 
     fn codegen(

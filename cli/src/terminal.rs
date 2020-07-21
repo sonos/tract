@@ -4,6 +4,7 @@ use crate::annotations::*;
 use crate::display_params::*;
 use crate::draw::DrawingState;
 use crate::CliResult;
+use crate::model::Model;
 use ansi_term::ANSIString;
 use ansi_term::Color::*;
 #[allow(unused_imports)]
@@ -267,7 +268,7 @@ fn render_node_prefixed(
             println!("    {}", s);
         }
     }
-    for (label, sub, _, _) in model.nested_models(node_id) {
+    for (label, sub) in model.nested_models(node_id) {
         let prefix = drawing_lines.next().unwrap();
         let mut scope: TVec<_> = scope.into();
         scope.push((node_id, label.to_string()));
