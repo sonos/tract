@@ -33,29 +33,6 @@ impl Dim {
 }
 
 impl StridedSlice {
-    pub fn tensorflow(begin_mask: i64, end_mask: i64, shrink_axis_mask: i64) -> StridedSlice {
-        StridedSlice {
-            begin_mask,
-            end_mask,
-            shrink_axis_mask,
-            optional_axes_input: None,
-            optional_steps_input: Some(3),
-        }
-    }
-
-    pub fn onnx10(
-        optional_axes_input: Option<usize>,
-        optional_steps_input: Option<usize>,
-    ) -> StridedSlice {
-        StridedSlice {
-            begin_mask: 0,
-            end_mask: 0,
-            shrink_axis_mask: 0,
-            optional_axes_input,
-            optional_steps_input,
-        }
-    }
-
     fn must_shrink(&self, ix: usize) -> bool {
         self.shrink_axis_mask & (1 << ix) != 0
     }
@@ -248,11 +225,7 @@ impl Expansion for StridedSlice {
                 if preped.stride != 1 {
                     wire = target.wire_node(
                         format!("{}.Stride-{}", prefix, ix),
-                        crate::ops::downsample::Downsample::new(
-                            ix,
-                            preped.stride as isize,
-                            0
-                        ),
+                        crate::ops::downsample::Downsample::new(ix, preped.stride as isize, 0),
                         [wire].as_ref(),
                     )?[0];
                 }
@@ -289,6 +262,16 @@ mod tests {
     use super::*;
     use tract_ndarray::*;
 
+    pub fn strided_slice(begin_mask: i64, end_mask: i64, shrink_axis_mask: i64) -> StridedSlice {
+        StridedSlice {
+            begin_mask,
+            end_mask,
+            shrink_axis_mask,
+            optional_axes_input: None,
+            optional_steps_input: Some(3),
+        }
+    }
+
     fn eval<I, B, E, S>(op: StridedSlice, input: I, begin: B, end: E, strides: S) -> Tensor
     where
         I: Into<Tensor>,
@@ -316,7 +299,7 @@ mod tests {
     fn eval_1() {
         assert_eq!(
             eval(
-                StridedSlice::tensorflow(0, 0, 0),
+                strided_slice(0, 0, 0),
                 arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
                 tensor1(&[1, 0, 0]),
                 tensor1(&[2, 1, 3]),
@@ -330,7 +313,7 @@ mod tests {
     fn eval_2() {
         assert_eq!(
             eval(
-                StridedSlice::tensorflow(0, 0, 0),
+                strided_slice(0, 0, 0),
                 arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
                 tensor1(&[1, 0, 0]),
                 tensor1(&[2, 2, 3]),
@@ -344,7 +327,7 @@ mod tests {
     fn eval_3_negative_stride() {
         assert_eq!(
             eval(
-                StridedSlice::tensorflow(0, 0, 0),
+                strided_slice(0, 0, 0),
                 arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
                 tensor1(&[1, -1, 0]),
                 tensor1(&[2, -3, 3]),
@@ -358,7 +341,7 @@ mod tests {
     fn eval_3_bis() {
         assert_eq!(
             eval(
-                StridedSlice::tensorflow(0, 0, 0),
+                strided_slice(0, 0, 0),
                 arr1(&[0, 1]),
                 tensor1(&[-1]),
                 tensor1(&[-3]),
@@ -372,7 +355,7 @@ mod tests {
     fn eval_4() {
         assert_eq!(
             eval(
-                StridedSlice::tensorflow(0, 0, 0),
+                strided_slice(0, 0, 0),
                 tensor3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
                 tensor1(&[1, 0, 0]),
                 tensor1(&[2, 2, 4]),
@@ -386,7 +369,7 @@ mod tests {
     fn eval_5() {
         assert_eq!(
             eval(
-                StridedSlice::tensorflow(0, 0, 0),
+                strided_slice(0, 0, 0),
                 tensor1(&[0, 0]),
                 tensor1(&[0]),
                 tensor1(&[-1]),
@@ -400,7 +383,7 @@ mod tests {
     fn eval_6() {
         assert_eq!(
             eval(
-                StridedSlice::tensorflow(0, 0, 0),
+                strided_slice(0, 0, 0),
                 tensor2(&[[1, 0, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0]]),
                 tensor1(&[-3, -4]),
                 tensor1(&[-1, -1]),
@@ -414,7 +397,7 @@ mod tests {
     fn eval_7() {
         assert_eq!(
             eval(
-                StridedSlice::tensorflow(0, 0, 0),
+                strided_slice(0, 0, 0),
                 tensor2(&[[0, 6], [0, 0]]),
                 tensor1(&[0]),
                 tensor1(&[2]),
@@ -426,7 +409,7 @@ mod tests {
 
     #[test]
     fn eval_begin_mask_1() {
-        let mut op = StridedSlice::tensorflow(0, 0, 0);
+        let mut op = strided_slice(0, 0, 0);
         op.begin_mask = 1;
         assert_eq!(
             eval(op, tensor1(&[0, 1]), tensor1(&[1]), tensor1(&[1]), tensor1(&[1])),
@@ -436,7 +419,7 @@ mod tests {
 
     #[test]
     fn eval_shrink_1() {
-        let mut op = StridedSlice::tensorflow(0, 0, 0);
+        let mut op = strided_slice(0, 0, 0);
         op.shrink_axis_mask = 1;
         assert_eq!(
             eval(op, arr2(&[[0]]), tensor1(&[0, 0]), tensor1(&[0, 0]), tensor1(&[1, 1])),
@@ -446,7 +429,7 @@ mod tests {
 
     #[test]
     fn eval_shrink_to_scalar() {
-        let mut op = StridedSlice::tensorflow(0, 0, 0);
+        let mut op = strided_slice(0, 0, 0);
         op.shrink_axis_mask = 1;
         assert_eq!(
             eval(op, tensor1(&[0]), tensor1(&[0]), tensor1(&[0]), tensor1(&[1])),
@@ -456,7 +439,7 @@ mod tests {
 
     #[test]
     fn inference_1() {
-        let op = StridedSlice::tensorflow(5, 7, 0);
+        let op = strided_slice(5, 7, 0);
         let input = InferenceFact::default().with_datum_type(DatumType::F32);
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
         let end = InferenceFact::from(tensor1(&[0i32, 0, 0]));
@@ -487,7 +470,7 @@ mod tests {
 
     #[test]
     fn inference_2() {
-        let op = StridedSlice::tensorflow(1, 1, 2);
+        let op = strided_slice(1, 1, 2);
         let input = InferenceFact::default().with_datum_type(DatumType::F32);
         let begin = InferenceFact::from(tensor1(&[0i32, 0]));
         let end = InferenceFact::from(tensor1(&[0i32, 1]));
@@ -518,7 +501,7 @@ mod tests {
 
     #[test]
     fn inference_3() {
-        let op = StridedSlice::tensorflow(5, 7, 0);
+        let op = strided_slice(5, 7, 0);
         let input =
             InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 2), 16));
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
@@ -541,7 +524,7 @@ mod tests {
 
     #[test]
     fn inference_4() {
-        let op = StridedSlice::tensorflow(5, 7, 0);
+        let op = strided_slice(5, 7, 0);
         let input =
             InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 2), 16));
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
