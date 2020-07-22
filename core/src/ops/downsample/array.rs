@@ -15,8 +15,11 @@ where
     if down_op.axis != slice_op.axis {
         return Ok(None);
     }
-    let modulo = (down_op.modulo + slice_op.start.to_integer()? as usize) % down_op.stride;
-    let left = (down_op.modulo + slice_op.start.to_integer()? as usize) / down_op.stride;
+    if down_op.stride < 0 {
+        return Ok(None);
+    }
+    let modulo = (down_op.modulo + slice_op.start.to_integer()? as usize) % down_op.stride as usize;
+    let left = (down_op.modulo + slice_op.start.to_integer()? as usize) / down_op.stride as usize;
     let mut patch = TypedModelPatch::default();
     let tap = patch.tap_model(model, slice_node.inputs[0])?;
     let final_len = down_node.outputs[0].fact.shape.dim(down_op.axis);
@@ -81,7 +84,7 @@ mod tests {
             )?;
             let crop =
                 model.wire_node("crop", ops::array::Slice::new(0, left, len - right), &[input])?;
-            let down = model.wire_node("down", Downsample::new(0, stride, modulo), &crop)?;
+            let down = model.wire_node("down", Downsample::new(0, stride as isize, modulo), &crop)?;
             model.set_output_outlets(&down)?;
             model
         };

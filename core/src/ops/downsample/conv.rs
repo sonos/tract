@@ -10,6 +10,9 @@ pub fn fuse_downsample_into_conv(
     down_node: &TypedNode,
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
+    if down_op.stride < 0 {
+        return Ok(None)
+    }
     let input_fact = model.outlet_fact(conv_node.inputs[0])?;
     let input_shape =
         conv_op.pool_spec.data_format.shape(input_fact.shape.iter().collect::<TVec<_>>())?;
@@ -24,7 +27,7 @@ pub fn fuse_downsample_into_conv(
     if new_conv.pool_spec.strides.is_none() {
         new_conv.pool_spec.strides = Some(tvec!(1; input_shape.hw_rank()));
     }
-    new_conv.pool_spec.strides.as_mut().unwrap()[geo_axis] *= down_op.stride;
+    new_conv.pool_spec.strides.as_mut().unwrap()[geo_axis] *= down_op.stride as usize;
 
     let mut patch = TypedModelPatch::default();
     let tap = patch.tap_model(model, conv_node.inputs[0])?;

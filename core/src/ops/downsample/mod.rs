@@ -9,31 +9,13 @@ mod scan;
 #[derive(Debug, Clone, new, Default, PartialEq, Hash)]
 pub struct Downsample {
     pub axis: usize,
-    pub stride: usize,
+    pub stride: isize,
     pub modulo: usize,
 }
 
 impl Downsample {
-    fn eval_t<T: Datum>(&self, input: &Tensor) -> TractResult<Arc<Tensor>> {
-        let input = input.to_array_view::<T>()?;
-        let sampled = if self.modulo < input.shape()[self.axis] {
-            input
-                .slice_axis(
-                    Axis(self.axis),
-                    ndarray::Slice::new(self.modulo as isize, None, self.stride as isize),
-                )
-                .to_owned()
-                .into_arc_tensor()
-        } else {
-            let mut shape = input.shape().to_vec();
-            shape[self.axis] = 0;
-            unsafe { Tensor::uninitialized::<T>(&shape)?.into_arc_tensor() }
-        };
-        Ok(sampled)
-    }
-
     pub(crate) fn transform_dim(&self, input_dim: &TDim) -> TDim {
-        (input_dim.clone() - self.modulo).div_ceil(self.stride as u32)
+        (input_dim.clone() - self.modulo).div_ceil(self.stride.abs() as u32)
     }
 
     pub(crate) fn transform_fact(&self, input_fact: &TypedFact) -> TractResult<TypedFact> {
@@ -64,7 +46,30 @@ impl Op for Downsample {
 impl StatelessOp for Downsample {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, &*input))?))
+        unsafe {
+            let t = if self.modulo > input.shape()[self.axis] {
+                let mut shape: TVec<usize> = input.shape().into();
+                shape[self.axis] = 0;
+                Tensor::uninitialized_dt(input.datum_type(), &*shape)?
+            } else {
+                let slice = ndarray::Slice::new(self.modulo as isize, None, self.stride);
+                unsafe fn do_slice<T: Datum>(
+                    t: &Tensor,
+                    axis: usize,
+                    slice: ndarray::Slice,
+                ) -> Tensor {
+                    let dt = t.datum_type();
+                    let mut t2 = t.to_array_view_unchecked::<T>()
+                        .slice_axis(Axis(axis), slice)
+                        .into_owned()
+                        .into_tensor();
+                    t2.set_datum_type(dt);
+                    t2
+                }
+                dispatch_datum_by_size!(do_slice(input.datum_type())(&*input, self.axis, slice))
+            };
+            Ok(tvec!(t.into_arc_tensor()))
+        }
     }
 }
 
@@ -97,7 +102,12 @@ impl TypedOp for Downsample {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let pulse = target.outlet_fact(input)?.pulse();
-        if pulse % self.stride != 0 {
+        let stride = if self.stride > 0 {
+            self.stride as usize
+        } else {
+            bail!("Negative strides are not causal, can not pulsify.")
+        };
+        if pulse % stride != 0 {
             bail!("Pulsificaton requires pulse to be a stride multiple")
         }
         target.wire_node(&*node.name, self.clone(), &[input])
@@ -109,7 +119,7 @@ impl TypedOp for Downsample {
 impl PulsedOp for Downsample {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape[self.axis] /= self.stride;
+        fact.shape[self.axis] /= self.stride as usize;
         fact.dim = fact.dim.div_ceil(self.stride as u32);
         Ok(tvec!(fact))
     }

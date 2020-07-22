@@ -39,5 +39,5 @@ pub fn strided_slice(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
-    Ok(Box::new(StridedSlice::tensorflow(begin_mask, end_mask, shrink_axis_mask)))
+    Ok(expand(StridedSlice::tensorflow(begin_mask, end_mask, shrink_axis_mask)))
 }
