@@ -310,7 +310,7 @@ impl ConvUnary {
                 .shape(input_fact.shape.iter().collect::<TVec<TDim>>())?;
             let down = patch.wire_node(
                 format!("{}.downsample", node.name),
-                crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0),
+                crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor as isize, 0),
                 &[tap],
             )?;
             let id = patch.wire_node(&*node.name, new_op, &down)?[0];
