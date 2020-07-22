@@ -12,7 +12,7 @@ pub fn depthwise_conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<
     if dilations.len() != 4 || dilations[0] != 1 && dilations[3] != 1 {
         Err(format!("dilations must be of the form [1, h, v, 1], found {:?}", dilations))?
     };
-    Ok(Box::new(DepthwiseConv2d::new(data_format, padding, strides, dilations)))
+    Ok(expand(DepthwiseConv2d::new(data_format, padding, strides, dilations)))
 }
 
 #[derive(Debug, Clone, new, Hash)]
@@ -25,40 +25,13 @@ pub struct DepthwiseConv2d {
 
 tract_linalg::impl_dyn_hash!(DepthwiseConv2d);
 
-impl DepthwiseConv2d {
-    fn to_core(&self, input_shape: &[TDim], kernel_shape: &[usize]) -> TractResult<Conv> {
-        let shape = self.data_format.shape(&input_shape)?;
-        let mut conv = Conv::default()
-            .hwio()
-            .group(kernel_shape[2])
-            .dilations(self.dilations[shape.hw_axes()].into())
-            .strides(self.strides[shape.hw_axes()].into())
-            .padding(self.padding.clone());
-        if self.data_format == DataFormat::NHWC {
-            conv = conv.nhwc()
-        }
-        Ok(conv)
-    }
-}
-
-impl Op for DepthwiseConv2d {
+impl Expansion for DepthwiseConv2d {
     fn name(&self) -> Cow<str> {
         "DepthwiseConv2dNative".into()
     }
 
     op_tf!();
-    not_a_typed_op!();
-}
 
-impl StatelessOp for DepthwiseConv2d {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let ishape: TVec<TDim> = inputs[0].shape().iter().map(|i| i.to_dim()).collect();
-        let kshape = inputs[1].shape();
-        expand(self.to_core(&*ishape, kshape)?).as_stateless().unwrap().eval(inputs)
-    }
-}
-
-impl InferenceRulesOp for DepthwiseConv2d {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -96,27 +69,31 @@ impl InferenceRulesOp for DepthwiseConv2d {
         Ok(())
     }
 
-    as_op!();
-
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let input = target.outlet_fact(mapping[&node.inputs[0]])?;
-        let kernel = target.outlet_fact(mapping[&node.inputs[1]])?;
+        let input = model.outlet_fact(inputs[0])?;
+        let kernel = model.outlet_fact(inputs[1])?;
         let input_shape = input.shape.to_tvec();
         let kernel_shape = if let Some(s) = kernel.shape.as_finite() {
             s
         } else {
             bail!("Do not expect streaming on kernel dims");
         };
-        let conv = self
-            .to_core(&*input_shape, kernel_shape)?
-            .to_unary(&[input, kernel])?
-            .ok_or("Failed to translate")?;
-        target.wire_node(&*node.name, conv, [mapping[&node.inputs[0]]].as_ref())
+        let shape = self.data_format.shape(&input_shape)?;
+        let mut conv = Conv::default()
+            .hwio()
+            .group(kernel_shape[2])
+            .dilations(self.dilations[shape.hw_axes()].into())
+            .strides(self.strides[shape.hw_axes()].into())
+            .padding(self.padding.clone());
+        if self.data_format == DataFormat::NHWC {
+            conv = conv.nhwc()
+        }
+        let conv = conv.to_unary(&[input, kernel])?.ok_or("Failed to translate")?;
+        model.wire_node(prefix, conv, &inputs[0..1])
     }
 }
