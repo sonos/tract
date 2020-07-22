@@ -12,7 +12,6 @@ mod gather_v2;
 mod pack;
 mod pad;
 mod range;
-mod slice;
 mod squeeze;
 mod transpose;
 
@@ -27,17 +26,28 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Range", range::range);
     reg.insert("Reshape", |_, _| Ok(expand(tract_hir::ops::array::Reshape::new())));
     reg.insert("Shape", |_, _| Ok(expand(tract_hir::ops::array::Shape::new(DatumType::I32))));
-    reg.insert("Slice", |_, _| Ok(Box::new(slice::Slice)));
+    reg.insert("Slice", |_, _| slice);
     reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("StridedSlice", strided_slice);
     reg.insert("Tile", |_, _| Ok(expand(::tract_hir::ops::array::Tile)));
     reg.insert("Transpose", transpose::transpose);
 }
 
-pub fn strided_slice(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
+fn strided_slice(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     use tract_hir::ops::array::StridedSlice;
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
     Ok(expand(StridedSlice::tensorflow(begin_mask, end_mask, shrink_axis_mask)))
+}
+
+fn slice(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
+    use tract_hir::ops::array::StridedSlice;
+    Ok(expand(StridedSlice {
+        optional_axes_input: None,
+        optional_steps_input: None,
+        begin_mask: 0,
+        end_mask: 0,
+        shrink_axis_mask: 0,
+    }))
 }
