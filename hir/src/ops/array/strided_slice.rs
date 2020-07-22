@@ -110,6 +110,9 @@ impl StridedSlice {
             false
         };
 
+        let b_underflow = b.as_const().map(|v| v.is_negative()).unwrap_or(false);
+        let e_underflow = e.as_const().map(|v| v.is_negative()).unwrap_or(false);
+
         // deal with shrinking
         // (weirdly, tf ignores begin_mask when shrink is used)
         if self.must_shrink(ix) {
@@ -117,7 +120,7 @@ impl StridedSlice {
         }
 
         if stride.signum() > 0 {
-            if self.ignore_begin(ix) {
+            if self.ignore_begin(ix) || b_underflow {
                 b = 0.to_dim();
             } else if b_overflow {
                 b = dim.clone();
@@ -129,7 +132,7 @@ impl StridedSlice {
             if self.ignore_begin(ix) || b_overflow {
                 b = dim.clone() - 1;
             }
-            if self.ignore_end(ix) {
+            if self.ignore_end(ix) || e_underflow {
                 e = -1.to_dim();
             } else if e_overflow {
                 e = dim.clone() - 1;
@@ -146,6 +149,9 @@ impl StridedSlice {
         bounds: &[Dim],
     ) -> TractResult<Tensor> {
         let input = data.to_array_view::<T>()?;
+        eprintln!("input: {:?}", input);
+        eprintln!("shape: {:?}", mid_shape);
+        eprintln!("bound: {:?}", bounds);
         Ok(Array::from_shape_fn(mid_shape, |coords| {
             let coord: Vec<_> = coords
                 .slice()
@@ -156,6 +162,7 @@ impl StridedSlice {
                         as usize
                 })
                 .collect();
+                eprintln!("coords: {:?}", coords);
             input[&*coord].clone()
         })
         .into_tensor())
@@ -203,7 +210,7 @@ impl StatelessOp for StridedSlice {
                 }
             })
             .collect();
-        trace!("StridedSlice bounds {:?}", bounds);
+        eprintln!("StridedSlice bounds {:?}", bounds);
         let mid_shape: Vec<usize> =
             bounds.iter().map(|d| d.len()).collect::<TractResult<Vec<usize>>>()?;
         let end_shape: Vec<usize> = bounds
@@ -425,6 +432,20 @@ mod tests {
                 tensor1(&[1, -1, 1])
             ),
             Tensor::from(arr3(&[[[4, 4, 4], [3, 3, 3]]])),
+        );
+    }
+
+    #[test]
+    fn eval_3_bis() {
+        assert_eq!(
+            eval(
+                StridedSlice::tensorflow(0, 0, 0),
+                arr1(&[0, 1]),
+                tensor1(&[-1]),
+                tensor1(&[-3]),
+                tensor1(&[-1])
+            ),
+            Tensor::from(arr1(&[1, 0]))
         );
     }
 
