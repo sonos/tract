@@ -76,24 +76,42 @@ where
         + Clone
         + Hash
         + 'static,
+    Graph<TI2, O2>: SpecialOps<TI2, O2>,
 {
     fn translate_node(
         &self,
-        _source: &Graph<TI1, O1>,
+        source: &Graph<TI1, O1>,
         node: &BaseNode<TI1, O1>,
         target: &mut Graph<TI2, O2>,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let new_op = O2::try_from(&node.op)?;
-        let facts = node
-            .outputs
-            .iter()
-            .map(|of| Ok(TI2::try_from(&of.fact)?))
-            .collect::<TractResult<TVec<_>>>()?;
-        let new_id = target.add_node(node.name.clone(), new_op, facts)?;
-        for (ix, o) in node.inputs.iter().enumerate() {
-            target.add_edge(mapping[o], InletId::new(new_id, ix))?
+        let node_is_input =
+            (0..node.outputs.len()).all(|o| source.inputs.contains(&(node.id, o).into()));
+        if node_is_input {
+            (0..node.outputs.len())
+                .map(|i| {
+                    target.add_source(
+                        if node.outputs.len() > 0 {
+                            format!("{}-{}", node.name, i)
+                        } else {
+                            node.name.to_string()
+                        },
+                        TI2::try_from(&node.outputs[i].fact)?,
+                    )
+                })
+                .collect()
+        } else {
+            let new_op = O2::try_from(&node.op)?;
+            let facts = node
+                .outputs
+                .iter()
+                .map(|of| Ok(TI2::try_from(&of.fact)?))
+                .collect::<TractResult<TVec<_>>>()?;
+            let new_id = target.add_node(node.name.clone(), new_op, facts)?;
+            for (ix, o) in node.inputs.iter().enumerate() {
+                target.add_edge(mapping[o], InletId::new(new_id, ix))?
+            }
+            Ok(node.outputs.iter().enumerate().map(|(ix, _)| OutletId::new(new_id, ix)).collect())
         }
-        Ok(node.outputs.iter().enumerate().map(|(ix, _)| OutletId::new(new_id, ix)).collect())
     }
 }

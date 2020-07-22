@@ -33,17 +33,12 @@ impl ElementWiseMiniOp for Cast {
                 let mut output = Tensor::uninitialized::<f32>(t.shape())?;
                 let output_slice = output.as_slice_mut_unchecked();
                 let input = t.as_slice_unchecked::<String>();
-                dbg!(&input);
-                dbg!(&output_slice);
                 for i in 0..input.len() {
-                    dbg!(i);
-                    dbg!(&*input[i]);
                     output_slice[i] = match &*input[i] {
                        "-INF" => -std::f32::INFINITY,
                         "INF" | "+INF" => std::f32::INFINITY,
                         v => v.parse().chain_err(|| format!("failed to parse: {}", v))?,
                     };
-                    dbg!(output_slice[i]);
                 }
                 Ok(output)
             }

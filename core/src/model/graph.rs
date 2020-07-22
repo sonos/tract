@@ -579,7 +579,8 @@ where
             }
             if self.nodes[i].outputs.len() > 1
                 || self.outlet_successors((i, 0).into()).len() > 2
-                || self.outlet_label(i.into()).is_some()
+                || (self.outlet_label(i.into()).is_some()
+                    && self.outlet_label(i.into()).unwrap() != self.nodes[i].name)
             {
                 for o in 0..self.nodes[i].outputs.len() {
                     if self.outlet_successors((i, o).into()).len() > 0 {
@@ -613,6 +614,7 @@ where
         + 'static
         + std::hash::Hash
         + for<'a> std::convert::From<&'a O>,
+    Graph<F, O>: SpecialOps<F, O>,
 {
     pub fn compact(&self) -> TractResult<Self> {
         use crate::model::translator::Translate;
