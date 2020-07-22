@@ -23,7 +23,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Shape", |_, _| Ok((expand(array::Shape::new(DatumType::I64)), vec![])));
     reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::I64)), vec![])));
     reg.insert("Transpose", transpose);
-    reg.insert("Tile", |_, _| Ok((Box::new(array::Tile::default()), vec![])));
+    reg.insert("Tile", |_, _| Ok((expand(array::Tile::default()), vec![])));
     reg.insert("Slice", slice::slice);
     reg.insert("Split", split);
     reg.insert("Squeeze", squeeze);
@@ -35,7 +35,7 @@ pub fn concat(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr("axis")?;
-    Ok((Box::new(array::Concat::new(axis)), vec![]))
+    Ok((expand(array::Concat::new(axis)), vec![]))
 }
 
 pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<Arc<Tensor>>

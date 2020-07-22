@@ -90,10 +90,10 @@ impl GeneralDescriptor {
                 return Ok(());
             }
             &Append(appendees) => {
-                let name = format!("{}-Append", name);
+                let name = format!("{}.Append", name);
                 let id = model.add_node(
                     &*name,
-                    tract_hir::ops::array::Concat::new(1),
+                    expand(tract_hir::ops::array::Concat::new(1)),
                     tvec!(InferenceFact::default()),
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
@@ -112,7 +112,7 @@ impl GeneralDescriptor {
             &IfDefined(ref o) => {
                 if let &Offset(ref n, ref o) = &**o {
                     if let Name(n) = &**n {
-                        let name = format!("{}-Memory", name);
+                        let name = format!("{}.memory", name);
                         model.add_node(
                             &*name,
                             crate::ops::memory::Memory::new(n.to_string(), *o),
