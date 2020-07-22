@@ -1,4 +1,3 @@
-use crate::infer::*;
 use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default, Hash)]
@@ -6,30 +5,13 @@ pub struct Tile;
 
 tract_linalg::impl_dyn_hash!(Tile);
 
-impl Op for Tile {
+impl Expansion for Tile {
     fn name(&self) -> Cow<str> {
         "Tile".into()
     }
 
     op_hir!();
-    not_a_typed_op!();
-    not_a_pulsed_op!();
-}
 
-impl StatelessOp for Tile {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (data, multipliers) = args_2!(inputs);
-        let multipliers: TVec<usize> = multipliers
-            .cast_to::<i32>()?
-            .to_array_view::<i32>()?
-            .iter()
-            .map(|&x| x as usize)
-            .collect();
-        tract_core::ops::array::Tile::new(multipliers).eval(tvec!(data))
-    }
-}
-
-impl InferenceRulesOp for Tile {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -48,37 +30,21 @@ impl InferenceRulesOp for Tile {
             }
             Ok(())
         })?;
-        // TODO i32 and dim
-        /*
-        s.given(&inputs[0].rank, |s, rank| {
-            for d in 0..(rank as usize) {
-                s.equals(inputs[1].value[d].bex() * &inputs[0].shape[d], &outputs[0].shape[d])?;
-            }
-            Ok(())
-        })?;
-        */
         Ok(())
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(ref mult) = source.outlet_fact(node.inputs[1])?.value.concretize() {
+        if let Some(ref mult) = target.outlet_fact(inputs[1])?.konst {
             let mult: TVec<usize> =
                 mult.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
-            let input = mapping[&node.inputs[0]];
-            let op = tract_core::ops::array::Tile::new(mult);
-            let facts = op.output_facts(&[target.outlet_fact(input)?])?;
-            let id = target.add_node(&*node.name, op, facts)?;
-            target.add_edge(mapping[&node.inputs[0]], InletId::new(id, 0))?;
-            return Ok(tvec!(OutletId::new(id, 0)));
+            target.wire_node(prefix, tract_core::ops::array::Tile::new(mult), &inputs[0..1])
+        } else {
+            bail!("shape input is variable")
         }
-        bail!("shape input is variable")
     }
-
-    as_op!();
 }

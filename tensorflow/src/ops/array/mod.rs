@@ -30,7 +30,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Slice", |_, _| Ok(Box::new(slice::Slice)));
     reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("StridedSlice", strided_slice);
-    reg.insert("Tile", |_, _| Ok(Box::new(::tract_hir::ops::array::Tile)));
+    reg.insert("Tile", |_, _| Ok(expand(::tract_hir::ops::array::Tile)));
     reg.insert("Transpose", transpose::transpose);
 }
 
