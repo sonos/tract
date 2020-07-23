@@ -2,6 +2,8 @@
 
 set -ex
 
+start=$(date +%s)
+
 ROOT=`pwd`
 CACHEDIR=${CACHEDIR:-$HOME/.cache}
 if [ -x tract ]
@@ -187,3 +189,7 @@ do
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.mobilenet_v2.tflite_$tflite.pass $sec >> metrics
 done
+
+end=$(date +%s)
+
+echo bundle.bench-runtime  $(($end - $start)) >> metrics
