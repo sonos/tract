@@ -352,8 +352,7 @@ impl Parameters {
         tf_model_extensions: Option<TfExt>,
     ) -> Result<(Arc<dyn Model>, Option<Arc<TypedModel>>, Option<Arc<PulsedModel>>), ModelError>
     {
-        let keep_last = false;
-
+        let keep_last = matches.is_present("verbose");
         let pulse: Option<usize> =
             matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
         let concretize_stream_dim: Option<usize> =
