@@ -395,7 +395,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
     }
 
     #[allow(unused_mut)]
-    let mut params = Parameters::from_clap(&matches, probe)?;
+    let mut params = Parameters::from_clap(&matches, probe).map_err(|ModelError(_,e)| e)?;
 
     let mut need_optimisations = false;
 

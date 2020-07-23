@@ -12,7 +12,7 @@ use crate::{CliResult, Parameters};
 pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
     let decl = params
         .decluttered_model
-        .as_ref()
+        .clone()
         .ok_or("Decluttered model not generated. (using --pass ?)")?;
     let pulsed =
         params.pulsed_model.as_ref().ok_or("Pulsed model not generated. (using --pass ?)")?;
@@ -54,8 +54,8 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
 
             let fixed_input = crate::tensor::tensor_for_fact(decl_input_fact, Some(stream_dim))?;
 
+            let decl = (*decl).clone();
             let fixed_result = decl
-                .clone()
                 .with_output_outlets(&[decl_outlet])?
                 .concretize_stream_dim(stream_dim)?
                 .into_runnable()?
