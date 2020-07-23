@@ -18,6 +18,14 @@ use super::{info_usage, tensor};
 
 use super::model::Model;
 
+pub struct ModelError(pub Option<Box<dyn Model>>, pub CliError);
+
+impl<E: Into<CliError>> From<E> for ModelError {
+    fn from(e: E) -> ModelError {
+        ModelError(None, e.into())
+    }
+}
+
 #[derive(Debug)]
 pub enum SomeGraphDef {
     NoGraphDef,
@@ -34,10 +42,10 @@ pub struct Parameters {
     pub analyse_error: Option<TractError>,
     pub graph: SomeGraphDef,
 
-    pub decluttered_model: Option<TypedModel>,
-    pub pulsed_model: Option<PulsedModel>,
+    pub decluttered_model: Option<Arc<TypedModel>>,
+    pub pulsed_model: Option<Arc<PulsedModel>>,
 
-    pub tract_model: Box<dyn Model>,
+    pub tract_model: Arc<dyn Model>,
 
     #[cfg(feature = "conform")]
     pub tf_model: Option<tract_tensorflow::conform::tf::Tensorflow>,
@@ -342,22 +350,18 @@ impl Parameters {
         probe: Option<&readings_probe::Probe>,
         raw_model: InferenceModel,
         tf_model_extensions: Option<TfExt>,
-    ) -> Result<
-        (Box<dyn Model>, Option<TypedModel>, Option<PulsedModel>),
-        (Box<dyn Model>, TractError),
-    > {
-        let pulse: Option<usize> =
-            matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose().map_err(|e| {
-                (Box::new(raw_model.clone()) as Box<dyn Model>, TractError::from(e))
-            })?;
-        let concretize_stream_dim: Option<usize> =
-            matches.value_of("concretize_stream_dim").map(|s| s.parse()).transpose().map_err(
-                |e| (Box::new(raw_model.clone()) as Box<dyn Model>, TractError::from(e)),
-            )?;
+    ) -> Result<(Arc<dyn Model>, Option<Arc<TypedModel>>, Option<Arc<PulsedModel>>), ModelError>
+    {
+        let keep_last = false;
 
-        let mut inference_model = Some(raw_model);
-        let mut typed_model = None;
-        let mut pulsed_model = None;
+        let pulse: Option<usize> =
+            matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
+        let concretize_stream_dim: Option<usize> =
+            matches.value_of("concretize_stream_dim").map(|s| s.parse()).transpose()?;
+
+        let mut inference_model: Option<Arc<InferenceModel>> = Some(Arc::new(raw_model));
+        let mut typed_model: Option<Arc<TypedModel>> = None;
+        let mut pulsed_model: Option<Arc<PulsedModel>> = None;
 
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
@@ -373,68 +377,56 @@ impl Parameters {
         macro_rules! stage {
             ($name:expr, $from:ident -> $to:ident, $block:expr) => {
                 info!(concat!("Running '", $name, "'"));
-                match $block() {
-                    Ok(_) => (),
+                let last_model: Option<Box<dyn Model>> = if keep_last {
+                    Some(Box::new((**($from.as_ref().unwrap())).clone()))
+                } else {
+                    None
+                };
+                let block: &dyn Fn(_) -> TractResult<_> = &$block;
+                match block(Arc::try_unwrap($from.take().unwrap()).unwrap()) {
+                    Ok(it) => {
+                        $to = Some(Arc::new(it));
+                    }
                     Err(e) => {
-                        return Err((Box::new($from.unwrap()), e));
+                        return Err(ModelError(last_model, e.into()));
                     }
                 }
                 if stop_at == $name {
-                    return Ok((Box::new($to.clone().unwrap()), typed_model, pulsed_model));
+                    return Ok(($to.clone().unwrap(), typed_model, pulsed_model));
                 }
                 info_usage(concat!("after ", $name), probe);
             };
         };
 
-        if stop_at == "load" {
-            return Ok((Box::new(inference_model.unwrap()), typed_model, pulsed_model));
-        }
-        info_usage("after load", probe);
-
-        stage!("analyse", inference_model -> inference_model, || inference_model.as_mut().unwrap().analyse(matches.is_present("analyse_fail_fast")));
+        stage!("load", inference_model -> inference_model, |m:InferenceModel| TractResult::Ok(m));
+        stage!("analyse", inference_model -> inference_model, 
+               |mut m:InferenceModel| { m.analyse(matches.is_present("analyse_fail_fast"))?; TractResult::Ok(m) });
         #[cfg(feature = "tf")]
-        stage!("tf-preproc", inference_model -> inference_model, || {
-            if let Some(ext) = tf_model_extensions {
-                inference_model = Some(ext.preproc(inference_model.take().unwrap())?);
-            }
-            Ok(())
-        });
-        stage!("incorporate", inference_model -> inference_model,
-                       || { inference_model = Some(inference_model.clone().unwrap().incorporate()?); Ok(()) });
-        stage!("type", inference_model -> typed_model,
-                       || { typed_model = Some(inference_model.clone().unwrap().into_typed()?); Ok(())  });
-        stage!("declutter", typed_model -> typed_model,
-                       || { typed_model = Some(typed_model.as_ref().unwrap().declutter()?); Ok(())  });
-        if let Some(dim) = concretize_stream_dim {
-            stage!("concretize-stream-dim", typed_model -> typed_model,
-                           || { typed_model = Some(typed_model.as_ref().unwrap().concretize_stream_dim(dim)?); Ok(()) } );
-            stage!("concreate-stream-dim-declutter", typed_model -> typed_model,
-                           || { typed_model = Some(typed_model.as_ref().unwrap().declutter()?); Ok(())  });
-        } else if let Some(pulse) = pulse {
-            stage!("pulse", typed_model -> pulsed_model,
-            || {
-                pulsed_model = Some(::tract_core::pulse::PulsedModel::new(typed_model.as_ref().unwrap(), pulse)?);
-                Ok(())
-            });
-            stage!("pulse-to-type", pulsed_model -> typed_model,
-            || {
-                typed_model = Some(pulsed_model.clone().unwrap().into_typed()?);
-                Ok(())
-            });
-            stage!("pulse-declutter", typed_model -> typed_model,
-                    || { typed_model = Some(typed_model.as_ref().unwrap().declutter()?); Ok(())  });
+        if let Some(ext) = tf_model_extensions {
+            stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| ext.preproc(m));
         }
-
+        stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { m.incorporate()});
+        stage!("type", inference_model -> typed_model, |m:InferenceModel| m.into_typed());
+        stage!("declutter", typed_model -> typed_model, |m:TypedModel| m.declutter());
+        if let Some(dim) = concretize_stream_dim {
+            stage!("concretize-stream-dim", typed_model -> typed_model, |m:TypedModel| m.concretize_stream_dim(dim) );
+            stage!("concretize-stream-dim-declutter", typed_model -> typed_model, |m:TypedModel| m.declutter());
+        } else if let Some(pulse) = pulse {
+            stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| ::tract_core::pulse::PulsedModel::new(&m, pulse));
+            stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
+            stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.declutter());
+        }
         info_usage("before optimize", probe);
-        stage!("optimize", typed_model -> typed_model,
-                   || { typed_model = Some(typed_model.clone().unwrap().optimize()?); Ok(()) });
-
-        Ok((Box::new(typed_model.clone().unwrap()), typed_model, pulsed_model))
+        stage!("optimize", typed_model -> typed_model, |m:TypedModel| m.optimize());
+        Ok((typed_model.clone().unwrap(), typed_model, pulsed_model))
     }
 
     #[allow(unused_variables)]
     /// Parses the command-line arguments.
-    pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
+    pub fn from_clap(
+        matches: &clap::ArgMatches,
+        probe: Option<&Probe>,
+    ) -> Result<Parameters, ModelError> {
         let (filename, onnx_tc) = Self::disco_model(matches)?;
         let (mut graph, mut raw_model, tf_model_extensions) =
             Self::load_model(matches, probe, &filename)?;
@@ -520,11 +512,11 @@ impl Parameters {
             raw_model = raw_model.eliminate_dead_branches()?;
         }
 
-        match Self::pipeline(matches, probe, raw_model, tf_model_extensions) {
-            Ok((tract_model, decluttered_model, pulsed_model)) => {
+        Self::pipeline(matches, probe, raw_model, tf_model_extensions).map(
+            |(tract_model, decluttered_model, pulsed_model)| {
                 info!("Model ready");
                 info_usage("model ready", probe);
-                Ok(Parameters {
+                Parameters {
                     analyse_error: None,
                     graph,
                     decluttered_model,
@@ -534,20 +526,9 @@ impl Parameters {
                     input_values,
                     assertions,
                     machine_friendly: matches.is_present("machine_friendly"),
-                })
-            }
-            Err((tract_model, e)) => Ok(Parameters {
-                analyse_error: Some(e),
-                graph,
-                decluttered_model: None,
-                pulsed_model: None,
-                tract_model,
-                tf_model,
-                input_values,
-                assertions,
-                machine_friendly: matches.is_present("machine_friendly"),
-            }),
-        }
+                }
+            },
+        )
     }
 }
 
