@@ -400,8 +400,8 @@ impl Parameters {
         stage!("load", inference_model -> inference_model, |m:InferenceModel| TractResult::Ok(m));
         stage!("analyse", inference_model -> inference_model, 
                |mut m:InferenceModel| { m.analyse(matches.is_present("analyse_fail_fast"))?; TractResult::Ok(m) });
-        #[cfg(feature = "tf")]
         if let Some(ext) = tf_model_extensions {
+            #[cfg(feature = "tf")]
             stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| ext.preproc(m));
         }
         stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { m.incorporate()});
