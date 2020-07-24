@@ -9,6 +9,8 @@ use crate::ast::*;
 <fragment-definition> ::= <fragment-declaration> (<body> | ";")
 */
 
+// FRAGMENT DECLARATION
+
 // <fragment-declaration> ::= "fragment" <identifier> [<generic-declaration>] "(" <parameter-list> ")" "->" "(" <result-list> ")"
 pub fn fragment_decl(i: &str) -> IResult<&str, FragmentDecl> {
     let (i, _) = spaced(tag("fragment"))(i)?;
@@ -98,12 +100,93 @@ pub fn tuple_type_spec(i: &str) -> IResult<&str, TypeSpec> {
     )(i)
 }
 
-// identifier: identifiers must consist of the following ASCII characters: _, [a-z], [A-Z], [0-9]. The identifier must not start with a digit.
+// BODY
+
+// <lvalue-expr> ::= <identifier> | <array-lvalue-expr> | <tuple-lvalue-expr>
+// <array-lvalue-expr> ::= "[" [<lvalue-expr> ("," <lvalue-expr>)* ] "]"
+// <tuple-lvalue-expr> ::= "(" <lvalue-expr> ("," <lvalue-expr>)+ ")" | <lvalue-expr> ("," <lvalue-expr>)+
+pub fn lvalue_expr(i: &str) -> IResult<&str, LValue> {
+    alt((
+        map(
+            delimited(
+                spaced(tag("[")),
+                separated_list(spaced(tag(",")), lvalue_expr),
+                spaced(tag("]")),
+            ),
+            LValue::Array,
+        ),
+        map(
+            delimited(
+                spaced(tag("(")),
+                separated_list(spaced(tag(",")), lvalue_expr),
+                spaced(tag(")")),
+            ),
+            LValue::Tuple,
+        ),
+        map(separated_list(spaced(tag(",")), lvalue_expr), LValue::Tuple),
+        map(spaced(identifier), LValue::Identifier),
+    ))(i)
+}
+
+// <invocation> ::= <identifier> ["<" <type-name> ">"] "(" <argument-list> ")"
+pub fn invocation(i: &str) -> IResult<&str, Invocation> {
+    let (i, id) = spaced(identifier)(i)?;
+    let (i, generic_type_name) = opt(delimited(spaced(tag("<")), type_name, spaced(tag(">"))))(i)?;
+    let (i, _) = spaced(tag("("))(i)?;
+    let (i, arguments) = argument_list(i)?;
+    let (i, _) = spaced(tag(")"))(i)?;
+    Ok((i, Invocation { id, generic_type_name, arguments }))
+}
+
+// <argument-list> ::= <argument> ("," <argument>)*
+pub fn argument_list(i: &str) -> IResult<&str, Vec<Argument>> {
+    separated_list(spaced(tag(",")), argument)(i)
+}
+
+// <argument> ::= <rvalue-expr> | <identifier> "=" <rvalue-expr>
+pub fn argument(i: &str) -> IResult<&str, Argument> {
+    spaced(map(pair(opt(terminated(identifier, spaced(tag("=")))), rvalue), |(id, rvalue)| {
+        Argument { id, rvalue }
+    }))(i)
+}
+
+//<rvalue-expr> ::= <identifier> | <literal> | <binary-expr> | <unary-expr> | <paren-expr>
+//                  | <array-rvalue-expr> | <tuple-rvalue-expr> | <subscript-expr> | <if-else-expr>
+//                  | <comprehension-expr> | <builtin-expr> | <invocation>
+pub fn rvalue(i: &str) -> IResult<&str, RValue> {
+    spaced(alt((
+        map(identifier, RValue::Identifier),
+        map(delimited(tag("("), rvalue, tag(")")), |rv| RValue::RValue(Box::new(rv))),
+        map(invocation, RValue::Invocation),
+    )))(i)
+}
+
+// TERMINALS
+
+// identifier: identifiers must consist of the following ASCII characters: _, [a-z], [A-Z], [0-9].
+// The identifier must not start with a digit.
 pub fn identifier(i: &str) -> IResult<&str, String> {
     map(
         recognize(pair(alpha1, nom::multi::many0(nom::branch::alt((alphanumeric1, tag("_")))))),
         String::from,
     )(i)
+}
+
+// <literal> ::= <numeric-literal> | <string-literal> | <logical-literal>
+pub fn string_literal(i: &str) -> IResult<&str, String> {
+    pub fn inner(i: &str) -> IResult<&str, String> {
+        map(
+            many0(alt((
+                preceded(tag("\\"), nom::character::complete::anychar),
+                nom::character::complete::none_of("\"'")
+            ))),
+            |v: Vec<char>| v.into_iter().collect(),
+        )(i)
+    }
+    spaced(alt((
+        delimited(tag("'"), inner, tag("'")),
+        delimited(tag("\""), inner, tag("\"")),
+    )))(i)
 }
 
 pub fn spaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> nom::IResult<I, O, E>
@@ -193,5 +276,17 @@ mod test {
                 results: vec!(result("y", Tensor(Scalar))),
             }
         );
+    }
+
+    #[test]
+    fn test_string() {
+        assert_eq!(p(string_literal, r#""""#), "");
+        assert_eq!(p(string_literal, r#""foo""#), "foo");
+        assert_eq!(p(string_literal, r#"''"#), "");
+        assert_eq!(p(string_literal, r#"'foo'"#), "foo");
+
+        assert_eq!(p(string_literal, r#"'f\oo'"#), "foo");
+        assert_eq!(p(string_literal, r#"'f\'oo'"#), "f'oo");
+        assert_eq!(p(string_literal, r#"'f\"oo'"#), "f\"oo");
     }
 }
