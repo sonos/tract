@@ -3,6 +3,7 @@ members = [
     "linalg",
     "core",
     "hir",
+    "nnef",
     "tensorflow",
     "onnx",
     "kaldi",
