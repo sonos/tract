@@ -22,5 +22,5 @@ educe = "=0.4.11" # locked for rust 1.41.0
 lazy_static = "1"
 log = "0.4"
 maplit = "1"
-nom = "5.0.0-beta3"
+nom = "5"
 tract-hir = { path = "../hir" }
