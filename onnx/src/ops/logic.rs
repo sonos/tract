@@ -11,6 +11,8 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Equal", |_, _| Ok((ops::logic::Equals.into_hir(), vec![])));
     reg.insert("Greater", |_, _| Ok((ops::logic::Greater.into_hir(), vec![])));
     reg.insert("Less", |_, _| Ok((ops::logic::Lesser.into_hir(), vec![])));
+    reg.insert("LessOrEqual", |_, _| Ok((ops::logic::LesserEqual.into_hir(), vec![])));
+    reg.insert("GreaterOrEqual", |_, _| Ok((ops::logic::GreaterEqual.into_hir(), vec![])));
 
     reg.insert("Where", |_, _| Ok((Box::new(ops::logic::Iff::default()), vec![])));
 }
