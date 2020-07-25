@@ -1,4 +1,6 @@
 use crate::model::OnnxOpRegister;
+use crate::model::ParsingContext;
+use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
 use tract_hir::ops::binary::Nary;
@@ -48,6 +50,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Rsqrt", |_, _| Ok((Box::new(ops::math::rsqrt()), vec![])));
 
     reg.insert("IsNaN", |_, _| Ok((Box::new(is_nan()), vec![])));
+    reg.insert("IsInf", isinf);
     reg.insert("Neg", |_, _| Ok((Box::new(ops::math::neg()), vec![])));
     reg.insert("Sign", |_, _| Ok((Box::new(ops::math::sign()), vec![])));
     reg.insert("Reciprocal", |_, _| Ok((Box::new(ops::math::recip()), vec![])));
@@ -76,6 +79,23 @@ element_wise_oop!(is_nan, IsNan,
     prefix: "onnx."
 );
 
+fn isinf(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let detect_positive = node.get_attr_opt("detect_positive")?.unwrap_or(1) != 0;
+    let detect_negative = node.get_attr_opt("detect_negative")?.unwrap_or(1) != 0;
+    Ok((Box::new(is_inf(detect_positive, detect_negative)), vec![]))
+}
+
+element_wise_oop!(is_inf, IsInf { detect_positive: bool, detect_negative: bool },
+    [f32] => bool |op, xs, ys| {
+        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = (op.detect_positive && *x == f32::INFINITY) || (op.detect_negative && *x == f32::NEG_INFINITY));
+        Ok(())
+    };
+    prefix: "onnx."
+);
+
 #[allow(non_upper_case_globals)]
 fn erf_f32(x: f32) -> f32 {
     const a1: f32 = 0.0705230784;
@@ -97,4 +117,3 @@ fn erf_f32(x: f32) -> f32 {
 
     y.copysign(signum)
 }
-
