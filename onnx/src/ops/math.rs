@@ -90,7 +90,9 @@ fn isinf(
 
 element_wise_oop!(is_inf, IsInf { detect_positive: bool, detect_negative: bool },
     [f32] => bool |op, xs, ys| {
-        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = (op.detect_positive && *x == f32::INFINITY) || (op.detect_negative && *x == f32::NEG_INFINITY));
+        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+            *y = (op.detect_positive && *x == std::f32::INFINITY) || (op.detect_negative && *x == std::f32::NEG_INFINITY)
+        );
         Ok(())
     };
     prefix: "onnx."
