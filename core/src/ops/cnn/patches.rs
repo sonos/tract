@@ -541,7 +541,7 @@ pub mod test {
             .unwrap()
             .with_dilations(tvec!(dilation))
             .with_kernel_shape(tvec!(kdim))
-            .with_padding(PaddingSpec::Explicit(tvec![pad_before], tvec![bad_after]))
+            .with_padding(PaddingSpec::Explicit(tvec![pad_before], tvec![bad_after], true))
             .with_strides(tvec![stride])
             .into_patch();
         patch.output_shape[0]
@@ -572,7 +572,6 @@ pub mod test {
             PatchSpec::for_data_shape(NCHW.from_n_c_hw(1, 1, tvec![10; kdim.len()]).unwrap())
                 .with_dilations(dilations.into())
                 .with_kernel_shape(kdim.into())
-                .with_padding(PaddingSpec::Explicit(tvec![0; kdim.len()], tvec![0; kdim.len()]))
                 .with_strides(tvec![1; kdim.len()])
                 .into_patch();
         patch.data_field
