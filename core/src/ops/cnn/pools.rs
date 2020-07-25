@@ -192,7 +192,7 @@ impl PoolSpec {
                     aft.push(c.pad_after);
                 };
             }
-            Ok((wire, PoolSpec { padding: PaddingSpec::Explicit(bef, aft), ..self.clone() }))
+            Ok((wire, PoolSpec { padding: PaddingSpec::Explicit(bef, aft, true), ..self.clone() }))
         } else {
             Ok((wire, self.clone()))
         }

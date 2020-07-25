@@ -9,8 +9,8 @@ use crate::pb_helpers::OptionExt;
 use tract_num_traits::AsPrimitive;
 
 mod batch_norm;
-mod instance_norm;
 mod dropout;
+mod instance_norm;
 mod lrn;
 
 fn reduce(
@@ -66,11 +66,19 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 }
 
 fn pad(node: &NodeProto) -> TractResult<cnn::PaddingSpec> {
+    let ceil_mode = node.get_attr_opt::<isize>("ceil_mode")?.unwrap_or(0) == 1;
+    let default = match node.get_attr_opt_vec::<isize>("kernel_shape")? {
+        Some(shape) => {
+            cnn::PaddingSpec::Explicit(tvec!(0; shape.len()), tvec!(0; shape.len()), ceil_mode)
+        }
+        None => cnn::PaddingSpec::Valid,
+    };
     if let Some(pads) = node.get_attr_opt_tvec("pads")? {
         let len = pads.len();
         return Ok(cnn::PaddingSpec::Explicit(
             pads.iter().cloned().take(len / 2).collect(),
             pads.iter().cloned().skip(len / 2).collect(),
+            ceil_mode,
         ));
     }
     Ok(node
@@ -79,7 +87,7 @@ fn pad(node: &NodeProto) -> TractResult<cnn::PaddingSpec> {
             node.check_value(
                 "auto_pad",
                 match s {
-                    "NOTSET" => Ok(cnn::PaddingSpec::Valid),
+                    "NOTSET" => Ok(default.clone()),
                     "VALID" => Ok(cnn::PaddingSpec::Valid),
                     "SAME_UPPER" => Ok(cnn::PaddingSpec::SameUpper),
                     "SAME_LOWER" => Ok(cnn::PaddingSpec::SameLower),
@@ -87,7 +95,7 @@ fn pad(node: &NodeProto) -> TractResult<cnn::PaddingSpec> {
                 },
             )
         })?
-        .unwrap_or(cnn::PaddingSpec::Valid))
+        .unwrap_or(default))
 }
 
 fn dilations(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {

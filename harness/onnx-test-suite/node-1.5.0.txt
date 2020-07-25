@@ -34,6 +34,7 @@ test_atan_example
 test_atanh
 test_atanh_example
 test_averagepool_1d_default
+test_averagepool_2d_ceil
 test_averagepool_2d_default
 test_averagepool_2d_pads
 test_averagepool_2d_pads_count_include_pad
@@ -154,6 +155,9 @@ test_hardsigmoid_example
 test_hardsigmoid_example
 test_identity
 test_instancenorm_example
+test_isinf
+test_isinf_negative
+test_isinf_positive
 test_isnan
 test_leakyrelu
 test_leakyrelu_default
@@ -180,6 +184,7 @@ test_matmulinteger                                                              
 test_max_example
 test_max_one_input
 test_maxpool_1d_default
+test_maxpool_2d_ceil
 test_maxpool_2d_default
 test_maxpool_2d_pads
 test_maxpool_2d_precomputed_pads
