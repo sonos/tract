@@ -5,33 +5,37 @@ use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, s
 
 use crate::ast::*;
 
+pub fn fragment(i: &str) -> IResult<&str, FragmentDef> {
+    fragment_def(i)
+}
+
+
 pub fn fragments(i: &str) -> IResult<&str, Vec<FragmentDef>> {
-    many1(spaced(fragment_def))(i)
+    many0(spaced(fragment_def))(i)
 }
 
 // <document> ::= <version> <extension>* <graph-definition>
 pub fn document(i: &str) -> IResult<&str, Document> {
-    map(tuple((version, many0(extension), graph_def)), |(version, extension, graph_def)| Document {
-        version,
-        extension,
-        graph_def,
-    })(i)
+    map(
+        tuple((version, many0(extension), fragments, graph_def)),
+        |(version, extension, fragments, graph_def)| Document { version, extension, fragments, graph_def },
+    )(i)
 }
 
 // <version> ::= "version" <numeric-literal> ";"
-pub fn version(i: &str) -> IResult<&str, NumericLiteral> {
+fn version(i: &str) -> IResult<&str, NumericLiteral> {
     delimited(stag("version"), numeric_literal, stag(";"))(i)
 }
 
 // <extension> ::= "extension" <identifier>+ ";"
-pub fn extension(i: &str) -> IResult<&str, Vec<String>> {
+fn extension(i: &str) -> IResult<&str, Vec<String>> {
     delimited(stag("extension"), many1(spaced(identifier)), stag(";"))(i)
 }
 
 // FRAGMENT
 
 // <fragment-definition> ::= <fragment-declaration> (<body> | ";")
-pub fn fragment_def(i: &str) -> IResult<&str, FragmentDef> {
+fn fragment_def(i: &str) -> IResult<&str, FragmentDef> {
     spaced(map(
         pair(fragment_decl, alt((map(body, Some), map(stag(";"), |_| None)))),
         |(decl, body)| FragmentDef { decl, body },
@@ -39,7 +43,7 @@ pub fn fragment_def(i: &str) -> IResult<&str, FragmentDef> {
 }
 
 // <fragment-declaration> ::= "fragment" <identifier> [<generic-declaration>] "(" <parameter-list> ")" "->" "(" <result-list> ")"
-pub fn fragment_decl(i: &str) -> IResult<&str, FragmentDecl> {
+fn fragment_decl(i: &str) -> IResult<&str, FragmentDecl> {
     let (i, _) = stag("fragment")(i)?;
     let (i, id) = identifier(i)?;
     let (i, generic_decl) = opt(generic_decl)(i)?;
@@ -63,17 +67,17 @@ fn generic_decl(i: &str) -> IResult<&str, Option<TypeName>> {
 }
 
 // <parameter-list> ::= <parameter> ("," <parameter>)*
-pub fn parameter_list(i: &str) -> IResult<&str, Vec<Parameter>> {
+fn parameter_list(i: &str) -> IResult<&str, Vec<Parameter>> {
     separated_list(stag(","), parameter)(i)
 }
 
 // <result-list> ::= <result> ("," <result>)*
-pub fn result_list(i: &str) -> IResult<&str, Vec<Result_>> {
+fn result_list(i: &str) -> IResult<&str, Vec<Result_>> {
     separated_list(stag(","), result)(i)
 }
 
 // <parameter> ::= <identifier> ":" <type-spec> ["=" <literal-expr>]
-pub fn parameter(i: &str) -> IResult<&str, Parameter> {
+fn parameter(i: &str) -> IResult<&str, Parameter> {
     map(
         pair(
             separated_pair(identifier, stag(":"), type_spec),
@@ -84,11 +88,11 @@ pub fn parameter(i: &str) -> IResult<&str, Parameter> {
 }
 
 // <result> ::= <identifier> ":" <type-spec>
-pub fn result(i: &str) -> IResult<&str, Result_> {
+fn result(i: &str) -> IResult<&str, Result_> {
     map(separated_pair(identifier, stag(":"), type_spec), |(id, spec)| Result_ { id, spec })(i)
 }
 
-pub fn literal_expr(i: &str) -> IResult<&str, Literal> {
+fn literal_expr(i: &str) -> IResult<&str, Literal> {
     spaced(alt((
         literal,
         map(delimited(stag("["), separated_list(stag(","), literal), stag("]")), Literal::Array),
@@ -97,8 +101,8 @@ pub fn literal_expr(i: &str) -> IResult<&str, Literal> {
 }
 
 // <type-spec> ::= <type-name> | <tensor-type-spec> | <array-type-spec> | <tuple-type-spec>
-pub fn type_spec(i: &str) -> IResult<&str, TypeSpec> {
-    pub fn non_array_type(i: &str) -> IResult<&str, TypeSpec> {
+fn type_spec(i: &str) -> IResult<&str, TypeSpec> {
+    fn non_array_type(i: &str) -> IResult<&str, TypeSpec> {
         alt((tuple_type_spec, map(type_name, TypeSpec::Single), tensor_type_spec))(i)
     }
     alt((
@@ -110,7 +114,7 @@ pub fn type_spec(i: &str) -> IResult<&str, TypeSpec> {
 }
 
 // <type-name> ::= "integer" | "scalar" | "logical" | "string" | "?"
-pub fn type_name(i: &str) -> IResult<&str, TypeName> {
+fn type_name(i: &str) -> IResult<&str, TypeName> {
     spaced(alt((
         map(tag("integer"), |_| TypeName::Integer),
         map(tag("scalar"), |_| TypeName::Scalar),
@@ -121,12 +125,12 @@ pub fn type_name(i: &str) -> IResult<&str, TypeName> {
 }
 
 // <tensor-type-spec> ::= "tensor" "<" [<type-name>] ">"
-pub fn tensor_type_spec(i: &str) -> IResult<&str, TypeSpec> {
+fn tensor_type_spec(i: &str) -> IResult<&str, TypeSpec> {
     map(delimited(pair(stag("tensor"), stag("<")), type_name, stag(">")), TypeSpec::Tensor)(i)
 }
 
 // <tuple-type-spec> ::= "(" <type-spec> ("," <type-spec>)+ ")"
-pub fn tuple_type_spec(i: &str) -> IResult<&str, TypeSpec> {
+fn tuple_type_spec(i: &str) -> IResult<&str, TypeSpec> {
     map(delimited(stag("("), separated_list(stag(","), type_spec), stag(")")), TypeSpec::Tuple)(i)
 }
 
@@ -135,7 +139,7 @@ pub fn tuple_type_spec(i: &str) -> IResult<&str, TypeSpec> {
 // <graph-definition> ::= <graph-declaration> <body>
 // <graph-declaration> ::= "graph" <identifier> "(" <identifier-list> ")" "->" "(" <identifier-list> ")"
 // <identifier-list> ::= <identifier> ("," <identifier>)*
-pub fn graph_def(i: &str) -> IResult<&str, GraphDef> {
+fn graph_def(i: &str) -> IResult<&str, GraphDef> {
     let (i, _) = stag("graph")(i)?;
     let (i, id) = identifier(i)?;
     let (i, _) = stag("(")(i)?;
@@ -152,12 +156,12 @@ pub fn graph_def(i: &str) -> IResult<&str, GraphDef> {
 // BODY
 
 // <body> ::= "{" <assignment>+ "}"
-pub fn body(i: &str) -> IResult<&str, Vec<Assignment>> {
+fn body(i: &str) -> IResult<&str, Vec<Assignment>> {
     delimited(stag("{"), many0(assignment), stag("}"))(i)
 }
 
 // <assignment> ::= <lvalue-expr> "=" <rvalue-expr> ";"
-pub fn assignment(i: &str) -> IResult<&str, Assignment> {
+fn assignment(i: &str) -> IResult<&str, Assignment> {
     spaced(terminated(
         map(separated_pair(lvalue, stag("="), rvalue), |(left, right)| Assignment { left, right }),
         stag(";"),
@@ -167,8 +171,8 @@ pub fn assignment(i: &str) -> IResult<&str, Assignment> {
 // <lvalue-expr> ::= <identifier> | <array-lvalue-expr> | <tuple-lvalue-expr>
 // <array-lvalue-expr> ::= "[" [<lvalue-expr> ("," <lvalue-expr>)* ] "]"
 // <tuple-lvalue-expr> ::= "(" <lvalue-expr> ("," <lvalue-expr>)+ ")" | <lvalue-expr> ("," <lvalue-expr>)+
-pub fn lvalue(i: &str) -> IResult<&str, LValue> {
-    pub fn inner_lvalue(i: &str) -> IResult<&str, LValue> {
+fn lvalue(i: &str) -> IResult<&str, LValue> {
+    fn inner_lvalue(i: &str) -> IResult<&str, LValue> {
         alt((
             map(
                 delimited(stag("["), separated_list(stag(","), inner_lvalue), stag("]")),
@@ -186,7 +190,7 @@ pub fn lvalue(i: &str) -> IResult<&str, LValue> {
 }
 
 // <invocation> ::= <identifier> ["<" <type-name> ">"] "(" <argument-list> ")"
-pub fn invocation(i: &str) -> IResult<&str, Invocation> {
+fn invocation(i: &str) -> IResult<&str, Invocation> {
     let (i, id) = spaced(identifier)(i)?;
     let (i, generic_type_name) = opt(delimited(stag("<"), type_name, stag(">")))(i)?;
     let (i, _) = stag("(")(i)?;
@@ -196,12 +200,12 @@ pub fn invocation(i: &str) -> IResult<&str, Invocation> {
 }
 
 // <argument-list> ::= <argument> ("," <argument>)*
-pub fn argument_list(i: &str) -> IResult<&str, Vec<Argument>> {
+fn argument_list(i: &str) -> IResult<&str, Vec<Argument>> {
     separated_list(stag(","), argument)(i)
 }
 
 // <argument> ::= <rvalue-expr> | <identifier> "=" <rvalue-expr>
-pub fn argument(i: &str) -> IResult<&str, Argument> {
+fn argument(i: &str) -> IResult<&str, Argument> {
     spaced(map(pair(opt(terminated(identifier, stag("="))), rvalue), |(id, rvalue)| Argument {
         id,
         rvalue,
@@ -211,7 +215,7 @@ pub fn argument(i: &str) -> IResult<&str, Argument> {
 //<rvalue-expr> ::= <identifier> | <literal> | <binary-expr> | <unary-expr> | <paren-expr>
 //                  | <array-rvalue-expr> | <tuple-rvalue-expr> | <subscript-expr> | <if-else-expr>
 //                  | <comprehension-expr> | <builtin-expr> | <invocation>
-pub fn rvalue(i: &str) -> IResult<&str, RValue> {
+fn rvalue(i: &str) -> IResult<&str, RValue> {
     fn atom(i: &str) -> IResult<&str, RValue> {
         spaced(alt((
             map(invocation, RValue::Invocation),
@@ -311,7 +315,7 @@ fn loop_iters(i: &str) -> IResult<&str, Vec<(String, RValue)>> {
 
 // identifier: identifiers must consist of the following ASCII characters: _, [a-z], [A-Z], [0-9].
 // The identifier must not start with a digit.
-pub fn identifier(i: &str) -> IResult<&str, String> {
+fn identifier(i: &str) -> IResult<&str, String> {
     map(
         recognize(pair(alpha1, nom::multi::many0(nom::branch::alt((alphanumeric1, tag("_")))))),
         String::from,
@@ -319,7 +323,7 @@ pub fn identifier(i: &str) -> IResult<&str, String> {
 }
 
 // <literal> ::= <numeric-literal> | <string-literal> | <logical-literal>
-pub fn literal(i: &str) -> IResult<&str, Literal> {
+fn literal(i: &str) -> IResult<&str, Literal> {
     spaced(alt((
         map(numeric_literal, Literal::Numeric),
         map(string_literal, Literal::String),
@@ -327,7 +331,7 @@ pub fn literal(i: &str) -> IResult<&str, Literal> {
     )))(i)
 }
 
-pub fn numeric_literal(i: &str) -> IResult<&str, NumericLiteral> {
+fn numeric_literal(i: &str) -> IResult<&str, NumericLiteral> {
     fn exp_part(i: &str) -> IResult<&str, &str> {
         recognize(tuple((one_of("eE"), opt(tag("-")), digit1)))(i)
     }
@@ -340,8 +344,8 @@ pub fn numeric_literal(i: &str) -> IResult<&str, NumericLiteral> {
     ))(i)
 }
 
-pub fn string_literal(i: &str) -> IResult<&str, StringLiteral> {
-    pub fn inner(i: &str) -> IResult<&str, String> {
+fn string_literal(i: &str) -> IResult<&str, StringLiteral> {
+    fn inner(i: &str) -> IResult<&str, String> {
         map(
             many0(alt((
                 preceded(tag("\\"), nom::character::complete::anychar),
@@ -355,7 +359,7 @@ pub fn string_literal(i: &str) -> IResult<&str, StringLiteral> {
     })(i)
 }
 
-pub fn logical_literal(i: &str) -> IResult<&str, LogicalLiteral> {
+fn logical_literal(i: &str) -> IResult<&str, LogicalLiteral> {
     spaced(alt((
         map(tag("true"), |_| LogicalLiteral(true)),
         map(tag("false"), |_| LogicalLiteral(false)),
@@ -364,7 +368,7 @@ pub fn logical_literal(i: &str) -> IResult<&str, LogicalLiteral> {
 
 // SPACES
 
-pub fn space_and_comments(i: &str) -> IResult<&str, ()> {
+fn space_and_comments(i: &str) -> IResult<&str, ()> {
     map(
         many0(alt((
             recognize(one_of(" \t\n\r")),
@@ -374,14 +378,14 @@ pub fn space_and_comments(i: &str) -> IResult<&str, ()> {
     )(i)
 }
 
-pub fn spaced<'s, O, F>(it: F) -> impl Fn(&'s str) -> IResult<&'s str, O>
+fn spaced<'s, O, F>(it: F) -> impl Fn(&'s str) -> IResult<&'s str, O>
 where
     F: Fn(&'s str) -> IResult<&'s str, O>,
 {
     delimited(space_and_comments, it, space_and_comments)
 }
 
-pub fn stag<'s>(t: &'static str) -> impl Fn(&'s str) -> IResult<&'s str, &'s str> {
+fn stag<'s>(t: &'static str) -> impl Fn(&'s str) -> IResult<&'s str, &'s str> {
     spaced(tag(t))
 }
 

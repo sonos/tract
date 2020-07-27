@@ -2,6 +2,7 @@
 pub struct Document {
     pub version: NumericLiteral,
     pub extension: Vec<Vec<String>>,
+    pub fragments: Vec<FragmentDef>,
     pub graph_def: GraphDef,
 }
 
