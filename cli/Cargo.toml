@@ -32,6 +32,7 @@ readings-probe = "0.1.1"
 tract-core = { path = "../core" }
 tract-hir = { path = "../hir" }
 tract-kaldi = { optional = true, path = "../kaldi" }
+tract-nnef = { optional = true, path = "../nnef" }
 tract-onnx = { optional = true, path = "../onnx" }
 tract-tensorflow = { optional = true, path = "../tensorflow" }
 colorous = "1.0.2"

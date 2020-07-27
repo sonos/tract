@@ -14,4 +14,7 @@ edition = "2018"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+flate2 = "1"
 nom = "5"
+tar = "0.4"
+tract-core = { path = "../core" }
