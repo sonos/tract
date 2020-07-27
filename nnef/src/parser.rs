@@ -5,9 +5,24 @@ use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, s
 
 use crate::ast::*;
 
-/*
-<fragment-definition> ::= <fragment-declaration> (<body> | ";")
-*/
+// <document> ::= <version> <extension>* <graph-definition>
+pub fn document(i: &str) -> IResult<&str, Document> {
+    map(tuple((version, many0(extension), graph_def)), |(version, extension, graph_def)| Document {
+        version,
+        extension,
+        graph_def,
+    })(i)
+}
+
+// <version> ::= "version" <numeric-literal> ";"
+pub fn version(i: &str) -> IResult<&str, NumericLiteral> {
+    delimited(spaced(tag("version")), numeric_literal, spaced(tag(";")))(i)
+}
+
+// <extension> ::= "extension" <identifier>+ ";"
+pub fn extension(i: &str) -> IResult<&str, Vec<String>> {
+    delimited(spaced(tag("extension")), many1(spaced(identifier)), spaced(tag(";")))(i)
+}
 
 // FRAGMENT DECLARATION
 
@@ -100,32 +115,70 @@ pub fn tuple_type_spec(i: &str) -> IResult<&str, TypeSpec> {
     )(i)
 }
 
+// GRAPH
+
+// <graph-definition> ::= <graph-declaration> <body>
+// <graph-declaration> ::= "graph" <identifier> "(" <identifier-list> ")" "->" "(" <identifier-list> ")"
+// <identifier-list> ::= <identifier> ("," <identifier>)*
+pub fn graph_def(i: &str) -> IResult<&str, GraphDef> {
+    let (i, _) = spaced(tag("graph"))(i)?;
+    let (i, id) = identifier(i)?;
+    let (i, _) = spaced(tag("("))(i)?;
+    let (i, parameters) = separated_list(spaced(tag(",")), identifier)(i)?;
+    let (i, _) = spaced(tag(")"))(i)?;
+    let (i, _) = spaced(tag("->"))(i)?;
+    let (i, _) = spaced(tag("("))(i)?;
+    let (i, results) = separated_list(spaced(tag(",")), identifier)(i)?;
+    let (i, _) = spaced(tag(")"))(i)?;
+    let (i, body) = spaced(body)(i)?;
+    Ok((i, GraphDef { id, parameters, results, body }))
+}
+
 // BODY
+
+// <body> ::= "{" <assignment>+ "}"
+pub fn body(i: &str) -> IResult<&str, Vec<Assignment>> {
+    delimited(spaced(tag("{")), many0(assignment), spaced(tag("}")))(i)
+}
+
+// <assignment> ::= <lvalue-expr> "=" <rvalue-expr> ";"
+pub fn assignment(i: &str) -> IResult<&str, Assignment> {
+    spaced(terminated(
+        map(separated_pair(lvalue, spaced(tag("=")), rvalue), |(left, right)| Assignment {
+            left,
+            right,
+        }),
+        spaced(tag(";")),
+    ))(i)
+}
 
 // <lvalue-expr> ::= <identifier> | <array-lvalue-expr> | <tuple-lvalue-expr>
 // <array-lvalue-expr> ::= "[" [<lvalue-expr> ("," <lvalue-expr>)* ] "]"
 // <tuple-lvalue-expr> ::= "(" <lvalue-expr> ("," <lvalue-expr>)+ ")" | <lvalue-expr> ("," <lvalue-expr>)+
-pub fn lvalue_expr(i: &str) -> IResult<&str, LValue> {
-    alt((
-        map(
-            delimited(
-                spaced(tag("[")),
-                separated_list(spaced(tag(",")), lvalue_expr),
-                spaced(tag("]")),
+pub fn lvalue(i: &str) -> IResult<&str, LValue> {
+    pub fn inner_lvalue(i: &str) -> IResult<&str, LValue> {
+        alt((
+            map(
+                delimited(
+                    spaced(tag("[")),
+                    separated_list(spaced(tag(",")), inner_lvalue),
+                    spaced(tag("]")),
+                ),
+                LValue::Array,
             ),
-            LValue::Array,
-        ),
-        map(
-            delimited(
-                spaced(tag("(")),
-                separated_list(spaced(tag(",")), lvalue_expr),
-                spaced(tag(")")),
+            map(
+                delimited(
+                    spaced(tag("(")),
+                    separated_list(spaced(tag(",")), inner_lvalue),
+                    spaced(tag(")")),
+                ),
+                LValue::Tuple,
             ),
-            LValue::Tuple,
-        ),
-        map(separated_list(spaced(tag(",")), lvalue_expr), LValue::Tuple),
-        map(spaced(identifier), LValue::Identifier),
-    ))(i)
+            map(spaced(identifier), LValue::Identifier),
+        ))(i)
+    }
+
+    map(separated_list(spaced(tag(",")), inner_lvalue), LValue::Tuple)(i)
 }
 
 // <invocation> ::= <identifier> ["<" <type-name> ">"] "(" <argument-list> ")"
@@ -155,9 +208,19 @@ pub fn argument(i: &str) -> IResult<&str, Argument> {
 //                  | <comprehension-expr> | <builtin-expr> | <invocation>
 pub fn rvalue(i: &str) -> IResult<&str, RValue> {
     spaced(alt((
-        map(identifier, RValue::Identifier),
-        map(delimited(tag("("), rvalue, tag(")")), |rv| RValue::RValue(Box::new(rv))),
         map(invocation, RValue::Invocation),
+        map(identifier, RValue::Identifier),
+        map(literal, RValue::Literal),
+        map(delimited(tag("("), separated_list(spaced(tag(",")), rvalue), tag(")")), |mut rvs| {
+            if rvs.len() == 1 {
+                rvs.remove(0)
+            } else {
+                RValue::Tuple(rvs)
+            }
+        }),
+        map(delimited(tag("["), separated_list(spaced(tag(",")), rvalue), tag("]")), |rvs| {
+            RValue::Array(rvs)
+        }),
     )))(i)
 }
 
@@ -173,29 +236,63 @@ pub fn identifier(i: &str) -> IResult<&str, String> {
 }
 
 // <literal> ::= <numeric-literal> | <string-literal> | <logical-literal>
-pub fn string_literal(i: &str) -> IResult<&str, String> {
+pub fn literal(i: &str) -> IResult<&str, Literal> {
+    spaced(alt((
+        map(numeric_literal, Literal::Numeric),
+        map(string_literal, Literal::String),
+        map(logical_literal, Literal::Logical),
+    )))(i)
+}
+
+pub fn numeric_literal(i: &str) -> IResult<&str, NumericLiteral> {
+    fn exp_part(i: &str) -> IResult<&str, &str> {
+        recognize(tuple((one_of("eE"), opt(tag("-")), digit1)))(i)
+    }
+    fn frac_part(i: &str) -> IResult<&str, &str> {
+        recognize(tuple((tag("."), digit0)))(i)
+    }
+    spaced(map(recognize(tuple((digit1, opt(frac_part), opt(exp_part)))), |s: &str| {
+        NumericLiteral(s.to_owned())
+    }))(i)
+}
+
+pub fn string_literal(i: &str) -> IResult<&str, StringLiteral> {
     pub fn inner(i: &str) -> IResult<&str, String> {
         map(
             many0(alt((
                 preceded(tag("\\"), nom::character::complete::anychar),
-                nom::character::complete::none_of("\"'")
+                nom::character::complete::none_of("\\\"'"),
             ))),
             |v: Vec<char>| v.into_iter().collect(),
         )(i)
     }
+    map(alt((delimited(tag("'"), inner, tag("'")), delimited(tag("\""), inner, tag("\"")))), |s| {
+        StringLiteral(s.into())
+    })(i)
+}
+
+pub fn logical_literal(i: &str) -> IResult<&str, LogicalLiteral> {
     spaced(alt((
-        delimited(tag("'"), inner, tag("'")),
-        delimited(tag("\""), inner, tag("\"")),
+        map(tag("true"), |_| LogicalLiteral(true)),
+        map(tag("false"), |_| LogicalLiteral(false)),
     )))(i)
 }
 
-pub fn spaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> nom::IResult<I, O, E>
+pub fn space_and_comments(i: &str) -> IResult<&str, ()> {
+    map(
+        many0(alt((
+            recognize(one_of(" \t\n\r")),
+            recognize(tuple((tag("#"), many0(none_of("\r\n"))))),
+        ))),
+        |_| (),
+    )(i)
+}
+
+pub fn spaced<'s, O, F>(it: F) -> impl Fn(&'s str) -> IResult<&'s str, O>
 where
-    I: nom::InputTakeAtPosition,
-    <I as nom::InputTakeAtPosition>::Item: nom::AsChar + Clone,
-    F: Fn(I) -> nom::IResult<I, O, E>,
+    F: Fn(&'s str) -> IResult<&'s str, O>,
 {
-    delimited(space0, it, space0)
+    delimited(space_and_comments, it, space_and_comments)
 }
 
 #[cfg(test)]
@@ -279,14 +376,90 @@ mod test {
     }
 
     #[test]
-    fn test_string() {
-        assert_eq!(p(string_literal, r#""""#), "");
-        assert_eq!(p(string_literal, r#""foo""#), "foo");
-        assert_eq!(p(string_literal, r#"''"#), "");
-        assert_eq!(p(string_literal, r#"'foo'"#), "foo");
+    fn test_numeric() {
+        p(numeric_literal, "12.0");
+    }
 
-        assert_eq!(p(string_literal, r#"'f\oo'"#), "foo");
-        assert_eq!(p(string_literal, r#"'f\'oo'"#), "f'oo");
-        assert_eq!(p(string_literal, r#"'f\"oo'"#), "f\"oo");
+    #[test]
+    fn test_string() {
+        fn s(s: &str) -> StringLiteral {
+            StringLiteral(s.into())
+        }
+        assert_eq!(p(string_literal, r#""""#), s(""));
+        assert_eq!(p(string_literal, r#""foo""#), s("foo"));
+        assert_eq!(p(string_literal, r#"''"#), s(""));
+        assert_eq!(p(string_literal, r#"'foo'"#), s("foo"));
+
+        assert_eq!(p(string_literal, r#"'f\oo'"#), s("foo"));
+        assert_eq!(p(string_literal, r#"'f\'oo'"#), s("f'oo"));
+        assert_eq!(p(string_literal, r#"'f\"oo'"#), s("f\"oo"));
+    }
+
+    #[test]
+    fn test_spacing() {
+        p(space_and_comments, "");
+        p(space_and_comments, "\n");
+        p(space_and_comments, "#comment\n");
+        p(space_and_comments, "#boum");
+    }
+
+    #[test]
+    fn test_spaced() {
+        assert!(spaced(identifier)("foo").is_ok());
+        assert!(spaced(identifier)(" foo ").is_ok());
+        assert!(many1(spaced(identifier))(" foo bar ").is_ok());
+        assert_eq!(many1(spaced(identifier))(" foo bar\n").unwrap().1, &["foo", "bar"]);
+        assert_eq!(many1(spaced(identifier))(" foo # bar\n").unwrap().1, &["foo"]);
+        assert_eq!(many1(spaced(identifier))(" foo # bar\nbaz").unwrap().1, &["foo", "baz"]);
+    }
+
+    #[test]
+    fn test_document() {
+        assert!(document("version 1.0; graph foo() -> () {}").is_ok());
+    }
+
+    #[test]
+    fn test_version() {
+        p(version, "version 1.0;");
+    }
+
+    #[test]
+    fn test_body() {
+        p(body, "{}");
+        p(body, "{foo=bar;}");
+    }
+
+    #[test]
+    fn test_lvalue() {
+        p(lvalue, "foo");
+    }
+
+    #[test]
+    fn test_graph_def() {
+        p(graph_def, "graph foo() -> () {}");
+    }
+
+    #[test]
+    fn test_assignment() {
+        p(assignment, "input = external(12);");
+        p(assignment, "input = external(shape = [1, 3, 224, 224]);");
+    }
+
+    #[test]
+    fn test_invocation() {
+        p(invocation, "external(12)");
+    }
+
+    #[test]
+    fn test_arguments() {
+        p(argument, "2");
+        p(argument, "12");
+        p(argument, "shape = [1, 3, 224, 224]");
+    }
+
+    #[test]
+    fn test_rvalue() {
+        p(rvalue, "12");
+        p(rvalue, "(0, 0)");
     }
 }
