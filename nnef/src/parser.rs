@@ -262,6 +262,7 @@ pub fn rvalue(i: &str) -> IResult<&str, RValue> {
                     }
                 },
             ),
+            map(comprehension_expr, |c| RValue::Comprehension(Box::new(c))),
             map(delimited(tag("["), separated_list(spaced(tag(",")), rvalue), tag("]")), |rvs| {
                 RValue::Array(rvs)
             }),
@@ -278,13 +279,68 @@ pub fn rvalue(i: &str) -> IResult<&str, RValue> {
         };
     }
 
-    bin!(exp, atom, tag("^"));
+    // <subscript-expr> ::= <rvalue-expr> "[" (<rvalue-expr> | [<rvalue-expr>] ":" [<rvalue-expr>]) "]"
+    fn sub(i: &str) -> IResult<&str, RValue> {
+        alt((
+            map(
+                pair(
+                    atom,
+                    delimited(
+                        spaced(tag("[")),
+                        alt((
+                            map(
+                                separated_pair(opt(rvalue), spaced(tag(":")), opt(rvalue)),
+                                |(a, b)| Subscript::Range(a, b),
+                            ),
+                            map(rvalue, Subscript::Single),
+                        )),
+                        spaced(tag("]")),
+                    ),
+                ),
+                |(rv, range)| RValue::Subscript(Box::new(rv), Box::new(range)),
+            ),
+            atom,
+        ))(i)
+    }
+
+    bin!(exp, sub, tag("^"));
     bin!(mul, exp, one_of("*/"));
     bin!(add, mul, one_of("+-"));
     bin!(comp, add, alt((tag("=="), tag("!="), tag("<"), tag(">"), tag("<="), tag(">="))));
     bin!(boolean, comp, alt((tag("||"), tag("&&"))));
     bin!(in_for, boolean, tag("in"));
-    in_for(i)
+
+    // <if-else-expr> ::= <rvalue-expr> "if" <rvalue-expr> "else" <rvalue-expr>
+    fn ite(i: &str) -> IResult<&str, RValue> {
+        spaced(alt((
+            map(
+                tuple((in_for, spaced(tag("if")), in_for, spaced(tag("else")), in_for)),
+                |(then, _, cond, _, otherwise)| {
+                    RValue::IfThenElse(Box::new(IfThenElse { cond, then, otherwise }))
+                },
+            ),
+            in_for,
+        )))(i)
+    }
+
+    ite(i)
+}
+
+// <comprehension-expr> ::= "[" "for" <loop-iter-list> ["if" <rvalue-expr>] "yield" <rvalue-expr> "]"
+fn comprehension_expr(i: &str) -> IResult<&str, Comprehension> {
+    delimited(
+        pair(spaced(tag("[")), spaced(tag("for"))),
+        map(separated_pair(loop_iters, spaced(tag("yield")), rvalue), |(loop_iters, yields)| {
+            Comprehension { loop_iters, filter: None, yields }
+        }),
+        spaced(tag("]")),
+    )(i)
+}
+
+// <loop-iter> ::= <identifier> "in" <rvalue-expr>
+// <loop-iter-list> ::= <loop-iter> ("," <loop-iter>)*
+fn loop_iters(i: &str) -> IResult<&str, Vec<(String, RValue)>> {
+    separated_list(spaced(tag(",")), separated_pair(identifier, spaced(tag("in")), rvalue))(i)
 }
 
 // TERMINALS
@@ -529,6 +585,30 @@ mod test {
     }
 
     #[test]
+    fn test_min_max_linear_quantize() {
+        p(
+            fragments,
+            r#"
+                fragment min_max_linear_quantize(
+                    x: tensor<scalar>,
+                    min: tensor<scalar>,
+                    max: tensor<scalar>,
+                    bits: integer,
+                    signed: logical,
+                    symmetric: logical )
+                -> ( y: tensor<scalar> )
+                {
+                    r = scalar(2 ^ bits - 1 - integer(signed && symmetric));
+                    z = clamp(x, min, max);
+                    p = scalar(2 ^ (bits - 1) - integer(symmetric) if signed else 0);
+                    q = round((z - min) / (max - min) * r) - p;
+                    y = (q + p) / r * (max - min) + min;
+}
+            "#,
+        );
+    }
+
+    #[test]
     fn test_numeric() {
         p(numeric_literal, "12.0");
     }
@@ -605,6 +685,11 @@ mod test {
         p(assignment, "input = external(shape = [1, 3, 224, 224]);");
         p(assignment, "sigma = bias + alpha * box(sqr(input), size = size, normalize = true);");
         p(assignment, "output = offset + scale * (input - mean) / sqrt(variance + epsilon);");
+        p(
+            assignment,
+            "size = [for i in range_of(output_size) yield output_size[i] * sampling_rate[i]];",
+        );
+        p(assignment, "r = scalar(2 ^ bits - 1 - integer(signed && symmetric));");
     }
 
     #[test]
@@ -629,6 +714,13 @@ mod test {
         p(rvalue, "1+sqrt(var)");
         p(rvalue, "1+sqrt(var+eps)");
         p(rvalue, "1 + sqrt(var + eps)");
+        p(rvalue, "[for i in range_of(output_size) yield output_size[i] * sampling_rate[i]]");
+        p(rvalue, "scalar(2 ^ (bits - 1) - integer(symmetric) if signed else 0)");
+    }
+
+    #[test]
+    fn test_comprehenion() {
+        p(comprehension_expr, "[for i in range_of(output_size) yield output_size * sampling_rate]");
     }
 
     #[test]
@@ -640,15 +732,5 @@ mod test {
             fragment sub( x: tensor<scalar>, y: tensor<scalar> ) -> ( z: tensor<scalar> );
             "#,
         );
-    }
-
-    #[test]
-    fn test_alexnet() {
-        p(document, include_str!("../tests/alexnet.nnef"));
-    }
-
-    #[test]
-    fn test_stdlib() {
-        p(fragments, include_str!("../tests/stdlib.nnef"));
     }
 }
