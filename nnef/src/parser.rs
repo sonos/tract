@@ -1,3 +1,5 @@
+use tract_core::internal::*;
+
 use nom::branch::alt;
 use nom::combinator::map;
 use nom::IResult;
@@ -5,19 +7,22 @@ use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, s
 
 use crate::ast::*;
 
-pub fn fragment(i: &str) -> IResult<&str, FragmentDef> {
-    fragment_def(i)
+fn translate_error<'s, E: std::fmt::Debug>(e: E) -> TractError {
+    format!("Fail to parse NNEF document: {:?}", e).into()
 }
 
+pub fn parse_document(doc: &str) -> TractResult<Document> {
+    document(doc).map(|pair| pair.1).map_err(translate_error)
+}
 
-pub fn fragments(i: &str) -> IResult<&str, Vec<FragmentDef>> {
-    many0(spaced(fragment_def))(i)
+pub fn parse_fragments(doc: &str) -> TractResult<Vec<FragmentDef>> {
+    many0(fragment_def)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 // <document> ::= <version> <extension>* <graph-definition>
-pub fn document(i: &str) -> IResult<&str, Document> {
+fn document(i: &str) -> IResult<&str, Document> {
     map(
-        tuple((version, many0(extension), fragments, graph_def)),
+        tuple((version, many0(extension), many0(fragment_def), graph_def)),
         |(version, extension, fragments, graph_def)| Document { version, extension, fragments, graph_def },
     )(i)
 }
