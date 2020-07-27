@@ -84,7 +84,7 @@ pub fn handle_npz(
     cumulative: bool,
     npz: &str,
     params: &Parameters,
-    output_params: DisplayParams,
+    output_params: &DisplayParams,
 ) -> CliResult<()> {
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
     let mut values = HashMap::new();
@@ -108,7 +108,7 @@ pub fn handle_pbdir(
     cumulative: bool,
     pbdir: &str,
     params: &Parameters,
-    output_params: DisplayParams,
+    output_params: &DisplayParams,
 ) -> CliResult<()> {
     let mut values: HashMap<String, CliResult<Tensor>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
@@ -132,7 +132,7 @@ pub fn compare<F, O>(
     tract: &Graph<F, O>,
     all_values: &HashMap<String, CliResult<Tensor>>,
     params: &Parameters,
-    output_params: DisplayParams,
+    output_params: &DisplayParams,
 ) -> CliResult<()>
 where
     F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,

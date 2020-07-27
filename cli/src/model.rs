@@ -36,6 +36,9 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone {
     /// Inputs of the model
     fn input_outlets(&self) -> &[OutletId];
 
+    fn set_input_names(&mut self, names: &[&str]) -> TractResult<()>;
+    fn set_output_names(&mut self, names: &[&str]) -> TractResult<()>;
+
     /// Outputs of the model
     fn output_outlets(&self) -> &[OutletId];
 
@@ -132,6 +135,14 @@ where
 
     fn input_outlets(&self) -> &[OutletId] {
         &*self.inputs
+    }
+
+    fn set_input_names(&mut self, names: &[&str]) -> TractResult<()> {
+        self.set_input_names(names.into_iter())
+    }
+
+    fn set_output_names(&mut self, names: &[&str]) -> TractResult<()> {
+        self.set_output_names(names)
     }
 
     fn output_outlets(&self) -> &[OutletId] {

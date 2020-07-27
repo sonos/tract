@@ -424,7 +424,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             m.is_present("cumulative"),
             m.value_of("npz").unwrap(),
             &params,
-            display_params_from_clap(&matches, m)?,
+            &display_params_from_clap(&matches, m)?,
         ),
 
         #[cfg(feature = "onnx")]
@@ -432,7 +432,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             m.is_present("cumulative"),
             m.value_of("pbdir").unwrap(),
             &params,
-            display_params_from_clap(&matches, m)?,
+            &display_params_from_clap(&matches, m)?,
         ),
 
         ("run", Some(m)) => run::handle(&params, m.is_present("dump"), m.is_present("steps")),

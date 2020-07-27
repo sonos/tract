@@ -142,6 +142,8 @@ impl Annotations {
             SomeGraphDef::NoGraphDef => Ok(self),
             #[cfg(feature = "kaldi")]
             SomeGraphDef::Kaldi(kaldi) => self.with_kaldi(model, kaldi),
+            #[cfg(feature = "nnef")]
+            SomeGraphDef::Nnef(_) => todo!(),
             #[cfg(feature = "onnx")]
             SomeGraphDef::Onnx(onnx, _) => self.with_onnx_model(model, onnx),
             #[cfg(feature = "tf")]

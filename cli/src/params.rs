@@ -18,6 +18,8 @@ use super::{info_usage, tensor};
 
 use super::model::Model;
 
+use std::convert::*;
+
 pub struct ModelError(pub Option<Box<dyn Model>>, pub CliError);
 
 impl<E: Into<CliError>> From<E> for ModelError {
@@ -31,6 +33,8 @@ pub enum SomeGraphDef {
     NoGraphDef,
     #[cfg(feature = "kaldi")]
     Kaldi(tract_kaldi::KaldiProtoModel),
+    #[cfg(feature = "nnef")]
+    Nnef(tract_nnef::ProtoModel),
     #[cfg(feature = "onnx")]
     Onnx(tract_onnx::pb::ModelProto, tract_onnx::model::ParseResult),
     #[cfg(feature = "tf")]
@@ -84,7 +88,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         probe: Option<&Probe>,
         filename: &std::path::Path,
-    ) -> CliResult<(SomeGraphDef, InferenceModel, Option<TfExt>)> {
+    ) -> CliResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
 
@@ -95,7 +99,7 @@ impl Parameters {
                 "tf"
             },
         );
-        let triplet = match format {
+        let triplet: (SomeGraphDef, Box<dyn Model>, Option<TfExt>) = match format {
             #[cfg(feature = "kaldi")]
             "kaldi" => {
                 let kaldi = tract_kaldi::kaldi();
@@ -107,9 +111,27 @@ impl Parameters {
                 }
                 let parsed = kaldi.model_for_proto_model(&graph)?;
                 if need_graph {
-                    (SomeGraphDef::Kaldi(graph), parsed, Option::<TfExt>::None)
+                    (SomeGraphDef::Kaldi(graph), Box::new(parsed), Option::<TfExt>::None)
                 } else {
-                    (SomeGraphDef::NoGraphDef, parsed, Option::<TfExt>::None)
+                    (SomeGraphDef::NoGraphDef, Box::new(parsed), Option::<TfExt>::None)
+                }
+            }
+            #[cfg(feature = "nnef")]
+            "nnef" => {
+                let proto_model = tract_nnef::open_model(&filename)?;
+                info_usage("proto model loaded", probe);
+                if need_graph {
+                    (
+                        SomeGraphDef::Nnef(proto_model.clone()),
+                        Box::new(proto_model.into_typed_model()?),
+                        Option::<TfExt>::None,
+                    )
+                } else {
+                    (
+                        SomeGraphDef::NoGraphDef,
+                        Box::new(proto_model.into_typed_model()?),
+                        Option::<TfExt>::None,
+                    )
                 }
             }
             #[cfg(feature = "onnx")]
@@ -120,9 +142,13 @@ impl Parameters {
                 info_usage("proto model loaded", probe);
                 let parsed = onnx.parse(&graph)?;
                 if need_graph {
-                    (SomeGraphDef::Onnx(graph, parsed.clone()), parsed.model, Option::<TfExt>::None)
+                    (
+                        SomeGraphDef::Onnx(graph, parsed.clone()),
+                        Box::new(parsed.model),
+                        Option::<TfExt>::None,
+                    )
                 } else {
-                    (SomeGraphDef::NoGraphDef, parsed.model, Option::<TfExt>::None)
+                    (SomeGraphDef::NoGraphDef, Box::new(parsed.model), Option::<TfExt>::None)
                 }
             }
             #[cfg(feature = "tf")]
@@ -145,9 +171,9 @@ impl Parameters {
                     .transpose()?
                     .unwrap_or(vec![]);
                 if need_graph {
-                    (SomeGraphDef::Tf(graph), model_and_ext.0, Some(model_and_ext.1))
+                    (SomeGraphDef::Tf(graph), Box::new(model_and_ext.0), Some(model_and_ext.1))
                 } else {
-                    (SomeGraphDef::NoGraphDef, model_and_ext.0, Some(model_and_ext.1))
+                    (SomeGraphDef::NoGraphDef, Box::new(model_and_ext.0), Some(model_and_ext.1))
                 }
             }
             _ => bail!(
@@ -158,31 +184,42 @@ impl Parameters {
         Ok(triplet)
     }
 
-    fn kaldi_downsample(raw_model: &mut InferenceModel, period: isize) -> CliResult<()> {
+    fn kaldi_downsample<F, O>(raw_model: &mut Graph<F, O>, period: isize) -> CliResult<()>
+    where
+        F: std::fmt::Debug + Clone + Hash + Fact,
+        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
+        Graph<F, O>: SpecialOps<F, O>,
+        tract_core::ops::Downsample: Into<O>,
+    {
         if period != 1 {
             let mut outputs = raw_model.output_outlets()?.to_vec();
             let output_name = raw_model.node(outputs[0].node).name.clone();
             raw_model.node_mut(outputs[0].node).name = format!("{}-old", output_name);
-            let id = raw_model.add_node(
+            let id = raw_model.wire_node(
                 output_name,
                 tract_core::ops::Downsample::new(0, period as _, 0),
-                tvec!(InferenceFact::default()),
-            )?;
-            raw_model.add_edge(outputs[0], InletId::new(id, 0))?;
-            outputs[0].node = id;
+                &outputs[0..1],
+            )?[0];
+            outputs[0] = id;
             raw_model.set_output_outlets(&*outputs)?;
         }
         Ok(())
     }
 
-    fn kaldi_context(raw_model: &mut InferenceModel, left: usize, right: usize) -> CliResult<()> {
+    fn kaldi_context<F, O>(raw_model: &mut Graph<F, O>, left: usize, right: usize) -> CliResult<()>
+    where
+        F: std::fmt::Debug + Clone + Hash + Fact,
+        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
+        Graph<F, O>: SpecialOps<F, O>,
+        tract_hir::ops::array::Pad: Into<O>,
+    {
         let op = tract_core::ops::array::Pad::new(
             vec![(left, right), (0, 0)],
             tract_core::ops::array::PadMode::Edge,
         );
-        let mut patch = InferenceModelPatch::default();
+        let mut patch = ModelPatch::default();
         for input in raw_model.input_outlets()? {
-            let tap = patch.tap_model(&raw_model, *input)?;
+            let tap = patch.tap_model(raw_model, *input)?;
             let pad = patch.wire_node(
                 format!("{}-pad", raw_model.node(input.node).name),
                 op.clone(),
@@ -194,12 +231,18 @@ impl Parameters {
         Ok(())
     }
 
-    fn use_onnx_test_case_data_set(
-        raw_model: &mut InferenceModel,
+    fn use_onnx_test_case_data_set<F, O, E>(
+        raw_model: &mut Graph<F, O>,
         input_values: &mut Vec<Option<Arc<Tensor>>>,
         assertions: &mut Assertions,
         inputs_dir: &std::path::Path,
-    ) -> CliResult<()> {
+    ) -> CliResult<()>
+    where
+        F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
+        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
+        Graph<F, O>: SpecialOps<F, O>,
+        CliError: From<E>
+    {
         let files = inputs_dir
             .read_dir()?
             .map(|file| {
@@ -237,7 +280,7 @@ impl Parameters {
         for (ix, _, filename, name, tensor) in inputs.into_iter() {
             debug!("Using {} as input {} ({}): {:?}", filename, ix, name, tensor);
             input_values[*ix] = tensor.value.concretize();
-            raw_model.set_input_fact(*ix, tensor.clone().without_value())?;
+            raw_model.set_input_fact(*ix, (&tensor.clone().without_value()).try_into()?)?;
         }
         let outputs = outputs
             .into_iter()
@@ -250,18 +293,27 @@ impl Parameters {
         Ok(())
     }
 
-    fn inputs(
-        raw_model: &mut InferenceModel,
+    fn inputs<F, O, E>(
+        raw_model: &mut Graph<F, O>,
         assertions: &mut Assertions,
         matches: &clap::ArgMatches,
         filename: &std::path::Path,
         onnx_tc: bool,
-    ) -> CliResult<Vec<Option<Arc<Tensor>>>> {
+    ) -> CliResult<Vec<Option<Arc<Tensor>>>>
+    where
+        F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
+        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
+        Graph<F, O>: SpecialOps<F, O>,
+        tract_core::ops::konst::Const: Into<O>,
+        CliError: From<E>,
+    {
         let mut input_values = vec![None; raw_model.inputs.len()];
 
         if let Some(inputs) = matches.values_of("input") {
             for (ix, v) in inputs.enumerate() {
                 let (name, t) = tensor::for_string(v)?;
+                let fact = t.clone().without_value();
+                let fact:F = (&fact).try_into()?;
                 let outlet = if let Some(name) = name.filter(|s| s.len() > 0) {
                     let node = raw_model.node_by_name(&*name)?;
                     OutletId::new(node.id, 0)
@@ -279,10 +331,10 @@ impl Parameters {
                     // clear our inputs and change ourselves to a source
                     raw_model.node_mut(outlet.node).inputs.clear();
                     raw_model.node_mut(outlet.node).op =
-                        Box::new(tract_hir::ops::source::Source::new());
+                        raw_model.create_source(fact.clone())
                 }
                 info!("Input #{}: {:?}", ix, t);
-                raw_model.set_outlet_fact(outlet, t.without_value())?;
+                raw_model.set_outlet_fact(outlet, fact)?;
             }
         }
 
@@ -301,7 +353,7 @@ impl Parameters {
                     if let Ok(t) = tensor::for_npz(&mut npz, &name) {
                         let shape = t.shape().to_vec();
                         let fact = InferenceFact::dt_shape(t.datum_type(), shape);
-                        raw_model.set_input_fact(ix, fact.without_value())?;
+                        raw_model.set_input_fact(ix, (&fact).try_into()?)?;
                         input_values[ix] = Some(t.into_arc_tensor());
                     }
                 }
@@ -331,8 +383,7 @@ impl Parameters {
             let input = raw_model.inputs[i];
             if const_inputs.contains(&raw_model.node_name(input.node)) {
                 if let Some(v) = input_values[i].take() {
-                    raw_model.node_mut(input.node).op =
-                        Box::new(tract_core::ops::konst::Const::new(v));
+                    raw_model.node_mut(input.node).op = tract_core::ops::konst::Const::new(v).into()
                 } else {
                     bail!(
                         "Don't have value for input {}, can't make it const",
@@ -348,7 +399,7 @@ impl Parameters {
     fn pipeline(
         matches: &clap::ArgMatches,
         probe: Option<&readings_probe::Probe>,
-        raw_model: InferenceModel,
+        raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
     ) -> Result<(Arc<dyn Model>, Option<Arc<TypedModel>>, Option<Arc<PulsedModel>>), ModelError>
     {
@@ -358,9 +409,14 @@ impl Parameters {
         let concretize_stream_dim: Option<usize> =
             matches.value_of("concretize_stream_dim").map(|s| s.parse()).transpose()?;
 
-        let mut inference_model: Option<Arc<InferenceModel>> = Some(Arc::new(raw_model));
+        let mut inference_model: Option<Arc<InferenceModel>> = None;
         let mut typed_model: Option<Arc<TypedModel>> = None;
         let mut pulsed_model: Option<Arc<PulsedModel>> = None;
+        if raw_model.is::<InferenceModel>() {
+            inference_model = Some(raw_model.downcast::<InferenceModel>().unwrap().into());
+        } else if raw_model.is::<TypedModel>() {
+            typed_model = Some(raw_model.downcast::<TypedModel>().unwrap().into());
+        }
 
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
@@ -463,37 +519,43 @@ impl Parameters {
                 .map(|t| Ok(tensor::for_string(t)?.0))
                 .collect::<CliResult<Vec<Option<String>>>>()?;
             if names.iter().all(|s| s.is_some() && s.as_ref().unwrap().len() > 0) {
-                let names: Vec<String> = names.into_iter().map(|s| s.unwrap()).collect();
-                raw_model.set_input_names(names)?;
+                let names: Vec<&str> = names.iter().map(|s| &**s.as_ref().unwrap()).collect();
+                raw_model.set_input_names(&*names)?;
             }
         }
 
         if let Some(inputs) = matches.values_of("input_node") {
-            raw_model.set_input_names(inputs)?;
+            let inputs: Vec<&str> = inputs.map(|s| s).collect();
+            raw_model.set_input_names(&inputs)?;
         };
 
         if let Some(outputs) = matches.values_of("output_node") {
-            raw_model.set_output_names(outputs)?;
+            let outputs: Vec<&str> = outputs.map(|s| s).collect();
+            raw_model.set_output_names(&outputs)?;
         };
 
         if let Some(override_facts) = matches.values_of("override_fact") {
             for fact in override_facts {
                 let (name, fact) = tensor::for_string(fact)?;
-                let node = raw_model.node_by_name(name.unwrap())?.id;
-                raw_model.set_outlet_fact(OutletId::new(node, 0), fact)?;
+                let node = raw_model.node_id_by_name(&name.unwrap())?;
+                if let Some(inf) = raw_model.downcast_mut::<InferenceModel>() {
+                    inf.set_outlet_fact(OutletId::new(node, 0), fact)?;
+                } else if let Some(typ) = raw_model.downcast_mut::<TypedModel>() {
+                    typ.set_outlet_fact(OutletId::new(node, 0), (&fact).try_into()?)?;
+                }
             }
         };
 
         let output_names: Vec<String> = raw_model
-            .output_outlets()?
+            .output_outlets()
             .iter()
-            .map(|o| raw_model.node(o.node).name.to_string())
+            .map(|o| raw_model.node_name(o.node).to_string())
             .collect();
 
         let mut assertions = Assertions::from_clap(matches, &output_names)?;
 
         if let Some(sub) = matches.value_of("kaldi_downsample") {
-            Self::kaldi_downsample(&mut raw_model, sub.parse()?)?;
+            dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_downsample(m, sub.parse()?))?;
         }
 
         if matches.value_of("kaldi_left_context").is_some()
@@ -501,14 +563,23 @@ impl Parameters {
         {
             let left = matches.value_of("kaldi_left_context").unwrap_or("0").parse()?;
             let right = matches.value_of("kaldi_right_context").unwrap_or("0").parse()?;
-            Self::kaldi_context(&mut raw_model, left, right)?;
+            dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_context(m, left, right))?;
         }
 
-        let input_values =
-            Self::inputs(&mut raw_model, &mut assertions, matches, &filename, onnx_tc)?;
+        let input_values = dispatch_model_mut_no_pulse!(raw_model, |m| Self::inputs(
+            m,
+            &mut assertions,
+            matches,
+            &filename,
+            onnx_tc
+        ))?;
 
         if matches.is_present("partial") {
-            raw_model = raw_model.eliminate_dead_branches()?;
+            if let Some(m) = raw_model.downcast_ref::<InferenceModel>() {
+                raw_model = Box::new(m.compact()?);
+            } else if let Some(m) = raw_model.downcast_ref::<TypedModel>() {
+                raw_model = Box::new(m.compact()?);
+            }
         }
 
         Self::pipeline(matches, probe, raw_model, tf_model_extensions).map(

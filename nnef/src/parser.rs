@@ -16,15 +16,19 @@ pub fn parse_document(doc: &str) -> TractResult<Document> {
 }
 
 pub fn parse_fragments(doc: &str) -> TractResult<Vec<FragmentDef>> {
-    many0(fragment_def)(doc).map(|pair| pair.1).map_err(translate_error)
+    fragments(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
-// <document> ::= <version> <extension>* <graph-definition>
+// <document> ::= <version> <extension>* <fragmentdefinition>* <graph-definition>
 fn document(i: &str) -> IResult<&str, Document> {
     map(
-        tuple((version, many0(extension), many0(fragment_def), graph_def)),
+        tuple((version, many0(extension), fragments, graph_def)),
         |(version, extension, fragments, graph_def)| Document { version, extension, fragments, graph_def },
     )(i)
+}
+
+fn fragments(i: &str) -> IResult<&str, Vec<FragmentDef>> {
+    many0(fragment_def)(i)
 }
 
 // <version> ::= "version" <numeric-literal> ";"
