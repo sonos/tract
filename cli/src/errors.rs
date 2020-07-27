@@ -20,5 +20,6 @@ error_chain! {
         NdarrayShape(ndarray::ShapeError);
         NdarrayNpyReadNpz(ndarray_npy::ReadNpzError);
         SerdeJson(serde_json::error::Error);
+        Infaillible(std::convert::Infallible);
     }
 }

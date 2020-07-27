@@ -41,8 +41,9 @@ serde_json = "1.0.53"
 serde_derive = "1.0.110"
 
 [features]
-default = ["kaldi", "onnx", "tf"]
+default = ["kaldi", "nnef", "onnx", "tf"]
 kaldi = [ "tract-kaldi" ]
+nnef = [ "tract-nnef" ]
 onnx = [ "tract-onnx" ]
 tf = [ "tract-tensorflow" ]
 conform = [ "tract-tensorflow/conform"  ]

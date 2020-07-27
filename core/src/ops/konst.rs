@@ -12,7 +12,6 @@ impl Op for Const {
 
     op_core_mir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Const {

@@ -3,8 +3,15 @@ pub mod parser;
 
 use tract_core::internal::*;
 
+#[derive(Clone, Debug)]
 pub struct ProtoModel {
     doc: ast::Document,
+}
+
+impl ProtoModel {
+    pub fn into_typed_model(&self) -> TractResult<TypedModel> {
+        todo!()
+    }
 }
 
 pub fn open_model<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
