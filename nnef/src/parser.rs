@@ -5,6 +5,10 @@ use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, s
 
 use crate::ast::*;
 
+pub fn fragments(i: &str) -> IResult<&str, Vec<FragmentDef>> {
+    many1(spaced(fragment_def))(i)
+}
+
 // <document> ::= <version> <extension>* <graph-definition>
 pub fn document(i: &str) -> IResult<&str, Document> {
     map(tuple((version, many0(extension), graph_def)), |(version, extension, graph_def)| Document {
@@ -24,7 +28,15 @@ pub fn extension(i: &str) -> IResult<&str, Vec<String>> {
     delimited(spaced(tag("extension")), many1(spaced(identifier)), spaced(tag(";")))(i)
 }
 
-// FRAGMENT DECLARATION
+// FRAGMENT
+
+// <fragment-definition> ::= <fragment-declaration> (<body> | ";")
+pub fn fragment_def(i: &str) -> IResult<&str, FragmentDef> {
+    spaced(map(
+        pair(fragment_decl, alt((map(body, Some), map(spaced(tag(";")), |_| None)))),
+        |(decl, body)| FragmentDef { decl, body },
+    ))(i)
+}
 
 // <fragment-declaration> ::= "fragment" <identifier> [<generic-declaration>] "(" <parameter-list> ")" "->" "(" <result-list> ")"
 pub fn fragment_decl(i: &str) -> IResult<&str, FragmentDecl> {
@@ -62,10 +74,13 @@ pub fn result_list(i: &str) -> IResult<&str, Vec<Result_>> {
 
 // <parameter> ::= <identifier> ":" <type-spec> ["=" <literal-expr>]
 pub fn parameter(i: &str) -> IResult<&str, Parameter> {
-    map(separated_pair(identifier, spaced(tag(":")), type_spec), |(id, spec)| Parameter {
-        id,
-        spec,
-    })(i)
+    map(
+        pair(
+            separated_pair(identifier, spaced(tag(":")), type_spec),
+            opt(preceded(spaced(tag("=")), literal_expr)),
+        ),
+        |((id, spec), lit)| Parameter { id, spec, lit },
+    )(i)
 }
 
 // <result> ::= <identifier> ":" <type-spec>
@@ -73,6 +88,28 @@ pub fn result(i: &str) -> IResult<&str, Result_> {
     map(separated_pair(identifier, spaced(tag(":")), type_spec), |(id, spec)| Result_ { id, spec })(
         i,
     )
+}
+
+pub fn literal_expr(i: &str) -> IResult<&str, Literal> {
+    spaced(alt((
+        literal,
+        map(
+            delimited(
+                spaced(tag("[")),
+                separated_list(spaced(tag(",")), literal),
+                spaced(tag("]")),
+            ),
+            Literal::Array,
+        ),
+        map(
+            delimited(
+                spaced(tag("(")),
+                separated_list(spaced(tag(",")), literal),
+                spaced(tag(")")),
+            ),
+            Literal::Tuple,
+        ),
+    )))(i)
 }
 
 // <type-spec> ::= <type-name> | <tensor-type-spec> | <array-type-spec> | <tuple-type-spec>
@@ -207,21 +244,47 @@ pub fn argument(i: &str) -> IResult<&str, Argument> {
 //                  | <array-rvalue-expr> | <tuple-rvalue-expr> | <subscript-expr> | <if-else-expr>
 //                  | <comprehension-expr> | <builtin-expr> | <invocation>
 pub fn rvalue(i: &str) -> IResult<&str, RValue> {
-    spaced(alt((
-        map(invocation, RValue::Invocation),
-        map(identifier, RValue::Identifier),
-        map(literal, RValue::Literal),
-        map(delimited(tag("("), separated_list(spaced(tag(",")), rvalue), tag(")")), |mut rvs| {
-            if rvs.len() == 1 {
-                rvs.remove(0)
-            } else {
-                RValue::Tuple(rvs)
+    fn atom(i: &str) -> IResult<&str, RValue> {
+        spaced(alt((
+            map(invocation, RValue::Invocation),
+            map(literal, RValue::Literal),
+            map(identifier, RValue::Identifier),
+            map(pair(spaced(recognize(one_of("+-!"))), rvalue), |(op, rv)| {
+                RValue::Unary(op.into(), Box::new(rv))
+            }),
+            map(
+                delimited(tag("("), separated_list(spaced(tag(",")), rvalue), tag(")")),
+                |mut rvs| {
+                    if rvs.len() == 1 {
+                        rvs.remove(0)
+                    } else {
+                        RValue::Tuple(rvs)
+                    }
+                },
+            ),
+            map(delimited(tag("["), separated_list(spaced(tag(",")), rvalue), tag("]")), |rvs| {
+                RValue::Array(rvs)
+            }),
+        )))(i)
+    }
+    macro_rules! bin {
+        ($name:ident, $operand: ident, $operator: expr) => {
+            fn $name(i: &str) -> IResult<&str, RValue> {
+                let (i, init) = $operand(i)?;
+                fold_many0(pair($operator, $operand), init, |left, (op, right)| {
+                    RValue::Binary(Box::new(left), op.to_string(), Box::new(right))
+                })(i)
             }
-        }),
-        map(delimited(tag("["), separated_list(spaced(tag(",")), rvalue), tag("]")), |rvs| {
-            RValue::Array(rvs)
-        }),
-    )))(i)
+        };
+    }
+
+    bin!(exp, atom, tag("^"));
+    bin!(mul, exp, one_of("*/"));
+    bin!(add, mul, one_of("+-"));
+    bin!(comp, add, alt((tag("=="), tag("!="), tag("<"), tag(">"), tag("<="), tag(">="))));
+    bin!(boolean, comp, alt((tag("||"), tag("&&"))));
+    bin!(in_for, boolean, tag("in"));
+    in_for(i)
 }
 
 // TERMINALS
@@ -251,9 +314,10 @@ pub fn numeric_literal(i: &str) -> IResult<&str, NumericLiteral> {
     fn frac_part(i: &str) -> IResult<&str, &str> {
         recognize(tuple((tag("."), digit0)))(i)
     }
-    spaced(map(recognize(tuple((digit1, opt(frac_part), opt(exp_part)))), |s: &str| {
-        NumericLiteral(s.to_owned())
-    }))(i)
+    spaced(map(
+        recognize(tuple((opt(tag("-")), digit1, opt(frac_part), opt(exp_part)))),
+        |s: &str| NumericLiteral(s.to_owned()),
+    ))(i)
 }
 
 pub fn string_literal(i: &str) -> IResult<&str, StringLiteral> {
@@ -315,7 +379,7 @@ mod test {
     }
 
     fn param(s: impl Into<std::string::String>, t: TypeSpec) -> Parameter {
-        Parameter { id: s.into(), spec: t }
+        Parameter { id: s.into(), spec: t, lit: None }
     }
 
     fn result(s: impl Into<std::string::String>, t: TypeSpec) -> Result_ {
@@ -376,6 +440,95 @@ mod test {
     }
 
     #[test]
+    fn test_fragment_decl_external() {
+        p(
+            fragment_decl,
+            "fragment external<? = scalar>( shape: integer[] ) -> ( output: tensor<?> )",
+        );
+    }
+
+    #[test]
+    fn test_fragment_reshape() {
+        p(fragments, "fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 ) -> ( output: tensor<?> );");
+    }
+
+    #[test]
+    fn test_fragment_conv() {
+        p(
+            fragments,
+            r#"
+            fragment conv(
+                input: tensor<scalar>,
+                filter: tensor<scalar>,
+                bias: tensor<scalar> = 0.0,
+                border: string = 'constant',
+                padding: (integer,integer)[] = [],
+                stride: integer[] = [],
+                dilation: integer[] = [],
+                groups: integer = 1 )
+            -> ( output: tensor<scalar> );
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_fragment_local_response_normalization() {
+        p(
+            fragments,
+            r#"
+            fragment local_response_normalization(
+                input: tensor<scalar>,
+                size: integer[],
+                alpha: scalar = 1.0,
+                beta: scalar = 0.5,
+                bias: scalar = 1.0 )
+            -> ( output: tensor<scalar> )
+            {
+                sigma = bias + alpha * box(sqr(input), size = size, normalize = true);
+                output = input / (sigma ^ beta);
+            }
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_batch_normalization() {
+        p(
+            fragments,
+            r#"
+            fragment batch_normalization( input: tensor<scalar>, mean: tensor<scalar>, variance: tensor<scalar>, offset: tensor<scalar>, scale: tensor<scalar>, epsilon: scalar )
+            -> ( output: tensor<scalar> )
+            {
+                output = offset + scale * (input - mean) / sqrt(variance + epsilon);
+            }
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_avg_roi_align() {
+        p(
+            fragments,
+            r#"
+                fragment avg_roi_align(
+                    input: tensor<scalar>,
+                    rois: tensor<scalar>,
+                    batch_index: tensor<integer>,
+                    output_size: integer[],
+                    sampling_rate: integer[],
+                    resize_method: string = 'symmetric' )
+                -> ( output: tensor<scalar> )
+                {
+                    size = [for i in range_of(output_size) yield output_size[i] * sampling_rate[i]];
+                    resized = roi_resample(input, rois, batch_index, output_size = size,
+                                         method = resize_method);
+                    output = avg_pool(resized, size = sampling_rate, stride = sampling_rate);
+                }
+            "#,
+        );
+    }
+
+    #[test]
     fn test_numeric() {
         p(numeric_literal, "12.0");
     }
@@ -393,6 +546,13 @@ mod test {
         assert_eq!(p(string_literal, r#"'f\oo'"#), s("foo"));
         assert_eq!(p(string_literal, r#"'f\'oo'"#), s("f'oo"));
         assert_eq!(p(string_literal, r#"'f\"oo'"#), s("f\"oo"));
+    }
+
+    #[test]
+    fn test_identifier() {
+        p(identifier, "foo");
+        assert!(identifier("1").is_err());
+        assert!(identifier("1foo").is_err());
     }
 
     #[test]
@@ -443,11 +603,14 @@ mod test {
     fn test_assignment() {
         p(assignment, "input = external(12);");
         p(assignment, "input = external(shape = [1, 3, 224, 224]);");
+        p(assignment, "sigma = bias + alpha * box(sqr(input), size = size, normalize = true);");
+        p(assignment, "output = offset + scale * (input - mean) / sqrt(variance + epsilon);");
     }
 
     #[test]
     fn test_invocation() {
         p(invocation, "external(12)");
+        p(invocation, "sqrt(var + eps)");
     }
 
     #[test]
@@ -461,5 +624,31 @@ mod test {
     fn test_rvalue() {
         p(rvalue, "12");
         p(rvalue, "(0, 0)");
+        p(rvalue, "x ^ 2.0");
+        p(rvalue, "1+2");
+        p(rvalue, "1+sqrt(var)");
+        p(rvalue, "1+sqrt(var+eps)");
+        p(rvalue, "1 + sqrt(var + eps)");
+    }
+
+    #[test]
+    fn test_fragments() {
+        p(
+            fragments,
+            r#"
+            fragment add( x: tensor<scalar>, y: tensor<scalar> ) -> ( z: tensor<scalar> );
+            fragment sub( x: tensor<scalar>, y: tensor<scalar> ) -> ( z: tensor<scalar> );
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_alexnet() {
+        p(document, include_str!("../tests/alexnet.nnef"));
+    }
+
+    #[test]
+    fn test_stdlib() {
+        p(fragments, include_str!("../tests/stdlib.nnef"));
     }
 }
