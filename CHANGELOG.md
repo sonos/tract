@@ -1,4 +1,8 @@
-## Unreleased
+## 0.10.0 - 2020-07-28
+
+### ONNX
+
+* covered operators compatible with Operator Sets 9, 10, 11 (new) and 12 (new)
 
 ### API Breaking
 
@@ -11,6 +15,7 @@
 ### Notable
 
 * --cost now gives the number of parameters in the model
+* SimpleState is clonable again (actually useful !)
 
 ## 0.9.2 - 2020-06-16
 
