@@ -77,13 +77,13 @@ impl StatefullOp for LirScan {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct State {
     op: Arc<LirScanOpParams>,
     mutable: MutableState,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct MutableState {
     position: usize,
     hidden_state: TVec<Tensor>,
