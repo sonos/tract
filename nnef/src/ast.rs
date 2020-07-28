@@ -14,7 +14,7 @@ pub enum TypeSpec {
     Tuple(Vec<TypeSpec>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TypeName {
     Integer,
     Scalar,

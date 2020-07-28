@@ -93,8 +93,12 @@ impl Parameters {
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
 
         let format = matches.value_of("format").unwrap_or(
-            if filename.extension().and_then(|s| s.to_str()) == Some("onnx") {
+            if filename.extension().map(|s| s == "onnx").unwrap_or(false) {
                 "onnx"
+            } else if filename.extension().map(|s| s == "raw" || s == "txt").unwrap_or(false) {
+                "kaldi"
+            } else if filename.extension().map(|s| s == "tar.gz" || s == "tgz").unwrap_or(false) {
+                "nnef"
             } else {
                 "tf"
             },
@@ -241,7 +245,7 @@ impl Parameters {
         F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
         Graph<F, O>: SpecialOps<F, O>,
-        CliError: From<E>
+        CliError: From<E>,
     {
         let files = inputs_dir
             .read_dir()?
@@ -313,7 +317,7 @@ impl Parameters {
             for (ix, v) in inputs.enumerate() {
                 let (name, t) = tensor::for_string(v)?;
                 let fact = t.clone().without_value();
-                let fact:F = (&fact).try_into()?;
+                let fact: F = (&fact).try_into()?;
                 let outlet = if let Some(name) = name.filter(|s| s.len() > 0) {
                     let node = raw_model.node_by_name(&*name)?;
                     OutletId::new(node.id, 0)
@@ -330,8 +334,7 @@ impl Parameters {
                     }
                     // clear our inputs and change ourselves to a source
                     raw_model.node_mut(outlet.node).inputs.clear();
-                    raw_model.node_mut(outlet.node).op =
-                        raw_model.create_source(fact.clone())
+                    raw_model.node_mut(outlet.node).op = raw_model.create_source(fact.clone())
                 }
                 info!("Input #{}: {:?}", ix, t);
                 raw_model.set_outlet_fact(outlet, fact)?;
