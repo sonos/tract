@@ -1,28 +1,17 @@
 pub mod ast;
+pub mod model;
 pub mod parser;
 
+pub use model::ProtoModel;
 use tract_core::internal::*;
-
-#[derive(Clone, Debug)]
-pub struct ProtoModel {
-    doc: ast::Document,
-}
-
-impl ProtoModel {
-    pub fn into_typed_model(&self) -> TractResult<TypedModel> {
-        todo!()
-    }
-}
 
 pub fn open_model<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
     use std::io::Read;
     let path = p.as_ref();
-    if !path.exists() {
+    let (text, _tensors) = if !path.exists() {
         bail!("File not found: {:?}", path)
     } else if path.is_dir() && path.join("graph.nnef").is_file() {
-        let nnef = std::fs::read_to_string(path.join("graph.nnef"))?;
-        let doc = parser::parse_document(&nnef)?;
-        Ok(ProtoModel { doc })
+        (std::fs::read_to_string(path.join("graph.nnef"))?, ())
     } else if path.is_file()
         && path
             .file_name()
@@ -32,20 +21,21 @@ pub fn open_model<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
         let file = std::fs::File::open(path)?;
         let decomp = flate2::read::GzDecoder::new(file);
         let mut tar = tar::Archive::new(decomp);
-        let mut doc = None;
+        let mut text = None;
         for entry in tar.entries()? {
             let mut entry = entry?;
             if entry.path()?.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
-                let mut text = String::new();
-                entry.read_to_string(&mut text)?;
-                doc = Some(parser::parse_document(&text)?);
+                let mut t = String::new();
+                entry.read_to_string(&mut t)?;
+                text = Some(t)
             }
         }
-        let doc: ast::Document = if let Some(doc) = doc { doc } else {
-            bail!("Archive must contain graph.nnef at top level")
-        };
-        Ok(ProtoModel { doc })
+        let text = text.ok_or_else(|| format!("Archive must contain graph.nnef at top level"))?;
+        (text, ())
     } else {
         bail!("Model expected as a tar.gz archive of a directory")
-    }
+    };
+    println!("{}", text);
+    let doc = parser::parse_document(&text)?;
+    Ok(ProtoModel { doc })
 }
