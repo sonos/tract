@@ -65,7 +65,7 @@ impl Cost {
 
 use crate::internal::*;
 
-pub trait OpState: fmt::Debug + Send {
+pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
     fn eval(
         &mut self,
         session: &mut SessionState,
@@ -73,6 +73,7 @@ pub trait OpState: fmt::Debug + Send {
         inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>>;
 }
+dyn_clone::clone_trait_object!(OpState);
 
 pub trait StatelessOp: Op {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>;
