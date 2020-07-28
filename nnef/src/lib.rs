@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod model;
 pub mod parser;
+pub mod primitives;
 
 pub use model::ProtoModel;
 use tract_core::internal::*;

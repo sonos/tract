@@ -23,7 +23,12 @@ pub fn parse_fragments(doc: &str) -> TractResult<Vec<FragmentDef>> {
 fn document(i: &str) -> IResult<&str, Document> {
     map(
         tuple((version, many0(extension), fragments, graph_def)),
-        |(version, extension, fragments, graph_def)| Document { version, extension, fragments, graph_def },
+        |(version, extension, fragments, graph_def)| Document {
+            version,
+            extension,
+            fragments,
+            graph_def,
+        },
     )(i)
 }
 
@@ -195,7 +200,10 @@ fn lvalue(i: &str) -> IResult<&str, LValue> {
         ))(i)
     }
 
-    map(separated_list(stag(","), inner_lvalue), LValue::Tuple)(i)
+    alt((
+        map(identifier, LValue::Identifier),
+        map(separated_list(stag(","), inner_lvalue), LValue::Tuple),
+    ))(i)
 }
 
 // <invocation> ::= <identifier> ["<" <type-name> ">"] "(" <argument-list> ")"
