@@ -76,6 +76,8 @@ impl Parameters {
         let filename = std::path::PathBuf::from(filename);
         let (filename, onnx_tc) = if !filename.exists() {
             bail!("model not found: {:?}", filename)
+        } else if std::fs::metadata(&filename)?.is_dir() && filename.join("graph.nnef").exists() {
+            (filename, false)
         } else if std::fs::metadata(&filename)?.is_dir() && filename.join("model.onnx").exists() {
             (filename.join("model.onnx"), true)
         } else {
@@ -97,7 +99,7 @@ impl Parameters {
                 "onnx"
             } else if filename.extension().map(|s| s == "raw" || s == "txt").unwrap_or(false) {
                 "kaldi"
-            } else if filename.extension().map(|s| s == "tar.gz" || s == "tgz").unwrap_or(false) {
+            } else if filename.is_dir() || (filename.extension().map(|s| s == "tar.gz" || s == "tgz").unwrap_or(false)) {
                 "nnef"
             } else {
                 "tf"

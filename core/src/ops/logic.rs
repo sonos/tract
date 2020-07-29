@@ -13,6 +13,9 @@ bin_to_super_type!(xor, Xor, flip: commute, [bool] => |c, &a, &b| *c = a ^ b);
 bin_to_bool!(equals, Equals, flip: commute,
              [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
             );
+bin_to_bool!(not_equals, NotEquals, flip: commute,
+             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a != b
+            );
 
 bin_to_bool!(lesser, Lesser, [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
 bin_to_bool!(lesser_equal, LesserEqual, [bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
