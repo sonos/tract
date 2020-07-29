@@ -36,7 +36,6 @@ pub fn open_model<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
     } else {
         bail!("Model expected as a tar.gz archive of a directory")
     };
-    println!("{}", text);
     let doc = parser::parse_document(&text)?;
     Ok(ProtoModel { doc })
 }

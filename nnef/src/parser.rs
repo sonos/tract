@@ -12,11 +12,11 @@ fn translate_error<'s, E: std::fmt::Debug>(e: E) -> TractError {
 }
 
 pub fn parse_document(doc: &str) -> TractResult<Document> {
-    document(doc).map(|pair| pair.1).map_err(translate_error)
+    all_consuming(document)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 pub fn parse_fragments(doc: &str) -> TractResult<Vec<FragmentDef>> {
-    fragments(doc).map(|pair| pair.1).map_err(translate_error)
+    all_consuming(fragments)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 // <document> ::= <version> <extension>* <fragmentdefinition>* <graph-definition>
@@ -200,10 +200,13 @@ fn lvalue(i: &str) -> IResult<&str, LValue> {
         ))(i)
     }
 
-    alt((
-        map(identifier, LValue::Identifier),
-        map(separated_list(stag(","), inner_lvalue), LValue::Tuple),
-    ))(i)
+    map(separated_list(stag(","), inner_lvalue), |mut iv| {
+        if iv.len() == 1 {
+            iv.remove(0)
+        } else {
+            LValue::Tuple(iv)
+        }
+    })(i)
 }
 
 // <invocation> ::= <identifier> ["<" <type-name> ">"] "(" <argument-list> ")"
@@ -418,10 +421,7 @@ mod test {
         P: Fn(&'s str) -> IResult<&'s str, O, E>,
         E: nom::error::ParseError<&'s str> + std::fmt::Debug,
     {
-        let res = parser(i).unwrap();
-        if res.0.len() != 0 {
-            panic!("Did not consumed all input: {:?}", res)
-        }
+        let res = all_consuming(parser)(i).unwrap();
         res.1
     }
 
@@ -663,6 +663,9 @@ mod test {
     #[test]
     fn test_lvalue() {
         p(lvalue, "foo");
+        p(lvalue, "foo,bar");
+        p(lvalue, "foo , bar");
+        p(lvalue, "(foo,bar)");
     }
 
     #[test]
@@ -681,6 +684,7 @@ mod test {
             "size = [for i in range_of(output_size) yield output_size[i] * sampling_rate[i]];",
         );
         p(assignment, "r = scalar(2 ^ bits - 1 - integer(signed && symmetric));");
+        p(assignment, "output, index = max_pool_with_index(input, size = size, border = border, padding = padding, stride = stride, dilation = dilation);");
     }
 
     #[test]

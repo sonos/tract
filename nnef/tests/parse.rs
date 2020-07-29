@@ -8,6 +8,6 @@ fn parse_alexnet() {
 
 #[test]
 fn parse_stdlib() {
-    let content = std::fs::read_to_string("tests/stdlib.nnef").unwrap();
+    let content = std::fs::read_to_string("stdlib.nnef").unwrap();
     tract_nnef::parser::parse_fragments(&content).unwrap();
 }

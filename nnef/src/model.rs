@@ -4,6 +4,38 @@ use tract_core::internal::*;
 
 use crate::primitives::Primitives;
 
+pub struct Framework {
+    stdlib: Vec<FragmentDef>,
+    primitives: Primitives,
+}
+
+impl Framework {
+    fn new() -> Framework {
+        for f in crate::parser::parse_fragments(include_str!("../stdlib.nnef")).unwrap() {
+            eprintln!("{}", f.decl.id);
+        }
+        Framework {
+            stdlib: crate::parser::parse_fragments(include_str!("../stdlib.nnef")).unwrap(),
+            primitives: crate::primitives::primitives(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ProtoModel {
+    pub doc: Document,
+}
+
+impl ProtoModel {
+    pub fn into_typed_model(&self) -> TractResult<TypedModel> {
+        let framework = Framework::new();
+        let mut builder =
+            ModelBuilder { framework, model: TypedModel::default(), assigned: HashMap::new() };
+        builder.wire(self)?;
+        Ok(builder.model)
+    }
+}
+
 pub struct ModelBuilder {
     pub framework: Framework,
     pub model: TypedModel,
@@ -24,38 +56,14 @@ impl ModelBuilder {
     }
 
     pub fn wire_invocation(&mut self, invocation: &Invocation) -> TractResult<TVec<OutletId>> {
-        let prim = self
-            .framework
-            .primitives
-            .get(&invocation.id)
-            .ok_or_else(|| format!("No definition for {:?}", invocation.id))?
-            .clone();
-        (prim)(self, invocation)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ProtoModel {
-    pub doc: Document,
-}
-
-impl ProtoModel {
-    pub fn into_typed_model(&self) -> TractResult<TypedModel> {
-        let framework = Framework::new();
-        let mut builder =
-            ModelBuilder { framework, model: TypedModel::default(), assigned: HashMap::new() };
-        builder.wire(self)?;
-        Ok(builder.model)
-    }
-}
-
-pub struct Framework {
-    primitives: Primitives,
-}
-
-impl Framework {
-    fn new() -> Framework {
-        Framework { primitives: crate::primitives::primitives() }
+        if let Some(prim) = self.framework.primitives.get(&invocation.id).cloned() {
+            (prim)(self, invocation)
+        } else if let Some(frag) = self.framework.stdlib.iter().find(|f| f.decl.id == invocation.id)
+        {
+            panic!("wire fragment {:?}", frag);
+        } else {
+            bail!("No fragment for {:?}", invocation.id)
+        }
     }
 }
 
@@ -75,7 +83,6 @@ impl LValue {
             LValue::Array(ids) => ids.iter().map(|id| id.to_identifier()).collect(),
         }
     }
-
 }
 
 impl Invocation {
@@ -108,10 +115,10 @@ impl RValue {
         match self {
             RValue::Identifier(id) => {
                 let outlet = builder
-                .assigned
-                .get(id)
-                .cloned()
-                .ok_or_else(|| format!("No value for name {}", id))?;
+                    .assigned
+                    .get(id)
+                    .cloned()
+                    .ok_or_else(|| format!("No value for name {}", id))?;
                 Ok(tvec!(outlet))
             }
             RValue::Invocation(inv) => builder.wire_invocation(inv),
