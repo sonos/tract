@@ -4,73 +4,26 @@ use tract_core::internal::*;
 
 use crate::primitives::Primitives;
 
-#[derive(Clone, Debug)]
-pub enum Value {
-    Wire(OutletId),
-    Tensor(Arc<Tensor>),
-}
-
-impl Value {
-    pub fn to_outlet(&self, builder: &mut ModelBuilder) -> TractResult<OutletId> {
-        match self {
-            Value::Wire(w) => Ok(*w),
-            Value::Tensor(t) => builder.model.add_const("", t.clone()),
-        }
-    }
-
-    pub fn to_tensor(&self, builder: &mut ModelBuilder) -> TractResult<Arc<Tensor>> {
-        match self {
-            Value::Wire(w) => {
-                builder.model.outlet_fact(*w)?.konst.clone().ok_or("Not a constant".into())
-            }
-            Value::Tensor(t) => Ok(t.clone()),
-        }
-    }
-}
-
 pub struct ModelBuilder {
     pub framework: Framework,
     pub model: TypedModel,
-    pub assigned: HashMap<String, Value>,
+    pub assigned: HashMap<String, OutletId>,
 }
 
 impl ModelBuilder {
     pub fn wire(&mut self, proto: &ProtoModel) -> TractResult<()> {
         for assignment in &proto.doc.graph_def.body {
-            let value = self.wire_rvalue(&assignment.right)?;
+            let outlets = assignment.right.to_wires(self)?;
+            assert!(outlets.len() == 1);
+            let outlet = outlets[0];
             let identifier = assignment.left.to_identifier()?;
-            if let Value::Wire(outlet) = value {
-                self.model.node_mut(outlet.node).name = identifier.to_string();
-            }
-            self.assigned.insert(identifier.to_string(), value);
+            self.model.node_mut(outlet.node).name = identifier.to_string();
+            self.assigned.insert(identifier.to_string(), outlet);
         }
         Ok(())
     }
 
-    pub fn wire_rvalue(&mut self, rv: &RValue) -> TractResult<Value> {
-        match rv {
-            RValue::Identifier(id) => self
-                .assigned
-                .get(id)
-                .cloned()
-                .ok_or_else(|| format!("No value for name {}", id).into()),
-            RValue::Invocation(inv) => self.wire_invocation(inv),
-            RValue::Literal(Literal::Numeric(f)) => {
-                Ok(Value::Tensor(if f.0.contains(".") || f.0.contains("e") {
-                    f.0.parse::<f64>()
-                        .map(rctensor0)
-                        .map_err(|_| format!("Can not parse {} as f64", f.0))?
-                } else {
-                    f.0.parse::<i64>()
-                        .map(rctensor0)
-                        .map_err(|_| format!("Can not parse {} as i64", f.0))?
-                }))
-            }
-            _ => panic!(),
-        }
-    }
-
-    pub fn wire_invocation(&mut self, invocation: &Invocation) -> TractResult<Value> {
+    pub fn wire_invocation(&mut self, invocation: &Invocation) -> TractResult<TVec<OutletId>> {
         let prim = self
             .framework
             .primitives
@@ -113,6 +66,8 @@ impl LValue {
             _ => bail!("Expected an identifier, found a tuple: {:?}", self),
         }
     }
+
+    #[allow(dead_code)]
     fn to_identifiers(&self) -> TractResult<TVec<&str>> {
         match self {
             LValue::Identifier(_) => Ok(tvec!(self.to_identifier()?)),
@@ -120,17 +75,14 @@ impl LValue {
             LValue::Array(ids) => ids.iter().map(|id| id.to_identifier()).collect(),
         }
     }
+
 }
 
 impl Invocation {
-    /*
-    fn named_arg_lit(&self, name: &str) -> TractResult<&Literal> {
-    let rv = self.named_arg(name)?;
-    rv.as_literal().ok_or_else(|| {
-    format!("Expected argument `{}' to be a literal, got {:?} instead", name, rv).into()
-    })
+    pub fn pos_arg(&self, pos: usize) -> TractResult<&RValue> {
+        self.get_pos_arg(pos).ok_or_else(|| format!("expected argument {}", pos).into())
     }
-    */
+
     pub fn named_arg(&self, name: &str) -> TractResult<&RValue> {
         self.get_named_arg(name).ok_or_else(|| format!("expected argument {}", name).into())
     }
@@ -138,17 +90,83 @@ impl Invocation {
     pub fn get_named_arg(&self, name: &str) -> Option<&RValue> {
         self.arguments.iter().find(|arg| arg.id.as_deref() == Some(name)).map(|arg| &arg.rvalue)
     }
+
+    pub fn get_pos_arg(&self, pos: usize) -> Option<&RValue> {
+        self.arguments.get(pos).map(|arg| &arg.rvalue)
+    }
 }
 
 impl RValue {
-    pub fn eval(&self, builder: &mut ModelBuilder) -> TractResult<Value> {
-        builder.wire_rvalue(self)
+    pub fn to_wire(&self, builder: &mut ModelBuilder) -> TractResult<OutletId> {
+        let wires = self.to_wires(builder)?;
+        if wires.len() != 1 {
+            bail!("Expected 1 wire, got {:?}", wires.len());
+        }
+        Ok(wires[0])
+    }
+    pub fn to_wires(&self, builder: &mut ModelBuilder) -> TractResult<TVec<OutletId>> {
+        match self {
+            RValue::Identifier(id) => {
+                let outlet = builder
+                .assigned
+                .get(id)
+                .cloned()
+                .ok_or_else(|| format!("No value for name {}", id))?;
+                Ok(tvec!(outlet))
+            }
+            RValue::Invocation(inv) => builder.wire_invocation(inv),
+            _ => bail!("Trying to wire: {:?}", self),
+        }
     }
 
-    pub fn to_shape_fact(&self) -> TractResult<ShapeFact> {
-        let dims = self.as_array().ok_or_else(|| format!("Expected {:?} to be a shape", self))?;
-        let dims = dims.iter().map(|d| d.to_dim()).collect::<TractResult<TVec<_>>>()?;
-        ShapeFact::from_dims(dims)
+    pub fn to_tensor(&self, builder: &mut ModelBuilder) -> TractResult<Arc<Tensor>> {
+        match self {
+            RValue::Literal(Literal::Numeric(f)) => {
+                if f.0.contains(".") || f.0.contains("e") {
+                    f.0.parse::<f64>()
+                        .map(rctensor0)
+                        .map_err(|_| format!("Can not parse {} as f64", f.0).into())
+                } else {
+                    f.0.parse::<i64>()
+                        .map(rctensor0)
+                        .map_err(|_| format!("Can not parse {} as i64", f.0).into())
+                }
+            }
+            RValue::Literal(Literal::String(StringLiteral(s))) => Ok(rctensor0(s.to_owned())),
+            RValue::Array(array) | RValue::Tuple(array) => {
+                let values: Vec<Arc<Tensor>> = array
+                    .iter()
+                    .map(|item| item.to_tensor(builder))
+                    .collect::<TractResult<Vec<Arc<Tensor>>>>()?;
+                let values: Vec<Tensor> = values
+                    .into_iter()
+                    .map(|t| {
+                        let mut t = t.into_tensor();
+                        t.insert_axis(0)?;
+                        Ok(t)
+                    })
+                    .collect::<TractResult<Vec<_>>>()?;
+                Tensor::stack_tensors(0, &values).map(|t| t.into_arc_tensor())
+            }
+            _ => {
+                let wire = self.to_wire(builder)?;
+                builder.model.outlet_fact(wire)?.konst.clone().ok_or("Not a constant".into())
+            }
+        }
+    }
+
+    pub fn to_scalar<D: Datum>(&self, builder: &mut ModelBuilder) -> TractResult<D> {
+        let d = self.to_tensor(builder)?;
+        Ok(d.to_scalar::<D>()?.clone())
+    }
+
+    pub fn to_shape_fact(&self, builder: &mut ModelBuilder) -> TractResult<ShapeFact> {
+        let shape = self.to_tensor(builder)?;
+        let shape = shape.cast_to::<TDim>()?;
+        if shape.rank() != 1 {
+            bail!("Shape are expected to be vectors (1D tensor) found: {:?}")
+        }
+        ShapeFact::from_dims(shape.as_slice::<TDim>()?)
     }
 
     pub fn to_dim(&self) -> TractResult<TDim> {
@@ -174,17 +192,6 @@ impl RValue {
 }
 
 impl Literal {
-    /*
-    fn as_shape(&self) -> TractResult<ShapeFact> {
-    match self {
-    Literal::Array(dims) => ShapeFact::from_dims(
-    &dims.iter().map(|d| d.as_dim()).collect::<TractResult<TVec<TDim>>>()?,
-    ),
-    _ => bail!("not a shape"),
-    }
-    }
-    */
-
     fn to_dim(&self) -> TractResult<TDim> {
         match self {
             Literal::Numeric(d) => Ok(d.0.parse::<i64>()?.to_dim()),
