@@ -30,7 +30,12 @@ pub struct ProtoModel {
 impl ProtoModel {
     pub fn into_typed_model(&self) -> TractResult<TypedModel> {
         let framework = Framework::new();
-        let mut builder = ModelBuilder { framework, model: TypedModel::default(), scopes: vec![] };
+        let mut builder = ModelBuilder {
+            framework,
+            fragments: self.doc.fragments.iter().map(|f| Arc::new(f.clone())).collect(),
+            model: TypedModel::default(),
+            scopes: vec![],
+        };
         builder.wire(self)?;
         Ok(builder.model)
     }
@@ -38,11 +43,63 @@ impl ProtoModel {
 
 pub struct ModelBuilder {
     pub framework: Framework,
+    pub fragments: Vec<Arc<FragmentDef>>,
     pub model: TypedModel,
     pub scopes: Vec<HashMap<String, OutletId>>,
 }
 
+pub struct AugmentedInvocation<'a> {
+    pub invocation: &'a Invocation,
+    pub fragment: Arc<FragmentDef>,
+}
+
+impl<'a> AugmentedInvocation<'a> {
+    pub fn pos_arg(&self, pos: usize) -> TractResult<Cow<RValue>> {
+        self.get_pos_arg(pos).ok_or_else(|| format!("expected argument {}", pos).into())
+    }
+
+    pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
+        self.get_named_arg(name).ok_or_else(|| format!("expected argument {}", name).into())
+    }
+
+    pub fn get_named_arg(&self, name: &str) -> Option<Cow<RValue>> {
+        self.invocation
+            .arguments
+            .iter()
+            .find(|arg| arg.id.as_deref() == Some(name))
+            .map(|arg| Cow::Borrowed(&arg.rvalue))
+            .or_else(|| {
+                self.fragment
+                    .decl
+                    .parameters
+                    .iter()
+                    .find(|arg| arg.id == name)
+                    .and_then(|arg| arg.lit.as_ref())
+                    .map(|lit| Cow::Owned(RValue::Literal(lit.clone())))
+            })
+    }
+
+    pub fn get_pos_arg(&self, pos: usize) -> Option<Cow<RValue>> {
+        self.invocation.arguments.get(pos).map(|arg| Cow::Borrowed(&arg.rvalue))
+    }
+}
+
 impl ModelBuilder {
+    fn augmented_invocation<'a>(
+        &self,
+        invocation: &'a Invocation,
+    ) -> TractResult<AugmentedInvocation<'a>> {
+        let fragment = self
+            .framework
+            .stdlib
+            .iter()
+            .find(|f| f.decl.id == invocation.id)
+            .cloned()
+            .or_else(|| self.fragments.iter().find(|f| f.decl.id == invocation.id).cloned())
+            .ok_or_else(|| format!("No fragment definition found for `{}'", invocation.id))?;
+        Ok(AugmentedInvocation { invocation, fragment })
+    }
+
     pub fn wire(&mut self, proto: &ProtoModel) -> TractResult<()> {
         self.scopes.push(HashMap::new());
         self.wire_body(&proto.doc.graph_def.body)
@@ -53,10 +110,13 @@ impl ModelBuilder {
 
     pub fn wire_body(&mut self, body: &[Assignment]) -> TractResult<()> {
         for assignment in body {
-            let outlets = assignment.right.to_wires(self)?;
+            let identifier = assignment.left.to_identifier()?;
+            let outlets = assignment
+                .right
+                .to_wires(self)
+                .chain_err(|| format!("Plugging in assignement for {:?}", identifier))?;
             assert!(outlets.len() == 1);
             let outlet = outlets[0];
-            let identifier = assignment.left.to_identifier()?;
             self.model.node_mut(outlet.node).name = identifier.to_string();
             self.scopes.last_mut().unwrap().insert(identifier.to_string(), outlet);
         }
@@ -64,37 +124,41 @@ impl ModelBuilder {
     }
 
     pub fn wire_invocation(&mut self, invocation: &Invocation) -> TractResult<TVec<OutletId>> {
+        let augmented_invocation = self.augmented_invocation(invocation)?;
         if let Some(prim) = self.framework.primitives.get(&invocation.id).cloned() {
-            (prim)(self, invocation)
+            (prim)(self, &augmented_invocation)
                 .chain_err(|| format!("Plugging primitive `{}'", invocation.id))
-        } else if let Some(fragment) =
-            self.framework.stdlib.iter().find(|f| f.decl.id == invocation.id).cloned()
-        {
-            if fragment.body.is_none() {
-                bail!("fragment for `{}' is declarative, not defining. Maybe a missing primitive ?", invocation.id)
-            }
-            self.wire_fragment_invocation(fragment, invocation)
+        } else if augmented_invocation.fragment.body.is_some() {
+            self.wire_fragment_invocation(&augmented_invocation)
                 .chain_err(|| format!("Expanding fragment `{}'", invocation.id))
         } else {
-            bail!("No fragment for {:?}", invocation.id)
+            bail!(
+                "fragment for `{}' is declarative, not defining. Maybe a missing primitive ?",
+                invocation.id
+            )
         }
     }
 
     pub fn wire_fragment_invocation(
         &mut self,
-        fragment: Arc<FragmentDef>,
-        invocation: &Invocation,
+        invocation: &AugmentedInvocation,
     ) -> TractResult<TVec<OutletId>> {
         let mut inner_scope = HashMap::new();
-        for (ix, arg) in invocation.arguments.iter().enumerate() {
-            let value = arg.rvalue.to_wire(self)?;
-            let id = arg.id.as_deref().unwrap_or(&fragment.decl.parameters[ix].id).to_string();
-            inner_scope.insert(id, value);
+        for (ix, par) in invocation.fragment.decl.parameters.iter().enumerate() {
+            if let Some(arg) = invocation.get_named_arg(&par.id) {
+                inner_scope.insert(par.id.to_string(), arg.to_wire(self)?);
+            } else if let Some(arg) = invocation.get_pos_arg(ix) {
+                inner_scope.insert(par.id.to_string(), arg.to_wire(self)?);
+            } else if let Some(lit) = &par.lit {
+                inner_scope.insert(par.id.to_string(), RValue::Literal(lit.clone()).to_wire(self)?);
+            }
         }
+        dbg!(&inner_scope);
         self.scopes.push(inner_scope);
-        self.wire_body(&fragment.body.as_ref().unwrap())?;
+        self.wire_body(&invocation.fragment.body.as_ref().unwrap())?;
         let inner_scope = self.scopes.pop().unwrap();
-        Ok(fragment
+        Ok(invocation
+            .fragment
             .decl
             .results
             .iter()
@@ -122,23 +186,7 @@ impl LValue {
     }
 }
 
-impl Invocation {
-    pub fn pos_arg(&self, pos: usize) -> TractResult<&RValue> {
-        self.get_pos_arg(pos).ok_or_else(|| format!("expected argument {}", pos).into())
-    }
-
-    pub fn named_arg(&self, name: &str) -> TractResult<&RValue> {
-        self.get_named_arg(name).ok_or_else(|| format!("expected argument {}", name).into())
-    }
-
-    pub fn get_named_arg(&self, name: &str) -> Option<&RValue> {
-        self.arguments.iter().find(|arg| arg.id.as_deref() == Some(name)).map(|arg| &arg.rvalue)
-    }
-
-    pub fn get_pos_arg(&self, pos: usize) -> Option<&RValue> {
-        self.arguments.get(pos).map(|arg| &arg.rvalue)
-    }
-}
+impl Invocation {}
 
 impl RValue {
     pub fn to_wire(&self, builder: &mut ModelBuilder) -> TractResult<OutletId> {
@@ -151,21 +199,6 @@ impl RValue {
 
     pub fn to_wires(&self, builder: &mut ModelBuilder) -> TractResult<TVec<OutletId>> {
         self.to_wires_rec(builder, true)
-    }
-
-    fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
-        let ranks = inputs
-            .iter()
-            .map(|&i| Ok(builder.model.outlet_fact(i)?.rank()))
-            .collect::<TractResult<Vec<usize>>>()?;
-        let max_rank = ranks.iter().copied().max().unwrap();
-        (inputs.iter())
-            .zip(ranks.iter())
-            .map(|(&i, &r)| {
-                (r..max_rank)
-                    .try_fold(i, |w, n| Ok(builder.model.wire_node("", AxisOp::Add(n), &[w])?[0]))
-            })
-            .collect()
     }
 
     fn to_wires_rec(
@@ -186,24 +219,29 @@ impl RValue {
             }
             RValue::Invocation(inv) => builder.wire_invocation(inv),
             RValue::Binary(left, op, right) => {
-                let left = left.to_wire(builder)?;
-                let right = right.to_wire(builder)?;
-                let inputs = Self::multicast(builder, &[left, right])?;
                 let op = match &**op {
-                    "+" => tract_core::ops::math::add::bin_typed(),
-                    "-" => tract_core::ops::math::sub::bin_typed(),
-                    "*" => tract_core::ops::math::mul::bin_typed(),
-                    "/" => tract_core::ops::math::div::bin_typed(),
-                    "^" => tract_core::ops::math::pow::bin_typed(),
-                    "==" => tract_core::ops::logic::equals::bin_typed(),
-                    "!=" => tract_core::ops::logic::not_equals::bin_typed(),
-                    ">" => tract_core::ops::logic::greater::bin_typed(),
-                    ">=" => tract_core::ops::logic::greater_equal::bin_typed(),
-                    "<" => tract_core::ops::logic::lesser::bin_typed(),
-                    "<=" => tract_core::ops::logic::lesser_equal::bin_typed(),
+                    "+" => "add",
+                    "-" => "sub",
+                    "*" => "mul",
+                    "/" => "div",
+                    "^" => "pow",
+                    ">" => "gt",
+                    "<" => "lt",
+                    "==" => "eq",
+                    "!=" => "ne",
+                    ">=" => "ge",
+                    "<=" => "le",
                     op => bail!("Unknown binary operator: {}", op),
                 };
-                builder.model.wire_node("", op, &inputs)
+                let inv = Invocation {
+                    id: op.to_string(),
+                    generic_type_name: None,
+                    arguments: vec![
+                        Argument { id: None, rvalue: left.as_ref().clone() },
+                        Argument { id: None, rvalue: right.as_ref().clone() },
+                    ],
+                };
+                builder.wire_invocation(&inv)
             }
             _ if can_try_const => {
                 let tensor = self.to_tensor(builder)?;
@@ -215,6 +253,12 @@ impl RValue {
 
     pub fn to_tensor(&self, builder: &mut ModelBuilder) -> TractResult<Arc<Tensor>> {
         match self {
+            RValue::Literal(Literal::Array(array)) => {
+                if array.len() == 0 {
+                    return Ok(rctensor1::<i64>(&[]));
+                }
+                todo!()
+            }
             RValue::Literal(Literal::Numeric(f)) => {
                 if f.0.contains(".") || f.0.contains("e") {
                     f.0.parse::<f32>()
@@ -228,6 +272,9 @@ impl RValue {
             }
             RValue::Literal(Literal::String(StringLiteral(s))) => Ok(rctensor0(s.to_owned())),
             RValue::Array(array) | RValue::Tuple(array) => {
+                if array.len() == 0 {
+                    return Ok(rctensor1::<i64>(&[]));
+                }
                 let values: Vec<Arc<Tensor>> = array
                     .iter()
                     .map(|item| item.to_tensor(builder))
@@ -243,7 +290,9 @@ impl RValue {
                 Tensor::stack_tensors(0, &values).map(|t| t.into_arc_tensor())
             }
             _ => {
-                let wire = self.to_wires_rec(builder, false)?[0];
+                let wire = self
+                    .to_wires_rec(builder, false)
+                    .chain_err(|| "Failed to get a tensor, trying an wire instead.")?[0];
                 builder.model.outlet_fact(wire)?.konst.clone().ok_or("Not a constant".into())
             }
         }
