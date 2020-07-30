@@ -65,12 +65,8 @@ impl Expansion for Transpose {
             let axes: TVec<usize> =
                 axes.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
             let mut wire = tvec!(inputs[0]);
-            for (from, to) in tract_hir::ops::array::permute_axes::perm_to_atoms(&axes) {
-                wire = target.wire_node(
-                    format!("{}.{}_to_{}", prefix, from, to),
-                    AxisOp::Move(from, to),
-                    &wire,
-                )?;
+            for pair in tract_hir::tract_core::ops::change_axes::perm_to_ops(&axes) {
+                wire = target.wire_node(format!("{}.{:?}", prefix, pair), pair, &wire)?;
             }
             Ok(wire)
         } else {
