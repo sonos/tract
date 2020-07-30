@@ -318,142 +318,6 @@ impl RValue {
     }
 }
 
-/*
-   pub fn to_wire(&self, builder: &mut ModelBuilder) -> TractResult<OutletId> {
-   let wires = self.to_wires(builder)?;
-   if wires.len() != 1 {
-   bail!("Expected 1 wire, got {:?}", wires);
-   }
-   Ok(wires[0])
-   }
-
-   pub fn to_wires(&self, builder: &mut ModelBuilder) -> TractResult<TVec<OutletId>> {
-   self.to_wires_rec(builder, true)
-   }
-
-   fn to_wires_rec(
-   &self,
-   builder: &mut ModelBuilder,
-   can_try_const: bool,
-   ) -> TractResult<TVec<OutletId>> {
-   match self {
-   RValue::Identifier(id) => {
-   let outlet = builder
-   .scopes
-   .last()
-   .unwrap()
-   .get(id)
-   .cloned()
-   .ok_or_else(|| format!("No value for name {}", id))?;
-   Ok(tvec!(outlet))
-   }
-   _ if can_try_const => {
-   let tensor = self.to_tensor(builder)?;
-   Ok(tvec!(builder.model.add_const("", tensor)?))
-   }
-   _ => bail!("failed to wire {:?}", self),
-   }
-   }
-
-   pub fn to_tensor(&self, builder: &mut ModelBuilder) -> TractResult<Arc<Tensor>> {
-   match self {
-   RValue::Literal(Literal::Array(array)) => {
-   if array.len() == 0 {
-   return Ok(rctensor1::<i64>(&[]));
-   }
-   todo!()
-   }
-   RValue::Literal(Literal::Logical(LogicalLiteral(b))) => Ok(rctensor0(*b)),
-   RValue::Literal(Literal::Numeric(f)) => {
-   if f.0.contains(".") || f.0.contains("e") {
-   f.0.parse::<f32>()
-   .map(rctensor0)
-   .map_err(|_| format!("Can not parse {} as f32", f.0).into())
-   } else {
-   f.0.parse::<i64>()
-   .map(rctensor0)
-   .map_err(|_| format!("Can not parse {} as i64", f.0).into())
-   }
-   }
-   RValue::Literal(Literal::String(StringLiteral(s))) => Ok(rctensor0(s.to_owned())),
-   RValue::Array(array) | RValue::Tuple(array) => {
-   if array.len() == 0 {
-   return Ok(rctensor1::<i64>(&[]));
-   }
-   let values: Vec<Arc<Tensor>> = array
-   .iter()
-   .map(|item| item.to_tensor(builder))
-   .collect::<TractResult<Vec<Arc<Tensor>>>>()?;
-   let values: Vec<Tensor> = values
-   .into_iter()
-   .map(|t| {
-   let mut t = t.into_tensor();
-   t.insert_axis(0)?;
-Ok(t)
-    })
-.collect::<TractResult<Vec<_>>>()?;
-Tensor::stack_tensors(0, &values).map(|t| t.into_arc_tensor())
-    }
-_ => {
-    let wire = self
-        .to_wires_rec(builder, false)
-        .chain_err(|| "Failed to get a tensor, trying an wire instead.")?[0];
-    builder.model.outlet_fact(wire)?.konst.clone().ok_or("Not a constant".into())
-}
-}
-}
-
-/*
-   pub fn to_scalar<D: Datum>(&self, builder: &mut ModelBuilder) -> TractResult<D> {
-   let d = self.to_tensor(builder)?;
-   Ok(d.to_scalar::<D>()?.clone())
-   }
-   */
-
-pub fn to_usizes(&self, builder: &mut ModelBuilder) -> TractResult<TVec<usize>> {
-    let shape = self.to_tensor(builder)?;
-    let shape = shape.cast_to::<i64>()?;
-    Ok(shape.as_slice::<i64>()?.iter().map(|d| *d as usize).collect())
-}
-
-pub fn to_dims(&self, builder: &mut ModelBuilder) -> TractResult<TVec<TDim>> {
-    let shape = self.to_tensor(builder)?;
-    let shape = shape.cast_to::<TDim>()?;
-    Ok(shape.as_slice::<TDim>()?.iter().cloned().collect())
-}
-
-pub fn to_shape_fact(&self, builder: &mut ModelBuilder) -> TractResult<ShapeFact> {
-    let shape = self.to_tensor(builder)?;
-    let shape = shape.cast_to::<TDim>()?;
-    if shape.rank() != 1 {
-        bail!("Shape are expected to be vectors (1D tensor) found: {:?}")
-    }
-    ShapeFact::from_dims(shape.as_slice::<TDim>()?)
-}
-
-pub fn to_dim(&self) -> TractResult<TDim> {
-    self.as_literal()
-        .map(|l| l.to_dim())
-        .transpose()?
-        .ok_or_else(|| format!("Expected {:?} to be a dim", self).into())
-}
-
-pub fn as_array(&self) -> Option<&[RValue]> {
-    match self {
-        RValue::Array(values) => Some(values),
-        _ => None,
-    }
-}
-
-pub fn as_literal(&self) -> Option<&Literal> {
-    match self {
-        RValue::Literal(lit) => Some(lit),
-        _ => None,
-    }
-}
-}
-*/
-
 pub trait CoerceFrom<F> {
     fn coerce(builder: &mut ModelBuilder, from: &F) -> TractResult<Self>
     where
@@ -461,7 +325,7 @@ pub trait CoerceFrom<F> {
 }
 
 impl CoerceFrom<Value> for Value {
-    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         Ok(from.clone())
     }
 }
@@ -493,17 +357,16 @@ impl CoerceFrom<Value> for OutletId {
 }
 
 impl CoerceFrom<Value> for i64 {
-    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Dim(d) => d.to_integer().map(|d| d as _),
             _ => bail!("Can not build a i64 from {:?}", from),
         }
-        // Arc::<Tensor>::coerce(builder, from)?.cast_to_scalar::<i64>()
     }
 }
 
 impl CoerceFrom<Value> for String {
-    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::String(s) => Ok(s.to_string()),
             Value::Tensor(t) => Ok(t.to_scalar::<String>()?.clone()),
@@ -513,7 +376,7 @@ impl CoerceFrom<Value> for String {
 }
 
 impl CoerceFrom<Value> for bool {
-    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         if let Value::Bool(b) = from {
             Ok(*b)
         } else {
@@ -538,11 +401,3 @@ impl<D: CoerceFrom<Value>> CoerceFrom<Value> for TVec<D> {
     }
 }
 
-impl Literal {
-    fn to_dim(&self) -> TractResult<TDim> {
-        match self {
-            Literal::Numeric(d) => Ok(d.0.parse::<i64>()?.to_dim()),
-            _ => bail!("not a dimension"),
-        }
-    }
-}
