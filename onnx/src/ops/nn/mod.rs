@@ -199,9 +199,10 @@ pub fn average_pool(
     let strides = strides(node)?;
     let count_include_pad = node.get_attr_opt("count_include_pad")?.unwrap_or(false);
     Ok((
-        Box::new(cnn::AvgPool::new(
+        Box::new(cnn::SumPool::new(
             cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, None, strides, None),
             count_include_pad,
+            true,
         )),
         vec![],
     ))
