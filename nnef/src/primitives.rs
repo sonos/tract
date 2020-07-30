@@ -1,6 +1,9 @@
 use crate::ast::*;
 use std::collections::HashMap;
 use tract_core::internal::*;
+use tract_core::itertools::Itertools;
+
+use tract_core::ops;
 
 use crate::model::{AugmentedInvocation, ModelBuilder};
 
@@ -10,7 +13,6 @@ pub type Primitives = HashMap<
 >;
 
 pub fn primitives() -> Primitives {
-    use tract_core::ops::{logic, math};
     let mut primitives: Primitives = Default::default();
     primitives.insert("external".to_string(), Arc::new(external));
     primitives.insert("variable".to_string(), Arc::new(variable));
@@ -25,20 +27,20 @@ pub fn primitives() -> Primitives {
         };
     };
 
-    mew!(add, math::add::bin_typed());
-    mew!(sub, math::sub::bin_typed());
-    mew!(mul, math::mul::bin_typed());
-    mew!(div, math::div::bin_typed());
-    mew!(pow, math::pow::bin_typed());
+    mew!(add, ops::math::add::bin_typed());
+    mew!(sub, ops::math::sub::bin_typed());
+    mew!(mul, ops::math::mul::bin_typed());
+    mew!(div, ops::math::div::bin_typed());
+    mew!(pow, ops::math::pow::bin_typed());
 
-    mew!(lt, logic::lesser::bin_typed());
-    mew!(gt, logic::greater::bin_typed());
-    mew!(le, logic::lesser_equal::bin_typed());
-    mew!(ge, logic::greater_equal::bin_typed());
-    mew!(eq, logic::equals::bin_typed());
-    mew!(new, logic::not_equals::bin_typed());
+    mew!(lt, ops::logic::lesser::bin_typed());
+    mew!(gt, ops::logic::greater::bin_typed());
+    mew!(le, ops::logic::lesser_equal::bin_typed());
+    mew!(ge, ops::logic::greater_equal::bin_typed());
+    mew!(eq, ops::logic::equals::bin_typed());
+    mew!(ne, ops::logic::not_equals::bin_typed());
 
-    mew!(select, logic::Iff);
+    mew!(select, ops::logic::Iff);
 
     primitives.insert("sum_reduce".to_string(), Arc::new(reduce));
     primitives.insert("max_reduce".to_string(), Arc::new(reduce));
@@ -46,9 +48,14 @@ pub fn primitives() -> Primitives {
 
     primitives.insert("matmul".to_string(), Arc::new(matmul));
 
+    primitives.insert("transpose".to_string(), Arc::new(transpose));
+    primitives.insert("unsqueeze".to_string(), Arc::new(unsqueeze));
+    primitives.insert("squeeze".to_string(), Arc::new(squeeze));
+
     primitives
 }
 
+// fragment external<? = scalar>( shape: integer[] ) -> ( output: tensor<?> );
 fn external(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
@@ -59,6 +66,7 @@ fn external(
     Ok(tvec!(builder.model.add_source("", TypedFact::dt_shape(dt, shape)?)?))
 }
 
+// fragment variable<? = scalar>( shape: integer[], label: string ) -> ( output: tensor<?> );
 fn variable(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
@@ -68,6 +76,46 @@ fn variable(
     let shape = invocation.named_arg("shape")?.to_shape_fact(builder)?;
     let shape = shape.as_finite().unwrap();
     Ok(tvec!(builder.model.add_const("", Tensor::zero_dt(dt, &shape)?.into_arc_tensor())?))
+}
+
+// fragment transpose<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
+fn transpose(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let axes = invocation.named_arg("axes")?.to_tensor(builder)?;
+    let axes = axes.cast_to::<i64>()?;
+    let axes = axes.as_slice::<i64>()?.iter().map(|a| *a as usize).collect::<TVec<_>>();
+    let wire = tvec!(invocation.named_arg("input")?.to_wire(builder)?);
+    ops::change_axes::perm_to_ops(&axes)
+        .into_iter()
+        .try_fold(wire, |wire, mov| Ok(builder.model.wire_node("", mov, &wire)?))
+}
+
+// fragment squeeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
+fn squeeze(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let axes = invocation.named_arg("axes")?.to_tensor(builder)?;
+    let axes = axes.cast_to::<i64>()?;
+    let wire = tvec!(invocation.named_arg("input")?.to_wire(builder)?);
+    axes.as_slice::<i64>()?.iter().sorted().rev().try_fold(wire, |wire, &axis| {
+        Ok(builder.model.wire_node("", ops::change_axes::AxisOp::Rm(axis as usize), &wire)?)
+    })
+}
+
+// fragment unsqueeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
+fn unsqueeze(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let axes = invocation.named_arg("axes")?.to_tensor(builder)?;
+    let axes = axes.cast_to::<i64>()?;
+    let wire = tvec!(invocation.named_arg("input")?.to_wire(builder)?);
+    axes.as_slice::<i64>()?.iter().sorted().try_fold(wire, |wire, &axis| {
+        Ok(builder.model.wire_node("", ops::change_axes::AxisOp::Add(axis as usize), &wire)?)
+    })
 }
 
 /*
@@ -82,13 +130,28 @@ fn conv(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    use tract_core::ops::cnn::{ConvUnary, KernelFormat, PaddingSpec, PoolSpec};
-    use tract_core::ops::nn::DataFormat;
-    let input = invocation.pos_arg(0)?.to_wire(builder)?;
-    let kernel = invocation.pos_arg(1)?.to_tensor(builder)?;
-    let bias = invocation.pos_arg(2)?.to_tensor(builder)?;
-    let dilation = invocation.named_arg("dilation")?.to_shape_fact(builder)?;
-    let stride = invocation.named_arg("stride")?.to_shape_fact(builder)?;
+    use ops::cnn::{ConvUnary, KernelFormat, PaddingSpec, PoolSpec};
+    use ops::nn::DataFormat;
+    let input = invocation.named_arg("input")?.to_wire(builder)?;
+    let kernel = invocation.named_arg("filter")?.to_tensor(builder)?;
+    let input_fact = builder.model.outlet_fact(input)?;
+    if input_fact.rank() != kernel.rank() {
+        bail!(
+            "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
+            input_fact,
+            kernel
+        );
+    }
+    if input_fact.shape.dim(1) != kernel.shape()[1].to_dim() {
+        bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel);
+    }
+    let bias = invocation.named_arg("bias")?.to_tensor(builder)?;
+    let dilation = invocation.named_arg("dilation")?.to_tensor(builder)?;
+    let dilation = dilation.cast_to::<i64>()?;
+    let dilation: TVec<usize> = dilation.as_slice::<i64>()?.iter().map(|d| *d as usize).collect();
+    let stride = invocation.named_arg("stride")?.to_tensor(builder)?;
+    let stride = stride.cast_to::<i64>()?;
+    let stride: TVec<usize> = stride.as_slice::<i64>()?.iter().map(|d| *d as usize).collect();
     let padding = invocation.named_arg("padding")?.to_tensor(builder)?;
     let border = invocation.named_arg("border")?.to_tensor(builder)?;
     assert_eq!(border, rctensor0("constant".to_string()));
@@ -108,8 +171,8 @@ fn conv(
         DataFormat::NCHW,
         kernel.shape()[2..].into(),
         padding,
-        Some(dilation.as_finite().unwrap().into()),
-        Some(stride.as_finite().unwrap().into()),
+        if dilation.len() > 0 { Some(dilation) } else { None },
+        if stride.len() > 0 { Some(stride) } else { None },
         Some(kernel.shape()[0]),
     );
     let op = ConvUnary::new(
@@ -120,22 +183,22 @@ fn conv(
         Some(bias.clone()),
         None,
     );
+    dbg!(&op);
     builder.model.wire_node("", op, &[input])
 }
 
 /*
  *   fragment sum_reduce( input: tensor<scalar>, axes: integer[], normalize: logical = false ) -> ( output: tensor<scalar> );
  *   fragment max_reduce( input: tensor<scalar>, axes: integer[] ) -> ( output: tensor<scalar> );
- *   + max, min, argmax, armmin, any, all
+ *   and also min, argmax, armmin, any, all
  */
-
 fn reduce(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     use tract_core::ops::nn::{Reduce, Reducer};
-    let input = invocation.pos_arg(0)?.to_wire(builder)?;
-    let axes = invocation.pos_arg(1)?.to_tensor(builder)?;
+    let input = invocation.named_arg("input")?.to_wire(builder)?;
+    let axes = invocation.named_arg("axes")?.to_tensor(builder)?;
     let axes = axes.cast_to::<i64>()?;
     let axes = axes.as_slice::<i64>()?.iter().map(|&i| i as usize).collect::<TVec<_>>();
     let reducer = match invocation.invocation.id.split("_").next().unwrap() {
@@ -145,18 +208,17 @@ fn reduce(
         _ => bail!("unsupported reducer: {}", invocation.invocation.id),
     };
     let mut wire = builder.model.wire_node("", Reduce::new(axes.clone(), reducer), &[input])?;
-    if let Some(norm_arg) = invocation.get_pos_arg(2) {
-        let tensor = norm_arg.to_tensor(builder)?;
-        if tensor.cast_to_scalar::<bool>()? {
-            let input_shape = &builder.model.outlet_fact(input)?.shape;
-            let cardinality = axes.iter().map(|ax| input_shape.dim(*ax)).maybe_product()?;
-            let cardinality = tensor0(cardinality).broadcast_into_rank(input_shape.rank())?;
-            wire = builder.model.wire_node(
-                "",
-                tract_core::ops::math::div::unary(cardinality.into_arc_tensor()),
-                &[input],
-            )?;
-        }
+    let normalize = invocation.named_arg("normalize")?;
+    let tensor = normalize.to_tensor(builder)?;
+    if tensor.cast_to_scalar::<bool>()? {
+        let input_shape = &builder.model.outlet_fact(input)?.shape;
+        let cardinality = axes.iter().map(|ax| input_shape.dim(*ax)).maybe_product()?;
+        let cardinality = tensor0(cardinality).broadcast_into_rank(input_shape.rank())?;
+        wire = builder.model.wire_node(
+            "",
+            tract_core::ops::math::div::unary(cardinality.into_arc_tensor()),
+            &[input],
+        )?;
     }
     Ok(wire)
 }
@@ -168,7 +230,6 @@ fn matmul(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    dbg!(&invocation);
     let a = invocation.named_arg("A")?.to_wire(builder)?;
     let b = invocation.named_arg("B")?.to_wire(builder)?;
     let a_trans =
@@ -177,7 +238,7 @@ fn matmul(
         invocation.named_arg("transposeB")?.to_tensor(builder)?.cast_to_scalar::<bool>()?;
     builder.model.wire_node(
         "",
-        tract_core::ops::matmul::MatMul { a_trans, b_trans, c_trans: false, q_params: None },
+        dbg!(tract_core::ops::matmul::MatMul { a_trans, b_trans, c_trans: false, q_params: None }),
         &[a, b],
     )
 }
