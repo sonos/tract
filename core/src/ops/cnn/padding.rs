@@ -50,6 +50,7 @@ impl PaddingSpec {
         dilations: &[usize],
         strides: &[usize],
     ) -> TVec<ComputedPaddedDim<D>> {
+        dbg!(input_spatial_shape);
         (0..input_spatial_shape.len())
             .map(|d| {
                 self.compute_one(

@@ -81,106 +81,13 @@ impl Expansion for PermuteAxes {
             (0..fact.rank()).rev().collect()
         };
         let mut wire: TVec<OutletId> = inputs.into();
-        for (from, to) in perm_to_atoms(&axes) {
+        for op in perm_to_ops(&axes) {
             wire = target.wire_node(
-                format!("{}.{}_to_{}", prefix, from, to),
-                AxisOp::Move(from, to),
+                format!("{}.{:?}", prefix, op),
+                op,
                 &wire,
             )?;
         }
         Ok(wire)
-    }
-}
-// a, b, c is a <- b, b <- c, c <- a
-fn perm_to_cycles(perm: &[usize]) -> TVec<TVec<usize>> {
-    let mut cycles: TVec<TVec<usize>> = tvec!();
-    let mut done = 0;
-    while done < perm.len() {
-        if perm[done] == done || cycles.iter().any(|c| c.contains(&done)) {
-            done += 1;
-            continue;
-        }
-        let mut cycle = tvec!();
-        let mut current = done;
-        loop {
-            cycle.push(current);
-            current = perm[current];
-            if current == done {
-                break;
-            }
-        }
-        cycles.push(cycle)
-    }
-    cycles
-}
-
-fn is_rotation_cycle(cycle: &[usize]) -> Option<(usize, usize)> {
-    if cycle.windows(2).all(|w| w[0] + 1 == w[1]) {
-        Some((cycle[0], cycle[cycle.len() - 1]))
-    } else if cycle[1..cycle.len()].windows(2).all(|w| w[0] - 1 == w[1])
-        && cycle[cycle.len() - 1] - 1 == cycle[0]
-    {
-        Some((cycle[1], cycle[0]))
-    } else {
-        None
-    }
-}
-
-pub fn perm_to_atoms(input: &[usize]) -> TVec<(usize, usize)> {
-    let mut changes: TVec<(usize, usize)> = tvec!();
-    'top: loop {
-        let mut reached: TVec<usize> = (0..input.len()).collect();
-        changes.iter().for_each(|(f, t)| {
-            let axis = reached.remove(*f);
-            reached.insert(*t, axis);
-        });
-        if &*reached == input {
-            return changes;
-        }
-        let remaining: TVec<usize> =
-            input.iter().map(|x| reached.iter().position(|y| y == x).unwrap()).collect();
-        let cycles = perm_to_cycles(&remaining);
-        for cycle in &cycles {
-            if let Some(rot) = is_rotation_cycle(&cycle) {
-                changes.push(rot);
-                continue 'top;
-            }
-        }
-        changes.push((cycles[0][1], cycles[0][0]));
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_perm_to_cycles() {
-        assert_eq!(perm_to_cycles(&[1, 2, 0]), tvec!(tvec!(0, 1, 2)));
-        assert_eq!(perm_to_cycles(&[2, 0, 1]), tvec!(tvec!(0, 2, 1)));
-        assert_eq!(perm_to_cycles(&[1, 2, 3, 0]), tvec!(tvec!(0, 1, 2, 3)));
-        assert_eq!(perm_to_cycles(&[3, 0, 1, 2]), tvec!(tvec!(0, 3, 2, 1)));
-        assert_eq!(perm_to_cycles(&[3, 1, 2, 0, 4]), tvec!(tvec!(0, 3)));
-    }
-
-    #[test]
-    fn is_rotation() {
-        assert_eq!(is_rotation_cycle(&[0, 1, 2]), Some((0, 2)));
-        assert_eq!(is_rotation_cycle(&[0, 2, 1]), Some((2, 0)));
-    }
-
-    #[test]
-    fn test_perm_one_rotation() {
-        assert_eq!(perm_to_atoms(&[1, 2, 0, 3, 4]), tvec!((0, 2)));
-    }
-
-    #[test]
-    fn test_perm_two_rotations() {
-        assert_eq!(perm_to_atoms(&[1, 2, 0, 4, 3]), tvec!((0, 2), (3, 4)));
-    }
-
-    #[test]
-    fn test_perm_complex() {
-        assert_eq!(perm_to_atoms(&[3, 1, 2, 0, 4]), tvec!((3, 0), (1, 3)));
     }
 }
