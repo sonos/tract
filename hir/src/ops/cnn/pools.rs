@@ -1,9 +1,9 @@
 use crate::infer::*;
 use crate::internal::*;
 
-pub use tract_core::ops::cnn::{AvgPool, MaxPool, PoolSpec};
+pub use tract_core::ops::cnn::{SumPool, MaxPool, PoolSpec};
 
-impl InferenceRulesOp for AvgPool {
+impl InferenceRulesOp for SumPool {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,

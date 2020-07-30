@@ -18,6 +18,7 @@ pub fn primitives() -> Primitives {
     primitives.insert("variable".to_string(), Arc::new(variable));
 
     primitives.insert("transpose".to_string(), Arc::new(transpose));
+    primitives.insert("concat".to_string(), Arc::new(concat));
     primitives.insert("unsqueeze".to_string(), Arc::new(unsqueeze));
     primitives.insert("squeeze".to_string(), Arc::new(squeeze));
 
@@ -78,6 +79,9 @@ pub fn primitives() -> Primitives {
     primitives.insert("max_reduce".to_string(), Arc::new(reduce));
     primitives.insert("min_reduce".to_string(), Arc::new(reduce));
 
+    primitives.insert("max_pool_with_index".to_string(), Arc::new(max_pool_with_index));
+    primitives.insert("box".to_string(), Arc::new(sum_pool));
+
     mew!(tanh, ops::math::tanh());
     mew!(sigmoid, ops::nn::sigmoid());
 
@@ -91,8 +95,8 @@ fn external(
 ) -> TractResult<TVec<OutletId>> {
     let type_name = invocation.invocation.generic_type_name.unwrap_or(TypeName::Scalar);
     let dt = if type_name == TypeName::Scalar { f32::datum_type() } else { todo!() };
-    let shape = invocation.named_arg("shape")?.to_shape_fact(builder)?;
-    Ok(tvec!(builder.model.add_source("", TypedFact::dt_shape(dt, shape)?)?))
+    let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
+    Ok(tvec!(builder.model.add_source("", TypedFact::dt_shape(dt, &*shape)?)?))
 }
 
 // fragment variable<? = scalar>( shape: integer[], label: string ) -> ( output: tensor<?> );
@@ -102,8 +106,7 @@ fn variable(
 ) -> TractResult<TVec<OutletId>> {
     let type_name = invocation.invocation.generic_type_name.unwrap_or(TypeName::Scalar);
     let dt = if type_name == TypeName::Scalar { f32::datum_type() } else { todo!() };
-    let shape = invocation.named_arg("shape")?.to_shape_fact(builder)?;
-    let shape = shape.as_finite().unwrap();
+    let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     Ok(tvec!(builder.model.add_const("", Tensor::zero_dt(dt, &shape)?.into_arc_tensor())?))
 }
 
@@ -112,13 +115,21 @@ fn transpose(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let axes = invocation.named_arg("axes")?.to_tensor(builder)?;
-    let axes = axes.cast_to::<i64>()?;
-    let axes = axes.as_slice::<i64>()?.iter().map(|a| *a as usize).collect::<TVec<_>>();
-    let wire = tvec!(invocation.named_arg("input")?.to_wire(builder)?);
+    let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
+    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     ops::change_axes::perm_to_ops(&axes)
         .into_iter()
         .try_fold(wire, |wire, mov| Ok(builder.wire(mov, &wire)?))
+}
+
+// fragment concat<?>( values: tensor<?>[], axis: integer ) -> ( value: tensor<?> );
+fn concat(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let axis: usize = invocation.named_arg_as(builder, "axis")?;
+    let values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
+    builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
 }
 
 // fragment squeeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
@@ -126,10 +137,9 @@ fn squeeze(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let axes = invocation.named_arg("axes")?.to_tensor(builder)?;
-    let axes = axes.cast_to::<i64>()?;
-    let wire = tvec!(invocation.named_arg("input")?.to_wire(builder)?);
-    axes.as_slice::<i64>()?.iter().sorted().rev().try_fold(wire, |wire, &axis| {
+    let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
+    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
+    axes.iter().sorted().rev().try_fold(wire, |wire, &axis| {
         Ok(builder.wire(ops::change_axes::AxisOp::Rm(axis as usize), &wire)?)
     })
 }
@@ -139,12 +149,42 @@ fn unsqueeze(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let axes = invocation.named_arg("axes")?.to_tensor(builder)?;
-    let axes = axes.cast_to::<i64>()?;
-    let wire = tvec!(invocation.named_arg("input")?.to_wire(builder)?);
-    axes.as_slice::<i64>()?.iter().sorted().try_fold(wire, |wire, &axis| {
+    let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
+    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
+    axes.iter().sorted().try_fold(wire, |wire, &axis| {
         Ok(builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &wire)?)
     })
+}
+
+fn pool_spec(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+    shape: &[usize],
+) -> TractResult<ops::cnn::PoolSpec> {
+    use ops::cnn::{PaddingSpec, PoolSpec};
+    use ops::nn::DataFormat;
+    let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
+    let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
+    let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
+    let padding = if padding.len() == 0 {
+        PaddingSpec::Valid
+    } else {
+        let mut before = tvec!();
+        let mut after = tvec!();
+        for p in padding {
+            before.push(p[0]);
+            after.push(p[1]);
+        }
+        PaddingSpec::Explicit(before, after, false)
+    };
+    Ok(PoolSpec::new(
+        DataFormat::NCHW,
+        shape[2..].into(),
+        padding,
+        if dilation.len() > 0 { Some(dilation) } else { None },
+        if stride.len() > 0 { Some(stride) } else { None },
+        None,
+    ))
 }
 
 /*
@@ -159,10 +199,9 @@ fn conv(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    use ops::cnn::{ConvUnary, KernelFormat, PaddingSpec, PoolSpec};
-    use ops::nn::DataFormat;
-    let input = invocation.named_arg("input")?.to_wire(builder)?;
-    let kernel = invocation.named_arg("filter")?.to_tensor(builder)?;
+    use ops::cnn::{ConvUnary, KernelFormat};
+    let input: OutletId = invocation.named_arg_as(builder, "input")?;
+    let kernel: Arc<Tensor> = invocation.named_arg_as(builder, "filter")?;
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != kernel.rank() {
         bail!(
@@ -174,44 +213,78 @@ fn conv(
     if input_fact.shape.dim(1) != kernel.shape()[1].to_dim() {
         bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel);
     }
-    let bias = invocation.named_arg("bias")?.to_tensor(builder)?;
-    let dilation = invocation.named_arg("dilation")?.to_tensor(builder)?;
-    let dilation = dilation.cast_to::<i64>()?;
-    let dilation: TVec<usize> = dilation.as_slice::<i64>()?.iter().map(|d| *d as usize).collect();
-    let stride = invocation.named_arg("stride")?.to_tensor(builder)?;
-    let stride = stride.cast_to::<i64>()?;
-    let stride: TVec<usize> = stride.as_slice::<i64>()?.iter().map(|d| *d as usize).collect();
-    let padding = invocation.named_arg("padding")?.to_tensor(builder)?;
-    let border = invocation.named_arg("border")?.to_tensor(builder)?;
-    assert_eq!(border, rctensor0("constant".to_string()));
-    let group = invocation.named_arg("groups")?.to_tensor(builder)?.cast_to_scalar::<i64>()?;
-    let padding = if padding.len() == 0 {
-        PaddingSpec::Valid
-    } else {
-        let padding: tract_ndarray::ArrayView2<i64> =
-            padding.to_array_view::<i64>()?.into_dimensionality()?;
-        PaddingSpec::Explicit(
-            padding.row(0).iter().map(|x| *x as usize).collect(),
-            padding.row(1).iter().map(|x| *x as usize).collect(),
-            false,
-        )
-    };
-    let pool_spec = PoolSpec::new(
-        DataFormat::NCHW,
-        kernel.shape()[2..].into(),
-        padding,
-        if dilation.len() > 0 { Some(dilation) } else { None },
-        if stride.len() > 0 { Some(stride) } else { None },
-        Some(kernel.shape()[0]),
-    );
+    let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
+    let border: String = invocation.named_arg_as(builder, "border")?;
+    assert_eq!(border, "constant");
+    let group = invocation.named_arg_as(builder, "groups")?;
+    let mut pool_spec = pool_spec(builder, invocation, kernel.shape())?;
+    pool_spec.output_channel_override = Some(kernel.shape()[0]);
     let op = ConvUnary::new(
         pool_spec,
         KernelFormat::OIHW,
         kernel.clone(),
-        group as usize,
+        group,
         Some(bias.clone()),
         None,
     );
+    builder.wire(op, &[input])
+}
+
+/*
+ * fragment max_pool_with_index( input: tensor<scalar>, size: integer[], border: string = 'constant',
+ *  padding: (integer,integer)[] = [], stride: integer[] = [], dilation: integer[] = [] )
+ *   -> ( output: tensor<scalar>, index: tensor<integer> )
+ */
+
+fn max_pool_with_index(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
+    let input_fact = builder.model.outlet_fact(input)?;
+    if input_fact.rank() != size.len() {
+        bail!(
+            "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
+            input_fact,
+            size
+        );
+    }
+    let border: String = invocation.named_arg_as(builder, "border")?;
+    assert_eq!(border, "ignore");
+    let pool_spec = pool_spec(builder, invocation, &size)?;
+    let op = ops::cnn::MaxPool { pool_spec, with_index_outputs: Some(i64::datum_type()) };
+    builder.wire(op, &[input])
+}
+
+/*
+ * fragment box( input: tensor<scalar>, size: integer[], border: string = 'constant', padding: (integer,integer)[] = [],
+ *   stride: integer[] = [], dilation: integer[] = [], normalize: logical = false )
+ * -> ( output: tensor<scalar> );
+ */
+
+fn sum_pool(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
+    let input_fact = builder.model.outlet_fact(input)?;
+    if input_fact.rank() != size.len() {
+        bail!(
+            "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
+            input_fact,
+            size
+        );
+    }
+    let border: String = invocation.named_arg_as(builder, "border")?;
+    assert_eq!(border, "ignore");
+    let pool_spec = pool_spec(builder, invocation, &size)?;
+    let op = ops::cnn::SumPool {
+        pool_spec,
+        count_include_pad: false,
+        normalize: invocation.named_arg_as(builder, "normalize")?,
+    };
     builder.wire(op, &[input])
 }
 
@@ -224,10 +297,8 @@ fn reduce(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let input = invocation.named_arg("input")?.to_wire(builder)?;
-    let axes = invocation.named_arg("axes")?.to_tensor(builder)?;
-    let axes = axes.cast_to::<i64>()?;
-    let axes = axes.as_slice::<i64>()?.iter().map(|&i| i as usize).collect::<TVec<_>>();
+    let input = invocation.named_arg_as(builder, "input")?;
+    let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let reducer = match invocation.invocation.id.split("_").next().unwrap() {
         "sum" => ops::nn::Reducer::Sum,
         "min" => ops::nn::Reducer::Min,
@@ -235,9 +306,7 @@ fn reduce(
         _ => bail!("unsupported reducer: {}", invocation.invocation.id),
     };
     let mut wire = builder.wire(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
-    let normalize = invocation.named_arg("normalize")?;
-    let tensor = normalize.to_tensor(builder)?;
-    if tensor.cast_to_scalar::<bool>()? {
+    if invocation.named_arg_as(builder, "normalize")? {
         let input_shape = &builder.model.outlet_fact(input)?.shape;
         let cardinality = axes.iter().map(|ax| input_shape.dim(*ax)).maybe_product()?;
         let cardinality = tensor0(cardinality).broadcast_into_rank(input_shape.rank())?;
@@ -253,12 +322,10 @@ fn matmul(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let a = invocation.named_arg("A")?.to_wire(builder)?;
-    let b = invocation.named_arg("B")?.to_wire(builder)?;
-    let a_trans =
-        invocation.named_arg("transposeA")?.to_tensor(builder)?.cast_to_scalar::<bool>()?;
-    let b_trans =
-        invocation.named_arg("transposeB")?.to_tensor(builder)?.cast_to_scalar::<bool>()?;
+    let a = invocation.named_arg_as(builder, "A")?;
+    let b = invocation.named_arg_as(builder, "B")?;
+    let a_trans = invocation.named_arg_as(builder, "transposeA")?;
+    let b_trans = invocation.named_arg_as(builder, "transposeB")?;
     builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false, q_params: None }, &[a, b])
 }
 
@@ -271,7 +338,7 @@ fn multiary_elementwise(
         .invocation
         .arguments
         .iter()
-        .map(|arg| Ok(arg.rvalue.to_wire(builder)?))
+        .map(|arg| arg.rvalue.resolve(builder)?.to(builder))
         .collect::<TractResult<TVec<_>>>()?;
     let inputs = multicast(builder, &inputs)?;
     builder.wire(op, &inputs)

@@ -9,7 +9,7 @@ pub fn avgpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
     let kshape = data_format.shape(ksize)?;
     let strides = super::strides(pb)?;
     let padding = super::padding(pb)?;
-    Ok(Box::new(AvgPool::new(
+    Ok(Box::new(SumPool::new(
         PoolSpec::new(
             data_format,
             kshape.hw_dims().into(),
@@ -19,6 +19,7 @@ pub fn avgpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
             None,
         ),
         false,
+        true
     )))
 }
 
