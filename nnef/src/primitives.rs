@@ -16,7 +16,10 @@ pub fn primitives() -> Primitives {
     let mut primitives: Primitives = Default::default();
     primitives.insert("external".to_string(), Arc::new(external));
     primitives.insert("variable".to_string(), Arc::new(variable));
-    primitives.insert("conv".to_string(), Arc::new(conv));
+
+    primitives.insert("transpose".to_string(), Arc::new(transpose));
+    primitives.insert("unsqueeze".to_string(), Arc::new(unsqueeze));
+    primitives.insert("squeeze".to_string(), Arc::new(squeeze));
 
     macro_rules! mew {
         ($nnef: ident, $tract: expr) => {
@@ -33,6 +36,16 @@ pub fn primitives() -> Primitives {
     mew!(div, ops::math::div::bin_typed());
     mew!(pow, ops::math::pow::bin_typed());
 
+    mew!(exp, ops::math::exp());
+    mew!(log, ops::math::ln());
+    mew!(sin, ops::math::sin());
+    mew!(cos, ops::math::cos());
+    mew!(abs, ops::math::abs());
+    mew!(sign, ops::math::sign());
+    mew!(rcp, ops::math::recip());
+    mew!(neg, ops::math::neg());
+    mew!(copy, ops::identity::Identity);
+
     mew!(lt, ops::logic::lesser::bin_typed());
     mew!(gt, ops::logic::greater::bin_typed());
     mew!(le, ops::logic::lesser_equal::bin_typed());
@@ -40,17 +53,33 @@ pub fn primitives() -> Primitives {
     mew!(eq, ops::logic::equals::bin_typed());
     mew!(ne, ops::logic::not_equals::bin_typed());
 
+    mew!(and, ops::logic::and::bin_typed());
+    mew!(or, ops::logic::or::bin_typed());
+    mew!(not, ops::logic::not());
+
+    mew!(floor, ops::math::floor());
+    mew!(ceil, ops::math::ceil());
+    mew!(round, ops::math::round());
+
     mew!(select, ops::logic::Iff);
+
+    mew!(sqr, ops::math::square());
+    mew!(sqrt, ops::math::sqrt());
+    mew!(rsqrt, ops::math::rsqrt());
+
+    mew!(min, ops::math::min::bin_typed());
+    mew!(max, ops::math::max::bin_typed());
+
+    primitives.insert("matmul".to_string(), Arc::new(matmul));
+
+    primitives.insert("conv".to_string(), Arc::new(conv));
 
     primitives.insert("sum_reduce".to_string(), Arc::new(reduce));
     primitives.insert("max_reduce".to_string(), Arc::new(reduce));
     primitives.insert("min_reduce".to_string(), Arc::new(reduce));
 
-    primitives.insert("matmul".to_string(), Arc::new(matmul));
-
-    primitives.insert("transpose".to_string(), Arc::new(transpose));
-    primitives.insert("unsqueeze".to_string(), Arc::new(unsqueeze));
-    primitives.insert("squeeze".to_string(), Arc::new(squeeze));
+    mew!(tanh, ops::math::tanh());
+    mew!(sigmoid, ops::nn::sigmoid());
 
     primitives
 }
