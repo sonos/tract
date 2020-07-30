@@ -89,7 +89,7 @@ fn transpose(
     let wire = tvec!(invocation.named_arg("input")?.to_wire(builder)?);
     ops::change_axes::perm_to_ops(&axes)
         .into_iter()
-        .try_fold(wire, |wire, mov| Ok(builder.model.wire_node("", mov, &wire)?))
+        .try_fold(wire, |wire, mov| Ok(builder.wire(mov, &wire)?))
 }
 
 // fragment squeeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
@@ -101,7 +101,7 @@ fn squeeze(
     let axes = axes.cast_to::<i64>()?;
     let wire = tvec!(invocation.named_arg("input")?.to_wire(builder)?);
     axes.as_slice::<i64>()?.iter().sorted().rev().try_fold(wire, |wire, &axis| {
-        Ok(builder.model.wire_node("", ops::change_axes::AxisOp::Rm(axis as usize), &wire)?)
+        Ok(builder.wire(ops::change_axes::AxisOp::Rm(axis as usize), &wire)?)
     })
 }
 
@@ -114,7 +114,7 @@ fn unsqueeze(
     let axes = axes.cast_to::<i64>()?;
     let wire = tvec!(invocation.named_arg("input")?.to_wire(builder)?);
     axes.as_slice::<i64>()?.iter().sorted().try_fold(wire, |wire, &axis| {
-        Ok(builder.model.wire_node("", ops::change_axes::AxisOp::Add(axis as usize), &wire)?)
+        Ok(builder.wire(ops::change_axes::AxisOp::Add(axis as usize), &wire)?)
     })
 }
 
@@ -183,8 +183,7 @@ fn conv(
         Some(bias.clone()),
         None,
     );
-    dbg!(&op);
-    builder.model.wire_node("", op, &[input])
+    builder.wire(op, &[input])
 }
 
 /*
@@ -196,29 +195,24 @@ fn reduce(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    use tract_core::ops::nn::{Reduce, Reducer};
     let input = invocation.named_arg("input")?.to_wire(builder)?;
     let axes = invocation.named_arg("axes")?.to_tensor(builder)?;
     let axes = axes.cast_to::<i64>()?;
     let axes = axes.as_slice::<i64>()?.iter().map(|&i| i as usize).collect::<TVec<_>>();
     let reducer = match invocation.invocation.id.split("_").next().unwrap() {
-        "sum" => Reducer::Sum,
-        "min" => Reducer::Min,
-        "max" => Reducer::Max,
+        "sum" => ops::nn::Reducer::Sum,
+        "min" => ops::nn::Reducer::Min,
+        "max" => ops::nn::Reducer::Max,
         _ => bail!("unsupported reducer: {}", invocation.invocation.id),
     };
-    let mut wire = builder.model.wire_node("", Reduce::new(axes.clone(), reducer), &[input])?;
+    let mut wire = builder.wire(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
     let normalize = invocation.named_arg("normalize")?;
     let tensor = normalize.to_tensor(builder)?;
     if tensor.cast_to_scalar::<bool>()? {
         let input_shape = &builder.model.outlet_fact(input)?.shape;
         let cardinality = axes.iter().map(|ax| input_shape.dim(*ax)).maybe_product()?;
         let cardinality = tensor0(cardinality).broadcast_into_rank(input_shape.rank())?;
-        wire = builder.model.wire_node(
-            "",
-            tract_core::ops::math::div::unary(cardinality.into_arc_tensor()),
-            &[input],
-        )?;
+        wire = builder.wire(ops::math::div::unary(cardinality.into_arc_tensor()), &[input])?;
     }
     Ok(wire)
 }
@@ -236,11 +230,7 @@ fn matmul(
         invocation.named_arg("transposeA")?.to_tensor(builder)?.cast_to_scalar::<bool>()?;
     let b_trans =
         invocation.named_arg("transposeB")?.to_tensor(builder)?.cast_to_scalar::<bool>()?;
-    builder.model.wire_node(
-        "",
-        dbg!(tract_core::ops::matmul::MatMul { a_trans, b_trans, c_trans: false, q_params: None }),
-        &[a, b],
-    )
+    builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false, q_params: None }, &[a, b])
 }
 
 fn multiary_elementwise(
@@ -255,7 +245,7 @@ fn multiary_elementwise(
         .map(|arg| Ok(arg.rvalue.to_wire(builder)?))
         .collect::<TractResult<TVec<_>>>()?;
     let inputs = multicast(builder, &inputs)?;
-    builder.model.wire_node("", op, &inputs)
+    builder.wire(op, &inputs)
 }
 
 fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
@@ -267,8 +257,7 @@ fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult<TVe
     (inputs.iter())
         .zip(ranks.iter())
         .map(|(&i, &r)| {
-            (r..max_rank)
-                .try_fold(i, |w, n| Ok(builder.model.wire_node("", AxisOp::Add(n), &[w])?[0]))
+            (r..max_rank).try_fold(i, |w, n| Ok(builder.wire(AxisOp::Add(n), &[w])?[0]))
         })
         .collect()
 }
