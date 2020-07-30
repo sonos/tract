@@ -99,7 +99,9 @@ impl Parameters {
                 "onnx"
             } else if filename.extension().map(|s| s == "raw" || s == "txt").unwrap_or(false) {
                 "kaldi"
-            } else if filename.is_dir() || (filename.extension().map(|s| s == "tar.gz" || s == "tgz").unwrap_or(false)) {
+            } else if filename.is_dir()
+                || (filename.extension().map(|s| s == "tar.gz" || s == "tgz").unwrap_or(false))
+            {
                 "nnef"
             } else {
                 "tf"
@@ -414,15 +416,6 @@ impl Parameters {
         let concretize_stream_dim: Option<usize> =
             matches.value_of("concretize_stream_dim").map(|s| s.parse()).transpose()?;
 
-        let mut inference_model: Option<Arc<InferenceModel>> = None;
-        let mut typed_model: Option<Arc<TypedModel>> = None;
-        let mut pulsed_model: Option<Arc<PulsedModel>> = None;
-        if raw_model.is::<InferenceModel>() {
-            inference_model = Some(raw_model.downcast::<InferenceModel>().unwrap().into());
-        } else if raw_model.is::<TypedModel>() {
-            typed_model = Some(raw_model.downcast::<TypedModel>().unwrap().into());
-        }
-
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
         } else if concretize_stream_dim.is_some() {
@@ -432,33 +425,45 @@ impl Parameters {
         } else {
             "declutter"
         });
+
         info!("Will stop at {}", stop_at);
+
+        if stop_at == "load" {
+            return Ok((raw_model.into(), None, None))
+        }
+
+        let mut inference_model: Option<Arc<InferenceModel>> = None;
+        let mut typed_model: Option<Arc<TypedModel>> = None;
+        let mut pulsed_model: Option<Arc<PulsedModel>> = None;
+        if raw_model.is::<InferenceModel>() {
+            inference_model = Some(raw_model.downcast::<InferenceModel>().unwrap().into());
+        } else if raw_model.is::<TypedModel>() {
+            typed_model = Some(raw_model.downcast::<TypedModel>().unwrap().into());
+        }
 
         macro_rules! stage {
             ($name:expr, $from:ident -> $to:ident, $block:expr) => {
-                info!(concat!("Running '", $name, "'"));
-                let last_model: Option<Box<dyn Model>> = if keep_last {
-                    Some(Box::new((**($from.as_ref().unwrap())).clone()))
-                } else {
-                    None
-                };
-                let block: &dyn Fn(_) -> TractResult<_> = &$block;
-                match block(Arc::try_unwrap($from.take().unwrap()).unwrap()) {
-                    Ok(it) => {
-                        $to = Some(Arc::new(it));
+                if let Some(from) = $from.take() {
+                    info!(concat!("Running '", $name, "'"));
+                    let last_model: Option<Box<dyn Model>> =
+                        if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
+                    let block: &dyn Fn(_) -> TractResult<_> = &$block;
+                    match block(Arc::try_unwrap(from).unwrap()) {
+                        Ok(it) => {
+                            $to = Some(Arc::new(it));
+                        }
+                        Err(e) => {
+                            return Err(ModelError(last_model, e.into()));
+                        }
                     }
-                    Err(e) => {
-                        return Err(ModelError(last_model, e.into()));
+                    info_usage(concat!("after ", $name), probe);
+                    if stop_at == $name {
+                        return Ok(($to.clone().unwrap(), typed_model, pulsed_model));
                     }
                 }
-                if stop_at == $name {
-                    return Ok(($to.clone().unwrap(), typed_model, pulsed_model));
-                }
-                info_usage(concat!("after ", $name), probe);
             };
         };
 
-        stage!("load", inference_model -> inference_model, |m:InferenceModel| TractResult::Ok(m));
         stage!("analyse", inference_model -> inference_model, 
                |mut m:InferenceModel| { m.analyse(matches.is_present("analyse_fail_fast"))?; TractResult::Ok(m) });
         if let Some(ext) = tf_model_extensions {
@@ -478,6 +483,7 @@ impl Parameters {
         }
         info_usage("before optimize", probe);
         stage!("optimize", typed_model -> typed_model, |m:TypedModel| m.optimize());
+        eprintln!("type_model: {:?}", typed_model.is_some());
         Ok((typed_model.clone().unwrap(), typed_model, pulsed_model))
     }
 

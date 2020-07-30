@@ -36,7 +36,12 @@ impl ProtoModel {
             model: TypedModel::default(),
             scopes: vec![],
         };
-        builder.wire(self)?;
+        builder.scopes.push(HashMap::new());
+        builder.wire_body(&self.doc.graph_def.body)
+            .chain_err(|| format!("Mapping graph `{}' to tract", self.doc.graph_def.id))?;
+        let vars = builder.scopes.pop().unwrap();
+        let outputs = self.doc.graph_def.results.iter().map(|s| vars[s]).collect::<TVec<OutletId>>();
+        builder.model.set_output_outlets(&outputs)?;
         Ok(builder.model)
     }
 }
@@ -48,6 +53,7 @@ pub struct ModelBuilder {
     pub scopes: Vec<HashMap<String, OutletId>>,
 }
 
+#[derive(Clone, Debug)]
 pub struct AugmentedInvocation<'a> {
     pub invocation: &'a Invocation,
     pub fragment: Arc<FragmentDef>,
@@ -63,20 +69,26 @@ impl<'a> AugmentedInvocation<'a> {
     }
 
     pub fn get_named_arg(&self, name: &str) -> Option<Cow<RValue>> {
-        self.invocation
-            .arguments
-            .iter()
-            .find(|arg| arg.id.as_deref() == Some(name))
-            .map(|arg| Cow::Borrowed(&arg.rvalue))
-            .or_else(|| {
-                self.fragment
-                    .decl
-                    .parameters
-                    .iter()
-                    .find(|arg| arg.id == name)
-                    .and_then(|arg| arg.lit.as_ref())
-                    .map(|lit| Cow::Owned(RValue::Literal(lit.clone())))
-            })
+        // first look explicit name in invocation arguments
+        if let Some(arg) =
+            self.invocation.arguments.iter().find(|arg| arg.id.as_deref() == Some(name))
+        {
+            return Some(Cow::Borrowed(&arg.rvalue));
+        }
+        // then use fragment prototype:
+        if let Some((ix, param)) =
+            self.fragment.decl.parameters.iter().enumerate().find(|(_ix, param)| param.id == name)
+        {
+            // check that all previous (and our) arguments are positional (todo:
+            // valid args when building augmented_invocation)
+            if self.invocation.arguments.iter().take(ix + 1).all(|arg| arg.id.is_none()) {
+                return Some(Cow::Borrowed(&self.invocation.arguments[ix].rvalue));
+            }
+            if let Some(rv) = &param.lit {
+                return Some(Cow::Owned(RValue::Literal(rv.clone())));
+            }
+        }
+        None
     }
 
     pub fn get_pos_arg(&self, pos: usize) -> Option<Cow<RValue>> {
@@ -100,13 +112,10 @@ impl ModelBuilder {
         Ok(AugmentedInvocation { invocation, fragment })
     }
 
-    pub fn wire(&mut self, proto: &ProtoModel) -> TractResult<()> {
-        self.scopes.push(HashMap::new());
-        self.wire_body(&proto.doc.graph_def.body)
-            .chain_err(|| format!("Mapping graph `{}' to tract", proto.doc.graph_def.id))?;
-        self.scopes.pop();
-        Ok(())
+    /*
+    pub fn wire(&mut self, proto: &ProtoModel) -> TractResult<HashMap<String, OutletId>> {
     }
+    */
 
     pub fn wire_body(&mut self, body: &[Assignment]) -> TractResult<()> {
         for assignment in body {
@@ -153,7 +162,6 @@ impl ModelBuilder {
                 inner_scope.insert(par.id.to_string(), RValue::Literal(lit.clone()).to_wire(self)?);
             }
         }
-        dbg!(&inner_scope);
         self.scopes.push(inner_scope);
         self.wire_body(&invocation.fragment.body.as_ref().unwrap())?;
         let inner_scope = self.scopes.pop().unwrap();
@@ -259,6 +267,7 @@ impl RValue {
                 }
                 todo!()
             }
+            RValue::Literal(Literal::Logical(LogicalLiteral(b))) => Ok(rctensor0(*b)),
             RValue::Literal(Literal::Numeric(f)) => {
                 if f.0.contains(".") || f.0.contains("e") {
                     f.0.parse::<f32>()
