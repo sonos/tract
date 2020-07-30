@@ -91,7 +91,7 @@ impl<'a> AugmentedInvocation<'a> {
         {
             // check that all previous (and our) arguments are positional (todo:
             // valid args when building augmented_invocation)
-            if self.invocation.arguments.iter().take(ix + 1).all(|arg| arg.id.is_none()) {
+            if self.invocation.arguments.len() > ix && self.invocation.arguments.iter().take(ix + 1).all(|arg| arg.id.is_none()) {
                 return Some(Cow::Borrowed(&self.invocation.arguments[ix].rvalue));
             }
             if let Some(rv) = &param.lit {
