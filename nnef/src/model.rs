@@ -34,9 +34,11 @@ impl ProtoModel {
             framework,
             fragments: self.doc.fragments.iter().map(|f| Arc::new(f.clone())).collect(),
             model: TypedModel::default(),
+            naming_scopes: vec!(),
             scopes: vec![],
         };
         builder.scopes.push(HashMap::new());
+        builder.naming_scopes.push(self.doc.graph_def.id.to_string());
         builder.wire_body(&self.doc.graph_def.body)
             .chain_err(|| format!("Mapping graph `{}' to tract", self.doc.graph_def.id))?;
         let vars = builder.scopes.pop().unwrap();
@@ -50,7 +52,15 @@ pub struct ModelBuilder {
     pub framework: Framework,
     pub fragments: Vec<Arc<FragmentDef>>,
     pub model: TypedModel,
+    pub naming_scopes: Vec<String>,
     pub scopes: Vec<HashMap<String, OutletId>>,
+}
+
+impl ModelBuilder {
+    pub fn wire(&mut self, op: impl Into<Box<dyn TypedOp>>, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
+        let op = op.into();
+        self.model.wire_node(format!("{}.{}", self.naming_scopes.join("."), op.as_op().name()), op, inputs)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -112,22 +122,23 @@ impl ModelBuilder {
         Ok(AugmentedInvocation { invocation, fragment })
     }
 
-    /*
-    pub fn wire(&mut self, proto: &ProtoModel) -> TractResult<HashMap<String, OutletId>> {
-    }
-    */
 
     pub fn wire_body(&mut self, body: &[Assignment]) -> TractResult<()> {
         for assignment in body {
-            let identifier = assignment.left.to_identifier()?;
+            let identifiers = assignment.left.to_identifiers()?;
+            self.naming_scopes.push(identifiers[0].to_string());
             let outlets = assignment
                 .right
                 .to_wires(self)
-                .chain_err(|| format!("Plugging in assignement for {:?}", identifier))?;
-            assert!(outlets.len() == 1);
-            let outlet = outlets[0];
-            self.model.node_mut(outlet.node).name = identifier.to_string();
-            self.scopes.last_mut().unwrap().insert(identifier.to_string(), outlet);
+                .chain_err(|| format!("Plugging in assignement for {:?}", identifiers.join(", ")))?;
+            if outlets.len() != identifiers.len() {
+                bail!("Assignement for {} received {} value(s).", identifiers.join(","), outlets.len())
+            }
+            self.model.node_mut(outlets[0].node).name = format!("{}", self.naming_scopes.join("."));
+            for (id, outlet) in identifiers.iter().zip(outlets.iter()) {
+                self.scopes.last_mut().unwrap().insert(id.to_string(), *outlet);
+            }
+            self.naming_scopes.pop();
         }
         Ok(())
     }
@@ -163,7 +174,9 @@ impl ModelBuilder {
             }
         }
         self.scopes.push(inner_scope);
+        self.naming_scopes.push(invocation.invocation.id.to_string());
         self.wire_body(&invocation.fragment.body.as_ref().unwrap())?;
+        self.naming_scopes.pop();
         let inner_scope = self.scopes.pop().unwrap();
         Ok(invocation
             .fragment
