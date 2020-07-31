@@ -17,6 +17,7 @@ pub fn primitives() -> Primitives {
     primitives.insert("external".to_string(), Arc::new(external));
     primitives.insert("variable".to_string(), Arc::new(variable));
 
+    primitives.insert("reshape".to_string(), Arc::new(reshape));
     primitives.insert("transpose".to_string(), Arc::new(transpose));
     primitives.insert("concat".to_string(), Arc::new(concat));
     primitives.insert("unsqueeze".to_string(), Arc::new(unsqueeze));
@@ -108,6 +109,35 @@ fn variable(
     let dt = if type_name == TypeName::Scalar { f32::datum_type() } else { todo!() };
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     Ok(tvec!(builder.model.add_const("", Tensor::zero_dt(dt, &shape)?.into_arc_tensor())?))
+}
+
+// fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
+//      -> ( output: tensor<?> );
+fn reshape(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let input_shape = builder.model.outlet_fact(input)?.shape.to_tvec();
+    let start: usize = invocation.named_arg_as(builder, "axis_start")?;
+    let count: i64 = invocation.named_arg_as(builder, "axis_count")?;
+    let count = if count == -1 { input_shape.len() - start } else { count as usize };
+    let shape: TVec<TDim> = invocation.named_arg_as(builder, "shape")?;
+
+    let mut replacement = shape.clone();
+    for i in 0..replacement.len() {
+        if replacement[i] == 0.to_dim() {
+            replacement[i] = input_shape[i + start].clone();
+        }
+    }
+    if let Some(pos) = replacement.iter().position(|d| *d == (-1).to_dim()) {
+        let product: TDim = replacement.iter().filter(|d| **d != (-1).to_dim()).maybe_product()?;
+        let product_input: TDim = input_shape[start..][..count].iter().maybe_product()?;
+        replacement[pos] = product_input.maybe_div(&product)?.0;
+    }
+
+    let op = AxisOp::Reshape(start, input_shape[start..][..count].into(), replacement);
+    builder.wire(op, &[input])
 }
 
 // fragment transpose<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
@@ -334,14 +364,15 @@ fn reduce(
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    let reducer = match invocation.invocation.id.split("_").next().unwrap() {
+    let reducer_name =invocation.invocation.id.split("_").next().unwrap();
+    let reducer = match  reducer_name {
         "sum" => ops::nn::Reducer::Sum,
         "min" => ops::nn::Reducer::Min,
         "max" => ops::nn::Reducer::Max,
         _ => bail!("unsupported reducer: {}", invocation.invocation.id),
     };
     let mut wire = builder.wire(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
-    if invocation.named_arg_as(builder, "normalize")? {
+    if reducer_name == "sum" && invocation.named_arg_as(builder, "normalize")? {
         let input_shape = &builder.model.outlet_fact(input)?.shape;
         let cardinality = axes.iter().map(|ax| input_shape.dim(*ax)).maybe_product()?;
         let cardinality = tensor0(cardinality).broadcast_into_rank(input_shape.rank())?;

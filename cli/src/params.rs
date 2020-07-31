@@ -81,8 +81,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         probe: Option<&Probe>,
         filename: &std::path::Path,
-    ) -> CliResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)>
-    {
+    ) -> CliResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
 
@@ -123,13 +122,21 @@ impl Parameters {
                 if need_graph {
                     (
                         SomeGraphDef::Nnef(proto_model.clone()),
-                        Box::new(proto_model.into_typed_model().map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?),
+                        Box::new(
+                            proto_model
+                                .into_typed_model()
+                                .map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?,
+                        ),
                         Option::<TfExt>::None,
                     )
                 } else {
                     (
                         SomeGraphDef::NoGraphDef,
-                        Box::new(proto_model.into_typed_model().map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?),
+                        Box::new(
+                            proto_model
+                                .into_typed_model()
+                                .map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?,
+                        ),
                         Option::<TfExt>::None,
                     )
                 }
@@ -400,8 +407,7 @@ impl Parameters {
         probe: Option<&readings_probe::Probe>,
         raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
-    ) -> CliResult<(Arc<dyn Model>, Option<Arc<TypedModel>>, Option<Arc<PulsedModel>>)>
-    {
+    ) -> CliResult<(Arc<dyn Model>, Option<Arc<TypedModel>>, Option<Arc<PulsedModel>>)> {
         let keep_last = matches.is_present("verbose");
         let pulse: Option<usize> =
             matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
@@ -440,19 +446,23 @@ impl Parameters {
                     let mut last_model: Option<Box<dyn Model>> =
                         if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
                     let block: &dyn Fn(_) -> TractResult<_> = &$block;
-                    match block(Arc::try_unwrap(from).unwrap()) {
+                    match block(Arc::try_unwrap(from).expect("Arc ownership")) {
                         Ok(it) => {
                             $to = Some(Arc::new(it));
                         }
                         Err(e) => {
                             if let Some(last_model) = last_model.take() {
-                                return Err(CliErrorKind::ModelBuilding(last_model, e.into()).into());
+                                return Err(
+                                    CliErrorKind::ModelBuilding(last_model, e.into()).into()
+                                );
+                            } else {
+                                Err(e)?
                             }
                         }
                     }
                     info_usage(concat!("after ", $name), probe);
                     if stop_at == $name {
-                        return Ok(($to.clone().unwrap(), typed_model, pulsed_model));
+                        return Ok(($to.take().expect("returnable model"), typed_model, pulsed_model));
                     }
                 }
             };
@@ -483,10 +493,7 @@ impl Parameters {
 
     #[allow(unused_variables)]
     /// Parses the command-line arguments.
-    pub fn from_clap(
-        matches: &clap::ArgMatches,
-        probe: Option<&Probe>,
-    ) -> CliResult<Parameters> {
+    pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> CliResult<Parameters> {
         let (filename, onnx_tc) = Self::disco_model(matches)?;
         let (mut graph, mut raw_model, tf_model_extensions) =
             Self::load_model(matches, probe, &filename)?;

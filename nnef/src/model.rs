@@ -385,6 +385,15 @@ impl CoerceFrom<Value> for i64 {
     }
 }
 
+impl CoerceFrom<Value> for TDim {
+    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+        match from {
+            Value::Dim(d) => Ok(d.clone()),
+            _ => bail!("Can not build a TDim from {:?}", from),
+        }
+    }
+}
+
 impl CoerceFrom<Value> for String {
     fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {

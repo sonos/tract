@@ -403,6 +403,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             } else {
                 crate::display_params::DisplayParams::default()
             };
+
             if broken_model.output_outlets().len() == 0 {
                 broken_model.auto_outputs()?;
             }
