@@ -25,6 +25,7 @@ impl Framework {
 #[derive(Clone, Debug)]
 pub struct ProtoModel {
     pub doc: Document,
+    pub tensors: HashMap<String, Arc<Tensor>>,
 }
 
 impl ProtoModel {
@@ -36,6 +37,7 @@ impl ProtoModel {
             model: TypedModel::default(),
             naming_scopes: vec![],
             scopes: vec![],
+            proto_model: &self,
         };
         builder.scopes.push(HashMap::new());
         builder.naming_scopes.push(self.doc.graph_def.id.to_string());
@@ -75,15 +77,16 @@ impl Value {
     }
 }
 
-pub struct ModelBuilder {
+pub struct ModelBuilder<'a> {
     pub framework: Framework,
     pub fragments: Vec<Arc<FragmentDef>>,
     pub model: TypedModel,
     pub naming_scopes: Vec<String>,
     pub scopes: Vec<HashMap<String, Value>>,
+    pub proto_model: &'a ProtoModel,
 }
 
-impl ModelBuilder {
+impl<'a> ModelBuilder<'a> {
     pub fn wire(
         &mut self,
         op: impl Into<Box<dyn TypedOp>>,
@@ -164,7 +167,7 @@ impl<'a> AugmentedInvocation<'a> {
     }
 }
 
-impl ModelBuilder {
+impl<'mb> ModelBuilder<'mb> {
     fn augmented_invocation<'a>(
         &self,
         invocation: &'a Invocation,

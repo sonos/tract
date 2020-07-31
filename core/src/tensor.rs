@@ -377,6 +377,16 @@ impl Tensor {
         Ok(self.data as *const D)
     }
 
+    /// Access the data as a pointer.
+    pub unsafe fn as_ptr_unchecked<D: Datum>(&self) -> *const D {
+        self.data as *const D
+    }
+
+    /// Access the data as a pointer.
+    pub unsafe fn as_ptr_mut_unchecked<D: Datum>(&mut self) -> *mut D {
+        self.data as *mut D
+    }
+
     /// Access the data as a mutable pointer.
     pub fn as_ptr_mut<D: Datum>(&mut self) -> TractResult<*mut D> {
         self.as_ptr::<D>().map(|p| p as *mut D)
