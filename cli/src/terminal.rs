@@ -17,7 +17,11 @@ pub fn render(
     annotations: &Annotations,
     options: &DisplayParams,
 ) -> CliResult<()> {
-    render_prefixed(model, "", &[], annotations, options)
+    if options.quiet {
+        Ok(())
+    } else {
+        render_prefixed(model, "", &[], annotations, options)
+    }
 }
 
 pub fn render_node(
