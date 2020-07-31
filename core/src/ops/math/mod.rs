@@ -136,7 +136,9 @@ fn declutter_unary_mul_magic_values(
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
     if a.cast_to::<f64>()?.as_slice::<f64>()?.iter().all(|v| *v == 1.0) {
-        return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+        if model.outlet_fact(node.inputs[0])? == &node.outputs[0].fact {
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+        }
     } else if a.cast_to::<f64>()?.as_slice::<f64>()?.iter().all(|v| *v == 0.0) {
         let fact = model.outlet_fact(node.inputs[0])?;
         if let Some(shape) = fact.shape.as_finite() {
