@@ -1,7 +1,8 @@
 #![allow(deprecated)]
 
-use tract_core;
+use tract_core::prelude::*;
 use tract_core::ndarray;
+use crate::model::Model;
 
 error_chain! {
     types {
@@ -21,5 +22,10 @@ error_chain! {
         NdarrayNpyReadNpz(ndarray_npy::ReadNpzError);
         SerdeJson(serde_json::error::Error);
         Infaillible(std::convert::Infallible);
+    }
+
+    errors {
+        ModelBuilding(partial: Box<dyn Model>, inner: TractError) {
+        }
     }
 }

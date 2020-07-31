@@ -28,7 +28,7 @@ pub struct ProtoModel {
 }
 
 impl ProtoModel {
-    pub fn into_typed_model(&self) -> TractResult<TypedModel> {
+    pub fn into_typed_model(&self) -> Result<TypedModel, (TypedModel, TractError)> {
         let framework = Framework::new();
         let mut builder = ModelBuilder {
             framework,
@@ -39,9 +39,7 @@ impl ProtoModel {
         };
         builder.scopes.push(HashMap::new());
         builder.naming_scopes.push(self.doc.graph_def.id.to_string());
-        builder
-            .wire_body(&self.doc.graph_def.body)
-            .chain_err(|| format!("Mapping graph `{}' to tract", self.doc.graph_def.id))?;
+        builder.wire_body(&self.doc.graph_def.body).map_err(|e| (builder.model.clone(), e))?;
         let vars = builder.scopes.pop().unwrap();
         let outputs = self
             .doc
@@ -49,8 +47,9 @@ impl ProtoModel {
             .results
             .iter()
             .map(|s| vars[s].to::<OutletId>(&mut builder))
-            .collect::<TractResult<TVec<OutletId>>>()?;
-        builder.model.set_output_outlets(&outputs)?;
+            .collect::<TractResult<TVec<OutletId>>>()
+            .map_err(|e| (builder.model.clone(), e))?;
+        builder.model.set_output_outlets(&outputs).map_err(|e| (builder.model.clone(), e))?;
         Ok(builder.model)
     }
 }
@@ -91,6 +90,24 @@ impl ModelBuilder {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
+        if inputs.iter().all(|o| self.model.outlet_fact(*o).unwrap().konst.is_some()) {
+            if let Some(stateless) = op.as_op().as_stateless() {
+                let inputs: TVec<Arc<Tensor>> = inputs
+                    .iter()
+                    .map(|o| self.model.outlet_fact(*o).unwrap().konst.clone().unwrap())
+                    .collect();
+                let outputs = stateless.eval(inputs)?;
+                let mut outlets = tvec!();
+                for (ix, o) in outputs.into_iter().enumerate() {
+                    outlets.push(self.model.wire_node(
+                        format!("{}.{}-{}", self.naming_scopes.join("."), op.as_op().name(), ix),
+                        tract_core::ops::konst::Const::new(o),
+                        &[],
+                    )?[0]);
+                }
+                return Ok(outlets);
+            }
+        }
         self.model.wire_node(
             format!("{}.{}", self.naming_scopes.join("."), op.as_op().name()),
             op,
@@ -311,7 +328,10 @@ impl RValue {
             RValue::Literal(Literal::String(StringLiteral(s))) => Ok(Value::String(s.clone())),
             RValue::Literal(Literal::Logical(LogicalLiteral(s))) => Ok(Value::Bool(*s)),
             RValue::Literal(Literal::Array(array)) => Ok(Value::Array(
-                array.iter().map(|i| RValue::Literal(i.clone()).resolve(builder)).collect::<TractResult<_>>()?,
+                array
+                    .iter()
+                    .map(|i| RValue::Literal(i.clone()).resolve(builder))
+                    .collect::<TractResult<_>>()?,
             )),
             _ => panic!("{:?}", self),
         }
@@ -400,4 +420,3 @@ impl<D: CoerceFrom<Value>> CoerceFrom<Value> for TVec<D> {
         }
     }
 }
-

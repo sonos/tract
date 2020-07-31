@@ -394,8 +394,23 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         return Ok(());
     }
 
-    #[allow(unused_mut)]
-    let mut params = Parameters::from_clap(&matches, probe).map_err(|ModelError(_,e)| e)?;
+    let params = match Parameters::from_clap(&matches, probe) {
+        Ok(params) => params,
+        Err(CliError(CliErrorKind::ModelBuilding(mut broken_model, e), _)) => {
+            let annotations = crate::annotations::Annotations::from_model(&*broken_model)?;
+            let display_params = if let ("dump", Some(sm)) = matches.subcommand() {
+                display_params_from_clap(&matches, &sm)?
+            } else {
+                crate::display_params::DisplayParams::default()
+            };
+            if broken_model.output_outlets().len() == 0 {
+                broken_model.auto_outputs()?;
+            }
+            terminal::render(&*broken_model, &annotations, &display_params)?;
+            Err(e)?
+        }
+        Err(e) => Err(e)?
+    };
 
     let mut need_optimisations = false;
 
@@ -479,10 +494,6 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         if cfg!(debug_assertions) {
             warn!("{}", style.paint("Profiling a debug build of tract!"));
         }
-    }
-
-    if let Some(e) = params.analyse_error {
-        Err(e)?
     }
     Ok(())
 }
