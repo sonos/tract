@@ -112,7 +112,7 @@ impl ModelBuilder {
             format!("{}.{}", self.naming_scopes.join("."), op.as_op().name()),
             op,
             inputs,
-        )
+        ).chain_err(|| format!("inputs are {:?}", inputs))
     }
 }
 

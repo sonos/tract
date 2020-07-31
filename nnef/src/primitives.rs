@@ -156,7 +156,78 @@ fn unsqueeze(
     })
 }
 
-fn pool_spec(
+/*
+fragment conv( input: tensor<scalar>, filter: tensor<scalar>,
+bias: tensor<scalar> = 0.0, border: string = 'constant',
+padding: (integer,integer)[] = [], stride: integer[] = [],
+dilation: integer[] = [], groups: integer = 1 )
+-> ( output: tensor<scalar> );
+*/
+
+fn conv(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    use ops::cnn::{ConvUnary, KernelFormat};
+    use ops::cnn::{PaddingSpec, PoolSpec};
+    use ops::nn::DataFormat;
+    let input: OutletId = invocation.named_arg_as(builder, "input")?;
+    let kernel: Arc<Tensor> = invocation.named_arg_as(builder, "filter")?;
+    let input_fact = builder.model.outlet_fact(input)?.clone();
+    if input_fact.rank() != kernel.rank() {
+        bail!(
+            "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
+            input_fact,
+            kernel
+        );
+    }
+    if input_fact.shape.dim(1) != kernel.shape()[1].to_dim() {
+        bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel);
+    }
+    let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
+    if dilation.len() != 0 && dilation.len() != input_fact.rank() - 2 {
+        bail!("Convolution dilation only apply to spatial dimensions, so it should be of rank {}. Got {:?}", input_fact.rank() -2, dilation)
+    }
+    let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
+    if stride.len() != 0 && stride.len() != input_fact.rank() - 2 {
+        bail!("Convolution stride only apply to spatial dimensions, so it should be of rank {}. Got {:?}", input_fact.rank() -2, stride)
+    }
+    let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
+    let padding = if padding.len() == 0 {
+        PaddingSpec::SameUpper
+    } else {
+        let mut before = tvec!();
+        let mut after = tvec!();
+        for p in padding {
+            before.push(p[0]);
+            after.push(p[1]);
+        }
+        PaddingSpec::Explicit(before, after, false)
+    };
+    let pool_spec = PoolSpec::new(
+        DataFormat::NCHW,
+        kernel.shape()[2..].into(),
+        padding,
+        if dilation.len() > 0 { Some(dilation) } else { None },
+        if stride.len() > 0 { Some(stride) } else { None },
+        Some(kernel.shape()[0]),
+    );
+    let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
+    let border: String = invocation.named_arg_as(builder, "border")?;
+    assert_eq!(border, "constant");
+    let group = invocation.named_arg_as(builder, "groups")?;
+    let op = ConvUnary::new(
+        pool_spec,
+        KernelFormat::OIHW,
+        kernel.clone(),
+        group,
+        Some(bias.clone()),
+        None,
+    );
+    builder.wire(op, &[input])
+}
+
+fn pool_spec_for_pools(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
     shape: &[usize],
@@ -164,7 +235,14 @@ fn pool_spec(
     use ops::cnn::{PaddingSpec, PoolSpec};
     use ops::nn::DataFormat;
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
+    if dilation.len() > 0 && (dilation.len() != shape.len() || dilation[0] != 1 || dilation[1] != 1)
+    {
+        bail!("dilation should be like [1, 1, ... ]. Got dilation {:?}.", dilation);
+    }
     let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
+    if stride.len() > 0 && (stride.len() != shape.len() || stride[0] != 1 || stride[1] != 1) {
+        bail!("stride should be like [1, 1, ... ]. Got stride {:?}.", stride);
+    }
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
     let padding = if padding.len() == 0 {
         PaddingSpec::SameUpper
@@ -181,53 +259,10 @@ fn pool_spec(
         DataFormat::NCHW,
         shape[2..].into(),
         padding,
-        if dilation.len() > 0 { Some(dilation) } else { None },
-        if stride.len() > 0 { Some(stride) } else { None },
+        if dilation.len() > 2 { Some(dilation[2..].into()) } else { None },
+        if stride.len() > 2 { Some(stride[2..].into()) } else { None },
         None,
     ))
-}
-
-/*
-fragment conv( input: tensor<scalar>, filter: tensor<scalar>,
-bias: tensor<scalar> = 0.0, border: string = 'constant',
-padding: (integer,integer)[] = [], stride: integer[] = [],
-dilation: integer[] = [], groups: integer = 1 )
--> ( output: tensor<scalar> );
-*/
-
-fn conv(
-    builder: &mut ModelBuilder,
-    invocation: &AugmentedInvocation,
-) -> TractResult<TVec<OutletId>> {
-    use ops::cnn::{ConvUnary, KernelFormat};
-    let input: OutletId = invocation.named_arg_as(builder, "input")?;
-    let kernel: Arc<Tensor> = invocation.named_arg_as(builder, "filter")?;
-    let input_fact = builder.model.outlet_fact(input)?;
-    if input_fact.rank() != kernel.rank() {
-        bail!(
-            "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
-            input_fact,
-            kernel
-        );
-    }
-    if input_fact.shape.dim(1) != kernel.shape()[1].to_dim() {
-        bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel);
-    }
-    let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
-    let border: String = invocation.named_arg_as(builder, "border")?;
-    assert_eq!(border, "constant");
-    let group = invocation.named_arg_as(builder, "groups")?;
-    let mut pool_spec = pool_spec(builder, invocation, kernel.shape())?;
-    pool_spec.output_channel_override = Some(kernel.shape()[0]);
-    let op = ConvUnary::new(
-        pool_spec,
-        KernelFormat::OIHW,
-        kernel.clone(),
-        group,
-        Some(bias.clone()),
-        None,
-    );
-    builder.wire(op, &[input])
 }
 
 /*
@@ -248,11 +283,11 @@ fn max_pool_with_index(
             "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
             input_fact,
             size
-        );
+            );
     }
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "ignore");
-    let pool_spec = pool_spec(builder, invocation, &size)?;
+    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let op = ops::cnn::MaxPool { pool_spec, with_index_outputs: Some(i64::datum_type()) };
     builder.wire(op, &[input])
 }
@@ -275,11 +310,11 @@ fn sum_pool(
             "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
             input_fact,
             size
-        );
+            );
     }
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "ignore");
-    let pool_spec = pool_spec(builder, invocation, &size)?;
+    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let op = ops::cnn::SumPool {
         pool_spec,
         count_include_pad: false,
