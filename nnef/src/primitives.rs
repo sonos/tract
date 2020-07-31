@@ -167,7 +167,7 @@ fn pool_spec(
     let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
     let padding = if padding.len() == 0 {
-        PaddingSpec::Valid
+        PaddingSpec::SameUpper
     } else {
         let mut before = tvec!();
         let mut after = tvec!();

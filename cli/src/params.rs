@@ -20,14 +20,6 @@ use super::model::Model;
 
 use std::convert::*;
 
-pub struct ModelError(pub Option<Box<dyn Model>>, pub CliError);
-
-impl<E: Into<CliError>> From<E> for ModelError {
-    fn from(e: E) -> ModelError {
-        ModelError(None, e.into())
-    }
-}
-
 #[derive(Debug)]
 pub enum SomeGraphDef {
     NoGraphDef,
@@ -43,7 +35,6 @@ pub enum SomeGraphDef {
 
 /// Structure holding the parsed parameters.
 pub struct Parameters {
-    pub analyse_error: Option<TractError>,
     pub graph: SomeGraphDef,
 
     pub decluttered_model: Option<Arc<TypedModel>>,
@@ -90,7 +81,8 @@ impl Parameters {
         matches: &clap::ArgMatches,
         probe: Option<&Probe>,
         filename: &std::path::Path,
-    ) -> CliResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
+    ) -> CliResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)>
+    {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
 
@@ -131,13 +123,13 @@ impl Parameters {
                 if need_graph {
                     (
                         SomeGraphDef::Nnef(proto_model.clone()),
-                        Box::new(proto_model.into_typed_model()?),
+                        Box::new(proto_model.into_typed_model().map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?),
                         Option::<TfExt>::None,
                     )
                 } else {
                     (
                         SomeGraphDef::NoGraphDef,
-                        Box::new(proto_model.into_typed_model()?),
+                        Box::new(proto_model.into_typed_model().map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?),
                         Option::<TfExt>::None,
                     )
                 }
@@ -311,7 +303,7 @@ impl Parameters {
     where
         F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
-        Graph<F, O>: SpecialOps<F, O>,
+        Graph<F, O>: SpecialOps<F, O> + Send,
         tract_core::ops::konst::Const: Into<O>,
         CliError: From<E>,
     {
@@ -408,7 +400,7 @@ impl Parameters {
         probe: Option<&readings_probe::Probe>,
         raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
-    ) -> Result<(Arc<dyn Model>, Option<Arc<TypedModel>>, Option<Arc<PulsedModel>>), ModelError>
+    ) -> CliResult<(Arc<dyn Model>, Option<Arc<TypedModel>>, Option<Arc<PulsedModel>>)>
     {
         let keep_last = matches.is_present("verbose");
         let pulse: Option<usize> =
@@ -429,7 +421,7 @@ impl Parameters {
         info!("Will stop at {}", stop_at);
 
         if stop_at == "load" {
-            return Ok((raw_model.into(), None, None))
+            return Ok((raw_model.into(), None, None));
         }
 
         let mut inference_model: Option<Arc<InferenceModel>> = None;
@@ -445,7 +437,7 @@ impl Parameters {
             ($name:expr, $from:ident -> $to:ident, $block:expr) => {
                 if let Some(from) = $from.take() {
                     info!(concat!("Running '", $name, "'"));
-                    let last_model: Option<Box<dyn Model>> =
+                    let mut last_model: Option<Box<dyn Model>> =
                         if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
                     let block: &dyn Fn(_) -> TractResult<_> = &$block;
                     match block(Arc::try_unwrap(from).unwrap()) {
@@ -453,7 +445,9 @@ impl Parameters {
                             $to = Some(Arc::new(it));
                         }
                         Err(e) => {
-                            return Err(ModelError(last_model, e.into()));
+                            if let Some(last_model) = last_model.take() {
+                                return Err(CliErrorKind::ModelBuilding(last_model, e.into()).into());
+                            }
                         }
                     }
                     info_usage(concat!("after ", $name), probe);
@@ -492,7 +486,7 @@ impl Parameters {
     pub fn from_clap(
         matches: &clap::ArgMatches,
         probe: Option<&Probe>,
-    ) -> Result<Parameters, ModelError> {
+    ) -> CliResult<Parameters> {
         let (filename, onnx_tc) = Self::disco_model(matches)?;
         let (mut graph, mut raw_model, tf_model_extensions) =
             Self::load_model(matches, probe, &filename)?;
@@ -598,7 +592,6 @@ impl Parameters {
                 info!("Model ready");
                 info_usage("model ready", probe);
                 Parameters {
-                    analyse_error: None,
                     graph,
                     decluttered_model,
                     pulsed_model,
