@@ -108,7 +108,19 @@ fn variable(
     let type_name = invocation.invocation.generic_type_name.unwrap_or(TypeName::Scalar);
     let dt = if type_name == TypeName::Scalar { f32::datum_type() } else { todo!() };
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
-    Ok(tvec!(builder.model.add_const("", Tensor::zero_dt(dt, &shape)?.into_arc_tensor())?))
+    let label: String = invocation.named_arg_as(builder, "label")?;
+    let tensor = builder
+        .proto_model
+        .tensors
+        .get(&label)
+        .ok_or_else(|| format!("No data for tensor {:?}", label))?;
+    if tensor.datum_type() != dt {
+        bail!("Wrong datum type for tensor: {:?}, tensor file says {:?}, graph files says {:?}", label, tensor.datum_type(), dt);
+    }
+    if tensor.shape() != &*shape {
+        bail!("Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}", label, tensor.shape(), shape);
+    }
+    builder.wire(tract_core::ops::konst::Const::new(tensor.clone()), &[])
 }
 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
@@ -364,8 +376,8 @@ fn reduce(
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    let reducer_name =invocation.invocation.id.split("_").next().unwrap();
-    let reducer = match  reducer_name {
+    let reducer_name = invocation.invocation.id.split("_").next().unwrap();
+    let reducer = match reducer_name {
         "sum" => ops::nn::Reducer::Sum,
         "min" => ops::nn::Reducer::Min,
         "max" => ops::nn::Reducer::Max,

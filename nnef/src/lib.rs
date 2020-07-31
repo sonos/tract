@@ -2,6 +2,7 @@ pub mod ast;
 pub mod model;
 pub mod parser;
 pub mod primitives;
+pub mod tensors;
 
 pub use model::ProtoModel;
 use tract_core::internal::*;
@@ -9,10 +10,12 @@ use tract_core::internal::*;
 pub fn open_model<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
     use std::io::Read;
     let path = p.as_ref();
-    let (text, _tensors) = if !path.exists() {
+    let mut text: Option<String> = None;
+    let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
+    if !path.exists() {
         bail!("File not found: {:?}", path)
     } else if path.is_dir() && path.join("graph.nnef").is_file() {
-        (std::fs::read_to_string(path.join("graph.nnef"))?, ())
+        text = Some(std::fs::read_to_string(path.join("graph.nnef"))?);
     } else if path.is_file()
         && path
             .file_name()
@@ -22,20 +25,26 @@ pub fn open_model<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
         let file = std::fs::File::open(path)?;
         let decomp = flate2::read::GzDecoder::new(file);
         let mut tar = tar::Archive::new(decomp);
-        let mut text = None;
         for entry in tar.entries()? {
             let mut entry = entry?;
             if entry.path()?.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
                 let mut t = String::new();
                 entry.read_to_string(&mut t)?;
-                text = Some(t)
+                text = Some(t);
+            } else if entry.path()?.extension().map(|e| e == "dat").unwrap_or(false) {
+                let mut path = entry.path()?.to_path_buf();
+                path.set_extension("");
+                let id = path
+                    .to_str()
+                    .ok_or_else(|| format!("Badly encoded filename for tensor: {:?}", path))?;
+                let tensor = tensors::read_tensor(&mut entry)?;
+                tensors.insert(id.to_string(), tensor.into_arc_tensor());
             }
         }
-        let text = text.ok_or_else(|| format!("Archive must contain graph.nnef at top level"))?;
-        (text, ())
     } else {
         bail!("Model expected as a tar.gz archive of a directory")
     };
+    let text = text.ok_or_else(|| format!("Model must contain graph.nnef at top level"))?;
     let doc = parser::parse_document(&text)?;
-    Ok(ProtoModel { doc })
+    Ok(ProtoModel { doc, tensors })
 }
