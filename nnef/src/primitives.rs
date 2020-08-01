@@ -105,8 +105,6 @@ fn variable(
     builder: &mut ModelBuilder,
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let type_name = invocation.invocation.generic_type_name.unwrap_or(TypeName::Scalar);
-    let dt = if type_name == TypeName::Scalar { f32::datum_type() } else { todo!() };
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     let label: String = invocation.named_arg_as(builder, "label")?;
     let tensor = builder
@@ -114,13 +112,16 @@ fn variable(
         .tensors
         .get(&label)
         .ok_or_else(|| format!("No data for tensor {:?}", label))?;
-    if tensor.datum_type() != dt {
-        bail!("Wrong datum type for tensor: {:?}, tensor file says {:?}, graph files says {:?}", label, tensor.datum_type(), dt);
-    }
     if tensor.shape() != &*shape {
-        bail!("Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}", label, tensor.shape(), shape);
+        bail!(
+            "Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}",
+            label,
+            tensor.shape(),
+            shape
+        );
     }
-    builder.wire(tract_core::ops::konst::Const::new(tensor.clone()), &[])
+    let tensor = tensor.cast_to::<f32>()?.into_owned();
+    builder.wire(tract_core::ops::konst::Const::new(tensor.into_arc_tensor()), &[])
 }
 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
@@ -255,6 +256,12 @@ fn conv(
         Some(kernel.shape()[0]),
     );
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
+    let bias: Option<Arc<Tensor>> = if bias.is_uniform()? && bias.cast_to_scalar::<f32>()? == 0.0 {
+        None
+    } else {
+        Some(bias)
+    };
+
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
     let group = invocation.named_arg_as(builder, "groups")?;
@@ -263,7 +270,7 @@ fn conv(
         KernelFormat::OIHW,
         kernel.clone(),
         group,
-        Some(bias.clone()),
+        bias,
         None,
     );
     builder.wire(op, &[input])

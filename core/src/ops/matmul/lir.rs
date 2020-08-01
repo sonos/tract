@@ -252,6 +252,7 @@ where
                     if op.mini_op.is::<ops::math::Mul>() {
                         Some(tvec!(FusedSpec::PerRowMul(op.a.as_slice::<TI>()?.to_vec(),)))
                     } else if op.mini_op.is::<ops::math::Add>() {
+                        dbg!(&op.a);
                         Some(tvec!(FusedSpec::PerRowAdd(op.a.as_slice::<TI>()?.to_vec(),)))
                     } else {
                         None

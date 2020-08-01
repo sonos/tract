@@ -449,6 +449,11 @@ impl StatelessOp for ConvUnary {
 impl TypedOp for ConvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
+        if let Some(bias) = &self.bias {
+            if bias.len() != self.output_channels() {
+                bail!("Bias should have one value per output channel, got:{:?}", bias);
+            }
+        }
         if let Some(q_params) = &self.q_params {
             fact.datum_type = q_params.c_datum_type;
         }
