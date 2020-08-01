@@ -7,7 +7,6 @@ pub fn resize(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let input_2_is_scales = node.input[2] != "";
     let coord_transformer =
         match node.get_attr_opt("coordinate_transformation_mode")?.unwrap_or("half_pixel") {
             "align_corners" => CoordTransformer::AlignCorners,
@@ -23,7 +22,17 @@ pub fn resize(
         "round_prefer_floor" => Nearest::RoundPreferFloor,
         s => todo!("nearest_mode: {}", s),
     };
-    Ok((Box::new(Resize { input_2_is_scales, coord_transformer, interpolator, nearest }), vec![]))
+    let mut options = crate::model::optional_inputs(node).skip(2);
+    Ok((
+        Box::new(Resize {
+            optional_scales_input: options.next().unwrap(),
+            optional_sizes_input: options.next().unwrap(),
+            coord_transformer,
+            interpolator,
+            nearest,
+        }),
+        vec![],
+    ))
 }
 
 #[derive(Clone, Debug, Hash)]
@@ -67,7 +76,8 @@ struct Resize {
     coord_transformer: CoordTransformer,
     interpolator: Interpolator,
     nearest: Nearest,
-    input_2_is_scales: bool,
+    optional_scales_input: Option<usize>,
+    optional_sizes_input: Option<usize>,
 }
 
 tract_linalg::impl_dyn_hash!(Resize);
@@ -85,28 +95,40 @@ impl Resize {
     fn compute_output_shape(
         &self,
         input_shape: &[usize],
-        input_2: &Tensor,
+        input_scale: Option<&Tensor>,
+        input_sizes: Option<&Tensor>,
     ) -> TractResult<TVec<usize>> {
-        if self.input_2_is_scales {
-            let scales = input_2.cast_to::<f32>()?;
-            Ok(input_shape
-                .iter()
-                .zip(scales.as_slice::<f32>()?.iter())
-                .map(|(input, scale)| ((*input as f32) * scale) as usize)
-                .collect())
-        } else {
-            let size = input_2.cast_to::<i64>()?;
-            Ok(size.as_slice::<i64>()?.iter().map(|i| *i as usize).collect())
+        if let Some(scale) = input_scale {
+            if scale.len() == input_shape.len() {
+                let scales = scale.cast_to::<f32>()?;
+                return Ok(input_shape
+                    .iter()
+                    .zip(scales.as_slice::<f32>()?.iter())
+                    .map(|(input, scale)| ((*input as f32) * scale) as usize)
+                    .collect());
+            }
         }
+        if let Some(sizes) = input_sizes {
+            if sizes.len() == input_shape.len() {
+                let size = sizes.cast_to::<i64>()?;
+                return Ok(size.as_slice::<i64>()?.iter().map(|i| *i as usize).collect());
+            }
+        }
+        bail!("Neither shape not scale makes sense: input_shape: {:?}, scale: {:?}, sizes: {:?}")
     }
 }
 
 impl StatelessOp for Resize {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (data, _rois, input_2) = args_3!(inputs);
-        let mut data = data.into_tensor().into_array::<f32>()?;
+        let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
+        let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
+        let output_shape = self.compute_output_shape(
+            inputs[0].shape(),
+            scales.map(|t| &**t),
+            sizes.map(|t| &**t),
+        )?;
+        let mut data = inputs.remove(0).into_tensor().into_array::<f32>()?;
         for axis in 0..data.ndim() {
-            let output_shape = self.compute_output_shape(data.shape(), &input_2)?;
             if output_shape[axis] == data.shape()[axis] {
                 continue;
             } else if output_shape[axis] > data.shape()[axis] {
@@ -144,71 +166,76 @@ impl InferenceRulesOp for Resize {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 3)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        let have_roi = false;
-        if have_roi {
-            s.equals(&inputs[1].rank, 1)?;
-            s.equals(2 * inputs[0].rank.bex().to_dim(), inputs[1].shape[0].bex())?;
+        if inputs.len() == 3 && self.optional_scales_input == Some(2) {
+            rules_with_scales(self, s, inputs, outputs)
+        } else if inputs.len() == 3 && self.optional_sizes_input == Some(2) {
+            rules_with_sizes(self, s, inputs, outputs)
+        } else {
+            // bogus 4 inputs case
+            s.given_2(
+                &inputs[0].rank,
+                &inputs[self.optional_scales_input.unwrap()].shape,
+                move |s, input_rank, scale_shape| {
+                    if scale_shape.len() == 0 || scale_shape[0] != input_rank.to_dim() {
+                        rules_with_sizes(self, s, inputs, outputs)
+                    } else {
+                        rules_with_scales(self, s, inputs, outputs)
+                    }
+                },
+            )
         }
-        s.equals(&inputs[2].rank, 1)?;
-        s.equals(inputs[0].rank.bex().to_dim(), inputs[2].shape[0].bex())?;
-        s.given(&inputs[0].rank, move |s, rank| {
-            let rank = rank as usize;
-            if self.input_2_is_scales {
-                if have_roi {
-                    s.given_3(
-                        &inputs[0].shape,
-                        &inputs[1].value,
-                        &inputs[2].value,
-                        move |s, input_shape, rois, scales| {
-                            let rois = rois.cast_to::<f32>()?;
-                            let rois = rois.as_slice::<f32>()?;
-                            let scales = scales.cast_to::<f32>()?;
-                            let scales = scales.as_slice::<f32>()?;
-                            for i in 0..rank {
-                                let cropped =
-                                    if have_roi { rois[i + rank] - rois[i] } else { 1.0f32 };
-                                if let Ok(len) = input_shape[i].to_integer() {
-                                    let output_len =
-                                        (len as f32 * cropped * scales[i]).round() as usize;
-                                    s.equals(&outputs[0].shape[i], output_len.to_dim())?;
-                                }
-                            }
-                            Ok(())
-                        },
-                    )?;
-                } else {
-                    s.given_2(
-                        &inputs[0].shape,
-                        &inputs[2].value,
-                        move |s, input_shape, scales| {
-                            let scales = scales.cast_to::<f32>()?;
-                            let scales = scales.as_slice::<f32>()?;
-                            for i in 0..rank {
-                                if let Ok(len) = input_shape[i].to_integer() {
-                                    let output_len = (len as f32 * scales[i]).round() as usize;
-                                    s.equals(&outputs[0].shape[i], output_len.to_dim())?;
-                                }
-                            }
-                            Ok(())
-                        },
-                    )?;
-                }
-            } else {
-                for i in 0..(rank as usize) {
-                    s.equals(&outputs[0].shape[i], inputs[2].value[i].bex().to_dim())?;
-                }
-            }
-            Ok(())
-        })?;
-        Ok(())
     }
 
     as_op!();
     to_typed!();
+}
+
+fn rules_with_scales<'r, 'p: 'r, 's: 'r>(
+    op: &'s Resize,
+    s: &mut Solver<'r>,
+    inputs: &'p [TensorProxy],
+    outputs: &'p [TensorProxy],
+) -> InferenceResult {
+    let scales = &inputs[op.optional_scales_input.unwrap()];
+    s.equals(&scales.datum_type, f32::datum_type())?;
+    s.equals(&scales.rank, 1)?;
+    s.equals(&scales.shape[0], inputs[0].rank.bex().to_dim())?;
+    s.given_2(
+        &inputs[0].shape,
+        &inputs[op.optional_scales_input.unwrap()].value,
+        move |s, input_shape, scales| {
+            let input_shape = input_shape
+                .iter()
+                .map(|d| d.to_integer().map(|d| d as usize))
+                .collect::<TractResult<TVec<usize>>>()?;
+            let output_size = op.compute_output_shape(&input_shape, Some(scales.as_ref()), None)?;
+            let rank = input_shape.len();
+            for i in 0..rank {
+                s.equals(&outputs[0].shape[i], output_size[i].to_dim())?;
+            }
+            Ok(())
+        },
+    )
+}
+
+fn rules_with_sizes<'r, 'p: 'r, 's: 'r>(
+    op: &'s Resize,
+    s: &mut Solver<'r>,
+    inputs: &'p [TensorProxy],
+    outputs: &'p [TensorProxy],
+) -> InferenceResult {
+    let sizes = &inputs[op.optional_sizes_input.unwrap()];
+    s.equals(&sizes.rank, 1)?;
+    s.equals(&sizes.shape[0], inputs[0].rank.bex().to_dim())?;
+    s.given(&inputs[0].rank, move |s, rank| {
+        for i in 0..(rank as usize) {
+            s.equals(&outputs[0].shape[i], sizes.value[i].bex().to_dim())?;
+        }
+        Ok(())
+    })
 }
 
 impl TypedOp for Resize {
@@ -220,12 +247,13 @@ impl TypedOp for Resize {
         } else {
             bail!("Only constant input shape are supported in Resize")
         };
-        let input_2 = if let Some(t) = &inputs[2].konst {
-            t
-        } else {
-            bail!("Only constant scale (or output size) are supported in Resize")
-        };
-        let output_shape = self.compute_output_shape(input_shape, &input_2)?;
+        let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
+        let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
+        let output_shape = self.compute_output_shape(
+            input_shape,
+            scales.and_then(|f| f.konst.as_deref()),
+            sizes.and_then(|f| f.konst.as_deref()),
+        )?;
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*output_shape)?))
     }
 
