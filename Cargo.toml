@@ -13,6 +13,7 @@ members = [
     "examples/pytorch-resnet",
     "harness/core-proptest-pulse",
     "harness/lstm-proptest-onnx-vs-tf",
+    "harness/nnef-inceptionv3",
     "harness/onnx-test-suite",
     "harness/tf-inceptionv3",
     "harness/tf-mobilenet-v2",
