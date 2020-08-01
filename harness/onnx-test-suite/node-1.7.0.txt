@@ -404,14 +404,14 @@ test_reflect_pad                                                                
 test_relu
 test_reshape_extended_dims                                                          input:data
 test_reshape_negative_dim                                                           input:data
-test_reshape_negative_extended_dims dynsize
+test_reshape_negative_extended_dims                                                 input:data
 test_reshape_one_dim                                                                input:data
 test_reshape_reduced_dims                                                           input:data
-test_reshape_reordered_all_dims dynsize
+test_reshape_reordered_all_dims                                                     input:data
 test_reshape_reordered_dims                                                         input:data
-test_reshape_reordered_last_dims dynsize
-test_reshape_zero_and_negative_dim dynsize
-test_reshape_zero_dim dynsize
+test_reshape_reordered_last_dims                                                    input:data
+test_reshape_zero_and_negative_dim                                                  input:data
+test_reshape_zero_dim                                                               input:data
 test_resize_upsample_scales_linear_align_corners                                    input:X
 test_rnn_seq_length
 test_round
