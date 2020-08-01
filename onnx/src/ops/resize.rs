@@ -1,8 +1,7 @@
-use crate::model::{OnnxOpRegister, ParsingContext};
+use crate::model::ParsingContext;
 use crate::pb::*;
 use std::hash::Hash;
 use tract_hir::internal::*;
-use tract_hir::tract_core::itertools::Itertools;
 
 pub fn resize(
     _ctx: &ParsingContext,
@@ -36,8 +35,10 @@ enum CoordTransformer {
 impl CoordTransformer {
     fn transform(&self, x_out: usize, scale: f32, len_in: usize, len_out: usize) -> f32 {
         match self {
-            CoordTransformer::HalfPixel => ((x_out as f32 + 0.5) * scale - 0.5),
-            CoordTransformer::AlignCorners => ((x_out as f32 * (len_in as f32 - 1.0)) / (len_out as f32 - 1.0)),
+            CoordTransformer::HalfPixel => (x_out as f32 + 0.5) * scale - 0.5,
+            CoordTransformer::AlignCorners => {
+                (x_out as f32 * (len_in as f32 - 1.0)) / (len_out as f32 - 1.0)
+            }
         }
     }
 }
@@ -80,22 +81,32 @@ impl Op for Resize {
     op_as_typed_op!();
 }
 
+impl Resize {
+    fn compute_output_shape(
+        &self,
+        input_shape: &[usize],
+        input_2: &Tensor,
+    ) -> TractResult<TVec<usize>> {
+        if self.input_2_is_scales {
+            let scales = input_2.cast_to::<f32>()?;
+            Ok(input_shape
+                .iter()
+                .zip(scales.as_slice::<f32>()?.iter())
+                .map(|(input, scale)| ((*input as f32) * scale) as usize)
+                .collect())
+        } else {
+            let size = input_2.cast_to::<i64>()?;
+            Ok(size.as_slice::<i64>()?.iter().map(|i| *i as usize).collect())
+        }
+    }
+}
+
 impl StatelessOp for Resize {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, _rois, input_2) = args_3!(inputs);
         let mut data = data.into_tensor().into_array::<f32>()?;
-        let output_shape: TVec<usize> = if self.input_2_is_scales {
-            let scales = input_2.cast_to::<f32>()?;
-            data.shape()
-                .iter()
-                .zip(scales.as_slice::<f32>()?.iter())
-                .map(|(input, scale)| ((*input as f32) * scale) as usize)
-                .collect()
-        } else {
-            let size = input_2.cast_to::<i64>()?;
-            size.as_slice::<i64>()?.iter().map(|i| *i as usize).collect()
-        };
         for axis in 0..data.ndim() {
+            let output_shape = self.compute_output_shape(data.shape(), &input_2)?;
             if output_shape[axis] == data.shape()[axis] {
                 continue;
             } else if output_shape[axis] > data.shape()[axis] {
@@ -111,11 +122,13 @@ impl StatelessOp for Resize {
                         new_shape[axis],
                     );
                     let mut co_i = co_o.clone();
-                    co_i[axis] = x_in as usize;
+                    let x_left = (x_in as usize).min(data.shape()[axis] - 1).max(0);
+                    co_i[axis] = x_left;
                     let y_left = data[&co_i];
-                    co_i[axis] = (x_in as usize + 1).min(data.shape()[axis] - 1);
+                    let x_right = (x_left + 1).min(data.shape()[axis] - 1);
+                    co_i[axis] = x_right;
                     let y_right = data[&co_i];
-                    let x_frac = x_in - x_in.floor();
+                    let x_frac = x_in - x_left as f32;
                     self.interpolator.interpolate(y_left, y_right, x_frac)
                 })
             }
@@ -202,7 +215,18 @@ impl TypedOp for Resize {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        todo!();
+        let input_shape = if let Some(s) = inputs[0].shape.as_finite() {
+            s
+        } else {
+            bail!("Only constant input shape are supported in Resize")
+        };
+        let input_2 = if let Some(t) = &inputs[2].konst {
+            t
+        } else {
+            bail!("Only constant scale (or output size) are supported in Resize")
+        };
+        let output_shape = self.compute_output_shape(input_shape, &input_2)?;
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*output_shape)?))
     }
 
     fn declutter(
