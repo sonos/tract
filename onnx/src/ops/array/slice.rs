@@ -9,10 +9,8 @@ pub fn slice(
     let v = ctx.onnx_operator_set_version;
     if v >= 1 && v < 10 {
         slice1(ctx, node)
-    } else if v == 10 {
-        slice10(ctx, node)
     } else {
-        bail!("Only Slice-1 and Slice-10 are supported")
+        slice10(ctx, node)
     }
 }
 
