@@ -224,7 +224,9 @@ fn conv(
             kernel
         );
     }
-    if input_fact.shape.dim(1) != kernel.shape()[1].to_dim() {
+    let mut group = invocation.named_arg_as(builder, "groups")?;
+    if group == 0 { group = kernel.shape()[0] }
+    if input_fact.shape.dim(1) != kernel.shape()[1].to_dim() * group {
         bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel);
     }
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
@@ -264,7 +266,6 @@ fn conv(
 
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
-    let group = invocation.named_arg_as(builder, "groups")?;
     let op = ConvUnary::new(
         pool_spec,
         KernelFormat::OIHW,
