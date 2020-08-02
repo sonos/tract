@@ -112,6 +112,9 @@ impl TypedOp for Pad {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
+        if self.pads.len() != fact.rank() {
+            bail!("Inconsistent pad: input of rank {}, pads are: {:?}", fact.rank(), self.pads);
+        }
         for (ix, (b, e)) in self.pads.iter().enumerate() {
             fact.shape.set_dim(ix, fact.shape.dim(ix).clone() + *b + *e)?
         }

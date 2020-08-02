@@ -80,6 +80,8 @@ impl Expansion for Pad11 {
         }
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
+        s.equals(&inputs[1].rank, 1)?;
+        s.equals(&inputs[1].shape[0], 2 * inputs[0].rank.bex().to_dim())?;
         s.given(&inputs[1].value, move |s, pads| {
             let pads = pads.as_slice::<i64>()?;
             let rank = pads.len() / 2;
