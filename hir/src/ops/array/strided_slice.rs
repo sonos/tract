@@ -1,5 +1,4 @@
 use crate::internal::*;
-use tract_ndarray::prelude::*;
 
 #[derive(Debug, Clone, Hash)]
 pub struct StridedSlice {
@@ -14,7 +13,9 @@ tract_linalg::impl_dyn_hash!(StridedSlice);
 
 #[derive(Debug, Clone)]
 struct Dim {
+    // position of the first element to return
     begin: TDim,
+    // position of the first element not to return
     end: TDim,
     stride: i32,
     shrink: bool,
@@ -46,71 +47,104 @@ impl StridedSlice {
         &self,
         ix: usize,
         dim: &TDim,
-        begin: &ArrayView1<TDim>,
-        end: &ArrayView1<TDim>,
+        begin: &Tensor,
+        end: &Tensor,
         strides: &[i32],
-    ) -> Dim {
-        // deal with too small dim begin/end/stride for input rank
-        if ix >= begin.len() {
-            return Dim { begin: 0.to_dim(), end: dim.clone(), stride: 1, shrink: false };
-        }
+    ) -> TractResult<Dim> {
+        // cast bouds to Option<Dim>, dealing with ignore from mask, and spec shorted than dim
+        // also for end, magic values in onnx :/
+        let mut begin: Option<TDim> = if ix >= begin.len() {
+            None
+        } else {
+            let begin = begin.cast_to::<TDim>()?;
+            begin.as_slice::<TDim>()?.iter().nth(ix).cloned()
+        };
 
-        let stride = strides[ix];
+        let mut end: Option<TDim> = if self.ignore_end(ix) || ix >= end.len() {
+            None
+        } else if end.datum_type() == i64::datum_type() {
+            let end = *end.as_slice::<i64>()?.iter().nth(ix).unwrap();
+            if end == std::i64::MAX || end == std::i64::MIN {
+                None
+            } else {
+                Some(end.to_dim())
+            }
+        } else {
+            let end = end.cast_to::<TDim>()?;
+            end.as_slice::<TDim>()?.iter().nth(ix).cloned()
+        };
+
+        let stride = strides.get(ix).cloned().unwrap_or(1);
+
         // deal with negative indexing
-        fn must_add_to_len(bound: &TDim) -> bool {
-            if let Some(b) = bound.as_const() {
+        fn fix_negative(bound: &mut TDim, dim: &TDim) {
+            let neg = if let Some(b) = bound.as_const() {
                 b < 0
             } else {
-                bound.eval(100_000_000).unwrap() < 0 // FIXME
+                bound.eval(100_000_000).unwrap() < 0
+            };
+            if neg {
+                *bound = bound.clone() + dim;
             }
         }
-        let mut b: TDim =
-            if must_add_to_len(&begin[ix]) { dim.clone() + &begin[ix] } else { begin[ix].clone() };
-        let mut e: TDim =
-            if must_add_to_len(&end[ix]) { dim.clone() + &end[ix] } else { end[ix].clone() };
+        if let Some(begin) = begin.as_mut() {
+            fix_negative(begin, dim)
+        }
+        if let Some(end) = end.as_mut() {
+            fix_negative(end, dim)
+        }
 
-        // begin and end > dimension -> clip
-        let b_overflow = if let (Some(i32beg), Some(i32dim)) = (b.as_const(), dim.as_const()) {
-            i32beg >= i32dim
-        } else {
-            false
-        };
-        let e_overflow = if let (Some(i32end), Some(i32dim)) = (e.as_const(), dim.as_const()) {
-            i32end >= i32dim
-        } else {
-            false
-        };
-
-        let b_underflow = b.as_const().map(|v| v.is_negative()).unwrap_or(false);
-        let e_underflow = e.as_const().map(|v| v.is_negative()).unwrap_or(false);
-
-        // deal with shrinking
-        // (weirdly, tf ignores begin_mask when shrink is used)
         if self.must_shrink(ix) {
-            return Dim { begin: b.clone(), end: b.clone() + 1, stride: 1, shrink: true };
+            return Ok(Dim {
+                begin: begin.clone().unwrap_or(0.to_dim()),
+                end: begin.unwrap_or(0.to_dim()) + 1,
+                stride: 1,
+                shrink: true,
+            });
         }
 
-        if stride.signum() > 0 {
-            if self.ignore_begin(ix) || b_underflow {
-                b = 0.to_dim();
-            } else if b_overflow {
-                b = dim.clone();
+        // must happen after dealing with must_shrink :/
+        if self.ignore_begin(ix) {
+            begin = None;
+        }
+
+        let mut begin =
+            begin.unwrap_or_else(|| if stride > 0 { 0.to_dim() } else { dim.clone() - 1 });
+        if begin.as_const().map(|b| b < 0).unwrap_or(false) {
+            if stride < 0 {
+                return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
+            } else {
+                begin = 0.to_dim();
             }
-            if self.ignore_end(ix) || e_overflow {
-                e = dim.clone();
-            }
-        } else {
-            if self.ignore_begin(ix) || b_overflow {
-                b = dim.clone() - 1;
-            }
-            if self.ignore_end(ix) || e_underflow {
-                e = -1.to_dim();
-            } else if e_overflow {
-                e = dim.clone() - 1;
+        }
+        if let (Some(b), Some(d)) = (begin.as_const(), dim.as_const()) {
+            if b > d - 1 {
+                if stride > 0 {
+                    return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
+                } else {
+                    begin = (d - 1).to_dim()
+                }
             }
         }
 
-        Dim { begin: b, end: e, stride, shrink: false }
+        let mut end = end.unwrap_or_else(|| if stride > 0 { dim.clone() } else { (-1).to_dim() });
+        if end.as_const().map(|e| e < 0).unwrap_or(false) {
+            if stride > 0 {
+                return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
+            } else {
+                end = -1.to_dim();
+            }
+        }
+        if let (Some(e), Some(d)) = (end.as_const(), dim.as_const()) {
+            if e > d - 1 {
+                if stride > 0 {
+                    end = d.to_dim()
+                } else {
+                    return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
+                }
+            }
+        }
+        Ok(Dim { begin, end, stride, shrink: false })
     }
 }
 
@@ -145,10 +179,8 @@ impl Expansion for StridedSlice {
         };
         s.given(&inputs[0].shape, move |s, input_shape| {
             s.given_all(inputs[1..].iter().map(|i| &i.value), move |s, params| {
-                let casted_begin = params[0].cast_to::<TDim>()?;
-                let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
-                let casted_end = params[1].cast_to::<TDim>()?;
-                let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
+                let begin = &params[0];
+                let end = &params[1];
                 let strides = if let Some(i) = self.optional_steps_input {
                     let t = params[i - 1].cast_to::<i32>()?;
                     t.as_slice::<i32>()?.iter().cloned().collect()
@@ -158,7 +190,7 @@ impl Expansion for StridedSlice {
                 let mut current_out_dim = 0;
                 for (ix, d) in input_shape.iter().enumerate() {
                     if !self.must_shrink(ix) {
-                        let preped = self.prepare_one_dim(ix, d, &begin, &end, &strides);
+                        let preped = self.prepare_one_dim(ix, d, begin, end, &strides)?;
                         s.equals(&outputs[0].shape[current_out_dim], preped.soft_len()?)?;
                         current_out_dim += 1;
                     }
@@ -180,10 +212,6 @@ impl Expansion for StridedSlice {
             .collect::<TractResult<_>>()?;
         if params.iter().all(|p| p.is_some()) {
             let params: TVec<&Tensor> = params.iter().map(|o| &**o.as_ref().unwrap()).collect();
-            let casted_begin = params[0].cast_to::<TDim>()?;
-            let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
-            let casted_end = params[1].cast_to::<TDim>()?;
-            let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
             let input_shape = target.outlet_fact(inputs[0])?.shape.clone();
             let strides: TVec<i32> = if let Some(i) = self.optional_steps_input {
                 let strides = params[i - 1].cast_to::<i32>()?;
@@ -204,7 +232,8 @@ impl Expansion for StridedSlice {
             let input = target.outlet_fact(wire)?.clone();
             for (ix, &axis) in axes.iter().enumerate() {
                 let d = input_shape.dim(axis);
-                let preped = self.prepare_one_dim(ix, &d, &begin, &end, &strides);
+                let preped = self.prepare_one_dim(ix, &d, &params[0], &params[1], &strides)?;
+                eprintln!("ix:{} {:?}", axis, preped);
                 if preped.stride > 0 {
                     if preped.begin != 0.to_dim() || preped.end != input.shape.dim(ix) {
                         wire = target.wire_node(
@@ -234,10 +263,7 @@ impl Expansion for StridedSlice {
                 .shape
                 .iter()
                 .enumerate()
-                .filter(|(ix, d)| {
-                    let preped = self.prepare_one_dim(*ix, &d, &begin, &end, &strides);
-                    preped.shrink
-                })
+                .filter(|(ix, _d)| self.must_shrink(*ix))
                 .map(|pair| pair.0)
                 .collect::<Vec<_>>();
             shrink.sort();
