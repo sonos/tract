@@ -1,4 +1,5 @@
 use crate::internal::*;
+use tract_itertools::Itertools;
 
 #[derive(Debug, Clone, Hash)]
 pub struct StridedSlice {
@@ -11,7 +12,7 @@ pub struct StridedSlice {
 
 tract_linalg::impl_dyn_hash!(StridedSlice);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Dim {
     // position of the first element to return
     begin: TDim,
@@ -64,7 +65,7 @@ impl StridedSlice {
             None
         } else if end.datum_type() == i64::datum_type() {
             let end = *end.as_slice::<i64>()?.iter().nth(ix).unwrap();
-            if end == std::i64::MAX || end == std::i64::MIN {
+            if end == std::i64::MAX || end == std::i64::MIN || end == std::i64::MIN + 1 {
                 None
             } else {
                 Some(end.to_dim())
@@ -187,15 +188,28 @@ impl Expansion for StridedSlice {
                 } else {
                     vec![1; input_shape.len()]
                 };
-                let mut current_out_dim = 0;
-                for (ix, d) in input_shape.iter().enumerate() {
-                    if !self.must_shrink(ix) {
-                        let preped = self.prepare_one_dim(ix, d, begin, end, &strides)?;
-                        s.equals(&outputs[0].shape[current_out_dim], preped.soft_len()?)?;
-                        current_out_dim += 1;
+                let axes: TVec<usize> = if let Some(i) = self.optional_axes_input {
+                    let axes = params[i - 1].cast_to::<i32>()?;
+                    axes.as_slice::<i32>()?
+                        .iter()
+                        .map(|&i| if i < 0 { input_shape.len() as i32 + i } else { i } as usize)
+                        .collect()
+                } else {
+                    (0..input_shape.len()).collect()
+                };
+                let mut output_shape = input_shape.clone();
+                let mut shrink = vec!();
+                for (ix, axis) in axes.into_iter().enumerate() {
+                    let preped = self.prepare_one_dim(ix, &input_shape[axis], begin, end, &strides)?;
+                    output_shape[axis] = preped.soft_len()?;
+                    if preped.shrink {
+                        shrink.push(axis);
                     }
                 }
-                s.equals(&outputs[0].rank, current_out_dim as i32)
+                for shrink in shrink.iter().sorted().rev() {
+                    output_shape.remove(*shrink);
+                }
+                s.equals(&outputs[0].shape, output_shape)
             })
         })
     }
@@ -233,7 +247,6 @@ impl Expansion for StridedSlice {
             for (ix, &axis) in axes.iter().enumerate() {
                 let d = input_shape.dim(axis);
                 let preped = self.prepare_one_dim(ix, &d, &params[0], &params[1], &strides)?;
-                eprintln!("ix:{} {:?}", axis, preped);
                 if preped.stride > 0 {
                     if preped.begin != 0.to_dim() || preped.end != input.shape.dim(ix) {
                         wire = target.wire_node(
@@ -286,7 +299,7 @@ impl Expansion for StridedSlice {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract_ndarray::*;
+    use tract_ndarray::{arr1, arr2, arr3};
 
     pub fn strided_slice(begin_mask: i64, end_mask: i64, shrink_axis_mask: i64) -> StridedSlice {
         StridedSlice {
@@ -568,6 +581,38 @@ mod tests {
                 DatumType::F32,
                 shapefactoid!(1, (TDim::stream() - 4), 16)
             )]
+        );
+    }
+
+    #[test]
+    fn prep_1() {
+        let op = strided_slice(0, 0, 0);
+        assert_eq!(
+            op.prepare_one_dim(
+                0,
+                &4.to_dim(),
+                &tensor1(&[-1i64]),
+                &tensor1(&[std::i64::MIN]),
+                &[-1]
+            )
+            .unwrap(),
+            Dim { begin: 3.to_dim(), end: -1.to_dim(), stride: -1, shrink: false }
+        );
+    }
+
+    #[test]
+    fn prep_pytorch_onnx_bug_workadound() {
+        let op = strided_slice(0, 0, 0);
+        assert_eq!(
+            op.prepare_one_dim(
+                0,
+                &4.to_dim(),
+                &tensor1(&[-1i64]),
+                &tensor1(&[std::i64::MIN + 1]),
+                &[-1]
+            )
+            .unwrap(),
+            Dim { begin: 3.to_dim(), end: -1.to_dim(), stride: -1, shrink: false }
         );
     }
 }
