@@ -225,7 +225,9 @@ fn conv(
         );
     }
     let mut group = invocation.named_arg_as(builder, "groups")?;
-    if group == 0 { group = kernel.shape()[0] }
+    if group == 0 {
+        group = kernel.shape()[0]
+    }
     if input_fact.shape.dim(1) != kernel.shape()[1].to_dim() * group {
         bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel);
     }
@@ -258,22 +260,12 @@ fn conv(
         Some(kernel.shape()[0]),
     );
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
-    let bias: Option<Arc<Tensor>> = if bias.is_uniform()? && bias.cast_to_scalar::<f32>()? == 0.0 {
-        None
-    } else {
-        Some(bias)
-    };
+    let bias: Option<Arc<Tensor>> =
+        if bias.is_uniform()? && bias.cast_to_scalar::<f32>()? == 0.0 { None } else { Some(bias) };
 
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
-    let op = ConvUnary::new(
-        pool_spec,
-        KernelFormat::OIHW,
-        kernel.clone(),
-        group,
-        bias,
-        None,
-    );
+    let op = ConvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), group, bias, None);
     builder.wire(op, &[input])
 }
 
@@ -391,14 +383,24 @@ fn reduce(
         "max" => ops::nn::Reducer::Max,
         _ => bail!("unsupported reducer: {}", invocation.invocation.id),
     };
-    let mut wire = builder.wire(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
-    if reducer_name == "sum" && invocation.named_arg_as(builder, "normalize")? {
-        let input_shape = &builder.model.outlet_fact(input)?.shape;
-        let cardinality = axes.iter().map(|ax| input_shape.dim(*ax)).maybe_product()?;
-        let cardinality = tensor0(cardinality).broadcast_into_rank(input_shape.rank())?;
-        wire = builder.wire(ops::math::div::unary(cardinality.into_arc_tensor()), &[input])?;
+    let wire = builder.wire(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
+    if reducer_name != "sum" || !invocation.named_arg_as(builder, "normalize")? {
+        return Ok(wire);
     }
-    Ok(wire)
+
+    let fact = builder.model.outlet_fact(wire[0])?;
+    let input_shape = &builder.model.outlet_fact(input)?.shape;
+    let cardinality = axes.iter().map(|ax| input_shape.dim(*ax)).maybe_product()?;
+    if let Ok(c) = cardinality.to_integer() {
+        if fact.datum_type.is_float() {
+            let cardinality = tensor0(c)
+                .cast_to_dt(fact.datum_type)?
+                .into_owned()
+                .broadcast_into_rank(input_shape.rank())?;
+            return builder.wire(ops::math::div::unary(cardinality.into_arc_tensor()), &wire);
+        }
+    }
+    bail!("Normalization only works with float items and known dimensions");
 }
 
 /*
