@@ -545,7 +545,7 @@ impl TypedOp for ConvUnary {
                     change,
                 )));
             }
-            if change.transform_axis(n).unwrap() > 0 {
+            if change.transform_axis(n).map(|axis| axis > 0).unwrap_or(true) {
                 return Ok(None);
             }
         }
