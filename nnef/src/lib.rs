@@ -5,6 +5,7 @@ pub mod primitives;
 pub mod tensors;
 
 pub use model::ProtoModel;
+pub use tract_core::prelude;
 use tract_core::internal::*;
 
 pub fn open_model<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {

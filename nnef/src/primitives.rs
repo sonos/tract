@@ -393,11 +393,11 @@ fn reduce(
     let cardinality = axes.iter().map(|ax| input_shape.dim(*ax)).maybe_product()?;
     if let Ok(c) = cardinality.to_integer() {
         if fact.datum_type.is_float() {
-            let cardinality = tensor0(c)
+            let cardinality = tensor0((c as f64).recip())
                 .cast_to_dt(fact.datum_type)?
                 .into_owned()
                 .broadcast_into_rank(input_shape.rank())?;
-            return builder.wire(ops::math::div::unary(cardinality.into_arc_tensor()), &wire);
+            return builder.wire(ops::math::mul::unary(cardinality.into_arc_tensor()), &wire);
         }
     }
     bail!("Normalization only works with float items and known dimensions");
