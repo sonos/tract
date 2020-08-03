@@ -351,7 +351,7 @@ fn literal(i: &str) -> IResult<&str, Literal> {
     )))(i)
 }
 
-fn numeric_literal(i: &str) -> IResult<&str, NumericLiteral> {
+fn numeric_literal(i: &str) -> IResult<&str, String> {
     fn exp_part(i: &str) -> IResult<&str, &str> {
         recognize(tuple((one_of("eE"), opt(tag("-")), digit1)))(i)
     }
@@ -360,11 +360,11 @@ fn numeric_literal(i: &str) -> IResult<&str, NumericLiteral> {
     }
     spaced(map(
         recognize(tuple((opt(tag("-")), digit1, opt(frac_part), opt(exp_part)))),
-        |s: &str| NumericLiteral(s.to_owned()),
+        |s: &str| s.to_owned(),
     ))(i)
 }
 
-fn string_literal(i: &str) -> IResult<&str, StringLiteral> {
+fn string_literal(i: &str) -> IResult<&str, String> {
     fn inner(i: &str) -> IResult<&str, String> {
         map(
             many0(alt((
@@ -375,15 +375,12 @@ fn string_literal(i: &str) -> IResult<&str, StringLiteral> {
         )(i)
     }
     map(alt((delimited(tag("'"), inner, tag("'")), delimited(tag("\""), inner, tag("\"")))), |s| {
-        StringLiteral(s.into())
+        s.into()
     })(i)
 }
 
-fn logical_literal(i: &str) -> IResult<&str, LogicalLiteral> {
-    spaced(alt((
-        map(tag("true"), |_| LogicalLiteral(true)),
-        map(tag("false"), |_| LogicalLiteral(false)),
-    )))(i)
+fn logical_literal(i: &str) -> IResult<&str, bool> {
+    spaced(alt((map(tag("true"), |_| true), map(tag("false"), |_| false))))(i)
 }
 
 // SPACES
@@ -606,17 +603,14 @@ mod test {
 
     #[test]
     fn test_string() {
-        fn s(s: &str) -> StringLiteral {
-            StringLiteral(s.into())
-        }
-        assert_eq!(p(string_literal, r#""""#), s(""));
-        assert_eq!(p(string_literal, r#""foo""#), s("foo"));
-        assert_eq!(p(string_literal, r#"''"#), s(""));
-        assert_eq!(p(string_literal, r#"'foo'"#), s("foo"));
+        assert_eq!(p(string_literal, r#""""#), "");
+        assert_eq!(p(string_literal, r#""foo""#), "foo");
+        assert_eq!(p(string_literal, r#"''"#), "");
+        assert_eq!(p(string_literal, r#"'foo'"#), "foo");
 
-        assert_eq!(p(string_literal, r#"'f\oo'"#), s("foo"));
-        assert_eq!(p(string_literal, r#"'f\'oo'"#), s("f'oo"));
-        assert_eq!(p(string_literal, r#"'f\"oo'"#), s("f\"oo"));
+        assert_eq!(p(string_literal, r#"'f\oo'"#), "foo");
+        assert_eq!(p(string_literal, r#"'f\'oo'"#), "f'oo");
+        assert_eq!(p(string_literal, r#"'f\"oo'"#), "f\"oo");
     }
 
     #[test]

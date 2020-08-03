@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod dump;
 pub mod model;
 pub mod parser;
 pub mod primitives;

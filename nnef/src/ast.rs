@@ -127,9 +127,6 @@ pub enum Literal {
     Tuple(Vec<Literal>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct NumericLiteral(pub String);
-#[derive(Clone, Debug, PartialEq)]
-pub struct StringLiteral(pub String);
-#[derive(Clone, Debug, PartialEq)]
-pub struct LogicalLiteral(pub bool);
+pub type NumericLiteral = String;
+pub type StringLiteral = String;
+pub type LogicalLiteral = bool;

@@ -318,18 +318,18 @@ impl RValue {
                 array.iter().map(|i| i.resolve(builder)).collect::<TractResult<_>>()?,
             )),
             RValue::Literal(Literal::Numeric(f)) => {
-                if f.0.contains(".") || f.0.contains("e") {
-                    f.0.parse::<f32>()
+                if f.contains(".") || f.contains("e") {
+                    f.parse::<f32>()
                         .map(Value::Scalar)
-                        .map_err(|_| format!("Can not parse {} as f32", f.0).into())
+                        .map_err(|_| format!("Can not parse {} as f32", f).into())
                 } else {
-                    f.0.parse::<TDim>()
+                    f.parse::<TDim>()
                         .map(Value::Dim)
-                        .map_err(|_| format!("Can not parse {} as i64", f.0).into())
+                        .map_err(|_| format!("Can not parse {} as i64", f).into())
                 }
             }
-            RValue::Literal(Literal::String(StringLiteral(s))) => Ok(Value::String(s.clone())),
-            RValue::Literal(Literal::Logical(LogicalLiteral(s))) => Ok(Value::Bool(*s)),
+            RValue::Literal(Literal::String(s)) => Ok(Value::String(s.clone())),
+            RValue::Literal(Literal::Logical(s)) => Ok(Value::Bool(*s)),
             RValue::Literal(Literal::Array(array)) => Ok(Value::Array(
                 array
                     .iter()
