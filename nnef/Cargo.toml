@@ -18,3 +18,4 @@ flate2 = "1"
 nom = "5"
 tar = "0.4"
 tract-core = { path = "../core" }
+walkdir = "2"
