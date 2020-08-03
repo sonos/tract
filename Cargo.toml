@@ -10,6 +10,8 @@ members = [
     "cli",
     "examples/tensorflow-mobilenet-v2",
     "examples/jupyter-keras-tract",
+    "examples/nnef-mobilenet-v2",
+    "examples/onnx-mobilenet-v2",
     "examples/pytorch-resnet",
     "harness/core-proptest-pulse",
     "harness/lstm-proptest-onnx-vs-tf",

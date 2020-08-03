@@ -2,11 +2,12 @@ use crate::errors::*;
 use crate::{Model, Parameters};
 use tract_hir::internal::*;
 
-pub fn handle(params: &Parameters, dump: bool, steps: bool) -> CliResult<()> {
+pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> {
+    let dump = options.is_present("dump");
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
         run_pulse_t(pulse, &params)?
     } else {
-        dispatch_model!(params.tract_model, |m| run_regular(m, &params, steps))?
+        dispatch_model!(params.tract_model, |m| run_regular(m, &params, options))?
     };
 
     if dump {
@@ -30,8 +31,10 @@ pub fn handle(params: &Parameters, dump: bool, steps: bool) -> CliResult<()> {
 fn run_regular(
     tract: &dyn Model,
     params: &Parameters,
-    steps: bool,
+    options: &clap::ArgMatches
 ) -> CliResult<TVec<Arc<Tensor>>> {
+    let steps = options.is_present("steps");
+    let assert_sane_floats = options.is_present("assert-sane-floats");
     let mut inputs: TVec<Tensor> = tvec!();
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         if let Some(input) = params.input_values.get(ix).and_then(|x| x.as_ref()) {
@@ -52,7 +55,18 @@ fn run_regular(
             if steps {
                 eprintln!("{}: >{:?}", node, r);
             }
-            r
+            let r = r?;
+            if assert_sane_floats {
+                for (ix, o) in r.iter().enumerate() {
+                    if let Ok(floats) = o.as_slice::<f32>() {
+                        if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+                            eprintln!("{:?}", floats);
+                            bail!("Found {} in output {} of {}", floats[pos], ix, node);
+                        }
+                    }
+                }
+            }
+            Ok(r)
         })?)
     })
 }

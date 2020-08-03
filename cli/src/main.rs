@@ -239,6 +239,11 @@ fn main() {
         .arg(Arg::with_name("dump").long("dump").help("Show output"))
         .arg(Arg::with_name("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
+            Arg::with_name("assert-sane-floats")
+                .long("assert-sane-floats")
+                .help("Check float for NaN and infinites at each step"),
+        )
+        .arg(
             Arg::with_name("assert-output-bundle")
                 .takes_value(true)
                 .long("assert-output-bundle")
@@ -410,7 +415,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             terminal::render(&*broken_model, &annotations, &display_params)?;
             Err(e)?
         }
-        Err(e) => Err(e)?
+        Err(e) => Err(e)?,
     };
 
     let mut need_optimisations = false;
@@ -451,7 +456,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             &display_params_from_clap(&matches, m)?,
         ),
 
-        ("run", Some(m)) => run::handle(&params, m.is_present("dump"), m.is_present("steps")),
+        ("run", Some(m)) => run::handle(&params, m),
 
         ("optimize-check", Some(m)) => {
             optimize_check::handle(&params, display_params_from_clap(&matches, m)?)
