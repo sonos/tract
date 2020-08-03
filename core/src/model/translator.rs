@@ -91,7 +91,7 @@ where
             (0..node.outputs.len())
                 .map(|i| {
                     target.add_source(
-                        if node.outputs.len() > 0 {
+                        if node.outputs.len() > 1 {
                             format!("{}-{}", node.name, i)
                         } else {
                             node.name.to_string()
