@@ -121,8 +121,8 @@ pub fn batch_normalization(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let epsilon = node.get_attr_opt("epsilon")?.unwrap_or(1e-5);
-    let spatial = node.get_attr_opt("spatial")?.unwrap_or(0);
-    if spatial != 0 {
+    let spatial = node.get_attr_opt("spatial")?.unwrap_or(1);
+    if spatial != 1 {
         bail!("BatchNormalization: attribute 'spatial' is not supported (deprecated by ONNX operator set 9)")
     }
     Ok((expand(batch_norm::BatchNorm::new(nn::DataFormat::NCHW, epsilon, spatial != 0)), vec![]))
