@@ -34,7 +34,12 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             header.dims[0..header.rank as usize].iter().map(|d| *d as _).collect();
         let len = shape.iter().product::<usize>();
         if len * (header.bits_per_item as usize / 8) != header.data_size_bytes as usize {
-            bail!("Shape and len mismatch: {:?} vs {} ", shape, header.data_size_bytes);
+            bail!(
+                "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
+                shape,
+                header.bits_per_item,
+                header.data_size_bytes
+            );
         }
         if header.item_type_vendor != 0 {
             bail!("Unknownn item type vendor {}", header.item_type_vendor);
@@ -51,10 +56,17 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             (0x0100, 16) => DatumType::I16,
             (0x0100, 32) => DatumType::I32,
             (0x0100, 64) => DatumType::I64,
-            _ => bail!("Unsupported type in tensor type:{} bits_per_item:{}", header.item_type, header.bits_per_item)
+            _ => bail!(
+                "Unsupported type in tensor type:{} bits_per_item:{}",
+                header.item_type,
+                header.bits_per_item
+            ),
         };
         let mut tensor = Tensor::uninitialized_dt(dt, &shape)?;
-        let slice = std::slice::from_raw_parts_mut(tensor.as_ptr_mut_unchecked::<u8>(), header.data_size_bytes as usize);
+        let slice = std::slice::from_raw_parts_mut(
+            tensor.as_ptr_mut_unchecked::<u8>(),
+            header.data_size_bytes as usize,
+        );
         reader.read_exact(slice)?;
         Ok(tensor)
     }
