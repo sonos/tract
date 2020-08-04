@@ -8,43 +8,101 @@ struct DelayState {
 }
 
 impl DelayState {
-    pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
-        let axis = Axis(op.axis);
-        let input = input.to_array_view::<T>()?;
-        let mut buffer = self.buffer.to_array_view_mut::<T>()?;
-
+    fn eval_t(&mut self, op: &Delay, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
+        dbg!(&op);
+        dbg!(&self.buffer);
+        dbg!(&input);
         let buffered = op.delay + op.overlap;
         let input_pulse = input.shape()[op.axis];
         let output_pulse = input_pulse + op.overlap;
         let mut output_shape: TVec<usize> = input.shape().into();
         output_shape[op.axis] = output_pulse;
-        // build output
-        let output = if op.delay < input_pulse {
-            let mut output = unsafe { Tensor::uninitialized::<T>(&*output_shape)? };
-            let from_input = input_pulse - op.delay;
-            let from_buffer = output_pulse - from_input;
-            output
-                .to_array_view_mut::<T>()?
-                .slice_axis_mut(axis, Slice::from(..from_buffer))
-                .assign(&buffer.slice_axis(axis, Slice::from(..from_buffer)));
-            output
-                .to_array_view_mut::<T>()?
-                .slice_axis_mut(axis, Slice::from(from_buffer..))
-                .assign(&input.slice_axis(axis, Slice::from(..from_input)));
-            output
-        } else {
-            buffer.slice_axis(axis, Slice::from(..output_pulse)).to_owned().into_tensor()
-        };
-        // maintain buffer
-        if buffered < input_pulse {
-            buffer.assign(&input.slice_axis(axis, Slice::from((input_pulse - buffered)..)));
-        } else {
-            let stride = buffer.strides()[op.axis] as usize * input_pulse;
-            buffer.as_slice_mut().unwrap().rotate_left(stride);
-            buffer.slice_axis_mut(axis, Slice::from((buffered - input_pulse)..)).assign(&input);
+        unsafe fn assign_slice_t<T: Datum>(
+            to: &mut Tensor,
+            to_range: Slice,
+            from: &Tensor,
+            from_range: Slice,
+            axis: usize,
+        ) {
+            to.to_array_view_mut_unchecked::<T>()
+                .slice_axis_mut(Axis(axis), Slice::from(to_range))
+                .assign(
+                    &from
+                        .to_array_view_unchecked::<T>()
+                        .slice_axis(Axis(axis), Slice::from(from_range)),
+                )
         }
-        let output = output.into_arc_tensor();
-        Ok(output)
+        unsafe fn assign_slice(
+            to: &mut Tensor,
+            to_range: Slice,
+            from: &Tensor,
+            from_range: Slice,
+            axis: usize,
+        ) {
+            dispatch_copy_by_size!(assign_slice_t(from.datum_type())(
+                to, to_range, from, from_range, axis
+            ));
+        }
+        // build output
+        unsafe {
+            let mut output = Tensor::uninitialized_dt(input.datum_type(), &*output_shape)?;
+            if op.delay < input_pulse {
+                let from_input = input_pulse - op.delay;
+                let from_buffer = output_pulse - from_input;
+                assign_slice(
+                    &mut output,
+                    Slice::from(..from_buffer),
+                    &self.buffer,
+                    Slice::from(..from_buffer),
+                    op.axis,
+                );
+                assign_slice(
+                    &mut output,
+                    Slice::from(from_buffer..),
+                    &input,
+                    Slice::from(..from_input),
+                    op.axis,
+                );
+            } else {
+                assign_slice(
+                    &mut output,
+                    Slice::from(..),
+                    &self.buffer,
+                    Slice::from(..output_pulse),
+                    op.axis,
+                );
+            };
+            // maintain buffer
+            if buffered < input_pulse {
+                assign_slice(
+                    &mut self.buffer,
+                    Slice::from(..),
+                    &input,
+                    Slice::from((input_pulse - buffered)..),
+                    op.axis,
+                );
+            } else {
+                let stride = self.buffer.shape().iter().skip(op.axis + 1).product::<usize>()
+                    * input.datum_type().size_of()
+                    * input_pulse;
+                std::slice::from_raw_parts_mut(
+                    self.buffer.as_ptr_mut_unchecked::<u8>(),
+                    self.buffer.len() * input.datum_type().size_of(),
+                )
+                .rotate_left(stride);
+                assign_slice(
+                    &mut self.buffer,
+                    Slice::from((buffered - input_pulse)..),
+                    &input,
+                    Slice::from(..),
+                    op.axis,
+                )
+            }
+            dbg!(&output);
+            dbg!(&self.buffer);
+            let output = output.into_arc_tensor();
+            Ok(output)
+        }
     }
 }
 
@@ -57,7 +115,7 @@ impl OpState for DelayState {
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
-        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, op, input))?))
+        Ok(tvec!(self.eval_t(op, input)?))
     }
 }
 
