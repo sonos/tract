@@ -332,7 +332,7 @@ macro_rules! dispatch_copy_by_size {
             DatumType::F16  => $($path)::*::<i16>($($args),*),
             DatumType::F32  => $($path)::*::<i32>($($args),*),
             DatumType::F64  => $($path)::*::<i64>($($args),*),
-            _ => bail!("{:?} is not Copy", $dt)
+            _ => panic!("{:?} is not Copy", $dt)
         }
     } }
 }

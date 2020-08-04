@@ -71,7 +71,7 @@ impl StatelessOp for Iff {
         unsafe {
             let mut result = Tensor::uninitialized_dt(t.datum_type(), &*shape)?;
             let cond = cond.to_array_view::<bool>()?;
-            dispatch_datum!(Self::eval_t(t.datum_type())(&cond, &mut result, &t, &f));
+            dispatch_datum_by_size!(Self::eval_t(t.datum_type())(&cond, &mut result, &t, &f));
             Ok(tvec!(result.into_arc_tensor()))
         }
     }
