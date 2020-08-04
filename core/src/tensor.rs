@@ -287,23 +287,21 @@ impl Tensor {
     /// Dump the tensor in a human readable form.
     ///
     /// `force_full` will force the tensor to be dump in full even if it is big.
-    pub fn dump_t<D: Datum>(&self, force_full: bool) -> TractResult<String> {
-        use itertools::Itertools;
-        let spec = TypedFact::dt_shape(D::datum_type(), &*self.shape)?;
-        let data = self.to_array_view::<D>()?;
-        let s = if force_full || data.len() <= 12 {
-            format!("{} {}", spec.format_dt_shape(), data.iter().join(", "))
-        } else {
-            format!("{} {}...", spec.format_dt_shape(), data.iter().take(8).join(", "))
-        };
-        Ok(s)
-    }
-
-    /// Dump the tensor in a human readable form.
-    ///
-    /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump(&self, force_full: bool) -> TractResult<String> {
-        dispatch_datum!(Self::dump_t(self.dt)(self, force_full))
+        let spec = TypedFact::dt_shape(self.datum_type(), &*self.shape)?;
+        unsafe fn dump_t<D: Datum>(tensor: &Tensor, n: usize) -> String {
+            use itertools::Itertools;
+            tensor.as_slice_unchecked::<D>()[0..n].iter().join(", ")
+        }
+        unsafe {
+            if force_full || self.len() <= 12 {
+                let data = dispatch_datum!(dump_t(self.datum_type())(self, self.len()));
+                Ok(format!("{} {}", spec.format_dt_shape(), data))
+            } else {
+                let data = dispatch_datum!(dump_t(self.datum_type())(self, 12));
+                Ok(format!("{} {}...", spec.format_dt_shape(), data))
+            }
+        }
     }
 
     /// Compare two tensors, allowing for rounding errors.
@@ -596,13 +594,16 @@ impl Tensor {
     }
 
     /// Strict equality test on tensors.
-    fn eq_t<D: Datum>(&self, other: &Tensor) -> TractResult<bool> {
-        Ok(self.to_array_view::<D>()? == other.to_array_view::<D>()?)
-    }
-
-    /// Strict equality test on tensors.
     fn eq_dt(&self, other: &Tensor) -> TractResult<bool> {
-        dispatch_datum!(Self::eq_t(self.dt)(self, other))
+        unsafe fn eq_t<D: Datum>(me: &Tensor, other: &Tensor) -> bool {
+            me.as_slice_unchecked::<D>() == other.as_slice_unchecked::<D>()
+        }
+
+        unsafe {
+            Ok(self.datum_type() == other.datum_type()
+                && self.shape() == other.shape()
+                && dispatch_datum!(eq_t(self.dt)(self, other)))
+        }
     }
 
     fn from_copy_datum<D: ::ndarray::Dimension, T: Datum>(it: Array<T, D>) -> Tensor {
