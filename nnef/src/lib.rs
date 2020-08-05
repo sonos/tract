@@ -1,7 +1,5 @@
 pub mod ast;
-pub mod dump;
 pub mod model;
-pub mod parser;
 pub mod primitives;
 pub mod tensors;
 
@@ -40,7 +38,7 @@ pub fn open_model<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
         bail!("Model expected as a tar.gz archive of a directory containing a file called `graph.nnef'")
     };
     let text = text.ok_or_else(|| format!("Model must contain graph.nnef at top level"))?;
-    let doc = parser::parse_document(&text)?;
+    let doc = ast::parse::parse_document(&text)?;
     Ok(ProtoModel { doc, tensors })
 }
 
