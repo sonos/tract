@@ -1,3 +1,6 @@
+pub mod dump;
+pub mod parse;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Document {
     pub version: NumericLiteral,
