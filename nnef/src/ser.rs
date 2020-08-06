@@ -23,7 +23,7 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
         let right = RValue::Invocation(Invocation {
             id: "external".into(),
             generic_type_name: Some(TypeName::Scalar),
-            arguments: vec![Argument { id: Some("shape".into()), rvalue: shape(input_shape) }],
+            arguments: vec![Argument { id: Some("shape".into()), rvalue: int_array(input_shape) }],
         });
         into_ast.assignment(left.clone(), right.into());
         into_ast.mapping.insert(*input, RValue::Identifier(left).into());
@@ -111,7 +111,7 @@ impl<'a> IntoAst<'a> {
 
     pub fn konst(&mut self, name: impl Into<String>, tensor: &Arc<Tensor>) -> Arc<RValue> {
         if tensor.is_uniform().unwrap() {
-            RValue::Literal(Literal::Numeric(tensor.cast_to_scalar::<f32>().unwrap().to_string()))
+            RValue::Literal(Literal::Numeric(format!("{:?}", tensor.cast_to_scalar::<f32>().unwrap())))
                 .into()
         } else {
             let name = name.into();
@@ -124,7 +124,7 @@ impl<'a> IntoAst<'a> {
                     generic_type_name: Some(TypeName::Scalar),
                     arguments: vec![
                         named_arg("label", string(&name)),
-                        named_arg("shape", shape(tensor.shape())),
+                        named_arg("shape", int_array(tensor.shape())),
                     ],
                 })
                 .into(),
@@ -141,7 +141,7 @@ impl<'a> IntoAst<'a> {
     }
 }
 
-pub fn shape(shape: &[usize]) -> RValue {
+pub fn int_array(shape: &[usize]) -> RValue {
     RValue::Array(shape.iter().map(|s| RValue::Literal(Literal::Numeric(s.to_string()))).collect())
 }
 
@@ -155,6 +155,10 @@ pub fn lident(s: impl Into<String>) -> LValue {
 
 pub fn ident(s: impl Into<String>) -> RValue {
     RValue::Identifier(s.into())
+}
+
+pub fn array(items: impl AsRef<[RValue]>) -> RValue {
+    RValue::Array(items.as_ref().iter().cloned().collect())
 }
 
 pub fn numeric<D: std::fmt::Display>(num: D) -> RValue {

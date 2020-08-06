@@ -22,35 +22,54 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
     registry
 }
 
-fn conv_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: usize) -> String {
+fn conv_fragment<'a>(
+    ast: &'a mut IntoAst,
+    data_format: DataFormat,
+    kernel_fmt: ops::cnn::KernelFormat,
+    geo_rank: usize,
+) -> String {
     use tract_core::ops::nn::DataFormat::*;
-    if data_format == DataFormat::NHWC {
+    if data_format == DataFormat::NHWC && kernel_fmt == ops::cnn::KernelFormat::OIHW {
         return "conv".into();
     }
-    let fragment_name = format!("tract_conv_{:?}_{}D", data_format, geo_rank).to_lowercase();
+    let fragment_name = format!("tract_conv_{:?}_{:?}_{}D", data_format, kernel_fmt, geo_rank).to_lowercase();
     if ast.fragments.contains_key(&fragment_name) {
         return fragment_name;
     }
 
+    let mut body = vec![];
     let mut fragment =
         crate::ast::stdlib().iter().find(|f| f.decl.id == "conv").unwrap().as_ref().clone();
     fragment.decl.id = fragment_name.clone();
-    let mut body = vec![];
+
+    let filter = if kernel_fmt == ops::cnn::KernelFormat::OIHW {
+        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
+        perm[1..].rotate_right(1);
+        ident("filter").into()
+    } else {
+        // ops::cnn::KernelFormat::HWIO
+        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
+        perm.rotate_right(1);
+        perm[1..].rotate_right(1);
+        let oihw = invoke("transpose", &[ident("filter").into()], &[named_arg("axes", int_array(&perm))]);
+        body.push(Assignment { left: LValue::Identifier("oihw".into()), right: oihw.as_ref().clone() });
+        ident("oihw").into()
+    };
 
     let mut wire = RValue::Identifier("input".into()).into();
     if !data_format.has_n() {
-        wire = invoke("unsqueeze", &[wire], &[named_arg("axis", numeric(0))]);
+        wire = invoke("unsqueeze", &[wire], &[named_arg("axes", int_array(&[0]))]);
     }
     if data_format == NHWC || data_format == HWC {
         let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
         perm[1..].rotate_right(1);
-        wire = invoke("transpose", &[wire], &[named_arg("axes", shape(&perm))])
+        wire = invoke("transpose", &[wire], &[named_arg("axes", int_array(&perm))])
     }
 
     body.push(Assignment { left: LValue::Identifier("nchw".into()), right: wire.as_ref().clone() });
     wire = invoke(
         "conv",
-        &[ident("nchw").into(), ident("filter").into()],
+        &[ident("nchw").into(), filter],
         &fragment
             .decl
             .parameters
@@ -65,10 +84,10 @@ fn conv_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: us
     if data_format == NHWC || data_format == HWC {
         let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
         perm[1..].rotate_left(1);
-        wire = invoke("transpose", &[wire], &[named_arg("axes", shape(&perm))])
+        wire = invoke("transpose", &[wire], &[named_arg("axes", int_array(&perm))])
     }
     if !data_format.has_n() {
-        wire = invoke("squeeze", &[wire], &[named_arg("axis", numeric(0))]);
+        wire = invoke("squeeze", &[wire], &[named_arg("axes", int_array(&[0]))]);
     }
 
     body.push(Assignment { left: lident("output"), right: wire.as_ref().clone() });
@@ -86,7 +105,8 @@ fn conv(
     let mut wire = ast.mapping[&node.inputs[0]].clone();
     let weigths = ast.konst(format!("{}_weigths", node.name), &op.kernel);
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
-    let conv_fragment = conv_fragment(ast, op.pool_spec.data_format, op.pool_spec.rank());
+    let conv_fragment =
+        conv_fragment(ast, op.pool_spec.data_format, op.kernel_fmt, op.pool_spec.rank());
     let padding = match &op.pool_spec.padding {
         PaddingSpec::Explicit(bef, after, _) => RValue::Array(
             bef.iter()
@@ -104,8 +124,8 @@ fn conv(
         &conv_fragment,
         &[wire, weigths],
         &[
-            named_arg("dilation", shape(&op.pool_spec.dilations())),
-            named_arg("stride", shape(&op.pool_spec.strides())),
+            named_arg("dilation", int_array(&op.pool_spec.dilations())),
+            named_arg("stride", int_array(&op.pool_spec.strides())),
             named_arg("border", string("constant")),
             named_arg("groups", numeric(op.group)),
             named_arg("padding", padding),
@@ -126,19 +146,19 @@ fn matmul(
     let c = if op.c_trans {
         invoke(
             "matmul",
-            &[a, b],
+            &[b, a],
             &[
-                named_arg("transposeA", RValue::Literal(Literal::Logical(op.a_trans))),
-                named_arg("transposeB", RValue::Literal(Literal::Logical(op.b_trans))),
+                named_arg("transposeA", RValue::Literal(Literal::Logical(!op.b_trans))),
+                named_arg("transposeB", RValue::Literal(Literal::Logical(!op.a_trans))),
             ],
         )
     } else {
         invoke(
             "matmul",
-            &[b, a],
+            &[a, b],
             &[
-                named_arg("transposeA", RValue::Literal(Literal::Logical(!op.b_trans))),
-                named_arg("transposeB", RValue::Literal(Literal::Logical(!op.a_trans))),
+                named_arg("transposeA", RValue::Literal(Literal::Logical(op.a_trans))),
+                named_arg("transposeB", RValue::Literal(Literal::Logical(op.b_trans))),
             ],
         )
     };
