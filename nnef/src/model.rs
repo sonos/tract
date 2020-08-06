@@ -12,11 +12,7 @@ pub struct Framework {
 impl Framework {
     fn new() -> Framework {
         Framework {
-            stdlib: crate::ast::parse::parse_fragments(include_str!("../stdlib.nnef"))
-                .unwrap()
-                .into_iter()
-                .map(Arc::new)
-                .collect(),
+            stdlib: stdlib(),
             registry: crate::ops::deser::registry(),
         }
     }
