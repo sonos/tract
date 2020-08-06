@@ -59,6 +59,10 @@ impl DataFormat {
         }
         self.shape(me)
     }
+
+    pub fn has_n(&self) -> bool {
+        *self == DataFormat::NHWC || *self == DataFormat::NCHW
+    }
 }
 
 pub type DataShape = BaseDataShape<usize, TVec<usize>>;

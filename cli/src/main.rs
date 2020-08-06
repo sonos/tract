@@ -211,6 +211,12 @@ fn main() {
             .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
             )
         .arg(
+            Arg::with_name("nnef-dir")
+            .takes_value(true)
+            .long("nnef-dir")
+            .help("Dump the network in NNEF format (as a directory)"),
+            )
+        .arg(
             Arg::with_name("assert-output")
             .takes_value(true)
             .long("assert-output")
