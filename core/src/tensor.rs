@@ -422,6 +422,14 @@ impl Tensor {
         &*(self.data as *mut D)
     }
 
+    pub unsafe fn as_bytes(&self) -> &[u8] {
+        std::slice::from_raw_parts(self.data, self.layout.size())
+    }
+
+    pub unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
+        std::slice::from_raw_parts_mut(self.data, self.layout.size())
+    }
+
     fn is_uniform_t<T: Datum>(&self) -> TractResult<bool> {
         let slice = self.as_slice::<T>()?;
         Ok(slice[1..].iter().all(|x| x == &slice[0]))

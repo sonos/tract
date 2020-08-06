@@ -68,5 +68,50 @@ pub fn save_to_dir(model: &TypedModel, path: impl AsRef<std::path::Path>) -> Tra
     std::fs::create_dir_all(path)?;
     let mut graph_nnef = std::fs::File::create(path.join("graph.nnef"))?;
     crate::ast::dump::Dumper::new(&mut graph_nnef).document(&proto_model.doc)?;
+    for (label, t) in &proto_model.tensors {
+        let label = std::path::Path::new(&label);
+        std::fs::create_dir_all(path.join(label).parent().unwrap())?;
+        let filename = path.join(label).with_extension("dat");
+        let mut file = std::fs::File::create(filename)?;
+        crate::tensors::write_tensor(&mut file, t)?;
+    }
+    Ok(())
+}
+
+pub fn save_to_tgz(model: &TypedModel, path: impl AsRef<std::path::Path>) -> TractResult<()> {
+    let path = path.as_ref();
+    if path.exists() {
+        bail!("{:?} already exists. Won't overwrite.", path);
+    }
+    let proto_model = crate::ser::to_proto_model(model)?;
+    let file = std::fs::File::create(path)?;
+    let comp = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    let mut ar = tar::Builder::new(comp);
+    let mut graph_data = vec![];
+    crate::ast::dump::Dumper::new(&mut graph_data).document(&proto_model.doc)?;
+    let now =
+        std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap();
+    let mut header = tar::Header::new_gnu();
+    header.set_path("graph.nnef")?;
+    header.set_size(graph_data.len() as u64);
+    header.set_mode(0o644);
+    header.set_mtime(now.as_secs());
+    header.set_cksum();
+    ar.append(&header, &mut &*graph_data)?;
+
+    for (label, t) in &proto_model.tensors {
+        let filename = std::path::Path::new(label).to_path_buf().with_extension("dat");
+        let mut data = vec![];
+        crate::tensors::write_tensor(&mut data, t)?;
+
+        let mut header = tar::Header::new_gnu();
+        header.set_path(filename)?;
+        header.set_size(data.len() as u64);
+        header.set_mode(0o644);
+        header.set_mtime(now.as_secs());
+        header.set_cksum();
+
+        ar.append(&header, &mut &*data)?;
+    }
     Ok(())
 }

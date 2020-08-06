@@ -63,12 +63,39 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             ),
         };
         let mut tensor = Tensor::uninitialized_dt(dt, &shape)?;
-        let slice = std::slice::from_raw_parts_mut(
-            tensor.as_ptr_mut_unchecked::<u8>(),
-            header.data_size_bytes as usize,
-        );
-        reader.read_exact(slice)?;
+        reader.read_exact(tensor.as_bytes_mut())?;
         Ok(tensor)
+    }
+}
+
+pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResult<()> {
+    unsafe {
+        let mut header: Header = std::mem::zeroed();
+        header.magic = [0x4e, 0xef];
+        header.version_maj = 1;
+        header.version_min = 0;
+        if tensor.rank() > 8 {
+            bail!("Only rank up to 8 are supported");
+        }
+        header.rank = tensor.rank() as u32;
+        for d in 0..tensor.rank() {
+            header.dims[d] = tensor.shape()[d] as u32;
+        }
+        header.data_size_bytes = (tensor.len() * tensor.datum_type().size_of()) as u32;
+        header.bits_per_item = (tensor.datum_type().size_of() * 8) as u32;
+        header.item_type = if tensor.datum_type().is_float() {
+            0
+        } else if tensor.datum_type().is_signed() {
+            0x100
+        } else if tensor.datum_type().is_unsigned() {
+            1
+        } else {
+            bail!("Don't know how to serialize {:?}", tensor.datum_type())
+        };
+        let header_buf: &[u8; 128] = std::mem::transmute(&header);
+        w.write_all(&*header_buf)?;
+        w.write_all(tensor.as_bytes())?;
+        Ok(())
     }
 }
 

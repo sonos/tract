@@ -34,6 +34,14 @@ pub fn handle(
         crate::utils::check_inferred(&*outputs_facts, &*asserts)?;
     }
 
+    if let Some(nnef) = matches.value_of("nnef") {
+        if let Some(typed) = model.downcast_ref::<TypedModel>() {
+            tract_nnef::save_to_tgz(typed, nnef)?
+        } else {
+            bail!("Only typed model can be dumped")
+        }
+    }
+
     if let Some(nnef) = matches.value_of("nnef-dir") {
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
             tract_nnef::save_to_dir(typed, nnef)?
