@@ -49,6 +49,7 @@ pub struct IntoAst<'a> {
     pub results: Vec<String>,
     pub mapping: HashMap<OutletId, Arc<RValue>>,
     pub tensors: HashMap<String, Arc<Tensor>>,
+    pub fragments: HashMap<String, FragmentDef>,
     pub body: Vec<Assignment>,
     pub registry: HashMap<TypeId, crate::ops::ser::OpDumper>,
 }
@@ -62,18 +63,19 @@ impl<'a> IntoAst<'a> {
             results: vec![],
             mapping: Default::default(),
             tensors: Default::default(),
+            fragments: Default::default(),
             body: vec![],
             registry: crate::ops::ser::registry(),
         }
     }
 
     fn into_proto_model(self) -> TractResult<ProtoModel> {
-        let IntoAst { prefix, body, tensors, parameters, results, .. } = self;
+        let IntoAst { prefix, fragments, body, tensors, parameters, results, .. } = self;
         let id = prefix.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_");
         let doc = Document {
             version: "1.0".into(),
             extension: vec![],
-            fragments: vec![],
+            fragments: fragments.into_iter().map(|(_,v)| v).collect(),
             graph_def: GraphDef { id, parameters, results, body },
         };
         Ok(ProtoModel { doc, tensors })
@@ -145,6 +147,14 @@ pub fn shape(shape: &[usize]) -> RValue {
 
 pub fn string(s: impl Into<String>) -> RValue {
     RValue::Literal(Literal::String(s.into()))
+}
+
+pub fn lident(s: impl Into<String>) -> LValue {
+    LValue::Identifier(s.into())
+}
+
+pub fn ident(s: impl Into<String>) -> RValue {
+    RValue::Identifier(s.into())
 }
 
 pub fn numeric<D: std::fmt::Display>(num: D) -> RValue {

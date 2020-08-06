@@ -3,6 +3,7 @@ use crate::ser::*;
 use std::any::TypeId;
 use tract_core::internal::*;
 use tract_core::ops;
+use tract_core::ops::nn::DataFormat;
 
 pub type OpDumper = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Arc<RValue>>;
 
@@ -21,24 +22,71 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
     registry
 }
 
+fn conv_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: usize) -> String {
+    use tract_core::ops::nn::DataFormat::*;
+    if data_format == DataFormat::NHWC {
+        return "conv".into();
+    }
+    let fragment_name = format!("tract_conv_{:?}_{}D", data_format, geo_rank).to_lowercase();
+    if ast.fragments.contains_key(&fragment_name) {
+        return fragment_name;
+    }
+
+    let mut fragment =
+        crate::ast::stdlib().iter().find(|f| f.decl.id == "conv").unwrap().as_ref().clone();
+    fragment.decl.id = fragment_name.clone();
+    let mut body = vec![];
+
+    let mut wire = RValue::Identifier("input".into()).into();
+    if !data_format.has_n() {
+        wire = invoke("unsqueeze", &[wire], &[named_arg("axis", numeric(0))]);
+    }
+    if data_format == NHWC || data_format == HWC {
+        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
+        perm[1..].rotate_right(1);
+        wire = invoke("transpose", &[wire], &[named_arg("axes", shape(&perm))])
+    }
+
+    body.push(Assignment { left: LValue::Identifier("nchw".into()), right: wire.as_ref().clone() });
+    wire = invoke(
+        "conv",
+        &[ident("nchw").into(), ident("filter").into()],
+        &fragment
+            .decl
+            .parameters
+            .iter()
+            .skip(2)
+            .map(|f| named_arg(&f.id, ident(&f.id)))
+            .collect::<Vec<_>>(),
+    );
+    body.push(Assignment { left: lident("conv"), right: wire.as_ref().clone() });
+
+    let mut wire = ident("conv").into();
+    if data_format == NHWC || data_format == HWC {
+        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
+        perm[1..].rotate_left(1);
+        wire = invoke("transpose", &[wire], &[named_arg("axes", shape(&perm))])
+    }
+    if !data_format.has_n() {
+        wire = invoke("squeeze", &[wire], &[named_arg("axis", numeric(0))]);
+    }
+
+    body.push(Assignment { left: lident("output"), right: wire.as_ref().clone() });
+    fragment.body = Some(body);
+    ast.fragments.insert(fragment_name.clone(), fragment);
+    fragment_name
+}
+
 fn conv(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::cnn::conv::ConvUnary,
 ) -> TractResult<Arc<RValue>> {
     use tract_core::ops::cnn::PaddingSpec;
-    use tract_core::ops::nn::DataFormat::*;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
-    if !op.pool_spec.data_format.has_n() {
-        wire = invoke("unsqueeze", &[wire], &[named_arg("axis", numeric(0))]);
-    }
-    if op.pool_spec.data_format == NHWC || op.pool_spec.data_format == HWC {
-        let mut perm: TVec<usize> = (0..op.pool_spec.rank() + 2).collect();
-        perm[1..].rotate_right(1);
-        wire = invoke("transpose", &[wire], &[named_arg("axes", shape(&perm))])
-    }
     let weigths = ast.konst(format!("{}_weigths", node.name), &op.kernel);
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
+    let conv_fragment = conv_fragment(ast, op.pool_spec.data_format, op.pool_spec.rank());
     let padding = match &op.pool_spec.padding {
         PaddingSpec::Explicit(bef, after, _) => RValue::Array(
             bef.iter()
@@ -53,7 +101,7 @@ fn conv(
         ),
     };
     wire = invoke(
-        "conv",
+        &conv_fragment,
         &[wire, weigths],
         &[
             named_arg("dilation", shape(&op.pool_spec.dilations())),
@@ -64,14 +112,6 @@ fn conv(
         ],
     );
     wire = ast.force_assign(format!("{}_output", node.name), &wire);
-    if op.pool_spec.data_format == NHWC || op.pool_spec.data_format == HWC {
-        let mut perm: TVec<usize> = (0..op.pool_spec.rank() + 2).collect();
-        perm[1..].rotate_left(1);
-        wire = invoke("transpose", &[wire], &[named_arg("axes", shape(&perm))])
-    }
-    if !op.pool_spec.data_format.has_n() {
-        wire = invoke("squeeze", &[wire], &[named_arg("axis", numeric(0))]);
-    }
     wire = ast.force_assign(&node.name, &wire);
     Ok(wire)
 }
