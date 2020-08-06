@@ -1,5 +1,4 @@
 use tract_core::internal::*;
-use tract_core::ops;
 
 use crate::ast::*;
 use crate::model::ProtoModel;
@@ -7,9 +6,18 @@ use crate::model::ProtoModel;
 use std::any::TypeId;
 
 pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
-    let mut into_ast = IntoAst::new(model);
+    let names = model
+        .nodes()
+        .iter()
+        .filter(|n| !model.input_outlets().unwrap().contains(&n.id.into()))
+        .map(|n| &n.name)
+        .collect::<Vec<_>>();
+    let prefix:String = names[1..].iter().fold(names[0].to_string(), |prefix, name| {
+        (prefix.chars()).zip(name.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect()
+    });
+    let mut into_ast = IntoAst::new(model, prefix.to_string());
     for input in model.input_outlets()? {
-        let left = model.node(input.node).name.to_owned();
+        let left = into_ast.scoped_id(&model.node(input.node).name);
         into_ast.parameters.push(left.clone());
         let input_shape = model.outlet_fact(*input)?.shape.as_finite().ok_or("No dim (yet)")?;
         let right = RValue::Invocation(Invocation {
@@ -27,7 +35,7 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
         into_ast.node(model.node(node))?;
     }
     for o in model.output_outlets()? {
-        let name = model.node(o.node).name.to_owned();
+        let name = into_ast.scoped_id(&model.node(o.node).name);
         into_ast.assignment(&name, into_ast.mapping[&o].clone());
         into_ast.results.push(name);
     }
@@ -35,6 +43,7 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
 }
 
 pub struct IntoAst<'a> {
+    pub prefix: String,
     pub model: &'a TypedModel,
     pub parameters: Vec<String>,
     pub results: Vec<String>,
@@ -45,8 +54,9 @@ pub struct IntoAst<'a> {
 }
 
 impl<'a> IntoAst<'a> {
-    fn new(model: &'a TypedModel) -> IntoAst {
+    fn new(model: &'a TypedModel, prefix: String) -> IntoAst {
         IntoAst {
+            prefix,
             model,
             parameters: vec![],
             results: vec![],
@@ -58,12 +68,13 @@ impl<'a> IntoAst<'a> {
     }
 
     fn into_proto_model(self) -> TractResult<ProtoModel> {
-        let IntoAst { body, tensors, parameters, results, .. } = self;
+        let IntoAst { prefix, body, tensors, parameters, results, .. } = self;
+        let id = prefix.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_");
         let doc = Document {
             version: "1.0".into(),
             extension: vec![],
             fragments: vec![],
-            graph_def: GraphDef { id: "network".into(), parameters, results, body },
+            graph_def: GraphDef { id, parameters, results, body },
         };
         Ok(ProtoModel { doc, tensors })
     }
@@ -74,35 +85,23 @@ impl<'a> IntoAst<'a> {
             .get(&node.op().type_id())
             .ok_or_else(|| format!("No serializer registered for {:?}", node.op()))?;
         let outputs = dumper(self, node)?;
-        /*
-        let outputs = if let Some(op) = node.op().downcast_ref::<ops::cnn::conv::ConvUnary>() {
-        conv(self, &node, op)?
-        } else if let Some(op) = node.op().downcast_ref::<ops::matmul::MatMulUnary>() {
-        self.matmul(&node, op)?
-        } else if let Some(op) = node.op().downcast_ref::<ops::binary::UnaryOp>() {
-        let a = self.konst(format!("{}.a", node.name), &op.a);
-        let b = self.mapping[&node.inputs[0]].clone();
-        if let Some(_) = op.mini_op.downcast_ref::<ops::math::Add>() {
-        invoke("add", &[a, b], &[])
-        } else if let Some(_) = op.mini_op.downcast_ref::<ops::math::Max>() {
-        invoke("max", &[a, b], &[])
-        } else {
-        panic!()
-        }
-        } else {
-        panic!("{:?}", node);
-        };
-        dbg!(&outputs);
-        */
         self.mapping.insert(node.id.into(), outputs.clone());
         Ok(outputs)
+    }
+
+    pub fn scoped_id(&self, name: impl Into<String>) -> String {
+        let mut name = name.into();
+        if name.starts_with(&self.prefix) {
+            name = name.chars().skip(self.prefix.len()).collect()
+        }
+        name.replace("/", "_").replace(".", "_").replace("-", "_").into()
     }
 
     pub fn force_assign(&mut self, name: impl Into<String>, exp: &Arc<RValue>) -> Arc<RValue> {
         if let RValue::Identifier(_) = exp.as_ref() {
             exp.clone()
         } else {
-            let name = name.into();
+            let name = self.scoped_id(name);
             self.assignment(name.clone(), exp.clone());
             RValue::Identifier(name).into()
         }
@@ -115,8 +114,9 @@ impl<'a> IntoAst<'a> {
         } else {
             let name = name.into();
             self.tensors.insert(name.clone(), tensor.clone());
+            let id = self.scoped_id(&name);
             self.assignment(
-                &name,
+                &id,
                 RValue::Invocation(Invocation {
                     id: "variable".to_string(),
                     generic_type_name: Some(TypeName::Scalar),
@@ -127,7 +127,7 @@ impl<'a> IntoAst<'a> {
                 })
                 .into(),
             );
-            RValue::Identifier(name).into()
+            RValue::Identifier(id).into()
         }
     }
 
