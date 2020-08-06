@@ -12,7 +12,7 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
         .filter(|n| !model.input_outlets().unwrap().contains(&n.id.into()))
         .map(|n| &n.name)
         .collect::<Vec<_>>();
-    let prefix:String = names[1..].iter().fold(names[0].to_string(), |prefix, name| {
+    let prefix: String = names[1..].iter().fold(names[0].to_string(), |prefix, name| {
         (prefix.chars()).zip(name.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect()
     });
     let mut into_ast = IntoAst::new(model, prefix.to_string());
@@ -23,7 +23,7 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
         let right = RValue::Invocation(Invocation {
             id: "external".into(),
             generic_type_name: Some(TypeName::Scalar),
-            arguments: vec![Argument { id: Some("shape".into()), rvalue: int_array(input_shape) }],
+            arguments: vec![Argument { id: Some("shape".into()), rvalue: ints(input_shape) }],
         });
         into_ast.assignment(left.clone(), right.into());
         into_ast.mapping.insert(*input, RValue::Identifier(left).into());
@@ -75,7 +75,7 @@ impl<'a> IntoAst<'a> {
         let doc = Document {
             version: "1.0".into(),
             extension: vec![],
-            fragments: fragments.into_iter().map(|(_,v)| v).collect(),
+            fragments: fragments.into_iter().map(|(_, v)| v).collect(),
             graph_def: GraphDef { id, parameters, results, body },
         };
         Ok(ProtoModel { doc, tensors })
@@ -105,14 +105,13 @@ impl<'a> IntoAst<'a> {
         } else {
             let name = self.scoped_id(name);
             self.assignment(name.clone(), exp.clone());
-            RValue::Identifier(name).into()
+            ident(name).into()
         }
     }
 
     pub fn konst(&mut self, name: impl Into<String>, tensor: &Arc<Tensor>) -> Arc<RValue> {
         if tensor.is_uniform().unwrap() {
-            RValue::Literal(Literal::Numeric(format!("{:?}", tensor.cast_to_scalar::<f32>().unwrap())))
-                .into()
+            numeric(tensor.cast_to_scalar::<f32>().unwrap()).into()
         } else {
             let name = name.into();
             self.tensors.insert(name.clone(), tensor.clone());
@@ -124,29 +123,34 @@ impl<'a> IntoAst<'a> {
                     generic_type_name: Some(TypeName::Scalar),
                     arguments: vec![
                         named_arg("label", string(&name)),
-                        named_arg("shape", int_array(tensor.shape())),
+                        named_arg("shape", ints(tensor.shape())),
                     ],
                 })
                 .into(),
             );
-            RValue::Identifier(id).into()
+            ident(id).into()
         }
     }
 
     fn assignment(&mut self, name: impl Into<String>, right: Arc<RValue>) {
-        self.body.push(Assignment {
-            left: LValue::Identifier(name.into()),
-            right: right.as_ref().to_owned(),
-        });
+        self.body.push(assignment(name, right))
     }
 }
 
-pub fn int_array(shape: &[usize]) -> RValue {
+pub fn assignment(name: impl Into<String>, right: Arc<RValue>) -> Assignment {
+    Assignment { left: LValue::Identifier(name.into()), right: right.as_ref().to_owned() }
+}
+
+pub fn ints(shape: &[usize]) -> RValue {
     RValue::Array(shape.iter().map(|s| RValue::Literal(Literal::Numeric(s.to_string()))).collect())
 }
 
 pub fn string(s: impl Into<String>) -> RValue {
     RValue::Literal(Literal::String(s.into()))
+}
+
+pub fn logical(b: bool) -> RValue {
+    RValue::Literal(Literal::Logical(b))
 }
 
 pub fn lident(s: impl Into<String>) -> LValue {
@@ -161,19 +165,23 @@ pub fn array(items: impl AsRef<[RValue]>) -> RValue {
     RValue::Array(items.as_ref().iter().cloned().collect())
 }
 
-pub fn numeric<D: std::fmt::Display>(num: D) -> RValue {
-    RValue::Literal(Literal::Numeric(num.to_string())).into()
+pub fn tuple_2(a: RValue, b: RValue) -> RValue {
+    RValue::Tuple(vec![a, b])
+}
+
+pub fn numeric<D: std::fmt::Debug>(num: D) -> RValue {
+    RValue::Literal(Literal::Numeric(format!("{:?}", num))).into()
 }
 
 pub fn named_arg(id: &str, rv: RValue) -> Argument {
     Argument { id: Some(id.into()), rvalue: rv }
 }
 
-pub fn invoke(id: &str, positional: &[Arc<RValue>], named: &[Argument]) -> Arc<RValue> {
+pub fn invocation(id: &str, positional: &[Arc<RValue>], named: &[(&str, RValue)]) -> Arc<RValue> {
     let arguments = positional
         .iter()
         .map(|rv| Argument { id: None, rvalue: rv.as_ref().clone() })
-        .chain(named.iter().cloned())
+        .chain(named.iter().map(|(n, v)| named_arg(n, v.clone())))
         .collect();
     RValue::Invocation(Invocation { id: id.to_owned(), generic_type_name: None, arguments }).into()
 }
