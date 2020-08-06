@@ -7,13 +7,13 @@ use tract_core::ops;
 
 use crate::model::{AugmentedInvocation, ModelBuilder};
 
-pub type Primitives = HashMap<
+pub type Registry = HashMap<
     String,
     Arc<dyn Fn(&mut ModelBuilder, &AugmentedInvocation) -> TractResult<TVec<OutletId>>>,
 >;
 
-pub fn primitives() -> Primitives {
-    let mut primitives: Primitives = Default::default();
+pub fn registry() -> Registry {
+    let mut primitives: Registry = Default::default();
     primitives.insert("external".to_string(), Arc::new(external));
     primitives.insert("variable".to_string(), Arc::new(variable));
 

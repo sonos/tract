@@ -26,6 +26,10 @@ impl PoolSpec {
         ]
     }
 
+    pub fn rank(&self) -> usize {
+        self.kernel_shape.len()
+    }
+
     pub fn dilation(&self, geo_axis: usize) -> usize {
         self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1)
     }

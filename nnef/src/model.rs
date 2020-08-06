@@ -2,11 +2,11 @@ use crate::ast::*;
 use std::collections::HashMap;
 use tract_core::internal::*;
 
-use crate::primitives::Primitives;
+use crate::ops::deser::Registry;
 
 pub struct Framework {
     stdlib: Vec<Arc<FragmentDef>>,
-    primitives: Primitives,
+    registry: Registry,
 }
 
 impl Framework {
@@ -17,7 +17,7 @@ impl Framework {
                 .into_iter()
                 .map(Arc::new)
                 .collect(),
-            primitives: crate::primitives::primitives(),
+            registry: crate::ops::deser::registry(),
         }
     }
 }
@@ -210,7 +210,7 @@ impl<'mb> ModelBuilder<'mb> {
 
     pub fn wire_invocation(&mut self, invocation: &Invocation) -> TractResult<Value> {
         let augmented_invocation = self.augmented_invocation(invocation)?;
-        if let Some(prim) = self.framework.primitives.get(&invocation.id).cloned() {
+        if let Some(prim) = self.framework.registry.get(&invocation.id).cloned() {
             (prim)(self, &augmented_invocation)
                 .map(|res| Value::Tuple(res.into_iter().map(Value::Wire).collect()))
                 .chain_err(|| format!("Plugging primitive `{}'", invocation.id))
