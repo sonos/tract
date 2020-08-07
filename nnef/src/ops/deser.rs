@@ -1,35 +1,37 @@
 use crate::ast::*;
-use std::collections::HashMap;
 use tract_core::internal::*;
 use tract_core::itertools::izip;
 use tract_core::itertools::Itertools;
 
 use tract_core::ops;
+use crate::ops::*;
 
 use crate::model::{AugmentedInvocation, ModelBuilder};
 
-pub type Registry = HashMap<
-    String,
-    Arc<dyn Fn(&mut ModelBuilder, &AugmentedInvocation) -> TractResult<TVec<OutletId>>>,
->;
+pub fn register(registry: &mut Registry) {
+    let mut stdlib = stdlib();
 
-pub fn registry() -> Registry {
-    let mut primitives: Registry = Default::default();
-    primitives.insert("external".to_string(), Arc::new(external));
-    primitives.insert("variable".to_string(), Arc::new(variable));
+    let mut primitive = |id: &str, func:ToTract| {
+        let pos = stdlib.iter().position(|f| f.decl.id == id).unwrap();
+        let decl = stdlib.remove(pos).decl;
+        registry.register_primitive(id, decl, func)
+    };
 
-    primitives.insert("reshape".to_string(), Arc::new(reshape));
-    primitives.insert("transpose".to_string(), Arc::new(transpose));
-    primitives.insert("concat".to_string(), Arc::new(concat));
-    primitives.insert("slice".to_string(), Arc::new(slice));
-    primitives.insert("unsqueeze".to_string(), Arc::new(unsqueeze));
-    primitives.insert("squeeze".to_string(), Arc::new(squeeze));
+    primitive("external", external);
+    primitive("variable", variable);
+
+    primitive("reshape", reshape);
+    primitive("transpose", transpose);
+    primitive("concat", concat);
+    primitive("slice", slice);
+    primitive("unsqueeze", unsqueeze);
+    primitive("squeeze", squeeze);
 
     macro_rules! mew {
         ($nnef: ident, $tract: expr) => {
-            primitives.insert(
-                stringify!($nnef).to_string(),
-                Arc::new(|b, i| multiary_elementwise(b, i, Box::new($tract))),
+            primitive(
+                stringify!($nnef),
+                |b, i| multiary_elementwise(b, i, Box::new($tract)),
             );
         };
     };
@@ -74,21 +76,19 @@ pub fn registry() -> Registry {
     mew!(min, ops::math::min::bin_typed());
     mew!(max, ops::math::max::bin_typed());
 
-    primitives.insert("matmul".to_string(), Arc::new(matmul));
+    primitive("matmul", matmul);
 
-    primitives.insert("conv".to_string(), Arc::new(conv));
+    primitive("conv", conv);
 
-    primitives.insert("sum_reduce".to_string(), Arc::new(reduce));
-    primitives.insert("max_reduce".to_string(), Arc::new(reduce));
-    primitives.insert("min_reduce".to_string(), Arc::new(reduce));
+    primitive("sum_reduce", reduce);
+    primitive("max_reduce", reduce);
+    primitive("min_reduce", reduce);
 
-    primitives.insert("max_pool_with_index".to_string(), Arc::new(max_pool_with_index));
-    primitives.insert("box".to_string(), Arc::new(sum_pool));
+    primitive("max_pool_with_index", max_pool_with_index);
+    primitive("box", sum_pool);
 
     mew!(tanh, ops::math::tanh());
     mew!(sigmoid, ops::nn::sigmoid());
-
-    primitives
 }
 
 // fragment external<? = scalar>( shape: integer[] ) -> ( output: tensor<?> );

@@ -46,3 +46,5 @@ pub fn onnx() -> Onnx {
     ops::register_all_ops(&mut ops);
     Onnx { op_register: ops }
 }
+
+pub use ops::nnef::tract_nnef_onnx_registry;
