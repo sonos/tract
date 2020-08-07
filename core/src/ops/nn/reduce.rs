@@ -103,8 +103,8 @@ where
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct Reduce {
-    axes: TVec<usize>,
-    reducer: Reducer,
+    pub axes: TVec<usize>,
+    pub reducer: Reducer,
 }
 
 tract_linalg::impl_dyn_hash!(Reduce);
