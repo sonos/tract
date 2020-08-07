@@ -23,6 +23,7 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
     reg!(ops::binary::MergeOp, binary);
     reg!(ops::change_axes::AxisOp, axis_op);
     reg!(ops::cnn::ConvUnary, conv);
+    reg!(ops::cnn::MaxPool, max_pool);
     reg!(ops::cnn::SumPool, sum_pool);
     reg!(ops::nn::Reduce, reduce);
     reg!(ops::matmul::MatMulUnary, matmul);
@@ -76,7 +77,7 @@ fn conv_fragment<'a>(
     kernel_fmt: ops::cnn::KernelFormat,
     geo_rank: usize,
 ) -> String {
-    if data_format == DataFormat::NHWC && kernel_fmt == ops::cnn::KernelFormat::OIHW {
+    if data_format == DataFormat::NCHW && kernel_fmt == ops::cnn::KernelFormat::OIHW {
         return "conv".into();
     }
     let fragment_name =
@@ -169,9 +170,14 @@ fn conv(
     Ok(wire)
 }
 
-fn sum_pool_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: usize) -> String {
-    if data_format == DataFormat::NHWC {
-        return "sum_pool".into();
+fn cnn_pool_fragment<'a>(
+    ast: &'a mut IntoAst,
+    data_format: DataFormat,
+    geo_rank: usize,
+    op_name: &str,
+) -> String {
+    if data_format == DataFormat::NCHW {
+        return op_name.into();
     }
     let fragment_name = format!("tract_sum_pool_{:?}_{}D", data_format, geo_rank).to_lowercase();
     if ast.fragments.contains_key(&fragment_name) {
@@ -180,7 +186,7 @@ fn sum_pool_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank
 
     let mut body = vec![];
     let mut fragment =
-        crate::ast::stdlib().iter().find(|f| f.decl.id == "sum_pool").unwrap().as_ref().clone();
+        crate::ast::stdlib().iter().find(|f| f.decl.id == op_name).unwrap().as_ref().clone();
     fragment.decl.id = fragment_name.clone();
 
     let mut wire = ident("input").into();
@@ -188,7 +194,7 @@ fn sum_pool_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank
 
     body.push(assignment("nchw", wire));
     wire = invocation(
-        "box",
+        op_name,
         &[ident("nchw").into()],
         &*fragment
             .decl
@@ -208,16 +214,18 @@ fn sum_pool_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank
     fragment_name
 }
 
-fn sum_pool(
+fn cnn_pool(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &ops::cnn::SumPool,
+    op_name: &str,
+    pool_spec: &tract_core::ops::cnn::PoolSpec,
+    normalize_arg: Option<(&'static str, RValue)>,
 ) -> TractResult<Arc<RValue>> {
     use tract_core::ops::cnn::PaddingSpec;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
-    let conv_fragment = sum_pool_fragment(ast, op.pool_spec.data_format, op.pool_spec.rank());
-    let padding = match &op.pool_spec.padding {
+    let conv_fragment = cnn_pool_fragment(ast, pool_spec.data_format, pool_spec.rank(), op_name);
+    let padding = match &pool_spec.padding {
         PaddingSpec::Explicit(bef, after, _) => array(
             &bef.iter()
                 .zip(after.iter())
@@ -227,26 +235,45 @@ fn sum_pool(
         PaddingSpec::SameUpper => array(&[]),
         PaddingSpec::SameLower => bail!("Unsupported padding scheme"),
         PaddingSpec::Valid => array(
-            (0..op.pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
+            (0..pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
         ),
     };
     let mut size = tvec!(1, 1);
-    size.extend(op.pool_spec.kernel_shape.iter().cloned());
-    wire = invocation(
-        &conv_fragment,
-        &[wire],
-        &[
-            ("size", ints(&size)),
-            ("dilation", ints(&op.pool_spec.dilations())),
-            ("stride", ints(&op.pool_spec.strides())),
-            ("border", string("constant")),
-            ("padding", padding),
-            ("normalize", logical(op.normalize)),
-        ],
+    size.extend(pool_spec.kernel_shape.iter().cloned());
+    let mut strides = tvec!(1, 1);
+    strides.extend(pool_spec.strides().iter().cloned());
+    let mut dilations = tvec!(1, 1);
+    dilations.extend(pool_spec.dilations().iter().cloned());
+    let mut params = tvec!(
+        ("size", ints(&size)),
+        ("dilation", ints(&dilations)),
+        ("stride", ints(&strides)),
+        ("border", string("ignore")),
+        ("padding", padding),
     );
+    if let Some(normalize_arg) = normalize_arg {
+        params.push(normalize_arg);
+    };
+    wire = invocation(&conv_fragment, &[wire], &params);
     wire = ast.force_assign(format!("{}_output", node.name), &wire);
     wire = ast.force_assign(&node.name, &wire);
     Ok(wire)
+}
+
+fn max_pool(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::cnn::MaxPool,
+) -> TractResult<Arc<RValue>> {
+    cnn_pool(ast, node, "max_pool", &op.pool_spec, None)
+}
+
+fn sum_pool(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::cnn::SumPool,
+) -> TractResult<Arc<RValue>> {
+    cnn_pool(ast, node, "box", &op.pool_spec, Some(("normalize", logical(op.normalize))))
 }
 
 fn axis_op(

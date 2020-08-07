@@ -97,7 +97,13 @@ fn external(
     invocation: &AugmentedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let type_name = invocation.invocation.generic_type_name.unwrap_or(TypeName::Scalar);
-    let dt = if type_name == TypeName::Scalar { f32::datum_type() } else { todo!() };
+    let dt = if type_name == TypeName::Scalar {
+        f32::datum_type()
+    } else if type_name == TypeName::Logical {
+        bool::datum_type()
+    } else {
+        todo!()
+    };
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     Ok(tvec!(builder.model.add_source("", TypedFact::dt_shape(dt, &*shape)?)?))
 }

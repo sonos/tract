@@ -425,7 +425,7 @@ impl<D: CoerceFrom<Value>> CoerceFrom<Value> for TVec<D> {
         match from {
             Value::Array(vec) => vec.iter().map(|item| D::coerce(builder, item)).collect(),
             Value::Tuple(vec) => vec.iter().map(|item| D::coerce(builder, item)).collect(),
-            _ => bail!("Can not build an array from {:?}", from),
+            any => Ok(tvec!(D::coerce(builder, any)?)),
         }
     }
 }
