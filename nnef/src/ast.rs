@@ -1,16 +1,6 @@
 pub mod dump;
 pub mod parse;
 
-use std::sync::Arc;
-
-pub fn stdlib() -> Vec<Arc<FragmentDef>> {
-    parse::parse_fragments(include_str!("../stdlib.nnef"))
-        .unwrap()
-        .into_iter()
-        .map(Arc::new)
-        .collect()
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Document {
     pub version: NumericLiteral,

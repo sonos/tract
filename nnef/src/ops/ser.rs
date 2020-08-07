@@ -108,8 +108,7 @@ fn conv_fragment<'a>(
     }
 
     let mut body = vec![];
-    let mut fragment =
-        crate::ast::stdlib().iter().find(|f| f.decl.id == "conv").unwrap().as_ref().clone();
+    let mut fragment = crate::ops::stdlib().iter().find(|f| f.decl.id == "conv").unwrap().clone();
     fragment.decl.id = fragment_name.clone();
 
     let filter = if kernel_fmt == ops::cnn::KernelFormat::OIHW {
@@ -205,8 +204,7 @@ fn cnn_pool_fragment<'a>(
     }
 
     let mut body = vec![];
-    let mut fragment =
-        crate::ast::stdlib().iter().find(|f| f.decl.id == op_name).unwrap().as_ref().clone();
+    let mut fragment = crate::ops::stdlib().iter().find(|f| f.decl.id == op_name).unwrap().clone();
     fragment.decl.id = fragment_name.clone();
 
     let mut wire = ident("input").into();

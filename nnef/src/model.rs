@@ -2,44 +2,35 @@ use crate::ast::*;
 use std::collections::HashMap;
 use tract_core::internal::*;
 
-use crate::ops::deser::Registry;
+use crate::ops::*;
 
 pub struct Framework {
-    stdlib: Vec<Arc<FragmentDef>>,
-    registry: Registry,
+    registries: Vec<Registry>,
 }
 
 impl Framework {
-    fn new() -> Framework {
-        Framework {
-            stdlib: stdlib(),
-            registry: crate::ops::deser::registry(),
-        }
+    pub fn new() -> Framework {
+        Framework { registries: vec![crate::ops::tract_nnef()] }
     }
-}
 
-#[derive(Clone, Debug)]
-pub struct ProtoModel {
-    pub doc: Document,
-    pub tensors: HashMap<String, Arc<Tensor>>,
-}
-
-impl ProtoModel {
-    pub fn into_typed_model(&self) -> Result<TypedModel, (TypedModel, TractError)> {
-        let framework = Framework::new();
+    pub fn translate(
+        &self,
+        proto_model: &ProtoModel,
+    ) -> Result<TypedModel, (TypedModel, TractError)> {
         let mut builder = ModelBuilder {
-            framework,
-            fragments: self.doc.fragments.iter().map(|f| Arc::new(f.clone())).collect(),
+            framework: &self,
             model: TypedModel::default(),
             naming_scopes: vec![],
             scopes: vec![],
-            proto_model: &self,
+            proto_model,
         };
         builder.scopes.push(HashMap::new());
-        builder.naming_scopes.push(self.doc.graph_def.id.to_string());
-        builder.wire_body(&self.doc.graph_def.body).map_err(|e| (builder.model.clone(), e))?;
+        builder.naming_scopes.push(proto_model.doc.graph_def.id.to_string());
+        builder
+            .wire_body(&proto_model.doc.graph_def.body)
+            .map_err(|e| (builder.model.clone(), e))?;
         let vars = builder.scopes.pop().unwrap();
-        let outputs = self
+        let outputs = proto_model
             .doc
             .graph_def
             .results
@@ -50,6 +41,12 @@ impl ProtoModel {
         builder.model.set_output_outlets(&outputs).map_err(|e| (builder.model.clone(), e))?;
         Ok(builder.model)
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct ProtoModel {
+    pub doc: Document,
+    pub tensors: HashMap<String, Arc<Tensor>>,
 }
 
 #[derive(Clone, Debug)]
@@ -74,8 +71,7 @@ impl Value {
 }
 
 pub struct ModelBuilder<'a> {
-    pub framework: Framework,
-    pub fragments: Vec<Arc<FragmentDef>>,
+    pub framework: &'a Framework,
     pub model: TypedModel,
     pub naming_scopes: Vec<String>,
     pub scopes: Vec<HashMap<String, Value>>,
@@ -98,27 +94,43 @@ impl<'a> ModelBuilder<'a> {
                 let outputs = stateless.eval(inputs)?;
                 let mut outlets = tvec!();
                 for (ix, o) in outputs.into_iter().enumerate() {
-                    outlets.push(self.model.wire_node(
-                        format!("{}.{}-{}", self.naming_scopes.join("."), op.as_op().name(), ix),
-                        tract_core::ops::konst::Const::new(o),
-                        &[],
-                    )?[0]);
+                    outlets.push(
+                        self.model.wire_node(
+                            format!(
+                                "{}.{}-{}",
+                                self.naming_scopes.join("."),
+                                op.as_op().name(),
+                                ix
+                            ),
+                            tract_core::ops::konst::Const::new(o),
+                            &[],
+                        )?[0],
+                    );
                 }
                 return Ok(outlets);
             }
         }
-        self.model.wire_node(
-            format!("{}.{}", self.naming_scopes.join("."), op.as_op().name()),
-            op,
-            inputs,
-        ).chain_err(|| format!("inputs are {:?}", inputs))
+        self.model
+            .wire_node(
+                format!("{}.{}", self.naming_scopes.join("."), op.as_op().name()),
+                op,
+                inputs,
+            )
+            .chain_err(|| format!("inputs are {:?}", inputs))
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+pub enum ResolvedOp<'a> {
+    Fragment(&'a [Assignment]),
+    Primitive(&'a ToTract),
+}
+
+#[derive(Clone)]
 pub struct AugmentedInvocation<'a> {
     pub invocation: &'a Invocation,
-    pub fragment: Arc<FragmentDef>,
+    pub decl: &'a FragmentDecl,
+    pub builder: ResolvedOp<'a>,
 }
 
 impl<'a> AugmentedInvocation<'a> {
@@ -146,7 +158,7 @@ impl<'a> AugmentedInvocation<'a> {
         }
         // then use fragment prototype:
         if let Some((ix, param)) =
-            self.fragment.decl.parameters.iter().enumerate().find(|(_ix, param)| param.id == name)
+            self.decl.parameters.iter().enumerate().find(|(_ix, param)| param.id == name)
         {
             // check that all previous (and our) arguments are positional (todo:
             // valid args when building augmented_invocation)
@@ -167,16 +179,29 @@ impl<'mb> ModelBuilder<'mb> {
     fn augmented_invocation<'a>(
         &self,
         invocation: &'a Invocation,
-    ) -> TractResult<AugmentedInvocation<'a>> {
-        let fragment = self
-            .framework
-            .stdlib
-            .iter()
-            .find(|f| f.decl.id == invocation.id)
-            .cloned()
-            .or_else(|| self.fragments.iter().find(|f| f.decl.id == invocation.id).cloned())
-            .ok_or_else(|| format!("No fragment definition found for `{}'", invocation.id))?;
-        Ok(AugmentedInvocation { invocation, fragment })
+    ) -> TractResult<AugmentedInvocation<'a>>
+    where
+        'mb: 'a,
+    {
+        if let Some(fragment) =
+            self.proto_model.doc.fragments.iter().find(|f| f.decl.id == invocation.id)
+        {
+            if let Some(body) = fragment.body.as_ref() {
+                return Ok(AugmentedInvocation {
+                    invocation,
+                    decl: &fragment.decl,
+                    builder: ResolvedOp::Fragment(body),
+                });
+            } else {
+                bail!("Abstract fragment in doc.");
+            }
+        }
+        for registry in &self.framework.registries {
+            if let Some((decl, builder)) = registry.lookup_nnef(&invocation.id) {
+                return Ok(AugmentedInvocation { invocation, decl, builder });
+            }
+        }
+        bail!("Unresolved invocation id");
     }
 
     pub fn wire_body(&mut self, body: &[Assignment]) -> TractResult<()> {
@@ -206,38 +231,33 @@ impl<'mb> ModelBuilder<'mb> {
 
     pub fn wire_invocation(&mut self, invocation: &Invocation) -> TractResult<Value> {
         let augmented_invocation = self.augmented_invocation(invocation)?;
-        if let Some(prim) = self.framework.registry.get(&invocation.id).cloned() {
-            (prim)(self, &augmented_invocation)
+        match augmented_invocation.builder {
+            ResolvedOp::Fragment(body) => self
+                .wire_fragment_invocation(&augmented_invocation, body)
+                .chain_err(|| format!("Expanding fragment `{}'", invocation.id)),
+            ResolvedOp::Primitive(prim) => (prim)(self, &augmented_invocation)
                 .map(|res| Value::Tuple(res.into_iter().map(Value::Wire).collect()))
-                .chain_err(|| format!("Plugging primitive `{}'", invocation.id))
-        } else if augmented_invocation.fragment.body.is_some() {
-            self.wire_fragment_invocation(&augmented_invocation)
-                .chain_err(|| format!("Expanding fragment `{}'", invocation.id))
-        } else {
-            bail!(
-                "fragment for `{}' is declarative, not defining. Maybe a missing primitive ?",
-                invocation.id
-            )
+                .chain_err(|| format!("Expanding fragment `{}'", invocation.id)),
         }
     }
 
     pub fn wire_fragment_invocation(
         &mut self,
         invocation: &AugmentedInvocation,
+        body: &[Assignment],
     ) -> TractResult<Value> {
         let mut inner_scope = HashMap::new();
-        for par in invocation.fragment.decl.parameters.iter() {
+        for par in invocation.decl.parameters.iter() {
             inner_scope
                 .insert(par.id.to_string(), invocation.named_arg_as::<Value>(self, &par.id)?);
         }
         self.scopes.push(inner_scope);
         self.naming_scopes.push(invocation.invocation.id.to_string());
-        self.wire_body(&invocation.fragment.body.as_ref().unwrap())?;
+        self.wire_body(&body)?;
         self.naming_scopes.pop();
         let inner_scope = self.scopes.pop().unwrap();
         Ok(Value::Tuple(
             invocation
-                .fragment
                 .decl
                 .results
                 .iter()
