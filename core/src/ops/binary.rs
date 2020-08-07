@@ -87,10 +87,9 @@ impl Op for TypedBinOp {
         self.0.validation()
     }
 
-    canonic!();
     op_core_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
+    not_a_pulsed_op!();
 }
 
 impl StatelessOp for TypedBinOp {
@@ -118,42 +117,6 @@ impl TypedOp for TypedBinOp {
         )?))
     }
 
-    fn change_axes(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        _io: InOut,
-        change: &AxisOp,
-    ) -> TractResult<Option<AxisChangeConsequence>> {
-        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
-    }
-
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let a = model.outlet_fact(node.inputs[0])?;
-        let b = model.outlet_fact(node.inputs[1])?;
-        assert!(a.rank() == b.rank());
-        let rank = a.rank();
-        Ok((0..rank)
-            .into_iter()
-            .map(|axis| AxisInfo {
-                inputs: tvec!(Some(axis), Some(axis)),
-                outputs: tvec!(Some(axis)),
-                period: 1,
-                disposable: true,
-            })
-            .collect())
-    }
-
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = self.output_facts(inputs)?[0].shape.iter().maybe_product()?;
-        Ok(self
-            .0
-            .cost_per_element(inputs[0].datum_type)
-            .into_iter()
-            .map(|(c, n)| (c, count.clone() * n))
-            .collect())
-    }
-
     fn declutter(
         &self,
         model: &TypedModel,
@@ -171,10 +134,6 @@ impl TypedOp for TypedBinOp {
             }
         }
         if let Some(a) = inputs[0].konst.clone() {
-            let mut a = a.clone().into_tensor();
-            while a.rank() < inputs[1].shape.rank() {
-                a.insert_axis(0)?;
-            }
             let op = UnaryOp::new(self.0.clone(), a.into_arc_tensor());
             return Ok(Some(TypedModelPatch::replace_single_op(
                 &model,
@@ -184,10 +143,6 @@ impl TypedOp for TypedBinOp {
             )?));
         }
         if let Some(b) = inputs[1].konst.clone() {
-            let mut b = b.clone().into_tensor();
-            while b.rank() < inputs[0].shape.rank() {
-                b.insert_axis(0)?;
-            }
             let b = b.into_arc_tensor();
             if let Some(op) = self.0.unary_with_b_const(&b) {
                 return Ok(Some(TypedModelPatch::replace_single_op(
@@ -198,38 +153,11 @@ impl TypedOp for TypedBinOp {
                 )?));
             }
         }
-        if inputs[0].shape == inputs[1].shape {
-            let op = MergeOp(self.0.clone());
-            return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs, op)?));
-        }
-        Ok(None)
-    }
-
-    fn pulsify(
-        &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        pulsify_bin(node, self, target, mapping)
+        let op = MergeOp(self.0.clone());
+        return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs, op)?));
     }
 
     as_op!();
-}
-
-impl PulsedOp for TypedBinOp {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
-        fact.shape =
-            crate::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape]).unwrap();
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }
 
 fn pulsify_bin(
