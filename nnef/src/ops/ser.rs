@@ -16,6 +16,7 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
             })
         };
     };
+    reg!(ops::array::TypedConcat, concat);
     reg!(ops::array::Slice<TDim>, slice<TDim>);
     reg!(ops::array::Slice<usize>, slice<usize>);
     reg!(ops::element_wise::ElementWiseOp, element_wise);
@@ -28,6 +29,26 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
     reg!(ops::nn::Reduce, reduce);
     reg!(ops::matmul::MatMulUnary, matmul);
     registry
+}
+
+fn concat(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::array::TypedConcat,
+) -> TractResult<Arc<RValue>> {
+    let mut inputs = node.inputs.iter();
+    let wires = op
+        .slices
+        .iter()
+        .enumerate()
+        .map(|(ix, s)| match s {
+            ops::array::ConcatSlice::Var => ast.mapping[inputs.next().unwrap()].as_ref().clone(),
+            ops::array::ConcatSlice::Const(t) => {
+                ast.konst(format!("{}.const-{}", node.name, ix), t).as_ref().clone()
+            }
+        })
+        .collect::<TVec<RValue>>();
+    Ok(invocation("concat", &[array(&wires).into()], &[("axis", numeric(op.axis))]))
 }
 
 fn slice<D: DimLike>(
@@ -104,7 +125,6 @@ fn conv_fragment<'a>(
         body.push(assignment("oihw", oihw));
         ident("oihw").into()
     };
-
     let mut wire = ident("input").into();
     wire = data_into_ncwh(data_format, geo_rank, wire);
 
