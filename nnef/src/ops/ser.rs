@@ -15,12 +15,46 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
                 $path(ast, node, node.op().downcast_ref::<$op>().unwrap())
             })
         };
-    };
-    reg!(ops::cnn::ConvUnary, conv);
-    reg!(ops::matmul::MatMulUnary, matmul);
+    }
+    ;
     reg!(ops::binary::UnaryOp, semi_binary);
     reg!(ops::binary::MergeOp, binary);
+
+    reg!(ops::change_axes::AxisOp, axis_op);
+
+    reg!(ops::cnn::ConvUnary, conv);
+    reg!(ops::cnn::SumPool, sum_pool);
+
+    reg!(ops::nn::Reduce, reduce);
+
+    reg!(ops::matmul::MatMulUnary, matmul);
     registry
+}
+
+fn data_into_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue>) -> Arc<RValue> {
+    use tract_core::ops::nn::DataFormat::*;
+    if !data_format.has_n() {
+        wire = invocation("unsqueeze", &[wire], &[("axes", ints(&[0]))]);
+    }
+    if data_format == NHWC || data_format == HWC {
+        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
+        perm[1..].rotate_right(1);
+        wire = invocation("transpose", &[wire], &[("axes", ints(&perm))])
+    }
+    wire
+}
+
+fn data_from_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue>) -> Arc<RValue> {
+    use tract_core::ops::nn::DataFormat::*;
+    if data_format == NHWC || data_format == HWC {
+        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
+        perm[1..].rotate_left(1);
+        wire = invocation("transpose", &[wire], &[("axes", ints(&perm))])
+    }
+    if !data_format.has_n() {
+        wire = invocation("squeeze", &[wire], &[("axes", ints(&[0]))]);
+    }
+    wire
 }
 
 fn conv_fragment<'a>(
@@ -29,7 +63,6 @@ fn conv_fragment<'a>(
     kernel_fmt: ops::cnn::KernelFormat,
     geo_rank: usize,
 ) -> String {
-    use tract_core::ops::nn::DataFormat::*;
     if data_format == DataFormat::NHWC && kernel_fmt == ops::cnn::KernelFormat::OIHW {
         return "conv".into();
     }
@@ -59,14 +92,7 @@ fn conv_fragment<'a>(
     };
 
     let mut wire = ident("input").into();
-    if !data_format.has_n() {
-        wire = invocation("unsqueeze", &[wire], &[("axes", ints(&[0]))]);
-    }
-    if data_format == NHWC || data_format == HWC {
-        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
-        perm[1..].rotate_right(1);
-        wire = invocation("transpose", &[wire], &[("axes", ints(&perm))])
-    }
+    wire = data_into_ncwh(data_format, geo_rank, wire);
 
     body.push(assignment("nchw", wire));
     wire = invocation(
@@ -82,15 +108,7 @@ fn conv_fragment<'a>(
     );
     body.push(assignment("conv", wire));
 
-    let mut wire = ident("conv").into();
-    if data_format == NHWC || data_format == HWC {
-        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
-        perm[1..].rotate_left(1);
-        wire = invocation("transpose", &[wire], &[("axes", ints(&perm))])
-    }
-    if !data_format.has_n() {
-        wire = invocation("squeeze", &[wire], &[("axes", ints(&[0]))]);
-    }
+    wire = data_from_ncwh(data_format, geo_rank, ident("conv").into());
 
     body.push(assignment("output", wire));
     fragment.body = Some(body);
@@ -136,6 +154,133 @@ fn conv(
     wire = ast.force_assign(format!("{}_output", node.name), &wire);
     wire = ast.force_assign(&node.name, &wire);
     Ok(wire)
+}
+
+fn sum_pool_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: usize) -> String {
+    if data_format == DataFormat::NHWC {
+        return "sum_pool".into();
+    }
+    let fragment_name = format!("tract_sum_pool_{:?}_{}D", data_format, geo_rank).to_lowercase();
+    if ast.fragments.contains_key(&fragment_name) {
+        return fragment_name;
+    }
+
+    let mut body = vec![];
+    let mut fragment =
+        crate::ast::stdlib().iter().find(|f| f.decl.id == "sum_pool").unwrap().as_ref().clone();
+    fragment.decl.id = fragment_name.clone();
+
+    let mut wire = ident("input").into();
+    wire = data_into_ncwh(data_format, geo_rank, wire);
+
+    body.push(assignment("nchw", wire));
+    wire = invocation(
+        "box",
+        &[ident("nchw").into()],
+        &*fragment
+            .decl
+            .parameters
+            .iter()
+            .skip(1)
+            .map(|f| (&*f.id, ident(&f.id)))
+            .collect::<Vec<_>>(),
+    );
+    body.push(assignment("sum_pool", wire));
+
+    wire = data_from_ncwh(data_format, geo_rank, ident("sum_pool").into());
+
+    body.push(assignment("output", wire));
+    fragment.body = Some(body);
+    ast.fragments.insert(fragment_name.clone(), fragment);
+    fragment_name
+}
+
+fn sum_pool(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::cnn::SumPool,
+) -> TractResult<Arc<RValue>> {
+    use tract_core::ops::cnn::PaddingSpec;
+    let mut wire = ast.mapping[&node.inputs[0]].clone();
+    wire = ast.force_assign(format!("{}_input", node.name), &wire);
+    let conv_fragment = sum_pool_fragment(ast, op.pool_spec.data_format, op.pool_spec.rank());
+    let padding = match &op.pool_spec.padding {
+        PaddingSpec::Explicit(bef, after, _) => array(
+            &bef.iter()
+                .zip(after.iter())
+                .map(|(a, b)| tuple_2(numeric(a), numeric(b)))
+                .collect::<Vec<_>>(),
+        ),
+        PaddingSpec::SameUpper => array(&[]),
+        PaddingSpec::SameLower => bail!("Unsupported padding scheme"),
+        PaddingSpec::Valid => array(
+            (0..op.pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
+        ),
+    };
+    let mut size = tvec!(1, 1);
+    size.extend(op.pool_spec.kernel_shape.iter().cloned());
+    wire = invocation(
+        &conv_fragment,
+        &[wire],
+        &[
+            ("size", ints(&size)),
+            ("dilation", ints(&op.pool_spec.dilations())),
+            ("stride", ints(&op.pool_spec.strides())),
+            ("border", string("constant")),
+            ("padding", padding),
+            ("normalize", logical(op.normalize)),
+        ],
+    );
+    wire = ast.force_assign(format!("{}_output", node.name), &wire);
+    wire = ast.force_assign(&node.name, &wire);
+    Ok(wire)
+}
+
+fn axis_op(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::change_axes::AxisOp,
+) -> TractResult<Arc<RValue>> {
+    let wire = ast.mapping[&node.inputs[0]].clone();
+    let invoke = match op {
+        AxisOp::Rm(axis) => invocation("squeeze", &[wire], &[("axes", ints(&[*axis]))]),
+        AxisOp::Add(axis) => invocation("unsqueeze", &[wire], &[("axes", ints(&[*axis]))]),
+        AxisOp::Move(from, to) => {
+            let rank = node.outputs[0].fact.rank();
+            let mut perm: TVec<usize> = (0..rank).collect();
+            if from < to {
+                perm[*from..*to].rotate_left(1);
+            } else {
+                perm[*to..*from].rotate_right(1);
+            }
+            invocation("transpose", &[wire], &[("axes", ints(&*perm))])
+        }
+        AxisOp::Reshape(start, from, to) => invocation(
+            "reshape",
+            &[wire],
+            &[
+                ("shape", ints(&*to.iter().map(|d| d.to_integer().unwrap() as usize).collect::<Vec<_>>())),
+                ("axis_start", numeric(start)),
+                ("axis_count", numeric(from.len())),
+            ],
+        ),
+    };
+    Ok(invoke)
+}
+
+fn reduce(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::nn::Reduce,
+) -> TractResult<Arc<RValue>> {
+    let wire = ast.mapping[&node.inputs[0]].clone();
+    let oper = match op.reducer {
+        ops::nn::Reducer::Sum => "sum_reduce",
+        ops::nn::Reducer::Max => "max_reduce",
+        ops::nn::Reducer::Min => "min_reduce",
+        _ => todo!(),
+    };
+    Ok(invocation(oper, &[wire], &[("axes", ints(&*op.axes))]))
 }
 
 fn matmul(
