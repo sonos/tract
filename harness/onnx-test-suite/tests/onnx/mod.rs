@@ -32,12 +32,20 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     vec
 }
 
+#[derive(PartialEq, Copy, Clone, Debug)]
+pub enum Mode {
+    Plain,
+    Optim,
+    NNEF,
+}
+
 pub fn run_one<P: AsRef<path::Path>>(
     root: P,
     test: &str,
-    optim: bool,
+    mode: Mode,
     more: &'static [&'static str],
 ) {
+    use Mode::*;
     setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
@@ -126,21 +134,37 @@ pub fn run_one<P: AsRef<path::Path>>(
             model.analyse(false).unwrap();
             info!("Incorporate");
             let model = model.incorporate().unwrap();
-            info!("Test model (optim: {:?}) {:#?}", optim, path);
-            if optim {
-                info!("Check full inference");
-                if model.missing_type_shape().unwrap().len() != 0 {
-                    panic!("Incomplete inference {:?}", model.missing_type_shape());
+            info!("Test model (mode: {:?}) {:#?}", mode, path);
+            match mode {
+                Optim => {
+                    info!("Check full inference");
+                    if model.missing_type_shape().unwrap().len() != 0 {
+                        panic!("Incomplete inference {:?}", model.missing_type_shape());
+                    }
+                    info!("Into type");
+                    let model = model.into_typed().unwrap();
+                    let optimized = model.declutter().unwrap().optimize().unwrap();
+                    trace!("Run optimized model:\n{:#?}", optimized);
+                    run_model(optimized, inputs, &data_path)
                 }
-                info!("Into type");
-                let model = model.into_typed().unwrap();
-                let optimized = model.declutter().unwrap().optimize().unwrap();
-                trace!("Run optimized model:\n{:#?}", optimized);
-                run_model(optimized, inputs, &data_path)
-            } else {
-                trace!("Run analysed model:\n{:#?}", model);
-                run_model(model, inputs, &data_path)
-            };
+                Plain => {
+                    trace!("Run analysed model:\n{:#?}", model);
+                    run_model(model, inputs, &data_path)
+                }
+                NNEF => {
+                    let model = model.into_typed().unwrap();
+                    info!("Declutter");
+                    let optimized = model.declutter().unwrap();
+                    info!("Store to NNEF");
+                    let mut buffer = vec![];
+                    tract_nnef::save(&optimized, &mut buffer).unwrap();
+                    info!("Reload from NNEF");
+                    let reloaded = tract_nnef::load(&*buffer).unwrap();
+                    info!("Translate back to typed model");
+                    let reloaded = reloaded.into_typed_model().unwrap();
+                    run_model(reloaded, inputs, &data_path)
+                }
+            }
         }
     }
 }

@@ -2,37 +2,46 @@ use tract_core::internal::*;
 
 use crate::model::ProtoModel;
 
-pub fn open_model<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
+pub fn open_path<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
     let path = p.as_ref();
-    let mut text: Option<String> = None;
-    let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
     if !path.exists() {
         bail!("File not found: {:?}", path)
     } else if path.is_dir() && path.join("graph.nnef").is_file() {
+        let mut text: Option<String> = None;
+        let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
         for entry in walkdir::WalkDir::new(path) {
             let entry = entry.map_err(|e| format!("Can not walk directory {:?}: {:?}", path, e))?;
             let path = entry.path();
             let mut stream = std::fs::File::open(path)?;
             read_stream(&path, &mut stream, &mut text, &mut tensors)?;
         }
+        let text = text.ok_or_else(|| format!("Model must contain graph.nnef at top level"))?;
+        let doc = crate::ast::parse::parse_document(&text)?;
+        Ok(ProtoModel { doc, tensors })
     } else if path.is_file()
         && path
             .file_name()
             .map(|s| [".tgz", ".tar.gz"].iter().any(|ext| s.to_string_lossy().ends_with(ext)))
             .unwrap_or(false)
     {
-        let file = std::fs::File::open(path)?;
-        let decomp = flate2::read::GzDecoder::new(file);
-        let mut tar = tar::Archive::new(decomp);
-        for entry in tar.entries()? {
-            let mut entry = entry?;
-            let path = entry.path()?.to_path_buf();
-            read_stream(&path, &mut entry, &mut text, &mut tensors)?;
-        }
+        load(std::fs::File::open(path)?)
     } else {
         bail!("Model expected as a tar.gz archive of a directory containing a file called `graph.nnef'")
-    };
+    }
+}
+
+pub fn load(r: impl std::io::Read) -> TractResult<ProtoModel> {
+    let mut text: Option<String> = None;
+    let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
+    let decomp = flate2::read::GzDecoder::new(r);
+    let mut tar = tar::Archive::new(decomp);
+    for entry in tar.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.to_path_buf();
+        read_stream(&path, &mut entry, &mut text, &mut tensors)?;
+    }
     let text = text.ok_or_else(|| format!("Model must contain graph.nnef at top level"))?;
+    eprintln!("{}", &text);
     let doc = crate::ast::parse::parse_document(&text)?;
     Ok(ProtoModel { doc, tensors })
 }
@@ -83,9 +92,13 @@ pub fn save_to_tgz(model: &TypedModel, path: impl AsRef<std::path::Path>) -> Tra
     if path.exists() {
         bail!("{:?} already exists. Won't overwrite.", path);
     }
-    let proto_model = crate::ser::to_proto_model(model)?;
     let file = std::fs::File::create(path)?;
-    let comp = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    save(model, file)
+}
+
+pub fn save(model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
+    let proto_model = crate::ser::to_proto_model(model)?;
+    let comp = flate2::write::GzEncoder::new(w, flate2::Compression::default());
     let mut ar = tar::Builder::new(comp);
     let mut graph_data = vec![];
     crate::ast::dump::Dumper::new(&mut graph_data).document(&proto_model.doc)?;

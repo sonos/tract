@@ -181,6 +181,7 @@ impl<'mb> ModelBuilder<'mb> {
 
     pub fn wire_body(&mut self, body: &[Assignment]) -> TractResult<()> {
         // todo: can i relax the outlet id constraint ?
+        dbg!(body);
         for assignment in body {
             let identifiers = assignment.left.to_identifiers()?;
             self.naming_scopes.push(identifiers[0].to_string());

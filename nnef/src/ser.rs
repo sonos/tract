@@ -12,10 +12,14 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
         .filter(|n| !model.input_outlets().unwrap().contains(&n.id.into()))
         .map(|n| &n.name)
         .collect::<Vec<_>>();
-    let prefix: String = names[1..].iter().fold(names[0].to_string(), |prefix, name| {
-        (prefix.chars()).zip(name.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect()
-    });
-    let mut into_ast = IntoAst::new(model, prefix.to_string());
+    let prefix: Option<String> = if names.len() > 1 {
+        Some(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
+            (prefix.chars()).zip(name.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect()
+        }))
+    } else {
+        None
+    };
+    let mut into_ast = IntoAst::new(model, prefix);
     for input in model.input_outlets()? {
         let left = into_ast.scoped_id(&model.node(input.node).name);
         into_ast.parameters.push(left.clone());
@@ -34,8 +38,10 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
         }
         into_ast.node(model.node(node))?;
     }
+    dbg!(&model);
     for o in model.output_outlets()? {
         let name = into_ast.scoped_id(&model.node(o.node).name);
+        dbg!(&name);
         into_ast.assignment(&name, into_ast.mapping[&o].clone());
         into_ast.results.push(name);
     }
@@ -43,7 +49,7 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
 }
 
 pub struct IntoAst<'a> {
-    pub prefix: String,
+    pub prefix: Option<String>,
     pub model: &'a TypedModel,
     pub parameters: Vec<String>,
     pub results: Vec<String>,
@@ -55,7 +61,7 @@ pub struct IntoAst<'a> {
 }
 
 impl<'a> IntoAst<'a> {
-    fn new(model: &'a TypedModel, prefix: String) -> IntoAst {
+    fn new(model: &'a TypedModel, prefix: Option<String>) -> IntoAst {
         IntoAst {
             prefix,
             model,
@@ -71,7 +77,9 @@ impl<'a> IntoAst<'a> {
 
     fn into_proto_model(self) -> TractResult<ProtoModel> {
         let IntoAst { prefix, fragments, body, tensors, parameters, results, .. } = self;
-        let id = prefix.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_");
+        let id = prefix
+            .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
+            .unwrap_or("network".into());
         let doc = Document {
             version: "1.0".into(),
             extension: vec![],
@@ -93,8 +101,13 @@ impl<'a> IntoAst<'a> {
 
     pub fn scoped_id(&self, name: impl Into<String>) -> String {
         let mut name = name.into();
-        if name.starts_with(&self.prefix) {
-            name = name.chars().skip(self.prefix.len()).collect()
+        if let Some(p) = &self.prefix {
+            if name.starts_with(p) {
+                name = name.chars().skip(p.len()).collect()
+            }
+        }
+        if char::is_digit(name.chars().next().unwrap(), 10) {
+            name = "_".to_string() + &name;
         }
         name.replace("/", "_").replace(".", "_").replace("-", "_").into()
     }

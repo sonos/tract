@@ -46,8 +46,14 @@ pub fn ensure_onnx_git_checkout() {
     });
 }
 
+#[derive(PartialEq, Copy, Clone, Debug)]
+enum Mode {
+    Plain, Optim, NNEF
+}
+
 pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     use std::io::Write;
+    use Mode::*;
     ensure_onnx_git_checkout();
     let node_tests =
         dir().join(format!("onnx-{}", onnx_tag)).join("onnx/backend/test/data").join(tests_set);
@@ -81,21 +87,22 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
         .collect();
     tests.sort();
     writeln!(rs, "mod {} {{", tests_set_ver).unwrap();
-    for (s, optim) in &[("plain", false), ("optim", true)] {
-        writeln!(rs, "mod {} {{", s).unwrap();
+    for &mode in &[Plain, Optim, NNEF] {
+        writeln!(rs, "mod {} {{", format!("{:?}", mode).to_lowercase()).unwrap();
+        writeln!(rs, "use crate::onnx::{{run_one, Mode}};").unwrap();
         for t in &tests {
             writeln!(rs, "#[test]").unwrap();
             let pair = working_list.iter().find(|pair| &*pair.0 == &*t);
             let run = pair.is_some();
-            if !run || (*optim && pair.as_ref().unwrap().1.contains(&"dynsize".to_string())) {
+            if !run || (mode == Optim && pair.as_ref().unwrap().1.contains(&"dynsize".to_string())) {
                 writeln!(rs, "#[ignore]").unwrap();
             }
             let more = pair.map(|p| &*p.1).unwrap_or(&[]);
             writeln!(rs, "fn {}() {{", t).unwrap();
             writeln!(
                 rs,
-                "crate::onnx::run_one({:?}, {:?}, {:?}, &{:?})",
-                node_tests, t, optim, more
+                "run_one({:?}, {:?}, Mode::{:?}, &{:?})",
+                node_tests, t, mode, more
             )
             .unwrap();
             writeln!(rs, "}}").unwrap();
