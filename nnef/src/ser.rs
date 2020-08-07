@@ -23,10 +23,16 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
     for input in model.input_outlets()? {
         let left = into_ast.scoped_id(&model.node(input.node).name);
         into_ast.parameters.push(left.clone());
-        let input_shape = model.outlet_fact(*input)?.shape.as_finite().ok_or("No dim (yet)")?;
+        let fact = model.outlet_fact(*input)?;
+        let input_shape = fact.shape.as_finite().ok_or("No dim (yet)")?;
+        let type_name = if fact.datum_type == bool::datum_type() {
+            TypeName::Logical
+        } else {
+            TypeName::Scalar
+        };
         let right = RValue::Invocation(Invocation {
             id: "external".into(),
-            generic_type_name: Some(TypeName::Scalar),
+            generic_type_name: Some(type_name),
             arguments: vec![Argument { id: Some("shape".into()), rvalue: ints(input_shape) }],
         });
         into_ast.assignment(left.clone(), right.into());
