@@ -15,7 +15,7 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
     let prefix: Option<String> = if names.len() > 1 {
         Some(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
             (prefix.chars()).zip(name.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect()
-        }))
+        })).filter(|p| p.len() > 0)
     } else {
         None
     };
@@ -44,10 +44,8 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
         }
         into_ast.node(model.node(node))?;
     }
-    dbg!(&model);
     for o in model.output_outlets()? {
         let name = into_ast.scoped_id(&model.node(o.node).name);
-        dbg!(&name);
         into_ast.assignment(&name, into_ast.mapping[&o].clone());
         into_ast.results.push(name);
     }
