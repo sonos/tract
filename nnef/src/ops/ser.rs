@@ -15,18 +15,14 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
                 $path(ast, node, node.op().downcast_ref::<$op>().unwrap())
             })
         };
-    }
-    ;
+    };
+    reg!(ops::element_wise::ElementWiseOp, element_wise);
     reg!(ops::binary::UnaryOp, semi_binary);
     reg!(ops::binary::MergeOp, binary);
-
     reg!(ops::change_axes::AxisOp, axis_op);
-
     reg!(ops::cnn::ConvUnary, conv);
     reg!(ops::cnn::SumPool, sum_pool);
-
     reg!(ops::nn::Reduce, reduce);
-
     reg!(ops::matmul::MatMulUnary, matmul);
     registry
 }
@@ -259,7 +255,10 @@ fn axis_op(
             "reshape",
             &[wire],
             &[
-                ("shape", ints(&*to.iter().map(|d| d.to_integer().unwrap() as usize).collect::<Vec<_>>())),
+                (
+                    "shape",
+                    ints(&*to.iter().map(|d| d.to_integer().unwrap() as usize).collect::<Vec<_>>()),
+                ),
                 ("axis_start", numeric(start)),
                 ("axis_count", numeric(from.len())),
             ],
@@ -268,11 +267,7 @@ fn axis_op(
     Ok(invoke)
 }
 
-fn reduce(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-    op: &ops::nn::Reduce,
-) -> TractResult<Arc<RValue>> {
+fn reduce(ast: &mut IntoAst, node: &TypedNode, op: &ops::nn::Reduce) -> TractResult<Arc<RValue>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let oper = match op.reducer {
         ops::nn::Reducer::Sum => "sum_reduce",
@@ -306,6 +301,15 @@ fn matmul(
     Ok(ast.force_assign(&node.name, &c))
 }
 
+fn element_wise(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::element_wise::ElementWiseOp,
+) -> TractResult<Arc<RValue>> {
+    let a = ast.mapping[&node.inputs[0]].clone();
+    Ok(invocation(ew_miniop(op.0.as_ref())?, &[a], &[]))
+}
+
 fn binary(
     ast: &mut IntoAst,
     node: &TypedNode,
@@ -326,21 +330,59 @@ fn semi_binary(
     Ok(invocation(bin_miniop(op.mini_op.as_ref())?, &[a, b], &[]))
 }
 
-fn bin_miniop(op: &dyn ops::binary::BinMiniOp) -> TractResult<&'static str> {
-    macro_rules! mini {
-        ($op: ty, $name: ident) => {
-            if let Some(_) = op.downcast_ref::<$op>() {
-                return Ok(stringify!($name));
-            }
-        };
+macro_rules! mini {
+    ($op: expr, $typ: ty, $name: ident) => {
+        if let Some(_) = $op.downcast_ref::<$typ>() {
+            return Ok(stringify!($name));
+        }
     };
-    mini!(ops::math::Add, add);
-    mini!(ops::math::Sub, sub);
-    mini!(ops::math::Mul, mul);
-    mini!(ops::math::Div, div);
-    mini!(ops::math::Pow, pow);
+}
 
-    mini!(ops::math::Max, max);
-    mini!(ops::math::Min, min);
+fn ew_miniop(op: &dyn ops::element_wise::ElementWiseMiniOp) -> TractResult<&'static str> {
+    mini!(op, ops::math::Exp, add);
+    mini!(op, ops::math::Ln, sub);
+    mini!(op, ops::math::Sin, mul);
+    mini!(op, ops::math::Cos, div);
+    mini!(op, ops::math::Abs, abs);
+    mini!(op, ops::math::Neg, neg);
+    mini!(op, ops::math::Sign, sign);
+    mini!(op, ops::math::Recip, rcp);
+
+    mini!(op, ops::logic::Not, not);
+
+    mini!(op, ops::math::Floor, floor);
+    mini!(op, ops::math::Ceil, ceil);
+    mini!(op, ops::math::Round, round);
+
+    mini!(op, ops::math::Square, sqr);
+    mini!(op, ops::math::Sqrt, sqrt);
+    mini!(op, ops::math::Rsqrt, rsqrt);
+
+    mini!(op, ops::math::Tanh, tanh);
+    mini!(op, ops::nn::Sigmoid, sigmoid);
+
+    bail!("Untranslated element_wise mini op: {:?}", op)
+}
+
+fn bin_miniop(op: &dyn ops::binary::BinMiniOp) -> TractResult<&'static str> {
+    mini!(op, ops::math::Add, add);
+    mini!(op, ops::math::Sub, sub);
+    mini!(op, ops::math::Mul, mul);
+    mini!(op, ops::math::Div, div);
+    mini!(op, ops::math::Pow, pow);
+
+    mini!(op, ops::logic::Lesser, lt);
+    mini!(op, ops::logic::Greater, gt);
+    mini!(op, ops::logic::LesserEqual, le);
+    mini!(op, ops::logic::GreaterEqual, ge);
+    mini!(op, ops::logic::Equals, eq);
+    mini!(op, ops::logic::NotEquals, ne);
+
+    mini!(op, ops::logic::And, and);
+    mini!(op, ops::logic::Or, or);
+
+    mini!(op, ops::math::Max, max);
+    mini!(op, ops::math::Min, min);
+
     bail!("Untranslated binary mini op: {:?}", op)
 }
