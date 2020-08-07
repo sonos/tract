@@ -1,6 +1,7 @@
 use crate::ast::*;
 use std::collections::HashMap;
 use tract_core::internal::*;
+use tract_core::itertools::izip;
 use tract_core::itertools::Itertools;
 
 use tract_core::ops;
@@ -20,6 +21,7 @@ pub fn registry() -> Registry {
     primitives.insert("reshape".to_string(), Arc::new(reshape));
     primitives.insert("transpose".to_string(), Arc::new(transpose));
     primitives.insert("concat".to_string(), Arc::new(concat));
+    primitives.insert("slice".to_string(), Arc::new(slice));
     primitives.insert("unsqueeze".to_string(), Arc::new(unsqueeze));
     primitives.insert("squeeze".to_string(), Arc::new(squeeze));
 
@@ -173,6 +175,35 @@ fn concat(
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
     builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
+}
+
+// fragment slice<?>( input: tensor<?>, axes: integer[], begin: integer[], end: integer[] ) -> ( output: tensor<?> );
+fn slice(
+    builder: &mut ModelBuilder,
+    invocation: &AugmentedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
+    let input_fact = builder.model.outlet_fact(wire[0])?.clone();
+    let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
+    let begins: TVec<i64> = invocation.named_arg_as(builder, "begin")?;
+    let begins = begins.into_iter().enumerate().map(|(ix, b)| -> TDim {
+        if b < 0 {
+            input_fact.shape.dim(ix) + b
+        } else {
+            b.into()
+        }
+    });
+    let ends: TVec<i64> = invocation.named_arg_as(builder, "end")?;
+    let ends = ends.into_iter().enumerate().map(|(ix, b)| -> TDim {
+        if b < 0 {
+            input_fact.shape.dim(ix) + b
+        } else {
+            b.into()
+        }
+    });
+    izip!(axes, begins, ends).try_fold(wire, |wire, (axis, start, end)| {
+        builder.wire(tract_core::ops::array::Slice { axis, start, end }, &wire)
+    })
 }
 
 // fragment squeeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );

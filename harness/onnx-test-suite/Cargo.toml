@@ -9,6 +9,7 @@ bytes = "0.5"
 fs2 = "0.4"
 log = "0.4.6"
 prost = "0.6"
+tract-nnef = { path = "../../nnef" }
 tract-onnx = { path = "../../onnx" }
 
 [dev-dependencies]

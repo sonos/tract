@@ -337,7 +337,7 @@ fn loop_iters(i: &str) -> IResult<&str, Vec<(String, RValue)>> {
 // The identifier must not start with a digit.
 fn identifier(i: &str) -> IResult<&str, String> {
     map(
-        recognize(pair(alpha1, nom::multi::many0(nom::branch::alt((alphanumeric1, tag("_")))))),
+        recognize(pair(alt((alpha1, tag("_"))), many0(alt((alphanumeric1, tag("_")))))),
         String::from,
     )(i)
 }

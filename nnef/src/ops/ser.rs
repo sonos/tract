@@ -16,6 +16,8 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
             })
         };
     };
+    reg!(ops::array::Slice<TDim>, slice<TDim>);
+    reg!(ops::array::Slice<usize>, slice<usize>);
     reg!(ops::element_wise::ElementWiseOp, element_wise);
     reg!(ops::binary::UnaryOp, semi_binary);
     reg!(ops::binary::MergeOp, binary);
@@ -25,6 +27,21 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
     reg!(ops::nn::Reduce, reduce);
     reg!(ops::matmul::MatMulUnary, matmul);
     registry
+}
+
+fn slice<D: DimLike>(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::array::Slice<D>,
+) -> TractResult<Arc<RValue>> {
+    let wire = ast.mapping[&node.inputs[0]].clone();
+    let start = op.start.to_integer()? as usize;
+    let end = op.end.to_integer()? as usize;
+    Ok(invocation(
+        "slice",
+        &[wire],
+        &[("axes", ints(&[op.axis])), ("begin", ints(&[start])), ("end", ints(&[end]))],
+    ))
 }
 
 fn data_into_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue>) -> Arc<RValue> {
@@ -245,9 +262,9 @@ fn axis_op(
             let rank = node.outputs[0].fact.rank();
             let mut perm: TVec<usize> = (0..rank).collect();
             if from < to {
-                perm[*from..*to].rotate_left(1);
+                perm[*from..(to + 1)].rotate_left(1);
             } else {
-                perm[*to..*from].rotate_right(1);
+                perm[*to..(from + 1)].rotate_right(1);
             }
             invocation("transpose", &[wire], &[("axes", ints(&*perm))])
         }
@@ -339,10 +356,10 @@ macro_rules! mini {
 }
 
 fn ew_miniop(op: &dyn ops::element_wise::ElementWiseMiniOp) -> TractResult<&'static str> {
-    mini!(op, ops::math::Exp, add);
-    mini!(op, ops::math::Ln, sub);
-    mini!(op, ops::math::Sin, mul);
-    mini!(op, ops::math::Cos, div);
+    mini!(op, ops::math::Exp, exp);
+    mini!(op, ops::math::Ln, ln);
+    mini!(op, ops::math::Sin, sin);
+    mini!(op, ops::math::Cos, cos);
     mini!(op, ops::math::Abs, abs);
     mini!(op, ops::math::Neg, neg);
     mini!(op, ops::math::Sign, sign);
