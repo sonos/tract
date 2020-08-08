@@ -2,28 +2,36 @@ use tract_core::internal::*;
 
 pub mod deser;
 pub mod ser;
-use crate::ast::{FragmentDecl, FragmentDef};
+use crate::ast::{FragmentDecl, FragmentDef, RValue};
 use crate::model::*;
+use crate::ser::*;
+
+use std::any::TypeId;
 
 pub fn stdlib() -> Vec<FragmentDef> {
     crate::ast::parse::parse_fragments(include_str!("../../stdlib.nnef")).unwrap()
 }
 
 pub type ToTract = fn(&mut ModelBuilder, &AugmentedInvocation) -> TractResult<TVec<OutletId>>;
-//pub type FromTract = Arc<dyn Fn(&mut ModelBuilder, &AugmentedInvocation) -> TractResult<TVec<OutletId>>>;
+pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Arc<RValue>>;
 
 pub struct Registry {
     id: String,
     to_tract: HashMap<String, (Option<FragmentDef>, Option<(FragmentDecl, ToTract)>)>,
+    from_tract: HashMap<TypeId, (Option<FragmentDef>, Option<(FragmentDecl, FromTract)>)>,
 }
 
 impl Registry {
     pub fn new(id: impl Into<String>) -> Registry {
-        Registry { id: id.into(), to_tract: Default::default() }
+        Registry { id: id.into(), to_tract: Default::default(), from_tract: Default::default() }
     }
 
     pub fn register_primitive(&mut self, id: &str, decl: FragmentDecl, func: ToTract) {
         self.to_tract.insert(id.to_string(), (None, Some((decl, func))));
+    }
+
+    pub fn register_fragment(&mut self, def: FragmentDef) {
+        self.to_tract.insert(def.decl.id.to_string(), (Some(def), None));
     }
 
     pub fn lookup_nnef<'a>(&'a self, id: &str) -> Option<(&FragmentDecl, ResolvedOp<'a>)> {

@@ -118,14 +118,14 @@ impl Parameters {
             }
             #[cfg(feature = "nnef")]
             "nnef" => {
-                let proto_model = tract_nnef::open_model(&filename)?;
+                let nnef = tract_nnef::nnef();
+                let proto_model = tract_nnef::open_path(&filename)?;
                 info_usage("proto model loaded", probe);
                 if need_graph {
                     (
                         SomeGraphDef::Nnef(proto_model.clone()),
                         Box::new(
-                            proto_model
-                                .into_typed_model()
+                            nnef.translate(&proto_model)
                                 .map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?,
                         ),
                         Option::<TfExt>::None,
@@ -134,8 +134,7 @@ impl Parameters {
                     (
                         SomeGraphDef::NoGraphDef,
                         Box::new(
-                            proto_model
-                                .into_typed_model()
+                            nnef.translate(&proto_model)
                                 .map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?,
                         ),
                         Option::<TfExt>::None,

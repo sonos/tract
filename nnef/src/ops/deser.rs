@@ -89,6 +89,12 @@ pub fn register(registry: &mut Registry) {
 
     mew!(tanh, ops::math::tanh());
     mew!(sigmoid, ops::nn::sigmoid());
+
+    for frag in stdlib {
+        if frag.body.is_some() {
+            registry.register_fragment(frag);
+        }
+    }
 }
 
 // fragment external<? = scalar>( shape: integer[] ) -> ( output: tensor<?> );

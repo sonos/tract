@@ -94,7 +94,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
             writeln!(rs, "#[test]").unwrap();
             let pair = working_list.iter().find(|pair| &*pair.0 == &*t);
             let run = pair.is_some();
-            if !run || (mode == Optim && pair.as_ref().unwrap().1.contains(&"dynsize".to_string())) {
+            if !run || (mode == NNEF) || (mode == Optim && pair.as_ref().unwrap().1.contains(&"dynsize".to_string())) {
                 writeln!(rs, "#[ignore]").unwrap();
             }
             let more = pair.map(|p| &*p.1).unwrap_or(&[]);

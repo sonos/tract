@@ -1,8 +1,9 @@
 use tract_nnef::prelude::*;
 
 fn main() -> TractResult<()> {
-    let model = tract_nnef::open_model("mobilenet_v2_1.0.onnx.nnef.tgz")?
-        .into_typed_model()
+    let nnef = tract_nnef::nnef();
+    let proto_model = tract_nnef::open_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    let model = nnef.translate(&proto_model)
         .map_err(|pair| pair.1)?
         .declutter()?
         .optimize()?
