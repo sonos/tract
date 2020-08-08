@@ -72,12 +72,7 @@ mod tests {
         download();
         // setup_test_logger();
         let nnef = tract_nnef::nnef();
-        let proto_model = tract_nnef::open_path(inception_v3_tgz())?;
-        let model = nnef.translate(&proto_model)
-            .map_err(|(_g, e)| e)?
-//            .declutter()?
-//            .optimize()?
-            .into_runnable()?;
+        let model = nnef.model_for_path(inception_v3_tgz())?.into_optimized()?.into_runnable()?;
         let input = load_image(hopper());
         let outputs = model.run(tvec![input]).unwrap();
         let labels = load_labels();

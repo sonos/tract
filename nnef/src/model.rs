@@ -43,6 +43,16 @@ impl Framework {
     }
 }
 
+impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Framework {
+    fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
+        crate::container::load(reader)
+    }
+
+    fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<TypedModel> {
+        self.translate(proto).map_err(|e| e.1)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ProtoModel {
     pub doc: Document,

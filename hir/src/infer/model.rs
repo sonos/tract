@@ -119,7 +119,7 @@ impl InferenceModelExt for InferenceModel {
     /// transformation needs to happen. Aternaltively, use to_typed() and
     /// manipulate the TypedModel for more control.
     fn into_optimized(self) -> TractResult<TypedModel> {
-        self.into_typed()?.declutter()?.optimize()
+        self.into_typed()?.into_optimized()
     }
 }
 

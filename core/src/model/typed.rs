@@ -71,6 +71,10 @@ impl TypedModel {
         hasher.finish()
     }
 
+    pub fn into_optimized(self) -> TractResult<TypedModel> {
+        self.declutter()?.optimize()
+    }
+
     /// Perform declutter passes on the network.
     pub fn declutter(&self) -> TractResult<TypedModel> {
         let mut model = self.clone();

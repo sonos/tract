@@ -233,7 +233,7 @@ impl Tensorflow {
     }
 }
 
-impl Framework<GraphDef> for Tensorflow {
+impl Framework<GraphDef, InferenceModel> for Tensorflow {
     /// This method will try to read as frozen model, then as a saved model.
     fn proto_model_for_path(&self, r: impl AsRef<path::Path>) -> TractResult<GraphDef> {
         self.read_frozen_model(&mut fs::File::open(r.as_ref())?)

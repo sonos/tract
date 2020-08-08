@@ -86,6 +86,7 @@ pub mod broadcast;
 pub mod datum;
 pub mod dim;
 pub mod errors;
+pub mod framework;
 mod hash;
 pub mod model;
 mod optim;
@@ -101,6 +102,7 @@ pub mod prelude {
     pub use crate::datum::{Blob, Datum, DatumType};
     pub use crate::dim::TDim;
     pub use crate::errors::*;
+    pub use crate::framework::Framework;
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
     pub use crate::tensor::litteral::*;

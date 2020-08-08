@@ -39,7 +39,6 @@ pub mod ops {
 }
 
 pub mod prelude {
-    pub use super::framework::Framework;
     pub use crate::infer::InferenceFact;
     pub use crate::infer::InferenceModel;
     pub use crate::infer::InferenceModelExt;

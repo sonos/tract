@@ -119,7 +119,7 @@ impl Parameters {
             #[cfg(feature = "nnef")]
             "nnef" => {
                 let nnef = tract_nnef::nnef();
-                let proto_model = tract_nnef::open_path(&filename)?;
+                let proto_model = nnef.proto_model_for_path(&filename)?;
                 info_usage("proto model loaded", probe);
                 if need_graph {
                     (

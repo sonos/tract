@@ -2,12 +2,8 @@ use tract_nnef::prelude::*;
 
 fn main() -> TractResult<()> {
     let nnef = tract_nnef::nnef();
-    let proto_model = tract_nnef::open_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
-    let model = nnef.translate(&proto_model)
-        .map_err(|pair| pair.1)?
-        .declutter()?
-        .optimize()?
-        .into_runnable()?;
+    let model =
+        nnef.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_optimized()?.into_runnable()?;
 
     // open image, resize it and make a Tensor out of it
     let image = image::open("grace_hopper.jpg").unwrap().to_rgb();
@@ -24,11 +20,8 @@ fn main() -> TractResult<()> {
     let result = model.run(tvec!(image))?;
 
     // find and display the max value with its index
-    let best = result[0]
-        .as_slice::<f32>()?
-        .iter()
-        .zip(2..)
-        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    let best =
+        result[0].as_slice::<f32>()?.iter().zip(2..).max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     println!("result: {:?}", best);
     Ok(())
 }
