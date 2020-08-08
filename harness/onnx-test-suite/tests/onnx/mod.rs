@@ -161,7 +161,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                     info!("Reload from NNEF");
                     let reloaded = tract_nnef::load(&*buffer).unwrap();
                     info!("Translate back to typed model");
-                    let reloaded = reloaded.into_typed_model().unwrap();
+                    let reloaded = tract_nnef::nnef().translate(&reloaded).unwrap();
                     run_model(reloaded, inputs, &data_path)
                 }
             }

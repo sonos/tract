@@ -71,8 +71,9 @@ mod tests {
     fn grace_hopper_is_a_military_uniform() -> TractResult<()> {
         download();
         // setup_test_logger();
-        let model = tract_nnef::open_model(inception_v3_tgz())?
-            .into_typed_model()
+        let nnef = tract_nnef::nnef();
+        let proto_model = tract_nnef::open_path(inception_v3_tgz())?;
+        let model = nnef.translate(&proto_model)
             .map_err(|(_g, e)| e)?
 //            .declutter()?
 //            .optimize()?
