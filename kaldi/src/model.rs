@@ -187,7 +187,7 @@ pub struct Kaldi {
     pub op_register: KaldiOpRegister,
 }
 
-impl Framework<KaldiProtoModel> for Kaldi {
+impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
     fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<KaldiProtoModel> {
         use crate::parser;
         let mut v = vec![];
