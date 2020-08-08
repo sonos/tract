@@ -89,6 +89,7 @@ pub fn run_one<P: AsRef<path::Path>>(
     let model_file = path.join("model.onnx");
     info!("Loading {:?}", model_file);
     let onnx = onnx();
+    let nnef = tract_nnef::nnef().with_registry(tract_onnx::tract_nnef_onnx_registry());
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
     for d in fs::read_dir(&path).unwrap() {
         let mut model = onnx.model_for_path(&model_file).unwrap();
@@ -157,11 +158,9 @@ pub fn run_one<P: AsRef<path::Path>>(
                     let optimized = model.declutter().unwrap();
                     info!("Store to NNEF");
                     let mut buffer = vec![];
-                    tract_nnef::save(&optimized, &mut buffer).unwrap();
+                    nnef.write(&optimized, &mut buffer).unwrap();
                     info!("Reload from NNEF");
-                    let reloaded = tract_nnef::load(&*buffer).unwrap();
-                    info!("Translate back to typed model");
-                    let reloaded = tract_nnef::nnef().translate(&reloaded).unwrap();
+                    let reloaded = nnef.model_for_read(&mut &*buffer).unwrap();
                     run_model(reloaded, inputs, &data_path)
                 }
             }

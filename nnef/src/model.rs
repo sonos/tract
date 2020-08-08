@@ -13,6 +13,11 @@ impl Framework {
         Framework { registries: vec![crate::ops::tract_nnef()] }
     }
 
+    pub fn with_registry(mut self, registry: Registry) -> Framework {
+        self.registries.push(registry);
+        self
+    }
+
     pub fn translate(
         &self,
         proto_model: &ProtoModel,
@@ -40,6 +45,18 @@ impl Framework {
             .map_err(|e| (builder.model.clone(), e))?;
         builder.model.set_output_outlets(&outputs).map_err(|e| (builder.model.clone(), e))?;
         Ok(builder.model)
+    }
+
+    pub fn write(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
+        crate::container::save(model, w)
+    }
+
+    pub fn write_to_dir(&self, model: &TypedModel, p: impl AsRef<std::path::Path>) -> TractResult<()> {
+        crate::container::save_to_dir(model, p)
+    }
+
+    pub fn write_to_tgz(&self, model: &TypedModel, p: impl AsRef<std::path::Path>) -> TractResult<()> {
+        crate::container::save_to_tgz(model, p)
     }
 }
 
