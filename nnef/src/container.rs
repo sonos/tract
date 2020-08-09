@@ -41,7 +41,6 @@ pub fn load(r: impl std::io::Read) -> TractResult<ProtoModel> {
         read_stream(&path, &mut entry, &mut text, &mut tensors)?;
     }
     let text = text.ok_or_else(|| format!("Model must contain graph.nnef at top level"))?;
-    eprintln!("{}", &text);
     let doc = crate::ast::parse::parse_document(&text)?;
     Ok(ProtoModel { doc, tensors })
 }
