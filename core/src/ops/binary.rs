@@ -87,6 +87,7 @@ impl Op for TypedBinOp {
         self.0.validation()
     }
 
+    canonic!();
     op_core_mir!();
     op_as_typed_op!();
     not_a_pulsed_op!();
@@ -115,6 +116,84 @@ impl TypedOp for TypedBinOp {
                 &inputs[0], &inputs[1]
             ))?
         )?))
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+    }
+
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+        let a = model.outlet_fact(node.inputs[0])?;
+        let b = model.outlet_fact(node.inputs[1])?;
+        assert!(a.rank() == b.rank());
+        let rank = a.rank();
+        Ok((0..rank)
+            .into_iter()
+            .map(|axis| AxisInfo {
+                inputs: tvec!(Some(axis), Some(axis)),
+                outputs: tvec!(Some(axis)),
+                period: 1,
+                disposable: true,
+            })
+            .collect())
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().maybe_product()?;
+        Ok(self
+            .0
+            .cost_per_element(inputs[0].datum_type)
+            .into_iter()
+            .map(|(c, n)| (c, count.clone() * n))
+            .collect())
+    }
+
+    fn slice_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        patch: &mut TypedModelPatch,
+        _output_slot: usize,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<OutletId>> {
+        let a_input = node.inputs[0];
+        let b_input = node.inputs[1];
+        let a = model.outlet_fact(a_input)?;
+        let b = model.outlet_fact(b_input)?;
+        if a.shape == b.shape {
+            let a_prec_node = model.node(a_input.node);
+            let b_prec_node = model.node(b_input.node);
+            let a_sliced = a_prec_node.op.slice_output(
+                model,
+                a_prec_node,
+                patch,
+                a_input.slot,
+                axis,
+                start,
+                end,
+            )?;
+            let b_sliced = b_prec_node.op.slice_output(
+                model,
+                b_prec_node,
+                patch,
+                b_input.slot,
+                axis,
+                start,
+                end,
+            )?;
+            if let (Some(a), Some(b)) = (a_sliced, b_sliced) {
+                return Ok(Some(patch.wire_node(&*node.name, self.clone(), &[a, b])?[0]));
+            }
+        }
+        Ok(None)
     }
 
     fn declutter(
@@ -153,11 +232,58 @@ impl TypedOp for TypedBinOp {
                 )?));
             }
         }
-        let op = MergeOp(self.0.clone());
-        return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs, op)?));
+        return Ok(None)
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        if self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?
+            == inputs[0].datum_type
+            && inputs[0] == inputs[1]
+        {
+            Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                MergeOpUnicast(self.0.clone()),
+            )?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn pulsify(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        pulsify_bin(node, self, target, mapping)
+    }
+
+
+    as_op!();
+}
+
+impl PulsedOp for TypedBinOp {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
+        let mut fact = inputs[0].clone();
+        fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
+        fact.shape = crate::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape])
+            .ok_or_else(|| {
+                format!("Can not broadcast: {:?} and {:?}", inputs[0].shape, inputs[1].shape)
+            })?;
+        Ok(tvec!(fact))
     }
 
     as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 fn pulsify_bin(
@@ -354,6 +480,7 @@ impl PulsedOp for UnaryOp {
     pulsed_op_to_typed_op!();
 }
 
+/*
 #[derive(Debug, Clone, Hash)]
 pub struct MergeOp(pub Box<dyn BinMiniOp>);
 tract_linalg::impl_dyn_hash!(MergeOp);
@@ -525,6 +652,7 @@ impl PulsedOp for MergeOp {
     as_op!();
     pulsed_op_to_typed_op!();
 }
+*/
 
 #[derive(Debug, Clone, Hash)]
 pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);

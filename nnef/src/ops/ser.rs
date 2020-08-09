@@ -21,7 +21,7 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
     reg!(ops::array::Slice<usize>, slice<usize>);
     reg!(ops::element_wise::ElementWiseOp, element_wise);
     reg!(ops::binary::UnaryOp, semi_binary);
-    reg!(ops::binary::MergeOp, binary);
+    reg!(ops::binary::TypedBinOp, binary);
     reg!(ops::change_axes::AxisOp, axis_op);
     reg!(ops::cnn::ConvUnary, conv);
     reg!(ops::cnn::MaxPool, max_pool);
@@ -375,7 +375,7 @@ fn element_wise(
 fn binary(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &ops::binary::MergeOp,
+    op: &ops::binary::TypedBinOp,
 ) -> TractResult<Arc<RValue>> {
     let a = ast.mapping[&node.inputs[0]].clone();
     let b = ast.mapping[&node.inputs[1]].clone();
