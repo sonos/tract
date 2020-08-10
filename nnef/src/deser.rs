@@ -13,6 +13,40 @@ pub struct ModelBuilder<'a> {
 }
 
 impl<'mb> ModelBuilder<'mb> {
+    pub fn new(framework: &'mb Nnef, proto_model: &'mb ProtoModel) -> ModelBuilder<'mb> {
+        ModelBuilder {
+            registries: vec!["tract_nnef".to_string()],
+            framework,
+            model: TypedModel::default(),
+            naming_scopes: vec![],
+            scopes: vec![],
+            proto_model,
+        }
+    }
+
+    pub fn into_typed_model(mut self) -> Result<TypedModel, (TypedModel, TractError)> {
+        for ext in &self.proto_model.doc.extension {
+            match &*ext[0] {
+                "tract_registry" => self.registries.push(ext[1].to_string()),
+                _ => warn!("Ignore unknown extension {}", ext.join(" ")),
+            };
+        }
+        self.scopes.push(HashMap::new());
+        self.naming_scopes.push(self.proto_model.doc.graph_def.id.to_string());
+        self.wire_body(&self.proto_model.doc.graph_def.body).map_err(|e| (self.model.clone(), e))?;
+        let vars = self.scopes.pop().unwrap();
+        let outputs = self.proto_model
+            .doc
+            .graph_def
+            .results
+            .iter()
+            .map(|s| vars[s].to::<OutletId>(&mut self))
+            .collect::<TractResult<TVec<OutletId>>>()
+            .map_err(|e| (self.model.clone(), e))?;
+        self.model.set_output_outlets(&outputs).map_err(|e| (self.model.clone(), e))?;
+        Ok(self.model)
+    }
+
     fn augmented_invocation<'a>(
         &self,
         invocation: &'a Invocation,
@@ -145,7 +179,6 @@ impl<'mb> ModelBuilder<'mb> {
             )
             .chain_err(|| format!("inputs are {:?}", inputs))
     }
-
 }
 
 #[derive(Clone)]

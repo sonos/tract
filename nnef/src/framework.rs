@@ -19,36 +19,7 @@ impl Nnef {
         &self,
         proto_model: &ProtoModel,
     ) -> Result<TypedModel, (TypedModel, TractError)> {
-        let mut builder = ModelBuilder {
-            registries: vec!("tract_nnef".to_string()),
-            framework: &self,
-            model: TypedModel::default(),
-            naming_scopes: vec![],
-            scopes: vec![],
-            proto_model,
-        };
-        for ext in &proto_model.doc.extension {
-            match &*ext[0] {
-                "tract_registry" => builder.registries.push(ext[1].to_string()),
-                _ => warn!("Ignore unknown extension {}", ext.join(" ")),
-            };
-        }
-        builder.scopes.push(HashMap::new());
-        builder.naming_scopes.push(proto_model.doc.graph_def.id.to_string());
-        builder
-            .wire_body(&proto_model.doc.graph_def.body)
-            .map_err(|e| (builder.model.clone(), e))?;
-        let vars = builder.scopes.pop().unwrap();
-        let outputs = proto_model
-            .doc
-            .graph_def
-            .results
-            .iter()
-            .map(|s| vars[s].to::<OutletId>(&mut builder))
-            .collect::<TractResult<TVec<OutletId>>>()
-            .map_err(|e| (builder.model.clone(), e))?;
-        builder.model.set_output_outlets(&outputs).map_err(|e| (builder.model.clone(), e))?;
-        Ok(builder.model)
+        ModelBuilder::new(self, proto_model).into_typed_model()
     }
 
     pub fn write(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
