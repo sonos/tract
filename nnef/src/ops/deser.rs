@@ -14,7 +14,7 @@ pub fn register(registry: &mut Registry) {
     let mut primitive = |id: &str, func:ToTract| {
         let pos = stdlib.iter().position(|f| f.decl.id == id).unwrap();
         let decl = stdlib.remove(pos).decl;
-        registry.register_primitive(id, decl, func)
+        registry.register_primitive(id, &decl.parameters, func)
     };
 
     primitive("external", external);
@@ -460,7 +460,7 @@ fn matmul(
     builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false, q_params: None }, &[a, b])
 }
 
-fn multiary_elementwise(
+pub fn multiary_elementwise(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
     op: Box<dyn TypedOp>,
