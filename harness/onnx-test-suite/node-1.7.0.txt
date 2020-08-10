@@ -437,15 +437,12 @@ test_size
 test_size_example
 test_slice_default_axes                                                             input:x 
 test_slice_default_steps                                                            input:x 
-test_slice_end_out_of_bounds dynsize
-# test_slice_end_out_of_bounds                                                        input:x 
+test_slice_end_out_of_bounds                                                        input:x 
 test_slice                                                                          input:x
-test_slice_neg dynsize
-# test_slice_neg                                                                      input:x 
-test_slice_neg_steps dynsize
-# test_slice_neg_steps                                                                input:x 
-test_slice_start_out_of_bounds dynsize
-# test_slice_start_out_of_bounds                                                      input:x 
+test_slice_negative_axes dynsize
+test_slice_neg                                                                      input:x 
+test_slice_neg_steps                                                                input:x 
+test_slice_start_out_of_bounds                                                      input:x 
 test_softmax_axis_0
 test_softmax_axis_1
 test_softmax_axis_2
