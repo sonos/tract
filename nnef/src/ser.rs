@@ -1,11 +1,9 @@
-use tract_core::internal::*;
+use crate::internal::*;
 
 use crate::ast::*;
 use crate::model::ProtoModel;
 
-use std::any::TypeId;
-
-pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
+pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
     let names = model
         .nodes()
         .iter()
@@ -15,11 +13,12 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
     let prefix: Option<String> = if names.len() > 1 {
         Some(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
             (prefix.chars()).zip(name.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect()
-        })).filter(|p| p.len() > 0)
+        }))
+        .filter(|p| p.len() > 0)
     } else {
         None
     };
-    let mut into_ast = IntoAst::new(model, prefix);
+    let mut into_ast = IntoAst::new(framework, model, prefix);
     for input in model.input_outlets()? {
         let left = into_ast.scoped_id(&model.node(input.node).name);
         into_ast.parameters.push(left.clone());
@@ -53,6 +52,7 @@ pub fn to_proto_model(model: &TypedModel) -> TractResult<ProtoModel> {
 }
 
 pub struct IntoAst<'a> {
+    pub framework: &'a Nnef,
     pub prefix: Option<String>,
     pub model: &'a TypedModel,
     pub parameters: Vec<String>,
@@ -61,12 +61,12 @@ pub struct IntoAst<'a> {
     pub tensors: HashMap<String, Arc<Tensor>>,
     pub fragments: HashMap<String, FragmentDef>,
     pub body: Vec<Assignment>,
-    pub registry: HashMap<TypeId, crate::ops::ser::OpDumper>,
 }
 
 impl<'a> IntoAst<'a> {
-    fn new(model: &'a TypedModel, prefix: Option<String>) -> IntoAst {
+    fn new(framework: &'a Nnef, model: &'a TypedModel, prefix: Option<String>) -> IntoAst<'a> {
         IntoAst {
+            framework,
             prefix,
             model,
             parameters: vec![],
@@ -75,7 +75,6 @@ impl<'a> IntoAst<'a> {
             tensors: Default::default(),
             fragments: Default::default(),
             body: vec![],
-            registry: crate::ops::ser::registry(),
         }
     }
 
@@ -95,8 +94,11 @@ impl<'a> IntoAst<'a> {
 
     fn node(&mut self, node: &TypedNode) -> TractResult<Arc<RValue>> {
         let dumper = self
-            .registry
-            .get(&node.op().type_id())
+            .framework
+            .registries
+            .iter()
+            .filter_map(|reg| reg.lookup_op(&node.op().type_id()))
+            .next()
             .ok_or_else(|| format!("No serializer registered for {:?}", node.op()))?;
         let outputs = dumper(self, node)?;
         self.mapping.insert(node.id.into(), outputs.clone());
