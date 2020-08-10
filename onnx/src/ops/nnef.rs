@@ -10,7 +10,8 @@ pub fn tract_nnef_onnx_registry() -> Registry {
         };
     };
     dumper!(crate::ops::nn::lrn::Lrn, lrn_dump);
-    registry.register_primitive("tract_onnx_lrn", lrn_fragment(), lrn_load);
+    registry.register_primitive("tract_onnx_lrn", &lrn_fragment().parameters, lrn_load);
+    registry.register_element_wise("tract_onnx_erf", &crate::ops::math::Erf {});
     registry
 }
 

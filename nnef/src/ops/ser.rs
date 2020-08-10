@@ -5,25 +5,47 @@ use tract_core::ops;
 use tract_core::ops::nn::DataFormat;
 
 pub fn register(registry: &mut Registry) {
-    macro_rules! reg {
+    macro_rules! nnef {
         ($op:ty, $path: path) => {
             registry.register_dumper(TypeId::of::<$op>(), |ast, node| {
                 $path(ast, node, node.op().downcast_ref::<$op>().unwrap())
             })
         };
     };
-    reg!(ops::array::TypedConcat, concat);
-    reg!(ops::array::Slice<TDim>, slice<TDim>);
-    reg!(ops::array::Slice<usize>, slice<usize>);
-    reg!(ops::element_wise::ElementWiseOp, element_wise);
-    reg!(ops::binary::UnaryOp, semi_binary);
-    reg!(ops::binary::TypedBinOp, binary);
-    reg!(ops::change_axes::AxisOp, axis_op);
-    reg!(ops::cnn::ConvUnary, conv);
-    reg!(ops::cnn::MaxPool, max_pool);
-    reg!(ops::cnn::SumPool, sum_pool);
-    reg!(ops::nn::Reduce, reduce);
-    reg!(ops::matmul::MatMulUnary, matmul);
+    nnef!(ops::array::TypedConcat, concat);
+    nnef!(ops::array::Slice<TDim>, slice<TDim>);
+    nnef!(ops::array::Slice<usize>, slice<usize>);
+    nnef!(ops::binary::UnaryOp, semi_binary);
+    nnef!(ops::binary::TypedBinOp, binary);
+    nnef!(ops::change_axes::AxisOp, axis_op);
+    nnef!(ops::cnn::ConvUnary, conv);
+    nnef!(ops::cnn::MaxPool, max_pool);
+    nnef!(ops::cnn::SumPool, sum_pool);
+    nnef!(ops::nn::Reduce, reduce);
+    nnef!(ops::matmul::MatMulUnary, matmul);
+
+    registry.register_element_wise("exp", &ops::math::Exp {});
+    registry.register_element_wise("ln", &ops::math::Ln {});
+    registry.register_element_wise("sin", &ops::math::Sin {});
+    registry.register_element_wise("cos", &ops::math::Cos {});
+    registry.register_element_wise("abs", &ops::math::Abs {});
+    registry.register_element_wise("neg", &ops::math::Neg {});
+    registry.register_element_wise("sign", &ops::math::Sign {});
+    registry.register_element_wise("recip", &ops::math::Recip {});
+
+    registry.register_element_wise("floor", &ops::math::Floor {});
+    registry.register_element_wise("ceil", &ops::math::Ceil {});
+    registry.register_element_wise("round", &ops::math::Round {});
+
+    registry.register_element_wise("square", &ops::math::Square {});
+    registry.register_element_wise("sqrt", &ops::math::Sqrt {});
+    registry.register_element_wise("rsqrt", &ops::math::Rsqrt {});
+
+    registry.register_element_wise("tanh", &ops::math::Tanh {});
+    registry.register_element_wise("sigmoid", &ops::nn::Sigmoid {});
+
+    registry.register_element_wise("not", &ops::logic::Not {});
+
 }
 
 fn concat(
@@ -358,15 +380,6 @@ fn matmul(
     Ok(ast.force_assign(&node.name, &c))
 }
 
-fn element_wise(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-    op: &ops::element_wise::ElementWiseOp,
-) -> TractResult<Arc<RValue>> {
-    let a = ast.mapping[&node.inputs[0]].clone();
-    Ok(invocation(ew_miniop(op.0.as_ref())?, &[a], &[]))
-}
-
 fn binary(
     ast: &mut IntoAst,
     node: &TypedNode,
@@ -374,7 +387,8 @@ fn binary(
 ) -> TractResult<Arc<RValue>> {
     let a = ast.mapping[&node.inputs[0]].clone();
     let b = ast.mapping[&node.inputs[1]].clone();
-    Ok(invocation(bin_miniop(op.0.as_ref())?, &[a, b], &[]))
+    let op = bin_miniop(ast, op.0.as_ref())?;
+    Ok(invocation(&*op, &[a, b], &[]))
 }
 
 fn semi_binary(
@@ -384,62 +398,55 @@ fn semi_binary(
 ) -> TractResult<Arc<RValue>> {
     let a = ast.konst(format!("{}_a", node.name), &op.a);
     let b = ast.mapping[&node.inputs[0]].clone();
-    Ok(invocation(bin_miniop(op.mini_op.as_ref())?, &[a, b], &[]))
+    let op = bin_miniop(ast, op.mini_op.as_ref())?;
+    Ok(invocation(&*op, &[a, b], &[]))
 }
 
 macro_rules! mini {
-    ($op: expr, $typ: ty, $name: ident) => {
+    ($op: expr, $typ: ty, $reg: ident :: $name:ident) => {
         if let Some(_) = $op.downcast_ref::<$typ>() {
-            return Ok(stringify!($name));
+            return Ok((stringify!($reg), stringify!($name)));
         }
     };
 }
 
-fn ew_miniop(op: &dyn ops::element_wise::ElementWiseMiniOp) -> TractResult<&'static str> {
-    mini!(op, ops::math::Exp, exp);
-    mini!(op, ops::math::Ln, ln);
-    mini!(op, ops::math::Sin, sin);
-    mini!(op, ops::math::Cos, cos);
-    mini!(op, ops::math::Abs, abs);
-    mini!(op, ops::math::Neg, neg);
-    mini!(op, ops::math::Sign, sign);
-    mini!(op, ops::math::Recip, rcp);
-
-    mini!(op, ops::logic::Not, not);
-
-    mini!(op, ops::math::Floor, floor);
-    mini!(op, ops::math::Ceil, ceil);
-    mini!(op, ops::math::Round, round);
-
-    mini!(op, ops::math::Square, sqr);
-    mini!(op, ops::math::Sqrt, sqrt);
-    mini!(op, ops::math::Rsqrt, rsqrt);
-
-    mini!(op, ops::math::Tanh, tanh);
-    mini!(op, ops::nn::Sigmoid, sigmoid);
-
-    bail!("Untranslated element_wise mini op: {:?}", op)
+fn register_reg_mini<'op>(ast: &mut IntoAst, reg: &str, op: &'op str) -> Cow<'op, str> {
+    if reg == "tract_nnef" {
+        Cow::Borrowed(op)
+    } else {
+        if !ast.registries.iter().any(|r| r == reg) {
+            ast.registries.push(reg.to_string())
+        }
+        Cow::Owned(format!("{}_{}", reg, op).into())
+    }
 }
 
-fn bin_miniop(op: &dyn ops::binary::BinMiniOp) -> TractResult<&'static str> {
-    mini!(op, ops::math::Add, add);
-    mini!(op, ops::math::Sub, sub);
-    mini!(op, ops::math::Mul, mul);
-    mini!(op, ops::math::Div, div);
-    mini!(op, ops::math::Pow, pow);
+fn bin_miniop(
+    ast: &mut IntoAst,
+    mini_op: &dyn ops::binary::BinMiniOp,
+) -> TractResult<Cow<'static, str>> {
+    fn op(op: &dyn ops::binary::BinMiniOp) -> TractResult<(&'static str, &'static str)> {
+        mini!(op, ops::math::Add, tract_nnef::add);
+        mini!(op, ops::math::Sub, tract_nnef::sub);
+        mini!(op, ops::math::Mul, tract_nnef::mul);
+        mini!(op, ops::math::Div, tract_nnef::div);
+        mini!(op, ops::math::Pow, tract_nnef::pow);
 
-    mini!(op, ops::logic::Lesser, lt);
-    mini!(op, ops::logic::Greater, gt);
-    mini!(op, ops::logic::LesserEqual, le);
-    mini!(op, ops::logic::GreaterEqual, ge);
-    mini!(op, ops::logic::Equals, eq);
-    mini!(op, ops::logic::NotEquals, ne);
+        mini!(op, ops::logic::Lesser, tract_nnef::lt);
+        mini!(op, ops::logic::Greater, tract_nnef::gt);
+        mini!(op, ops::logic::LesserEqual, tract_nnef::le);
+        mini!(op, ops::logic::GreaterEqual, tract_nnef::ge);
+        mini!(op, ops::logic::Equals, tract_nnef::eq);
+        mini!(op, ops::logic::NotEquals, tract_nnef::ne);
 
-    mini!(op, ops::logic::And, and);
-    mini!(op, ops::logic::Or, or);
+        mini!(op, ops::logic::And, tract_nnef::and);
+        mini!(op, ops::logic::Or, tract_nnef::or);
 
-    mini!(op, ops::math::Max, max);
-    mini!(op, ops::math::Min, min);
+        mini!(op, ops::math::Max, tract_nnef::max);
+        mini!(op, ops::math::Min, tract_nnef::min);
 
-    bail!("Untranslated binary mini op: {:?}", op)
+        bail!("Untranslated binary mini op: {:?}", op)
+    }
+    let (reg, op) = op(mini_op)?;
+    Ok(register_reg_mini(ast, reg, op))
 }

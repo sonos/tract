@@ -1,8 +1,6 @@
 use crate::ast::*;
 use crate::internal::*;
 
-use crate::ops::*;
-
 pub struct ModelBuilder<'a> {
     pub framework: &'a Nnef,
     pub registries: Vec<String>,
@@ -60,36 +58,6 @@ impl<'mb> ModelBuilder<'mb> {
         }
     }
 
-    fn augmented_invocation<'a>(
-        &self,
-        invocation: &'a Invocation,
-    ) -> TractResult<ResolvedInvocation<'a>>
-    where
-        'mb: 'a,
-    {
-        if let Some(fragment) =
-            self.proto_model.doc.fragments.iter().find(|f| f.decl.id == invocation.id)
-        {
-            if let Some(body) = fragment.body.as_ref() {
-                return Ok(ResolvedInvocation {
-                    invocation,
-                    decl: &fragment.decl,
-                    builder: ResolvedOp::Fragment(body),
-                });
-            } else {
-                bail!("Abstract fragment in doc.");
-            }
-        }
-        for registry in &self.framework.registries {
-            if self.registries.contains(&registry.id) {
-                if let Some((decl, builder)) = registry.lookup_nnef(&invocation.id) {
-                    return Ok(ResolvedInvocation { invocation, decl, builder });
-                }
-            }
-        }
-        bail!("Unresolved operation id: {}", invocation.id);
-    }
-
     pub fn wire_body(&mut self, body: &[Assignment]) -> TractResult<()> {
         // todo: can i relax the outlet id constraint ?
         for assignment in body {
@@ -116,40 +84,40 @@ impl<'mb> ModelBuilder<'mb> {
     }
 
     pub fn wire_invocation(&mut self, invocation: &Invocation) -> TractResult<Value> {
-        let augmented_invocation = self.augmented_invocation(invocation)?;
-        match augmented_invocation.builder {
-            ResolvedOp::Fragment(body) => self
-                .wire_fragment_invocation(&augmented_invocation, body)
-                .chain_err(|| format!("Expanding fragment `{}'", invocation.id)),
-            ResolvedOp::Primitive(prim) => (prim)(self, &augmented_invocation)
-                .map(|res| Value::Tuple(res.into_iter().map(Value::Wire).collect()))
-                .chain_err(|| format!("Expanding fragment `{}'", invocation.id)),
+        for frag in &self.proto_model.doc.fragments {
+            if frag.decl.id == invocation.id && frag.body.is_some() {
+                let resolved = ResolvedInvocation { invocation, default_params: &frag.decl.parameters };
+                return self.wire_fragment_invocation(&resolved, &frag.decl, frag.body.as_deref().unwrap());
+            }
         }
+        for registry in &self.framework.registries {
+            if self.registries.contains(&registry.id) {
+                if let Some(outputs) = registry.deserialize(self, invocation)? {
+                    return Ok(outputs);
+                }
+            }
+        }
+        bail!("No definition for operator `{}'", invocation.id);
     }
 
     pub fn wire_fragment_invocation(
         &mut self,
         invocation: &ResolvedInvocation,
+        decl: &FragmentDecl,
         body: &[Assignment],
     ) -> TractResult<Value> {
         let mut inner_scope = HashMap::new();
-        for par in invocation.decl.parameters.iter() {
+        for par in invocation.default_params.iter() {
             inner_scope
                 .insert(par.id.to_string(), invocation.named_arg_as::<Value>(self, &par.id)?);
         }
         self.scopes.push(inner_scope);
         self.naming_scopes.push(invocation.invocation.id.to_string());
-        self.wire_body(&body)?;
+        self.wire_body(body)?;
         self.naming_scopes.pop();
         let inner_scope = self.scopes.pop().unwrap();
         Ok(Value::Tuple(
-            invocation
-                .decl
-                .results
-                .iter()
-                .map(|res| inner_scope.get(&res.id).unwrap())
-                .cloned()
-                .collect(),
+            decl.results.iter().map(|res| inner_scope.get(&res.id).unwrap()).cloned().collect(),
         ))
     }
 
@@ -195,16 +163,9 @@ impl<'mb> ModelBuilder<'mb> {
 }
 
 #[derive(Clone)]
-pub enum ResolvedOp<'a> {
-    Fragment(&'a [Assignment]),
-    Primitive(&'a ToTract),
-}
-
-#[derive(Clone)]
 pub struct ResolvedInvocation<'a> {
     pub invocation: &'a Invocation,
-    pub decl: &'a FragmentDecl,
-    pub builder: ResolvedOp<'a>,
+    pub default_params: &'a [Parameter],
 }
 
 impl<'a> ResolvedInvocation<'a> {
@@ -232,7 +193,7 @@ impl<'a> ResolvedInvocation<'a> {
         }
         // then use fragment prototype:
         if let Some((ix, param)) =
-            self.decl.parameters.iter().enumerate().find(|(_ix, param)| param.id == name)
+            self.default_params.iter().enumerate().find(|(_ix, param)| param.id == name)
         {
             // check that all previous (and our) arguments are positional (todo:
             // valid args when building augmented_invocation)

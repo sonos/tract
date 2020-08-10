@@ -26,6 +26,7 @@ pub use model::Onnx;
 pub use tract_hir::tract_core;
 pub mod prelude {
     pub use crate::onnx;
+    pub use crate::WithOnnx;
     pub use tract_hir::prelude::*;
 }
 
@@ -47,4 +48,14 @@ pub fn onnx() -> Onnx {
     Onnx { op_register: ops }
 }
 
-pub use ops::nnef::tract_nnef_onnx_registry;
+pub trait WithOnnx {
+    fn with_onnx(self) -> Self;
+}
+
+impl WithOnnx for tract_nnef::framework::Nnef {
+    fn with_onnx(mut self) -> Self {
+        self.registries.push(tract_nnef::ops::tract_core());
+        self.registries.push(ops::nnef::tract_nnef_onnx_registry());
+        self
+    }
+}

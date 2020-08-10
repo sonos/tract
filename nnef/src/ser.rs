@@ -100,19 +100,16 @@ impl<'a> IntoAst<'a> {
     }
 
     fn node(&mut self, node: &TypedNode) -> TractResult<Arc<RValue>> {
-        let (reg, dumper) = self
-            .framework
-            .registries
-            .iter()
-            .filter_map(|reg| reg.lookup_op(&node.op().type_id()).map(|op| (reg, op)))
-            .next()
-            .ok_or_else(|| format!("No serializer registered for {:?}", node.op()))?;
-        if !self.registries.contains(&reg.id) {
-            self.registries.push(reg.id.clone())
+        for reg in &self.framework.registries {
+            if let Some(outputs) = reg.serialize(self, node)? {
+                if !self.registries.contains(&reg.id) {
+                    self.registries.push(reg.id.clone())
+                }
+                self.mapping.insert(node.id.into(), outputs.clone());
+                return Ok(outputs);
+            }
         }
-        let outputs = dumper(self, node)?;
-        self.mapping.insert(node.id.into(), outputs.clone());
-        Ok(outputs)
+        bail!("No serializer found for node {}", node);
     }
 
     pub fn scoped_id(&self, name: impl Into<String>) -> String {
