@@ -1,13 +1,18 @@
-use crate::internal::*;
 use crate::ast::ProtoModel;
+use crate::internal::*;
+
+pub fn stdlib() -> Vec<FragmentDef> {
+    crate::ast::parse::parse_fragments(include_str!("../stdlib.nnef")).unwrap()
+}
 
 pub struct Nnef {
+    pub stdlib: Vec<FragmentDef>,
     pub registries: Vec<Registry>,
 }
 
 impl Nnef {
     pub fn new() -> Nnef {
-        Nnef { registries: vec![crate::ops::tract_nnef()] }
+        Nnef { stdlib: stdlib(), registries: vec![crate::ops::tract_nnef()] }
     }
 
     pub fn with_registry(mut self, registry: Registry) -> Nnef {
@@ -134,33 +139,3 @@ fn read_stream<R: std::io::Read>(
     }
     Ok(())
 }
-
-/*
-pub fn open_path<P: AsRef<std::path::Path>>(p: P) -> TractResult<ProtoModel> {
-    let path = p.as_ref();
-    if !path.exists() {
-        bail!("File not found: {:?}", path)
-    } else if path.is_dir() && path.join("graph.nnef").is_file() {
-        let mut text: Option<String> = None;
-        let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
-        for entry in walkdir::WalkDir::new(path) {
-            let entry = entry.map_err(|e| format!("Can not walk directory {:?}: {:?}", path, e))?;
-            let path = entry.path();
-            let mut stream = std::fs::File::open(path)?;
-            read_stream(&path, &mut stream, &mut text, &mut tensors)?;
-        }
-        let text = text.ok_or_else(|| format!("Model must contain graph.nnef at top level"))?;
-        let doc = crate::ast::parse::parse_document(&text)?;
-        Ok(ProtoModel { doc, tensors })
-    } else if path.is_file()
-        && path
-            .file_name()
-            .map(|s| [".tgz", ".tar.gz"].iter().any(|ext| s.to_string_lossy().ends_with(ext)))
-            .unwrap_or(false)
-    {
-        load(std::fs::File::open(path)?)
-    } else {
-        bail!("Model expected as a tar.gz archive of a directory containing a file called `graph.nnef'")
-    }
-}
-*/
