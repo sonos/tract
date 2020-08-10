@@ -1,17 +1,13 @@
-use crate::ast::*;
+use crate::internal::*;
 use crate::ser::*;
 use std::any::TypeId;
-use tract_core::internal::*;
 use tract_core::ops;
 use tract_core::ops::nn::DataFormat;
 
-pub type OpDumper = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Arc<RValue>>;
-
-pub fn registry() -> HashMap<TypeId, OpDumper> {
-    let mut registry: HashMap<TypeId, OpDumper> = Default::default();
+pub fn register(registry: &mut Registry) {
     macro_rules! reg {
         ($op:ty, $path: path) => {
-            registry.insert(TypeId::of::<$op>(), |ast, node| {
+            registry.register_dumper(TypeId::of::<$op>(), |ast, node| {
                 $path(ast, node, node.op().downcast_ref::<$op>().unwrap())
             })
         };
@@ -28,7 +24,6 @@ pub fn registry() -> HashMap<TypeId, OpDumper> {
     reg!(ops::cnn::SumPool, sum_pool);
     reg!(ops::nn::Reduce, reduce);
     reg!(ops::matmul::MatMulUnary, matmul);
-    registry
 }
 
 fn concat(

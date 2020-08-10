@@ -54,5 +54,6 @@ impl Registry {
 pub fn tract_nnef() -> Registry {
     let mut reg = Registry::new("tract_nnef");
     deser::register(&mut reg);
+    ser::register(&mut reg);
     reg
 }

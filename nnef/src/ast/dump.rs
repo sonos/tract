@@ -25,6 +25,9 @@ impl<'a> Dumper<'a> {
         for ext in &document.extension {
             writeln!(self.w, "extension {};", ext.join(" "))?;
         }
+        if document.extension.len() > 0 {
+            writeln!(self.w, "")?;
+        }
         self.fragments(&document.fragments)?;
         self.graph_def(&document.graph_def)?;
         Ok(())
