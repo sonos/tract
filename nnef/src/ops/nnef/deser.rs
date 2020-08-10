@@ -4,101 +4,11 @@ use tract_core::itertools::izip;
 use tract_core::itertools::Itertools;
 
 use tract_core::ops;
-use crate::ops::*;
 
 use crate::deser::{ResolvedInvocation, ModelBuilder};
 
-pub fn register(registry: &mut Registry) {
-    let mut stdlib = stdlib();
-
-    let mut primitive = |id: &str, func:ToTract| {
-        let pos = stdlib.iter().position(|f| f.decl.id == id).unwrap();
-        let decl = stdlib.remove(pos).decl;
-        registry.register_primitive(id, &decl.parameters, func)
-    };
-
-    primitive("external", external);
-    primitive("variable", variable);
-
-    primitive("reshape", reshape);
-    primitive("transpose", transpose);
-    primitive("concat", concat);
-    primitive("slice", slice);
-    primitive("unsqueeze", unsqueeze);
-    primitive("squeeze", squeeze);
-
-    macro_rules! mew {
-        ($nnef: ident, $tract: expr) => {
-            primitive(
-                stringify!($nnef),
-                |b, i| multiary_elementwise(b, i, Box::new($tract)),
-            );
-        };
-    };
-
-    mew!(add, ops::math::add::bin_typed());
-    mew!(sub, ops::math::sub::bin_typed());
-    mew!(mul, ops::math::mul::bin_typed());
-    mew!(div, ops::math::div::bin_typed());
-    mew!(pow, ops::math::pow::bin_typed());
-
-    mew!(exp, ops::math::exp());
-    mew!(log, ops::math::ln());
-    mew!(sin, ops::math::sin());
-    mew!(cos, ops::math::cos());
-    mew!(abs, ops::math::abs());
-    mew!(sign, ops::math::sign());
-    mew!(rcp, ops::math::recip());
-    mew!(neg, ops::math::neg());
-    mew!(copy, ops::identity::Identity);
-
-    mew!(lt, ops::logic::lesser::bin_typed());
-    mew!(gt, ops::logic::greater::bin_typed());
-    mew!(le, ops::logic::lesser_equal::bin_typed());
-    mew!(ge, ops::logic::greater_equal::bin_typed());
-    mew!(eq, ops::logic::equals::bin_typed());
-    mew!(ne, ops::logic::not_equals::bin_typed());
-
-    mew!(and, ops::logic::and::bin_typed());
-    mew!(or, ops::logic::or::bin_typed());
-    mew!(not, ops::logic::not());
-
-    mew!(floor, ops::math::floor());
-    mew!(ceil, ops::math::ceil());
-    mew!(round, ops::math::round());
-
-    mew!(select, ops::logic::Iff);
-
-    mew!(sqr, ops::math::square());
-    mew!(sqrt, ops::math::sqrt());
-    mew!(rsqrt, ops::math::rsqrt());
-
-    mew!(min, ops::math::min::bin_typed());
-    mew!(max, ops::math::max::bin_typed());
-
-    primitive("matmul", matmul);
-
-    primitive("conv", conv);
-
-    primitive("sum_reduce", reduce);
-    primitive("max_reduce", reduce);
-    primitive("min_reduce", reduce);
-
-    primitive("max_pool_with_index", max_pool_with_index);
-    primitive("box", sum_pool);
-
-    mew!(tanh, ops::math::tanh());
-    mew!(sigmoid, ops::nn::sigmoid());
-
-    for frag in stdlib {
-        if frag.body.is_some() {
-            registry.register_fragment(frag);
-        }
-    }
-}
-
 // fragment external<? = scalar>( shape: integer[] ) -> ( output: tensor<?> );
-fn external(
+pub fn external(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -115,7 +25,7 @@ fn external(
 }
 
 // fragment variable<? = scalar>( shape: integer[], label: string ) -> ( output: tensor<?> );
-fn variable(
+pub fn variable(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -140,7 +50,7 @@ fn variable(
 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
 //      -> ( output: tensor<?> );
-fn reshape(
+pub fn reshape(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -168,7 +78,7 @@ fn reshape(
 }
 
 // fragment transpose<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
-fn transpose(
+pub fn transpose(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -180,7 +90,7 @@ fn transpose(
 }
 
 // fragment concat<?>( values: tensor<?>[], axis: integer ) -> ( value: tensor<?> );
-fn concat(
+pub fn concat(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -190,7 +100,7 @@ fn concat(
 }
 
 // fragment slice<?>( input: tensor<?>, axes: integer[], begin: integer[], end: integer[] ) -> ( output: tensor<?> );
-fn slice(
+pub fn slice(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -219,7 +129,7 @@ fn slice(
 }
 
 // fragment squeeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
-fn squeeze(
+pub fn squeeze(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -231,7 +141,7 @@ fn squeeze(
 }
 
 // fragment unsqueeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
-fn unsqueeze(
+pub fn unsqueeze(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -250,7 +160,7 @@ dilation: integer[] = [], groups: integer = 1 )
 -> ( output: tensor<scalar> );
 */
 
-fn conv(
+pub fn conv(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -356,7 +266,7 @@ fn pool_spec_for_pools(
  *   -> ( output: tensor<scalar>, index: tensor<integer> )
  */
 
-fn max_pool_with_index(
+pub fn max_pool_with_index(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -383,7 +293,7 @@ fn max_pool_with_index(
  * -> ( output: tensor<scalar> );
  */
 
-fn sum_pool(
+pub fn sum_pool(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -413,7 +323,7 @@ fn sum_pool(
  *   fragment max_reduce( input: tensor<scalar>, axes: integer[] ) -> ( output: tensor<scalar> );
  *   and also min, argmax, armmin, any, all
  */
-fn reduce(
+pub fn reduce(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -449,7 +359,7 @@ fn reduce(
 /*
  * fragment matmul( A: tensor<scalar>, B: tensor<scalar>, transposeA: logical = false, transposeB: logical = false ) -> ( C: tensor<scalar> );
  */
-fn matmul(
+pub fn matmul(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -460,31 +370,3 @@ fn matmul(
     builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false, q_params: None }, &[a, b])
 }
 
-pub fn multiary_elementwise(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-    op: Box<dyn TypedOp>,
-) -> TractResult<TVec<OutletId>> {
-    let inputs = invocation
-        .invocation
-        .arguments
-        .iter()
-        .map(|arg| arg.rvalue.resolve(builder)?.to(builder))
-        .collect::<TractResult<TVec<_>>>()?;
-    let inputs = multicast(builder, &inputs)?;
-    builder.wire(op, &inputs)
-}
-
-fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
-    let ranks = inputs
-        .iter()
-        .map(|&i| Ok(builder.model.outlet_fact(i)?.rank()))
-        .collect::<TractResult<Vec<usize>>>()?;
-    let max_rank = ranks.iter().copied().max().unwrap();
-    (inputs.iter())
-        .zip(ranks.iter())
-        .map(|(&i, &r)| {
-            (r..max_rank).try_fold(i, |w, n| Ok(builder.wire(AxisOp::Add(n), &[w])?[0]))
-        })
-        .collect()
-}
