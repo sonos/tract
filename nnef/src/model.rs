@@ -1,139 +1,15 @@
-use crate::internal::*;
 use crate::ast::*;
-use std::collections::HashMap;
+use crate::internal::*;
 
 use crate::ops::*;
 
-#[derive(Clone, Debug)]
-pub struct ProtoModel {
-    pub doc: Document,
-    pub tensors: HashMap<String, Arc<Tensor>>,
-}
-
-#[derive(Clone, Debug)]
-pub enum Value {
-    Tensor(Arc<Tensor>),
-    Wire(OutletId),
-    Array(Vec<Value>),
-    Tuple(Vec<Value>),
-    String(String),
-    Bool(bool),
-    Scalar(f32),
-    Dim(TDim),
-}
-
-impl Value {
-    pub fn to<T>(&self, builder: &mut ModelBuilder) -> TractResult<T>
-    where
-        T: CoerceFrom<Value>,
-    {
-        T::coerce(builder, self)
-    }
-}
-
 pub struct ModelBuilder<'a> {
     pub framework: &'a Nnef,
+    pub registries: Vec<String>,
     pub model: TypedModel,
     pub naming_scopes: Vec<String>,
     pub scopes: Vec<HashMap<String, Value>>,
     pub proto_model: &'a ProtoModel,
-}
-
-impl<'a> ModelBuilder<'a> {
-    pub fn wire(
-        &mut self,
-        op: impl Into<Box<dyn TypedOp>>,
-        inputs: &[OutletId],
-    ) -> TractResult<TVec<OutletId>> {
-        let op = op.into();
-        if inputs.iter().all(|o| self.model.outlet_fact(*o).unwrap().konst.is_some()) {
-            if let Some(stateless) = op.as_op().as_stateless() {
-                let inputs: TVec<Arc<Tensor>> = inputs
-                    .iter()
-                    .map(|o| self.model.outlet_fact(*o).unwrap().konst.clone().unwrap())
-                    .collect();
-                let outputs = stateless.eval(inputs)?;
-                let mut outlets = tvec!();
-                for (ix, o) in outputs.into_iter().enumerate() {
-                    outlets.push(
-                        self.model.wire_node(
-                            format!(
-                                "{}.{}-{}",
-                                self.naming_scopes.join("."),
-                                op.as_op().name(),
-                                ix
-                            ),
-                            tract_core::ops::konst::Const::new(o),
-                            &[],
-                        )?[0],
-                    );
-                }
-                return Ok(outlets);
-            }
-        }
-        self.model
-            .wire_node(
-                format!("{}.{}", self.naming_scopes.join("."), op.as_op().name()),
-                op,
-                inputs,
-            )
-            .chain_err(|| format!("inputs are {:?}", inputs))
-    }
-}
-
-#[derive(Clone)]
-pub enum ResolvedOp<'a> {
-    Fragment(&'a [Assignment]),
-    Primitive(&'a ToTract),
-}
-
-#[derive(Clone)]
-pub struct AugmentedInvocation<'a> {
-    pub invocation: &'a Invocation,
-    pub decl: &'a FragmentDecl,
-    pub builder: ResolvedOp<'a>,
-}
-
-impl<'a> AugmentedInvocation<'a> {
-    pub fn named_arg_as<T>(&self, builder: &mut ModelBuilder, name: &str) -> TractResult<T>
-    where
-        T: CoerceFrom<Value>,
-    {
-        let rv = self.named_arg(name)?;
-        let v = rv
-            .resolve(builder)
-            .chain_err(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
-        v.to::<T>(builder).chain_err(|| format!("Converting argument `{}' from {:?}", name, v))
-    }
-
-    pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
-        self.get_named_arg(name).ok_or_else(|| format!("expected argument {}", name).into())
-    }
-
-    pub fn get_named_arg(&self, name: &str) -> Option<Cow<RValue>> {
-        // first look explicit name in invocation arguments
-        if let Some(arg) =
-            self.invocation.arguments.iter().find(|arg| arg.id.as_deref() == Some(name))
-        {
-            return Some(Cow::Borrowed(&arg.rvalue));
-        }
-        // then use fragment prototype:
-        if let Some((ix, param)) =
-            self.decl.parameters.iter().enumerate().find(|(_ix, param)| param.id == name)
-        {
-            // check that all previous (and our) arguments are positional (todo:
-            // valid args when building augmented_invocation)
-            if self.invocation.arguments.len() > ix
-                && self.invocation.arguments.iter().take(ix + 1).all(|arg| arg.id.is_none())
-            {
-                return Some(Cow::Borrowed(&self.invocation.arguments[ix].rvalue));
-            }
-            if let Some(rv) = &param.lit {
-                return Some(Cow::Owned(RValue::Literal(rv.clone())));
-            }
-        }
-        None
-    }
 }
 
 impl<'mb> ModelBuilder<'mb> {
@@ -158,11 +34,13 @@ impl<'mb> ModelBuilder<'mb> {
             }
         }
         for registry in &self.framework.registries {
-            if let Some((decl, builder)) = registry.lookup_nnef(&invocation.id) {
-                return Ok(AugmentedInvocation { invocation, decl, builder });
+            if self.registries.contains(&registry.id) {
+                if let Some((decl, builder)) = registry.lookup_nnef(&invocation.id) {
+                    return Ok(AugmentedInvocation { invocation, decl, builder });
+                }
             }
         }
-        bail!("Unresolved invocation id");
+        bail!("Unresolved operation id: {}", invocation.id);
     }
 
     pub fn wire_body(&mut self, body: &[Assignment]) -> TractResult<()> {
@@ -227,7 +105,105 @@ impl<'mb> ModelBuilder<'mb> {
                 .collect(),
         ))
     }
+
+    pub fn wire(
+        &mut self,
+        op: impl Into<Box<dyn TypedOp>>,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let op = op.into();
+        if inputs.iter().all(|o| self.model.outlet_fact(*o).unwrap().konst.is_some()) {
+            if let Some(stateless) = op.as_op().as_stateless() {
+                let inputs: TVec<Arc<Tensor>> = inputs
+                    .iter()
+                    .map(|o| self.model.outlet_fact(*o).unwrap().konst.clone().unwrap())
+                    .collect();
+                let outputs = stateless.eval(inputs)?;
+                let mut outlets = tvec!();
+                for (ix, o) in outputs.into_iter().enumerate() {
+                    outlets.push(
+                        self.model.wire_node(
+                            format!(
+                                "{}.{}-{}",
+                                self.naming_scopes.join("."),
+                                op.as_op().name(),
+                                ix
+                            ),
+                            tract_core::ops::konst::Const::new(o),
+                            &[],
+                        )?[0],
+                    );
+                }
+                return Ok(outlets);
+            }
+        }
+        self.model
+            .wire_node(
+                format!("{}.{}", self.naming_scopes.join("."), op.as_op().name()),
+                op,
+                inputs,
+            )
+            .chain_err(|| format!("inputs are {:?}", inputs))
+    }
+
 }
+
+#[derive(Clone)]
+pub enum ResolvedOp<'a> {
+    Fragment(&'a [Assignment]),
+    Primitive(&'a ToTract),
+}
+
+#[derive(Clone)]
+pub struct AugmentedInvocation<'a> {
+    pub invocation: &'a Invocation,
+    pub decl: &'a FragmentDecl,
+    pub builder: ResolvedOp<'a>,
+}
+
+impl<'a> AugmentedInvocation<'a> {
+    pub fn named_arg_as<T>(&self, builder: &mut ModelBuilder, name: &str) -> TractResult<T>
+    where
+        T: CoerceFrom<Value>,
+    {
+        let rv = self.named_arg(name)?;
+        let v = rv
+            .resolve(builder)
+            .chain_err(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
+        v.to::<T>(builder).chain_err(|| format!("Converting argument `{}' from {:?}", name, v))
+    }
+
+    pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
+        self.get_named_arg(name).ok_or_else(|| format!("expected argument {}", name).into())
+    }
+
+    pub fn get_named_arg(&self, name: &str) -> Option<Cow<RValue>> {
+        // first look explicit name in invocation arguments
+        if let Some(arg) =
+            self.invocation.arguments.iter().find(|arg| arg.id.as_deref() == Some(name))
+        {
+            return Some(Cow::Borrowed(&arg.rvalue));
+        }
+        // then use fragment prototype:
+        if let Some((ix, param)) =
+            self.decl.parameters.iter().enumerate().find(|(_ix, param)| param.id == name)
+        {
+            // check that all previous (and our) arguments are positional (todo:
+            // valid args when building augmented_invocation)
+            if self.invocation.arguments.len() > ix
+                && self.invocation.arguments.iter().take(ix + 1).all(|arg| arg.id.is_none())
+            {
+                return Some(Cow::Borrowed(&self.invocation.arguments[ix].rvalue));
+            }
+            if let Some(rv) = &param.lit {
+                return Some(Cow::Owned(RValue::Literal(rv.clone())));
+            }
+        }
+        None
+    }
+}
+
+impl<'mb> ModelBuilder<'mb> {}
 
 impl LValue {
     fn to_identifier(&self) -> TractResult<&str> {
@@ -315,6 +291,27 @@ impl RValue {
             )),
             _ => panic!("{:?}", self),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Value {
+    Tensor(Arc<Tensor>),
+    Wire(OutletId),
+    Array(Vec<Value>),
+    Tuple(Vec<Value>),
+    String(String),
+    Bool(bool),
+    Scalar(f32),
+    Dim(TDim),
+}
+
+impl Value {
+    pub fn to<T>(&self, builder: &mut ModelBuilder) -> TractResult<T>
+    where
+        T: CoerceFrom<Value>,
+    {
+        T::coerce(builder, self)
     }
 }
 

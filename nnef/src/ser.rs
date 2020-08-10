@@ -1,7 +1,6 @@
 use crate::internal::*;
 
 use crate::ast::*;
-use crate::model::ProtoModel;
 
 pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
     let names = model
@@ -53,6 +52,7 @@ pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<Proto
 
 pub struct IntoAst<'a> {
     pub framework: &'a Nnef,
+    pub registries: Vec<String>,
     pub prefix: Option<String>,
     pub model: &'a TypedModel,
     pub parameters: Vec<String>,
@@ -67,6 +67,7 @@ impl<'a> IntoAst<'a> {
     fn new(framework: &'a Nnef, model: &'a TypedModel, prefix: Option<String>) -> IntoAst<'a> {
         IntoAst {
             framework,
+            registries: vec!(),
             prefix,
             model,
             parameters: vec![],
@@ -83,9 +84,15 @@ impl<'a> IntoAst<'a> {
         let id = prefix
             .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
             .unwrap_or("network".into());
+        let mut extension = vec!();
+        for reg in self.registries {
+            if reg != "tract_nnef" {
+                extension.push(vec!("tract_registry".to_string(), reg));
+            }
+        }
         let doc = Document {
             version: "1.0".into(),
-            extension: vec![],
+            extension,
             fragments: fragments.into_iter().map(|(_, v)| v).collect(),
             graph_def: GraphDef { id, parameters, results, body },
         };
@@ -93,13 +100,16 @@ impl<'a> IntoAst<'a> {
     }
 
     fn node(&mut self, node: &TypedNode) -> TractResult<Arc<RValue>> {
-        let dumper = self
+        let (reg, dumper) = self
             .framework
             .registries
             .iter()
-            .filter_map(|reg| reg.lookup_op(&node.op().type_id()))
+            .filter_map(|reg| reg.lookup_op(&node.op().type_id()).map(|op| (reg, op)))
             .next()
             .ok_or_else(|| format!("No serializer registered for {:?}", node.op()))?;
+        if !self.registries.contains(&reg.id) {
+            self.registries.push(reg.id.clone())
+        }
         let outputs = dumper(self, node)?;
         self.mapping.insert(node.id.into(), outputs.clone());
         Ok(outputs)

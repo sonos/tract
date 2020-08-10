@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 pub mod ast;
 pub mod framework;
 pub mod model;
@@ -5,8 +8,8 @@ pub mod ops;
 pub mod ser;
 pub mod tensors;
 
-pub use model::ProtoModel;
 pub use tract_core::prelude;
+pub use ast::ProtoModel;
 
 pub mod internal {
     pub use std::any::TypeId;

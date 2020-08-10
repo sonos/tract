@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::model::ProtoModel;
+use crate::ast::ProtoModel;
 
 pub struct Nnef {
     pub registries: Vec<Registry>,
@@ -20,12 +20,19 @@ impl Nnef {
         proto_model: &ProtoModel,
     ) -> Result<TypedModel, (TypedModel, TractError)> {
         let mut builder = ModelBuilder {
+            registries: vec!("tract_nnef".to_string()),
             framework: &self,
             model: TypedModel::default(),
             naming_scopes: vec![],
             scopes: vec![],
             proto_model,
         };
+        for ext in &proto_model.doc.extension {
+            match &*ext[0] {
+                "tract_registry" => builder.registries.push(ext[1].to_string()),
+                _ => warn!("Ignore unknown extension {}", ext.join(" ")),
+            };
+        }
         builder.scopes.push(HashMap::new());
         builder.naming_scopes.push(proto_model.doc.graph_def.id.to_string());
         builder
