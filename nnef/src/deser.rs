@@ -24,27 +24,40 @@ impl<'mb> ModelBuilder<'mb> {
         }
     }
 
-    pub fn into_typed_model(mut self) -> Result<TypedModel, (TypedModel, TractError)> {
+    fn translate(&mut self) -> TractResult<()> {
         for ext in &self.proto_model.doc.extension {
             match &*ext[0] {
-                "tract_registry" => self.registries.push(ext[1].to_string()),
+                "tract_registry" => {
+                    if self.framework.registries.iter().any(|reg| reg.id == ext[1]) {
+                        self.registries.push(ext[1].to_string())
+                    } else {
+                        bail!("Registry not found {}", &ext[1])
+                    }
+                }
                 _ => warn!("Ignore unknown extension {}", ext.join(" ")),
             };
         }
         self.scopes.push(HashMap::new());
         self.naming_scopes.push(self.proto_model.doc.graph_def.id.to_string());
-        self.wire_body(&self.proto_model.doc.graph_def.body).map_err(|e| (self.model.clone(), e))?;
+        self.wire_body(&self.proto_model.doc.graph_def.body)?;
         let vars = self.scopes.pop().unwrap();
-        let outputs = self.proto_model
+        let outputs = self
+            .proto_model
             .doc
             .graph_def
             .results
             .iter()
-            .map(|s| vars[s].to::<OutletId>(&mut self))
-            .collect::<TractResult<TVec<OutletId>>>()
-            .map_err(|e| (self.model.clone(), e))?;
-        self.model.set_output_outlets(&outputs).map_err(|e| (self.model.clone(), e))?;
-        Ok(self.model)
+            .map(|s| vars[s].to::<OutletId>(self))
+            .collect::<TractResult<TVec<OutletId>>>()?;
+        self.model.set_output_outlets(&outputs)?;
+        Ok(())
+    }
+
+    pub fn into_typed_model(mut self) -> Result<TypedModel, (TypedModel, TractError)> {
+        match self.translate() {
+            Ok(()) => Ok(self.model),
+            Err(e) => Err((self.model, e)),
+        }
     }
 
     fn augmented_invocation<'a>(
