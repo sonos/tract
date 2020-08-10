@@ -38,7 +38,7 @@ pub fn lrn_dump(
 
 pub fn lrn_load(
     builder: &mut ModelBuilder,
-    invocation: &AugmentedInvocation,
+    invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
     let alpha = invocation.named_arg_as(builder, "alpha")?;

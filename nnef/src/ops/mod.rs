@@ -3,13 +3,13 @@ use crate::internal::*;
 pub mod deser;
 pub mod ser;
 
-use crate::model::ResolvedOp;
+use crate::deser::ResolvedOp;
 
 pub fn stdlib() -> Vec<FragmentDef> {
     crate::ast::parse::parse_fragments(include_str!("../../stdlib.nnef")).unwrap()
 }
 
-pub type ToTract = fn(&mut ModelBuilder, &AugmentedInvocation) -> TractResult<TVec<OutletId>>;
+pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<TVec<OutletId>>;
 pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Arc<RValue>>;
 
 pub struct Registry {
