@@ -19,6 +19,10 @@ pub fn parse_fragments(doc: &str) -> TractResult<Vec<FragmentDef>> {
     all_consuming(fragments)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
+pub fn parse_fragment_decl(doc: &str) -> TractResult<FragmentDecl> {
+    all_consuming(fragment_decl)(doc).map(|pair| pair.1).map_err(translate_error)
+}
+
 // <document> ::= <version> <extension>* <fragmentdefinition>* <graph-definition>
 fn document(i: &str) -> IResult<&str, Document> {
     map(
@@ -37,6 +41,7 @@ fn fragments(i: &str) -> IResult<&str, Vec<FragmentDef>> {
 }
 
 // <version> ::= "version" <numeric-literal> ";"
+
 fn version(i: &str) -> IResult<&str, NumericLiteral> {
     delimited(stag("version"), numeric_literal, stag(";"))(i)
 }

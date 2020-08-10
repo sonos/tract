@@ -11,7 +11,7 @@ use tract_num_traits::AsPrimitive;
 mod batch_norm;
 mod dropout;
 mod instance_norm;
-mod lrn;
+pub mod lrn;
 
 fn reduce(
     node: &NodeProto,
@@ -265,7 +265,7 @@ pub fn leaky_relu(
     Ok((expand(ops::activations::LeakyRelu(alpha)), vec![]))
 }
 
-pub fn lrn(
+fn lrn(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {

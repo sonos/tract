@@ -1,74 +1,8 @@
+use crate::internal::*;
 use crate::ast::*;
 use std::collections::HashMap;
-use tract_core::internal::*;
 
 use crate::ops::*;
-
-pub struct Framework {
-    registries: Vec<Registry>,
-}
-
-impl Framework {
-    pub fn new() -> Framework {
-        Framework { registries: vec![crate::ops::tract_nnef()] }
-    }
-
-    pub fn with_registry(mut self, registry: Registry) -> Framework {
-        self.registries.push(registry);
-        self
-    }
-
-    pub fn translate(
-        &self,
-        proto_model: &ProtoModel,
-    ) -> Result<TypedModel, (TypedModel, TractError)> {
-        let mut builder = ModelBuilder {
-            framework: &self,
-            model: TypedModel::default(),
-            naming_scopes: vec![],
-            scopes: vec![],
-            proto_model,
-        };
-        builder.scopes.push(HashMap::new());
-        builder.naming_scopes.push(proto_model.doc.graph_def.id.to_string());
-        builder
-            .wire_body(&proto_model.doc.graph_def.body)
-            .map_err(|e| (builder.model.clone(), e))?;
-        let vars = builder.scopes.pop().unwrap();
-        let outputs = proto_model
-            .doc
-            .graph_def
-            .results
-            .iter()
-            .map(|s| vars[s].to::<OutletId>(&mut builder))
-            .collect::<TractResult<TVec<OutletId>>>()
-            .map_err(|e| (builder.model.clone(), e))?;
-        builder.model.set_output_outlets(&outputs).map_err(|e| (builder.model.clone(), e))?;
-        Ok(builder.model)
-    }
-
-    pub fn write(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
-        crate::container::save(model, w)
-    }
-
-    pub fn write_to_dir(&self, model: &TypedModel, p: impl AsRef<std::path::Path>) -> TractResult<()> {
-        crate::container::save_to_dir(model, p)
-    }
-
-    pub fn write_to_tgz(&self, model: &TypedModel, p: impl AsRef<std::path::Path>) -> TractResult<()> {
-        crate::container::save_to_tgz(model, p)
-    }
-}
-
-impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Framework {
-    fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
-        crate::container::load(reader)
-    }
-
-    fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<TypedModel> {
-        self.translate(proto).map_err(|e| e.1)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct ProtoModel {
@@ -98,7 +32,7 @@ impl Value {
 }
 
 pub struct ModelBuilder<'a> {
-    pub framework: &'a Framework,
+    pub framework: &'a Nnef,
     pub model: TypedModel,
     pub naming_scopes: Vec<String>,
     pub scopes: Vec<HashMap<String, Value>>,
@@ -463,6 +397,15 @@ impl CoerceFrom<Value> for bool {
 impl CoerceFrom<Value> for usize {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         Ok(i64::coerce(builder, from)? as usize)
+    }
+}
+
+impl CoerceFrom<Value> for f32 {
+    fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+        match from {
+            Value::Scalar(f) => Ok(*f),
+            _ => bail!("Can not build a f32 from {:?}", from),
+        }
     }
 }
 

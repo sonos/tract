@@ -5,12 +5,12 @@ use tract_ndarray::prelude::*;
 #[educe(Hash)]
 pub struct Lrn {
     #[educe(Hash(method = "hash_f32"))]
-    alpha: f32,
+    pub alpha: f32,
     #[educe(Hash(method = "hash_f32"))]
-    beta: f32,
+    pub beta: f32,
     #[educe(Hash(method = "hash_f32"))]
-    bias: f32,
-    size: usize,
+    pub bias: f32,
+    pub size: usize,
 }
 
 tract_linalg::impl_dyn_hash!(Lrn);
