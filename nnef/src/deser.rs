@@ -16,7 +16,7 @@ impl<'mb> ModelBuilder<'mb> {
     fn augmented_invocation<'a>(
         &self,
         invocation: &'a Invocation,
-    ) -> TractResult<AugmentedInvocation<'a>>
+    ) -> TractResult<ResolvedInvocation<'a>>
     where
         'mb: 'a,
     {
@@ -24,7 +24,7 @@ impl<'mb> ModelBuilder<'mb> {
             self.proto_model.doc.fragments.iter().find(|f| f.decl.id == invocation.id)
         {
             if let Some(body) = fragment.body.as_ref() {
-                return Ok(AugmentedInvocation {
+                return Ok(ResolvedInvocation {
                     invocation,
                     decl: &fragment.decl,
                     builder: ResolvedOp::Fragment(body),
@@ -36,7 +36,7 @@ impl<'mb> ModelBuilder<'mb> {
         for registry in &self.framework.registries {
             if self.registries.contains(&registry.id) {
                 if let Some((decl, builder)) = registry.lookup_nnef(&invocation.id) {
-                    return Ok(AugmentedInvocation { invocation, decl, builder });
+                    return Ok(ResolvedInvocation { invocation, decl, builder });
                 }
             }
         }
@@ -82,7 +82,7 @@ impl<'mb> ModelBuilder<'mb> {
 
     pub fn wire_fragment_invocation(
         &mut self,
-        invocation: &AugmentedInvocation,
+        invocation: &ResolvedInvocation,
         body: &[Assignment],
     ) -> TractResult<Value> {
         let mut inner_scope = HashMap::new();
@@ -155,13 +155,13 @@ pub enum ResolvedOp<'a> {
 }
 
 #[derive(Clone)]
-pub struct AugmentedInvocation<'a> {
+pub struct ResolvedInvocation<'a> {
     pub invocation: &'a Invocation,
     pub decl: &'a FragmentDecl,
     pub builder: ResolvedOp<'a>,
 }
 
-impl<'a> AugmentedInvocation<'a> {
+impl<'a> ResolvedInvocation<'a> {
     pub fn named_arg_as<T>(&self, builder: &mut ModelBuilder, name: &str) -> TractResult<T>
     where
         T: CoerceFrom<Value>,
