@@ -45,7 +45,8 @@ impl Nnef {
         ar.append(&header, &mut &*graph_data)?;
 
         for (label, t) in &proto_model.tensors {
-            let filename = std::path::Path::new(label).to_path_buf().with_extension("dat");
+            let label = label.to_string() + ".dat";
+            let filename = std::path::Path::new(&label);
             let mut data = vec![];
             crate::tensors::write_tensor(&mut data, t)?;
 
@@ -75,9 +76,9 @@ impl Nnef {
         let mut graph_nnef = std::fs::File::create(path.join("graph.nnef"))?;
         crate::ast::dump::Dumper::new(&mut graph_nnef).document(&proto_model.doc)?;
         for (label, t) in &proto_model.tensors {
-            let label = std::path::Path::new(&label);
-            std::fs::create_dir_all(path.join(label).parent().unwrap())?;
-            let filename = path.join(label).with_extension("dat");
+            let label = label.to_string() + ".dat";
+            std::fs::create_dir_all(path.join(&label).parent().unwrap())?;
+            let filename = path.join(label);
             let mut file = std::fs::File::create(filename)?;
             crate::tensors::write_tensor(&mut file, t)?;
         }
