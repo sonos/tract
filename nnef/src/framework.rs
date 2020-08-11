@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::ast::ProtoModel;
 use crate::internal::*;
 
@@ -99,6 +101,29 @@ impl Nnef {
 }
 
 impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
+    fn proto_model_for_path(&self, path: impl AsRef<Path>) -> TractResult<ProtoModel> {
+        let path = path.as_ref();
+        if path.is_file() {
+            let mut f = std::fs::File::open(path)?;
+            return self.proto_model_for_read(&mut f);
+        }
+        let mut text: Option<String> = None;
+        let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
+        for entry in walkdir::WalkDir::new(path) {
+            let entry = entry.map_err(|e| format!("Can not walk directory {:?}: {:?}", path, e))?;
+            let subpath = entry
+                .path()
+                .components()
+                .skip(path.components().count())
+                .collect::<std::path::PathBuf>();
+            let mut stream = std::fs::File::open(entry.path())?;
+            read_stream(&subpath, &mut stream, &mut text, &mut tensors)?;
+        }
+        let text = text.ok_or_else(|| format!("Model must contain graph.nnef at top level"))?;
+        let doc = crate::ast::parse::parse_document(&text)?;
+        Ok(ProtoModel { doc, tensors })
+    }
+
     fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
         let mut text: Option<String> = None;
         let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
