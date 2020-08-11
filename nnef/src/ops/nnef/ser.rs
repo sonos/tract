@@ -145,9 +145,14 @@ pub fn conv(
             (0..op.pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
         ),
     };
+    let mut inputs = tvec![wire, weigths];
+    if let Some(bias) = op.bias.as_ref() {
+        let bias = ast.konst(format!("{}_bias", node.name), bias);
+        inputs.push(bias)
+    }
     wire = invocation(
         &conv_fragment,
-        &[wire, weigths],
+        &inputs,
         &[
             ("dilation", ints(&op.pool_spec.dilations())),
             ("stride", ints(&op.pool_spec.strides())),
