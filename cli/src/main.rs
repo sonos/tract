@@ -67,6 +67,23 @@ fn info_usage(stage: &str, probe: Option<&Probe>) {
     }
 }
 
+pub const STAGES: &'static [&'static str] = &[
+    "load",
+    "analyse",
+    "incorporate",
+    "type",
+    "declutter",
+    "concretize-stream-dim",
+    "concretize-stream-dim-declutter",
+    "pulse",
+    "pulse-to-type",
+    "pulse-declutter",
+    "nnef-cycle",
+    "nnef-cycle-declutter",
+    "before-optimize",
+    "optimize",
+];
+
 /// Entrypoint for the command-line interface.
 fn main() {
     use clap::*;
@@ -132,12 +149,8 @@ fn main() {
 
     (@arg partial: --partial "Before analyse, eliminate dead branches")
 
-    (@arg pass: --pass +takes_value
-     possible_values(&["load", "analyse", "incorporate", "type", "declutter",
-                     "concretize-stream-dim", "concretize-stream-dim-declutter",
-                     "pulse", "pulse-to-type", "pulse-declutter",
-                     "optimize"])
-     "Pass to stop preprocessing after.")
+    (@arg pass: --pass +takes_value possible_values(STAGES) "Pass to stop preprocessing after.")
+    (@arg nnef_cycle: --("nnef-cycle") "Perform NNEF dump and reload before optimizing")
 
     (@arg optimize: -O --optimize "Optimize before running")
     (@arg pulse: --pulse +takes_value "Translate to pulse network")
@@ -152,6 +165,14 @@ fn main() {
 
     let compare = clap::SubCommand::with_name("compare")
         .long_about("Compares the output of tract and tensorflow on randomly generated input.")
+        .arg(
+            Arg::with_name("with")
+                .short("w")
+                .long("with")
+                .takes_value(true)
+                .possible_values(STAGES)
+                .help("Do not reset with reference values at each node"),
+        )
         .arg(
             Arg::with_name("cumulative")
                 .long("cumulative")
@@ -450,8 +471,12 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             &mut params,
             display_params_from_clap(&matches, m)?,
         ),
-        #[cfg(not(feature = "conform"))]
-        ("compare", _) => bail!("Need conform feature to be able to run comparison"),
+
+        ("compare", Some(m)) => compare::handle_reference_stage(
+            m.is_present("cumulative"),
+            &params,
+            &display_params_from_clap(&matches, m)?,
+        ),
 
         ("compare-npz", Some(m)) => compare::handle_npz(
             m.is_present("cumulative"),
