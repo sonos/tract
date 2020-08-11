@@ -41,6 +41,7 @@ pub struct Parameters {
     pub pulsed_model: Option<Arc<PulsedModel>>,
 
     pub tract_model: Arc<dyn Model>,
+    pub reference_model: Option<Arc<dyn Model>>,
 
     #[cfg(feature = "conform")]
     pub tf_model: Option<tract_tensorflow::conform::tf::Tensorflow>,
@@ -407,7 +408,13 @@ impl Parameters {
         probe: Option<&readings_probe::Probe>,
         raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
-    ) -> CliResult<(Arc<dyn Model>, Option<Arc<TypedModel>>, Option<Arc<PulsedModel>>)> {
+        reference_stage: Option<&str>,
+    ) -> CliResult<(
+        Arc<dyn Model>,
+        Option<Arc<TypedModel>>,
+        Option<Arc<PulsedModel>>,
+        Option<Arc<dyn Model>>,
+    )> {
         let keep_last = matches.is_present("verbose");
         let pulse: Option<usize> =
             matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
@@ -416,23 +423,23 @@ impl Parameters {
 
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
-        } else if concretize_stream_dim.is_some() {
-            "concretize-stream-dim-declutter"
-        } else if pulse.is_some() {
-            "pulse-declutter"
         } else {
-            "declutter"
+            "before-optimize"
         });
+
+        let nnef_cycle = matches.is_present("nnef_cycle");
 
         info!("Will stop at {}", stop_at);
 
         if stop_at == "load" {
-            return Ok((raw_model.into(), None, None));
+            return Ok((raw_model.into(), None, None, None));
         }
 
         let mut inference_model: Option<Arc<InferenceModel>> = None;
         let mut typed_model: Option<Arc<TypedModel>> = None;
         let mut pulsed_model: Option<Arc<PulsedModel>> = None;
+        let mut reference_model: Option<Arc<dyn Model>> = None;
+
         if raw_model.is::<InferenceModel>() {
             inference_model = Some(raw_model.downcast::<InferenceModel>().unwrap().into());
         } else if raw_model.is::<TypedModel>() {
@@ -446,7 +453,9 @@ impl Parameters {
                     let mut last_model: Option<Box<dyn Model>> =
                         if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
                     let block: &dyn Fn(_) -> TractResult<_> = &$block;
-                    match block(Arc::try_unwrap(from).expect("Arc ownership")) {
+                    let owned_model =
+                        Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
+                    match block(owned_model) {
                         Ok(it) => {
                             $to = Some(Arc::new(it));
                         }
@@ -461,19 +470,23 @@ impl Parameters {
                         }
                     }
                     info_usage(concat!("after ", $name), probe);
+                    if reference_stage.as_deref() == Some($name) {
+                        reference_model = Some($to.as_ref().unwrap().clone());
+                    }
                     if stop_at == $name {
                         return Ok((
                             $to.take().expect("returnable model"),
                             typed_model,
                             pulsed_model,
+                            reference_model,
                         ));
                     }
                 }
             };
         };
 
-        stage!("analyse", inference_model -> inference_model, 
-               |mut m:InferenceModel| { m.analyse(matches.is_present("analyse_fail_fast"))?; TractResult::Ok(m) });
+        stage!("analyse", inference_model -> inference_model,
+                   |mut m:InferenceModel| { m.analyse(matches.is_present("analyse_fail_fast"))?; TractResult::Ok(m) });
         if let Some(ext) = tf_model_extensions {
             #[cfg(feature = "tf")]
             stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| ext.preproc(m));
@@ -489,10 +502,20 @@ impl Parameters {
             stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
             stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.declutter());
         }
-        info_usage("before optimize", probe);
+        if nnef_cycle {
+            stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
+                use tract_onnx::WithOnnx;
+                let nnef = tract_nnef::nnef().with_onnx();
+                let mut vec = vec!();
+                nnef.write(&m, &mut vec)?;
+                nnef.model_for_read(&mut &*vec)
+            });
+            stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| m.declutter());
+        }
+        stage!("before-optimize", typed_model -> typed_model, |m:TypedModel| Ok(m));
         stage!("optimize", typed_model -> typed_model, |m:TypedModel| m.optimize());
         eprintln!("type_model: {:?}", typed_model.is_some());
-        Ok((typed_model.clone().unwrap(), typed_model, pulsed_model))
+        Ok((typed_model.clone().unwrap(), typed_model, pulsed_model, reference_model))
     }
 
     #[allow(unused_variables)]
@@ -505,7 +528,16 @@ impl Parameters {
         info!("Model {:?} loaded", filename);
         info_usage("model loaded", probe);
 
-        let need_tensorflow_model = matches.subcommand_name() == Some("compare");
+        let (need_tensorflow_model, need_reference_model) = match matches.subcommand() {
+            ("compare", Some(sm)) => {
+                if let Some(with) = sm.value_of("with") {
+                    (false, Some(with))
+                } else {
+                    (true, None)
+                }
+            }
+            _ => (false, None),
+        };
 
         #[cfg(not(feature = "conform"))]
         let tf_model = ();
@@ -598,22 +630,28 @@ impl Parameters {
             }
         }
 
-        Self::pipeline(matches, probe, raw_model, tf_model_extensions).map(
-            |(tract_model, decluttered_model, pulsed_model)| {
-                info!("Model ready");
-                info_usage("model ready", probe);
-                Parameters {
-                    graph,
-                    decluttered_model,
-                    pulsed_model,
-                    tract_model,
-                    tf_model,
-                    input_values,
-                    assertions,
-                    machine_friendly: matches.is_present("machine_friendly"),
-                }
-            },
+        Self::pipeline(
+            matches,
+            probe,
+            raw_model,
+            tf_model_extensions,
+            need_reference_model.as_deref(),
         )
+        .map(|(tract_model, decluttered_model, pulsed_model, reference_model)| {
+            info!("Model ready");
+            info_usage("model ready", probe);
+            Parameters {
+                graph,
+                decluttered_model,
+                pulsed_model,
+                tract_model,
+                reference_model,
+                tf_model,
+                input_values,
+                assertions,
+                machine_friendly: matches.is_present("machine_friendly"),
+            }
+        })
     }
 }
 

@@ -127,6 +127,40 @@ pub fn handle_pbdir(
     ))
 }
 
+pub fn handle_reference_stage(
+    cumulative: bool,
+    params: &Parameters,
+    output_params: &DisplayParams,
+) -> CliResult<()> {
+    let reference_model =
+        params.reference_model.as_ref().ok_or("No reference model. need --with ?")?;
+    let reference_model = reference_model
+        .downcast_ref::<TypedModel>()
+        .ok_or("Only work with a typed reference model")?;
+    let mut values: HashMap<String, CliResult<Tensor>> = HashMap::new();
+
+    let plan = SimplePlan::new(reference_model)?;
+    let mut state = SimpleState::new(plan)?;
+    let input_facts = reference_model
+        .input_outlets()?
+        .iter()
+        .map(|&i| reference_model.outlet_fact(i))
+        .collect::<TractResult<Vec<_>>>()?;
+    let generated = crate::tensor::make_inputs(&*input_facts)?;
+    state.run_plan_with_eval(generated.clone(), |session, state, node, input| {
+        let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
+        values.insert(node.name.clone(), Ok(result[0].as_ref().clone()));
+        Ok(result)
+    })?;
+    dispatch_model_no_pulse!(params.tract_model, |m| compare(
+        cumulative,
+        m,
+        &values,
+        params,
+        output_params
+    ))
+}
+
 pub fn compare<F, O>(
     cumulative: bool,
     tract: &Graph<F, O>,
@@ -190,9 +224,8 @@ where
                 tags.labels.push(format!("{}: {}", Red.bold().paint("ERROR"), e));
             } else {
                 for ix in 0..node.outputs.len() {
-                    if let Some(ref_value) =
-                        tract.outlet_label(OutletId::new(n, ix)).and_then(|lbl| all_values.get(lbl))
-                    {
+                    let label = tract.outlet_label((n, ix).into()).unwrap_or(&node.name);
+                    if let Some(ref_value) = all_values.get(label) {
                         match ref_value {
                             Ok(t) => {
                                 let found = &state.values[n].as_ref().unwrap()[ix];
