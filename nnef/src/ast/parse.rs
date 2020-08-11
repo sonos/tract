@@ -12,7 +12,7 @@ fn translate_error<'s, E: std::fmt::Debug>(e: E) -> TractError {
 }
 
 pub fn parse_document(doc: &str) -> TractResult<Document> {
-    dbg!(doc);
+    eprintln!("{}", doc);
     all_consuming(document)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
@@ -22,6 +22,10 @@ pub fn parse_fragments(doc: &str) -> TractResult<Vec<FragmentDef>> {
 
 pub fn parse_fragment_decl(doc: &str) -> TractResult<FragmentDecl> {
     all_consuming(fragment_decl)(doc).map(|pair| pair.1).map_err(translate_error)
+}
+
+pub fn parse_parameters(doc: &str) -> TractResult<Vec<Parameter>> {
+    all_consuming(parameter_list)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 // <document> ::= <version> <extension>* <fragmentdefinition>* <graph-definition>
@@ -716,6 +720,83 @@ mod test {
     #[test]
     fn test_comprehenion() {
         p(comprehension_expr, "[for i in range_of(output_size) yield output_size * sampling_rate]");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_freeze() {
+        p(
+            document,
+            r#"
+version 1.0;
+
+graph y( x, s, bias ) -> ( y ) {
+  x = external<scalar>(shape = [1, 2, 1, 3]);
+  s = external<scalar>(shape = [2]);
+  bias = external<scalar>(shape = [2]);
+  y = add(
+        mul(
+            mul(
+                sub(
+                    x, 
+                    mul(
+                        0.33333334,
+                        sum_reduce(
+                            x, 
+                            axes = [0, 2, 3]
+                        )
+                    )
+                ),
+                rsqrt(
+                    add(
+                        0.00001, 
+                        mul(
+                            0.33333334, 
+                            sum_reduce(
+                                square(
+                                    sub(
+                                        x, 
+                                        mul(
+                                            0.33333334, 
+                                            sum_reduce(
+                                                x, 
+                                                axes = [0, 2, 3]
+                                            )
+                                        )
+                                    )
+                                ),
+                                axes = [0, 2, 3]
+                            )
+                        )
+                    )
+                )
+            ),
+            unsqueeze(
+                unsqueeze(
+                    unsqueeze(
+                        s,
+                        axes = [0]
+                    ),
+                axes = [2]
+                ),
+            axes = [2]
+            )
+        ),
+        unsqueeze(
+            unsqueeze(
+                unsqueeze(
+                    bias,
+                    axes = [0]
+                ),
+                axes = [2]
+            ),
+            axes = [2]
+        )
+    );
+}
+
+"#,
+        );
     }
 
     #[test]

@@ -9,7 +9,8 @@ pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<Proto
         .filter(|n| !model.input_outlets().unwrap().contains(&n.id.into()))
         .map(|n| &n.name)
         .collect::<Vec<_>>();
-    let prefix: Option<String> = if names.len() > 1 {
+    dbg!(&names);
+    let prefix: Option<String> = if names.len() > 2 {
         Some(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
             (prefix.chars()).zip(name.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect()
         }))
@@ -105,6 +106,7 @@ impl<'a> IntoAst<'a> {
                 if !self.registries.contains(&reg.id) {
                     self.registries.push(reg.id.clone())
                 }
+                let outputs = self.force_assign(&node.name, &outputs);
                 self.mapping.insert(node.id.into(), outputs.clone());
                 return Ok(outputs);
             }
@@ -115,11 +117,11 @@ impl<'a> IntoAst<'a> {
     pub fn scoped_id(&self, name: impl Into<String>) -> String {
         let mut name = name.into();
         if let Some(p) = &self.prefix {
-            if name.starts_with(p) {
+            if name.starts_with(p) && &*name != p {
                 name = name.chars().skip(p.len()).collect()
             }
         }
-        if char::is_digit(name.chars().next().unwrap(), 10) {
+        if name.len() > 0 && char::is_digit(name.chars().next().unwrap(), 10) {
             name = "_".to_string() + &name;
         }
         name.replace("/", "_").replace(".", "_").replace("-", "_").into()
