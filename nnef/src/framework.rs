@@ -24,6 +24,7 @@ impl Nnef {
         &self,
         proto_model: &ProtoModel,
     ) -> Result<TypedModel, (TypedModel, TractError)> {
+        dbg!("About to translate");
         ModelBuilder::new(self, proto_model).into_typed_model()
     }
 

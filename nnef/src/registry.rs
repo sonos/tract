@@ -121,7 +121,7 @@ impl Registry {
     }
 }
 
-fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
+pub fn multicast(builder: &mut ModelBuilder, inputs: &[OutletId]) -> TractResult<TVec<OutletId>> {
     let ranks = inputs
         .iter()
         .map(|&i| Ok(builder.model.outlet_fact(i)?.rank()))

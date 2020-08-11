@@ -339,3 +339,14 @@ pub fn matmul(
     Ok(ast.force_assign(&node.name, &c))
 }
 
+pub fn select(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    _op: &ops::logic::Iff,
+) -> TractResult<Arc<RValue>> {
+    Ok(invocation(
+        "select",
+        &node.inputs.iter().map(|o| ast.mapping[o].clone()).collect::<TVec<_>>(),
+        &[],
+    ))
+}

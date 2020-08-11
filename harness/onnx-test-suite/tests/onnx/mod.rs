@@ -89,7 +89,7 @@ pub fn run_one<P: AsRef<path::Path>>(
     let model_file = path.join("model.onnx");
     info!("Loading {:?}", model_file);
     let onnx = onnx();
-    let nnef = tract_nnef::nnef().with_registry(tract_onnx::tract_nnef_onnx_registry());
+    let nnef = tract_nnef::nnef().with_onnx();
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
     for d in fs::read_dir(&path).unwrap() {
         let mut model = onnx.model_for_path(&model_file).unwrap();

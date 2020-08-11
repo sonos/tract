@@ -74,9 +74,11 @@ pub fn tract_nnef() -> Registry {
     registry.register_binary("ne", &ops::logic::NotEquals {});
 
     registry.register_binary("and", &ops::logic::And {});
-    registry.register_binary("or", &ops::logic::And {});
+    registry.register_binary("or", &ops::logic::Or {});
 
-//    mew!(select, ops::logic::Iff);
+    registry.register_binary("select", &ops::logic::Or {});
+    dumper!(ops::logic::Iff, ser::select);
+    primitive(&mut registry, "select", deser::select);
 
     registry.register_binary("min", &ops::math::Min {});
     registry.register_binary("max", &ops::math::Max {});
