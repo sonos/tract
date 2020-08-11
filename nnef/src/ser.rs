@@ -9,7 +9,6 @@ pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<Proto
         .filter(|n| !model.input_outlets().unwrap().contains(&n.id.into()))
         .map(|n| &n.name)
         .collect::<Vec<_>>();
-    dbg!(&names);
     let prefix: Option<String> = if names.len() > 2 {
         Some(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
             (prefix.chars()).zip(name.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect()
