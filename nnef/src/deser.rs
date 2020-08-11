@@ -36,7 +36,6 @@ impl<'mb> ModelBuilder<'mb> {
             };
         }
         self.scopes.push(HashMap::new());
-        self.naming_scopes.push(self.proto_model.doc.graph_def.id.to_string());
         self.wire_body(&self.proto_model.doc.graph_def.body)?;
         let vars = self.scopes.pop().unwrap();
         let outputs = self

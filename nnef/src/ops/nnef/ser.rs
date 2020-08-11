@@ -156,7 +156,6 @@ pub fn conv(
             ("padding", padding),
         ],
     );
-    wire = ast.force_assign(format!("{}_output", node.name), &wire);
     wire = ast.force_assign(&node.name, &wire);
     Ok(wire)
 }
@@ -245,7 +244,6 @@ fn cnn_pool(
         params.push(normalize_arg);
     };
     wire = invocation(&conv_fragment, &[wire], &params);
-    wire = ast.force_assign(format!("{}_output", node.name), &wire);
     wire = ast.force_assign(&node.name, &wire);
     Ok(wire)
 }
