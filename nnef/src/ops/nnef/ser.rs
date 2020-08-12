@@ -353,6 +353,8 @@ pub fn reduce(
 ) -> TractResult<Arc<RValue>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let oper = match op.reducer {
+        ops::nn::Reducer::ArgMax(_) => "argmax_reduce",
+        ops::nn::Reducer::ArgMin(_) => "argmin_reduce",
         ops::nn::Reducer::Sum => "sum_reduce",
         ops::nn::Reducer::Max => "max_reduce",
         ops::nn::Reducer::Min => "min_reduce",
