@@ -5,7 +5,7 @@ use tract_core::itertools::Itertools;
 
 use tract_core::ops;
 
-use crate::deser::{ResolvedInvocation, ModelBuilder};
+use crate::deser::{ModelBuilder, ResolvedInvocation};
 
 // fragment external<? = scalar>( shape: integer[] ) -> ( output: tensor<?> );
 pub fn external(
@@ -160,6 +160,26 @@ pub fn tile(
     let multipliers: TVec<usize> = invocation.named_arg_as(builder, "repeat")?;
     let wire = tvec!(invocation.named_arg_as(builder, "input")?);
     Ok(builder.wire(ops::array::Tile { multipliers }, &wire)?)
+}
+
+// fragment pad( input: tensor<scalar>, padding: (integer, integer)[], border: string = 'constant', value: scalar = 0.0 ) -> ( output: tensor<scalar> );
+pub fn pad(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    use tract_core::ops::array::{Pad, PadMode};
+    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
+    let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
+    let padding: Vec<(usize, usize)> = padding.iter().map(|a| (a[0], a[1])).collect();
+    let value: Tensor = tensor0(invocation.named_arg_as::<f32>(builder, "value")?);
+    let border: String = invocation.named_arg_as(builder, "border")?;
+    let mode = match &*border {
+        "constant" => PadMode::Constant(value.into_arc_tensor()),
+        "replicated" => PadMode::Edge,
+        "reflect" => PadMode::Reflect,
+        _ => bail!("unsupported padding mode {}", border),
+    };
+    builder.wire(Pad { pads: padding, mode }, &wire)
 }
 
 /*
@@ -381,10 +401,10 @@ pub fn matmul(
 }
 
 /*
- * fragment select<?>(
-    condition: tensor<logical>,     # the condition for selecting the result
-    true_value: tensor<?>,          # the result when the condition is true
-    false_value: tensor<?> )        # the result when the condition is false
+* fragment select<?>(
+condition: tensor<logical>,     # the condition for selecting the result
+true_value: tensor<?>,          # the result when the condition is true
+false_value: tensor<?> )        # the result when the condition is false
 -> ( output: tensor<?> )
 */
 
