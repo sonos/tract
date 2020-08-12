@@ -25,6 +25,15 @@ pub enum TypeSpec {
     Tuple(Vec<TypeSpec>),
 }
 
+impl TypeSpec {
+    pub fn array(self) -> TypeSpec {
+        TypeSpec::Array(Box::new(self))
+    }
+    pub fn named(self, s: impl Into<String>) -> Parameter {
+        Parameter { id: s.into(), spec: self, lit: None }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TypeName {
     Integer,
@@ -32,6 +41,21 @@ pub enum TypeName {
     Logical,
     String,
     Any,
+}
+
+impl TypeName {
+    pub fn tensor(self) -> TypeSpec {
+        TypeSpec::Tensor(self)
+    }
+    pub fn spec(self) -> TypeSpec {
+        TypeSpec::Single(self)
+    }
+    pub fn array(self) -> TypeSpec {
+        self.spec().array()
+    }
+    pub fn named(self, s: impl Into<String>) -> Parameter {
+        self.spec().named(s)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -61,6 +85,16 @@ pub struct Parameter {
     pub id: String,
     pub spec: TypeSpec,
     pub lit: Option<Literal>,
+}
+
+impl Parameter {
+    pub fn default(self, lit: impl Into<Literal>) -> Parameter {
+        Parameter { lit: Some(lit.into()), ..self }
+    }
+}
+
+pub fn param(s: impl Into<String>, spec: TypeSpec) -> Parameter {
+    Parameter { id: s.into(), spec, lit: None }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -136,6 +170,30 @@ pub enum Literal {
     Logical(LogicalLiteral),
     Array(Vec<Literal>),
     Tuple(Vec<Literal>),
+}
+
+impl From<bool> for Literal {
+    fn from(b: bool) -> Literal {
+        Literal::Logical(b)
+    }
+}
+
+impl From<i64> for Literal {
+    fn from(i: i64) -> Literal {
+        Literal::Numeric(i.to_string())
+    }
+}
+
+impl From<f32> for Literal {
+    fn from(f: f32) -> Literal {
+        Literal::Numeric(f.to_string())
+    }
+}
+
+impl<'a> From<&'a str> for Literal {
+    fn from(s: &'a str) -> Literal {
+        Literal::String(s.to_string())
+    }
 }
 
 pub type NumericLiteral = String;

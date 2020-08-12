@@ -14,7 +14,7 @@ pub use tract_core::prelude;
 
 pub mod internal {
     pub use crate::ast::parse::parse_parameters;
-    pub use crate::ast::{FragmentDecl, FragmentDef, Parameter, RValue};
+    pub use crate::ast::{FragmentDecl, FragmentDef, Parameter, RValue, param, TypeName};
     pub use crate::deser::{ModelBuilder, ResolvedInvocation};
     pub use crate::framework::Nnef;
     pub use crate::registry::*;
