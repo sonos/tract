@@ -1,8 +1,6 @@
-mod arg_max_min;
 mod data_formats;
 mod reduce;
 
-pub use self::arg_max_min::ArgMaxMin;
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape};
 pub use self::reduce::{Reduce, Reducer};
 

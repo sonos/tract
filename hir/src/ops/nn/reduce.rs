@@ -3,8 +3,10 @@ use crate::internal::*;
 use tract_core::ops::nn::Reduce as TReduce;
 use tract_core::ops::nn::Reducer as TReducer;
 
-#[derive(Clone, Copy, Debug, Hash)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq)]
 pub enum Reducer {
+    ArgMax(bool), // take last
+    ArgMin(bool),
     L1,
     L2,
     LogSum,
@@ -28,6 +30,8 @@ impl Reducer {
         use tract_core::ops::math;
         use Reducer::*;
         match self {
+            ArgMax(last) => wire = target.wire_node(name, TReduce::new(axes, TReducer::ArgMax(*last)), &[wire])?[0],
+            ArgMin(last) => wire = target.wire_node(name, TReduce::new(axes, TReducer::ArgMin(*last)), &[wire])?[0],
             Max => wire = target.wire_node(name, TReduce::new(axes, TReducer::Max), &[wire])?[0],
             Min => wire = target.wire_node(name, TReduce::new(axes, TReducer::Min), &[wire])?[0],
             Sum => wire = target.wire_node(name, TReduce::new(axes, TReducer::Sum), &[wire])?[0],
@@ -180,7 +184,11 @@ impl Expansion for Reduce {
     ) -> InferenceResult {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        if let Reducer::ArgMax(_) | Reducer::ArgMin(_) = self.reducer {
+            s.equals(&outputs[0].datum_type, DatumType::I64)?;
+        } else {
+            s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        }
         if self.keep_dims {
             s.equals(&inputs[0].rank, &outputs[0].rank)?;
         } else if let Some(axes) = self.axes.as_ref() {

@@ -11,6 +11,17 @@ mod dropout;
 mod instance_norm;
 pub mod lrn;
 
+pub fn arg_max_min(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let axis = node.get_attr_opt("axis")?.unwrap_or(0);
+    let keepdims = node.get_attr_opt("keepdims")?.unwrap_or(true);
+    let take_last = node.get_attr_opt("select_last_index")?.unwrap_or(false);
+    let red = if node.op_type == "ArgMax" { nn::Reducer::ArgMax(take_last) } else { nn::Reducer::ArgMin(take_last) };
+    Ok((expand(nn::Reduce::new(Some(vec![axis]), keepdims, red)), vec![]))
+}
+
 fn reduce(
     node: &NodeProto,
     reducer: nn::Reducer,
@@ -102,16 +113,6 @@ fn dilations(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
 
 fn strides(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
     node.get_attr_opt_tvec("strides")
-}
-
-pub fn arg_max_min(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let max = node.op_type == "ArgMax";
-    let axis = node.get_attr_opt("axis")?.unwrap_or(0);
-    let keepdims = node.get_attr_opt("keepdims")?.unwrap_or(true);
-    Ok((Box::new(ops::nn::ArgMaxMin::new(max, axis, keepdims)), vec![]))
 }
 
 pub fn batch_normalization(

@@ -4,21 +4,23 @@ use ndarray::prelude::*;
 macro_rules! r {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
         match $dt {
-            DatumType::U8   => $($path)::*::<u8,_>($($args),*),
-            DatumType::U16  => $($path)::*::<u16,_>($($args),*),
-            DatumType::I8   => $($path)::*::<i8,_>($($args),*),
-            DatumType::I16  => $($path)::*::<i16,_>($($args),*),
-            DatumType::I32  => $($path)::*::<i32,_>($($args),*),
-            DatumType::I64  => $($path)::*::<i64,_>($($args),*),
-            DatumType::F32  => $($path)::*::<f32,_>($($args),*),
-            DatumType::F64  => $($path)::*::<f64,_>($($args),*),
+            DatumType::U8   => $($path)::*::<u8,_,_>($($args),*),
+            DatumType::I8   => $($path)::*::<i8,_,_>($($args),*),
+            DatumType::U16  => $($path)::*::<u16,_,_>($($args),*),
+            DatumType::I16  => $($path)::*::<i16,_,_>($($args),*),
+            DatumType::I32  => $($path)::*::<i32,_,_>($($args),*),
+            DatumType::I64  => $($path)::*::<i64,_,_>($($args),*),
+            DatumType::F32  => $($path)::*::<f32,_,_>($($args),*),
+            DatumType::F64  => $($path)::*::<f64,_,_>($($args),*),
             _ => bail!("{:?} is not a number", $dt)
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq)]
 pub enum Reducer {
+    ArgMax(bool), // take last
+    ArgMin(bool),
     Max,
     Min,
     Prod,
@@ -37,24 +39,32 @@ impl Reducer {
             .collect();
         Ok(unsafe {
             match self {
-                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t)),
-                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t)),
-                Prod => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t)),
-                Sum => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, sum_t)),
+                ArgMax(last) => {
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmax_t, *last))
+                }
+                ArgMin(last) => {
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmin_t, *last))
+                }
+                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t, false)),
+                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t, false)),
+                Prod => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t, false)),
+                Sum => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, sum_t, false)),
             }
         })
     }
 
-    unsafe fn reduce_t<T, F>(
+    unsafe fn reduce_t<T, TO, F>(
         &self,
         axes: &[usize],
         output_shape: &[usize],
         input: &Tensor,
         f: F,
+        last: bool,
     ) -> Tensor
     where
-        F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
+        F: for<'a> Fn(ArrayViewD<'a, T>, bool) -> TO,
         T: Copy + Datum,
+        TO: Copy + Datum,
     {
         use ndarray::*;
         let input = input.to_array_view_unchecked::<T>();
@@ -67,34 +77,62 @@ impl Reducer {
                 .collect();
             let slice_info = SliceInfo::new(&slice_spec).unwrap();
             let slice = input.slice(slice_info.as_ref());
-            f(slice)
+            f(slice, last)
         });
         result.into_tensor()
     }
 }
 
-fn max_t<'a, T>(v: ArrayViewD<'a, T>) -> T
+fn argmax_t<'a, T>(v: ArrayViewD<'a, T>, last: bool) -> i64
+where
+    T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
+{
+    v.iter()
+        .copied()
+        .enumerate()
+        .fold(
+            (0usize, T::min_value()),
+            |acc, v| if v.1 > acc.1 || (last && acc.1 == v.1) { v } else { acc },
+        )
+        .0 as i64
+}
+
+fn argmin_t<'a, T>(v: ArrayViewD<'a, T>, last: bool) -> i64
+where
+    T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
+{
+    v.iter()
+        .copied()
+        .enumerate()
+        .fold(
+            (0usize, T::max_value()),
+            |acc, v| if v.1 < acc.1 || (last && acc.1 == v.1) { v } else { acc },
+        )
+        .0 as i64
+}
+
+fn max_t<'a, T>(v: ArrayViewD<'a, T>, _last: bool) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
 }
 
-fn min_t<'a, T>(v: ArrayViewD<'a, T>) -> T
+fn min_t<'a, T>(v: ArrayViewD<'a, T>, _last: bool) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::max_value(), |acc, &v| if acc < v { acc } else { v })
 }
 
-fn prod_t<'a, T>(v: ArrayViewD<'a, T>) -> T
+fn prod_t<'a, T>(v: ArrayViewD<'a, T>, _last: bool) -> T
 where
     T: Copy + Datum + num_traits::One,
 {
     v.fold(T::one(), |acc, &v| acc * v)
 }
 
-fn sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
+fn sum_t<'a, T>(v: ArrayViewD<'a, T>, _last: bool) -> T
 where
     T: Copy + Datum + num_traits::Zero,
 {
@@ -135,7 +173,12 @@ impl TypedOp for Reduce {
         for &ax in &self.axes {
             shape[ax] = 1.to_dim();
         }
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)?))
+        let dt = if let Reducer::ArgMax(_) | Reducer::ArgMin(_) = self.reducer {
+            DatumType::I64
+        } else {
+            inputs[0].datum_type
+        };
+        Ok(tvec!(TypedFact::dt_shape(dt, &*shape)?))
     }
 
     #[allow(unused_variables)]

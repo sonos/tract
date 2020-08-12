@@ -364,6 +364,8 @@ pub fn reduce(
         "sum" => ops::nn::Reducer::Sum,
         "min" => ops::nn::Reducer::Min,
         "max" => ops::nn::Reducer::Max,
+        "argmin" => ops::nn::Reducer::ArgMin(false),
+        "argmax" => ops::nn::Reducer::ArgMax(false),
         _ => bail!("unsupported reducer: {}", invocation.invocation.id),
     };
     let wire = builder.wire(ops::nn::Reduce::new(axes.clone(), reducer), &[input])?;
