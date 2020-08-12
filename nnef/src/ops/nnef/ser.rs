@@ -55,6 +55,31 @@ pub fn tile(
     Ok(invocation("tile", &[wire], &[("repeat", ints(&op.multipliers))]))
 }
 
+pub fn pad(ast: &mut IntoAst, node: &TypedNode, op: &ops::array::Pad) -> TractResult<Arc<RValue>> {
+    use ops::array::PadMode;
+    let wire = ast.mapping[&node.inputs[0]].clone();
+    let dt = ast.model.outlet_fact(node.inputs[0])?.datum_type;
+    let padding = array(&op.pads.iter().map(|pair| ints(&[pair.0, pair.1])).collect::<TVec<_>>());
+    let mut params = tvec!(("padding", padding));
+    let border = match &op.mode {
+        PadMode::Constant(c) => {
+            params.push((
+                "value",
+                if dt.is_float() {
+                    numeric(c.cast_to_scalar::<f32>()?)
+                } else {
+                    numeric(c.cast_to_scalar::<i64>()?)
+                },
+            ));
+            "constant"
+        }
+        PadMode::Reflect => "reflect",
+        PadMode::Edge => "edge",
+    };
+    params.push(("border", string(border)));
+    Ok(invocation("pad", &[wire], &params))
+}
+
 fn data_into_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue>) -> Arc<RValue> {
     use tract_core::ops::nn::DataFormat::*;
     if !data_format.has_n() {
