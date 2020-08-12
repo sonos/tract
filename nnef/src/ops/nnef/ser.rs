@@ -46,6 +46,15 @@ pub fn slice<D: DimLike>(
     ))
 }
 
+pub fn tile(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::array::Tile,
+) -> TractResult<Arc<RValue>> {
+    let wire = ast.mapping[&node.inputs[0]].clone();
+    Ok(invocation("tile", &[wire], &[("repeat", ints(&op.multipliers))]))
+}
+
 fn data_into_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue>) -> Arc<RValue> {
     use tract_core::ops::nn::DataFormat::*;
     if !data_format.has_n() {
@@ -136,7 +145,7 @@ pub fn conv(
 ) -> TractResult<Arc<RValue>> {
     use tract_core::ops::cnn::PaddingSpec;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
-    let weigths = ast.konst(format!("{}_weigths", node.name), &op.kernel);
+    let weigths = ast.konst_variable(format!("{}_weigths", node.name), &op.kernel);
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
     let conv_fragment =
         conv_fragment(ast, op.pool_spec.data_format, op.kernel_fmt, op.pool_spec.rank());
@@ -328,6 +337,29 @@ pub fn reduce(
 }
 
 pub fn matmul(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::matmul::MatMul,
+) -> TractResult<Arc<RValue>> {
+    let a = ast.force_assign(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
+    let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
+    let c = if op.c_trans {
+        invocation(
+            "matmul",
+            &[b, a],
+            &[("transposeA", logical(!op.b_trans)), ("transposeB", logical(!op.a_trans))],
+        )
+    } else {
+        invocation(
+            "matmul",
+            &[a, b],
+            &[("transposeA", logical(op.a_trans)), ("transposeB", logical(op.b_trans))],
+        )
+    };
+    Ok(ast.force_assign(&node.name, &c))
+}
+
+pub fn matmul_unary(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::matmul::MatMulUnary,

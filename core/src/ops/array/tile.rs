@@ -3,7 +3,7 @@ use ndarray::*;
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Tile {
-    multipliers: TVec<usize>,
+    pub multipliers: TVec<usize>,
 }
 
 tract_linalg::impl_dyn_hash!(Tile);

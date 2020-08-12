@@ -25,7 +25,13 @@ pub fn tract_nnef_onnx_registry() -> Registry {
 }
 
 pub fn lrn_parameters() -> Vec<Parameter> {
-    parse_parameters("input: tensor<scalar>, alpha: scalar = 0.0001, beta: scalar = 0.75, bias: scalar = 1.0, size: integer").unwrap()
+    vec![
+        TypeName::Scalar.tensor().named("input"),
+        TypeName::Scalar.named("alpha").default(0.0001),
+        TypeName::Scalar.named("beta").default(0.75),
+        TypeName::Scalar.named("bias").default(1.0),
+        TypeName::Integer.named("size"),
+    ]
 }
 
 pub fn lrn_dump(
@@ -60,10 +66,11 @@ pub fn lrn_load(
 }
 
 pub fn isinf_parameters() -> Vec<Parameter> {
-    parse_parameters(
-        "input: tensor<scalar>, detect_positive: logical = true, detect_negative: logical = true",
-    )
-    .unwrap()
+    vec![
+        TypeName::Scalar.tensor().named("input"),
+        TypeName::Logical.named("detect_positive").default(true),
+        TypeName::Logical.named("detect_negative").default(true),
+    ]
 }
 
 pub fn isinf_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Arc<RValue>> {

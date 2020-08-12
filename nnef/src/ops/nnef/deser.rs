@@ -152,6 +152,16 @@ pub fn unsqueeze(
     })
 }
 
+// fragment tile<?>( input: tensor<?>, repeats: integer[] ) -> ( output: tensor<?> );
+pub fn tile(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let multipliers: TVec<usize> = invocation.named_arg_as(builder, "repeat")?;
+    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
+    Ok(builder.wire(ops::array::Tile { multipliers }, &wire)?)
+}
+
 /*
 fragment conv( input: tensor<scalar>, filter: tensor<scalar>,
 bias: tensor<scalar> = 0.0, border: string = 'constant',

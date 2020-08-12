@@ -1,4 +1,3 @@
-use crate::ast::parse::parse_parameters;
 use crate::internal::*;
 use crate::ser::*;
 use tract_core::ops;
@@ -21,17 +20,19 @@ pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<ops::array::MultiBroadcastTo>(), ser_broadcast);
     registry.register_primitive(
         "tract_core_broadcast",
-        &parse_parameters("input: tensor<scalar>, dims:integer[]").unwrap(),
+        &[TypeName::Scalar.tensor().named("input"), TypeName::Integer.array().named("shape")],
         de_broadcast,
     );
 
     registry.register_dumper(TypeId::of::<ops::Downsample>(), ser_downsample);
     registry.register_primitive(
         "tract_core_downsample",
-        &parse_parameters(
-            "input: tensor<scalar>, axis: integer, stride:integer, modulo:integer = 0",
-        )
-        .unwrap(),
+        &[
+            TypeName::Scalar.tensor().named("input"),
+            TypeName::Integer.named("axis"),
+            TypeName::Integer.named("stride"),
+            TypeName::Integer.named("modulo").default(0),
+        ],
         de_downsample,
     );
 }
@@ -80,4 +81,3 @@ pub fn de_broadcast(
     let shape = invocation.named_arg_as(builder, "shape")?;
     builder.wire(ops::array::MultiBroadcastTo { shape }, &[wire])
 }
-

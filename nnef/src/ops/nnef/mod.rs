@@ -27,15 +27,19 @@ pub fn tract_nnef() -> Registry {
 
     primitive(&mut registry, "reshape", deser::reshape);
     primitive(&mut registry, "transpose", deser::transpose);
-    primitive(&mut registry, "unsqueeze", deser::unsqueeze);
-    primitive(&mut registry, "squeeze", deser::squeeze);
-    dumper!(ops::change_axes::AxisOp, ser::axis_op);
 
     primitive(&mut registry, "concat", deser::concat);
     dumper!(ops::array::TypedConcat, ser::concat);
     primitive(&mut registry, "slice", deser::slice);
     dumper!(ops::array::Slice<TDim>, ser::slice<TDim>);
     dumper!(ops::array::Slice<usize>, ser::slice<usize>);
+
+    primitive(&mut registry, "squeeze", deser::squeeze);
+    primitive(&mut registry, "unsqueeze", deser::unsqueeze);
+    dumper!(ops::change_axes::AxisOp, ser::axis_op);
+
+    primitive(&mut registry, "tile", deser::tile);
+    dumper!(ops::array::Tile, ser::tile);
 
     registry.register_binary("add", &ops::math::Add {});
     registry.register_binary("sub", &ops::math::Sub {});
@@ -85,7 +89,8 @@ pub fn tract_nnef() -> Registry {
     registry.register_binary("max", &ops::math::Max {});
 
     primitive(&mut registry, "matmul", deser::matmul);
-    dumper!(ops::matmul::MatMulUnary, ser::matmul);
+    dumper!(ops::matmul::MatMulUnary, ser::matmul_unary);
+    dumper!(ops::matmul::MatMul, ser::matmul);
 
     primitive(&mut registry, "conv", deser::conv);
     dumper!(ops::cnn::ConvUnary, ser::conv);

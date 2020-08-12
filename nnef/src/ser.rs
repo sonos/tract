@@ -67,7 +67,7 @@ impl<'a> IntoAst<'a> {
     fn new(framework: &'a Nnef, model: &'a TypedModel, prefix: Option<String>) -> IntoAst<'a> {
         IntoAst {
             framework,
-            registries: vec!(),
+            registries: vec![],
             prefix,
             model,
             parameters: vec![],
@@ -87,10 +87,10 @@ impl<'a> IntoAst<'a> {
         if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
             id = "_".to_string() + &id;
         }
-        let mut extension = vec!();
+        let mut extension = vec![];
         for reg in self.registries {
             if reg != "tract_nnef" {
-                extension.push(vec!("tract_registry".to_string(), reg));
+                extension.push(vec!["tract_registry".to_string(), reg]);
             }
         }
         let doc = Document {
@@ -140,7 +140,20 @@ impl<'a> IntoAst<'a> {
     }
 
     pub fn konst(&mut self, name: impl Into<String>, tensor: &Arc<Tensor>) -> Arc<RValue> {
-        if tensor.is_uniform().unwrap() {
+        self.do_konst(name, tensor, false)
+    }
+
+    pub fn konst_variable(&mut self, name: impl Into<String>, tensor: &Arc<Tensor>) -> Arc<RValue> {
+        self.do_konst(name, tensor, true)
+    }
+
+    fn do_konst(
+        &mut self,
+        name: impl Into<String>,
+        tensor: &Arc<Tensor>,
+        force_variable: bool,
+    ) -> Arc<RValue> {
+        if !force_variable && tensor.is_uniform().unwrap() {
             numeric(tensor.cast_to_scalar::<f32>().unwrap()).into()
         } else {
             let name = name.into();
