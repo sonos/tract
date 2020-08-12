@@ -81,9 +81,12 @@ impl<'a> IntoAst<'a> {
 
     fn into_proto_model(self) -> TractResult<ProtoModel> {
         let IntoAst { prefix, fragments, body, tensors, parameters, results, .. } = self;
-        let id = prefix
+        let mut id = prefix
             .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
             .unwrap_or("network".into());
+        if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
+            id = "_".to_string() + &id;
+        }
         let mut extension = vec!();
         for reg in self.registries {
             if reg != "tract_nnef" {

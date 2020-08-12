@@ -213,6 +213,53 @@ activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
 
 #[derive(Debug, Clone, new, Educe)]
 #[educe(Hash)]
+pub struct Shrink(
+    #[educe(Hash(method = "hash_f32"))] pub f32,
+    #[educe(Hash(method = "hash_f32"))] pub f32,
+);
+
+activation!(Shrink, |op, name: &str, model: &mut TypedModel, inputs| {
+    let bias = broadcast_scalar(op.0, model, inputs)?;
+    let lambda = broadcast_scalar(op.1, model, inputs)?;
+    let minus_bias = broadcast_scalar(-op.0, model, inputs)?;
+    let minus_lambda = broadcast_scalar(-op.1, model, inputs)?;
+    let zero =
+        model.add_const(name.to_string() + ".zero", broadcast_scalar(0.0, model, inputs)?)?;
+    let test_pos = model.wire_node(
+        name.to_string() + ".test_pos",
+        tract_core::ops::logic::lesser::unary(lambda),
+        &inputs,
+    )?;
+    let pos = model.wire_node(
+        name.to_string() + ".pos",
+        tract_core::ops::math::add::unary(minus_bias),
+        &inputs,
+    )?;
+    let test_neg = model.wire_node(
+        name.to_string() + ".test_neg",
+        tract_core::ops::logic::greater::unary(minus_lambda),
+        &inputs,
+    )?;
+    let neg = model.wire_node(
+        name.to_string() + ".neg",
+        tract_core::ops::math::add::unary(bias),
+        &inputs,
+    )?;
+    let wire = model.wire_node(
+        name.to_string() + ".if_pos",
+        tract_core::ops::logic::Iff,
+        &[test_pos[0], pos[0], zero],
+    )?;
+    let wire = model.wire_node(
+        name.to_string() + ".if_neg",
+        tract_core::ops::logic::Iff,
+        &[test_neg[0], neg[0], wire[0]],
+    )?;
+    Ok(wire)
+});
+
+#[derive(Debug, Clone, new, Educe)]
+#[educe(Hash)]
 pub struct ThresholdRelu(#[educe(Hash(method = "hash_f32"))] pub f32);
 
 activation!(ThresholdRelu, |op, name: &str, model: &mut TypedModel, inputs| {

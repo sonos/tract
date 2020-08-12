@@ -23,6 +23,7 @@ pub fn tract_nnef() -> Registry {
 
     primitive(&mut registry, "external", deser::external);
     primitive(&mut registry, "variable", deser::variable);
+    dumper!(ops::konst::Const, ser::konst);
 
     primitive(&mut registry, "reshape", deser::reshape);
     primitive(&mut registry, "transpose", deser::transpose);
@@ -42,29 +43,29 @@ pub fn tract_nnef() -> Registry {
     registry.register_binary("div", &ops::math::Div {});
     registry.register_binary("pow", &ops::math::Pow {});
 
-    registry.register_element_wise("exp", &ops::math::Exp {});
-    registry.register_element_wise("ln", &ops::math::Ln {});
-    registry.register_element_wise("sin", &ops::math::Sin {});
-    registry.register_element_wise("cos", &ops::math::Cos {});
-    registry.register_element_wise("abs", &ops::math::Abs {});
-    registry.register_element_wise("neg", &ops::math::Neg {});
-    registry.register_element_wise("sign", &ops::math::Sign {});
-    registry.register_element_wise("recip", &ops::math::Recip {});
+    registry.register_unit_element_wise("exp", &ops::math::Exp {});
+    registry.register_unit_element_wise("log", &ops::math::Ln {});
+    registry.register_unit_element_wise("sin", &ops::math::Sin {});
+    registry.register_unit_element_wise("cos", &ops::math::Cos {});
+    registry.register_unit_element_wise("abs", &ops::math::Abs {});
+    registry.register_unit_element_wise("neg", &ops::math::Neg {});
+    registry.register_unit_element_wise("sign", &ops::math::Sign {});
+    registry.register_unit_element_wise("recip", &ops::math::Recip {});
 
-    registry.register_element_wise("floor", &ops::math::Floor {});
-    registry.register_element_wise("ceil", &ops::math::Ceil {});
-    registry.register_element_wise("round", &ops::math::Round {});
+    registry.register_unit_element_wise("floor", &ops::math::Floor {});
+    registry.register_unit_element_wise("ceil", &ops::math::Ceil {});
+    registry.register_unit_element_wise("round", &ops::math::Round {});
 
-    registry.register_element_wise("square", &ops::math::Square {});
-    registry.register_element_wise("sqrt", &ops::math::Sqrt {});
-    registry.register_element_wise("rsqrt", &ops::math::Rsqrt {});
+    registry.register_unit_element_wise("square", &ops::math::Square {});
+    registry.register_unit_element_wise("sqrt", &ops::math::Sqrt {});
+    registry.register_unit_element_wise("rsqrt", &ops::math::Rsqrt {});
 
-    registry.register_element_wise("tanh", &ops::math::Tanh {});
-    registry.register_element_wise("sigmoid", &ops::nn::Sigmoid {});
+    registry.register_unit_element_wise("tanh", &ops::math::Tanh {});
+    registry.register_unit_element_wise("sigmoid", &ops::nn::Sigmoid {});
 
-    registry.register_element_wise("not", &ops::logic::Not {});
+    registry.register_unit_element_wise("not", &ops::logic::Not {});
 
-    registry.register_element_wise("neg", &ops::math::Neg {});
+    registry.register_unit_element_wise("neg", &ops::math::Neg {});
 
     registry.register_binary("lt", &ops::logic::Lesser {});
     registry.register_binary("gt", &ops::logic::Greater {});
