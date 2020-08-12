@@ -35,12 +35,25 @@ pub fn register(registry: &mut Registry) {
         ],
         de_downsample,
     );
+
+    registry.register_dumper(TypeId::of::<ops::nn::Reduce>(), ser_reduce);
+    for red in &[
+        "tract_core_argmax_reduce_last",
+        "tract_core_argmin_reduce_last",
+        "tract_core_product_reduce",
+    ] {
+        registry.register_primitive(
+            red,
+            &[TypeName::Scalar.tensor().named("input"), TypeName::Integer.array().named("axes")],
+            de_reduce,
+        );
+    }
 }
 
-pub fn ser_downsample(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Arc<RValue>> {
+fn ser_downsample(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op().downcast_ref::<ops::Downsample>().unwrap();
     let wire = ast.mapping[&node.inputs[0]].clone();
-    Ok(invocation(
+    Ok(Some(invocation(
         "tract_core_downsample",
         &[wire],
         &[
@@ -48,10 +61,10 @@ pub fn ser_downsample(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Arc<RV
             ("stride", numeric(op.stride)),
             ("modulo", numeric(op.modulo)),
         ],
-    ))
+    )))
 }
 
-pub fn de_downsample(
+fn de_downsample(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
@@ -62,7 +75,7 @@ pub fn de_downsample(
     builder.wire(ops::Downsample { axis, stride, modulo }, &[wire])
 }
 
-pub fn ser_broadcast(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Arc<RValue>> {
+fn ser_broadcast(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op().downcast_ref::<ops::array::MultiBroadcastTo>().unwrap();
     let wire = ast.mapping[&node.inputs[0]].clone();
     let shape = op
@@ -70,14 +83,42 @@ pub fn ser_broadcast(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Arc<RVa
         .iter()
         .map(|d| d.to_integer().map(|x| x as usize))
         .collect::<TractResult<TVec<usize>>>()?;
-    Ok(invocation("tract_core_broadcast", &[wire], &[("shape", ints(&shape))]))
+    Ok(Some(invocation("tract_core_broadcast", &[wire], &[("shape", ints(&shape))])))
 }
 
-pub fn de_broadcast(
+fn de_broadcast(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let wire = invocation.named_arg_as(builder, "input")?;
     let shape = invocation.named_arg_as(builder, "shape")?;
     builder.wire(ops::array::MultiBroadcastTo { shape }, &[wire])
+}
+
+fn ser_reduce(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let op = node.op().downcast_ref::<ops::nn::Reduce>().unwrap();
+    let wire = ast.mapping[&node.inputs[0]].clone();
+    let oper = match op.reducer {
+        ops::nn::Reducer::ArgMax(last) if last => "tract_core_argmax_reduce_last",
+        ops::nn::Reducer::ArgMin(last) if last => "tract_core_argmin_reduce_last",
+        ops::nn::Reducer::Prod => "tract_core_product_reduce",
+        _ => return Ok(None),
+    };
+    Ok(Some(invocation(oper, &[wire], &[("axes", ints(&*op.axes))])))
+}
+
+fn de_reduce(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let wire = invocation.named_arg_as(builder, "input")?;
+    let reducer = match &*invocation.invocation.id {
+        "tract_core_argmin_reduce_last" => ops::nn::Reducer::ArgMin(true),
+        "tract_core_argmax_reduce_last" => ops::nn::Reducer::ArgMax(true),
+        "tract_core_product_reduce" => ops::nn::Reducer::Prod,
+        _ => panic!(),
+    };
+    let axes = invocation.named_arg_as(builder, "axes")?;
+    let reduce = ops::nn::Reduce { axes, reducer };
+    builder.wire(reduce, &[wire])
 }

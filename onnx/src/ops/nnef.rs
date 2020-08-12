@@ -38,9 +38,9 @@ pub fn lrn_dump(
     ast: &mut IntoAst,
     node: &TypedNode,
     lrn: &crate::ops::nn::lrn::Lrn,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    Ok(invocation(
+    Ok(Some(invocation(
         "tract_onnx_lrn",
         &[input],
         &[
@@ -49,7 +49,7 @@ pub fn lrn_dump(
             ("bias", numeric(lrn.bias)),
             ("size", numeric(lrn.size)),
         ],
-    ))
+    )))
 }
 
 pub fn lrn_load(
@@ -73,18 +73,18 @@ pub fn isinf_parameters() -> Vec<Parameter> {
     ]
 }
 
-pub fn isinf_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Arc<RValue>> {
+pub fn isinf_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op =
         node.op_as::<ElementWiseOp>().unwrap().0.downcast_ref::<crate::ops::math::IsInf>().unwrap();
     let input = ast.mapping[&node.inputs[0]].clone();
-    Ok(invocation(
+    Ok(Some(invocation(
         "tract_onnx_isinf",
         &[input],
         &[
             ("detect_negative", logical(op.detect_negative)),
             ("detect_positive", logical(op.detect_positive)),
         ],
-    ))
+    )))
 }
 
 pub fn isinf_load(

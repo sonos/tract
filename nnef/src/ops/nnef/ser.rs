@@ -7,15 +7,15 @@ pub fn konst(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::konst::Const,
-) -> TractResult<Arc<RValue>> {
-    Ok(ast.konst(&node.name, &op.0))
+) -> TractResult<Option<Arc<RValue>>> {
+    Ok(Some(ast.konst(&node.name, &op.0)))
 }
 
 pub fn concat(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::array::TypedConcat,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     let mut inputs = node.inputs.iter();
     let wires = op
         .slices
@@ -28,34 +28,34 @@ pub fn concat(
             }
         })
         .collect::<TVec<RValue>>();
-    Ok(invocation("concat", &[array(&wires).into()], &[("axis", numeric(op.axis))]))
+    Ok(Some(invocation("concat", &[array(&wires).into()], &[("axis", numeric(op.axis))])))
 }
 
 pub fn slice<D: DimLike>(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::array::Slice<D>,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let start = op.start.to_integer()? as usize;
     let end = op.end.to_integer()? as usize;
-    Ok(invocation(
+    Ok(Some(invocation(
         "slice",
         &[wire],
         &[("axes", ints(&[op.axis])), ("begin", ints(&[start])), ("end", ints(&[end]))],
-    ))
+    )))
 }
 
 pub fn tile(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::array::Tile,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
-    Ok(invocation("tile", &[wire], &[("repeat", ints(&op.multipliers))]))
+    Ok(Some(invocation("tile", &[wire], &[("repeat", ints(&op.multipliers))])))
 }
 
-pub fn pad(ast: &mut IntoAst, node: &TypedNode, op: &ops::array::Pad) -> TractResult<Arc<RValue>> {
+pub fn pad(ast: &mut IntoAst, node: &TypedNode, op: &ops::array::Pad) -> TractResult<Option<Arc<RValue>>> {
     use ops::array::PadMode;
     let wire = ast.mapping[&node.inputs[0]].clone();
     let dt = ast.model.outlet_fact(node.inputs[0])?.datum_type;
@@ -77,7 +77,7 @@ pub fn pad(ast: &mut IntoAst, node: &TypedNode, op: &ops::array::Pad) -> TractRe
         PadMode::Edge => "edge",
     };
     params.push(("border", string(border)));
-    Ok(invocation("pad", &[wire], &params))
+    Ok(Some(invocation("pad", &[wire], &params)))
 }
 
 fn data_into_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue>) -> Arc<RValue> {
@@ -167,7 +167,7 @@ pub fn conv(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::cnn::conv::ConvUnary,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     use tract_core::ops::cnn::PaddingSpec;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
     let weigths = ast.konst_variable(format!("{}_weigths", node.name), &op.kernel);
@@ -204,7 +204,7 @@ pub fn conv(
         ],
     );
     wire = ast.force_assign(&node.name, &wire);
-    Ok(wire)
+    Ok(Some(wire))
 }
 
 fn cnn_pool_fragment<'a>(
@@ -256,7 +256,7 @@ fn cnn_pool(
     op_name: &str,
     pool_spec: &tract_core::ops::cnn::PoolSpec,
     normalize_arg: Option<(&'static str, RValue)>,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     use tract_core::ops::cnn::PaddingSpec;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
@@ -292,14 +292,14 @@ fn cnn_pool(
     };
     wire = invocation(&conv_fragment, &[wire], &params);
     wire = ast.force_assign(&node.name, &wire);
-    Ok(wire)
+    Ok(Some(wire))
 }
 
 pub fn max_pool(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::cnn::MaxPool,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     cnn_pool(ast, node, "max_pool", &op.pool_spec, None)
 }
 
@@ -307,7 +307,7 @@ pub fn sum_pool(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::cnn::SumPool,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     cnn_pool(ast, node, "box", &op.pool_spec, Some(("normalize", logical(op.normalize))))
 }
 
@@ -315,7 +315,7 @@ pub fn axis_op(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::change_axes::AxisOp,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let invoke = match op {
         AxisOp::Rm(axis) => invocation("squeeze", &[wire], &[("axes", ints(&[*axis]))]),
@@ -343,31 +343,31 @@ pub fn axis_op(
             ],
         ),
     };
-    Ok(invoke)
+    Ok(Some(invoke))
 }
 
 pub fn reduce(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::nn::Reduce,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let oper = match op.reducer {
-        ops::nn::Reducer::ArgMax(_) => "argmax_reduce",
-        ops::nn::Reducer::ArgMin(_) => "argmin_reduce",
+        ops::nn::Reducer::ArgMax(last) if !last => "argmax_reduce",
+        ops::nn::Reducer::ArgMin(last) if !last => "argmin_reduce",
         ops::nn::Reducer::Sum => "sum_reduce",
         ops::nn::Reducer::Max => "max_reduce",
         ops::nn::Reducer::Min => "min_reduce",
-        _ => todo!(),
+        _ => return Ok(None),
     };
-    Ok(invocation(oper, &[wire], &[("axes", ints(&*op.axes))]))
+    Ok(Some(invocation(oper, &[wire], &[("axes", ints(&*op.axes))])))
 }
 
 pub fn matmul(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::matmul::MatMul,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     let a = ast.force_assign(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
     let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
     let c = if op.c_trans {
@@ -383,14 +383,14 @@ pub fn matmul(
             &[("transposeA", logical(op.a_trans)), ("transposeB", logical(op.b_trans))],
         )
     };
-    Ok(ast.force_assign(&node.name, &c))
+    Ok(Some(ast.force_assign(&node.name, &c)))
 }
 
 pub fn matmul_unary(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::matmul::MatMulUnary,
-) -> TractResult<Arc<RValue>> {
+) -> TractResult<Option<Arc<RValue>>> {
     let a = ast.konst(format!("{}_a", node.name), &op.a);
     let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[0]].clone());
     let c = if op.c_trans {
@@ -406,17 +406,17 @@ pub fn matmul_unary(
             &[("transposeA", logical(op.a_trans)), ("transposeB", logical(op.b_trans))],
         )
     };
-    Ok(ast.force_assign(&node.name, &c))
+    Ok(Some(ast.force_assign(&node.name, &c)))
 }
 
 pub fn select(
     ast: &mut IntoAst,
     node: &TypedNode,
     _op: &ops::logic::Iff,
-) -> TractResult<Arc<RValue>> {
-    Ok(invocation(
+) -> TractResult<Option<Arc<RValue>>> {
+    Ok(Some(invocation(
         "select",
         &node.inputs.iter().map(|o| ast.mapping[o].clone()).collect::<TVec<_>>(),
         &[],
-    ))
+    )))
 }

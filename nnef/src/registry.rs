@@ -6,7 +6,7 @@ use crate::deser::Value;
 use tract_core::ops::binary::*;
 
 pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<TVec<OutletId>>;
-pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Arc<RValue>>;
+pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>;
 
 pub struct Registry {
     pub id: String,
@@ -85,7 +85,9 @@ impl Registry {
                 if let Some(op) =
                     self.element_wise_ops.iter().find(|ew| ew.1 == op.0.type_id())
                 {
-                    return Ok(Some((op.2)(ast, node)?));
+                    if let Some(result) = (op.2)(ast, node)? {
+                        return Ok(Some(result))
+                    }
                 }
             }
         } else if let Some(op) = node.op().downcast_ref::<ops::binary::TypedBinOp>() {
@@ -105,7 +107,9 @@ impl Registry {
                 return Ok(Some(invocation(&*o.0, &[a, b], &[])));
             }
         } else if let Some(op) = self.from_tract.get(&node.op().type_id()) {
-            return Ok(Some(op(ast, node)?));
+            if let Some(result) = op(ast, node)? {
+                return Ok(Some(result))
+            }
         }
         Ok(None)
     }
