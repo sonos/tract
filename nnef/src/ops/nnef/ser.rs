@@ -3,6 +3,14 @@ use crate::ser::*;
 use tract_core::ops;
 use tract_core::ops::nn::DataFormat;
 
+pub fn konst(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::konst::Const,
+) -> TractResult<Arc<RValue>> {
+    Ok(ast.konst(&node.name, &op.0))
+}
+
 pub fn concat(
     ast: &mut IntoAst,
     node: &TypedNode,

@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-use tract_core::ops::element_wise::ElementWiseOp;
+pub use tract_core::ops::element_wise::ElementWiseOp;
 
 impl InferenceRulesOp for ElementWiseOp {
     fn rules<'r, 'p: 'r, 's: 'r>(

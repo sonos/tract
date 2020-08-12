@@ -6,8 +6,6 @@ use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
-use tract_num_traits::AsPrimitive;
-
 mod batch_norm;
 mod dropout;
 mod instance_norm;
@@ -368,39 +366,13 @@ pub fn scaled_tanh(
     Ok((expand(ops::activations::ScaledTanh(alpha, beta)), vec![]))
 }
 
-element_wise!(shrink_op,
-Shrink {
-    #[educe(Hash(method = "hash_f32"))]
-    bias: f32,
-    #[educe(Hash(method = "hash_f32"))]
-    lambd: f32
-},
-[f16,f32,f64] => |s, xs| {
-    xs.iter_mut().for_each(|x| *x = shrink_value(*x, s));
-    Ok(())
-});
-
-fn shrink_value<T>(x: T, s: &Shrink) -> T
-where
-    T: Datum + tract_num_traits::Float,
-    f32: tract_num_traits::AsPrimitive<T>,
-{
-    if x < -s.lambd.as_() {
-        x + s.bias.as_()
-    } else if x > s.lambd.as_() {
-        x - s.bias.as_()
-    } else {
-        T::zero()
-    }
-}
-
 pub fn shrink(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let bias = node.get_attr_opt("bias")?.unwrap_or(0.0);
     let lambd = node.get_attr_opt("lambd")?.unwrap_or(0.5);
-    Ok((Box::new(shrink_op(bias, lambd)), vec![]))
+    Ok((expand(ops::activations::Shrink(bias, lambd)), vec![]))
 }
 
 pub fn selu(

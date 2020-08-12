@@ -12,7 +12,8 @@ pub struct Registry {
     pub id: String,
     pub fragments: HashMap<String, FragmentDef>,
     pub primitives: HashMap<String, (Vec<ast::Parameter>, ToTract)>,
-    pub element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
+    pub unit_element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
+    pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<(String, Box<dyn BinMiniOp>)>,
     pub from_tract: HashMap<TypeId, FromTract>,
 }
@@ -24,6 +25,7 @@ impl Registry {
             primitives: Default::default(),
             fragments: Default::default(),
             from_tract: Default::default(),
+            unit_element_wise_ops: Default::default(),
             element_wise_ops: Default::default(),
             binary_ops: Default::default(),
         }
@@ -41,9 +43,24 @@ impl Registry {
         self.fragments.insert(def.decl.id.to_string(), def);
     }
 
-    pub fn register_element_wise(&mut self, id: impl Into<String>, ew: &dyn ElementWiseMiniOp) {
+    pub fn register_unit_element_wise(
+        &mut self,
+        id: impl Into<String>,
+        ew: &dyn ElementWiseMiniOp,
+    ) {
         assert!(std::mem::size_of_val(ew) == 0);
-        self.element_wise_ops.push((id.into(), tract_core::dyn_clone::clone_box(ew)));
+        self.unit_element_wise_ops.push((id.into(), tract_core::dyn_clone::clone_box(ew)));
+    }
+
+    pub fn register_element_wise(
+        &mut self,
+        id: impl Into<String>,
+        type_id: TypeId,
+        dumper: FromTract,
+        parameters: Vec<ast::Parameter>,
+        loader: ToTract,
+    ) {
+        self.element_wise_ops.push((id.into(), type_id, dumper, parameters, loader));
     }
 
     pub fn register_binary(&mut self, id: impl Into<String>, op: &dyn BinMiniOp) {
@@ -57,11 +74,19 @@ impl Registry {
     ) -> TractResult<Option<Arc<RValue>>> {
         use tract_core::ops;
         if let Some(op) = node.op().downcast_ref::<ops::element_wise::ElementWiseOp>() {
-            if let Some(op) =
-                self.element_wise_ops.iter().find(|ew| ew.1.as_ref().type_id() == op.0.type_id())
-            {
-                let a = ast.mapping[&node.inputs[0]].clone();
-                return Ok(Some(invocation(&*op.0, &[a], &[])));
+            if std::mem::size_of_val(op.0.as_ref()) == 0 {
+                if let Some(op) =
+                    self.unit_element_wise_ops.iter().find(|ew| ew.1.as_ref().type_id() == op.0.type_id())
+                {
+                    let a = ast.mapping[&node.inputs[0]].clone();
+                    return Ok(Some(invocation(&*op.0, &[a], &[])));
+                }
+            } else {
+                if let Some(op) =
+                    self.element_wise_ops.iter().find(|ew| ew.1 == op.0.type_id())
+                {
+                    return Ok(Some((op.2)(ast, node)?));
+                }
             }
         } else if let Some(op) = node.op().downcast_ref::<ops::binary::TypedBinOp>() {
             if let Some(op) =
@@ -95,11 +120,15 @@ impl Registry {
             let outlets = (op.1)(builder, &resolved)?;
             return Ok(Some(Value::Tuple(outlets.into_iter().map(Value::Wire).collect())));
         }
-        if let Some(ew) = self.element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
+        if let Some(ew) = self.unit_element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
             let input = invocation.arguments[0].rvalue.resolve(builder)?.to::<OutletId>(builder)?;
             let outlet = builder
                 .wire(tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()), &[input])?;
             return Ok(Some(Value::Wire(outlet[0])));
+        }
+        if let Some(ew) = self.element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
+            let resolved = ResolvedInvocation { invocation, default_params: &ew.3 };
+            return Ok(Some(Value::Wire((ew.4)(builder, &resolved)?[0])))
         }
         if let Some(bin) = self.binary_ops.iter().find(|bin| bin.0 == invocation.id) {
             let a = invocation.arguments[0].rvalue.resolve(builder)?.to::<OutletId>(builder)?;

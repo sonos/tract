@@ -2,7 +2,7 @@ use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct MultiBroadcastTo {
-    shape: TVec<TDim>,
+    pub shape: TVec<TDim>,
 }
 tract_linalg::impl_dyn_hash!(MultiBroadcastTo);
 
