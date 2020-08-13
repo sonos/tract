@@ -22,6 +22,11 @@ impl Nnef {
         self
     }
 
+    pub fn with_tract_core(mut self) -> Self {
+        self.registries.push(crate::ops::tract_core());
+        self
+    }
+
     pub fn translate(
         &self,
         proto_model: &ProtoModel,

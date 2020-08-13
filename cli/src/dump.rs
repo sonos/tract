@@ -9,6 +9,7 @@ pub fn handle(
     params: &Parameters,
     options: &DisplayParams,
     matches: &clap::ArgMatches,
+    sub_matches: &clap::ArgMatches,
     bench_limits: &BenchLimits,
     _inner: Vec<String>,
 ) -> CliResult<()> {
@@ -34,8 +35,8 @@ pub fn handle(
         crate::utils::check_inferred(&*outputs_facts, &*asserts)?;
     }
 
-    if let Some(path) = matches.value_of("nnef") {
-        let nnef = tract_nnef::nnef();
+    if let Some(path) = sub_matches.value_of("nnef") {
+        let nnef = super::nnef(&matches);
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
             nnef.write_to_tgz(typed, path)?
         } else {
@@ -43,8 +44,8 @@ pub fn handle(
         }
     }
 
-    if let Some(path) = matches.value_of("nnef-dir") {
-        let nnef = tract_nnef::nnef();
+    if let Some(path) = sub_matches.value_of("nnef-dir") {
+        let nnef = super::nnef(&matches);
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
             nnef.write_to_dir(typed, path)?
         } else {
@@ -55,7 +56,7 @@ pub fn handle(
     if options.cost {
         let total = annotations.tags.values().sum::<NodeTags>();
         let assert =
-            matches.value_of("assert-cost").map(|a| crate::cost::parse_costs(a)).transpose()?;
+            sub_matches.value_of("assert-cost").map(|a| crate::cost::parse_costs(a)).transpose()?;
         if let Some(assert) = assert {
             let assert: HashMap<Cost, TDim> =
                 assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();

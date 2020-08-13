@@ -151,6 +151,8 @@ fn main() {
 
     (@arg pass: --pass +takes_value possible_values(STAGES) "Pass to stop preprocessing after.")
     (@arg nnef_cycle: --("nnef-cycle") "Perform NNEF dump and reload before optimizing")
+    (@arg nnef_tract_core: --("nnef-tract-core") "Allow usage of tract-core extension in NNEF dump and load")
+    (@arg nnef_tract_onnx: --("nnef-tract-onnx") "Allow usage of tract-onnx extension in NNEF dump and load")
 
     (@arg optimize: -O --optimize "Optimize before running")
     (@arg pulse: --pulse +takes_value "Translate to pulse network")
@@ -506,6 +508,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         ("", None) => dump::handle(
             &params,
             &display_params_from_clap(&matches, &clap::ArgMatches::default())?,
+            &matches,
             &clap::ArgMatches::default(),
             &BenchLimits::from_clap(&clap::ArgMatches::default())?,
             vec![],
@@ -520,6 +523,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             dump::handle(
                 &params,
                 &display_params_from_clap(&matches, m)?,
+                &matches,
                 m,
                 &BenchLimits::from_clap(&m)?,
                 inner,
@@ -539,4 +543,17 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         }
     }
     Ok(())
+}
+
+fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
+    let mut fw = tract_nnef::nnef();
+    dbg!(matches);
+    if matches.is_present("nnef_tract_onnx") {
+        use tract_onnx::WithOnnx;
+        fw = fw.with_onnx();
+    }
+    if matches.is_present("nnef_tract_core") {
+        fw = fw.with_tract_core();
+    }
+    fw
 }
