@@ -1,9 +1,9 @@
-test_bvlc_alexnet not-nnef
-test_densenet121 not-nnef
-test_inception_v1 not-nnef
-test_inception_v2 not-nnef
-test_resnet50 not-nnef
-test_shufflenet not-nnef
-test_squeezenet not-nnef
-test_vgg19 not-nnef
-test_zfnet512 not-nnef
+test_bvlc_alexnet
+test_densenet121
+test_inception_v1
+test_inception_v2
+test_resnet50
+test_shufflenet
+test_squeezenet
+test_vgg19
+test_zfnet512
