@@ -64,12 +64,13 @@ net_bench() {
 
     for stage in model_ready before_optimize
     do
-        v=$(grep $stage readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 1 -d ' ')
+        pattern=$(echo $stage | tr "_-" "..")
+        v=$(grep $pattern readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 1 -d ' ')
         echo net.$net.time_to_$stage.$pb $v >> metrics
-        v=$(grep $stage readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 4 -d ' ')
+        v=$(grep $pattern readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 4 -d ' ')
         echo net.$net.rsz_at_$stage.$pb $v >> metrics
-        f=$(grep $stage readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 11 -d ' ')
-        a=$(grep $stage readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 10 -d ' ')
+        f=$(grep $pattern readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 11 -d ' ')
+        a=$(grep $pattern readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 10 -d ' ')
         echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
     done
 }
