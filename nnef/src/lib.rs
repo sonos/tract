@@ -10,7 +10,13 @@ pub mod ser;
 pub mod tensors;
 
 pub use ast::ProtoModel;
-pub use tract_core::prelude;
+
+pub use tract_core::prelude::tract_ndarray;
+pub use tract_core::prelude::tract_num_traits;
+
+pub mod prelude {
+    pub use tract_core::prelude::*;
+}
 
 pub mod internal {
     pub use crate::ast::parse::parse_parameters;
