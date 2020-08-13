@@ -3,6 +3,7 @@ use std::str::FromStr;
 use tract_itertools::Itertools;
 
 use tract_core::internal::*;
+use tract_onnx::prelude::*;
 use tract_core::model::TypedModel;
 use tract_hir::internal::*;
 #[cfg(feature = "tf")]
@@ -119,7 +120,7 @@ impl Parameters {
             }
             #[cfg(feature = "nnef")]
             "nnef" => {
-                let nnef = tract_nnef::nnef();
+                let nnef = super::nnef(&matches);
                 let proto_model = nnef.proto_model_for_path(&filename)?;
                 info_usage("proto model loaded", probe);
                 if need_graph {
@@ -504,8 +505,7 @@ impl Parameters {
         }
         if nnef_cycle {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
-                use tract_onnx::WithOnnx;
-                let nnef = tract_nnef::nnef().with_onnx();
+                let nnef = super::nnef(&matches);
                 let mut vec = vec!();
                 nnef.write(&m, &mut vec)?;
                 nnef.model_for_read(&mut &*vec)

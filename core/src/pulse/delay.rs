@@ -63,11 +63,11 @@ impl OpState for DelayState {
 
 #[derive(Clone, Debug, PartialEq, Hash)]
 pub struct Delay {
-    datum_type: DatumType,
-    buffer_shape: TVec<usize>,
-    axis: usize,
-    delay: usize,
-    overlap: usize,
+    pub datum_type: DatumType,
+    pub buffer_shape: TVec<usize>,
+    pub axis: usize,
+    pub delay: usize,
+    pub overlap: usize,
 }
 
 tract_linalg::impl_dyn_hash!(Delay);
@@ -78,6 +78,12 @@ impl Delay {
         let mut buffer_shape = input_fact.shape.clone();
         buffer_shape[axis] = delay + overlap;
         Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap }
+    }
+
+    pub fn new_typed(input_fact: &TypedFact, axis: usize, delay: usize, overlap: usize) -> TractResult<Delay> {
+        let mut buffer_shape:TVec<usize> = input_fact.shape.as_finite().ok_or("Expected finite dimensions")?.into();
+        buffer_shape[axis] = delay + overlap;
+        Ok(Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap })
     }
 }
 
