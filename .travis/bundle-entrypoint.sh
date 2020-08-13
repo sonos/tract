@@ -9,11 +9,9 @@ CACHEDIR=${CACHEDIR:-$HOME/.cache}
 if [ -x tract ]
 then
     TRACT=./tract
-elif [ -x ./target/release/tract ]
-then
-    TRACT=./target/release/tract
 else
-    TRACT="cargo run -p tract -q --release --"
+    cargo build -p tract -q --release
+    TRACT=./target/release/tract
 fi
 
 [ -e vars ] && . ./vars
@@ -21,9 +19,9 @@ fi
 [ -d $CACHEDIR ] || mkdir $CACHEDIR
 aws s3 sync s3://tract-ci-builds/model $CACHEDIR
 (cd $CACHEDIR
-    chmod +x tflite*
-    [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
-    [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
+chmod +x tflite*
+[ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+[ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
 )
 
 touch metrics
@@ -93,6 +91,7 @@ net_bench hey_snips_v31 400ms $CACHEDIR/hey_snips_v3.1.pb -i 40x40xf32
 
 net_bench hey_snips_v4_model17 2sec $CACHEDIR/hey_snips_v4_model17.pb -i 200x20xf32
 net_bench hey_snips_v4_model17 pulse8 $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 --pulse 8
+net_bench hey_snips_v4_model17_nnef pulse8 --nnef-tract-core $CACHEDIR/hey_snips_v4_model17.tgz
 
 net_bench mobilenet_v1_1 pass $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb -i 1x224x224x3xf32
 net_bench mobilenet_v2_1 pass $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb -i 1x224x224x3xf32
@@ -109,7 +108,7 @@ net_bench kaldi_librispeech_clean_tdnn_lstm_1e_256 pulse_240ms \
     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     -i Sx40 --pulse 24 \
 
-net_bench mdl-en-2019-Q3-librispeech_onnx 2600ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i 264x40
+    net_bench mdl-en-2019-Q3-librispeech_onnx 2600ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i 264x40
 net_bench mdl-en-2019-Q3-librispeech_onnx pulse_240ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i Sx40 --pulse 24
 net_bench en_tdnn_lstm_bn_q7 2600ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i 264x40
 net_bench en_tdnn_lstm_bn_q7 pulse_240ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i Sx40 --pulse 24
@@ -155,21 +154,21 @@ do
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/inception_v3_2016_08_28_frozen.tflite \
         --num_runs=1 \
-    2> bench
+        2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/hey_snips_v1.tflite \
-    2> bench
+        2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.hey_snips_v1.tflite_$tflite.400ms $sec >> metrics
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/ARM-ML-KWS-CNN-M.tflite \
-    2> bench
+        2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.arm_ml_kws_cnn_m.tflite_$tflite.pass $sec >> metrics
@@ -177,7 +176,7 @@ do
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/mobilenet_v1_1.0_224.tflite \
         --num_runs=1 \
-    2> bench
+        2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.mobilenet_v1.tflite_$tflite.pass $sec >> metrics

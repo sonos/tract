@@ -49,7 +49,6 @@ pub fn register(registry: &mut Registry) {
         );
     }
 
-    dbg!("reg");
     registry.register_dumper(TypeId::of::<tract_core::pulse::delay::Delay>(), ser_delay);
     registry.register_primitive(
         "tract_core_delay",

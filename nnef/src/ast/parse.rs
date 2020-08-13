@@ -12,7 +12,6 @@ fn translate_error<'s, E: std::fmt::Debug>(e: E) -> TractError {
 }
 
 pub fn parse_document(doc: &str) -> TractResult<Document> {
-    eprintln!("{}", doc);
     all_consuming(document)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 

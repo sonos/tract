@@ -514,7 +514,6 @@ impl Parameters {
         }
         stage!("before-optimize", typed_model -> typed_model, |m:TypedModel| Ok(m));
         stage!("optimize", typed_model -> typed_model, |m:TypedModel| m.optimize());
-        eprintln!("type_model: {:?}", typed_model.is_some());
         Ok((typed_model.clone().unwrap(), typed_model, pulsed_model, reference_model))
     }
 

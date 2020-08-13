@@ -547,7 +547,6 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
 
 fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     let mut fw = tract_nnef::nnef();
-    dbg!(matches);
     if matches.is_present("nnef_tract_onnx") {
         use tract_onnx::WithOnnx;
         fw = fw.with_onnx();
