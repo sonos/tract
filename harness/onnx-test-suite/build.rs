@@ -48,7 +48,9 @@ pub fn ensure_onnx_git_checkout() {
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 enum Mode {
-    Plain, Optim, NNEF
+    Plain,
+    Optim,
+    NNEF,
 }
 
 pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
@@ -93,18 +95,22 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
         for t in &tests {
             writeln!(rs, "#[test]").unwrap();
             let pair = working_list.iter().find(|pair| &*pair.0 == &*t);
-            let run = pair.is_some();
-            if !run || /* (mode == NNEF) ||  */ ((mode == Optim || mode == NNEF) && pair.as_ref().unwrap().1.contains(&"dynsize".to_string())) {
+            let ignore = pair.is_none()
+                || match mode {
+                    Mode::Plain => false,
+                    Mode::Optim => pair.as_ref().unwrap().1.contains(&"not-typable".to_string()),
+                    Mode::NNEF => {
+                        pair.as_ref().unwrap().1.contains(&"not-typable".to_string())
+                            || pair.as_ref().unwrap().1.contains(&"not-nnef".to_string())
+                    }
+                };
+            if ignore {
                 writeln!(rs, "#[ignore]").unwrap();
             }
             let more = pair.map(|p| &*p.1).unwrap_or(&[]);
             writeln!(rs, "fn {}() {{", t).unwrap();
-            writeln!(
-                rs,
-                "run_one({:?}, {:?}, Mode::{:?}, &{:?})",
-                node_tests, t, mode, more
-            )
-            .unwrap();
+            writeln!(rs, "run_one({:?}, {:?}, Mode::{:?}, &{:?})", node_tests, t, mode, more)
+                .unwrap();
             writeln!(rs, "}}").unwrap();
         }
         writeln!(rs, "}}").unwrap();
