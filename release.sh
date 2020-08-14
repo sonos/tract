@@ -2,7 +2,7 @@
 
 CRATE=$1
 VERSION=$2
-CRATES="linalg core hir tensorflow onnx kaldi cli"
+CRATES="linalg core nnef hir tensorflow onnx kaldi cli"
 
 if [ `uname` = "Darwin" ]
 then
