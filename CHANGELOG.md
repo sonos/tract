@@ -1,3 +1,13 @@
+## Unreleased
+
+### alpha-level NNEF
+
+* load a NNEF as a TypedModel using tract_nnef, and from the CLI
+* dump a tract TypedModel to NNEF (with extensions for op not nnef compatbile)
+* not a full coverage of nnef, but enough for most CNN (image categorizers zoo working)
+* 80% of onnx tests are surviving a NNEF dump and reload at this stage
+* recurring networks are coming soon
+
 ## 0.10.0 - 2020-07-28
 
 ### ONNX
