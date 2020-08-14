@@ -268,9 +268,6 @@ impl AxisOp {
     }
 
     fn change_tensor_broadcast(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
-        fn permute<T: Datum>(axes: &[usize], input: Tensor) -> TractResult<Tensor> {
-            Ok(input.into_array::<T>()?.permuted_axes(axes).into_tensor())
-        }
         match self.canonical().as_ref() {
             Add(ix) => tensor.insert_axis(*ix),
             Rm(ix) => tensor.remove_axis(*ix),
@@ -278,8 +275,7 @@ impl AxisOp {
                 let mut permutation: Vec<usize> = (0..tensor.rank()).collect();
                 permutation.remove(*from);
                 permutation.insert(*to, *from);
-                let mut tmp =
-                    dispatch_datum!(permute(tensor.datum_type())(&permutation, tensor.clone()))?;
+                let mut tmp = tensor.clone().permute_axes(&permutation)?;
                 std::mem::swap(tensor, &mut tmp);
                 Ok(())
             }

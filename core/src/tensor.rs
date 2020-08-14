@@ -230,6 +230,19 @@ impl Tensor {
         Ok(())
     }
 
+    pub fn permute_axes(self, axes: &[usize]) -> TractResult<Tensor> {
+        unsafe {
+            #[inline]
+            unsafe fn permute<T: Datum>(axes: &[usize], input: Tensor) -> Tensor {
+                input.into_array_unchecked::<T>().permuted_axes(axes).into_tensor()
+            }
+            let dt = self.datum_type();
+            let mut t = dispatch_datum_by_size!(permute(self.datum_type())(axes, self));
+            t.set_datum_type(dt);
+            Ok(t)
+        }
+    }
+
     /// Reshape the tensor to `shape`.
     pub fn into_shape(mut self, shape: &[usize]) -> TractResult<Tensor> {
         self.set_shape(shape)?;
@@ -328,6 +341,11 @@ impl Tensor {
     /// Transform the tensor into a `ndarray::Array`.
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
         Ok(self.to_array_view::<D>()?.to_owned())
+    }
+
+    /// Transform the tensor into a `ndarray::Array`.
+    pub unsafe fn into_array_unchecked<D: Datum>(self) -> ArrayD<D> {
+        self.to_array_view_unchecked::<D>().to_owned()
     }
 
     fn check_for_access<D: Datum>(&self) -> TractResult<()> {
