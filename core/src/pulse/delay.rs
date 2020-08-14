@@ -7,42 +7,41 @@ struct DelayState {
     buffer: Tensor,
 }
 
-impl DelayState {
-    fn eval_t(&mut self, op: &Delay, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
-        dbg!(&op);
-        dbg!(&self.buffer);
-        dbg!(&input);
+unsafe fn assign_slice_t<T: Datum>(
+    to: &mut Tensor,
+    to_range: Slice,
+    from: &Tensor,
+    from_range: Slice,
+    axis: usize,
+) {
+    to.to_array_view_mut_unchecked::<T>().slice_axis_mut(Axis(axis), Slice::from(to_range)).assign(
+        &from.to_array_view_unchecked::<T>().slice_axis(Axis(axis), Slice::from(from_range)),
+    )
+}
+unsafe fn assign_slice(
+    to: &mut Tensor,
+    to_range: Slice,
+    from: &Tensor,
+    from_range: Slice,
+    axis: usize,
+) {
+    dispatch_copy_by_size!(assign_slice_t(from.datum_type())(to, to_range, from, from_range, axis));
+}
+
+impl OpState for DelayState {
+    fn eval(
+        &mut self,
+        _state: &mut SessionState,
+        op: &dyn Op,
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let input = args_1!(inputs);
+        let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
         let buffered = op.delay + op.overlap;
         let input_pulse = input.shape()[op.axis];
         let output_pulse = input_pulse + op.overlap;
         let mut output_shape: TVec<usize> = input.shape().into();
         output_shape[op.axis] = output_pulse;
-        unsafe fn assign_slice_t<T: Datum>(
-            to: &mut Tensor,
-            to_range: Slice,
-            from: &Tensor,
-            from_range: Slice,
-            axis: usize,
-        ) {
-            to.to_array_view_mut_unchecked::<T>()
-                .slice_axis_mut(Axis(axis), Slice::from(to_range))
-                .assign(
-                    &from
-                        .to_array_view_unchecked::<T>()
-                        .slice_axis(Axis(axis), Slice::from(from_range)),
-                )
-        }
-        unsafe fn assign_slice(
-            to: &mut Tensor,
-            to_range: Slice,
-            from: &Tensor,
-            from_range: Slice,
-            axis: usize,
-        ) {
-            dispatch_copy_by_size!(assign_slice_t(from.datum_type())(
-                to, to_range, from, from_range, axis
-            ));
-        }
         // build output
         unsafe {
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &*output_shape)?;
@@ -98,24 +97,9 @@ impl DelayState {
                     op.axis,
                 )
             }
-            dbg!(&output);
-            dbg!(&self.buffer);
             let output = output.into_arc_tensor();
-            Ok(output)
+            Ok(tvec!(output))
         }
-    }
-}
-
-impl OpState for DelayState {
-    fn eval(
-        &mut self,
-        _state: &mut SessionState,
-        op: &dyn Op,
-        mut inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
-        Ok(tvec!(self.eval_t(op, input)?))
     }
 }
 
@@ -138,8 +122,14 @@ impl Delay {
         Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap }
     }
 
-    pub fn new_typed(input_fact: &TypedFact, axis: usize, delay: usize, overlap: usize) -> TractResult<Delay> {
-        let mut buffer_shape:TVec<usize> = input_fact.shape.as_finite().ok_or("Expected finite dimensions")?.into();
+    pub fn new_typed(
+        input_fact: &TypedFact,
+        axis: usize,
+        delay: usize,
+        overlap: usize,
+    ) -> TractResult<Delay> {
+        let mut buffer_shape: TVec<usize> =
+            input_fact.shape.as_finite().ok_or("Expected finite dimensions")?.into();
         buffer_shape[axis] = delay + overlap;
         Ok(Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap })
     }
