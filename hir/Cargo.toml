@@ -1,6 +1,6 @@
 [package]
 name = "tract-hir"
-version = "0.10.3"
+version = "0.10.3-all"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
