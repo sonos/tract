@@ -55,7 +55,11 @@ pub fn tile(
     Ok(Some(invocation("tile", &[wire], &[("repeat", ints(&op.multipliers))])))
 }
 
-pub fn pad(ast: &mut IntoAst, node: &TypedNode, op: &ops::array::Pad) -> TractResult<Option<Arc<RValue>>> {
+pub fn pad(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::array::Pad,
+) -> TractResult<Option<Arc<RValue>>> {
     use ops::array::PadMode;
     let wire = ast.mapping[&node.inputs[0]].clone();
     let dt = ast.model.outlet_fact(node.inputs[0])?.datum_type;
@@ -106,16 +110,11 @@ fn data_from_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue
     wire
 }
 
-fn conv_fragment<'a>(
-    ast: &'a mut IntoAst,
-    data_format: DataFormat,
-    geo_rank: usize,
-) -> String {
+fn conv_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: usize) -> String {
     if data_format == DataFormat::NCHW {
         return "conv".into();
     }
-    let fragment_name =
-        format!("tract_conv_{:?}_{}D", data_format, geo_rank).to_lowercase();
+    let fragment_name = format!("tract_conv_{:?}_{}D", data_format, geo_rank).to_lowercase();
     if ast.fragments.contains_key(&fragment_name) {
         return fragment_name;
     }
@@ -155,15 +154,26 @@ pub fn conv(
     op: &ops::cnn::conv::ConvUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
     use tract_core::ops::cnn::PaddingSpec;
+    let ci = op
+        .pool_spec
+        .data_format
+        .shape(&ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec())?
+        .c()
+        .to_integer()? as usize;
+    let co = op
+        .pool_spec
+        .data_format
+        .shape(&node.outputs[0].fact.shape.to_tvec())?
+        .c()
+        .to_integer()? as usize;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
-    let mut kernel_shape = tvec!(op.output_channels(), op.input_channels());
-    let mut weights = op.kernel_as_group_o_ihw()?.into_tensor();
+    let mut kernel_shape = tvec!(co, ci / op.group);
     kernel_shape.extend(op.pool_spec.kernel_shape.iter().copied());
+    let mut weights = op.kernel_as_group_o_ihw()?.into_tensor();
     weights.set_shape(&*kernel_shape)?;
     let weigths = ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor());
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
-    let conv_fragment =
-        conv_fragment(ast, op.pool_spec.data_format, op.pool_spec.rank());
+    let conv_fragment = conv_fragment(ast, op.pool_spec.data_format, op.pool_spec.rank());
     let padding = match &op.pool_spec.padding {
         PaddingSpec::Explicit(bef, after, _) => array(
             &bef.iter()
