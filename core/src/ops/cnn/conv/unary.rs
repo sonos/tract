@@ -52,27 +52,30 @@ impl ConvUnary {
         }
     }
 
-    fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {
-        let kernel = self.kernel.to_array_view::<T>()?;
-        let final_shape = (
+    pub fn kernel_as_group_o_ihw(&self) -> TractResult<Arc<Tensor>> {
+        let final_shape = [
             self.group,
             self.output_channels() / self.group,
-            kernel.len() / self.output_channels(),
-        );
+            self.kernel.len() / self.output_channels(),
+        ];
         trace!("kernel shape (group, output, rest) = {:?}", final_shape);
-        let hw_rank = kernel.ndim() - 2;
+        let hw_rank = self.kernel.rank() - 2;
         match self.kernel_fmt {
             KernelFormat::HWIO => {
-                let mut shape = kernel.shape().to_vec();
-                shape.insert(hw_rank + 1, self.group);
+                let mut shape = self.kernel.shape().to_vec();
+                shape.insert(hw_rank + 1, self.group); // HWIGO
                 shape[hw_rank] /= self.group;
-                let kernel = kernel.into_shape(shape)?;
+                let mut kernel = self.kernel.as_ref().clone();
+                kernel.set_shape(&shape)?;
                 let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
                 permutation.extend(0..hw_rank);
-                let permuted = kernel.permuted_axes(permutation);
-                Ok(Array3::<T>::from_shape_vec(final_shape, permuted.iter().cloned().collect())?)
+                let mut kernel = kernel.permute_axes(&permutation)?;
+                kernel.set_shape(&final_shape)?;
+                Ok(kernel.into_arc_tensor())
             }
-            KernelFormat::OIHW => Ok(kernel.into_shape(final_shape)?.to_owned()),
+            KernelFormat::OIHW => {
+                Ok(self.kernel.clone().into_tensor().into_shape(&final_shape)?.into_arc_tensor())
+            }
         }
     }
 
@@ -81,6 +84,7 @@ impl ConvUnary {
         packer: &PackA<T>,
     ) -> TractResult<ArrayD<Arc<Tensor>>> {
         let kernel = self.kernel_as_group_o_ihw()?;
+        let kernel = kernel.to_array_view::<T>()?;
         let packed_as = Array1::from(
             kernel
                 .outer_iter()
@@ -278,7 +282,7 @@ impl ConvUnary {
             patch,
             input_shape,
             output_shape,
-            self.kernel_as_group_o_ihw::<T>()?.into_arc_tensor(),
+            self.kernel_as_group_o_ihw()?,
             self.bias.clone(),
         );
         Ok(Box::new(op))

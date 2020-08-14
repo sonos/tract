@@ -325,7 +325,7 @@ mod test {
     }
 
     #[test]
-    fn test_infer_onxx_strides_no_padding() {
+    fn test_infer_onnx_strides_no_padding() {
         let mut op = expand(Conv::default().strides(tvec![2, 2]));
         let ifact = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 7, 5));
         let kfact = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 1, 3, 3));
