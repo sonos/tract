@@ -79,6 +79,31 @@ Tract supports a wider subset of TensorFlow operators, and has been optimised
 for CPU of the previous generation (ARM VFP), also targetting devices in the
 Raspberry Pi Zero family.
 
+### NNEF
+
+Long story short, TensorFlow and Onnx formats are good for designing and
+training networks. They need to move fast to follow the research field, tend to
+integrate new features and operators greedily. They also exhibit a high level
+of expressibity to make facilitate network design.
+
+On the other hand, only a subset of operators and network features actually
+reach production, so systems running production network do not have to deal
+with so many operators. Furthermore, some information required for training can
+be stripped from the network before going to production for prediction.
+
+NNEF tries to bridge the gap between training frameworks and inference by
+proposing a format dedicated to production and prediction.
+
+Tract NNEF support is partial, and alpha level:
+* tract_nnef can load and execute networks NNEF networks
+* tract command line can translate networks from TensorFlow or ONNX to NNEF
+* tract supports most of the NNEF specification, the most notable exception
+    being the ROI operators and deconvolution
+* tract needs to extend NNEF with other operators (or extend some operators
+    semantics) in order to support the subset of ONNX and TensorFlow that tract
+    supports.
+
+
 ## Example of supported networks
 
 These models among others, are used to track tract performance evolution as

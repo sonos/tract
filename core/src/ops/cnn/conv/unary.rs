@@ -37,14 +37,14 @@ pub struct ConvUnary {
 tract_linalg::impl_dyn_hash!(ConvUnary);
 
 impl ConvUnary {
-    pub fn input_channels(&self) -> usize {
+    fn input_channels(&self) -> usize {
         match self.kernel_fmt {
             KernelFormat::OIHW => self.kernel.shape()[1],
             KernelFormat::HWIO => self.kernel.shape()[self.kernel.shape().len() - 2],
         }
     }
 
-    pub fn output_channels(&self) -> usize {
+    fn output_channels(&self) -> usize {
         let kshape = self.kernel.shape();
         match self.kernel_fmt {
             KernelFormat::OIHW => kshape[0],
