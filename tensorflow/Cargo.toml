@@ -1,6 +1,6 @@
 [package]
 name = "tract-tensorflow"
-version = "0.10.1-pre"
+version = "0.10.3"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
