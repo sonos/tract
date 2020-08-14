@@ -109,14 +109,13 @@ fn data_from_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue
 fn conv_fragment<'a>(
     ast: &'a mut IntoAst,
     data_format: DataFormat,
-    kernel_fmt: ops::cnn::KernelFormat,
     geo_rank: usize,
 ) -> String {
-    if data_format == DataFormat::NCHW && kernel_fmt == ops::cnn::KernelFormat::OIHW {
+    if data_format == DataFormat::NCHW {
         return "conv".into();
     }
     let fragment_name =
-        format!("tract_conv_{:?}_{:?}_{}D", data_format, kernel_fmt, geo_rank).to_lowercase();
+        format!("tract_conv_{:?}_{}D", data_format, geo_rank).to_lowercase();
     if ast.fragments.contains_key(&fragment_name) {
         return fragment_name;
     }
@@ -125,26 +124,13 @@ fn conv_fragment<'a>(
     let mut fragment = ast.framework.stdlib.iter().find(|f| f.decl.id == "conv").unwrap().clone();
     fragment.decl.id = fragment_name.clone();
 
-    let filter = if kernel_fmt == ops::cnn::KernelFormat::OIHW {
-        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
-        perm[1..].rotate_right(1);
-        ident("filter").into()
-    } else {
-        // ops::cnn::KernelFormat::HWIO
-        let mut perm: TVec<usize> = (0..geo_rank + 2).collect();
-        perm.rotate_right(1);
-        perm[1..].rotate_right(1);
-        let oihw = invocation("transpose", &[ident("filter").into()], &[("axes", ints(&perm))]);
-        body.push(assignment("oihw", oihw));
-        ident("oihw").into()
-    };
     let mut wire = ident("input").into();
     wire = data_into_ncwh(data_format, geo_rank, wire);
 
     body.push(assignment("nchw", wire));
     wire = invocation(
         "conv",
-        &[ident("nchw").into(), filter, ident("bias").into()],
+        &[ident("nchw").into(), ident("filter").into(), ident("bias").into()],
         &*fragment
             .decl
             .parameters
@@ -170,10 +156,14 @@ pub fn conv(
 ) -> TractResult<Option<Arc<RValue>>> {
     use tract_core::ops::cnn::PaddingSpec;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
-    let weigths = ast.konst_variable(format!("{}_weigths", node.name), &op.kernel);
+    let mut kernel_shape = tvec!(op.output_channels(), op.input_channels());
+    let mut weights = op.kernel_as_group_o_ihw()?.into_tensor();
+    kernel_shape.extend(op.pool_spec.kernel_shape.iter().copied());
+    weights.set_shape(&*kernel_shape)?;
+    let weigths = ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor());
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
     let conv_fragment =
-        conv_fragment(ast, op.pool_spec.data_format, op.kernel_fmt, op.pool_spec.rank());
+        conv_fragment(ast, op.pool_spec.data_format, op.pool_spec.rank());
     let padding = match &op.pool_spec.padding {
         PaddingSpec::Explicit(bef, after, _) => array(
             &bef.iter()
