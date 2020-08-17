@@ -85,8 +85,13 @@ impl<'mb> ModelBuilder<'mb> {
     pub fn wire_invocation(&mut self, invocation: &Invocation) -> TractResult<Value> {
         for frag in &self.proto_model.doc.fragments {
             if frag.decl.id == invocation.id && frag.body.is_some() {
-                let resolved = ResolvedInvocation { invocation, default_params: &frag.decl.parameters };
-                return self.wire_fragment_invocation(&resolved, &frag.decl, frag.body.as_deref().unwrap());
+                let resolved =
+                    ResolvedInvocation { invocation, default_params: &frag.decl.parameters };
+                return self.wire_fragment_invocation(
+                    &resolved,
+                    &frag.decl,
+                    frag.body.as_deref().unwrap(),
+                );
             }
         }
         for registry in &self.framework.registries {
@@ -403,6 +408,13 @@ impl CoerceFrom<Value> for usize {
     }
 }
 
+impl CoerceFrom<Value> for isize {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+        Ok(i64::coerce(builder, from)? as isize)
+    }
+}
+
+
 impl CoerceFrom<Value> for f32 {
     fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
@@ -421,3 +433,28 @@ impl<D: CoerceFrom<Value>> CoerceFrom<Value> for TVec<D> {
         }
     }
 }
+
+macro_rules! tuple {
+    ($($d: ident),*) => {
+        impl<$($d),*> CoerceFrom<Value> for ($($d),*)
+            where
+                $($d: CoerceFrom<Value>),*
+                {
+                    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+                        match from {
+                            Value::Tuple(vec) => {
+                                let mut vec = vec.iter();
+                                Ok((
+                                        $($d::coerce(builder, vec.next().unwrap())?),*
+                                ))
+                            }
+                            _ => bail!("Can not build a tuple from {:?}", from),
+                        }
+                    }
+                }
+    }
+}
+
+tuple!(D1, D2);
+tuple!(D1, D2, D3);
+tuple!(D1, D2, D3, D4);
