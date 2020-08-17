@@ -1,6 +1,5 @@
 use crate::internal::*;
 use crate::ser::*;
-use tract_core::ops;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<tract_core::pulse::delay::Delay>(), ser_delay);
