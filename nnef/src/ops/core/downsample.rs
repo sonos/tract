@@ -14,7 +14,6 @@ pub fn register(registry: &mut Registry) {
         ],
         de_downsample,
     );
-
 }
 
 fn ser_downsample(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {

@@ -3,55 +3,21 @@ use crate::internal::*;
 use crate::ast::*;
 
 pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
-    let names = model
-        .nodes()
-        .iter()
-        .filter(|n| !model.input_outlets().unwrap().contains(&n.id.into()))
-        .map(|n| &n.name)
-        .collect::<Vec<_>>();
-    let prefix: Option<String> = if names.len() > 2 {
-        Some(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
-            (prefix.chars()).zip(name.chars()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect()
-        }))
-        .filter(|p| p.len() > 0)
-    } else {
-        None
-    };
-    let mut into_ast = IntoAst::new(framework, model, prefix);
-    for input in model.input_outlets()? {
-        let left = into_ast.scoped_id(&model.node(input.node).name);
-        into_ast.parameters.push(left.clone());
-        let fact = model.outlet_fact(*input)?;
-        let input_shape = fact.shape.as_finite().ok_or("No dim (yet)")?;
-        let type_name = if fact.datum_type == bool::datum_type() {
-            TypeName::Logical
-        } else {
-            TypeName::Scalar
-        };
-        let right = RValue::Invocation(Invocation {
-            id: "external".into(),
-            generic_type_name: Some(type_name),
-            arguments: vec![Argument { id: Some("shape".into()), rvalue: ints(input_shape) }],
-        });
-        into_ast.assignment(left.clone(), right.into());
-        into_ast.mapping.insert(*input, RValue::Identifier(left).into());
-    }
-    for node in model.eval_order()? {
-        if model.input_outlets()?.iter().any(|io| io.node == node) {
-            continue;
-        }
-        into_ast.node(model.node(node))?;
-    }
-    for o in model.output_outlets()? {
-        let name = into_ast.scoped_id(&model.node(o.node).name);
-        into_ast.assignment(&name, into_ast.mapping[&o].clone());
-        into_ast.results.push(name);
-    }
+    let mut into_ast = IntoAst::new(framework, model);
+    into_ast.translate()?;
     into_ast.into_proto_model()
+}
+
+pub fn to_fragment_def(parent: &IntoAst, model: &TypedModel) -> TractResult<FragmentDef> {
+    let mut into_ast = IntoAst::new(parent.framework, model);
+    into_ast.parent = Some(parent);
+    into_ast.translate()?;
+    into_ast.into_fragment()
 }
 
 pub struct IntoAst<'a> {
     pub framework: &'a Nnef,
+    pub parent: Option<&'a IntoAst<'a>>,
     pub registries: Vec<String>,
     pub prefix: Option<String>,
     pub model: &'a TypedModel,
@@ -64,7 +30,8 @@ pub struct IntoAst<'a> {
 }
 
 impl<'a> IntoAst<'a> {
-    fn new(framework: &'a Nnef, model: &'a TypedModel, prefix: Option<String>) -> IntoAst<'a> {
+    pub fn new(framework: &'a Nnef, model: &'a TypedModel) -> IntoAst<'a> {
+        let prefix = Self::extract_prefix(model);
         IntoAst {
             framework,
             registries: vec![],
@@ -76,10 +43,98 @@ impl<'a> IntoAst<'a> {
             tensors: Default::default(),
             fragments: Default::default(),
             body: vec![],
+            parent: None,
         }
     }
 
-    fn into_proto_model(self) -> TractResult<ProtoModel> {
+    fn extract_prefix(model: &TypedModel) -> Option<String> {
+        let names = model
+            .nodes()
+            .iter()
+            .filter(|n| !model.input_outlets().unwrap().contains(&n.id.into()))
+            .map(|n| &n.name)
+            .collect::<Vec<_>>();
+        if names.len() > 2 {
+            Some(names[1..].iter().fold(names[0].to_string(), |prefix, name| {
+                (prefix.chars())
+                    .zip(name.chars())
+                    .take_while(|(a, b)| a == b)
+                    .map(|(a, _)| a)
+                    .collect()
+            }))
+            .filter(|p| p.len() > 0)
+        } else {
+            None
+        }
+    }
+
+    fn translate(&mut self) -> TractResult<()> {
+        for input in self.model.input_outlets()? {
+            let left = self.scoped_id(&self.model.node(input.node).name);
+            self.parameters.push(left.clone());
+            let fact = self.model.outlet_fact(*input)?;
+            let input_shape = fact.shape.as_finite().ok_or("No dim (yet)")?;
+            let type_name = if fact.datum_type == bool::datum_type() {
+                TypeName::Logical
+            } else {
+                TypeName::Scalar
+            };
+
+            let right = RValue::Invocation(Invocation {
+                id: "external".into(),
+                generic_type_name: Some(type_name),
+                arguments: vec![Argument { id: Some("shape".into()), rvalue: ints(input_shape) }],
+            });
+            self.assignment(left.clone(), right.into());
+            self.mapping.insert(*input, RValue::Identifier(left).into());
+        }
+        for node in self.model.eval_order()? {
+            if self.model.input_outlets()?.iter().any(|io| io.node == node) {
+                continue;
+            }
+            self.node(self.model.node(node))?;
+        }
+        for o in self.model.output_outlets()? {
+            let name = self.scoped_id(&self.model.node(o.node).name);
+            self.results.push(name);
+        }
+        Ok(())
+    }
+
+    pub fn into_fragment(self) -> TractResult<FragmentDef> {
+        assert_eq!(self.tensors.len(), 0);
+        let IntoAst { prefix, body, parameters, results, .. } = self;
+        let mut id = prefix
+            .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
+            .unwrap_or("network".into());
+        if id.len() > 0 && char::is_digit(id.chars().next().unwrap(), 10) {
+            id = "_".to_string() + &id;
+        }
+        let body = body
+            .into_iter()
+            .filter(|assign| match &assign.left {
+                LValue::Identifier(id) => !parameters.contains(&id),
+                _ => true,
+            })
+            .collect();
+        Ok(FragmentDef {
+            decl: FragmentDecl {
+                id,
+                generic_decl: None,
+                parameters: parameters
+                    .into_iter()
+                    .map(|s| TypeName::Scalar.tensor().named(s))
+                    .collect(),
+                results: results
+                    .into_iter()
+                    .map(|s| Result_ { id: s, spec: TypeName::Scalar.tensor() })
+                    .collect(),
+            },
+            body: Some(body),
+        })
+    }
+
+    pub fn into_proto_model(self) -> TractResult<ProtoModel> {
         let IntoAst { prefix, fragments, body, tensors, parameters, results, .. } = self;
         let mut id = prefix
             .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
