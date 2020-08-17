@@ -43,7 +43,7 @@ impl<'a> Dumper<'a> {
     fn fragment_def(&mut self, def: &FragmentDef) -> TractResult<()> {
         self.fragment_decl(&def.decl)?;
         if let Some(body) = &def.body {
-            writeln!(self.w, " {{")?;
+            writeln!(self.w, "{{")?;
             for assignment in body {
                 self.assignment(assignment)?;
             }

@@ -94,9 +94,14 @@ impl<'a> IntoAst<'a> {
             }
             self.node(self.model.node(node))?;
         }
-        for o in self.model.output_outlets()? {
-            let name = self.scoped_id(&self.model.node(o.node).name);
-            self.results.push(name);
+        let outlets: Vec<OutletId> = self.model.output_outlets()?.to_vec();
+        for (ix, o) in outlets.into_iter().enumerate() {
+            let rv = self.force_assign(format!("output_{}", ix), &self.mapping[&o].clone());
+            if let RValue::Identifier(name) = rv.as_ref() {
+                self.results.push(name.clone());
+            } else {
+                unreachable!()
+            };
         }
         Ok(())
     }
@@ -157,14 +162,29 @@ impl<'a> IntoAst<'a> {
         Ok(ProtoModel { doc, tensors })
     }
 
-    fn node(&mut self, node: &TypedNode) -> TractResult<Arc<RValue>> {
+    fn node(&mut self, node: &TypedNode) -> TractResult<TVec<Arc<RValue>>> {
         for reg in &self.framework.registries {
             if let Some(outputs) = reg.serialize(self, node)? {
                 if !self.registries.contains(&reg.id) {
                     self.registries.push(reg.id.clone())
                 }
-                let outputs = self.force_assign(&node.name, &outputs);
-                self.mapping.insert(node.id.into(), outputs.clone());
+                let scoped = self.scoped_id(&node.name);
+                let names: Vec<String> = (0..node.outputs.len())
+                    .map(|ix| if ix > 0 { format!("{}_{}", scoped, ix) } else { scoped.clone() })
+                    .collect();
+                let lvalue = if node.outputs.len() > 1 {
+                    LValue::Tuple(names.iter().map(|n| LValue::Identifier(n.clone())).collect())
+                } else {
+                    LValue::Identifier(names[0].clone())
+                };
+                self.body.push(Assignment { left: lvalue, right: outputs.as_ref().clone() });
+                let mut outputs = tvec!();
+                for (ix, o) in names.into_iter().enumerate() {
+                    let rv = Arc::new(ident(o));
+                    self.mapping.insert((node.id, ix).into(), rv.clone());
+                    outputs.push(rv);
+                }
+                dbg!(&self.mapping);
                 return Ok(outputs);
             }
         }
@@ -265,6 +285,14 @@ pub fn array(items: impl AsRef<[RValue]>) -> RValue {
 
 pub fn tuple_2(a: RValue, b: RValue) -> RValue {
     RValue::Tuple(vec![a, b])
+}
+
+pub fn tuple_3(a: RValue, b: RValue, c: RValue) -> RValue {
+    RValue::Tuple(vec![a, b, c])
+}
+
+pub fn tuple_4(a: RValue, b: RValue, c: RValue, d: RValue) -> RValue {
+    RValue::Tuple(vec![a, b, c, d])
 }
 
 pub fn numeric<D: std::fmt::Debug>(num: D) -> RValue {
