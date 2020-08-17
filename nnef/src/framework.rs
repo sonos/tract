@@ -40,7 +40,6 @@ impl Nnef {
         let mut ar = tar::Builder::new(comp);
         let mut graph_data = vec![];
         crate::ast::dump::Dumper::new(&mut graph_data).document(&proto_model.doc)?;
-        crate::ast::dump::Dumper::new(&mut std::io::stderr()).document(&proto_model.doc)?;
         let now =
             std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap();
         let mut header = tar::Header::new_gnu();

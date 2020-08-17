@@ -244,6 +244,9 @@ impl AxisOp {
         match self.canonical().as_ref() {
             Add(ix) => shape.insert_axis(*ix),
             Rm(ix) => {
+                if shape.rank() <= *ix {
+                    bail!("Attempt to remove {} axis on shape {:?}", ix, shape);
+                }
                 if shape.dim(*ix) != 1.to_dim() {
                     bail!("Removing a non-trivial axis.");
                 }

@@ -70,7 +70,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
             InputMapping::State { initializer } => {
                 let initializer = match &initializer {
                     &StateInitializer::Value(v) => {
-                        ast.konst(format!("{}_state_init_{}", node.name, state.len()), v)
+                        ast.konst_variable(format!("{}_state_init_{}", node.name, state.len()), v)
                     }
                     &StateInitializer::FromInput(slot) => ast.mapping[&node.inputs[*slot]].clone(),
                 }

@@ -184,7 +184,6 @@ impl<'a> IntoAst<'a> {
                     self.mapping.insert((node.id, ix).into(), rv.clone());
                     outputs.push(rv);
                 }
-                dbg!(&self.mapping);
                 return Ok(outputs);
             }
         }
