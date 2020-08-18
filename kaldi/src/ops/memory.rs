@@ -226,7 +226,6 @@ fn incorporate_memory_ops_as_scans(
             None,
             false,
             GenericFactoid::default(),
-            false,
         );
 
         let mut output_facts = tvec!();

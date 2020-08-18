@@ -10,7 +10,6 @@ pub struct Scan {
     pub seq_length_input_slot: Option<usize>,
     pub input_mapping: Vec<InputMapping>,
     pub output_mapping: Vec<OutputMapping<TDim>>,
-    pub backward: bool,
 }
 
 tract_linalg::impl_dyn_hash!(Scan);
@@ -55,7 +54,6 @@ impl Scan {
 
         Ok(LirScan::new(Arc::new(LirScanOpParams::new(
             self.skip,
-            self.backward,
             Arc::new(plan),
             input_mapping,
             output_mapping,
@@ -67,7 +65,6 @@ impl Scan {
         input_mapping: Vec<InputMapping>,
         output_mapping: Vec<OutputMapping<TDim>>,
         seq_length_input_slot: Option<usize>,
-        backward: bool,
     ) -> TractResult<Scan> {
         assert_eq!(input_mapping.len(), body.input_outlets()?.len());
         assert_eq!(output_mapping.len(), body.output_outlets()?.len());
@@ -78,7 +75,6 @@ impl Scan {
             input_mapping,
             output_mapping,
             seq_length_input_slot,
-            backward,
         })
     }
 
@@ -246,7 +242,6 @@ impl Scan {
                     input_mapping: new_mappings,
                     decluttered: true,
                     output_mapping: self.output_mapping.clone(),
-                    backward: self.backward,
                 };
                 return Ok(Some(TypedModelPatch::replace_single_op(model, node, &new_inputs, op)?));
             }
@@ -361,7 +356,6 @@ impl Scan {
                             body: new_body,
                             skip: self.skip,
                             seq_length_input_slot: self.seq_length_input_slot,
-                            backward: self.backward,
                         };
                         let output_wires =
                             outside_patch.wire_node(&*node.name, new_op, &patch_inputs)?;
@@ -416,7 +410,6 @@ impl Scan {
                 body: fixed_body,
                 skip: self.skip,
                 seq_length_input_slot: self.seq_length_input_slot,
-                backward: self.backward,
             };
             let scan_outputs = outside_patch.wire_node(&*node.name, new_op, &*inputs)?;
             let wire = outside_patch.wire_node(
@@ -709,18 +702,18 @@ impl TypedOp for Scan {
         mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        if self.backward {
-            bail!("Can not pulsify a backward scan.")
-        }
         for input_id in 0..node.inputs.len() {
             let input = mapping[&node.inputs[input_id]];
             let input_fact = target.outlet_fact(input)?;
-            let (_slot, axis, _chunk) = self
+            let (_slot, axis, chunk) = self
                 .input_mapping
                 .iter()
                 .filter_map(InputMapping::as_scan)
                 .find(|mapping| mapping.0 == input_id)
                 .unwrap();
+            if chunk < 0 {
+                bail!("Can not pulsify a backward scan.")
+            }
             if input_fact.axis != axis {
                 bail!("Scan pulsification limited to scanning axis");
             }
