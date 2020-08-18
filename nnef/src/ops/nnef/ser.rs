@@ -94,7 +94,7 @@ pub fn pad(
             "constant"
         }
         PadMode::Reflect => "reflect",
-        PadMode::Edge => "edge",
+        PadMode::Edge => "replicated",
     };
     params.push(("border", string(border)));
     Ok(Some(invocation("pad", &[wire], &params)))
