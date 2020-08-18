@@ -22,9 +22,13 @@ do
         continue
     fi
     . $tc/vars.sh
-    for pass in decl opti
+    for pass in decl opti nnef
     do
-        [[ "$pass" = "opti" ]] && opti="-O" || opti=""
+        case $pass in
+            decl) opti="" ;;
+            opti) opti="-O" ;;
+            nnef) opti="--nnef-cycle --nnef-tract-core" ;;
+        esac
         echo -n "$tc ($pass) "
         options=""
         if [ -n "$left_context" ]
