@@ -64,7 +64,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
                     name,
                     ast.mapping[&node.inputs[*slot]].as_ref().clone(),
                     numeric(axis),
-                    numeric(chunk.to_integer()?),
+                    numeric(chunk),
                 ));
             }
             InputMapping::State { initializer } => {
@@ -156,7 +156,7 @@ fn de_scan(
                 input_mapping.push(InputMapping::Scan {
                     slot: outer_inputs.len(),
                     axis: *axis,
-                    chunk: chunk.to_dim(),
+                    chunk: *chunk,
                 });
                 let mut fact = builder.model.outlet_fact(*wire)?.clone();
                 fact.shape.set_dim(*axis, chunk.to_dim())?;
@@ -192,7 +192,7 @@ fn de_scan(
     let mut output_mapping = vec![];
     for output_name in fragment.decl.results.iter().map(|o| &*o.id) {
         output_mapping.push(OutputMapping {
-            chunk: 1.to_dim(),
+            chunk: 1, // FIXME
             full_dim_hint: None,
             full_slot: outputs
                 .iter()

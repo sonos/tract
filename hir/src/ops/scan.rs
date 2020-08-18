@@ -7,8 +7,8 @@ pub use tract_core::ops::scan::{InputMapping, OutputMapping, StateInitializer};
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct InferenceScan {
     pub body: InferenceModel,
-    pub input_mapping: Vec<InputMapping<()>>,
-    pub output_mapping: Vec<OutputMapping<(), TDim>>,
+    pub input_mapping: Vec<InputMapping>,
+    pub output_mapping: Vec<OutputMapping<TDim>>,
     pub seq_length_input_slot: Option<usize>,
     pub clean_scan_counts: bool,
     pub iter_count_fact: GenericFactoid<TDim>,
@@ -60,7 +60,7 @@ impl InferenceScan {
                     InputMapping::Scan { axis, slot, chunk: _ } => InputMapping::Scan {
                         axis: *axis,
                         slot: *slot,
-                        chunk: typed_model.input_fact(ix)?.shape.dim(*axis),
+                        chunk: typed_model.input_fact(ix)?.shape.dim(*axis).to_integer()? as isize,
                     },
                     InputMapping::Full { slot } => InputMapping::Full { slot: *slot },
                     InputMapping::State { initializer } => {
@@ -80,7 +80,7 @@ impl InferenceScan {
                     full_slot: im.full_slot,
                     full_dim_hint: im.full_dim_hint.clone(),
                     last_value_slot: im.last_value_slot,
-                    chunk: typed_model.input_fact(ix)?.shape.dim(im.axis),
+                    chunk: typed_model.input_fact(ix)?.shape.dim(im.axis).to_integer()? as isize,
                 })
             })
             .collect::<TractResult<_>>()?;

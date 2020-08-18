@@ -125,6 +125,7 @@ fn incorporate_memory_ops_as_scans(
             let channel =
                 mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()?
                     as usize;
+            let chunk = op.offset.abs();
             let id = inner_model.add_source(
                 &*mem_node.name,
                 InferenceFact::dt_shape(
@@ -142,13 +143,13 @@ fn incorporate_memory_ops_as_scans(
             mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
                 state: true,
                 axis: 0,
-                chunk: (),
+                chunk,
                 full_dim_hint: None,
                 full_slot: None,
                 last_value_slot: None,
             });
         }
-        for (ix, scan_input) in scan_inputs.iter().enumerate() {
+        for scan_input in &scan_inputs {
             let old_node = model.node(scan_input.node);
             let channel =
                 old_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()?
@@ -158,20 +159,8 @@ fn incorporate_memory_ops_as_scans(
                 InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(_, channel)),
             )?;
             node_id_old_to_new.insert(scan_input.node, new_id.node);
-            mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan {
-                axis: 0,
-                chunk: (),
-                slot: ix,
-            });
-            mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
-                state: false,
-                axis: 0,
-                chunk: (),
-                full_slot: Some(ix),
-                last_value_slot: None,
-                full_dim_hint: old_node.outputs[0].fact.shape.dim(0).unwrap().concretize(),
-            });
         }
+
         for old_node_id in time_loop.iter() {
             if coupled_mem_ops.contains(&old_node_id) {
                 continue;
@@ -207,6 +196,27 @@ fn incorporate_memory_ops_as_scans(
         }
 
         inner_model.set_output_outlets(&inner_outputs)?;
+
+        inner_model.analyse(false)?;
+
+        for (ix, scan_input) in scan_inputs.iter().enumerate() {
+            let old_node = model.node(scan_input.node);
+            let fact = inner_model.input_fact(coupled_mem_ops.len() + ix)?;
+            let chunk = fact.shape.dim(0).unwrap().concretize().unwrap().to_integer()? as isize;
+            mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan {
+                axis: 0,
+                chunk,
+                slot: ix,
+            });
+            mapped_outputs.push(tract_hir::ops::scan::OutputMapping {
+                state: false,
+                axis: 0,
+                chunk,
+                full_slot: Some(ix),
+                last_value_slot: None,
+                full_dim_hint: old_node.outputs[0].fact.shape.dim(0).unwrap().concretize(),
+            });
+        }
 
         // prepare patch
         let scan = tract_hir::ops::scan::InferenceScan::new(

@@ -8,8 +8,8 @@ pub struct Scan {
     pub body: TypedModel,
     decluttered: bool,
     pub seq_length_input_slot: Option<usize>,
-    pub input_mapping: Vec<InputMapping<TDim>>,
-    pub output_mapping: Vec<OutputMapping<TDim, TDim>>,
+    pub input_mapping: Vec<InputMapping>,
+    pub output_mapping: Vec<OutputMapping<TDim>>,
     pub backward: bool,
 }
 
@@ -27,11 +27,9 @@ impl Scan {
             .iter()
             .map(|im| {
                 Ok(match im {
-                    InputMapping::Scan { axis, slot, chunk } => InputMapping::Scan {
-                        axis: *axis,
-                        slot: *slot,
-                        chunk: chunk.to_integer()? as usize,
-                    },
+                    InputMapping::Scan { axis, slot, chunk } => {
+                        InputMapping::Scan { axis: *axis, slot: *slot, chunk: *chunk }
+                    }
                     InputMapping::Full { slot } => InputMapping::Full { slot: *slot },
                     InputMapping::State { initializer } => {
                         InputMapping::State { initializer: initializer.clone() }
@@ -50,7 +48,7 @@ impl Scan {
                     full_slot: im.full_slot,
                     full_dim_hint: im.full_dim_hint.clone(),
                     last_value_slot: im.last_value_slot,
-                    chunk: im.chunk.to_integer()? as usize,
+                    chunk: im.chunk,
                 })
             })
             .collect::<TractResult<_>>()?;
@@ -66,8 +64,8 @@ impl Scan {
 
     pub fn new(
         body: TypedModel,
-        input_mapping: Vec<InputMapping<TDim>>,
-        output_mapping: Vec<OutputMapping<TDim, TDim>>,
+        input_mapping: Vec<InputMapping>,
+        output_mapping: Vec<OutputMapping<TDim>>,
         seq_length_input_slot: Option<usize>,
         backward: bool,
     ) -> TractResult<Scan> {
@@ -132,9 +130,9 @@ impl Scan {
     }
 
     fn remove_outer_input_from_mappings(
-        mappings: &[InputMapping<TDim>],
+        mappings: &[InputMapping],
         discarded: usize,
-    ) -> Vec<InputMapping<TDim>> {
+    ) -> Vec<InputMapping> {
         mappings
             .iter()
             .map(|m| match m {
@@ -160,9 +158,9 @@ impl Scan {
     }
 
     fn remove_outer_output_from_mappings(
-        mappings: &[OutputMapping<TDim, TDim>],
+        mappings: &[OutputMapping<TDim>],
         discarded: usize,
-    ) -> Vec<OutputMapping<TDim, TDim>> {
+    ) -> Vec<OutputMapping<TDim>> {
         mappings
             .iter()
             .map(|m| OutputMapping {
@@ -330,7 +328,7 @@ impl Scan {
                         patch_inputs.push(new_input_wire);
                         let new_input_outer_fact = outside_patch.outlet_fact(new_input_wire)?;
                         let mut new_input_inner_fact = new_input_outer_fact.clone();
-                        new_input_inner_fact.shape.set_dim(axis_after, chunk.clone())?;
+                        new_input_inner_fact.shape.set_dim(axis_after, chunk.abs().to_dim())?;
 
                         let mut new_body = self.body.clone();
                         let new_source_wire = new_body.add_source(
@@ -352,7 +350,7 @@ impl Scan {
                         let mut input_mapping = self.input_mapping.clone();
                         input_mapping.push(InputMapping::Scan {
                             axis: axis_after,
-                            chunk: chunk.clone(),
+                            chunk,
                             slot: node.inputs.len(),
                         });
 
@@ -492,7 +490,7 @@ impl Scan {
             return Ok(None);
         };
         let mut wire_changes = tvec!();
-        let mut input_mapping: Vec<InputMapping<TDim>> = self.input_mapping.clone();
+        let mut input_mapping: Vec<InputMapping> = self.input_mapping.clone();
         for (ix, m) in input_mapping.iter_mut().enumerate() {
             let input = body.input_outlets()?[ix];
             if let Some(change) = body_changed_wires.get(&input) {
@@ -521,7 +519,7 @@ impl Scan {
                 };
             }
         }
-        let mut output_mapping: Vec<OutputMapping<TDim, TDim>> = self.output_mapping.clone();
+        let mut output_mapping: Vec<OutputMapping<TDim>> = self.output_mapping.clone();
         for (ix, m) in output_mapping.iter_mut().enumerate() {
             let output = self.body.output_outlets()?[ix];
             if let Some(change) = body_changed_wires.get(&output) {
@@ -595,7 +593,7 @@ impl TypedOp for Scan {
         let iters = {
             let (outside_slot, axis, chunk) =
                 self.input_mapping.iter().flat_map(|it| it.as_scan()).next().unwrap();
-            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.to_integer()? as u32)
+            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.abs() as u32)
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.body.output_fact(ix)?;
@@ -747,11 +745,6 @@ impl TypedOp for Scan {
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|o| mapping[&o]).collect::<TVec<_>>();
         let op = Self {
-            input_mapping: self
-                .input_mapping
-                .iter()
-                .map(|im| im.concretize_stream_dim(stream_dim))
-                .collect::<TractResult<Vec<_>>>()?,
             output_mapping: self
                 .output_mapping
                 .iter()

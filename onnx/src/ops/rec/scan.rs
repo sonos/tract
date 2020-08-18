@@ -30,7 +30,7 @@ pub fn scan(
             last_value_slot: Some(ix),
             full_slot: None,
             axis: 0,
-            chunk: (),
+            chunk: 1,
             full_dim_hint: None,
         });
     }
@@ -50,7 +50,7 @@ pub fn scan(
         mapped_inputs.push(ops::scan::InputMapping::Scan {
             axis: *ax as usize,
             slot: ix + num_hidden_state,
-            chunk: (),
+            chunk: 1,
         });
     }
 
@@ -75,7 +75,7 @@ pub fn scan(
             state: false,
             axis: *ax as usize,
             full_slot: Some(ix + num_hidden_state),
-            chunk: (),
+            chunk: 1,
             full_dim_hint: None,
             last_value_slot: None,
         });
