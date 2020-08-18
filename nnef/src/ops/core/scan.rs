@@ -50,7 +50,7 @@ pub fn register(registry: &mut Registry) {
 
 fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op().downcast_ref::<Scan>().unwrap();
-    let mut body = crate::ser::to_fragment_def(ast, &op.body)?;
+    let (mut body, body_tensors) = crate::ser::to_fragment_def(ast, &op.body)?;
     body.decl.id = format!("scan_body_{}", ast.fragments.len());
     let mut scan = vec![];
     let mut state = vec![];
@@ -94,6 +94,10 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
                 full.push(tuple_2(name, ast.mapping[&node.inputs[*slot]].as_ref().clone()))
             }
         }
+    }
+    for tensor in &body_tensors {
+        let t = ast.konst_variable(&tensor.label, &tensor.value);
+        full.push(tuple_2(string(&tensor.parameter_id), t.as_ref().clone()));
     }
     for slot in 0..node.outputs.len() {
         if let Some((r_ix, om)) =
