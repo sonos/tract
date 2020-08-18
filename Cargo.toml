@@ -26,9 +26,6 @@ members = [
 [profile.release]
 lto = true
 
-[profile.test]
-opt-level = 2
-
 [profile.bench]
 debug = true
 
