@@ -213,6 +213,6 @@ fn de_scan(
             state: state.iter().any(|state| state.2 == output_name),
         });
     }
-    let op = Scan::new(body.model, input_mapping, output_mapping, None, false)?;
+    let op = Scan::new(body.model, input_mapping, output_mapping, None)?;
     builder.wire(op, &*outer_inputs)
 }

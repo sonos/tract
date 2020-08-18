@@ -5,7 +5,6 @@ use super::*;
 #[derive(Debug, Clone, new, Hash)]
 pub struct LirScanOpParams {
     pub skip: usize,
-    pub backward: bool,
     pub plan: Arc<TypedSimplePlan<TypedModel>>,
     pub input_mapping: Vec<InputMapping>,
     pub output_mapping: Vec<OutputMapping<TDim>>,
@@ -96,13 +95,13 @@ impl MutableState {
         input: &Tensor,
         axis: usize,
         chunk_ix: usize,
-        chunk_dim: usize,
-        backward: bool,
+        chunk_dim: isize,
     ) -> TractResult<Tensor> {
         let view = input.to_array_view::<T>()?;
         let full_len = view.shape()[axis];
-        if backward {
+        if chunk_dim < 0 {
             let mut shape: TVec<usize> = view.shape().into();
+            let chunk_dim = (-chunk_dim) as usize;
             shape[axis] = chunk_dim;
             let mut t = ArrayD::<T>::default(&*shape);
             for i in 0..chunk_dim {
@@ -113,7 +112,8 @@ impl MutableState {
                 }
             }
             Ok(t.into_tensor())
-        } else if (chunk_ix + 1) * chunk_dim > full_len {
+        } else if (chunk_ix + 1) * chunk_dim as usize > full_len {
+            let chunk_dim = chunk_dim as usize;
             let remain = full_len - chunk_ix * chunk_dim;
             let mut shape: TVec<usize> = view.shape().into();
             shape[axis] = chunk_dim;
@@ -122,6 +122,7 @@ impl MutableState {
                 .assign(&view.slice_axis(Axis(axis), (chunk_ix * chunk_dim..).into()));
             Ok(t.into_tensor())
         } else {
+            let chunk_dim = chunk_dim as usize;
             Ok(view
                 .slice_axis(Axis(axis), (chunk_ix * chunk_dim..(chunk_ix + 1) * chunk_dim).into())
                 .to_owned()
@@ -234,8 +235,7 @@ impl OpState for State {
                                 inputs[*slot].as_ref(),
                                 *axis,
                                 i,
-                                chunk.abs() as usize,
-                                op.backward
+                                *chunk
                             )
                         )?),
                         InputMapping::Full { slot } => Some(inputs[*slot].clone().into_tensor()),
@@ -259,7 +259,7 @@ impl OpState for State {
                         mapping.axis,
                         v.as_ref(),
                         i,
-                        op.backward
+                        mapping.chunk < 0
                     ))?;
                 }
                 if i == iters - 1 {

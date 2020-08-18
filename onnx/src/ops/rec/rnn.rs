@@ -171,7 +171,7 @@ impl RNN {
         let b_size = x_fact.shape.dim(1).to_integer().unwrap() as usize;
         let h_size = r_fact.shape.dim(2).to_integer().unwrap() as usize;
 
-        // FIXME: bidi
+        let chunk = if dir == 0 { 1 } else { -1 };
 
         let mut body = TypedModel::default();
         let mut outer_inputs = vec![];
@@ -198,7 +198,7 @@ impl RNN {
         // scann inner interface: [chunk=1, batch_size, input_size]
         // onnx inner interface: [batch_size, input_size]
         outer_inputs.push(inputs[0]);
-        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk: 1 });
+        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk });
         let mut x_source_fact = x_fact.clone();
         x_source_fact.shape.set_dim(0, 1.to_dim())?;
         let x_source = body.add_source("x_source", x_source_fact)?.into();
@@ -285,7 +285,7 @@ impl RNN {
         let output_mapping = scan::OutputMapping {
             state: true,
             axis: 0,
-            chunk: 1,
+            chunk,
             full_dim_hint: None,
             last_value_slot: self.optional_y_h_output,
             full_slot: self.optional_y_output,
@@ -298,7 +298,6 @@ impl RNN {
                 input_mapping,
                 vec![output_mapping],
                 self.optional_sequence_lens_input,
-                dir != 0,
             )?,
             &outer_inputs,
         )?;
