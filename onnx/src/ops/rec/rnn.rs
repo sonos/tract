@@ -198,7 +198,7 @@ impl RNN {
         // scann inner interface: [chunk=1, batch_size, input_size]
         // onnx inner interface: [batch_size, input_size]
         outer_inputs.push(inputs[0]);
-        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk: 1.to_dim() });
+        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk: 1 });
         let mut x_source_fact = x_fact.clone();
         x_source_fact.shape.set_dim(0, 1.to_dim())?;
         let x_source = body.add_source("x_source", x_source_fact)?.into();
@@ -285,7 +285,7 @@ impl RNN {
         let output_mapping = scan::OutputMapping {
             state: true,
             axis: 0,
-            chunk: 1.to_dim(),
+            chunk: 1,
             full_dim_hint: None,
             last_value_slot: self.optional_y_h_output,
             full_slot: self.optional_y_output,

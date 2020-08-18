@@ -7,8 +7,8 @@ pub struct LirScanOpParams {
     pub skip: usize,
     pub backward: bool,
     pub plan: Arc<TypedSimplePlan<TypedModel>>,
-    pub input_mapping: Vec<InputMapping<usize>>,
-    pub output_mapping: Vec<OutputMapping<usize, TDim>>,
+    pub input_mapping: Vec<InputMapping>,
+    pub output_mapping: Vec<OutputMapping<TDim>>,
 }
 
 #[derive(Debug, Clone, new, Hash)]
@@ -189,7 +189,7 @@ impl OpState for State {
                 })
                 .next()
                 .unwrap();
-            inputs[outside_slot].shape()[axis].div_ceil(chunk)
+            inputs[outside_slot].shape()[axis].div_ceil(chunk.abs() as usize)
         };
 
         let mut outputs = tvec!();
@@ -234,7 +234,7 @@ impl OpState for State {
                                 inputs[*slot].as_ref(),
                                 *axis,
                                 i,
-                                *chunk,
+                                chunk.abs() as usize,
                                 op.backward
                             )
                         )?),

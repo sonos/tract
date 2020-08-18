@@ -11,7 +11,7 @@ pub fn pull_downsample_over_scan(
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
     if down_op.stride < 0 {
-        return Ok(None)
+        return Ok(None);
     }
     let mut inner_model = scan_op.body.clone();
 
@@ -65,20 +65,22 @@ pub fn pull_downsample_over_scan(
                 }
             }
             InputMapping::Scan { ref mut chunk, .. } => {
-                if chunk.to_integer()? as usize % down_op.stride as usize != 0 {
+                if *chunk > 0 && *chunk as usize % down_op.stride as usize != 0 {
                     return Ok(None);
                 }
-                *chunk = chunk.clone().div_ceil(down_op.stride as u32)
+                *chunk = (chunk.abs() as usize).div_ceil(down_op.stride as usize) as isize
+                    * chunk.signum()
             }
             _ => (),
         }
     }
     for output in &mut new_scan.output_mapping {
-        if output.chunk.to_integer()? as usize % down_op.stride as usize != 0 {
+        if output.chunk as usize % down_op.stride as usize != 0 {
             return Ok(None);
         }
         output.full_dim_hint.as_mut().map(|d| *d = down_op.transform_dim(d));
-        output.chunk = output.chunk.clone().div_ceil(down_op.stride as u32);
+        output.chunk =
+            (output.chunk.abs() as usize).div_ceil(down_op.stride as usize) as isize * output.chunk.signum()
     }
 
     let mut patch = TypedModelPatch::default();

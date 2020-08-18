@@ -8,13 +8,13 @@ pub use lir::LirScan;
 pub use mir::Scan;
 
 #[derive(Clone, new, Hash)]
-pub enum InputMapping<C: Clone> {
+pub enum InputMapping {
     Full { slot: usize },
     State { initializer: StateInitializer },
-    Scan { slot: usize, axis: usize, chunk: C },
+    Scan { slot: usize, axis: usize, chunk: isize },
 }
 
-impl<C: Clone> InputMapping<C> {
+impl InputMapping {
     pub fn as_state(&self) -> Option<&StateInitializer> {
         match self {
             InputMapping::State { initializer } => Some(initializer),
@@ -22,9 +22,9 @@ impl<C: Clone> InputMapping<C> {
         }
     }
 
-    pub fn as_scan(&self) -> Option<(usize, usize, C)> {
+    pub fn as_scan(&self) -> Option<(usize, usize, isize)> {
         match self {
-            InputMapping::Scan { slot, axis, chunk } => Some((*slot, *axis, chunk.clone())),
+            InputMapping::Scan { slot, axis, chunk } => Some((*slot, *axis, *chunk)),
             _ => None,
         }
     }
@@ -49,20 +49,7 @@ impl<C: Clone> InputMapping<C> {
     }
 }
 
-impl<C: Clone + DimLike> InputMapping<C> {
-    pub fn concretize_stream_dim(&self, stream_dim: usize) -> TractResult<InputMapping<C>> {
-        match self {
-            InputMapping::Scan { slot, axis, chunk } => Ok(InputMapping::Scan {
-                slot: *slot,
-                axis: *axis,
-                chunk: chunk.concretize_stream_dim(stream_dim),
-            }),
-            _ => Ok(self.clone()),
-        }
-    }
-}
-
-impl<C: Clone + fmt::Debug> fmt::Debug for InputMapping<C> {
+impl fmt::Debug for InputMapping {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             InputMapping::Full { slot } => write!(fmt, "Full, inlet {}", slot),
@@ -77,32 +64,31 @@ impl<C: Clone + fmt::Debug> fmt::Debug for InputMapping<C> {
 }
 
 #[derive(Clone, new, Hash)]
-pub struct OutputMapping<C: Clone, F: Clone> {
+pub struct OutputMapping<F: Clone> {
     pub full_slot: Option<usize>,
     pub axis: usize,
-    pub chunk: C,
+    pub chunk: isize,
     pub full_dim_hint: Option<F>,
     pub last_value_slot: Option<usize>,
     pub state: bool,
 }
 
-impl<C: Clone, F: Clone> OutputMapping<C, F> {
+impl<F: Clone> OutputMapping<F> {
     pub fn invisible(&self) -> bool {
         self.full_slot.is_none() && self.last_value_slot.is_none()
     }
 }
 
-impl<C: Clone + DimLike, F: Clone + DimLike> OutputMapping<C, F> {
-    pub fn concretize_stream_dim(&self, stream_dim: usize) -> TractResult<OutputMapping<C, F>> {
+impl<F: Clone + DimLike> OutputMapping<F> {
+    pub fn concretize_stream_dim(&self, stream_dim: usize) -> TractResult<OutputMapping<F>> {
         Ok(Self {
-            chunk: self.chunk.concretize_stream_dim(stream_dim),
             full_dim_hint: self.full_dim_hint.as_ref().map(|h| h.concretize_stream_dim(stream_dim)),
             ..self.clone()
         })
     }
 }
 
-impl<C: Clone, F: Clone + fmt::Display> fmt::Debug for OutputMapping<C, F> {
+impl<F: Clone + fmt::Display> fmt::Debug for OutputMapping<F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         if self.state {
             write!(fmt, "State. ")?;

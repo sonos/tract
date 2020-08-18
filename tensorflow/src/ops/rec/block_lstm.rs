@@ -104,7 +104,7 @@ impl Expansion for BlockLSTM {
 
         // X: body input 0: X, new outside input 0 (was 1)
         outer_inputs.push(inputs[1]);
-        input_mapping.push(scan::InputMapping::Scan { slot: 1, axis: 0, chunk: 1.to_dim() });
+        input_mapping.push(scan::InputMapping::Scan { slot: 1, axis: 0, chunk: 1 });
         let mut x_source_fact = model.outlet_fact(inputs[1])?.clone();
         x_source_fact.shape.set_dim(0, 1.to_dim())?;
         let x_source = body.add_source("x_source", x_source_fact)?.into();
@@ -162,10 +162,10 @@ impl Expansion for BlockLSTM {
         wire!(h_ = AxisOp::Add(0), h);
         body.set_output_outlets(&[i_, cs_, f_, o_, ci_, co_, h_])?;
         for ix in 0..7 {
-            output_mapping.push(scan::OutputMapping::<TDim, TDim> {
+            output_mapping.push(scan::OutputMapping::<TDim> {
                 state: ix == 1 || ix == 6,
                 axis: 0,
-                chunk: 1.into(),
+                chunk: 1,
                 full_dim_hint: None,
                 last_value_slot: None,
                 full_slot: Some(ix),
