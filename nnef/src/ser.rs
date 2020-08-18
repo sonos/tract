@@ -1,6 +1,6 @@
-use crate::internal::*;
-
 use crate::ast::*;
+use crate::internal::*;
+use tract_itertools::Itertools;
 
 pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
     let mut into_ast = IntoAst::new(framework, model);
@@ -8,7 +8,10 @@ pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<Proto
     into_ast.into_proto_model()
 }
 
-pub fn to_fragment_def(parent: &IntoAst, model: &TypedModel) -> TractResult<FragmentDef> {
+pub fn to_fragment_def(
+    parent: &IntoAst,
+    model: &TypedModel,
+) -> TractResult<(FragmentDef, Vec<RequiredTensorParameter>)> {
     let mut into_ast = IntoAst::new(parent.framework, model);
     into_ast.parent = Some(parent);
     into_ast.translate()?;
@@ -27,6 +30,12 @@ pub struct IntoAst<'a> {
     pub tensors: HashMap<String, Arc<Tensor>>,
     pub fragments: HashMap<String, FragmentDef>,
     pub body: Vec<Assignment>,
+}
+
+pub struct RequiredTensorParameter {
+    pub parameter_id: String,
+    pub label: String,
+    pub value: Arc<Tensor>,
 }
 
 impl<'a> IntoAst<'a> {
@@ -93,9 +102,17 @@ impl<'a> IntoAst<'a> {
         Ok(())
     }
 
-    pub fn into_fragment(self) -> TractResult<FragmentDef> {
-        assert_eq!(self.tensors.len(), 0);
-        let IntoAst { prefix, body, parameters, results, .. } = self;
+    pub fn into_fragment(self) -> TractResult<(FragmentDef, Vec<RequiredTensorParameter>)> {
+        let mut tensor_params = vec![];
+        for (name, t) in &self.tensors {
+            tensor_params.push(RequiredTensorParameter {
+                parameter_id: self.scoped_id(name),
+                label: name.clone(),
+                value: t.clone(),
+            })
+        }
+        let IntoAst { prefix, body, mut parameters, results, .. } = self;
+        parameters.extend(tensor_params.iter().map(|rtp| rtp.parameter_id.clone()).sorted());
         let mut id = prefix
             .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
             .unwrap_or("network".into());
@@ -109,21 +126,24 @@ impl<'a> IntoAst<'a> {
                 _ => true,
             })
             .collect();
-        Ok(FragmentDef {
-            decl: FragmentDecl {
-                id,
-                generic_decl: None,
-                parameters: parameters
-                    .into_iter()
-                    .map(|s| TypeName::Scalar.tensor().named(s))
-                    .collect(),
-                results: results
-                    .into_iter()
-                    .map(|s| Result_ { id: s, spec: TypeName::Scalar.tensor() })
-                    .collect(),
+        Ok((
+            FragmentDef {
+                decl: FragmentDecl {
+                    id,
+                    generic_decl: None,
+                    parameters: parameters
+                        .into_iter()
+                        .map(|s| TypeName::Scalar.tensor().named(s))
+                        .collect(),
+                    results: results
+                        .into_iter()
+                        .map(|s| Result_ { id: s, spec: TypeName::Scalar.tensor() })
+                        .collect(),
+                },
+                body: Some(body),
             },
-            body: Some(body),
-        })
+            tensor_params,
+        ))
     }
 
     pub fn into_proto_model(self) -> TractResult<ProtoModel> {
@@ -184,6 +204,11 @@ impl<'a> IntoAst<'a> {
                 name = name.chars().skip(p.len()).collect()
             }
         }
+        Self::sanitize(name)
+    }
+
+    pub fn sanitize(name: impl Into<String>) -> String {
+        let mut name = name.into();
         if name.len() > 0 && char::is_digit(name.chars().next().unwrap(), 10) {
             name = "_".to_string() + &name;
         }
