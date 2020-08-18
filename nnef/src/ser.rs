@@ -72,20 +72,7 @@ impl<'a> IntoAst<'a> {
         for input in self.model.input_outlets()? {
             let left = self.scoped_id(&self.model.node(input.node).name);
             self.parameters.push(left.clone());
-            let fact = self.model.outlet_fact(*input)?;
-            let input_shape = fact.shape.as_finite().ok_or("No dim (yet)")?;
-            let type_name = if fact.datum_type == bool::datum_type() {
-                TypeName::Logical
-            } else {
-                TypeName::Scalar
-            };
-
-            let right = RValue::Invocation(Invocation {
-                id: "external".into(),
-                generic_type_name: Some(type_name),
-                arguments: vec![Argument { id: Some("shape".into()), rvalue: ints(input_shape) }],
-            });
-            self.assignment(left.clone(), right.into());
+            self.node(self.model.node(input.node))?;
             self.mapping.insert(*input, RValue::Identifier(left).into());
         }
         for node in self.model.eval_order()? {

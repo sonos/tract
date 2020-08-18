@@ -16,7 +16,7 @@ impl OpState for SourceState {
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct TypedSource {
-    fact: TypedFact,
+    pub fact: TypedFact,
 }
 
 tract_linalg::impl_dyn_hash!(TypedSource);

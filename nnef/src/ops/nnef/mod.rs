@@ -22,6 +22,7 @@ pub fn tract_nnef() -> Registry {
     };
 
     primitive(&mut registry, "external", deser::external);
+    dumper!(ops::source::TypedSource, ser::source);
     primitive(&mut registry, "variable", deser::variable);
     dumper!(ops::konst::Const, ser::konst);
 

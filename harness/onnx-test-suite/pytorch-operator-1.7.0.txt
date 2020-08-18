@@ -1,7 +1,7 @@
-test_operator_add_broadcast not-nnef
-test_operator_add_size1_broadcast not-nnef
-test_operator_add_size1_right_broadcast not-nnef
-test_operator_add_size1_singleton_broadcast not-nnef
+test_operator_add_broadcast
+test_operator_add_size1_broadcast
+test_operator_add_size1_right_broadcast
+test_operator_add_size1_singleton_broadcast
 test_operator_addconstant not-nnef
 test_operator_addmm
 test_operator_basic

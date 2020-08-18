@@ -3,6 +3,22 @@ use crate::ser::*;
 use tract_core::ops;
 use tract_core::ops::nn::DataFormat;
 
+pub fn source(
+    _ast: &mut IntoAst,
+    _node: &TypedNode,
+    op: &ops::source::TypedSource,
+) -> TractResult<Option<Arc<RValue>>> {
+    if op.fact.datum_type == DatumType::F32 {
+        Ok(Some(invocation(
+            "external",
+            &[],
+            &[("shape", ints(op.fact.shape.as_finite().unwrap()))],
+        )))
+    } else {
+        Ok(None)
+    }
+}
+
 pub fn konst(
     ast: &mut IntoAst,
     node: &TypedNode,
@@ -160,12 +176,9 @@ pub fn conv(
         .shape(&ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec())?
         .c()
         .to_integer()? as usize;
-    let co = op
-        .pool_spec
-        .data_format
-        .shape(&node.outputs[0].fact.shape.to_tvec())?
-        .c()
-        .to_integer()? as usize;
+    let co =
+        op.pool_spec.data_format.shape(&node.outputs[0].fact.shape.to_tvec())?.c().to_integer()?
+            as usize;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
     let mut kernel_shape = tvec!(co, ci / op.group);
     kernel_shape.extend(op.pool_spec.kernel_shape.iter().copied());

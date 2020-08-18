@@ -56,10 +56,10 @@ test_basic_conv_without_padding input:x
 test_basic_convinteger                                                              input:x not-nnef
 test_batchnorm_epsilon input:x
 test_batchnorm_example input:x
-test_cast_DOUBLE_to_FLOAT not-nnef
-test_cast_DOUBLE_to_FLOAT16 not-nnef
-test_cast_FLOAT16_to_DOUBLE not-nnef
-test_cast_FLOAT16_to_FLOAT not-nnef
+test_cast_DOUBLE_to_FLOAT
+test_cast_DOUBLE_to_FLOAT16
+test_cast_FLOAT16_to_DOUBLE
+test_cast_FLOAT16_to_FLOAT
 test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_FLOAT16
 test_cast_FLOAT_to_STRING not-nnef
@@ -116,8 +116,8 @@ test_edge_pad                                                                   
 test_elu
 test_elu_default
 test_elu_example
-test_equal not-nnef
-test_equal_bcast not-nnef
+test_equal
+test_equal_bcast
 test_erf
 test_exp
 test_exp_example
@@ -335,7 +335,7 @@ test_reduce_sum_square_keepdims_example
 test_reduce_sum_square_keepdims_random
 test_reduce_sum_square_negative_axes_keepdims_example
 test_reduce_sum_square_negative_axes_keepdims_random
-test_reflect_pad                                                                    input:x not-nnef
+test_reflect_pad input:x
 test_relu
 test_reshape_extended_dims input:data
 test_reshape_negative_dim input:data

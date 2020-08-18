@@ -72,7 +72,11 @@ impl DatumType {
         } else if self.is_float() {
             [F16, F32, F64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_signed() {
-            [I8, I16, I32, I64, TDim].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
+            [I8, I16, I32, I64, TDim]
+                .iter()
+                .filter(|s| s.size_of() >= self.size_of())
+                .copied()
+                .collect()
         } else {
             [U8, U16, U32, U64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         }
@@ -171,6 +175,30 @@ impl DatumType {
             DatumType::TDim => std::mem::size_of::<usize>(),
             DatumType::String => std::mem::size_of::<usize>(),
             _ => self.size_of(),
+        }
+    }
+}
+
+impl std::str::FromStr for DatumType {
+    type Err = crate::errors::TractError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "I8" | "i8" => Ok(DatumType::I8),
+            "I16" | "i16" => Ok(DatumType::I16),
+            "I32" | "i32" => Ok(DatumType::I32),
+            "I64" | "i64" => Ok(DatumType::I64),
+            "U8" | "u8" => Ok(DatumType::U8),
+            "U16" | "u16" => Ok(DatumType::U16),
+            "U32" | "u32" => Ok(DatumType::U32),
+            "U64" | "u64" => Ok(DatumType::U64),
+            "F16" | "f16" => Ok(DatumType::F16),
+            "F32" | "f32" => Ok(DatumType::F32),
+            "F64" | "f64" => Ok(DatumType::F64),
+            "Blob" => Ok(DatumType::Blob),
+            "String" => Ok(DatumType::String),
+            "TDim" => Ok(DatumType::TDim),
+            _ => bail!("Unknown type {}", s),
         }
     }
 }
