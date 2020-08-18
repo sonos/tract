@@ -42,9 +42,7 @@ test_Embedding not-nnef
 test_Embedding_sparse not-nnef
 test_GLU
 test_GLU_dim
-test_LeakyReLU
 test_LeakyReLU not-nnef
-test_LeakyReLU_with_negval
 test_LeakyReLU_with_negval not-nnef
 test_Linear
 test_Linear_no_bias
@@ -63,7 +61,6 @@ test_PoissonNLLLLoss_no_reduce
 test_ReLU
 test_ReflectionPad2d
 test_ReplicationPad2d not-nnef
-test_SELU
 test_SELU not-nnef
 test_Sigmoid
 test_Softmax
