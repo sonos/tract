@@ -60,8 +60,8 @@ test_cast_DOUBLE_to_FLOAT not-nnef
 test_cast_DOUBLE_to_FLOAT16 not-nnef
 test_cast_FLOAT16_to_DOUBLE not-nnef
 test_cast_FLOAT16_to_FLOAT not-nnef
-test_cast_FLOAT_to_DOUBLE not-nnef
-test_cast_FLOAT_to_FLOAT16 not-nnef
+test_cast_FLOAT_to_DOUBLE
+test_cast_FLOAT_to_FLOAT16
 test_cast_FLOAT_to_STRING not-nnef
 test_cast_STRING_to_FLOAT not-nnef
 test_ceil
@@ -163,9 +163,9 @@ test_hardmax_default_axis not-nnef
 test_hardmax_example not-nnef
 test_hardmax_negative_axis not-nnef
 test_hardmax_one_hot not-nnef
-test_hardsigmoid not-nnef
-test_hardsigmoid_default not-nnef
-test_hardsigmoid_example not-nnef
+test_hardsigmoid
+test_hardsigmoid_default
+test_hardsigmoid_example
 test_identity
 test_instancenorm_example
 test_isinf
@@ -360,7 +360,7 @@ test_shrink_hard
 test_shrink_soft
 test_sigmoid
 test_sigmoid_example
-test_sign not-nnef
+test_sign
 test_simple_rnn_defaults
 test_simple_rnn_with_initial_bias
 test_sin
@@ -384,10 +384,10 @@ test_softmax_default_axis
 test_softmax_example
 test_softmax_large_number
 test_softmax_negative_axis
-test_softplus not-nnef
-test_softplus_example not-nnef
-test_softsign not-nnef
-test_softsign_example not-nnef
+test_softplus
+test_softplus_example
+test_softsign
+test_softsign_example
 test_split_equal_parts_1d
 test_split_equal_parts_2d
 test_split_equal_parts_default_axis
