@@ -7,6 +7,7 @@ mod delay;
 mod downsample;
 mod reduce;
 mod scan;
+mod source;
 
 pub fn register(registry: &mut Registry) {
     registry.register_unit_element_wise("tract_core_tan", &ops::math::Tan {});
@@ -29,4 +30,5 @@ pub fn register(registry: &mut Registry) {
     downsample::register(registry);
     reduce::register(registry);
     scan::register(registry);
+    source::register(registry);
 }

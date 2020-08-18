@@ -72,10 +72,10 @@ test_basic_conv_without_padding input:x
 test_basic_convinteger                                                              input:x not-nnef
 test_batchnorm_epsilon input:x
 test_batchnorm_example input:x
-test_cast_DOUBLE_to_FLOAT not-nnef
-test_cast_DOUBLE_to_FLOAT16 not-nnef
-test_cast_FLOAT16_to_DOUBLE not-nnef
-test_cast_FLOAT16_to_FLOAT not-nnef
+test_cast_DOUBLE_to_FLOAT
+test_cast_DOUBLE_to_FLOAT16
+test_cast_FLOAT16_to_DOUBLE
+test_cast_FLOAT16_to_FLOAT
 test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_FLOAT16
 test_cast_FLOAT_to_STRING not-nnef
@@ -86,8 +86,8 @@ test_celu_expanded
 test_clip
 test_clip_default_inbounds
 test_clip_default_int8_inbounds
-test_clip_default_int8_max not-nnef
-test_clip_default_int8_min not-nnef
+test_clip_default_int8_max
+test_clip_default_int8_min
 test_clip_default_max
 test_clip_default_min
 test_clip_example
@@ -140,8 +140,8 @@ test_edge_pad                                                                   
 test_elu
 test_elu_default
 test_elu_example
-test_equal not-nnef
-test_equal_bcast not-nnef
+test_equal
+test_equal_bcast
 test_erf
 test_exp
 test_exp_example
@@ -229,17 +229,17 @@ test_matmul_4d
 test_matmulinteger                                                                   not-typable not-nnef
 test_max_example
 test_max_float32
-test_max_float64 not-nnef
-test_max_int16 not-nnef
-test_max_int32 not-nnef
-test_max_int64 not-nnef
-test_max_int8 not-nnef
+test_max_float64
+test_max_int16
+test_max_int32
+test_max_int64
+test_max_int8
 test_max_one_input
 test_max_two_inputs
-test_max_uint16 not-nnef
-test_max_uint32 not-nnef
-test_max_uint64 not-nnef
-test_max_uint8 not-nnef
+test_max_uint16
+test_max_uint32
+test_max_uint64
+test_max_uint8
 test_maxpool_1d_default
 test_maxpool_2d_ceil not-nnef
 test_maxpool_2d_default
@@ -257,17 +257,17 @@ test_mean_one_input
 test_mean_two_inputs
 test_min_example
 test_min_float32
-test_min_float64 not-nnef
-test_min_int16 not-nnef
-test_min_int32 not-nnef
-test_min_int64 not-nnef
-test_min_int8 not-nnef
+test_min_float64
+test_min_int16
+test_min_int32
+test_min_int64
+test_min_int8
 test_min_one_input
 test_min_two_inputs
-test_min_uint16 not-nnef
-test_min_uint32 not-nnef
-test_min_uint64 not-nnef
-test_min_uint8 not-nnef
+test_min_uint16
+test_min_uint32
+test_min_uint64
+test_min_uint8
 test_mod_broadcast not-nnef
 test_mod_int64_fmod not-nnef
 test_mod_mixed_sign_float16 not-nnef
@@ -302,16 +302,16 @@ test_pow
 test_pow_bcast_array
 test_pow_bcast_scalar
 test_pow_example
-test_pow_types_float not-nnef
-test_pow_types_float32_int32 not-nnef
-test_pow_types_float32_int64 not-nnef
-test_pow_types_float32_uint32 not-nnef
-test_pow_types_float32_uint64 not-nnef
-test_pow_types_int not-nnef
-test_pow_types_int32_float32 not-nnef
-test_pow_types_int32_int32 not-nnef
-test_pow_types_int64_float32 not-nnef
-test_pow_types_int64_int64 not-nnef
+test_pow_types_float
+test_pow_types_float32_int32
+test_pow_types_float32_int64
+test_pow_types_float32_uint32
+test_pow_types_float32_uint64
+test_pow_types_int
+test_pow_types_int32_float32
+test_pow_types_int32_int32
+test_pow_types_int64_float32
+test_pow_types_int64_int64
 test_prelu_broadcast
 test_prelu_example
 test_qlinearconv                                                                     not-typable not-nnef
@@ -397,7 +397,7 @@ test_reduce_sum_square_keepdims_example
 test_reduce_sum_square_keepdims_random
 test_reduce_sum_square_negative_axes_keepdims_example
 test_reduce_sum_square_negative_axes_keepdims_random
-test_reflect_pad                                                                    input:x not-nnef
+test_reflect_pad input:x
 test_relu
 test_reshape_extended_dims input:data
 test_reshape_negative_dim input:data
