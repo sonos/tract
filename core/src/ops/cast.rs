@@ -7,7 +7,7 @@ pub fn cast(to: DatumType) -> ElementWiseOp {
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct Cast {
-    to: DatumType,
+    pub to: DatumType,
 }
 
 tract_linalg::impl_dyn_hash!(Cast);

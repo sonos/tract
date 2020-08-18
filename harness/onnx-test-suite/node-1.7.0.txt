@@ -82,9 +82,9 @@ test_cast_FLOAT16_to_DOUBLE not-nnef
 test_cast_FLOAT16_to_DOUBLE not-nnef
 test_cast_FLOAT16_to_FLOAT not-nnef
 test_cast_FLOAT16_to_FLOAT not-nnef
+test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_DOUBLE not-nnef
-test_cast_FLOAT_to_DOUBLE not-nnef
-test_cast_FLOAT_to_FLOAT16 not-nnef
+test_cast_FLOAT_to_FLOAT16
 test_cast_FLOAT_to_FLOAT16 not-nnef
 test_cast_FLOAT_to_STRING not-nnef
 test_cast_STRING_to_FLOAT not-nnef
