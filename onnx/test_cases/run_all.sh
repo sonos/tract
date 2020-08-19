@@ -22,7 +22,7 @@ do
         continue
     fi
     . $tc/vars.sh
-    for pass in decl opti nnef
+    for pass in decl opti # nnef
     do
         case $pass in
             decl) opti="" ;;
