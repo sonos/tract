@@ -56,6 +56,7 @@ where
         // maintaining order of i/o interface
         target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
         target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
+        target.properties = source.properties.clone();
         Ok((target, mapping))
     }
 }

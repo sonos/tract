@@ -146,8 +146,19 @@ impl<'a> IntoAst<'a> {
         ))
     }
 
-    pub fn into_proto_model(self) -> TractResult<ProtoModel> {
-        let IntoAst { prefix, fragments, body, tensors, parameters, results, .. } = self;
+    pub fn into_proto_model(mut self) -> TractResult<ProtoModel> {
+        let mut properties = self
+            .model
+            .properties
+            .iter()
+            .map(|(k, v)| tuple_2(string(k), self.konst(k, v).as_ref().clone()))
+            .collect::<Vec<_>>();
+        properties.push(tuple_2(
+            string("tract_nnef_format_version".to_string()),
+            self.konst("tract_nnef_format_version", &rctensor0("0-alpha".to_string())).as_ref().clone(),
+        ));
+        let properties: Assignment = assignment("properties", Arc::new(array(properties)));
+        let IntoAst { prefix, mut fragments, body, tensors, parameters, results, .. } = self;
         let mut id = prefix
             .map(|p| p.trim_end_matches(&['-', '/', '.'][..]).replace(&['-', '/', '.'][..], "_"))
             .unwrap_or("network".into());
@@ -160,6 +171,20 @@ impl<'a> IntoAst<'a> {
                 extension.push(vec!["tract_registry".to_string(), reg]);
             }
         }
+        let properties = FragmentDef {
+            decl: FragmentDecl {
+                id: "tract_core_properties".to_string(),
+                generic_decl: None,
+                parameters: vec![],
+                results: vec![Result_ {
+                    id: "properties".to_string(),
+                    spec: TypeSpec::Tuple(vec![TypeName::String.spec(), TypeName::Scalar.tensor()])
+                        .array(),
+                }],
+            },
+            body: Some(vec![properties]),
+        };
+        fragments.insert(properties.decl.id.clone(), properties);
         let doc = Document {
             version: "1.0".into(),
             extension,
@@ -240,7 +265,11 @@ impl<'a> IntoAst<'a> {
         force_variable: bool,
     ) -> Arc<RValue> {
         if !force_variable && tensor.is_uniform().unwrap() {
-            numeric(tensor.cast_to_scalar::<f32>().unwrap()).into()
+            if tensor.datum_type() == String::datum_type() {
+                string(tensor.to_scalar::<String>().unwrap()).into()
+            } else {
+                numeric(tensor.cast_to_scalar::<f32>().unwrap()).into()
+            }
         } else {
             let name = name.into();
             self.tensors.insert(name.clone(), tensor.clone());
