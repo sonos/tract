@@ -292,7 +292,7 @@ impl TypedOp for LirScan {
                 })
                 .next()
                 .unwrap();
-            inputs[outside_slot].shape.dim(axis).div_ceil(chunk as u32)
+            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.abs() as u32)
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;

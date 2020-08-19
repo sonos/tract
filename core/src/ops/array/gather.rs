@@ -3,7 +3,7 @@ use ndarray::*;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct Gather {
-    axis: usize,
+    pub axis: usize,
 }
 tract_linalg::impl_dyn_hash!(Gather);
 

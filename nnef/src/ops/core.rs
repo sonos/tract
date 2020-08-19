@@ -5,6 +5,7 @@ mod broadcast;
 mod cast;
 mod delay;
 mod downsample;
+mod gather;
 mod reduce;
 mod scan;
 mod source;
@@ -28,6 +29,7 @@ pub fn register(registry: &mut Registry) {
     cast::register(registry);
     delay::register(registry);
     downsample::register(registry);
+    gather::register(registry);
     reduce::register(registry);
     scan::register(registry);
     source::register(registry);
