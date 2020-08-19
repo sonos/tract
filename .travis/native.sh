@@ -45,7 +45,7 @@ cargo -q test -q -p tract-core -p tract-hir -p tract-onnx -p tract-linalg
 # doc test are not finding libtensorflow.so
 cargo -q test -q -p tract-tensorflow --lib $ALL_FEATURES
 # useful as debug_asserts will come into play
-cargo -q test -q -p onnx-test-suite -- --skip real_
+cargo -q test -q -p onnx-test-suite -- --skip real_ 1_7_0
 cargo clean
 
 HARNESS=""
