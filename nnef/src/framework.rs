@@ -35,8 +35,17 @@ impl Nnef {
     }
 
     pub fn write(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
+        self.write_with_compression(model, w, flate2::Compression::default())
+    }
+
+    pub fn write_with_compression(
+        &self,
+        model: &TypedModel,
+        w: impl std::io::Write,
+        comp: flate2::Compression,
+    ) -> TractResult<()> {
         let proto_model = crate::ser::to_proto_model(&self, model)?;
-        let comp = flate2::write::GzEncoder::new(w, flate2::Compression::default());
+        let comp = flate2::write::GzEncoder::new(w, comp);
         let mut ar = tar::Builder::new(comp);
         let mut graph_data = vec![];
         crate::ast::dump::Dumper::new(&mut graph_data).document(&proto_model.doc)?;

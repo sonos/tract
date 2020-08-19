@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate log;
 
+pub extern crate flate2;
+
 pub mod ast;
 pub mod deser;
 pub mod framework;
