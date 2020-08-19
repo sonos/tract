@@ -195,9 +195,10 @@ impl std::str::FromStr for DatumType {
             "F16" | "f16" => Ok(DatumType::F16),
             "F32" | "f32" => Ok(DatumType::F32),
             "F64" | "f64" => Ok(DatumType::F64),
-            "Blob" => Ok(DatumType::Blob),
-            "String" => Ok(DatumType::String),
-            "TDim" => Ok(DatumType::TDim),
+            "Bool" | "bool" => Ok(DatumType::Bool),
+            "Blob" | "blob" => Ok(DatumType::Blob),
+            "String" | "string" => Ok(DatumType::String),
+            "TDim" | "tdim" => Ok(DatumType::TDim),
             _ => bail!("Unknown type {}", s),
         }
     }
