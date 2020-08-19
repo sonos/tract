@@ -47,6 +47,17 @@ impl<'mb> ModelBuilder<'mb> {
             .map(|s| vars[s].to::<OutletId>(self))
             .collect::<TractResult<TVec<OutletId>>>()?;
         self.model.set_output_outlets(&outputs)?;
+        if let Some(properties) = self
+            .proto_model
+                .doc
+                .fragments
+                .iter()
+                .find(|f| f.decl.id == "tract_core_properties")
+                .and_then(|f| f.body.as_ref())
+                .and_then(|body| body.get(0)) {
+                    let properties:TVec<(String, Arc<Tensor>)> = properties.right.resolve(self)?.to(self)?;
+                    self.model.properties = properties.into_iter().collect();
+                }
         Ok(())
     }
 
@@ -71,7 +82,7 @@ impl<'mb> ModelBuilder<'mb> {
                     "Assignement for {} received {} value(s).",
                     identifiers.join(","),
                     values.len()
-                )
+                    )
             }
             self.model.node_mut(values[0].node).name = format!("{}", self.naming_scopes.join("."));
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
@@ -91,7 +102,7 @@ impl<'mb> ModelBuilder<'mb> {
                     &resolved,
                     &frag.decl,
                     frag.body.as_deref().unwrap(),
-                );
+                    );
             }
         }
         for registry in &self.framework.registries {
@@ -109,7 +120,7 @@ impl<'mb> ModelBuilder<'mb> {
         invocation: &ResolvedInvocation,
         decl: &FragmentDecl,
         body: &[Assignment],
-    ) -> TractResult<Value> {
+        ) -> TractResult<Value> {
         let mut inner_scope = HashMap::new();
         for par in invocation.default_params.iter() {
             inner_scope
@@ -121,15 +132,15 @@ impl<'mb> ModelBuilder<'mb> {
         self.naming_scopes.pop();
         let inner_scope = self.scopes.pop().unwrap();
         Ok(Value::Tuple(
-            decl.results.iter().map(|res| inner_scope.get(&res.id).unwrap()).cloned().collect(),
-        ))
+                decl.results.iter().map(|res| inner_scope.get(&res.id).unwrap()).cloned().collect(),
+                ))
     }
 
     pub fn wire(
         &mut self,
         op: impl Into<Box<dyn TypedOp>>,
         inputs: &[OutletId],
-    ) -> TractResult<TVec<OutletId>> {
+        ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
         if inputs.iter().all(|o| self.model.outlet_fact(*o).unwrap().konst.is_some()) {
             if let Some(stateless) = op.as_op().as_stateless() {
@@ -147,11 +158,11 @@ impl<'mb> ModelBuilder<'mb> {
                                 self.naming_scopes.join("."),
                                 op.as_op().name(),
                                 ix
-                            ),
-                            tract_core::ops::konst::Const::new(o),
-                            &[],
-                        )?[0],
-                    );
+                                ),
+                                tract_core::ops::konst::Const::new(o),
+                                &[],
+                                )?[0],
+                                );
                 }
                 return Ok(outlets);
             }
@@ -161,7 +172,7 @@ impl<'mb> ModelBuilder<'mb> {
                 format!("{}.{}", self.naming_scopes.join("."), op.as_op().name()),
                 op,
                 inputs,
-            )
+                )
             .chain_err(|| format!("inputs are {:?}", inputs))
     }
 }
@@ -174,15 +185,15 @@ pub struct ResolvedInvocation<'a> {
 
 impl<'a> ResolvedInvocation<'a> {
     pub fn named_arg_as<T>(&self, builder: &mut ModelBuilder, name: &str) -> TractResult<T>
-    where
+        where
         T: CoerceFrom<Value>,
-    {
-        let rv = self.named_arg(name)?;
-        let v = rv
-            .resolve(builder)
-            .chain_err(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
-        v.to::<T>(builder).chain_err(|| format!("Converting argument `{}' from {:?}", name, v))
-    }
+        {
+            let rv = self.named_arg(name)?;
+            let v = rv
+                .resolve(builder)
+                .chain_err(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
+            v.to::<T>(builder).chain_err(|| format!("Converting argument `{}' from {:?}", name, v))
+        }
 
     pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
         self.get_named_arg(name).ok_or_else(|| format!("expected argument {}", name).into())
@@ -192,24 +203,24 @@ impl<'a> ResolvedInvocation<'a> {
         // first look explicit name in invocation arguments
         if let Some(arg) =
             self.invocation.arguments.iter().find(|arg| arg.id.as_deref() == Some(name))
-        {
-            return Some(Cow::Borrowed(&arg.rvalue));
-        }
+            {
+                return Some(Cow::Borrowed(&arg.rvalue));
+            }
         // then use fragment prototype:
         if let Some((ix, param)) =
             self.default_params.iter().enumerate().find(|(_ix, param)| param.id == name)
-        {
-            // check that all previous (and our) arguments are positional (todo:
-            // valid args when building augmented_invocation)
-            if self.invocation.arguments.len() > ix
-                && self.invocation.arguments.iter().take(ix + 1).all(|arg| arg.id.is_none())
             {
-                return Some(Cow::Borrowed(&self.invocation.arguments[ix].rvalue));
+                // check that all previous (and our) arguments are positional (todo:
+                // valid args when building augmented_invocation)
+                if self.invocation.arguments.len() > ix
+                    && self.invocation.arguments.iter().take(ix + 1).all(|arg| arg.id.is_none())
+                    {
+                        return Some(Cow::Borrowed(&self.invocation.arguments[ix].rvalue));
+                    }
+                if let Some(rv) = &param.lit {
+                    return Some(Cow::Owned(RValue::Literal(rv.clone())));
+                }
             }
-            if let Some(rv) = &param.lit {
-                return Some(Cow::Owned(RValue::Literal(rv.clone())));
-            }
-        }
         None
     }
 }
@@ -276,11 +287,11 @@ impl RValue {
                 builder.wire_invocation(&inv)
             }
             RValue::Array(array) => Ok(Value::Array(
-                array.iter().map(|i| i.resolve(builder)).collect::<TractResult<_>>()?,
-            )),
+                    array.iter().map(|i| i.resolve(builder)).collect::<TractResult<_>>()?,
+                    )),
             RValue::Tuple(array) => Ok(Value::Tuple(
-                array.iter().map(|i| i.resolve(builder)).collect::<TractResult<_>>()?,
-            )),
+                    array.iter().map(|i| i.resolve(builder)).collect::<TractResult<_>>()?,
+                    )),
             RValue::Literal(Literal::Numeric(f)) => {
                 if f.contains(".") || f.contains("e") {
                     f.parse::<f32>()
@@ -295,11 +306,11 @@ impl RValue {
             RValue::Literal(Literal::String(s)) => Ok(Value::String(s.clone())),
             RValue::Literal(Literal::Logical(s)) => Ok(Value::Bool(*s)),
             RValue::Literal(Literal::Array(array)) => Ok(Value::Array(
-                array
+                    array
                     .iter()
                     .map(|i| RValue::Literal(i.clone()).resolve(builder))
                     .collect::<TractResult<_>>()?,
-            )),
+                    )),
             _ => panic!("{:?}", self),
         }
     }
@@ -319,17 +330,17 @@ pub enum Value {
 
 impl Value {
     pub fn to<T>(&self, builder: &mut ModelBuilder) -> TractResult<T>
-    where
+        where
         T: CoerceFrom<Value>,
-    {
-        T::coerce(builder, self)
-    }
+        {
+            T::coerce(builder, self)
+        }
 }
 
 pub trait CoerceFrom<F> {
     fn coerce(builder: &mut ModelBuilder, from: &F) -> TractResult<Self>
-    where
-        Self: Sized;
+        where
+            Self: Sized;
 }
 
 impl CoerceFrom<Value> for Value {
@@ -343,6 +354,7 @@ impl CoerceFrom<Value> for Arc<Tensor> {
         match from {
             Value::Tensor(t) => Ok(t.clone()),
             Value::Scalar(f) => Ok(rctensor0(*f)),
+            Value::String(f) => Ok(rctensor0(f.clone())),
             Value::Wire(o) => {
                 builder.model.outlet_fact(*o)?.konst.clone().ok_or_else(|| "Not a const".into())
             }
@@ -414,7 +426,6 @@ impl CoerceFrom<Value> for isize {
     }
 }
 
-
 impl CoerceFrom<Value> for f32 {
     fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
@@ -446,7 +457,7 @@ macro_rules! tuple {
                                 let mut vec = vec.iter();
                                 Ok((
                                         $($d::coerce(builder, vec.next().unwrap())?),*
-                                ))
+                                   ))
                             }
                             _ => bail!("Can not build a tuple from {:?}", from),
                         }

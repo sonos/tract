@@ -18,10 +18,16 @@ pub fn render(
     options: &DisplayParams,
 ) -> CliResult<()> {
     if options.quiet {
-        Ok(())
-    } else {
-        render_prefixed(model, "", &[], annotations, options)
+        return Ok(());
     }
+    render_prefixed(model, "", &[], annotations, options)?;
+    if model.properties().len() > 0 {
+        println!("{}", White.bold().paint("# Properties"));
+    }
+    for (k, v) in model.properties().iter().sorted_by_key(|(k, _)| k.to_string()) {
+        println!("* {}: {:?}", White.paint(k), v)
+    }
+    Ok(())
 }
 
 pub fn render_node(

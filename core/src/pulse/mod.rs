@@ -105,7 +105,16 @@ impl PulsedModel {
     }
 
     pub fn into_typed(self) -> TractResult<TypedModel> {
-        crate::model::translator::IntoTranslator.translate_model(&self)
+        let mut typed = crate::model::translator::IntoTranslator.translate_model(&self)?;
+        let delays = tensor1(
+            &self
+                .output_outlets()?
+                .iter()
+                .map(|oo| Ok(self.outlet_fact(*oo)?.delay as _))
+                .collect::<TractResult<TVec<i64>>>()?
+        );
+        typed.properties.insert("pulse.delay".to_string(), delays.into_arc_tensor());
+        Ok(typed)
     }
 }
 

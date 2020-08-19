@@ -86,6 +86,8 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone +
     }
 
     fn auto_outputs(&mut self) -> TractResult<()>;
+
+    fn properties(&self) -> &HashMap<String, Arc<Tensor>>;
 }
 
 downcast_rs::impl_downcast!(Model);
@@ -94,7 +96,7 @@ impl<F, O> Model for Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
     O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    Graph<F, O>: Send
+    Graph<F, O>: Send,
 {
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
         self.nodes
@@ -174,5 +176,9 @@ where
 
     fn auto_outputs(&mut self) -> TractResult<()> {
         self.auto_outputs()
+    }
+
+    fn properties(&self) -> &HashMap<String, Arc<Tensor>> {
+        &self.properties
     }
 }

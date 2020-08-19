@@ -1,6 +1,7 @@
 use super::*;
 use crate::errors::TractResult;
 use crate::ops::Op;
+use crate::prelude::*;
 use std::fmt;
 use std::hash::Hash;
 
@@ -37,10 +38,17 @@ where
     /// outlet labels
     #[educe(Hash(method = "hash_outlet_labels"))]
     pub outlet_labels: HashMap<OutletId, String>,
+    /// model properties
+    #[educe(Hash(method = "hash_properties"))]
+    pub properties: HashMap<String, Arc<Tensor>>,
 }
 
 fn hash_outlet_labels<H: std::hash::Hasher>(it: &HashMap<OutletId, String>, state: &mut H) {
     it.iter().sorted().for_each(|ol| ol.hash(state))
+}
+
+fn hash_properties<H: std::hash::Hasher>(it: &HashMap<String, Arc<Tensor>>, state: &mut H) {
+    it.iter().sorted_by_key(|(k, _)| k.to_owned()).for_each(|ol| ol.hash(state))
 }
 
 impl<F, O> DynHash for Graph<F, O>
@@ -59,7 +67,13 @@ where
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     fn default() -> Graph<F, O> {
-        Graph { nodes: vec![], inputs: vec![], outputs: vec![], outlet_labels: HashMap::new() }
+        Graph {
+            nodes: vec![],
+            inputs: vec![],
+            outputs: vec![],
+            outlet_labels: HashMap::new(),
+            properties: HashMap::new(),
+        }
     }
 }
 
