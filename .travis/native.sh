@@ -33,7 +33,7 @@ fi
 
 export CACHEDIR
 
-cargo check --workspace --all-targets
+cargo -q check --workspace --all-targets
 
 if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
 then
@@ -41,11 +41,11 @@ then
 fi
 
 
-cargo test -p tract-core -p tract-hir -p tract-onnx -p tract-linalg
+cargo -q test -q -p tract-core -p tract-hir -p tract-onnx -p tract-linalg
 # doc test are not finding libtensorflow.so
-cargo test -p tract-tensorflow --lib $ALL_FEATURES
+cargo -q test -q -p tract-tensorflow --lib $ALL_FEATURES
 # useful as debug_asserts will come into play
-cargo test -p onnx-test-suite -- --skip real_
+cargo -q test -q -p onnx-test-suite -- --skip real_
 cargo clean
 
 HARNESS=""
@@ -54,9 +54,9 @@ do
     HARNESS="$HARNESS -p $p"
 done
 
-cargo test --release $HARNESS $ALL_FEATURES
+cargo -q test -q --release $HARNESS $ALL_FEATURES
 
-cargo build -p tract --release
+cargo -q build -q -p tract --release
 
 if [ -n "$CI" ]
 then
