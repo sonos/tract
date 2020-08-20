@@ -16,15 +16,15 @@ jobs:
       - name: Extract version tag
         id: version
         run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / )
-
       - name: Build tract
         run: |
+          set -ex
           sudo apt-get install -y musl-dev musl-tools
           rustup target add x86_64-unknown-linux-musl
           cargo build --target x86_64-unknown-linux-musl --release -p tract
           mkdir tract-linux-${{ steps.version.outputs.value }}
           cp target/x86_64-unknown-linux-musl/release/tract tract-linux-${{ steps.version.outputs.value }}
-          tar czf tract-linux-${{ steps.version.outputs.value }} ${{ steps.version.outputs.value }}
+          tar czf tract-linux-${{ steps.version.outputs.value }}.tgz tract-linux-${{ steps.version.outputs.value }}
 
       - name: Upload asset
         uses: softprops/action-gh-release@v1
