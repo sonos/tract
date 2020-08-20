@@ -1,6 +1,6 @@
 on:
   push:
-  releases:
+  release:
     types:
       - created
 
