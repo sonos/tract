@@ -22,14 +22,14 @@ jobs:
           sudo apt-get install -y musl-dev musl-tools
           rustup target add x86_64-unknown-linux-musl
           cargo build --target x86_64-unknown-linux-musl --release -p tract
-          mkdir tract-linux-${{ steps.version.outputs.value }}
-          cp target/x86_64-unknown-linux-musl/release/tract tract-linux-${{ steps.version.outputs.value }}
-          tar czf tract-linux-${{ steps.version.outputs.value }}.tgz tract-linux-${{ steps.version.outputs.value }}
+          mkdir tract-linux-musl-${{ steps.version.outputs.value }}
+          cp target/x86_64-unknown-linux-musl/release/tract tract-linux-musl-${{ steps.version.outputs.value }}
+          tar czf tract-linux-musl-${{ steps.version.outputs.value }}.tgz tract-linux-musl-${{ steps.version.outputs.value }}
 
       - name: Upload asset
         uses: softprops/action-gh-release@v1
         with:
-          files: tract-linux-${{ steps.version.outputs.value }}.tgz
+          files: tract-linux-musl-${{ steps.version.outputs.value }}.tgz
           name: ${{ steps.version.outputs.value }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
