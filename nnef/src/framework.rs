@@ -27,10 +27,6 @@ impl Nnef {
         self
     }
 
-    pub fn can_use_tract_core(&self) -> bool {
-        self.registries.iter().any(|reg| reg.id == "tract-core")
-    }
-
     pub fn translate(
         &self,
         proto_model: &ProtoModel,
