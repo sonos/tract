@@ -8,7 +8,8 @@ name: Upload Musl release
 jobs:
   build:
     name: Upload Release Asset
-    env: PKG=tract-linux-x86_64.${{ github.ref }}
+    env:
+      PKG: tract-linux-x86_64.${{ github.ref }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
