@@ -1,0 +1,43 @@
+on:
+  release:
+    types:
+      - created
+
+name: Upload Release Assets
+
+jobs:
+  assets:
+    name: Upload Release Assets
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macOS-latest ]
+        include:
+          - os: ubuntu-latest
+            name: linux
+          - os: macOS-latest
+            name: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Extract version tag
+        id: version
+        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / )
+
+      - name: Build tract
+        run: |
+          cargo build --release -p tract
+          mkdir cargo-dinghy-${{ steps.version.outputs.value }}
+          mkdir tract-${{matrix.name}}-${{ steps.version.outputs.value }}
+          cp target/release/tract tract-${{matrix.name}}-${{ steps.version.outputs.value }}
+          tar czf tract-${{matrix.name}}-${{ steps.version.outputs.value }}.tgz tract-${{matrix.name}}-${{ steps.version.outputs.value }}
+
+      - name: Upload asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: tract-${{matrix.name}}-${{ steps.version.outputs.value }}.tgz
+          name: ${{ steps.version.outputs.value }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
