@@ -51,7 +51,6 @@ set_version $CRATE/Cargo.toml $VERSION
 if [ "$CRATE" = "cli" ]
 then
     git commit -m "release $VERSION" .
-    git tag -f "$VERSION"
     git tag -f v"$VERSION"
     git push -f --tags
 fi

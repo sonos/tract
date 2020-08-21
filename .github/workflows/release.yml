@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Extract version tag
         id: version
-        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d /)
+        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' )
 
       - name: Create Release
         id: create_release
@@ -21,5 +21,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN_RELEASE }}
         with:
           tag_name: ${{ steps.version.outputs.value }}
-          release_name: ${{ steps.version.outputs.value }}
+          release_name: tract ${{ steps.version.outputs.value }}
 

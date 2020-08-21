@@ -23,7 +23,7 @@ jobs:
 
       - name: Extract version tag
         id: version
-        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / )
+        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' )
 
       - name: Build tract
         run: |
