@@ -40,7 +40,7 @@ assert tokenizer.convert_ids_to_tokens(int(np.argmax(outputs[0, mask_idx]))) == 
 
 np.savez_compressed(
     open("io.npz", "wb"),
-    input_ids=input_ids,
-    attention_mask=attention_mask,
+    input_ids=input_ids.numpy(),
+    attention_mask=attention_mask.numpy(),
     output=outputs,
 )
