@@ -58,7 +58,7 @@ test_cast_FLOAT16_to_DOUBLE
 test_cast_FLOAT16_to_FLOAT
 test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_FLOAT16
-test_cast_FLOAT_to_STRING not-nnef
+test_cast_FLOAT_to_STRING
 test_cast_STRING_to_FLOAT not-nnef
 test_ceil
 test_ceil_example
@@ -100,7 +100,7 @@ test_div_bcast
 test_div_example
 test_dropout_default
 test_dropout_random
-test_edge_pad not-nnef
+test_edge_pad
 test_elu
 test_elu_default
 test_elu_example
@@ -121,8 +121,8 @@ test_flatten_axis3
 test_flatten_default_axis
 test_floor
 test_floor_example
-test_gather_0 not-nnef
-test_gather_1 not-nnef
+test_gather_0
+test_gather_1
 test_gemm_broadcast
 test_gemm_nobroadcast
 test_globalaveragepool
