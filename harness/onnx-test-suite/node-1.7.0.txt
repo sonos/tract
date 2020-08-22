@@ -78,7 +78,7 @@ test_cast_FLOAT16_to_DOUBLE
 test_cast_FLOAT16_to_FLOAT
 test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_FLOAT16
-test_cast_FLOAT_to_STRING not-nnef
+test_cast_FLOAT_to_STRING
 test_cast_STRING_to_FLOAT not-nnef
 test_ceil
 test_ceil_example
@@ -136,7 +136,7 @@ test_dropout_random not-nnef
 test_dropout_random_old
 test_dynamicquantizelinear_max_adjusted_expanded  not-typable not-nnef
 test_dynamicquantizelinear_min_adjusted_expanded  not-typable not-nnef
-test_edge_pad                                                                       input:x not-nnef
+test_edge_pad input:x
 test_elu
 test_elu_default
 test_elu_example
@@ -157,8 +157,8 @@ test_flatten_axis3
 test_flatten_default_axis
 test_floor
 test_floor_example
-test_gather_0 not-nnef
-test_gather_1 not-nnef
+test_gather_0
+test_gather_1
 test_gemm_all_attributes
 test_gemm_alpha
 test_gemm_beta
@@ -493,7 +493,7 @@ test_unsqueeze_three_axes
 test_unsqueeze_two_axes
 test_unsqueeze_unsorted_axes
 test_where_example
-test_where_long_example not-nnef
+test_where_long_example
 test_xor2d
 test_xor3d
 test_xor4d
