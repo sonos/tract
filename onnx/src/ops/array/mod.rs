@@ -1,4 +1,5 @@
 mod compress;
+mod nonzero;
 mod pad;
 mod slice;
 
@@ -18,6 +19,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
+    reg.insert("NonZero", |_, _| Ok((Box::new(nonzero::NonZero), vec![])));
     reg.insert("Pad", pad::pad);
     reg.insert("Reshape", |_, _| Ok((expand(array::Reshape::default()), vec![])));
     reg.insert("Shape", |_, _| Ok((expand(array::Shape::new(DatumType::I64)), vec![])));
