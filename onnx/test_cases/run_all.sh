@@ -2,6 +2,11 @@
 
 set -e
 
+if [ -z "$CACHEDIR" ]
+then
+    CACHEDIR=`dirname $0`/../../.cached
+fi
+
 TEST_CASE_DIR=$(dirname $0)
 FAILURES=""
 FAILED=()
@@ -21,15 +26,27 @@ do
     then
         continue
     fi
+    (
     . $tc/vars.sh
-    for pass in decl opti # nnef
+    for file in $CACHE_FILES
     do
+        $TEST_CASE_DIR/../../.travis/cache_file.sh $file
+    done
+    : ${MODEL:=$tc/model.onnx}
+    for pass in plain decl opti nnef
+    do
+        echo -n "$tc ($pass) "
+        if [[ $IGNORE == *$pass* ]]
+        then
+            echo -e "\e[93mignored\e[39m"
+            continue
+        fi
         case $pass in
+            plain) opti="--pass incorporate" ;;
             decl) opti="" ;;
             opti) opti="-O" ;;
             nnef) opti="--nnef-cycle --nnef-tract-core" ;;
         esac
-        echo -n "$tc ($pass) "
         options=""
         if [ -n "$left_context" ]
         then
@@ -44,7 +61,7 @@ do
             options="$options --kaldi-adjust-final-offset $adjust_final_offset"
         fi
         cmd="$TRACT_RUN \
-            $tc/model.onnx$suffix \
+            $MODEL \
             --output-node output \
             --input-bundle $tc/io.npz \
             $options \
@@ -61,6 +78,7 @@ do
             FAILURES="$FAILURES $tc"
         fi
     done
+    )
 done
 
 if [ -n "$FAILURES" ]
