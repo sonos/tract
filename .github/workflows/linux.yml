@@ -3,7 +3,7 @@ name: Native Linux
 on:
   push:
   schedule:
-    - cron:  '0 5 * * *'
+    - cron:  '0 3 * * *'
 
 jobs:
   linux:
@@ -26,5 +26,6 @@ jobs:
         key: ${{ runner.os }}-cargo-${{matrix.rust}}
     - name: Native script
       env:
+        SHORT: yes
         RUST_VERSION: ${{matrix.rust}}
       run: .travis/native.sh
