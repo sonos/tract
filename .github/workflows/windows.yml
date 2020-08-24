@@ -1,6 +1,10 @@
 name: Windows unit tests
 
-on: [push]
+on:
+  push:
+  schedule:
+    - cron:  '0 3 * * *'
+
 
 jobs:
   windows:
