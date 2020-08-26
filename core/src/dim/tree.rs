@@ -2,13 +2,25 @@ use crate::prelude::TractResult;
 use itertools::Itertools;
 use num_traits::{AsPrimitive, Zero};
 use std::collections::HashMap;
+use std::sync::atomic::AtomicUsize;
 use std::{fmt, ops};
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
+static SYMBOL_ID: AtomicUsize = AtomicUsize::new(1);
+
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
+pub struct Symbol(char, usize);
+
+impl Symbol {
+    pub fn new(c: char) -> Symbol {
+        Symbol(c, SYMBOL_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
 pub enum TDim {
-    Sym(char),
+    Sym(Symbol),
     Val(i64),
     Add(Vec<TDim>),
     Mul(i64, Box<TDim>),
@@ -20,7 +32,7 @@ use TDim::*;
 impl fmt::Display for TDim {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            Sym(it) => write!(fmt, "{}", it),
+            Sym(sym) => write!(fmt, "{}", sym.0),
             Val(it) => write!(fmt, "{}", it),
             Add(it) => write!(fmt, "{}", it.iter().map(|x| format!("{}", x)).join("+")),
             Mul(a, b) => write!(fmt, "{}.{}", a, b),
@@ -36,7 +48,7 @@ impl TDim {
 
     /// The special value S, for streaming.
     pub fn s() -> TDim {
-        TDim::Sym('S')
+        TDim::Sym(Symbol('S', 0))
     }
 
     /// The special value S, for streaming.
@@ -58,12 +70,12 @@ impl TDim {
     }
 
     pub fn eval(&self, s: i64) -> Option<i64> {
-        self.eval_with(&hashmap!('S' => s)).ok()
+        self.eval_with(&hashmap!(Symbol('S',0) => s)).ok()
     }
 
-    fn eval_with(&self, values: &HashMap<char, i64>) -> TractResult<i64> {
+    fn eval_with(&self, values: &HashMap<Symbol, i64>) -> TractResult<i64> {
         Ok(match self {
-            Sym(v) => *values.get(v).ok_or(format!("Unresolved value {:?}", v))?,
+            Sym(sym) => *values.get(&sym).ok_or(format!("Unresolved value {:?}", sym))?,
             Val(v) => *v,
             Add(terms) => terms.iter().try_fold(0i64, |acc, it| -> TractResult<i64> {
                 Ok(acc + it.eval_with(values)?)
@@ -225,7 +237,7 @@ impl TDim {
                 } else if let Mul(-1, a) = a {
                     Mul(-1, b!(Div(a, q)))
                 } else if let Add(mut terms) = a {
-                    if terms.iter().any(|t| t == &Mul(-1, b!(Sym('S')))) {
+                    if terms.iter().any(|t| t == &Mul(-1, b!(Self::s()))) {
                         Mul(
                             -1,
                             b!(Div(
@@ -404,6 +416,12 @@ from_i!(i64);
 from_i!(isize);
 from_i!(usize);
 
+impl From<Symbol> for TDim {
+    fn from(it: Symbol) -> Self {
+        TDim::Sym(it)
+    }
+}
+
 impl ops::Neg for TDim {
     type Output = Self;
     fn neg(self) -> Self {
@@ -551,7 +569,9 @@ mod tests {
 
     macro_rules! b( ($e:expr) => { Box::new($e) } );
 
-    const S: TDim = TDim::Sym('S');
+    fn s() -> TDim {
+        TDim::Sym(Symbol('S', 0))
+    }
 
     fn neg(a: &TDim) -> TDim {
         mul(-1, a)
@@ -571,53 +591,50 @@ mod tests {
 
     #[test]
     fn reduce_add() {
-        assert_eq!(add(&Sym('S'), &neg(&Sym('S'))).reduce(), Val(0))
+        assert_eq!(add(&s(), &neg(&s())).reduce(), Val(0))
     }
 
     #[test]
     fn reduce_neg_mul() {
-        assert_eq!(neg(&mul(2, &Sym('S'))).reduce(), mul(-2, &Sym('S')))
+        assert_eq!(neg(&mul(2, &s())).reduce(), mul(-2, &s()))
     }
 
     #[test]
     fn reduce_cplx_ex_2() {
         assert_eq!(
-            add(
-                &add(&Val(-4), &mul(-2, &div(&Sym('S'), 4))),
-                &mul(-2, &mul(-1, &div(&Sym('S'), 4)))
-            )
-            .reduce(),
+            add(&add(&Val(-4), &mul(-2, &div(&s(), 4))), &mul(-2, &mul(-1, &div(&s(), 4))))
+                .reduce(),
             Val(-4)
         )
     }
 
     #[test]
     fn reduce_cplx_ex_3() {
-        assert_eq!(div(&Mul(1, b!(Mul(4, b!(Sym('S'))))), 4).reduce(), Sym('S'))
+        assert_eq!(div(&Mul(1, b!(Mul(4, b!(s())))), 4).reduce(), s())
     }
 
     #[test]
     fn reduce_cplx_ex_4() {
         // (S+1)/2 + (1-S)/2 == 1
         assert_eq!(
-            add(&div(&add(&S, &Val(1)), 2), &div(&add(&neg(&S), &Val(1)), 2)).reduce(),
+            add(&div(&add(&s(), &Val(1)), 2), &div(&add(&neg(&s()), &Val(1)), 2)).reduce(),
             1.into()
         );
     }
 
     #[test]
     fn reduce_mul_mul_1() {
-        assert_eq!(mul(3, &mul(2, &Sym('S'))).reduce(), mul(6, &Sym('S')))
+        assert_eq!(mul(3, &mul(2, &s())).reduce(), mul(6, &s()))
     }
 
     #[test]
     fn reduce_mul_mul_2() {
-        assert_eq!(mul(-2, &mul(-1, &Sym('S'))).reduce(), mul(2, &Sym('S')))
+        assert_eq!(mul(-2, &mul(-1, &s())).reduce(), mul(2, &s()))
     }
 
     #[test]
     fn reduce_mul_div_1() {
-        assert_eq!(mul(2, &div(&mul(-1, &Sym('S')), 3)).reduce(), mul(-2, &div(&Sym('S'), 3)))
+        assert_eq!(mul(2, &div(&mul(-1, &s()), 3)).reduce(), mul(-2, &div(&s(), 3)))
     }
 
     #[test]
@@ -634,10 +651,11 @@ mod tests {
 
     #[test]
     fn substitution() {
-        let e = TDim::Sym('x');
-        assert_eq!(e.eval_with(&hashmap! {'x' => 2}).unwrap(), 2);
-        let e = TDim::Sym('x') + 3;
-        assert_eq!(e.eval_with(&hashmap! {'x' => 2}).unwrap(), 5);
+        let x = Symbol::new('x');
+        let e:TDim = x.into();
+        assert_eq!(e.eval_with(&hashmap! {x => 2}).unwrap(), 2);
+        let e = e + 3;
+        assert_eq!(e.eval_with(&hashmap! {x => 2}).unwrap(), 5);
     }
 
     #[test]
@@ -668,69 +686,69 @@ mod tests {
 
     #[test]
     fn reduce_div_bug_0() {
-        let e1: TDim = (TDim::Sym('S') + 23) / 2 - 1;
-        let e2: TDim = (TDim::Sym('S') + 21) / 2;
+        let e1: TDim = (s() + 23) / 2 - 1;
+        let e2: TDim = (s() + 21) / 2;
         assert_eq!(e1, e2);
     }
 
     #[test]
     fn reduce_div_bug_1() {
-        let e1: TDim = (TDim::Sym('S') + -1) / 2;
-        let e2: TDim = (TDim::Sym('S') + 1) / 2 - 1;
+        let e1: TDim = (s() + -1) / 2;
+        let e2: TDim = (s() + 1) / 2 - 1;
         assert_eq!(e1, e2);
     }
 
     #[test]
     fn reduce_div_bug_2() {
-        let e1: TDim = ((TDim::Sym('S') + 1) / 2 + 1) / 2;
-        let e2: TDim = (TDim::Sym('S') + 3) / 4;
+        let e1: TDim = ((s() + 1) / 2 + 1) / 2;
+        let e2: TDim = (s() + 3) / 4;
         assert_eq!(e1, e2);
     }
 
     #[test]
     fn reduce_div_bug_3() {
-        let e1: TDim = (TDim::Sym('S') / 2) * -4;
-        let e2: TDim = (TDim::Sym('S') / 2) * -4 / 1;
+        let e1: TDim = (s() / 2) * -4;
+        let e2: TDim = (s() / 2) * -4 / 1;
         assert_eq!(e1, e2);
     }
 
     #[test]
     fn reduce_mul_div() {
-        let e: TDim = TDim::Sym('S') * 2 / 2;
-        assert_eq!(e, TDim::Sym('S'));
+        let e: TDim = s() * 2 / 2;
+        assert_eq!(e, s());
     }
 
     #[test]
     fn reduce_div_mul() {
-        let e: TDim = TDim::Sym('S') / 2 * 2;
-        assert_ne!(e, TDim::Sym('S'));
+        let e: TDim = s() / 2 * 2;
+        assert_ne!(e, s());
     }
 
     #[test]
     fn reduce_add_div() {
-        let e: TDim = TDim::Sym('S') / 2 + 1;
-        assert_eq!(e, ((TDim::Sym('S') + 2) / 2));
+        let e: TDim = s() / 2 + 1;
+        assert_eq!(e, ((s() + 2) / 2));
     }
 
     #[test]
     fn reduce_neg_mul_() {
-        let e: TDim = TDim::from(1) - TDim::Sym('S') * 2;
-        assert_eq!(e, TDim::from(1) + TDim::Sym('S') * -2);
+        let e: TDim = TDim::from(1) - s() * 2;
+        assert_eq!(e, TDim::from(1) + s() * -2);
     }
 
     #[test]
     fn reduce_add_rem_1() {
-        assert_eq!(((TDim::Sym('S') + 4) % 2), (TDim::Sym('S') % 2));
+        assert_eq!(((s() + 4) % 2), (s() % 2));
     }
 
     #[test]
     fn reduce_add_rem_2() {
-        assert_eq!(((TDim::Sym('S') - 4) % 2), (TDim::Sym('S') % 2));
+        assert_eq!(((s() - 4) % 2), (s() % 2));
     }
 
     #[test]
     fn reduce_rem_div() {
-        let e: TDim = TDim::Sym('S') % 2 / 2;
+        let e: TDim = s() % 2 / 2;
         assert_eq!(e, TDim::from(0));
     }
 
@@ -742,7 +760,7 @@ mod tests {
 
     #[test]
     fn conv2d_ex_2() {
-        let e = (TDim::Sym('S') - 3 + 1).div_ceil(1);
-        assert_eq!(e, TDim::Sym('S') + -2);
+        let e = (s() - 3 + 1).div_ceil(1);
+        assert_eq!(e, s() + -2);
     }
 }
