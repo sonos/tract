@@ -38,7 +38,7 @@ pub trait DimLike:
     + std::iter::Sum
     + ToDim
 {
-    fn maybe_div(&self, other: &Self) -> TractResult<(Self, u32)>;
+    fn maybe_div(&self, other: &Self) -> TractResult<(Self, u64)>;
     fn maybe_mul(&self, other: &Self) -> TractResult<Self>;
 
     /// Integer divise, rounding up to next integer.
@@ -47,7 +47,7 @@ pub trait DimLike:
     }
 
     /// Convert to regular integer.
-    fn to_integer(&self) -> TractResult<i32>;
+    fn to_integer(&self) -> TractResult<i64>;
 
     /// do not use num_traits::Mul as it implies a regular Mul
     fn one() -> Self;
@@ -57,7 +57,7 @@ pub trait DimLike:
 }
 
 impl DimLike for TDim {
-    fn maybe_div(&self, other: &Self) -> TractResult<(Self, u32)> {
+    fn maybe_div(&self, other: &Self) -> TractResult<(Self, u64)> {
         use crate::num_traits::Zero;
         if self.is_zero() {
             return Ok((TDim::zero(), 1));
@@ -74,7 +74,7 @@ impl DimLike for TDim {
                 let slope_p = self.slope();
                 let slope_q = other.slope();
                 let (p, q) =
-                    tree::reduce_ratio(slope_p.0 * slope_q.1 as i32, slope_q.0 * slope_p.1 as i32);
+                    tree::reduce_ratio(slope_p.0 * slope_q.1 as i64, slope_q.0 * slope_p.1 as i64);
                 (p.into(), q)
             }
         };
@@ -95,7 +95,7 @@ impl DimLike for TDim {
         }
     }
 
-    fn to_integer(&self) -> TractResult<i32> {
+    fn to_integer(&self) -> TractResult<i64> {
         TDim::to_integer(self)
     }
 
@@ -120,14 +120,14 @@ impl DimLike for usize {
         Ok(self * other)
     }
 
-    fn maybe_div(&self, other: &Self) -> TractResult<(Self, u32)> {
+    fn maybe_div(&self, other: &Self) -> TractResult<(Self, u64)> {
         use crate::num_integer::Integer;
         let gcd = self.gcd(other);
-        Ok((self / gcd, (other / gcd) as u32))
+        Ok((self / gcd, (other / gcd) as u64))
     }
 
-    fn to_integer(&self) -> TractResult<i32> {
-        Ok(*self as i32)
+    fn to_integer(&self) -> TractResult<i64> {
+        Ok(*self as i64)
     }
 
     fn one() -> usize {

@@ -9,10 +9,10 @@ macro_rules! b( ($e:expr) => { Box::new($e) } );
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
 pub enum TDim {
     Sym(char),
-    Val(i32),
+    Val(i64),
     Add(Vec<TDim>),
-    Mul(i32, Box<TDim>),
-    Div(Box<TDim>, u32),
+    Mul(i64, Box<TDim>),
+    Div(Box<TDim>, u64),
 }
 
 use TDim::*;
@@ -45,7 +45,7 @@ impl TDim {
     }
 
     /// Try to convert the value to an integer, if it does not contains S.
-    pub fn as_const(&self) -> Option<i32> {
+    pub fn as_const(&self) -> Option<i64> {
         self.to_integer().ok()
     }
 
@@ -53,22 +53,22 @@ impl TDim {
         self.to_integer().is_err()
     }
 
-    pub fn to_integer(&self) -> TractResult<i32> {
+    pub fn to_integer(&self) -> TractResult<i64> {
         self.eval_with(&hashmap!())
     }
 
-    pub fn eval(&self, s: i32) -> Option<i32> {
+    pub fn eval(&self, s: i64) -> Option<i64> {
         self.eval_with(&hashmap!('S' => s)).ok()
     }
 
-    fn eval_with(&self, values: &HashMap<char, i32>) -> TractResult<i32> {
+    fn eval_with(&self, values: &HashMap<char, i64>) -> TractResult<i64> {
         Ok(match self {
             Sym(v) => *values.get(v).ok_or(format!("Unresolved value {:?}", v))?,
             Val(v) => *v,
-            Add(terms) => terms.iter().try_fold(0i32, |acc, it| -> TractResult<i32> {
+            Add(terms) => terms.iter().try_fold(0i64, |acc, it| -> TractResult<i64> {
                 Ok(acc + it.eval_with(values)?)
             })?,
-            Div(a, q) => a.eval_with(values)? / *q as i32,
+            Div(a, q) => a.eval_with(values)? / *q as i64,
             Mul(p, a) => p * a.eval_with(values)?,
         })
     }
@@ -115,7 +115,7 @@ impl TDim {
                             .enumerate()
                             .map(|(ix2, t)| {
                                 if ix2 != ix {
-                                    Mul(*q as i32, b!(t.clone()))
+                                    Mul(*q as i64, b!(t.clone()))
                                 } else {
                                     (**num).clone()
                                 }
@@ -152,7 +152,7 @@ impl TDim {
         use num_integer::Integer;
         match self {
             Add(mut terms) => {
-                let mut reduced: HashMap<TDim, i32> = HashMap::new();
+                let mut reduced: HashMap<TDim, i64> = HashMap::new();
                 // factorize common sub-expr
                 while let Some(item) = terms.pop() {
                     let term = item.simplify();
@@ -221,7 +221,7 @@ impl TDim {
                 }
                 let a = a.simplify();
                 if let Val(a) = a {
-                    Val(a / q as i32)
+                    Val(a / q as i64)
                 } else if let Mul(-1, a) = a {
                     Mul(-1, b!(Div(a, q)))
                 } else if let Add(mut terms) = a {
@@ -239,15 +239,15 @@ impl TDim {
                         .filter_map(|t| if let Val(v) = t { Some(*v) } else { None })
                         .next()
                     {
-                        let offset = if v >= q as i32 {
-                            Some(v / q as i32)
+                        let offset = if v >= q as i64 {
+                            Some(v / q as i64)
                         } else if v < 0 {
-                            Some(-(-v).div_ceil(&(q as i32)))
+                            Some(-(-v).div_ceil(&(q as i64)))
                         } else {
                             None
                         };
                         if let Some(val) = offset {
-                            terms.push(Val(-val * q as i32));
+                            terms.push(Val(-val * q as i64));
                             Add(vec![Val(val), Div(b!(Add(terms).simplify()), q)])
                         } else {
                             Div(b!(Add(terms)), q)
@@ -256,16 +256,16 @@ impl TDim {
                         Div(b!(Add(terms)), q)
                     }
                 } else if let Mul(p, a) = a {
-                    if p == q as i32 {
+                    if p == q as i64 {
                         a.simplify()
                     } else {
-                        let gcd = p.abs().gcd(&(q as i32));
+                        let gcd = p.abs().gcd(&(q as i64));
                         if gcd == p {
-                            Div(a, q / gcd as u32)
-                        } else if gcd == q as i32 {
+                            Div(a, q / gcd as u64)
+                        } else if gcd == q as i64 {
                             Mul(p / gcd, a)
                         } else if gcd > 1 {
-                            Div(b!(Mul(p / gcd, a)), q / gcd as u32).simplify()
+                            Div(b!(Mul(p / gcd, a)), q / gcd as u64).simplify()
                         } else {
                             Div(b!(Mul(p, a)), q)
                         }
@@ -278,17 +278,17 @@ impl TDim {
         }
     }
 
-    fn gcd(&self) -> u32 {
+    fn gcd(&self) -> u64 {
         use self::TDim::*;
         use num_integer::Integer;
         match self {
-            Val(v) => v.abs() as u32,
+            Val(v) => v.abs() as u64,
             Sym(_) => 1,
             Add(terms) => {
                 let (head, tail) = terms.split_first().unwrap();
                 tail.iter().fold(head.gcd(), |a, b| a.gcd(&b.gcd()))
             }
-            Mul(p, a) => a.gcd() * p.abs() as u32,
+            Mul(p, a) => a.gcd() * p.abs() as u64,
             Div(a, q) => {
                 if a.gcd() % *q == 0 {
                     a.gcd() / *q
@@ -299,34 +299,34 @@ impl TDim {
         }
     }
 
-    fn div(&self, d: u32) -> TDim {
+    fn div(&self, d: u64) -> TDim {
         use self::TDim::*;
         use num_integer::Integer;
         if d == 1 {
             return self.clone();
         }
         match self {
-            Val(v) => Val(v / d as i32),
+            Val(v) => Val(v / d as i64),
             Sym(_) => panic!(),
             Add(terms) => Add(terms.iter().map(|t| t.div(d)).collect()),
             Mul(p, a) => {
-                if *p == d as i32 {
+                if *p == d as i64 {
                     (**a).clone()
                 } else {
-                    let gcd = (p.abs() as u32).gcd(&d);
-                    Mul(p / gcd as i32, b!(a.div(d / gcd)))
+                    let gcd = (p.abs() as u64).gcd(&d);
+                    Mul(p / gcd as i64, b!(a.div(d / gcd)))
                 }
             }
             Div(a, q) => Div(a.clone(), q * d),
         }
     }
 
-    pub fn div_ceil(self, rhs: u32) -> TDim {
-        TDim::Div(Box::new(Add(vec![self, Val(rhs as i32 - 1)])), rhs).reduce()
+    pub fn div_ceil(self, rhs: u64) -> TDim {
+        TDim::Div(Box::new(Add(vec![self, Val(rhs as i64 - 1)])), rhs).reduce()
     }
 
-    pub fn slope(&self) -> (i32, u32) {
-        fn slope_rec(d: &TDim) -> (i32, i32) {
+    pub fn slope(&self) -> (i64, u64) {
+        fn slope_rec(d: &TDim) -> (i64, i64) {
             match d {
                 Val(_) => (0, 1),
                 Sym(_) => (1, 1),
@@ -340,7 +340,7 @@ impl TDim {
                 }
                 Div(a, q) => {
                     let (n, d) = slope_rec(a);
-                    (n, d * *q as i32)
+                    (n, d * *q as i64)
                 }
             }
         }
@@ -349,7 +349,7 @@ impl TDim {
     }
 }
 
-pub(super) fn reduce_ratio(mut p: i32, mut q: i32) -> (i32, u32) {
+pub(super) fn reduce_ratio(mut p: i64, mut q: i64) -> (i64, u64) {
     use crate::num_integer::Integer;
     let gcd = p.abs().gcd(&q.abs());
     if gcd > 1 {
@@ -357,9 +357,9 @@ pub(super) fn reduce_ratio(mut p: i32, mut q: i32) -> (i32, u32) {
         q /= gcd;
     }
     if q < 0 {
-        (-p, (-q) as u32)
+        (-p, (-q) as u64)
     } else {
-        (p, q as u32)
+        (p, q as u64)
     }
 }
 
@@ -484,15 +484,15 @@ impl<'a> ops::Sub<&'a TDim> for TDim {
     }
 }
 
-impl ops::MulAssign<i32> for TDim {
-    fn mul_assign(&mut self, rhs: i32) {
+impl ops::MulAssign<i64> for TDim {
+    fn mul_assign(&mut self, rhs: i64) {
         let mut me = TDim::Val(0);
         std::mem::swap(&mut me, self);
         *self = TDim::Mul(rhs, Box::new(me)).reduce()
     }
 }
 
-impl<I: AsPrimitive<i32>> ops::Mul<I> for TDim {
+impl<I: AsPrimitive<i64>> ops::Mul<I> for TDim {
     type Output = Self;
     fn mul(mut self, rhs: I) -> Self {
         self *= rhs.as_();
@@ -500,7 +500,7 @@ impl<I: AsPrimitive<i32>> ops::Mul<I> for TDim {
     }
 }
 
-impl<I: AsPrimitive<u32>> ops::DivAssign<I> for TDim {
+impl<I: AsPrimitive<u64>> ops::DivAssign<I> for TDim {
     fn div_assign(&mut self, rhs: I) {
         let mut me = TDim::Val(0);
         std::mem::swap(&mut me, self);
@@ -508,7 +508,7 @@ impl<I: AsPrimitive<u32>> ops::DivAssign<I> for TDim {
     }
 }
 
-impl<I: AsPrimitive<u32>> ops::Div<I> for TDim {
+impl<I: AsPrimitive<u64>> ops::Div<I> for TDim {
     type Output = Self;
     fn div(mut self, rhs: I) -> Self {
         self /= rhs.as_();
@@ -516,13 +516,13 @@ impl<I: AsPrimitive<u32>> ops::Div<I> for TDim {
     }
 }
 
-impl<I: AsPrimitive<u32>> ops::RemAssign<I> for TDim {
+impl<I: AsPrimitive<u64>> ops::RemAssign<I> for TDim {
     fn rem_assign(&mut self, rhs: I) {
         *self += -(self.clone() / rhs.as_() * rhs.as_());
     }
 }
 
-impl<I: AsPrimitive<u32>> ops::Rem<I> for TDim {
+impl<I: AsPrimitive<u64>> ops::Rem<I> for TDim {
     type Output = Self;
     fn rem(mut self, rhs: I) -> Self {
         self %= rhs;
@@ -537,10 +537,10 @@ impl std::str::FromStr for TDim {
             Ok(TDim::s())
         } else if s.ends_with("S") {
             let number: String = s.chars().take_while(|c| c.is_digit(10)).collect();
-            let number: i32 = number.parse::<i32>().map(|i| i.into())?;
+            let number: i64 = number.parse::<i64>().map(|i| i.into())?;
             Ok(TDim::s() * number)
         } else {
-            s.parse::<i32>().map(|i| i.into())
+            s.parse::<i64>().map(|i| i.into())
         }
     }
 }
@@ -561,11 +561,11 @@ mod tests {
         TDim::Add(vec![a.clone(), b.clone()])
     }
 
-    fn mul(a: i32, b: &TDim) -> TDim {
+    fn mul(a: i64, b: &TDim) -> TDim {
         TDim::Mul(a, b![b.clone()])
     }
 
-    fn div(a: &TDim, b: u32) -> TDim {
+    fn div(a: &TDim, b: u64) -> TDim {
         TDim::Div(b!(a.clone()), b)
     }
 
@@ -622,7 +622,7 @@ mod tests {
 
     #[test]
     fn const_and_add() {
-        let e: TDim = 2i32.into();
+        let e: TDim = 2i64.into();
         assert_eq!(e.eval_with(&hashmap! {}).unwrap(), 2);
         let e: TDim = TDim::from(2) + 3;
         assert_eq!(e.eval_with(&hashmap! {}).unwrap(), 5);

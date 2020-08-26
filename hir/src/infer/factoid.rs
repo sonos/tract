@@ -147,7 +147,7 @@ pub type TypeFactoid = GenericFactoid<DatumType>;
 #[derive(Clone, PartialEq, Hash)]
 pub struct ShapeFactoid {
     pub(super) open: bool,
-    pub(super) dims: TVec<GenericFactoid<i32>>,
+    pub(super) dims: TVec<GenericFactoid<i64>>,
     pub(super) stream: Option<StreamFact>,
 }
 
@@ -197,7 +197,7 @@ impl ShapeFactoid {
     }
 
     pub fn rank(&self) -> IntFactoid {
-        if self.open { GenericFactoid::Any } else { GenericFactoid::Only(self.dims.len() as i32) }
+        if self.open { GenericFactoid::Any } else { GenericFactoid::Only(self.dims.len() as i64) }
             .into()
     }
 
@@ -375,7 +375,7 @@ pub type DimFact = GenericFactoid<TDim>;
 /// Partial information about a value.
 pub type ValueFact = GenericFactoid<Arc<Tensor>>;
 
-pub type IntFactoid = GenericFactoid<i32>;
+pub type IntFactoid = GenericFactoid<i64>;
 
 impl<T> Zero for GenericFactoid<T>
 where

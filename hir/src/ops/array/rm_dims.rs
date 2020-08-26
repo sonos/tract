@@ -40,7 +40,7 @@ impl Expansion for RmDims {
     ) -> InferenceResult {
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-        s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - self.axes.len() as i32)?;
+        s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - self.axes.len() as i64)?;
         s.given(&inputs[0].rank, move |s, rank| {
             for axis in &self.axes {
                 let axis = if *axis < 0 { axis + rank as isize } else { *axis } as usize;

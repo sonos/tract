@@ -15,7 +15,7 @@ pub struct Downsample {
 
 impl Downsample {
     pub(crate) fn transform_dim(&self, input_dim: &TDim) -> TDim {
-        (input_dim.clone() - self.modulo).div_ceil(self.stride.abs() as u32)
+        (input_dim.clone() - self.modulo).div_ceil(self.stride.abs() as _)
     }
 
     pub(crate) fn transform_fact(&self, input_fact: &TypedFact) -> TractResult<TypedFact> {
@@ -120,7 +120,7 @@ impl PulsedOp for Downsample {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape[self.axis] /= self.stride as usize;
-        fact.dim = fact.dim.div_ceil(self.stride as u32);
+        fact.dim = fact.dim.div_ceil(self.stride as _);
         Ok(tvec!(fact))
     }
 

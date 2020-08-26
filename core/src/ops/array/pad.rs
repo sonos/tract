@@ -242,11 +242,11 @@ impl PulsePadOpState {
         self.current_pos += op.pulse;
         let end_input = session
             .known_stream_len
-            .map(|s| op.end_input.eval(s as i32).unwrap() as usize)
+            .map(|s| op.end_input.eval(s as _).unwrap() as usize)
             .unwrap_or(std::usize::MAX);
         let after = session
             .known_stream_len
-            .map(|s| op.after.eval(s as i32).unwrap() as usize)
+            .map(|s| op.after.eval(s as _).unwrap() as usize)
             .unwrap_or(std::usize::MAX);
 
         if let PadMode::Edge = op.mode {

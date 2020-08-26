@@ -20,7 +20,7 @@ impl InferenceRulesOp for Downsample {
                     s.given(&inputs[0].shape[i], move |s, d| {
                         s.equals(
                             &outputs[0].shape[i],
-                            (d - self.modulo).div_ceil(self.stride as u32),
+                            (d - self.modulo).div_ceil(self.stride as u64),
                         )
                     })?
                 } else {

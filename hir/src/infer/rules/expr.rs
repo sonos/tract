@@ -54,7 +54,7 @@ impl_output!(DimFact, Dim, "TDim");
 // Converts back and forth between Wrapped and usize.
 impl Output for usize {
     fn into_wrapped(source: usize) -> Wrapped {
-        IntFactoid::into_wrapped((source as i32).into())
+        IntFactoid::into_wrapped((source as i64).into())
     }
 
     fn from_wrapped(wrapped: Wrapped) -> TractResult<usize> {
@@ -67,14 +67,14 @@ impl Output for usize {
     }
 }
 
-// Converts back and forth between Wrapped and i32.
-impl Output for i32 {
-    fn into_wrapped(source: i32) -> Wrapped {
+// Converts back and forth between Wrapped and i64.
+impl Output for i64 {
+    fn into_wrapped(source: i64) -> Wrapped {
         IntFactoid::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TractResult<i32> {
-        let message = format!("Tried to convert {:?} to a i32.", wrapped);
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<i64> {
+        let message = format!("Tried to convert {:?} to a i64.", wrapped);
 
         IntFactoid::from_wrapped(wrapped)?.concretize().ok_or(message.into())
     }
@@ -299,13 +299,13 @@ where
 }
 
 /// A scalar product between a constant and another expression.
-pub struct ScaledExp<T>(i32, Exp<T>)
+pub struct ScaledExp<T>(i64, Exp<T>)
 where
-    T: Factoid + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone;
+    T: Factoid + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone;
 
 impl<T> TExp<T> for ScaledExp<T>
 where
-    T: Factoid + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone,
+    T: Factoid + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
@@ -349,7 +349,7 @@ where
 
 impl<T> fmt::Debug for ScaledExp<T>
 where
-    T: Factoid + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone,
+    T: Factoid + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}*{{{:?}}}", self.0, self.1)
@@ -439,7 +439,7 @@ impl<'a> IntoExp<IntFactoid> for &'a ElementProxy {
     }
 }
 
-impl IntoExp<IntFactoid> for i32 {
+impl IntoExp<IntFactoid> for i64 {
     fn bex(self) -> Exp<IntFactoid> {
         ConstantExp(self.into()).bex()
     }
@@ -459,7 +459,7 @@ impl<IE: IntoExp<IntFactoid>> Sub<IE> for Exp<IntFactoid> {
     }
 }
 
-impl Mul<Exp<IntFactoid>> for i32 {
+impl Mul<Exp<IntFactoid>> for i64 {
     type Output = Exp<IntFactoid>;
     fn mul(self, other: Exp<IntFactoid>) -> Exp<IntFactoid> {
         ScaledExp(self, other).bex()
@@ -500,7 +500,7 @@ impl<IE: IntoExp<DimFact>> Sub<IE> for Exp<DimFact> {
     }
 }
 
-impl Mul<Exp<DimFact>> for i32 {
+impl Mul<Exp<DimFact>> for i64 {
     type Output = Exp<DimFact>;
     fn mul(self, other: Exp<DimFact>) -> Exp<DimFact> {
         ScaledExp(self, other).bex()

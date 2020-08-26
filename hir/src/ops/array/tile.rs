@@ -25,7 +25,7 @@ impl Expansion for Tile {
         s.equals(&inputs[1].rank, 1)?;
         s.equals(&inputs[1].shape[0], inputs[0].rank.bex().to_dim())?;
         s.given(&inputs[1].value, move |s, mult| {
-            for (ix, &m) in mult.cast_to::<i32>()?.as_slice::<i32>()?.iter().enumerate() {
+            for (ix, &m) in mult.cast_to::<i64>()?.as_slice::<i64>()?.iter().enumerate() {
                 s.equals(m * inputs[0].shape[ix].bex(), &outputs[0].shape[ix])?;
             }
             Ok(())
