@@ -1,8 +1,21 @@
 use crate::internal::*;
 use crate::model::translator::Translate;
 use std::fmt;
+use crate::dim::Symbol;
 
 pub mod delay;
+
+lazy_static::lazy_static! {
+    static ref S: Symbol = crate::dim::Symbol::new('S');
+}
+
+pub fn stream_symbol() -> Symbol {
+    *S
+}
+
+pub fn stream_dim() -> TDim {
+    (*S).into()
+}
 
 #[derive(Clone, PartialEq, Hash)]
 pub struct PulsedFact {

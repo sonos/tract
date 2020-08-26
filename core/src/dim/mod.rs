@@ -4,7 +4,7 @@ use std::ops;
 
 mod tree;
 
-pub use self::tree::TDim;
+pub use self::tree::{Symbol, TDim};
 use crate::{TractError, TractResult};
 
 /// A super-trait for value acting as tensor dimensions in tract.
