@@ -226,12 +226,12 @@ impl Expansion for Conv {
         let has_n = self.data_format == DataFormat::NHWC || self.data_format == DataFormat::NCHW;
         let k_input = &inputs[self.k_input.unwrap_or(1)];
         if let Some(kshape) = &self.kernel_shape {
-            s.equals(&k_input.rank, kshape.len() as i32 + 2)?;
+            s.equals(&k_input.rank, kshape.len() as i64 + 2)?;
             for (ix, dim) in kshape.iter().enumerate() {
-                s.equals(&k_input.shape[ix + self.kernel_fmt.h_axis()], TDim::from(*dim as i32))?;
+                s.equals(&k_input.shape[ix + self.kernel_fmt.h_axis()], TDim::from(*dim as i64))?;
             }
         }
-        s.equals(&inputs[0].rank, k_input.rank.bex() + (has_n as usize as i32 - 1))?;
+        s.equals(&inputs[0].rank, k_input.rank.bex() + (has_n as usize as i64 - 1))?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &k_input.datum_type)?;
@@ -262,7 +262,7 @@ impl Expansion for Conv {
                 KernelFormat::OIHW => &k_input.shape[1],
                 KernelFormat::HWIO => &k_input.shape[krank as usize - 2],
             };
-            s.equals(input_c.bex(), self.group.unwrap_or(1) as i32 * filter_i.bex())
+            s.equals(input_c.bex(), self.group.unwrap_or(1) as i64 * filter_i.bex())
         })?;
         s.given_2(&inputs[0].shape, &k_input.shape, move |s, ishape, kshape| {
             if kshape.iter().all(|d| d.to_integer().is_ok()) {

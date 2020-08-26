@@ -206,14 +206,14 @@ fn rules<'r, 'p: 'r>(
     s.given(&block_shape.value, move |s, block_shape| {
         let block_shape = block_shape.into_tensor().into_array::<i32>()?;
         let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
-        s.equals(&batch.shape[0], (block_shape_prod as i32) * space.shape[0].bex())?;
+        s.equals(&batch.shape[0], (block_shape_prod as i64) * space.shape[0].bex())?;
         s.given(&paddings.value, move |s, paddings| {
             let paddings = paddings.cast_to::<TDim>()?;
             let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality()?;
             for d in 0..block_shape.len() {
                 s.equals(
                     space.shape[1 + d].bex() + &paddings[(d, 0)] + &paddings[(d, 1)],
-                    (block_shape[d] as i32) * batch.shape[1 + d].bex(),
+                    (block_shape[d] as i64) * batch.shape[1 + d].bex(),
                 )?;
             }
             Ok(())
@@ -221,7 +221,7 @@ fn rules<'r, 'p: 'r>(
     })?;
     s.given(&block_shape.value, move |s, block_shape| {
         let block_shape = block_shape.into_tensor().into_array::<i32>()?;
-        s.given(&space.rank, move |s, rank: i32| {
+        s.given(&space.rank, move |s, rank: i64| {
             for d in block_shape.len() + 1..(rank as usize) {
                 s.equals(&space.shape[d], &batch.shape[d])?
             }

@@ -307,7 +307,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
         None => Ok(IntFactoid::default().wrap()),
         Some(tensor) => {
             let path = path.iter().map(|i| *i as usize).collect::<TVec<usize>>();
-            Ok(tensor.cast_to::<i32>()?.to_array_view::<i32>()?[&*path].wrap())
+            Ok(tensor.cast_to::<i64>()?.to_array_view::<i64>()?[&*path].wrap())
         }
     };
     trace!("returns: {:?}", returns);

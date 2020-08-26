@@ -431,7 +431,7 @@ impl OpState for PulsedSameAxisConcatState {
             pre_offset
         ))?;
         if let Some(l) = session.known_stream_len {
-            let input_length = op.input_len.eval(l as i32).unwrap() as usize;
+            let input_length = op.input_len.eval(l as _).unwrap() as usize;
             let post_offset = op.input_delay + input_length;
             dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
                 op.axis,

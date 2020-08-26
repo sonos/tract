@@ -19,7 +19,9 @@ impl<D: DimLike + ToDim + Hash> Slice<D> {
         let mut input = input.to_array_view_unchecked::<T>();
         input.slice_axis_inplace(
             Axis(self.axis),
-            ::ndarray::Slice::from((self.start.to_integer()?)..(self.end.to_integer()?)),
+            ::ndarray::Slice::from(
+                (self.start.to_integer()? as i32)..(self.end.to_integer()? as i32),
+            ),
         );
         Ok(Tensor::from(input.to_owned()).into())
     }

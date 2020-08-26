@@ -49,8 +49,8 @@ impl Expansion for Slice1 {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 1)?;
         if self.axes.is_none() {
-            s.equals(&inputs[0].rank, self.starts.len() as i32)?;
-            s.equals(&inputs[0].rank, self.ends.len() as i32)?;
+            s.equals(&inputs[0].rank, self.starts.len() as i64)?;
+            s.equals(&inputs[0].rank, self.ends.len() as i64)?;
         }
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
@@ -68,10 +68,10 @@ impl Expansion for Slice1 {
                 };
                 if let Some((mut b, mut e)) = spec {
                     if let Ok(d) = d.to_integer() {
-                        if b as i32 > d {
+                        if b as i64 > d {
                             b = (d as isize).into();
                         }
-                        if e as i32 > d {
+                        if e as i64 > d {
                             e = (d as isize).into();
                         }
                     }

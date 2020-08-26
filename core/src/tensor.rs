@@ -517,8 +517,8 @@ impl Tensor {
             }
             if self.dt == TDim::datum_type() && (dt.is_integer() || dt.is_float()) {
                 let slice = self.as_slice_unchecked::<TDim>();
-                let mut ints = Self::uninitialized::<i32>(&self.shape)?;
-                let ints_slice = ints.as_slice_mut_unchecked::<i32>();
+                let mut ints = Self::uninitialized::<i64>(&self.shape)?;
+                let ints_slice = ints.as_slice_mut_unchecked::<i64>();
                 for i in 0..self.len() {
                     ints_slice[i] = slice[i].to_integer()?;
                 }

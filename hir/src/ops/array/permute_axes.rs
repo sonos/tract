@@ -56,7 +56,7 @@ impl Expansion for PermuteAxes {
             s.equals(&outputs[0].shape, output_shape)
         })?;
         if let Some(axes) = &self.axes {
-            s.equals(&outputs[0].rank, axes.len() as i32)?;
+            s.equals(&outputs[0].rank, axes.len() as i64)?;
         }
         Ok(())
     }

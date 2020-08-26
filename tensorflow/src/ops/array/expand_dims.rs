@@ -35,7 +35,7 @@ impl Expansion for ExpandDims {
         s.equals(&data.datum_type, &output.datum_type)?;
         s.equals(data.rank.bex() + 1, &output.rank)?;
         s.given_2(&dims.value, &data.rank, move |s, index, rank| {
-            let mut index = *(index.to_scalar::<i32>()?);
+            let mut index = index.cast_to_scalar::<i64>()?;
             if index < 0 {
                 index += rank + 1
             }
@@ -45,7 +45,7 @@ impl Expansion for ExpandDims {
                 s.equals(&output.shape[i], &data.shape[i])?;
             }
 
-            s.equals(output.shape[index].bex(), 1i32.to_dim().bex())?;
+            s.equals(output.shape[index].bex(), 1i64.to_dim().bex())?;
 
             s.given(&data.rank, move |s, rank| {
                 for i in index..(rank as usize) {
@@ -64,12 +64,12 @@ impl Expansion for ExpandDims {
     ) -> TractResult<TVec<OutletId>> {
         if let Some(ref axes) = target.outlet_fact(inputs[1])?.konst {
             let mut axes = axes
-                .cast_to::<i64>()?
-                .as_slice::<i64>()?
+                .cast_to::<i32>()?
+                .as_slice::<i32>()?
                 .iter()
                 .map(|&axis| {
                     Ok(if axis < 0 {
-                        axis + target.outlet_fact(inputs[0])?.shape.rank() as i64
+                        axis + target.outlet_fact(inputs[0])?.shape.rank() as i32
                     } else {
                         axis
                     })
