@@ -31,6 +31,7 @@ serde = { "version" = "1.0", optional = true }
 serde_derive = { "version" = "1.0", optional = true }
 smallvec = "1"
 tract-linalg = { path = "../linalg" }
+lazy_static = "1.4.0"
 
 [features]
 default = [ ]

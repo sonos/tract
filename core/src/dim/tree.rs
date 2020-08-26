@@ -422,6 +422,12 @@ impl From<Symbol> for TDim {
     }
 }
 
+impl<'a> From<&'a Symbol> for TDim {
+    fn from(it: &'a Symbol) -> Self {
+        TDim::Sym(*it)
+    }
+}
+
 impl ops::Neg for TDim {
     type Output = Self;
     fn neg(self) -> Self {
