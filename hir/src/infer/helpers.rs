@@ -40,7 +40,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFactoid]) -> TractResult<Option<
 
         for shape in shapes.iter() {
             let rank = shape.rank().concretize().unwrap() as usize;
-            let shape: TVec<DimFact> = shape.dims().collect();
+            let shape: TVec<DimFact> = shape.dims().cloned().collect();
             if i >= rank {
                 continue;
             }

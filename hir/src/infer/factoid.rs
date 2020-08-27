@@ -147,44 +147,46 @@ pub type TypeFactoid = GenericFactoid<DatumType>;
 #[derive(Clone, PartialEq, Hash)]
 pub struct ShapeFactoid {
     pub(super) open: bool,
-    pub(super) dims: TVec<GenericFactoid<i64>>,
-    pub(super) stream: Option<StreamFact>,
+    pub(super) dims: TVec<GenericFactoid<TDim>>,
 }
 
 impl ShapeFactoid {
     /// Constructs an open shape fact.
     pub fn open(dims: TVec<DimFact>) -> ShapeFactoid {
+        ShapeFactoid { open: true, dims }
+        /*
         if let Some((ix, d)) = dims
-            .iter()
-            .enumerate()
-            .find(|(_ix, d)| d.concretize().map(|d| d.is_stream()).unwrap_or(false))
+        .iter()
+        .enumerate()
+        .find(|(_ix, d)| d.concretize().map(|d| d.is_stream()).unwrap_or(false))
         {
-            let stream = Some(StreamFact { axis: ix, len: d.concretize().unwrap() });
-            ShapeFactoid {
-                open: true,
-                dims: dims
-                    .iter()
-                    .map(|d| match d {
-                        GenericFactoid::Only(d) if d.is_stream() => GenericFactoid::Only(-1),
-                        GenericFactoid::Only(d) => GenericFactoid::Only(d.to_integer().unwrap()),
-                        GenericFactoid::Any => GenericFactoid::Any,
-                    })
-                    .collect(),
-                stream,
-            }
-        } else {
-            ShapeFactoid {
-                open: true,
-                dims: dims
-                    .iter()
-                    .map(|d| match d {
-                        GenericFactoid::Only(d) => GenericFactoid::Only(d.to_integer().unwrap()),
-                        GenericFactoid::Any => GenericFactoid::Any,
-                    })
-                    .collect(),
-                stream: None,
-            }
+        let stream = Some(StreamFact { axis: ix, len: d.concretize().unwrap() });
+        ShapeFactoid {
+        open: true,
+        dims: dims
+        .iter()
+        .map(|d| match d {
+        GenericFactoid::Only(d) if d.is_stream() => GenericFactoid::Only(-1),
+        GenericFactoid::Only(d) => GenericFactoid::Only(d.to_integer().unwrap()),
+        GenericFactoid::Any => GenericFactoid::Any,
+        })
+        .collect(),
+        stream,
         }
+        } else {
+        ShapeFactoid {
+        open: true,
+        dims: dims
+        .iter()
+        .map(|d| match d {
+        GenericFactoid::Only(d) => GenericFactoid::Only(d.to_integer().unwrap()),
+        GenericFactoid::Any => GenericFactoid::Any,
+        })
+        .collect(),
+        stream: None,
+        }
+        }
+        */
     }
 
     pub fn is_open(&self) -> bool {
@@ -193,7 +195,7 @@ impl ShapeFactoid {
 
     /// Constructs a closed shape fact.
     pub fn closed(dims: TVec<DimFact>) -> ShapeFactoid {
-        ShapeFactoid { open: false, ..Self::open(dims) }
+        ShapeFactoid { open: false, dims }
     }
 
     pub fn rank(&self) -> IntFactoid {
@@ -211,7 +213,7 @@ impl ShapeFactoid {
     }
 
     pub fn dim(&self, i: usize) -> Option<DimFact> {
-        self.dims().nth(i)
+        self.dims().nth(i).cloned()
     }
 
     pub fn set_dim(&mut self, i: usize, d: TDim) -> bool {
@@ -219,48 +221,36 @@ impl ShapeFactoid {
         if self.dim(i).as_ref() == Some(&fact) {
             return false;
         }
-        match d.to_integer() {
-            Ok(n) => self.dims[i] = GenericFactoid::Only(n),
-            Err(_) => {
-                self.dims[i] = GenericFactoid::Only(-1);
-                self.stream = Some(StreamFact { axis: i, len: d })
-            }
-        }
+        self.dims[i] = GenericFactoid::Only(d);
         return true;
     }
 
-    pub fn dims(&self) -> impl Iterator<Item = DimFact> {
-        let stream = self.stream.clone();
-        self.dims.clone().into_iter().map(move |d| match d {
-            GenericFactoid::Only(-1) => {
-                assert!(stream.is_some(), "-1 dim found with no stream. This is a tract bug.");
-                GenericFactoid::Only(stream.as_ref().unwrap().len.clone())
-            }
-            GenericFactoid::Only(d) => GenericFactoid::Only(d.to_dim()),
-            GenericFactoid::Any => GenericFactoid::Any,
-        })
+    pub fn dims(&self) -> impl Iterator<Item = &DimFact> {
+        self.dims.iter()
     }
 
+    /*
     pub fn stream_info(&self) -> TractResult<Option<StreamFact>> {
-        let concrete = self
-            .concretize()
-            .ok_or("Shape has unknown dims, can not find streaming dim for sure.")?;
-        let count = concrete.iter().filter(|&d| d.is_stream()).count();
-        if count > 1 {
-            bail!("Shape has more than one streaming dim. This is terribly wrong.")
-        }
-        Ok(concrete
-            .into_iter()
-            .enumerate()
-            .find(|(_, d)| d.is_stream())
-            .map(|(axis, len)| StreamFact { axis, len }))
+    let concrete = self
+    .concretize()
+    .ok_or("Shape has unknown dims, can not find streaming dim for sure.")?;
+    let count = concrete.iter().filter(|&d| d.is_stream()).count();
+    if count > 1 {
+    bail!("Shape has more than one streaming dim. This is terribly wrong.")
     }
+    Ok(concrete
+    .into_iter()
+    .enumerate()
+    .find(|(_, d)| d.is_stream())
+    .map(|(axis, len)| StreamFact { axis, len }))
+    }
+    */
 
     pub fn as_concrete_finite(&self) -> TractResult<Option<TVec<usize>>> {
-        if !self.is_concrete() || self.stream_info()?.is_some() {
+        if self.open {
             return Ok(None);
         }
-        Ok(Some(self.dims.iter().map(|i| i.concretize().unwrap() as usize).collect()))
+        Ok(self.dims.iter().map(|d| d.concretize().and_then(|d| d.to_usize().ok())).collect())
     }
 }
 
@@ -296,8 +286,8 @@ impl Factoid for ShapeFactoid {
             .zip_longest(yi)
             .map(|r| match r {
                 Both(a, b) => a.unify(&b),
-                Left(ref d) if y.open => Ok(d.clone()),
-                Right(ref d) if x.open => Ok(d.clone()),
+                Left(d) if y.open => Ok(d.clone()),
+                Right(d) if x.open => Ok(d.clone()),
 
                 Left(_) | Right(_) => bail!(
                     "Impossible to unify closed shapes of different rank (found {:?} and {:?}).",
@@ -349,15 +339,7 @@ impl fmt::Debug for ShapeFactoid {
             if ix != 0 {
                 write!(formatter, "x")?
             }
-            if let Some(ref stream) = self.stream {
-                if stream.axis == ix {
-                    write!(formatter, "{}", stream.len)?;
-                } else {
-                    write!(formatter, "{:?}", d)?;
-                }
-            } else {
-                write!(formatter, "{:?}", d)?;
-            }
+            write!(formatter, "{:?}", d)?;
         }
         if self.open {
             if self.dims.len() == 0 {

@@ -713,7 +713,7 @@ impl TypedOp for ConvUnary {
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
                 } else if should_use_direct(
-                    &self.pool_spec.data_format.shape(shape.into())?,
+                    &self.pool_spec.data_format.shape(shape.to_owned())?,
                     &self.pool_spec,
                     self.group,
                 ) {

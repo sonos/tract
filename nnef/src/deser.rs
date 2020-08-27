@@ -381,7 +381,7 @@ impl CoerceFrom<Value> for OutletId {
 impl CoerceFrom<Value> for i64 {
     fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
-            Value::Dim(d) => d.to_integer().map(|d| d as _),
+            Value::Dim(d) => d.to_i64(),
             _ => bail!("Can not build a i64 from {:?}", from),
         }
     }

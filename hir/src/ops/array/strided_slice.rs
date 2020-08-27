@@ -24,7 +24,7 @@ struct Dim {
 
 impl Dim {
     fn soft_len(&self) -> TractResult<TDim> {
-        if let Ok(len) = (self.end.clone() - &self.begin).to_integer() {
+        if let Ok(len) = (self.end.clone() - &self.begin).to_isize() {
             Ok((((self.stride.abs() as i32 - 1) + len.abs() as i32) / self.stride.abs()).to_dim())
         } else if self.stride == 1 {
             Ok(self.end.clone() - &self.begin)
@@ -79,10 +79,18 @@ impl StridedSlice {
 
         // deal with negative indexing
         fn fix_negative(bound: &mut TDim, dim: &TDim) {
-            let neg = if let Some(b) = bound.as_const() {
+            let neg = if let Ok(b) = bound.to_isize() {
                 b < 0
             } else {
-                bound.eval(100_000_000).unwrap() < 0
+                dbg!(&bound);
+                dbg!(&bound);
+                let symbols = bound.symbols();
+                if symbols.len() == 1 {
+                    bound.eval(&hashmap!(symbols.into_iter().nth(0).unwrap() => 100_000_000)).to_isize().unwrap() < 0
+                } else {
+                    false
+                }
+                //                bound.eval(100_000_000).unwrap() < 0
             };
             if neg {
                 *bound = bound.clone() + dim;
@@ -111,14 +119,14 @@ impl StridedSlice {
 
         let mut begin =
             begin.unwrap_or_else(|| if stride > 0 { 0.to_dim() } else { dim.clone() - 1 });
-        if begin.as_const().map(|b| b < 0).unwrap_or(false) {
+        if begin.to_isize().map(|b| b < 0).unwrap_or(false) {
             if stride < 0 {
                 return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
             } else {
                 begin = 0.to_dim();
             }
         }
-        if let (Some(b), Some(d)) = (begin.as_const(), dim.as_const()) {
+        if let (Ok(b), Ok(d)) = (begin.to_isize(), dim.to_isize()) {
             if b > d - 1 {
                 if stride > 0 {
                     return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
@@ -129,14 +137,14 @@ impl StridedSlice {
         }
 
         let mut end = end.unwrap_or_else(|| if stride > 0 { dim.clone() } else { (-1).to_dim() });
-        if end.as_const().map(|e| e < 0).unwrap_or(false) {
+        if end.to_isize().map(|e| e < 0).unwrap_or(false) {
             if stride > 0 {
                 return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
             } else {
                 end = -1.to_dim();
             }
         }
-        if let (Some(e), Some(d)) = (end.as_const(), dim.as_const()) {
+        if let (Ok(e), Ok(d)) = (end.to_isize(), dim.to_isize()) {
             if e > d - 1 {
                 if stride > 0 {
                     end = d.to_dim()
@@ -198,9 +206,10 @@ impl Expansion for StridedSlice {
                     (0..input_shape.len()).collect()
                 };
                 let mut output_shape = input_shape.clone();
-                let mut shrink = vec!();
+                let mut shrink = vec![];
                 for (ix, axis) in axes.into_iter().enumerate() {
-                    let preped = self.prepare_one_dim(ix, &input_shape[axis], begin, end, &strides)?;
+                    let preped =
+                        self.prepare_one_dim(ix, &input_shape[axis], begin, end, &strides)?;
                     output_shape[axis] = preped.soft_len()?;
                     if preped.shrink {
                         shrink.push(axis);
@@ -300,6 +309,10 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use tract_ndarray::{arr1, arr2, arr3};
+
+    fn s() -> TDim {
+        tract_core::pulse::stream_dim()
+    }
 
     pub fn strided_slice(begin_mask: i64, end_mask: i64, shrink_axis_mask: i64) -> StridedSlice {
         StridedSlice {
@@ -541,8 +554,7 @@ mod tests {
     #[test]
     fn inference_3() {
         let op = strided_slice(5, 7, 0);
-        let input =
-            InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 2), 16));
+        let input = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 2), 16));
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
         let end = InferenceFact::from(tensor1(&[0i32, 0, 0]));
         let strides = InferenceFact::from(tensor1(&[1i32, 1, 1]));
@@ -554,18 +566,14 @@ mod tests {
 
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::dt_shape(
-                DatumType::F32,
-                shapefactoid!(1, (TDim::stream() - 4), 16)
-            )]
+            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 4), 16))]
         );
     }
 
     #[test]
     fn inference_4() {
         let op = strided_slice(5, 7, 0);
-        let input =
-            InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::stream() - 2), 16));
+        let input = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 2), 16));
         let begin = InferenceFact::from(tensor1(&[0i32, 2, 0]));
         let end = InferenceFact::from(tensor1(&[0i32, 0, 0]));
         let strides = InferenceFact::from(tensor1(&[1i32, 1, 1]));
@@ -577,10 +585,7 @@ mod tests {
 
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::dt_shape(
-                DatumType::F32,
-                shapefactoid!(1, (TDim::stream() - 4), 16)
-            )]
+            tvec![InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 4), 16))]
         );
     }
 

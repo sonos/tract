@@ -37,7 +37,7 @@ impl Expansion for DepthwiseConv2d {
         s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
+        ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].rank, 4)?;
@@ -49,17 +49,15 @@ impl Expansion for DepthwiseConv2d {
             let img = self.data_format.shape(img)?;
             s.equals(&inputs[1].shape[2], &inputs[0].shape[img.c_axis()])?;
             s.equals(&outputs[0].shape[img.n_axis().unwrap()], img.n_dim().unwrap())?;
-            if ker.iter().all(|d| d.to_integer().is_ok()) {
-                let ker: TVec<usize> =
-                    ker.iter().map(|d| d.to_integer().unwrap() as usize).collect();
+            if let Ok(ker) = ker.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>() {
                 let output_shape = self.padding.compute(
                     img.hw_dims(),
                     &ker[0..2],
                     &self.dilations[img.hw_axes()],
                     &self.strides[img.hw_axes()],
-                );
-                let in_channels = ker[2].to_integer()?;
-                let multiplier = ker[3].to_integer()?;
+                    );
+                let in_channels = ker[2].to_usize()?;
+                let multiplier = ker[3].to_usize()?;
                 s.equals(&outputs[0].shape[img.h_axis()], &output_shape[0].output)?;
                 s.equals(&outputs[0].shape[img.h_axis() + 1], &output_shape[1].output)?;
                 s.equals(&outputs[0].shape[img.c_axis()], (in_channels * multiplier).to_dim())?;
@@ -74,7 +72,7 @@ impl Expansion for DepthwiseConv2d {
         prefix: &str,
         model: &mut TypedModel,
         inputs: &[OutletId],
-    ) -> TractResult<TVec<OutletId>> {
+        ) -> TractResult<TVec<OutletId>> {
         let input = model.outlet_fact(inputs[0])?;
         let kernel = model.outlet_fact(inputs[1])?;
         let input_shape = input.shape.to_tvec();

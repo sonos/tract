@@ -12,7 +12,7 @@ pub fn source(
         Ok(Some(invocation(
             "external",
             &[],
-            &[("shape", ints(op.fact.shape.as_finite().unwrap()))],
+            &[("shape", ints(&*op.fact.shape.as_finite().unwrap()))],
         )))
     } else {
         Ok(None)
@@ -53,8 +53,8 @@ pub fn slice<D: DimLike>(
     op: &ops::array::Slice<D>,
 ) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
-    let start = op.start.to_integer()? as usize;
-    let end = op.end.to_integer()? as usize;
+    let start = op.start.to_usize()?;
+    let end = op.end.to_usize()?;
     Ok(Some(invocation(
         "slice",
         &[wire],
@@ -175,10 +175,9 @@ pub fn conv(
         .data_format
         .shape(&ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec())?
         .c()
-        .to_integer()? as usize;
+        .to_usize()?;
     let co =
-        op.pool_spec.data_format.shape(&node.outputs[0].fact.shape.to_tvec())?.c().to_integer()?
-            as usize;
+        op.pool_spec.data_format.shape(&node.outputs[0].fact.shape.to_tvec())?.c().to_usize()?;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
     let mut kernel_shape = tvec!(co, ci / op.group);
     kernel_shape.extend(op.pool_spec.kernel_shape.iter().copied());
@@ -349,7 +348,7 @@ pub fn axis_op(
             &[
                 (
                     "shape",
-                    ints(&*to.iter().map(|d| d.to_integer().unwrap() as usize).collect::<Vec<_>>()),
+                    ints(&*to.iter().map(|d| d.to_usize().unwrap()).collect::<Vec<_>>()),
                 ),
                 ("axis_start", numeric(start)),
                 ("axis_count", numeric(from.len())),

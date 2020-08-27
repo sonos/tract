@@ -47,7 +47,19 @@ pub trait DimLike:
     }
 
     /// Convert to regular integer.
-    fn to_integer(&self) -> TractResult<i64>;
+    fn to_i64(&self) -> TractResult<i64>;
+
+    fn to_usize(&self) -> TractResult<usize> {
+        self.to_i64().map(|d| d as usize)
+    }
+
+    fn to_isize(&self) -> TractResult<isize> {
+        self.to_i64().map(|d| d as isize)
+    }
+
+    fn to_i32(&self) -> TractResult<i32> {
+        self.to_i64().map(|d| d as i32)
+    }
 
     /// do not use num_traits::Mul as it implies a regular Mul
     fn one() -> Self;
@@ -64,39 +76,50 @@ impl DimLike for TDim {
         } else if other.is_zero() {
             bail!("Division by zero")
         }
-        let quotient = match (self.to_integer(), other.to_integer()) {
+        let quotient = match (self.to_i64(), other.to_i64()) {
             (Ok(p), Ok(q)) => {
                 let (p, q) = tree::reduce_ratio(p, q);
-                (p.into(), q)
+                Some((p.into(), q))
             }
-            (_, Ok(q)) => (self.clone() / q, 1),
+            (_, Ok(q)) => Some((self.clone() / q, 1)),
             (_, _) => {
-                let slope_p = self.slope();
-                let slope_q = other.slope();
-                let (p, q) =
-                    tree::reduce_ratio(slope_p.0 * slope_q.1 as i64, slope_q.0 * slope_p.1 as i64);
-                (p.into(), q)
+                if self.symbols().len() == 1 && other.symbols().len() == 1 {
+                    let sym = self.symbols().into_iter().nth(0).unwrap();
+                    dbg!(sym);
+                    let slope_p = self.slope(sym);
+                    let slope_q = other.slope(sym);
+                    dbg!(slope_p);
+                    dbg!(slope_q);
+                    let (p, q) = tree::reduce_ratio(
+                        slope_p.0 * slope_q.1 as i64,
+                        slope_q.0 * slope_p.1 as i64,
+                    );
+                    Some((p.into(), q))
+                } else {
+                    None
+                }
             }
         };
-        if self == &(other.clone().maybe_mul(&quotient.0).unwrap() / quotient.1) {
-            Ok(quotient)
-        } else {
-            bail!("Quotient is a non linear expression ({} / {})", self, other)
+        if let Some(quotient) = quotient {
+            if self == &(other.clone().maybe_mul(&quotient.0).unwrap() / quotient.1) {
+                return Ok(quotient);
+            }
         }
+        bail!("Quotient is a non linear expression ({} / {})", self, other)
     }
 
     fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
-        if let Ok(d) = other.to_integer() {
+        if let Ok(d) = other.to_i64() {
             Ok(self.clone() * d)
-        } else if let Ok(a) = self.to_integer() {
+        } else if let Ok(a) = self.to_i64() {
             Ok(other.clone() * a)
         } else {
             bail!("product with too many symbols")
         }
     }
 
-    fn to_integer(&self) -> TractResult<i64> {
-        TDim::to_integer(self)
+    fn to_i64(&self) -> TractResult<i64> {
+        TDim::to_i64(self)
     }
 
     fn one() -> Self {
@@ -104,7 +127,7 @@ impl DimLike for TDim {
     }
 
     fn concretize_stream_dim(&self, stream_dim: usize) -> Self {
-        self.eval(stream_dim as _).unwrap().to_dim()
+        self.eval(&hashmap! {crate::pulse::stream_symbol() => stream_dim as _})
     }
 }
 
@@ -126,7 +149,7 @@ impl DimLike for usize {
         Ok((self / gcd, (other / gcd) as u64))
     }
 
-    fn to_integer(&self) -> TractResult<i64> {
+    fn to_i64(&self) -> TractResult<i64> {
         Ok(*self as i64)
     }
 
@@ -142,7 +165,7 @@ impl DimLike for usize {
 impl<'a> std::convert::TryFrom<&'a TDim> for usize {
     type Error = crate::errors::TractError;
     fn try_from(d: &'a TDim) -> TractResult<usize> {
-        d.to_integer().map(|d| d as _)
+        d.to_usize()
     }
 }
 
@@ -172,6 +195,14 @@ impl<I: Into<TDim>> ToDim for I {
 mod tests {
     use super::*;
 
+    lazy_static::lazy_static! {
+        static ref S: Symbol = crate::dim::Symbol::new('S');
+    }
+
+    pub fn s() -> TDim {
+        (*S).into()
+    }
+
     #[test]
     fn div() {
         assert_eq!(TDim::from(12).maybe_div(&TDim::from(4)).unwrap(), (3.into(), 1));
@@ -179,21 +210,21 @@ mod tests {
 
     #[test]
     fn div_sym_int() {
-        assert_eq!((TDim::s() * 12).maybe_div(&TDim::from(4)).unwrap(), (TDim::s() * 3, 1));
+        assert_eq!((s() * 12).maybe_div(&TDim::from(4)).unwrap(), (s() * 3, 1));
     }
 
     #[test]
     fn div_sym_sym() {
-        assert_eq!((TDim::s() * 12).maybe_div(&(TDim::s() * 4)).unwrap(), (3.into(), 1));
+        assert_eq!((s() * 12).maybe_div(&(s() * 4)).unwrap(), (3.into(), 1));
     }
 
     #[test]
     fn div_sym_sym_ratio() {
-        assert_eq!((TDim::s() * 13).maybe_div(&(TDim::s() * 4)).unwrap(), (13.into(), 4));
+        assert_eq!((s() * 13).maybe_div(&(s() * 4)).unwrap(), (13.into(), 4));
     }
 
     #[test]
     fn div_sym_sym_rem() {
-        assert!((TDim::s() + 1).maybe_div(&(TDim::s() * 4)).is_err());
+        assert!((s() + 1).maybe_div(&(s() * 4)).is_err());
     }
 }

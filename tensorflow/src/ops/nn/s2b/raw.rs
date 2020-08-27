@@ -63,7 +63,7 @@ impl InferenceRulesOp for SpaceToBatch {
             let paddings_view = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
             let mut paddings = tvec![];
             for p in paddings_view.outer_iter() {
-                let pad = match (p[0].to_integer(), p[1].to_integer()) {
+                let pad = match (p[0].to_usize(), p[1].to_usize()) {
                     (Ok(bef), Ok(aft)) => {
                         super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
                     }
@@ -156,7 +156,7 @@ impl InferenceRulesOp for BatchToSpace {
             let paddings = paddings
                 .outer_iter()
                 .map(|p| {
-                    Ok(match (p[0].to_integer(), p[1].to_integer()) {
+                    Ok(match (p[0].to_usize(), p[1].to_usize()) {
                         (Ok(bef), Ok(aft)) => {
                             super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
                         }

@@ -265,9 +265,7 @@ impl Expansion for Conv {
             s.equals(input_c.bex(), self.group.unwrap_or(1) as i64 * filter_i.bex())
         })?;
         s.given_2(&inputs[0].shape, &k_input.shape, move |s, ishape, kshape| {
-            if kshape.iter().all(|d| d.to_integer().is_ok()) {
-                let kshape: TVec<usize> =
-                    kshape.iter().map(|d| d.to_integer().unwrap() as _).collect();
+            if let Some(kshape)  = kshape.iter().map(|d| d.to_usize().ok()).collect::<Option<TVec<_>>>() {
                 let oshape = self.output_shape(&*ishape, &*kshape)?;
                 s.equals(&outputs[0].shape, oshape)?;
             }

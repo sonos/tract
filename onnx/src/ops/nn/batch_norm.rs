@@ -95,7 +95,7 @@ impl Expansion for BatchNorm {
         {
             let x_shape = x.shape.to_tvec();
             let c_axis = self.data_format.shape(&x_shape)?.c_axis();
-            let c_dim = self.data_format.shape(&x_shape)?.c_dim().to_integer()? as usize;
+            let c_dim = self.data_format.shape(&x_shape)?.c_dim().to_usize()?;
 
             let (mut slope, mut inter) =
                 dispatch_floatlike!(Self::to_slope_and_inter(x.datum_type)(

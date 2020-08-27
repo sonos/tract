@@ -9,7 +9,7 @@ tract_linalg::impl_dyn_hash!(Flatten);
 
 impl Flatten {
     pub fn compute_shape<D: DimLike>(&self, shape: &[D]) -> TractResult<[D; 2]> {
-        if shape.iter().filter(|d| d.to_integer().is_err()).count() > 1 {
+        if shape.iter().filter(|d| d.to_usize().is_err()).count() > 1 {
             bail!("Can not compute a shape with square of symbols")
         }
         Ok([shape[..self.axis].iter().maybe_product()?, shape[self.axis..].iter().maybe_product()?])

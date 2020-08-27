@@ -4,6 +4,8 @@ extern crate derive_new;
 extern crate educe;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate maplit;
 
 #[macro_use]
 pub mod macros;

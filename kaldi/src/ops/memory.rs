@@ -123,8 +123,7 @@ fn incorporate_memory_ops_as_scans(
             let mem_node = model.node(mem);
             let op = mem_node.op_as::<Memory>().unwrap();
             let channel =
-                mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()?
-                    as usize;
+                mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_usize()?;
             let chunk = op.offset.abs();
             let id = inner_model.add_source(
                 &*mem_node.name,
@@ -152,8 +151,7 @@ fn incorporate_memory_ops_as_scans(
         for scan_input in &scan_inputs {
             let old_node = model.node(scan_input.node);
             let channel =
-                old_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()?
-                    as usize;
+                old_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_usize()?;
             let new_id = inner_model.add_source(
                 format!("{}-scan", old_node.name),
                 InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(_, channel)),
@@ -202,7 +200,7 @@ fn incorporate_memory_ops_as_scans(
         for (ix, scan_input) in scan_inputs.iter().enumerate() {
             let old_node = model.node(scan_input.node);
             let fact = inner_model.input_fact(coupled_mem_ops.len() + ix)?;
-            let chunk = fact.shape.dim(0).unwrap().concretize().unwrap().to_integer()? as isize;
+            let chunk = fact.shape.dim(0).unwrap().concretize().unwrap().to_isize()?;
             mapped_inputs.push(tract_hir::ops::scan::InputMapping::Scan {
                 axis: 0,
                 chunk,

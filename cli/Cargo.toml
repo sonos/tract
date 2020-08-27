@@ -24,6 +24,7 @@ env_logger = "0.7"
 error-chain = "0.12"
 lazy_static = "1.0"
 log = "0.4"
+maplit = "1"
 ndarray-npy = { version = "0.5", features = [ "compressed_npz" ] }
 pbr = "1.0"
 py_literal = "0.2"

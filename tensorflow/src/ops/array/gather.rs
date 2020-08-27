@@ -20,7 +20,7 @@ impl GatherNd {
         indices_shape: &[D],
     ) -> TractResult<TVec<D>> {
         let mut shape: TVec<D> = indices_shape.into();
-        let n = shape.pop().unwrap().to_integer()? as usize;
+        let n = shape.pop().unwrap().to_usize()?;
         shape.extend(data_shape[n..].iter().cloned());
         Ok(shape)
     }
@@ -95,7 +95,7 @@ impl InferenceRulesOp for GatherNd {
                 &inputs[1].shape[indices_rank - 1],
                 &inputs[1].rank,
                 move |s, n, input_rank| {
-                    if let Ok(n) = n.to_integer() {
+                    if let Ok(n) = n.to_i64() {
                         for i in 0..(input_rank - n) as usize {
                             s.equals(&outputs[0].shape[indices_rank - 1 + i], &inputs[1].shape[i])?;
                         }

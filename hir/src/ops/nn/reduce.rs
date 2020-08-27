@@ -30,8 +30,14 @@ impl Reducer {
         use tract_core::ops::math;
         use Reducer::*;
         match self {
-            ArgMax(last) => wire = target.wire_node(name, TReduce::new(axes, TReducer::ArgMax(*last)), &[wire])?[0],
-            ArgMin(last) => wire = target.wire_node(name, TReduce::new(axes, TReducer::ArgMin(*last)), &[wire])?[0],
+            ArgMax(last) => {
+                wire =
+                    target.wire_node(name, TReduce::new(axes, TReducer::ArgMax(*last)), &[wire])?[0]
+            }
+            ArgMin(last) => {
+                wire =
+                    target.wire_node(name, TReduce::new(axes, TReducer::ArgMin(*last)), &[wire])?[0]
+            }
             Max => wire = target.wire_node(name, TReduce::new(axes, TReducer::Max), &[wire])?[0],
             Min => wire = target.wire_node(name, TReduce::new(axes, TReducer::Min), &[wire])?[0],
             Sum => wire = target.wire_node(name, TReduce::new(axes, TReducer::Sum), &[wire])?[0],
@@ -86,8 +92,7 @@ impl Reducer {
                     TReduce::new(axes.clone(), TReducer::Sum),
                     &[wire],
                 )?[0];
-                let size =
-                    axes.iter().map(|ax| fact.shape.dim(*ax)).maybe_product()?.to_integer()? as f64;
+                let size = axes.iter().map(|ax| fact.shape.dim(*ax)).maybe_product()?.to_i64()?;
                 let size = tensor0(size)
                     .cast_to_dt(fact.datum_type)?
                     .into_owned()

@@ -67,12 +67,12 @@ impl Expansion for Slice1 {
                     Some((self.starts[axis].into(), self.ends[axis].into()))
                 };
                 if let Some((mut b, mut e)) = spec {
-                    if let Ok(d) = d.to_integer() {
-                        if b as i64 > d {
-                            b = (d as isize).into();
+                    if let Ok(d) = d.to_isize() {
+                        if b > d {
+                            b = d.into();
                         }
-                        if e as i64 > d {
-                            e = (d as isize).into();
+                        if e > d {
+                            e = d.into();
                         }
                     }
                     let b = if b < 0 { d.bex() + TDim::from(b) } else { TDim::from(b).bex() };
@@ -97,9 +97,9 @@ impl Expansion for Slice1 {
         for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
             let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
             let dim = input.shape.dim(axis);
-            if let Ok(dim) = dim.to_integer() {
-                let b = (if b >= 0 { b.min(dim as isize) } else { dim as isize + b }) as usize;
-                let e = (if e >= 0 { e.min(dim as isize) } else { dim as isize + e }) as usize;
+            if let Ok(dim) = dim.to_isize() {
+                let b = (if b >= 0 { b.min(dim) } else { dim + b }) as usize;
+                let e = (if e >= 0 { e.min(dim) } else { dim + e }) as usize;
                 if b > 0 || e < dim as usize {
                     wire = target.wire_node(
                         format!("{}.axis-{}", prefix, axis),

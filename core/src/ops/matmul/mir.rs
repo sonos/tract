@@ -583,7 +583,7 @@ impl TypedOp for MatMulUnary {
                 let offsets = concat
                     .offsets(&model.node_input_facts(concat_node.id)?)?
                     .iter()
-                    .map(|x| x.to_integer().map(|i| i as usize))
+                    .map(|x| x.to_usize())
                     .collect::<TractResult<Vec<usize>>>()?;
                 let mut wires = vec![];
                 for (ix, slice) in concat.slices.iter().enumerate() {
@@ -691,7 +691,7 @@ impl TypedOp for MatMulUnary {
                         model,
                         node,
                         self.a.clone(),
-                        b_shape,
+                        &b_shape,
                         self.a_trans,
                         self.b_trans,
                         self.c_trans,
@@ -708,7 +708,7 @@ impl TypedOp for MatMulUnary {
                         model,
                         node,
                         self.a.clone(),
-                        b_shape,
+                        &b_shape,
                         self.a_trans,
                         self.b_trans,
                         self.c_trans,
@@ -725,7 +725,7 @@ impl TypedOp for MatMulUnary {
                         model,
                         node,
                         self.a.clone(),
-                        b_shape,
+                        &b_shape,
                         self.a_trans,
                         self.b_trans,
                         self.c_trans,
@@ -755,15 +755,12 @@ impl PulsedOp for MatMulUnary {
             self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         fact.shape = compute_shapes(
             self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
-            inputs[0].shape.iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+            inputs[0].shape.to_owned(),
             self.a_trans,
             self.b_trans,
             self.c_trans,
         )?
-        .2
-        .iter()
-        .map(|d| d.to_integer().unwrap() as usize)
-        .collect::<TVec<_>>();
+        .2;
         Ok(tvec!(fact))
     }
 

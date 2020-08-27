@@ -201,7 +201,7 @@ impl OpState for State {
                 let scanning_dim = output
                     .full_dim_hint
                     .as_ref()
-                    .and_then(|d| d.to_integer().ok().map(|i| i as usize))
+                    .and_then(|d| d.to_usize().ok())
                     .unwrap_or(shape[output.axis] * iters);
                 shape[output.axis] = scanning_dim;
                 let t = dispatch_datum!(MutableState::alloc_output_t(fact.datum_type)(

@@ -1,20 +1,11 @@
-extern crate ansi_term;
-extern crate box_drawing;
-extern crate clap;
 #[macro_use]
 extern crate error_chain;
 #[macro_use]
 extern crate log;
-extern crate atty;
-extern crate env_logger;
-extern crate pbr;
+#[macro_use]
+extern crate maplit;
 #[macro_use]
 extern crate serde_derive;
-extern crate tract_core;
-#[cfg(feature = "onnx")]
-extern crate tract_onnx;
-#[cfg(feature = "tf")]
-extern crate tract_tensorflow;
 
 #[macro_use]
 mod macros;

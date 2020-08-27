@@ -207,10 +207,8 @@ fn rules_with_scales<'r, 'p: 'r, 's: 'r>(
         &inputs[0].shape,
         &inputs[op.optional_scales_input.unwrap()].value,
         move |s, input_shape, scales| {
-            let input_shape = input_shape
-                .iter()
-                .map(|d| d.to_integer().map(|d| d as usize))
-                .collect::<TractResult<TVec<usize>>>()?;
+            let input_shape =
+                input_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>()?;
             let output_size = op.compute_output_shape(&input_shape, Some(scales.as_ref()), None)?;
             let rank = input_shape.len();
             for i in 0..rank {
@@ -250,7 +248,7 @@ impl TypedOp for Resize {
         let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
         let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
         let output_shape = self.compute_output_shape(
-            input_shape,
+            &*input_shape,
             scales.and_then(|f| f.konst.as_deref()),
             sizes.and_then(|f| f.konst.as_deref()),
         )?;

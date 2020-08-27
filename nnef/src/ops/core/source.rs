@@ -13,7 +13,7 @@ fn external_dump(_ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
         "tract_core_external",
         &[],
         &[
-            ("shape", ints(op.fact.shape.as_finite().unwrap())),
+            ("shape", ints(&op.fact.shape.as_finite().unwrap())),
             ("datum_type", string(format!("{:?}", op.fact.datum_type))),
         ],
     )))

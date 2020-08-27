@@ -135,23 +135,23 @@ fn declutter_unary_mul_magic_values(
     node: &TypedNode,
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if a.cast_to::<f64>()?.as_slice::<f64>()?.iter().all(|v| *v == 1.0) {
-        if model.outlet_fact(node.inputs[0])? == &node.outputs[0].fact {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
-        }
-    } else if a.cast_to::<f64>()?.as_slice::<f64>()?.iter().all(|v| *v == 0.0) {
+    if a.is_uniform()?
+        && a.cast_to_scalar::<f64>()? == 1.0
+        && model.outlet_fact(node.inputs[0])? == &node.outputs[0].fact
+    {
+        return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+    } else if a.is_uniform()? && a.cast_to_scalar::<f64>()?.is_zero() {
         let fact = model.outlet_fact(node.inputs[0])?;
-        if let Some(shape) = fact.shape.as_finite() {
-            let zeros = Tensor::zero_dt(fact.datum_type, shape)?;
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &[],
-                crate::ops::konst::Const(zeros.into()),
-            )?));
-        }
+        let zero = Tensor::zero_dt(fact.datum_type, &[])?;
+        Ok(Some(TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &[],
+            crate::ops::array::ConstantOfShape::new(fact.shape.to_tvec(), zero.into_arc_tensor()),
+        )?))
+    } else {
+        Ok(None)
     }
-    Ok(None)
 }
 
 fn declutter_bin_div(

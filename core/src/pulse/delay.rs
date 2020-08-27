@@ -44,6 +44,11 @@ impl OpState for DelayState {
         output_shape[op.axis] = output_pulse;
         // build output
         unsafe {
+            if self.buffer.rank() == 0 {
+                let mut shape = input.shape().to_owned();
+                shape[op.axis] = buffered;
+                self.buffer = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
+            }
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &*output_shape)?;
             if op.delay < input_pulse {
                 let from_input = input_pulse - op.delay;
@@ -106,7 +111,7 @@ impl OpState for DelayState {
 #[derive(Clone, Debug, PartialEq, Hash)]
 pub struct Delay {
     pub datum_type: DatumType,
-    pub buffer_shape: TVec<usize>,
+    pub buffer_shape: TVec<TDim>,
     pub axis: usize,
     pub delay: usize,
     pub overlap: usize,
@@ -118,7 +123,7 @@ impl Delay {
     pub fn new(input_fact: &PulsedFact, delay: usize, overlap: usize) -> Delay {
         let axis = input_fact.axis;
         let mut buffer_shape = input_fact.shape.clone();
-        buffer_shape[axis] = delay + overlap;
+        buffer_shape[axis] = (delay + overlap).to_dim();
         Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap }
     }
 
@@ -128,9 +133,8 @@ impl Delay {
         delay: usize,
         overlap: usize,
     ) -> TractResult<Delay> {
-        let mut buffer_shape: TVec<usize> =
-            input_fact.shape.as_finite().ok_or("Expected finite dimensions")?.into();
-        buffer_shape[axis] = delay + overlap;
+        let mut buffer_shape: TVec<TDim> = input_fact.shape.iter().map(|d| d.clone()).collect();
+        buffer_shape[axis] = (delay + overlap).to_dim();
         Ok(Delay { datum_type: input_fact.datum_type, buffer_shape, axis, delay, overlap })
     }
 }
@@ -160,8 +164,7 @@ impl StatefullOp for Delay {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        let buffer = unsafe { Tensor::uninitialized_dt(self.datum_type, &*self.buffer_shape)? };
-        Ok(Some(Box::new(DelayState { buffer })))
+        Ok(Some(Box::new(DelayState { buffer: tensor0(0.0f32) })))
     }
 }
 
@@ -175,10 +178,7 @@ impl TypedOp for Delay {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        Ok(tvec!((
-            Cost::Buffer(self.datum_type),
-            self.buffer_shape.iter().product::<usize>().to_dim()
-        )))
+        Ok(tvec!((Cost::Buffer(self.datum_type), self.buffer_shape.iter().maybe_product()?)))
     }
 }
 
@@ -196,6 +196,7 @@ impl PulsedOp for Delay {
 
 #[cfg(test)]
 mod test {
+    use super::super::stream_dim;
     use super::*;
     use crate::*;
 
@@ -203,9 +204,9 @@ mod test {
         let mut model = PulsedModel::default();
         let fact1 = PulsedFact {
             datum_type: u8::datum_type(),
-            shape: tvec![pulse],
+            shape: tvec![pulse.to_dim()],
             axis: 0,
-            dim: TDim::s(),
+            dim: stream_dim(),
             delay: 0,
         };
         let source = model.add_source("source", fact1.clone()).unwrap();
@@ -248,13 +249,13 @@ mod test {
 
     #[test]
     fn test_two_delays() {
-        let pulse = 4;
+        let pulse = 4usize;
         let mut model = PulsedModel::default();
         let fact_0 = PulsedFact {
             datum_type: u8::datum_type(),
-            shape: tvec![pulse],
+            shape: tvec![pulse.to_dim()],
             axis: 0,
-            dim: TDim::s(),
+            dim: stream_dim(),
             delay: 0,
         };
         let source = model.add_source("source", fact_0.clone()).unwrap();

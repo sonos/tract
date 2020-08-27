@@ -9,7 +9,7 @@ use crate::model::{Fact, Graph, OutletId};
 #[derive(Clone, Debug, Default)]
 pub struct SessionState {
     pub inputs: HashMap<usize, Arc<Tensor>>,
-    pub known_stream_len: Option<usize>,
+    pub resolved_symbols: HashMap<Symbol, i64>,
     pub tensors: HashMap<String, Tensor>,
 }
 

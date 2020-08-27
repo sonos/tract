@@ -98,7 +98,7 @@ impl TypedOp for MaxPool {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(shape) = inputs[0].shape.as_finite() {
             let dt = inputs[0].datum_type;
-            let op = dispatch_floatlike!(MaxPool::to_fixed(dt)(self, shape))?;
+            let op = dispatch_floatlike!(MaxPool::to_fixed(dt)(self, &*shape))?;
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)

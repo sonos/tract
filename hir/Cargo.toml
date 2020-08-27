@@ -17,6 +17,7 @@ maintenance = { status = "actively-developed" }
 derive-new = "0.5"
 educe = "=0.4.11" # locked for rust 1.41.0
 log = "0.4"
+maplit = "1"
 tract-core = { path = "../core" }
 
 [dev-dependencies]

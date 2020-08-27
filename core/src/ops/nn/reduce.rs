@@ -231,7 +231,7 @@ impl PulsedOp for Reduce {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         for &ax in &self.axes {
-            fact.shape[ax] = 1;
+            fact.shape[ax] = 1.to_dim();
         }
         Ok(tvec!(fact))
     }

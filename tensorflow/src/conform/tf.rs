@@ -9,7 +9,7 @@ use tensorflow::Graph;
 use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 
-use tract_hir::prelude::*;
+use tract_hir::internal::*;
 use tract_ndarray::prelude::*;
 
 use std::collections::HashMap;
@@ -78,9 +78,8 @@ impl From<Tensor> for TensorHolder {
             DatumType::U64 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
             DatumType::TDim => {
                 let dims = m.to_array_view::<TDim>().unwrap();
-                if dims.iter().all(|d| d.to_integer().is_ok()) {
-                    let dims: ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
-                    TensorHolder::I32(Self::to_tensor(dims))
+                if let Ok(dims) = dims.iter().map(|d| d.to_i32()).collect::<TractResult<Vec<_>>>() {
+                    TensorHolder::I32(Self::to_tensor(arr1(&dims).into_dyn()))
                 } else {
                     panic!("Streaming used in tensorflow settings")
                 }

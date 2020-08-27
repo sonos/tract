@@ -37,7 +37,7 @@ impl StatelessOp for SpaceToBatchUnary {
         for (ax, &strat) in self.pad.iter().enumerate() {
             let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
                 - &self.space_shape[2 + ax])
-                .to_integer()? as usize;
+                .to_usize()?;
             let (bef, aft) = match strat {
                 PaddingStrat::FlexFixed(f) => (spread - f, f),
                 PaddingStrat::FixedFlex(f) => (f, spread - f),
@@ -126,7 +126,7 @@ impl StatelessOp for BatchToSpaceUnary {
         for (ax, &strat) in self.pad.iter().enumerate() {
             let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
                 - &self.space_shape[2 + ax])
-                .to_integer()? as usize;
+                .to_usize()?;
             let (bef, aft) = match strat {
                 PaddingStrat::FlexFixed(f) => (spread - f, f),
                 PaddingStrat::FixedFlex(f) => (f, spread - f),

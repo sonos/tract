@@ -211,8 +211,8 @@ impl LSTM {
         let x_fact = target.outlet_fact(inputs[0])?.clone();
         let r_fact = target.outlet_fact(inputs[2])?;
 
-        let b_size = x_fact.shape.dim(1).to_integer().unwrap() as usize;
-        let h_size = r_fact.shape.dim(2).to_integer().unwrap() as usize;
+        let b_size = x_fact.shape.dim(1).to_usize().unwrap();
+        let h_size = r_fact.shape.dim(2).to_usize().unwrap();
 
         let mut body = TypedModel::default();
         let mut outer_inputs = vec![];

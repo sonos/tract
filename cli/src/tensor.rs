@@ -69,11 +69,10 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 
     // We know there is at most one streaming dimension, so we can deduce the
     // missing value with a simple division.
-    let product: usize = shape.iter().map(|o| o.to_integer().unwrap_or(1) as usize).product();
+    let product: usize = shape.iter().map(|o| o.to_usize().unwrap_or(1)).product();
     let missing = values.len() / product;
 
-    let shape: Vec<_> =
-        shape.iter().map(|d| d.to_integer().map(|i| i as usize).unwrap_or(missing)).collect();
+    let shape: Vec<_> = shape.iter().map(|d| d.to_usize().unwrap_or(missing)).collect();
     dispatch_datum!(parse_values(proto.datum_type.concretize().unwrap())(&*shape, values))
 }
 
@@ -187,12 +186,17 @@ pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
 }
 
 pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
+    use tract_core::pulse::{stream_symbol, StreamFact};
+    let s = stream_symbol();
     if let Some(value) = &fact.konst {
         Ok(value.clone().into_tensor())
-    } else if fact.shape.stream_info.is_some() {
+    } else if fact.shape.stream_info().is_some() {
         if let Some(dim) = streaming_dim {
-            let shape =
-                fact.shape.iter().map(|d| d.eval(dim as _).unwrap() as usize).collect::<TVec<_>>();
+            let shape = fact
+                .shape
+                .iter()
+                .map(|d| d.eval(&hashmap!(s => dim as i64)).to_usize().unwrap())
+                .collect::<TVec<_>>();
             Ok(random(&shape, fact.datum_type))
         } else {
             bail!("random tensor requires a streaming dim")
