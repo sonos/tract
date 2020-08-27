@@ -372,7 +372,7 @@ impl TExp<DimFact> for IntoDimExp {
     /// Tries to set the value of the expression in the given context.
     fn set(&self, context: &mut Context, value: DimFact) -> TractResult<bool> {
         if let Some(concrete) = value.concretize() {
-            if let Ok(int) = concrete.to_integer() {
+            if let Ok(int) = concrete.to_i64() {
                 return self.0.set(context, GenericFactoid::Only(int));
             }
         }

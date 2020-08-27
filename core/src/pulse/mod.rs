@@ -1,7 +1,7 @@
+use crate::dim::Symbol;
 use crate::internal::*;
 use crate::model::translator::Translate;
 use std::fmt;
-use crate::dim::Symbol;
 
 pub mod delay;
 
@@ -17,10 +17,29 @@ pub fn stream_dim() -> TDim {
     (*S).into()
 }
 
+pub trait StreamFact {
+    fn stream_info(&self) -> Option<(usize, &TDim)>;
+}
+
+impl StreamFact for ShapeFact {
+    fn stream_info(&self) -> Option<(usize, &TDim)> {
+        let streaming_dims: TVec<(usize, &TDim)> = (&**self)
+            .iter()
+            .enumerate()
+            .filter(|(_ix, d)| d.symbols().contains(&stream_symbol()))
+            .collect();
+        if streaming_dims.len() != 1 {
+            None
+        } else {
+            Some(streaming_dims[0])
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Hash)]
 pub struct PulsedFact {
     pub datum_type: DatumType,
-    pub shape: TVec<usize>,
+    pub shape: TVec<TDim>,
     pub axis: usize,
     pub dim: TDim,
     pub delay: usize,
@@ -72,15 +91,17 @@ impl<'a> From<&'a Box<dyn PulsedOp>> for Box<dyn TypedOp> {
 impl PulsedFact {
     pub fn from_tensor_fact_pulse(tf: &TypedFact, pulse: usize) -> TractResult<PulsedFact> {
         let datum_type = tf.datum_type;
-        let stream =
-            tf.shape.stream_info.as_ref().ok_or("Can not pulse a tensor with no streaming dim")?;
-        let shape =
-            tf.shape.iter().map(|d| d.to_integer().map(|d| d as usize).unwrap_or(pulse)).collect();
-        Ok(PulsedFact { datum_type, shape, axis: stream.axis, dim: stream.len.clone(), delay: 0 })
+        let (axis, len) =
+            tf.shape.stream_info().ok_or("Can not pulse a tensor with no streaming dim")?;
+        let mut shape: TVec<TDim> = tf.shape.iter().collect();
+        shape[axis] = pulse.into();
+        Ok(PulsedFact { datum_type, shape, axis, dim: len.clone(), delay: 0 })
     }
 
     pub fn pulse(&self) -> usize {
         self.shape[self.axis]
+            .to_usize()
+            .expect("Pulse should be an integer. This is a tract bug.")
     }
 
     pub fn to_pulse_fact(&self) -> TypedFact {
@@ -91,13 +112,13 @@ impl PulsedFact {
         self.shape
             .iter()
             .enumerate()
-            .map(|(ix, &d)| if ix == self.axis { self.dim.clone() } else { d.to_dim() })
+            .map(|(ix, d)| if ix == self.axis { self.dim.clone() } else { d.clone() })
             .collect()
     }
 
     pub fn to_streaming_fact(&self) -> TypedFact {
         let mut info = self.to_pulse_fact();
-        info.shape.stream_info = Some(StreamFact { axis: self.axis, len: self.dim.clone() });
+        info.shape.set_dim(self.axis, self.dim.clone()).unwrap();
         info
     }
 }
@@ -124,7 +145,7 @@ impl PulsedModel {
                 .output_outlets()?
                 .iter()
                 .map(|oo| Ok(self.outlet_fact(*oo)?.delay as _))
-                .collect::<TractResult<TVec<i64>>>()?
+                .collect::<TractResult<TVec<i64>>>()?,
         );
         typed.properties.insert("pulse.delay".to_string(), delays.into_arc_tensor());
         Ok(typed)
@@ -205,7 +226,7 @@ mod tests {
                 "a",
                 TypedFact::dt_shape(
                     f32::datum_type(),
-                    [1.to_dim(), TDim::s(), 3.to_dim()].as_ref(),
+                    [1.to_dim(), stream_dim(), 3.to_dim()].as_ref(),
                 )
                 .unwrap(),
             )
@@ -226,7 +247,7 @@ mod tests {
                 "a",
                 TypedFact::dt_shape(
                     f32::datum_type(),
-                    [TDim::s(), 2.to_dim(), 3.to_dim()].as_ref(),
+                    [stream_dim(), 2.to_dim(), 3.to_dim()].as_ref(),
                 )
                 .unwrap(),
             )

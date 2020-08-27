@@ -43,46 +43,25 @@ impl fmt::Display for TDim {
 
 impl TDim {
     pub fn is_one(&self) -> bool {
-        self.as_const().map(|i| i == 1).unwrap_or(false)
+        self == &Val(1)
     }
 
-    /// The special value S, for streaming.
-    pub fn s() -> TDim {
-        TDim::Sym(Symbol('S', 0))
+    pub fn to_i64(&self) -> TractResult<i64> {
+        if let Val(v) = self {
+            Ok(*v)
+        } else {
+            bail!("Not a determined integer: {}", self)
+        }
     }
 
-    /// The special value S, for streaming.
-    pub fn stream() -> TDim {
-        Self::s()
-    }
-
-    /// Try to convert the value to an integer, if it does not contains S.
-    pub fn as_const(&self) -> Option<i64> {
-        self.to_integer().ok()
-    }
-
-    pub fn is_stream(&self) -> bool {
-        self.to_integer().is_err()
-    }
-
-    pub fn to_integer(&self) -> TractResult<i64> {
-        self.eval_with(&hashmap!())
-    }
-
-    pub fn eval(&self, s: i64) -> Option<i64> {
-        self.eval_with(&hashmap!(Symbol('S',0) => s)).ok()
-    }
-
-    fn eval_with(&self, values: &HashMap<Symbol, i64>) -> TractResult<i64> {
-        Ok(match self {
-            Sym(sym) => *values.get(&sym).ok_or(format!("Unresolved value {:?}", sym))?,
-            Val(v) => *v,
-            Add(terms) => terms.iter().try_fold(0i64, |acc, it| -> TractResult<i64> {
-                Ok(acc + it.eval_with(values)?)
-            })?,
-            Div(a, q) => a.eval_with(values)? / *q as i64,
-            Mul(p, a) => p * a.eval_with(values)?,
-        })
+    pub fn eval(&self, values: &HashMap<Symbol, i64>) -> TDim {
+        match self {
+            Sym(sym) => values.get(&sym).map(|s| Val(*s)).unwrap_or(Sym(*sym)),
+            Val(v) => Val(*v),
+            Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
+            Div(a, q) => a.eval(values) / *q as i64,
+            Mul(p, a) => a.eval(values) * *p,
+        }
     }
 
     pub fn reduce(self) -> TDim {
@@ -237,7 +216,17 @@ impl TDim {
                 } else if let Mul(-1, a) = a {
                     Mul(-1, b!(Div(a, q)))
                 } else if let Add(mut terms) = a {
-                    if terms.iter().any(|t| t == &Mul(-1, b!(Self::s()))) {
+                    if terms.iter().any(|t| {
+                        if let Mul(-1, s) = t {
+                            if let Sym(_) = &**s {
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    }) {
                         Mul(
                             -1,
                             b!(Div(
@@ -337,27 +326,40 @@ impl TDim {
         TDim::Div(Box::new(Add(vec![self, Val(rhs as i64 - 1)])), rhs).reduce()
     }
 
-    pub fn slope(&self) -> (i64, u64) {
-        fn slope_rec(d: &TDim) -> (i64, i64) {
+    pub fn slope(&self, sym: Symbol) -> (i64, u64) {
+        fn slope_rec(d: &TDim, sym: Symbol) -> (i64, i64) {
             match d {
                 Val(_) => (0, 1),
-                Sym(_) => (1, 1),
+                Sym(s) => ((sym == *s) as i64, 1),
                 Add(terms) => terms
                     .iter()
-                    .map(slope_rec)
+                    .map(|d| slope_rec(d, sym))
                     .fold((1, 1), |a, b| ((a.0 * b.1 + a.1 * b.0), (b.1 * a.1))),
                 Mul(p, a) => {
-                    let (n, d) = slope_rec(a);
+                    let (n, d) = slope_rec(a, sym);
                     (p * n, d)
                 }
                 Div(a, q) => {
-                    let (n, d) = slope_rec(a);
+                    let (n, d) = slope_rec(a, sym);
                     (n, d * *q as i64)
                 }
             }
         }
-        let (p, q) = slope_rec(self);
+        let (p, q) = slope_rec(self, sym);
         reduce_ratio(p, q)
+    }
+
+    pub fn symbols(&self) -> std::collections::HashSet<Symbol> {
+        match self {
+            Val(_) => hashset!(),
+            Sym(s) => hashset!(*s),
+            Add(terms) => terms.iter().fold(hashset!(), |mut set, v| {
+                set.extend(v.symbols().into_iter());
+                set
+            }),
+            Mul(_, a) => a.symbols(),
+            Div(a, _) => a.symbols(),
+        }
     }
 }
 
@@ -558,11 +560,11 @@ impl std::str::FromStr for TDim {
     type Err = std::num::ParseIntError;
     fn from_str(s: &str) -> Result<TDim, Self::Err> {
         if s == "S" {
-            Ok(TDim::s())
+            Ok(crate::pulse::stream_dim())
         } else if s.ends_with("S") {
             let number: String = s.chars().take_while(|c| c.is_digit(10)).collect();
             let number: i64 = number.parse::<i64>().map(|i| i.into())?;
-            Ok(TDim::s() * number)
+            Ok(crate::pulse::stream_dim() * number)
         } else {
             s.parse::<i64>().map(|i| i.into())
         }
@@ -575,8 +577,12 @@ mod tests {
 
     macro_rules! b( ($e:expr) => { Box::new($e) } );
 
+    lazy_static::lazy_static! {
+        static ref S: Symbol = crate::dim::Symbol::new('S');
+    }
+
     fn s() -> TDim {
-        TDim::Sym(Symbol('S', 0))
+        (*S).into()
     }
 
     fn neg(a: &TDim) -> TDim {
@@ -646,22 +652,22 @@ mod tests {
     #[test]
     fn const_and_add() {
         let e: TDim = 2i64.into();
-        assert_eq!(e.eval_with(&hashmap! {}).unwrap(), 2);
+        assert_eq!(e.eval(&hashmap! {}).to_i64().unwrap(), 2);
         let e: TDim = TDim::from(2) + 3;
-        assert_eq!(e.eval_with(&hashmap! {}).unwrap(), 5);
+        assert_eq!(e.eval(&hashmap! {}).to_i64().unwrap(), 5);
         let e: TDim = TDim::from(2) - 3;
-        assert_eq!(e.eval_with(&hashmap! {}).unwrap(), -1);
+        assert_eq!(e.eval(&hashmap! {}).to_i64().unwrap(), -1);
         let e: TDim = -TDim::from(2);
-        assert_eq!(e.eval_with(&hashmap! {}).unwrap(), -2);
+        assert_eq!(e.eval(&hashmap! {}).to_i64().unwrap(), -2);
     }
 
     #[test]
     fn substitution() {
         let x = Symbol::new('x');
-        let e:TDim = x.into();
-        assert_eq!(e.eval_with(&hashmap! {x => 2}).unwrap(), 2);
+        let e: TDim = x.into();
+        assert_eq!(e.eval(&hashmap! {x => 2}).to_i64().unwrap(), 2);
         let e = e + 3;
-        assert_eq!(e.eval_with(&hashmap! {x => 2}).unwrap(), 5);
+        assert_eq!(e.eval(&hashmap! {x => 2}).to_i64().unwrap(), 5);
     }
 
     #[test]

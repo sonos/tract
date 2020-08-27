@@ -100,7 +100,7 @@ pub use dyn_clone;
 /// This prelude is meant for code using tract.
 pub mod prelude {
     pub use crate::datum::{Blob, Datum, DatumType};
-    pub use crate::dim::TDim;
+    pub use crate::dim::{Symbol, TDim};
     pub use crate::errors::*;
     pub use crate::framework::Framework;
     pub use crate::model::*;

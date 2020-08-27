@@ -69,7 +69,7 @@ pub fn profile(
                 .iter()
                 .zip(model.nested_models_iters(outer_node.id, &ref_inputs).iter())
             {
-                let multi = multiplier.as_ref().unwrap().to_integer().unwrap();
+                let multi = multiplier.as_ref().unwrap().to_isize().unwrap();
                 let prefix = tvec!((outer_node.id, inner_model_name.to_string()));
                 if let Some(inner_model) = inner_model.downcast_ref::<TypedModel>() {
                     for _ in 0..iters {

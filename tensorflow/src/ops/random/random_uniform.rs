@@ -132,11 +132,7 @@ impl Op for TypedRandomUniform {
 impl StatelessOp for TypedRandomUniform {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape = self
-            .shape
-            .iter()
-            .map(|d| Ok(d.to_integer()? as usize))
-            .collect::<TractResult<TVec<_>>>()?;
+        let shape = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
         match self.t {
             DatumType::F32 => Ok(tvec!(make_f32(&*shape, self.seed1, self.seed2)?)),
             dt => bail!("RandomUniform not implemented for {:?}", dt),

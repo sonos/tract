@@ -198,11 +198,12 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
     fn model_for_proto_model(&self, proto_model: &KaldiProtoModel) -> TractResult<InferenceModel> {
         let ctx = ParsingContext { proto_model };
         let mut model = InferenceModel::default();
+        let s = tract_hir::tract_core::pulse::stream_dim();
         model.add_source(
             proto_model.config_lines.input_name.clone(),
             InferenceFact::dt_shape(
                 f32::datum_type(),
-                shapefactoid!(S, (proto_model.config_lines.input_dim)),
+                shapefactoid!(s, (proto_model.config_lines.input_dim)),
             ),
         )?;
         let mut inputs_to_wire: BTreeMap<InletId, String> = Default::default();

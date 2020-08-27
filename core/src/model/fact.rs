@@ -20,109 +20,64 @@ pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync +
 impl_downcast!(Fact);
 dyn_clone::clone_trait_object!(Fact);
 
-/// Streaming information for a streamed tensor.
-#[derive(Debug, Clone, Default, PartialEq, Hash)]
-pub struct StreamFact {
-    /// Streaming axis
-    pub axis: usize,
-    /// Streaming length
-    pub len: TDim,
-}
-
 /// Fully determined dimension of a tensor.
 ///
 /// Tensors in tract can have one streaming dimension. TDim generalize the
 /// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
 /// (sometimes hypothetical) tensor length on the streaming axis.
 #[derive(Clone, PartialEq, Hash)]
-pub struct ShapeFact {
-    shape: TVec<usize>,
-    /// Optional information for streaming tensors. None for regular tensors.
-    pub stream_info: Option<StreamFact>,
+pub struct ShapeFact(TVec<TDim>);
+
+impl std::ops::Deref for ShapeFact {
+    type Target = [TDim];
+    fn deref(&self) -> &[TDim] {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ShapeFact {
+    fn deref_mut(&mut self) -> &mut [TDim] {
+        &mut self.0
+    }
 }
 
 impl ShapeFact {
     /// Rank of the tensor.
     pub fn rank(&self) -> usize {
-        self.shape.len()
+        self.0.len()
     }
 
     /// Extended dimension of the i-th axis.
     ///
     /// The TDim will wrap a plain integer for regular (non-streaming) tensors.
     pub fn dim(&self, i: usize) -> TDim {
-        if let Some(ref stream) = self.stream_info {
-            if stream.axis == i {
-                return stream.len.clone();
-            }
-        }
-        self.shape[i].to_dim()
+        self.0[i].clone()
     }
 
     /// Set the i-th axis dimension.
     pub fn set_dim(&mut self, i: usize, dim: TDim) -> TractResult<()> {
-        if let Some(ref stream) = self.stream_info {
-            if let Ok(int) = dim.to_integer() {
-                self.shape[i] = int as _;
-                if stream.axis == i {
-                    self.stream_info = None;
-                }
-            } else {
-                if stream.axis != i {
-                    bail!("Attempt at building a shape with two streaming dim")
-                } else {
-                    self.stream_info = Some(StreamFact { len: dim, axis: i })
-                }
-            }
-        } else {
-            if let Ok(int) = dim.to_integer() {
-                self.shape[i] = int as _;
-            } else {
-                self.shape[i] = 0;
-                self.stream_info = Some(StreamFact { len: dim, axis: i })
-            }
-        }
+        self.0[i] = dim;
         Ok(())
     }
 
     pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
-        self.shape.insert(axis, 1);
-        if let Some(s) = self.stream_info.as_mut() {
-            if s.axis >= axis {
-                s.axis += 1;
-            }
-        }
+        self.0.insert(axis, 1.into());
         Ok(())
     }
 
     pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
-        self.shape.remove(axis);
-        if let Some(s) = self.stream_info.as_mut() {
-            if s.axis > axis {
-                s.axis -= 1;
-            }
-        }
+        self.0.remove(axis);
         Ok(())
     }
 
     /// Shape of the tensor, unless it is streaming.
-    pub fn as_finite(&self) -> Option<&[usize]> {
-        match self.stream_info {
-            None => Some(&*self.shape),
-            _ => None,
-        }
+    pub fn as_finite(&self) -> Option<TVec<usize>> {
+        self.0.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
     }
 
     /// Iterator over dimension of the shape.
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = TDim> + 'a {
-        self.shape.clone().into_iter().enumerate().map(move |(ix, d)| {
-            if let Some(ref info) = self.stream_info {
-                if ix == info.axis {
-                    return info.len.clone();
-                }
-            }
-            (d as i64).to_dim()
-        })
+        self.0.iter().cloned()
     }
 
     /// Convert the shape to an array of extended dimensions.
@@ -131,25 +86,7 @@ impl ShapeFact {
     }
 
     pub fn from_dims<T: AsRef<[TDim]> + std::fmt::Debug>(it: T) -> TractResult<ShapeFact> {
-        let count = it.as_ref().iter().filter(|t| t.is_stream()).count();
-        if count > 1 {
-            bail!("Shape with two streaming dims are invalid: {:?}", it)
-        } else {
-            let stream_info = it
-                .as_ref()
-                .iter()
-                .enumerate()
-                .find(|(_ix, d)| d.is_stream())
-                .map(|(ix, d)| StreamFact { axis: ix, len: d.clone() });
-            Ok(ShapeFact {
-                shape: it
-                    .as_ref()
-                    .iter()
-                    .map(|t| t.to_integer().map(|i| i as usize).unwrap_or(0))
-                    .collect(),
-                stream_info,
-            })
-        }
+        Ok(ShapeFact(it.as_ref().iter().cloned().collect()))
     }
 }
 
@@ -170,7 +107,7 @@ impl TryFrom<&[TDim]> for ShapeFact {
 impl TryFrom<&[usize]> for ShapeFact {
     type Error = TractError;
     fn try_from(it: &[usize]) -> TractResult<ShapeFact> {
-        Ok(ShapeFact { shape: it.into(), stream_info: None })
+        Ok(ShapeFact(it.iter().map(|d| d.to_dim()).collect()))
     }
 }
 
@@ -178,6 +115,13 @@ impl fmt::Debug for ShapeFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use itertools::Itertools;
         write!(fmt, "{}", self.iter().join("x"))
+    }
+}
+
+impl<T: AsRef<[usize]>> std::cmp::PartialEq<T> for ShapeFact {
+    fn eq(&self, other: &T) -> bool {
+        let other = other.as_ref();
+        other.len() == self.rank() && other.iter().zip(self.0.iter()).all(|(i, d)| &i.to_dim() == d)
     }
 }
 
@@ -231,7 +175,7 @@ impl Fact for TypedFact {
     }
 
     fn matches(&self, t: &Tensor) -> TractResult<bool> {
-        Ok(self.datum_type == t.datum_type() && t.shape() == &*self.shape.shape)
+        Ok(self.datum_type == t.datum_type() && self.shape == t.shape())
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {
@@ -259,7 +203,7 @@ impl From<Arc<Tensor>> for TypedFact {
     fn from(t: Arc<Tensor>) -> TypedFact {
         TypedFact {
             datum_type: t.datum_type(),
-            shape: ShapeFact { shape: t.shape().into(), stream_info: None },
+            shape: ShapeFact(t.shape().iter().map(TDim::from).collect()),
             konst: Some(t),
         }
     }

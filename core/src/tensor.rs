@@ -223,7 +223,7 @@ impl Tensor {
 
     /// Force the tensor shape.
     pub fn set_shape(&mut self, shape: &[usize]) -> TractResult<()> {
-        if self.len() != shape.iter().product() {
+        if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape, shape);
         }
         self.shape = shape.into();
@@ -520,7 +520,7 @@ impl Tensor {
                 let mut ints = Self::uninitialized::<i64>(&self.shape)?;
                 let ints_slice = ints.as_slice_mut_unchecked::<i64>();
                 for i in 0..self.len() {
-                    ints_slice[i] = slice[i].to_integer()?;
+                    ints_slice[i] = slice[i].to_i64()?;
                 }
                 return Ok(Cow::Owned(ints.cast_to_dt(dt)?.into_owned()));
             }

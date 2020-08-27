@@ -85,10 +85,10 @@ impl TypedOp for TypedSource {
         _mapping: &HashMap<OutletId, OutletId>,
         stream_dim: usize,
     ) -> TractResult<TVec<OutletId>> {
+        use crate::pulse::StreamFact;
         let mut fact = self.fact.clone();
-        if let Some(info) = self.fact.shape.stream_info.as_ref() {
-            fact.shape
-                .set_dim(info.axis, fact.shape.dim(info.axis).concretize_stream_dim(stream_dim))?;
+        if let Some((axis, _)) = self.fact.shape.stream_info() {
+            fact.shape.set_dim(axis, fact.shape.dim(axis).concretize_stream_dim(stream_dim))?;
         }
         target.wire_node(&node.name, Self { fact }, &[])
     }

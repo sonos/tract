@@ -1,3 +1,4 @@
+use tract_core::internal::*;
 use crate::annotations::Annotations;
 use std::collections::HashMap;
 
@@ -41,7 +42,7 @@ impl GraphPerfInfo {
                 cost: node
                     .cost
                     .iter()
-                    .map(|(k, v)| (format!("{:?}", k), v.to_integer().unwrap() as usize))
+                    .map(|(k, v)| (format!("{:?}", k), v.to_usize().unwrap()))
                     .collect(),
                 node_name: id.model(model).unwrap().node_name(id.1).to_string(),
                 op_name: id.model(model).unwrap().node_op(id.1).name().to_string(),

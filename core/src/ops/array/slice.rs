@@ -20,7 +20,7 @@ impl<D: DimLike + ToDim + Hash> Slice<D> {
         input.slice_axis_inplace(
             Axis(self.axis),
             ::ndarray::Slice::from(
-                (self.start.to_integer()? as i32)..(self.end.to_integer()? as i32),
+                (self.start.to_isize()?)..(self.end.to_isize()?),
             ),
         );
         Ok(Tensor::from(input.to_owned()).into())
@@ -105,12 +105,12 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
     ) -> TractResult<Option<TypedModelPatch>> {
         let prec = model.node(node.inputs[0].node);
         if let Some(tdim) = node.op_as::<Slice<TDim>>() {
-            if let (Ok(start), Ok(end)) = (tdim.start.to_integer(), tdim.end.to_integer()) {
+            if let (Ok(start), Ok(end)) = (tdim.start.to_usize(), tdim.end.to_usize()) {
                 return Ok(Some(TypedModelPatch::replace_single_op(
                     model,
                     node,
                     &node.inputs,
-                    Slice { start: start as usize, end: end as usize, axis: self.axis },
+                    Slice { start, end, axis: self.axis },
                 )?));
             }
         }
@@ -120,9 +120,8 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
         {
             return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
         }
-        let (start, end) = if let (Ok(s), Ok(e)) = (self.start.to_integer(), self.end.to_integer())
-        {
-            (s as usize, e as usize)
+        let (start, end) = if let (Ok(s), Ok(e)) = (self.start.to_usize(), self.end.to_usize()) {
+            (s, e)
         } else {
             return Ok(None);
         };
@@ -159,7 +158,7 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
         let input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?.clone();
         let op: Box<dyn PulsedOp> = if self.axis == fact.axis {
-            let skip = self.start.to_integer()? as usize;
+            let skip = self.start.to_usize()?;
             let take = (self.end.clone() - &self.start).to_dim();
             PulsedAxisSlice::new(self.axis, skip, take).into()
         } else {
@@ -197,11 +196,12 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
 impl<D: DimLike + ToDim + Hash> PulsedOp for Slice<D> {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
+        let len = (self.end.clone() - &self.start).to_dim();
         if self.axis == fact.axis {
-            fact.delay += self.start.to_integer()? as usize;
-            fact.dim = (self.end.clone() - &self.start).to_dim();
+            fact.delay += self.start.to_usize()?;
+            fact.dim = len
         } else {
-            fact.shape[self.axis] = (self.end.to_integer()? - self.start.to_integer()?) as usize;
+            fact.shape[self.axis] = len;
         }
         Ok(tvec!(fact))
     }

@@ -232,7 +232,7 @@ impl TypedOp for TypedBinOp {
                 )?));
             }
         }
-        return Ok(None)
+        return Ok(None);
     }
 
     fn codegen(
@@ -266,7 +266,6 @@ impl TypedOp for TypedBinOp {
     ) -> TractResult<TVec<OutletId>> {
         pulsify_bin(node, self, target, mapping)
     }
-
 
     as_op!();
 }
@@ -471,8 +470,11 @@ impl PulsedOp for UnaryOp {
         let mut fact = inputs[0].clone();
         fact.datum_type =
             self.mini_op.result_datum_type(inputs[0].datum_type, self.a.datum_type())?;
-        fact.shape =
-            crate::broadcast::multi_broadcast(&[&inputs[0].shape, &self.a.shape().into()]).unwrap();
+        fact.shape = crate::broadcast::multi_broadcast(&[
+            &inputs[0].shape,
+            &self.a.shape().iter().map(|d| d.into()).collect(),
+        ])
+        .unwrap();
         Ok(tvec!(fact))
     }
 

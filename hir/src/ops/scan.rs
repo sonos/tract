@@ -59,7 +59,7 @@ impl InferenceScan {
                     InputMapping::Scan { axis, slot, chunk: _ } => InputMapping::Scan {
                         axis: *axis,
                         slot: *slot,
-                        chunk: typed_model.input_fact(ix)?.shape.dim(*axis).to_integer()? as isize,
+                        chunk: typed_model.input_fact(ix)?.shape.dim(*axis).to_isize()?,
                     },
                     InputMapping::Full { slot } => InputMapping::Full { slot: *slot },
                     InputMapping::State { initializer } => {
@@ -79,7 +79,7 @@ impl InferenceScan {
                     full_slot: im.full_slot,
                     full_dim_hint: im.full_dim_hint.clone(),
                     last_value_slot: im.last_value_slot,
-                    chunk: typed_model.input_fact(ix)?.shape.dim(im.axis).to_integer()? as isize,
+                    chunk: typed_model.input_fact(ix)?.shape.dim(im.axis).to_isize()?,
                 })
             })
             .collect::<TractResult<_>>()?;

@@ -84,7 +84,7 @@ impl TypedOp for SumPool {
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(shape) = inputs[0].shape.as_finite() {
-            let op = self.to_fixed(inputs[0].datum_type, shape)?;
+            let op = self.to_fixed(inputs[0].datum_type, &*shape)?;
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
@@ -130,12 +130,15 @@ impl SumPoolFixed {
         let n_stride_o = self.output_shape.n_stride().unwrap_or(&0);
         unsafe {
             self.patch.visit_output(|visitor| {
-                let div:Option<T> = if self.normalize {
-                    Some(if self.count_include_pad {
-                        self.patch.standard_layout_data_field.len().as_()
-                    } else {
-                        visitor.valid_count().as_()
-                    }.recip())
+                let div: Option<T> = if self.normalize {
+                    Some(
+                        if self.count_include_pad {
+                            self.patch.standard_layout_data_field.len().as_()
+                        } else {
+                            visitor.valid_count().as_()
+                        }
+                        .recip(),
+                    )
                 } else {
                     None
                 };

@@ -778,9 +778,9 @@ impl PulsedOp for Scan {
             .enumerate()
             .map(|(axis, d)| {
                 if axis == output_mapping.axis {
-                    inputs[0].pulse()
+                    inputs[0].pulse().to_dim()
                 } else {
-                    d.to_integer().unwrap() as usize
+                    d
                 }
             })
             .collect();

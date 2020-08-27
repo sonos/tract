@@ -240,14 +240,9 @@ impl PulsePadOpState {
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + op.pulse;
         self.current_pos += op.pulse;
-        let end_input = session
-            .known_stream_len
-            .map(|s| op.end_input.eval(s as _).unwrap() as usize)
-            .unwrap_or(std::usize::MAX);
-        let after = session
-            .known_stream_len
-            .map(|s| op.after.eval(s as _).unwrap() as usize)
-            .unwrap_or(std::usize::MAX);
+        let end_input =
+            op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(std::usize::MAX);
+        let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(std::usize::MAX);
 
         if let PadMode::Edge = op.mode {
             if after != 0 && pulse_begin < end_input {

@@ -170,8 +170,8 @@ impl GRU {
         let x_fact = target.outlet_fact(inputs[0])?.clone();
         let r_fact = target.outlet_fact(inputs[2])?;
 
-        let b_size = x_fact.shape.dim(1).to_integer().unwrap() as usize;
-        let h_size = r_fact.shape.dim(2).to_integer().unwrap() as usize;
+        let b_size = x_fact.shape.dim(1).to_usize().unwrap();
+        let h_size = r_fact.shape.dim(2).to_usize().unwrap();
 
         let chunk = if dir == 0 { 1 } else { -1 };
 

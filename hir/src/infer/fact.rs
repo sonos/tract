@@ -56,6 +56,7 @@ impl InferenceFact {
         InferenceFact { shape: shape.into(), ..self }
     }
 
+    /*
     pub fn with_streaming_shape<S: IntoIterator<Item = Option<usize>>>(
         self,
         shape: S,
@@ -70,6 +71,7 @@ impl InferenceFact {
     pub fn stream_info(&self) -> TractResult<Option<StreamFact>> {
         self.shape.stream_info()
     }
+    */
 
     pub fn format_dt_shape(&self) -> String {
         if !self.shape.open && self.shape.dims.len() == 0 {

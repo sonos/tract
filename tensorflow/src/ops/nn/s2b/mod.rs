@@ -210,10 +210,11 @@ mod tests {
 
     #[test]
     fn space_to_batch_nd_infer_2() {
+        use tract_hir::tract_core::pulse::stream_dim as s;
         let mut op = SpaceToBatch::new(f32::datum_type());
-        let data = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (TDim::s() - 4), 16));
+        let data = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 4), 16));
         let block_shape = InferenceFact::from(Tensor::from(arr1(&[2])));
-        let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
+        let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), (s() % 2)]])));
         let any = InferenceFact::default();
 
         let (_, outputs, _) =
@@ -222,7 +223,7 @@ mod tests {
             outputs[0],
             InferenceFact::dt_shape(
                 DatumType::F32,
-                shapefactoid!(2, ((TDim::s() + TDim::s() % 2 - 4) / 2), 16)
+                shapefactoid!(2, ((s() + s() % 2 - 4) / 2), 16)
             )
         );
     }

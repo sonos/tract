@@ -71,7 +71,7 @@ impl Expansion for Renorm {
             tract_hir::ops::math::recip(),
             &epsilon,
         )?;
-        let rms_sqrt_d = self.target_rms * (input.shape.dim(1).to_integer()? as f32).sqrt();
+        let rms_sqrt_d = self.target_rms * (input.shape.dim(1).to_isize()? as f32).sqrt();
         let rms_sqrt_d = tensor0(rms_sqrt_d).broadcast_into_rank(2)?.into_arc_tensor();
         let mul = model.wire_node(
             prefix.to_string() + ".mul",

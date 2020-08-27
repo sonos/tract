@@ -139,7 +139,7 @@ impl PoolSpec {
             } else {
                 bail!("No padding value for streaming pool operation");
             };
-            let before = computed_padding.pad_before.to_integer()? as usize;
+            let before = computed_padding.pad_before.to_usize()?;
             let extra_delay = before.saturating_sub(fact.delay);
             if extra_delay > 0 {
                 wire = target.wire_node(
@@ -192,8 +192,8 @@ impl PoolSpec {
                         self.dilations()[ix],
                         self.strides()[ix],
                     );
-                    bef.push(c.pad_before);
-                    aft.push(c.pad_after);
+                    bef.push(c.pad_before.to_usize()?);
+                    aft.push(c.pad_after.to_usize()?);
                 };
             }
             Ok((wire, PoolSpec { padding: PaddingSpec::Explicit(bef, aft, true), ..self.clone() }))
@@ -214,10 +214,10 @@ impl PoolSpec {
             &self.dilations(),
             &self.strides(),
         );
-        let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<usize>>();
+        let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<TDim>>();
         let oshape = self.data_format.from_n_c_hw(
-            ishape.n().cloned().unwrap_or(1),
-            self.output_channel_override.unwrap_or(*ishape.c()),
+            ishape.n().cloned().unwrap_or(1.to_dim()),
+            self.output_channel_override.map(|d| d.to_dim()).unwrap_or_else(|| ishape.c().clone()),
             spatial_dims,
         )?;
         let mut fact = inputs[0].clone();

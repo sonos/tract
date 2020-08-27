@@ -279,7 +279,7 @@ fn get_shape_path(shape: &ShapeFactoid, path: &[isize]) -> TractResult<Wrapped> 
         [k] => {
             let k = k.to_usize().unwrap();
             if let Some(d) = shape.dims().nth(k) {
-                Ok(d.wrap())
+                Ok(d.clone().wrap())
             } else if shape.is_open() {
                 Ok(dimfact!(_).wrap())
             } else {

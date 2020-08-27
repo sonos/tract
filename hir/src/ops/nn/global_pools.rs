@@ -35,12 +35,11 @@ impl Expansion for GlobalAvgPool {
             tract_core::ops::nn::Reduce::new(axes, tract_core::ops::nn::Reducer::Sum),
             &[input],
         )?;
-        let div = tensor0(
-            (input_fact.shape.iter().skip(2).maybe_product()?.to_integer()? as f64).recip(),
-        )
-        .cast_to_dt(input_fact.datum_type)?
-        .into_owned()
-        .broadcast_into_rank(input_fact.rank())?;
+        let div =
+            tensor0((input_fact.shape.iter().skip(2).maybe_product()?.to_i64()? as f64).recip())
+                .cast_to_dt(input_fact.datum_type)?
+                .into_owned()
+                .broadcast_into_rank(input_fact.rank())?;
 
         target.wire_node(
             name.to_string() + ".norm",
@@ -102,12 +101,11 @@ impl Expansion for GlobalLpPool {
             tract_core::ops::nn::Reduce::new(axes, tract_core::ops::nn::Reducer::Sum),
             &wire,
         )?;
-        let div = tensor0(
-            (input_fact.shape.iter().skip(2).maybe_product()?.to_integer()? as f64).recip(),
-        )
-        .cast_to_dt(input_fact.datum_type)?
-        .into_owned()
-        .broadcast_into_rank(input_fact.rank())?;
+        let div =
+            tensor0((input_fact.shape.iter().skip(2).maybe_product()?.to_i64()? as f64).recip())
+                .cast_to_dt(input_fact.datum_type)?
+                .into_owned()
+                .broadcast_into_rank(input_fact.rank())?;
         wire = target.wire_node(
             name.to_string() + ".norm",
             tract_core::ops::math::mul::unary(div.into_arc_tensor()),

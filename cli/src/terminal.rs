@@ -405,8 +405,8 @@ pub fn dur_avg_ratio(measure: Duration, global: Duration) -> String {
 }
 
 fn render_tdim(d: &TDim) -> ANSIString<'static> {
-    if let Ok(i) = d.to_integer() {
-        render_big_integer(i as i64)
+    if let Ok(i) = d.to_i64() {
+        render_big_integer(i)
     } else {
         d.to_string().into()
     }

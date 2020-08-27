@@ -67,7 +67,12 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
             let mut state = SimpleState::new(&plan)?;
 
             for i in 0.. {
-                let mut pulsed_input = ArrayD::from_elem(&*pulsed_input_fact.shape, std::f32::NAN);
+                let input_shape = pulsed_input_fact
+                    .shape
+                    .iter()
+                    .map(|d| d.to_usize())
+                    .collect::<TractResult<TVec<_>>>()?;
+                let mut pulsed_input = ArrayD::from_elem(&*input_shape, std::f32::NAN);
                 let offset = i * input_pulse;
                 if offset < stream_dim {
                     let count = input_pulse.min(stream_dim - offset);
@@ -80,7 +85,10 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
                 };
                 if offset + input_pulse > stream_dim {
                     debug!("Set known_stream_len: {}", stream_dim);
-                    state.session_state.known_stream_len = Some(stream_dim)
+                    state
+                        .session_state
+                        .resolved_symbols
+                        .insert(tract_core::pulse::stream_symbol(), stream_dim as i64);
                 };
 
                 let output = state.run(tvec!(pulsed_input.into()))?.remove(output_slot);

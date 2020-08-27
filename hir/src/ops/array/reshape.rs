@@ -154,6 +154,8 @@ mod tests {
     use super::*;
     use AxisOp::*;
 
+    use tract_core::pulse::stream_dim as stream;
+
     macro_rules! s {
         ($($a:expr),*) => {&[ $($a.into()),* ]}
     }
@@ -187,8 +189,8 @@ mod tests {
     #[test]
     fn compute_bug_1() {
         assert_eq!(
-            &*compute_shape(s![TDim::s(), 1, 2, 128], s!(0, 0, -1)).unwrap(),
-            s![TDim::s(), 1, 256]
+            &*compute_shape(s![stream(), 1, 2, 128], s!(0, 0, -1)).unwrap(),
+            s![stream(), 1, 256]
         )
     }
 

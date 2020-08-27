@@ -163,7 +163,7 @@ impl TypedOp for TypedConcat {
             let offsets = self
                 .offsets(&inputs)?
                 .iter()
-                .map(|x| x.to_integer().map(|i| i as usize))
+                .map(|x| x.to_usize())
                 .collect::<TractResult<Vec<usize>>>()?;
             for (ix, slice) in self.slices.iter().enumerate() {
                 if start >= offsets[ix] && end <= offsets[ix + 1] {
@@ -189,6 +189,38 @@ impl TypedOp for TypedConcat {
                     };
                 }
                 input += slice.is_var() as usize;
+            }
+        }
+        Ok(None)
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        for (ix, outlet) in node.inputs.iter().enumerate() {
+            if let Some(konst) = model.outlet_fact(*outlet)?.konst.as_ref() {
+                let slice_position =
+                    self.slices.iter().enumerate().filter(|(_, s)| s.is_var()).nth(ix).unwrap().0;
+                let op = TypedConcat {
+                    axis: self.axis,
+                    slices: self
+                        .slices
+                        .iter()
+                        .enumerate()
+                        .map(|(ix, slice)| {
+                            if slice_position == ix {
+                                ConcatSlice::Const(konst.clone())
+                            } else {
+                                slice.clone()
+                            }
+                        })
+                        .collect(),
+                };
+                let mut inputs = node.inputs.to_vec();
+                inputs.remove(ix);
+                return Ok(Some(TypedModelPatch::replace_single_op(model, node, &*inputs, op)?))
             }
         }
         Ok(None)
@@ -430,9 +462,8 @@ impl OpState for PulsedSameAxisConcatState {
             &op.pre_slice,
             pre_offset
         ))?;
-        if let Some(l) = session.known_stream_len {
-            let input_length = op.input_len.eval(l as _).unwrap() as usize;
-            let post_offset = op.input_delay + input_length;
+        if let Ok(l) = op.input_len.eval(&session.resolved_symbols).to_usize() {
+            let post_offset = op.input_delay + l as usize;
             dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
                 op.axis,
                 &mut data,
