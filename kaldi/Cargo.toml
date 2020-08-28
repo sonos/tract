@@ -1,6 +1,6 @@
 [package]
 name = "tract-kaldi"
-version = "0.10.8-pre"
+version = "0.10.8"
 authors = [
     "Mathieu Poumeyrol <kali@zoy.org>",
     "Theodore Bluche <theodore.bluche@snips.ai>"
@@ -23,4 +23,4 @@ lazy_static = "1"
 log = "0.4"
 maplit = "1"
 nom = "5"
-tract-hir = { path = "../hir" }
+tract-hir = "0.10.8"
