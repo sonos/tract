@@ -219,6 +219,6 @@ fn de_scan(
         });
     }
     let skip:usize = invocation.named_arg_as(builder, "skip")?;
-    let op = Scan::new(body.model, input_mapping, output_mapping, Some(skip))?;
+    let op = Scan::new(body.model, input_mapping, output_mapping, None, skip)?;
     builder.wire(op, &*outer_inputs)
 }

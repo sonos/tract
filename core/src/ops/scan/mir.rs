@@ -65,11 +65,12 @@ impl Scan {
         input_mapping: Vec<InputMapping>,
         output_mapping: Vec<OutputMapping<TDim>>,
         seq_length_input_slot: Option<usize>,
+        skip: usize,
     ) -> TractResult<Scan> {
         assert_eq!(input_mapping.len(), body.input_outlets()?.len());
         assert_eq!(output_mapping.len(), body.output_outlets()?.len());
         Ok(Scan {
-            skip: 0,
+            skip,
             body,
             decluttered: false,
             input_mapping,
