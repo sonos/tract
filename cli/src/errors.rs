@@ -1,6 +1,5 @@
 #![allow(deprecated)]
 
-use tract_core::prelude::*;
 use tract_core::ndarray;
 use crate::model::Model;
 
@@ -25,7 +24,7 @@ error_chain! {
     }
 
     errors {
-        ModelBuilding(partial: Box<dyn Model>, inner: TractError) {
+        ModelBuilding(partial: Box<dyn Model>) {
         }
     }
 }

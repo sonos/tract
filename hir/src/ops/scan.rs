@@ -300,7 +300,7 @@ impl InferenceOp for InferenceScan {
             if self
                 .body
                 .analyse(false)
-                .map_err(|e| format!("analysing inner model: {}\n{:#?}", e, self.body))?
+                .map_err(|e| format!("analysing inner model: {}", e))?
             {
                 changed = true;
             }

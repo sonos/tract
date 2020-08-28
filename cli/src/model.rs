@@ -91,6 +91,7 @@ pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone +
 }
 
 downcast_rs::impl_downcast!(Model);
+dyn_clone::clone_trait_object!(Model);
 
 impl<F, O> Model for Graph<F, O>
 where
