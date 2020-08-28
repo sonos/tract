@@ -346,6 +346,7 @@ impl GRU {
                 input_mapping,
                 vec![output_mapping],
                 self.optional_sequence_lens_input,
+                0,
             )?,
             &outer_inputs,
         )?;
