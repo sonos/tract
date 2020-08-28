@@ -88,6 +88,7 @@ impl InferenceScan {
             input_mapping,
             output_mapping,
             self.seq_length_input_slot,
+            0
         )?))
     }
 
