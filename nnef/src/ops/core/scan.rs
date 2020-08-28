@@ -129,6 +129,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
             ("full", array(full)),
             ("state", array(state)),
             ("output", array(outputs)),
+            ("skip", numeric(op.skip)),
         ],
     );
     ast.fragments.insert(body.decl.id.clone(), body);
@@ -217,6 +218,7 @@ fn de_scan(
             state: state.iter().any(|state| state.2 == output_name),
         });
     }
-    let op = Scan::new(body.model, input_mapping, output_mapping, None)?;
+    let skip:usize = invocation.named_arg_as(builder, "skip")?;
+    let op = Scan::new(body.model, input_mapping, output_mapping, Some(skip))?;
     builder.wire(op, &*outer_inputs)
 }
