@@ -434,23 +434,27 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         return Ok(());
     }
 
-    let params = match Parameters::from_clap(&matches, probe) {
+    let builder_result = Parameters::from_clap(&matches, probe);
+    let params = match builder_result {
         Ok(params) => params,
-        Err(CliError(CliErrorKind::ModelBuilding(mut broken_model, e), _)) => {
-            let annotations = crate::annotations::Annotations::from_model(&*broken_model)?;
-            let display_params = if let ("dump", Some(sm)) = matches.subcommand() {
-                display_params_from_clap(&matches, &sm)?
-            } else {
-                crate::display_params::DisplayParams::default()
-            };
+        Err(e) => {
+            if let CliError(CliErrorKind::ModelBuilding(ref broken_model), _) = e {
+                let mut broken_model:Box<dyn Model> = tract_hir::tract_core::dyn_clone::clone(broken_model);
+                let annotations =
+                    crate::annotations::Annotations::from_model(broken_model.as_ref())?;
+                let display_params = if let ("dump", Some(sm)) = matches.subcommand() {
+                    display_params_from_clap(&matches, &sm)?
+                } else {
+                    crate::display_params::DisplayParams::default()
+                };
 
-            if broken_model.output_outlets().len() == 0 {
-                broken_model.auto_outputs()?;
+                if broken_model.output_outlets().len() == 0 {
+                    broken_model.auto_outputs()?;
+                }
+                terminal::render(broken_model.as_ref(), &annotations, &display_params)?;
             }
-            terminal::render(&*broken_model, &annotations, &display_params)?;
             Err(e)?
         }
-        Err(e) => Err(e)?,
     };
 
     let mut need_optimisations = false;

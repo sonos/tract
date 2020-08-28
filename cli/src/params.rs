@@ -3,7 +3,6 @@ use std::str::FromStr;
 use tract_itertools::Itertools;
 
 use tract_core::internal::*;
-use tract_onnx::prelude::*;
 use tract_core::model::TypedModel;
 use tract_hir::internal::*;
 #[cfg(feature = "tf")]
@@ -126,19 +125,17 @@ impl Parameters {
                 if need_graph {
                     (
                         SomeGraphDef::Nnef(proto_model.clone()),
-                        Box::new(
-                            nnef.translate(&proto_model)
-                                .map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?,
-                        ),
+                        Box::new(nnef.translate(&proto_model).map_err(|(g, e)| {
+                            CliError::from(e).chain_err(|| CliErrorKind::ModelBuilding(Box::new(g)))
+                        })?),
                         Option::<TfExt>::None,
                     )
                 } else {
                     (
                         SomeGraphDef::NoGraphDef,
-                        Box::new(
-                            nnef.translate(&proto_model)
-                                .map_err(|e| CliErrorKind::ModelBuilding(Box::new(e.0), e.1))?,
-                        ),
+                        Box::new(nnef.translate(&proto_model).map_err(|(g, e)| {
+                            CliError::from(e).chain_err(|| CliErrorKind::ModelBuilding(Box::new(g)))
+                        })?),
                         Option::<TfExt>::None,
                     )
                 }
@@ -453,7 +450,7 @@ impl Parameters {
                     info!(concat!("Running '", $name, "'"));
                     let mut last_model: Option<Box<dyn Model>> =
                         if keep_last { Some(Box::new(from.as_ref().clone())) } else { None };
-                    let block: &dyn Fn(_) -> TractResult<_> = &$block;
+                    let block: &dyn Fn(_) -> CliResult<_> = &$block;
                     let owned_model =
                         Arc::try_unwrap(from).unwrap_or_else(|from| from.as_ref().clone());
                     match block(owned_model) {
@@ -462,11 +459,10 @@ impl Parameters {
                         }
                         Err(e) => {
                             if let Some(last_model) = last_model.take() {
-                                return Err(
-                                    CliErrorKind::ModelBuilding(last_model, e.into()).into()
-                                );
+                                return Err(CliError::from(e)
+                                    .chain_err(|| CliErrorKind::ModelBuilding(last_model)));
                             } else {
-                                Err(e)?
+                                return Err(e);
                             }
                         }
                     }
@@ -487,33 +483,39 @@ impl Parameters {
         };
 
         stage!("analyse", inference_model -> inference_model,
-                   |mut m:InferenceModel| { m.analyse(matches.is_present("analyse_fail_fast"))?; TractResult::Ok(m) });
+        |mut m:InferenceModel| {
+            let result = m.analyse(matches.is_present("analyse_fail_fast"));
+            match result {
+                Ok(_) => Ok(m),
+                Err(e) => Err(
+                    CliError::from(e).chain_err(|| CliErrorKind::ModelBuilding(Box::new(m))))
+            }});
         if let Some(ext) = tf_model_extensions {
             #[cfg(feature = "tf")]
-            stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| ext.preproc(m));
+            stage!("tf-preproc", inference_model -> inference_model, |m:InferenceModel| Ok(ext.preproc(m)?));
         }
-        stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { m.incorporate()});
-        stage!("type", inference_model -> typed_model, |m:InferenceModel| m.into_typed());
-        stage!("declutter", typed_model -> typed_model, |m:TypedModel| m.declutter());
+        stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { Ok(m.incorporate()?)});
+        stage!("type", inference_model -> typed_model, |m:InferenceModel| Ok(m.into_typed()?));
+        stage!("declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
         if let Some(dim) = concretize_stream_dim {
-            stage!("concretize-stream-dim", typed_model -> typed_model, |m:TypedModel| m.concretize_stream_dim(dim) );
-            stage!("concretize-stream-dim-declutter", typed_model -> typed_model, |m:TypedModel| m.declutter());
+            stage!("concretize-stream-dim", typed_model -> typed_model, |m:TypedModel| Ok(m.concretize_stream_dim(dim)?) );
+            stage!("concretize-stream-dim-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
         } else if let Some(pulse) = pulse {
-            stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| ::tract_core::pulse::PulsedModel::new(&m, pulse));
-            stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
-            stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.declutter());
+            stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| Ok(::tract_core::pulse::PulsedModel::new(&m, pulse)?));
+            stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| Ok(m.into_typed()?));
+            stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
         }
         if nnef_cycle {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
                 let nnef = super::nnef(&matches);
                 let mut vec = vec!();
                 nnef.write(&m, &mut vec)?;
-                nnef.model_for_read(&mut &*vec)
+                Ok(nnef.model_for_read(&mut &*vec)?)
             });
-            stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| m.declutter());
+            stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
         }
         stage!("before-optimize", typed_model -> typed_model, |m:TypedModel| Ok(m));
-        stage!("optimize", typed_model -> typed_model, |m:TypedModel| m.optimize());
+        stage!("optimize", typed_model -> typed_model, |m:TypedModel| Ok(m.optimize()?));
         Ok((typed_model.clone().unwrap(), typed_model, pulsed_model, reference_model))
     }
 
