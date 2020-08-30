@@ -131,6 +131,9 @@ fn parse_values<'a, T: Datum + FromStr>(shape: &[usize], it: Vec<&'a str>) -> Cl
         .into_iter()
         .map(|v| Ok(v.parse::<T>().map_err(|_| format_err!("Failed to parse {}", v))?))
         .collect::<CliResult<Vec<T>>>()?;
+    if values.len() != shape.iter().product::<usize>() {
+        bail!("Mismatched shape and data: shape is {:?}, but data length is {}.", shape, values.len());
+    }
     Ok(tract_ndarray::Array::from_shape_vec(shape, values)?.into())
 }
 
