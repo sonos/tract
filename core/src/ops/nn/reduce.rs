@@ -157,7 +157,6 @@ impl Op for Reduce {
     op_core_mir!();
     canonic!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
 impl StatelessOp for Reduce {
@@ -210,32 +209,5 @@ impl TypedOp for Reduce {
         Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
     }
 
-    fn pulsify(
-        &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let axis = target.outlet_fact(input)?.axis;
-        if self.axes.contains(&axis) {
-            bail!("Can not reduce over streaming axis");
-        }
-        target.wire_node(&*node.name, self.clone(), &[input])
-    }
 }
 
-impl PulsedOp for Reduce {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        for &ax in &self.axes {
-            fact.shape[ax] = 1.to_dim();
-        }
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
-}

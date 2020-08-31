@@ -45,7 +45,6 @@ where
 
     op_core_lir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl<T> StatelessOp for MatMatMulPackB<T>
@@ -147,7 +146,6 @@ where
 
     op_core_lir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl<TA, TB, TC, TI> StatelessOp for MatMatMulUnaryFinite<TA, TB, TC, TI>

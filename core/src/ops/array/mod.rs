@@ -12,7 +12,7 @@ pub use self::broadcast::MultiBroadcastTo;
 pub use self::concat::{ConcatSlice, TypedConcat};
 pub use self::constant_of_shape::ConstantOfShape;
 pub use self::gather::Gather;
-pub use self::pad::{Pad, PadMode, PulsePad};
+pub use self::pad::{Pad, PadMode};
 pub use self::reshape::FiniteReshape;
 pub use self::slice::Slice;
 pub use self::tile::Tile;

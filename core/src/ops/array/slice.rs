@@ -39,7 +39,6 @@ impl<D: DimLike + ToDim + Hash> Op for Slice<D> {
     canonic!();
     op_core_lir_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 
     fn same_as(&self, other: &dyn Op) -> bool {
         if let Some(other) = other.downcast_ref::<Self>() {
@@ -147,26 +146,6 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
         Ok(None)
     }
 
-    fn pulsify(
-        &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?.clone();
-        let op: Box<dyn PulsedOp> = if self.axis == fact.axis {
-            let skip = self.start.to_usize()?;
-            let take = (self.end.clone() - &self.start).to_dim();
-            PulsedAxisSlice::new(self.axis, skip, take).into()
-        } else {
-            dyn_clone::clone_box(self)
-        };
-        target.wire_node(&*node.name, op, &[input])
-    }
-
     fn slice_output(
         &self,
         model: &TypedModel,
@@ -193,63 +172,3 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
     as_op!();
 }
 
-impl<D: DimLike + ToDim + Hash> PulsedOp for Slice<D> {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        let len = (self.end.clone() - &self.start).to_dim();
-        if self.axis == fact.axis {
-            fact.delay += self.start.to_usize()?;
-            fact.dim = len
-        } else {
-            fact.shape[self.axis] = len;
-        }
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
-}
-
-#[derive(Debug, Clone, new, Default, Hash)]
-pub struct PulsedAxisSlice {
-    pub axis: usize,
-    pub skip: usize,
-    pub take: TDim,
-}
-
-tract_linalg::impl_dyn_hash!(PulsedAxisSlice);
-
-impl Op for PulsedAxisSlice {
-    fn name(&self) -> Cow<str> {
-        "PulsedAxisSlice".into()
-    }
-
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axis:{}, skip:{} take:{}", self.axis, self.skip, self.take)])
-    }
-
-    op_core_lir_mir!();
-    not_a_typed_op!();
-    op_as_pulsed_op!();
-}
-
-impl StatelessOp for PulsedAxisSlice {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(inputs)
-    }
-}
-
-impl PulsedOp for PulsedAxisSlice {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.delay += self.skip;
-        fact.dim = self.take.clone();
-        Ok(tvec!(fact))
-    }
-
-    fn to_typed(&self) -> Box<dyn TypedOp> {
-        Box::new(crate::ops::identity::Identity::default())
-    }
-
-    as_op!();
-}

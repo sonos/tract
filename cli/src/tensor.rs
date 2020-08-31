@@ -35,9 +35,13 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
         shape
             .iter()
             .map(|&s| {
-                Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(s.parse()?) })
+                Ok(if s == "_" {
+                    GenericFactoid::Any
+                } else {
+                    GenericFactoid::Only(parse_dim_stream(s)?)
+                })
             })
-            .collect::<TractResult<TVec<DimFact>>>()?,
+            .collect::<CliResult<TVec<DimFact>>>()?,
     );
 
     if let Some(dt) = datum_type {
@@ -171,6 +175,18 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
     }
 }
 
+fn parse_dim_stream(s: &str) -> CliResult<TDim> {
+    if s == "S" {
+        Ok(tract_pulse::stream_dim())
+    } else if s.ends_with("S") {
+        let number: String = s.chars().take_while(|c| c.is_digit(10)).collect();
+        let number: i64 = number.parse::<i64>().map(|i| i.into())?;
+        Ok(tract_pulse::stream_dim() * number)
+    } else {
+        Ok(s.parse::<i64>().map(|i| i.into())?)
+    }
+}
+
 pub fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<TVec<Tensor>> {
     values.iter().map(|v| tensor_for_fact(v.borrow(), None)).collect()
 }
@@ -186,7 +202,7 @@ pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
 }
 
 pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
-    use tract_core::pulse::{stream_symbol, StreamFact};
+    use tract_pulse::{stream_symbol, StreamFact};
     let s = stream_symbol();
     if let Some(value) = &fact.konst {
         Ok(value.clone().into_tensor())

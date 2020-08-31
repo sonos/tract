@@ -64,8 +64,10 @@ pub trait DimLike:
     /// do not use num_traits::Mul as it implies a regular Mul
     fn one() -> Self;
 
+    /*
     /// Give streaming dimension its value
     fn concretize_stream_dim(&self, stream_dim: usize) -> Self;
+    */
 }
 
 impl DimLike for TDim {
@@ -126,9 +128,11 @@ impl DimLike for TDim {
         Self::from(1)
     }
 
+    /*
     fn concretize_stream_dim(&self, stream_dim: usize) -> Self {
         self.eval(&hashmap! {crate::pulse::stream_symbol() => stream_dim as _})
     }
+    */
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
@@ -157,9 +161,11 @@ impl DimLike for usize {
         1
     }
 
+    /*
     fn concretize_stream_dim(&self, _stream_dim: usize) -> Self {
         *self
     }
+    */
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for usize {

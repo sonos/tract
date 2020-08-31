@@ -1,12 +1,29 @@
-use crate::dim::Symbol;
-use crate::internal::*;
-use crate::model::translator::Translate;
+use tract_core::dim::Symbol;
+use tract_core::internal::*;
+use tract_core::itertools;
+use tract_core::model::translator::Translate;
+
 use std::fmt;
 
-pub mod delay;
+#[macro_use]
+pub mod macros;
+pub mod ops;
+
+pub mod internal {
+    pub use std::fmt;
+    pub use tract_core::impl_op_same_as;
+    pub use tract_core::internal::*;
+
+    pub use downcast_rs::Downcast;
+
+    pub use crate::ops::{OpPulsifier, PulsedOp};
+    pub use crate::{PulsedFact, PulsedModel, PulsedModelExt};
+}
+
+pub use ops::PulsedOp;
 
 lazy_static::lazy_static! {
-    static ref S: Symbol = crate::dim::Symbol::new('S');
+    static ref S: Symbol = Symbol::new('S');
 }
 
 pub fn stream_symbol() -> Symbol {
@@ -99,9 +116,7 @@ impl PulsedFact {
     }
 
     pub fn pulse(&self) -> usize {
-        self.shape[self.axis]
-            .to_usize()
-            .expect("Pulse should be an integer. This is a tract bug.")
+        self.shape[self.axis].to_usize().expect("Pulse should be an integer. This is a tract bug.")
     }
 
     pub fn to_pulse_fact(&self) -> TypedFact {
@@ -126,20 +141,31 @@ impl PulsedFact {
 pub type PulsedModel = Graph<PulsedFact, Box<dyn PulsedOp>>;
 pub type PulsedNode = BaseNode<PulsedFact, Box<dyn PulsedOp>>;
 
-impl PulsedModel {
-    pub fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel> {
+pub trait PulsedModelExt {
+    fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel>;
+
+    fn new_with_mapping(
+        source: &TypedModel,
+        pulse: usize,
+    ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)>;
+
+    fn into_typed(self) -> TractResult<TypedModel>;
+}
+
+impl PulsedModelExt for PulsedModel {
+    fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel> {
         Ok(PulsedModel::new_with_mapping(source, pulse)?.0)
     }
 
-    pub fn new_with_mapping(
+    fn new_with_mapping(
         source: &TypedModel,
         pulse: usize,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
         Pulsifier(pulse).translate_model_with_mappings(source)
     }
 
-    pub fn into_typed(self) -> TractResult<TypedModel> {
-        let mut typed = crate::model::translator::IntoTranslator.translate_model(&self)?;
+    fn into_typed(self) -> TractResult<TypedModel> {
+        let mut typed = tract_core::model::translator::IntoTranslator.translate_model(&self)?;
         let delays = tensor1(
             &self
                 .output_outlets()?
@@ -158,11 +184,11 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
     }
 
     fn create_source(&self, fact: PulsedFact) -> Box<dyn PulsedOp> {
-        Box::new(crate::ops::source::PulsedSource::new(fact))
+        Box::new(crate::ops::source::PulsedSource(fact))
     }
 
     fn create_dummy(&self) -> Box<dyn PulsedOp> {
-        Box::new(crate::ops::dummy::Dummy::new())
+        Box::new(tract_core::ops::dummy::Dummy::new())
     }
 
     fn wire_node(
@@ -189,10 +215,10 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
 #[derive(Debug)]
 struct Pulsifier(usize);
 impl
-    crate::model::translator::Translate<
+    tract_core::model::translator::Translate<
         TypedFact,
         Box<dyn TypedOp>,
-        crate::pulse::PulsedFact,
+        PulsedFact,
         Box<dyn PulsedOp>,
     > for Pulsifier
 {
@@ -203,7 +229,13 @@ impl
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        node.op.pulsify(source, node, target, mapping, self.0)
+        if let Some(pulsifier) =
+            inventory::iter::<ops::OpPulsifier>().find(|p| p.type_id == node.op.type_id())
+        {
+            (pulsifier.func)(source, node, target, mapping, self.0)
+        } else {
+            bail!("No pulsifier for {}", node);
+        }
     }
 }
 

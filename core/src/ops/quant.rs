@@ -182,7 +182,6 @@ impl Op for DequantizeLinearF32 {
     canonic!();
     op_core_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
 tract_linalg::impl_dyn_hash!(DequantizeLinearF32);
@@ -317,30 +316,7 @@ impl TypedOp for DequantizeLinearF32 {
         Ok(None)
     }
 
-    fn pulsify(
-        &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        target.wire_node(&*node.name, self.clone(), &[input])
-    }
-
     as_op!();
-}
-
-impl PulsedOp for DequantizeLinearF32 {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.datum_type = f32::datum_type();
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }
 
 element_wise_oop!(lookup_table,

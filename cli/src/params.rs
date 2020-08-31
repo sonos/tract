@@ -4,6 +4,7 @@ use tract_itertools::Itertools;
 
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
+use tract_pulse::internal::*;
 use tract_hir::internal::*;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
@@ -501,7 +502,7 @@ impl Parameters {
             stage!("concretize-stream-dim", typed_model -> typed_model, |m:TypedModel| Ok(m.concretize_stream_dim(dim)?) );
             stage!("concretize-stream-dim-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
         } else if let Some(pulse) = pulse {
-            stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| Ok(::tract_core::pulse::PulsedModel::new(&m, pulse)?));
+            stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| Ok(PulsedModel::new(&m, pulse)?));
             stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| Ok(m.into_typed()?));
             stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
         }

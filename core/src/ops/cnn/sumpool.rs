@@ -48,7 +48,6 @@ impl Op for SumPool {
     canonic!();
     op_core_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
 tract_linalg::impl_dyn_hash!(SumPool);
@@ -65,18 +64,6 @@ impl TypedOp for SumPool {
         self.pool_spec.output_facts(inputs)
     }
 
-    fn pulsify(
-        &self,
-        source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let (wire, pool_spec) = self.pool_spec.pulsify(source, node, target, mapping, None)?;
-        target.wire_node(&node.name, Self { pool_spec, ..self.clone() }, &[wire])
-    }
-
     fn codegen(
         &self,
         model: &TypedModel,
@@ -91,15 +78,6 @@ impl TypedOp for SumPool {
     }
 
     as_op!();
-}
-
-impl PulsedOp for SumPool {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        self.pool_spec.pulsed_output_facts(inputs)
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }
 
 #[derive(Debug, Clone, new, Hash)]
@@ -172,7 +150,6 @@ impl Op for SumPoolFixed {
 
     op_core_lir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl StatelessOp for SumPoolFixed {

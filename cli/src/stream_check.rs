@@ -88,7 +88,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
                     state
                         .session_state
                         .resolved_symbols
-                        .insert(tract_core::pulse::stream_symbol(), stream_dim as i64);
+                        .insert(tract_pulse::stream_symbol(), stream_dim as i64);
                 };
 
                 let output = state.run(tvec!(pulsed_input.into()))?.remove(output_slot);

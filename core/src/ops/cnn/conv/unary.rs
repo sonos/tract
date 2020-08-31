@@ -435,7 +435,6 @@ impl Op for ConvUnary {
     canonic!();
     op_core_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
 impl StatelessOp for ConvUnary {
@@ -624,24 +623,6 @@ impl TypedOp for ConvUnary {
         }));
     }
 
-    fn pulsify(
-        &self,
-        source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        fn zero<D: Datum>() -> Tensor {
-            tensor0(D::default())
-        }
-        let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
-        let zero = dispatch_numbers!(zero(fact.datum_type)());
-        let (wire, pool_spec) =
-            self.pool_spec.pulsify(source, node, target, mapping, Some(zero))?;
-        target.wire_node(&node.name, Self { pool_spec, ..self.clone() }, &[wire])
-    }
-
     fn codegen(
         &self,
         model: &TypedModel,
@@ -741,15 +722,6 @@ impl TypedOp for ConvUnary {
     }
 
     as_op!();
-}
-
-impl PulsedOp for ConvUnary {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        self.pool_spec.pulsed_output_facts(inputs)
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }
 
 fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {

@@ -64,7 +64,6 @@ impl Op for Box<dyn Expansion> {
         self.as_ref().info()
     }
     not_a_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Box<dyn Expansion> {

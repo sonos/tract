@@ -12,6 +12,7 @@ use proptest::test_runner::TestCaseResult;
 use proptest::*;
 use tract_hir::internal::*;
 use tract_ndarray::*;
+use tract_pulse::internal::*;
 
 mod conv_plus_conv;
 mod delay_plus_pool;
@@ -30,7 +31,7 @@ fn proptest_regular_against_pulse(
 ) -> TestCaseResult {
     setup_test_logger();
     let mut ref_model = model.clone();
-    let s = tract_hir::tract_core::pulse::stream_symbol();
+    let s = tract_pulse::stream_symbol();
     debug!("Run reference");
     ref_model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape()))?;
     let input = Tensor::from(input_array.clone());
@@ -46,7 +47,8 @@ fn proptest_regular_against_pulse(
     let delay = output_fact.delay;
     let mut initial_output_shape = output_fact.shape.clone();
     initial_output_shape[output_stream_axis] = 0.to_dim();
-    let initial_output_shape:TVec<usize> = initial_output_shape.iter().map(|d| d.to_usize().unwrap()).collect();
+    let initial_output_shape: TVec<usize> =
+        initial_output_shape.iter().map(|d| d.to_usize().unwrap()).collect();
 
     let pulsed_plan = SimplePlan::new(pulsed).unwrap();
     let mut state = SimpleState::new(&pulsed_plan).unwrap();
@@ -71,7 +73,12 @@ fn proptest_regular_against_pulse(
             )
             .unwrap();
             state.session_state.resolved_symbols.insert(s, written as i64);
-            output_len = output_fact.dim.eval(&state.session_state.resolved_symbols).to_usize().ok();
+            output_len = output_fact
+                .dim
+                .eval(&state.session_state.resolved_symbols)
+                .to_isize()
+                .ok()
+                .map(|n| n.max(0) as usize);
         }
         let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()).into())).unwrap();
         got = stack(

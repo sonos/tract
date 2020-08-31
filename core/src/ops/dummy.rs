@@ -10,7 +10,6 @@ impl Op for Dummy {
 
     op_core_mir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 tract_linalg::impl_dyn_hash!(Dummy);
@@ -27,12 +26,4 @@ impl TypedOp for Dummy {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!())
     }
-}
-
-impl PulsedOp for Dummy {
-    fn pulsed_output_facts(&self, _inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        Ok(tvec!())
-    }
-    as_op!();
-    pulsed_op_to_typed_op!();
 }

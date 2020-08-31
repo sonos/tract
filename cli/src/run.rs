@@ -1,6 +1,7 @@
 use crate::errors::*;
 use crate::{Model, Parameters};
 use tract_hir::internal::*;
+use tract_pulse::PulsedModel;
 
 pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> {
     let dump = options.is_present("dump");
@@ -84,7 +85,7 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     //    println!("output_fact: {:?}", output_fact);
     let output_dim = output_fact
         .dim
-        .eval(&hashmap!(tract_core::pulse::stream_symbol() => input_dim as i64))
+        .eval(&hashmap!(tract_pulse::stream_symbol() => input_dim as i64))
         .to_usize()?;
     let mut output_shape = output_fact.shape.to_vec();
     output_shape[output_fact.axis] =

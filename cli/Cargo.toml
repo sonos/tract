@@ -32,6 +32,7 @@ rand = "0.7"
 regex = "1.3"
 readings-probe = "0.1.1"
 tract-core = { path = "../core" }
+tract-pulse = { path = "../pulse" }
 tract-hir = { path = "../hir" }
 tract-kaldi = { optional = true, path = "../kaldi" }
 tract-nnef = { optional = true, path = "../nnef" }

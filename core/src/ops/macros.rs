@@ -12,15 +12,6 @@ macro_rules! as_op {
 }
 
 #[macro_export]
-macro_rules! pulsed_op_to_typed_op {
-    () => {
-        fn to_typed(&self) -> Box<dyn TypedOp> {
-            $crate::dyn_clone::clone_box(self)
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! op_as_typed_op {
     () => {
         fn as_typed(&self) -> Option<&dyn TypedOp> {
@@ -33,24 +24,6 @@ macro_rules! op_as_typed_op {
 macro_rules! not_a_typed_op {
     () => {
         fn as_typed(&self) -> Option<&dyn TypedOp> {
-            None
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! op_as_pulsed_op {
-    () => {
-        fn as_pulsed(&self) -> Option<&dyn PulsedOp> {
-            Some(self)
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! not_a_pulsed_op {
-    () => {
-        fn as_pulsed(&self) -> Option<&dyn PulsedOp> {
             None
         }
     };

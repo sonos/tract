@@ -81,7 +81,6 @@ impl Op for ElementWiseOp {
     canonic!();
     op_core_lir_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
 tract_linalg::impl_dyn_hash!(ElementWiseOp);
@@ -154,32 +153,7 @@ impl TypedOp for ElementWiseOp {
         }
     }
 
-    fn pulsify(
-        &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        target.wire_node(&*node.name, self.clone(), &[input])
-    }
-
     as_op!();
-}
-
-impl PulsedOp for ElementWiseOp {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        if let Some(dt) = self.0.output_type(fact.datum_type) {
-            fact.datum_type = dt;
-        }
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }
 
 #[macro_export]

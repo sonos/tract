@@ -38,6 +38,7 @@ criterion = "0.3"
 env_logger = "0.7"
 proptest = "0.10"
 rand = "0.7"
+tract-pulse = { path = "../pulse" }
 
 # [[bench]]
 # name = "conv"

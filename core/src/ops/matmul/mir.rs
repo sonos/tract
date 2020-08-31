@@ -333,7 +333,6 @@ impl Op for MatMul {
 
     op_core_mir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl StatelessOp for MatMul {
@@ -441,7 +440,6 @@ impl Op for MatMulUnary {
     canonic!();
     op_core_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
 impl StatelessOp for MatMulUnary {
@@ -662,22 +660,6 @@ impl TypedOp for MatMulUnary {
         Ok(cost)
     }
 
-    fn pulsify(
-        &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?;
-        if fact.axis >= fact.shape.len() - self.b_trans as usize {
-            bail!("Can not pulsify MatMulUnaryA on the k dimension");
-        }
-        target.wire_node(&*node.name, self.clone(), &[input])
-    }
-
     fn codegen(
         &self,
         model: &TypedModel,
@@ -746,26 +728,6 @@ impl TypedOp for MatMulUnary {
     }
 
     as_op!();
-}
-
-impl PulsedOp for MatMulUnary {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.datum_type =
-            self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
-        fact.shape = compute_shapes(
-            self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
-            inputs[0].shape.to_owned(),
-            self.a_trans,
-            self.b_trans,
-            self.c_trans,
-        )?
-        .2;
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }
 
 fn new_mat_mul_unary_finite<TA, TB, TC, TI>(

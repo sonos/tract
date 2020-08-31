@@ -1,8 +1,8 @@
 use crate::internal::*;
-use crate::pulse::PulsedFact;
-use ndarray::*;
 
-#[derive(Debug, new, Clone)]
+use tract_core::ndarray::*;
+
+#[derive(Debug, Clone)]
 struct DelayState {
     buffer: Tensor,
 }
@@ -25,7 +25,7 @@ unsafe fn assign_slice(
     from_range: Slice,
     axis: usize,
 ) {
-    dispatch_copy_by_size!(assign_slice_t(from.datum_type())(to, to_range, from, from_range, axis));
+    tract_core::dispatch_copy_by_size!(assign_slice_t(from.datum_type())(to, to_range, from, from_range, axis));
 }
 
 impl OpState for DelayState {
@@ -151,11 +151,9 @@ impl Op for Delay {
         ])
     }
 
-    canonic!();
-    op_core_lir_mir!();
+    op_pulse!();
     impl_op_same_as!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
 impl StatefullOp for Delay {
@@ -196,7 +194,6 @@ impl PulsedOp for Delay {
 
 #[cfg(test)]
 mod test {
-    use super::super::stream_dim;
     use super::*;
     use crate::*;
 
@@ -214,7 +211,7 @@ mod test {
         model.auto_outputs().unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
-        let mut state = crate::plan::SimpleState::new(plan).unwrap();
+        let mut state = tract_core::plan::SimpleState::new(plan).unwrap();
 
         for i in 0..5 {
             let input: Vec<u8> = (pulse * i..(pulse * (i + 1))).map(|a| a as u8).collect();
@@ -265,7 +262,7 @@ mod test {
         model.set_output_outlets(&delay_2).unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
-        let mut state = crate::plan::SimpleState::new(plan).unwrap();
+        let mut state = tract_core::plan::SimpleState::new(plan).unwrap();
 
         for i in 0..5 {
             let input: Vec<u8> = (pulse * i..(pulse * (i + 1))).map(|a| a as u8).collect();

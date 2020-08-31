@@ -34,7 +34,6 @@ impl Op for MaxPool {
     canonic!();
     op_core_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
 impl StatelessOp for MaxPool {
@@ -73,23 +72,6 @@ impl TypedOp for MaxPool {
         Ok(None)
     }
 
-    fn pulsify(
-        &self,
-        source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        fn min_value<D: Datum + num_traits::Bounded>() -> Tensor {
-            tensor0(D::min_value())
-        }
-        let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
-        let min = dispatch_numbers!(min_value(fact.datum_type)());
-        let (wire, pool_spec) = self.pool_spec.pulsify(source, node, target, mapping, Some(min))?;
-        target.wire_node(&node.name, Self { pool_spec, ..self.clone() }, &[wire])
-    }
-
     fn codegen(
         &self,
         model: &TypedModel,
@@ -105,20 +87,6 @@ impl TypedOp for MaxPool {
     }
 
     as_op!();
-}
-
-impl PulsedOp for MaxPool {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut facts = self.pool_spec.pulsed_output_facts(inputs)?;
-        if let Some(idt) = self.with_index_outputs {
-            facts.push(facts[0].clone());
-            facts[1].datum_type = idt;
-        }
-        Ok(facts)
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }
 
 tract_linalg::impl_dyn_hash!(MaxPoolFixed);
@@ -138,7 +106,6 @@ impl Op for MaxPoolFixed {
 
     op_core_lir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl MaxPoolFixed {

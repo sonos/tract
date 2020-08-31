@@ -14,7 +14,6 @@ impl Op for Gather {
 
     op_core_mir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl Gather {
