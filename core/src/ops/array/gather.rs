@@ -45,7 +45,10 @@ impl Gather {
         if indices.shape().len() == 0 {
             let mut index = *indices.to_scalar::<i64>()?;
             if index < 0 {
-                index += data_view.shape()[0] as i64;
+                index += data_view.shape()[self.axis] as i64;
+            }
+            if index < 0 || index > data_view.shape()[self.axis] as i64 {
+                bail!("Invalid index:{} for axis {}. Shape is {:?}.", index, self.axis, data_view.shape());
             }
             let mut tensor =
                 data_view.index_axis(Axis(self.axis), index as usize).to_owned().into_tensor();
@@ -64,6 +67,9 @@ impl Gather {
                 to_update = to_update.index_axis_move(Axis(0), pattern[idx]);
             }
 
+            if *index < 0 || *index > data_view.shape()[self.axis] as i64 {
+                bail!("Invalid index:{} for axis {}. Shape is {:?}.", index, self.axis, data_view.shape());
+            }
             to_update.assign(&data_view.index_axis(Axis(self.axis), *index as usize));
         }
         Ok(output.into_arc_tensor())
