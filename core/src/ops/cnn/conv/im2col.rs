@@ -130,7 +130,6 @@ impl<T: Copy + Datum + Zero> Op for Im2Col<T> {
     op_core_lir!();
     impl_op_same_as!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl<T: Copy + Datum + Zero> StatelessOp for Im2Col<T> {

@@ -24,3 +24,4 @@ log = "0.4"
 maplit = "1"
 nom = "5"
 tract-hir = { path = "../hir" }
+tract-pulse = { path = "../pulse" }

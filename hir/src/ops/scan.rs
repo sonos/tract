@@ -34,7 +34,6 @@ impl Op for InferenceScan {
 
     op_hir!();
     not_a_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl StatefullOp for InferenceScan {

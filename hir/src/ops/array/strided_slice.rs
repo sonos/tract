@@ -311,7 +311,7 @@ mod tests {
     use tract_ndarray::{arr1, arr2, arr3};
 
     fn s() -> TDim {
-        tract_core::pulse::stream_dim()
+        tract_pulse::stream_dim()
     }
 
     pub fn strided_slice(begin_mask: i64, end_mask: i64, shrink_axis_mask: i64) -> StridedSlice {

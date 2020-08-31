@@ -17,7 +17,6 @@ impl Op for FiniteReshape {
 
     op_core_lir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 tract_linalg::impl_dyn_hash!(FiniteReshape);

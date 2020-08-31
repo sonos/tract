@@ -154,7 +154,7 @@ mod tests {
     use super::*;
     use AxisOp::*;
 
-    use tract_core::pulse::stream_dim as stream;
+    use tract_pulse::stream_dim as stream;
 
     macro_rules! s {
         ($($a:expr),*) => {&[ $($a.into()),* ]}

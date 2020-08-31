@@ -404,7 +404,6 @@ impl Op for AxisOp {
     canonic!();
     op_core_lir_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
 tract_linalg::impl_dyn_hash!(AxisOp);
@@ -503,31 +502,6 @@ impl TypedOp for AxisOp {
         };
         Ok(Some(op))
     }
-
-    fn pulsify(
-        &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        target.wire_node(&*node.name, self.clone(), &[input])
-    }
-}
-
-impl PulsedOp for AxisOp {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.shape = inputs[0].shape.clone();
-        self.change_shape_array(&mut fact.shape);
-        fact.axis = self.transform_axis(fact.axis).ok_or("Invalid axis for pulsification")?;
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }
 
 pub fn change_axes(

@@ -28,7 +28,6 @@ impl Op for TypedSource {
     canonic!();
     op_core_lir_mir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl StatefullOp for TypedSource {
@@ -63,20 +62,7 @@ impl TypedOp for TypedSource {
         )))
     }
 
-    fn pulsify(
-        &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        target: &mut PulsedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
-        pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let pulsed_fact =
-            crate::pulse::PulsedFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
-        let id = target.add_source(node.name.clone(), pulsed_fact)?;
-        Ok(tvec!(id))
-    }
-
+    /*
     fn concretize_stream_dim(
         &self,
         _source: &TypedModel,
@@ -92,47 +78,8 @@ impl TypedOp for TypedSource {
         }
         target.wire_node(&node.name, Self { fact }, &[])
     }
+    */
 
     as_op!();
 }
 
-#[derive(Debug, Clone, new, Hash)]
-pub struct PulsedSource {
-    fact: PulsedFact,
-}
-
-tract_linalg::impl_dyn_hash!(PulsedSource);
-
-impl Op for PulsedSource {
-    fn name(&self) -> Cow<str> {
-        "PulsedSource".into()
-    }
-    canonic!();
-    op_core_lir_mir!();
-    not_a_typed_op!();
-    op_as_pulsed_op!();
-}
-
-impl StatefullOp for PulsedSource {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(SourceState(node_id))))
-    }
-}
-
-impl PulsedOp for PulsedSource {
-    fn pulsed_output_facts(&self, _inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        Ok(tvec!(self.fact.clone()))
-    }
-
-    fn to_typed(&self) -> Box<dyn TypedOp> {
-        Box::new(TypedSource::new(
-            TypedFact::dt_shape(self.fact.datum_type, &*self.fact.shape).unwrap(),
-        ))
-    }
-
-    as_op!();
-}

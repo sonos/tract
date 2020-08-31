@@ -19,6 +19,7 @@ educe = "=0.4.11" # locked for rust 1.41.0
 log = "0.4"
 maplit = "1"
 tract-core = { path = "../core" }
+tract-pulse = { path = "../pulse" }
 
 [dev-dependencies]
 env_logger = "0.7"

@@ -152,7 +152,6 @@ impl Op for Nary {
 
     op_hir!();
     not_a_typed_op!();
-    not_a_pulsed_op!();
 }
 
 impl StatelessOp for Nary {

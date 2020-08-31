@@ -91,7 +91,6 @@ mod hash;
 pub mod model;
 mod optim;
 pub mod plan;
-pub mod pulse;
 pub mod tensor;
 
 pub use crate::errors::*;
@@ -124,11 +123,10 @@ pub mod internal {
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
     pub use crate::ops::{
-        AxisInfo, Cost, Invariants, Op, OpState, PulsedOp, StatefullOp, StatelessOp, Validation,
+        AxisInfo, Cost, Invariants, Op, OpState, StatefullOp, StatelessOp, Validation,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
-    pub use crate::pulse::{PulsedFact, PulsedModel, PulsedNode};
     pub use downcast_rs as tract_downcast_rs;
     pub use error_chain::bail;
     pub use std::borrow::Cow;
@@ -139,7 +137,7 @@ pub mod internal {
     pub use tract_linalg::hash::{hash_f32, hash_opt_f32, DynHash};
     pub use tvec;
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
-    pub use {as_op, not_a_pulsed_op, not_a_typed_op, op_as_typed_op, pulsed_op_to_typed_op};
+    pub use {as_op, not_a_typed_op, op_as_typed_op};
     pub use {bin_to_super_type, element_wise, element_wise_oop};
     pub use {
         dispatch_copy, dispatch_datum, dispatch_datum_by_size, dispatch_floatlike, dispatch_numbers,

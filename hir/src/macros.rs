@@ -55,7 +55,7 @@ macro_rules! dimfact {
         $crate::infer::DimFact::default()
     };
     (S) => {
-        $crate::infer::GenericFactoid::Only($crate::tract_core::pulse::stream_dim())
+        $crate::infer::GenericFactoid::Only(tract_pulse::stream_dim())
     };
     ($arg:expr) => {
         $crate::infer::GenericFactoid::Only($arg.to_dim())

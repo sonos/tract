@@ -24,6 +24,7 @@ impl Hash for Box<dyn TypedOp> {
     }
 }
 
+/*
 impl Hash for Box<dyn PulsedOp> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::hash::Hash::hash(&self.type_id(), state);
@@ -31,7 +32,6 @@ impl Hash for Box<dyn PulsedOp> {
     }
 }
 
-/*
 impl<'a> Hash for &'a dyn PulsedOp {
     fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
         std::hash::Hash::hash(&self.type_id(), state);

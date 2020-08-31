@@ -79,6 +79,7 @@ impl<F: Clone> OutputMapping<F> {
     }
 }
 
+/*
 impl<F: Clone + DimLike> OutputMapping<F> {
     pub fn concretize_stream_dim(&self, stream_dim: usize) -> TractResult<OutputMapping<F>> {
         Ok(Self {
@@ -87,6 +88,7 @@ impl<F: Clone + DimLike> OutputMapping<F> {
         })
     }
 }
+*/
 
 impl<F: Clone + fmt::Display> fmt::Debug for OutputMapping<F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
