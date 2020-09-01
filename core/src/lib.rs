@@ -57,6 +57,8 @@ pub extern crate itertools;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate maplit;
 #[allow(unused_imports)]
 #[macro_use]
 pub extern crate ndarray;
