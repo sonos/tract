@@ -92,7 +92,8 @@ impl Reducer {
                     TReduce::new(axes.clone(), TReducer::Sum),
                     &[wire],
                 )?[0];
-                let size = axes.iter().map(|ax| fact.shape.dim(*ax)).maybe_product()?.to_i64()?;
+                let size:TDim = axes.iter().map(|ax| &fact.shape[*ax]).maybe_product()?;
+                let size = size.to_i64()?;
                 let size = tensor0(size)
                     .cast_to_dt(fact.datum_type)?
                     .into_owned()

@@ -19,9 +19,7 @@ impl<D: DimLike + ToDim + Hash> Slice<D> {
         let mut input = input.to_array_view_unchecked::<T>();
         input.slice_axis_inplace(
             Axis(self.axis),
-            ::ndarray::Slice::from(
-                (self.start.to_isize()?)..(self.end.to_isize()?),
-            ),
+            ::ndarray::Slice::from((self.start.to_isize()?)..(self.end.to_isize()?)),
         );
         Ok(Tensor::from(input.to_owned()).into())
     }
@@ -65,7 +63,7 @@ impl<D: DimLike + ToDim + Hash> StatelessOp for Slice<D> {
 impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape.set_dim(self.axis, (self.end.clone() - &self.start).to_dim())?;
+        fact.shape[self.axis] = (self.end.clone() - &self.start).to_dim();
         Ok(tvec!(fact))
     }
 
@@ -114,8 +112,7 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
             }
         }
         if self.start == D::zero()
-            && (self.end.clone().to_dim()
-                == model.outlet_fact(node.inputs[0])?.shape.dim(self.axis))
+            && (self.end.clone().to_dim() == model.outlet_fact(node.inputs[0])?.shape[self.axis])
         {
             return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
         }
@@ -171,4 +168,3 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
 
     as_op!();
 }
-

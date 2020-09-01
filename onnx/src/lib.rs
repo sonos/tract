@@ -48,17 +48,3 @@ pub fn onnx() -> Onnx {
     ops::register_all_ops(&mut ops);
     Onnx { op_register: ops }
 }
-
-/*
-pub trait WithOnnx {
-    fn with_onnx(self) -> Self;
-}
-
-impl WithOnnx for tract_nnef::framework::Nnef {
-    fn with_onnx(mut self) -> Self {
-        self = self.with_tract_core();
-        self.registries.push(ops::nnef::tract_nnef_onnx_registry());
-        self
-    }
-}
-*/

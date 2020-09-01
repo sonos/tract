@@ -398,6 +398,12 @@ impl ::std::iter::Sum for TDim {
     }
 }
 
+impl<'a> ::std::iter::Sum<&'a TDim> for TDim {
+    fn sum<I: Iterator<Item = &'a TDim>>(iter: I) -> TDim {
+        iter.fold(0.into(), |a, b| a + b)
+    }
+}
+
 macro_rules! from_i {
     ($i: ty) => {
         impl From<$i> for TDim {

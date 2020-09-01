@@ -198,7 +198,7 @@ impl TypedOp for Delay {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape.set_dim(self.axis, fact.shape.dim(self.axis) + self.overlap)?;
+        fact.shape[self.axis] += self.overlap;
         Ok(tvec!(fact))
     }
 

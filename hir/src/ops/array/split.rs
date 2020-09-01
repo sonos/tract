@@ -11,11 +11,11 @@ pub struct Split {
 tract_linalg::impl_dyn_hash!(Split);
 
 impl Split {
-    fn split_dims<D: DimLike>(&self, input: D) -> TractResult<TVec<D>> {
+    fn split_dims<D: DimLike>(&self, input: &D) -> TractResult<TVec<D>> {
         if let Some(ref split) = self.split.as_ref() {
             Ok(split.iter().map(|&d| D::from(d)).collect())
         } else {
-            Ok(tvec!(input/self.outputs;self. outputs))
+            Ok(tvec!(input.clone()/self.outputs;self. outputs))
         }
     }
 }
@@ -42,7 +42,7 @@ impl Expansion for Split {
         s.given(&inputs[0].shape, move |s, shape| {
             let axis =
                 if self.axis < 0 { self.axis + shape.len() as isize } else { self.axis } as usize;
-            let dims = self.split_dims(shape[axis].clone())?;
+            let dims = self.split_dims(&shape[axis])?;
             for i in 0..self.outputs {
                 let mut shape = shape.clone();
                 shape[axis] = dims[i].clone();
@@ -68,7 +68,7 @@ impl Expansion for Split {
         let mut current = 0.to_dim();
         let axis =
             if self.axis < 0 { self.axis + input.rank() as isize } else { self.axis } as usize;
-        for len in self.split_dims(input.shape.dim(axis))? {
+        for len in self.split_dims(&input.shape[axis])? {
             let end = current.clone() + len;
             outputs.push(
                 target.wire_node(

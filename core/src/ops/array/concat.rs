@@ -43,7 +43,7 @@ impl TypedConcat {
                 ConcatSlice::Const(t) => t.shape()[self.axis].to_dim(),
                 ConcatSlice::Var => {
                     input += 1;
-                    inputs[input - 1].shape.dim(self.axis)
+                    inputs[input - 1].shape[self.axis].clone()
                 }
             };
             let offset = len + offsets.last().unwrap();
@@ -92,14 +92,14 @@ impl TypedOp for TypedConcat {
                 bail!("Inconsistent concat {:?} inputs: {:?}", self, inputs);
             }
         }
-        let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
+        let dim = inputs.iter().map(|f| &f.shape[self.axis]).sum::<TDim>()
             + self
                 .slices
                 .iter()
                 .filter_map(|s| s.as_const())
                 .map(|s| s.shape()[self.axis])
                 .sum::<usize>();
-        fact.shape.set_dim(self.axis, dim)?;
+        fact.shape[self.axis] = dim;
         Ok(tvec!(fact))
     }
 

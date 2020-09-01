@@ -247,7 +247,7 @@ impl AxisOp {
                 if shape.rank() <= *ix {
                     bail!("Attempt to remove {} axis on shape {:?}", ix, shape);
                 }
-                if shape.dim(*ix) != 1.to_dim() {
+                if shape[*ix] != 1.to_dim() {
                     bail!("Removing a non-trivial axis.");
                 }
                 shape.remove_axis(*ix)

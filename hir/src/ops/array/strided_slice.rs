@@ -251,10 +251,10 @@ impl Expansion for StridedSlice {
             let mut wire = inputs[0];
             let input = target.outlet_fact(wire)?.clone();
             for (ix, &axis) in axes.iter().enumerate() {
-                let d = input_shape.dim(axis);
+                let d = &input_shape[axis];
                 let preped = self.prepare_one_dim(ix, &d, &params[0], &params[1], &strides)?;
                 if preped.stride > 0 {
-                    if preped.begin != 0.to_dim() || preped.end != input.shape.dim(ix) {
+                    if preped.begin != 0.to_dim() || preped.end != input.shape[ix] {
                         wire = target.wire_node(
                             format!("{}.Slice", prefix),
                             crate::ops::array::Slice::new(axis, preped.begin, preped.end),
@@ -262,7 +262,7 @@ impl Expansion for StridedSlice {
                         )?[0];
                     }
                 } else {
-                    if preped.end != 0.to_dim() || preped.begin != input.shape.dim(ix) {
+                    if preped.end != 0.to_dim() || preped.begin != input.shape[ix] {
                         wire = target.wire_node(
                             format!("{}.Slice", prefix),
                             crate::ops::array::Slice::new(axis, preped.end + 1, preped.begin + 1),

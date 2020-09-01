@@ -48,7 +48,7 @@ impl Expansion for Crop {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let len = target.outlet_fact(inputs[0])?.shape.dim(self.axis);
+        let len = target.outlet_fact(inputs[0])?.shape[self.axis].clone();
         target.wire_node(
             prefix,
             crate::ops::array::Slice::new(
