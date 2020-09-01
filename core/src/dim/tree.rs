@@ -553,17 +553,6 @@ impl<I: AsPrimitive<u64>> ops::Rem<I> for TDim {
 impl std::str::FromStr for TDim {
     type Err = std::num::ParseIntError;
     fn from_str(s: &str) -> Result<TDim, Self::Err> {
-        /*
-        if s == "S" {
-            Ok(crate::pulse::stream_dim())
-        } else if s.ends_with("S") {
-            let number: String = s.chars().take_while(|c| c.is_digit(10)).collect();
-            let number: i64 = number.parse::<i64>().map(|i| i.into())?;
-            Ok(crate::pulse::stream_dim() * number)
-        } else {
-            s.parse::<i64>().map(|i| i.into())
-        }
-        */
         s.parse::<i64>().map(|i| i.into())
     }
 }
