@@ -38,26 +38,18 @@ impl TypedOp for MultiBroadcastTo {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))
     }
 
-    /*
-    fn concretize_stream_dim(
+    fn concretize_dims(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        stream_dim: usize,
+        values: &HashMap<Symbol, i64>,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let op = Self {
-            shape: self
-                .shape
-                .iter()
-                .map(|d| d.eval(&hashmap! {crate::pulse::stream_symbol() => stream_dim as _}))
-                .collect(),
-        };
+        let op = Self { shape: self.shape.iter().map(|d| d.eval(&values)).collect() };
         target.wire_node(&node.name, op, &[input])
     }
-    */
 
     as_op!();
 }

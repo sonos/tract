@@ -79,16 +79,14 @@ impl<F: Clone> OutputMapping<F> {
     }
 }
 
-/*
 impl<F: Clone + DimLike> OutputMapping<F> {
-    pub fn concretize_stream_dim(&self, stream_dim: usize) -> TractResult<OutputMapping<F>> {
+    pub fn concretize_dims(&self, values: &HashMap<Symbol, i64>) -> TractResult<OutputMapping<F>> {
         Ok(Self {
-            full_dim_hint: self.full_dim_hint.as_ref().map(|h| h.concretize_stream_dim(stream_dim)),
+            full_dim_hint: self.full_dim_hint.as_ref().map(|h| h.eval(values)),
             ..self.clone()
         })
     }
 }
-*/
 
 impl<F: Clone + fmt::Display> fmt::Debug for OutputMapping<F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {

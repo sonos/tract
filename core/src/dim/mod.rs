@@ -5,6 +5,7 @@ use std::ops;
 mod tree;
 
 pub use self::tree::{Symbol, TDim};
+use std::collections::HashMap;
 use crate::{TractError, TractResult};
 
 /// A super-trait for value acting as tensor dimensions in tract.
@@ -64,10 +65,7 @@ pub trait DimLike:
     /// do not use num_traits::Mul as it implies a regular Mul
     fn one() -> Self;
 
-    /*
-    /// Give streaming dimension its value
-    fn concretize_stream_dim(&self, stream_dim: usize) -> Self;
-    */
+    fn eval(&self, values: &HashMap<Symbol, i64>) -> Self;
 }
 
 impl DimLike for TDim {
@@ -128,11 +126,9 @@ impl DimLike for TDim {
         Self::from(1)
     }
 
-    /*
-    fn concretize_stream_dim(&self, stream_dim: usize) -> Self {
-        self.eval(&hashmap! {crate::pulse::stream_symbol() => stream_dim as _})
+    fn eval(&self, values: &HashMap<Symbol, i64>) -> Self {
+        self.eval(values)
     }
-    */
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
@@ -161,11 +157,9 @@ impl DimLike for usize {
         1
     }
 
-    /*
-    fn concretize_stream_dim(&self, _stream_dim: usize) -> Self {
+    fn eval(&self, _values: &HashMap<Symbol, i64>) -> Self {
         *self
     }
-    */
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for usize {
