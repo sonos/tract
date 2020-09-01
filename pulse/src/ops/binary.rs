@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::ops::delay::Delay;
+use tract_pulse_opl::ops::Delay;
 use tract_core::ops::binary::*;
 
 submit_op_pulsifier!(TypedBinOp, pulsify_bin);
@@ -25,7 +25,7 @@ fn pulsify_bin(
             let add_delay = delay - fact.delay;
             input = target.wire_node(
                 format!("{}.Delay", &*node.name),
-                Delay::new(&fact, add_delay, 0),
+                Delay::new(fact.axis, &fact.into(), add_delay, 0),
                 &[input],
             )?[0];
         }

@@ -176,12 +176,13 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
 }
 
 fn parse_dim_stream(s: &str) -> CliResult<TDim> {
+    use tract_pulse::internal::stream_dim;
     if s == "S" {
-        Ok(tract_pulse::stream_dim())
+        Ok(stream_dim())
     } else if s.ends_with("S") {
         let number: String = s.chars().take_while(|c| c.is_digit(10)).collect();
         let number: i64 = number.parse::<i64>().map(|i| i.into())?;
-        Ok(tract_pulse::stream_dim() * number)
+        Ok(stream_dim() * number)
     } else {
         Ok(s.parse::<i64>().map(|i| i.into())?)
     }
@@ -202,7 +203,8 @@ pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
 }
 
 pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
-    use tract_pulse::{stream_symbol, StreamFact};
+    use tract_pulse::fact::StreamFact;
+    use tract_pulse::internal::stream_symbol;
     let s = stream_symbol();
     if let Some(value) = &fact.konst {
         Ok(value.clone().into_tensor())

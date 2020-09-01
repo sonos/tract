@@ -70,6 +70,7 @@ fi
     ARM-ML-KWS-CNN-M.pb \
     GRU128KeywordSpotter-v2-10epochs.onnx \
     hey_snips_v4_model17.pb \
+    hey_snips_v4_model17.alpha1.tgz \
     inception_v3_2016_08_28_frozen.pb \
     mdl-en-2019-Q3-librispeech.onnx \
     mobilenet_v1_1.0_224_frozen.pb \

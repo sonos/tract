@@ -3,7 +3,6 @@ use tract_core::ops;
 
 mod broadcast;
 mod cast;
-mod delay;
 mod downsample;
 mod gather;
 mod reduce;
@@ -27,7 +26,6 @@ pub fn register(registry: &mut Registry) {
 
     broadcast::register(registry);
     cast::register(registry);
-    delay::register(registry);
     downsample::register(registry);
     gather::register(registry);
     reduce::register(registry);

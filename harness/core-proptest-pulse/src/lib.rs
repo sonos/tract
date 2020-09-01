@@ -3,9 +3,6 @@
 #[macro_use]
 extern crate log;
 
-#[macro_use]
-extern crate maplit;
-
 use proptest::prelude::*;
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
@@ -31,7 +28,7 @@ fn proptest_regular_against_pulse(
 ) -> TestCaseResult {
     setup_test_logger();
     let mut ref_model = model.clone();
-    let s = tract_pulse::stream_symbol();
+    let s = stream_symbol();
     debug!("Run reference");
     ref_model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape()))?;
     let input = Tensor::from(input_array.clone());

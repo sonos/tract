@@ -3,6 +3,7 @@ members = [
     "linalg",
     "core",
     "pulse",
+    "pulse-opl",
     "hir",
     "nnef",
     "tensorflow",

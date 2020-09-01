@@ -94,3 +94,10 @@ impl std::fmt::Display for Box<dyn PulsedOp> {
         write!(fmt, "{}", self.name())
     }
 }
+
+impl<'a> From<&'a Box<dyn PulsedOp>> for Box<dyn TypedOp> {
+    fn from(op: &'a Box<dyn PulsedOp>) -> Box<dyn TypedOp> {
+        op.to_typed()
+    }
+}
+

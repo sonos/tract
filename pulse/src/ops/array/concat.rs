@@ -1,6 +1,6 @@
 use crate::internal::*;
 use tract_core::ops::array::TypedConcat;
-use crate::ops::delay::Delay;
+use tract_pulse_opl::ops::Delay;
 use tract_core::ndarray::*;
 use std::ops::Range;
 
@@ -57,7 +57,7 @@ fn pulsify_along_concat_axis(
     if fact.delay < before {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new(&fact.clone(), before - fact.delay, 0),
+            Delay::new(fact.axis, &(&fact).into(), before - fact.delay, 0),
             &[input],
             )?[0];
     }
@@ -66,7 +66,7 @@ fn pulsify_along_concat_axis(
         pre_slice: pre,
         post_slice: post,
         input_delay: fact.delay.saturating_sub(before),
-        input_len: fact.dim
+        input_len: fact.dim.clone()
     };
     target.wire_node(&*node.name, main_op, &[input])
 }

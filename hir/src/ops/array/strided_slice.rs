@@ -82,15 +82,12 @@ impl StridedSlice {
             let neg = if let Ok(b) = bound.to_isize() {
                 b < 0
             } else {
-                dbg!(&bound);
-                dbg!(&bound);
                 let symbols = bound.symbols();
                 if symbols.len() == 1 {
                     bound.eval(&hashmap!(symbols.into_iter().nth(0).unwrap() => 100_000_000)).to_isize().unwrap() < 0
                 } else {
                     false
                 }
-                //                bound.eval(100_000_000).unwrap() < 0
             };
             if neg {
                 *bound = bound.clone() + dim;
@@ -311,7 +308,7 @@ mod tests {
     use tract_ndarray::{arr1, arr2, arr3};
 
     fn s() -> TDim {
-        tract_pulse::stream_dim()
+        tract_pulse::internal::stream_dim()
     }
 
     pub fn strided_slice(begin_mask: i64, end_mask: i64, shrink_axis_mask: i64) -> StridedSlice {

@@ -18,4 +18,4 @@ downcast-rs = "1.0"
 inventory = "0.1"
 lazy_static = "1.4.0"
 maplit = "1"
-tract-core = { path = "../core" }
+tract-pulse-opl = { path = "../pulse-opl" }

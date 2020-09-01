@@ -66,13 +66,12 @@ impl Nnef {
             crate::tensors::write_tensor(&mut data, t)?;
 
             let mut header = tar::Header::new_gnu();
-            header.set_path(filename)?;
             header.set_size(data.len() as u64);
             header.set_mode(0o644);
             header.set_mtime(now.as_secs());
             header.set_cksum();
 
-            ar.append(&header, &mut &*data)?;
+            ar.append_data(&mut header, &*filename, &mut &*data)?;
         }
         Ok(())
     }

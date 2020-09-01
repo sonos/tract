@@ -1,7 +1,7 @@
 use crate::errors::*;
 use crate::{Model, Parameters};
 use tract_hir::internal::*;
-use tract_pulse::PulsedModel;
+use tract_pulse::internal::*;
 
 pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> {
     let dump = options.is_present("dump");
@@ -83,14 +83,12 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);
-    let output_dim = output_fact
-        .dim
-        .eval(&hashmap!(tract_pulse::stream_symbol() => input_dim as i64))
-        .to_usize()?;
+    let output_dim =
+        output_fact.dim.eval(&hashmap!(stream_symbol() => input_dim as i64)).to_usize()?;
     let mut output_shape = output_fact.shape.to_vec();
     output_shape[output_fact.axis] =
         (output_dim as usize + output_fact.delay + 4 * output_fact.pulse()).to_dim();
-    let output_shape:TVec<usize> = output_shape.iter().map(|d| d.to_usize().unwrap()).collect();
+    let output_shape: TVec<usize> = output_shape.iter().map(|d| d.to_usize().unwrap()).collect();
     let plan = SimplePlan::new(model)?;
     let mut state = ::tract_core::plan::SimpleState::new(&plan)?;
     //    println!("output_shape: {:?}", output_shape);
