@@ -1,6 +1,6 @@
-use tract_nnef::internal::*;
-use tract_core::ndarray::*;
 use std::ops::Range;
+use tract_core::ndarray::*;
+use tract_nnef::internal::*;
 
 /// Concat with pulse along concat axis
 #[derive(Debug, Clone, Hash)]
@@ -27,7 +27,7 @@ impl StatefullOp for PulsedSameAxisConcat {
         &self,
         _session: &mut SessionState,
         _node_id: usize,
-        ) -> TractResult<Option<Box<dyn OpState>>> {
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         return Ok(Some(Box::new(PulsedSameAxisConcatState::default())));
     }
 }
@@ -51,7 +51,7 @@ impl OpState for PulsedSameAxisConcatState {
         session: &mut SessionState,
         op: &dyn Op,
         mut inputs: TVec<Arc<Tensor>>,
-        ) -> TractResult<TVec<Arc<Tensor>>> {
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op.downcast_ref::<PulsedSameAxisConcat>().ok_or("Wrong Op type")?;
         let input = args_1!(inputs);
         let mut data = input.into_tensor();
@@ -59,44 +59,46 @@ impl OpState for PulsedSameAxisConcatState {
         let current_pos = self.current_pos;
         self.current_pos += pulse;
 
-        let pre_length = op.pre_slice.shape()[op.axis];
-        let pre_offset = op.input_delay - pre_length;
-        dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
+        unsafe {
+            let pre_length = op.pre_slice.shape()[op.axis];
+            let pre_offset = op.input_delay - pre_length;
+            dispatch_datum_by_size!(overwrite_part_of_pulse(data.datum_type())(
                 op.axis,
                 &mut data,
                 current_pos,
                 &op.pre_slice,
                 pre_offset
-                ))?;
-        if let Ok(l) = op.input_len.eval(&session.resolved_symbols).to_usize() {
-            let post_offset = op.input_delay + l as usize;
-            dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
+            ));
+            if let Ok(l) = op.input_len.eval(&session.resolved_symbols).to_usize() {
+                let post_offset = op.input_delay + l as usize;
+                dispatch_datum_by_size!(overwrite_part_of_pulse(data.datum_type())(
                     op.axis,
                     &mut data,
                     current_pos,
                     &op.post_slice,
                     post_offset
-                    ))?;
+                ));
+            }
         }
 
         return Ok(tvec!(data.into_arc_tensor()));
     }
 }
 
-pub fn overwrite_part_of_pulse<T: Datum>(
+unsafe fn overwrite_part_of_pulse<T: Datum>(
     axis: usize,
     pulse_data: &mut Tensor,
     current_pos: usize,
     const_data: &Tensor,
     const_offset: usize,
-) -> TractResult<()> {
+) {
     let pulse = pulse_data.shape()[axis];
     let const_length = const_data.shape()[axis];
     let const_range = const_offset..const_offset + const_length;
     let pulse_range = current_pos..current_pos + pulse;
     let axis = Axis(axis);
-    let mut pulse_data = pulse_data.to_array_view_mut::<T>()?;
-    let const_data = const_data.to_array_view::<T>()?;
+    let mut pulse_data = pulse_data.to_array_view_mut_unchecked::<T>();
+    let const_data = const_data.to_array_view_unchecked::<T>();
 
     match range_in_range(&pulse_range, &const_range) {
         RangeInRange::Before(_) | RangeInRange::After(_) => (),
@@ -123,7 +125,6 @@ pub fn overwrite_part_of_pulse<T: Datum>(
                 .assign(&const_data.slice_axis(axis, (offset..const_length).into()));
         }
     }
-    Ok(())
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -159,4 +160,3 @@ fn range_in_range(needle: &Range<usize>, haystack: &Range<usize>) -> RangeInRang
         RangeInRange::Inside(needle.start - haystack.start)
     }
 }
-
