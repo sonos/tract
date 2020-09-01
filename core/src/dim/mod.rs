@@ -4,8 +4,7 @@ use std::ops;
 
 mod tree;
 
-pub use self::tree::{Symbol, TDim};
-use std::collections::HashMap;
+pub use self::tree::{Symbol, SymbolValues, TDim};
 use crate::{TractError, TractResult};
 
 /// A super-trait for value acting as tensor dimensions in tract.
@@ -65,7 +64,7 @@ pub trait DimLike:
     /// do not use num_traits::Mul as it implies a regular Mul
     fn one() -> Self;
 
-    fn eval(&self, values: &HashMap<Symbol, i64>) -> Self;
+    fn eval(&self, values: &SymbolValues) -> Self;
 }
 
 impl DimLike for TDim {
@@ -123,7 +122,7 @@ impl DimLike for TDim {
         Self::from(1)
     }
 
-    fn eval(&self, values: &HashMap<Symbol, i64>) -> Self {
+    fn eval(&self, values: &SymbolValues) -> Self {
         self.eval(values)
     }
 }
@@ -154,7 +153,7 @@ impl DimLike for usize {
         1
     }
 
-    fn eval(&self, _values: &HashMap<Symbol, i64>) -> Self {
+    fn eval(&self, _values: &SymbolValues) -> Self {
         *self
     }
 }

@@ -213,7 +213,7 @@ pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliRes
             let shape = fact
                 .shape
                 .iter()
-                .map(|d| d.eval(&hashmap!(s => dim as i64)).to_usize().unwrap())
+                .map(|d| d.eval(&SymbolValues::default().with(s, dim as i64)).to_usize().unwrap())
                 .collect::<TVec<_>>();
             Ok(random(&shape, fact.datum_type))
         } else {

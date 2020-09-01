@@ -58,7 +58,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
             let decl = (*decl).clone();
             let fixed_result = decl
                 .with_output_outlets(&[decl_outlet])?
-                .concretize_dims(&maplit::hashmap!(stream_symbol() => stream_dim as _))?
+                .concretize_dims(&SymbolValues::default().with(stream_symbol(), stream_dim as _))?
                 .into_runnable()?
                 .run(tvec!(fixed_input.clone()))?
                 .remove(output_slot);
@@ -86,10 +86,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
                 };
                 if offset + input_pulse > stream_dim {
                     debug!("Set known_stream_len: {}", stream_dim);
-                    state
-                        .session_state
-                        .resolved_symbols
-                        .insert(stream_symbol(), stream_dim as i64);
+                    state.session_state.resolved_symbols[stream_symbol()] = Some(stream_dim as _);
                 };
 
                 let output = state.run(tvec!(pulsed_input.into()))?.remove(output_slot);

@@ -80,7 +80,7 @@ impl<F: Clone> OutputMapping<F> {
 }
 
 impl<F: Clone + DimLike> OutputMapping<F> {
-    pub fn concretize_dims(&self, values: &HashMap<Symbol, i64>) -> TractResult<OutputMapping<F>> {
+    pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<OutputMapping<F>> {
         Ok(Self {
             full_dim_hint: self.full_dim_hint.as_ref().map(|h| h.eval(values)),
             ..self.clone()

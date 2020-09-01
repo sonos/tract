@@ -499,7 +499,7 @@ impl Parameters {
         stage!("type", inference_model -> typed_model, |m:InferenceModel| Ok(m.into_typed()?));
         stage!("declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
         if let Some(dim) = concretize_stream_dim {
-            stage!("concretize-stream-dim", typed_model -> typed_model, |m:TypedModel| Ok(m.concretize_dims(&maplit::hashmap!(stream_symbol() => dim as _))?) );
+            stage!("concretize-stream-dim", typed_model -> typed_model, |m:TypedModel| Ok(m.concretize_dims(&SymbolValues::default().with(stream_symbol(), dim as _))?));
             stage!("concretize-stream-dim-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
         } else if let Some(pulse) = pulse {
             stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| Ok(PulsedModel::new(&m, pulse)?));

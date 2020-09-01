@@ -62,8 +62,6 @@ extern crate log;
 pub extern crate ndarray;
 extern crate num_integer;
 pub extern crate num_traits;
-#[macro_use]
-extern crate maplit;
 #[cfg(test)]
 extern crate env_logger;
 #[cfg(test)]
@@ -99,7 +97,7 @@ pub use dyn_clone;
 /// This prelude is meant for code using tract.
 pub mod prelude {
     pub use crate::datum::{Blob, Datum, DatumType};
-    pub use crate::dim::{Symbol, TDim};
+    pub use crate::dim::{Symbol, SymbolValues, TDim};
     pub use crate::errors::*;
     pub use crate::framework::Framework;
     pub use crate::model::*;

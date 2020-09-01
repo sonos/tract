@@ -84,7 +84,9 @@ impl StridedSlice {
             } else {
                 let symbols = bound.symbols();
                 if symbols.len() == 1 {
-                    bound.eval(&hashmap!(symbols.into_iter().nth(0).unwrap() => 100_000_000)).to_isize().unwrap() < 0
+                    let sym = symbols.into_iter().nth(0).unwrap();
+                    let values = SymbolValues::default().with(sym, 100_000_000);
+                    bound.eval(&values).to_isize().unwrap() < 0
                 } else {
                     false
                 }

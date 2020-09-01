@@ -17,5 +17,4 @@ maintenance = { status = "actively-developed" }
 downcast-rs = "1.0"
 inventory = "0.1"
 lazy_static = "1.4.0"
-maplit = "1"
 tract-pulse-opl = { path = "../pulse-opl" }

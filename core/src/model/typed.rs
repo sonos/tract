@@ -109,9 +109,9 @@ impl TypedModel {
         unreachable!()
     }
 
-    pub fn concretize_dims(&self, values: &HashMap<Symbol, i64>) -> TractResult<TypedModel> {
+    pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
         use crate::model::translator::Translate;
-        impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for &HashMap<Symbol, i64> {
+        impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for SymbolValues {
             fn translate_node(
                 &self,
                 source: &TypedModel,

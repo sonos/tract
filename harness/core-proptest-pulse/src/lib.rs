@@ -69,7 +69,7 @@ fn proptest_regular_against_pulse(
                 &[chunk.view(), ArrayD::from_elem(filler_shape, std::f32::NAN).view()],
             )
             .unwrap();
-            state.session_state.resolved_symbols.insert(s, written as i64);
+            state.session_state.resolved_symbols[s] = Some(written as i64);
             output_len = output_fact
                 .dim
                 .eval(&state.session_state.resolved_symbols)

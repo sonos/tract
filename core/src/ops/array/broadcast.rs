@@ -44,7 +44,7 @@ impl TypedOp for MultiBroadcastTo {
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &HashMap<Symbol, i64>,
+        values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let op = Self { shape: self.shape.iter().map(|d| d.eval(&values)).collect() };

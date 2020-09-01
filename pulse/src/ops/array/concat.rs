@@ -1,8 +1,8 @@
 use crate::internal::*;
+use std::ops::Range;
+use tract_core::ndarray::*;
 use tract_core::ops::array::TypedConcat;
 use tract_pulse_opl::ops::Delay;
-use tract_core::ndarray::*;
-use std::ops::Range;
 
 submit_op_pulsifier!(TypedConcat, pulsify);
 
@@ -13,7 +13,7 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
+) -> TractResult<TVec<OutletId>> {
     if node.inputs.len() > 1 {
         bail!("Pulsification not implemented for more than one input to Concat")
     }
@@ -34,7 +34,7 @@ fn pulsify_along_concat_axis(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
+) -> TractResult<TVec<OutletId>> {
     if node.inputs.len() > 1 {
         bail!("Concat can not pulse more than on input on concat axis")
     }
@@ -59,14 +59,14 @@ fn pulsify_along_concat_axis(
             format!("{}.Delay", node.name),
             Delay::new(fact.axis, &(&fact).into(), before - fact.delay, 0),
             &[input],
-            )?[0];
+        )?[0];
     }
     let main_op = PulsedSameAxisConcat {
         axis: op.axis,
         pre_slice: pre,
         post_slice: post,
         input_delay: fact.delay.saturating_sub(before),
-        input_len: fact.dim.clone()
+        input_len: fact.dim.clone(),
     };
     target.wire_node(&*node.name, main_op, &[input])
 }
@@ -110,8 +110,9 @@ impl StatefullOp for PulsedSameAxisConcat {
         &self,
         _session: &mut SessionState,
         _node_id: usize,
-        ) -> TractResult<Option<Box<dyn OpState>>> {
-        return Ok(Some(Box::new(PulsedSameAxisConcatState::default())));
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        let symbols_in_dim = self.input_len.symbols().into_iter().collect();
+        return Ok(Some(Box::new(PulsedSameAxisConcatState { current_pos: 0, symbols_in_dim })));
     }
 }
 
@@ -123,9 +124,10 @@ impl TypedOp for PulsedSameAxisConcat {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct PulsedSameAxisConcatState {
     current_pos: usize,
+    symbols_in_dim: Vec<Symbol>,
 }
 
 impl OpState for PulsedSameAxisConcatState {
@@ -134,7 +136,7 @@ impl OpState for PulsedSameAxisConcatState {
         session: &mut SessionState,
         op: &dyn Op,
         mut inputs: TVec<Arc<Tensor>>,
-        ) -> TractResult<TVec<Arc<Tensor>>> {
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op.downcast_ref::<PulsedSameAxisConcat>().ok_or("Wrong Op type")?;
         let input = args_1!(inputs);
         let mut data = input.into_tensor();
@@ -145,21 +147,22 @@ impl OpState for PulsedSameAxisConcatState {
         let pre_length = op.pre_slice.shape()[op.axis];
         let pre_offset = op.input_delay - pre_length;
         dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
+            op.axis,
+            &mut data,
+            current_pos,
+            &op.pre_slice,
+            pre_offset
+        ))?;
+        if self.symbols_in_dim.iter().all(|s| session.resolved_symbols[*s].is_some()) {
+            let l = op.input_len.eval(&session.resolved_symbols).to_usize().unwrap();
+            let post_offset = op.input_delay + l as usize;
+            dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
                 op.axis,
                 &mut data,
                 current_pos,
-                &op.pre_slice,
-                pre_offset
-                ))?;
-        if let Ok(l) = op.input_len.eval(&session.resolved_symbols).to_usize() {
-            let post_offset = op.input_delay + l as usize;
-            dispatch_datum!(overwrite_part_of_pulse(data.datum_type())(
-                    op.axis,
-                    &mut data,
-                    current_pos,
-                    &op.post_slice,
-                    post_offset
-                    ))?;
+                &op.post_slice,
+                post_offset
+            ))?;
         }
 
         return Ok(tvec!(data.into_arc_tensor()));
@@ -242,4 +245,3 @@ fn range_in_range(needle: &Range<usize>, haystack: &Range<usize>) -> RangeInRang
         RangeInRange::Inside(needle.start - haystack.start)
     }
 }
-

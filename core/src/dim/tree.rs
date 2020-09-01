@@ -18,6 +18,36 @@ impl Symbol {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct SymbolValues(Vec<Option<i64>>);
+
+impl SymbolValues {
+    pub fn with(mut self, s: Symbol, v: i64) -> Self {
+        self[s] = Some(v);
+        self
+    }
+}
+
+impl std::ops::Index<Symbol> for SymbolValues {
+    type Output = Option<i64>;
+    fn index(&self, index: Symbol) -> &Self::Output {
+        if index.1 < self.0.len() {
+            &self.0[index.1]
+        } else {
+            &None
+        }
+    }
+}
+
+impl std::ops::IndexMut<Symbol> for SymbolValues {
+    fn index_mut(&mut self, index: Symbol) -> &mut Self::Output {
+        if index.1 >= self.0.len() {
+            self.0.resize_with(index.1 + 1, Default::default)
+        }
+        &mut self.0[index.1]
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
 pub enum TDim {
     Sym(Symbol),
@@ -54,9 +84,9 @@ impl TDim {
         }
     }
 
-    pub fn eval(&self, values: &HashMap<Symbol, i64>) -> TDim {
+    pub fn eval(&self, values: &SymbolValues) -> TDim {
         match self {
-            Sym(sym) => values.get(&sym).map(|s| Val(*s)).unwrap_or(Sym(*sym)),
+            Sym(sym) => values[*sym].map(|s| Val(s)).unwrap_or(Sym(*sym)),
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Div(a, q) => a.eval(values) / *q as i64,
@@ -644,22 +674,22 @@ mod tests {
     #[test]
     fn const_and_add() {
         let e: TDim = 2i64.into();
-        assert_eq!(e.eval(&hashmap! {}).to_i64().unwrap(), 2);
+        assert_eq!(e.eval(&SymbolValues::default()).to_i64().unwrap(), 2);
         let e: TDim = TDim::from(2) + 3;
-        assert_eq!(e.eval(&hashmap! {}).to_i64().unwrap(), 5);
+        assert_eq!(e.eval(&SymbolValues::default()).to_i64().unwrap(), 5);
         let e: TDim = TDim::from(2) - 3;
-        assert_eq!(e.eval(&hashmap! {}).to_i64().unwrap(), -1);
+        assert_eq!(e.eval(&SymbolValues::default()).to_i64().unwrap(), -1);
         let e: TDim = -TDim::from(2);
-        assert_eq!(e.eval(&hashmap! {}).to_i64().unwrap(), -2);
+        assert_eq!(e.eval(&SymbolValues::default()).to_i64().unwrap(), -2);
     }
 
     #[test]
     fn substitution() {
         let x = Symbol::new('x');
         let e: TDim = x.into();
-        assert_eq!(e.eval(&hashmap! {x => 2}).to_i64().unwrap(), 2);
+        assert_eq!(e.eval(&SymbolValues::default().with(x, 2)).to_i64().unwrap(), 2);
         let e = e + 3;
-        assert_eq!(e.eval(&hashmap! {x => 2}).to_i64().unwrap(), 5);
+        assert_eq!(e.eval(&SymbolValues::default().with(x, 2)).to_i64().unwrap(), 5);
     }
 
     #[test]
