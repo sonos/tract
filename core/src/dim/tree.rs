@@ -439,9 +439,7 @@ impl ops::Neg for TDim {
 
 impl<'a> ops::AddAssign<&'a TDim> for TDim {
     fn add_assign(&mut self, rhs: &'a TDim) {
-        let mut swap = TDim::Val(0);
-        std::mem::swap(&mut swap, self);
-        *self = TDim::Add(vec![swap, rhs.clone()]).reduce()
+        *self = TDim::Add(vec![std::mem::take(self), rhs.clone()]).reduce()
     }
 }
 
@@ -512,9 +510,7 @@ impl<'a> ops::Sub<&'a TDim> for TDim {
 
 impl ops::MulAssign<i64> for TDim {
     fn mul_assign(&mut self, rhs: i64) {
-        let mut me = TDim::Val(0);
-        std::mem::swap(&mut me, self);
-        *self = TDim::Mul(rhs, Box::new(me)).reduce()
+        *self = TDim::Mul(rhs, Box::new(std::mem::take(self))).reduce()
     }
 }
 
@@ -528,9 +524,7 @@ impl<I: AsPrimitive<i64>> ops::Mul<I> for TDim {
 
 impl<I: AsPrimitive<u64>> ops::DivAssign<I> for TDim {
     fn div_assign(&mut self, rhs: I) {
-        let mut me = TDim::Val(0);
-        std::mem::swap(&mut me, self);
-        *self = TDim::Div(Box::new(me), rhs.as_()).reduce()
+        *self = TDim::Div(Box::new(std::mem::take(self)), rhs.as_()).reduce()
     }
 }
 
@@ -570,7 +564,7 @@ impl std::str::FromStr for TDim {
             s.parse::<i64>().map(|i| i.into())
         }
         */
-            s.parse::<i64>().map(|i| i.into())
+        s.parse::<i64>().map(|i| i.into())
     }
 }
 
