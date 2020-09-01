@@ -1,3 +1,4 @@
+use crate::internal::*;
 use crate::errors::TractResultExt;
 use crate::model::*;
 use crate::ops;
@@ -65,7 +66,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
 
 impl TypedModel {
     pub fn signature(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
+        use std::hash::Hasher;
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.hash(&mut hasher);
         hasher.finish()
@@ -108,11 +109,9 @@ impl TypedModel {
         unreachable!()
     }
 
-    pub fn concretize_stream_dim(&self, dim: usize) -> TractResult<TypedModel> {
+    pub fn concretize_dims(&self, values: &HashMap<Symbol, i64>) -> TractResult<TypedModel> {
         use crate::model::translator::Translate;
-        #[derive(Debug)]
-        struct ConcretizeStreamDim(usize);
-        impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for ConcretizeStreamDim {
+        impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for &HashMap<Symbol, i64> {
             fn translate_node(
                 &self,
                 source: &TypedModel,
@@ -120,10 +119,10 @@ impl TypedModel {
                 target: &mut TypedModel,
                 mapping: &HashMap<OutletId, OutletId>,
             ) -> TractResult<TVec<OutletId>> {
-                node.op.concretize_stream_dim(source, node, target, mapping, self.0)
+                node.op.concretize_dims(source, node, target, mapping, self)
             }
         }
-        ConcretizeStreamDim(dim).translate_model(&self)
+        values.translate_model(&self)
     }
 
     /// Translate the graph to locally optimized operators (LIR or MIR ops).

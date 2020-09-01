@@ -62,24 +62,21 @@ impl TypedOp for TypedSource {
         )))
     }
 
-    /*
-    fn concretize_stream_dim(
+    fn concretize_dims(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         _mapping: &HashMap<OutletId, OutletId>,
-        stream_dim: usize,
+        values: &HashMap<Symbol, i64>,
     ) -> TractResult<TVec<OutletId>> {
-        use crate::pulse::StreamFact;
-        let mut fact = self.fact.clone();
-        if let Some((axis, _)) = self.fact.shape.stream_info() {
-            fact.shape.set_dim(axis, fact.shape.dim(axis).concretize_stream_dim(stream_dim))?;
-        }
-        target.wire_node(&node.name, Self { fact }, &[])
+        let shape:TVec<_> = self.fact.shape.iter().map(|d| d.eval(values)).collect();
+        target.wire_node(
+            &node.name,
+            Self { fact: TypedFact::dt_shape(self.fact.datum_type, &*shape)? },
+            &[],
+        )
     }
-    */
 
     as_op!();
 }
-

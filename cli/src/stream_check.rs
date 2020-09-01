@@ -58,7 +58,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
             let decl = (*decl).clone();
             let fixed_result = decl
                 .with_output_outlets(&[decl_outlet])?
-                .concretize_stream_dim(stream_dim)?
+                .concretize_dims(&maplit::hashmap!(stream_symbol() => stream_dim as _))?
                 .into_runnable()?
                 .run(tvec!(fixed_input.clone()))?
                 .remove(output_slot);

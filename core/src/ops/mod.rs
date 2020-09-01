@@ -236,30 +236,15 @@ pub trait TypedOp:
         Ok(None)
     }
 
-    /*
-    /// Translate an op from a typed network to a pulsing equivalent
-    /// form, if possible.
-    fn pulsify(
+    /// Transform the op into by providing a value to one or more symbols.
+    #[allow(unused_variables)]
+    fn concretize_dims(
         &self,
-        _source: &TypedModel,
-        node: &TypedNode,
-        _target: &mut PulsedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        debug!("{:?}", node);
-        bail!("Operator {} do not support pulsification", self.name())
-    }
-    */
-
-    /// Transform the op into by making the S dimension concrete.
-    fn concretize_stream_dim(
-        &self,
-        _source: &TypedModel,
+        source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        _stream_dim: usize,
+        values: &HashMap<Symbol, i64>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
         target.wire_node(&node.name, node.op.clone(), &inputs)
@@ -269,10 +254,11 @@ pub trait TypedOp:
     ///
     /// This transformation is supposed to be final, no more pass are expected
     /// to be run on the codegen networks.
+    #[allow(unused_variables)]
     fn codegen(
         &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
+        model: &TypedModel,
+        node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
     }

@@ -694,27 +694,25 @@ impl TypedOp for Scan {
         Ok(None)
     }
 
-    /*
-    fn concretize_stream_dim(
+    fn concretize_dims(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        stream_dim: usize,
+        values: &HashMap<Symbol, i64>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|o| mapping[&o]).collect::<TVec<_>>();
         let op = Self {
             output_mapping: self
                 .output_mapping
                 .iter()
-                .map(|om| om.concretize_stream_dim(stream_dim))
+                .map(|om| om.concretize_dims(values))
                 .collect::<TractResult<Vec<_>>>()?,
             ..self.clone()
         };
         target.wire_node(&node.name, op, &inputs)
     }
-    */
 
     fn codegen(
         &self,
@@ -729,4 +727,3 @@ impl TypedOp for Scan {
         )?))
     }
 }
-
