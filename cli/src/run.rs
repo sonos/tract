@@ -84,7 +84,7 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);
     let output_dim =
-        output_fact.dim.eval(&hashmap!(stream_symbol() => input_dim as i64)).to_usize()?;
+        output_fact.dim.eval(&SymbolValues::default().with(stream_symbol(), input_dim as i64)).to_usize()?;
     let mut output_shape = output_fact.shape.to_vec();
     output_shape[output_fact.axis] =
         (output_dim as usize + output_fact.delay + 4 * output_fact.pulse()).to_dim();

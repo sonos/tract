@@ -9,7 +9,7 @@ use crate::model::{Fact, Graph, OutletId};
 #[derive(Clone, Debug, Default)]
 pub struct SessionState {
     pub inputs: HashMap<usize, Arc<Tensor>>,
-    pub resolved_symbols: HashMap<Symbol, i64>,
+    pub resolved_symbols: SymbolValues,
     pub tensors: HashMap<String, Tensor>,
 }
 
@@ -106,28 +106,6 @@ where
     pub values: Vec<Option<TVec<Arc<Tensor>>>>,
     _phantom: PhantomData<(M, F, O)>,
 }
-
-/*
-impl<F, O, M, P> Clone for SimpleState<F, O, M, P>
-where
-    F: Fact + Hash + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    M: Borrow<Graph<F, O>> + Hash,
-    P: Borrow<SimplePlan<F, O, M>> + Clone,
-{
-    fn clone(&self) -> SimpleState<F, O, M, P> {
-        SimpleState {
-            plan: self.plan.clone(),
-           // states: self.states.iter().map(|opt| opt.as_ref().map(|s|  dyn_clone::clone(&s))).collect(),
-           // states: self.states.iter().map(|opt| opt.as_ref().map(|s| (s.as_ref().clone()))).collect(),
-            states: vec!(),
-            session_state: self.session_state.clone(),
-            values: self.values.clone(),
-            _phantom: PhantomData,
-        }
-    }
-}
-*/
 
 impl<F, O, M, P> SimpleState<F, O, M, P>
 where

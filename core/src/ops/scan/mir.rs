@@ -700,7 +700,7 @@ impl TypedOp for Scan {
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &HashMap<Symbol, i64>,
+        values: &SymbolValues
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|o| mapping[&o]).collect::<TVec<_>>();
         let op = Self {

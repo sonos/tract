@@ -244,7 +244,7 @@ pub trait TypedOp:
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &HashMap<Symbol, i64>,
+        values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
         target.wire_node(&node.name, node.op.clone(), &inputs)

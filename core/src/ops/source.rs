@@ -68,7 +68,7 @@ impl TypedOp for TypedSource {
         node: &TypedNode,
         target: &mut TypedModel,
         _mapping: &HashMap<OutletId, OutletId>,
-        values: &HashMap<Symbol, i64>,
+        values: &SymbolValues
     ) -> TractResult<TVec<OutletId>> {
         let shape:TVec<_> = self.fact.shape.iter().map(|d| d.eval(values)).collect();
         target.wire_node(
