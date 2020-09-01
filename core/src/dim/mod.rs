@@ -85,11 +85,8 @@ impl DimLike for TDim {
             (_, _) => {
                 if self.symbols().len() == 1 && other.symbols().len() == 1 {
                     let sym = self.symbols().into_iter().nth(0).unwrap();
-                    dbg!(sym);
                     let slope_p = self.slope(sym);
                     let slope_q = other.slope(sym);
-                    dbg!(slope_p);
-                    dbg!(slope_q);
                     let (p, q) = tree::reduce_ratio(
                         slope_p.0 * slope_q.1 as i64,
                         slope_q.0 * slope_p.1 as i64,
