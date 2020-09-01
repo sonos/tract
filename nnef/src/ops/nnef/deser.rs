@@ -110,7 +110,7 @@ pub fn slice(
     let begins: TVec<i64> = invocation.named_arg_as(builder, "begin")?;
     let begins = begins.into_iter().enumerate().map(|(ix, b)| -> TDim {
         if b < 0 {
-            input_fact.shape.dim(ix) + b
+            input_fact.shape[ix].clone() + b
         } else {
             b.into()
         }
@@ -118,7 +118,7 @@ pub fn slice(
     let ends: TVec<i64> = invocation.named_arg_as(builder, "end")?;
     let ends = ends.into_iter().enumerate().map(|(ix, b)| -> TDim {
         if b < 0 {
-            input_fact.shape.dim(ix) + b
+            input_fact.shape[ix].clone() + b
         } else {
             b.into()
         }
@@ -211,7 +211,7 @@ pub fn conv(
     if group == 0 {
         group = kernel.shape()[0]
     }
-    if input_fact.shape.dim(1) != kernel.shape()[1].to_dim() * group {
+    if input_fact.shape[1] != kernel.shape()[1].to_dim() * group {
         bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel);
     }
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
@@ -375,7 +375,7 @@ pub fn reduce(
 
     let fact = builder.model.outlet_fact(wire[0])?;
     let input_shape = &builder.model.outlet_fact(input)?.shape;
-    let cardinality = axes.iter().map(|ax| input_shape.dim(*ax)).maybe_product()?;
+    let cardinality:TDim = axes.iter().map(|ax| &input_shape[*ax]).maybe_product()?;
     if let Ok(c) = cardinality.to_isize() {
         if fact.datum_type.is_float() {
             let cardinality = tensor0((c as f64).recip())

@@ -324,7 +324,7 @@ impl Scan {
                         patch_inputs.push(new_input_wire);
                         let new_input_outer_fact = outside_patch.outlet_fact(new_input_wire)?;
                         let mut new_input_inner_fact = new_input_outer_fact.clone();
-                        new_input_inner_fact.shape.set_dim(axis_after, chunk.abs().to_dim())?;
+                        new_input_inner_fact.shape[axis_after] = chunk.abs().to_dim();
 
                         let mut new_body = self.body.clone();
                         let new_source_wire = new_body.add_source(
@@ -586,7 +586,7 @@ impl TypedOp for Scan {
         let iters = {
             let (outside_slot, axis, chunk) =
                 self.input_mapping.iter().flat_map(|it| it.as_scan()).next().unwrap();
-            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.abs() as _)
+            inputs[outside_slot].shape[axis].clone().div_ceil(chunk.abs() as _)
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.body.output_fact(ix)?;
@@ -595,8 +595,8 @@ impl TypedOp for Scan {
                 let scanning_dim = output
                     .full_dim_hint
                     .clone()
-                    .unwrap_or(shape.dim(output.axis).maybe_mul(&iters)?);
-                shape.set_dim(output.axis, scanning_dim)?;
+                    .unwrap_or(shape[output.axis].maybe_mul(&iters)?);
+                shape[output.axis] = scanning_dim;
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }
             if let Some(slot) = output.last_value_slot {

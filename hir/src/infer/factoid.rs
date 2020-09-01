@@ -154,39 +154,6 @@ impl ShapeFactoid {
     /// Constructs an open shape fact.
     pub fn open(dims: TVec<DimFact>) -> ShapeFactoid {
         ShapeFactoid { open: true, dims }
-        /*
-        if let Some((ix, d)) = dims
-        .iter()
-        .enumerate()
-        .find(|(_ix, d)| d.concretize().map(|d| d.is_stream()).unwrap_or(false))
-        {
-        let stream = Some(StreamFact { axis: ix, len: d.concretize().unwrap() });
-        ShapeFactoid {
-        open: true,
-        dims: dims
-        .iter()
-        .map(|d| match d {
-        GenericFactoid::Only(d) if d.is_stream() => GenericFactoid::Only(-1),
-        GenericFactoid::Only(d) => GenericFactoid::Only(d.to_integer().unwrap()),
-        GenericFactoid::Any => GenericFactoid::Any,
-        })
-        .collect(),
-        stream,
-        }
-        } else {
-        ShapeFactoid {
-        open: true,
-        dims: dims
-        .iter()
-        .map(|d| match d {
-        GenericFactoid::Only(d) => GenericFactoid::Only(d.to_integer().unwrap()),
-        GenericFactoid::Any => GenericFactoid::Any,
-        })
-        .collect(),
-        stream: None,
-        }
-        }
-        */
     }
 
     pub fn is_open(&self) -> bool {
@@ -228,23 +195,6 @@ impl ShapeFactoid {
     pub fn dims(&self) -> impl Iterator<Item = &DimFact> {
         self.dims.iter()
     }
-
-    /*
-    pub fn stream_info(&self) -> TractResult<Option<StreamFact>> {
-    let concrete = self
-    .concretize()
-    .ok_or("Shape has unknown dims, can not find streaming dim for sure.")?;
-    let count = concrete.iter().filter(|&d| d.is_stream()).count();
-    if count > 1 {
-    bail!("Shape has more than one streaming dim. This is terribly wrong.")
-    }
-    Ok(concrete
-    .into_iter()
-    .enumerate()
-    .find(|(_, d)| d.is_stream())
-    .map(|(axis, len)| StreamFact { axis, len }))
-    }
-    */
 
     pub fn as_concrete_finite(&self) -> TractResult<Option<TVec<usize>>> {
         if self.open {

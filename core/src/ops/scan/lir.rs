@@ -33,7 +33,7 @@ impl LirScan {
             })
             .next()
             .unwrap();
-        let outside_dim = inputs[outside_slot].shape.dim(axis);
+        let outside_dim = inputs[outside_slot].shape[axis].clone();
         Some(outside_dim / chunk)
     }
 }
@@ -291,7 +291,7 @@ impl TypedOp for LirScan {
                 })
                 .next()
                 .unwrap();
-            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.abs() as _)
+            inputs[outside_slot].shape[axis].clone().div_ceil(chunk.abs() as _)
         };
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;
@@ -303,8 +303,8 @@ impl TypedOp for LirScan {
                 let scanning_dim = output
                     .full_dim_hint
                     .clone()
-                    .unwrap_or(shape.dim(output.axis).maybe_mul(&iters)?);
-                shape.set_dim(output.axis, scanning_dim)?;
+                    .unwrap_or(shape[output.axis].maybe_mul(&iters)?);
+                shape[output.axis] = scanning_dim;
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }
         }

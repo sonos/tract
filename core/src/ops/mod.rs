@@ -208,7 +208,7 @@ pub trait TypedOp:
     ) -> TractResult<Option<OutletId>> {
         let outlet = OutletId::new(node.id, output_slot);
         let output = model.outlet_fact(outlet)?;
-        if start == 0 && Some(end) == output.shape.dim(axis).to_usize().ok() {
+        if start == 0 && Some(end) == output.shape[axis].to_usize().ok() {
             Ok(Some(patch.tap_model(model, outlet)?))
         } else {
             let wire = patch.tap_model(model, outlet)?;

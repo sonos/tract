@@ -23,7 +23,7 @@ impl Invariants {
         }
         let axes = (0..shape.rank())
             .map(|axis| {
-                Ok(AxisInfo::for_node(model, node, axis)?.disposable(shape.dim(axis) == 1.into()))
+                Ok(AxisInfo::for_node(model, node, axis)?.disposable(shape[axis] == 1.into()))
             })
             .collect::<TractResult<_>>()?;
         Ok(Invariants { element_wise: true, axes })

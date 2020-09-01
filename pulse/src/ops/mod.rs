@@ -5,6 +5,7 @@ pub mod binary;
 pub mod change_axes;
 pub mod cnn;
 pub mod delay;
+pub mod downsample;
 pub mod dummy;
 pub mod element_wise;
 pub mod matmul;

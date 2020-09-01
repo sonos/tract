@@ -164,7 +164,7 @@ fn de_scan(
                     chunk: *chunk,
                 });
                 let mut fact = builder.model.outlet_fact(*wire)?.clone();
-                fact.shape.set_dim(*axis, chunk.abs().to_dim())?;
+                fact.shape[*axis] = chunk.abs().to_dim();
                 (*wire, fact)
             } else if let Some((_, wire)) = full.iter().find(|s| s.0 == par.id) {
                 input_mapping.push(InputMapping::Full { slot: outer_inputs.len() });

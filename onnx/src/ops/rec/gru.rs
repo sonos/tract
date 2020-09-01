@@ -132,7 +132,7 @@ impl Expansion for GRU {
         use tract_hir::tract_core::ops::array::TypedConcat;
         let fore = self.wire_one_side(prefix, target, inputs, 0)?;
         let w_fact = target.outlet_fact(inputs[1])?;
-        if w_fact.shape.dim(0) == 2.into() {
+        if w_fact.shape[0] == 2.into() {
             let back = self.wire_one_side(&format!("{}.back", prefix), target, inputs, 1)?;
             let mut outputs = tvec!(0.into(); self.nboutputs()?);
             if let Some(ix) = self.optional_y_output {
@@ -170,8 +170,8 @@ impl GRU {
         let x_fact = target.outlet_fact(inputs[0])?.clone();
         let r_fact = target.outlet_fact(inputs[2])?;
 
-        let b_size = x_fact.shape.dim(1).to_usize().unwrap();
-        let h_size = r_fact.shape.dim(2).to_usize().unwrap();
+        let b_size = x_fact.shape[1].to_usize().unwrap();
+        let h_size = r_fact.shape[2].to_usize().unwrap();
 
         let chunk = if dir == 0 { 1 } else { -1 };
 
@@ -202,7 +202,7 @@ impl GRU {
         outer_inputs.push(inputs[0]);
         input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk });
         let mut x_source_fact = x_fact.clone();
-        x_source_fact.shape.set_dim(0, 1.to_dim())?;
+        x_source_fact.shape[0] = 1.to_dim();
         let x_source = body.add_source("x_source", x_source_fact)?.into();
         wire!(Xt = AxisOp::Rm(0), x_source);
 

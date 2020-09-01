@@ -47,19 +47,6 @@ impl ShapeFact {
         self.0.len()
     }
 
-    /// Extended dimension of the i-th axis.
-    ///
-    /// The TDim will wrap a plain integer for regular (non-streaming) tensors.
-    pub fn dim(&self, i: usize) -> TDim {
-        self.0[i].clone()
-    }
-
-    /// Set the i-th axis dimension.
-    pub fn set_dim(&mut self, i: usize, dim: TDim) -> TractResult<()> {
-        self.0[i] = dim;
-        Ok(())
-    }
-
     pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
         self.0.insert(axis, 1.into());
         Ok(())

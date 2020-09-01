@@ -96,7 +96,7 @@ impl Expansion for Slice1 {
         let mut wire = inputs[0];
         for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
             let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
-            let dim = input.shape.dim(axis);
+            let dim = &input.shape[axis];
             if let Ok(dim) = dim.to_isize() {
                 let b = (if b >= 0 { b.min(dim) } else { dim + b }) as usize;
                 let e = (if e >= 0 { e.min(dim) } else { dim + e }) as usize;
