@@ -18,7 +18,6 @@ mod logic;
 mod math;
 mod resize;
 mod nn;
-pub mod nnef;
 mod quant;
 pub mod rec;
 

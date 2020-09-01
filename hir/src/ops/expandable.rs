@@ -115,3 +115,73 @@ impl InferenceRulesOp for Box<dyn Expansion> {
 
     as_op!();
 }
+
+pub fn inference_wrap<O, R>(op: O, rules: R) -> Box<dyn InferenceOp>
+where
+    O: TypedOp,
+    R: for<'r, 'p, 's> Fn(
+            &'s dyn Op,
+            &mut Solver<'r>,
+            &'p [TensorProxy],
+            &'p [TensorProxy],
+        ) -> InferenceResult
+        + Send
+        + Sync
+        + 'static,
+{
+    expand(InferenceWrapper { typed_op: Box::new(op), rules: Arc::new(rules) })
+}
+
+#[derive(Clone, new, Educe)]
+#[educe(Hash)]
+pub struct InferenceWrapper {
+    typed_op: Box<dyn TypedOp>,
+    #[educe(Hash(ignore))]
+    rules: Arc<
+        dyn for<'r, 'p, 's> Fn(
+                &'s dyn Op,
+                &mut Solver<'r>,
+                &'p [TensorProxy],
+                &'p [TensorProxy],
+            ) -> InferenceResult
+            + Send
+            + Sync
+            + 'static,
+    >,
+}
+
+impl std::fmt::Debug for InferenceWrapper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.typed_op, f)
+    }
+}
+
+impl Expansion for InferenceWrapper {
+    fn name(&self) -> Cow<str> {
+        self.typed_op.name()
+    }
+
+    fn op_families(&self) -> &'static [&'static str] {
+        self.typed_op.op_families()
+    }
+
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        model.wire_node(prefix, &self.typed_op, inputs)
+    }
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        (self.rules)(self.typed_op.as_op(), s, inputs, outputs)
+    }
+}
+
+tract_linalg::impl_dyn_hash!(InferenceWrapper);

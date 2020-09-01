@@ -26,9 +26,10 @@ pub use model::Onnx;
 pub use tract_hir::tract_core;
 pub mod prelude {
     pub use crate::onnx;
-    pub use crate::WithOnnx;
+    pub use tract_onnx_opl::WithOnnx;
     pub use tract_hir::prelude::*;
 }
+pub use tract_onnx_opl::WithOnnx;
 
 use tract_hir::prelude::*;
 
@@ -48,6 +49,7 @@ pub fn onnx() -> Onnx {
     Onnx { op_register: ops }
 }
 
+/*
 pub trait WithOnnx {
     fn with_onnx(self) -> Self;
 }
@@ -59,3 +61,4 @@ impl WithOnnx for tract_nnef::framework::Nnef {
         self
     }
 }
+*/

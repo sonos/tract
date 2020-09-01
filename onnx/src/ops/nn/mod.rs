@@ -9,7 +9,7 @@ use crate::pb_helpers::OptionExt;
 mod batch_norm;
 mod dropout;
 mod instance_norm;
-pub mod lrn;
+mod lrn;
 
 pub fn arg_max_min(
     _ctx: &ParsingContext,
@@ -48,7 +48,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("InstanceNormalization", instance_norm::instance_normalization);
     reg.insert("LeakyRelu", leaky_relu);
     reg.insert("LogSoftmax", layer_log_soft_max);
-    reg.insert("LRN", lrn);
+    reg.insert("LRN", lrn::lrn);
     reg.insert("MaxPool", max_pool);
     reg.insert("ParametricSoftplus", parametric_softplus);
     reg.insert("QLinearConv", conv_qlinear);
@@ -262,17 +262,6 @@ pub fn leaky_relu(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.01);
     Ok((expand(ops::activations::LeakyRelu(alpha)), vec![]))
-}
-
-fn lrn(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.0001);
-    let beta = node.get_attr_opt("beta")?.unwrap_or(0.75);
-    let bias = node.get_attr_opt("bias")?.unwrap_or(1.);
-    let size = node.get_attr("size")?;
-    Ok((Box::new(lrn::Lrn::new(alpha, beta, bias, size)), vec![]))
 }
 
 pub fn max_pool(
