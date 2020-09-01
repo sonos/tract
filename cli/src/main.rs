@@ -144,6 +144,7 @@ fn main() {
     (@arg nnef_cycle: --("nnef-cycle") "Perform NNEF dump and reload before optimizing")
     (@arg nnef_tract_core: --("nnef-tract-core") "Allow usage of tract-core extension in NNEF dump and load")
     (@arg nnef_tract_onnx: --("nnef-tract-onnx") "Allow usage of tract-onnx extension in NNEF dump and load")
+    (@arg nnef_tract_pulse: --("nnef-tract-pulse") "Allow usage of tract-pulse extension in NNEF dump and load")
 
     (@arg optimize: -O --optimize "Optimize before running")
     (@arg pulse: --pulse +takes_value "Translate to pulse network")
@@ -545,6 +546,10 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     if matches.is_present("nnef_tract_onnx") {
         use tract_onnx::WithOnnx;
         fw = fw.with_onnx();
+    }
+    if matches.is_present("nnef_tract_pulse") {
+        use tract_pulse::WithPulse;
+        fw = fw.with_pulse();
     }
     if matches.is_present("nnef_tract_core") {
         fw = fw.with_tract_core();

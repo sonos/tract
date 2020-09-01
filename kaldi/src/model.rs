@@ -198,7 +198,7 @@ impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
     fn model_for_proto_model(&self, proto_model: &KaldiProtoModel) -> TractResult<InferenceModel> {
         let ctx = ParsingContext { proto_model };
         let mut model = InferenceModel::default();
-        let s = tract_pulse::stream_dim();
+        let s = tract_pulse::internal::stream_dim();
         model.add_source(
             proto_model.config_lines.input_name.clone(),
             InferenceFact::dt_shape(

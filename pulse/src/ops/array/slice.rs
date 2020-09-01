@@ -1,8 +1,8 @@
 use crate::internal::*;
 use tract_core::ops::array::Slice;
 
-submit_op_pulsifier!(Slice<TDim>, pulsify<TDim>);
-submit_op_pulsifier!(Slice<usize>, pulsify<usize>);
+submit_op_pulsifier!(Slice<TDim>, pulsify::<TDim>);
+submit_op_pulsifier!(Slice<usize>, pulsify::<usize>);
 
 fn pulsify<D: DimLike + ToDim + Hash>(
     op: &Slice<D>,

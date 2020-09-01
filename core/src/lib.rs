@@ -137,7 +137,7 @@ pub mod internal {
     pub use tract_linalg::hash::{hash_f32, hash_opt_f32, DynHash};
     pub use tvec;
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
-    pub use {as_op, not_a_typed_op, op_as_typed_op};
+    pub use {as_op, not_a_typed_op, op_as_typed_op, impl_op_same_as};
     pub use {bin_to_super_type, element_wise, element_wise_oop};
     pub use {
         dispatch_copy, dispatch_datum, dispatch_datum_by_size, dispatch_floatlike, dispatch_numbers,

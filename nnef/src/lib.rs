@@ -13,6 +13,7 @@ pub mod tensors;
 
 pub use ast::ProtoModel;
 
+pub use tract_core;
 pub use tract_core::prelude::tract_ndarray;
 pub use tract_core::prelude::tract_num_traits;
 
@@ -28,6 +29,7 @@ pub mod internal {
     pub use crate::registry::*;
     pub use crate::ser::{invocation, logical, numeric, IntoAst};
     pub use std::any::TypeId;
+    pub use tract_core;
     pub use tract_core::internal::*;
 }
 

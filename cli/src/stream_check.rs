@@ -1,9 +1,10 @@
-use tract_core::internal::*;
 use tract_core::itertools::Itertools;
 use tract_core::ndarray::{ArrayD, Axis};
 
 use tract_core::model::OutletId;
 use tract_core::plan::SimpleState;
+
+use tract_pulse::internal::*;
 
 use crate::display_params::DisplayParams;
 use crate::terminal;
@@ -88,7 +89,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
                     state
                         .session_state
                         .resolved_symbols
-                        .insert(tract_pulse::stream_symbol(), stream_dim as i64);
+                        .insert(stream_symbol(), stream_dim as i64);
                 };
 
                 let output = state.run(tvec!(pulsed_input.into()))?.remove(output_slot);

@@ -133,12 +133,12 @@ pub fn pulsify(
         if extra_delay > 0 {
             wire = target.wire_node(
                 format!("{}.delay-for-pad", node.name),
-                crate::ops::delay::Delay::new(&fact.clone(), extra_delay, 0),
+                tract_pulse_opl::ops::Delay::new(fact.axis, &(&fact).into(), extra_delay, 0),
                 &[wire],
             )?[0];
             fact = target.outlet_fact(wire)?.clone();
         }
-        let op = crate::ops::array::PulsePad {
+        let op = tract_pulse_opl::ops::PulsePad {
            axis: fact.axis,
             pulse,
             before,
@@ -161,7 +161,7 @@ pub fn pulsify(
         let delay = align_to - overlap - fact.delay;
         wire = target.wire_node(
             format!("{}.delay", node.name),
-            crate::ops::delay::Delay::new(&fact, delay, overlap),
+            tract_pulse_opl::ops::Delay::new(fact.axis, &(&fact).into(), delay, overlap),
             &[wire],
         )?[0];
     }

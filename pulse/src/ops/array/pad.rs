@@ -1,7 +1,7 @@
 use crate::internal::*;
-use crate::ops::delay::Delay;
 use tract_core::ndarray::*;
 use tract_core::ops::array::{Pad, PadMode};
+use tract_pulse_opl::ops::{Delay, PulsePad};
 
 submit_op_pulsifier!(Pad, pulsify);
 
@@ -39,7 +39,7 @@ fn pulsify(
     if extra_delay > 0 {
         input = target.wire_node(
             format!("{}.Delay", node.name),
-            Delay::new(&fact.clone(), extra_delay, 0),
+            Delay::new(fact.axis, &(&fact).into(), extra_delay, 0),
             &[input],
         )?[0];
     }
@@ -149,7 +149,7 @@ impl PulsePadOpState {
                     tract_core::dispatch_copy_by_size!(Self::fill_slice_constant(
                         input.datum_type()
                     )(
-                        &mut input, c, op.axis, 0..fill_up_to
+                        &mut input, &c, op.axis, 0..fill_up_to
                     ))
                 },
                 PadMode::Edge => {
@@ -200,53 +200,6 @@ impl PulsePadOpState {
 
         Ok(input)
     }
-}
-
-#[derive(Debug, Clone, Default, Hash)]
-pub struct PulsePad {
-    pub axis: usize,
-    pub pulse: usize,
-    pub before: usize,
-    pub after: TDim,
-    pub begin_input: usize,
-    pub end_input: TDim,
-    pub mode: PadMode,
-}
-
-tract_linalg::impl_dyn_hash!(PulsePad);
-
-impl Op for PulsePad {
-    fn name(&self) -> Cow<str> {
-        "PulsePad".into()
-    }
-
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!(
-            "Mode: {:?}, axis: {} before: {} after: {}",
-            self.mode, self.axis, self.before, self.after,
-        )])
-    }
-
-    op_pulse!();
-    op_as_typed_op!();
-}
-
-impl StatefullOp for PulsePad {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(PulsePadOpState::default())))
-    }
-}
-
-impl TypedOp for PulsePad {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].clone()))
-    }
-
-    as_op!();
 }
 
 impl PulsedOp for PulsePad {

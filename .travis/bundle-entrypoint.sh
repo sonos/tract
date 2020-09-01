@@ -91,7 +91,7 @@ net_bench hey_snips_v31 400ms $CACHEDIR/hey_snips_v3.1.pb -i 40x40xf32
 
 net_bench hey_snips_v4_model17 2sec $CACHEDIR/hey_snips_v4_model17.pb -i 200x20xf32
 net_bench hey_snips_v4_model17 pulse8 $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 --pulse 8
-net_bench hey_snips_v4_model17_nnef pulse8 --nnef-tract-core $CACHEDIR/hey_snips_v4_model17.tgz
+net_bench hey_snips_v4_model17_nnef pulse8 --nnef-tract-pulse $CACHEDIR/hey_snips_v4_model17.alpha1.tgz
 
 net_bench mobilenet_v1_1 pass $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb -i 1x224x224x3xf32
 net_bench mobilenet_v2_1 pass $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb -i 1x224x224x3xf32
