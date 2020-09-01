@@ -1,12 +1,26 @@
 ## Unreleased
 
-### alpha-level NNEF
+### Breaking 
+
+* bumped extended nnef compat version (unchecked at this stage) to "alpha1"
+* move pulse operator to their own crate and nnef registry
+* generalize TDim to support an arbitrary high number of symbols
+* concretize_stream_dim is superseded by concrentize_dims
+
+### Notable
+
+* new crates, building on tract-opl introduction:
+    * *tract-pulse-opl*: pulse runtime (handful of ops, including Delay) is now separated from core
+    * *tract-onnx-opl*: onnx runtime (4 ops not belonging in core)
+    * *tract-pulse*: pulsification of models (model-translation time)
+    * tract-onnx is now limited to onnx model loading and conversion
+
+## 0.10.10 - 2020-08-30
 
 * load a NNEF as a TypedModel using tract_nnef, and from the CLI
 * dump a tract TypedModel to NNEF (with extensions for op not nnef compatbile)
 * not a full coverage of nnef, but enough for most CNN (image categorizers zoo working)
 * 80% of onnx tests are surviving a NNEF dump and reload at this stage
-* recurring networks are coming soon
 
 ## 0.10.0 - 2020-07-28
 
