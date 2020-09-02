@@ -77,28 +77,40 @@ impl TypedModel {
     }
 
     pub fn check_consistent_facts(&self) -> TractResult<()> {
-        for node in &self.eval_order()? {
-            let input_facts = self.node_input_facts(*node)?;
-            let node = &self.nodes[*node];
-            let output_facts = node.op.output_facts(&input_facts)?;
-            if node.outputs.len() != output_facts.len() {
-                bail!(
+        if cfg!(debug_assertions) {
+            for node in &self.eval_order()? {
+                let input_facts = self.node_input_facts(*node)?;
+                let node = &self.nodes[*node];
+                let output_facts = node.op.output_facts(&input_facts)?;
+                if node.outputs.len() != output_facts.len() {
+                    bail!(
                     "Inconsistent model, node output count mismatch. Op says {}, node says {}. {}",
                     output_facts.len(),
                     node.outputs.len(),
                     node
                 );
-            }
-            if node.outputs.iter().map(|o| &o.fact).zip(output_facts.iter()).any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape) {
-                bail!(
+                }
+                if node
+                    .outputs
+                    .iter()
+                    .map(|o| &o.fact)
+                    .zip(output_facts.iter())
+                    .any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape)
+                {
+                    bail!(
                     "Inconsistent model, node output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}",
                     output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts)
+                }
             }
-        }
-        for node in &self.nodes {
-            for (ix, output) in node.outputs.iter().enumerate() {
-                if !output.fact.consistent() {
-                    bail!("Inconsistent fact {:?}: {:?}", OutletId::new(node.id, ix), output.fact);
+            for node in &self.nodes {
+                for (ix, output) in node.outputs.iter().enumerate() {
+                    if !output.fact.consistent() {
+                        bail!(
+                            "Inconsistent fact {:?}: {:?}",
+                            OutletId::new(node.id, ix),
+                            output.fact
+                        );
+                    }
                 }
             }
         }
