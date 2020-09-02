@@ -26,7 +26,7 @@ do
     then
         continue
     fi
-    (
+    unset IGNORE MODEL left_context right_context subsampling adjust_final_offset
     . $tc/vars.sh
     for file in $CACHE_FILES
     do
@@ -78,7 +78,6 @@ do
             FAILURES="$FAILURES $tc"
         fi
     done
-    )
 done
 
 if [ -n "$FAILURES" ]
