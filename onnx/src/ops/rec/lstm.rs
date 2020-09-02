@@ -302,7 +302,8 @@ impl LSTM {
             .into();
 
         let initializer = if let Some(initial_c_input) = self.optional_initial_c_input {
-            target_wire!(c = AxisOp::Rm(0), inputs[initial_c_input]);
+            target_wire!(c_dir = array::Slice::new(0, dir, dir + 1), inputs[initial_c_input]);
+            target_wire!(c = AxisOp::Rm(0), c_dir);
             target_wire!(c_chunk = AxisOp::Add(0), c);
             outer_inputs.push(c_chunk);
             scan::StateInitializer::FromInput(initial_c_input)

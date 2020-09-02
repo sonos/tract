@@ -122,6 +122,15 @@ impl<T: fmt::Debug + Clone + PartialEq + Hash> From<T> for GenericFactoid<T> {
     }
 }
 
+impl<T: fmt::Display + fmt::Debug + Clone + PartialEq + Hash> fmt::Display for GenericFactoid<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GenericFactoid::Any => write!(formatter, "?"),
+            GenericFactoid::Only(u) => write!(formatter, "{}", u),
+        }
+    }
+}
+
 impl<T: fmt::Debug + Clone + PartialEq + Hash> fmt::Debug for GenericFactoid<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -289,7 +298,7 @@ impl fmt::Debug for ShapeFactoid {
             if ix != 0 {
                 write!(formatter, "x")?
             }
-            write!(formatter, "{:?}", d)?;
+            write!(formatter, "{}", d)?;
         }
         if self.open {
             if self.dims.len() == 0 {

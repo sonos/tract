@@ -346,7 +346,10 @@ impl Parameters {
 
         if let Some(bundle) = matches.values_of("input_bundle") {
             for input in bundle {
-                let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(input)?)?;
+                let mut npz = ndarray_npy::NpzReader::new(
+                    std::fs::File::open(input)
+                        .map_err(|e| format!("{} (opening {:?})", e, input))?,
+                )?;
                 for name in npz.names()? {
                     match tensor::for_npz(&mut npz, &*name) {
                         Ok(t) => debug!("{} contains {}: {:?}", input, name, t),

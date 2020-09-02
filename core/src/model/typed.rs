@@ -1,5 +1,5 @@
-use crate::internal::*;
 use crate::errors::TractResultExt;
+use crate::internal::*;
 use crate::model::*;
 use crate::ops;
 use crate::ops::invariants;
@@ -76,8 +76,38 @@ impl TypedModel {
         self.declutter()?.optimize()
     }
 
+    pub fn check_consistent_facts(&self) -> TractResult<()> {
+        for node in &self.eval_order()? {
+            let input_facts = self.node_input_facts(*node)?;
+            let node = &self.nodes[*node];
+            let output_facts = node.op.output_facts(&input_facts)?;
+            if node.outputs.len() != output_facts.len() {
+                bail!(
+                    "Inconsistent model, node output count mismatch. Op says {}, node says {}. {}",
+                    output_facts.len(),
+                    node.outputs.len(),
+                    node
+                );
+            }
+            if node.outputs.iter().map(|o| &o.fact).zip(output_facts.iter()).any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape) {
+                bail!(
+                    "Inconsistent model, node output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}",
+                    output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts)
+            }
+        }
+        for node in &self.nodes {
+            for (ix, output) in node.outputs.iter().enumerate() {
+                if !output.fact.consistent() {
+                    bail!("Inconsistent fact {:?}: {:?}", OutletId::new(node.id, ix), output.fact);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Perform declutter passes on the network.
     pub fn declutter(&self) -> TractResult<TypedModel> {
+        self.check_consistent_facts()?;
         let mut model = self.clone();
         let mut seen = std::collections::HashSet::new();
         for i in 0.. {
@@ -91,6 +121,9 @@ impl TypedModel {
                 done_something_this_time = done_something_this_time || p.pass(&mut model)?;
                 if cfg!(debug_assertions) {
                     model.check_edges()?;
+                    model
+                        .check_consistent_facts()
+                        .chain_err(|| format!("after declutter pass {:?}", p))?
                 }
             }
             if !done_something_this_time {

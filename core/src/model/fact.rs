@@ -144,20 +144,27 @@ impl TypedFact {
     }
 
     pub fn rank(&self) -> usize {
+        debug_assert!(self.consistent());
         self.shape.rank()
     }
 
     pub fn format_dt_shape(&self) -> String {
+        debug_assert!(self.consistent());
         if self.rank() > 0 {
             format!("{:?}x{:?}", self.shape, self.datum_type)
         } else {
             format!("{:?}", self.datum_type)
         }
     }
+
+    pub fn consistent(&self) -> bool {
+        self.konst.as_ref().map(|k| self.matches(k).unwrap()).unwrap_or(true)
+    }
 }
 
 impl Fact for TypedFact {
     fn to_typed_fact(&self) -> TractResult<TypedFact> {
+        debug_assert!(self.consistent());
         Ok(self.clone())
     }
 
@@ -166,7 +173,9 @@ impl Fact for TypedFact {
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {
+        debug_assert!(self.consistent());
         if let Some(other) = other.downcast_ref::<Self>() {
+            debug_assert!(other.consistent());
             self == other
         } else {
             false
