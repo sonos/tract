@@ -22,6 +22,11 @@ impl Downsample {
         let mut downed = input_fact.clone();
         let down_len = self.transform_dim(&input_fact.shape[self.axis]);
         downed.shape[self.axis] = down_len.clone();
+        if let Some(k) = downed.konst {
+            let mut outputs = self.eval(tvec!(k))?;
+            downed.konst = Some(outputs.remove(0));
+        }
+        debug_assert!(downed.consistent());
         Ok(downed)
     }
 }
@@ -102,6 +107,7 @@ fn pull_downsample_up(
     model: &TypedModel,
     down_node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
+    model.check_consistent_facts()?;
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
         let invariants = prec.op.invariants(model, prec)?;

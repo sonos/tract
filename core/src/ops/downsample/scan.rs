@@ -14,6 +14,7 @@ pub fn pull_downsample_over_scan(
         return Ok(None);
     }
     let mut inner_model = scan_op.body.clone();
+    inner_model.check_consistent_facts()?;
 
     let outputs = inner_model.output_outlets()?.to_owned();
     let downsample_outputs = outputs
@@ -29,6 +30,7 @@ pub fn pull_downsample_over_scan(
         .collect::<TractResult<Vec<_>>>()?;
     inner_model.set_output_outlets(&*downsample_outputs)?;
     let mut inner_model = inner_model.declutter()?;
+    inner_model.check_consistent_facts()?;
 
     for input in inner_model.input_outlets()? {
         let input = inner_model.node(input.node);
@@ -43,8 +45,10 @@ pub fn pull_downsample_over_scan(
 
     let inputs = inner_model.input_outlets()?.to_vec();
     for input in inputs {
-        let ref mut fact = inner_model.node_mut(input.node).outputs[0].fact;
+        let ref mut node = inner_model.node_mut(input.node);
+        let ref mut fact = node.outputs[0].fact;
         *fact = down_op.transform_fact(fact)?;
+        node.op_as_mut::<crate::ops::source::TypedSource>().unwrap().fact = fact.clone();
         let downsamples = inner_model.node(input.node).outputs[0].successors.clone();
         for ds in downsamples {
             TypedModelPatch::shunt_one_op(&inner_model as _, inner_model.node(ds.node))?
@@ -52,6 +56,8 @@ pub fn pull_downsample_over_scan(
         }
     }
 
+    dbg!(&inner_model);
+    inner_model.check_consistent_facts()?;
     let inner_model = inner_model.declutter()?;
 
     let mut new_scan = scan_op.clone();

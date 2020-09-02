@@ -570,16 +570,25 @@ pub fn change_axes(
         }
     }
     debug!("Applying {:?}: {:?}", change, changed_ops);
+    model.check_consistent_facts()?;
     for node_id in model.eval_order()? {
         if let Some(new_op) = changed_ops.remove(&node_id) {
+            trace!("replace: {} <= {:?}", model.node(node_id), new_op);
             model.node_mut(node_id).op = new_op;
         }
+        let input_facts = model.node_input_facts(node_id)?;
+        debug_assert!(input_facts.iter().all(|f| f.consistent()));
         let output_facts =
             model.node(node_id).op.output_facts(&model.node_input_facts(node_id)?)?;
+        std::mem::forget(input_facts);
         for (ix, f) in output_facts.into_iter().enumerate() {
+            debug_assert!(f.consistent());
             model.set_outlet_fact(OutletId::new(node_id, ix), f)?;
         }
     }
+    debug!("Applied {:?}: {:?}", change, changed_ops);
+    model.check_consistent_facts()?;
+    debug!("Checked");
     Ok(Some(changed_wires))
 }
 
