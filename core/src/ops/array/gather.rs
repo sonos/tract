@@ -82,8 +82,11 @@ impl TypedOp for Gather {
     }
 }
 
-impl StatelessOp for Gather {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for Gather {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, indices) = args_2!(inputs);
         unsafe {

@@ -47,7 +47,11 @@ impl Op for Range {
     not_a_typed_op!();
 }
 
-impl StatelessOp for Range {
+impl EvalOp for Range {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_numbers!(Self::eval_t(self.dtype)(self, inputs))
     }

@@ -132,7 +132,11 @@ impl<T: Copy + Datum + Zero> Op for Im2Col<T> {
     op_as_typed_op!();
 }
 
-impl<T: Copy + Datum + Zero> StatelessOp for Im2Col<T> {
+impl<T: Copy + Datum + Zero> EvalOp for Im2Col<T> {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let tensor = self.im2col(&inputs[0].to_array_view()?)?;
         Ok(tvec!(tensor.into()))

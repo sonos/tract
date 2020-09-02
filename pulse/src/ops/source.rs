@@ -29,7 +29,11 @@ impl Op for PulsedSource {
     not_a_typed_op!();
 }
 
-impl StatefullOp for PulsedSource {
+impl EvalOp for PulsedSource {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,

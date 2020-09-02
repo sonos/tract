@@ -265,7 +265,9 @@ impl Expansion for Conv {
             s.equals(input_c.bex(), self.group.unwrap_or(1) as i64 * filter_i.bex())
         })?;
         s.given_2(&inputs[0].shape, &k_input.shape, move |s, ishape, kshape| {
-            if let Some(kshape)  = kshape.iter().map(|d| d.to_usize().ok()).collect::<Option<TVec<_>>>() {
+            if let Some(kshape) =
+                kshape.iter().map(|d| d.to_usize().ok()).collect::<Option<TVec<_>>>()
+            {
                 let oshape = self.output_shape(&*ishape, &*kshape)?;
                 s.equals(&outputs[0].shape, oshape)?;
             }
@@ -353,8 +355,6 @@ mod test {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let res = op
-            .as_stateless()
-            .unwrap()
             .eval(tvec!(
                 ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into_arc_tensor(),
                 ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into_arc_tensor()
@@ -384,7 +384,7 @@ mod test {
         let i = rctensor4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]);
         let k = rctensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
         let e = rctensor4(&[[[[1.0f32], [0.0]]]]);
-        let res = op.as_stateless().unwrap().eval(tvec!(i, k)).unwrap();
+        let res = op.eval(tvec!(i, k)).unwrap();
         assert_eq!(res, tvec!(e.into()));
     }
 
@@ -394,7 +394,7 @@ mod test {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let i = rctensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
         let k = rctensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
-        let res = op.as_stateless().unwrap().eval(tvec!(i.clone(), k)).unwrap();
+        let res = op.eval(tvec!(i.clone(), k)).unwrap();
         assert_eq!(res, tvec!(i));
     }
 
@@ -403,8 +403,6 @@ mod test {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
-            .as_stateless()
-            .unwrap()
             .eval(tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]]), rctensor4(&[[[[1.0f32]]]])))
             .unwrap();
         assert_eq!(result, tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]])));
@@ -423,11 +421,8 @@ mod test {
     #[test]
     fn test_eval_ntc_simple() {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let result = op
-            .as_stateless()
-            .unwrap()
-            .eval(tvec!(rctensor3(&[[[2.0f32], [0.0f32]]]), rctensor3(&[[[1.0f32]]])))
-            .unwrap();
+        let result =
+            op.eval(tvec!(rctensor3(&[[[2.0f32], [0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
         assert_eq!(result, tvec!(rctensor3(&[[[2.0f32], [0.0f32]]])));
     }
 
@@ -444,11 +439,8 @@ mod test {
     #[test]
     fn test_eval_ntc_batch() {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let result = op
-            .as_stateless()
-            .unwrap()
-            .eval(tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]]), rctensor3(&[[[1.0f32]]])))
-            .unwrap();
+        let result =
+            op.eval(tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
         assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]])));
     }
 
@@ -466,8 +458,6 @@ mod test {
     fn test_eval_ntc_channel() {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
-            .as_stateless()
-            .unwrap()
             .eval(tvec!(rctensor3(&[[[2.0f32, 0.0f32]]]), rctensor3(&[[[1.0f32], [0.0f32]]])))
             .unwrap();
         assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]]])));

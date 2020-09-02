@@ -186,7 +186,10 @@ impl Op for DequantizeLinearF32 {
 
 tract_linalg::impl_dyn_hash!(DequantizeLinearF32);
 
-impl StatelessOp for DequantizeLinearF32 {
+impl EvalOp for DequantizeLinearF32 {
+    fn is_stateless(&self) -> bool {
+        true
+    }
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let output = match inputs[0].datum_type() {
             DatumType::I8 => self.eval_t::<i8>(&inputs[0])?,

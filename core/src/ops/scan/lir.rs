@@ -58,7 +58,11 @@ impl Op for LirScan {
     op_as_typed_op!();
 }
 
-impl StatefullOp for LirScan {
+impl EvalOp for LirScan {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,

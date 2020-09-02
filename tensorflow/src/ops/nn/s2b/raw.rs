@@ -17,7 +17,11 @@ impl Op for SpaceToBatch {
     not_a_typed_op!();
 }
 
-impl StatelessOp for SpaceToBatch {
+impl EvalOp for SpaceToBatch {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
@@ -110,8 +114,11 @@ impl Op for BatchToSpace {
     not_a_typed_op!();
 }
 
-impl StatelessOp for BatchToSpace {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for BatchToSpace {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;

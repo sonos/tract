@@ -222,8 +222,11 @@ impl TypedOp for TypedConcat {
     }
 }
 
-impl StatelessOp for TypedConcat {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for TypedConcat {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let refs: TVec<&Tensor> = inputs.iter().map(|i| i.as_ref()).collect();
         let mats = slices(&self.slices, &refs)?;

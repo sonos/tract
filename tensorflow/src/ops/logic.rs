@@ -32,7 +32,11 @@ impl Op for Switch {
     not_a_typed_op!();
 }
 
-impl StatefullOp for Switch {
+impl EvalOp for Switch {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,
@@ -126,7 +130,11 @@ impl Op for Merge {
     op_as_typed_op!();
 }
 
-impl StatefullOp for Merge {
+impl EvalOp for Merge {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,

@@ -36,13 +36,17 @@ impl Op for MaxPool {
     op_as_typed_op!();
 }
 
-impl StatelessOp for MaxPool {
+impl EvalOp for MaxPool {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let op = dispatch_floatlike!(MaxPool::to_fixed(inputs[0].datum_type())(
             self,
             inputs[0].shape()
         ))?;
-        op.as_stateless().unwrap().eval(inputs)
+        op.eval(inputs)
     }
 }
 
@@ -161,7 +165,11 @@ impl MaxPoolFixed {
     }
 }
 
-impl StatelessOp for MaxPoolFixed {
+impl EvalOp for MaxPoolFixed {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_numbers!(Self::eval_t(input.datum_type())(self, &*input))

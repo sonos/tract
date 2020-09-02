@@ -24,7 +24,11 @@ impl Op for MultiBroadcastTo {
     op_as_typed_op!();
 }
 
-impl StatelessOp for MultiBroadcastTo {
+impl EvalOp for MultiBroadcastTo {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let dims: Vec<usize> =

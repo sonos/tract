@@ -568,7 +568,10 @@ impl Op for Scan {
     op_as_typed_op!();
 }
 
-impl StatefullOp for Scan {
+impl EvalOp for Scan {
+    fn is_stateless(&self) -> bool {
+        false
+    }
     fn state(
         &self,
         session: &mut SessionState,

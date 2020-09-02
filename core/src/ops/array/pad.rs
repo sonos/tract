@@ -97,8 +97,11 @@ impl Op for Pad {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Pad {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for Pad {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(self, input))?))

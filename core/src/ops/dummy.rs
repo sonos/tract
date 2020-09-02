@@ -14,7 +14,11 @@ impl Op for Dummy {
 
 tract_linalg::impl_dyn_hash!(Dummy);
 
-impl StatelessOp for Dummy {
+impl EvalOp for Dummy {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         bail!("eval() called on a Dummy op. This is a bug.")
     }

@@ -42,7 +42,11 @@ impl Op for Downsample {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Downsample {
+impl EvalOp for Downsample {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         unsafe {

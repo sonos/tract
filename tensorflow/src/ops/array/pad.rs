@@ -58,7 +58,11 @@ impl Op for Pad {
     not_a_typed_op!();
 }
 
-impl StatelessOp for Pad {
+impl EvalOp for Pad {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, paddings) = args_2!(inputs);
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;

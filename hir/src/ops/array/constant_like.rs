@@ -30,8 +30,11 @@ impl Op for ConstantLike {
     op_as_typed_op!();
 }
 
-impl StatelessOp for ConstantLike {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for ConstantLike {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(self, input.shape()))?))
@@ -106,8 +109,11 @@ impl Op for EyeLike {
     op_as_typed_op!();
 }
 
-impl StatelessOp for EyeLike {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for EyeLike {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let dt = self.dt.unwrap_or(input.datum_type());

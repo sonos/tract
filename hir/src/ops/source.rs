@@ -17,7 +17,10 @@ impl Op for Source {
     not_a_typed_op!();
 }
 
-impl StatefullOp for Source {
+impl EvalOp for Source {
+    fn is_stateless(&self) -> bool {
+        false
+    }
     fn state(
         &self,
         _session: &mut SessionState,

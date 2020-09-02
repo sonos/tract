@@ -14,7 +14,11 @@ impl Op for Const {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Const {
+impl EvalOp for Const {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec![self.0.clone()])
     }

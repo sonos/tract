@@ -178,7 +178,11 @@ impl Op for PulsePad {
     op_as_typed_op!();
 }
 
-impl StatefullOp for PulsePad {
+impl EvalOp for PulsePad {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,

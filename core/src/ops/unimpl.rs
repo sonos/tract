@@ -28,12 +28,8 @@ impl Op for UnimplementedOp {
     not_a_typed_op!();
 }
 
-impl StatefullOp for UnimplementedOp {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        bail!("unimplemented operation: #{} {}", node_id, self.name)
+impl EvalOp for UnimplementedOp {
+    fn is_stateless(&self) -> bool {
+        false
     }
 }

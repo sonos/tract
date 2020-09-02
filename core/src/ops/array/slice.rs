@@ -47,8 +47,11 @@ impl<D: DimLike + ToDim + Hash> Op for Slice<D> {
     }
 }
 
-impl<D: DimLike + ToDim + Hash> StatelessOp for Slice<D> {
-    /// Evaluates the operation given the input tensors.
+impl<D: DimLike + ToDim + Hash> EvalOp for Slice<D> {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         unsafe {

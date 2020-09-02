@@ -35,8 +35,6 @@ mod tests {
 
     fn verify(input: Tensor, filter: Tensor, stride: usize, padding: PaddingSpec, expect: &[f32]) {
         let result = make_conv(stride, stride, padding)
-            .as_stateless()
-            .unwrap()
             .eval(tvec![input.into(), filter.into()])
             .unwrap()
             .remove(0);
@@ -138,7 +136,7 @@ mod tests {
         let filter = rctensor4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]);
         let exp = rctensor4(&[[[[1f32]]]]);
 
-        let result = conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap().remove(0);
+        let result = conv.eval(tvec![data, filter]).unwrap().remove(0);
         assert_eq!(exp, result);
     }
 
@@ -149,7 +147,7 @@ mod tests {
         let filter =
             rctensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
         let exp = rctensor4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]);
-        let got = &conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap()[0];
+        let got = &conv.eval(tvec![data, filter]).unwrap()[0];
         //println!("{:?}", got);
         //println!("{:?}", exp);
         exp.close_enough(&got, true).unwrap()

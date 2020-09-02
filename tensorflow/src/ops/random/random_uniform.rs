@@ -47,8 +47,11 @@ impl Op for RandomUniform {
     not_a_typed_op!();
 }
 
-impl StatelessOp for RandomUniform {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for RandomUniform {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let shape: TVec<usize> =
             inputs[0].cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
@@ -129,8 +132,11 @@ impl Op for TypedRandomUniform {
     op_as_typed_op!();
 }
 
-impl StatelessOp for TypedRandomUniform {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for TypedRandomUniform {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let shape = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
         match self.t {
@@ -204,8 +210,11 @@ impl Op for RandomUniformInt {
     not_a_typed_op!();
 }
 
-impl StatelessOp for RandomUniformInt {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for RandomUniformInt {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let shape: TVec<usize> =
             inputs[0].cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();

@@ -52,7 +52,11 @@ impl Op for Lrn {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Lrn {
+impl EvalOp for Lrn {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))

@@ -51,8 +51,7 @@ fn b(
     let im2col = m.node(1).op_as::<Im2Col<f32>>().unwrap();
     let args = tvec!(image.into());
     c.bench_function(name, move |b| {
-        let ref op = im2col.as_stateless().unwrap();
-        b.iter(|| op.eval(args.clone()).unwrap())
+        b.iter(|| im2col.eval(args.clone()).unwrap())
     });
 }
 

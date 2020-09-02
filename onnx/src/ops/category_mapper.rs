@@ -62,7 +62,11 @@ impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> Op for CategoryMapper<Src,
     op_as_typed_op!();
 }
 
-impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> StatelessOp for CategoryMapper<Src, Dst> {
+impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> EvalOp for CategoryMapper<Src, Dst> {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let input = input.to_array_view::<Src>()?;

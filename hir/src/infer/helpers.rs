@@ -15,8 +15,8 @@ pub fn infer_forward_concrete(
     }
 
     // If we know the value of all the inputs, we can deduce everything.
-    if let Some(stateless) = op.as_stateless() {
-        let output_value = stateless.eval(input_values)?.pop().unwrap();
+    if op.is_stateless() {
+        let output_value = op.eval(input_values)?.pop().unwrap();
         return Ok(Some(tvec![output_value.into()]));
     }
 

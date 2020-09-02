@@ -47,10 +47,14 @@ where
     op_as_typed_op!();
 }
 
-impl<T> StatelessOp for MatMatMulPackB<T>
+impl<T> EvalOp for MatMatMulPackB<T>
 where
     T: Copy + Datum + Zero,
 {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let b = args_1!(inputs);
         let mut packed = unsafe {
@@ -148,13 +152,17 @@ where
     op_as_typed_op!();
 }
 
-impl<TA, TB, TC, TI> StatelessOp for MatMatMulUnaryFinite<TA, TB, TC, TI>
+impl<TA, TB, TC, TI> EvalOp for MatMatMulUnaryFinite<TA, TB, TC, TI>
 where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
     TC: Datum + Copy,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
             let b = args_1!(inputs);

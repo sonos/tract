@@ -40,7 +40,11 @@ impl Op for Tile {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Tile {
+impl EvalOp for Tile {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let result =
             dispatch_datum_by_size!(Self::eval_t(inputs[0].datum_type())(self, &inputs[0]))?;

@@ -66,7 +66,11 @@ impl InferenceRulesOp for LayerHardmax {
     to_typed!();
 }
 
-impl StatelessOp for LayerHardmax {
+impl EvalOp for LayerHardmax {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))

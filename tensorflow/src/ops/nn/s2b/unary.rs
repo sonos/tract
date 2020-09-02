@@ -30,7 +30,11 @@ impl Op for SpaceToBatchUnary {
     op_as_typed_op!();
 }
 
-impl StatelessOp for SpaceToBatchUnary {
+impl EvalOp for SpaceToBatchUnary {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
@@ -119,7 +123,11 @@ impl Op for BatchToSpaceUnary {
     op_as_typed_op!();
 }
 
-impl StatelessOp for BatchToSpaceUnary {
+impl EvalOp for BatchToSpaceUnary {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };

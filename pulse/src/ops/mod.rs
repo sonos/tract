@@ -35,7 +35,7 @@ pub trait PulsedOp:
     + Sync
     + 'static
     + Downcast
-    + StatefullOp
+    + EvalOp
     + DynHash
 {
     /// Reinterpret the PulsedOp as an Op.

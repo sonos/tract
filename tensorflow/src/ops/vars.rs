@@ -81,7 +81,11 @@ impl Op for VariableV2 {
     op_as_typed_op!();
 }
 
-impl StatefullOp for VariableV2 {
+impl EvalOp for VariableV2 {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         state: &mut SessionState,
@@ -123,7 +127,7 @@ impl TypedOp for VariableV2 {
     }
 }
 
-// need some dummy state to make sure Assign is a StatefullOp, and will not be
+// need some dummy state to make sure Assign is a EvalOp, and will not be
 // eval-ed() in Stateless context
 #[derive(Clone, Debug, new)]
 struct AssignState;
@@ -174,7 +178,11 @@ impl OpState for AssignState {
     }
 }
 
-impl StatefullOp for Assign {
+impl EvalOp for Assign {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         _state: &mut SessionState,

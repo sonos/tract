@@ -60,7 +60,7 @@ pub fn pull_downsample_over_scan(
         match input {
             InputMapping::State { ref mut initializer } => {
                 if let StateInitializer::Value(ref v) = initializer {
-                    let new_v = down_op.as_stateless().unwrap().eval(tvec!(v.clone()))?;
+                    let new_v = down_op.eval(tvec!(v.clone()))?;
                     *initializer = StateInitializer::Value(new_v[0].clone())
                 }
             }

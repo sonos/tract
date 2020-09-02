@@ -408,7 +408,11 @@ impl Op for AxisOp {
 
 tract_linalg::impl_dyn_hash!(AxisOp);
 
-impl StatelessOp for AxisOp {
+impl EvalOp for AxisOp {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut input = args_1!(inputs).into_tensor();
         self.change_tensor(&mut input)?;

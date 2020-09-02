@@ -75,39 +75,27 @@ pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
 }
 dyn_clone::clone_trait_object!(OpState);
 
-pub trait StatelessOp: Op {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>;
-}
+pub trait EvalOp {
+    #[allow(unused_variables)]
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        bail!("stateless evaluation not implemented")
+    }
 
-pub trait StatefullOp {
     #[allow(unused_variables)]
     fn state(
         &self,
         session: &mut SessionState,
         node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>>;
-    fn as_stateless(&self) -> Option<&dyn StatelessOp> {
-        None
-    }
-}
-
-impl<O: StatelessOp + Clone> StatefullOp for O {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-        _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
 
-    fn as_stateless(&self) -> Option<&dyn StatelessOp> {
-        Some(self)
-    }
+    fn is_stateless(&self) -> bool;
 }
 
 /// A base operation
 pub trait Op:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp + DynHash
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp + DynHash
 {
     /// Vector of short strings defining what families the op belongs too.
     /// tract-core defines "core", "mir", "lir".
@@ -141,7 +129,7 @@ pub trait Op:
 }
 
 pub trait TypedOp:
-    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + StatefullOp + DynHash
+    Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp + DynHash
 {
     /// Reinterpret the TypedOp as an Op.
     fn as_op(&self) -> &dyn Op;
@@ -273,7 +261,6 @@ pub trait TypedOp:
 impl_downcast!(Op);
 
 dyn_clone::clone_trait_object!(Op);
-dyn_clone::clone_trait_object!(StatelessOp);
 dyn_clone::clone_trait_object!(TypedOp);
 
 impl<O: Op> From<O> for Box<dyn Op> {

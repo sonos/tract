@@ -30,7 +30,11 @@ impl Op for TypedSource {
     op_as_typed_op!();
 }
 
-impl StatefullOp for TypedSource {
+impl EvalOp for TypedSource {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,
@@ -68,9 +72,9 @@ impl TypedOp for TypedSource {
         node: &TypedNode,
         target: &mut TypedModel,
         _mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues
+        values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
-        let shape:TVec<_> = self.fact.shape.iter().map(|d| d.eval(values)).collect();
+        let shape: TVec<_> = self.fact.shape.iter().map(|d| d.eval(values)).collect();
         target.wire_node(
             &node.name,
             Self { fact: TypedFact::dt_shape(self.fact.datum_type, &*shape)? },

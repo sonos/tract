@@ -21,7 +21,11 @@ impl Op for Memory {
     not_a_typed_op!();
 }
 
-impl StatefullOp for Memory {
+impl EvalOp for Memory {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,

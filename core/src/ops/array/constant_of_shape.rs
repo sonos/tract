@@ -45,7 +45,19 @@ impl TypedOp for ConstantOfShape {
     as_op!();
 }
 
-impl StatefullOp for ConstantOfShape {
+impl EvalOp for ConstantOfShape {
+    fn eval(
+        &self,
+        _inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let shape:TVec<_> = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
+        Ok(tvec!(make_tensor(&*shape, &self.scalar)))
+    }
+
+    fn is_stateless(&self) -> bool {
+        self.shape.iter().all(|d| d.to_usize().is_ok())
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,

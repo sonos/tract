@@ -63,7 +63,11 @@ impl Op for PulsedAxisSlice {
     not_a_typed_op!();
 }
 
-impl StatelessOp for PulsedAxisSlice {
+impl EvalOp for PulsedAxisSlice {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(inputs)
     }
