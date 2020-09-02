@@ -14,7 +14,7 @@ pub trait InferenceOp:
     + Sync
     + 'static
     + Downcast
-    + StatefullOp
+    + EvalOp
     + DynHash
 {
     /// Infers properties about the input and output tensors.
@@ -24,7 +24,7 @@ pub trait InferenceOp:
     ///
     /// The default implementation will call the private infer_facts method,
     /// which is usually implemented using the InferenceRulesOp trait. It will
-    /// also try to eval() the op if its a StatelessOp and if the inputs are
+    /// also try to eval() the op if its a EvalOp and if the inputs are
     /// fully determined.
     ///
     /// Returns Err in case of an unrecoverable error during the inference,
@@ -38,13 +38,13 @@ pub trait InferenceOp:
         let (infered_inputs, infered_outputs, observed) =
             self.infer_facts(inputs, outputs, observed).chain_err(|| "Infering facts")?;
 
-        if let Some(stateless) = self.as_stateless() {
+        if self.is_stateless() {
             if infered_inputs.iter().all(|i| i.value.is_concrete()) {
                 let input_values = infered_inputs
                     .iter()
                     .map(|i| i.value.concretize().unwrap().clone().into())
                     .collect(); // checked
-                match stateless.eval(input_values) {
+                match self.eval(input_values) {
                     Ok(values) => {
                         let output_values =
                             values.into_iter().map(|t| t.into()).collect::<TVec<_>>();

@@ -437,7 +437,11 @@ impl Op for ConvUnary {
     op_as_typed_op!();
 }
 
-impl StatelessOp for ConvUnary {
+impl EvalOp for ConvUnary {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut model = TypedModel::default();
         let dt = inputs[0].datum_type();

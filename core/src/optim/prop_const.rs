@@ -10,7 +10,7 @@ impl super::TypedPass for PropConst {
         let mut propagated = 0;
         let mut stateful = bit_set::BitSet::with_capacity(model.nodes().len());
         for node in model.eval_order()? {
-            if model.node(node).op.as_stateless().is_none()
+            if !model.node(node).op.is_stateless()
                 || model.node(node).inputs.iter().any(|i| stateful.contains(i.node))
             {
                 stateful.insert(node);
@@ -24,7 +24,7 @@ impl super::TypedPass for PropConst {
                     .iter()
                     .map(|i| i.konst.clone().unwrap())
                     .collect();
-                let outputs = model.node(node).op.as_stateless().unwrap().eval(inputs)?;
+                let outputs = model.node(node).op.eval(inputs)?;
                 for (ix, value) in outputs.into_iter().enumerate() {
                     model.node_mut(node).outputs[ix].fact.konst = Some(value);
                     propagated += 1;

@@ -331,8 +331,6 @@ mod tests {
         S: Into<Tensor>,
     {
         expand(op)
-            .as_stateless()
-            .unwrap()
             .eval(tvec![
                 input.into().into(),
                 begin.into().into(),

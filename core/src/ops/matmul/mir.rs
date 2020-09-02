@@ -335,7 +335,11 @@ impl Op for MatMul {
     op_as_typed_op!();
 }
 
-impl StatelessOp for MatMul {
+impl EvalOp for MatMul {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let t = eval(
             &inputs[0],
@@ -442,7 +446,11 @@ impl Op for MatMulUnary {
     op_as_typed_op!();
 }
 
-impl StatelessOp for MatMulUnary {
+impl EvalOp for MatMulUnary {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let t = eval(
             &self.a,

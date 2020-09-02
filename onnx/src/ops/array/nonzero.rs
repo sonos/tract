@@ -33,7 +33,11 @@ impl Op for NonZero {
     not_a_typed_op!();
 }
 
-impl StatelessOp for NonZero {
+impl EvalOp for NonZero {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
             let input = args_1!(inputs);

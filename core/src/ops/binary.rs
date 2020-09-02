@@ -92,7 +92,11 @@ impl Op for TypedBinOp {
     op_as_typed_op!();
 }
 
-impl StatelessOp for TypedBinOp {
+impl EvalOp for TypedBinOp {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         debug_assert_eq!(inputs[0].rank(), inputs[1].rank());
         self.0.eval_broadcast(inputs)
@@ -283,7 +287,11 @@ impl Op for UnaryOp {
     op_as_typed_op!();
 }
 
-impl StatelessOp for UnaryOp {
+impl EvalOp for UnaryOp {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         debug_assert_eq!(self.a.rank(), inputs[0].rank());
         self.mini_op.eval_broadcast(tvec!(self.a.clone(), inputs[0].clone()))
@@ -410,7 +418,11 @@ impl Op for MergeOpUnicast {
     op_as_typed_op!();
 }
 
-impl StatelessOp for MergeOpUnicast {
+impl EvalOp for MergeOpUnicast {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (a, b) = args_2!(inputs);
         let mut b = b.into_tensor();

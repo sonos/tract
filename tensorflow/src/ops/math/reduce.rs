@@ -50,12 +50,16 @@ impl Op for Reduce {
     not_a_typed_op!();
 }
 
-impl StatelessOp for Reduce {
+impl EvalOp for Reduce {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, axes) = args_2!(inputs);
         let axes: Vec<i64> = axes.cast_to::<i64>()?.as_slice::<i64>()?.to_vec();
         let op = nn::Reduce::new(Some(axes), self.keep_dims, self.reducer);
-        expand(op).as_stateless().unwrap().eval(tvec!(input))
+        expand(op).eval(tvec!(input))
     }
 }
 

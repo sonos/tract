@@ -159,7 +159,11 @@ impl Op for Reduce {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Reduce {
+impl EvalOp for Reduce {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec!(self.reducer.reduce(&*self.axes, inputs[0].as_ref())?.into_arc_tensor()))
     }
@@ -208,6 +212,4 @@ impl TypedOp for Reduce {
         let op = Some(Box::new(Self { axes, ..self.clone() }) as _);
         Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
     }
-
 }
-

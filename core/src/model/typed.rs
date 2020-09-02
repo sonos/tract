@@ -46,10 +46,10 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         let output_facts = {
             let input_facts =
                 inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
-            if input_facts.iter().all(|f| f.konst.is_some()) && op.as_stateless().is_some() {
+            if input_facts.iter().all(|f| f.konst.is_some()) && op.is_stateless() {
                 let tensors =
                     input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
-                let outputs = op.as_stateless().unwrap().eval(tensors)?;
+                let outputs = op.eval(tensors)?;
                 outputs.into_iter().map(|t| TypedFact::from(t)).collect()
             } else {
                 op.output_facts(&*input_facts).chain_err(|| format!("wiring {}", name))?

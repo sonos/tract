@@ -36,7 +36,11 @@ impl Op for InferenceScan {
     not_a_typed_op!();
 }
 
-impl StatefullOp for InferenceScan {
+impl EvalOp for InferenceScan {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn state(
         &self,
         session: &mut SessionState,

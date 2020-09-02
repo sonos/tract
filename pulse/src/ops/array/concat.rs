@@ -105,7 +105,11 @@ impl Op for PulsedSameAxisConcat {
     op_as_typed_op!();
 }
 
-impl StatefullOp for PulsedSameAxisConcat {
+impl EvalOp for PulsedSameAxisConcat {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,

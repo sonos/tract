@@ -23,7 +23,11 @@ impl Op for DepthWise {
     op_as_typed_op!();
 }
 
-impl StatelessOp for DepthWise {
+impl EvalOp for DepthWise {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }

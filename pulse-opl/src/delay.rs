@@ -183,7 +183,11 @@ impl Op for Delay {
     op_as_typed_op!();
 }
 
-impl StatefullOp for Delay {
+impl EvalOp for Delay {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,

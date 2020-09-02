@@ -25,8 +25,6 @@ mod tests {
         I: Into<Tensor>,
     {
         expand(op)
-            .as_stateless()
-            .unwrap()
             .eval(tvec![input.into().into()])
             .unwrap()
             .pop()

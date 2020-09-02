@@ -51,7 +51,11 @@ impl Op for Compress {
     not_a_typed_op!();
 }
 
-impl StatelessOp for Compress {
+impl EvalOp for Compress {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, conds) = args_2!(inputs);
         let conds = conds.as_slice()?;

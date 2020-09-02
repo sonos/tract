@@ -52,10 +52,13 @@ impl Op for SumPool {
 
 tract_linalg::impl_dyn_hash!(SumPool);
 
-impl StatelessOp for SumPool {
+impl EvalOp for SumPool {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let op = self.to_fixed(inputs[0].datum_type(), inputs[0].shape())?;
-        op.as_stateless().unwrap().eval(inputs)
+        self.to_fixed(inputs[0].datum_type(), inputs[0].shape())?.eval(inputs)
     }
 }
 
@@ -152,7 +155,11 @@ impl Op for SumPoolFixed {
     op_as_typed_op!();
 }
 
-impl StatelessOp for SumPoolFixed {
+impl EvalOp for SumPoolFixed {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut values =
             unsafe { Tensor::uninitialized_dt(self.datum_type, &*self.output_shape.shape)? };

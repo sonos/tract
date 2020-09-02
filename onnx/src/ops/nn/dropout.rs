@@ -25,8 +25,11 @@ impl Op for Dropout {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Dropout {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for Dropout {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         if self.output_mask {
             let input = args_1!(inputs);

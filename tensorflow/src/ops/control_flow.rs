@@ -31,7 +31,11 @@ impl Op for LoopGate {
     not_a_typed_op!();
 }
 
-impl StatelessOp for LoopGate {
+impl EvalOp for LoopGate {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(inputs)
     }
@@ -77,7 +81,11 @@ impl Op for NextIteration {
     not_a_typed_op!();
 }
 
-impl StatefullOp for NextIteration {
+impl EvalOp for NextIteration {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
     fn state(
         &self,
         _state: &mut SessionState,

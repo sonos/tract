@@ -55,7 +55,11 @@ impl Op for Iff {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Iff {
+impl EvalOp for Iff {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (cond, t, f) = args_3!(inputs);
         let shape: TVec<usize> = multi_broadcast(&[cond.shape(), t.shape(), f.shape()])

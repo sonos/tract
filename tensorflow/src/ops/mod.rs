@@ -69,7 +69,11 @@ impl Op for Noop {
     op_as_typed_op!();
 }
 
-impl StatelessOp for Noop {
+impl EvalOp for Noop {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec!(Tensor::from(false).into()))
     }

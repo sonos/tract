@@ -331,7 +331,7 @@ where
         let node = &nodes[node];
         let vs = match self.states[node.id] {
             Some(ref mut state) => state.eval(session_state, node.op(), inputs),
-            None => node.op().as_stateless().unwrap().eval(inputs),
+            None => node.op().eval(inputs),
         }
         .map_err(|e| format!("Evaluating {}: {}", node, e))?;
         values[node.id] = Some(vs);
@@ -361,7 +361,7 @@ where
                     state.eval(session_state, plan.borrow().model().nodes()[node].op(), inputs)
                 }
                 None => {
-                    plan.borrow().model().nodes()[node].op().as_stateless().unwrap().eval(inputs)
+                    plan.borrow().model().nodes()[node].op().eval(inputs)
                 }
             }
             .map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
@@ -405,9 +405,8 @@ where
 {
     let r = match state {
         Some(ref mut state) => state.eval(session_state, node.op(), input),
-        None => node.op().as_stateless().expect("as_stateless").eval(input),
+        None => node.op().eval(input),
     }
     .chain_err(|| format!("Evaluating {}", node));
-    // println!("{} {:?}", node, r);
     r
 }

@@ -154,7 +154,11 @@ impl Op for Nary {
     not_a_typed_op!();
 }
 
-impl StatelessOp for Nary {
+impl EvalOp for Nary {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut t = inputs[0].clone();
         for i in inputs[1..].into_iter() {

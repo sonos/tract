@@ -145,12 +145,12 @@ impl<'mb> ModelBuilder<'mb> {
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
         if inputs.iter().all(|o| self.model.outlet_fact(*o).unwrap().konst.is_some()) {
-            if let Some(stateless) = op.as_op().as_stateless() {
+            if op.as_op().is_stateless() {
                 let inputs: TVec<Arc<Tensor>> = inputs
                     .iter()
                     .map(|o| self.model.outlet_fact(*o).unwrap().konst.clone().unwrap())
                     .collect();
-                let outputs = stateless.eval(inputs)?;
+                let outputs = op.eval(inputs)?;
                 let mut outlets = tvec!();
                 for (ix, o) in outputs.into_iter().enumerate() {
                     outlets.push(

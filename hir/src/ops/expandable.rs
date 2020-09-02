@@ -66,7 +66,11 @@ impl Op for Box<dyn Expansion> {
     not_a_typed_op!();
 }
 
-impl StatelessOp for Box<dyn Expansion> {
+impl EvalOp for Box<dyn Expansion> {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut adhoc = TypedModel::default();
         let wires = inputs

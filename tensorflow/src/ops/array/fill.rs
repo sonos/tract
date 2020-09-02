@@ -37,7 +37,11 @@ impl Op for Fill {
     not_a_typed_op!();
 }
 
-impl StatelessOp for Fill {
+impl EvalOp for Fill {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_datum!(Self::eval_t(self.dt)(self, inputs))
     }

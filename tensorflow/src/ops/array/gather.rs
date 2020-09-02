@@ -57,7 +57,11 @@ impl Op for GatherNd {
     op_as_typed_op!();
 }
 
-impl StatelessOp for GatherNd {
+impl EvalOp for GatherNd {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, indices) = args_2!(inputs);
         let shape = self.compute_shape(&data.shape(), &indices.shape())?;
