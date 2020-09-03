@@ -68,12 +68,7 @@ pub extern crate num_traits;
 extern crate env_logger;
 #[cfg(test)]
 extern crate proptest;
-#[cfg(feature = "serialize")]
-extern crate serde;
 extern crate smallvec;
-#[cfg(feature = "serialize")]
-#[macro_use]
-extern crate serde_derive;
 
 pub extern crate tract_linalg;
 

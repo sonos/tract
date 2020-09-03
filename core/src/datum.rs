@@ -11,9 +11,6 @@ use tract_linalg::f16::f16;
 mod arrays;
 pub use arrays::ArrayDatum;
 
-#[cfg(feature = "serialize")]
-use serde::ser::{Serialize, Serializer};
-
 #[derive(Debug, Default, Clone, PartialEq, Eq, Educe)]
 #[educe(Hash)]
 pub struct Blob(pub Vec<u8>);
@@ -45,7 +42,6 @@ impl tract_linalg::hash::SloppyHash for Blob {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DatumType {
     Bool,
     U8,

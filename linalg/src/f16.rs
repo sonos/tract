@@ -2,7 +2,6 @@ use std::{fmt, ops};
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Default, PartialEq, PartialOrd, Debug)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct f16(pub half::f16);
 
 macro_rules! binary_f16 {

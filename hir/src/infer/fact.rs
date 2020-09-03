@@ -18,7 +18,6 @@ use crate::internal::*;
 /// graph. The analyser will first tag each edge with a fact, starting with the
 /// most general one and specializing it at each iteration. Eventually, it will
 /// reach a fixed point that - hopefully - holds enough information.
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq, Default, Hash)]
 pub struct InferenceFact {
     pub datum_type: TypeFactoid,
