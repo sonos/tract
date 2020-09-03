@@ -564,7 +564,6 @@ impl Op for Scan {
     }
 
     op_core_mir!();
-    canonic!();
     op_as_typed_op!();
 }
 

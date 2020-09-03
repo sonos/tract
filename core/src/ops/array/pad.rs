@@ -92,7 +92,6 @@ impl Op for Pad {
         Ok(vec![format!("Mode: {:?}, pads: {:?})", self.mode, self.pads,)])
     }
 
-    canonic!();
     op_core_lir_mir!();
     op_as_typed_op!();
 }

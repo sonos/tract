@@ -155,7 +155,6 @@ impl Op for Reduce {
         Ok(vec![format!("axes: {:?}", self.axes)])
     }
     op_core_mir!();
-    canonic!();
     op_as_typed_op!();
 }
 

@@ -60,7 +60,6 @@ impl Op for TypedConcat {
 
     op_core_lir_mir!();
     op_as_typed_op!();
-    canonic!();
 }
 
 impl TypedOp for TypedConcat {

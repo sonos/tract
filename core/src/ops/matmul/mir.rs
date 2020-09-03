@@ -441,7 +441,6 @@ impl Op for MatMulUnary {
         Ok(v)
     }
 
-    canonic!();
     op_core_mir!();
     op_as_typed_op!();
 }

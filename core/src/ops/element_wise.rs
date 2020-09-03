@@ -78,7 +78,6 @@ impl Op for ElementWiseOp {
         self.0.validation()
     }
 
-    canonic!();
     op_core_lir_mir!();
     op_as_typed_op!();
 }

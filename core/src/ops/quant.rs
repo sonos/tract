@@ -179,7 +179,6 @@ impl Op for DequantizeLinearF32 {
         Validation::Accurate
     }
 
-    canonic!();
     op_core_mir!();
     op_as_typed_op!();
 }
