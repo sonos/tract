@@ -28,7 +28,7 @@ pub struct DisplayParams {
     pub node_ids: Option<Vec<TVec<(usize, String)>>>,
     pub op_name: Option<String>,
     pub node_name: Option<String>,
-    pub expect_canonic: bool,
+    pub expect_core: bool,
     pub outlet_labels: bool,
     pub io: Io,
     pub json: bool,

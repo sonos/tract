@@ -66,15 +66,6 @@ macro_rules! op_core_lir_mir {
 }
 
 #[macro_export]
-macro_rules! canonic {
-    () => {
-        fn is_canonic(&self) -> bool {
-            true
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! args_1 {
     ($inputs:expr) => {{
         if $inputs.len() != 1 {

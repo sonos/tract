@@ -122,10 +122,6 @@ pub trait Op:
     }
 
     fn as_typed(&self) -> Option<&dyn TypedOp>;
-
-    fn is_canonic(&self) -> bool {
-        false
-    }
 }
 
 pub trait TypedOp:

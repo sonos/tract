@@ -161,7 +161,7 @@ fn render_node_prefixed(
         (if node_name == "UnimplementedOp" {
             Red.bold()
         } else {
-            if options.expect_canonic && !model.node_op(node_id).is_canonic() {
+            if options.expect_core && !model.node_op(node_id).op_families().contains(&"core") {
                 Yellow.bold()
             } else {
                 Blue.bold()

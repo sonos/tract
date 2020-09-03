@@ -432,7 +432,6 @@ impl Op for ConvUnary {
         Ok(info)
     }
 
-    canonic!();
     op_core_mir!();
     op_as_typed_op!();
 }

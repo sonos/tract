@@ -45,7 +45,6 @@ impl Op for SumPool {
         Validation::Rounding
     }
 
-    canonic!();
     op_core_mir!();
     op_as_typed_op!();
 }

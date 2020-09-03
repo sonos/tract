@@ -34,7 +34,6 @@ impl<D: DimLike + ToDim + Hash> Op for Slice<D> {
         Ok(vec![format!("axis: {}, {}..{}", self.axis, self.start, self.end)])
     }
 
-    canonic!();
     op_core_lir_mir!();
     op_as_typed_op!();
 

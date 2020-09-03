@@ -87,7 +87,6 @@ impl Op for TypedBinOp {
         self.0.validation()
     }
 
-    canonic!();
     op_core_mir!();
     op_as_typed_op!();
 }
@@ -282,7 +281,6 @@ impl Op for UnaryOp {
         self.mini_op.validation()
     }
 
-    canonic!();
     op_core_lir_mir!();
     op_as_typed_op!();
 }

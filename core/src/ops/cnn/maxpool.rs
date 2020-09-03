@@ -31,7 +31,6 @@ impl Op for MaxPool {
         Ok(self.pool_spec.info())
     }
 
-    canonic!();
     op_core_mir!();
     op_as_typed_op!();
 }
