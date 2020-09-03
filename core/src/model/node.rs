@@ -17,7 +17,6 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 /// model.
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct BaseNode<F: Fact + Hash, O: Hash> {
     /// node id in the model
     ///
@@ -80,7 +79,6 @@ impl<
 /// Information for each outlet of a node
 #[derive(Clone, Default, Educe)]
 #[educe(Hash)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct OutletFact<F: Fact + Hash> {
     /// the tensor type information
     pub fact: F,
@@ -105,7 +103,6 @@ impl<F: Fact + Hash> fmt::Debug for OutletFact<F> {
 /// (as the graph typically connect one single node output to one or several
 /// inputs slots)
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, new)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct OutletId {
     /// node identifier in the graph
     pub node: usize,
@@ -133,7 +130,6 @@ impl From<(usize, usize)> for OutletId {
 
 /// Identifier for a node input in the graph.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, new, Ord, PartialOrd)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct InletId {
     /// node identifier in the graph
     pub node: usize,
