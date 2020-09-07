@@ -124,7 +124,6 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
             return Ok(None);
         };
         let mut patch = TypedModelPatch::default();
-        //        println!("declutter slice {}", node);
         if let Some(wire) = prec.op().as_typed().unwrap().slice_output(
             model,
             prec,
@@ -135,8 +134,6 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
             end,
         )? {
             patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-            //            dbg!(&patch);
-            //            dbg!(&self);
             if patch.model.nodes.len() == 2 && patch.model.node(1).op().same_as(self) {
                 return Ok(None);
             }
