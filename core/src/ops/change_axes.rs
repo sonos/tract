@@ -512,7 +512,7 @@ pub fn change_axes(
     change: &AxisChange,
     locked: &[OutletId],
     bounds: &[TVec<OutletId>],
-) -> TractResult<Option<HashMap<OutletId, AxisOp>>> {
+) -> TractResult<Option<TVec<(InOut, AxisOp)>>> {
     trace!("Trying to apply change {:?}", change);
     let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires = HashMap::new();
@@ -585,10 +585,21 @@ pub fn change_axes(
             model.set_outlet_fact(OutletId::new(node_id, ix), f)?;
         }
     }
+    let mut interface_change = tvec!();
+    for (ix, input) in model.input_outlets()?.iter().enumerate() {
+        if let Some(change) = changed_wires.get(&input) {
+            interface_change.push((InOut::In(ix), change.clone()));
+        }
+    }
+    for (ix, output) in model.output_outlets()?.iter().enumerate() {
+        if let Some(change) = changed_wires.get(&output) {
+            interface_change.push((InOut::Out(ix), change.clone()));
+        }
+    }
     debug!("Applied {:?}: {:?}", change, changed_ops);
     model.check_consistent_facts()?;
     debug!("Checked");
-    Ok(Some(changed_wires))
+    Ok(Some(interface_change))
 }
 
 // a, b, c is a <- b, b <- c, c <- a

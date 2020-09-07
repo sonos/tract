@@ -486,8 +486,11 @@ impl Scan {
         let mut wire_changes = tvec!();
         let mut input_mapping: Vec<InputMapping> = self.input_mapping.clone();
         for (ix, m) in input_mapping.iter_mut().enumerate() {
-            let input = body.input_outlets()?[ix];
-            if let Some(change) = body_changed_wires.get(&input) {
+            if let Some(change) = body_changed_wires
+                .iter()
+                .find(|(iface, _change)| iface == &InOut::In(ix))
+                .map(|pair| pair.1.clone())
+            {
                 if let Some(slot) = m.slot() {
                     wire_changes.push((InOut::In(slot), change.clone()));
                 }
@@ -515,8 +518,11 @@ impl Scan {
         }
         let mut output_mapping: Vec<OutputMapping<TDim>> = self.output_mapping.clone();
         for (ix, m) in output_mapping.iter_mut().enumerate() {
-            let output = self.body.output_outlets()?[ix];
-            if let Some(change) = body_changed_wires.get(&output) {
+            if let Some(change) = body_changed_wires
+                .iter()
+                .find(|(iface, _change)| iface == &InOut::Out(ix))
+                .map(|pair| pair.1.clone())
+            {
                 if let Some(slot) = m.full_slot {
                     wire_changes.push((InOut::Out(slot), change.clone()));
                 }
@@ -594,10 +600,8 @@ impl TypedOp for Scan {
             let fact = self.body.output_fact(ix)?;
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();
-                let scanning_dim = output
-                    .full_dim_hint
-                    .clone()
-                    .unwrap_or(shape[output.axis].maybe_mul(&iters)?);
+                let scanning_dim =
+                    output.full_dim_hint.clone().unwrap_or(shape[output.axis].maybe_mul(&iters)?);
                 shape[output.axis] = scanning_dim;
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }
@@ -702,7 +706,7 @@ impl TypedOp for Scan {
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues
+        values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|o| mapping[&o]).collect::<TVec<_>>();
         let op = Self {
