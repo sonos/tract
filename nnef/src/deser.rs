@@ -144,6 +144,15 @@ impl<'mb> ModelBuilder<'mb> {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
+        let mut name = format!("{}.{}", self.naming_scopes.join("."), op.as_op().name());
+        if self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
+            for i in 0.. {
+                name = format!("{}.{}-{}", self.naming_scopes.join("."), op.as_op().name(), i);
+                if !self.model.nodes().iter().any(|n| n.name.starts_with(&name)) {
+                    break;
+                }
+            }
+        }
         if inputs.iter().all(|o| self.model.outlet_fact(*o).unwrap().konst.is_some()) {
             if op.as_op().is_stateless() {
                 let inputs: TVec<Arc<Tensor>> = inputs
@@ -155,12 +164,7 @@ impl<'mb> ModelBuilder<'mb> {
                 for (ix, o) in outputs.into_iter().enumerate() {
                     outlets.push(
                         self.model.wire_node(
-                            format!(
-                                "{}.{}-{}",
-                                self.naming_scopes.join("."),
-                                op.as_op().name(),
-                                ix
-                            ),
+                            format!("{}-{}", name, ix),
                             tract_core::ops::konst::Const::new(o),
                             &[],
                         )?[0],
@@ -169,13 +173,7 @@ impl<'mb> ModelBuilder<'mb> {
                 return Ok(outlets);
             }
         }
-        self.model
-            .wire_node(
-                format!("{}.{}", self.naming_scopes.join("."), op.as_op().name()),
-                op,
-                inputs,
-            )
-            .chain_err(|| format!("inputs are {:?}", inputs))
+        self.model.wire_node(name, op, inputs).chain_err(|| format!("inputs are {:?}", inputs))
     }
 }
 

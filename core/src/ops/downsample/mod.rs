@@ -26,7 +26,9 @@ impl Downsample {
             let mut outputs = self.eval(tvec!(k))?;
             downed.konst = Some(outputs.remove(0));
         }
-        debug_assert!(downed.consistent());
+        if cfg!(debug_assertions) {
+            downed.consistent()?;
+        }
         Ok(downed)
     }
 }
@@ -67,7 +69,8 @@ impl EvalOp for Downsample {
                     slice: ndarray::Slice,
                 ) -> Tensor {
                     let dt = t.datum_type();
-                    let mut t2 = t.to_array_view_unchecked::<T>()
+                    let mut t2 = t
+                        .to_array_view_unchecked::<T>()
                         .slice_axis(Axis(axis), slice)
                         .into_owned()
                         .into_tensor();
@@ -107,7 +110,10 @@ fn pull_downsample_up(
     model: &TypedModel,
     down_node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    model.check_consistent_facts()?;
+    #[cfg(debug_assertions)]
+    {
+        model.check_consistent_facts()?;
+    }
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
         let invariants = prec.op.invariants(model, prec)?;

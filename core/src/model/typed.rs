@@ -76,42 +76,40 @@ impl TypedModel {
         self.declutter()?.optimize()
     }
 
+    #[cfg(debug_assertions)]
     pub fn check_consistent_facts(&self) -> TractResult<()> {
-        if cfg!(debug_assertions) {
-            for node in &self.eval_order()? {
-                let input_facts = self.node_input_facts(*node)?;
-                let node = &self.nodes[*node];
-                let output_facts = node.op.output_facts(&input_facts)?;
-                if node.outputs.len() != output_facts.len() {
-                    bail!(
+        for node_id in &self.eval_order()? {
+            let input_facts = self.node_input_facts(*node_id)?;
+            let node = &self.nodes[*node_id];
+            if node.id != *node_id {
+                bail!("Node at position {} has id {}", node_id, node.id);
+            }
+            let output_facts = node.op.output_facts(&input_facts)?;
+            if node.outputs.len() != output_facts.len() {
+                bail!(
                     "Inconsistent model, node output count mismatch. Op says {}, node says {}. {}",
                     output_facts.len(),
                     node.outputs.len(),
                     node
                 );
-                }
-                if node
-                    .outputs
-                    .iter()
-                    .map(|o| &o.fact)
-                    .zip(output_facts.iter())
-                    .any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape)
-                {
-                    bail!(
-                    "Inconsistent model, node output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}",
-                    output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts)
-                }
             }
-            for node in &self.nodes {
-                for (ix, output) in node.outputs.iter().enumerate() {
-                    if !output.fact.consistent() {
-                        bail!(
-                            "Inconsistent fact {:?}: {:?}",
-                            OutletId::new(node.id, ix),
-                            output.fact
-                        );
-                    }
-                }
+            if node
+                .outputs
+                .iter()
+                .map(|o| &o.fact)
+                .zip(output_facts.iter())
+                .any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape)
+            {
+                bail!(
+                            "Inconsistent model, node output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}",
+                            output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts)
+            }
+        }
+        for node in &self.nodes {
+            for (ix, output) in node.outputs.iter().enumerate() {
+                output.fact.consistent().chain_err(|| {
+                    format!("Inconsistent fact {:?}: {:?}", OutletId::new(node.id, ix), output.fact)
+                })?
             }
         }
         Ok(())
@@ -121,7 +119,10 @@ impl TypedModel {
         &self,
         passes: &mut [Box<dyn crate::optim::TypedPass>],
     ) -> TractResult<TypedModel> {
-        self.check_consistent_facts()?;
+        #[cfg(debug_assertions)]
+        {
+            self.check_consistent_facts()?;
+        }
         let mut model = self.clone();
         let mut seen = std::collections::HashSet::new();
         for i in 0.. {
@@ -130,16 +131,25 @@ impl TypedModel {
             for p in passes.iter_mut() {
                 while let Some(mut patch) = p.next(&model)? {
                     patch.push_context(format!("{:?}/{}", p, i));
+                    #[cfg(debug_assertions)]
+                    {
+                        patch.model.check_consistent_facts()?;
+                        model.check_consistent_facts()?;
+                        patch.model.invariants()?;
+                        model.invariants()?;
+                    }
                     debug!("applying: {}", patch.context.iter().rev().join(" / "),);
                     patch.apply(&mut model)?;
                     done_something_this_time = true;
                 }
-                if cfg!(debug_assertions) {
+                #[cfg(debug_assertions)]
+                {
                     model.check_edges()?;
                     model
                         .check_consistent_facts()
                         .chain_err(|| format!("after declutter pass {:?}", p))?
                 }
+                model = model.compact()?;
             }
             if !done_something_this_time {
                 return Ok(model);

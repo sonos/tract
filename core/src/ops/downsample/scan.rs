@@ -14,7 +14,10 @@ pub fn pull_downsample_over_scan(
         return Ok(None);
     }
     let mut inner_model = scan_op.body.clone();
-    inner_model.check_consistent_facts()?;
+    #[cfg(debug_assertions)]
+    {
+        inner_model.check_consistent_facts()?;
+    }
 
     let outputs = inner_model.output_outlets()?.to_owned();
     let downsample_outputs = outputs
@@ -30,7 +33,10 @@ pub fn pull_downsample_over_scan(
         .collect::<TractResult<Vec<_>>>()?;
     inner_model.set_output_outlets(&*downsample_outputs)?;
     let mut inner_model = inner_model.declutter()?;
-    inner_model.check_consistent_facts()?;
+    #[cfg(debug_assertions)]
+    {
+        inner_model.check_consistent_facts()?;
+    }
 
     for input in inner_model.input_outlets()? {
         let input = inner_model.node(input.node);
@@ -56,7 +62,10 @@ pub fn pull_downsample_over_scan(
         }
     }
 
-    inner_model.check_consistent_facts()?;
+    #[cfg(debug_assertions)]
+    {
+        inner_model.check_consistent_facts()?;
+    }
     let inner_model = inner_model.declutter()?;
 
     let mut new_scan = scan_op.clone();
@@ -84,8 +93,8 @@ pub fn pull_downsample_over_scan(
             return Ok(None);
         }
         output.full_dim_hint.as_mut().map(|d| *d = down_op.transform_dim(d));
-        output.chunk =
-            (output.chunk.abs() as usize).div_ceil(down_op.stride as usize) as isize * output.chunk.signum()
+        output.chunk = (output.chunk.abs() as usize).div_ceil(down_op.stride as usize) as isize
+            * output.chunk.signum()
     }
 
     let mut patch = TypedModelPatch::default();

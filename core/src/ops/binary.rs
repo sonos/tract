@@ -192,7 +192,8 @@ impl TypedOp for TypedBinOp {
                 end,
             )?;
             if let (Some(a), Some(b)) = (a_sliced, b_sliced) {
-                return Ok(Some(patch.wire_node(&*node.name, self.clone(), &[a, b])?[0]));
+                let name = format!("{}-slice-{}-{}..{}", node.name, axis, start, end);
+                return Ok(Some(patch.wire_node(&*name, self.clone(), &[a, b])?[0]));
             }
         }
         Ok(None)

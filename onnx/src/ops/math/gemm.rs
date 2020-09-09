@@ -79,14 +79,14 @@ impl Expansion for Gemm {
         if self.beta != 0.0f32 {
             while model.outlet_fact(wire)?.rank() > model.outlet_fact(c)?.rank() {
                 c = model.wire_node(
-                    format!("{}.c_broadcast_to_{}", self.beta, model.outlet_fact(c)?.rank()),
+                    format!("{}.c_add_axis_{}", name, model.outlet_fact(c)?.rank()),
                     tract_hir::tract_core::ops::change_axes::AxisOp::Add(0),
                     &[c],
                 )?[0];
             }
             let beta = tensor0(self.beta).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
             let beta_c = model.wire_node(
-                format!("{}.beta_c", self.beta),
+                format!("{}.beta_c", name),
                 ops::math::mul::unary(beta.into_arc_tensor()),
                 &[c],
             )?[0];

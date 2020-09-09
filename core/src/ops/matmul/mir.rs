@@ -394,7 +394,7 @@ impl TypedOp for MatMul {
             node,
             &node.inputs[var_ix..][..1],
             MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip, self.q_params.clone()),
-        )?;
+        )?.with_context("to unary");
         return Ok(Some(patch));
     }
 
@@ -424,7 +424,7 @@ tract_linalg::impl_dyn_hash!(MatMulUnary);
 
 impl Op for MatMulUnary {
     fn name(&self) -> Cow<str> {
-        "MatMul".into()
+        "MatMulUnary".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -580,7 +580,7 @@ impl TypedOp for MatMulUnary {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         if let Some(concat) = model.nodes()[node.inputs[0].node].op().downcast_ref::<TypedConcat>()
         {
-            let mut patch = TypedModelPatch::default();
+            let mut patch = TypedModelPatch::new("split over k-concatenated input");
             let k_axis = self.a.rank() - 1 - self.a_trans as usize;
             if concat.axis == input_fact.shape.rank() - 1 && self.b_trans {
                 let mut input = 0;

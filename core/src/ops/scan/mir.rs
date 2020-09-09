@@ -67,8 +67,12 @@ impl Scan {
         seq_length_input_slot: Option<usize>,
         skip: usize,
     ) -> TractResult<Scan> {
-        assert_eq!(input_mapping.len(), body.input_outlets()?.len());
-        assert_eq!(output_mapping.len(), body.output_outlets()?.len());
+        #[cfg(debug_assertions)]
+        {
+            body.check_consistent_facts()?;
+            assert_eq!(input_mapping.len(), body.input_outlets()?.len());
+            assert_eq!(output_mapping.len(), body.output_outlets()?.len());
+        }
         Ok(Scan {
             skip,
             body,
@@ -485,6 +489,7 @@ impl Scan {
         };
         let mut body = self.body.clone();
         patch.apply(&mut body)?;
+        body = body.compact()?;
         let mut wire_changes = tvec!();
         let mut input_mapping: Vec<InputMapping> = self.input_mapping.clone();
         for (ix, m) in input_mapping.iter_mut().enumerate() {
@@ -539,6 +544,10 @@ impl Scan {
                     }
                 }
             };
+        }
+        #[cfg(debug_assertions)]
+        {
+            body.check_consistent_facts()?;
         }
         let op = Some(Box::new(Scan {
             body,
@@ -618,7 +627,7 @@ impl TypedOp for Scan {
 
     fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
         let mut invariants = tvec!();
-        let body_invs = self.body.invariants()?;
+        let body_invs = self.body.invariants().chain_err(|| "Computing body invariants")?;
         for axis in body_invs.axes {
             let mut info = AxisInfo::default().with_period(1);
             for (ix, input_mapping) in self.input_mapping.iter().enumerate() {
@@ -691,7 +700,13 @@ impl TypedOp for Scan {
                 if let Some(mut r) =
                     self.$func(model, node).chain_err(|| format!("{}", stringify!($func)))?
                 {
+                    trace!(stringify!($func));
                     r.push_context(stringify!($func));
+                    for node in r.nodes() {
+                        if let Some(scan) = node.op_as::<Self>() {
+                            scan.body.invariants().unwrap();
+                        }
+                    }
                     return Ok(Some(r));
                 }
             };

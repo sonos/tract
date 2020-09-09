@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
+use itertools::Itertools;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum InOut {
@@ -388,7 +389,6 @@ impl Op for AxisOp {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        use crate::itertools::Itertools;
         match self {
             Add(axis) | Rm(axis) => Ok(vec![format!("Axis: {}", axis)]),
             Move(from, to) => Ok(vec![format!("Axis {} to {}", from, to)]),
@@ -513,7 +513,7 @@ pub fn change_axes(
     locked: &[OutletId],
     bounds: &[TVec<OutletId>],
 ) -> TractResult<Option<(TypedModelPatch, TVec<(InOut, AxisOp)>)>> {
-    trace!("Trying to apply change {:?}", change);
+    trace!("Considering change {:?}", change);
     let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires = HashMap::new();
     changed_wires.insert(change.outlet, change.op.clone());
@@ -557,6 +557,13 @@ pub fn change_axes(
                         op
                     );
                     changed_ops.insert(node.id, op);
+                } else {
+                    trace!(
+                        "    Change {:?} enters {} from {:?} leaves it unchanged",
+                        c.op,
+                        node,
+                        io,
+                    );
                 }
                 for (wire, op) in wire_changes.into_iter() {
                     let outlet = wire.as_outlet(node);
@@ -568,7 +575,7 @@ pub fn change_axes(
             }
         }
     }
-    trace!("Translating to patch");
+    trace!("Translating {:?} to patch", change);
     let mut patch = TypedModelPatch::new(format!("{:?}", change));
     let mut replaced_wires: HashMap<OutletId, OutletId> = HashMap::default();
     let nodes_to_replace = changed_wires
@@ -623,7 +630,10 @@ pub fn change_axes(
             interface_change.push((InOut::Out(ix), change.clone()));
         }
     }
-    trace!("Translated to patch");
+    debug_assert!(
+        patch.model.nodes.iter().map(|n| &n.name).collect::<std::collections::HashSet<_>>().len()
+            == patch.model.nodes.len()
+    );
     Ok(Some((patch, interface_change)))
 }
 

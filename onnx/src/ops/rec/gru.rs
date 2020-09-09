@@ -201,7 +201,7 @@ impl GRU {
         // onnx inner interface: [batch_size, input_size]
         outer_inputs.push(inputs[0]);
         input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk });
-        let mut x_source_fact = x_fact.clone();
+        let mut x_source_fact = x_fact.without_value();
         x_source_fact.shape[0] = 1.to_dim();
         let x_source = body.add_source("x_source", x_source_fact)?.into();
         wire!(Xt = AxisOp::Rm(0), x_source);
