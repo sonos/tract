@@ -110,13 +110,13 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
                     node,
                     &node.inputs,
                     Slice { start, end, axis: self.axis },
-                )?));
+                )?.with_context("dim to integer")));
             }
         }
         if self.start == D::zero()
             && (self.end.clone().to_dim() == model.outlet_fact(node.inputs[0])?.shape[self.axis])
         {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?.with_context("noop")));
         }
         let (start, end) = if let (Ok(s), Ok(e)) = (self.start.to_usize(), self.end.to_usize()) {
             (s, e)

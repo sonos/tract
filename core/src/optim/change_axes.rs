@@ -9,10 +9,26 @@ use crate::ops::change_axes::*;
 pub struct ChangeAxes;
 
 impl TypedPass for ChangeAxes {
-    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
-        model.check_consistent_facts()?;
+    fn reset(&mut self) -> TractResult<()> {
+        Ok(())
+    }
+    fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
         let mut interfaces = model.output_outlets()?.to_vec();
         interfaces.extend(model.input_outlets()?.iter());
+        for n in model.eval_order()? {
+            for suggestion in model.node(n).op.suggested_axis_changes()? {
+                let outlet = suggestion.0.as_outlet(&model.node(n));
+                let change = AxisChange { outlet, op: suggestion.1 };
+                if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
+                    .chain_err(|| format!("Making patch for {:?} from {}", change, model.node(n)))?
+                {
+                    return Ok(Some(patch));
+                }
+            }
+        }
+        Ok(None)
+        /*
+        model.check_consistent_facts()?;
         let mut done_something = false;
         'top: loop {
             for n in model.eval_order()? {
@@ -34,5 +50,6 @@ impl TypedPass for ChangeAxes {
             }
             return Ok(done_something);
         }
+        */
     }
 }
