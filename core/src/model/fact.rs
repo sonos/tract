@@ -144,27 +144,46 @@ impl TypedFact {
     }
 
     pub fn rank(&self) -> usize {
-        debug_assert!(self.consistent());
+        if cfg!(debug_assertions) {
+            self.consistent().unwrap();
+        }
         self.shape.rank()
     }
 
-    pub fn format_dt_shape(&self) -> String {
-        debug_assert!(self.consistent());
-        if self.rank() > 0 {
+    fn format_dt_shape_nocheck(&self) -> String {
+        if self.shape.rank() > 0 {
             format!("{:?}x{:?}", self.shape, self.datum_type)
         } else {
             format!("{:?}", self.datum_type)
         }
     }
 
-    pub fn consistent(&self) -> bool {
-        self.konst.as_ref().map(|k| self.matches(k).unwrap()).unwrap_or(true)
+    pub fn format_dt_shape(&self) -> String {
+        if cfg!(debug_assertions) {
+            self.consistent().unwrap()
+        }
+        self.format_dt_shape_nocheck()
+    }
+
+    pub fn consistent(&self) -> TractResult<()> {
+        if let Some(k) = &self.konst {
+            if !self.matches(k.as_ref())? {
+                bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn without_value(&self) -> Self {
+        Self::dt_shape(self.datum_type, &*self.shape).unwrap()
     }
 }
 
 impl Fact for TypedFact {
     fn to_typed_fact(&self) -> TractResult<TypedFact> {
-        debug_assert!(self.consistent());
+        if cfg!(debug_assertions) {
+            self.consistent()?
+        }
         Ok(self.clone())
     }
 
@@ -173,9 +192,13 @@ impl Fact for TypedFact {
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {
-        debug_assert!(self.consistent());
+        if cfg!(debug_assertions) {
+            self.consistent().unwrap()
+        }
         if let Some(other) = other.downcast_ref::<Self>() {
-            debug_assert!(other.consistent());
+            if cfg!(debug_assertions) {
+                other.consistent().unwrap()
+            }
             self == other
         } else {
             false

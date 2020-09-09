@@ -258,7 +258,7 @@ impl Expansion for StridedSlice {
                 if preped.stride > 0 {
                     if preped.begin != 0.to_dim() || preped.end != input.shape[ix] {
                         wire = target.wire_node(
-                            format!("{}.Slice", prefix),
+                            format!("{}.slice-axis-{}", prefix, axis),
                             crate::ops::array::Slice::new(axis, preped.begin, preped.end),
                             [wire].as_ref(),
                         )?[0];
@@ -266,7 +266,7 @@ impl Expansion for StridedSlice {
                 } else {
                     if preped.end != 0.to_dim() || preped.begin != input.shape[ix] {
                         wire = target.wire_node(
-                            format!("{}.Slice", prefix),
+                            format!("{}.slice-axis-{}", prefix, axis),
                             crate::ops::array::Slice::new(axis, preped.end + 1, preped.begin + 1),
                             [wire].as_ref(),
                         )?[0];
@@ -274,7 +274,7 @@ impl Expansion for StridedSlice {
                 }
                 if preped.stride != 1 {
                     wire = target.wire_node(
-                        format!("{}.Stride-{}", prefix, ix),
+                        format!("{}.stride-axis-{}", prefix, axis),
                         crate::ops::downsample::Downsample::new(ix, preped.stride as isize, 0),
                         [wire].as_ref(),
                     )?[0];

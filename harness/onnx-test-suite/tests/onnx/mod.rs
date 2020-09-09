@@ -169,6 +169,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                     run_model(reloaded, inputs, &data_path)
                 }
             }
+            info!("Test model (mode: {:?}) {:#?} OK.", mode, path);
         }
     }
 }

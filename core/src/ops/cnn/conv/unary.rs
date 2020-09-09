@@ -650,7 +650,7 @@ impl TypedOp for ConvUnary {
                     let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
                     let geo_dim: TDim = input_shape.hw_dims().iter().maybe_product()?;
                     wire = patch.wire_node(
-                        &*node.name,
+                        format!("{}.reshape", &*node.name),
                         AxisOp::Reshape(
                             input_shape.h_axis(),
                             input_shape.hw_dims().into(),

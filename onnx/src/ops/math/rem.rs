@@ -58,7 +58,11 @@ impl Expansion for RemInt {
         // from onnx runtime:
         // auto res = x % y;
         // if ((res < 0 && y > 0) || (res > 0 && y < 0)) { res += y; }
-        let rem = model.wire_node(name, tract_hir::ops::math::rem::bin_typed(), &wires)?[0];
+        let rem = model.wire_node(
+            name.to_string() + ".rem",
+            tract_hir::ops::math::rem::bin_typed(),
+            &wires,
+        )?[0];
         let rem_is_neg = model.wire_node(
             name.to_string() + ".rem_is_neg",
             tract_hir::ops::logic::greater::unary(zero.clone()),

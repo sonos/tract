@@ -99,18 +99,18 @@ pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
 }
 
 element_wise_oop!(quantize_linear_u8,
-    QuantizeLinearU8 {
-        #[educe(Hash(method="hash_f32"))]
-        scale: f32,
-        zero_point: u8
-    },
-    [f32,i32] => u8 |op, xs, ys| {
-        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
-        );
-        Ok(())
-    };
-    info: info_quantize_linear_u8
+ QuantizeLinearU8 {
+     #[educe(Hash(method="hash_f32"))]
+     scale: f32,
+     zero_point: u8
+ },
+ [f32,i32] => u8 |op, xs, ys| {
+     xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+                                           *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
+                                          );
+     Ok(())
+ };
+ info: info_quantize_linear_u8
 );
 
 fn info_quantize_linear_u8(q: &QuantizeLinearU8) -> TractResult<Vec<String>> {
@@ -123,18 +123,18 @@ fn info_quantize_linear_u8(q: &QuantizeLinearU8) -> TractResult<Vec<String>> {
 }
 
 element_wise_oop!(quantize_linear_i8,
-    QuantizeLinearI8 {
-        #[educe(Hash(method="hash_f32"))]
-        scale: f32,
-        zero_point: i8
-    },
-    [f32,i32] => i8 |op, xs, ys| {
-        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = quantize_linear_f32_i8(*x as f32, op.scale, op.zero_point as i32)
-        );
-        Ok(())
-    };
-    info: info_quantize_linear_i8
+ QuantizeLinearI8 {
+     #[educe(Hash(method="hash_f32"))]
+     scale: f32,
+     zero_point: i8
+ },
+ [f32,i32] => i8 |op, xs, ys| {
+     xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
+                                           *y = quantize_linear_f32_i8(*x as f32, op.scale, op.zero_point as i32)
+                                          );
+     Ok(())
+ };
+ info: info_quantize_linear_i8
 );
 
 fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
@@ -308,7 +308,10 @@ impl TypedOp for DequantizeLinearF32 {
                     return Ok(Some(patch));
                 }
             }
-            let invariants = quant.op.invariants(model, quant)?;
+            let invariants = quant
+                .op
+                .invariants(model, quant)
+                .chain_err(|| format!("Querying invariants for {}", quant))?;
             if invariants.element_wise() {
                 current = quant;
             } else {
@@ -322,23 +325,23 @@ impl TypedOp for DequantizeLinearF32 {
 }
 
 element_wise_oop!(lookup_table,
-    LookupTable {
-        #[educe(Hash(method="hash_lookup_table"))]
-        table: Box<dyn Lut>
-    },
-    [i8] => i8 |op, xs, ys| {
-        ys.copy_from_slice(xs);
-        unsafe {
-            let casted = std::slice::from_raw_parts_mut(ys.as_mut_ptr() as *mut u8, ys.len());
-            op.table.run(casted);
-        }
-        Ok(())
-    },
-    [u8] => u8 |op, xs, ys| {
-        ys.copy_from_slice(xs);
-        op.table.run(ys);
-        Ok(())
-    }
+ LookupTable {
+     #[educe(Hash(method="hash_lookup_table"))]
+     table: Box<dyn Lut>
+ },
+ [i8] => i8 |op, xs, ys| {
+     ys.copy_from_slice(xs);
+     unsafe {
+         let casted = std::slice::from_raw_parts_mut(ys.as_mut_ptr() as *mut u8, ys.len());
+         op.table.run(casted);
+     }
+     Ok(())
+ },
+ [u8] => u8 |op, xs, ys| {
+     ys.copy_from_slice(xs);
+     op.table.run(ys);
+     Ok(())
+ }
 );
 
 fn hash_lookup_table<H: std::hash::Hasher>(lut: &Box<dyn Lut>, h: &mut H) {

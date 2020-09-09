@@ -86,12 +86,16 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         if let Some(axis) = change.transform_axis(self.axis) {
-            Ok(Some(AxisChangeConsequence::new(
-                model,
-                node,
-                Some(Box::new(Slice { axis, ..self.clone() }) as _),
-                change,
-            )))
+            if axis != self.axis {
+                Ok(Some(AxisChangeConsequence::new(
+                    model,
+                    node,
+                    Some(Box::new(Slice { axis, ..self.clone() }) as _),
+                    change,
+                )))
+            } else {
+                Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+            }
         } else {
             Ok(None)
         }
@@ -105,12 +109,15 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
         let prec = model.node(node.inputs[0].node);
         if let Some(tdim) = node.op_as::<Slice<TDim>>() {
             if let (Ok(start), Ok(end)) = (tdim.start.to_usize(), tdim.end.to_usize()) {
-                return Ok(Some(TypedModelPatch::replace_single_op(
-                    model,
-                    node,
-                    &node.inputs,
-                    Slice { start, end, axis: self.axis },
-                )?.with_context("dim to integer")));
+                return Ok(Some(
+                    TypedModelPatch::replace_single_op(
+                        model,
+                        node,
+                        &node.inputs,
+                        Slice { start, end, axis: self.axis },
+                    )?
+                    .with_context("dim to integer"),
+                ));
             }
         }
         if self.start == D::zero()

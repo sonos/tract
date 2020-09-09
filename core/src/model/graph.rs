@@ -441,8 +441,8 @@ where
 
     /// Performs a sanity check on network connections.
     pub fn check_edges(&self) -> TractResult<()> {
-        for node in self.eval_order()? {
-            let node = &self.nodes[node];
+        for node_id in self.eval_order()? {
+            let node = &self.nodes[node_id];
             for (ix, input) in node.inputs.iter().enumerate() {
                 let prec = &self.nodes[input.node];
                 if !prec.outputs[input.slot].successors.contains(&InletId::new(node.id, ix)) {
@@ -575,19 +575,21 @@ where
                 .unwrap_or("".to_string());
             writeln!(
                 fmt,
-                "{:8} {:8} -> {:5} -> {:8} {:8} | {:15} {}",
+                "{:5} | {:8} {:8} -> {:8} {:8} | {:25} {:50} {:?} => {:?}",
+                i,
                 input_1,
                 input_2,
-                i,
                 output_1,
                 output_2,
                 self.nodes[i].op().name(),
-                self.nodes[i].name
+                self.nodes[i].name,
+                self.node_input_facts(i).unwrap(),
+                self.node_output_facts(i).unwrap(),
             )?;
             if self.nodes[i].inputs.len() > 2 {
                 writeln!(
                     fmt,
-                    "                                                |   * inputs: {}",
+                    "                                               |   * inputs: {}",
                     self.nodes[i].inputs.iter().map(|s| format!("{:?}", s)).join(", ")
                 )?;
             }
@@ -600,7 +602,7 @@ where
                     if self.outlet_successors((i, o).into()).len() > 0 {
                         writeln!(
                                     fmt,
-                                    "                                                |   * output #{}: {} {}",
+                                    "                                               |   * output #{}: {} {}",
                                     o,
                                     self.outlet_label((i, o).into()).unwrap_or(""),
                                     self.outlet_successors((i, o).into())
@@ -630,9 +632,50 @@ where
         + for<'a> std::convert::From<&'a O>,
     Graph<F, O>: SpecialOps<F, O>,
 {
+    #[cfg(debug_assertions)]
+    pub fn check_compact(&self) -> TractResult<()> {
+        let order = self.eval_order()?;
+        let useless_sources = self
+            .input_outlets()?
+            .iter()
+            .filter(|io| {
+                self.outlet_successors(**io).len() == 0
+                    && !self.output_outlets().unwrap().contains(io)
+            })
+            .count();
+        if order.len() + useless_sources != self.nodes.len() {
+            bail!(
+                "Eval order is {} long, nodes are {}, including {} unused sources",
+                order.len(),
+                self.nodes.len(),
+                useless_sources
+            );
+        }
+        if (0..order.len()).any(|ix| order[ix] != ix) {
+            bail!("eval order is not trivial");
+        }
+        let mut seen = std::collections::HashSet::new();
+        for (ix, n) in self.nodes.iter().enumerate() {
+            if ix != n.id {
+                bail!("Invalid node id: position is {}, node is {}", ix, n);
+            }
+            if seen.contains(&n.name) {
+                eprintln!("{}", self);
+                bail!("duplicate name {}", n.name);
+            }
+            seen.insert(&n.name);
+        }
+        Ok(())
+    }
+
     pub fn compact(&self) -> TractResult<Self> {
         use crate::model::translator::Translate;
-        crate::model::translator::IntoTranslator.translate_model(self)
+        let result = crate::model::translator::IntoTranslator.translate_model(self)?;
+        #[cfg(debug_assertions)]
+        {
+            result.check_compact()?;
+        }
+        Ok(result)
     }
 }
 
