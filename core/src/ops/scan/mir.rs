@@ -471,18 +471,20 @@ impl Scan {
         change: AxisChange,
         locked_interface: bool,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let mut body = self.body.clone();
         let interface = self.body_exposed_outlets()?;
-        let body_changed_wires = if let Some(changes) = crate::ops::change_axes::change_axes(
-            &mut body,
-            &change,
-            if locked_interface { &interface } else { &[] },
-            &*self.body_bounds()?,
-        )? {
+        let (patch, body_changed_wires) = if let Some(changes) =
+            crate::ops::change_axes::change_axes(
+                &self.body,
+                &change,
+                if locked_interface { &interface } else { &[] },
+                &*self.body_bounds()?,
+            )? {
             changes
         } else {
             return Ok(None);
         };
+        let mut body = self.body.clone();
+        patch.apply(&mut body)?;
         let mut wire_changes = tvec!();
         let mut input_mapping: Vec<InputMapping> = self.input_mapping.clone();
         for (ix, m) in input_mapping.iter_mut().enumerate() {
@@ -684,19 +686,23 @@ impl TypedOp for Scan {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        for dec in &[
-            Self::declutter_body,
-            Self::declutter_body_axes,
-            Self::declutter_discard_unused_input_mapping,
-            Self::declutter_pull_batcheable_input,
-            Self::declutter_pull_batcheable_output,
-            Self::declutter_const_initializer,
-            Self::declutter_discard_useless_outer_output,
-        ] {
-            if let Some(r) = dec(&self, model, node)? {
-                return Ok(Some(r));
-            }
+        macro_rules! pass {
+            ($func:ident) => {
+                if let Some(mut r) =
+                    self.$func(model, node).chain_err(|| format!("{}", stringify!($func)))?
+                {
+                    r.push_context(stringify!($func));
+                    return Ok(Some(r));
+                }
+            };
         }
+        pass!(declutter_body);
+        pass!(declutter_body_axes);
+        pass!(declutter_discard_unused_input_mapping);
+        pass!(declutter_pull_batcheable_input);
+        pass!(declutter_pull_batcheable_output);
+        pass!(declutter_const_initializer);
+        pass!(declutter_discard_useless_outer_output);
         Ok(None)
     }
 

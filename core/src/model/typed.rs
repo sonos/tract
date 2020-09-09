@@ -117,20 +117,23 @@ impl TypedModel {
         Ok(())
     }
 
-    /// Perform declutter passes on the network.
-    pub fn declutter(&self) -> TractResult<TypedModel> {
+    fn optimize_passes(
+        &self,
+        passes: &mut [Box<dyn crate::optim::TypedPass>],
+    ) -> TractResult<TypedModel> {
         self.check_consistent_facts()?;
         let mut model = self.clone();
         let mut seen = std::collections::HashSet::new();
         for i in 0.. {
             model = model.compact()?;
             let mut done_something_this_time = false;
-            for p in crate::optim::declutter() {
-                if p.pass(&mut model)? {
+            for p in passes.iter_mut() {
+                while let Some(mut patch) = p.next(&model)? {
+                    patch.push_context(format!("{:?}/{}", p, i));
+                    debug!("applying: {}", patch.context.iter().rev().join(" / "),);
+                    patch.apply(&mut model)?;
                     done_something_this_time = true;
-                    debug!("done_something at pass {} in {:?}", i, p);
                 }
-                done_something_this_time = done_something_this_time || p.pass(&mut model)?;
                 if cfg!(debug_assertions) {
                     model.check_edges()?;
                     model
@@ -154,6 +157,11 @@ impl TypedModel {
         unreachable!()
     }
 
+    /// Perform declutter passes on the network.
+    pub fn declutter(&self) -> TractResult<TypedModel> {
+        self.optimize_passes(&mut crate::optim::declutter())
+    }
+
     pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
         use crate::model::translator::Translate;
         impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for SymbolValues {
@@ -172,21 +180,7 @@ impl TypedModel {
 
     /// Translate the graph to locally optimized operators (LIR or MIR ops).
     pub fn optimize(self) -> TractResult<TypedModel> {
-        let mut model = self;
-        loop {
-            let mut done_something = false;
-            for p in crate::optim::codegen() {
-                done_something = done_something || p.pass(&mut model)?;
-                if cfg!(debug_assertions) {
-                    model.check_edges()?;
-                }
-            }
-            if !done_something {
-                break;
-            }
-            model = model.compact()?;
-        }
-        Ok(model)
+        self.optimize_passes(&mut crate::optim::codegen())
     }
 
     pub fn invariants(&self) -> TractResult<invariants::Invariants> {

@@ -508,11 +508,11 @@ impl TypedOp for AxisOp {
 }
 
 pub fn change_axes(
-    model: &mut TypedModel,
+    model: &TypedModel,
     change: &AxisChange,
     locked: &[OutletId],
     bounds: &[TVec<OutletId>],
-) -> TractResult<Option<TVec<(InOut, AxisOp)>>> {
+) -> TractResult<Option<(TypedModelPatch, TVec<(InOut, AxisOp)>)>> {
     trace!("Trying to apply change {:?}", change);
     let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires = HashMap::new();
@@ -526,7 +526,7 @@ pub fn change_axes(
         };
         for outlet in outlets {
             if locked.contains(&outlet) {
-                debug!("  Change {:?} blocked by locked interface {:?}", change, outlet);
+                trace!("  Change {:?} blocked by locked interface {:?}", change, outlet);
                 return Ok(None);
             }
             let mut nodes = vec![(outlet.node, InOut::Out(outlet.slot))];
@@ -543,7 +543,7 @@ pub fn change_axes(
                     .change_axes(model, node, io, &c.op)
                     .chain_err(|| format!("Propagating {:?} to node {}", change, node))?;
                 if more.is_none() {
-                    debug!("    Propagation of {:?} blocked by {}", change, node);
+                    trace!("    Propagation of {:?} blocked by {}", change, node);
                     return Ok(None);
                 }
                 let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
@@ -568,21 +568,48 @@ pub fn change_axes(
             }
         }
     }
-    debug!("Applying {:?}: {:?}", change, changed_ops);
-    model.check_consistent_facts()?;
+    trace!("Translating to patch");
+    let mut patch = TypedModelPatch::new(format!("{:?}", change));
+    let mut replaced_wires: HashMap<OutletId, OutletId> = HashMap::default();
+    let nodes_to_replace = changed_wires
+        .keys()
+        .map(|o| o.node)
+        .chain(changed_ops.keys().copied())
+        .collect::<std::collections::HashSet<usize>>();
     for node_id in model.eval_order()? {
-        if let Some(new_op) = changed_ops.remove(&node_id) {
-            trace!("replace: {} <= {:?}", model.node(node_id), new_op);
-            model.node_mut(node_id).op = new_op;
+        let node = model.node(node_id);
+        if nodes_to_replace.contains(&node_id) {
+            let mut inputs = tvec!();
+            for orig in &node.inputs {
+                let tgt = replaced_wires
+                    .entry(*orig)
+                    .or_insert_with(|| patch.tap_model(model, *orig).unwrap());
+                inputs.push(*tgt);
+            }
+            let op: Box<dyn TypedOp> =
+                changed_ops.get(&node_id).cloned().unwrap_or_else(|| node.op.clone());
+            let new_wires = patch.wire_node(&node.name, op, &inputs)?;
+            if new_wires.len() == 1
+                && patch.node(new_wires[0].node).op_is::<crate::ops::source::TypedSource>()
+            {
+                patch.inputs.insert(new_wires[0].node, node_id);
+            }
+            for (ix, w) in new_wires.iter().enumerate() {
+                replaced_wires.insert((node_id, ix).into(), *w);
+            }
+        } else {
+            for orig in &node.inputs {
+                if let Some(replacement) = replaced_wires.get(&orig) {
+                    patch.shunt_outside(model, *orig, *replacement)?;
+                }
+            }
         }
-        let input_facts = model.node_input_facts(node_id)?;
-        debug_assert!(input_facts.iter().all(|f| f.consistent()));
-        let output_facts =
-            model.node(node_id).op.output_facts(&model.node_input_facts(node_id)?)?;
-        std::mem::forget(input_facts);
-        for (ix, f) in output_facts.into_iter().enumerate() {
-            debug_assert!(f.consistent());
-            model.set_outlet_fact(OutletId::new(node_id, ix), f)?;
+    }
+    for output in model.output_outlets()? {
+        if let Some(replacement) = replaced_wires.get(output) {
+            unsafe {
+                patch.shunt_outside_unchecked(*output, *replacement)?;
+            }
         }
     }
     let mut interface_change = tvec!();
@@ -596,10 +623,8 @@ pub fn change_axes(
             interface_change.push((InOut::Out(ix), change.clone()));
         }
     }
-    debug!("Applied {:?}: {:?}", change, changed_ops);
-    model.check_consistent_facts()?;
-    debug!("Checked");
-    Ok(Some(interface_change))
+    trace!("Translated to patch");
+    Ok(Some((patch, interface_change)))
 }
 
 // a, b, c is a <- b, b <- c, c <- a
@@ -948,6 +973,12 @@ mod proptests {
         fn axis_ops(pb in any::<ComposeProblem>()) {
             pb.check()?
         }
+    }
+
+    #[test]
+    fn add_0_rm_0() {
+        let pb = ComposeProblem { input: tvec![1], ops: tvec![Add(0), Rm(0)] };
+        pb.check().unwrap();
     }
 
     #[test]

@@ -15,10 +15,17 @@ where
     F: Fact + Clone + 'static + Hash,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
-    /// the model-like 'pagch' of nodes to add to the model
+    /// patch label for auditing and debugging
+    pub context: Vec<String>,
+    /// the model-like 'patch' of nodes to add to the model
     pub model: Graph<F, O>,
+    /// map of replaced inputs (patch node id to model node id)
+    pub inputs: HashMap<usize, usize>,
+    /// map of patch inputs to model wires
     pub incoming: HashMap<OutletId, OutletId>,
+    /// map of old wires to be replaced by new wires
     pub shunt_outlet_by: HashMap<OutletId, OutletId>,
+    /// operations to discard from the model
     pub obliterate: Vec<usize>,
 }
 
@@ -29,7 +36,9 @@ where
 {
     fn default() -> ModelPatch<F, O> {
         ModelPatch {
+            context: vec![],
             model: Graph::default(),
+            inputs: HashMap::default(),
             incoming: HashMap::new(),
             shunt_outlet_by: HashMap::new(),
             obliterate: vec![],
@@ -64,6 +73,19 @@ where
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
     Graph<F, O>: SpecialOps<F, O>,
 {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self::default().with_context(s)
+    }
+
+    pub fn push_context(&mut self, s: impl Into<String>) {
+        self.context.push(s.into());
+    }
+
+    pub fn with_context(mut self, s: impl Into<String>) -> Self {
+        self.context.push(s.into());
+        self
+    }
+
     pub fn is_empty(&self) -> bool {
         self.model.nodes.is_empty() && self.shunt_outlet_by.is_empty() && self.obliterate.is_empty()
     }
@@ -79,6 +101,15 @@ where
         )?;
         self.incoming.insert(id, outlet);
         Ok(id)
+    }
+
+    pub unsafe fn shunt_outside_unchecked(
+        &mut self,
+        outlet: OutletId,
+        by: OutletId,
+    ) -> TractResult<()> {
+        self.shunt_outlet_by.insert(outlet, by);
+        Ok(())
     }
 
     /// Replace an Outlet in the target model by one from the patch.
@@ -195,11 +226,22 @@ where
     pub fn apply(self, target: &mut Graph<F, O>) -> TractResult<()> {
         let prior_target_inputs = target.input_outlets()?.len();
         let prior_target_outputs = target.output_outlets()?.len();
-        let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by, obliterate } = self;
-        let mut all_inputs = HashMap::new(); // new_id -> [ old_inputs ]
+        let ModelPatch {
+            model: patch,
+            incoming: mut mapping,
+            shunt_outlet_by,
+            obliterate,
+            inputs: replaced_inputs,
+            ..
+        } = self;
+        let mut all_inputs = HashMap::new(); // new_node_id_in_model -> [ patch_outlet_id ]
+        let mut model_input_outlets = target.input_outlets()?.to_vec();
         for node in patch.nodes {
             if <Graph<F, O>>::is_source(&node.op) {
-                continue;
+                if mapping.contains_key(&OutletId::new(node.id, 0)) {
+                    // this is a tap
+                    continue;
+                }
             }
             let BaseNode { id, name, inputs, op, outputs } = node;
             let n_outputs = outputs.len();
@@ -209,6 +251,14 @@ where
                 mapping.insert(OutletId::new(id, ix), OutletId::new(added_node_id, ix));
             }
             all_inputs.insert(added_node_id, inputs);
+            if <Graph<F, O>>::is_source(&target.node(added_node_id).op) {
+                // this is actually an input replacement
+                model_input_outlets.iter_mut().for_each(|oo| {
+                    if oo.node == replaced_inputs[&id] {
+                        oo.node = added_node_id;
+                    }
+                });
+            }
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
@@ -241,6 +291,7 @@ where
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
+        target.set_input_outlets(&model_input_outlets)?;
         Ok(())
     }
 }

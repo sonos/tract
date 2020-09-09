@@ -64,13 +64,16 @@ impl TypedOp for MaxPool {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.with_index_outputs.is_some() && node.outputs[1].successors.len() == 0 {
+        if self.with_index_outputs.is_some()
+            && node.outputs[1].successors.len() == 0
+            && !model.output_outlets()?.contains(&OutletId::new(node.id, 1))
+        {
             let op = MaxPool { pool_spec: self.pool_spec.clone(), with_index_outputs: None };
             let mut patch = TypedModelPatch::default();
             let mut wire = patch.tap_model(model, node.inputs[0])?;
             wire = patch.wire_node(&node.name, op, &[wire])?[0];
             patch.shunt_outside(model, node.id.into(), wire)?;
-            return Ok(Some(patch))
+            return Ok(Some(patch));
         }
         Ok(None)
     }

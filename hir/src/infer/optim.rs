@@ -20,7 +20,7 @@ impl IncorporatePass for IncorporateOps {
             for id in model.eval_order()? {
                 let reduced = {
                     let node = &model.nodes()[id];
-                    debug!("Incorporate {}", node);
+                    trace!("Incorporate {}", node);
                     node.op
                         .incorporate(model, node)
                         .chain_err(|| format!("{:?} node {}", self, node))?
