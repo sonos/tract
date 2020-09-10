@@ -561,7 +561,7 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             use tract_pulse::WithPulse;
             fw = fw.with_pulse();
         }
-        #[cfg(not(features = "pulse"))]
+        #[cfg(not(feature = "pulse"))]
         {
             panic!("tract is build without ONNX support")
         }
