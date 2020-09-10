@@ -15,6 +15,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 flate2 = "1"
+zstd = "0.5"
 log = "0.4"
 nom = "5"
 tar = "0.4"

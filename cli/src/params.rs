@@ -96,8 +96,9 @@ impl Parameters {
             } else if filename.extension().map(|s| s == "raw" || s == "txt").unwrap_or(false) {
                 "kaldi"
             } else if filename.is_dir()
-                || (filename.to_string_lossy().ends_with(".tar.gz")
-                    || filename.extension().map(|s| s == "tgz").unwrap_or(false))
+                || filename.to_string_lossy().ends_with(".tar.gz")
+                || filename.to_string_lossy().ends_with(".tar.zstd")
+                || filename.extension().map(|s| s == "tgz").unwrap_or(false)
             {
                 "nnef"
             } else {

@@ -2,6 +2,7 @@
 extern crate log;
 
 pub extern crate flate2;
+pub extern crate zstd;
 
 pub mod ast;
 pub mod deser;

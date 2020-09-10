@@ -35,18 +35,17 @@ impl Nnef {
     }
 
     pub fn write(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
-        self.write_with_compression(model, w, flate2::Compression::default())
+        self.write_to_tar(model, w)?;
+        Ok(())
     }
 
-    pub fn write_with_compression(
-        &self,
-        model: &TypedModel,
-        w: impl std::io::Write,
-        comp: flate2::Compression,
-    ) -> TractResult<()> {
+    pub fn write_to_zstd(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
+        self.write_to_zstd_level(model, w, zstd::DEFAULT_COMPRESSION_LEVEL)
+    }
+
+    pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
         let proto_model = crate::ser::to_proto_model(&self, model)?;
-        let comp = flate2::write::GzEncoder::new(w, comp);
-        let mut ar = tar::Builder::new(comp);
+        let mut ar = tar::Builder::new(w);
         let mut graph_data = vec![];
         crate::ast::dump::Dumper::new(&mut graph_data).document(&proto_model.doc)?;
         let now =
@@ -73,6 +72,28 @@ impl Nnef {
 
             ar.append_data(&mut header, &*filename, &mut &*data)?;
         }
+        Ok(ar.into_inner()?)
+    }
+
+    pub fn write_to_tgz_level(
+        &self,
+        model: &TypedModel,
+        w: impl std::io::Write,
+        comp: flate2::Compression,
+    ) -> TractResult<()> {
+        let comp = flate2::write::GzEncoder::new(w, comp);
+        self.write_to_tar(model, comp)?.finish()?;
+        Ok(())
+    }
+
+    pub fn write_to_zstd_level(
+        &self,
+        model: &TypedModel,
+        w: impl std::io::Write,
+        comp: i32,
+    ) -> TractResult<()> {
+        let comp = zstd::stream::write::Encoder::new(w, comp)?;
+        self.write_to_tar(model, comp)?.finish()?;
         Ok(())
     }
 
@@ -114,11 +135,22 @@ impl Nnef {
 }
 
 impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
+    fn model_for_path(&self, p: impl AsRef<Path>) -> TractResult<TypedModel> {
+        let proto = self.proto_model_for_path(p)?;
+        self.model_for_proto_model(&proto)
+    }
+
     fn proto_model_for_path(&self, path: impl AsRef<Path>) -> TractResult<ProtoModel> {
         let path = path.as_ref();
         if path.is_file() {
             let mut f = std::fs::File::open(path)?;
-            return self.proto_model_for_read(&mut f);
+            return if path.extension().map(|ext| ext == "zstd").unwrap_or(false) {
+                self.proto_model_for_read(&mut zstd::stream::read::Decoder::new(f)?)
+            } else if path.extension().map(|ext| ext == "gz" || ext == "tgz").unwrap_or(false) {
+                self.proto_model_for_read(&mut flate2::read::GzDecoder::new(f))
+            } else {
+                self.proto_model_for_read(&mut f)
+            };
         }
         let mut text: Option<String> = None;
         let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
@@ -140,8 +172,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
     fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
         let mut text: Option<String> = None;
         let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
-        let decomp = flate2::read::GzDecoder::new(reader);
-        let mut tar = tar::Archive::new(decomp);
+        let mut tar = tar::Archive::new(reader);
         for entry in tar.entries()? {
             let mut entry = entry?;
             let path = entry.path()?.to_path_buf();
