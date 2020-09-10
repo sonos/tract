@@ -133,6 +133,7 @@ impl Annotations {
         Ok(annotations)
     }
 
+    #[allow(unused_variables)]
     pub fn with_graph_def(
         self,
         model: &dyn Model,

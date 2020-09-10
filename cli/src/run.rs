@@ -1,15 +1,20 @@
 use crate::errors::*;
 use crate::{Model, Parameters};
 use tract_hir::internal::*;
+#[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
 
 pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> {
     let dump = options.is_present("dump");
+    #[cfg(feature = "pulse")]
     let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
         run_pulse_t(pulse, &params)?
     } else {
-        dispatch_model!(params.tract_model, |m| run_regular(m, &params, options))?
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, options))?
     };
+
+    #[cfg(not(feature = "pulse"))]
+    let outputs = dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, options))?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
@@ -72,6 +77,7 @@ fn run_regular(
     })
 }
 
+#[cfg(feature="pulse")]
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
     let input_fact = model.input_fact(0)?;
     let output_fact = model.output_fact(0)?;
@@ -83,8 +89,10 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);
-    let output_dim =
-        output_fact.dim.eval(&SymbolValues::default().with(stream_symbol(), input_dim as i64)).to_usize()?;
+    let output_dim = output_fact
+        .dim
+        .eval(&SymbolValues::default().with(stream_symbol(), input_dim as i64))
+        .to_usize()?;
     let mut output_shape = output_fact.shape.to_vec();
     output_shape[output_fact.axis] =
         (output_dim as usize + output_fact.delay + 4 * output_fact.pulse()).to_dim();

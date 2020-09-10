@@ -5,6 +5,7 @@ use tract_itertools::Itertools;
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
 use tract_hir::internal::*;
+#[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
@@ -33,6 +34,9 @@ pub enum SomeGraphDef {
     #[cfg(feature = "tf")]
     Tf(GraphDef),
 }
+
+#[cfg(not(feature = "pulse"))]
+type PulsedModel = ();
 
 /// Structure holding the parsed parameters.
 pub struct Parameters {
@@ -405,6 +409,7 @@ impl Parameters {
         Ok(input_values)
     }
 
+    #[allow(unused_variables)]
     fn pipeline(
         matches: &clap::ArgMatches,
         probe: Option<&readings_probe::Probe>,
@@ -418,8 +423,10 @@ impl Parameters {
         Option<Arc<dyn Model>>,
     )> {
         let keep_last = matches.is_present("verbose");
+        #[cfg(feature="pulse")]
         let pulse: Option<usize> =
             matches.value_of("pulse").map(|s| s.parse::<usize>()).transpose()?;
+        #[cfg(feature="pulse")]
         let concretize_stream_dim: Option<usize> =
             matches.value_of("concretize_stream_dim").map(|s| s.parse()).transpose()?;
 
@@ -439,6 +446,7 @@ impl Parameters {
 
         let mut inference_model: Option<Arc<InferenceModel>> = None;
         let mut typed_model: Option<Arc<TypedModel>> = None;
+        #[allow(unused_mut)]
         let mut pulsed_model: Option<Arc<PulsedModel>> = None;
         let mut reference_model: Option<Arc<dyn Model>> = None;
 
@@ -501,6 +509,7 @@ impl Parameters {
         stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { Ok(m.incorporate()?)});
         stage!("type", inference_model -> typed_model, |m:InferenceModel| Ok(m.into_typed()?));
         stage!("declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
+        #[cfg(feature = "pulse")]
         if let Some(dim) = concretize_stream_dim {
             stage!("concretize-stream-dim", typed_model -> typed_model, |m:TypedModel| Ok(m.concretize_dims(&SymbolValues::default().with(stream_symbol(), dim as _))?));
             stage!("concretize-stream-dim-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));

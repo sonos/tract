@@ -175,6 +175,7 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
     }
 }
 
+#[cfg(pulse)]
 fn parse_dim_stream(s: &str) -> CliResult<TDim> {
     use tract_pulse::internal::stream_dim;
     if s == "S" {
@@ -186,6 +187,11 @@ fn parse_dim_stream(s: &str) -> CliResult<TDim> {
     } else {
         Ok(s.parse::<i64>().map(|i| i.into())?)
     }
+}
+
+#[cfg(not(pulse))]
+fn parse_dim_stream(s: &str) -> CliResult<TDim> {
+    Ok(s.parse::<i64>().map(|i| i.into())?)
 }
 
 pub fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<TVec<Tensor>> {
@@ -202,26 +208,32 @@ pub fn make_inputs_for_model(model: &dyn Model) -> CliResult<TVec<Tensor>> {
     )?)
 }
 
+#[allow(unused_variables)]
 pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
-    use tract_pulse::fact::StreamFact;
-    use tract_pulse::internal::stream_symbol;
-    let s = stream_symbol();
     if let Some(value) = &fact.konst {
-        Ok(value.clone().into_tensor())
-    } else if fact.shape.stream_info().is_some() {
-        if let Some(dim) = streaming_dim {
-            let shape = fact
-                .shape
-                .iter()
-                .map(|d| d.eval(&SymbolValues::default().with(s, dim as i64)).to_usize().unwrap())
-                .collect::<TVec<_>>();
-            Ok(random(&shape, fact.datum_type))
-        } else {
-            bail!("random tensor requires a streaming dim")
-        }
-    } else {
-        Ok(random(&fact.shape.as_finite().unwrap(), fact.datum_type))
+        return Ok(value.clone().into_tensor());
     }
+    #[cfg(pulse)]
+    {
+        if fact.shape.stream_info().is_some() {
+            use tract_pulse::fact::StreamFact;
+            use tract_pulse::internal::stream_symbol;
+            let s = stream_symbol();
+            if let Some(dim) = streaming_dim {
+                let shape = fact
+                    .shape
+                    .iter()
+                    .map(|d| {
+                        d.eval(&SymbolValues::default().with(s, dim as i64)).to_usize().unwrap()
+                    })
+                    .collect::<TVec<_>>();
+                return Ok(random(&shape, fact.datum_type));
+            } else {
+                bail!("random tensor requires a streaming dim")
+            }
+        }
+    }
+    Ok(random(&fact.shape.as_finite().unwrap(), fact.datum_type))
 }
 
 /// Generates a random tensor of a given size and type.
