@@ -34,6 +34,7 @@ mod optimize_check;
 mod params;
 mod profile;
 mod run;
+#[cfg(feature = "pulse")]
 mod stream_check;
 mod tensor;
 mod terminal;
@@ -429,7 +430,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         Ok(params) => params,
         Err(e) => {
             if let CliError(CliErrorKind::ModelBuilding(ref broken_model), _) = e {
-                let mut broken_model:Box<dyn Model> = tract_hir::tract_core::dyn_clone::clone(broken_model);
+                let mut broken_model: Box<dyn Model> =
+                    tract_hir::tract_core::dyn_clone::clone(broken_model);
                 let annotations =
                     crate::annotations::Annotations::from_model(broken_model.as_ref())?;
                 let display_params = if let ("dump", Some(sm)) = matches.subcommand() {
@@ -495,6 +497,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             optimize_check::handle(&params, display_params_from_clap(&matches, m)?)
         }
 
+        #[cfg(feature="pulse")]
         ("stream-check", Some(m)) => {
             stream_check::handle(&params, &display_params_from_clap(&matches, m)?)
         }
@@ -542,12 +545,26 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
 fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     let mut fw = tract_nnef::nnef();
     if matches.is_present("nnef_tract_onnx") {
-        use tract_onnx::WithOnnx;
-        fw = fw.with_onnx();
+        #[cfg(feature = "onnx")]
+        {
+            use tract_onnx::WithOnnx;
+            fw = fw.with_onnx();
+        }
+        #[cfg(not(feature = "onnx"))]
+        {
+            panic!("tract is build without ONNX support")
+        }
     }
     if matches.is_present("nnef_tract_pulse") {
-        use tract_pulse::WithPulse;
-        fw = fw.with_pulse();
+        #[cfg(feature = "pulse")]
+        {
+            use tract_pulse::WithPulse;
+            fw = fw.with_pulse();
+        }
+        #[cfg(not(features = "pulse"))]
+        {
+            panic!("tract is build without ONNX support")
+        }
     }
     if matches.is_present("nnef_tract_core") {
         fw = fw.with_tract_core();
