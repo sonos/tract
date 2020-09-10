@@ -44,7 +44,7 @@ serde_json = "1.0.53"
 serde_derive = "1.0.110"
 
 [features]
-default = ["kaldi", "onnx", "tf"]
+default = ["kaldi", "onnx", "tf", "pulse"]
 kaldi = [ "tract-kaldi" ]
 onnx = [ "tract-onnx" ]
 pulse = [ "tract-pulse" ]
