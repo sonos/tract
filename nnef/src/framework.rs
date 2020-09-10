@@ -133,6 +133,20 @@ impl Nnef {
         self.write(model, file)
     }
 
+    pub fn write_to_tar_file(
+        &self,
+        model: &TypedModel,
+        path: impl AsRef<std::path::Path>,
+    ) -> TractResult<()> {
+        let path = path.as_ref();
+        if path.exists() {
+            bail!("{:?} already exists. Won't overwrite.", path);
+        }
+        let file = std::fs::File::create(path)?;
+        self.write_to_tar(model, file)?;
+        Ok(())
+    }
+
     pub fn write_to_tar_zstd(
         &self,
         model: &TypedModel,
