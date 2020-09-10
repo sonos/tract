@@ -56,7 +56,6 @@ pub fn pull_downsample_over_scan(
         }
     }
 
-    dbg!(&inner_model);
     inner_model.check_consistent_facts()?;
     let inner_model = inner_model.declutter()?;
 
