@@ -175,7 +175,7 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
     }
 }
 
-#[cfg(pulse)]
+#[cfg(feature = "pulse")]
 fn parse_dim_stream(s: &str) -> CliResult<TDim> {
     use tract_pulse::internal::stream_dim;
     if s == "S" {
@@ -189,7 +189,7 @@ fn parse_dim_stream(s: &str) -> CliResult<TDim> {
     }
 }
 
-#[cfg(not(pulse))]
+#[cfg(not(feature = "pulse"))]
 fn parse_dim_stream(s: &str) -> CliResult<TDim> {
     Ok(s.parse::<i64>().map(|i| i.into())?)
 }

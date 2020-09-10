@@ -27,7 +27,6 @@ pub enum SomeGraphDef {
     NoGraphDef,
     #[cfg(feature = "kaldi")]
     Kaldi(tract_kaldi::KaldiProtoModel),
-    #[cfg(feature = "nnef")]
     Nnef(tract_nnef::ProtoModel),
     #[cfg(feature = "onnx")]
     Onnx(tract_onnx::pb::ModelProto, tract_onnx::model::ParseResult),
@@ -122,7 +121,6 @@ impl Parameters {
                     (SomeGraphDef::NoGraphDef, Box::new(parsed), Option::<TfExt>::None)
                 }
             }
-            #[cfg(feature = "nnef")]
             "nnef" => {
                 let nnef = super::nnef(&matches);
                 let proto_model = nnef.proto_model_for_path(&filename)?;
