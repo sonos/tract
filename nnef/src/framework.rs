@@ -132,6 +132,19 @@ impl Nnef {
         let file = std::fs::File::create(path)?;
         self.write(model, file)
     }
+
+    pub fn write_to_tar_zstd(
+        &self,
+        model: &TypedModel,
+        path: impl AsRef<std::path::Path>,
+    ) -> TractResult<()> {
+        let path = path.as_ref();
+        if path.exists() {
+            bail!("{:?} already exists. Won't overwrite.", path);
+        }
+        let file = std::fs::File::create(path)?;
+        self.write_to_zstd(model, file)
+    }
 }
 
 impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
