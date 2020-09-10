@@ -45,7 +45,6 @@ pub struct OpOptim(
 
 impl OpOptim {
     fn full_pass(&mut self, new: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
-        let mut done_something = false;
         for id in new.eval_order()? {
             let node = &new.nodes()[id];
             let patch = (self.1)(node.op.as_ref(), &new, node)
@@ -53,14 +52,6 @@ impl OpOptim {
             if let Some(mut p) = patch {
                 p.push_context(format!("{:?} {}", self, node));
                 return Ok(Some(p));
-                /*
-                debug!("Apply a model patch for {:?} {}", self, new.nodes()[id]);
-                red.apply(new)?;
-                if cfg!(debug_assertions) {
-                new.check_edges()?;
-                }
-                done_something = true;
-                */
             }
         }
         Ok(None)
@@ -77,36 +68,8 @@ impl TypedPass for OpOptim {
     fn reset(&mut self) -> TractResult<()> {
         Ok(())
     }
+
     fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
         self.full_pass(model)
-        /*
-        let mut new = model.clone();
-        for i in 0..10 {
-        if !self.full_pass(&mut new)? {
-        std::mem::swap(model, &mut new);
-        return Ok(i > 0);
-        }
-        }
-
-        let initial = model.signature();
-        let mut hashset = std::collections::HashSet::new();
-        hashset.insert(initial);
-
-        for _ in 0.. {
-        if !self.full_pass(&mut new)? {
-        break;
-        }
-
-        new = new.compact()?;
-        let sig = new.signature();
-        if hashset.contains(&sig) {
-        break;
-        } else {
-        hashset.insert(sig);
-        }
-        }
-        std::mem::swap(model, &mut new);
-        Ok(model.signature() != initial)
-        */
     }
 }
