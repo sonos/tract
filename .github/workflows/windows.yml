@@ -11,7 +11,8 @@ jobs:
     strategy:
       matrix:
         os: [ windows-2016, windows-2019 ]
-        toolchain: [ gnu, msvc ]
+        #        toolchain: [ gnu, msvc ]
+        toolchain: [  msvc ]
       fail-fast: false
 
     runs-on: ${{ matrix.os }}
