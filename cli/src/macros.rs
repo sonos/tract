@@ -9,8 +9,10 @@ macro_rules! dispatch_model {
                 return $expr(m);
             }
             #[cfg(feature="pulse")]
-            if let Some(m) = model.downcast_ref::<PulsedModel>() {
-                return $expr(m);
+            {
+                if let Some(m) = model.downcast_ref::<PulsedModel>() {
+                    return $expr(m);
+                }
             }
             unreachable!()
         })($model)
