@@ -158,12 +158,7 @@ pub fn run_one<P: AsRef<path::Path>>(
                     let optimized = model.declutter().unwrap();
                     info!("Store to NNEF");
                     let mut buffer = vec![];
-                    nnef.write_with_compression(
-                        &optimized,
-                        &mut buffer,
-                        tract_nnef::flate2::Compression::none(),
-                    )
-                    .unwrap();
+                    nnef.write_to_tar(&optimized, &mut buffer).unwrap();
                     info!("Reload from NNEF");
                     let reloaded = nnef.model_for_read(&mut &*buffer).unwrap();
                     run_model(reloaded, inputs, &data_path)
