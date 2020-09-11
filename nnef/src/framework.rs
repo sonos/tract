@@ -39,10 +39,6 @@ impl Nnef {
         Ok(())
     }
 
-    pub fn write_to_zstd(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
-        self.write_to_zstd_level(model, w, zstd::DEFAULT_COMPRESSION_LEVEL)
-    }
-
     pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
         let proto_model = crate::ser::to_proto_model(&self, model)?;
         let mut ar = tar::Builder::new(w);
@@ -82,17 +78,6 @@ impl Nnef {
         comp: flate2::Compression,
     ) -> TractResult<()> {
         let comp = flate2::write::GzEncoder::new(w, comp);
-        self.write_to_tar(model, comp)?.finish()?;
-        Ok(())
-    }
-
-    pub fn write_to_zstd_level(
-        &self,
-        model: &TypedModel,
-        w: impl std::io::Write,
-        comp: i32,
-    ) -> TractResult<()> {
-        let comp = zstd::stream::write::Encoder::new(w, comp)?;
         self.write_to_tar(model, comp)?.finish()?;
         Ok(())
     }
@@ -146,19 +131,6 @@ impl Nnef {
         self.write_to_tar(model, file)?;
         Ok(())
     }
-
-    pub fn write_to_tar_zstd(
-        &self,
-        model: &TypedModel,
-        path: impl AsRef<std::path::Path>,
-    ) -> TractResult<()> {
-        let path = path.as_ref();
-        if path.exists() {
-            bail!("{:?} already exists. Won't overwrite.", path);
-        }
-        let file = std::fs::File::create(path)?;
-        self.write_to_zstd(model, file)
-    }
 }
 
 impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
@@ -171,9 +143,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         let path = path.as_ref();
         if path.is_file() {
             let mut f = std::fs::File::open(path)?;
-            return if path.extension().map(|ext| ext == "zstd").unwrap_or(false) {
-                self.proto_model_for_read(&mut zstd::stream::read::Decoder::new(f)?)
-            } else if path.extension().map(|ext| ext == "gz" || ext == "tgz").unwrap_or(false) {
+            return if path.extension().map(|ext| ext == "gz" || ext == "tgz").unwrap_or(false) {
                 self.proto_model_for_read(&mut flate2::read::GzDecoder::new(f))
             } else {
                 self.proto_model_for_read(&mut f)
