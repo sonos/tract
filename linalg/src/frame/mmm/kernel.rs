@@ -237,6 +237,13 @@ pub mod test {
                 }
 
                 #[test]
+                fn packed_vec_k4() {
+                    if $cond {
+                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(4)
+                    }
+                }
+
+                #[test]
                 fn packed_vec_k13() {
                     if $cond {
                         test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(13)
