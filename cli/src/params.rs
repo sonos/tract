@@ -98,7 +98,6 @@ impl Parameters {
             } else if filename.is_dir()
                 || filename.to_string_lossy().ends_with(".tar")
                 || filename.to_string_lossy().ends_with(".tar.gz")
-                || filename.to_string_lossy().ends_with(".tar.zstd")
                 || filename.extension().map(|s| s == "tgz").unwrap_or(false)
             {
                 "nnef"
@@ -125,7 +124,12 @@ impl Parameters {
             }
             "nnef" => {
                 let nnef = super::nnef(&matches);
-                let proto_model = nnef.proto_model_for_path(&filename)?;
+                let mut file = std::fs::File::open(&filename)?;
+                let proto_model = if filename.to_string_lossy().ends_with("gz") {
+                    nnef.proto_model_for_read(&mut flate2::read::GzDecoder::new(file))?
+                } else {
+                    nnef.proto_model_for_read(&mut file)?
+                };
                 info_usage("proto model loaded", probe);
                 if need_graph {
                     (

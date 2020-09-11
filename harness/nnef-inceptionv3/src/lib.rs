@@ -72,7 +72,8 @@ mod tests {
         download();
         // setup_test_logger();
         let nnef = tract_nnef::nnef();
-        let model = nnef.model_for_path(inception_v3_tgz())?.into_optimized()?.into_runnable()?;
+        let mut tar = flate2::read::GzDecoder::new(fs::File::open(inception_v3_tgz())?);
+        let model = nnef.model_for_read(&mut tar)?.into_optimized()?.into_runnable()?;
         let input = load_image(hopper());
         let outputs = model.run(tvec![input]).unwrap();
         let labels = load_labels();
