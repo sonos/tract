@@ -11,18 +11,22 @@ fn translate_error<'s, E: std::fmt::Debug>(e: E) -> TractError {
     format!("Fail to parse NNEF document: {:?}", e).into()
 }
 
+#[inline(never)]
 pub fn parse_document(doc: &str) -> TractResult<Document> {
     all_consuming(document)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
+#[inline(never)]
 pub fn parse_fragments(doc: &str) -> TractResult<Vec<FragmentDef>> {
     all_consuming(fragments)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
+#[inline(never)]
 pub fn parse_fragment_decl(doc: &str) -> TractResult<FragmentDecl> {
     all_consuming(fragment_decl)(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
+#[inline(never)]
 pub fn parse_parameters(doc: &str) -> TractResult<Vec<Parameter>> {
     all_consuming(parameter_list)(doc).map(|pair| pair.1).map_err(translate_error)
 }

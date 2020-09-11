@@ -38,7 +38,9 @@ pub fn handle(
     if let Some(path) = sub_matches.value_of("nnef") {
         let nnef = super::nnef(&matches);
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
-            nnef.write_to_tgz(typed, path)?
+            let file = std::fs::File::create(path)?;
+            let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            nnef.write_to_tar(typed, encoder)?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -47,7 +49,8 @@ pub fn handle(
     if let Some(path) = sub_matches.value_of("nnef-tar") {
         let nnef = super::nnef(&matches);
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
-            nnef.write_to_tar_file(typed, path)?;
+            let file = std::fs::File::create(path)?;
+            nnef.write_to_tar(typed, file)?;
         } else {
             bail!("Only typed model can be dumped")
         }

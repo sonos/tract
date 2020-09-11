@@ -71,17 +71,6 @@ impl Nnef {
         Ok(ar.into_inner()?)
     }
 
-    pub fn write_to_tgz_level(
-        &self,
-        model: &TypedModel,
-        w: impl std::io::Write,
-        comp: flate2::Compression,
-    ) -> TractResult<()> {
-        let comp = flate2::write::GzEncoder::new(w, comp);
-        self.write_to_tar(model, comp)?.finish()?;
-        Ok(())
-    }
-
     pub fn write_to_dir(
         &self,
         model: &TypedModel,
@@ -104,33 +93,6 @@ impl Nnef {
         }
         Ok(())
     }
-
-    pub fn write_to_tgz(
-        &self,
-        model: &TypedModel,
-        path: impl AsRef<std::path::Path>,
-    ) -> TractResult<()> {
-        let path = path.as_ref();
-        if path.exists() {
-            bail!("{:?} already exists. Won't overwrite.", path);
-        }
-        let file = std::fs::File::create(path)?;
-        self.write(model, file)
-    }
-
-    pub fn write_to_tar_file(
-        &self,
-        model: &TypedModel,
-        path: impl AsRef<std::path::Path>,
-    ) -> TractResult<()> {
-        let path = path.as_ref();
-        if path.exists() {
-            bail!("{:?} already exists. Won't overwrite.", path);
-        }
-        let file = std::fs::File::create(path)?;
-        self.write_to_tar(model, file)?;
-        Ok(())
-    }
 }
 
 impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
@@ -143,11 +105,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         let path = path.as_ref();
         if path.is_file() {
             let mut f = std::fs::File::open(path)?;
-            return if path.extension().map(|ext| ext == "gz" || ext == "tgz").unwrap_or(false) {
-                self.proto_model_for_read(&mut flate2::read::GzDecoder::new(f))
-            } else {
-                self.proto_model_for_read(&mut f)
-            };
+            return self.proto_model_for_read(&mut f);
         }
         let mut text: Option<String> = None;
         let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
