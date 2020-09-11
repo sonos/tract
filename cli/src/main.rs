@@ -243,12 +243,6 @@ fn main() {
             .help("Dump the network in NNEF format (as a tar.gz file)"),
             )
         .arg(
-            Arg::with_name("nnef-zstd")
-            .takes_value(true)
-            .long("nnef-zstd")
-            .help("Dump the network in NNEF format (as a tar.zstd file)"),
-            )
-        .arg(
             Arg::with_name("assert-output")
             .takes_value(true)
             .long("assert-output")

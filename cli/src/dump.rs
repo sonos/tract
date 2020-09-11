@@ -53,15 +53,6 @@ pub fn handle(
         }
     }
 
-    if let Some(path) = sub_matches.value_of("nnef-zstd") {
-        let nnef = super::nnef(&matches);
-        if let Some(typed) = model.downcast_ref::<TypedModel>() {
-            nnef.write_to_tar_zstd(typed, path)?
-        } else {
-            bail!("Only typed model can be dumped")
-        }
-    }
-
     if let Some(path) = sub_matches.value_of("nnef-dir") {
         let nnef = super::nnef(&matches);
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
