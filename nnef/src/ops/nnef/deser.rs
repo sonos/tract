@@ -44,8 +44,12 @@ pub fn variable(
             shape
         );
     }
-    let tensor = tensor.cast_to::<f32>()?.into_owned();
-    builder.wire(tract_core::ops::konst::Const::new(tensor.into_arc_tensor()), &[])
+    let tensor = if tensor.datum_type() == f32::datum_type() {
+        tensor.clone()
+    } else {
+        tensor.cast_to::<f32>()?.into_owned().into_arc_tensor()
+    };
+    builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
 }
 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
