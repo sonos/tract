@@ -276,7 +276,7 @@ impl<'a> AttrTVecType<'a> for bool {
         let ints: Option<&[i64]> = AttrSliceType::get_attr_opt_slice(node, name)?;
         ints.and_try(|ints| {
             for int in ints.iter() {
-                node.expect_attr(name, *int == 0 || *int == 0, "list of booleans (0 or 1)")?;
+                node.expect_attr(name, *int == 0 || *int == 1, "list of booleans (0 or 1)")?;
             }
             Ok(ints.iter().map(|&x| x == 1).collect())
         })

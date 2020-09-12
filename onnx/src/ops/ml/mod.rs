@@ -43,7 +43,7 @@ fn parse_node_mode(s: &str) -> Option<Option<Cmp>> {
         "BRANCH_GT" => Some(Some(Cmp::Greater)),
         "BRANCH_EQ" => Some(Some(Cmp::Equal)),
         "BRANCH_NEQ" => Some(Some(Cmp::NotEqual)),
-        "BRANCH_LEAF" => Some(None),
+        "LEAF" => Some(None),
         _ => None,
     }
 }
@@ -79,10 +79,10 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
             (Some(n), None) => (n, "classlabels_ints64s"),
             (None, Some(n)) => (n, "classlabels_strings"),
             (None, None) => {
-                node.bail("cannot find neither 'classlabels_int64s' not 'classlabels_strings'")?
+                bail!("cannot find neither 'classlabels_int64s' not 'classlabels_strings'")
             }
             (Some(_), Some(_)) => {
-                node.bail("only one of 'classlabels_int64s' and 'classlabels_strings' can be set")?
+                bail!("only one of 'classlabels_int64s' and 'classlabels_strings' can be set")
             }
         }
     } else {
@@ -152,8 +152,11 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
     node.expect_attr(&cls("treeids"), inc_by_1(&leaf_tree_ids), "leaf tree ids to increase by 1")?;
     node.expect_attr("nodes_treeids", tree_ids[0] == 0, "tree ids to start from 0")?;
     node.expect_attr(&cls("treeids"), leaf_tree_ids[0] == 0, "leaf tree ids to start from 0")?;
-    let n_trees = *tree_ids.last().unwrap();
-    node.expect(leaf_tree_ids.last() == Some(&n_trees), "mismatching # of trees (nodes/leaves)")?;
+    let n_trees = *tree_ids.last().unwrap() + 1;
+    node.expect(
+        leaf_tree_ids.last() == Some(&(n_trees - 1)),
+        "mismatching # of trees (nodes/leaves)",
+    )?;
 
     // build the leaf map and collect all leaves
 
@@ -185,7 +188,7 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
 
     // collect all nodes
 
-    let mut nodes: Vec<Vec<TreeNode>> = Vec::default();
+    let mut nodes: Vec<Vec<TreeNode>> = vec![vec!(); n_trees];
 
     let mut prev_tree_id = -1i64 as usize;
     let mut prev_node_id = 0;
@@ -211,7 +214,7 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
             if let Some(&(start, end)) = leaf_map.get(&(tree_id, node_id)) {
                 TreeNode::new_leaf(start, end)
             } else {
-                node.bail(&format!("leaf not found: tree_id={}, node_id={}", tree_id, node_id))?
+                bail!("leaf not found: tree_id={}, node_id={}", tree_id, node_id)
             }
         };
         nodes[tree_id].push(tree_node);
@@ -226,15 +229,14 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
 
     for i in 0..n_trees {
         let tree = Tree::build(n_classes, &nodes[i], &leaves[i])
-            .or_else(|err| node.bail(&format!("{}", err)))?;
+            .chain_err(|| format!("Building tree {}", i))?;
         trees.push(tree);
     }
 
     // build the tree ensemble
 
     let base_scores = base_values.as_ref().map(Vec::as_slice);
-    let ensemble = TreeEnsemble::build(&trees, aggregate_fn, post_transform, base_scores)
-        .or_else(|err| node.bail(&format!("{}", err)))?;
+    let ensemble = TreeEnsemble::build(&trees, aggregate_fn, post_transform, base_scores)?;
 
     Ok(ensemble)
 }
@@ -247,6 +249,22 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 pub enum ClassLabels {
     Ints(Vec<i64>),
     Strings(Vec<String>),
+}
+
+impl ClassLabels {
+    fn datum_type(&self) -> DatumType {
+        match self {
+            ClassLabels::Ints(_) => i64::datum_type(),
+            ClassLabels::Strings(_) => String::datum_type(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            ClassLabels::Ints(v) => v.len(),
+            ClassLabels::Strings(v) => v.len(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -292,20 +310,42 @@ impl EvalOp for TreeEnsembleClassifier {
     }
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        unimplemented!()
+        let input = args_1!(inputs);
+        let input = input.cast_to::<f32>()?;
+        let input = input.to_array_view::<f32>()?;
+        let scores = self.ensemble.eval(input)?;
+        let tops: Vec<usize> = scores
+            .view()
+            .into_dimensionality::<tract_ndarray::Ix2>()?
+            .outer_iter()
+            .map(|scores| {
+                scores
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| (a.1).partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Less))
+                    .unwrap()
+                    .0 as usize
+            })
+            .collect();
+        let categ = match &self.class_labels {
+            ClassLabels::Ints(v) => rctensor1(&*tops.into_iter().map(|c| v[c]).collect::<Vec<i64>>()),
+            ClassLabels::Strings(v) => {
+                rctensor1(&*tops.into_iter().map(|c| v[c].clone()).collect::<Vec<String>>())
+            }
+        };
+        Ok(tvec!(categ, scores.into_arc_tensor()))
     }
 }
 
 impl TypedOp for TreeEnsembleClassifier {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let n = &inputs[0].shape[0];
-        let (dt, e) = match &self.class_labels {
-            ClassLabels::Ints(v) => (i64::datum_type(), v.len()),
-            ClassLabels::Strings(v) => (String::datum_type(), v.len()),
-        };
         Ok(tvec!(
-            TypedFact::dt_shape(dt, [n.clone()].as_ref())?,
-            TypedFact::dt_shape(f32::datum_type(), [n.clone(), e.to_dim()].as_ref())?
+            TypedFact::dt_shape(self.class_labels.datum_type(), [n.clone()].as_ref())?,
+            TypedFact::dt_shape(
+                f32::datum_type(),
+                [n.clone(), self.class_labels.len().to_dim()].as_ref()
+            )?
         ))
     }
 
@@ -322,39 +362,50 @@ impl InferenceRulesOp for TreeEnsembleClassifier {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 2)?;
 
-        s.equals(&outputs[0].rank, 1)?;
-        s.equals(&outputs[0].rank, inputs[1].rank.bex() - 1)?;
-        s.equals(&outputs[1].rank, &inputs[1].rank)?;
+        s.equals(&outputs[0].datum_type, self.class_labels.datum_type())?;
+        s.equals(&outputs[1].datum_type, DatumType::F32)?;
 
+        s.equals(&outputs[0].rank, 1)?;
+        s.equals(&outputs[1].rank, 2)?;
+        s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?;
+        s.equals(&outputs[1].shape[0], &inputs[0].shape[0])?;
+        s.equals(&outputs[1].shape[1], &self.class_labels.len().to_dim())?;
+
+        /*
         s.given(&inputs[0].rank, move |s, rank| {
-            if rank < 1 || rank > 2 {
-                bail!("First input rank must be 1 or 2");
-            }
-            if rank == 2 {
-                s.equals(&inputs[0].shape[0], &outputs[0].shape[0])?;
-                s.equals(&inputs[0].shape[0], &outputs[1].shape[0])?;
-            }
-            s.given(&inputs[0].shape[rank as usize - 1], move |s, feats| {
-                self.ensemble.check_n_features(feats.to_usize()?)
-            })?;
-            s.equals(&outputs[1].shape[rank as usize - 1], self.ensemble.n_classes().to_dim())?;
-            Ok(())
+        if rank < 1 || rank > 2 {
+        bail!("First input rank must be 1 or 2");
+        }
+        if rank == 2 {
+        s.equals(&inputs[0].shape[0], &outputs[0].shape[0])?;
+        s.equals(&inputs[0].shape[0], &outputs[1].shape[0])?;
+        }
+        s.given(&inputs[0].shape[rank as usize - 1], move |_, feats| {
+        self.ensemble.check_n_features(feats.to_usize()?)
+        })?;
+        s.equals(&outputs[1].shape[rank as usize - 1], self.ensemble.n_classes().to_dim())?;
+        Ok(())
         })?;
 
         s.given(&inputs[0].datum_type, move |_, dt| {
-            Ok(match dt {
-                DatumType::F32 | DatumType::F64 | DatumType::I64 | DatumType::I32 => (),
-                _ => bail!("invalid input type for tree ensemble classifier: {:?}", dt),
-            })
+        Ok(match dt {
+        DatumType::F32 | DatumType::F64 | DatumType::I64 | DatumType::I32 => (),
+        _ => bail!("invalid input type for tree ensemble classifier: {:?}", dt),
+        })
         })?;
         match self.class_labels {
-            ClassLabels::Ints(_) => s.equals(&outputs[0].datum_type, &DatumType::I64)?,
-            ClassLabels::Strings(_) => s.equals(&outputs[0].datum_type, &DatumType::String)?,
+        ClassLabels::Ints(_) => s.equals(&outputs[0].datum_type, &DatumType::I64)?,
+        ClassLabels::Strings(_) => s.equals(&outputs[0].datum_type, &DatumType::String)?,
         };
-        s.equals(&outputs[1].datum_type, DatumType::F32)?;
+        */
 
         Ok(())
     }
 
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(2)
+    }
+
     as_op!();
+    to_typed!();
 }
