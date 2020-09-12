@@ -273,7 +273,8 @@ impl Tree {
         for (i, node) in nodes.iter().enumerate() {
             match node {
                 TreeNode::Branch(ref b) => {
-                    ensure("node", i, node, "feature_id", b.feature_id, Less, "n_nodes", n_nodes)?;
+                    // i think this one if bogus -- K.
+                    // ensure("node", i, node, "feature_id", b.feature_id, Less, "n_nodes", n_nodes)?;
                     ensure("node", i, node, "true_id", b.true_id, Less, "n_nodes", n_nodes)?;
                     ensure("node", i, node, "false_id", b.false_id, Less, "n_nodes", n_nodes)?;
                     has_parents[b.true_id] = true;

@@ -106,7 +106,8 @@ impl<'a> ParsingContext<'a> {
                 .collect();
             trace!("  outputs {:?}", pbnode.output);
             let (op, closures) = match self.framework.op_register.0.get(&pbnode.op_type) {
-                Some(builder) => (builder)(&ctx, pbnode)?,
+                Some(builder) => (builder)(&ctx, pbnode)
+                    .chain_err(|| format!("Building node {} ({})", pbnode.name, pbnode.op_type))?,
                 None => (
                     tract_hir::ops::unimpl::UnimplementedOp::new(
                         pbnode.output.len(),
@@ -202,7 +203,9 @@ impl Onnx {
             .version;
         let graph = &proto.graph;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
-        if onnx_operator_set_version < 9 || onnx_operator_set_version > 12 {
+        if onnx_operator_set_version != 0
+            && (onnx_operator_set_version < 9 || onnx_operator_set_version > 12)
+        {
             warn!("ONNX operator for your model is {}, tract is tested against \
                   operator set 9, 10, 11 and 12 only. Your model may still work so this is not a hard fail.",
                   onnx_operator_set_version);

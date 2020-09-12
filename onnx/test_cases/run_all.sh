@@ -62,7 +62,6 @@ do
         fi
         cmd="$TRACT_RUN \
             $MODEL \
-            --output-node output \
             --input-bundle $tc/io.npz \
             $options \
             $opti \
