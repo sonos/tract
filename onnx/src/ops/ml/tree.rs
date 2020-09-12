@@ -2,15 +2,24 @@ use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
 use std::iter;
 
-use tract_core::TractResult;
+use tract_hir::internal::*;
 
-use ndarray::{
+use tract_ndarray::{
     Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD, ArrayViewMut1, Axis, Ix1, Ix2,
 };
-use num_traits::AsPrimitive;
+
+use tract_num_traits::AsPrimitive;
 use smallvec::SmallVec;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+macro_rules! ensure {
+    ($cond: expr, $($rest: expr),* $(,)?) => {
+        if !$cond {
+            bail!($($rest),*)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Cmp {
     LessEqual,
     Less,
@@ -49,10 +58,12 @@ impl Display for Cmp {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Educe)]
+#[educe(Hash)]
 pub struct BranchNode {
     pub cmp: Cmp, // TODO: perf: most real forests have only 1 type of comparison
     pub feature_id: usize,
+    #[educe(Hash(method = "hash_f32"))]
     pub value: f32,
     pub true_id: usize,
     pub false_id: usize,
@@ -71,33 +82,35 @@ impl BranchNode {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash)]
 pub struct LeafNode {
     pub start_id: usize,
     pub end_id: usize,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum Node {
+#[derive(Copy, Clone, Debug, Hash)]
+pub enum TreeNode {
     Branch(BranchNode),
     Leaf(LeafNode),
 }
 
-impl Node {
+impl TreeNode {
     pub fn new_branch(
         cmp: Cmp, feature_id: usize, value: f32, true_id: usize, false_id: usize, nan_is_true: bool,
     ) -> Self {
-        Node::Branch(BranchNode { cmp, feature_id, value, true_id, false_id, nan_is_true })
+        TreeNode::Branch(BranchNode { cmp, feature_id, value, true_id, false_id, nan_is_true })
     }
 
     pub fn new_leaf(start_id: usize, end_id: usize) -> Self {
-        Node::Leaf(LeafNode { start_id, end_id })
+        TreeNode::Leaf(LeafNode { start_id, end_id })
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Educe)]
+#[educe(Hash)]
 pub struct Leaf {
     class_id: usize,
+    #[educe(Hash(method = "hash_f32"))]
     weight: f32,
 }
 
@@ -159,7 +172,7 @@ impl AggregateFn for MinFn {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Aggregate {
     Sum,
     Avg,
@@ -173,7 +186,7 @@ impl Default for Aggregate {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PostTransform {
     Softmax,
     Logistic,
@@ -225,10 +238,10 @@ impl PostTransform {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Tree {
     n_classes: usize,
-    nodes: Vec<Node>, // TODO: can this be a slice/view into ensemble's contiguous storage?
+    nodes: Vec<TreeNode>, // TODO: can this be a slice/view into ensemble's contiguous storage?
     leaves: Vec<Leaf>, // TODO: store as a collection of direct slices instead of indices?
 }
 
@@ -245,7 +258,7 @@ where
 }
 
 impl Tree {
-    pub fn build(n_classes: usize, nodes: &[Node], leaves: &[Leaf]) -> TractResult<Self> {
+    pub fn build(n_classes: usize, nodes: &[TreeNode], leaves: &[Leaf]) -> TractResult<Self> {
         use self::Cmp::{Equal, Less, LessEqual};
 
         ensure!(n_classes != 0, "Invalid tree: n_classes == 0");
@@ -259,14 +272,14 @@ impl Tree {
         let mut leaf_coverage: Vec<_> = iter::repeat(0).take(n_leaves).collect();
         for (i, node) in nodes.iter().enumerate() {
             match node {
-                Node::Branch(ref b) => {
+                TreeNode::Branch(ref b) => {
                     ensure("node", i, node, "feature_id", b.feature_id, Less, "n_nodes", n_nodes)?;
                     ensure("node", i, node, "true_id", b.true_id, Less, "n_nodes", n_nodes)?;
                     ensure("node", i, node, "false_id", b.false_id, Less, "n_nodes", n_nodes)?;
                     has_parents[b.true_id] = true;
                     has_parents[b.false_id] = true;
                 }
-                Node::Leaf(ref l) => {
+                TreeNode::Leaf(ref l) => {
                     ensure("node", i, node, "start_id", l.start_id, Less, "end_id", l.end_id)?;
                     ensure("node", i, node, "end_id", l.start_id, LessEqual, "n_leaves", n_leaves)?;
                     for j in l.start_id..l.end_id {
@@ -295,7 +308,7 @@ impl Tree {
 
     pub fn branches(&self) -> impl Iterator<Item = &BranchNode> {
         self.nodes.iter().filter_map(|node| match node {
-            Node::Branch(ref branch) => Some(branch),
+            TreeNode::Branch(ref branch) => Some(branch),
             _ => None,
         })
     }
@@ -312,11 +325,11 @@ impl Tree {
         loop {
             let node = self.nodes.get_unchecked(node_id);
             match node {
-                Node::Branch(ref b) => {
+                TreeNode::Branch(ref b) => {
                     let feature = *input.uget(b.feature_id);
                     node_id = b.get_child_id(feature.as_());
                 }
-                Node::Leaf(ref l) => return &self.leaves[l.start_id..l.end_id],
+                TreeNode::Leaf(ref l) => return &self.leaves[l.start_id..l.end_id],
             }
         }
     }
@@ -334,14 +347,26 @@ impl Tree {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Educe)]
+#[educe(Hash)]
 pub struct TreeEnsemble {
     trees: Vec<Tree>,
     max_feature_id: usize,
     n_classes: usize,
     aggregate_fn: Aggregate, // TODO: should this be an argument to eval()?
     post_transform: Option<PostTransform>, // TODO: should this be an argument to eval()?
+    #[educe(Hash(method = "hash_base_scores"))]
     base_scores: Option<Vec<f32>>,
+}
+
+fn hash_base_scores(scores: &Option<Vec<f32>>, state: &mut impl std::hash::Hasher) {
+    std::hash::Hash::hash(&(scores.is_some() as usize), state);
+    if let Some(scores) = scores.as_deref() {
+        std::hash::Hash::hash(&scores.len(), state);
+        for s in scores {
+            hash_f32(s, state);
+        }
+    }
 }
 
 impl TreeEnsemble {
@@ -487,18 +512,18 @@ impl TreeEnsemble {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::prelude::*;
+    use tract_ndarray::prelude::*;
 
     fn generate_gbm_trees() -> Vec<Tree> {
         vec![
             Tree::build(
                 3,
                 &[
-                    Node::new_branch(Cmp::LessEqual, 2, 3.15, 1, 2, true),
-                    Node::new_branch(Cmp::LessEqual, 1, 3.35, 3, 4, true),
-                    Node::new_leaf(0, 1),
-                    Node::new_leaf(1, 2),
-                    Node::new_leaf(2, 3),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 3.15, 1, 2, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 1, 3.35, 3, 4, true),
+                    TreeNode::new_leaf(0, 1),
+                    TreeNode::new_leaf(1, 2),
+                    TreeNode::new_leaf(2, 3),
                 ],
                 &[Leaf::new(0, -0.075), Leaf::new(0, 0.13928571), Leaf::new(0, 0.15)],
             )
@@ -506,15 +531,15 @@ mod tests {
             Tree::build(
                 3,
                 &[
-                    Node::new_branch(Cmp::LessEqual, 2, 1.8, 1, 2, true),
-                    Node::new_leaf(0, 1),
-                    Node::new_branch(Cmp::LessEqual, 3, 1.65, 3, 4, true),
-                    Node::new_branch(Cmp::LessEqual, 2, 4.45, 5, 6, true),
-                    Node::new_branch(Cmp::LessEqual, 2, 5.35, 7, 8, true),
-                    Node::new_leaf(1, 2),
-                    Node::new_leaf(2, 3),
-                    Node::new_leaf(3, 4),
-                    Node::new_leaf(4, 5),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 1.8, 1, 2, true),
+                    TreeNode::new_leaf(0, 1),
+                    TreeNode::new_branch(Cmp::LessEqual, 3, 1.65, 3, 4, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.45, 5, 6, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.35, 7, 8, true),
+                    TreeNode::new_leaf(1, 2),
+                    TreeNode::new_leaf(2, 3),
+                    TreeNode::new_leaf(3, 4),
+                    TreeNode::new_leaf(4, 5),
                 ],
                 &[
                     Leaf::new(1, -0.075),
@@ -528,13 +553,13 @@ mod tests {
             Tree::build(
                 3,
                 &[
-                    Node::new_branch(Cmp::LessEqual, 3, 1.65, 1, 2, true),
-                    Node::new_branch(Cmp::LessEqual, 2, 4.45, 3, 4, true),
-                    Node::new_branch(Cmp::LessEqual, 2, 5.35, 5, 6, true),
-                    Node::new_leaf(0, 1),
-                    Node::new_leaf(1, 2),
-                    Node::new_leaf(2, 3),
-                    Node::new_leaf(3, 4),
+                    TreeNode::new_branch(Cmp::LessEqual, 3, 1.65, 1, 2, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.45, 3, 4, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.35, 5, 6, true),
+                    TreeNode::new_leaf(0, 1),
+                    TreeNode::new_leaf(1, 2),
+                    TreeNode::new_leaf(2, 3),
+                    TreeNode::new_leaf(3, 4),
                 ],
                 &[
                     Leaf::new(2, -0.075),
@@ -547,15 +572,15 @@ mod tests {
             Tree::build(
                 3,
                 &[
-                    Node::new_branch(Cmp::LessEqual, 2, 3.15, 1, 2, true),
-                    Node::new_branch(Cmp::LessEqual, 1, 3.35, 3, 4, true),
-                    Node::new_branch(Cmp::LessEqual, 2, 4.45, 5, 6, true),
-                    Node::new_leaf(0, 1),
-                    Node::new_leaf(1, 2),
-                    Node::new_leaf(2, 3),
-                    Node::new_branch(Cmp::LessEqual, 2, 5.35, 7, 8, true),
-                    Node::new_leaf(3, 4),
-                    Node::new_leaf(4, 5),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 3.15, 1, 2, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 1, 3.35, 3, 4, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.45, 5, 6, true),
+                    TreeNode::new_leaf(0, 1),
+                    TreeNode::new_leaf(1, 2),
+                    TreeNode::new_leaf(2, 3),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.35, 7, 8, true),
+                    TreeNode::new_leaf(3, 4),
+                    TreeNode::new_leaf(4, 5),
                 ],
                 &[
                     Leaf::new(0, 0.12105576),
@@ -569,17 +594,17 @@ mod tests {
             Tree::build(
                 3,
                 &[
-                    Node::new_branch(Cmp::LessEqual, 3, 0.45, 1, 2, true),
-                    Node::new_branch(Cmp::LessEqual, 2, 1.45, 3, 4, true),
-                    Node::new_branch(Cmp::LessEqual, 3, 1.65, 5, 6, true),
-                    Node::new_leaf(0, 1),
-                    Node::new_leaf(1, 2),
-                    Node::new_branch(Cmp::LessEqual, 2, 4.45, 7, 8, true),
-                    Node::new_branch(Cmp::LessEqual, 2, 5.35, 9, 10, true),
-                    Node::new_leaf(2, 3),
-                    Node::new_leaf(3, 4),
-                    Node::new_leaf(4, 5),
-                    Node::new_leaf(5, 6),
+                    TreeNode::new_branch(Cmp::LessEqual, 3, 0.45, 1, 2, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 1.45, 3, 4, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 3, 1.65, 5, 6, true),
+                    TreeNode::new_leaf(0, 1),
+                    TreeNode::new_leaf(1, 2),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.45, 7, 8, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.35, 9, 10, true),
+                    TreeNode::new_leaf(2, 3),
+                    TreeNode::new_leaf(3, 4),
+                    TreeNode::new_leaf(4, 5),
+                    TreeNode::new_leaf(5, 6),
                 ],
                 &[
                     Leaf::new(1, -0.07226842),
@@ -594,15 +619,15 @@ mod tests {
             Tree::build(
                 3,
                 &[
-                    Node::new_branch(Cmp::LessEqual, 2, 4.75, 1, 2, true),
-                    Node::new_branch(Cmp::LessEqual, 1, 2.75, 3, 4, true),
-                    Node::new_branch(Cmp::LessEqual, 2, 5.15, 7, 8, true),
-                    Node::new_leaf(0, 1),
-                    Node::new_branch(Cmp::LessEqual, 2, 4.15, 5, 6, true),
-                    Node::new_leaf(1, 2),
-                    Node::new_leaf(2, 3),
-                    Node::new_leaf(3, 4),
-                    Node::new_leaf(4, 5),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.75, 1, 2, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 1, 2.75, 3, 4, true),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.15, 7, 8, true),
+                    TreeNode::new_leaf(0, 1),
+                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.15, 5, 6, true),
+                    TreeNode::new_leaf(1, 2),
+                    TreeNode::new_leaf(2, 3),
+                    TreeNode::new_leaf(3, 4),
+                    TreeNode::new_leaf(4, 5),
                 ],
                 &[
                     Leaf::new(2, -0.061642267),
