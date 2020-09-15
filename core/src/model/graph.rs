@@ -30,7 +30,7 @@ where
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     /// all nodes in the model
-    pub nodes: Vec<BaseNode<F, O>>,
+    pub nodes: Vec<Node<F, O>>,
     /// model inputs
     pub inputs: Vec<OutletId>,
     /// model outputs
@@ -107,8 +107,8 @@ where
         let name = name.into();
         let id = self.nodes.len();
         let outputs =
-            output_facts.into_iter().map(|fact| OutletFact { fact, successors: tvec!() }).collect();
-        let node = BaseNode { id, name, op, inputs: vec![], outputs };
+            output_facts.into_iter().map(|fact| Outlet { fact, successors: tvec!() }).collect();
+        let node = Node { id, name, op, inputs: vec![], outputs };
         self.nodes.push(node);
         Ok(id)
     }
@@ -310,13 +310,13 @@ where
     }
 
     /// Find a node by its name.
-    pub fn node_by_name(&self, name: impl AsRef<str>) -> TractResult<&BaseNode<F, O>> {
+    pub fn node_by_name(&self, name: impl AsRef<str>) -> TractResult<&Node<F, O>> {
         let id: usize = self.node_id_by_name(name.as_ref())?;
         Ok(&self.nodes[id])
     }
 
     /// Borrow mutably a node by its name.
-    pub fn node_by_name_mut(&mut self, name: impl AsRef<str>) -> TractResult<&mut BaseNode<F, O>> {
+    pub fn node_by_name_mut(&mut self, name: impl AsRef<str>) -> TractResult<&mut Node<F, O>> {
         let id: usize = self.node_id_by_name(name.as_ref())?;
         Ok(&mut self.nodes[id])
     }
@@ -327,22 +327,22 @@ where
     }
 
     /// Find a node by its id.
-    pub fn node(&self, id: usize) -> &BaseNode<F, O> {
+    pub fn node(&self, id: usize) -> &Node<F, O> {
         &self.nodes[id]
     }
 
     /// Find a node by its id.
-    pub fn node_mut(&mut self, id: usize) -> &mut BaseNode<F, O> {
+    pub fn node_mut(&mut self, id: usize) -> &mut Node<F, O> {
         &mut self.nodes[id]
     }
 
     /// Access the nodes table.
-    pub fn nodes(&self) -> &[BaseNode<F, O>] {
+    pub fn nodes(&self) -> &[Node<F, O>] {
         &*self.nodes
     }
 
     /// Access the nodes table.
-    pub fn nodes_mut(&mut self) -> &mut [BaseNode<F, O>] {
+    pub fn nodes_mut(&mut self) -> &mut [Node<F, O>] {
         &mut *self.nodes
     }
 
@@ -475,7 +475,7 @@ where
         crate::plan::SimplePlan::new(self)
     }
 
-    pub fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
+    pub fn single_prec(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
         let node = &self.nodes()[id];
         if node.inputs.len() != 1 {
             return Ok(None);
@@ -487,7 +487,7 @@ where
         Ok(Some(prec))
     }
 
-    pub fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<F, O>>> {
+    pub fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<F, O>>> {
         let mut node = self.node(id);
         for _ in 0..count {
             if let Some(next) = self.single_prec(node.id)? {
@@ -499,7 +499,7 @@ where
         Ok(Some(node))
     }
 
-    pub fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<F, O>>> {
+    pub fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<F, O>>> {
         let mut node = self.node(id);
         for _ in 0..count {
             if let Some(next) = self.single_succ(node.id)? {
@@ -511,7 +511,7 @@ where
         Ok(Some(node))
     }
 
-    pub fn single_succ(&self, id: usize) -> TractResult<Option<&BaseNode<F, O>>> {
+    pub fn single_succ(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
         let node = &self.nodes()[id];
         if node.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
             return Ok(None);

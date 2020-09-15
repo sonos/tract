@@ -46,7 +46,7 @@ pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResu
 /// Tensorflow graphs.
 pub type InferenceModel = Graph<InferenceFact, Box<dyn InferenceOp>>;
 /// Node for InferenceModel graph
-pub type InferenceNode = BaseNode<InferenceFact, Box<dyn InferenceOp>>;
+pub type InferenceNode = Node<InferenceFact, Box<dyn InferenceOp>>;
 /// A ModelPatch for InferenceModel.
 pub type InferenceModelPatch = ModelPatch<InferenceFact, Box<dyn InferenceOp>>;
 /// An execution plan for InferenceModel.

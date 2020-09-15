@@ -17,7 +17,7 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 /// model.
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
-pub struct BaseNode<F: Fact + Hash, O: Hash> {
+pub struct Node<F: Fact + Hash, O: Hash> {
     /// node id in the model
     ///
     /// Caution: this id will not be persistent during networks transformation
@@ -34,21 +34,19 @@ pub struct BaseNode<F: Fact + Hash, O: Hash> {
     #[cfg_attr(feature = "serialize", serde(skip))]
     pub op: O,
     /// List of ouputs, with their descendant and tensor type information.
-    pub outputs: TVec<OutletFact<F>>,
+    pub outputs: TVec<Outlet<F>>,
 }
 
-impl<F: Fact + Hash, O: Hash + std::fmt::Display> fmt::Display for BaseNode<F, O> {
+impl<F: Fact + Hash, O: Hash + std::fmt::Display> fmt::Display for Node<F, O> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op)
     }
 }
 
-pub type Node<F> = BaseNode<F, Box<dyn Op>>;
-
-impl<
-        F: Fact + Hash,
-        NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> + Hash,
-    > BaseNode<F, NodeOp>
+impl<F, NodeOp> Node<F, NodeOp>
+where
+    F: Fact + Hash,
+    NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> + Hash,
 {
     /// Access the op of the node
     pub fn op(&self) -> &dyn Op {
@@ -71,7 +69,7 @@ impl<
     }
 
     /// Check that this node produce the same outputs as `other`.
-    pub fn same_as(&self, other: &BaseNode<F, NodeOp>) -> bool {
+    pub fn same_as(&self, other: &Node<F, NodeOp>) -> bool {
         self.inputs == other.inputs && self.op().same_as(other.op())
     }
 }
@@ -79,14 +77,14 @@ impl<
 /// Information for each outlet of a node
 #[derive(Clone, Default, Educe)]
 #[educe(Hash)]
-pub struct OutletFact<F: Fact + Hash> {
+pub struct Outlet<F: Fact + Hash> {
     /// the tensor type information
     pub fact: F,
     /// where this outlet is used.
     pub successors: TVec<InletId>,
 }
 
-impl<F: Fact + Hash> fmt::Debug for OutletFact<F> {
+impl<F: Fact + Hash> fmt::Debug for Outlet<F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,

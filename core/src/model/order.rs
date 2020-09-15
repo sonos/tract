@@ -17,7 +17,7 @@ where
 
 /// Find a working evaluation order for a list of nodes.
 pub fn eval_order_for_nodes<F, O>(
-    nodes: &[BaseNode<F, O>],
+    nodes: &[Node<F, O>],
     inputs: &[usize],
     targets: &[usize],
     more_dependencies: &[(usize, usize)],

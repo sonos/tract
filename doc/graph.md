@@ -20,7 +20,7 @@ pub struct Graph<F, O> {
 pub struct BaseNode<F, O> {
     pub inputs: Vec<OutletId>,
     pub op: O,
-    pub outputs: Vec<OutletFact<F>>,
+    pub outputs: Vec<Outlet<F>>,
 }
 
 pub struct OutletId {
@@ -28,7 +28,7 @@ pub struct OutletId {
     pub slot: usize,
 }
 
-pub struct OutletFact<F: Fact + Hash> {
+pub struct Outlet<F: Fact + Hash> {
     pub fact: F,
     pub successors: Vec<InletId>,
 }

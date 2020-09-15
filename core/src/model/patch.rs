@@ -136,7 +136,7 @@ where
     /// Convenience method creating a patch that replace a single operation.
     pub fn replace_single_op<IO: Into<O>>(
         patched_model: &Graph<F, O>,
-        node: &BaseNode<F, O>,
+        node: &Node<F, O>,
         inputs: &[OutletId],
         new_op: IO,
     ) -> TractResult<ModelPatch<F, O>> {
@@ -161,7 +161,7 @@ where
     /// Convenience method creating a patch that replace a single operation.
     pub fn fuse_with_next<IO: Into<O>>(
         patched_model: &Graph<F, O>,
-        node: &BaseNode<F, O>,
+        node: &Node<F, O>,
         new_op: IO,
     ) -> TractResult<ModelPatch<F, O>> {
         let mut patch = ModelPatch::default();
@@ -189,7 +189,7 @@ where
     /// Convenience method creating a patch that shunt the given node.
     pub fn shunt_one_op(
         patched_model: &Graph<F, O>,
-        node: &BaseNode<F, O>,
+        node: &Node<F, O>,
     ) -> TractResult<ModelPatch<F, O>> {
         let mut patch = ModelPatch::default();
         let tap = patch.tap_model(patched_model, node.inputs[0])?;
@@ -200,7 +200,7 @@ where
     /// Convenience method creating a patch that replace a single unary operation.
     pub fn single_unary_op<IO: Into<O>>(
         patched_model: &Graph<F, O>,
-        node: &BaseNode<F, O>,
+        node: &Node<F, O>,
         new_op: IO,
     ) -> TractResult<ModelPatch<F, O>> {
         Self::replace_single_op(patched_model, node, &[node.inputs[0]], new_op)
@@ -243,7 +243,7 @@ where
                     continue;
                 }
             }
-            let BaseNode { id, name, inputs, op, outputs } = node;
+            let Node { id, name, inputs, op, outputs } = node;
             let n_outputs = outputs.len();
             let facts = outputs.into_iter().map(|of| of.fact).collect();
             let added_node_id = target.add_node(name, op, facts)?;

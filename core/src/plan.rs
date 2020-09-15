@@ -121,7 +121,7 @@ where
         let states: Vec<Option<Box<dyn OpState>>> = model
             .nodes()
             .iter()
-            .map(|n: &BaseNode<F, O>| n.op().state(&mut session, n.id))
+            .map(|n: &Node<F, O>| n.op().state(&mut session, n.id))
             .collect::<TractResult<_>>()?;
         Ok(SimpleState { plan, states, session_state: session, values, _phantom: PhantomData })
     }
@@ -158,7 +158,7 @@ where
         Eval: for<'a, 'b, 'c> FnMut(
             &'a mut SessionState,
             Option<&'b mut (dyn OpState + 'static)>,
-            &'c BaseNode<F, O>,
+            &'c Node<F, O>,
             TVec<Arc<Tensor>>,
         ) -> TractResult<TVec<Arc<Tensor>>>,
     {
@@ -396,7 +396,7 @@ where
 pub fn eval<F, O>(
     session_state: &mut SessionState,
     mut state: Option<&mut (dyn OpState + 'static)>,
-    node: &BaseNode<F, O>,
+    node: &Node<F, O>,
     input: TVec<Arc<Tensor>>,
 ) -> TractResult<TVec<Arc<Tensor>>>
 where

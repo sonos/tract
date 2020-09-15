@@ -12,7 +12,7 @@ pub enum InOut {
 impl InOut {
     pub fn as_outlet<F: Clone + Fact + Hash, O: Clone + Hash>(
         &self,
-        node: &BaseNode<F, O>,
+        node: &Node<F, O>,
     ) -> OutletId {
         match self {
             InOut::In(ix) => node.inputs[*ix],
