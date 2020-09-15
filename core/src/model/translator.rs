@@ -14,7 +14,7 @@ where
     fn translate_node(
         &self,
         source: &Graph<TI1, O1>,
-        node: &BaseNode<TI1, O1>,
+        node: &Node<TI1, O1>,
         target: &mut Graph<TI2, O2>,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>>;
@@ -82,7 +82,7 @@ where
     fn translate_node(
         &self,
         source: &Graph<TI1, O1>,
-        node: &BaseNode<TI1, O1>,
+        node: &Node<TI1, O1>,
         target: &mut Graph<TI2, O2>,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {

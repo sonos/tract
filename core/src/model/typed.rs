@@ -9,7 +9,7 @@ use crate::TractResult;
 /// A model with completely determined types and shapes.
 pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;
 /// Node for TypedModel graph
-pub type TypedNode = BaseNode<TypedFact, Box<dyn TypedOp>>;
+pub type TypedNode = Node<TypedFact, Box<dyn TypedOp>>;
 /// A ModelPatch for TypedModel.
 pub type TypedModelPatch = ModelPatch<TypedFact, Box<dyn TypedOp>>;
 /// An execution plan for TypedModel.

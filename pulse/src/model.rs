@@ -2,7 +2,7 @@ use crate::internal::*;
 use tract_core::model::translator::Translate;
 
 pub type PulsedModel = Graph<PulsedFact, Box<dyn PulsedOp>>;
-pub type PulsedNode = BaseNode<PulsedFact, Box<dyn PulsedOp>>;
+pub type PulsedNode = Node<PulsedFact, Box<dyn PulsedOp>>;
 
 pub trait PulsedModelExt {
     fn new(source: &TypedModel, pulse: usize) -> TractResult<PulsedModel>;
