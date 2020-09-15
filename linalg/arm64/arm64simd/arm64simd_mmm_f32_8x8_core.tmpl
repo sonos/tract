@@ -289,6 +289,7 @@
     ld1         { v0.4s, v1.4s }, [ x1 ], #32
     ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
+{% if core == "a5x" %}
     cmp         x3, #4
     blt         .packed_packed_loop_1
 
@@ -439,6 +440,8 @@
 
     cmp x3, #0
     beq .non_linear
+
+{% endif %}
 
 .packed_packed_loop_1:
 
