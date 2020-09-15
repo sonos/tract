@@ -4,7 +4,9 @@ use crate::frame::tanh::*;
 
 extern "C" {
     #[no_mangle]
-    fn arm64simd_mmm_f32_8x8(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
+    fn arm64simd_mmm_f32_8x8_a5x(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
+    #[no_mangle]
+    fn arm64simd_mmm_f32_8x8_a7x(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
     #[no_mangle]
     fn arm64simd_mmm_i8_8x8(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
     #[no_mangle]
@@ -14,9 +16,9 @@ extern "C" {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct MatMatMulF32x8x8;
+pub struct MatMatMulF32x8x8A5x;
 
-impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8 {
+impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8A5x {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -37,7 +39,35 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8 {
     }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
-        unsafe { arm64simd_mmm_f32_8x8(op) }
+        unsafe { arm64simd_mmm_f32_8x8_a5x(op) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MatMatMulF32x8x8A7x;
+
+impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8A7x {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "arm64simd"
+    }
+    #[inline(always)]
+    fn mr() -> usize {
+        8
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        8
+    }
+    fn alignment_bytes_packed_a() -> usize {
+        16
+    }
+    fn alignment_bytes_packed_b() -> usize {
+        16
+    }
+    #[inline(never)]
+    fn kernel(op: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
+        unsafe { arm64simd_mmm_f32_8x8_a7x(op) }
     }
 }
 

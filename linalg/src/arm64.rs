@@ -7,10 +7,26 @@ use crate::frame::QMatMatMulImpl;
 use crate::frame::SigmoidImpl;
 use crate::frame::TanhImpl;
 
+fn is_a7x() -> std::io::Result<bool> {
+    let cpu_info = fs::read_to_string("/proc/cpuinfo")?;
+    let neon =
+        cpu_info.split("\n").any(|line| line.starts_with("CPU part") && line.contains("0xd08"));
+    Ok(neon)
+}
+
 pub fn plug(ops: &mut Ops) {
-    log::info!("arm64simd activated for smmm");
+    let is_a7x = is_a7x;
+    log::info!("arm64simd activated for smmm (A7x: {:?})", is_a7x);
     ops.mmm_f32 = Box::new(|m, k, n| {
-        Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32, f32, f32, f32>::new(m, k, n))
+        if is_a7x {
+            Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A7x, f32, f32, f32, f32>::new(
+                m, k, n,
+            ))
+        } else {
+            Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A5x, f32, f32, f32, f32>::new(
+                m, k, n,
+            ))
+        }
     });
     ops.qmmm_i8_i8 = Box::new(|m, k, n| {
         Box::new(QMatMatMulImpl::from(
