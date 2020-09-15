@@ -171,7 +171,8 @@ impl TanhKer<f32> for TanhF32x4n {
     }
 }
 
-test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8, test_MatMatMulF32x8x8, true);
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8A5x, test_MatMatMulF32x8x8a5x, true);
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8A7x, test_MatMatMulF32x8x8a7x, true);
 test_mmm_kernel_i8!(crate::arm64::arm64simd::MatMatMulI8x8x8, test_MatMatMulI8x8x8, true);
 test_mmm_kernel_i8_i32!(
     crate::arm64::arm64simd::MatMatMulI8xI32x8x8,
