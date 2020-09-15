@@ -36,8 +36,8 @@ pub struct Outlet<F: Fact + Hash> {
 
 `Graph` contains a list of `BaseNode` (the `nodes` field).
 
-Each node contains an op, which describes the operator the Node will apply to
-the data. Op can be a convolution, addition, etc. 
+Each node contains an `Op`, which describes and implements the operator
+the Node will apply to the data. Op can be a convolution, addition, etc. 
 Each node has zero or more inputs referred (rarely) as *inlets*, and zero or
 more outputs referred (often) as *outlets*. Most operators have one single
 outlet.
@@ -55,7 +55,9 @@ An OutletId is a pair made of a node id and a *slot* which is the output number
 of the Op. As most of the ops have a single output, the OutletId slot are
 frequently zero.
 
-OutletId is a "natural" identifier for a wire 
+As a consequence, OutletId is a the identifier for the wires in the graph,
+connecting the designated outlet to successor inlets, and which tensor value
+is set by the op from the node owning the outlet.
 
 The `BaseNode` incoming wires are materialized by the `inputs` field, as a
 simple vector.
@@ -71,6 +73,7 @@ node,
 
 With this terminology, we can say that "running a network" involves finding
 the value (a tensor) of each wire in the graph, 
+
     1. Source nodes have their value set by the network caller
     2. compute node outputs for unvisited nodes which have all their inputs
         known until all nodes are computed
