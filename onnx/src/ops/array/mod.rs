@@ -1,5 +1,6 @@
 mod compress;
 mod nonzero;
+mod one_hot;
 mod pad;
 mod slice;
 
