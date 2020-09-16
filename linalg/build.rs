@@ -111,7 +111,7 @@ fn main() {
                 .compile("armv7neon");
         }
         "aarch64" => {
-            let files = preprocess_files("arm64/arm64simd", &[("core", vec!("a5x", "a7x"))]);
+            let files = preprocess_files("arm64/arm64simd", &[("core", vec!("a5x", "gen"))]);
             cc::Build::new().files(files).static_flag(true).compile("arm64");
         }
         _ => {}
