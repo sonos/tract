@@ -48,7 +48,7 @@ impl Expansion for OneHot {
         s.equals(&inputs[2].rank, 1)?;
         s.equals(&inputs[2].shape[0], 2.to_dim())?;
         s.given(&inputs[0].rank, move |s, irank| {
-            let axis = if self.axis < 0 { self.axis + rank } else { self.axis };
+            let axis = if self.axis < 0 { self.axis + irank } else { self.axis };
             todo!();
             Ok(())
         })?;
