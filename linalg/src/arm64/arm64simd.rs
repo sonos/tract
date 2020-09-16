@@ -6,7 +6,7 @@ extern "C" {
     #[no_mangle]
     fn arm64simd_mmm_f32_8x8_a5x(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
     #[no_mangle]
-    fn arm64simd_mmm_f32_8x8_a7x(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
+    fn arm64simd_mmm_f32_8x8_gen(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
     #[no_mangle]
     fn arm64simd_mmm_i8_8x8(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
     #[no_mangle]
@@ -44,9 +44,9 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8A5x {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct MatMatMulF32x8x8A7x;
+pub struct MatMatMulF32x8x8;
 
-impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8A7x {
+impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -67,7 +67,7 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8A7x {
     }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
-        unsafe { arm64simd_mmm_f32_8x8_a7x(op) }
+        unsafe { arm64simd_mmm_f32_8x8_gen(op) }
     }
 }
 
@@ -172,7 +172,7 @@ impl TanhKer<f32> for TanhF32x4n {
 }
 
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8A5x, test_MatMatMulF32x8x8a5x, true);
-test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8A7x, test_MatMatMulF32x8x8a7x, true);
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8, test_MatMatMulF32x8x8, true);
 test_mmm_kernel_i8!(crate::arm64::arm64simd::MatMatMulI8x8x8, test_MatMatMulI8x8x8, true);
 test_mmm_kernel_i8_i32!(
     crate::arm64::arm64simd::MatMatMulI8xI32x8x8,
