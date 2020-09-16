@@ -18,11 +18,6 @@ pub mod internal {
     pub use tract_pulse_opl::op_pulse;
 }
 
-pub mod prelude {
-    pub use crate::WithPulse;
-    pub use tract_pulse_opl::tract_core::internal::DimLike;
-}
-
 use internal::*;
 
 pub use ops::PulsedOp;

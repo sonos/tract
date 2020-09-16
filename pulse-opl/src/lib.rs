@@ -10,6 +10,11 @@ mod pad;
 pub use tract_nnef;
 pub use tract_nnef::tract_core;
 
+pub mod prelude {
+    pub use crate::WithPulse;
+    pub use tract_nnef::tract_core::internal::DimLike;
+}
+
 pub mod ops {
     pub use super::delay::Delay;
     pub use super::pad::PulsePad;
