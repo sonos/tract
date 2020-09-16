@@ -12,10 +12,15 @@ pub mod internal {
 
     pub use downcast_rs::Downcast;
 
-    pub use crate::fact::{ PulsedFact, stream_dim, stream_symbol };
+    pub use crate::fact::{stream_dim, stream_symbol, PulsedFact};
     pub use crate::model::{PulsedModel, PulsedModelExt};
     pub use crate::ops::{OpPulsifier, PulsedOp};
     pub use tract_pulse_opl::op_pulse;
+}
+
+pub mod prelude {
+    pub use crate::WithPulse;
+    pub use tract_pulse_opl::tract_core::internal::DimLike;
 }
 
 use internal::*;

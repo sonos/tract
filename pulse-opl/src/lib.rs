@@ -8,6 +8,7 @@ mod delay;
 mod pad;
 
 pub use tract_nnef;
+pub use tract_nnef::tract_core;
 
 pub mod ops {
     pub use super::delay::Delay;
