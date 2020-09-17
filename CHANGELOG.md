@@ -1,10 +1,15 @@
-## Unreleased
+## 0.11.0
 
 ### Breaking 
 
+* NNEF: tract-nnef no longer performs gunziping, but expect an uncompressed tar
+    stream. We found out is it counter-productive (weights matrices are more or
+    less random, they do not compress easily, and decompression is expensive).
+    NNEF networks in the wild are .tgz file. Using flate2, decompression is a
+    one-liner, but it must be done by the client code now.
 * bumped extended nnef compat version (unchecked at this stage) to "alpha1"
-* move pulse operator to their own crate and nnef registry
-* generalize TDim to support an arbitrary high number of symbols
+* move pulse operators and translation to their own crate and nnef registry
+* generalize TDim to support an arbitrary number of symbols
 * concretize_stream_dim is superseded by concrentize_dims
 
 ### Notable
