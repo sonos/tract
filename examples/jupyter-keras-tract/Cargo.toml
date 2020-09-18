@@ -1,6 +1,6 @@
 [package]
 name = "example-jupyter-keras-tract"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Matthew Alhonte <mattalhonte@gmail.com>"]
 edition = "2018"
 
@@ -10,4 +10,5 @@ edition = "2018"
 
 rand = { git = "https://github.com/rust-lang-nursery/rand" }
 tract-core = { path="../../core" }
-tract-tensorflow = { path = "../../tensorflow" }
+#tract-tensorflow = { path = "../../tensorflow" }
+tract-onnx = { path = "../../onnx" }
