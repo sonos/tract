@@ -1,5 +1,8 @@
 use crate::model::TfOpRegister;
-use tract_core::internal::*;
+use tract_hir::internal::*;
+
+use crate::model::ParsingContext;
+use crate::tfpb::tensorflow::NodeDef;
 
 mod concatv2;
 mod expand_dims;
@@ -9,9 +12,7 @@ mod gather_v2;
 mod pack;
 mod pad;
 mod range;
-mod slice;
 mod squeeze;
-mod strided_slice;
 mod transpose;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
@@ -23,11 +24,36 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
     reg.insert("Range", range::range);
-    reg.insert("Reshape", |_, _| Ok(Box::new(::tract_core::ops::array::Reshape::new())));
-    reg.insert("Shape", |_, _| Ok(Box::new(::tract_core::ops::array::Shape::new(DatumType::I32))));
-    reg.insert("Slice", |_, _| Ok(Box::new(slice::Slice)));
+    reg.insert("Reshape", |_, _| Ok(expand(tract_hir::ops::array::Reshape::new())));
+    reg.insert("Shape", |_, _| Ok(expand(tract_hir::ops::array::Shape::new(DatumType::I32))));
+    reg.insert("Slice", slice);
     reg.insert("Squeeze", squeeze::squeeze);
-    reg.insert("StridedSlice", strided_slice::build);
-    reg.insert("Tile", |_, _| Ok(Box::new(::tract_core::ops::array::Tile)));
+    reg.insert("StridedSlice", strided_slice);
+    reg.insert("Tile", |_, _| Ok(expand(::tract_hir::ops::array::Tile)));
     reg.insert("Transpose", transpose::transpose);
+}
+
+fn strided_slice(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
+    use tract_hir::ops::array::StridedSlice;
+    let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
+    let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
+    let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
+    Ok(expand(StridedSlice {
+        begin_mask,
+        end_mask,
+        shrink_axis_mask,
+        optional_axes_input: None,
+        optional_steps_input: Some(3),
+    }))
+}
+
+fn slice(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
+    use tract_hir::ops::array::StridedSlice;
+    Ok(expand(StridedSlice {
+        optional_axes_input: None,
+        optional_steps_input: None,
+        begin_mask: 0,
+        end_mask: 0,
+        shrink_axis_mask: 0,
+    }))
 }

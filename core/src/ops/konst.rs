@@ -1,52 +1,33 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new)]
-pub struct Const {
-    value: Arc<Tensor>,
-}
+#[derive(Debug, Clone, new, Hash)]
+pub struct Const(pub Arc<Tensor>);
 
-impl Const {
-    pub fn for_tensor(tensor: Tensor) -> Const {
-        Const { value: tensor.into() }
-    }
-}
+tract_linalg::impl_dyn_hash!(Const);
 
 impl Op for Const {
     fn name(&self) -> Cow<str> {
         "Const".into()
     }
 
+    op_core_mir!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
-impl StatelessOp for Const {
+impl EvalOp for Const {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec![self.value.clone()])
+        Ok(tvec![self.0.clone()])
     }
-}
-
-impl InferenceRulesOp for Const {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 0)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].value, self.value.clone().bex())?;
-        Ok(())
-    }
-
-    inference_op_as_op!();
-    to_typed!();
 }
 
 impl TypedOp for Const {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(self.value.as_ref().into()))
+        Ok(tvec!(self.0.as_ref().into()))
     }
 }

@@ -1,11 +1,10 @@
 [package]
-name = "lstm_test"
+name = "lstm-proptest-onnx-vs-tf"
 version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2018"
 
 [dependencies]
-proptest = "0.9"
-tract-core = { path = "../../core" }
+proptest = "0.10"
 tract-tensorflow = { path = "../../tensorflow" }
 tract-onnx = { path = "../../onnx" }

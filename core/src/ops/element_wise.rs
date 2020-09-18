@@ -3,7 +3,7 @@ use downcast_rs::Downcast;
 use std::fmt;
 
 pub trait ElementWiseMiniOp:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast
+    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
 {
     fn name(&self) -> String;
     fn prefix(&self) -> &'static str {
@@ -52,10 +52,17 @@ pub trait ElementWiseMiniOp:
     }
 }
 
+impl Hash for Box<dyn ElementWiseMiniOp> {
+    fn hash<H: std::hash::Hasher>(&self, mut state: &mut H) {
+        std::hash::Hash::hash(&self.type_id(), state);
+        self.dyn_hash(&mut state)
+    }
+}
+
 dyn_clone::clone_trait_object!(ElementWiseMiniOp);
 downcast_rs::impl_downcast!(ElementWiseMiniOp);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
 
 impl Op for ElementWiseOp {
@@ -71,12 +78,17 @@ impl Op for ElementWiseOp {
         self.0.validation()
     }
 
-    canonic!();
+    op_core_lir_mir!();
     op_as_typed_op!();
-    op_as_pulsed_op!();
 }
 
-impl StatelessOp for ElementWiseOp {
+tract_linalg::impl_dyn_hash!(ElementWiseOp);
+
+impl EvalOp for ElementWiseOp {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         if let Some(_dt) = self.0.output_type(inputs[0].datum_type()) {
             Ok(tvec!(self.0.eval_out_of_place(&inputs[0])?.into_arc_tensor()))
@@ -86,29 +98,6 @@ impl StatelessOp for ElementWiseOp {
             Ok(tvec!(t.into_arc_tensor()))
         }
     }
-}
-
-impl InferenceRulesOp for ElementWiseOp {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.given(&inputs[0].datum_type, move |s, dt| {
-            if let Some(dt) = self.0.output_type(dt) {
-                s.equals(&outputs[0].datum_type, dt)
-            } else {
-                s.equals(&outputs[0].datum_type, dt)
-            }
-        })?;
-        s.equals(&inputs[0].shape, &outputs[0].shape)?;
-        Ok(())
-    }
-    to_typed!();
-    inference_op_as_op!();
 }
 
 impl TypedOp for ElementWiseOp {
@@ -143,7 +132,7 @@ impl TypedOp for ElementWiseOp {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = inputs[0].shape.iter().product();
+        let count: TDim = inputs[0].shape.iter().maybe_product()?;
         Ok(self
             .0
             .cost_per_element(inputs[0].datum_type)
@@ -167,45 +156,22 @@ impl TypedOp for ElementWiseOp {
         }
     }
 
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        target.wire_node(&*node.name, self.clone(), &[input])
-    }
-
-    typed_op_as_op!();
-}
-
-impl PulsedOp for ElementWiseOp {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let mut fact = inputs[0].clone();
-        if let Some(dt) = self.0.output_type(fact.datum_type) {
-            fact.datum_type = dt;
-        }
-        Ok(tvec!(fact))
-    }
-
-    pulsed_op_as_op!();
-    pulsed_op_to_typed_op!();
+    as_op!();
 }
 
 #[macro_export]
 macro_rules! element_wise {
-    ($func:ident, $Op:ident $({$($var: ident : $var_typ: path),*})?,
+    ($func:ident, $Op:ident $({$( $(#[$meta: meta])? $var: ident : $var_typ: path),*})?,
         $( [$($typ:ident),*] => $f:expr ),*
         $(; cost: $cost:expr )?
         $(; prefix: $prefix:expr )?
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
-        #[derive(Debug, Clone)]
-        pub struct $Op { $( $(pub $var: $var_typ),* )? }
+        #[derive(Debug, Clone, Educe)]
+        #[educe(Hash)]
+        pub struct $Op { $( $( $(#[$meta])? pub $var: $var_typ),* )? }
+        tract_linalg::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
@@ -255,7 +221,7 @@ macro_rules! element_wise {
 
 #[macro_export]
 macro_rules! element_wise_oop {
-    ($func:ident, $Op:ident $({$($var: ident : $var_typ: path),*})?,
+    ($func:ident, $Op:ident $({$( $(#[$meta: meta])? $var: ident : $var_typ: path),*})?,
         $( [$($typ:ident),*] => $typ_dst:ident $f:expr ),*
         $(; cost: $cost:expr )?
         $(; info: $info:expr )?
@@ -263,8 +229,10 @@ macro_rules! element_wise_oop {
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
-        #[derive(Debug, Clone)]
-        pub struct $Op { $( $(pub $var: $var_typ),* )? }
+        #[derive(Debug, Clone, Educe)]
+        #[educe(Hash)]
+        pub struct $Op { $( $($(#[$meta])? pub $var: $var_typ),* )? }
+        tract_linalg::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))

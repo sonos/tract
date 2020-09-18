@@ -2,16 +2,16 @@
 
 set -ex
 
+start=$(date +%s)
+
 ROOT=`pwd`
 CACHEDIR=${CACHEDIR:-$HOME/.cache}
 if [ -x tract ]
 then
     TRACT=./tract
-elif [ -x ./target/release/tract ]
-then
-    TRACT=./target/release/tract
 else
-    TRACT="cargo run -p tract -q --release --"
+    cargo build -p tract -q --release
+    TRACT=./target/release/tract
 fi
 
 [ -e vars ] && . ./vars
@@ -19,16 +19,15 @@ fi
 [ -d $CACHEDIR ] || mkdir $CACHEDIR
 aws s3 sync s3://tract-ci-builds/model $CACHEDIR
 (cd $CACHEDIR
-    chmod +x tflite*
-    [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+chmod +x tflite*
+[ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+[ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
 )
 
 touch metrics
-
-if [ -x tract ]
+if [ -e sizes ]
 then
-    binary_size_cli=`stat -c "%s" tract`
-    echo binary_size.cli $binary_size_cli >> metrics
+    cat sizes >> metrics
 fi
 
 if [ -e benches ]
@@ -50,111 +49,79 @@ then
     done
 fi
 
-$TRACT --machine-friendly $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
-    -O -i 49x10xf32 --input-node Mfcc --partial profile --bench \
-    > tract.out
-arm_ml_kws_cnn_m=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
+net_bench() {
+    net=$1
+    pb=$2
+    shift 2
 
-# $TRACT --machine-friendly $CACHEDIR/deepspeech-0.4.1.pb \
-#     --input-node input_node -i 1x16x19x26xf32 \
-#     --input-node input_lengths -i 1xi32=16 --const-input input_lengths \
-#     -O profile --bench \
-#     > tract.out
-# deepspeech_0_4_1=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-# echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics
+    $TRACT "$@" --machine-friendly -O bench $BENCH_OPTS > tract.out
+    v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+    echo net.$net.evaltime.$pb $v >> metrics
 
-$TRACT --machine-friendly $CACHEDIR/hey_snips_v1.pb \
-    -O -i 80x40xf32 profile --bench \
-    > tract.out
-hey_snips_v1_400ms=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.hey_snips_v1.evaltime.400ms $hey_snips_v1_400ms >> metrics
+    $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench $BENCH_OPTS > tract.out
 
-$TRACT --machine-friendly $CACHEDIR/hey_snips_v3.1.pb \
-    -O -i 40x40xf32 profile --bench \
-    > tract.out
-hey_snips_v31_400ms=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.hey_snips_v31.evaltime.400ms $hey_snips_v31_400ms >> metrics
+    for stage in model_ready before_optimize
+    do
+        pattern=$(echo $stage | tr "_-" "..")
+        v=$(grep $pattern readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 1 -d ' ')
+        echo net.$net.time_to_$stage.$pb $v >> metrics
+        v=$(grep $pattern readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 4 -d ' ')
+        echo net.$net.rsz_at_$stage.$pb $v >> metrics
+        f=$(grep $pattern readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 11 -d ' ')
+        a=$(grep $pattern readings.out | sed 's/ \+/ /g;s/^  *//' | cut -f 10 -d ' ')
+        echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
+    done
+}
 
-$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_model17.pb \
-    -O -i 200x20xf32 profile --bench \
-    > tract.out
-hey_snips_v4_model17_2sec=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.hey_snips_v4_model17.evaltime.2sec $hey_snips_v4_model17_2sec >> metrics
+mem=$(free -m | grep Mem | awk '{ print $2 }')
 
-$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_model17.pb \
-    -O -i Sx20xf32 --pulse 8 profile --bench \
-    > tract.out
-hey_snips_v4_model17_pulse8=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.hey_snips_v4_model17.evaltime.pulse8 $hey_snips_v4_model17_pulse8 >> metrics
+if [ $mem -gt 600 ]
+then
+    net_bench deepspeech_0_4_1 pass \
+        $CACHEDIR/deepspeech-0.4.1.pb \
+        --input-node input_node -i 1x16x19x26xf32 \
+        --input-node input_lengths -i 1xi32=16 --const-input input_lengths \
+        --tf-initializer-output-node initialize_state
+fi
 
-$TRACT --machine-friendly $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
-    -O -i 1x224x224x3xf32 profile --bench \
-    > tract.out
-mobilenet_v1_1=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.mobilenet_v1_1.evaltime.pass $mobilenet_v1_1 >> metrics
+net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49x10xf32 --partial --input-node Mfcc
 
-$TRACT --machine-friendly $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
-    -O -i 1x224x224x3xf32 profile --bench \
-    > tract.out
-mobilenet_v2_1=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.mobilenet_v2_1.evaltime.pass $mobilenet_v2_1 >> metrics
+net_bench hey_snips_v1 400ms $CACHEDIR/hey_snips_v1.pb -i 80x40xf32
+net_bench hey_snips_v31 400ms $CACHEDIR/hey_snips_v3.1.pb -i 40x40xf32
 
-$TRACT --machine-friendly $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
-    -O -i 1x299x299x3xf32 profile --bench \
-    > tract.out
-inceptionv3=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
+net_bench hey_snips_v4_model17 2sec $CACHEDIR/hey_snips_v4_model17.pb -i 200x20xf32
+net_bench hey_snips_v4_model17 pulse8 $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 --pulse 8
+net_bench hey_snips_v4_model17_nnef pulse8 --nnef-tract-pulse $CACHEDIR/hey_snips_v4_model17.alpha1.tar
 
-$TRACT --machine-friendly \
-    $CACHEDIR/en_libri_real/model.raw \
-    -f kaldi  --output-node output \
-     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    -O -i 264x40 profile --bench \
-    > tract.out
-kaldi_en_libri_real=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.2600ms $kaldi_en_libri_real >> metrics
+net_bench mobilenet_v1_1 pass $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb -i 1x224x224x3xf32
+net_bench mobilenet_v2_1 pass $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb -i 1x224x224x3xf32
 
-$TRACT --machine-friendly \
-    $CACHEDIR/en_libri_real/model.raw \
-    -f kaldi  --output-node output \
-     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-    -O -i Sx40 --pulse 24 profile --bench \
-    > tract.out
-kaldi_en_libri_real=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.pulse_240ms $kaldi_en_libri_real >> metrics
+net_bench inceptionv3 pass $CACHEDIR/inception_v3_2016_08_28_frozen.pb -i 1x299x299x3xf32
 
-$TRACT --machine-friendly \
-    $CACHEDIR/en_libri_real/model.onnx \
-    -O --output-node output -i 264x40 profile --bench \
-    > tract.out
-v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.mdl-en-2019-Q3-librispeech_onnx.evaltime.2600ms $v >> metrics
+net_bench kaldi_librispeech_clean_tdnn_lstm_1e_256 2600ms \
+    $CACHEDIR/en_libri_real/model.raw -f kaldi --output-node output \
+    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
+    -i 264x40
 
-$TRACT --machine-friendly \
-    $CACHEDIR/en_libri_real/model.onnx \
-    -O --output-node output -i Sx40 --pulse 24 profile --bench \
-    > tract.out
-v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.mdl-en-2019-Q3-librispeech_onnx.evaltime.pulse_240ms $v >> metrics
+net_bench kaldi_librispeech_clean_tdnn_lstm_1e_256 pulse_240ms \
+    $CACHEDIR/en_libri_real/model.raw -f kaldi  --output-node output \
+    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
+    -i Sx40 --pulse 24 \
 
-$TRACT --machine-friendly $CACHEDIR/speaker-id-2019-03.onnx \
-    -O -i 1xSx40xf32 --output-node 257 --partial --pulse 8 profile --bench \
-    > tract.out
-speaker_id_pulse8=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.speaker_id.evaltime.pulse8 $speaker_id_pulse8 >> metrics
+    net_bench mdl-en-2019-Q3-librispeech_onnx 2600ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i 264x40
+net_bench mdl-en-2019-Q3-librispeech_onnx pulse_240ms $CACHEDIR/en_libri_real/model.onnx --output-node output -i Sx40 --pulse 24
+net_bench en_tdnn_lstm_bn_q7 2600ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i 264x40
+net_bench en_tdnn_lstm_bn_q7 pulse_240ms $CACHEDIR/en_tdnn_lstm_bn_q7/model.onnx --output-node output -i Sx40 --pulse 24
+net_bench en_tdnn_8M 2600ms $CACHEDIR/mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx --output-node output -i 264x40
+net_bench en_tdnn_8M pulse_240ms $CACHEDIR/mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx --output-node output -i Sx40 --pulse 24
+net_bench en_tdnn_8M_nnef pulse_240ms $CACHEDIR/mdl-en-2019-12-24-aho-corasick-18h01m33s.alpha1.a.tar --nnef-tract-pulse
+net_bench en_tdnn_15M 2600ms $CACHEDIR/en_tdnn_15M.onnx --output-node output -i 264x40
+net_bench en_tdnn_15M pulse_240ms $CACHEDIR/en_tdnn_15M.onnx --output-node output -i Sx40 --pulse 24
 
-$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
-    -O -i 200x10xf32 profile --bench \
-    > tract.out
-voicecom_fake_quant=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.voicecom_fake_quant.evaltime.2sec $voicecom_fake_quant >> metrics
+net_bench speaker_id pulse8 $CACHEDIR/speaker-id-2019-03.onnx -i 1xSx40xf32 --output-node 257 --partial --pulse 8
 
-$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cnn-float.pb \
-    -O -i 200x10xf32 profile --bench \
-    > tract.out
-voicecom_float=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.voicecom_float.evaltime.2sec $voicecom_float >> metrics
+net_bench voicecom_fake_quant 2sec $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb -i 200x10xf32
+net_bench voicecom_float 2sec $CACHEDIR/snips-voice-commands-cnn-float.pb -i 200x10xf32
 
 if [ -e /etc/issue ] && ( cat /etc/issue | grep Raspbian )
 then
@@ -188,21 +155,21 @@ do
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/inception_v3_2016_08_28_frozen.tflite \
         --num_runs=1 \
-    2> bench
+        2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/hey_snips_v1.tflite \
-    2> bench
+        2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.hey_snips_v1.tflite_$tflite.400ms $sec >> metrics
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/ARM-ML-KWS-CNN-M.tflite \
-    2> bench
+        2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.arm_ml_kws_cnn_m.tflite_$tflite.pass $sec >> metrics
@@ -210,7 +177,7 @@ do
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/mobilenet_v1_1.0_224.tflite \
         --num_runs=1 \
-    2> bench
+        2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.mobilenet_v1.tflite_$tflite.pass $sec >> metrics
@@ -223,3 +190,7 @@ do
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.mobilenet_v2.tflite_$tflite.pass $sec >> metrics
 done
+
+end=$(date +%s)
+
+echo bundle.bench-runtime  $(($end - $start)) >> metrics

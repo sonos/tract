@@ -1,0 +1,36 @@
+on:
+  release:
+    types:
+      - created
+
+name: Upload Musl release
+
+jobs:
+  build:
+    name: Upload Release Asset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Extract version tag
+        id: version
+        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / )
+      - name: Build tract
+        run: |
+          set -ex
+          sudo apt-get install -y musl-dev musl-tools
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --target x86_64-unknown-linux-musl --release -p tract
+          mkdir tract-linux-musl-${{ steps.version.outputs.value }}
+          cp target/x86_64-unknown-linux-musl/release/tract tract-linux-musl-${{ steps.version.outputs.value }}
+          tar czf tract-linux-musl-${{ steps.version.outputs.value }}.tgz tract-linux-musl-${{ steps.version.outputs.value }}
+
+      - name: Upload asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: tract-linux-musl-${{ steps.version.outputs.value }}.tgz
+          name: ${{ steps.version.outputs.value }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

@@ -1,4 +1,4 @@
-# test_maxpool_with_argmax_2d_precomputed_strides
+# test_cast_FLOAT_to_STRING https://github.com/onnx/onnx/pull/1776 not-nnef
 test_abs
 test_acos
 test_acos_example
@@ -37,33 +37,25 @@ test_atanh_example
 test_averagepool_1d_default
 test_averagepool_2d_default
 test_averagepool_2d_pads
-test_averagepool_2d_pads_count_include_pad
+test_averagepool_2d_pads_count_include_pad not-nnef
 test_averagepool_2d_precomputed_pads
-test_averagepool_2d_precomputed_pads_count_include_pad
+test_averagepool_2d_precomputed_pads_count_include_pad not-nnef
 test_averagepool_2d_precomputed_same_upper
 test_averagepool_2d_precomputed_strides
-test_averagepool_2d_same_lower
+test_averagepool_2d_same_lower not-nnef
 test_averagepool_2d_same_upper
 test_averagepool_2d_strides
 test_averagepool_3d_default
-test_basic_conv_with_padding                                                        input:x
-test_basic_conv_without_padding                                                     input:x
-test_batchnorm_epsilon                                                              input:x
-test_batchnorm_example                                                              input:x
-test_cast_DOUBLE_to_FLOAT
+test_basic_conv_with_padding input:x
+test_basic_conv_without_padding input:x
+test_batchnorm_epsilon input:x
+test_batchnorm_example input:x
 test_cast_DOUBLE_to_FLOAT
 test_cast_DOUBLE_to_FLOAT16
-test_cast_DOUBLE_to_FLOAT16
-test_cast_FLOAT16_to_DOUBLE
 test_cast_FLOAT16_to_DOUBLE
 test_cast_FLOAT16_to_FLOAT
-test_cast_FLOAT16_to_FLOAT
-test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_FLOAT16
-test_cast_FLOAT_to_FLOAT16
-# test_cast_FLOAT_to_STRING https://github.com/onnx/onnx/pull/1776
-# test_cast_STRING_to_FLOAT
 test_ceil
 test_ceil_example
 test_clip
@@ -74,25 +66,26 @@ test_clip_example
 test_clip_inbounds
 test_clip_outbounds
 test_clip_splitbounds
-test_compress_0                                                                     dynsize
-test_compress_1                                                                     dynsize
-test_compress_default_axis                                                          dynsize
+test_compress_0                                                                      not-typable not-nnef
+test_compress_1                                                                      not-typable not-nnef
+test_compress_default_axis                                                           not-typable not-nnef
 test_concat_1d_axis_0
 test_concat_2d_axis_0
 test_concat_2d_axis_1
+test_concat_3d_axis_ not-nnef
 test_concat_3d_axis_0
 test_concat_3d_axis_1
-test_concat_3d_axis_
+test_concat_3d_axis_2
 test_constant
 test_constant_pad
-test_constantlike_ones_with_input
-test_constantlike_threes_with_shape_and_dtype
-test_constantlike_zeros_without_input_dtype
-test_constantofshape_float_ones                                                     dynsize
-test_constantofshape_int_zeros                                                      dynsize
-test_conv_with_strides_and_asymmetric_padding                                       input:x
-test_conv_with_strides_no_padding                                                   input:x
-test_conv_with_strides_padding                                                      input:x
+test_constantlike_ones_with_input not-nnef
+test_constantlike_threes_with_shape_and_dtype not-nnef
+test_constantlike_zeros_without_input_dtype not-nnef
+test_constantofshape_float_ones                                                      not-typable not-nnef
+test_constantofshape_int_zeros                                                       not-typable not-nnef
+test_conv_with_strides_and_asymmetric_padding input:x
+test_conv_with_strides_no_padding input:x
+test_conv_with_strides_padding input:x
 test_cos
 test_cos_example
 test_cosh
@@ -111,11 +104,11 @@ test_equal_bcast
 test_erf
 test_exp
 test_exp_example
-test_expand_dim_changed                                                             input:data
-test_expand_dim_unchanged                                                           input:data
-test_eyelike_populate_off_main_diagonal
-test_eyelike_with_dtype
-test_eyelike_without_dtype
+test_expand_dim_changed input:data
+test_expand_dim_unchanged input:data
+test_eyelike_populate_off_main_diagonal not-nnef
+test_eyelike_with_dtype not-nnef
+test_eyelike_without_dtype not-nnef
 test_flatten_axis0
 test_flatten_axis1
 test_flatten_axis2
@@ -136,28 +129,23 @@ test_greater_bcast
 test_gru_defaults
 test_gru_seq_length
 test_gru_with_initial_bias
-test_hardmax_axis_0
-test_hardmax_axis_1
-test_hardmax_axis_2
-test_hardmax_default_axis
-test_hardmax_example
-test_hardmax_one_hot
-test_hardsigmoid
+test_hardmax_axis_0 not-nnef
+test_hardmax_axis_1 not-nnef
+test_hardmax_axis_2 not-nnef
+test_hardmax_default_axis not-nnef
+test_hardmax_example not-nnef
+test_hardmax_one_hot not-nnef
 test_hardsigmoid
 test_hardsigmoid_default
-test_hardsigmoid_default
-test_hardsigmoid_example
 test_hardsigmoid_example
 test_identity
+test_instancenorm_example
 test_isnan
 test_leakyrelu
 test_leakyrelu_default
 test_leakyrelu_example
 test_less
 test_less_bcast
-test_lstm_defaults
-test_lstm_with_peepholes
-test_lstm_with_initial_bias
 test_log
 test_log_example
 test_logsoftmax_axis_0
@@ -168,6 +156,9 @@ test_logsoftmax_example_1
 test_logsoftmax_large_number
 test_lrn
 test_lrn_default
+test_lstm_defaults
+test_lstm_with_initial_bias
+test_lstm_with_peepholes
 test_matmul_2d
 test_matmul_3d
 test_matmul_4d
@@ -180,11 +171,11 @@ test_maxpool_2d_pads
 test_maxpool_2d_precomputed_pads
 test_maxpool_2d_precomputed_same_upper
 test_maxpool_2d_precomputed_strides
-test_maxpool_2d_same_lower
+test_maxpool_2d_same_lower not-nnef
 test_maxpool_2d_same_upper
 test_maxpool_2d_strides
 test_maxpool_3d_default
-test_maxpool_with_argmax_2d_precomputed_pads
+test_maxpool_with_argmax_2d_precomputed_pads not-nnef
 test_mean_example
 test_mean_one_input
 test_mean_two_inputs
@@ -196,6 +187,7 @@ test_mul_bcast
 test_mul_example
 test_neg
 test_neg_example
+test_nonzero_example not-nnef not-typable
 test_not_2d
 test_not_3d
 test_not_4d
@@ -275,11 +267,11 @@ test_reduce_sum_square_keepdims_example
 test_reduce_sum_square_keepdims_random
 test_reflect_pad
 test_relu
-test_reshape_extended_dims                                                          input:data
-test_reshape_negative_dim                                                           input:data
-test_reshape_one_dim                                                                input:data
-test_reshape_reduced_dims                                                           input:data
-test_reshape_reordered_dims                                                         input:data
+test_reshape_extended_dims input:data
+test_reshape_negative_dim input:data
+test_reshape_one_dim input:data
+test_reshape_reduced_dims input:data
+test_reshape_reordered_dims input:data
 test_rnn_seq_length
 test_scan9_sum
 test_selu
@@ -291,7 +283,6 @@ test_shrink_hard
 test_shrink_soft
 test_sigmoid
 test_sigmoid_example
-test_sign
 test_sign
 test_simple_rnn_defaults
 test_simple_rnn_with_initial_bias
@@ -313,12 +304,8 @@ test_softmax_default_axis
 test_softmax_example
 test_softmax_large_number
 test_softplus
-test_softplus
-test_softplus_example
 test_softplus_example
 test_softsign
-test_softsign
-test_softsign_example
 test_softsign_example
 test_split_equal_parts_1d
 test_split_equal_parts_2d
@@ -342,8 +329,8 @@ test_tanh_example
 test_thresholdedrelu
 test_thresholdedrelu_default
 test_thresholdedrelu_example
-test_tile                                                                           input:x
-test_tile_precomputed                                                               input:x
+test_tile input:x
+test_tile_precomputed input:x
 test_transpose_all_permutations_0
 test_transpose_all_permutations_1
 test_transpose_all_permutations_2

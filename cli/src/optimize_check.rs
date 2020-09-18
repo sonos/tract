@@ -1,16 +1,15 @@
-use tract_core::internal::*;
-use tract_core::ops::source::Source;
+use tract_hir::internal::*;
 
-use crate::display_graph;
+use crate::display_params;
 use crate::{CliResult, Parameters};
 
-pub fn handle(params: &Parameters, _options: display_graph::DisplayOptions) -> CliResult<()> {
-    let plain = params.typed_model.as_ref().unwrap();
+pub fn handle(params: &Parameters, _options: display_params::DisplayParams) -> CliResult<()> {
+    let plain = params.decluttered_model.as_ref().unwrap().clone();
     let optimized = params
         .tract_model
         .downcast_ref::<TypedModel>()
         .expect("Can only optmize-check typed models");
-    let generated = crate::tensor::make_inputs(&[plain.input_fact(0)?.to_tensor_fact()])?;
+    let generated = crate::tensor::make_inputs(&[plain.input_fact(0)?])?;
 
     let original_plan = SimplePlan::new(plain)?;
     let mut original_state = SimpleState::new(original_plan)?;
@@ -25,7 +24,8 @@ pub fn handle(params: &Parameters, _options: display_graph::DisplayOptions) -> C
             optimized_state.model().node_by_name(name).ok().map(|node| node.id)
         };
         if let Some(optim) = optim {
-            if original_state.model().nodes()[orig].op_is::<Source>() {
+            if original_state.model().nodes()[orig].op_is::<tract_core::ops::source::TypedSource>()
+            {
                 continue;
             }
             let orig_result: TVec<_> =

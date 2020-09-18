@@ -1,0 +1,24 @@
+[package]
+name = "tract-hir"
+version = "0.11.1-pre"
+license = "MIT/Apache-2.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/snipsco/tract"
+keywords = [ "TensorFlow", "NeuralNetworks" ]
+categories = [ "science" ]
+autobenches = false
+edition = "2018"
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+derive-new = "0.5"
+educe = "=0.4.11" # locked for rust 1.41.0
+log = "0.4"
+tract-core = { path = "../core" }
+tract-pulse = { path = "../pulse" }
+
+[dev-dependencies]
+env_logger = "0.7"

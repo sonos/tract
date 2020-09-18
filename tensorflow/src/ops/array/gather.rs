@@ -1,13 +1,13 @@
-use tract_core::ndarray;
-use tract_core::ndarray::*;
-
-use tract_core::internal::*;
+use tract_hir::internal::*;
+use tract_ndarray::prelude::*;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct GatherNd {}
+
+tract_linalg::impl_dyn_hash!(GatherNd);
 
 pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     Ok(Box::new(GatherNd::new()))
@@ -20,21 +20,20 @@ impl GatherNd {
         indices_shape: &[D],
     ) -> TractResult<TVec<D>> {
         let mut shape: TVec<D> = indices_shape.into();
-        let n = shape.pop().unwrap().to_integer()? as usize;
+        let n = shape.pop().unwrap().to_usize()?;
         shape.extend(data_shape[n..].iter().cloned());
         Ok(shape)
     }
 
-    fn eval_t<T: Datum>(
+    unsafe fn eval_t<T: Datum>(
         &self,
-        data: &Arc<Tensor>,
+        output: &mut Tensor,
+        data: &Tensor,
         indices: &ArrayViewD<i32>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        let data = data.to_array_view::<T>()?;
-        let shape = self.compute_shape(&data.shape(), &indices.shape())?;
-        let mut array = unsafe { T::uninitialized_array(&*shape) };
-        for prefix in ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
-            let mut dst = array.view_mut();
+    ) {
+        let data = data.to_array_view_unchecked::<T>();
+        for prefix in tract_ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
+            let mut dst = output.to_array_view_mut_unchecked();
             let mut coords = indices.view();
             for &x in prefix.slice().iter() {
                 dst.index_axis_inplace(Axis(0), x);
@@ -46,24 +45,38 @@ impl GatherNd {
             }
             dst.assign(&src);
         }
-        Ok(tvec![array.into_arc_tensor()])
     }
 }
 
 impl Op for GatherNd {
     fn name(&self) -> Cow<str> {
-        "tf.GatherNd".into()
+        "GatherNd".into()
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 
-impl StatelessOp for GatherNd {
+impl EvalOp for GatherNd {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, indices) = args_2!(inputs);
+        let shape = self.compute_shape(&data.shape(), &indices.shape())?;
         let indices = indices.cast_to::<i32>()?;
         let indices = indices.to_array_view::<i32>()?;
-        dispatch_datum!(Self::eval_t(data.datum_type())(self, &data, &indices))
+        unsafe {
+            let mut output = Tensor::uninitialized_dt(data.datum_type(), &*shape)?;
+            dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
+                self,
+                &mut output,
+                &data,
+                &indices
+            ));
+            Ok(tvec!(output.into_arc_tensor()))
+        }
     }
 }
 
@@ -86,7 +99,7 @@ impl InferenceRulesOp for GatherNd {
                 &inputs[1].shape[indices_rank - 1],
                 &inputs[1].rank,
                 move |s, n, input_rank| {
-                    if let Ok(n) = n.to_integer() {
+                    if let Ok(n) = n.to_i64() {
                         for i in 0..(input_rank - n) as usize {
                             s.equals(&outputs[0].shape[indices_rank - 1 + i], &inputs[1].shape[i])?;
                         }
@@ -97,16 +110,51 @@ impl InferenceRulesOp for GatherNd {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for GatherNd {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = self.compute_shape(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec())?;
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)?))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(indices) = &model.outlet_fact(node.inputs[1])?.konst {
+            if indices.rank() == 2 && indices.shape()[0] == 1 {
+                let mut patch = TypedModelPatch::default();
+                let mut wire = patch.tap_model(model, node.inputs[0])?;
+                for (axis, &i) in indices.cast_to::<i32>()?.as_slice::<i32>()?.iter().enumerate() {
+                    wire = patch.wire_node(
+                        format!("{}-slice-axis-{}", node.name, axis),
+                        tract_hir::ops::array::Slice::new(axis, i as usize, (i + 1) as usize),
+                        &[wire],
+                    )?[0];
+                }
+                for i in (0..indices.shape()[1]).rev() {
+                    wire = patch.wire_node(
+                        format!("{}-remove_axis_{}", node.name, i),
+                        tract_hir::tract_core::ops::change_axes::AxisOp::Rm(i),
+                        &[wire],
+                    )?[0];
+                }
+                wire = patch.wire_node(
+                    format!("{}-add_axis", node.name),
+                    tract_hir::tract_core::ops::change_axes::AxisOp::Add(0),
+                    &[wire],
+                )?[0];
+                patch.shunt_outside(model, node.id.into(), wire)?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
     }
 }
 

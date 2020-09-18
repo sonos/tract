@@ -119,6 +119,6 @@ pub mod test {
         let mut found = values.to_vec();
         op.run(&mut found);
         let expected = values.iter().map(|x| 1.0 / (1.0 + (-x).exp())).collect::<Vec<_>>();
-        crate::check_close(&*found, &*expected)
+        crate::test::check_close(&*found, &*expected)
     }
 }

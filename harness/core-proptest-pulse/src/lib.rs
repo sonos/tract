@@ -1,13 +1,15 @@
 #![cfg(test)]
 
+#[macro_use]
+extern crate log;
+
 use proptest::prelude::*;
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use proptest::*;
-use tract_core::dimfact;
-use tract_core::internal::*;
-use tract_core::ndarray::*;
-use tract_core::shapefact;
+use tract_hir::internal::*;
+use tract_ndarray::*;
+use tract_pulse::internal::*;
 
 mod conv_plus_conv;
 mod delay_plus_pool;
@@ -26,19 +28,24 @@ fn proptest_regular_against_pulse(
 ) -> TestCaseResult {
     setup_test_logger();
     let mut ref_model = model.clone();
+    let s = stream_symbol();
+    debug!("Run reference");
     ref_model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape()))?;
     let input = Tensor::from(input_array.clone());
     let plan = SimplePlan::new(&ref_model).unwrap();
     let outputs = plan.run(tvec!(input.clone())).unwrap();
 
-    let model = model.into_normalized().unwrap();
+    debug!("Build pulsing model");
+    let model = model.into_typed().unwrap();
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
     let output_stream_axis = output_fact.axis;
     let delay = output_fact.delay;
     let mut initial_output_shape = output_fact.shape.clone();
-    initial_output_shape[output_stream_axis] = 0;
+    initial_output_shape[output_stream_axis] = 0.to_dim();
+    let initial_output_shape: TVec<usize> =
+        initial_output_shape.iter().map(|d| d.to_usize().unwrap()).collect();
 
     let pulsed_plan = SimplePlan::new(pulsed).unwrap();
     let mut state = SimpleState::new(&pulsed_plan).unwrap();
@@ -46,6 +53,7 @@ fn proptest_regular_against_pulse(
     let mut got: ArrayD<f32> = ArrayD::zeros(&*initial_output_shape);
     let mut output_len = None;
 
+    debug!("Run pulsing model");
     let mut written = 0;
     loop {
         let to_write_in_chunk = pulse.min(input_array.shape()[axis].saturating_sub(written));
@@ -61,8 +69,13 @@ fn proptest_regular_against_pulse(
                 &[chunk.view(), ArrayD::from_elem(filler_shape, std::f32::NAN).view()],
             )
             .unwrap();
-            output_len = output_fact.dim.eval(written as _);
-            state.session_state.known_stream_len = Some(written)
+            state.session_state.resolved_symbols[s] = Some(written as i64);
+            output_len = output_fact
+                .dim
+                .eval(&state.session_state.resolved_symbols)
+                .to_isize()
+                .ok()
+                .map(|n| n.max(0) as usize);
         }
         let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()).into())).unwrap();
         got = stack(
@@ -71,7 +84,7 @@ fn proptest_regular_against_pulse(
         )
         .unwrap();
         if let Some(output_len) = output_len {
-            if got.shape()[output_stream_axis] >= output_len as usize + delay {
+            if got.shape()[output_stream_axis] >= output_len.max(0) as usize + delay {
                 break;
             }
         }
@@ -80,23 +93,28 @@ fn proptest_regular_against_pulse(
     let pulsed_output = got
         .slice_axis(
             Axis(output_stream_axis),
-            (output_fact.delay..output_fact.delay + output_len.unwrap() as usize).into(),
+            (output_fact.delay..output_fact.delay + output_len.unwrap().max(0) as usize).into(),
         )
         .to_owned()
         .into_tensor();
 
-    prop_assert!(&pulsed_output.close_enough(&*outputs[0], true).is_ok(), "{:?} == {:?}", pulsed_output, outputs[0]);
+    prop_assert!(
+        &pulsed_output.close_enough(&*outputs[0], true).is_ok(),
+        "{:?} == {:?}",
+        pulsed_output,
+        outputs[0]
+    );
     Ok(())
 }
 
 proptest! {
     #[test]
     fn proptest_crop(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
-        use tract_core::ops::array::Slice;
+        use tract_hir::ops::array::Slice;
         let full_len = input_len + begin + end;
         let mut model = InferenceModel::default();
         let a = model
-            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(S)))
+            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
             .unwrap();
         let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
         model.set_output_outlets(&slice)?;
@@ -107,10 +125,10 @@ proptest! {
 
     #[test]
     fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
-        use tract_core::ops::array::{ Pad, PadMode };
+        use tract_hir::ops::array::{ Pad, PadMode };
         let mut model = InferenceModel::default();
         let a = model
-            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(S)))
+            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
             .unwrap();
         let pad = model.wire_node("pad",Pad::new(vec![(begin as _, end as _)],
             PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a])?;
@@ -128,15 +146,15 @@ fn vec(len: impl Strategy<Value = usize>) -> impl Strategy<Value = Vec<f32>> {
 
 #[test]
 fn test_simple_conv() {
-    use tract_core::ops::cnn::*;
+    use tract_hir::ops::cnn::*;
 
     let mut model = InferenceModel::default();
     let ker = model.add_const("kernel", tensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();
     let a = model
-        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S))) // NCT
+        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, 1, S))) // NCT
         .unwrap();
 
-    model.wire_node("conv", Conv::default(), &[a, ker]).unwrap();
+    model.wire_node("conv", expand(Conv::default()), &[a, ker]).unwrap();
     model.auto_outputs().unwrap();
 
     let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]);
@@ -145,10 +163,11 @@ fn test_simple_conv() {
 
 #[test]
 fn test_crop_after_1() {
-    use tract_core::ops::array::Slice;
+    use tract_hir::ops::array::Slice;
     let mut model = InferenceModel::default();
-    let a =
-        model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let a = model
+        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
+        .unwrap();
     model.wire_node("slice", Slice::new(0, 0, 0), &[a]).unwrap();
     model.auto_outputs().unwrap();
 
@@ -158,10 +177,11 @@ fn test_crop_after_1() {
 
 #[test]
 fn test_pad_after_1() {
-    use tract_core::ops::array::{Pad, PadMode};
+    use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let a =
-        model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let a = model
+        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
+        .unwrap();
     model
         .wire_node(
             "pad",
@@ -177,10 +197,11 @@ fn test_pad_after_1() {
 
 #[test]
 fn test_pad_before_1() {
-    use tract_core::ops::array::{Pad, PadMode};
+    use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let a =
-        model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let a = model
+        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
+        .unwrap();
     model
         .wire_node(
             "pad",
@@ -196,10 +217,11 @@ fn test_pad_before_1() {
 
 #[test]
 fn test_pad_before_2() {
-    use tract_core::ops::array::{Pad, PadMode};
+    use tract_hir::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let a =
-        model.add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let a = model
+        .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
+        .unwrap();
     model
         .wire_node(
             "pad",

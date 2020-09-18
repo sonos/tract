@@ -6,17 +6,15 @@ extern crate log;
 #[macro_use]
 extern crate proptest;
 extern crate tensorflow;
-extern crate tract_core;
 extern crate tract_tensorflow;
 
 mod utils;
 
 use crate::utils::*;
-use ndarray::prelude::*;
 use proptest::prelude::*;
-use tract_core::internal::*;
-use tract_core::ndarray;
+use tract_ndarray::prelude::*;
 use tract_tensorflow::conform::*;
+use tract_tensorflow::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
 
@@ -53,11 +51,11 @@ fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
                 .unwrap();
                 let block_size = Array1::from_shape_fn(sd.len(), |i| bs[i] as i32).into_dyn();
                 let padding = Array2::<i32>::from_shape_fn((sd.len(), 2), |(d, locus)| {
-                    (if locus == 0 {
+                    if locus == 0 {
                         left_pad[d] as i32
                     } else {
                         block_size[d] - (sd[d] + left_pad[d]) as i32 % block_size[d]
-                    })
+                    }
                 });
                 (input.into(), block_size.into(), padding.into_dyn().into())
             },
@@ -84,6 +82,7 @@ proptest! {
 }
 
 fn batch_to_space_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
+    use tract_tensorflow::tract_hir::internal::StatefullOp;
     space_to_batch_strat()
         .prop_map(|(i, bs, p)| {
             let batches: Tensor =
@@ -119,7 +118,6 @@ proptest! {
 
 #[test]
 fn space_to_batch_1() {
-    use ndarray::*;
     let graph = tfpb::graph()
         .node(placeholder_f32("input"))
         .node(const_i32("block_shape", &Tensor::from(arr1(&[2i32, 2]))))
@@ -141,7 +139,6 @@ fn space_to_batch_1() {
 
 #[test]
 fn batch_to_space_1() {
-    use ndarray::*;
     let graph = tfpb::graph()
         .node(placeholder_f32("input"))
         .node(const_i32("block_shape", &Tensor::from(arr1(&[2i32, 2]))))

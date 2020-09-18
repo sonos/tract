@@ -1,8 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::internal::*;
-use tract_core::ndarray::*;
-use tract_core::ops::identity::Identity;
+use tract_hir::internal::*;
 
 pub fn dropout(
     _ctx: &ParsingContext,
@@ -11,25 +9,31 @@ pub fn dropout(
     Ok((Box::new(Dropout::new(node.output.len() == 2)), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Dropout {
     output_mask: bool,
 }
 
+tract_linalg::impl_dyn_hash!(Dropout);
+
 impl Op for Dropout {
     fn name(&self) -> Cow<str> {
-        "onnx.Dropout".into()
+        "Dropout".into()
     }
 
+    op_onnx!();
     op_as_typed_op!();
 }
 
-impl StatelessOp for Dropout {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for Dropout {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         if self.output_mask {
             let input = args_1!(inputs);
-            let mask = ArrayD::from_elem(input.shape(), true);
+            let mask = tract_ndarray::ArrayD::from_elem(input.shape(), true);
             Ok(tvec!(input, mask.into_arc_tensor()))
         } else {
             Ok(inputs)
@@ -59,12 +63,12 @@ impl InferenceRulesOp for Dropout {
         Ok(1 + self.output_mask as usize)
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for Dropout {
-    typed_op_as_op!();
+    as_op!();
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
@@ -75,7 +79,11 @@ impl TypedOp for Dropout {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if node.outputs.len() == 1 || node.outputs[1].successors.len() == 0 {
-            Ok(Some(TypedModelPatch::single_unary_op(model, node, Identity)?))
+            Ok(Some(TypedModelPatch::single_unary_op(
+                model,
+                node,
+                tract_hir::ops::identity::Identity,
+            )?))
         } else {
             Ok(None)
         }

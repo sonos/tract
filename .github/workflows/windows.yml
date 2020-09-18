@@ -1,17 +1,35 @@
 name: Windows unit tests
 
-on: [push]
+on:
+  push:
+  schedule:
+    - cron:  '0 3 * * *'
+
 
 jobs:
   windows:
     strategy:
       matrix:
         os: [ windows-2016, windows-2019 ]
+        toolchain: [ gnu, msvc ]
+      fail-fast: false
 
     runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v1
+    - name: Install Rustup using win.rustup.rs
+      run: |
+        # Disable the download progress bar which can cause perf issues
+        $ProgressPreference = "SilentlyContinue"
+        Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
+        .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal
+        del rustup-init.exe
+      shell: powershell
+    - name: Install the target
+      run: |
+        rustup toolchain add stable-x86_64-pc-windows-${{matrix.toolchain}}
+        rustup default stable-x86_64-pc-windows-${{matrix.toolchain}}
     - name: top level cargo check
       run: cargo check
     - name: linalg and core tests
@@ -19,6 +37,6 @@ jobs:
     - name: Onnx test suite
       run: |
           choco install --no-progress wget
-          cargo test --release -p onnx-test-suite
+          cargo test --release -p onnx-test-suite node_1_7_0::
       env:
         TRACT_LOG: info

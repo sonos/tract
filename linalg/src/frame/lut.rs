@@ -1,8 +1,9 @@
-use std::fmt;
 use crate::align::Buffer;
+use std::fmt;
 use std::marker::PhantomData;
 
 pub trait Lut: fmt::Debug + dyn_clone::DynClone + Send + Sync {
+    fn table(&self) -> &[u8];
     fn run(&self, buf: &mut [u8]);
 }
 
@@ -33,6 +34,10 @@ impl<K> Lut for LutImpl<K>
 where
     K: LutKer,
 {
+    fn table(&self) -> &[u8] {
+        &self.table
+    }
+
     fn run(&self, buf: &mut [u8]) {
         let align = K::input_alignment_bytes();
         let aligned_start = (buf.as_ptr() as usize + align - 1) / align * align;
@@ -45,17 +50,13 @@ where
         }
         let remaining = buf.len() - prefix;
         if remaining == 0 {
-            return
+            return;
         }
         let n = K::n();
         let aligned_len = remaining / n * n;
         if aligned_len > 0 {
             unsafe {
-                K::run(
-                    buf.as_mut_ptr().offset(prefix as isize),
-                    aligned_len,
-                    self.table.as_ptr(),
-                );
+                K::run(buf.as_mut_ptr().offset(prefix as isize), aligned_len, self.table.as_ptr());
             }
         }
         let remaining = buf.len() - aligned_len - prefix;
@@ -135,10 +136,10 @@ pub mod test {
 
                 #[test]
                 fn test_empty() {
-                    let pb = LutProblem { table: vec!(0), data: vec!() };
+                    let pb = LutProblem { table: vec![0], data: vec![] };
                     assert_eq!(pb.test::<$ker>(), pb.reference())
                 }
             }
-        }
+        };
     }
 }

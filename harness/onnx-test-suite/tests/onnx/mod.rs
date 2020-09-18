@@ -1,13 +1,14 @@
 use std::convert::TryInto;
+use std::hash::Hash;
 use std::{fs, path};
 
 use log::*;
 
 use prost::Message;
 
-use tract_core::internal::*;
 use tract_onnx::pb::TensorProto;
-use tract_onnx::*;
+use tract_onnx::prelude::*;
+use tract_onnx::tract_hir;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
@@ -31,12 +32,20 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     vec
 }
 
+#[derive(PartialEq, Copy, Clone, Debug)]
+pub enum Mode {
+    Plain,
+    Optim,
+    NNEF,
+}
+
 pub fn run_one<P: AsRef<path::Path>>(
     root: P,
     test: &str,
-    optim: bool,
+    mode: Mode,
     more: &'static [&'static str],
 ) {
+    use Mode::*;
     setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
@@ -80,6 +89,7 @@ pub fn run_one<P: AsRef<path::Path>>(
     let model_file = path.join("model.onnx");
     info!("Loading {:?}", model_file);
     let onnx = onnx();
+    let nnef = tract_nnef::nnef().with_onnx();
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
     for d in fs::read_dir(&path).unwrap() {
         let mut model = onnx.model_for_path(&model_file).unwrap();
@@ -95,11 +105,11 @@ pub fn run_one<P: AsRef<path::Path>>(
                     let mut actual_input = None;
                     let input_outlets = model.input_outlets().unwrap().to_vec();
                     for (ix, outlet) in input_outlets.iter().enumerate() {
-                        if model.node_name(outlet.node) == input {
+                        if model.node(outlet.node).name == input {
                             actual_input = Some((outlet, inputs[ix].clone()));
                         } else {
                             model.node_mut(outlet.node).op =
-                                Box::new(tract_core::ops::konst::Const::new(
+                                Box::new(tract_hir::ops::konst::Const::new(
                                     inputs[ix].clone().into_arc_tensor(),
                                 ));
                         }
@@ -112,7 +122,8 @@ pub fn run_one<P: AsRef<path::Path>>(
                                 .input_outlets()
                                 .unwrap()
                                 .iter()
-                                .map(|n| model.node_name(n.node)).collect::<Vec<_>>()
+                                .map(|n| &model.node(n.node).name)
+                                .collect::<Vec<_>>()
                         )
                     });
                     model.set_input_outlets(&[*outlet]).unwrap();
@@ -124,29 +135,44 @@ pub fn run_one<P: AsRef<path::Path>>(
             model.analyse(false).unwrap();
             info!("Incorporate");
             let model = model.incorporate().unwrap();
-            info!("Test model (optim: {:?}) {:#?}", optim, path);
-            if optim {
-                info!("Check full inference");
-                if model.missing_type_shape().unwrap().len() != 0 {
-                    panic!("Incomplete inference {:?}", model.missing_type_shape());
+            info!("Test model (mode: {:?}) {:#?}", mode, path);
+            match mode {
+                Optim => {
+                    info!("Check full inference");
+                    if model.missing_type_shape().unwrap().len() != 0 {
+                        panic!("Incomplete inference {:?}", model.missing_type_shape());
+                    }
+                    info!("Into type");
+                    let model = model.into_typed().unwrap();
+                    let optimized = model.declutter().unwrap().optimize().unwrap();
+                    trace!("Run optimized model:\n{:#?}", optimized);
+                    run_model(optimized, inputs, &data_path)
                 }
-                info!("Into type");
-                let model = model.into_typed().unwrap();
-                let optimized = model.into_optimized().unwrap();
-                trace!("Run optimized model:\n{:#?}", optimized);
-                run_model(optimized, inputs, &data_path)
-            } else {
-                trace!("Run analysed model:\n{:#?}", model);
-                run_model(model, inputs, &data_path)
-            };
+                Plain => {
+                    trace!("Run analysed model:\n{:#?}", model);
+                    run_model(model, inputs, &data_path)
+                }
+                NNEF => {
+                    let model = model.into_typed().unwrap();
+                    info!("Declutter");
+                    let optimized = model.declutter().unwrap();
+                    info!("Store to NNEF");
+                    let mut buffer = vec![];
+                    nnef.write_to_tar(&optimized, &mut buffer).unwrap();
+                    info!("Reload from NNEF");
+                    let reloaded = nnef.model_for_read(&mut &*buffer).unwrap();
+                    run_model(reloaded, inputs, &data_path)
+                }
+            }
+            info!("Test model (mode: {:?}) {:#?} OK.", mode, path);
         }
     }
 }
 
-fn run_model<TI, O>(model: ModelImpl<TI, O>, inputs: TVec<Tensor>, data_path: &path::Path)
+fn run_model<F, O>(model: Graph<F, O>, inputs: TVec<Tensor>, data_path: &path::Path)
 where
-    TI: Fact + Clone + 'static,
-    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    F: Fact + Clone + 'static + Hash,
+    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     let plan = SimplePlan::new(&model).unwrap();
     let expected = load_half_dataset("output", data_path);
@@ -161,7 +187,7 @@ where
         );
     }
     for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
-        use tract_core::error_chain::ChainedError;
+        use tract_hir::tract_core::error_chain::ChainedError;
         //                println!("computed: {:?}", computed[ix].dump(true));
         //                println!("expected: {:?}", expected[ix].dump(true));
         if let Err(e) = a.close_enough(b, true) {

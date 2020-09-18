@@ -1,13 +1,12 @@
-use num_traits::Zero;
-use tract_core::ndarray;
-use tract_core::ndarray::*;
+use tract_hir::internal::*;
+use tract_ndarray::prelude::*;
+use tract_num_traits::Zero;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
 
 pub mod raw;
 pub mod unary;
-use tract_core::internal::*;
 
 pub fn space_to_batch_nd(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let datum_type = pb.get_attr_datum_type("T")?;
@@ -30,18 +29,18 @@ fn space_to_batch<T: Copy + Datum + Zero>(
         if pad[0] != 0 {
             let mut pad_shape = data.shape().to_vec();
             pad_shape[ix + 1] = pad[0] as usize;
-            let tmp = ndarray::stack(
-                ndarray::Axis(ix + 1),
-                &[ndarray::ArrayD::zeros(pad_shape).view(), data.view()],
+            let tmp = tract_ndarray::stack(
+                tract_ndarray::Axis(ix + 1),
+                &[tract_ndarray::ArrayD::zeros(pad_shape).view(), data.view()],
             )?;
             data = tmp;
         }
         if pad[1] != 0 {
             let mut pad_shape = data.shape().to_vec();
             pad_shape[ix + 1] = pad[1] as usize;
-            let tmp = ndarray::stack(
-                ndarray::Axis(ix + 1),
-                &[data.view(), ndarray::ArrayD::zeros(pad_shape).view()],
+            let tmp = tract_ndarray::stack(
+                tract_ndarray::Axis(ix + 1),
+                &[data.view(), tract_ndarray::ArrayD::zeros(pad_shape).view()],
             )?;
             data = tmp;
         }
@@ -64,7 +63,7 @@ fn space_to_batch<T: Copy + Datum + Zero>(
     permuted_axes.extend((block_shape.len() * 2 + 1)..data.ndim());
     let data = data.permuted_axes(permuted_axes);
     let data: Vec<T> = data.into_iter().map(|x| *x).collect();
-    let data = ndarray::ArrayD::from_shape_vec(final_shape, data)?;
+    let data = tract_ndarray::ArrayD::from_shape_vec(final_shape, data)?;
 
     Ok(data.into_arc_tensor())
 }
@@ -98,7 +97,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
     padded_shape.extend(&input_shape[1 + block_shape.len()..]);
     let data = data.permuted_axes(permuted_axes);
     let data: Vec<T> = data.into_iter().map(|x| *x).collect();
-    let data = ndarray::ArrayD::from_shape_vec(padded_shape, data)?;
+    let data = tract_ndarray::ArrayD::from_shape_vec(padded_shape, data)?;
     let mut data = data;
     for (i, crop) in crops.outer_iter().enumerate() {
         if crop[0] != 0 || crop[1] != 0 {
@@ -115,7 +114,6 @@ mod tests {
     #![allow(non_snake_case)]
     use super::raw::{BatchToSpace, SpaceToBatch};
     use super::*;
-    use tract_core::ops::InferenceOp;
 
     // https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd
     #[test]
@@ -199,7 +197,7 @@ mod tests {
     #[test]
     fn space_to_batch_nd_infer_1() {
         let mut op = SpaceToBatch::new(f32::datum_type());
-        let data = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, 4, 16));
+        let data = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, 4, 16));
         let block_shape = InferenceFact::from(Tensor::from(arr1(&[2])));
         let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
         let any = InferenceFact::default();
@@ -207,15 +205,16 @@ mod tests {
         let (_, outputs, _) =
             op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any), tvec!()).unwrap();
 
-        assert_eq!(outputs[0], InferenceFact::dt_shape(DatumType::F32, shapefact!(2, 2, 16)));
+        assert_eq!(outputs[0], InferenceFact::dt_shape(DatumType::F32, shapefactoid!(2, 2, 16)));
     }
 
     #[test]
     fn space_to_batch_nd_infer_2() {
+        use tract_pulse::internal::stream_dim as s;
         let mut op = SpaceToBatch::new(f32::datum_type());
-        let data = InferenceFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::s() - 4), 16));
+        let data = InferenceFact::dt_shape(DatumType::F32, shapefactoid!(1, (s() - 4), 16));
         let block_shape = InferenceFact::from(Tensor::from(arr1(&[2])));
-        let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
+        let paddings = InferenceFact::from(Tensor::from(arr2(&[[0.to_dim(), (s() % 2)]])));
         let any = InferenceFact::default();
 
         let (_, outputs, _) =
@@ -224,7 +223,7 @@ mod tests {
             outputs[0],
             InferenceFact::dt_shape(
                 DatumType::F32,
-                shapefact!(2, ((TDim::s() + TDim::s() % 2 - 4) / 2), 16)
+                shapefactoid!(2, ((s() + s() % 2 - 4) / 2), 16)
             )
         );
     }

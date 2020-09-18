@@ -1,34 +1,42 @@
+use tract_hir::internal::*;
+use tract_hir::ops;
+
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 use crate::tfpb::tensorflow::NodeDef;
 use std::collections::HashSet;
-use tract_core::internal::*;
-use tract_core::ops as tractops;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Equal", |_, _| Ok(Box::new(tractops::logic::equals::bin())));
-    reg.insert("Greater", |_, _| Ok(Box::new(tractops::logic::greater::bin())));
-    reg.insert("GreaterEqual", |_, _| Ok(Box::new(tractops::logic::greater_equal::bin())));
-    reg.insert("Less", |_, _| Ok(Box::new(tractops::logic::lesser::bin())));
-    reg.insert("LessEqual", |_, _| Ok(Box::new(tractops::logic::lesser_equal::bin())));
-    reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::and::bin())));
-    reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::or::bin())));
+    reg.insert("Equal", |_, _| Ok(ops::logic::Equals.into_hir()));
+    reg.insert("Greater", |_, _| Ok(ops::logic::Greater.into_hir()));
+    reg.insert("GreaterEqual", |_, _| Ok(ops::logic::GreaterEqual.into_hir()));
+    reg.insert("Less", |_, _| Ok(ops::logic::Lesser.into_hir()));
+    reg.insert("LessEqual", |_, _| Ok(ops::logic::LesserEqual.into_hir()));
+    reg.insert("LogicalAnd", |_, _| Ok(ops::logic::And.into_hir()));
+    reg.insert("LogicalOr", |_, _| Ok(ops::logic::Or.into_hir()));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Switch;
+
+tract_linalg::impl_dyn_hash!(Switch);
 
 impl Op for Switch {
     fn name(&self) -> Cow<str> {
-        "tf.Switch".into()
+        "Switch".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 
-impl StatefullOp for Switch {
+impl EvalOp for Switch {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,
@@ -48,7 +56,7 @@ impl InferenceRulesOp for Switch {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 2)?;
         s.equals(&inputs[1].datum_type, DatumType::Bool)?;
-        s.equals(&inputs[1].shape, shapefact!())?;
+        s.equals(&inputs[1].shape, shapefactoid!())?;
         for i in 0..outputs.len() {
             s.equals(&inputs[0].datum_type, &outputs[i].datum_type)?;
             s.equals(&inputs[0].shape, &outputs[i].shape)?;
@@ -75,7 +83,7 @@ impl InferenceRulesOp for Switch {
                     if model.node(succ.node).op_is::<Merge>() {
                         let outlet = model.node(succ.node).inputs[(succ.slot == 0) as usize];
                         let tap = patch.tap_model(model, outlet)?;
-                        patch.shunt_outside(succ.node.into(), tap)?;
+                        patch.shunt_outside(model, succ.node.into(), tap)?;
                     } else {
                         for slot in 0..model.node(succ.node).outputs.len() {
                             let new = OutletId::new(succ.node, slot);
@@ -87,9 +95,9 @@ impl InferenceRulesOp for Switch {
                 }
             }
             let tap = patch.tap_model(model, node.inputs[0])?;
-            patch.shunt_outside(OutletId::new(node.id, 0) , tap)?;
-            patch.shunt_outside(OutletId::new(node.id, 1) , tap)?;
-            return Ok(Some(patch))
+            patch.shunt_outside(model, OutletId::new(node.id, 0), tap)?;
+            patch.shunt_outside(model, OutletId::new(node.id, 1), tap)?;
+            return Ok(Some(patch));
         }
         Ok(None)
     }
@@ -98,7 +106,7 @@ impl InferenceRulesOp for Switch {
         Ok(2)
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
 fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
@@ -106,20 +114,27 @@ fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp
     Ok(Box::new(Merge::new(inputs as usize)))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Merge {
     n: usize,
 }
 
+tract_linalg::impl_dyn_hash!(Merge);
+
 impl Op for Merge {
     fn name(&self) -> Cow<str> {
-        "tf.Merge".into()
+        "Merge".into()
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 
-impl StatefullOp for Merge {
+impl EvalOp for Merge {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn state(
         &self,
         _session: &mut SessionState,
@@ -147,12 +162,12 @@ impl InferenceRulesOp for Merge {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
 impl TypedOp for Merge {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(

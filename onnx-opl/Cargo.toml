@@ -1,0 +1,18 @@
+[package]
+name = "tract-onnx-opl"
+version = "0.11.1-pre"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+license = "MIT/Apache-2.0"
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/snipsco/tract"
+keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
+categories = [ "science" ]
+autobenches = false
+edition = "2018"
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+tract-nnef = { path = "../nnef" }
+educe = "=0.4.11" # locked for rust 1.41.0

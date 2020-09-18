@@ -1,30 +1,23 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    Ok(Box::new(ConcatV2))
+    Ok(expand(ConcatV2))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct ConcatV2;
 
-impl StatelessOp for ConcatV2 {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let axis: i32 = *inputs.pop().unwrap().to_scalar::<i32>()?;
-        tract_core::ops::array::Concat::new(axis as _).eval(inputs)
-    }
-}
+tract_linalg::impl_dyn_hash!(ConcatV2);
 
-impl Op for ConcatV2 {
+impl Expansion for ConcatV2 {
     fn name(&self) -> Cow<str> {
-        "tf.ConcatV2".into()
+        "ConcatV2".into()
     }
 
-    not_a_typed_op!();
-}
+    op_tf!();
 
-impl InferenceRulesOp for ConcatV2 {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -67,23 +60,22 @@ impl InferenceRulesOp for ConcatV2 {
         })
     }
 
-    inference_op_as_op!();
-
-    fn incorporate(
+    fn wire(
         &self,
-        model: &InferenceModel,
-        node: &InferenceNode,
-    ) -> TractResult<Option<InferenceModelPatch>> {
-        if let Some(ref axis) = model.outlet_fact(node.inputs[node.inputs.len() - 1])?.value.concretize() {
-            let axis = axis.to_scalar::<i32>()?;
-            Ok(Some(InferenceModelPatch::replace_single_op(
-                model,
-                node,
-                &node.inputs[..node.inputs.len() - 1],
-                tract_core::ops::array::Concat::new(*axis as _),
-            )?))
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        if let Some(ref axis) = model.outlet_fact(*inputs.last().unwrap())?.konst {
+            let axis = *axis.to_scalar::<i32>()? as usize;
+            let inputs = inputs.into_iter().copied().rev().skip(1).rev().collect::<TVec<_>>();
+            model.wire_node(
+                prefix,
+                tract_hir::tract_core::ops::array::TypedConcat::concat_vars(axis, inputs.len()),
+                &inputs,
+            )
         } else {
-            Ok(None)
+            bail!("Except axis to be a constant")
         }
     }
 }

@@ -1,0 +1,25 @@
+on:
+  push:
+    tags:
+    - 'v*'
+
+name: Create release
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version tag
+        id: version
+        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' )
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN_RELEASE }}
+        with:
+          tag_name: ${{ steps.version.outputs.value }}
+          release_name: tract ${{ steps.version.outputs.value }}
+

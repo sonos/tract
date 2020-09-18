@@ -1,9 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::internal::*;
-use tract_core::ndarray;
-use tract_core::ndarray::*;
-use tract_core::ops as core_ops;
+use tract_hir::internal::*;
+use tract_hir::ops;
 
 pub fn lstm(
     _ctx: &ParsingContext,
@@ -23,10 +21,10 @@ pub fn lstm(
     lstm.optional_y_h_output = options.next().unwrap();
     lstm.optional_y_c_output = options.next().unwrap();
 
-    Ok((Box::new(lstm), vec![]))
+    Ok((expand(lstm), vec![]))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct LSTM {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,
@@ -41,6 +39,8 @@ pub struct LSTM {
     pub h: Box<dyn TypedOp>,
 }
 
+tract_linalg::impl_dyn_hash!(LSTM);
+
 impl Default for LSTM {
     fn default() -> LSTM {
         LSTM {
@@ -52,26 +52,24 @@ impl Default for LSTM {
             optional_y_output: None,
             optional_y_h_output: None,
             optional_y_c_output: None,
-            f: Box::new(core_ops::nn::sigmoid()),
-            g: Box::new(core_ops::math::tanh()),
-            h: Box::new(core_ops::math::tanh()),
+            f: Box::new(ops::nn::sigmoid()),
+            g: Box::new(ops::math::tanh()),
+            h: Box::new(ops::math::tanh()),
         }
     }
 }
 
-impl Op for LSTM {
+impl Expansion for LSTM {
     fn name(&self) -> Cow<str> {
         "LSTM".into()
     }
+
+    op_onnx!();
 
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
 
-    not_a_typed_op!();
-}
-
-impl InferenceRulesOp for LSTM {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -159,25 +157,62 @@ impl InferenceRulesOp for LSTM {
             + self.optional_y_c_output.is_some() as usize)
     }
 
-    inference_op_as_op!();
-
-    #[allow(non_snake_case)]
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use tract_core::ops::{array, math, matmul, scan};
+        use tract_hir::tract_core::ops::array::TypedConcat;
+        let fore = self.wire_one_side(prefix, target, inputs, 0)?;
+        let w_fact = target.outlet_fact(inputs[1])?;
+        if w_fact.shape[0] == 2.into() {
+            let back = self.wire_one_side(&format!("{}.back", prefix), target, inputs, 1)?;
+            let mut outputs = tvec!(0.into(); self.nboutputs()?);
+            if let Some(ix) = self.optional_y_output {
+                outputs[ix] = target.wire_node(
+                    format!("{}.merge_y_output", prefix),
+                    TypedConcat::concat_vars(1, 2),
+                    &[fore[ix], back[ix]],
+                )?[0];
+            }
+            if let Some(ix) = self.optional_y_h_output {
+                outputs[ix] = target.wire_node(
+                    format!("{}.merge_y_h_output", prefix),
+                    TypedConcat::concat_vars(0, 2),
+                    &[fore[ix], back[ix]],
+                )?[0];
+            }
+            if let Some(ix) = self.optional_y_c_output {
+                outputs[ix] = target.wire_node(
+                    format!("{}.merge_y_c_output", prefix),
+                    TypedConcat::concat_vars(0, 2),
+                    &[fore[ix], back[ix]],
+                )?[0];
+            }
+            Ok(outputs)
+        } else {
+            Ok(fore)
+        }
+    }
+}
 
-        let x_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
-        let r_fact = target.outlet_fact(mapping[&node.inputs[2]])?;
+impl LSTM {
+    #[allow(non_snake_case)]
+    fn wire_one_side(
+        &self,
+        prefix: &str,
+        target: &mut TypedModel,
+        inputs: &[OutletId],
+        dir: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        use tract_hir::ops::{array, math, matmul, scan};
 
-        let b_size = x_fact.shape.dim(1).to_integer().unwrap() as usize;
-        let h_size = r_fact.shape.dim(2).to_integer().unwrap() as usize;
+        let x_fact = target.outlet_fact(inputs[0])?.clone();
+        let r_fact = target.outlet_fact(inputs[2])?;
 
-        // FIXME: bidi
+        let b_size = x_fact.shape[1].to_usize().unwrap();
+        let h_size = r_fact.shape[2].to_usize().unwrap();
 
         let mut body = TypedModel::default();
         let mut outer_inputs = vec![];
@@ -186,7 +221,7 @@ impl InferenceRulesOp for LSTM {
         macro_rules! target_wire {
             ($name: ident = $op: expr, $($param: expr),*) => {
                 let $name = target.wire_node(
-                    format!("{}-{}", node.name, stringify!($name)),
+                    format!("{}.{}", prefix, stringify!($name)),
                     $op, [$($param),*].as_ref())?[0];
             }
         };
@@ -194,39 +229,43 @@ impl InferenceRulesOp for LSTM {
         macro_rules! wire {
             ($name: ident = $op: expr, $($param: expr),*) => {
                 let $name = body.wire_node(
-                    format!("{}-{}", node.name, stringify!($name)),
+                    format!("{}.{}", prefix, stringify!($name)),
                     $op, [$($param),*].as_ref())?[0];
             }
         };
+
+        let chunk = if dir == 0 { 1 } else { -1 };
 
         // X: onnx interface: [seq_length, batch_size, input_size]
         // scan outer interface: idem
         // scann inner interface: [chunk=1, batch_size, input_size]
         // onnx inner interface: [batch_size, input_size]
-        outer_inputs.push(mapping[&node.inputs[0]]);
-        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk: 1.to_dim() });
-        let mut x_source_fact = x_fact.clone();
-        x_source_fact.shape.set_dim(0, 1.to_dim())?;
+        outer_inputs.push(inputs[0]);
+        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk });
+        let mut x_source_fact = x_fact.without_value();
+        x_source_fact.shape[0] = 1.to_dim();
         let x_source = body.add_source("x_source", x_source_fact)?.into();
         wire!(Xt = AxisOp::Rm(0), x_source);
 
         // W: onnx interface: [num_directions, 4*hidden_size, input_size]
         // scan interfaces: [4*hidden_size, input_size]
-        target_wire!(w = AxisOp::Rm(0), mapping[&node.inputs[1]]);
+        target_wire!(w_dir = array::Slice::new(0, dir, dir + 1), inputs[1]);
+        target_wire!(w = AxisOp::Rm(0), w_dir);
         outer_inputs.push(w);
         input_mapping.push(scan::InputMapping::Full { slot: 1 });
         let W = body.add_source("w", target.outlet_fact(w)?.clone())?.into();
 
         // R: onnx interface: [num_directions, 4*hidden_size, hidden_size]
         // scan interfaces: [4*hidden_size, hidden_size]
-        target_wire!(r = AxisOp::Rm(0), mapping[&node.inputs[2]]);
+        target_wire!(r_dir = array::Slice::new(0, dir, dir + 1), inputs[2]);
+        target_wire!(r = AxisOp::Rm(0), r_dir);
         outer_inputs.push(r);
         input_mapping.push(scan::InputMapping::Full { slot: 2 });
         let R = body.add_source("r", target.outlet_fact(r)?.clone())?.into();
 
         // B: onnx interface: [num_directions, 8*hidden_size]
         let b = if let Some(slot) = self.optional_bias_input {
-            target_wire!(b = AxisOp::Rm(0), mapping[&node.inputs[slot]]);
+            target_wire!(b = array::Slice::new(0, dir, dir + 1), inputs[slot]);
             outer_inputs.push(b);
             input_mapping.push(scan::InputMapping::Full { slot });
             let b = body.add_source("b", target.outlet_fact(b)?.clone())?.into();
@@ -236,7 +275,7 @@ impl InferenceRulesOp for LSTM {
         };
 
         if let Some(slot) = self.optional_sequence_lens_input {
-            outer_inputs.push(mapping[&node.inputs[slot]]);
+            outer_inputs.push(inputs[slot]);
         }
 
         // initial h, optional: onnx: [num_directions, batch_size, hidden_size]
@@ -244,13 +283,14 @@ impl InferenceRulesOp for LSTM {
         // scan inner: [chunk=1, batch_size, hidden_size]
         // onnx inner: [batch_size, hidden_size]
         let initializer = if let Some(initial_h_input) = self.optional_initial_h_input {
-            target_wire!(h = AxisOp::Rm(0), mapping[&node.inputs[initial_h_input]]);
+            target_wire!(h_dir = array::Slice::new(0, dir, dir + 1), inputs[initial_h_input]);
+            target_wire!(h = AxisOp::Rm(0), h_dir);
             target_wire!(h_chunk = AxisOp::Add(0), h);
             outer_inputs.push(h_chunk);
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
             scan::StateInitializer::Value(
-                ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
+                tract_ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
@@ -262,13 +302,14 @@ impl InferenceRulesOp for LSTM {
             .into();
 
         let initializer = if let Some(initial_c_input) = self.optional_initial_c_input {
-            target_wire!(c = AxisOp::Rm(0), mapping[&node.inputs[initial_c_input]]);
+            target_wire!(c_dir = array::Slice::new(0, dir, dir + 1), inputs[initial_c_input]);
+            target_wire!(c = AxisOp::Rm(0), c_dir);
             target_wire!(c_chunk = AxisOp::Add(0), c);
             outer_inputs.push(c_chunk);
             scan::StateInitializer::FromInput(initial_c_input)
         } else {
             scan::StateInitializer::Value(
-                ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
+                tract_ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
@@ -281,7 +322,7 @@ impl InferenceRulesOp for LSTM {
 
         // P: onnx [num_directions, 3*hidde_size]
         let p = if let Some(slot) = self.optional_p_input {
-            target_wire!(p = AxisOp::Rm(0), mapping[&node.inputs[slot]]);
+            target_wire!(p = array::Slice::new(0, dir, dir + 1), inputs[slot]);
             outer_inputs.push(p);
             input_mapping.push(scan::InputMapping::Full { slot });
             let p = body.add_source("p", target.outlet_fact(p)?.clone())?.into();
@@ -304,15 +345,15 @@ impl InferenceRulesOp for LSTM {
         wire!(Rc = array::Slice::new(0, 3 * h_size, 4 * h_size), R);
 
         let biases = if let Some(b) = b {
-            wire!(Wbi = array::Slice::new(0, 0 * h_size, 1 * h_size), b);
-            wire!(Wbo = array::Slice::new(0, 1 * h_size, 2 * h_size), b);
-            wire!(Wbf = array::Slice::new(0, 2 * h_size, 3 * h_size), b);
-            wire!(Wbc = array::Slice::new(0, 3 * h_size, 4 * h_size), b);
+            wire!(Wbi = array::Slice::new(1, 0 * h_size, 1 * h_size), b);
+            wire!(Wbo = array::Slice::new(1, 1 * h_size, 2 * h_size), b);
+            wire!(Wbf = array::Slice::new(1, 2 * h_size, 3 * h_size), b);
+            wire!(Wbc = array::Slice::new(1, 3 * h_size, 4 * h_size), b);
 
-            wire!(Rbi = array::Slice::new(0, 4 * h_size, 5 * h_size), b);
-            wire!(Rbo = array::Slice::new(0, 5 * h_size, 6 * h_size), b);
-            wire!(Rbf = array::Slice::new(0, 6 * h_size, 7 * h_size), b);
-            wire!(Rbc = array::Slice::new(0, 7 * h_size, 8 * h_size), b);
+            wire!(Rbi = array::Slice::new(1, 4 * h_size, 5 * h_size), b);
+            wire!(Rbo = array::Slice::new(1, 5 * h_size, 6 * h_size), b);
+            wire!(Rbf = array::Slice::new(1, 6 * h_size, 7 * h_size), b);
+            wire!(Rbc = array::Slice::new(1, 7 * h_size, 8 * h_size), b);
 
             wire!(bi = math::add::bin_typed(), Wbi, Rbi);
             wire!(bo = math::add::bin_typed(), Wbo, Rbo);
@@ -325,9 +366,9 @@ impl InferenceRulesOp for LSTM {
         };
 
         let peepholes = if let Some(p) = p {
-            wire!(pi = array::Slice::new(0, 0 * h_size, 1 * h_size), p);
-            wire!(po = array::Slice::new(0, 1 * h_size, 2 * h_size), p);
-            wire!(pf = array::Slice::new(0, 2 * h_size, 3 * h_size), p);
+            wire!(pi = array::Slice::new(1, 0 * h_size, 1 * h_size), p);
+            wire!(po = array::Slice::new(1, 1 * h_size, 2 * h_size), p);
+            wire!(pf = array::Slice::new(1, 2 * h_size, 3 * h_size), p);
             Some((pi, po, pf))
         } else {
             None
@@ -408,7 +449,7 @@ impl InferenceRulesOp for LSTM {
         let h_mapping = scan::OutputMapping {
             state: true,
             axis: 0,
-            chunk: 1.to_dim(),
+            chunk,
             full_dim_hint: None,
             last_value_slot: self.optional_y_h_output,
             full_slot: self.optional_y_output,
@@ -416,26 +457,27 @@ impl InferenceRulesOp for LSTM {
         let c_mapping = scan::OutputMapping {
             state: true,
             axis: 0,
-            chunk: 1.to_dim(),
+            chunk,
             full_dim_hint: None,
             last_value_slot: self.optional_y_c_output,
             full_slot: None,
         };
 
         let scan_outputs = target.wire_node(
-            &*node.name,
-            scan::TypedScan::new(
+            &*prefix,
+            scan::Scan::new(
                 body,
                 input_mapping,
                 vec![h_mapping, c_mapping],
                 self.optional_sequence_lens_input,
+                0,
             )?,
             &outer_inputs,
         )?;
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
-            target_wire!(y = AxisOp::Add(0), scan_outputs[slot]);
+            target_wire!(y = AxisOp::Add(1), scan_outputs[slot]);
             result.push(y);
         }
         if let Some(slot) = self.optional_y_h_output {
@@ -446,159 +488,5 @@ impl InferenceRulesOp for LSTM {
         }
 
         Ok(result)
-    }
-}
-
-impl StatelessOp for LSTM {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let x: ArrayView3<f32> = inputs[0].to_array_view::<f32>()?.into_dimensionality()?; // [seq_length, batch_size, input_size]
-        let w: ArrayView3<f32> = inputs[1].to_array_view::<f32>()?.into_dimensionality()?; // [num_directions, 4*hidden_size, input_size]
-        let r: ArrayView3<f32> = inputs[2].to_array_view::<f32>()?.into_dimensionality()?; // [num_directions, 4*hidden_size, hidden_size]
-
-        let seq_length = x.shape()[0];
-        let batch_size = x.shape()[1];
-        let num_directions = w.shape()[0];
-        let hidden_size = r.shape()[2];
-
-        let bias = if let Some(ix) = self.optional_bias_input {
-            Some(inputs[ix].to_array_view::<f32>()?.into_dimensionality::<Ix2>()?)
-        // [num_directions, 6*hidden_size]
-        } else {
-            None
-        };
-
-        let peephole = if let Some(ix) = self.optional_p_input {
-            Some(inputs[ix].to_array_view::<f32>()?.into_shape((num_directions, 3, hidden_size))?)
-        } else {
-            None
-        };
-
-        let mut output_y = self
-            .optional_y_output
-            .map(|_| Array4::<f32>::zeros((seq_length, num_directions, batch_size, hidden_size)));
-        let mut output_y_h = self
-            .optional_y_h_output
-            .map(|_| Array3::<f32>::zeros((num_directions, batch_size, hidden_size)));
-        let mut output_y_c = self
-            .optional_y_c_output
-            .map(|_| Array3::<f32>::zeros((num_directions, batch_size, hidden_size)));
-
-        for dir in 0..num_directions {
-            let w = w.index_axis_move(Axis(0), dir);
-            let r = r.index_axis_move(Axis(0), dir);
-
-            let mut ht = if let Some(init) = self.optional_initial_h_input {
-                inputs[init]
-                    .to_array_view::<f32>()?
-                    .index_axis_move(Axis(0), dir)
-                    .to_owned()
-                    .into_dimensionality()?
-            } else {
-                Array2::<f32>::zeros((batch_size, hidden_size)).into()
-            };
-
-            let mut ct = if let Some(init) = self.optional_initial_c_input {
-                inputs[init]
-                    .to_array_view::<f32>()?
-                    .index_axis_move(Axis(0), dir)
-                    .to_owned()
-                    .into_dimensionality()?
-            } else {
-                Array2::<f32>::zeros((batch_size, hidden_size)).into()
-            };
-
-            let peephole = peephole.map(|p| p.index_axis_move(Axis(0), dir));
-
-            for ix in 0..seq_length {
-                let ix = if dir == 0 { ix } else { seq_length - 1 - ix };
-                let x = x.index_axis_move(Axis(0), ix);
-                // x -> batch_size x input_size
-                // Wt -> k=input_size x n=4*hidden_size
-                // iofc -> batch_size x 4 * hidden_size
-
-                let mut iofc = x.dot(&w.t()) + ht.dot(&r.t()); // batch_size x 4*hidden_size
-                if let Some(bias) = bias {
-                    iofc += &bias.slice(s!(dir, 0..4 * hidden_size));
-                    iofc += &bias.slice(s!(dir, 4 * hidden_size..8 * hidden_size));
-                }
-
-                let iofc = iofc.into_shape((batch_size, 4, hidden_size))?;
-
-                let mut i = iofc.index_axis(Axis(1), 0).to_owned();
-                if let Some(peephole) = peephole {
-                    i += &(ct.to_owned() * peephole.index_axis(Axis(0), 0));
-                }
-                let mut i = self.f.as_stateless().unwrap().eval(tvec!(i.into_arc_tensor()))?;
-                let i = i
-                    .pop()
-                    .unwrap()
-                    .into_tensor()
-                    .into_array::<f32>()?
-                    .into_shape((batch_size, hidden_size))?;
-
-                let mut f = iofc.index_axis(Axis(1), 2).to_owned();
-                if let Some(peephole) = peephole {
-                    f += &(ct.to_owned() * peephole.index_axis(Axis(0), 2));
-                }
-                let mut f = self.f.as_stateless().unwrap().eval(tvec!(f.into_arc_tensor()))?;
-                let f = f
-                    .pop()
-                    .unwrap()
-                    .into_tensor()
-                    .into_array::<f32>()?
-                    .into_shape((batch_size, hidden_size))?;
-
-                let c = iofc.index_axis(Axis(1), 3).to_owned();
-                let mut c = self.g.as_stateless().unwrap().eval(tvec!(c.into_arc_tensor()))?;
-
-                let c = c
-                    .pop()
-                    .unwrap()
-                    .into_tensor()
-                    .into_array::<f32>()?
-                    .into_shape((batch_size, hidden_size))?;
-
-                let big_c = f * &ct + i * c;
-
-                let mut o = iofc.index_axis(Axis(1), 1).to_owned();
-                if let Some(peephole) = peephole {
-                    o += &(big_c.to_owned() * peephole.index_axis(Axis(0), 1));
-                }
-                let mut o = self.f.as_stateless().unwrap().eval(tvec!(o.into_arc_tensor()))?;
-                let o = o
-                    .pop()
-                    .unwrap()
-                    .into_tensor()
-                    .into_array::<f32>()?
-                    .into_shape((batch_size, hidden_size))?;
-
-                let big_h = o * self
-                    .h
-                    .as_stateless()
-                    .unwrap()
-                    .eval(tvec!(big_c.clone().into_arc_tensor()))?[0]
-                    .to_array_view::<f32>()?
-                    .to_owned()
-                    .into_dimensionality::<Ix2>()?;
-                ht.assign(&big_h);
-
-                if let Some(ref mut o) = output_y {
-                    o.index_axis_mut(Axis(0), ix).index_axis_move(Axis(0), dir).assign(&ht);
-                }
-                ct.assign(&big_c);
-            }
-            if let Some(ref mut o) = output_y_h {
-                o.index_axis_mut(Axis(0), dir).assign(&ht);
-            }
-            if let Some(ref mut o) = output_y_c {
-                o.index_axis_mut(Axis(0), dir).assign(&ct);
-            }
-        }
-
-        let mut outputs = tvec!();
-        outputs.extend(output_y.into_iter().map(|t| t.into_arc_tensor()));
-        outputs.extend(output_y_h.into_iter().map(|t| t.into_arc_tensor()));
-        outputs.extend(output_y_c.into_iter().map(|t| t.into_arc_tensor()));
-        Ok(outputs)
     }
 }

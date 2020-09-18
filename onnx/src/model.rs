@@ -1,8 +1,9 @@
 use std::convert::TryInto;
+use std::{fs, path};
 
 use std::collections::HashMap;
 
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 use crate::pb;
 use prost::Message;
@@ -107,7 +108,7 @@ impl<'a> ParsingContext<'a> {
             let (op, closures) = match self.framework.op_register.0.get(&pbnode.op_type) {
                 Some(builder) => (builder)(&ctx, pbnode)?,
                 None => (
-                    tract_core::ops::unimpl::UnimplementedOp::new(
+                    tract_hir::ops::unimpl::UnimplementedOp::new(
                         pbnode.output.len(),
                         &*pbnode.op_type,
                         format!("{:?}", pbnode),
@@ -119,7 +120,7 @@ impl<'a> ParsingContext<'a> {
             let id = model.add_node(name, op, facts)?;
             for (ix, output) in pbnode.output.iter().filter(|s| !s.is_empty()).enumerate() {
                 outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
-                model.set_outlet_label(OutletId::new(id, ix), output.to_owned());
+                model.set_outlet_label(OutletId::new(id, ix), output.to_owned())?;
             }
             for closure in closures {
                 trace!("Node {} closes on {}", model.nodes()[id], closure);
@@ -150,14 +151,9 @@ impl<'a> ParsingContext<'a> {
         let mut outputs = vec![];
         for output in graph.output.iter() {
             let fact = output.r#type.as_ref().unwrap().value.as_ref().unwrap();
-            #[allow(irrefutable_let_patterns)]
-            let fact = if let pb::type_proto::Value::TensorType(fact) = fact {
-                fact.try_into()?
-            } else {
-                bail!("Can not parse tensor type");
-            };
+            let pb::type_proto::Value::TensorType(fact) = fact;
             outputs.push(outlets_by_name[&*output.name]);
-            model.set_outlet_fact(outlets_by_name[&*output.name], fact)?;
+            model.set_outlet_fact(outlets_by_name[&*output.name], fact.try_into()?)?;
         }
         model.set_output_outlets(&outputs)?;
         let result = ParseResult { model, unresolved_inputs, outlets_by_name };
@@ -199,6 +195,12 @@ impl Onnx {
         let onnx_operator_set_version =
             proto.opset_import.iter().find(|import| import.domain == "").unwrap().version;
         let graph = &proto.graph;
+        debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
+        if onnx_operator_set_version < 9 || onnx_operator_set_version > 12 {
+            warn!("ONNX operator for your model is {}, tract is tested against \
+                  operator set 9, 10, 11 and 12 only. Your model may still work so this is not a hard fail.",
+                  onnx_operator_set_version);
+        }
         let ctx = ParsingContext {
             framework: self,
             model: proto,
@@ -209,7 +211,15 @@ impl Onnx {
     }
 }
 
-impl Framework<pb::ModelProto> for Onnx {
+impl Framework<pb::ModelProto, InferenceModel> for Onnx {
+    fn proto_model_for_path(&self, p: impl AsRef<path::Path>) -> TractResult<pb::ModelProto> {
+        #[cfg(not(target_arch = "wasm32"))]
+        let map = unsafe { memmap::Mmap::map(&fs::File::open(p)?)? };
+        #[cfg(target_arch = "wasm32")]
+        let map = fs::read(p)?;
+        Ok(crate::pb::ModelProto::decode(&*map).map_err(|e| format!("{:?}", e))?)
+    }
+
     fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<pb::ModelProto> {
         let mut v = vec![];
         r.read_to_end(&mut v)?;

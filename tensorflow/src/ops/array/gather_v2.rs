@@ -1,31 +1,23 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 pub fn gather_v2(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    Ok(Box::new(GatherV2::new()))
+    Ok(expand(GatherV2))
 }
 
-#[derive(Debug, Clone, new)]
-pub struct GatherV2 {}
+#[derive(Debug, Clone, new, Hash)]
+pub struct GatherV2;
 
-impl Op for GatherV2 {
+tract_linalg::impl_dyn_hash!(GatherV2);
+
+impl Expansion for GatherV2 {
     fn name(&self) -> Cow<str> {
-        "tf.GatherV2".into()
+        "GatherV2".into()
     }
 
-    not_a_typed_op!();
-}
+    op_tf!();
 
-impl StatelessOp for GatherV2 {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (input, indices, axis) = args_3!(inputs);
-        let op = tract_core::ops::array::Gather::new(*axis.to_scalar::<i32>()? as i64);
-        op.eval(tvec!(input, indices))
-    }
-}
-
-impl InferenceRulesOp for GatherV2 {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -43,27 +35,32 @@ impl InferenceRulesOp for GatherV2 {
             &inputs[1].shape,
             &inputs[2].value,
             move |s, input_shape, indices_shape, axis| {
-                let op = tract_core::ops::array::Gather::new(*axis.to_scalar::<i32>()? as i64);
+                let mut axis = *axis.to_scalar::<i32>()?;
+                if axis < 0 {
+                    axis = input_shape.len() as i32 + axis;
+                }
+                let op = tract_hir::ops::array::Gather::new(axis as usize);
                 let output_shape = op.compute_output_shape(&input_shape, &indices_shape)?;
                 s.equals(&outputs[0].shape, output_shape)
             },
         )
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(axis) = target.outlet_fact(mapping[&node.inputs[2]])?.konst.as_ref() {
-            let op = tract_core::ops::array::Gather::new(*axis.to_scalar::<i32>()? as i64);
-            target.wire_node(&*node.name, op, &[mapping[&node.inputs[0]], mapping[&node.inputs[1]]])
+        if let Some(axis) = target.outlet_fact(inputs[2])?.konst.as_ref() {
+            let mut axis = *axis.to_scalar::<i32>()?;
+            if axis < 0 {
+                axis = target.outlet_fact(inputs[0])?.rank() as i32 + axis;
+            }
+            let op = tract_hir::ops::array::Gather::new(axis as usize);
+            target.wire_node(&*prefix, op, &inputs[0..2])
         } else {
             bail!("Need to know axis to type GatherV2")
         }
     }
-
-    inference_op_as_op!();
 }

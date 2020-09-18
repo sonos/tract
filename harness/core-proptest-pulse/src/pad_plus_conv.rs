@@ -1,11 +1,9 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use proptest::*;
-use tract_core::dimfact;
-use tract_core::internal::*;
-use tract_core::ndarray::*;
-use tract_core::ops::array::PadMode;
-use tract_core::shapefact;
+use tract_hir::internal::*;
+use tract_hir::ops::array::{Pad, PadMode};
+use tract_ndarray::*;
 
 use super::*;
 
@@ -65,11 +63,10 @@ impl Arbitrary for PadPlusConvProblem {
 
 impl PadPlusConvProblem {
     pub fn run(&self) -> TestCaseResult {
-        use tract_core::ops::array::Pad;
-        use tract_core::ops::cnn::*;
+        use tract_hir::ops::cnn::*;
         let mut model = InferenceModel::default();
         let mut wire = model
-            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S)))
+            .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(1, 1, S)))
             .unwrap();
         if self.pad_before > 0 || self.pad_after > 0 {
             wire = model
@@ -87,7 +84,7 @@ impl PadPlusConvProblem {
         conv.dilations = Some(tvec!(self.dilation));
         conv.strides = Some(tvec!(self.stride));
         let kernel = model.add_const("kernel", self.ker.clone()).unwrap();
-        let conv = model.wire_node("conv", conv, &[wire, kernel]).unwrap();
+        let conv = model.wire_node("conv", expand(conv), &[wire, kernel]).unwrap();
         model.set_output_outlets(&conv).unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
     }
@@ -237,6 +234,22 @@ fn conv_kaldi_librispeech() {
         pulse: 9,
         ker: arr3(&[[[1f32, 0f32, 0f32, 0f32, 0f32]]]),
         input: Array3::from_shape_vec((1, 1, 10), (1..=10).map(|i| i as f32).collect()).unwrap(),
+    }
+    .run()
+    .unwrap()
+}
+
+#[test]
+fn conv_9() {
+    PadPlusConvProblem {
+        pad_before: 13,
+        pad_after: 9,
+        pad_mode: PadMode::Constant(rctensor0(9999f32)),
+        stride: 2,
+        dilation: 2,
+        pulse: 2,
+        ker: arr3(&[[[0.0f32, 0.0]]]),
+        input: arr3(&[[[0.0f32, 0.0, 0.0, 0.0]]]),
     }
     .run()
     .unwrap()

@@ -1,8 +1,8 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum PaddingSpec {
-    Explicit(TVec<usize>, TVec<usize>),
+    Explicit(TVec<usize>, TVec<usize>, bool),
     Valid,
     SameUpper,
     SameLower,
@@ -25,19 +25,19 @@ impl PaddingSpec {
     pub fn valid_dim(&self, d: usize) -> bool {
         match self {
             PaddingSpec::Valid => true,
-            PaddingSpec::Explicit(a, b) => a[d] == 0 && b[d] == 0,
+            PaddingSpec::Explicit(a, b, ceil_mode) => *ceil_mode && a[d] == 0 && b[d] == 0,
             _ => false,
         }
     }
 
     pub fn rm_axis(&self, d: usize) -> PaddingSpec {
         match self {
-            PaddingSpec::Explicit(a, b) => {
+            PaddingSpec::Explicit(a, b, ceil_mode) => {
                 let mut a = a.clone();
                 let mut b = b.clone();
                 a.remove(d);
                 b.remove(d);
-                PaddingSpec::Explicit(a, b)
+                PaddingSpec::Explicit(a, b, *ceil_mode)
             }
             _ => self.clone(),
         }
@@ -72,13 +72,28 @@ impl PaddingSpec {
         stride: usize,
     ) -> ComputedPaddedDim<D> {
         match self {
-            PaddingSpec::Valid => Self::explicit(input, kernel, dilation, stride, 0, 0),
-            PaddingSpec::Explicit(ref bef, ref aft) => {
-                Self::explicit(input, kernel, dilation, stride, bef[axis], aft[axis])
+            PaddingSpec::Valid => Self::valid(input, kernel, dilation, stride),
+            PaddingSpec::Explicit(ref bef, ref aft, ceil_mode) => {
+                Self::explicit(input, kernel, dilation, stride, bef[axis], aft[axis], *ceil_mode)
             }
             PaddingSpec::SameUpper => Self::same(input, kernel, dilation, stride, true),
             PaddingSpec::SameLower => Self::same(input, kernel, dilation, stride, false),
         }
+    }
+
+    fn valid<D: DimLike>(
+        input: &D,
+        kernel: usize,
+        dilation: usize,
+        stride: usize,
+    ) -> ComputedPaddedDim<D> {
+        let kernel_field = (kernel - 1) * dilation + 1;
+        let output = if let Ok(int) = input.to_usize() {
+            D::from((int + 1).saturating_sub(kernel_field).div_ceil(stride))
+        } else {
+            (input.clone() + 1 - kernel_field).div_ceil(stride)
+        };
+        ComputedPaddedDim::new(output, 0.into(), 0.into())
     }
 
     fn explicit<D: DimLike>(
@@ -88,13 +103,15 @@ impl PaddingSpec {
         stride: usize,
         bef: usize,
         aft: usize,
+        ceil_mode: bool,
     ) -> ComputedPaddedDim<D> {
         let kernel_field = (kernel - 1) * dilation + 1;
-        let output = if let Ok(int) = input.to_integer() {
-            D::from((int as usize + bef + aft).saturating_sub(kernel_field - 1).div_ceil(stride))
+        let dividend = if let Ok(int) = input.to_usize() {
+            D::from((int + bef + aft).saturating_sub(kernel_field))
         } else {
-            (input.clone() + bef + aft - kernel_field + 1).div_ceil(stride)
+            input.clone() + bef + aft - kernel_field
         };
+        let output = if ceil_mode { dividend.div_ceil(stride) } else { dividend.div(stride) } + 1;
         ComputedPaddedDim::new(output, bef.into(), aft.into())
     }
 
@@ -107,11 +124,10 @@ impl PaddingSpec {
     ) -> ComputedPaddedDim<D> {
         let output = input.div_ceil(stride);
         let kernel_field = (kernel - 1) * dilation + 1;
-        let pad = if let Ok(input) = input.to_integer() {
-            let pad = (((output.clone() - 1) * stride + kernel_field).to_integer().unwrap()
-                - input)
-                .max(0);
-            (pad as usize).into()
+        let pad = if let Ok(input) = input.to_usize() {
+            let pad = (((output.clone() - 1) * stride + kernel_field).to_usize().unwrap())
+                .saturating_sub(input);
+            pad.into()
         } else {
             (output.clone() - 1) * stride + kernel_field - input
         };
@@ -165,16 +181,13 @@ mod tests {
 
     #[test]
     fn valid_1() {
-        assert_eq!(
-            PaddingSpec::explicit(&10usize, 2usize, 1, 3, 0, 0),
-            ComputedPaddedDim::new(3, 0, 0)
-        );
+        assert_eq!(PaddingSpec::valid(&10usize, 2usize, 1, 3), ComputedPaddedDim::new(3, 0, 0));
     }
 
     #[test]
     fn explicit_2() {
         assert_eq!(
-            PaddingSpec::explicit(&28usize, 3usize, 1, 1, 2, 2),
+            PaddingSpec::explicit(&28usize, 3usize, 1, 1, 2, 2, true),
             ComputedPaddedDim::new(30, 2, 2)
         );
     }

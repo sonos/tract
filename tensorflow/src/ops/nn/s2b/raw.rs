@@ -1,20 +1,27 @@
-use tract_core::internal::*;
-use tract_core::ndarray::prelude::*;
+use tract_hir::internal::*;
+use tract_ndarray::prelude::*;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct SpaceToBatch {
     datum_type: DatumType,
 }
+
+tract_linalg::impl_dyn_hash!(SpaceToBatch);
 
 impl Op for SpaceToBatch {
     fn name(&self) -> Cow<str> {
         "SpaceToBatch".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 
-impl StatelessOp for SpaceToBatch {
+impl EvalOp for SpaceToBatch {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
@@ -43,7 +50,7 @@ impl InferenceRulesOp for SpaceToBatch {
         rules(s, self.datum_type, &outputs[0], &inputs[0], &inputs[1], &inputs[2])
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,
@@ -60,7 +67,7 @@ impl InferenceRulesOp for SpaceToBatch {
             let paddings_view = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
             let mut paddings = tvec![];
             for p in paddings_view.outer_iter() {
-                let pad = match (p[0].to_integer(), p[1].to_integer()) {
+                let pad = match (p[0].to_usize(), p[1].to_usize()) {
                     (Ok(bef), Ok(aft)) => {
                         super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
                     }
@@ -91,21 +98,27 @@ impl InferenceRulesOp for SpaceToBatch {
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct BatchToSpace {
     datum_type: DatumType,
 }
+
+tract_linalg::impl_dyn_hash!(BatchToSpace);
 
 impl Op for BatchToSpace {
     fn name(&self) -> Cow<str> {
         "BatchToSpace".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 
-impl StatelessOp for BatchToSpace {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for BatchToSpace {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
@@ -150,7 +163,7 @@ impl InferenceRulesOp for BatchToSpace {
             let paddings = paddings
                 .outer_iter()
                 .map(|p| {
-                    Ok(match (p[0].to_integer(), p[1].to_integer()) {
+                    Ok(match (p[0].to_usize(), p[1].to_usize()) {
                         (Ok(bef), Ok(aft)) => {
                             super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
                         }
@@ -179,7 +192,7 @@ impl InferenceRulesOp for BatchToSpace {
             bail!("Need fixed block shape and padding")
         }
     }
-    inference_op_as_op!();
+    as_op!();
 }
 
 fn rules<'r, 'p: 'r>(
@@ -200,14 +213,14 @@ fn rules<'r, 'p: 'r>(
     s.given(&block_shape.value, move |s, block_shape| {
         let block_shape = block_shape.into_tensor().into_array::<i32>()?;
         let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
-        s.equals(&batch.shape[0], (block_shape_prod as i32) * space.shape[0].bex())?;
+        s.equals(&batch.shape[0], (block_shape_prod as i64) * space.shape[0].bex())?;
         s.given(&paddings.value, move |s, paddings| {
             let paddings = paddings.cast_to::<TDim>()?;
             let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality()?;
             for d in 0..block_shape.len() {
                 s.equals(
                     space.shape[1 + d].bex() + &paddings[(d, 0)] + &paddings[(d, 1)],
-                    (block_shape[d] as i32) * batch.shape[1 + d].bex(),
+                    (block_shape[d] as i64) * batch.shape[1 + d].bex(),
                 )?;
             }
             Ok(())
@@ -215,7 +228,7 @@ fn rules<'r, 'p: 'r>(
     })?;
     s.given(&block_shape.value, move |s, block_shape| {
         let block_shape = block_shape.into_tensor().into_array::<i32>()?;
-        s.given(&space.rank, move |s, rank: i32| {
+        s.given(&space.rank, move |s, rank: i64| {
             for d in block_shape.len() + 1..(rank as usize) {
                 s.equals(&space.shape[d], &batch.shape[d])?
             }

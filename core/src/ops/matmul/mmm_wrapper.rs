@@ -7,7 +7,8 @@ use crate::ops::quant::QParams;
 
 use tract_linalg::mmm::{FusedSpec, MatMatMul, QMatMatMul};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Educe)]
+#[educe(Hash)]
 pub enum MMMWrapper<TA, TB, TC, TI>
 where
     TA: Datum + Copy + Zero,
@@ -54,13 +55,7 @@ where
         }
     }
 
-    pub unsafe fn run(
-        &self,
-        a: *const TA,
-        b: *const TB,
-        c: *mut TC,
-        non_linear: &[FusedSpec<TI>],
-    ) {
+    pub unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]) {
         match self {
             MMMWrapper::Plain(p) => p.run(a, b, c, non_linear),
             MMMWrapper::Quant(q) => q.run(a, b, c, non_linear),
@@ -109,4 +104,3 @@ where
         }
     }
 }
-

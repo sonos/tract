@@ -39,6 +39,8 @@ do
             run \
             --assert-output-bundle $tc/io.npz"
 
+        # echo $cmd
+        # if $($cmd)
         if $($cmd 2> /dev/null > /dev/null)
         then
             echo -e "\e[92mOK\e[39m"
@@ -52,7 +54,7 @@ done
 
 if [ -n "$FAILURES" ]
 then
-    echo 
+    echo
     echo -e "    \e[91m$(echo $FAILURES | wc -w) FAILURES\e[39m"
     echo
 fi

@@ -1,6 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 pub fn compress(
     _ctx: &ParsingContext,
@@ -9,53 +9,74 @@ pub fn compress(
     Ok((Box::new(Compress::new(node.get_attr_opt("axis")?)), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Compress {
     axis: Option<usize>,
 }
 
+tract_linalg::impl_dyn_hash!(Compress);
+
 impl Compress {
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>, conds: &[bool]) -> TractResult<Arc<Tensor>> {
-        use tract_core::ndarray::*;
-        let compressed_dim = conds.iter().filter(|c| **c).count();
+    unsafe fn eval_t<T: Datum>(&self, input: &Tensor, conds: &[bool], output: &mut Tensor) {
+        use tract_ndarray::*;
+        let input = input.to_array_view_unchecked::<T>();
         if let Some(ax) = self.axis {
-            let input = input.to_array_view::<T>()?;
-            let mut shape: TVec<usize> = input.shape().into();
-            shape[self.axis.unwrap()] = compressed_dim;
-            let mut array: ArrayD<T> = unsafe { T::uninitialized_array(&*shape) };
             for (ixo, ixi) in
                 conds.iter().enumerate().filter(|(_, c)| **c).map(|(ix, _)| ix).enumerate()
             {
-                array.index_axis_mut(Axis(ax), ixo).assign(&input.index_axis(Axis(ax), ixi));
+                output
+                    .to_array_view_mut_unchecked::<T>()
+                    .index_axis_mut(Axis(ax), ixo)
+                    .assign(&input.index_axis(Axis(ax), ixi));
             }
-            Ok(array.into_arc_tensor())
         } else {
-            let input = input.as_slice::<T>()?;
-            let data: Vec<T> = conds
-                .iter()
-                .enumerate()
-                .filter(|(_, c)| **c)
-                .map(|(ix, _)| input[ix].clone())
-                .collect();
-            Ok(Array::from(data).into_arc_tensor())
+            let output = output.as_slice_mut_unchecked::<T>();
+            let mut ix = 0;
+            for (c, i) in conds.iter().zip(input.iter()) {
+                if *c {
+                    output[ix] = i.clone();
+                    ix += 1;
+                }
+            }
         }
     }
 }
 
 impl Op for Compress {
     fn name(&self) -> Cow<str> {
-        "onnx.Compress".into()
+        "Compress".into()
     }
 
+    op_onnx!();
     not_a_typed_op!();
 }
 
-impl StatelessOp for Compress {
+impl EvalOp for Compress {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (input, cond) = args_2!(inputs);
-        let output =
-            dispatch_datum!(Self::eval_t(input.datum_type())(self, input, cond.as_slice()?))?;
-        Ok(tvec!(output))
+        let (input, conds) = args_2!(inputs);
+        let conds = conds.as_slice()?;
+        let compressed_dim = conds.iter().filter(|c| **c).count();
+        let shape = if let Some(axis) = self.axis {
+            let mut shape: TVec<usize> = input.shape().into();
+            shape[axis] = compressed_dim;
+            shape
+        } else {
+            tvec!(compressed_dim)
+        };
+        unsafe {
+            let mut output = Tensor::uninitialized_dt(input.datum_type(), &*shape)?;
+            dispatch_datum_by_size!(Self::eval_t(input.datum_type())(
+                self,
+                &input,
+                conds,
+                &mut output
+            ));
+            Ok(tvec!(output.into_arc_tensor()))
+        }
     }
 }
 
@@ -88,5 +109,5 @@ impl InferenceRulesOp for Compress {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

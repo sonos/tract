@@ -5,14 +5,17 @@
 //! ## Example
 //!
 //! ```
-//! # extern crate tract_core;
 //! # extern crate tract_tensorflow;
 //! # fn main() {
-//! use tract_core::prelude::*;
+//! use tract_tensorflow::prelude::*;
 //!
 //! // build a simple model that just add 3 to each input component
-//! let tf = tract_tensorflow::tensorflow();
-//! let model = tf.model_for_path("tests/models/plus3.pb").unwrap();
+//! let tf = tensorflow();
+//! let mut model = tf.model_for_path("tests/models/plus3.pb").unwrap();
+//!
+//! // set input input type and shape, then optimize the network.
+//! model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec!(3))).unwrap();
+//! let model = model.into_optimized().unwrap();
 //!
 //! // we build an execution plan. default input and output are inferred from
 //! // the model graph
@@ -33,19 +36,20 @@
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
-extern crate error_chain;
+extern crate educe;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
-#[cfg(any(test, featutre = "conform"))]
+#[cfg(test)]
 extern crate env_logger;
-extern crate num_traits;
 extern crate prost;
 extern crate prost_types;
+#[cfg(feature = "conform")]
 #[macro_use]
-extern crate tract_core;
+extern crate error_chain;
 #[cfg(feature = "conform")]
 extern crate tensorflow;
+pub extern crate tract_hir;
 
 #[cfg(feature = "conform")]
 pub mod conform;
@@ -61,6 +65,12 @@ pub fn tensorflow() -> Tensorflow {
     let mut ops = crate::model::TfOpRegister::default();
     ops::register_all_ops(&mut ops);
     Tensorflow { op_register: ops }
+}
+
+pub use tract_hir::tract_core;
+pub mod prelude {
+    pub use crate::tensorflow;
+    pub use tract_hir::prelude::*;
 }
 
 #[cfg(test)]

@@ -1,0 +1,621 @@
+// vim: ft=arm
+
+    .arm
+    .text
+    .global armvfpv2_mmm_f32_4x4
+    .type armvfpv2_mmm_f32_4x4, %function
+
+// C tile:
+
+//  s16 s20 s24 s28
+//  s17 s21 s25 s29
+//  s18 s22 s26 s30
+//  s19 s23 s27 s31
+
+// packed A: (2x4) alternating between (s0-s3) and (s4-s7)
+// packed B: (2x4) alternating between (s8-s11) and (s12-15)
+
+// all vfp registers in use.
+
+armvfpv2_mmm_f32_4x4:
+
+/*
+    pld [r1]
+    pld [r1, #8]
+    pld [r2]
+    pld [r2, #8]
+*/
+
+    push        { r4-r12 }               // no lr (we're a leaf), no fp. #24 bytes
+
+    ldr         r8, [sp, #28]
+    ldr         r9, [sp, #24]
+
+//  r8=rsc, r9=csc
+
+    vmrs        r6, FPSCR
+    bic         r6, r6, #0x00370000
+    vmsr        FPSCR, r6
+
+    vpush       { s16-s31 }
+
+    eor         r6, r6
+    vmov        s16, r6
+    vmov.f32    s17, s16
+    vmov.f32    s18, s16
+    vmov.f32    s19, s16
+    vmov.f32    s20, s16
+    vmov.f32    s21, s16
+    vmov.f32    s22, s16
+    vmov.f32    s23, s16
+    vmov.f32    s24, s16
+    vmov.f32    s25, s16
+    vmov.f32    s26, s16
+    vmov.f32    s27, s16
+    vmov.f32    s28, s16
+    vmov.f32    s29, s16
+    vmov.f32    s30, s16
+    vmov.f32    s31, s16
+
+    ldm     r0, { r7, r8, r9, r10 }      // a, b, c, lin
+    ldm     r7, { r1, r2 }
+    pld     [r10]
+    pld     [r8]
+    // check a->discriminant == 1 (packed)
+    cmp     r1, #1
+    bne     .unsupported
+    mov     r1, r2 // packed A ptr
+    pld     [r1]
+
+    // check linear
+    ldm     r10, {r5, r6}
+    cmp     r5, #0
+    bne     .unsupported
+    cmp     r6, #0
+    beq     .non_linear
+
+    mov     r3, r6 // k
+
+    // B
+    ldm     r8, { r4, r5, r6 }
+    cmp     r4, #1
+    beq     .packed_packed
+
+    cmp     r4, #2
+    beq     .packed_tops_and_offsets
+
+    cmp     r4, #3
+    beq     .packed_vec_strides
+
+    b       .unsupported
+
+    .packed_tops_and_offsets:
+    push            { r0 }
+    ldm             r5!, { r0 }
+    mov             r4, r1
+    mov             r2, r5                  // rows offsets
+    ldm             r6, {r5, r6, r7, r8}    // cols tops ptr
+    pld             [r5]
+
+    .packed_tops_and_offsets_loop_1:
+    vldmia          r4!, { s0, s1, s2, s3 }
+
+    add             r9, r5, r0
+    add             r10, r6, r0
+    add             r11, r7, r0
+    add             r12, r8, r0
+
+    ldm             r2!, { r0 }
+
+    vldr            s8, [r9]
+    vldr            s9, [r10]
+    vldr            s10, [r11]
+    vldr            s11, [r12]
+
+    vmla.f32        s16, s0, s8
+    vmla.f32        s17, s1, s8
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vmla.f32        s20, s0, s9
+    vmla.f32        s21, s1, s9
+    vmla.f32        s22, s2, s9
+    vmla.f32        s23, s3, s9
+
+    vmla.f32        s24, s0, s10
+    vmla.f32        s25, s1, s10
+    vmla.f32        s26, s2, s10
+    vmla.f32        s27, s3, s10
+
+    vmla.f32        s28, s0, s11
+    vmla.f32        s29, s1, s11
+    vmla.f32        s30, s2, s11
+    vmla.f32        s31, s3, s11
+
+    subs            r3, r3, #1
+    bne .packed_tops_and_offsets_loop_1
+
+    .packed_tops_and_offsets_end:
+    pop             { r0 }
+    b   .non_linear
+
+    .packed_packed:
+    cmp r3, #4
+    blt .packed_packed_loop_1
+
+    .packed_packed_loop_4:
+
+    // 1
+    vldmia          r1!, { s0, s1 }
+    vldmia          r5!, { s8, s9 }
+
+    vmla.f32        s16, s0, s8
+    vldmia          r1!, { s2, s3 }
+    vmla.f32        s17, s1, s8
+    vldmia          r5!, { s10, s11 }
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vmla.f32        s20, s0, s9
+    vmla.f32        s21, s1, s9
+    vmla.f32        s22, s2, s9
+    vmla.f32        s23, s3, s9
+
+    vldmia          r1!, { s4-s7 }
+    vmla.f32        s24, s0, s10
+    vmla.f32        s25, s1, s10
+    vmla.f32        s26, s2, s10
+    vmla.f32        s27, s3, s10
+
+    vldmia          r5!, { s12-s15 }
+    vmla.f32        s28, s0, s11
+    vmla.f32        s29, s1, s11
+    vmla.f32        s30, s2, s11
+    vmla.f32        s31, s3, s11
+
+    // 2
+    vmla.f32        s16, s4, s12
+    vmla.f32        s17, s5, s12
+    vmla.f32        s18, s6, s12
+    vmla.f32        s19, s7, s12
+
+    vldmia          r1!, { s0-s3 }
+
+    vmla.f32        s20, s4, s13
+    vmla.f32        s21, s5, s13
+    vmla.f32        s22, s6, s13
+    vmla.f32        s23, s7, s13
+
+    vldmia          r5!, { s8-s11 }
+
+    vmla.f32        s24, s4, s14
+    vmla.f32        s25, s5, s14
+    vmla.f32        s26, s6, s14
+    vmla.f32        s27, s7, s14
+
+    vmla.f32        s28, s4, s15
+    vmla.f32        s29, s5, s15
+    vmla.f32        s30, s6, s15
+    vmla.f32        s31, s7, s15
+
+    // 3
+    vmla.f32        s16, s0, s8
+    vmla.f32        s17, s1, s8
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vldmia          r1!, { s4-s7 }
+
+    vmla.f32        s20, s0, s9
+    vmla.f32        s21, s1, s9
+    vmla.f32        s22, s2, s9
+    vmla.f32        s23, s3, s9
+
+    vldmia          r5!, { s12-s15 }
+
+    vmla.f32        s24, s0, s10
+    vmla.f32        s25, s1, s10
+    vmla.f32        s26, s2, s10
+    vmla.f32        s27, s3, s10
+
+    pld [r1]
+
+    vmla.f32        s28, s0, s11
+    vmla.f32        s29, s1, s11
+    vmla.f32        s30, s2, s11
+    vmla.f32        s31, s3, s11
+
+    pld [r5]
+
+    // 4
+    vmla.f32        s16, s4, s12
+    vmla.f32        s17, s5, s12
+    vmla.f32        s18, s6, s12
+    vmla.f32        s19, s7, s12
+
+    vmla.f32        s20, s4, s13
+    vmla.f32        s21, s5, s13
+    vmla.f32        s22, s6, s13
+    vmla.f32        s23, s7, s13
+
+    vmla.f32        s24, s4, s14
+    vmla.f32        s25, s5, s14
+    vmla.f32        s26, s6, s14
+    vmla.f32        s27, s7, s14
+
+    vmla.f32        s28, s4, s15
+    vmla.f32        s29, s5, s15
+    vmla.f32        s30, s6, s15
+    vmla.f32        s31, s7, s15
+
+    sub r3, r3, #4
+    cmp r3, #4
+    bge .packed_packed_loop_4
+
+    cmp r3, #0
+    beq .non_linear
+
+    .packed_packed_loop_1:
+
+    vldmia          r1!, { s0, s1 }
+    vldmia          r5!, { s8, s9 }
+
+    vmla.f32        s16, s0, s8
+    vldmia          r1!, { s2, s3 }
+    vmla.f32        s17, s1, s8
+    vldmia          r5!, { s10, s11 }
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vmla.f32        s20, s0, s9
+    vmla.f32        s21, s1, s9
+    vmla.f32        s22, s2, s9
+    vmla.f32        s23, s3, s9
+
+    vmla.f32        s24, s0, s10
+    vmla.f32        s25, s1, s10
+    vmla.f32        s26, s2, s10
+    vmla.f32        s27, s3, s10
+
+    vmla.f32        s28, s0, s11
+    vmla.f32        s29, s1, s11
+    vmla.f32        s30, s2, s11
+    vmla.f32        s31, s3, s11
+
+    subs r3, r3, #1
+    bne .packed_packed_loop_1
+
+    b .non_linear
+
+    .packed_vec_strides:
+    // r5 -> b ptr
+    // r6 -> b strides
+
+    cmp r3, #4
+    blt .packed_vec_strides_loop_1
+
+    cmp r6, #4
+    bne .packed_vec_strides_loop_4
+
+    .packed_vec_strides_loop_4_contig:
+
+    vldmia          r5!, { s8, s9, s10, s11 }
+    vldmia          r1!, { s0, s1, s2, s3, s4, s5, s6, s7 }
+
+    vmla.f32        s16, s0, s8
+    vmla.f32        s17, s1, s8
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vldmia          r1!, { s0, s1, s2, s3 }
+
+    vmla.f32        s20, s4, s9
+    vmla.f32        s21, s5, s9
+    vmla.f32        s22, s6, s9
+    vmla.f32        s23, s7, s9
+
+    vldmia          r1!, { s4, s5, s6, s7 }
+
+    vmla.f32        s16, s0, s10
+    vmla.f32        s17, s1, s10
+    vmla.f32        s18, s2, s10
+    vmla.f32        s19, s3, s10
+
+    vmla.f32        s20, s4, s11
+    vmla.f32        s21, s5, s11
+    vmla.f32        s22, s6, s11
+    vmla.f32        s23, s7, s11
+
+    sub r3, r3, #4
+    cmp r3, #4
+    bge .packed_vec_strides_loop_4_contig
+    b .packed_vec_strides_loop_4_end
+
+    .packed_vec_strides_loop_4:
+
+    vldmia          r1!, { s0, s1, s2, s3, s4, s5, s6, s7 }
+    vldr            s8, [r5]
+    add             r5, r5, r6
+    vldr            s9, [r5]
+    add             r5, r5, r6
+    vldr            s10, [r5]
+    add             r5, r5, r6
+    vldr            s11, [r5]
+    add             r5, r5, r6
+
+    vmla.f32        s16, s0, s8
+    vmla.f32        s17, s1, s8
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vldmia          r1!, { s0, s1, s2, s3 }
+
+    vmla.f32        s20, s4, s9
+    vmla.f32        s21, s5, s9
+    vmla.f32        s22, s6, s9
+    vmla.f32        s23, s7, s9
+
+    vldmia          r1!, { s4, s5, s6, s7 }
+
+    vmla.f32        s16, s0, s10
+    vmla.f32        s17, s1, s10
+    vmla.f32        s18, s2, s10
+    vmla.f32        s19, s3, s10
+
+    vmla.f32        s20, s4, s11
+    vmla.f32        s21, s5, s11
+    vmla.f32        s22, s6, s11
+    vmla.f32        s23, s7, s11
+
+    sub r3, r3, #4
+    cmp r3, #4
+    bge .packed_vec_strides_loop_4
+
+    .packed_vec_strides_loop_4_end:
+    vadd.f32        s16, s16, s20
+    vadd.f32        s17, s17, s21
+    vadd.f32        s18, s18, s22
+    vadd.f32        s19, s19, s23
+
+    cmp r3, #0
+    beq .non_linear
+
+    .packed_vec_strides_loop_1:
+
+    vldmia          r1!, { s0, s1, s2, s3 }
+    vldr            s8, [ r5 ]
+    add             r5, r5, r6
+
+    vmla.f32        s16, s0, s8
+    vmla.f32        s17, s1, s8
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    subs r3, r3, #1
+    bne .packed_vec_strides_loop_1
+
+.non_linear:
+    ldr     r1, [r0, #16]
+    cmp     r1, #0
+    bne     .non_linear_loop_entry
+
+.store:
+    ldr     r3, [r0, #8]
+    ldm     r3, { r4, r5, r6, r7 } // discr, ...
+    cmp     r4, #0
+    beq     .store_strides
+    cmp     r4, #3
+    beq     .store_vec_strides
+    bne     .unsupported
+
+.store_strides:
+    // r5,r6,r7 are c,src,csc
+    {% for col in (0..3) %}
+        mov         r8, r5
+        {% for reg in (0..3) %}
+            fsts        s{{col|times:4|plus:reg|plus:16}}, [ r8 ]
+            {% if reg < 3 %}
+                add         r8, r8, r6
+            {% endif %}
+        {% endfor %}
+        {% if col < 3 %}
+            add r5, r5, r7
+        {% endif %}
+    {% endfor %}
+
+    mov         r0,     #0
+    b   .return
+
+.store_vec_strides:
+    // r5,r6 are ptr, strides
+    fsts s16, [ r5 ]
+    add r5, r5, r6
+    fsts s17, [ r5 ]
+    add r5, r5, r6
+    fsts s18, [ r5 ]
+    add r5, r5, r6
+    fsts s19, [ r5 ]
+
+    mov r0, #0
+
+.return:
+    vpop        { s16-s31 }
+    pop         { r4-r12 }
+
+    bx          lr
+
+.non_linear_loop_entry:
+    sub     r1, #12
+
+.non_linear_loop:
+    add     r1, #12
+    ldr     r2, [r1]
+    cmp     r2, #0
+    beq     .store
+    cmp     r2, #1
+    beq     .min
+    cmp     r2, #2
+    beq     .max
+    cmp     r2, #3
+    beq     .non_linear_addc
+    cmp     r2, #4
+    beq     .per_row_mul
+    cmp     r2, #5
+    beq     .per_row_add
+    cmp     r2, #6
+    beq     .per_col_mul
+    cmp     r2, #7
+    beq     .per_col_add
+    cmp     r2, #8
+    beq     .add_row_col_product
+    cmp     r2, #9
+    beq     .scalar_mul
+    cmp     r2, #10
+    beq     .scalar_add
+
+    b .unsupported
+
+.non_linear_addc:
+
+    ldr     r3, [r0, #8]
+    ldr     r4, [r3]
+    cmp     r4, #0
+    bne     .unsupported
+
+    ldr     r4, [r3, #4]   // C ptr
+    ldr     r5, [r3, #8]   // rsc
+    ldr     r6, [r3, #12]  // csc
+
+    {% for col in (0..3) %}
+        mov         r7, r4
+        {% for reg in (0..3) %}
+            vldr            s0, [ r7 ]
+            vadd.f32        s{{col|times:4|plus:reg|plus:16}}, s{{col|times:4|plus:reg|plus:16}}, s0
+            {% if reg < 3 %}
+                add         r7, r7, r5
+            {% endif %}
+        {% endfor %}
+        {% if col < 3 %}
+            add r4, r4, r6
+        {% endif %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.min:
+    vldr            s0, [r1, #4]
+    {% for reg in (16..31) %}
+        vcmp.f32        s{{reg}}, s0
+        vmrs            apsr_nzcv, fpscr
+        vmovge          s{{reg}}, s0
+    {% endfor %}
+
+    b .non_linear_loop
+
+.max:
+    vldr            s0, [r1, #4]
+    {% for reg in (16..31) %}
+        vcmp.f32        s{{reg}}, s0
+        vmrs            apsr_nzcv, fpscr
+        vmovle          s{{reg}}, s0
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_row_mul:
+    ldr     r2, [r1, #4]
+    vldm    r2, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            vmul.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{row}}
+        {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_row_add:
+    ldr     r2, [r1, #4]
+    vldm    r2, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            vadd.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{row}}
+        {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_col_mul:
+    ldr     r2, [r1, #4]
+    vldm    r2, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            vmul.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{col}}
+        {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_col_add:
+    ldr     r2, [r1, #4]
+    vldm    r2, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            vadd.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{col}}
+        {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.add_row_col_product:
+    ldr     r2, [r1, #4]
+    ldr     r3, [r1, #8]
+
+    vldmia          r2!, { s0, s1 }
+    vldmia          r3!, { s8, s9 }
+
+    vmla.f32        s16, s0, s8
+    vldmia          r2!, { s2, s3 }
+    vmla.f32        s17, s1, s8
+    vldmia          r3!, { s10, s11 }
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vmla.f32        s20, s0, s9
+    vmla.f32        s21, s1, s9
+    vmla.f32        s22, s2, s9
+    vmla.f32        s23, s3, s9
+
+    vmla.f32        s24, s0, s10
+    vmla.f32        s25, s1, s10
+    vmla.f32        s26, s2, s10
+    vmla.f32        s27, s3, s10
+
+    vmla.f32        s28, s0, s11
+    vmla.f32        s29, s1, s11
+    vmla.f32        s30, s2, s11
+    vmla.f32        s31, s3, s11
+
+    b .non_linear_loop
+
+.scalar_mul:
+    vldr    s0, [ r1, #4 ]
+
+    {% for s in (16..31) %}
+        vmul.f32    s{{s}}, s{{s}}, s0
+    {% endfor %}
+
+    b .non_linear_loop
+
+.scalar_add:
+    vldr    s0, [ r1, #4 ]
+
+    {% for s in (16..31) %}
+        vadd.f32    s{{s}}, s{{s}}, s0
+    {% endfor %}
+
+    b .non_linear_loop
+
+.unsupported:
+    mov         r0,     #1
+    b           .return
+

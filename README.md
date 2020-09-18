@@ -1,6 +1,6 @@
 ![tract-logo](assets/tract-logo/PNG/tract-horizontal-blue.png)
 
-![rustc >= 1.39.0](https://img.shields.io/badge/rustc-%3E%3D1.39.0-brightgreen)
+![rustc >= 1.41.0](https://img.shields.io/badge/rustc-%3E%3D1.41.0-brightgreen)
 ![MIT/Apache 2](https://img.shields.io/crates/l/tract)
 [![Native Linux test status](https://github.com/snipsco/tract/workflows/Native%20Linux/badge.svg)](https://github.com/snipsco/tract/actions)
 [![Embedded targets status](https://github.com/snipsco/tract/workflows/Embedded%20targets/badge.svg)](https://github.com/snipsco/tract/actions)
@@ -19,6 +19,8 @@ data through it.
 ## Quick start
 
 * [MobileNet v2 with TensorFlow](examples/tensorflow-mobilenet-v2)
+* [From Keras in Jupyter to tract](examples/jupyter-keras-tract)
+* [ResNet with PyTorch](examples/pytorch-resnet)
 
 ## Real-time streaming support
 
@@ -64,7 +66,7 @@ operators in Tensorflow make it difficult to target a full support.
 
 The following operators are implemented and tested:
 
-Abs, Add, AddN, AddV2, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast, Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, Enter, Equal, Exit, ExpandDims, FakeQuantWithMinMaxVars, Fill, FloorMod, FusedBatchNorm, GatherNd, GatherV2, Greater, GreaterEqual, Identity, Less, LessEqual, Log, LogicalAnd, LogicalOr, LoopCond, MatMul, Max, MaxPool, Maximum, Mean, Merge, Min, Minimum, Mul, Neg, NoOp, Pack, Pad, Placeholder, Pow, Prod, RandomUniform, RandomUniformInt, Range, RealDiv, Relu, Relu6, Reshape, Rsqrt, Shape, Sigmoid, Slice, Softmax, SpaceToBatchND, Squeeze, StridedSlice, Sub, Sum, Switch, Tanh, Tile, Transpose, VariableV2
+Abs, Add, AddN, AddV2, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast, Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, Enter, Equal, Exit, ExpandDims, FakeQuantWithMinMaxVars, Fill, FloorMod, FusedBatchNorm, GatherNd, GatherV2, Greater, GreaterEqual, Identity, Less, LessEqual, Log, LogicalAnd, LogicalOr, LoopCond, MatMul, Max, MaxPool, Maximum, Mean, Min, Minimum, Mul, Neg, NoOp, Pack, Pad, Placeholder, Pow, Prod, RandomUniform, RandomUniformInt, Range, RealDiv, Relu, Relu6, Reshape, Rsqrt, Shape, Sigmoid, Slice, Softmax, SpaceToBatchND, Squeeze, StridedSlice, Sub, Sum, Tanh, Tile, Transpose, VariableV2
 
 ### TensorFlow-Lite
 
@@ -76,6 +78,31 @@ and is only optimised for devices with Arm Neon support.
 Tract supports a wider subset of TensorFlow operators, and has been optimised
 for CPU of the previous generation (ARM VFP), also targetting devices in the
 Raspberry Pi Zero family.
+
+### NNEF
+
+Long story short, TensorFlow and Onnx formats are good for designing and
+training networks. They need to move fast to follow the research field, tend to
+integrate new features and operators greedily. They also exhibit a high level
+of expressibity to make facilitate network design.
+
+On the other hand, only a subset of operators and network features actually
+reach production, so systems running production network do not have to deal
+with so many operators. Furthermore, some information required for training can
+be stripped from the network before going to production for prediction.
+
+NNEF tries to bridge the gap between training frameworks and inference by
+proposing a format dedicated to production and prediction.
+
+Tract NNEF support is partial, and alpha level:
+* tract_nnef can load and execute networks NNEF networks
+* tract command line can translate networks from TensorFlow or ONNX to NNEF
+* tract supports most of the NNEF specification, the most notable exception
+    being the ROI operators and deconvolution
+* tract needs to extend NNEF with other operators (or extend some operators
+    semantics) in order to support the subset of ONNX and TensorFlow that tract
+    supports.
+
 
 ## Example of supported networks
 

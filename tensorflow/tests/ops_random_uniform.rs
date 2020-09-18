@@ -5,7 +5,6 @@ extern crate env_logger;
 extern crate log;
 #[macro_use]
 extern crate proptest;
-extern crate tract_core;
 extern crate tract_tensorflow;
 
 mod utils;
@@ -13,8 +12,8 @@ mod utils;
 use crate::utils::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
+use tract_tensorflow::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::DataType;
 

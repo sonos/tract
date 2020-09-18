@@ -1,6 +1,6 @@
 [package]
 name = "tract-tensorflow"
-version = "0.5.11-pre"
+version = "0.11.1-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -16,26 +16,28 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 bytes = "0.5"
 derive-new = "0.5"
-error-chain = "0.12"
-itertools = "0.8"
+educe = "=0.4.11" # locked for rust 1.41.0
 log = "0.4"
-num-traits = "0.2"
 prost = "0.6"
 prost-types = "0.6"
 tensorflow = { version = "0", optional = true }
-tract-core = { path = "../core" }
-tract-linalg = { path = "../linalg" }
+error-chain = { version = "0.12", optional = true }
+tract-hir = { path = "../hir" }
+tract-pulse = { path = "../pulse" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+memmap = "0.7"
 
 [build-dependencies]
 prost-build = "0.6"
 
 [features]
-conform = [ "tensorflow" ]
+conform = [ "tensorflow", "error-chain" ]
 
 [dev-dependencies]
 criterion = "0.3"
 env_logger = "0.7"
-proptest = "0.9"
+proptest = "0.10"
 rand = "0.7"
 
 # [[bench]]

@@ -1,5 +1,7 @@
 // from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/lib/random/philox_random.h
 
+use tract_hir::internal::*;
+
 #[derive(Copy, Clone)]
 pub struct Philox4x32x10 {
     key: u64,

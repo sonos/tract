@@ -2,8 +2,7 @@ use crate::pb::tensor_proto::DataType;
 use crate::pb::*;
 use prost::Message;
 use std::convert::{TryFrom, TryInto};
-use tract_core::internal::*;
-use tract_core::*;
+use tract_hir::internal::*;
 
 impl TryFrom<DataType> for DatumType {
     type Error = TractError;
@@ -12,6 +11,8 @@ impl TryFrom<DataType> for DatumType {
             DataType::Bool => Ok(DatumType::Bool),
             DataType::Uint8 => Ok(DatumType::U8),
             DataType::Uint16 => Ok(DatumType::U16),
+            DataType::Uint32 => Ok(DatumType::U32),
+            DataType::Uint64 => Ok(DatumType::U64),
             DataType::Int8 => Ok(DatumType::I8),
             DataType::Int16 => Ok(DatumType::I16),
             DataType::Int32 => Ok(DatumType::I32),
@@ -23,7 +24,6 @@ impl TryFrom<DataType> for DatumType {
             _ => Err(format!("Unknown DatumType {:?}", t))?,
         }
     }
-
 }
 
 impl<'a> TryFrom<&'a type_proto::Tensor> for InferenceFact {
@@ -45,7 +45,7 @@ impl<'a> TryFrom<&'a type_proto::Tensor> for InferenceFact {
                     fact
                 })
                 .collect();
-            fact = fact.with_shape(ShapeFact::closed(shape));
+            fact = fact.with_shape(ShapeFactoid::closed(shape));
         }
         Ok(fact)
     }
@@ -68,6 +68,8 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                 match dt {
                     DatumType::U8 => Tensor::from_raw::<u8>(&*shape, &*t.raw_data),
                     DatumType::U16 => Tensor::from_raw::<u16>(&*shape, &*t.raw_data),
+                    DatumType::U32 => Tensor::from_raw::<u32>(&*shape, &*t.raw_data),
+                    DatumType::U64 => Tensor::from_raw::<u64>(&*shape, &*t.raw_data),
                     DatumType::I8 => Tensor::from_raw::<i8>(&*shape, &*t.raw_data),
                     DatumType::I16 => Tensor::from_raw::<i16>(&*shape, &*t.raw_data),
                     DatumType::I32 => Tensor::from_raw::<i32>(&*shape, &*t.raw_data),
@@ -83,7 +85,7 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                 }
             }
         } else {
-            use ndarray::Array;
+            use tract_ndarray::Array;
             let it = match dt {
                 DatumType::Bool => {
                     Array::from_shape_vec(&*shape, t.int32_data.iter().map(|&x| x != 0).collect())?
@@ -98,6 +100,16 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                     t.int32_data.iter().map(|&x| x as u16).collect(),
                 )?
                 .into(),
+                DatumType::U32 => Array::from_shape_vec(
+                    &*shape,
+                    t.int32_data.iter().map(|&x| x).collect(),
+                )?
+                .into(),
+                DatumType::U64 => Array::from_shape_vec(
+                    &*shape,
+                    t.int64_data.iter().map(|&x| x).collect(),
+                )?
+                .into(),
                 DatumType::I8 => {
                     Array::from_shape_vec(&*shape, t.int32_data.iter().map(|&x| x as i8).collect())?
                         .into()
@@ -107,18 +119,10 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                     t.int32_data.iter().map(|&x| x as i16).collect(),
                 )?
                 .into(),
-                DatumType::I32 => {
-                    Array::from_shape_vec(&*shape, t.int32_data.to_vec())?.into()
-                }
-                DatumType::I64 => {
-                    Array::from_shape_vec(&*shape, t.int64_data.to_vec())?.into()
-                }
-                DatumType::F32 => {
-                    Array::from_shape_vec(&*shape, t.float_data.to_vec())?.into()
-                }
-                DatumType::F64 => {
-                    Array::from_shape_vec(&*shape, t.double_data.to_vec())?.into()
-                }
+                DatumType::I32 => Array::from_shape_vec(&*shape, t.int32_data.to_vec())?.into(),
+                DatumType::I64 => Array::from_shape_vec(&*shape, t.int64_data.to_vec())?.into(),
+                DatumType::F32 => Array::from_shape_vec(&*shape, t.float_data.to_vec())?.into(),
+                DatumType::F64 => Array::from_shape_vec(&*shape, t.double_data.to_vec())?.into(),
                 DatumType::String => {
                     let strings = t
                         .string_data

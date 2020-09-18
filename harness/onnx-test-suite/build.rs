@@ -14,7 +14,7 @@ pub fn ensure_onnx_git_checkout() {
         fs::create_dir_all(dir()).unwrap();
         let lockfile = dir().join(".lock");
         let _lock = fs::File::create(lockfile).unwrap().lock_exclusive();
-        for v in &["1.4.1", "1.5.0"] {
+        for v in &["1.4.1", "1.5.0", "1.6.0", "1.7.0"] {
             let wanted = dir().join(format!("onnx-{}", v));
             if !wanted.join("onnx/backend/test/data").exists() {
                 let tmp = wanted.with_extension("tmp");
@@ -46,8 +46,16 @@ pub fn ensure_onnx_git_checkout() {
     });
 }
 
+#[derive(PartialEq, Copy, Clone, Debug)]
+enum Mode {
+    Plain,
+    Optim,
+    NNEF,
+}
+
 pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     use std::io::Write;
+    use Mode::*;
     ensure_onnx_git_checkout();
     let node_tests =
         dir().join(format!("onnx-{}", onnx_tag)).join("onnx/backend/test/data").join(tests_set);
@@ -81,26 +89,28 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
         .collect();
     tests.sort();
     writeln!(rs, "mod {} {{", tests_set_ver).unwrap();
-    for (s, optim) in &[("plain", false), ("optim", true)] {
-        writeln!(rs, "mod {} {{", s).unwrap();
+    for &mode in &[Plain, Optim, NNEF] {
+        writeln!(rs, "mod {} {{", format!("{:?}", mode).to_lowercase()).unwrap();
+        writeln!(rs, "use crate::onnx::{{run_one, Mode}};").unwrap();
         for t in &tests {
             writeln!(rs, "#[test]").unwrap();
             let pair = working_list.iter().find(|pair| &*pair.0 == &*t);
-            let run = pair.is_some();
-            if !run || (*optim && pair.as_ref().unwrap().1.contains(&"dynsize".to_string())) {
+            let ignore = pair.is_none()
+                || match mode {
+                    Mode::Plain => false,
+                    Mode::Optim => pair.as_ref().unwrap().1.contains(&"not-typable".to_string()),
+                    Mode::NNEF => {
+                        pair.as_ref().unwrap().1.contains(&"not-typable".to_string())
+                            || pair.as_ref().unwrap().1.contains(&"not-nnef".to_string())
+                    }
+                };
+            if ignore {
                 writeln!(rs, "#[ignore]").unwrap();
             }
             let more = pair.map(|p| &*p.1).unwrap_or(&[]);
             writeln!(rs, "fn {}() {{", t).unwrap();
-            writeln!(
-                rs,
-                "crate::onnx::run_one({:?}, {:?}, {:?}, &{:?})",
-                node_tests,
-                t,
-                optim,
-                more
-            )
-            .unwrap();
+            writeln!(rs, "run_one({:?}, {:?}, Mode::{:?}, &{:?})", node_tests, t, mode, more)
+                .unwrap();
             writeln!(rs, "}}").unwrap();
         }
         writeln!(rs, "}}").unwrap();
@@ -116,7 +126,7 @@ fn main() {
     fs::create_dir_all(&test_dir).unwrap();
     let mut root = fs::File::create(test_dir.join("root.rs")).unwrap();
     for set in "node real simple pytorch-operator pytorch-converted".split_whitespace() {
-        for ver in "1.4.1 1.5.0".split_whitespace() {
+        for ver in "1.4.1 1.5.0 1.6.0 1.7.0".split_whitespace() {
             make_test_file(&mut root, set, ver);
         }
     }

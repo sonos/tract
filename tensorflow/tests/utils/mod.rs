@@ -1,4 +1,4 @@
-use tract_core::prelude::*;
+use tract_tensorflow::prelude::*;
 
 fn setup_test_logger() {
     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
@@ -47,7 +47,7 @@ pub fn run_tract<S: AsRef<str>>(
             model = model.declutter()?;
             debug!("decluttered");
         } else if mode == Mode::Opt {
-            model = model.into_optimized()?;
+            model = model.declutter()?.optimize()?;
             debug!("optimized");
         };
         trace!("{:#?}", model);
@@ -72,7 +72,7 @@ pub fn compare_optim<S: AsRef<str>>(
 
     let found = match run_tract(graph, inputs, output, mode) {
         Err(e) => {
-            use crate::tract_core::error_chain::ChainedError;
+            use tract_tensorflow::tract_core::error_chain::ChainedError;
             error!("{}", e.display_chain());
             return Err(e.into());
         }

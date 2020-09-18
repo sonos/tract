@@ -1,0 +1,16 @@
+[package]
+name = "nnef-inceptionv3"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+edition = "2018"
+
+[dependencies]
+flate2 = "1"
+image = "0.23"
+tract-core = { path = "../../core" }
+tract-nnef = { path = "../../nnef" }
+
+[dev-dependencies]
+dinghy-test = "0.4"
+env_logger = "0.7"
+log = "0.4"

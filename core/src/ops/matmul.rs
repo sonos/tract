@@ -1,6 +1,6 @@
+pub mod lir;
+pub mod mir;
 pub mod mmm_wrapper;
-pub mod logic;
-pub mod phy;
 
+pub use self::mir::{compute_shapes, MatMul, MatMulUnary};
 pub use mmm_wrapper::MMMWrapper;
-pub use self::logic::{infer_shapes, MatMul, MatMulUnary};

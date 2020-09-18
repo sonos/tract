@@ -9,5 +9,4 @@ members = []
 
 [dependencies]
 protobuf = "*"
-tract-core = { path = "../../../core" }
 tract-onnx = { path = "../../../onnx" }

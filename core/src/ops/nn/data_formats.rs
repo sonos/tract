@@ -1,8 +1,7 @@
-use crate::dim::DimLike;
-use crate::model::TVec;
+use crate::internal::*;
 use std::fmt;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Hash)]
 pub enum DataFormat {
     NCHW,
     NHWC,
@@ -21,25 +20,28 @@ impl DataFormat {
         match self {
             &DataFormat::NCHW => DataFormat::CHW,
             &DataFormat::NHWC => DataFormat::HWC,
-            _ => panic!("Attempt at removing N axis on {:?}", self)
+            _ => panic!("Attempt at removing N axis on {:?}", self),
         }
     }
 
-    pub fn shape<D, S>(&self, shape: S) -> BaseDataShape<D, S>
+    pub fn shape<D, S>(&self, shape: S) -> TractResult<BaseDataShape<D, S>>
     where
         D: DimLike,
         S: AsRef<[D]> + fmt::Debug,
     {
-        let mut strides: Vec<D> = vec![1.into()];
+        if shape.as_ref().iter().filter(|d| d.to_i64().is_err()).count() > 1 {
+            panic!("Can not work out a data format with two actual symbolic dim")
+        }
+        let mut strides: Vec<D> = vec![D::one()];
         for dim in shape.as_ref().iter().skip(1).rev() {
             let previous = strides.last().unwrap().clone();
-            strides.push(previous * dim);
+            strides.push(previous.maybe_mul(dim)?)
         }
         strides.reverse();
-        BaseDataShape { fmt: *self, shape, strides }
+        Ok(BaseDataShape { fmt: *self, shape, strides })
     }
 
-    pub fn from_n_c_hw<D, S>(&self, n: D, c: D, shape: S) -> BaseDataShape<D, TVec<D>>
+    pub fn from_n_c_hw<D, S>(&self, n: D, c: D, shape: S) -> TractResult<BaseDataShape<D, TVec<D>>>
     where
         D: DimLike,
         S: AsRef<[D]> + fmt::Debug,
@@ -57,11 +59,15 @@ impl DataFormat {
         }
         self.shape(me)
     }
+
+    pub fn has_n(&self) -> bool {
+        *self == DataFormat::NHWC || *self == DataFormat::NCHW
+    }
 }
 
 pub type DataShape = BaseDataShape<usize, TVec<usize>>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub struct BaseDataShape<D, S>
 where
     D: DimLike,

@@ -1,0 +1,684 @@
+{% comment %}
+/* vim: set syntax=asm : */
+
+/* mmm 8x8:
+
+    ymm0 ymm1 ymm2 ymm3 ymm4 ymm5 ymm6 ymm7
+
+System V ABI:
+    args: rdi, rsi, rdx, rcx, r8, r9
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15
+    scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+    return: rax (+rdx)
+
+Windows ABI:
+    args: RCX, RDX, R8, R9
+    preserve: RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-15
+    scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
+    return: rax (+rdx)
+*/
+{% endcomment %}
+
+{% if os == "macos" %}
+
+.intel_syntax noprefix
+.text
+.p2align 5
+.globl _fma_mmm_i8_8x8
+_fma_mmm_i8_8x8:
+.cfi_startproc
+
+{% elsif msvc %}
+
+_text segment
+fma_mmm_i8_8x8 proc
+
+{% else %}
+
+.intel_syntax noprefix
+.text
+.p2align 5
+.globl fma_mmm_i8_8x8
+fma_mmm_i8_8x8:
+.cfi_startproc
+
+{% endif %}
+
+    push        rbp
+    mov         rbp, rsp
+
+{% if family == "windows" %}
+// https://www.agner.org/optimize/calling_conventions.pdf xmm6-15 are not scratch
+// https://stackoverflow.com/questions/43358429/save-value-of-xmm-registers
+    and rsp,-16
+    lea rsp,[rsp-160]
+    vmovaps [rsp], xmm6
+    vmovaps [rsp+16*1],xmm7
+    vmovaps [rsp+16*2],xmm8
+    vmovaps [rsp+16*3],xmm9
+    vmovaps [rsp+16*4],xmm10
+    vmovaps [rsp+16*5],xmm11
+    vmovaps [rsp+16*6],xmm12
+    vmovaps [rsp+16*7],xmm13
+    vmovaps [rsp+16*8],xmm14
+    vmovaps [rsp+16*9],xmm15
+
+    push        rdi
+    push        rsi
+
+    mov         rdi, rcx
+
+{% endif %}
+
+    push        rbx
+    push        r12
+    push        r13
+    push        r14
+    push        r15
+
+    sub         rsp, 8
+
+{% if family == "unix" %}
+.cfi_def_cfa_offset 64
+{% endif %}
+
+    stmxcsr     [rsp + 4]
+{% if msvc %}
+    mov         rax, 1FC0h
+{% else %}
+    mov         rax, 0x1FC0
+{% endif %}
+    mov         [rsp], eax
+    ldmxcsr     [rsp]
+
+    vzeroall
+
+    mov     rax,    [rdi]       // A
+    mov     rbx,    [rdi + 8]   // B
+
+    mov     rcx,    [rdi + 24]  // Linear spec
+    mov     rcx,    [rcx + 8]   // k
+    test    rcx,    rcx
+
+    je      {{L}}non_linear
+
+    mov     rsi, [rbx]   // B discriminant
+    cmp     rsi,  1
+    je      {{L}}packed_packed
+    cmp     rsi,  2
+    je      {{L}}packed_tops_and_offsets
+    cmp     rsi,  3
+    je      {{L}}packed_vec
+
+    jmp     {{L}}unimplemented
+
+{{L}}packed_tops_and_offsets:
+    mov     rax,    [rax + 8]   // A
+    mov     rsi,    [rbx + 16]  // B cols head
+    mov     rbx,    [rbx + 8]   // rbx: current row offset ptr
+
+    mov     r8,     [rsi]
+    mov     r9,     [rsi + 8]
+    mov     r10,    [rsi + 16]
+    mov     r11,    [rsi + 24]
+    mov     r12,    [rsi + 32]
+    mov     r13,    [rsi + 40]
+    mov     r14,    [rsi + 48]
+    mov     r15,    [rsi + 56]
+
+{{L}}main_loop_packed_tops_and_offsets:
+    mov             rsi,    [rbx]   // rsi: current row offset
+
+    vmovups         ymm8,   [rax]
+    vpmovsxbw       ymm8,   xmm8
+
+    vpbroadcastb    ymm9, byte ptr [r8 + rsi]           // broadcast 1 byte from B
+    vpbroadcastb    ymm10, byte ptr [r9 + rsi]      // broadcast 1 byte from B
+    vpbroadcastb    ymm11, byte ptr [r10 + rsi]      // broadcast 1 byte from B
+    vpbroadcastb    ymm12, byte ptr [r11 + rsi]      // broadcast 1 byte from B
+    vpmovsxbw       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxbw       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxbw       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxbw       ymm12, xmm12                   // promote byte to i32x8
+
+    vpmullw         ymm9, ymm9, ymm8
+    vpmullw         ymm10, ymm10, ymm8
+    vpmullw         ymm11, ymm11, ymm8
+    vpmullw         ymm12, ymm12, ymm8
+    vpmovsxwd       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxwd       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxwd       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxwd       ymm12, xmm12                   // promote byte to i32x8
+    vpaddd          ymm0, ymm0, ymm9
+    vpaddd          ymm1, ymm1, ymm10
+    vpaddd          ymm2, ymm2, ymm11
+    vpaddd          ymm3, ymm3, ymm12
+
+    vpbroadcastb    ymm9, byte ptr [r12 + rsi]
+    vpbroadcastb    ymm10, byte ptr [r13 + rsi]
+    vpbroadcastb    ymm11, byte ptr [r14 + rsi]
+    vpbroadcastb    ymm12, byte ptr [r15 + rsi]
+    vpmovsxbw       ymm9, xmm9
+    vpmovsxbw       ymm10, xmm10
+    vpmovsxbw       ymm11, xmm11
+    vpmovsxbw       ymm12, xmm12
+
+    vpmullw         ymm9, ymm9, ymm8
+    vpmullw         ymm10, ymm10, ymm8
+    vpmullw         ymm11, ymm11, ymm8
+    vpmullw         ymm12, ymm12, ymm8
+    vpmovsxwd       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxwd       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxwd       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxwd       ymm12, xmm12                   // promote byte to i32x8
+    vpaddd          ymm4, ymm4, ymm9
+    vpaddd          ymm5, ymm5, ymm10
+    vpaddd          ymm6, ymm6, ymm11
+    vpaddd          ymm7, ymm7, ymm12
+
+    add             rbx,    8
+    add             rax,    8
+    dec             rcx
+    jnz             {{L}}main_loop_packed_tops_and_offsets
+
+    jmp             {{L}}non_linear
+
+{{L}}packed_packed:
+
+    mov     rax,   [rax + 8] // A
+    mov     rbx,   [rbx + 8] // B 
+
+{{L}}main_loop_packed_packed:
+    vmovups         xmm8, [rax]                    // load 16 bytes from A (will only use first 8)
+    vpmovsxbw       ymm8, xmm8                     // promote byte to i32x8
+
+    vpbroadcastb    ymm9, byte ptr [rbx]           // broadcast 1 byte from B
+    vpbroadcastb    ymm10, byte ptr [rbx + 1]      // broadcast 1 byte from B
+    vpbroadcastb    ymm11, byte ptr [rbx + 2]      // broadcast 1 byte from B
+    vpbroadcastb    ymm12, byte ptr [rbx + 3]      // broadcast 1 byte from B
+    vpmovsxbw       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxbw       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxbw       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxbw       ymm12, xmm12                   // promote byte to i32x8
+
+    vpmullw         ymm9, ymm9, ymm8
+    vpmullw         ymm10, ymm10, ymm8
+    vpmullw         ymm11, ymm11, ymm8
+    vpmullw         ymm12, ymm12, ymm8
+    vpmovsxwd       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxwd       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxwd       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxwd       ymm12, xmm12                   // promote byte to i32x8
+    vpaddd          ymm0, ymm0, ymm9
+    vpaddd          ymm1, ymm1, ymm10
+    vpaddd          ymm2, ymm2, ymm11
+    vpaddd          ymm3, ymm3, ymm12
+
+    vpbroadcastb    ymm9, byte ptr [rbx + 4]
+    vpbroadcastb    ymm10, byte ptr [rbx + 5]
+    vpbroadcastb    ymm11, byte ptr [rbx + 6]
+    vpbroadcastb    ymm12, byte ptr [rbx + 7]
+    vpmovsxbw       ymm9, xmm9
+    vpmovsxbw       ymm10, xmm10
+    vpmovsxbw       ymm11, xmm11
+    vpmovsxbw       ymm12, xmm12
+
+    vpmullw         ymm9, ymm9, ymm8
+    vpmullw         ymm10, ymm10, ymm8
+    vpmullw         ymm11, ymm11, ymm8
+    vpmullw         ymm12, ymm12, ymm8
+    vpmovsxwd       ymm9, xmm9                     // promote byte to i32x8
+    vpmovsxwd       ymm10, xmm10                   // promote byte to i32x8
+    vpmovsxwd       ymm11, xmm11                   // promote byte to i32x8
+    vpmovsxwd       ymm12, xmm12                   // promote byte to i32x8
+    vpaddd          ymm4, ymm4, ymm9
+    vpaddd          ymm5, ymm5, ymm10
+    vpaddd          ymm6, ymm6, ymm11
+    vpaddd          ymm7, ymm7, ymm12
+
+    add             rbx,    8
+    add             rax,    8
+    dec             rcx
+    jnz             {{L}}main_loop_packed_packed
+
+    jmp             {{L}}non_linear
+
+{{L}}packed_vec:
+    mov     rax,   [rax + 8]    // A
+    mov     rsi,   [rbx + 16]   // B stride
+    mov     rbx,   [rbx + 8]    // B ptr
+
+{{L}}packed_vec_loop:
+    vpbroadcastb    ymm14,  byte ptr [rbx]
+    vpmovsxbw       ymm14,  xmm14
+    vmovups         ymm12,  [rax]
+    vpmovsxbw       ymm12,  xmm12
+
+    vpmullw         ymm12,  ymm12, ymm14
+    vpmovsxwd       ymm12,  xmm12
+    vpaddd          ymm0, ymm0, ymm12
+
+    add             rbx,    rsi
+    add             rax,    8
+    dec             rcx
+    jnz             {{L}}packed_vec_loop
+
+{{L}}non_linear:
+
+    mov     rcx,    [rdi + 32]          // non linear spec
+    test    rcx,    rcx
+    jnz     {{L}}non_linear_loop_enter
+
+{{L}}store:
+    mov     rcx,    [rdi + 16]
+    mov     rsi,    [rcx]
+
+    cmp     rsi,  0
+    je      {{L}}store_strides
+    cmp     rsi,  3
+    je      {{L}}store_vec_strides
+    mov     rax, 1
+    jmp     {{L}}return
+
+{{L}}store_strides:
+
+    mov     r8,     [rcx + 8]           // c ptr
+    mov     rsi,    [rcx + 16]          // row stride
+    mov     rdx,    [rcx + 24]          // col stride
+    mov     rdi,    [rcx + 32]          // item size
+
+    cmp     rdi,    4
+    je      {{L}}store_strides_i32
+
+    mov     r9,     r8                  // current col
+    {% for col in (0..7) %}
+        mov r10,    r9
+        {% for row in (0..3) %}
+            vextractps  ebx, xmm{{col}}, {{row}}
+            mov         byte ptr [r10], bl
+            add         r10, rsi
+        {% endfor %}
+        vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
+        {% for row in (0..3) %}
+            vextractps  ebx, xmm{{col}}, {{row}}
+            mov         byte ptr [r10], bl
+            add         r10, rsi
+        {% endfor %}
+        add r9, rdx
+    {% endfor %}
+
+    mov     rax,    0
+    jmp     {{L}}return
+
+{{L}}store_strides_i32:
+    mov     r9,     r8                  // current col
+    {% for col in (0..7) %}
+        mov r10,    r9
+        {% for row in (0..3) %}
+            vextractps  ebx, xmm{{col}}, {{row}}
+            mov         dword ptr [r10], ebx
+            add         r10, rsi
+        {% endfor %}
+        vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
+        {% for row in (0..3) %}
+            vextractps  ebx, xmm{{col}}, {{row}}
+            mov         dword ptr [r10], ebx
+            add         r10, rsi
+        {% endfor %}
+        add r9, rdx
+    {% endfor %}
+
+    mov     rax,    0
+    jmp     {{L}}return
+
+{{L}}store_vec_strides:
+
+    mov     r8,     [rcx + 8]           // c ptr
+    mov     rsi,    [rcx + 16]          // stride
+    mov     rdi,    [rcx + 24]          // item size
+
+    cmp     rdi,    4
+    je      {{L}}store_vec_strides_i32
+
+    {% for row in (0..3) %}
+        vextractps  ebx, xmm0, {{row}}
+        mov         byte ptr [r8], bl
+        add         r8, rsi
+    {% endfor %}
+    vperm2f128  ymm0,   ymm0,   ymm1,  1
+    {% for row in (0..3) %}
+        vextractps  ebx, xmm0, {{row}}
+        mov         byte ptr [r8], bl
+        add         r8, rsi
+    {% endfor %}
+
+    mov     rax,    0
+    jmp     {{L}}return
+
+{{L}}store_vec_strides_i32:
+
+    {% for row in (0..3) %}
+        vextractps  ebx, xmm0, {{row}}
+        mov         dword ptr [r8], ebx
+        add         r8, rsi
+    {% endfor %}
+    vperm2f128  ymm0,   ymm0,   ymm1,  1
+    {% for row in (0..3) %}
+        vextractps  ebx, xmm0, {{row}}
+        mov         dword ptr [r8], ebx
+        add         r8, rsi
+    {% endfor %}
+
+    mov     rax,    0
+
+{{L}}return:
+    ldmxcsr     [rsp + 4]
+    add         rsp, 8
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+{% if family == "windows" %}
+    pop rsi
+    pop rdi
+
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
+{% endif %}
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
+{{L}}unimplemented:
+    mov     rax,    1
+    jmp     {{L}}return
+
+// NON LINEAR LOOP
+
+{{L}}non_linear_loop_enter:
+    sub     rcx,    24
+{{L}}non_linear_loop:
+    add     rcx,    24
+    mov     rax,    [rcx]
+
+    cmp     rax,    0
+    je      {{L}}store
+
+    cmp     rax,    1
+    je      {{L}}min
+
+    cmp     rax,    2
+    je      {{L}}max
+
+    cmp     rax,    3
+    je      {{L}}non_linear_addc
+
+    cmp     rax,    4
+    je      {{L}}per_row_mul
+
+    cmp     rax,    5
+    je      {{L}}per_row_add
+
+    cmp     rax,    6
+    je      {{L}}per_col_mul
+
+    cmp     rax,    7
+    je      {{L}}per_col_add
+
+    cmp     rax,    8
+    je      {{L}}add_row_col_products
+
+    cmp     rax,    9
+    je      {{L}}scalar_mul
+
+    cmp     rax,    10
+    je      {{L}}scalar_add
+
+    cmp     rax,    12
+    je      {{L}}q_torwards_plusinf
+
+    jmp     {{L}}unimplemented
+
+// NON LINEAR / ADDC
+
+{{L}}non_linear_addc:
+    mov     rax,    [rdi + 16]
+
+    // FIXME: assume Strides storage
+    mov     r10,    [rax + 8]           // c ptr
+    mov     rsi,    [rax + 16]          // row stride
+    mov     rbx,    [rax + 24]          // col stride
+    mov     r8,     [rax + 32]          // item size
+
+    mov     eax,    0
+{% for i in (0..3) %}
+    pinsrd  xmm14, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+    vpermq          ymm14, ymm14, 78 // 0b01001110
+{% for i in (0..3) %}
+    pinsrd  xmm14, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+    vpermq          ymm14, ymm14, 78 // 0b01001110
+
+    cmp     r8,    4
+    je      {{L}}non_linear_addc_i32
+
+{% if msvc %}
+    vpbroadcastd    ymm10, dword ptr [ offset byte_shuffle ]
+    vmovups         ymm11, dword ptr [ offset i128_shuffle ]
+{% else %}
+    vpbroadcastd    ymm10, [ rip + {{L}}byte_shuffle ]
+    vmovups         ymm11, [ rip + {{L}}i128_shuffle ]
+{% endif %}
+
+{% for i in (0..7) %}
+    vpcmpeqd        ymm15, ymm15, ymm15
+    vgatherdps      ymm12, [ r10 + ymm14 ], ymm15   // 0xxx 1xxx 2xxx 3xxx 4xxx 5xxx 6xxx 7xxx
+
+    // we need to go through vpmovsxbd, shuffling naively erases signs
+    vpshufb         ymm12, ymm12, ymm10             // 0123 0123 0123 0123 4567 4567 4567 4567
+    vpermd          ymm12, ymm11, ymm12             // 0123 4567
+    vpmovsxbd       ymm12, xmm12                    // sign extend
+
+    vpaddd          ymm{{i}},   ymm{{i}},   ymm12
+    add             r10, rbx
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}non_linear_addc_i32:
+
+{% for i in (0..7) %}
+    vpcmpeqd        ymm15, ymm15, ymm15
+    vgatherdps      ymm12, [ r10 + ymm14 ], ymm15
+    vpaddd          ymm{{i}},   ymm{{i}},   ymm12
+    add             r10, rbx
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{% if msvc %}
+.data
+byte_shuffle dd              201851904 // 0x0c080400
+i128_shuffle dd              0, 4
+.code
+{% else %}
+{{L}}byte_shuffle: .int            201851904 // 0x0c080400
+{{L}}i128_shuffle: .int            0, 4
+{% endif %}
+
+// NON LINEAR / MAX
+
+{{L}}max:
+    vbroadcastss    ymm12, dword ptr [rcx + 8]
+{% for i in (0..7) %}
+    vpmaxsd         ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+    jmp    {{L}}non_linear_loop
+
+// NON LINEAR / MIN
+
+{{L}}min:
+    vbroadcastss    ymm12, dword ptr [rcx + 8]
+{% for i in (0..7) %}
+    vpminsd         ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+    jmp    {{L}}non_linear_loop
+
+// NON LINEAR / PER ROW MUL
+
+{{L}}per_row_mul:
+    mov             rax, [ rcx + 8 ]
+
+    vmovups         ymm12,  [rax]
+
+{% for i in (0..7) %}
+    vpmulld         ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+// NON LINEAR / PER ROW ADD
+
+{{L}}per_row_add:
+    mov             rax, [ rcx + 8 ]
+
+    vmovups         ymm12,  [rax]
+
+{% for i in (0..7) %}
+    vpaddd          ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+// NON LINEAR / PER COL MUL
+
+{{L}}per_col_mul:
+    mov             rax, [ rcx + 8 ]
+
+{% for i in (0..7) %}
+    vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
+    vpmulld         ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+// NON LINEAR / PER COL ADD
+
+{{L}}per_col_add:
+    mov             rax, [ rcx + 8 ]
+
+{% for i in (0..7) %}
+    vbroadcastss    ymm12, dword ptr [rax + {{i|times:4}}]
+    vpaddd          ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}add_row_col_products:
+    mov             rax, [ rcx + 8 ]
+    mov             rbx, [ rcx + 16 ]
+
+    vmovups         ymm12,  [rax]
+
+{% for i in (0..7) %}
+    vbroadcastss    ymm14, dword ptr [rbx + {{i|times:4}} ]
+    vpmulld         ymm15, ymm12, ymm14
+    vpaddd          ymm{{i}}, ymm{{i}}, ymm15
+{% endfor %}
+    jmp    {{L}}non_linear_loop
+
+{{L}}scalar_mul:
+    vbroadcastss    ymm12, dword ptr [rcx + 8]
+
+{% for i in (0..7) %}
+    vpmulld         ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}scalar_add:
+    vpbroadcastd    ymm12, dword ptr [rcx + 8]
+
+{% for i in (0..7) %}
+    vpaddd          ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_torwards_plusinf:     // (((x * arg1) >> (30 + arg2)) as i32 + 1) >> 1
+
+{% if msvc %}
+    vpbroadcastd    ymm11, dword ptr [offset one_32bit] // 1, broadcasted x8
+{% else %}
+    vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
+{% endif %}
+
+    vpbroadcastd    ymm12, dword ptr [rcx + 8]  // mult // broatcasted x 8
+
+    mov         r8, [rcx + 16]
+    add         r8, 30                      // r8 <- 30 + arg2
+    mov         r9, 64
+    sub         r9, r8                      // r9 <- 64 - (30 + arg2)
+
+    vpxor       ymm8, ymm0, ymm0            // ymm8 <- 0
+    pinsrq      xmm8, r8, 0
+    vpxor       ymm9, ymm0, ymm0            // ymm9 <- 0
+    pinsrq      xmm9, r9, 0
+
+{% for i in (0..7) %}
+    vpsrldq     ymm15, ymm{{i}}, 4          // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm15, ymm15, ymm12         // ymm15 <- a1*c, a3*c, a5*c, a7*c
+    vpmuldq     ymm{{i}}, ymm{{i}}, ymm12   // ymmi  <- a0*c, a2*c, a4*c, a6*c
+
+    // arithmetic shift for ymm{{i}}
+    vpxor       ymm14, ymm0, ymm0
+    vpcmpgtq    ymm14, ymm14, ymm{{i}}      // ymm14 <- sign(ymmi)
+    vpsrlq      ymm{{i}}, ymm{{i}}, xmm8    // *logical* shift
+    vpsllq      ymm14, ymm14, xmm9          // sign extension prefix
+    vpor        ymm{{i}}, ymm{{i}}, ymm14
+
+    // arithmetic shift for ymm15
+    vpxor       ymm14, ymm0, ymm0
+    vpcmpgtq    ymm14, ymm14, ymm15         // ymm14 <- sign(ymm15)
+    vpsrlq      ymm15, ymm15, xmm8          // *logical* shift
+    vpsllq      ymm14, ymm14, xmm9          // sign extension prefix
+    vpor        ymm15, ymm15, ymm14
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm{{i}}, ymm15, ymm{{i}}, 85   // 0x55 ymmi <- ymmi::ymm15 (back to i32)
+
+    vpaddd      ymm{{i}}, ymm{{i}}, ymm11   // +=1
+    vpsrad      ymm{{i}}, ymm{{i}}, 1       // >>=1
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}one_32bit:
+{% if msvc %}
+    dd      1
+{% else %}
+    .int    1
+{% endif %}
+
+{% if msvc %}
+fma_mmm_i8_8x8 endp
+_text ends
+end
+{% else %}
+.cfi_endproc
+{% endif %}

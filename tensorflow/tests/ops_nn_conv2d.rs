@@ -5,16 +5,14 @@ extern crate env_logger;
 extern crate log;
 #[macro_use]
 extern crate proptest;
-extern crate tract_core;
 extern crate tract_tensorflow;
 
 mod utils;
 
 use crate::utils::*;
 use proptest::prelude::*;
-use tract_core::ndarray::prelude::*;
-use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
+use tract_tensorflow::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
 
@@ -55,11 +53,11 @@ fn img_and_ker() -> BoxedStrategy<(Tensor, Tensor, (usize, usize))> {
         })
         .prop_map(|(img_shape, ker_shape, img, ker, strides)| {
             (
-                Array::from(img.into_iter().map(|i| i as f32).collect::<Vec<_>>())
+                tract_ndarray::Array::from(img.into_iter().map(|i| i as f32).collect::<Vec<_>>())
                     .into_shape(img_shape)
                     .unwrap()
                     .into(),
-                Array::from(ker.into_iter().map(|i| i as f32).collect::<Vec<_>>())
+                tract_ndarray::Array::from(ker.into_iter().map(|i| i as f32).collect::<Vec<_>>())
                     .into_shape(ker_shape)
                     .unwrap()
                     .into(),
@@ -91,8 +89,8 @@ proptest! {
 
 #[test]
 fn conv_infer_facts_1() {
-    let i: Tensor = ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into();
-    let k: Tensor = ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into();
+    let i: Tensor = tract_ndarray::ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into();
+    let k: Tensor = tract_ndarray::ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into();
     let model = convolution_pb(1, 1, false, &k).unwrap();
     infer(&model, vec![("data", i.into())], "conv").unwrap();
 }

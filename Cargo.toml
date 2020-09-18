@@ -2,13 +2,24 @@
 members = [
     "linalg",
     "core",
+    "pulse",
+    "pulse-opl",
+    "hir",
+    "nnef",
     "tensorflow",
+    "onnx-opl",
     "onnx",
     "kaldi",
     "cli",
     "examples/tensorflow-mobilenet-v2",
+    "examples/jupyter-keras-tract",
+    "examples/nnef-dump-mobilenet-v2",
+    "examples/nnef-mobilenet-v2",
+    "examples/onnx-mobilenet-v2",
+    "examples/pytorch-resnet",
     "harness/core-proptest-pulse",
     "harness/lstm-proptest-onnx-vs-tf",
+    "harness/nnef-inceptionv3",
     "harness/onnx-test-suite",
     "harness/tf-inceptionv3",
     "harness/tf-mobilenet-v2",
@@ -20,3 +31,6 @@ lto = true
 
 [profile.bench]
 debug = true
+
+[profile.dev.package."*"]
+opt-level = 3

@@ -1,11 +1,11 @@
-use prost::Message;
 use crate::tfpb::tensorflow::{GraphDef, NodeDef, SavedModel};
+use prost::Message;
 use std::{fs, path};
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 #[derive(Default)]
 pub struct ParsingContext {
-    pub node_output_arities: HashMap<String, usize>
+    pub node_output_arities: HashMap<String, usize>,
 }
 
 #[derive(Clone, Default)]
@@ -26,6 +26,35 @@ impl TfOpRegister {
 pub struct Tensorflow {
     pub op_register: TfOpRegister,
 }
+
+pub struct TfModelExtensions {
+    pub control_inputs: Vec<(usize, usize)>,
+    pub initializing_nodes: Vec<usize>,
+}
+
+impl TfModelExtensions {
+    pub fn preproc(&self, mut original: InferenceModel) -> TractResult<InferenceModel> {
+        if self.initializing_nodes.len() > 0 {
+            let as_outlets =
+                self.initializing_nodes.iter().map(|n| OutletId::new(*n, 0)).collect::<Vec<_>>();
+            let plan =
+                SimplePlan::new_for_outputs_and_deps(&original, &as_outlets, &self.control_inputs)?;
+            let mut state = SimpleState::new(plan)?;
+            let _outputs = state.run(tvec!())?;
+            let tensors = state.session_state.tensors;
+            for node in &mut original.nodes {
+                if let Some(var) = node.op_as_mut::<crate::ops::vars::VariableV2>() {
+                    if let Some(value) = tensors.get(&var.id) {
+                        var.initializer = Some(value.clone().into_arc_tensor());
+                    }
+                }
+            }
+        }
+        Ok(original)
+    }
+}
+
+pub struct TfModelAndExtensions(pub InferenceModel, pub TfModelExtensions);
 
 impl Tensorflow {
     // From the node_def.proto documentation:
@@ -57,15 +86,23 @@ impl Tensorflow {
         Ok(())
     }
 
+    pub fn read_frozen_from_path(&self, p: impl AsRef<path::Path>) -> TractResult<GraphDef> {
+        #[cfg(not(target_arch = "wasm32"))]
+        let map = unsafe { memmap::Mmap::map(&fs::File::open(p)?)? };
+        #[cfg(target_arch = "wasm32")]
+        let map = fs::read(p)?;
+        Ok(GraphDef::decode(&*map).map_err(|e| format!("{:?}", e))?)
+    }
+
     pub fn read_frozen_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
-        let mut v = vec!();
+        let mut v = vec![];
         r.read_to_end(&mut v)?;
         let b = bytes::Bytes::from(v);
         Ok(GraphDef::decode(b).map_err(|e| format!("{:?}", e))?)
     }
 
     pub fn open_saved_model(&self, r: &mut dyn std::io::Read) -> TractResult<SavedModel> {
-        let mut v = vec!();
+        let mut v = vec![];
         r.read_to_end(&mut v)?;
         let b = bytes::Bytes::from(v);
         Ok(SavedModel::decode(b).map_err(|e| format!("{:?}", e))?)
@@ -77,27 +114,14 @@ impl Tensorflow {
         let mut saved = self.open_saved_model(r)?;
         Ok(saved.meta_graphs.remove(0).graph_def.unwrap())
     }
-}
 
-impl Framework<GraphDef> for Tensorflow {
-    /// This method will try to read as frozen model, then as a saved model.
-    fn proto_model_for_path(&self, r: impl AsRef<path::Path>) -> TractResult<GraphDef> {
-        self.read_frozen_model(&mut fs::File::open(r.as_ref())?)
-            .or_else(|_| self.read_saved_model(&mut fs::File::open(r.as_ref())?))
-    }
-
-    /// This method expects a frozen model, use open_saved_model for TF2 saved
-    /// model format.
-    fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
-        self.read_frozen_model(r)
-    }
-
-    fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<InferenceModel> {
+    pub fn parse_graph(&self, graph: &GraphDef) -> TractResult<TfModelAndExtensions> {
         use crate::ops::control_flow as cf;
 
         let mut model = InferenceModel::default();
         let mut inputs = tvec!();
         let mut context = ParsingContext::default();
+        let mut control_inputs = vec![];
 
         // compute min output arity for all nodes
         for pbnode in &graph.node {
@@ -122,7 +146,7 @@ impl Framework<GraphDef> for Tensorflow {
 
             let op = match self.op_register.0.get(&pbnode.op) {
                 Some(builder) => (builder)(&context, pbnode)?,
-                None => tract_core::ops::unimpl::UnimplementedOp::new(
+                None => tract_hir::ops::unimpl::UnimplementedOp::new(
                     context.node_output_arities.get(name).cloned().unwrap_or(1),
                     &pbnode.op,
                     format!("{:?}", pbnode),
@@ -130,26 +154,28 @@ impl Framework<GraphDef> for Tensorflow {
                 .into(),
             };
 
-            let facts = tvec!(InferenceFact::default(); op.nboutputs()?);
+            let noutputs =
+                op.nboutputs()?.max(context.node_output_arities.get(name).cloned().unwrap_or(1));
+            let facts = tvec!(InferenceFact::default(); noutputs);
 
             let node_id = model.add_node(name.clone(), op, facts)?;
             if pbnode.op == "Placeholder" {
                 let dt = pbnode.get_attr_datum_type("dtype")?;
                 let mut fact = InferenceFact::dt(dt);
                 if let Some(shape) = pbnode.get_attr_opt_shape("shape")? {
-                    let shape_fact = ShapeFact::closed(
+                    let shape_factoid = ShapeFactoid::closed(
                         shape
                             .iter()
                             .map(|d| {
                                 if *d == -1 {
-                                    GenericFact::Any
+                                    GenericFactoid::Any
                                 } else {
-                                    GenericFact::Only(d.to_dim())
+                                    GenericFactoid::Only(d.to_dim())
                                 }
                             })
                             .collect(),
                     );
-                    fact = fact.with_shape(shape_fact);
+                    fact = fact.with_shape(shape_factoid);
                 }
                 inputs.push(OutletId::new(node_id, 0));
                 model.set_outlet_fact(OutletId::new(node_id, 0), fact)?;
@@ -162,17 +188,18 @@ impl Framework<GraphDef> for Tensorflow {
             } else {
                 model.node_by_name(&pbnode.name)?.id
             };
-            for (ix, i) in pbnode.input.iter().enumerate() {
+            for (ix, i) in pbnode.input.iter().filter(|n| !n.starts_with("^")).enumerate() {
                 let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;
-                if i.starts_with("^") {
-                    panic!();
-                } else {
-                    let outlet = OutletId::new(prec, input.1);
-                    let inlet = InletId::new(node_id, ix);
-                    model.add_edge(outlet, inlet)?;
-                    model.set_outlet_label(outlet, i.to_string());
-                }
+                let outlet = OutletId::new(prec, input.1);
+                let inlet = InletId::new(node_id, ix);
+                model.add_edge(outlet, inlet)?;
+                model.set_outlet_label(outlet, i.to_string())?;
+            }
+            for i in pbnode.input.iter().filter(|n| n.starts_with("^")) {
+                let input = Self::parse_input(i)?;
+                let prec = model.node_by_name(input.0)?.id;
+                control_inputs.push((model.node_id_by_name(&pbnode.name)?, prec));
             }
         }
 
@@ -201,6 +228,25 @@ impl Framework<GraphDef> for Tensorflow {
         }
         model.set_input_outlets(&*inputs)?;
         model.auto_outputs()?;
-        Ok(model)
+        let extensions = TfModelExtensions { control_inputs, initializing_nodes: vec![] };
+        Ok(TfModelAndExtensions(model, extensions))
+    }
+}
+
+impl Framework<GraphDef, InferenceModel> for Tensorflow {
+    /// This method will try to read as frozen model, then as a saved model.
+    fn proto_model_for_path(&self, r: impl AsRef<path::Path>) -> TractResult<GraphDef> {
+        self.read_frozen_model(&mut fs::File::open(r.as_ref())?)
+            .or_else(|_| self.read_saved_model(&mut fs::File::open(r.as_ref())?))
+    }
+
+    /// This method expects a frozen model, use open_saved_model for TF2 saved
+    /// model format.
+    fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
+        self.read_frozen_model(r)
+    }
+
+    fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<InferenceModel> {
+        Ok(self.parse_graph(graph)?.0)
     }
 }

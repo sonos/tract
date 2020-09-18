@@ -1,4 +1,4 @@
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 use nom::IResult;
 use nom::{
@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use crate::model::{Component, KaldiProtoModel};
 
-use itertools::Itertools;
+use tract_itertools::Itertools;
 
 mod bin;
 mod components;

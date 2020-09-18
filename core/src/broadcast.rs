@@ -1,22 +1,22 @@
 //! N-way tensor broadcast
+use crate::dim::DimLike;
 use crate::model::TVec;
-use num_traits::One;
 
 /// Computes a shape, if any, to which all shapes can be broadcasted.
-pub fn multi_broadcast<T>(shapes: &[impl AsRef<[T]>]) -> Option<TVec<T>>
+pub fn multi_broadcast<D>(shapes: &[impl AsRef<[D]>]) -> Option<TVec<D>>
 where
-    T: One + PartialEq + Clone,
+    D: DimLike,
 {
-    let one = T::one();
+    let one = D::one();
     let len = shapes.iter().map(|shape| shape.as_ref().len()).max()?;
-    let mut shape: TVec<T> = tvec!();
+    let mut shape: TVec<D> = tvec!();
     for i in 0..len {
-        let mut wanted_size = T::one();
+        let mut wanted_size = D::one();
         for shape in shapes {
             let len = shape.as_ref().len();
             let dim = if i < len { &shape.as_ref()[len - i - 1] } else { &one };
-            if dim != &T::one() {
-                if wanted_size != T::one() && dim != &wanted_size {
+            if dim != &D::one() {
+                if wanted_size != D::one() && dim != &wanted_size {
                     return None;
                 }
                 wanted_size = dim.clone();

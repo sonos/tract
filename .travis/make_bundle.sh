@@ -21,10 +21,27 @@ echo "export TIMESTAMP=$timestamp" >> $TASK_NAME/vars
 echo "export PLATFORM=$PLATFORM" >> $TASK_NAME/vars
 
 mkdir $TASK_NAME/benches
+
+touch sizes
+for bin in example-tensorflow-mobilenet-v2 tract
+do
+    if [ -e target/$RUSTC_TRIPLE/release/$bin ]
+    then
+        binary_size_cli=$(stat -c "%s" target/$RUSTC_TRIPLE/release/$bin)
+        token=$(echo $bin | tr '-' '_')
+        if [ "$bin" = "tract" ]
+        then
+            token=cli
+        fi
+        echo binary_size.$token $binary_size_cli >> sizes
+    fi
+done
+
 cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
+cp sizes $TASK_NAME
 for bench in mm_for_wavenet_hw conv_for_wavenet_hw mm_for_asr_am
 do
-    exe=`ls -t target/$RUSTC_TRIPLE/release/$bench-???????????????? | head -1`
+    exe=`find target/$RUSTC_TRIPLE/release/ -name "$bench*" -type f -executable | head -1`
     cp $exe $TASK_NAME/benches/$bench
 done
 cp .travis/bundle-entrypoint.sh $TASK_NAME/entrypoint.sh

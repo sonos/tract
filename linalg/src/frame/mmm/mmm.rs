@@ -10,12 +10,13 @@ use crate::frame::{PackA, PackB};
 use super::fuse::ScratchSpaceFusedNonLinear;
 use super::*;
 
-pub trait MatMatMul<TA, TB, TC, TI>: Debug + fmt::Display + dyn_clone::DynClone + Send + Sync
+pub trait MatMatMul<TA, TB, TC, TI>:
+    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + crate::hash::DynHash + std::any::Any
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
 {
     fn a_pack(&self) -> PackA<TA>;
     fn b_pack(&self) -> PackB<TB>;
@@ -42,20 +43,33 @@ where
 }
 
 dyn_clone::clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
 );
 
-#[derive(Debug, Clone)]
+impl<TA, TB, TC, TI> std::hash::Hash for Box<dyn MatMatMul<TA, TB, TC, TI>>
+where
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.dyn_hash(state)
+    }
+}
+
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
 pub struct MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     pub m: usize,
     pub k: usize,
@@ -70,31 +84,31 @@ where
 
 unsafe impl<K, TA, TB, TC, TI> Send for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
 }
 
 unsafe impl<K, TA, TB, TC, TI> Sync for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
 }
 
 impl<K, TA, TB, TC, TI> MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TA, TB, TC, TI> {
         MatMatMulImpl {
@@ -116,11 +130,11 @@ where
 
 impl<K, TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + Debug,
-    TB: Copy + Zero + Debug,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    TA: Copy + Zero + Debug + 'static,
+    TB: Copy + Zero + Debug + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     fn a_pack(&self) -> PackA<TA> {
         PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a())
@@ -292,19 +306,40 @@ where
     }
 }
 
+impl<K, TA, TB, TC, TI> crate::hash::DynHash for MatMatMulImpl<K, TA, TB, TC, TI>
+where
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI>,
+{
+    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
+        crate::hash::dyn_hash(self, hasher)
+    }
+}
+
 impl<K, TA, TB, TC, TI> fmt::Display for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero,
-    TB: Copy + Zero,
-    TC: Copy + Debug,
-    TI: Copy + Add + Mul + Zero + Debug,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,
-            "A:{}, B:{} C:{} (m:{}, k:{}, n:{})",
-            self.a_storage, self.b_storage, self.c_storage, self.m, self.k, self.n
+            "A:{}, B:{} C:{} (m:{}, k:{}, n:{}) ({} {}x{})",
+            self.a_storage,
+            self.b_storage,
+            self.c_storage,
+            self.m,
+            self.k,
+            self.n,
+            K::name(),
+            K::mr(),
+            K::nr()
         )
     }
 }
@@ -314,7 +349,8 @@ where
 pub mod test {
     use super::*;
     use crate::align::Buffer;
-    use num_traits::{AsPrimitive, Bounded};
+    use crate::test::*;
+    use num_traits::AsPrimitive;
     use proptest::prelude::*;
 
     #[macro_export]
@@ -323,30 +359,31 @@ pub mod test {
             mod frame {
                 #[allow(unused_imports)]
                 use $crate::frame::mmm::mmm::test::*;
-                use $crate::num_traits::AsPrimitive;
+                use $crate::num_traits::{AsPrimitive, One, Zero};
 
                 proptest::proptest! {
                     #[test]
-                    fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mat_mul()) {
+                    fn mat_mul_prepacked_prop((m, k, n, ref a, ref b) in strat_mat_mat_mul()) {
                         if $cond {
-                            test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, a, b)?
+                            test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &**a, &*b)?
                         }
                     }
 
                     #[test]
-                    fn mat_vec_prepacked((m, k, ref a, ref b) in strat_mat_vec_mul()) {
+                    fn mat_vec_prepacked_prop((m, k, ref a, ref b) in strat_mat_vec_mul()) {
                         if $cond {
-                            test_mat_vec_mul_prep::<$ker>(m, k, a, b)?
+                            test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, a, b)?
                         }
                     }
 
                     #[test]
-                    fn conv_prepacked(pb in strat_conv_1d()) {
+                    fn conv_prepacked_prop(pb in strat_conv_1d()) {
                         if $cond {
-                            crate::check_close(&*pb.run::<$ker, $ta, $tb>(), &*pb.expected())?;
+                            let found = pb.run::<$ker, $tc, $ti>();
+                            let expected = pb.expected::<$tc, $ti>();
+                            crate::test::check_close(&found, &expected)?;
                         }
                     }
-
                 }
 
                 #[test]
@@ -364,14 +401,24 @@ pub mod test {
                 }
 
                 #[test]
+                fn mat_mul_2() {
+                    if $cond {
+                        let a: Vec<$ta> = [-1isize, -1, 0, 0].iter().map(|x| x.as_()).collect();
+                        let b: Vec<$tb> = [0isize, 1, 0, 1].iter().map(|x| x.as_()).collect();
+                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(2, 2, 2, &*a, &*b)
+                            .unwrap()
+                    }
+                }
+
+                #[test]
                 fn mat_mul_1_2_1() {
                     if $cond {
                         test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(
                             1,
                             2,
                             1,
-                            &[0.0f32.as_(), 1.0],
-                            &[0.0, 1.0],
+                            &[<$ta>::zero(), <$ta>::one()],
+                            &[<$tb>::zero(), <$tb>::one()],
                         )
                         .unwrap()
                     }
@@ -382,7 +429,7 @@ pub mod test {
                     if $cond {
                         let filters: Vec<$ta> = vec![1isize.as_()];
                         let data: Vec<$tb> = vec![0.as_(), 1.as_()];
-                        let pb = ConvProblem {
+                        let pb = ConvProblem::<$ta, $tb> {
                             ci: 1,
                             co: 1,
                             kt: 1,
@@ -391,18 +438,19 @@ pub mod test {
                             filters,
                             data,
                         };
-                        crate::check_close(&*pb.run::<$ker, $ta, $tb>(), &*pb.expected()).unwrap();
+                        let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
+                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
                     }
                 }
 
                 #[test]
                 fn conv_prepacked_2() {
                     if $cond {
-                        let mut filters = vec![0.0f32; 3 * 14 * 2];
-                        filters[13 * 6 + 5] = 1.0;
-                        let mut data = vec![0.0f32; 3 * 10];
-                        data[8 + 2 * 10] = 1.0; // last used input
-                        let pb = ConvProblem {
+                        let mut filters = vec![<$ta>::zero(); 3 * 14 * 2];
+                        filters[13 * 6 + 5] = <$ta>::one();
+                        let mut data = vec![<$tb>::zero(); 3 * 10];
+                        data[8 + 2 * 10] = <$tb>::one(); // last used input
+                        let pb = ConvProblem::<$ta, $tb> {
                             ci: 3,
                             co: 14,
                             kt: 2,
@@ -411,83 +459,118 @@ pub mod test {
                             filters,
                             data,
                         };
-                        crate::check_close(&*pb.run::<$ker, f32, f32>(), &*pb.expected()).unwrap();
+                        let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
+                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
                     }
                 }
 
                 #[test]
                 fn row_mul_2_1_3() {
                     if $cond {
-                        unsafe { row_mul::<$ker>(2, 1, 3).unwrap() }
+                        unsafe { row_mul::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
                     }
                 }
 
                 #[test]
                 fn row_add_2_1_3() {
                     if $cond {
-                        unsafe { row_add::<$ker>(2, 1, 3).unwrap() }
+                        unsafe { row_add::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
                     }
                 }
 
                 #[test]
                 fn col_mul_2_1_3() {
                     if $cond {
-                        unsafe { col_mul::<$ker>(2, 1, 3).unwrap() }
+                        unsafe { col_mul::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
                     }
                 }
 
                 #[test]
                 fn col_add_2_1_3() {
                     if $cond {
-                        unsafe { col_add::<$ker>(2, 1, 3).unwrap() }
+                        unsafe { col_add::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
                     }
                 }
 
                 #[test]
                 fn max_2_1_3() {
                     if $cond {
-                        unsafe { max::<$ker>(2, 1, 3).unwrap() }
+                        unsafe { max::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
                     }
                 }
 
                 #[test]
                 fn min_2_1_3() {
                     if $cond {
-                        unsafe { min::<$ker>(2, 3, 3).unwrap() }
+                        unsafe { min::<$ker, $ta, $tb, $tc, $ti>(2, 3, 3).unwrap() }
                     }
                 }
             }
         };
     }
 
-    pub fn strat_mat_mat_mul() -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
+    #[macro_export]
+    macro_rules! mmm_s_frame_tests {
+        ($cond:expr, $ker:ty, $ta: ty, $tb: ty, $tc: ty, $ti: ty) => {
+            mod frame_s {
+                #[allow(unused_imports)]
+                use num_traits::*;
+                use std::ops::Neg;
+                use $crate::frame::mmm::mmm::test::ConvProblem;
+
+                #[test]
+                fn conv_prepacked_3() {
+                    if $cond {
+                        let mut filters = vec![<$ta>::zero(); 4];
+                        filters[3] = <$ta>::one().neg();
+                        let data = vec![<$tb>::zero(); 4];
+                        let pb = ConvProblem::<$ta, $tb> {
+                            ci: 1,
+                            co: 1,
+                            kt: 1,
+                            stride: 1,
+                            dilation: 1,
+                            filters,
+                            data,
+                        };
+                        let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
+                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
+                    }
+                }
+            }
+        };
+    }
+
+    pub fn strat_mat_mat_mul<TA: Datum, TB: Datum>(
+    ) -> BoxedStrategy<(usize, usize, usize, Vec<TA>, Vec<TB>)> {
         (1usize..5, 1usize..5, 1usize..5)
             .prop_flat_map(move |(m, k, n)| {
                 (
                     Just(m),
                     Just(k),
                     Just(n),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), m * k),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), n * k),
+                    proptest::collection::vec(TA::strat(), m * k),
+                    proptest::collection::vec(TB::strat(), n * k),
                 )
             })
             .boxed()
     }
 
-    pub fn strat_mat_vec_mul() -> BoxedStrategy<(usize, usize, Vec<f32>, Vec<f32>)> {
-        (1usize..5, 1usize..5)
+    pub fn strat_mat_vec_mul<TA: Datum, TB: Datum>(
+    ) -> BoxedStrategy<(usize, usize, Vec<TA>, Vec<TB>)> {
+        (1usize..15, 1usize..15)
             .prop_flat_map(move |(m, k)| {
                 (
                     Just(m),
                     Just(k),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), m * k),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), k),
+                    proptest::collection::vec(TA::strat(), m * k),
+                    proptest::collection::vec(TB::strat(), k),
                 )
             })
             .boxed()
     }
 
-    pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
+    pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
@@ -495,10 +578,10 @@ pub mod test {
         b: &[TB],
     ) -> Result<(), proptest::test_runner::TestCaseError>
     where
-        TA: Copy + Zero + Debug + AsPrimitive<f64> + AsPrimitive<TI>,
-        TB: Copy + Zero + Debug + AsPrimitive<f64> + AsPrimitive<TI>,
-        TC: Copy + Zero + Debug + fmt::Display + PartialEq + Bounded + 'static + AsPrimitive<f32>,
-        TI: Copy + Add + Mul<Output = TI> + Zero + Debug + fmt::Display + 'static + AsPrimitive<TC>,
+        TA: Datum + AsPrimitive<TI> + 'static,
+        TB: Datum + AsPrimitive<TI> + 'static,
+        TC: Datum + 'static,
+        TI: Datum + AsPrimitive<TC> + 'static,
     {
         let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
         unsafe {
@@ -524,61 +607,71 @@ pub mod test {
                     expected[x + y * n] = v.as_();
                 }
             }
-
-            proptest::prop_assert!(
-                found.iter().zip(expected.iter()).all(|(&a, &b)| (a.as_() - b.as_()).abs() < 0.001),
-                "found: {:?} expected: {:?}",
-                found,
-                expected
-            );
+            crate::test::check_close(&*found, &*expected)
         }
-        Ok(())
     }
 
-    pub fn test_mat_vec_mul_prep<K: MatMatMulKer<f32, f32, f32, f32>>(
+    pub fn test_mat_vec_mul_prep<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
-        a: &[f32],
-        b: &[f32],
-    ) -> Result<(), proptest::test_runner::TestCaseError> {
+        a: &[TA],
+        b: &[TB],
+    ) -> Result<(), proptest::test_runner::TestCaseError>
+    where
+        TA: Datum + AsPrimitive<TI> + 'static,
+        TB: Datum + AsPrimitive<TI> + 'static,
+        TC: Datum + 'static,
+        TI: Datum + AsPrimitive<TC> + 'static,
+    {
         unsafe {
-            let mut op = MatMatMulImpl::<K, f32, f32, f32, f32>::new(m, k, 1);
+            let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, 1);
             op.b_vec_from_data_and_stride(1);
             op.c_vec_from_data_and_stride(1);
             let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
             op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
 
-            let mut found = vec![9999.0f32; m];
+            let mut found = vec![TC::zero(); m];
 
             op.run(packed_a.as_ptr(), b.as_ptr(), found.as_mut_ptr(), &[]);
 
-            let mut expected = vec![0.0f32; m];
+            let mut expected = vec![TC::zero(); m];
             for y in 0..m {
+                let mut inter = TI::zero();
                 for i in 0..k {
-                    expected[y] += a[i + k * y] * b[i]
+                    let a: TI = a[i + k * y].as_();
+                    let b: TI = b[i].as_();
+                    inter = inter + a * b;
                 }
+                expected[y] = inter.as_();
             }
 
-            proptest::prop_assert!(
-                found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
-                "found: {:?} expected: {:?}",
-                found,
-                expected
-            );
+            crate::test::check_close(&*found, &*expected)
         }
-        Ok(())
     }
 
-    pub unsafe fn fused_op<K: MatMatMulKer<f32, f32, f32, f32>, F: Fn(&mut [f32])>(
+    pub unsafe fn fused_op<
+        K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+        TA,
+        TB,
+        TC,
+        TI,
+        F: Fn(&mut [TI]),
+    >(
         m: usize,
         k: usize,
         n: usize,
-        spec: &[FusedSpec<f32>],
+        spec: &[FusedSpec<TI>],
         expect: F,
-    ) -> proptest::test_runner::TestCaseResult {
-        let a = vec![1.0f32; m * k];
-        let b = vec![1.0f32; n * k];
-        let op = MatMatMulImpl::<K, f32, f32, f32, f32>::new(m, k, n);
+    ) -> proptest::test_runner::TestCaseResult
+    where
+        TA: Datum + AsPrimitive<TI>,
+        TB: Datum + AsPrimitive<TI>,
+        TC: Datum,
+        TI: Datum + AsPrimitive<TC>,
+    {
+        let a = vec![TA::one(); m * k];
+        let b = vec![TB::one(); n * k];
+        let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
 
         let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
         op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
@@ -586,36 +679,40 @@ pub mod test {
         let mut packed_b = Buffer::uninitialized(op.b_pack().len(), op.b_pack().alignment());
         op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
-        let mut found = vec![9999.0f32; m * n];
+        let mut found = vec![TC::zero(); m * n];
 
         op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), spec);
 
-        let mut expected = vec![0.0f32; m * n];
+        let mut inter = vec![TI::zero(); m * n];
         for x in 0..n {
             for y in 0..m {
+                let mut s = TI::zero();
                 for i in 0..k {
-                    expected[x + y * n] += a[i + k * y] * b[x + i * n]
+                    s += a[i + k * y].as_() * b[x + i * n].as_()
                 }
+                inter[x + y * n] = s;
             }
         }
-        expect(&mut expected);
+        expect(&mut inter);
+        let expected: Vec<TC> = inter.into_iter().map(|i| i.as_()).collect();
 
-        proptest::prop_assert!(
-            found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
-            "found: {:?} expected: {:?}",
-            found,
-            expected
-        );
-        Ok(())
+        crate::test::check_close(&*found, &*expected)
     }
 
-    pub unsafe fn row_add<K: MatMatMulKer<f32, f32, f32, f32>>(
+    pub unsafe fn row_add<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
-    ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
-        fused_op::<K, _>(m, k, n, &[FusedSpec::PerRowAdd(bias.clone())], |exp| {
+    ) -> proptest::test_runner::TestCaseResult
+    where
+        TA: Datum + AsPrimitive<TI>,
+        TB: Datum + AsPrimitive<TI>,
+        TC: Datum,
+        TI: Datum + AsPrimitive<TC>,
+        usize: AsPrimitive<TI>,
+    {
+        let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
+        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerRowAdd(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
                     exp[x + y * n] += bias[y]
@@ -624,13 +721,20 @@ pub mod test {
         })
     }
 
-    pub unsafe fn row_mul<K: MatMatMulKer<f32, f32, f32, f32>>(
+    pub unsafe fn row_mul<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
-    ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
-        fused_op::<K, _>(m, k, n, &[FusedSpec::PerRowMul(bias.clone())], |exp| {
+    ) -> proptest::test_runner::TestCaseResult
+    where
+        TA: Datum + AsPrimitive<TI>,
+        TB: Datum + AsPrimitive<TI>,
+        TC: Datum,
+        TI: Datum + AsPrimitive<TC>,
+        usize: AsPrimitive<TI>,
+    {
+        let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
+        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerRowMul(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
                     exp[x + y * n] *= bias[y]
@@ -639,13 +743,20 @@ pub mod test {
         })
     }
 
-    pub unsafe fn col_add<K: MatMatMulKer<f32, f32, f32, f32>>(
+    pub unsafe fn col_add<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
-    ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
-        fused_op::<K, _>(m, k, n, &[FusedSpec::PerColAdd(bias.clone())], |exp| {
+    ) -> proptest::test_runner::TestCaseResult
+    where
+        TA: Datum + AsPrimitive<TI>,
+        TB: Datum + AsPrimitive<TI>,
+        TC: Datum,
+        TI: Datum + AsPrimitive<TC>,
+        usize: AsPrimitive<TI>,
+    {
+        let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
+        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColAdd(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
                     exp[x + y * n] += bias[x]
@@ -654,13 +765,20 @@ pub mod test {
         })
     }
 
-    pub unsafe fn col_mul<K: MatMatMulKer<f32, f32, f32, f32>>(
+    pub unsafe fn col_mul<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
-    ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
-        fused_op::<K, _>(m, k, n, &[FusedSpec::PerColMul(bias.clone())], |exp| {
+    ) -> proptest::test_runner::TestCaseResult
+    where
+        TA: Datum + AsPrimitive<TI>,
+        TB: Datum + AsPrimitive<TI>,
+        TC: Datum,
+        TI: Datum + AsPrimitive<TC>,
+        usize: AsPrimitive<TI>,
+    {
+        let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
+        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColMul(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
                     exp[x + y * n] *= bias[x]
@@ -669,28 +787,44 @@ pub mod test {
         })
     }
 
-    pub unsafe fn max<K: MatMatMulKer<f32, f32, f32, f32>>(
+    pub unsafe fn max<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
-    ) -> proptest::test_runner::TestCaseResult {
-        fused_op::<K, _>(m, k, n, &[FusedSpec::Max(5f32)], |exp| {
-            exp.iter_mut().for_each(|x| *x = x.max(5f32))
+    ) -> proptest::test_runner::TestCaseResult
+    where
+        TA: Datum + AsPrimitive<TI>,
+        TB: Datum + AsPrimitive<TI>,
+        TC: Datum,
+        TI: Datum + AsPrimitive<TC>,
+        usize: AsPrimitive<TI>,
+    {
+        let five: TI = 5.as_();
+        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::Max(five)], |exp| {
+            exp.iter_mut().for_each(|x| *x = if *x < five { five } else { *x })
         })
     }
 
-    pub unsafe fn min<K: MatMatMulKer<f32, f32, f32, f32>>(
+    pub unsafe fn min<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
         m: usize,
         k: usize,
         n: usize,
-    ) -> proptest::test_runner::TestCaseResult {
-        fused_op::<K, _>(m, k, n, &[FusedSpec::Min(1f32)], |exp| {
-            exp.iter_mut().for_each(|x| *x = x.min(1f32))
+    ) -> proptest::test_runner::TestCaseResult
+    where
+        TA: Datum + AsPrimitive<TI>,
+        TB: Datum + AsPrimitive<TI>,
+        TC: Datum,
+        TI: Datum + AsPrimitive<TC>,
+        usize: AsPrimitive<TI>,
+    {
+        let five: TI = 5.as_();
+        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::Min(five)], |exp| {
+            exp.iter_mut().for_each(|x| *x = if *x > five { five } else { *x })
         })
     }
 
     #[derive(Clone, Debug)]
-    pub struct ConvProblem<TA, TB> {
+    pub struct ConvProblem<TA: Datum, TB: Datum> {
         pub ci: usize,
         pub co: usize,
         pub kt: usize,
@@ -700,11 +834,7 @@ pub mod test {
         pub data: Vec<TB>,
     }
 
-    impl<TA, TB> ConvProblem<TA, TB>
-    where
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq,
-    {
+    impl<TA: Datum, TB: Datum> ConvProblem<TA, TB> {
         pub fn kernel_field(&self) -> usize {
             self.dilation * (self.kt - 1) + 1
         }
@@ -737,13 +867,14 @@ pub mod test {
                 .collect()
         }
 
-        pub fn expected<TC>(&self) -> Vec<TC>
+        pub fn expected<TC, TI>(&self) -> Vec<TC>
         where
-            TC: Copy + Add + Mul<Output = TC> + Zero + Debug + fmt::Display + PartialEq + 'static,
-            TA: AsPrimitive<TC>,
-            TB: AsPrimitive<TC>,
+            TA: Datum + AsPrimitive<TI>,
+            TB: Datum + AsPrimitive<TI>,
+            TC: Datum,
+            TI: Datum + AsPrimitive<TC>,
         {
-            let mut expect = vec![TC::zero(); self.co * self.output_width()];
+            let mut expect = vec![TI::zero(); self.co * self.output_width()];
             for x in 0..self.output_width() {
                 for ico in 0..self.co {
                     for ikt in 0..self.kt {
@@ -752,18 +883,18 @@ pub mod test {
                             let d = self.data
                                 [x * self.stride + ikt * self.dilation + ici * self.input_width()];
                             let ref mut pv = expect[x + ico * self.output_width()];
-                            *pv = *pv + f.as_() * d.as_();
+                            *pv += f.as_() * d.as_();
                         }
                     }
                 }
             }
-            expect
+            expect.into_iter().map(|ti| ti.as_()).collect()
         }
 
         pub fn run<K: MatMatMulKer<TA, TB, TC, TI>, TC, TI>(&self) -> Vec<TC>
         where
-            TI: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Default,
-            TC: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + Bounded,
+            TI: Datum,
+            TC: Datum,
         {
             unsafe {
                 let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(self.m(), self.k(), self.n());
@@ -784,10 +915,8 @@ pub mod test {
         }
     }
 
-    pub fn strat_conv_1d<TA, TB>() -> BoxedStrategy<ConvProblem<TA, TB>>
+    pub fn strat_conv_1d<TA: Datum, TB: Datum>() -> BoxedStrategy<ConvProblem<TA, TB>>
     where
-        TA: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + 'static,
-        TB: Copy + Add + Mul + Zero + Debug + fmt::Display + PartialEq + 'static,
         isize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         (1usize..40, 1usize..40, 1usize..10, 1usize..5, 1usize..5)
@@ -802,8 +931,8 @@ pub mod test {
                     Just(kt),
                     Just(stride),
                     Just(dilation),
-                    proptest::collection::vec((-10isize..10).prop_map(|a| a.as_()), ci * co * kt),
-                    proptest::collection::vec((-10isize..10).prop_map(|a| a.as_()), t * ci),
+                    proptest::collection::vec(TA::strat(), ci * co * kt),
+                    proptest::collection::vec(TB::strat(), t * ci),
                 )
             })
             .prop_map(move |(ci, co, kt, stride, dilation, filters, data)| ConvProblem {

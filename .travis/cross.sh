@@ -4,7 +4,6 @@ set -ex
 
 export DEBIAN_FRONTEND=noninteractive
 
-
 if [ `whoami` != "root" ]
 then
     SUDO=sudo
@@ -19,7 +18,11 @@ then
         $SUDO apt-get -y upgrade
         $SUDO apt-get install -y unzip wget curl python awscli build-essential
     fi
+else
+    brew install coreutils
 fi
+
+ROOT=$(dirname $(dirname $(realpath $0)))
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
@@ -31,11 +34,12 @@ if [ `uname` = "Darwin" ]
 then
     NAME=macos
 else
-    NAME=travis
+    NAME=linux
 fi
-wget -q https://github.com/snipsco/dinghy/releases/download/0.4.16/cargo-dinghy-$NAME.tgz -O cargo-dinghy.tgz
+VERSION=0.4.38
+wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
 tar vzxf cargo-dinghy.tgz --strip-components 1
-mv /tmp/cargo-dinghy/cargo-dinghy $HOME/.cargo/bin
+mv cargo-dinghy $HOME/.cargo/bin
 )
 
 case "$PLATFORM" in
@@ -45,7 +49,7 @@ case "$PLATFORM" in
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > $HOME/.dinghy.toml
-        cargo dinghy --platform $PLATFORM build --release -p tract
+        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
     ;;
 
@@ -107,6 +111,7 @@ case "$PLATFORM" in
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
+                export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
             ;;
             *)
                 echo "unsupported platform $PLATFORM"
@@ -116,20 +121,28 @@ case "$PLATFORM" in
 
         export TARGET_CC=$DEBIAN_TRIPLE-gcc
 
-        echo "[platforms.$PLATFORM]\ndeb_multiarch='$DEBIAN_TRIPLE'\nrustc_triple='$RUSTC_TRIPLE'" > $HOME/.dinghy.toml
-        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$HOME/qemu-$ARCH'" >> $HOME/.dinghy.toml
+        mkdir -p $ROOT/target/$RUSTC_TRIPLE
+        echo "[platforms.$PLATFORM]\ndeb_multiarch='$DEBIAN_TRIPLE'\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
+        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
 
-        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $HOME/qemu-$ARCH
-        chmod +x $HOME/qemu-$ARCH
+        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu
+        chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu
 
         $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
-        cargo dinghy --platform $PLATFORM test --release -p tract-linalg -- --nocapture
-        cargo dinghy --platform $PLATFORM test --release -p tract-core
-        cargo dinghy --platform $PLATFORM build --release -p tract
+        cargo dinghy --platform $PLATFORM test --release -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
+        cargo dinghy --platform $PLATFORM test --release -p tract-core $DINGHY_TEST_ARGS
+        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
     ;;
+    "wasm32-unknown-unknown")
+        rustup target add wasm32-unknown-unknown
+        cargo check --target wasm32-unknown-unknown -p tract-onnx -p tract-tensorflow
+    ;;
     *)
+        echo "Don't know what to do for platform: $PLATFORM"
+        exit 2
+    ;;
 esac
 
 if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]

@@ -8,7 +8,8 @@ use crate::ops::nn::DataShape;
 
 use num_traits::Zero;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
 pub struct Im2Col<T: Copy + Datum + Zero> {
     pub patch: Patch,
     pub input_shape: DataShape,
@@ -20,7 +21,13 @@ pub struct Im2Col<T: Copy + Datum + Zero> {
     pub ci_per_group: usize,
     pub b_pack: PackB<T>,
     patcher: Patcher,
-    pad_value: T,
+    pad_value: Tensor,
+}
+
+impl<T: Copy + Datum + Zero> DynHash for Im2Col<T> {
+    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        tract_linalg::hash::dyn_hash(self, state)
+    }
 }
 
 impl<T: Copy + Datum + Zero> PartialEq for Im2Col<T> {
@@ -31,6 +38,7 @@ impl<T: Copy + Datum + Zero> PartialEq for Im2Col<T> {
             && self.k == other.k
             && self.group == other.group
             && self.b_pack == other.b_pack
+            && self.pad_value == other.pad_value
     }
 }
 
@@ -45,7 +53,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
         ci_per_group: usize,
         b_pack: PackB<T>,
         pad_value: T,
-    ) -> Im2Col<T> {
+    ) -> TractResult<Im2Col<T>> {
         let patcher = if !patch.padded && patch.rank() == 2 {
             Patcher::Valid2d
         } else if patch.rank() == 2 {
@@ -55,9 +63,13 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
         } else {
             Patcher::Generic
         };
-        let output_shape =
-            input_shape.fmt.shape(tvec!(*input_shape.n_dim().unwrap_or(&1), group, b_pack.len()));
-        Im2Col {
+        let output_shape = input_shape.fmt.shape(tvec!(
+            *input_shape.n_dim().unwrap_or(&1),
+            group,
+            b_pack.len()
+        ))?;
+        let pad_value = tensor0(pad_value);
+        Ok(Im2Col {
             patch,
             input_shape,
             output_shape,
@@ -69,7 +81,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
             b_pack,
             patcher,
             pad_value,
-        }
+        })
     }
 
     pub fn output_shape(&self) -> &[usize] {
@@ -80,6 +92,10 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
         let mut packed = unsafe {
             Tensor::uninitialized_aligned::<T>(&*self.output_shape.shape, self.b_pack.alignment())?
         };
+        if self.output_shape.shape.iter().any(|d| d.is_zero()) {
+            return Ok(packed);
+        }
+        let pad_value = *self.pad_value.to_scalar()?;
         for i in 0..*self.input_shape.n_dim().unwrap_or(&1) {
             for g in 0..self.group {
                 let mut packed = packed.to_array_view_mut::<T>()?;
@@ -90,7 +106,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
                 } else {
                     input.view()
                 };
-                self.patcher.patch(self, &input, packed.as_slice_mut().unwrap(), g, self.pad_value);
+                self.patcher.patch(self, &input, packed.as_slice_mut().unwrap(), g, pad_value);
             }
         }
         Ok(packed)
@@ -99,7 +115,7 @@ impl<T: Copy + Datum + Zero> Im2Col<T> {
 
 impl<T: Copy + Datum + Zero> Op for Im2Col<T> {
     fn name(&self) -> Cow<str> {
-        "Conv::Im2col".into()
+        "Im2col".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -111,12 +127,16 @@ impl<T: Copy + Datum + Zero> Op for Im2Col<T> {
         )])
     }
 
+    op_core_lir!();
     impl_op_same_as!();
     op_as_typed_op!();
-    not_a_pulsed_op!();
 }
 
-impl<T: Copy + Datum + Zero> StatelessOp for Im2Col<T> {
+impl<T: Copy + Datum + Zero> EvalOp for Im2Col<T> {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let tensor = self.im2col(&inputs[0].to_array_view()?)?;
         Ok(tvec!(tensor.into()))
@@ -124,14 +144,14 @@ impl<T: Copy + Datum + Zero> StatelessOp for Im2Col<T> {
 }
 
 impl<T: Copy + Datum + Zero> TypedOp for Im2Col<T> {
-    typed_op_as_op!();
+    as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash)]
 enum Patcher {
     Generic,
     Valid1d,

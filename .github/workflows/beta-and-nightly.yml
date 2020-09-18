@@ -1,0 +1,22 @@
+name: Beta and nightly Rust
+
+on:
+  push:
+  schedule:
+    - cron:  '0 5 * * *'
+
+jobs:
+  linux:
+    strategy:
+      matrix:
+        rust: [ beta, nightly ]
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Native script
+      env:
+        RUST_VERSION: ${{matrix.rust}}
+      run: .travis/native.sh

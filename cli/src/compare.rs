@@ -7,7 +7,7 @@ use ansi_term::Color::*;
 use log::Level::Info;
 use tract_core::internal::*;
 
-use crate::display_graph::DisplayOptions;
+use crate::display_params::DisplayParams;
 use crate::*;
 
 #[cfg(feature = "conform")]
@@ -15,7 +15,7 @@ pub fn handle_tensorflow(
     cumulative: bool,
     resilient: bool,
     params: &mut Parameters,
-    output_params: DisplayOptions,
+    output_params: DisplayParams,
 ) -> CliResult<()> {
     let tract = &params.tract_model;
     let mut tf = params.tf_model.take().unwrap();
@@ -23,7 +23,7 @@ pub fn handle_tensorflow(
     let input_facts = tract
         .input_outlets()
         .iter()
-        .map(|&i| Ok(tract.outlet_tensorfact(i)))
+        .map(|&i| tract.outlet_typedfact(i))
         .collect::<TractResult<Vec<_>>>()?;
     let generated = crate::tensor::make_inputs(&*input_facts)?;
 
@@ -84,7 +84,7 @@ pub fn handle_npz(
     cumulative: bool,
     npz: &str,
     params: &Parameters,
-    output_params: DisplayOptions,
+    output_params: &DisplayParams,
 ) -> CliResult<()> {
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
     let mut values = HashMap::new();
@@ -108,7 +108,7 @@ pub fn handle_pbdir(
     cumulative: bool,
     pbdir: &str,
     params: &Parameters,
-    output_params: DisplayOptions,
+    output_params: &DisplayParams,
 ) -> CliResult<()> {
     let mut values: HashMap<String, CliResult<Tensor>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
@@ -127,17 +127,51 @@ pub fn handle_pbdir(
     ))
 }
 
-pub fn compare<TI, O>(
+pub fn handle_reference_stage(
     cumulative: bool,
-    tract: &ModelImpl<TI, O>,
+    params: &Parameters,
+    output_params: &DisplayParams,
+) -> CliResult<()> {
+    let reference_model =
+        params.reference_model.as_ref().ok_or("No reference model. need --with ?")?;
+    let reference_model = reference_model
+        .downcast_ref::<TypedModel>()
+        .ok_or("Only work with a typed reference model")?;
+    let mut values: HashMap<String, CliResult<Tensor>> = HashMap::new();
+
+    let plan = SimplePlan::new(reference_model)?;
+    let mut state = SimpleState::new(plan)?;
+    let input_facts = reference_model
+        .input_outlets()?
+        .iter()
+        .map(|&i| reference_model.outlet_fact(i))
+        .collect::<TractResult<Vec<_>>>()?;
+    let generated = crate::tensor::make_inputs(&*input_facts)?;
+    state.run_plan_with_eval(generated.clone(), |session, state, node, input| {
+        let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
+        values.insert(node.name.clone(), Ok(result[0].as_ref().clone()));
+        Ok(result)
+    })?;
+    dispatch_model_no_pulse!(params.tract_model, |m| compare(
+        cumulative,
+        m,
+        &values,
+        params,
+        output_params
+    ))
+}
+
+pub fn compare<F, O>(
+    cumulative: bool,
+    tract: &Graph<F, O>,
     all_values: &HashMap<String, CliResult<Tensor>>,
     params: &Parameters,
-    output_params: DisplayOptions,
+    output_params: &DisplayParams,
 ) -> CliResult<()>
 where
-    TI: Fact + Clone + for<'a> From<&'a Tensor>,
-    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
-    ModelImpl<TI, O>: Model,
+    F: Fact + Clone + for<'a> From<&'a Tensor> + Hash,
+    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + Hash,
+    Graph<F, O>: Model,
 {
     let eval_order = ::tract_core::model::eval_order(&tract)?;
 
@@ -151,11 +185,8 @@ where
         state.set_input(ix, value.clone())?;
     }
 
-    let mut display_graph = crate::display_graph::DisplayGraph::from_model_and_options(
-        tract as &dyn Model,
-        output_params.into(),
-    )?
-    .with_graph_def(&params.graph)?;
+    let mut annotations = crate::annotations::Annotations::from_model(tract as &dyn Model)?
+        .with_graph_def(tract, &params.graph)?;
 
     let mut failing = vec![];
     let mut ok = 0;
@@ -164,14 +195,16 @@ where
         let node = &tract.nodes()[n];
         let mut ok_node = true;
 
+        let mut tags = annotations.node_mut(n.into());
+
         if tract.input_outlets()?.iter().any(|o| o.node == n) {
-            display_graph.set_node_color(n, Blue)?;
+            tags.style = Some(Blue.into());
         } else if node.op().validation() == Validation::Random {
-            display_graph.set_node_color(n, Blue)?;
-            display_graph.add_node_label(&[n], Blue.paint("Random").to_string())?;
+            tags.style = Some(Blue.into());
+            tags.labels.push(Blue.paint("Random").to_string());
         } else if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
-            display_graph.set_node_color(n, Red)?;
-            display_graph.add_node_label(&[n], Red.paint("Unimplemented").to_string())?;
+            tags.style = Some(Red.into());
+            tags.labels.push(Red.paint("Unimplemented").to_string());
             failing.push(n);
         } else {
             debug!("Computing {} in tract", node);
@@ -187,14 +220,12 @@ where
                 .collect::<Vec<_>>();
             if let Some(e) = error {
                 failing.push(n);
-                display_graph.set_node_color(n, Red.bold())?;
-                display_graph
-                    .add_node_label(&[n], format!("{}: {}", Red.bold().paint("ERROR"), e))?;
+                tags.style = Some(Red.into());
+                tags.labels.push(format!("{}: {}", Red.bold().paint("ERROR"), e));
             } else {
                 for ix in 0..node.outputs.len() {
-                    if let Some(ref_value) =
-                        tract.outlet_label(OutletId::new(n, ix)).and_then(|lbl| all_values.get(lbl))
-                    {
+                    let label = tract.outlet_label((n, ix).into()).unwrap_or(&node.name);
+                    if let Some(ref_value) = all_values.get(label) {
                         match ref_value {
                             Ok(t) => {
                                 let found = &state.values[n].as_ref().unwrap()[ix];
@@ -203,7 +234,7 @@ where
                                 {
                                     failing.push(n);
                                     ok_node = false;
-                                    display_graph.set_node_color(n, Red.bold())?;
+                                    tags.style = Some(Red.bold());
                                     let mut msg = vec![Red
                                         .bold()
                                         .paint(format!("Wrong value for output {}, {}", ix, e))
@@ -211,7 +242,7 @@ where
                                     msg.push(format!("got     : {:?}", found));
                                     msg.push(format!("ref     : {:?}", t));
                                     msg.push(format!("check   : {:?}", node.op().validation()));
-                                    display_graph.add_node_section(&[n], msg)?;
+                                    tags.sections.push(msg);
                                 }
                                 if !cumulative {
                                     // Use the output from reference to keep tract from drifting.
@@ -222,25 +253,19 @@ where
                             Err(e) => {
                                 failing.push(n);
                                 ok_node = false;
-                                display_graph.set_node_color(n, Red.bold())?;
-                                display_graph.add_node_label(
-                                    &[n],
-                                    format!("{}: {}", Red.bold().paint("ERROR"), e),
-                                )?;
+                                tags.style = Some(Red.bold());
+                                tags.labels.push(format!("{}: {}", Red.bold().paint("ERROR"), e));
                             }
                         }
                     } else {
                         ok_node = false;
-                        display_graph.set_node_color(n, Yellow.bold())?;
-                        display_graph.add_node_label(
-                            &[n],
-                            Yellow.paint("Not matched against reference").to_string(),
-                        )?;
+                        tags.style = Some(Yellow.bold());
+                        tags.labels.push(Yellow.paint("Not matched against reference").to_string());
                     }
                 }
-                display_graph.add_node_section(&[n], inputs)?;
+                tags.sections.push(inputs);
                 if ok_node {
-                    display_graph.set_node_color(n, Green.bold())?;
+                    tags.style = Some(Green.bold());
                     ok += 1;
                 }
             }
@@ -248,10 +273,10 @@ where
     }
 
     if log_enabled!(Info) {
-        display_graph.render()?;
+        terminal::render(tract, &annotations, &output_params)?;
     } else {
         for f in &failing {
-            display_graph.render_node(*f)?;
+            terminal::render_node(tract, *f, &annotations, &output_params)?;
         }
     }
 

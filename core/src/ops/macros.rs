@@ -1,5 +1,5 @@
 #[macro_export]
-macro_rules! inference_op_as_op {
+macro_rules! as_op {
     () => {
         fn as_op(&self) -> &dyn Op {
             self
@@ -8,42 +8,7 @@ macro_rules! inference_op_as_op {
         fn as_op_mut(&mut self) -> &mut dyn Op {
             self
         }
-    }
-}
-
-#[macro_export]
-macro_rules! typed_op_as_op {
-    () => {
-        fn as_op(&self) -> &dyn Op {
-            self
-        }
-
-        fn as_op_mut(&mut self) -> &mut dyn Op {
-            self
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! pulsed_op_as_op {
-    () => {
-        fn as_op(&self) -> &dyn Op {
-            self
-        }
-
-        fn as_op_mut(&mut self) -> &mut dyn Op {
-            self
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! pulsed_op_to_typed_op {
-    () => {
-        fn to_typed(&self) -> Box<dyn TypedOp> {
-            $crate::dyn_clone::clone_box(self)
-        }
-    }
+    };
 }
 
 #[macro_export]
@@ -52,7 +17,7 @@ macro_rules! op_as_typed_op {
         fn as_typed(&self) -> Option<&dyn TypedOp> {
             Some(self)
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -61,50 +26,43 @@ macro_rules! not_a_typed_op {
         fn as_typed(&self) -> Option<&dyn TypedOp> {
             None
         }
-    }
+    };
 }
 
 #[macro_export]
-macro_rules! op_as_pulsed_op {
+macro_rules! op_core {
     () => {
-        fn as_pulsed(&self) -> Option<&dyn PulsedOp> {
-            Some(self)
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core"]
         }
-    }
+    };
 }
 
 #[macro_export]
-macro_rules! not_a_pulsed_op {
+macro_rules! op_core_mir {
     () => {
-        fn as_pulsed(&self) -> Option<&dyn PulsedOp> {
-            None
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core", "mir"]
         }
-    }
+    };
 }
 
 #[macro_export]
-macro_rules! canonic {
+macro_rules! op_core_lir {
     () => {
-        fn is_canonic(&self) -> bool {
-            true
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core", "lir"]
         }
-    }
+    };
 }
 
 #[macro_export]
-macro_rules! to_typed {
+macro_rules! op_core_lir_mir {
     () => {
-        fn to_typed(
-            &self,
-            _source: &InferenceModel,
-            node: &InferenceNode,
-            target: &mut TypedModel,
-            mapping: &HashMap<OutletId, OutletId>,
-        ) -> TractResult<TVec<OutletId>> {
-            let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
-            target.wire_node(&*node.name, self.clone(), &*inputs)
+        fn op_families(&self) -> &'static [&'static str] {
+            &["core", "lir", "mir"]
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -251,46 +209,6 @@ macro_rules! args_8 {
     }};
 }
 
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! boxed_new {
-    ($op:tt($dtype:expr)($($arg:expr),*)) => { {
-        use $crate::datum::DatumType;
-        match $dtype {
-            DatumType::I32 => Box::new($op::<i32>::new($($arg),*)) as _,
-            DatumType::F32 => Box::new($op::<f32>::new($($arg),*)) as _,
-            DatumType::F64 => Box::new($op::<f64>::new($($arg),*)) as _,
-            _ => unimplemented!("missing type")
-        }
-    } }
-}
-
-/// Asserts that forward inference results work as expected.
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! assert_forward {
-    ($op:expr, $input:ident, $output:ident) => {
-        let any = InferenceFact::new();
-        assert_eq!(
-            $op.infer_facts(tvec![&$input], tvec![&any]).unwrap(),
-            (tvec![$input.clone()], tvec![$output])
-        )
-    };
-}
-
-/// Asserts that backward inference results work as expected.
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! assert_backward {
-    ($op:expr, $input:ident, $output:ident) => {
-        let any = InferenceFact::new();
-        assert_eq!(
-            $op.infer_facts(tvec![&any], tvec![&$output]).unwrap(),
-            (tvec![$input], tvec![$output.clone()])
-        )
-    };
-}
-
 #[macro_export]
 macro_rules! dispatch_datum {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
@@ -299,6 +217,8 @@ macro_rules! dispatch_datum {
             DatumType::Bool => $($path)::*::<bool>($($args),*),
             DatumType::U8   => $($path)::*::<u8>($($args),*),
             DatumType::U16  => $($path)::*::<u16>($($args),*),
+            DatumType::U32  => $($path)::*::<u32>($($args),*),
+            DatumType::U64  => $($path)::*::<u64>($($args),*),
             DatumType::I8   => $($path)::*::<i8>($($args),*),
             DatumType::I16  => $($path)::*::<i16>($($args),*),
             DatumType::I32  => $($path)::*::<i32>($($args),*),
@@ -314,6 +234,30 @@ macro_rules! dispatch_datum {
 }
 
 #[macro_export]
+macro_rules! dispatch_datum_by_size {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::datum::DatumType;
+        match $dt {
+            DatumType::Bool => $($path)::*::<i8>($($args),*),
+            DatumType::U8   => $($path)::*::<i8>($($args),*),
+            DatumType::U16  => $($path)::*::<i16>($($args),*),
+            DatumType::U32  => $($path)::*::<i32>($($args),*),
+            DatumType::U64  => $($path)::*::<i64>($($args),*),
+            DatumType::I8   => $($path)::*::<i8>($($args),*),
+            DatumType::I16  => $($path)::*::<i16>($($args),*),
+            DatumType::I32  => $($path)::*::<i32>($($args),*),
+            DatumType::I64  => $($path)::*::<i64>($($args),*),
+            DatumType::F16  => $($path)::*::<i16>($($args),*),
+            DatumType::F32  => $($path)::*::<i32>($($args),*),
+            DatumType::F64  => $($path)::*::<i64>($($args),*),
+            DatumType::Blob => $($path)::*::<Blob>($($args),*),
+            DatumType::TDim => $($path)::*::<TDim>($($args),*),
+            DatumType::String => $($path)::*::<String>($($args),*),
+        }
+    } }
+}
+
+#[macro_export]
 macro_rules! dispatch_copy {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::datum::DatumType;
@@ -321,6 +265,8 @@ macro_rules! dispatch_copy {
             DatumType::Bool => $($path)::*::<bool>($($args),*),
             DatumType::U8   => $($path)::*::<u8>($($args),*),
             DatumType::U16  => $($path)::*::<u16>($($args),*),
+            DatumType::U32  => $($path)::*::<u32>($($args),*),
+            DatumType::U64  => $($path)::*::<u64>($($args),*),
             DatumType::I8   => $($path)::*::<i8>($($args),*),
             DatumType::I16  => $($path)::*::<i16>($($args),*),
             DatumType::I32  => $($path)::*::<i32>($($args),*),
@@ -334,12 +280,36 @@ macro_rules! dispatch_copy {
 }
 
 #[macro_export]
+macro_rules! dispatch_copy_by_size {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::datum::DatumType;
+        match $dt {
+            DatumType::Bool => $($path)::*::<i8>($($args),*),
+            DatumType::U8   => $($path)::*::<i8>($($args),*),
+            DatumType::U16  => $($path)::*::<i16>($($args),*),
+            DatumType::U32  => $($path)::*::<i32>($($args),*),
+            DatumType::U64  => $($path)::*::<i64>($($args),*),
+            DatumType::I8   => $($path)::*::<i8>($($args),*),
+            DatumType::I16  => $($path)::*::<i16>($($args),*),
+            DatumType::I32  => $($path)::*::<i32>($($args),*),
+            DatumType::I64  => $($path)::*::<i64>($($args),*),
+            DatumType::F16  => $($path)::*::<i16>($($args),*),
+            DatumType::F32  => $($path)::*::<i32>($($args),*),
+            DatumType::F64  => $($path)::*::<i64>($($args),*),
+            _ => panic!("{:?} is not Copy", $dt)
+        }
+    } }
+}
+
+#[macro_export]
 macro_rules! dispatch_numbers {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::datum::DatumType;
         match $dt {
             DatumType::U8   => $($path)::*::<u8>($($args),*),
             DatumType::U16  => $($path)::*::<u16>($($args),*),
+            DatumType::U32  => $($path)::*::<u32>($($args),*),
+            DatumType::U64  => $($path)::*::<u64>($($args),*),
             DatumType::I8   => $($path)::*::<i8>($($args),*),
             DatumType::I16  => $($path)::*::<i16>($($args),*),
             DatumType::I32  => $($path)::*::<i32>($($args),*),
@@ -393,7 +363,7 @@ macro_rules! impl_op_same_as {
                 false
             }
         }
-    }
+    };
 }
 
 #[macro_export]

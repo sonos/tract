@@ -1,5 +1,5 @@
 use crate::CliResult;
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 /// Compares the outputs of a node in tract and tensorflow.
 pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> CliResult<()> {

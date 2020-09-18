@@ -1,75 +1,100 @@
-use ndarray::*;
-
 use crate::internal::*;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct ConstantOfShape {
+    shape: TVec<TDim>,
     scalar: Arc<Tensor>,
 }
+
+tract_linalg::impl_dyn_hash!(ConstantOfShape);
 
 impl Op for ConstantOfShape {
     fn name(&self) -> Cow<str> {
         "ConstantOfShape".into()
     }
 
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}", self.scalar)])
-    }
-
-    not_a_typed_op!();
-    not_a_pulsed_op!();
+    op_core!();
+    op_as_typed_op!();
 }
 
-impl StatelessOp for ConstantOfShape {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape = inputs[0].cast_to::<i64>().chain_err(|| TractErrorKind::StreamTensor)?;
-        let shape: TVec<usize> = shape.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
-        Ok(tvec!(dispatch_numbers!(make_from_shape(self.scalar.datum_type())(
-            &shape,
-            &*self.scalar
-        ))?))
-    }
-}
-
-impl InferenceRulesOp for ConstantOfShape {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].datum_type, self.scalar.datum_type())?;
-        s.equals(&inputs[0].rank, 1)?;
-        s.equals(&inputs[0].shape[0], outputs[0].rank.bex().to_dim())?;
-        Ok(())
+impl TypedOp for ConstantOfShape {
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(self.scalar.datum_type(), &*self.shape)?))
     }
 
-    fn to_typed(
+    fn declutter(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
-        target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        if let Some(ref fact) = target.outlet_fact(mapping[&node.inputs[0]])?.konst {
-            let shape = fact.cast_to::<i32>()?;
-            let shape = shape.as_slice::<i32>()?.iter().map(|&s| s as usize).collect::<TVec<_>>();
-            let value =
-                dispatch_copy!(make_from_shape(self.scalar.datum_type())(&*shape, &self.scalar))?;
-            return target.wire_node(&*node.name, crate::ops::konst::Const::new(value), &[]);
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Ok(shape) =
+            self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<Vec<usize>>>()
+        {
+            let tensor = make_tensor(&*shape, &*self.scalar);
+            Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &[],
+                crate::ops::konst::Const::new(tensor),
+            )?))
+        } else {
+            Ok(None)
         }
-        bail!("shape input is variable")
     }
 
-    inference_op_as_op!();
+    as_op!();
 }
 
-fn make_from_shape<T>(shape: &[usize], scalar: &Tensor) -> TractResult<Arc<Tensor>>
-where
-    T: Datum + Copy,
-{
-    Ok(Array::<T, _>::from_elem(&*shape, *scalar.to_scalar()?).into_arc_tensor())
+impl EvalOp for ConstantOfShape {
+    fn eval(
+        &self,
+        _inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let shape:TVec<_> = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
+        Ok(tvec!(make_tensor(&*shape, &self.scalar)))
+    }
+
+    fn is_stateless(&self) -> bool {
+        self.shape.iter().all(|d| d.to_usize().is_ok())
+    }
+
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(ConstantOfShapeState)))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ConstantOfShapeState;
+
+impl OpState for ConstantOfShapeState {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        op: &dyn Op,
+        _inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let op = op.downcast_ref::<ConstantOfShape>().unwrap();
+        let shape = op
+            .shape
+            .iter()
+            .map(|d| Ok(d.eval(&session.resolved_symbols).to_usize()?))
+            .collect::<TractResult<TVec<_>>>()?;
+        Ok(tvec!(make_tensor(&*shape, &op.scalar)))
+    }
+}
+
+pub fn make_tensor(shape: &[usize], scalar: &Tensor) -> Arc<Tensor> {
+    unsafe {
+        let mut t = Tensor::uninitialized_dt(scalar.datum_type(), &*shape).unwrap();
+        unsafe fn init<T: Datum>(t: &mut Tensor, scalar: &Tensor) {
+            let scalar = scalar.to_scalar_unchecked::<T>();
+            t.as_slice_mut_unchecked().iter_mut().for_each(|x| *x = scalar.clone())
+        }
+        dispatch_datum!(init(scalar.datum_type())(&mut t, &scalar));
+        t.into_arc_tensor()
+    }
 }

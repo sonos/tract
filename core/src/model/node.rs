@@ -3,6 +3,7 @@ use crate::ops::Op;
 use itertools::Itertools;
 use std::fmt;
 use std::fmt::{Debug, Display};
+use std::hash::Hash;
 
 /// A Smallvec instantiation with 4 embeddable values.
 ///
@@ -14,9 +15,9 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 ///
 /// Parameterized by a Fact implementation matching the one used in the
 /// model.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct BaseNode<TI: Fact, O> {
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
+pub struct Node<F: Fact + Hash, O: Hash> {
     /// node id in the model
     ///
     /// Caution: this id will not be persistent during networks transformation
@@ -33,19 +34,19 @@ pub struct BaseNode<TI: Fact, O> {
     #[cfg_attr(feature = "serialize", serde(skip))]
     pub op: O,
     /// List of ouputs, with their descendant and tensor type information.
-    pub outputs: TVec<OutletFact<TI>>,
+    pub outputs: TVec<Outlet<F>>,
 }
 
-impl<TI: Fact, O: std::fmt::Display> fmt::Display for BaseNode<TI, O> {
+impl<F: Fact + Hash, O: Hash + std::fmt::Display> fmt::Display for Node<F, O> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op)
     }
 }
 
-pub type Node<TI> = BaseNode<TI, Box<dyn Op>>;
-
-impl<TI: Fact, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op>>
-    BaseNode<TI, NodeOp>
+impl<F, NodeOp> Node<F, NodeOp>
+where
+    F: Fact + Hash,
+    NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<dyn Op> + Hash,
 {
     /// Access the op of the node
     pub fn op(&self) -> &dyn Op {
@@ -68,22 +69,22 @@ impl<TI: Fact, NodeOp: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + AsMut<d
     }
 
     /// Check that this node produce the same outputs as `other`.
-    pub fn same_as(&self, other: &BaseNode<TI, NodeOp>) -> bool {
+    pub fn same_as(&self, other: &Node<F, NodeOp>) -> bool {
         self.inputs == other.inputs && self.op().same_as(other.op())
     }
 }
 
 /// Information for each outlet of a node
-#[derive(Clone, Default)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct OutletFact<TI: Fact> {
+#[derive(Clone, Default, Educe)]
+#[educe(Hash)]
+pub struct Outlet<F: Fact + Hash> {
     /// the tensor type information
-    pub fact: TI,
+    pub fact: F,
     /// where this outlet is used.
     pub successors: TVec<InletId>,
 }
 
-impl<TI: Fact> fmt::Debug for OutletFact<TI> {
+impl<F: Fact + Hash> fmt::Debug for Outlet<F> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,
@@ -99,8 +100,7 @@ impl<TI: Fact> fmt::Debug for OutletFact<TI> {
 /// This happens to be a unique identifier of any variable tensor in the graph
 /// (as the graph typically connect one single node output to one or several
 /// inputs slots)
-#[derive(Clone, Copy, PartialEq, Eq, Hash, new)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, new)]
 pub struct OutletId {
     /// node identifier in the graph
     pub node: usize,
@@ -128,7 +128,6 @@ impl From<(usize, usize)> for OutletId {
 
 /// Identifier for a node input in the graph.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, new, Ord, PartialOrd)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct InletId {
     /// node identifier in the graph
     pub node: usize,

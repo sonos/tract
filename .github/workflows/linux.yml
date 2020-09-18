@@ -3,19 +3,29 @@ name: Native Linux
 on:
   push:
   schedule:
-    - cron:  '0 5 * * *'
+    - cron:  '0 3 * * *'
 
 jobs:
   linux:
     strategy:
       matrix:
-        rust: [ 1.39.0, stable, beta, nightly ]
+        rust: [ 1.41.0, stable ]
 
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v1
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+          .cache
+        key: ${{ runner.os }}-cargo-${{matrix.rust}}
     - name: Native script
-      env:
-        RUST_VERSION: ${{matrix.rust}}
       run: .travis/native.sh
+      env:
+        SHORT: yes
+        RUST_VERSION: ${{matrix.rust}}

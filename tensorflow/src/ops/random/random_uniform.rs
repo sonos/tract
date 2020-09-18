@@ -1,6 +1,6 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_core::internal::*;
+use tract_hir::internal::*;
 
 use super::philox::Philox4x32x10;
 
@@ -21,12 +21,14 @@ pub fn random_uniform_int(
     Ok(Box::new(RandomUniformInt::new(dtype, seed, seed2)))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct RandomUniform {
     t: DatumType,
     seed1: u64,
     seed2: u64,
 }
+
+tract_linalg::impl_dyn_hash!(RandomUniform);
 
 impl Op for RandomUniform {
     fn name(&self) -> Cow<str> {
@@ -41,11 +43,15 @@ impl Op for RandomUniform {
         }
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 
-impl StatelessOp for RandomUniform {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for RandomUniform {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let shape: TVec<usize> =
             inputs[0].cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
@@ -76,7 +82,7 @@ impl InferenceRulesOp for RandomUniform {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,
@@ -99,13 +105,15 @@ impl InferenceRulesOp for RandomUniform {
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct TypedRandomUniform {
     t: DatumType,
     seed1: u64,
     seed2: u64,
     shape: TVec<TDim>,
 }
+
+tract_linalg::impl_dyn_hash!(TypedRandomUniform);
 
 impl Op for TypedRandomUniform {
     fn name(&self) -> Cow<str> {
@@ -120,17 +128,17 @@ impl Op for TypedRandomUniform {
         }
     }
 
+    op_tf!();
     op_as_typed_op!();
 }
 
-impl StatelessOp for TypedRandomUniform {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for TypedRandomUniform {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape = self
-            .shape
-            .iter()
-            .map(|d| Ok(d.to_integer()? as usize))
-            .collect::<TractResult<TVec<_>>>()?;
+        let shape = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
         match self.t {
             DatumType::F32 => Ok(tvec!(make_f32(&*shape, self.seed1, self.seed2)?)),
             dt => bail!("RandomUniform not implemented for {:?}", dt),
@@ -143,7 +151,7 @@ impl TypedOp for TypedRandomUniform {
         Ok(tvec!(TypedFact::dt_shape(self.t, &*self.shape)?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }
 
 pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<Arc<Tensor>> {
@@ -160,12 +168,14 @@ pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<Arc<Tens
     }
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct RandomUniformInt {
     t: DatumType,
     seed1: u64,
     seed2: u64,
 }
+
+tract_linalg::impl_dyn_hash!(RandomUniformInt);
 
 impl RandomUniformInt {
     pub fn make_i32(&self, shape: &[usize], lo: i32, hi: i32) -> TractResult<Arc<Tensor>> {
@@ -196,11 +206,15 @@ impl Op for RandomUniformInt {
         }
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 
-impl StatelessOp for RandomUniformInt {
-    /// Evaluates the operation given the input tensors.
+impl EvalOp for RandomUniformInt {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let shape: TVec<usize> =
             inputs[0].cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
@@ -240,5 +254,5 @@ impl InferenceRulesOp for RandomUniformInt {
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
 }

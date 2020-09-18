@@ -5,10 +5,12 @@ pub fn cast(to: DatumType) -> ElementWiseOp {
     ElementWiseOp(Box::new(Cast { to }))
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Cast {
-    to: DatumType,
+    pub to: DatumType,
 }
+
+tract_linalg::impl_dyn_hash!(Cast);
 
 impl ElementWiseMiniOp for Cast {
     fn name(&self) -> String {

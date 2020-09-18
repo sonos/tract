@@ -9,6 +9,7 @@ use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PaddingSpec::SameUpper as Same;
 use tract_core::ops::cnn::PaddingSpec::Valid;
+use tract_core::ops::{cnn, nn};
 
 fn b(
     c: &mut Criterion,
@@ -23,16 +24,22 @@ fn b(
     padding: PaddingSpec,
 ) {
     let image = Tensor::from(ndarray::Array4::<f32>::zeros((1, h, w, ci)));
-    let kernel = Tensor::from(ndarray::Array4::<f32>::zeros((kh, kw, ci, co)));
-    let conv = tract_core::ops::cnn::Conv::default()
-        .nhwc()
-        .hwio()
-        .kernel_shape(kernel.shape()[0..2].into())
-        .padding(padding)
-        .strides(tvec!(stride, stride));
-    let input_fact: TypedFact = TypedFact::dt_shape(DatumType::F32, image.shape()).unwrap();
-    let kernel_fact: TypedFact = TypedFact::dt_shape(DatumType::F32, kernel.shape()).unwrap();
-    let unary = conv.to_unary(&[&input_fact, &kernel_fact]).unwrap().unwrap();
+    let kernel = Tensor::from(ndarray::Array4::<f32>::zeros((kh, kw, ci, co))).into_arc_tensor();
+    let unary = cnn::ConvUnary {
+        pool_spec: cnn::PoolSpec {
+            data_format: nn::DataFormat::NHWC,
+            kernel_shape: tvec!(kh, kw),
+            padding,
+            dilations: None,
+            strides: Some(tvec!(stride, stride)),
+            output_channel_override: None,
+        },
+        kernel_fmt: cnn::KernelFormat::HWIO,
+        kernel,
+        group: 1,
+        bias: None,
+        q_params: None,
+    };
 
     let mut m = TypedModel::default();
     let wire = m
@@ -44,8 +51,7 @@ fn b(
     let im2col = m.node(1).op_as::<Im2Col<f32>>().unwrap();
     let args = tvec!(image.into());
     c.bench_function(name, move |b| {
-        let ref op = im2col.as_stateless().unwrap();
-        b.iter(|| op.eval(args.clone()).unwrap())
+        b.iter(|| im2col.eval(args.clone()).unwrap())
     });
 }
 

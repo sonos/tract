@@ -1,7 +1,8 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
 use std::hash::Hash;
-use tract_core::internal::*;
+use tract_hir::internal::*;
+use tract_hir::tract_core::itertools::Itertools;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("CategoryMapper", category_mapper);
@@ -21,30 +22,51 @@ fn category_mapper(
             (default_int, default_string)
         ),
         (Some(def), None) => {
-            Box::new(CategoryMapper::new(itertools::zip(strings, ints).collect(), def))
+            Box::new(CategoryMapper::new(tract_itertools::zip(strings, ints).collect(), def))
         }
-        (None, Some(def)) => {
-            Box::new(CategoryMapper::new(itertools::zip(ints, strings).collect(), def.to_string()))
-        }
+        (None, Some(def)) => Box::new(CategoryMapper::new(
+            tract_itertools::zip(ints, strings).collect(),
+            def.to_string(),
+        )),
     };
     Ok((op, vec![]))
 }
 
 #[derive(Clone, new, Debug)]
-struct CategoryMapper<Src: Datum + Hash + Eq, Dst: Datum> {
+struct CategoryMapper<Src: Datum + Hash + Eq, Dst: Datum + Hash> {
     hash: HashMap<Src, Dst>,
     default: Dst,
 }
 
-impl<Src: Datum + Hash + Eq, Dst: Datum> Op for CategoryMapper<Src, Dst> {
+impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> DynHash for CategoryMapper<Src, Dst> {
+    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
+        tract_linalg::hash::dyn_hash(self, hasher)
+    }
+}
+
+impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> Hash for CategoryMapper<Src, Dst> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.hash.iter().sorted_by_key(|s| s.0).for_each(|v| std::hash::Hash::hash(&v, state));
+        std::hash::Hash::hash(&self.default, state)
+    }
+}
+
+impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> Op for CategoryMapper<Src, Dst> {
     fn name(&self) -> Cow<str> {
-        format!("onnx-ml.CategoryMapper<{:?},{:?}>", Src::datum_type(), Dst::datum_type()).into()
+        format!("CategoryMapper<{:?},{:?}>", Src::datum_type(), Dst::datum_type()).into()
     }
 
+    fn op_families(&self) -> &'static [&'static str] {
+        &["onnx-ml"]
+    }
     op_as_typed_op!();
 }
 
-impl<Src: Datum + Hash + Eq, Dst: Datum> StatelessOp for CategoryMapper<Src, Dst> {
+impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> EvalOp for CategoryMapper<Src, Dst> {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let input = input.to_array_view::<Src>()?;
@@ -53,7 +75,9 @@ impl<Src: Datum + Hash + Eq, Dst: Datum> StatelessOp for CategoryMapper<Src, Dst
     }
 }
 
-impl<Src: Datum + Hash + Eq, Dst: Datum> InferenceRulesOp for CategoryMapper<Src, Dst> {
+impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> InferenceRulesOp
+    for CategoryMapper<Src, Dst>
+{
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -68,14 +92,14 @@ impl<Src: Datum + Hash + Eq, Dst: Datum> InferenceRulesOp for CategoryMapper<Src
         Ok(())
     }
 
-    inference_op_as_op!();
+    as_op!();
     to_typed!();
 }
 
-impl<Src: Datum + Hash + Eq, Dst: Datum> TypedOp for CategoryMapper<Src, Dst> {
+impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> TypedOp for CategoryMapper<Src, Dst> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(Dst::datum_type(), inputs[0].shape.clone())?))
     }
 
-    typed_op_as_op!();
+    as_op!();
 }

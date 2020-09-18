@@ -1,6 +1,6 @@
-use tract_core::internal::*;
-
 use std::collections::BTreeMap;
+
+use tract_hir::internal::*;
 
 #[derive(Clone, Debug)]
 pub struct KaldiProtoModel {
@@ -90,10 +90,10 @@ impl GeneralDescriptor {
                 return Ok(());
             }
             &Append(appendees) => {
-                let name = format!("{}-Append", name);
+                let name = format!("{}.Append", name);
                 let id = model.add_node(
                     &*name,
-                    tract_core::ops::array::Concat::new(1),
+                    expand(tract_hir::ops::array::Concat::new(1)),
                     tvec!(InferenceFact::default()),
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
@@ -112,7 +112,7 @@ impl GeneralDescriptor {
             &IfDefined(ref o) => {
                 if let &Offset(ref n, ref o) = &**o {
                     if let Name(n) = &**n {
-                        let name = format!("{}-Memory", name);
+                        let name = format!("{}.memory", name);
                         model.add_node(
                             &*name,
                             crate::ops::memory::Memory::new(n.to_string(), *o),
@@ -131,7 +131,7 @@ impl GeneralDescriptor {
                 }
                 let id = model.add_node(
                     &*name,
-                    tract_core::ops::array::Crop::new(0, crop as usize, 0),
+                    expand(tract_hir::ops::array::Crop::new(0, crop as usize, 0)),
                     tvec!(InferenceFact::default()),
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
@@ -187,7 +187,7 @@ pub struct Kaldi {
     pub op_register: KaldiOpRegister,
 }
 
-impl Framework<KaldiProtoModel> for Kaldi {
+impl Framework<KaldiProtoModel, InferenceModel> for Kaldi {
     fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<KaldiProtoModel> {
         use crate::parser;
         let mut v = vec![];
@@ -198,11 +198,12 @@ impl Framework<KaldiProtoModel> for Kaldi {
     fn model_for_proto_model(&self, proto_model: &KaldiProtoModel) -> TractResult<InferenceModel> {
         let ctx = ParsingContext { proto_model };
         let mut model = InferenceModel::default();
+        let s = tract_pulse::internal::stream_dim();
         model.add_source(
             proto_model.config_lines.input_name.clone(),
             InferenceFact::dt_shape(
                 f32::datum_type(),
-                shapefact!(S, (proto_model.config_lines.input_dim)),
+                shapefactoid!(s, (proto_model.config_lines.input_dim)),
             ),
         )?;
         let mut inputs_to_wire: BTreeMap<InletId, String> = Default::default();
@@ -224,13 +225,11 @@ impl Framework<KaldiProtoModel> for Kaldi {
                     } else {
                         let op = match self.op_register.0.get(&*component.klass) {
                             Some(builder) => (builder)(&ctx, name)?,
-                            None => {
-                                (Box::new(tract_core::ops::unimpl::UnimplementedOp::new(
-                                    1,
-                                    component.klass.to_string(),
-                                    format!("{:?}", line),
-                                )))
-                            }
+                            None => Box::new(tract_hir::ops::unimpl::UnimplementedOp::new(
+                                1,
+                                component.klass.to_string(),
+                                format!("{:?}", line),
+                            )),
                         };
                         let id = model.add_node(
                             name.to_string(),
@@ -247,7 +246,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
                     }
                 }
                 NodeLine::DimRange(line) => {
-                    let op = tract_core::ops::array::Slice::new(
+                    let op = tract_hir::ops::array::Slice::new(
                         1,
                         line.offset as usize,
                         (line.offset + line.dim) as usize,
@@ -268,7 +267,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
         for o in &proto_model.config_lines.outputs {
             let output = model.add_node(
                 &*o.output_alias,
-                tract_core::ops::identity::Identity::default(),
+                tract_hir::ops::identity::Identity::default(),
                 tvec!(InferenceFact::default()),
             )?;
             o.descriptor.wire(

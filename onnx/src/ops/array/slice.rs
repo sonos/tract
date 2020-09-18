@@ -1,7 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
-use tract_core::internal::*;
-use tract_core::ndarray;
+use tract_hir::internal::*;
 
 pub fn slice(
     ctx: &ParsingContext,
@@ -10,10 +9,8 @@ pub fn slice(
     let v = ctx.onnx_operator_set_version;
     if v >= 1 && v < 10 {
         slice1(ctx, node)
-    } else if v == 10 {
-        slice10(ctx, node)
     } else {
-        bail!("Only Slice-1 and Slice-10 are supported")
+        slice10(ctx, node)
     }
 }
 
@@ -24,49 +21,25 @@ fn slice1(
     let axes = node.get_attr_opt_vec("axes")?;
     let begin = node.get_attr_vec("starts")?;
     let end = node.get_attr_vec("ends")?;
-    Ok((Box::new(Slice1::new(axes, begin, end)), vec![]))
+    Ok((expand(Slice1::new(axes, begin, end)), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, Hash)]
 pub struct Slice1 {
     axes: Option<Vec<usize>>,
     starts: Vec<isize>,
     ends: Vec<isize>,
 }
 
-impl Slice1 {
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
-        let mut input = input.to_array_view::<T>()?;
-        for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
-            let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
-            let b = if b > input.shape()[axis] as isize { input.shape()[axis] as isize } else { b };
-            let e = if e > input.shape()[axis] as isize { input.shape()[axis] as isize } else { e };
-            input.slice_axis_inplace(
-                ndarray::Axis(axis),
-                ndarray::Slice::from((b as isize)..(e as isize)),
-            );
-        }
-        Ok(Tensor::from(input.to_owned()).into())
-    }
-}
+tract_linalg::impl_dyn_hash!(Slice1);
 
-impl Op for Slice1 {
+impl Expansion for Slice1 {
     fn name(&self) -> Cow<str> {
-        "onnx.Slice1".into()
+        "Slice1".into()
     }
 
-    not_a_typed_op!();
-}
+    op_onnx!();
 
-impl StatelessOp for Slice1 {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, input))?))
-    }
-}
-
-impl InferenceRulesOp for Slice1 {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -76,8 +49,8 @@ impl InferenceRulesOp for Slice1 {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 1)?;
         if self.axes.is_none() {
-            s.equals(&inputs[0].rank, self.starts.len() as i32)?;
-            s.equals(&inputs[0].rank, self.ends.len() as i32)?;
+            s.equals(&inputs[0].rank, self.starts.len() as i64)?;
+            s.equals(&inputs[0].rank, self.ends.len() as i64)?;
         }
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
@@ -94,12 +67,12 @@ impl InferenceRulesOp for Slice1 {
                     Some((self.starts[axis].into(), self.ends[axis].into()))
                 };
                 if let Some((mut b, mut e)) = spec {
-                    if let Ok(d) = d.to_integer() {
-                        if b as i32 > d {
-                            b = (d as isize).into();
+                    if let Ok(d) = d.to_isize() {
+                        if b > d {
+                            b = d.into();
                         }
-                        if e as i32 > d {
-                            e = (d as isize).into();
+                        if e > d {
+                            e = d.into();
                         }
                     }
                     let b = if b < 0 { d.bex() + TDim::from(b) } else { TDim::from(b).bex() };
@@ -113,25 +86,24 @@ impl InferenceRulesOp for Slice1 {
         Ok(())
     }
 
-    fn to_typed(
+    fn wire(
         &self,
-        _source: &InferenceModel,
-        node: &InferenceNode,
+        prefix: &str,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let input = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
-        let mut wire = mapping[&node.inputs[0]];
+        let input = target.outlet_fact(inputs[0])?.clone();
+        let mut wire = inputs[0];
         for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
             let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
-            let dim = input.shape.dim(axis);
-            if let Ok(dim) = dim.to_integer() {
-                let b = (if b >= 0 { b.min(dim as isize) } else { dim as isize + b }) as usize;
-                let e = (if e >= 0 { e.min(dim as isize) } else { dim as isize + e }) as usize;
+            let dim = &input.shape[axis];
+            if let Ok(dim) = dim.to_isize() {
+                let b = (if b >= 0 { b.min(dim) } else { dim + b }) as usize;
+                let e = (if e >= 0 { e.min(dim) } else { dim + e }) as usize;
                 if b > 0 || e < dim as usize {
                     wire = target.wire_node(
-                        format!("{}-axis-{}", node.name, axis),
-                        tract_core::ops::array::Slice::new(axis, b, e),
+                        format!("{}.axis-{}", prefix, axis),
+                        tract_hir::ops::array::Slice::new(axis, b, e),
                         [wire].as_ref(),
                     )?[0];
                 }
@@ -139,11 +111,9 @@ impl InferenceRulesOp for Slice1 {
                 bail!("Can't translate slice: axis={} dim={} b={} e={}", axis, dim, b, e)
             }
         }
-        target.rename_node(wire.node, &*node.name)?;
+        target.rename_node(wire.node, &*prefix)?;
         Ok(tvec!(wire))
     }
-
-    inference_op_as_op!();
 }
 
 fn slice10(
@@ -152,10 +122,13 @@ fn slice10(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let mut optional_inputs = crate::model::optional_inputs(node).skip(3);
     Ok((
-        Box::new(tract_core::ops::array::StridedSlice::onnx10(
-            optional_inputs.next().unwrap(),
-            optional_inputs.next().unwrap(),
-        )),
+        expand(tract_hir::ops::array::StridedSlice {
+            begin_mask: 0,
+            end_mask: 0,
+            shrink_axis_mask: 0,
+            optional_axes_input: optional_inputs.next().unwrap(),
+            optional_steps_input: optional_inputs.next().unwrap(),
+        }),
         vec![],
     ))
 }

@@ -1,12 +1,13 @@
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;
-use tract_core::internal::*;
-use tract_core::ndarray;
+use tract_hir::internal::*;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct Fill {
     dt: DatumType,
 }
+
+tract_linalg::impl_dyn_hash!(Fill);
 
 pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
@@ -19,7 +20,7 @@ impl Fill {
         let value = value.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
         let shape = shape.to_array_view::<i32>()?;
-        let array = ndarray::Array::from_shape_fn(
+        let array = tract_ndarray::Array::from_shape_fn(
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
             |_| value.clone(),
         );
@@ -29,13 +30,18 @@ impl Fill {
 
 impl Op for Fill {
     fn name(&self) -> Cow<str> {
-        "tf.Fill".into()
+        "Fill".into()
     }
 
+    op_tf!();
     not_a_typed_op!();
 }
 
-impl StatelessOp for Fill {
+impl EvalOp for Fill {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_datum!(Self::eval_t(self.dt)(self, inputs))
     }
@@ -63,7 +69,7 @@ impl InferenceRulesOp for Fill {
         })
     }
 
-    inference_op_as_op!();
+    as_op!();
 
     fn to_typed(
         &self,

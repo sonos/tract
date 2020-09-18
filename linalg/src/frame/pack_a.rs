@@ -2,7 +2,8 @@ use num_traits::Zero;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Educe)]
+#[educe(Hash)]
 pub struct PackA<T: Copy + Zero> {
     k: usize,
     m: usize,

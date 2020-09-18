@@ -193,7 +193,7 @@ where
                         ab[3][3] += a[3].as_() * b3.as_();
                     }
                 }
-                (Packed { ptr: a }, VecStride { ptr: b, byte_stride }, Mul { k }) => {
+                (Packed { ptr: a }, VecStride { ptr: b, byte_stride, .. }, Mul { k }) => {
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
                         let b = *b
@@ -214,7 +214,7 @@ where
                 match *pnl {
                     FusedKerSpec::Done => break,
                     FusedKerSpec::AddC => match *spec.c {
-                        Strides { ptr: c, row_byte_stride, col_byte_stride } => {
+                        Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
                             let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
                             let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
                             let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
@@ -322,7 +322,7 @@ where
                 pnl = pnl.add(1);
             }
             match *spec.c {
-                Strides { ptr: c, row_byte_stride, col_byte_stride } => {
+                Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
                     let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
                     let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
                     let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
@@ -343,7 +343,7 @@ where
                     c[2 * csc + 3 * rsc] = ab[3][2].as_();
                     c[3 * csc + 3 * rsc] = ab[3][3].as_();
                 }
-                VecStride { ptr: c, byte_stride } => {
+                VecStride { ptr: c, byte_stride, .. } => {
                     let stride = byte_stride / std::mem::size_of::<TC>() as isize;
                     let c: *mut TC = c as _;
                     *c.offset(0 * stride) = ab[0][0].as_();
@@ -488,7 +488,7 @@ where
                         ab[2][1] += a[2].as_() * b1.as_();
                     }
                 }
-                (Packed { ptr: a }, VecStride { ptr: b, byte_stride }, Mul { k }) => {
+                (Packed { ptr: a }, VecStride { ptr: b, byte_stride, .. }, Mul { k }) => {
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
                         let b = *b
@@ -508,7 +508,7 @@ where
                 match *pnl {
                     FusedKerSpec::Done => break,
                     FusedKerSpec::AddC => match *spec.c {
-                        Strides { ptr: c, row_byte_stride, col_byte_stride } => {
+                        Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
                             let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
                             let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
                             let c = std::slice::from_raw_parts_mut(c, 1 + 1 * csc + 2 * rsc);
@@ -600,7 +600,7 @@ where
                 pnl = pnl.add(1);
             }
             match *spec.c {
-                Strides { ptr: c, row_byte_stride, col_byte_stride } => {
+                Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
                     let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
                     let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
                     let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
@@ -611,7 +611,7 @@ where
                     c[0 * csc + 2 * rsc] = ab[2][0].as_();
                     c[1 * csc + 2 * rsc] = ab[2][1].as_();
                 }
-                VecStride { ptr: c, byte_stride } => {
+                VecStride { ptr: c, byte_stride, .. } => {
                     let stride = byte_stride / std::mem::size_of::<TC>() as isize;
                     let c: *mut TC = c as _;
                     *c.offset(0 * stride) = ab[0][0].as_();
@@ -634,4 +634,3 @@ test_mmm_kernel_f32!(crate::generic::mmm::GenericMmmTest3x2<f32, f32, f32, f32>,
 test_mmm_kernel_i8!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i8, i32>, test_GenericMmmTest3x2_i8, true);
 test_mmm_kernel_u8!(crate::generic::mmm::GenericMmmTest3x2<u8, u8, u8, i32>, test_GenericMmmTest3x2_u8, true);
 test_mmm_kernel_i8_i32!(crate::generic::mmm::GenericMmmTest3x2<i8, i8, i32, i32>, test_GenericMmmTest3x2_i8_i32, true);
-

@@ -5,8 +5,10 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2018"
 
 [dependencies]
-tract-core = { path = "../../core" }
-env_logger = "0.7.0"
+tract-pulse = { path = "../../pulse" }
+tract-hir = { path = "../../hir" }
 
 [dev-dependencies]
-proptest = "0.9"
+log = "0.4"
+proptest = "0.10"
+env_logger = "0.7"

@@ -13,20 +13,23 @@ where
     TDim: From<D>,
 {
     if down_op.axis != slice_op.axis {
-        return Ok(None)
+        return Ok(None);
     }
-    let modulo = (down_op.modulo + slice_op.start.to_integer()? as usize) % down_op.stride;
-    let left = (down_op.modulo + slice_op.start.to_integer()? as usize) / down_op.stride;
+    if down_op.stride < 0 {
+        return Ok(None);
+    }
+    let modulo = (down_op.modulo + slice_op.start.to_usize()?) % down_op.stride as usize;
+    let left = (down_op.modulo + slice_op.start.to_usize()?) / down_op.stride as usize;
     let mut patch = TypedModelPatch::default();
     let tap = patch.tap_model(model, slice_node.inputs[0])?;
-    let final_len = down_node.outputs[0].fact.shape.dim(down_op.axis);
+    let final_len = down_node.outputs[0].fact.shape[down_op.axis].clone();
     let new_down = Downsample::new(down_op.axis, down_op.stride, modulo);
     let ds = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
     let new_start = left;
-    let new_end = (final_len.to_dim() + left).to_integer()? as usize;
+    let new_end = (final_len + left).to_usize()?;
     let op = ops::array::Slice::new(slice_op.axis, new_start, new_end);
     let new_slice = patch.wire_node(&*slice_node.name, op, &*ds)?[0];
-    patch.shunt_outside(OutletId::new(down_node.id, 0), new_slice)?;
+    patch.shunt_outside(model, OutletId::new(down_node.id, 0), new_slice)?;
     return Ok(Some(patch));
 }
 
@@ -43,7 +46,7 @@ pub fn pull_downsample_over_axis_op(
     new_down.axis = axis_op.recip().transform_axis(down_op.axis).ok_or("Invalid axis")?;
     let wire = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
     let wire = patch.wire_node(&*axis_node.name, axis_op.clone(), &*wire)?[0];
-    patch.shunt_outside(OutletId::new(down_node.id, 0), wire)?;
+    patch.shunt_outside(model, OutletId::new(down_node.id, 0), wire)?;
     return Ok(Some(patch));
 }
 
@@ -74,31 +77,31 @@ mod tests {
     ) -> TestCaseResult {
         let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
         let model = {
-            let mut model = InferenceModel::default();
-            let input =
-                model.add_source("input", InferenceFact::dt_shape(i32::datum_type(), &[len]))?;
+            let mut model = TypedModel::default();
+            let input = model.add_source(
+                "input",
+                TypedFact::dt_shape(i32::datum_type(), [len].as_ref()).unwrap(),
+            )?;
             let crop =
                 model.wire_node("crop", ops::array::Slice::new(0, left, len - right), &[input])?;
-            let down = model.wire_node("down", Downsample::new(0, stride, modulo), &crop)?;
+            let down = model.wire_node("down", Downsample::new(0, stride as isize, modulo), &crop)?;
             model.set_output_outlets(&down)?;
             model
         };
         trace!("{:#?}", model);
         prop_assert!(model.node(model.output_outlets().unwrap()[0].node).op_is::<Downsample>());
-        let typed = model.into_typed()?;
-        trace!("{:#?}", typed);
         let input = tensor1(&(0i32..len as _).collect::<Vec<_>>());
-        let expected = SimplePlan::new(&typed)?.run(tvec!(input.clone()))?;
+        let expected = SimplePlan::new(&model)?.run(tvec!(input.clone()))?;
 
         info!("Decluttering");
-        let typed = typed.declutter()?;
-        trace!("{:#?}", typed);
-        let order = typed.eval_order()?;
+        let model = model.declutter()?;
+        trace!("{:#?}", model);
+        let order = model.eval_order()?;
         prop_assert!(
-            typed.node(order[1]).op_is::<Downsample>()
-                || !typed.nodes().iter().any(|n| n.op_is::<Downsample>())
+            model.node(order[1]).op_is::<Downsample>()
+                || !model.nodes().iter().any(|n| n.op_is::<Downsample>())
         );
-        let found = SimplePlan::new(&typed)?.run(tvec!(input))?;
+        let found = SimplePlan::new(&model)?.run(tvec!(input))?;
         prop_assert_eq!(found, expected);
         Ok(())
     }
