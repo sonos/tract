@@ -14,7 +14,7 @@ user    0m2.575s
 sys     0m1.301s
 ```
 
-tract, even in debug mode, is faster:
+tract, even in debug mode, is significantly faster:
 
 ```
 time cargo run
