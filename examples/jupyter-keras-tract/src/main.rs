@@ -1,16 +1,17 @@
+use tract_onnx::prelude::*;
 use rand::*;
-use tract_tensorflow::prelude::*;
+
 
 fn main() -> TractResult<()> {
-    let model = tensorflow()
-        // load the model
-        .model_for_path("./my_model.pb")?
-        // specify input type and shape
-        .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec![10, 100]))?
-        // optimize graph
-        .into_optimized()?
-        // make the model runnable and fix its inputs and outputs
-        .into_runnable()?;
+    let model = tract_onnx::onnx()
+    // load the model
+    .model_for_path("./example.onnx")?
+    // specify input type and shape
+    .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), tvec![10, 100]))?
+    // optimize graph
+    .into_optimized()?
+    // make the model runnable and fix its inputs and outputs
+    .into_runnable()?;
 
     // Generate some input data for the model
     let mut rng = thread_rng();
