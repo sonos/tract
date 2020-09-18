@@ -1,7 +1,9 @@
 A simple example of training a Tensorflow model with Python in a [Jupyter notebook](simple_model.ipynb), then [loading it into `tract`](src/main.rs) to make predictions.
 
 # To Use
-Run the Jupyter notebook
+`conda env create -f environment.yml`
+
+Run the Jupyter notebook, which will create the model artifacts (1 onnx for `tract`, and one tensorflow artifact for benchmarking)
 
 Python
 
@@ -12,7 +14,7 @@ user    0m2.575s
 sys     0m1.301s
 ```
 
-tract, even in debug mode is faster:
+tract, even in debug mode, is faster:
 
 ```
 time cargo run
