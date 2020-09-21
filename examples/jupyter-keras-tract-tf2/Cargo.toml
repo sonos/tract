@@ -1,6 +1,6 @@
 [package]
-name = "example-jupyter-keras-tract"
-version = "0.2.0"
+name = "jupyter-keras-tract-tf2"
+version = "0.1.0"
 authors = ["Matthew Alhonte <mattalhonte@gmail.com>"]
 edition = "2018"
 
