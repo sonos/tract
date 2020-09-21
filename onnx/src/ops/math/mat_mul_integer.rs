@@ -93,7 +93,8 @@ impl Expansion for MatMulInteger {
             }
         };
         let op = tract_hir::ops::matmul::MatMul::default().with_q_params(qp);
-        target.wire_node(prefix, op, &[inputs[0], inputs[1]])
+        let inputs = tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
+        target.wire_node(prefix, op, &inputs)
     }
 }
 
@@ -176,6 +177,7 @@ impl Expansion for QLinearMatMul {
 
         qp = qp.with_scale_factor(scale);
         let op = tract_hir::ops::matmul::MatMul::default().with_q_params(qp);
-        target.wire_node(prefix, op, &[inputs[0], inputs[3]])
+        let inputs = tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;
+        target.wire_node(prefix, op, &inputs)
     }
 }
