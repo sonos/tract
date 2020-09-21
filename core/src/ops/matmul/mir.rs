@@ -355,6 +355,9 @@ impl EvalOp for MatMul {
 
 impl TypedOp for MatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if inputs[0].rank() != inputs[1].rank() {
+            bail!("Inconsistent matmul between {:?} and {:?} (rank mismaatch)", inputs[0], inputs[1]);
+        }
         let dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         Ok(tvec!(TypedFact::dt_shape(
             dt,
