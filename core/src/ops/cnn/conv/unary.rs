@@ -347,7 +347,10 @@ impl ConvUnary {
             } else {
                 ([co, ci], false)
             };
-            let a = ker.into_shape(&a_shape)?.into_arc_tensor();
+            let a = ker
+                .into_shape(&a_shape)?
+                .broadcast_into_rank(full_input_shape.len())?
+                .into_arc_tensor();
             let trans_data = self.pool_spec.data_format == DataFormat::HWC
                 || self.pool_spec.data_format == DataFormat::NHWC;
             let mut patch = TypedModelPatch::default();
@@ -662,7 +665,14 @@ impl TypedOp for ConvUnary {
                         KernelFormat::HWIO => &self.kernel.shape()[spatial_rank..],
                         KernelFormat::OIHW => &self.kernel.shape()[..2],
                     };
-                    let kernel = self.kernel.as_ref().clone().into_shape(&kernel_shape)?;
+                    let operating_rank = input_fact.rank() + 1 - kernel_spatial_shape.len();
+                    let kernel = self
+                        .kernel
+                        .as_ref()
+                        .clone()
+                        .into_shape(&kernel_shape)?
+                        .broadcast_into_rank(operating_rank)?;
+                    dbg!(&kernel);
                     wire = patch.wire_node(
                         &*node.name,
                         MatMulUnary::new(
@@ -676,9 +686,13 @@ impl TypedOp for ConvUnary {
                     )?[0];
                     if let Some(ref bias) = self.bias {
                         let bias_shape =
-                            if input_c_is_last { [1, 1, bias.len()] } else { [1, bias.len(), 1] };
-                        let bias =
-                            bias.clone().into_tensor().into_shape(&bias_shape)?.into_arc_tensor();
+                            if input_c_is_last { [1, bias.len()] } else { [bias.len(), 1] };
+                        let bias = bias
+                            .clone()
+                            .into_tensor()
+                            .into_shape(&bias_shape)?
+                            .broadcast_into_rank(operating_rank)?
+                            .into_arc_tensor();
                         wire = patch.wire_node(
                             format!("{}.bias", node.name),
                             crate::ops::math::add::unary(bias),
