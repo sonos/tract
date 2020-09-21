@@ -48,7 +48,7 @@ impl Reducer {
                 Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t, false)),
                 Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t, false)),
                 Prod => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t, false)),
-                Sum => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, sum_t, false)),
+                Sum => dispatch_numbers!(Self::sum(dt)(self, axes, input)),
             }
         })
     }
@@ -80,6 +80,54 @@ impl Reducer {
             f(slice, last)
         });
         result.into_tensor()
+    }
+
+    // sum is a special citizen: enough activity that it gets "special"
+    // treatment. we could use the same "algo" for min, max and prod, to the
+    // price of more code in the library. argmax and argmin are more
+    // tricky (not associative)
+    unsafe fn sum<T>(&self, axes: &[usize], input: &Tensor) -> Tensor
+    where
+        T: Copy + Datum + num_traits::Zero,
+    {
+        if axes.len() == 0 {
+            return input.to_owned();
+        }
+        let mut output: Option<ArrayD<T>> = None;
+        for axis in axes.iter() {
+            let current_input = output
+                .as_ref()
+                .map(|o| o.view())
+                .unwrap_or_else(|| input.to_array_view_unchecked::<T>());
+            let mut new_shape = current_input.shape().to_vec();
+            let reduced_dim = current_input.shape()[*axis];
+            new_shape[*axis] = 1;
+            let input_stride = current_input.strides()[*axis] as usize;
+            let current_output = if current_input.shape().iter().take(*axis).all(|d| *d == 1) {
+                // we are actually summing _reduced_dim_ contiguous vector term to term
+                let mut output = ArrayD::<T>::zeros(new_shape);
+                let first = current_input.as_ptr();
+                let output_ptr = output.as_mut_ptr();
+                for i in 0..reduced_dim as isize {
+                    let slice = first.offset(i * input_stride as isize);
+                    for j in 0..input_stride as isize {
+                        *output_ptr.offset(j) = *output_ptr.offset(j) + *slice.offset(j);
+                    }
+                }
+                output
+            } else {
+                ArrayD::from_shape_fn(new_shape, |coords| {
+                    let first: *const T = &current_input[coords];
+                    let mut sum = T::zero();
+                    for i in 0..reduced_dim {
+                        sum = sum + *(first.offset((i * input_stride) as isize));
+                    }
+                    sum
+                })
+            };
+            output = Some(current_output);
+        }
+        return output.unwrap().into_tensor();
     }
 }
 
@@ -130,13 +178,6 @@ where
     T: Copy + Datum + num_traits::One,
 {
     v.fold(T::one(), |acc, &v| acc * v)
-}
-
-fn sum_t<'a, T>(v: ArrayViewD<'a, T>, _last: bool) -> T
-where
-    T: Copy + Datum + num_traits::Zero,
-{
-    v.scalar_sum()
 }
 
 #[derive(Clone, Debug, new, Hash)]
