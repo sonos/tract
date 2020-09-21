@@ -356,7 +356,7 @@ impl EvalOp for MatMul {
 impl TypedOp for MatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if inputs[0].rank() != inputs[1].rank() {
-            bail!("Inconsistent matmul between {:?} and {:?} (rank mismaatch)", inputs[0], inputs[1]);
+            bail!("Inconsistent matmul between {:?} and {:?} (rank mismatch)", inputs[0], inputs[1]);
         }
         let dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         Ok(tvec!(TypedFact::dt_shape(
@@ -468,6 +468,9 @@ impl EvalOp for MatMulUnary {
 
 impl TypedOp for MatMulUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if inputs[0].rank() != self.a.rank() {
+            bail!("Inconsistent matmul between input {:?} and attribute {:?} (rank mismatch)", inputs[0], self.a);
+        }
         Ok(tvec!(TypedFact::dt_shape(
             self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type),
             &*compute_shapes(
@@ -907,7 +910,7 @@ mod test {
         let input_shape = tvec!(batch, len, ci);
         let mut wire =
             tvec!(model.add_source("s", TypedFact::dt_shape(f32::datum_type(), &*input_shape)?)?);
-        let a = unsafe { Tensor::uninitialized::<f32>(&[ci, co])?.into_arc_tensor() };
+        let a = unsafe { Tensor::uninitialized::<f32>(&[1, ci, co])?.into_arc_tensor() };
         wire = model.wire_node(
             "m",
             MatMulUnary { a, a_trans: true, b_trans: true, c_trans: true, q_params: None },
