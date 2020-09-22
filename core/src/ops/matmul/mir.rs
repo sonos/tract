@@ -67,21 +67,20 @@ where
     TC: Datum + Copy + Zero + fmt::Debug,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
+    let rank = a.rank();
     let a = a.to_array_view::<TA>()?;
     let b = b.to_array_view::<TB>()?;
     let mut geo = Geo::<TA, TB, TC, TI>::new(a.shape(), b.shape(), a_trans, b_trans, c_trans, mmm)?;
     unsafe {
         geo.mm.as_mmm_mut().c_from_data_and_strides(
-            if c_trans { 1 } else { *geo.bc_c_shape.last().unwrap() as isize },
-            if !c_trans { 1 } else { *geo.bc_c_shape.last().unwrap() as isize },
+            if c_trans { 1 } else { geo.c_shape[rank - 1] as isize },
+            if !c_trans { 1 } else { geo.c_shape[rank - 1] as isize },
         );
         if let Some(q) = q_params {
             geo.mm.set_quant_params(q)?;
         }
     }
-    let a = a.into_shape(&*geo.bc_a_shape)?;
-    let b = b.into_shape(&*geo.bc_b_shape)?;
-    let mut c = unsafe { Array::<TC, IxDyn>::uninitialized(&*geo.bc_c_shape) };
+    let mut c = unsafe { Array::<TC, IxDyn>::uninitialized(&*geo.c_shape) };
 
     let b_pack = geo.mm.as_mmm().b_pack();
 
@@ -94,7 +93,7 @@ where
     let mut pb =
         unsafe { Tensor::uninitialized_aligned::<TB>(&[b_pack.len()], b_pack.alignment())? };
 
-    for prefix in indices(&*geo.c_shape_prefix).into_iter() {
+    for prefix in indices(&geo.c_shape[..rank - 2]).into_iter() {
         let mut a = a.view();
         let mut b = b.view();
         let mut c = c.view_mut();
@@ -122,43 +121,22 @@ where
         }
     }
     let mut c = c.into_tensor();
-    unsafe { c.set_shape_unchecked(&*geo.final_c_shape) };
+    unsafe { c.set_shape_unchecked(&*geo.c_shape) };
     Ok(c)
 }
 
-pub fn compute_shapes<D: DimLike>(
-    ashape_orig: TVec<D>,
-    bshape_orig: TVec<D>,
+pub fn compute_shape<D: DimLike>(
+    ashape: TVec<D>,
+    bshape: TVec<D>,
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-) -> TractResult<(TVec<D>, TVec<D>, TVec<D>, TVec<D>)> {
-    let mut ashape = ashape_orig.clone();
-    let mut bshape = bshape_orig.clone();
-    assert_eq!(ashape_orig.len(), bshape_orig.len());
-    assert!(ashape_orig.len() >= 2);
-    let mut implicit_m = false;
-    let mut implicit_n = false;
-    if ashape.len() < 2 {
-        implicit_m = true;
-        ashape.insert(a_trans as usize, D::one());
-    }
-    if bshape.len() < 2 {
-        implicit_n = true;
-        bshape.insert(!b_trans as usize, D::one());
-    }
-    while ashape.len() < bshape.len() {
-        ashape.insert(0, D::one());
-    }
-    while bshape.len() < ashape.len() {
-        bshape.insert(0, D::one());
-    }
-    let c_bc_shape_prefix = crate::broadcast::multi_broadcast(&[
+) -> TractResult<TVec<D>> {
+    let mut c_shape = crate::broadcast::multi_broadcast(&[
         &ashape[..(ashape.len() - 2)],
         &bshape[..(bshape.len() - 2)],
     ])
     .ok_or("Could not broadcast")?;
-    let mut c_bc_shape: TVec<D> = c_bc_shape_prefix.clone();
     let (mut m, mut ka) = (ashape[ashape.len() - 2].clone(), ashape[ashape.len() - 1].clone());
     let (mut kb, mut n) = (bshape[bshape.len() - 2].clone(), bshape[bshape.len() - 1].clone());
     if a_trans {
@@ -177,27 +155,14 @@ pub fn compute_shapes<D: DimLike>(
             c_trans
         );
     }
-    let mut c_shape_final = c_bc_shape.clone();
     if c_trans {
-        c_bc_shape.push(n.clone());
-        c_bc_shape.push(m.clone());
-        if !implicit_n {
-            c_shape_final.push(n.clone());
-        }
-        if !implicit_m {
-            c_shape_final.push(m.clone());
-        }
+        c_shape.push(n.clone());
+        c_shape.push(m.clone());
     } else {
-        c_bc_shape.push(m.clone());
-        c_bc_shape.push(n.clone());
-        if !implicit_m {
-            c_shape_final.push(m.clone());
-        }
-        if !implicit_n {
-            c_shape_final.push(n.clone());
-        }
+        c_shape.push(m.clone());
+        c_shape.push(n.clone());
     }
-    Ok((ashape, bshape, c_bc_shape, c_shape_final))
+    Ok(c_shape)
 }
 
 #[derive(Debug, Clone)]
@@ -216,12 +181,8 @@ where
     a_trans: bool,
     b_shape: TVec<usize>,
     b_trans: bool,
-    bc_a_shape: TVec<usize>,
-    bc_b_shape: TVec<usize>,
-    bc_c_shape: TVec<usize>,
-    final_c_shape: TVec<usize>,
+    c_shape: TVec<usize>,
     c_trans: bool,
-    c_shape_prefix: TVec<usize>,
     a_stride_prefix: TVec<usize>,
     b_stride_prefix: TVec<usize>,
     c_stride_prefix: TVec<usize>,
@@ -242,13 +203,12 @@ where
         c_trans: bool,
         mmm: impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
     ) -> TractResult<Geo<TA, TB, TC, TI>> {
-        let (bc_a_shape, bc_b_shape, bc_c_shape, final_c_shape) =
-            compute_shapes(a_shape.into(), b_shape.into(), a_trans, b_trans, c_trans)?;
-        let m = bc_a_shape[bc_a_shape.len() - 2 + a_trans as usize];
-        let k = bc_a_shape[bc_a_shape.len() - 1 - a_trans as usize];
-        let n = bc_b_shape[bc_b_shape.len() - 1 - b_trans as usize];
+        let c_shape = compute_shape(a_shape.into(), b_shape.into(), a_trans, b_trans, c_trans)?;
+        let m = a_shape[a_shape.len() - 2 + a_trans as usize];
+        let k = a_shape[a_shape.len() - 1 - a_trans as usize];
+        let n = b_shape[b_shape.len() - 1 - b_trans as usize];
         let mm = mmm(m, k, n);
-        let a_stride_prefix = bc_a_shape
+        let a_stride_prefix = a_shape
             .iter()
             .rev()
             .scan(1, |stride, dim| {
@@ -258,7 +218,7 @@ where
             })
             .skip(2)
             .collect();
-        let b_stride_prefix = bc_b_shape
+        let b_stride_prefix = b_shape
             .iter()
             .rev()
             .scan(1, |stride, dim| {
@@ -268,7 +228,7 @@ where
             })
             .skip(2)
             .collect();
-        let c_stride_prefix = bc_c_shape
+        let c_stride_prefix = c_shape
             .iter()
             .rev()
             .scan(1, |stride, dim| {
@@ -283,11 +243,7 @@ where
             k,
             n,
             mm,
-            c_shape_prefix: bc_c_shape[0..(bc_c_shape.len().saturating_sub(2))].into(),
-            bc_a_shape,
-            bc_b_shape,
-            bc_c_shape,
-            final_c_shape,
+            c_shape,
             a_shape: a_shape.into(),
             b_shape: b_shape.into(),
             a_stride_prefix,
@@ -368,14 +324,13 @@ impl TypedOp for MatMul {
         let dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         Ok(tvec!(TypedFact::dt_shape(
             dt,
-            &*compute_shapes(
+            &*compute_shape(
                 inputs[0].shape.to_tvec(),
                 inputs[1].shape.to_tvec(),
                 self.a_trans,
                 self.b_trans,
                 self.c_trans,
             )?
-            .3
         )?))
     }
 
@@ -485,14 +440,13 @@ impl TypedOp for MatMulUnary {
         }
         Ok(tvec!(TypedFact::dt_shape(
             self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type),
-            &*compute_shapes(
+            &*compute_shape(
                 self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
                 inputs[0].shape.to_tvec(),
                 self.a_trans,
                 self.b_trans,
                 self.c_trans,
             )?
-            .3
         )?))
     }
 
@@ -758,7 +712,7 @@ where
     let mut wire = patch.tap_model(model, node.inputs[0])?;
     let mut geo = Geo::<TA, TB, TC, TI>::new(a.shape(), b_shape, a_trans, b_trans, c_trans, mmm)?;
     let a = a.to_array_view::<TA>()?;
-    let a = a.into_shape(&*geo.bc_a_shape)?;
+    //    let a = a.into_shape(&*geo.a_shape)?;
     let packed_as = Array::from_shape_fn(&a.shape()[0..a.ndim() - 2], |a_prefix| {
         let mut a = a.view();
         for x in a_prefix.slice() {
@@ -789,18 +743,19 @@ where
             geo.mm.as_mmm_mut().c_vec_from_data_and_stride(if c_trans {
                 1
             } else {
-                *geo.bc_c_shape.last().unwrap() as isize
+                *geo.c_shape.last().unwrap() as isize
             });
         } else {
             geo.mm.as_mmm_mut().c_from_data_and_strides(
-                if c_trans { 1 } else { *geo.bc_c_shape.last().unwrap() as isize },
-                if !c_trans { 1 } else { *geo.bc_c_shape.last().unwrap() as isize },
+                if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
+                if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
             );
         };
         if let Some(q) = q_params {
             geo.mm.set_quant_params(q)?;
         }
     }
+    let rank = geo.c_shape.len();
     if geo.n > 1 {
         let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
         packed_b_shape.push(geo.mm.as_mmm().b_pack().len());
@@ -815,9 +770,9 @@ where
             &[wire],
         )?[0];
     }
-    let c_prefix_dim_and_stride = if geo.c_shape_prefix.iter().any(|d| *d > 1) {
+    let c_prefix_dim_and_stride = if geo.c_shape[..rank - 2].iter().any(|d| *d > 1) {
         let c_prefix_strides: TVec<isize> = geo
-            .bc_c_shape
+            .c_shape
             .iter()
             .rev()
             .scan(1isize, |s, &d| {
@@ -830,7 +785,7 @@ where
             .skip(2)
             .rev()
             .collect::<TVec<_>>();
-        Some((geo.c_shape_prefix.clone(), c_prefix_strides))
+        Some((geo.c_shape[..rank-2].into(), c_prefix_strides))
     } else {
         None
     };
@@ -838,8 +793,8 @@ where
         format!("{}.matmatmul", &*node.name),
         lir::MatMatMulUnaryFinite {
             c_trans,
-            bc_c_shape: geo.bc_c_shape,
-            c_fact: TypedFact::dt_shape(TC::datum_type(), &*geo.final_c_shape)?,
+            c_fact: TypedFact::dt_shape(TC::datum_type(), &*geo.c_shape)?,
+            bc_c_shape: geo.c_shape,
             c_prefix_dim_and_stride,
             packed_as,
             fused_ops: None,
@@ -851,25 +806,25 @@ where
     Ok(patch)
 }
 
-fn cost<A: ToDim + Clone, B: ToDim + Clone>(
+fn cost<A: DimLike + Clone, B: DimLike + Clone>(
     a: &[A],
     b: &[B],
     dt: DatumType,
     a_trans: bool,
     b_trans: bool,
 ) -> TractResult<TVec<(Cost, TDim)>> {
-    let (bc_a_shape, bc_b_shape, bc_c_shape, _c_shape) = compute_shapes(
+    let c_shape = compute_shape(
         a.iter().map(|d| d.clone().to_dim()).collect(),
         b.iter().map(|d| d.clone().to_dim()).collect(),
         a_trans,
         b_trans,
         false,
     )?;
-    let mul = bc_c_shape.iter().rev().skip(2).cloned().maybe_product()?;
-    let m = &bc_a_shape[bc_a_shape.len() - 2 + a_trans as usize];
-    let k = &bc_a_shape[bc_a_shape.len() - 1 - a_trans as usize];
-    let n = &bc_b_shape[bc_b_shape.len() - 1 - b_trans as usize];
-    Ok(tvec!((Cost::FMA(dt), [mul, m.clone(), k.clone(), n.clone()].iter().maybe_product()?)))
+    let mul = c_shape.iter().rev().skip(2).cloned().maybe_product()?;
+    let m = a[a.len() - 2 + a_trans as usize].to_dim();
+    let k = a[a.len() - 1 - a_trans as usize].to_dim();
+    let n = b[b.len() - 1 - b_trans as usize].to_dim();
+    Ok(tvec!((Cost::FMA(dt), [mul, m.to_dim(), k.to_dim(), n.to_dim()].iter().maybe_product()?)))
 }
 
 #[cfg(test)]
