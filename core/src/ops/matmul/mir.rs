@@ -135,6 +135,8 @@ pub fn compute_shapes<D: DimLike>(
 ) -> TractResult<(TVec<D>, TVec<D>, TVec<D>, TVec<D>)> {
     let mut ashape = ashape_orig.clone();
     let mut bshape = bshape_orig.clone();
+    assert_eq!(ashape_orig.len(), bshape_orig.len());
+    assert!(ashape_orig.len() >= 2);
     let mut implicit_m = false;
     let mut implicit_n = false;
     if ashape.len() < 2 {
@@ -341,6 +343,7 @@ impl EvalOp for MatMul {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        assert_eq!(&inputs[0].rank(), &inputs[1].rank());
         let t = eval(
             &inputs[0],
             &inputs[1],

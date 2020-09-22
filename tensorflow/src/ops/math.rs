@@ -42,5 +42,5 @@ pub fn add_n(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn Infere
 pub fn mat_mul(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let trans_a = pb.get_attr_bool("transpose_a")?;
     let trans_b = pb.get_attr_bool("transpose_b")?;
-    Ok(Box::new(ops::matmul::MatMul::default().with_a_trans(trans_a).with_b_trans(trans_b)))
+    Ok(expand(ops::matmul::MatMulInference::default().with_a_trans(trans_a).with_b_trans(trans_b)))
 }

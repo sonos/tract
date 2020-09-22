@@ -57,7 +57,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 
     reg.insert("Pow", pow::pow);
 
-    reg.insert("MatMul", |_, _| Ok((Box::new(ops::matmul::MatMul::default()), vec![])));
+    reg.insert("MatMul", |_, _| Ok((expand(ops::matmul::MatMulInference::default()), vec![])));
     reg.insert("MatMulInteger", mat_mul_integer::mat_mul_integer);
     reg.insert("QLinearMatMul", mat_mul_integer::q_linear_mat_mul);
     reg.insert("Gemm", gemm::gemm);
