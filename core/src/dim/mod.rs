@@ -178,12 +178,12 @@ impl<D: DimLike, A: std::borrow::Borrow<D>, I: Iterator<Item = A>> MaybeProduct<
 /// Convenience trait to convert values to TDim.
 pub trait ToDim {
     /// Convert self to a TDim.
-    fn to_dim(self) -> TDim;
+    fn to_dim(&self) -> TDim;
 }
 
-impl<I: Into<TDim>> ToDim for I {
-    fn to_dim(self) -> TDim {
-        self.into()
+impl<I: Into<TDim> + Clone> ToDim for I {
+    fn to_dim(&self) -> TDim {
+        self.clone().into()
     }
 }
 

@@ -23,14 +23,13 @@ impl PulsedOp for MatMulUnary {
         let mut fact = inputs[0].clone();
         fact.datum_type =
             self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
-        fact.shape = tract_core::ops::matmul::compute_shapes(
+        fact.shape = tract_core::ops::matmul::compute_shape(
             self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             inputs[0].shape.to_owned(),
             self.a_trans,
             self.b_trans,
             self.c_trans,
-        )?
-        .2;
+        )?;
         Ok(tvec!(fact))
     }
 
