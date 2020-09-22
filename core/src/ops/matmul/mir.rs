@@ -677,7 +677,7 @@ where
         packed_b_shape.push(mm.as_mmm().b_pack().len());
         wire = patch.wire_node(
             format!("{}.pack", &*node.name),
-            lir::MatMatMulPackB {
+            super::MatMatMulPackB {
                 pack_b: mm.as_mmm().b_pack().clone(),
                 col_stride: if b_trans { *b_shape.last().unwrap() as isize } else { 1 },
                 row_stride: if b_trans { 1 } else { *b_shape.last().unwrap() as isize },
