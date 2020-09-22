@@ -124,9 +124,7 @@ where
             mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), &[]);
         }
     }
-    let mut c = c.into_tensor();
-    unsafe { c.set_shape_unchecked(&*c_shape) };
-    Ok(c)
+    Ok(c.into_tensor())
 }
 
 pub fn compute_shape<D: DimLike>(
