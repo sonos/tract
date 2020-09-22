@@ -1,25 +1,26 @@
 use crate::internal::*;
-use tract_pulse_opl::ops::Delay;
 use tract_core::ops::binary::*;
+use tract_core::ops::logic::Iff;
+use tract_pulse_opl::ops::Delay;
 
-submit_op_pulsifier!(TypedBinOp, pulsify_bin);
 submit_op_pulsifier!(UnaryOp, pulsify_un);
+submit_op_pulsifier!(TypedBinOp, pulsify_bin);
+submit_op_pulsifier!(Iff, pulsify_iff);
 
-fn pulsify_bin(
-    op: &TypedBinOp,
-    _source: &TypedModel,
+fn sync_inputs(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _pulse: usize,
 ) -> TractResult<TVec<OutletId>> {
-    let delay = (0..2)
-        .map(|ix| target.outlet_fact(mapping[&node.inputs[ix]]).unwrap().delay)
+    let delay = node
+        .inputs
+        .iter()
+        .map(|input| target.outlet_fact(mapping[input]).unwrap().delay)
         .max()
         .unwrap();
     let mut inputs = tvec!();
-    for ix in 0..2 {
-        let mut input = mapping[&node.inputs[ix]];
+    for input in &node.inputs {
+        let mut input = mapping[input];
         let fact = target.outlet_fact(input)?.clone();
         if fact.delay < delay {
             let add_delay = delay - fact.delay;
@@ -31,7 +32,19 @@ fn pulsify_bin(
         }
         inputs.push(input);
     }
-    target.wire_node(&*node.name, op.clone(), &*inputs)
+    Ok(inputs)
+}
+
+fn pulsify_bin(
+    op: &TypedBinOp,
+    _source: &TypedModel,
+    node: &TypedNode,
+    target: &mut PulsedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+    _pulse: usize,
+) -> TractResult<TVec<OutletId>> {
+    let inputs = &*sync_inputs(node, target, mapping)?;
+    target.wire_node(&*node.name, op.clone(), &inputs)
 }
 
 impl PulsedOp for TypedBinOp {
@@ -71,6 +84,33 @@ impl PulsedOp for UnaryOp {
             &self.a.shape().iter().map(|d| d.into()).collect(),
         ])
         .unwrap();
+        Ok(tvec!(fact))
+    }
+
+    as_op!();
+    pulsed_op_to_typed_op!();
+}
+
+fn pulsify_iff(
+    op: &Iff,
+    _source: &TypedModel,
+    node: &TypedNode,
+    target: &mut PulsedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+    _pulse: usize,
+) -> TractResult<TVec<OutletId>> {
+    let inputs = &*sync_inputs(node, target, mapping)?;
+    target.wire_node(&*node.name, op.clone(), &inputs)
+}
+
+impl PulsedOp for Iff {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
+        let mut fact = inputs[0].clone();
+        fact.datum_type = inputs[1].datum_type;
+        fact.shape = tract_core::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape, &inputs[2].shape])
+            .ok_or_else(|| {
+                format!("Can not broadcast: {:?}, {:?}, {:?}", inputs[0].shape, inputs[1].shape, inputs[2].shape)
+            })?;
         Ok(tvec!(fact))
     }
 
