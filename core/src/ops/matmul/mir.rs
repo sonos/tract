@@ -70,30 +70,34 @@ where
     let rank = a.rank();
     let a = a.to_array_view::<TA>()?;
     let b = b.to_array_view::<TB>()?;
-    let mut geo = Geo::<TA, TB, TC, TI>::new(a.shape(), b.shape(), a_trans, b_trans, c_trans, mmm)?;
+    let m = a.shape()[a.shape().len() - 2 + a_trans as usize];
+    let k = a.shape()[a.shape().len() - 1 - a_trans as usize];
+    let n = b.shape()[b.shape().len() - 1 - b_trans as usize];
+    let mut mm = mmm(m, k, n);
+    let c_shape = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
     unsafe {
-        geo.mm.as_mmm_mut().c_from_data_and_strides(
-            if c_trans { 1 } else { geo.c_shape[rank - 1] as isize },
-            if !c_trans { 1 } else { geo.c_shape[rank - 1] as isize },
+        mm.as_mmm_mut().c_from_data_and_strides(
+            if c_trans { 1 } else { c_shape[rank - 1] as isize },
+            if !c_trans { 1 } else { c_shape[rank - 1] as isize },
         );
         if let Some(q) = q_params {
-            geo.mm.set_quant_params(q)?;
+            mm.set_quant_params(q)?;
         }
     }
-    let mut c = unsafe { Array::<TC, IxDyn>::uninitialized(&*geo.c_shape) };
+    let mut c = unsafe { Array::<TC, IxDyn>::uninitialized(&*c_shape) };
 
-    let b_pack = geo.mm.as_mmm().b_pack();
+    let b_pack = mm.as_mmm().b_pack();
 
     let mut pa = unsafe {
         Tensor::uninitialized_aligned::<TA>(
-            &[geo.mm.as_mmm().a_pack().len()],
-            geo.mm.as_mmm().a_pack().alignment(),
+            &[mm.as_mmm().a_pack().len()],
+            mm.as_mmm().a_pack().alignment(),
         )?
     };
     let mut pb =
         unsafe { Tensor::uninitialized_aligned::<TB>(&[b_pack.len()], b_pack.alignment())? };
 
-    for prefix in indices(&geo.c_shape[..rank - 2]).into_iter() {
+    for prefix in indices(&c_shape[..rank - 2]).into_iter() {
         let mut a = a.view();
         let mut b = b.view();
         let mut c = c.view_mut();
@@ -104,7 +108,7 @@ where
             b.slice_axis_inplace(Axis(axis), (d..=d).into());
             c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
         }
-        geo.mm.as_mmm().a_pack().pack(
+        mm.as_mmm().a_pack().pack(
             pa.as_ptr_mut()?,
             a.as_ptr(),
             a.strides()[prefix.ndim() + a_trans as usize],
@@ -117,17 +121,17 @@ where
             b.strides()[prefix.ndim() + !b_trans as usize],
         );
         unsafe {
-            geo.mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), &[]);
+            mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), &[]);
         }
     }
     let mut c = c.into_tensor();
-    unsafe { c.set_shape_unchecked(&*geo.c_shape) };
+    unsafe { c.set_shape_unchecked(&*c_shape) };
     Ok(c)
 }
 
 pub fn compute_shape<D: DimLike>(
-    ashape: TVec<D>,
-    bshape: TVec<D>,
+    ashape: &[D],
+    bshape: &[D],
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
@@ -163,97 +167,6 @@ pub fn compute_shape<D: DimLike>(
         c_shape.push(n.clone());
     }
     Ok(c_shape)
-}
-
-#[derive(Debug, Clone)]
-struct Geo<TA, TB, TC, TI>
-where
-    TA: Datum + Copy + Zero,
-    TB: Datum + Copy + Zero,
-    TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
-{
-    m: usize,
-    k: usize,
-    n: usize,
-    mm: MMMWrapper<TA, TB, TC, TI>,
-    a_shape: TVec<usize>,
-    a_trans: bool,
-    b_shape: TVec<usize>,
-    b_trans: bool,
-    c_shape: TVec<usize>,
-    c_trans: bool,
-    a_stride_prefix: TVec<usize>,
-    b_stride_prefix: TVec<usize>,
-    c_stride_prefix: TVec<usize>,
-}
-
-impl<TA, TB, TC, TI> Geo<TA, TB, TC, TI>
-where
-    TA: Datum + Copy + Zero,
-    TB: Datum + Copy + Zero,
-    TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
-{
-    pub fn new(
-        a_shape: &[usize],
-        b_shape: &[usize],
-        a_trans: bool,
-        b_trans: bool,
-        c_trans: bool,
-        mmm: impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
-    ) -> TractResult<Geo<TA, TB, TC, TI>> {
-        let c_shape = compute_shape(a_shape.into(), b_shape.into(), a_trans, b_trans, c_trans)?;
-        let m = a_shape[a_shape.len() - 2 + a_trans as usize];
-        let k = a_shape[a_shape.len() - 1 - a_trans as usize];
-        let n = b_shape[b_shape.len() - 1 - b_trans as usize];
-        let mm = mmm(m, k, n);
-        let a_stride_prefix = a_shape
-            .iter()
-            .rev()
-            .scan(1, |stride, dim| {
-                let s = Some(*stride);
-                *stride *= dim;
-                s
-            })
-            .skip(2)
-            .collect();
-        let b_stride_prefix = b_shape
-            .iter()
-            .rev()
-            .scan(1, |stride, dim| {
-                let s = Some(*stride);
-                *stride *= dim;
-                s
-            })
-            .skip(2)
-            .collect();
-        let c_stride_prefix = c_shape
-            .iter()
-            .rev()
-            .scan(1, |stride, dim| {
-                let s = Some(*stride);
-                *stride *= dim;
-                s
-            })
-            .skip(2)
-            .collect();
-        Ok(Geo {
-            m,
-            k,
-            n,
-            mm,
-            c_shape,
-            a_shape: a_shape.into(),
-            b_shape: b_shape.into(),
-            a_stride_prefix,
-            b_stride_prefix,
-            c_stride_prefix,
-            a_trans,
-            b_trans,
-            c_trans,
-        })
-    }
 }
 
 #[derive(Debug, Clone, Default, Hash)]
@@ -325,8 +238,8 @@ impl TypedOp for MatMul {
         Ok(tvec!(TypedFact::dt_shape(
             dt,
             &*compute_shape(
-                inputs[0].shape.to_tvec(),
-                inputs[1].shape.to_tvec(),
+                &inputs[0].shape,
+                &inputs[1].shape,
                 self.a_trans,
                 self.b_trans,
                 self.c_trans,
@@ -441,8 +354,8 @@ impl TypedOp for MatMulUnary {
         Ok(tvec!(TypedFact::dt_shape(
             self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type),
             &*compute_shape(
-                self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
-                inputs[0].shape.to_tvec(),
+                &self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+                &*inputs[0].shape,
                 self.a_trans,
                 self.b_trans,
                 self.c_trans,
@@ -710,9 +623,14 @@ where
 {
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.tap_model(model, node.inputs[0])?;
-    let mut geo = Geo::<TA, TB, TC, TI>::new(a.shape(), b_shape, a_trans, b_trans, c_trans, mmm)?;
+
+    let m = a.shape()[a.rank() - 2 + a_trans as usize];
+    let k = a.shape()[a.rank() - 1 - a_trans as usize];
+    let n = b_shape[b_shape.len() - 1 - b_trans as usize];
+
+    let mut mm = mmm(m, k, n);
+    let c_shape = compute_shape(&a.shape(), b_shape, a_trans, b_trans, c_trans)?;
     let a = a.to_array_view::<TA>()?;
-    //    let a = a.into_shape(&*geo.a_shape)?;
     let packed_as = Array::from_shape_fn(&a.shape()[0..a.ndim() - 2], |a_prefix| {
         let mut a = a.view();
         for x in a_prefix.slice() {
@@ -720,12 +638,12 @@ where
         }
         let mut pa = unsafe {
             Tensor::uninitialized_aligned::<TA>(
-                &[geo.mm.as_mmm().a_pack().len()],
-                geo.mm.as_mmm().a_pack().alignment(),
+                &[mm.as_mmm().a_pack().len()],
+                mm.as_mmm().a_pack().alignment(),
             )
             .unwrap()
         };
-        geo.mm.as_mmm().a_pack().pack(
+        mm.as_mmm().a_pack().pack(
             pa.as_ptr_mut().unwrap(),
             a.as_ptr(),
             a.strides()[a_trans as usize],
@@ -734,35 +652,35 @@ where
         pa.into_arc_tensor()
     });
     unsafe {
-        if geo.n == 1 {
-            geo.mm.as_mmm_mut().b_vec_from_data_and_stride(if b_trans {
+        if n == 1 {
+            mm.as_mmm_mut().b_vec_from_data_and_stride(if b_trans {
                 1
             } else {
-                *geo.b_shape.last().unwrap() as isize
+                *b_shape.last().unwrap() as isize
             });
-            geo.mm.as_mmm_mut().c_vec_from_data_and_stride(if c_trans {
+            mm.as_mmm_mut().c_vec_from_data_and_stride(if c_trans {
                 1
             } else {
-                *geo.c_shape.last().unwrap() as isize
+                *c_shape.last().unwrap() as isize
             });
         } else {
-            geo.mm.as_mmm_mut().c_from_data_and_strides(
-                if c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
-                if !c_trans { 1 } else { *geo.c_shape.last().unwrap() as isize },
+            mm.as_mmm_mut().c_from_data_and_strides(
+                if c_trans { 1 } else { *c_shape.last().unwrap() as isize },
+                if !c_trans { 1 } else { *c_shape.last().unwrap() as isize },
             );
         };
         if let Some(q) = q_params {
-            geo.mm.set_quant_params(q)?;
+            mm.set_quant_params(q)?;
         }
     }
-    let rank = geo.c_shape.len();
-    if geo.n > 1 {
+    let rank = c_shape.len();
+    if n > 1 {
         let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
-        packed_b_shape.push(geo.mm.as_mmm().b_pack().len());
+        packed_b_shape.push(mm.as_mmm().b_pack().len());
         wire = patch.wire_node(
             format!("{}.pack", &*node.name),
             lir::MatMatMulPackB {
-                pack_b: geo.mm.as_mmm().b_pack().clone(),
+                pack_b: mm.as_mmm().b_pack().clone(),
                 col_stride: if b_trans { *b_shape.last().unwrap() as isize } else { 1 },
                 row_stride: if b_trans { 1 } else { *b_shape.last().unwrap() as isize },
                 output_shape: packed_b_shape,
@@ -770,9 +688,8 @@ where
             &[wire],
         )?[0];
     }
-    let c_prefix_dim_and_stride = if geo.c_shape[..rank - 2].iter().any(|d| *d > 1) {
-        let c_prefix_strides: TVec<isize> = geo
-            .c_shape
+    let c_prefix_dim_and_stride = if c_shape[..rank - 2].iter().any(|d| *d > 1) {
+        let c_prefix_strides: TVec<isize> = c_shape
             .iter()
             .rev()
             .scan(1isize, |s, &d| {
@@ -785,7 +702,7 @@ where
             .skip(2)
             .rev()
             .collect::<TVec<_>>();
-        Some((geo.c_shape[..rank-2].into(), c_prefix_strides))
+        Some((c_shape[..rank - 2].into(), c_prefix_strides))
     } else {
         None
     };
@@ -793,12 +710,12 @@ where
         format!("{}.matmatmul", &*node.name),
         lir::MatMatMulUnaryFinite {
             c_trans,
-            c_fact: TypedFact::dt_shape(TC::datum_type(), &*geo.c_shape)?,
-            bc_c_shape: geo.c_shape,
+            c_fact: TypedFact::dt_shape(TC::datum_type(), &*c_shape)?,
+            bc_c_shape: c_shape,
             c_prefix_dim_and_stride,
             packed_as,
             fused_ops: None,
-            mmm: geo.mm,
+            mmm: mm,
         },
         &[wire],
     )?[0];
@@ -814,8 +731,8 @@ fn cost<A: DimLike + Clone, B: DimLike + Clone>(
     b_trans: bool,
 ) -> TractResult<TVec<(Cost, TDim)>> {
     let c_shape = compute_shape(
-        a.iter().map(|d| d.clone().to_dim()).collect(),
-        b.iter().map(|d| d.clone().to_dim()).collect(),
+        &a.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
+        &b.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
         a_trans,
         b_trans,
         false,
