@@ -672,7 +672,6 @@ impl TypedOp for ConvUnary {
                         .clone()
                         .into_shape(&kernel_shape)?
                         .broadcast_into_rank(operating_rank)?;
-                    dbg!(&kernel);
                     wire = patch.wire_node(
                         &*node.name,
                         MatMulUnary::new(

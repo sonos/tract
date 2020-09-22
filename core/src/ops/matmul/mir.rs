@@ -356,7 +356,11 @@ impl EvalOp for MatMul {
 impl TypedOp for MatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if inputs[0].rank() != inputs[1].rank() {
-            bail!("Inconsistent matmul between {:?} and {:?} (rank mismatch)", inputs[0], inputs[1]);
+            bail!(
+                "Inconsistent matmul between {:?} and {:?} (rank mismatch)",
+                inputs[0],
+                inputs[1]
+            );
         }
         let dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         Ok(tvec!(TypedFact::dt_shape(
@@ -397,7 +401,8 @@ impl TypedOp for MatMul {
             node,
             &node.inputs[var_ix..][..1],
             MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip, self.q_params.clone()),
-        )?.with_context("to unary");
+        )?
+        .with_context("to unary");
         return Ok(Some(patch));
     }
 
@@ -469,7 +474,11 @@ impl EvalOp for MatMulUnary {
 impl TypedOp for MatMulUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if inputs[0].rank() != self.a.rank() {
-            bail!("Inconsistent matmul between input {:?} and attribute {:?} (rank mismatch)", inputs[0], self.a);
+            bail!(
+                "Inconsistent matmul between input {:?} and attribute {:?} (rank mismatch)",
+                inputs[0],
+                self.a
+            );
         }
         Ok(tvec!(TypedFact::dt_shape(
             self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type),
@@ -517,7 +526,7 @@ impl TypedOp for MatMulUnary {
         let b = &model.outlet_fact(node.inputs[0])?;
         match change {
             AxisOp::Move(from, to) => {
-                if b.rank() == 2 && *from == 0 && *to == 1 {
+                if *from == b.rank() - 2 && *to == b.rank() - 1 {
                     let op = MatMulUnary {
                         b_trans: !self.b_trans,
                         c_trans: !self.c_trans,
@@ -528,51 +537,33 @@ impl TypedOp for MatMulUnary {
                     Ok(None)
                 }
             }
-            AxisOp::Add(axis) => {
-                if b.rank() == 1 {
-                    let op = Self { b_trans: *axis == 0, c_trans: *axis == 0, ..self.clone() };
-                    return Ok(Some(AxisChangeConsequence::new(
-                        model,
-                        node,
-                        Some(Box::new(op)),
-                        change,
-                    )));
-                }
-                let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
-                if axis_in_a + 2 > self.a.rank() as isize {
-                    return Ok(None);
-                }
-                let op = if axis_in_a > 0 {
-                    let mut a = self.a.clone().into_tensor();
-                    a.insert_axis(axis_in_a as usize)?;
-                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _)
-                } else {
-                    None
-                };
+            AxisOp::Add(axis) if *axis < b.rank() - 1 => {
+                let mut a = self.a.clone().into_tensor();
+                a.insert_axis(*axis)?;
+                let op =
+                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
                 Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
             }
-            AxisOp::Rm(axis) => {
-                let bk_axis = b.rank() - 1 - (!self.b_trans as usize);
-                let bn_axis = b.rank() - 1 - (self.b_trans as usize);
-                if *axis == bk_axis {
-                    return Ok(None);
-                } else if *axis == bn_axis && b.rank() == 2 {
-                    Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
-                } else if b.rank() > *axis + 2 && self.a.rank() <= b.rank() {
-                    let axis_in_a = self.a.rank() as isize - b.rank() as isize + *axis as isize;
-                    let op = if axis_in_a >= 0 {
-                        let mut a = self.a.clone().into_tensor();
-                        a.remove_axis(axis_in_a as usize)?;
-                        Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _)
-                    } else {
-                        None
-                    };
-                    Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-                } else {
-                    Ok(None)
-                }
+            // b is [.. 1, n], can add axis to the right and transpose
+            AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
+                let mut a = self.a.clone().into_tensor();
+                a.insert_axis(*axis - 2)?;
+                let op = MatMulUnary {
+                    b_trans: !self.b_trans,
+                    c_trans: !self.c_trans,
+                    a: a.into_arc_tensor(),
+                    ..self.clone()
+                };
+                Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
             }
-            AxisOp::Reshape(_, _, _) => return Ok(None),
+            AxisOp::Rm(axis) if b.rank() - axis > 2 => {
+                let mut a = self.a.clone().into_tensor();
+                a.remove_axis(*axis)?;
+                let op =
+                    Some(Box::new(MatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+            }
+            _ => return Ok(None),
         }
     }
 

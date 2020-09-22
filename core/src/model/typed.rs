@@ -52,7 +52,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 let outputs = op.eval(tensors)?;
                 outputs.into_iter().map(|t| TypedFact::from(t)).collect()
             } else {
-                op.output_facts(&*input_facts).chain_err(|| format!("wiring {}", name))?
+                op.output_facts(&*input_facts).chain_err(|| format!("wiring {} ({:?})", name, op))?
             }
         };
         let id = self.add_node(name, op, output_facts)?;

@@ -475,6 +475,10 @@ impl Scan {
         change: AxisChange,
         locked_interface: bool,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        #[cfg(debug_assertions)]
+        {
+            self.body.check_consistent_facts()?;
+        }
         let interface = self.body_exposed_outlets()?;
         let (patch, body_changed_wires) = if let Some(changes) =
             crate::ops::change_axes::change_axes(
