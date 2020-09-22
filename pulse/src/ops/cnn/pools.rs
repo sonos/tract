@@ -147,7 +147,7 @@ pub fn pulsify(
             end_input: fact.delay.to_dim() + &fact.dim,
             mode: PadMode::Constant(value),
         };
-        wire = target.wire_node(&*node.name, op, &[wire])?[0];
+        wire = target.wire_node(format!("{}.pad", node.name), op, &[wire])?[0];
         fact = target.outlet_fact(wire)?.clone();
     }
 
