@@ -6,15 +6,14 @@
 [![Embedded targets status](https://github.com/snipsco/tract/workflows/Embedded%20targets/badge.svg)](https://github.com/snipsco/tract/actions)
 [![Doc](https://docs.rs/tract-core/badge.svg)](https://docs.rs/tract-core)
 
-Snips' tiny TensorFlow and ONNX inference engine.
+Sonos' Neural Network inference engine.
 
 _This project used to be called tfdeploy, or Tensorflow-deploy-rust._
 
 ## What ?
 
-`tract` is a tensorflow- and ONNX- compatible inference library. It loads a 
-Tensorflow or ONNX frozen model from the regular protobuf format, and flows
-data through it.
+`tract` is a Neural Network inference toolkit. It can read Tensorflow 1, ONNX
+or NNEF, optimize them and run data through them.
 
 ## Quick start
 
@@ -22,51 +21,33 @@ data through it.
 * [From Keras in Jupyter to tract](examples/jupyter-keras-tract)
 * [ResNet with PyTorch](examples/pytorch-resnet)
 
-## Real-time streaming support
-
-This is a semi-experimental support for real-time applications like voice
-processing. In many real time voice applications, processing must happen "as you
-go". One can not wait for the end of the incoming audio signal to start
-decoding.
-
-While Kaldi has built its inference engine around this streaming constraint,
-our approach to the same issue is a bit different. `tract` graph analyser and
-optimiser will reason on "streamed" tensors, in order to generate an equivalent
-stateful "pulsing" network that will propagate small time slices ("pulses") of
-data. This makes optimisation efforts on pulsing and "finite" tensor modes
-mutually benefit each other.
-
-Obviously, this conversion only makes sense for a subset of operators, so not
-all networks can be converted to a pulse network: for instance, an aggregation
-(like a SoftMax) on the time dimension can only be given a value when the
-signal has been processed up to the end.
-
-## Status and compatibility
+## Tract in the landscape
 
 ### ONNX
 
-As of today (October 2019), `tract` passes successfully about 85% of ONNX backends
+As of today (October 2020), `tract` passes successfully about 85% of ONNX backends
 tests. All "real life" integration tests in Onnx test suite are passing: 
 bvlc_alexnet, densenet121, inception_v1, inception_v2, resnet50, shufflenet,
 squeezenet, vgg19, zfnet512.
 
 The following operators are implemented and tested.
 
-Abs, Acos, Acosh, Add, And, ArgMax, ArgMin, Asin, Asinh, Atan, Atanh, AveragePool, BatchNormalization, Cast, CategoryMapper, Ceil, Clip, Compress, Concat, Constant, ConstantLike, ConstantOfShape, Conv, Cos, Cosh, DequantizeLinear, Div, Dropout, Elu, Equal, Erf, Exp, Expand, EyeLike, Flatten, Floor, GRU, Gather, Gemm, GlobalAveragePool, GlobalLpPool, GlobalMaxPool, Greater, HardSigmoid, Hardmax, Identity, IsNaN, LRN, LSTM, LeakyRelu, Less, Log, LogSoftmax, MatMul, Max, MaxPool, Mean, Min, Mul, Neg, Not, Or, PRelu, Pad, ParametricSoftplus, Pow, QuantizeLinear, RNN, Reciprocal, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum, ReduceSumSquare, Relu, Reshape, Rsqrt, ScaledTanh, Scan, Selu, Shape, Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign, Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose, Unsqueeze, Where, Xor
+Abs, Acos, Acosh, Add, And, ArgMax, ArgMin, Asin, Asinh, Atan, Atanh, AveragePool, BatchNormalization, Cast, CategoryMapper, Ceil, Clip, Compress, Concat, Constant, ConstantLike, ConstantOfShape, Conv, ConvInteger, Cos, Cosh, DequantizeLinear, Div, Dropout, Elu, Equal, Erf, Exp, Expand, EyeLike, Flatten, Floor, GRU, Gather, Gemm, GlobalAveragePool, GlobalLpPool, GlobalMaxPool, Greater, GreaterOrEqual, HardSigmoid, Hardmax, Identity, InstanceNormalization, IsInf, IsNaN, LRN, LSTM, LeakyRelu, Less, LessOrEqual, Log, LogSoftmax, MatMul, MatMulInteger, Max, MaxPool, Mean, Min, Mod, Mul, Neg, NonZero, Not, Or, PRelu, Pad, ParametricSoftplus, Pow, QLinearConv, QLinearMatMul, QuantizeLinear, RNN, Reciprocal, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum, ReduceSumSquare, Relu, Reshape, Resize, Round, Rsqrt, ScaledTanh, Scan, Selu, Shape, Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign, Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose, Unsqueeze, Where, Xor
 
-We test these operators against Onnx 1.4.1 (operator set 9) and Onnx 1.5.0
-(operator set 10).
+We test these operators against Onnx 1.4.1 (operator set 9), Onnx 1.5.0
+(operator set 10), Onnx 1.6.0 (operator set 11), and Onnx 1.7.0 (operator set
+12). Many networks in operator set 8 are also working.
 
 ### TensorFlow
 
 Even if `tract` is very far from supporting any arbitrary model, it can run
-Google Inception v3 and Snips wake word models. Missing operators are easy
-to add. The lack of easy to reuse test suite, and the wide diversity of 
+Google Inception v3 and Snips wake word models. Missing operators are relatively 
+easy to add. The lack of easy to reuse test suite, and the wide diversity of 
 operators in Tensorflow make it difficult to target a full support.
 
 The following operators are implemented and tested:
 
-Abs, Add, AddN, AddV2, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast, Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, Enter, Equal, Exit, ExpandDims, FakeQuantWithMinMaxVars, Fill, FloorMod, FusedBatchNorm, GatherNd, GatherV2, Greater, GreaterEqual, Identity, Less, LessEqual, Log, LogicalAnd, LogicalOr, LoopCond, MatMul, Max, MaxPool, Maximum, Mean, Min, Minimum, Mul, Neg, NoOp, Pack, Pad, Placeholder, Pow, Prod, RandomUniform, RandomUniformInt, Range, RealDiv, Relu, Relu6, Reshape, Rsqrt, Shape, Sigmoid, Slice, Softmax, SpaceToBatchND, Squeeze, StridedSlice, Sub, Sum, Tanh, Tile, Transpose, VariableV2
+Abs, Add, AddN, AddV2, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast, Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, Enter, Equal, Exit, ExpandDims, FakeQuantWithMinMaxVars, Fill, FloorMod, FusedBatchNorm, GatherNd, GatherV2, Greater, GreaterEqual, Identity, Less, LessEqual, Log, LogicalAnd, LogicalOr, LoopCond, MatMul, Max, MaxPool, Maximum, Mean, Merge, Min, Minimum, Mul, Neg, NoOp, Pack, Pad, Placeholder, Pow, Prod, RandomUniform, RandomUniformInt, Range, RealDiv, Relu, Relu6, Reshape, Rsqrt, Shape, Sigmoid, Slice, Softmax, SpaceToBatchND, Squeeze, StridedSlice, Sub, Sum, Switch, Tanh, Tile, Transpose, VariableV2
 
 ### TensorFlow-Lite
 
@@ -77,14 +58,14 @@ and is only optimised for devices with Arm Neon support.
 
 Tract supports a wider subset of TensorFlow operators, and has been optimised
 for CPU of the previous generation (ARM VFP), also targetting devices in the
-Raspberry Pi Zero family.
+Raspberry Pi Zero family that TensorFlow Lite does not address.
 
 ### NNEF
 
 Long story short, TensorFlow and Onnx formats are good for designing and
 training networks. They need to move fast to follow the research field, tend to
 integrate new features and operators greedily. They also exhibit a high level
-of expressibity to make facilitate network design.
+of expressivity to facilitate network design.
 
 On the other hand, only a subset of operators and network features actually
 reach production, so systems running production network do not have to deal
@@ -94,15 +75,16 @@ be stripped from the network before going to production for prediction.
 NNEF tries to bridge the gap between training frameworks and inference by
 proposing a format dedicated to production and prediction.
 
-Tract NNEF support is partial, and alpha level:
-* tract_nnef can load and execute networks NNEF networks
-* tract command line can translate networks from TensorFlow or ONNX to NNEF
+Tract supports NNEF:
+
+* tract_nnef can load and execute NNEF networks
 * tract supports most of the NNEF specification, the most notable exception
     being the ROI operators and deconvolution
-* tract needs to extend NNEF with other operators (or extend some operators
-    semantics) in order to support the subset of ONNX and TensorFlow that tract
-    supports.
-
+* tract introduces tract-OPL, a series of NNEF extensions to support other
+    operators (or extend some operators semantics) in order to represent the
+    full range of tract-core neural network support: any network understood by
+    tract should be serializable to tract-OPL. This is a work in progress.
+* tract command line can translate networks from TensorFlow or ONNX to NNEF/OPL.
 
 ## Example of supported networks
 
