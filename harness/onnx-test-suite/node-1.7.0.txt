@@ -291,6 +291,10 @@ test_nonzero_example not-nnef not-typable
 test_not_2d
 test_not_3d
 test_not_4d
+test_onehot_negative_indices input:indices not-nnef
+test_onehot_with_axis not-nnef input:indices
+test_onehot_with_negative_axis not-nnef input:indices
+test_onehot_without_axis not-nnef input:indices
 test_or2d
 test_or3d
 test_or4d

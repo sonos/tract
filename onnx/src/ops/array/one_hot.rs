@@ -1,4 +1,5 @@
 use tract_hir::internal::*;
+use tract_ndarray::Dimension;
 
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
@@ -18,6 +19,15 @@ struct OneHot {
 
 tract_linalg::impl_dyn_hash!(OneHot);
 
+impl OneHot {
+    pub fn split_values_t<T: Datum>(values: &Tensor) -> TractResult<(Tensor, Tensor)> {
+        let slice = values.as_slice::<T>()?;
+        let v_off = tensor0(slice[0].clone());
+        let v_on = tensor0(slice[1].clone());
+        Ok((v_off, v_on))
+    }
+}
+
 impl Expansion for OneHot {
     fn name(&self) -> Cow<str> {
         "OneHot".into()
@@ -31,13 +41,22 @@ impl Expansion for OneHot {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let (Some(dim), Some(values)) =
-            (model.outlet_fact(inputs[1])?.konst, model.outlet_fact(inputs[2])?.konst)
-        {
+        let dim = model.outlet_fact(inputs[1])?;
+        let values = model.outlet_fact(inputs[2])?;
+        if let (Some(dim), Some(values)) = (&dim.konst, &values.konst) {
+            let rank = model.outlet_fact(inputs[0])?.rank();
+            let axis = if self.axis < 0 { self.axis + rank as i64 + 1 } else { self.axis } as usize;
             let dim = dim.cast_to::<i64>()?;
             let dim = dim.as_slice::<i64>()?[0];
+            if dim < 0 {
+                bail!("Expected positive dimension, got {}", dim)
+            }
+            let (off, on) = dispatch_datum!(Self::split_values_t(values.datum_type())(&values))?;
+            let op = MirOneHot { axis, dim: dim as usize, off, on };
+            model.wire_node(prefix, op, &[inputs[0]])
+        } else {
+            bail!("Expected dim and value to be determined, got {:?} and {:?}", dim, values)
         }
-        todo!();
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -53,7 +72,7 @@ impl Expansion for OneHot {
         s.equals(&inputs[2].rank, 1)?;
         s.equals(&inputs[2].shape[0], 2.to_dim())?;
         s.given(&inputs[0].rank, move |s, irank| {
-            let axis = if self.axis < 0 { self.axis + irank } else { self.axis } as usize;
+            let axis = if self.axis < 0 { self.axis + irank + 1 } else { self.axis } as usize;
             for ix in 0..axis {
                 s.equals(&inputs[0].shape[ix], &outputs[0].shape[ix])?;
             }
@@ -115,7 +134,17 @@ impl MirOneHot {
         let on = self.on.to_scalar::<T>()?;
         let mut shape: TVec<usize> = input.shape().into();
         shape.insert(self.axis, self.dim);
-        let array = tract_ndarray::ArrayD::<T>::from_elem(&*shape, off.to_owned());
+        let mut array = tract_ndarray::ArrayD::<T>::from_elem(&*shape, off.to_owned());
+        let input = input.cast_to::<i32>()?;
+        let input = input.to_array_view::<i32>()?;
+        dbg!(&input);
+        for icoord in tract_ndarray::indices_of(&input) {
+            let mut ocoord:Vec<usize> = icoord.slice().into();
+            let coord = input[&icoord];
+            let coord = if coord < 0 { coord + self.dim as i32 } else { coord } as usize;
+            ocoord.insert(self.axis, coord);
+            array[&*ocoord] = on.clone();
+        }
         Ok(array.into_tensor())
     }
 }
