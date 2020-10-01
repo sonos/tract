@@ -231,3 +231,85 @@ propagate information in all directions with one single rule.
 The rules solver syntax is a bit old and arcane, and could certainly be
 improved or simplified, but it is still much easier to use than writing rules
 by hand.
+
+## Loading from the frameworks
+
+Training frameworks (TensorFlow and Onnx) use protobuf as a serialization
+format. tract-tensorflow (and tract-onnx) can read these and build the neural 
+network as an InferenceModel in memory. When the framework parses a node, the
+operation type is manifested by its name. Then the way to interpret and plug-in
+the various attribute depends on the Operator itself.
+
+When loading the framework object, tract builds a mapping of
+operator names to operator constructor functions that is responsible for
+extracting the attributes from the parsed protobuf.
+
+Modules containing operators typically expose a register_all_ops function that
+feeds this map. Here is an example from `onnx/src/ops/nn/mod.rs`.
+
+```rust
+pub fn register_all_ops(reg: &mut OnnxOpRegister) {
+    reg.insert("ArgMax", arg_max_min);
+    reg.insert("ArgMin", arg_max_min);
+    reg.insert("AveragePool", average_pool);
+    reg.insert("BatchNormalization", batch_normalization);
+    /* [...] */
+}
+```
+
+The `batch_normalization` function looks like this:
+
+```rust
+pub fn batch_normalization(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let epsilon = node.get_attr_opt("epsilon")?.unwrap_or(1e-5);
+    let spatial = node.get_attr_opt("spatial")?.unwrap_or(1);
+    if spatial != 1 {
+        bail!("BatchNormalization: attribute 'spatial' is not supported (deprecated by ONNX operator set 9)")
+    }
+    Ok((expand(batch_norm::BatchNorm::new(nn::DataFormat::NCHW, epsilon, spatial != 0)), vec![]))
+}
+```
+
+It is given the protobuf parsed Node, and extracts two attributes from it.
+Then it buidls an actual operation (as an Expansion, more on this later).
+
+## Dumping as OPL, loading from OPL
+
+"Good citizen" operators know how to dump themselves in OPL, and load from
+them.
+
+OPL is tract NNEF-based format. Some operators are compatible with NNEF, in
+which case they can use NNEF standard form, but many operators from ONNX and
+TensorFlow can only be handled with extensions.
+
+NNEF compatible operators are dumped and loaded by code in 
+`nnef/src/ops/nnef/mod.rs`.
+
+Each OPL module (`nnef`, `pulse-opl`, `onnx-opl`) defines a registry of
+operators, containing both OPL loaders and OPL dumpers.
+
+```rust
+pub struct Registry {
+    pub id: String,
+    pub fragments: HashMap<String, FragmentDef>,
+    pub primitives: HashMap<String, (Vec<ast::Parameter>, ToTract)>,
+    pub unit_element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
+    pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
+    pub binary_ops: Vec<(String, Box<dyn BinMiniOp>)>,
+    pub from_tract: HashMap<TypeId, FromTract>,
+}
+pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<TVec<OutletId>>;
+pub type FromTract = fn(&mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>;
+```
+
+The generic dumping mecanism relies on `from_tract` HashMap: it maps a rust
+TypeId (the one for the TypedOp we need to dump) to a FromTract dumping
+function. The mutable IntoAst is modified by the callback to store the
+representation of the Op. The callback can add NNEF fragments (NNEF lingo for
+functions) to the NNEF document but its main responsibility is to translate 
+the node and its op to some NNEF ast nodes.
+
+## Expansions, and rules wrapper
