@@ -61,10 +61,16 @@ pub fn constant_of_shape(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let value = match node.get_attr_opt::<Tensor>("value")? {
+    let mut value = match node.get_attr_opt::<Tensor>("value")? {
         Some(val) => val.into_arc_tensor(),
-        None => rctensor1(&[0.0]),
+        None => rctensor0(0.0),
     };
+    if value.rank() > 0 {
+        if value.len() != 1 {
+            bail!("Expected scalar (or vector of length 1), got {:?}", value);
+        }
+        value = value.nth(0)?.into_arc_tensor();
+    }
     Ok((expand(array::ConstantOfShape::new(value)), vec![]))
 }
 

@@ -19,6 +19,9 @@ impl Op for ConstantOfShape {
 
 impl TypedOp for ConstantOfShape {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if self.scalar.rank() > 0 {
+            bail!("ConstantOfShape attribute must be a scalar, {:?}", self.scalar)
+        }
         Ok(tvec!(TypedFact::dt_shape(self.scalar.datum_type(), &*self.shape)?))
     }
 
