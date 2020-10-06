@@ -18,15 +18,6 @@ struct OneHot {
 
 tract_linalg::impl_dyn_hash!(OneHot);
 
-impl OneHot {
-    pub fn split_values_t<T: Datum>(values: &Tensor) -> TractResult<(Tensor, Tensor)> {
-        let slice = values.as_slice::<T>()?;
-        let v_off = tensor0(slice[0].clone());
-        let v_on = tensor0(slice[1].clone());
-        Ok((v_off, v_on))
-    }
-}
-
 impl Expansion for OneHot {
     fn name(&self) -> Cow<str> {
         "OneHot".into()
@@ -50,7 +41,8 @@ impl Expansion for OneHot {
             if dim < 0 {
                 bail!("Expected positive dimension, got {}", dim)
             }
-            let (off, on) = dispatch_datum!(Self::split_values_t(values.datum_type())(&values))?;
+            let off = values.nth(0)?;
+            let on = values.nth(1)?;
             let op = tract_onnx_opl::one_hot::OneHot {
                 axis,
                 dim: dim as usize,

@@ -608,6 +608,22 @@ impl Tensor {
         casted.to_scalar::<D>().map(|&x| x)
     }
 
+    /// Access the nth element of the tensor, returned as a 0-rank Tensor
+    pub fn nth(&self, nth: usize) -> TractResult<Tensor> {
+        if nth >= self.len() {
+            bail!("nth called with {}th element on a tensor of len {} ({:?}", nth, self.len(), self);
+        }
+        unsafe fn nth_t<T:Datum>(me: &Tensor, nth: usize, output: &mut Tensor) {
+            let value = me.as_slice_unchecked::<T>()[nth].clone();
+            output.as_slice_mut_unchecked::<T>()[0] = value;
+        }
+        unsafe {
+            let mut output = Tensor::uninitialized_dt(self.datum_type(), &[])?;
+            dispatch_datum_by_size!(nth_t(self.datum_type())(self, nth, &mut output));
+            Ok(output)
+        }
+    }
+
     /// Strict equality test on tensors.
     fn eq_dt(&self, other: &Tensor) -> TractResult<bool> {
         unsafe fn eq_t<D: Datum>(me: &Tensor, other: &Tensor) -> bool {
