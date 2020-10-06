@@ -30,7 +30,7 @@ impl TypedOp for ConstantOfShape {
         if let Ok(shape) =
             self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<Vec<usize>>>()
         {
-            let tensor = make_tensor(&*shape, &*self.scalar);
+            let tensor = self.scalar.broadcast_scalar_to_shape(&*shape)?.into_arc_tensor();
             Ok(Some(TypedModelPatch::replace_single_op(
                 model,
                 node,
@@ -46,12 +46,9 @@ impl TypedOp for ConstantOfShape {
 }
 
 impl EvalOp for ConstantOfShape {
-    fn eval(
-        &self,
-        _inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape:TVec<_> = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
-        Ok(tvec!(make_tensor(&*shape, &self.scalar)))
+    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let shape: TVec<_> = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
+        Ok(tvec!(self.scalar.broadcast_scalar_to_shape(&*shape)?.into_arc_tensor()))
     }
 
     fn is_stateless(&self) -> bool {
@@ -83,18 +80,7 @@ impl OpState for ConstantOfShapeState {
             .iter()
             .map(|d| Ok(d.eval(&session.resolved_symbols).to_usize()?))
             .collect::<TractResult<TVec<_>>>()?;
-        Ok(tvec!(make_tensor(&*shape, &op.scalar)))
+        Ok(tvec!(op.scalar.broadcast_scalar_to_shape(&*shape)?.into_arc_tensor()))
     }
 }
 
-pub fn make_tensor(shape: &[usize], scalar: &Tensor) -> Arc<Tensor> {
-    unsafe {
-        let mut t = Tensor::uninitialized_dt(scalar.datum_type(), &*shape).unwrap();
-        unsafe fn init<T: Datum>(t: &mut Tensor, scalar: &Tensor) {
-            let scalar = scalar.to_scalar_unchecked::<T>();
-            t.as_slice_mut_unchecked().iter_mut().for_each(|x| *x = scalar.clone())
-        }
-        dispatch_datum!(init(scalar.datum_type())(&mut t, &scalar));
-        t.into_arc_tensor()
-    }
-}

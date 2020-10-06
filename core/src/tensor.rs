@@ -274,6 +274,21 @@ impl Tensor {
         Ok(())
     }
 
+    pub fn broadcast_scalar_to_shape(&self, shape: &[usize]) -> TractResult<Tensor> {
+        if self.rank() > 0 {
+            bail!("broadcast_scalar_to_shape called on {:?}", self);
+        }
+        unsafe fn make<T: Datum>(src: &Tensor, dst: &mut Tensor) {
+            let value: &T = src.to_scalar_unchecked::<T>();
+            dst.as_slice_mut_unchecked::<T>().iter_mut().for_each(|item| *item = value.clone());
+        }
+        unsafe {
+            let mut t = Tensor::uninitialized_dt(self.datum_type(), shape)?;
+            dispatch_datum_by_size!(make(self.datum_type())(self, &mut t));
+            Ok(t)
+        }
+    }
+
     /// Get the datum type of the tensor.
     pub fn datum_type(&self) -> DatumType {
         self.dt

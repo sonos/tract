@@ -9,7 +9,6 @@ use tract_hir::ops::array;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
-use tract_num_traits::AsPrimitive;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Compress", compress::compress);
@@ -42,14 +41,6 @@ pub fn concat(
     Ok((expand(array::Concat::new(axis)), vec![]))
 }
 
-pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<Arc<Tensor>>
-where
-    T: Copy + Datum,
-    f32: AsPrimitive<T>,
-{
-    Ok(tract_ndarray::Array::<T, _>::from_elem(shape, v.as_()).into_arc_tensor())
-}
-
 pub fn constant_like(
     _ctx: &ParsingContext,
     node: &NodeProto,
@@ -58,7 +49,8 @@ pub fn constant_like(
     if node.input.len() == 0 {
         let dt = node.get_attr_opt("dtype")?.unwrap_or(f32::datum_type());
         let shape: Vec<usize> = node.get_attr_vec("shape")?;
-        let tensor = dispatch_numbers!(self::make_const(dt)(&shape, value))?;
+        let tensor =
+            tensor0(value).cast_to_dt(dt)?.broadcast_scalar_to_shape(&*shape)?.into_arc_tensor();
         Ok((Box::new(tract_hir::ops::konst::Const::new(tensor)), vec![]))
     } else {
         Ok((Box::new(array::ConstantLike::new(value)), vec![]))
@@ -71,7 +63,7 @@ pub fn constant_of_shape(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let value = match node.get_attr_opt::<Tensor>("value")? {
         Some(val) => val.into_arc_tensor(),
-        None => make_const::<f32>(&vec![1], 0.0 as f32)?,
+        None => rctensor1(&[0.0]),
     };
     Ok((expand(array::ConstantOfShape::new(value)), vec![]))
 }
