@@ -11,16 +11,6 @@ pub struct ConstantLike {
 
 tract_linalg::impl_dyn_hash!(ConstantLike);
 
-impl ConstantLike {
-    pub fn make<T>(&self, shape: &[usize]) -> TractResult<Arc<Tensor>>
-    where
-        T: Datum + Copy,
-        f32: AsPrimitive<T>,
-    {
-        Ok(Array::<T, _>::from_elem(shape, self.value.as_()).into_arc_tensor())
-    }
-}
-
 impl Op for ConstantLike {
     fn name(&self) -> Cow<str> {
         "ConstantLike".into()
@@ -37,7 +27,7 @@ impl EvalOp for ConstantLike {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(self, input.shape()))?))
+        Ok(tvec!(tensor0(self.value).broadcast_scalar_to_shape(input.shape())?.into_arc_tensor()))
     }
 }
 
@@ -56,7 +46,10 @@ impl InferenceRulesOp for ConstantLike {
         s.given_2(&inputs[0].shape, &inputs[0].datum_type, move |s, shape, dt| {
             if shape.iter().all(|d| d.to_usize().is_ok()) {
                 let shape: Vec<usize> = shape.iter().map(|d| d.to_usize().unwrap()).collect();
-                let value = dispatch_numbers!(Self::make(dt)(self, &shape))?;
+                let value = tensor0(self.value)
+                    .cast_to_dt(dt)?
+                    .broadcast_scalar_to_shape(&*shape)?
+                    .into_arc_tensor();
                 s.equals(&outputs[0].value, value)?;
             }
             Ok(())
