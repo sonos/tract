@@ -51,7 +51,12 @@ impl Expansion for OneHot {
                 bail!("Expected positive dimension, got {}", dim)
             }
             let (off, on) = dispatch_datum!(Self::split_values_t(values.datum_type())(&values))?;
-            let op = tract_onnx_opl::one_hot::OneHot { axis, dim: dim as usize, off, on };
+            let op = tract_onnx_opl::one_hot::OneHot {
+                axis,
+                dim: dim as usize,
+                off: off.into_arc_tensor(),
+                on: on.into_arc_tensor(),
+            };
             model.wire_node(prefix, op, &[inputs[0]])
         } else {
             bail!("Expected dim and value to be determined, got {:?} and {:?}", dim, values)

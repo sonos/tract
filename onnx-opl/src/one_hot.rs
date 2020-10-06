@@ -5,15 +5,15 @@ use tract_nnef::internal::*;
 pub struct OneHot {
     pub axis: usize,
     pub dim: usize,
-    pub off: Tensor,
-    pub on: Tensor,
+    pub off: Arc<Tensor>,
+    pub on: Arc<Tensor>,
 }
 
 tract_linalg::impl_dyn_hash!(OneHot);
 
 impl Op for OneHot {
     fn name(&self) -> Cow<str> {
-        "MirOnehot".into()
+        "Onehot".into()
     }
 
     op_onnx!();
@@ -61,4 +61,42 @@ impl OneHot {
         }
         Ok(array.into_tensor())
     }
+}
+
+pub fn parameters() -> Vec<Parameter> {
+    vec![
+        TypeName::Scalar.tensor().named("input"),
+        TypeName::Integer.named("axis"),
+        TypeName::Integer.named("dim"),
+        TypeName::Scalar.named("value_off").default(0.0),
+        TypeName::Scalar.named("value_on").default(1.0),
+    ]
+}
+
+pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let one_hot = node.op_as::<OneHot>().unwrap();
+    let input = ast.mapping[&node.inputs[0]].clone();
+    Ok(Some(invocation(
+        "tract_onnx_one_hot",
+        &[input],
+        &[
+            ("axis", numeric(one_hot.axis)),
+            ("dim", numeric(one_hot.dim)),
+            ("value_off", numeric(one_hot.off.cast_to_scalar::<f32>()?)),
+            ("value_on", numeric(one_hot.on.cast_to_scalar::<f32>()?)),
+        ],
+    )))
+}
+
+pub fn load(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let axis = invocation.named_arg_as(builder, "axis")?;
+    let dim = invocation.named_arg_as(builder, "dim")?;
+    let off = invocation.named_arg_as(builder, "value_off")?;
+    let on = invocation.named_arg_as(builder, "value_on")?;
+    let op = OneHot { axis, dim, on, off };
+    builder.wire(op, &[input])
 }
