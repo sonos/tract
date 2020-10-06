@@ -10,6 +10,7 @@ pub mod erf;
 pub mod is_inf;
 pub mod is_nan;
 pub mod lrn;
+pub mod one_hot;
 
 pub trait WithOnnx {
     fn with_onnx(self) -> Self;
