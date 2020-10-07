@@ -192,8 +192,12 @@ pub struct Onnx {
 
 impl Onnx {
     pub fn parse(&self, proto: &pb::ModelProto) -> TractResult<ParseResult> {
-        let onnx_operator_set_version =
-            proto.opset_import.iter().find(|import| import.domain == "").unwrap().version;
+        let onnx_operator_set_version = proto
+            .opset_import
+            .iter()
+            .find(|import| import.domain == "" || import.domain == "ai.onnx")
+            .unwrap()
+            .version;
         let graph = &proto.graph;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
         if onnx_operator_set_version < 9 || onnx_operator_set_version > 12 {
