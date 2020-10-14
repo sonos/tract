@@ -1,4 +1,3 @@
-use tract_ndarray::Array;
 use tract_onnx::prelude::*;
 use rand::*;
 
