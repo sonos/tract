@@ -18,7 +18,8 @@ or NNEF, optimize them and run data through them.
 ## Quick start
 
 * [MobileNet v2 with TensorFlow](examples/tensorflow-mobilenet-v2)
-* [From Keras in Jupyter to tract](examples/jupyter-keras-tract)
+* [From Keras and TensorFlow 1 in Jupyter to tract](examples/jupyter-keras-tract-tf1)
+* [From Keras and TensorFlow 2 in Jupyter to tract](examples/jupyter-keras-tract-tf2)
 * [ResNet with PyTorch](examples/pytorch-resnet)
 
 ## Tract in the landscape
