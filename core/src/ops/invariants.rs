@@ -25,7 +25,7 @@ impl Invariants {
             .map(|axis| {
                 Ok(AxisInfo::for_node(model, node, axis)?.disposable(shape[axis] == 1.into()))
             })
-            .collect::<TractResult<_>>()?;
+        .collect::<TractResult<_>>()?;
         Ok(Invariants { element_wise: true, axes })
     }
 
@@ -56,11 +56,11 @@ impl From<TVec<AxisInfo>> for Invariants {
 
 impl std::iter::FromIterator<AxisInfo> for Invariants {
     fn from_iter<T>(iter: T) -> Self
-    where
-        T: IntoIterator<Item = AxisInfo>,
-    {
-        Invariants { element_wise: false, axes: iter.into_iter().collect() }
-    }
+        where
+            T: IntoIterator<Item = AxisInfo>,
+        {
+            Invariants { element_wise: false, axes: iter.into_iter().collect() }
+        }
 }
 
 /// Translation invariance property.
@@ -78,14 +78,14 @@ impl fmt::Debug for AxisInfo {
             fmt,
             "{}->{}",
             self.inputs
-                .iter()
-                .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
-                .join(","),
+            .iter()
+            .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
+            .join(","),
             self.outputs
-                .iter()
-                .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
-                .join(",")
-        )?;
+            .iter()
+            .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
+            .join(",")
+            )?;
         if !self.disposable {
             write!(fmt, " not disposable")?;
         }
@@ -143,7 +143,7 @@ impl Invariants {
                 .find(|connection| {
                     connection.outputs.get(0) == Some(&Some(axis)) && connection.period == 1
                 })
-                .filter(|conn| conn.disposable || !only_disposable)
+            .filter(|conn| conn.disposable || !only_disposable)
                 .and_then(|connection| connection.inputs.get(0))
                 .and_then(|d| *d)
         }
@@ -159,17 +159,119 @@ impl Invariants {
                 .find(|connection| {
                     connection.inputs.get(0) == Some(&Some(axis)) && connection.period == 1
                 })
-                .filter(|conn| conn.disposable || !only_disposable)
+            .filter(|conn| conn.disposable || !only_disposable)
                 .and_then(|connection| connection.outputs.get(0))
                 .and_then(|d| *d)
         }
     }
 }
+/*
+#[derive(Debug, Clone, Default)]
+pub struct OutletMap<T>(std::collections::BTreeMap<OutletId, T>);
+
+impl<T> OutletMap<T> {
+fn insert(&mut self, outlet: OutletId, t: T) {
+self.0.insert(outlet, t);
+}
+
+fn remove(&mut self, outlet: &OutletId) -> Option<T> {
+self.0.remove(outlet)
+}
+
+fn get(&self, outlet: &OutletId) -> Option<&T> {
+self.0.get(outlet)
+}
+}
+
+impl<'a, T> std::ops::Index<&'a OutletId> for OutletMap<T> {
+type Output = T;
+fn index(&self, index: &'a OutletId) -> &Self::Output {
+&self.0[index]
+}
+}
+*/
+
+#[derive(Debug, Clone, Default)]
+pub struct OutletMap<T>(Vec<TVec<Option<T>>>);
+
+impl<T: Clone> OutletMap<T> {
+    fn insert(&mut self, outlet: OutletId, t: T) {
+        if outlet.node >= self.0.len() {
+            self.0.resize_with(outlet.node + 1, || tvec!());
+        }
+        let node = &mut self.0[outlet.node];
+        if outlet.slot >= node.len() {
+            node.resize(outlet.slot + 1, None);
+        }
+        node[outlet.slot] = Some(t)
+    }
+}
+
+impl<T> OutletMap<T> {
+    fn remove(&mut self, outlet: &OutletId) -> Option<T> {
+        if let Some(node) = self.0.get_mut(outlet.node) {
+            if let Some(slot) = node.get_mut(outlet.slot) {
+                return slot.take();
+            }
+        }
+        None
+    }
+
+    fn get(&self, outlet: &OutletId) -> Option<&T> {
+        if let Some(node) = self.0.get(outlet.node) {
+            if let Some(slot) = node.get(outlet.slot) {
+                return slot.as_ref();
+            }
+        }
+        None
+    }
+
+    fn keys(&self) -> OutletMapKeysIter<T> {
+        OutletMapKeysIter(self, (0, 0).into())
+    }
+
+    /*
+    fn iter(&self) -> OutletMapIter<T> {
+        OutletMapIter(self, 0, 0)
+    }
+    */
+}
+
+impl<'a, T: Clone> std::ops::Index<&'a OutletId> for OutletMap<T> {
+    type Output = T;
+    fn index(&self, index: &'a OutletId) -> &Self::Output {
+        self.get(index).unwrap()
+    }
+}
+
+struct OutletMapKeysIter<'a, T>(&'a OutletMap<T>, OutletId);
+
+impl<'a, T> std::iter::Iterator for OutletMapKeysIter<'a, T> {
+    type Item = OutletId;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.1.node >= self.0.0.len() {
+                return None
+            }
+            if self.1.slot >= self.0.0[self.1.node].len() {
+                self.1.slot = 0;
+                self.1.node += 1;
+                continue;
+            }
+            let current = self.1.clone();
+            self.1.slot += 1;
+            if self.0.get(&current).is_some() {
+                return Some(current)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AxisTracking {
     pub creators: TVec<OutletId>,
     pub destructors: TVec<InletId>,
-    pub outlets: HashMap<OutletId, usize>,
+    pub outlets: OutletMap<usize>,
     pub disposable: bool,
 }
 
@@ -178,15 +280,15 @@ impl AxisTracking {
         model: &TypedModel,
         outlet: OutletId,
         axis: usize,
-    ) -> TractResult<AxisTracking> {
-        let mut mapped_outlets = HashMap::<OutletId, usize>::new();
-        let mut todo = HashSet::<OutletId>::new();
+        ) -> TractResult<AxisTracking> {
+        let mut mapped_outlets = OutletMap::default();
+        let mut todo = OutletMap::default();
         let mut disposable = true;
         let mut creators = tvec!();
         let mut destructors = tvec!();
         mapped_outlets.insert(outlet, axis);
-        todo.insert(outlet);
-        while let Some(wire) = todo.iter().cloned().next() {
+        todo.insert(outlet, ());
+        while let Some(wire) = todo.keys().next() {
             todo.remove(&wire);
             let axis = mapped_outlets[&wire];
             let emiter_node = model.node(wire.node);
@@ -235,7 +337,7 @@ impl AxisTracking {
                     }
                 } else {
                     mapped_outlets.insert(outlet, axis);
-                    todo.insert(outlet);
+                    todo.insert(outlet, ());
                 }
             }
         }
@@ -270,5 +372,5 @@ pub fn for_model(model: &TypedModel) -> TractResult<Invariants> {
                 model.input_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
             Ok(AxisInfo { inputs, outputs, disposable: tracking.disposable, period: 1 })
         })
-        .collect()
+    .collect()
 }
