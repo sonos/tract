@@ -134,7 +134,10 @@ test_dropout_default_mask  not-typable not-nnef
 test_dropout_default_old
 test_dropout_random not-nnef
 test_dropout_random_old
+test_dynamicquantizelinear  not-nnef
+test_dynamicquantizelinear_max_adjusted  not-nnef
 test_dynamicquantizelinear_max_adjusted_expanded  not-typable not-nnef
+test_dynamicquantizelinear_min_adjusted  not-nnef
 test_dynamicquantizelinear_min_adjusted_expanded  not-typable not-nnef
 test_edge_pad input:x
 test_elu

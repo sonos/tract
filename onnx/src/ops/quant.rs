@@ -6,6 +6,7 @@ use tract_hir::ops::quant::*;
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("QuantizeLinear", quantize_linear);
     reg.insert("DequantizeLinear", dequantize_linear);
+    reg.insert("DynamicQuantizeLinear", dynamic_quantize_linear);
 }
 
 fn quantize_linear(
@@ -21,6 +22,14 @@ fn dequantize_linear(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let op = DequantizeLinear::new(Some(2).filter(|_| node.input.len() == 3));
+    Ok((expand(op), vec![]))
+}
+
+fn dynamic_quantize_linear(
+    _ctx: &ParsingContext,
+    _node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let op = DynamicQuantizeLinear::new();
     Ok((expand(op), vec![]))
 }
 
@@ -154,5 +163,49 @@ impl Expansion for DequantizeLinear {
             Box::new(DequantizeLinearF32::new(scale, zero_point.as_slice::<i32>()?[0] as i32))
         };
         target.wire_node(prefix, op, &[inputs[0]])
+    }
+}
+
+#[derive(Debug, Clone, new, Default, Hash)]
+pub struct DynamicQuantizeLinear {}
+
+tract_linalg::impl_dyn_hash!(DynamicQuantizeLinear);
+
+impl Expansion for DynamicQuantizeLinear {
+    fn name(&self) -> Cow<str> {
+        "DynamicQuantizeLinear".into()
+    }
+
+    op_onnx!();
+
+    fn nboutputs(&self) -> TractResult<usize> {
+        return Ok(3);
+    }
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> TractResult<()> {
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 3)?;
+        s.equals(&inputs[0].datum_type, f32::datum_type())?;
+        s.equals(&inputs[0].shape, &outputs[0].shape)?;
+        s.equals(&outputs[0].datum_type, u8::datum_type())?;
+        s.equals(&outputs[1].datum_type, f32::datum_type())?;
+        s.equals(&outputs[2].datum_type, u8::datum_type())?;
+
+        Ok(())
+    }
+
+    fn wire(
+        &self,
+        prefix: &str,
+        target: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let op: Box<dyn TypedOp> = Box::new(DynamicQuantizeLinearU8::new());
+        target.wire_node(format!("{}.dynamic_quantize", prefix), op, &[inputs[0]])
     }
 }
