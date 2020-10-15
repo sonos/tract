@@ -51,8 +51,18 @@ then
     exit 0
 fi
 
+for version in 1_4_1 1_5_0 1_6_0 1_7_0
+do
+    echo $version
+    cargo -q test -q -p onnx-test-suite --release -- $version
+    if [ -n "$CI" ]
+    then
+        rm -rf $CACHEDIR/onnx
+    fi
+done
+
 HARNESS=""
-for p in $(ls harness)
+for p in $(ls harness | grep -v onnx-test-suite)
 do
     HARNESS="$HARNESS -p $p"
 done
