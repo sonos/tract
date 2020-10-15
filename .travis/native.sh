@@ -51,15 +51,12 @@ then
     exit 0
 fi
 
-for version in 1_4_1 1_5_0 1_6_0 1_7_0
-do
-    echo $version
-    cargo -q test -q -p onnx-test-suite --release -- $version
-    if [ -n "$CI" ]
-    then
-        rm -rf $CACHEDIR/onnx
-    fi
-done
+cargo -q test -q -p onnx-test-suite --release
+
+if [ -n "$CI" ]
+then
+    rm -rf $CACHEDIR/onnx
+fi
 
 HARNESS=""
 for p in $(ls harness | grep -v onnx-test-suite)
@@ -70,11 +67,6 @@ done
 cargo -q test -q --release $HARNESS $ALL_FEATURES
 
 cargo -q build -q -p tract --release
-
-if [ -n "$CI" ]
-then
-    rm -rf $CACHEDIR/onnx
-fi
 
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
@@ -89,17 +81,17 @@ fi
     en_libri_real.tar.gz
 
 (
-    cd $CACHEDIR
-    [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+cd $CACHEDIR
+[ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
 )
 
 ./target/release/tract $CACHEDIR/squeezenet.onnx \
-     run -q --assert-output 1x1000x1x1xf32
+    run -q --assert-output 1x1000x1x1xf32
 
 ./target/release/tract \
-     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
-     -i 1x299x299x3xf32 \
-     run -q --assert-output-fact 1x1001xf32
+    $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
+    -i 1x299x299x3xf32 \
+    run -q --assert-output-fact 1x1001xf32
 
 ./target/release/tract \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
@@ -107,27 +99,27 @@ fi
     run -q --assert-output-fact 1x1001xf32
 
 ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
-     -O -i 49x10xf32 --partial \
-     --input-node Mfcc run -q
+    -O -i 49x10xf32 --partial \
+    --input-node Mfcc run -q
 
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-     -O -i Sx40xf32 --output-node output --pulse 24 \
-     run -q
+    -O -i Sx40xf32 --output-node output --pulse 24 \
+    run -q
 
 ./target/release/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
-     -O -i 1x224x224x3xf32 \
+    -O -i 1x224x224x3xf32 \
     run -q --assert-output-fact 1x1001xf32
 
 ./target/release/tract $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
-     -O -i 1x224x224x3xf32 \
+    -O -i 1x224x224x3xf32 \
     run -q --assert-output-fact 1x1001xf32
 
 ./target/release/tract $CACHEDIR/GRU128KeywordSpotter-v2-10epochs.onnx \
-     -O run -q --assert-output-fact 1x3xf32
+    -O run -q --assert-output-fact 1x3xf32
 
 ./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb \
-     -i Sx20xf32 --pulse 8 dump --cost -q \
-     --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
+    -i Sx20xf32 --pulse 8 dump --cost -q \
+    --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
 
 # fragile test (generated names...) but kinda vital for AM perf
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
@@ -178,9 +170,9 @@ if [ -e "$HOME/.aws/credentials" ]
 then
     BENCH_OPTS="--max-iters 1" sh .travis/bundle-entrypoint.sh
     (
-        cd onnx/test_cases
-        [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
-        TRACT_RUN=../../target/release/tract ./run_all.sh en_tdnn_lstm_bn_q7
-    )
+    cd onnx/test_cases
+    [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
+    TRACT_RUN=../../target/release/tract ./run_all.sh en_tdnn_lstm_bn_q7
+)
 fi
 
