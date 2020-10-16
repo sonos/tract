@@ -10,7 +10,7 @@ pub fn lstm_nonlin(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn Infe
         bail!("Could not find component {}", name);
     };
     let component = &ctx.proto_model.components[&line.component];
-    let params: &Tensor = component.attributes.get("Params").ok_or("missing attribute Params")?;
+    let params: &Tensor = component.attributes.get("Params").context("missing attribute Params")?;
     Ok(expand(LstmNonlin { peepholes_params: params.to_owned() }))
 }
 

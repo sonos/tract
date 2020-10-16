@@ -5,6 +5,7 @@ use std::str::FromStr;
 use crate::model::Model;
 use crate::CliResult;
 use tract_hir::internal::*;
+use crate::errors::CliResultExt;
 
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     if size.len() == 0 {
@@ -13,7 +14,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     let splits = size.split("x").collect::<Vec<_>>();
 
     if splits.len() < 1 {
-        bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
+        error_chain::bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
     }
 
     let last = splits.last().unwrap();
@@ -26,7 +27,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
             "i32" => DatumType::I32,
             "i8" => DatumType::I8,
             "u8" => DatumType::U8,
-            _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
+            _ => error_chain::bail!("Type of the input should be f64, f32, i32, i8 or u8."),
         };
         (Some(datum_type), &splits[0..splits.len() - 1])
     };
@@ -106,7 +107,7 @@ pub fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
     }
 }
 
-pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractResult<Tensor> {
+pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> CliResult<Tensor> {
     fn rewrap<T: Datum>(array: tract_ndarray::ArrayD<T>) -> Tensor {
         let shape = array.shape().to_vec();
         unsafe {
@@ -144,7 +145,7 @@ pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> TractR
     if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<u64>, tract_ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    bail!("Can not extract tensor from {}", name);
+    error_chain::bail!("Can not extract tensor from {}", name);
 }
 
 pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {

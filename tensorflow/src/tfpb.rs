@@ -40,7 +40,7 @@ impl GraphDef {
     pub fn write_to_bytes(&self) -> TractResult<Vec<u8>> {
         use prost::Message;
         let mut buf = vec![];
-        self.encode(&mut buf).map_err(|e| format!("Prost/Protobuf encoding error : {:?}", e))?;
+        self.encode(&mut buf)?;
         Ok(buf)
     }
     pub fn save_to<P: AsRef<::std::path::Path>>(self, p: P) -> TractResult<()> {
@@ -71,7 +71,7 @@ impl NodeDef {
 
 impl NodeDef {
     pub fn get_attr_raw_str(&self, name: &str) -> TractResult<&[u8]> {
-        Ok(self.get_attr_opt_raw_str(name)?.ok_or_else(|| {
+        Ok(self.get_attr_opt_raw_str(name)?.with_context(|| {
             format!("Node {} ({}) expected string attribute '{}'", self.name, self.op, name)
         })?)
     }
@@ -86,7 +86,7 @@ impl NodeDef {
     }
 
     pub fn get_attr_str(&self, name: &str) -> TractResult<String> {
-        Ok(self.get_attr_opt_str(name)?.ok_or_else(|| {
+        Ok(self.get_attr_opt_str(name)?.with_context(|| {
             format!("Node {} ({}) expected UTF-8 string attribute '{}'", self.name, self.op, name)
         })?)
     }
@@ -94,9 +94,11 @@ impl NodeDef {
     pub fn get_attr_opt_str(&self, name: &str) -> TractResult<Option<String>> {
         if let Some(s) = self.get_attr_opt_raw_str(name)? {
             Ok(Some(String::from_utf8(s.to_vec()).map_err(|_| {
-                format!(
+                format_err!(
                     "Node {} ({}) expected an UTF-8 string for attribute '{}'",
-                    self.name, self.op, name
+                    self.name,
+                    self.op,
+                    name
                 )
             })?))
         } else {
@@ -105,7 +107,7 @@ impl NodeDef {
     }
 
     pub fn get_attr_bool(&self, name: &str) -> TractResult<bool> {
-        Ok(self.get_attr_opt_bool(name)?.ok_or_else(|| {
+        Ok(self.get_attr_opt_bool(name)?.with_context(|| {
             format!("Node {} ({}) expected bool attribute '{}'", self.name, self.op, name)
         })?)
     }
@@ -120,7 +122,7 @@ impl NodeDef {
     }
 
     pub fn get_attr_datum_type(&self, name: &str) -> TractResult<DatumType> {
-        Ok(self.get_attr_opt_datum_type(name)?.ok_or_else(|| {
+        Ok(self.get_attr_opt_datum_type(name)?.with_context(|| {
             format!("Node {} ({}) expected datum_type attribute '{}'", self.name, self.op, name)
         })?)
     }
@@ -135,7 +137,7 @@ impl NodeDef {
     }
 
     pub fn get_attr_shape(&self, name: &str) -> TractResult<TVec<isize>> {
-        Ok(self.get_attr_opt_shape(name)?.ok_or_else(|| {
+        Ok(self.get_attr_opt_shape(name)?.with_context(|| {
             format!("Node {} ({}) expected shape attribute '{}'", self.name, self.op, name)
         })?)
     }
@@ -150,7 +152,7 @@ impl NodeDef {
     }
 
     pub fn get_attr_tensor(&self, name: &str) -> TractResult<Tensor> {
-        Ok(self.get_attr_opt_tensor(name)?.ok_or_else(|| {
+        Ok(self.get_attr_opt_tensor(name)?.with_context(|| {
             format!("Node {} ({}) expected tensor attribute '{}'", self.name, self.op, name)
         })?)
     }
@@ -165,7 +167,7 @@ impl NodeDef {
     }
 
     pub fn get_attr_int<T: tract_num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
-        Ok(self.get_attr_opt_int(name)?.ok_or_else(|| {
+        Ok(self.get_attr_opt_int(name)?.with_context(|| {
             format!("Node {} ({}) expected int attribute '{}'", self.name, self.op, name)
         })?)
     }
@@ -183,7 +185,7 @@ impl NodeDef {
     }
 
     pub fn get_attr_float<T: tract_num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
-        Ok(self.get_attr_opt_float(name)?.ok_or_else(|| {
+        Ok(self.get_attr_opt_float(name)?.with_context(|| {
             format!("Node {} ({}) expected int attribute '{}'", self.name, self.op, name)
         })?)
     }
@@ -204,7 +206,7 @@ impl NodeDef {
         &self,
         name: &str,
     ) -> TractResult<Vec<T>> {
-        Ok(self.get_attr_opt_list_int(name)?.ok_or_else(|| {
+        Ok(self.get_attr_opt_list_int(name)?.with_context(|| {
             format!("Node {} ({}) expected list<int> attribute '{}'", self.name, self.op, name)
         })?)
     }

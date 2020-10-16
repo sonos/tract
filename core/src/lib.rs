@@ -42,6 +42,7 @@
 //! tract-tensorflow or tract-onnx crates.
 //!
 
+pub extern crate anyhow;
 extern crate bit_set;
 #[macro_use]
 extern crate derive_new;
@@ -49,8 +50,6 @@ extern crate derive_new;
 pub extern crate downcast_rs;
 #[macro_use]
 extern crate educe;
-#[macro_use]
-pub extern crate error_chain;
 #[allow(unused_imports)]
 #[macro_use]
 pub extern crate itertools;
@@ -62,10 +61,10 @@ extern crate maplit;
 #[allow(unused_imports)]
 #[macro_use]
 pub extern crate ndarray;
-extern crate num_integer;
-pub extern crate num_traits;
 #[cfg(test)]
 extern crate env_logger;
+extern crate num_integer;
+pub extern crate num_traits;
 #[cfg(test)]
 extern crate proptest;
 extern crate smallvec;
@@ -80,7 +79,6 @@ pub mod ops;
 pub mod broadcast;
 pub mod datum;
 pub mod dim;
-pub mod errors;
 pub mod framework;
 mod hash;
 pub mod model;
@@ -88,20 +86,22 @@ mod optim;
 pub mod plan;
 pub mod tensor;
 
-pub use crate::errors::*;
 pub use dyn_clone;
+
+pub type TractError = anyhow::Error;
+pub type TractResult<T> = Result<T, anyhow::Error>;
 
 /// This prelude is meant for code using tract.
 pub mod prelude {
     pub use crate::datum::{Blob, Datum, DatumType};
     pub use crate::dim::{Symbol, SymbolValues, TDim};
-    pub use crate::errors::*;
     pub use crate::framework::Framework;
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor};
     pub use crate::tvec;
+    pub use crate::{TractError, TractResult};
     pub use std::sync::Arc;
 
     pub use itertools as tract_itertools;
@@ -117,13 +117,11 @@ pub mod internal {
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
-    pub use crate::ops::{
-        AxisInfo, Cost, Invariants, Op, OpState, EvalOp, Validation,
-    };
+    pub use crate::ops::{AxisInfo, Cost, EvalOp, Invariants, Op, OpState, Validation};
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
+    pub use anyhow::{bail, Context as TractErrorContext, format_err};
     pub use downcast_rs as tract_downcast_rs;
-    pub use error_chain::bail;
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::hash::Hash;
@@ -132,7 +130,7 @@ pub mod internal {
     pub use tract_linalg::hash::{hash_f32, hash_opt_f32, DynHash};
     pub use tvec;
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
-    pub use {as_op, not_a_typed_op, op_as_typed_op, impl_op_same_as};
+    pub use {as_op, impl_op_same_as, not_a_typed_op, op_as_typed_op};
     pub use {bin_to_super_type, element_wise, element_wise_oop};
     pub use {
         dispatch_copy, dispatch_datum, dispatch_datum_by_size, dispatch_floatlike, dispatch_numbers,

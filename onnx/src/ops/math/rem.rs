@@ -33,8 +33,7 @@ impl Expansion for RemInt {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         tract_hir::ops::binary::rules(s, inputs, outputs, move |a, b| {
-            a.common_super_type(b)
-                .ok_or_else(|| format!("No super type for {:?} and {:?}", a, b).into())
+            a.common_super_type(b).with_context(|| format!("No super type for {:?} and {:?}", a, b))
         })
     }
 
@@ -49,7 +48,7 @@ impl Expansion for RemInt {
         let b = model.outlet_fact(inputs[1])?.datum_type;
         let dt = a
             .common_super_type(b)
-            .ok_or_else(|| format!("No super type for {:?} and {:?}", a, b))?;
+            .with_context(|| format!("No super type for {:?} and {:?}", a, b))?;
         let wires = tract_hir::ops::binary::wire_rank_broadcast(name, model, inputs)?;
         let wires = tract_hir::ops::binary::wire_cast(name, model, &wires, dt)?;
         if dt.is_unsigned() {

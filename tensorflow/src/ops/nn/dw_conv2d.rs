@@ -10,7 +10,7 @@ pub fn depthwise_conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<
     let strides = super::strides(pb)?.into();
     let dilations: TVec<usize> = pb.get_attr_list_int("dilations")?.into();
     if dilations.len() != 4 || dilations[0] != 1 && dilations[3] != 1 {
-        Err(format!("dilations must be of the form [1, h, v, 1], found {:?}", dilations))?
+        bail!("dilations must be of the form [1, h, v, 1], found {:?}", dilations)
     };
     Ok(expand(DepthwiseConv2d::new(data_format, padding, strides, dilations)))
 }
@@ -91,7 +91,7 @@ impl Expansion for DepthwiseConv2d {
         if self.data_format == DataFormat::NHWC {
             conv = conv.nhwc()
         }
-        let conv = conv.to_unary(&[input, kernel])?.ok_or("Failed to translate")?;
+        let conv = conv.to_unary(&[input, kernel])?.context("Failed to translate")?;
         model.wire_node(prefix, conv, &inputs[0..1])
     }
 }

@@ -110,7 +110,8 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         let mut text: Option<String> = None;
         let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
         for entry in walkdir::WalkDir::new(path) {
-            let entry = entry.map_err(|e| format!("Can not walk directory {:?}: {:?}", path, e))?;
+            let entry =
+                entry.map_err(|e| format_err!("Can not walk directory {:?}: {:?}", path, e))?;
             let subpath = entry
                 .path()
                 .components()
@@ -119,7 +120,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
             let mut stream = std::fs::File::open(entry.path())?;
             read_stream(&subpath, &mut stream, &mut text, &mut tensors)?;
         }
-        let text = text.ok_or_else(|| format!("Model must contain graph.nnef at top level"))?;
+        let text = text.ok_or_else(|| format_err!("Model must contain graph.nnef at top level"))?;
         let doc = crate::ast::parse::parse_document(&text)?;
         Ok(ProtoModel { doc, tensors })
     }
@@ -133,7 +134,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
             let path = entry.path()?.to_path_buf();
             read_stream(&path, &mut entry, &mut text, &mut tensors)?;
         }
-        let text = text.ok_or_else(|| format!("Model must contain graph.nnef at top level"))?;
+        let text = text.ok_or_else(|| format_err!("Model must contain graph.nnef at top level"))?;
         let doc = crate::ast::parse::parse_document(&text)?;
         Ok(ProtoModel { doc, tensors })
     }
@@ -158,7 +159,7 @@ fn read_stream<R: std::io::Read>(
         path.set_extension("");
         let id = path
             .to_str()
-            .ok_or_else(|| format!("Badly encoded filename for tensor: {:?}", path))?;
+            .ok_or_else(|| format_err!("Badly encoded filename for tensor: {:?}", path))?;
         let tensor = crate::tensors::read_tensor(reader)?;
         tensors.insert(id.to_string(), tensor.into_arc_tensor());
     }

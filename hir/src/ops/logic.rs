@@ -18,7 +18,7 @@ impl InferenceRulesOp for Iff {
         s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
         s.given_3(&inputs[0].shape, &inputs[1].shape, &inputs[2].shape, move |s, c, t, f| {
             let shape = multi_broadcast(&[&c, &t, &f])
-                .ok_or_else(|| format!("Incompatible shapes {:?}, {:?} and {:?}", c, t, f))?;
+                .with_context(|| format!("Incompatible shapes {:?}, {:?} and {:?}", c, t, f))?;
             s.equals(&outputs[0].shape, shape)
         })?;
         Ok(())

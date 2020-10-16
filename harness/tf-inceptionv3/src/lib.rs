@@ -6,6 +6,7 @@ extern crate tract_tensorflow;
 use std::{fs, io, path};
 
 use tract_tensorflow::prelude::*;
+use tract_tensorflow::tract_core::internal::*;
 
 fn download() {
     use std::sync::Once;
@@ -17,7 +18,7 @@ fn download() {
 fn do_download() -> TractResult<()> {
     let run = ::std::process::Command::new("./download.sh").status().unwrap();
     if !run.success() {
-        Err("Failed to download inception model files")?
+        bail!("Failed to download inception model files")
     }
     Ok(())
 }

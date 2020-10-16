@@ -37,7 +37,7 @@ impl ElementWiseMiniOp for Cast {
                     output_slice[i] = match &*input[i] {
                        "-INF" => -std::f32::INFINITY,
                         "INF" | "+INF" => std::f32::INFINITY,
-                        v => v.parse().chain_err(|| format!("failed to parse: {}", v))?,
+                        v => v.parse()?
                     };
                 }
                 Ok(output)

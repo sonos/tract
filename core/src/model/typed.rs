@@ -1,4 +1,3 @@
-use crate::errors::TractResultExt;
 use crate::internal::*;
 use crate::model::*;
 use crate::ops;
@@ -52,7 +51,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 let outputs = op.eval(tensors)?;
                 outputs.into_iter().map(|t| TypedFact::from(t)).collect()
             } else {
-                op.output_facts(&*input_facts).chain_err(|| format!("wiring {} ({:?})", name, op))?
+                op.output_facts(&*input_facts).with_context(|| format!("wiring {} ({:?})", name, op))?
             }
         };
         let id = self.add_node(name, op, output_facts)?;
@@ -107,7 +106,7 @@ impl TypedModel {
         }
         for node in &self.nodes {
             for (ix, output) in node.outputs.iter().enumerate() {
-                output.fact.consistent().chain_err(|| {
+                output.fact.consistent().with_context(|| {
                     format!("Inconsistent fact {:?}: {:?}", OutletId::new(node.id, ix), output.fact)
                 })?
             }
@@ -147,7 +146,7 @@ impl TypedModel {
                     model.check_edges()?;
                     model
                         .check_consistent_facts()
-                        .chain_err(|| format!("after declutter pass {:?}", p))?
+                        .with_context(|| format!("after declutter pass {:?}", p))?
                 }
                 model = model.compact()?;
             }

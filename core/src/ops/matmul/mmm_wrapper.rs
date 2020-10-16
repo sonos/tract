@@ -63,7 +63,9 @@ where
     }
 
     pub fn set_quant_params(&mut self, params: &QParams) -> TractResult<()> {
-        let q = self.as_quant_mut().ok_or("try to zero_point on a float mat mul")?;
+        let q = self
+            .as_quant_mut()
+            .ok_or_else(|| format_err!("try to zero_point on a float mat mul"))?;
         unsafe {
             if let Some(t) = params.zero_point_a.as_ref() {
                 if t.rank() == 0 {

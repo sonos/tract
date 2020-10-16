@@ -23,7 +23,7 @@ impl TryFrom<DataType> for DatumType {
             DataType::DtFloat => Ok(DatumType::F32),
             DataType::DtDouble => Ok(DatumType::F64),
             DataType::DtString => Ok(DatumType::Blob),
-            _ => Err(format!("Unknown DatumType {:?}", t))?,
+            _ => Err(format_err!("Unknown DatumType {:?}", t))?,
         }
     }
 }

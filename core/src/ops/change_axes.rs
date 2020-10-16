@@ -541,7 +541,7 @@ pub fn change_axes(
                 let more = node
                     .op
                     .change_axes(model, node, io, &c.op)
-                    .chain_err(|| format!("Propagating {:?} to node {}", change, node))?;
+                    .with_context(|| format!("Propagating {:?} to node {}", change, node))?;
                 if more.is_none() {
                     trace!("    Propagation of {:?} blocked by {}", change, node);
                     return Ok(None);
@@ -981,7 +981,7 @@ mod proptests {
 
         #[test]
         fn axis_ops(pb in any::<ComposeProblem>()) {
-            pb.check()?
+            pb.check().unwrap()
         }
     }
 

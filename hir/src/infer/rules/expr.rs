@@ -58,12 +58,10 @@ impl Output for usize {
     }
 
     fn from_wrapped(wrapped: Wrapped) -> TractResult<usize> {
-        let message = format!("Tried to convert {:?} to a usize.", wrapped);
-
-        IntFactoid::from_wrapped(wrapped)?
+        IntFactoid::from_wrapped(wrapped.clone())?
             .concretize()
             .and_then(|u| u.to_usize())
-            .ok_or(message.into())
+            .with_context(|| format!("Tried to convert {:?} to a usize.", wrapped))
     }
 }
 
@@ -74,9 +72,9 @@ impl Output for i64 {
     }
 
     fn from_wrapped(wrapped: Wrapped) -> TractResult<i64> {
-        let message = format!("Tried to convert {:?} to a i64.", wrapped);
-
-        IntFactoid::from_wrapped(wrapped)?.concretize().ok_or(message.into())
+        IntFactoid::from_wrapped(wrapped.clone())?
+            .concretize()
+            .with_context(|| format!("Tried to convert {:?} to a i64.", wrapped))
     }
 }
 
@@ -87,9 +85,9 @@ impl Output for Arc<Tensor> {
     }
 
     fn from_wrapped(wrapped: Wrapped) -> TractResult<Arc<Tensor>> {
-        let message = format!("Tried to convert {:?} to a tensor.", wrapped);
-
-        ValueFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
+        ValueFact::from_wrapped(wrapped.clone())?
+            .concretize()
+            .with_context(|| format_err!("Tried to convert {:?} to a tensor.", wrapped))
     }
 }
 
@@ -100,9 +98,9 @@ impl Output for TDim {
     }
 
     fn from_wrapped(wrapped: Wrapped) -> TractResult<TDim> {
-        let message = format!("Tried to convert {:?} to a usize.", wrapped);
-
-        DimFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
+        DimFact::from_wrapped(wrapped.clone())?
+            .concretize()
+            .with_context(|| format_err!("Tried to convert {:?} to a usize.", wrapped))
     }
 }
 
@@ -271,7 +269,7 @@ where
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
-        context.get(&self.0).map_err(|e| format!("while getting {:?}, {}", self.0, e).into())
+        context.get(&self.0).with_context(|| format!("while getting {:?}", self.0))
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -279,7 +277,7 @@ where
         let old = self.get(context)?;
         let new = old.unify(&value)?;
         let diff = old != new;
-        context.set(&self.0, new).map_err(|e| format!("while setting {:?}, {}", self.0, e))?;
+        context.set(&self.0, new).with_context(|| format!("while setting {:?}", self.0))?;
         Ok(diff)
     }
 
@@ -330,9 +328,9 @@ where
             // to set x <- m / k using a checked division. This way, if m is
             // not divisible by k, we will return Err instead of panicking.
             let div = m.div(&V::from(*k)).ok_or(format!(
-                "Cannot set the value of ({:?}, _) to {:?} because \
-                 {:?} is not divisible by {:?}.",
-                k, m, m, k
+            "Cannot set the value of ({:?}, _) to {:?} because \
+            {:?} is not divisible by {:?}.",
+            k, m, m, k
             ))?;
             */
 

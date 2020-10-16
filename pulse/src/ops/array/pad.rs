@@ -69,7 +69,7 @@ impl OpState for PulsePadOpState {
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs).into_tensor();
-        let op = op.downcast_ref::<PulsePad>().ok_or("Wrong Op type")?;
+        let op = op.downcast_ref::<PulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let tensor = self.pad(session, op, input)?;
         Ok(tvec!(tensor.into_arc_tensor()))
     }

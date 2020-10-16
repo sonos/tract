@@ -34,7 +34,7 @@ where
             trace!("Translating {} {:?}", node, self);
             let outlets = self
                 .translate_node(&source, node, &mut target, &mapping)
-                .chain_err(|| format!("Translating node {} {:?}", node, self))?;
+                .with_context(|| format!("Translating node {} {:?}", node, self))?;
             for (ix, outlet) in outlets.into_iter().enumerate() {
                 mapping.insert(OutletId::new(node.id, ix), outlet);
                 if let Some(label) = source.outlet_label(OutletId::new(node.id, ix)) {
@@ -49,7 +49,7 @@ where
                 debug!("Translate useless source {}", node);
                 let outlets = self
                     .translate_node(&source, node, &mut target, &mapping)
-                    .chain_err(|| format!("Translating input {} {:?}", node, self))?;
+                    .with_context(|| format!("Translating input {} {:?}", node, self))?;
                 mapping.insert(*i, outlets[0]);
             }
         }

@@ -63,7 +63,7 @@ impl OpState for DelayState {
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
+        let op = op.downcast_ref::<Delay>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let buffered = op.delay + op.overlap;
         let input_pulse = input.shape()[op.axis];
         let output_pulse = input_pulse + op.overlap;

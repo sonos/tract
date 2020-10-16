@@ -141,7 +141,7 @@ impl OpState for PulsedSameAxisConcatState {
         op: &dyn Op,
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
-        let op = op.downcast_ref::<PulsedSameAxisConcat>().ok_or("Wrong Op type")?;
+        let op = op.downcast_ref::<PulsedSameAxisConcat>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let input = args_1!(inputs);
         let mut data = input.into_tensor();
         let pulse = data.shape()[op.axis];

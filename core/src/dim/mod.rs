@@ -73,7 +73,7 @@ impl DimLike for TDim {
         if self.is_zero() {
             return Ok((TDim::zero(), 1));
         } else if other.is_zero() {
-            bail!("Division by zero")
+            crate::internal::bail!("Division by zero")
         }
         let quotient = match (self.to_i64(), other.to_i64()) {
             (Ok(p), Ok(q)) => {
@@ -101,7 +101,7 @@ impl DimLike for TDim {
                 return Ok(quotient);
             }
         }
-        bail!("Quotient is a non linear expression ({} / {})", self, other)
+        crate::internal::bail!("Quotient is a non linear expression ({} / {})", self, other)
     }
 
     fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
@@ -110,7 +110,7 @@ impl DimLike for TDim {
         } else if let Ok(a) = self.to_i64() {
             Ok(other.clone() * a)
         } else {
-            bail!("product with too many symbols")
+            crate::internal::bail!("product with too many symbols")
         }
     }
 
@@ -128,7 +128,7 @@ impl DimLike for TDim {
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
-    type Error = crate::errors::TractError;
+    type Error = crate::internal::TractError;
     fn try_from(d: &'a TDim) -> TractResult<TDim> {
         Ok(d.clone())
     }
@@ -159,7 +159,7 @@ impl DimLike for usize {
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for usize {
-    type Error = crate::errors::TractError;
+    type Error = crate::internal::TractError;
     fn try_from(d: &'a TDim) -> TractResult<usize> {
         d.to_usize()
     }

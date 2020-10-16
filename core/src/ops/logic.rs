@@ -64,7 +64,7 @@ impl EvalOp for Iff {
         let (cond, t, f) = args_3!(inputs);
         let shape: TVec<usize> = multi_broadcast(&[cond.shape(), t.shape(), f.shape()])
             .ok_or_else(|| {
-                format!(
+                format_err!(
                     "Incompatible shapes {:?}, {:?} and {:?}",
                     cond.shape(),
                     t.shape(),

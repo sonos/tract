@@ -20,7 +20,9 @@ impl PulsedOp for AxisOp {
         let mut fact = inputs[0].clone();
         fact.shape = inputs[0].shape.clone();
         self.change_shape_array(&mut fact.shape);
-        fact.axis = self.transform_axis(fact.axis).ok_or("Invalid axis for pulsification")?;
+        fact.axis = self
+            .transform_axis(fact.axis)
+            .ok_or_else(|| format_err!("Invalid axis for pulsification"))?;
         Ok(tvec!(fact))
     }
 

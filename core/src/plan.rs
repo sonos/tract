@@ -149,7 +149,7 @@ where
         self.run_plan_with_eval(inputs, self::eval)
     }
 
-    pub fn run_plan_with_eval<Eval>(
+    pub fn run_plan_with_eval<Eval, E>(
         &mut self,
         inputs: TVec<Tensor>,
         mut eval: Eval,
@@ -160,7 +160,8 @@ where
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
             TVec<Arc<Tensor>>,
-        ) -> TractResult<TVec<Arc<Tensor>>>,
+        ) -> Result<TVec<Arc<Tensor>>, E>,
+        E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         let mut result = tvec!();
         {
@@ -182,7 +183,7 @@ where
                     trace!("  use input {:?}", i);
                     let prec_node = model.node(i.node);
                     let prec = values[i.node].as_ref().ok_or_else(|| {
-                        format!("Computing {}, precursor {} not done:", node, prec_node)
+                        format_err!("Computing {}, precursor {} not done:", node, prec_node)
                     })?;
                     inputs.push(prec[i.slot].clone().into())
                 }
@@ -216,7 +217,8 @@ where
                 }
 
                 let vs =
-                    eval(session_state, states[node.id].as_mut().map(|s| &mut **s), node, inputs)?;
+                    eval(session_state, states[node.id].as_mut().map(|s| &mut **s), node, inputs)
+                        .map_err(|e| e.into())?;
 
                 if cfg!(debug_assertions) {
                     let facts = model.node_output_facts(node.id)?;
@@ -267,13 +269,13 @@ where
             .model()
             .input_outlets()?
             .get(input)
-            .ok_or_else(|| format!("Invalid input id for model ({}).", input))?;
+            .ok_or_else(|| format_err!("Invalid input id for model ({}).", input))?;
         self.plan
             .borrow()
             .model()
             .outlet_fact(outlet)?
             .matches(&t)
-            .chain_err(|| format!("Setting input {}", input))?;
+            .with_context(|| format!("Setting input {}", input))?;
         self.session_state.inputs.insert(outlet.node, t.into());
         Ok(())
     }
@@ -283,7 +285,10 @@ where
         let mut v = vec![];
         for o in plan.borrow().model().output_outlets()?.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
-                format!("Outputs of {:?} are not computed", &plan.borrow().model().nodes()[o.node])
+                format_err!(
+                    "Outputs of {:?} are not computed",
+                    &plan.borrow().model().nodes()[o.node]
+                )
             })?;
             v.push(vs[o.slot].clone())
         }
@@ -307,9 +312,9 @@ where
         let mut inputs: TVec<Arc<Tensor>> = tvec![];
         for i in &node.inputs {
             let prec_node = &nodes[i.node];
-            let prec = values[i.node]
-                .as_ref()
-                .ok_or_else(|| format!("Computing {}, precursor {} not done.", node, prec_node))?;
+            let prec = values[i.node].as_ref().ok_or_else(|| {
+                format_err!("Computing {}, precursor {} not done.", node, prec_node)
+            })?;
             inputs.push(prec[i.slot].clone().into_tensor().into_arc_tensor())
         }
         Ok(inputs)
@@ -333,7 +338,7 @@ where
             Some(ref mut state) => state.eval(session_state, node.op(), inputs),
             None => node.op().eval(inputs),
         }
-        .map_err(|e| format!("Evaluating {}: {}", node, e))?;
+        .with_context(|| format!("Evaluating {}", node))?;
         values[node.id] = Some(vs);
         Ok(())
     }
@@ -360,11 +365,9 @@ where
                 Some(ref mut state) => {
                     state.eval(session_state, plan.borrow().model().nodes()[node].op(), inputs)
                 }
-                None => {
-                    plan.borrow().model().nodes()[node].op().eval(inputs)
-                }
+                None => plan.borrow().model().nodes()[node].op().eval(inputs),
             }
-            .map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
+            .with_context(|| format!("Evaluating {:?}", node))?
         };
         self.values[node] = Some(values);
         Ok(&*self.values[node].as_ref().unwrap())
@@ -378,7 +381,7 @@ where
     pub fn take(&mut self, id: usize) -> TractResult<TVec<Tensor>> {
         Ok(self.values[id]
             .take()
-            .ok_or("Node is not computed")?
+            .ok_or_else(|| format_err!("Node is not computed"))?
             .into_iter()
             .map(|v| Arc::try_unwrap(v).unwrap_or_else(|v| (*v).clone()))
             .collect())
@@ -407,6 +410,6 @@ where
         Some(ref mut state) => state.eval(session_state, node.op(), input),
         None => node.op().eval(input),
     }
-    .chain_err(|| format!("Evaluating {}", node));
+    .with_context(|| format!("Evaluating {}", node));
     r
 }

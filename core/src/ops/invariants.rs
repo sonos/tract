@@ -194,7 +194,7 @@ impl AxisTracking {
             let invs = emiter_node
                 .op
                 .invariants(&model, emiter_node)
-                .chain_err(|| format!("Computing invariants for {}", emiter_node))?;
+                .with_context(|| format!("Computing invariants for {}", emiter_node))?;
             assert!(invs.axes.iter().all(|axis| axis.inputs.len() == emiter_node.inputs.len()));
             assert!(invs.axes.iter().all(|axis| axis.outputs.len() == emiter_node.outputs.len()));
             if let Some(info) = invs.track_output_axis(wire.slot, axis) {

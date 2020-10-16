@@ -249,7 +249,7 @@ impl TypedOp for DequantizeLinearF32 {
                     if let Some(op) = next
                         .op
                         .quantize(model, dequant, dt, scale, zero_point)
-                        .chain_err(|| format!("Quantizing {}", next))?
+                        .with_context(|| format!("Quantizing {}", next))?
                     {
                         wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
                     } else {
@@ -311,7 +311,7 @@ impl TypedOp for DequantizeLinearF32 {
             let invariants = quant
                 .op
                 .invariants(model, quant)
-                .chain_err(|| format!("Querying invariants for {}", quant))?;
+                .with_context(|| format!("Querying invariants for {}", quant))?;
             if invariants.element_wise() {
                 current = quant;
             } else {

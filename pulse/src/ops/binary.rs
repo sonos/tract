@@ -53,7 +53,7 @@ impl PulsedOp for TypedBinOp {
         fact.datum_type = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
         fact.shape = tract_core::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape])
             .ok_or_else(|| {
-                format!("Can not broadcast: {:?} and {:?}", inputs[0].shape, inputs[1].shape)
+                format_err!("Can not broadcast: {:?} and {:?}", inputs[0].shape, inputs[1].shape)
             })?;
         Ok(tvec!(fact))
     }
@@ -109,7 +109,7 @@ impl PulsedOp for Iff {
         fact.datum_type = inputs[1].datum_type;
         fact.shape = tract_core::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape, &inputs[2].shape])
             .ok_or_else(|| {
-                format!("Can not broadcast: {:?}, {:?}, {:?}", inputs[0].shape, inputs[1].shape, inputs[2].shape)
+                format_err!("Can not broadcast: {:?}, {:?}, {:?}", inputs[0].shape, inputs[1].shape, inputs[2].shape)
             })?;
         Ok(tvec!(fact))
     }

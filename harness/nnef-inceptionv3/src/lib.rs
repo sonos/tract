@@ -12,7 +12,7 @@ fn download() {
 fn do_download() -> TractResult<()> {
     let run = ::std::process::Command::new("./download.sh").status().unwrap();
     if !run.success() {
-        Err("Failed to download inception model files")?
+        tract_core::internal::bail!("Failed to download inception model files")
     }
     Ok(())
 }

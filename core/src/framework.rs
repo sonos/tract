@@ -21,7 +21,7 @@ where
     /// Read a proto model from a filename.
     fn proto_model_for_path(&self, p: impl AsRef<Path>) -> TractResult<ProtoModel> {
         let mut r = std::fs::File::open(p.as_ref())
-            .map_err(|e| format!("Could not open {:?}: {}", p.as_ref(), e))?;
+            .with_context(|| format!("Could not open {:?}", p.as_ref()))?;
         self.proto_model_for_read(&mut r)
     }
 
@@ -34,8 +34,7 @@ where
     /// Build a model from a filename.
     fn model_for_path(&self, p: impl AsRef<Path>) -> TractResult<Model> {
         let mut r = std::fs::File::open(p.as_ref())
-            .map_err(|e| format!("Could not open {:?}: {}", p.as_ref(), e))?;
+            .with_context(|| format!("Could not open {:?}", p.as_ref()))?;
         self.model_for_read(&mut r)
     }
 }
-

@@ -74,7 +74,7 @@ impl Expansion for Pack {
             .iter()
             .map(|&i| Ok(model.outlet_fact(i)?.datum_type))
             .collect::<TractResult<TVec<DatumType>>>()?;
-        let dt = DatumType::super_type_for(dt.iter()).ok_or("No supertype")?;
+        let dt = DatumType::super_type_for(dt.iter()).context("No supertype")?;
         let inputs: TVec<OutletId> = inputs
             .iter()
             .enumerate()

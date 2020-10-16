@@ -43,7 +43,8 @@ pub fn pull_downsample_over_axis_op(
     let mut patch = TypedModelPatch::default();
     let tap = patch.tap_model(model, axis_node.inputs[0])?;
     let mut new_down = down_op.clone();
-    new_down.axis = axis_op.recip().transform_axis(down_op.axis).ok_or("Invalid axis")?;
+    new_down.axis =
+        axis_op.recip().transform_axis(down_op.axis).ok_or_else(|| format_err!("Invalid axis"))?;
     let wire = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
     let wire = patch.wire_node(&*axis_node.name, axis_op.clone(), &*wire)?[0];
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), wire)?;
@@ -78,30 +79,35 @@ mod tests {
         let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
         let model = {
             let mut model = TypedModel::default();
-            let input = model.add_source(
-                "input",
-                TypedFact::dt_shape(i32::datum_type(), [len].as_ref()).unwrap(),
-            )?;
-            let crop =
-                model.wire_node("crop", ops::array::Slice::new(0, left, len - right), &[input])?;
-            let down = model.wire_node("down", Downsample::new(0, stride as isize, modulo), &crop)?;
-            model.set_output_outlets(&down)?;
+            let input = model
+                .add_source(
+                    "input",
+                    TypedFact::dt_shape(i32::datum_type(), [len].as_ref()).unwrap(),
+                )
+                .unwrap();
+            let crop = model
+                .wire_node("crop", ops::array::Slice::new(0, left, len - right), &[input])
+                .unwrap();
+            let down = model
+                .wire_node("down", Downsample::new(0, stride as isize, modulo), &crop)
+                .unwrap();
+            model.set_output_outlets(&down).unwrap();
             model
         };
         trace!("{:#?}", model);
         prop_assert!(model.node(model.output_outlets().unwrap()[0].node).op_is::<Downsample>());
         let input = tensor1(&(0i32..len as _).collect::<Vec<_>>());
-        let expected = SimplePlan::new(&model)?.run(tvec!(input.clone()))?;
+        let expected = SimplePlan::new(&model).unwrap().run(tvec!(input.clone())).unwrap();
 
         info!("Decluttering");
-        let model = model.declutter()?;
+        let model = model.declutter().unwrap();
         trace!("{:#?}", model);
-        let order = model.eval_order()?;
+        let order = model.eval_order().unwrap();
         prop_assert!(
             model.node(order[1]).op_is::<Downsample>()
                 || !model.nodes().iter().any(|n| n.op_is::<Downsample>())
         );
-        let found = SimplePlan::new(&model)?.run(tvec!(input))?;
+        let found = SimplePlan::new(&model).unwrap().run(tvec!(input)).unwrap();
         prop_assert_eq!(found, expected);
         Ok(())
     }

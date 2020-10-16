@@ -7,7 +7,7 @@ pub fn renorm(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn Inference
     let rms = *component
         .attributes
         .get("TargetRms")
-        .ok_or("missing attributes TargetRms")?
+        .context("missing attributes TargetRms")?
         .to_scalar::<f32>()?;
     Ok(expand(Renorm::new(rms)))
 }

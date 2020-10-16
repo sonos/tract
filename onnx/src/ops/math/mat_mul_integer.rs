@@ -77,7 +77,7 @@ impl Expansion for MatMulInteger {
                 .outlet_fact(inputs[ix])?
                 .konst
                 .as_ref()
-                .ok_or("zero_point_a must be a constant")?;
+                .context("zero_point_a must be a constant")?;
             if let Some(zp) = cleanup_zero_point(zp.clone().into_tensor())? {
                 qp = qp.with_zero_point_a(&zp.into_arc_tensor());
             }
@@ -87,7 +87,7 @@ impl Expansion for MatMulInteger {
                 .outlet_fact(inputs[ix])?
                 .konst
                 .as_ref()
-                .ok_or("zero_point_b must be a constant")?;
+                .context("zero_point_b must be a constant")?;
             if let Some(zp) = cleanup_zero_point(zp.clone().into_tensor())? {
                 qp = qp.with_zero_point_b(&zp.into_arc_tensor());
             }
@@ -158,7 +158,7 @@ impl Expansion for QLinearMatMul {
                     .outlet_fact(inputs[*ix])?
                     .konst
                     .clone()
-                    .ok_or_else(|| format!("Input {} must be a constant", ix))?
+                    .with_context(|| format!("Input {} must be a constant", ix))?
                     .into_tensor())
             })
             .collect::<TractResult<Vec<_>>>()?;

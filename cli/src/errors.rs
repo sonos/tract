@@ -8,11 +8,6 @@ error_chain! {
         CliError, CliErrorKind, CliResultExt, CliResult;
     }
 
-    links {
-        Tract(tract_core::TractError, tract_core::TractErrorKind);
-        TractTensorflowConform(tract_tensorflow::conform::Error, tract_tensorflow::conform::ErrorKind) #[cfg(feature="conform")];
-    }
-
     foreign_links {
         Fmt(::std::fmt::Error);
         Io(::std::io::Error);
@@ -21,6 +16,7 @@ error_chain! {
         NdarrayNpyReadNpz(ndarray_npy::ReadNpzError);
         SerdeJson(serde_json::error::Error);
         Infaillible(std::convert::Infallible);
+        Tract(tract_core::TractError);
     }
 
     errors {

@@ -91,21 +91,21 @@ impl Tensorflow {
         let map = unsafe { memmap::Mmap::map(&fs::File::open(p)?)? };
         #[cfg(target_arch = "wasm32")]
         let map = fs::read(p)?;
-        Ok(GraphDef::decode(&*map).map_err(|e| format!("{:?}", e))?)
+        Ok(GraphDef::decode(&*map)?)
     }
 
     pub fn read_frozen_model(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
         let mut v = vec![];
         r.read_to_end(&mut v)?;
         let b = bytes::Bytes::from(v);
-        Ok(GraphDef::decode(b).map_err(|e| format!("{:?}", e))?)
+        Ok(GraphDef::decode(b)?)
     }
 
     pub fn open_saved_model(&self, r: &mut dyn std::io::Read) -> TractResult<SavedModel> {
         let mut v = vec![];
         r.read_to_end(&mut v)?;
         let b = bytes::Bytes::from(v);
-        Ok(SavedModel::decode(b).map_err(|e| format!("{:?}", e))?)
+        Ok(SavedModel::decode(b)?)
     }
 
     /// Convenience method: will read the first model in the saved model

@@ -69,7 +69,7 @@ impl Expansion for QuantizeLinear {
             .outlet_fact(inputs[1])?
             .konst
             .as_ref()
-            .ok_or("y_scale must be a const")?
+            .context("y_scale must be a const")?
             .as_slice::<f32>()?[0]
             .recip();
         let zero_point = if self.optional_zero_point_input.is_some() {
@@ -77,7 +77,7 @@ impl Expansion for QuantizeLinear {
                 .outlet_fact(inputs[2])?
                 .konst
                 .as_ref()
-                .ok_or("y_zero_point must be a const")?
+                .context("y_zero_point must be a const")?
                 .clone()
         } else {
             rctensor0(0u8)
@@ -134,14 +134,14 @@ impl Expansion for DequantizeLinear {
             .outlet_fact(inputs[1])?
             .konst
             .as_ref()
-            .ok_or("y_scale must be a const")?
+            .context("y_scale must be a const")?
             .as_slice::<f32>()?[0];
         let zero_point = if self.optional_zero_point_input.is_some() {
             target
                 .outlet_fact(inputs[2])?
                 .konst
                 .as_ref()
-                .ok_or("y_zero_point must be a const")?
+                .context("y_zero_point must be a const")?
                 .clone()
         } else {
             rctensor0(0u8)
