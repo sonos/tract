@@ -14,13 +14,13 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
     let decl = params
         .decluttered_model
         .clone()
-        .ok_or("Decluttered model not generated. (using --pass ?)")?;
+        .context("Decluttered model not generated. (using --pass ?)")?;
     let pulsed =
-        params.pulsed_model.as_ref().ok_or("Pulsed model not generated. (using --pass ?)")?;
+        params.pulsed_model.as_ref().context("Pulsed model not generated. (using --pass ?)")?;
     let model = params
         .tract_model
         .downcast_ref::<TypedModel>()
-        .ok_or("Final model is not Typed. (using --pass ?)")?;
+        .context("Final model is not Typed. (using --pass ?)")?;
 
     let decl_input_fact = decl.input_fact(0)?;
     let pulsed_input_fact = pulsed.input_fact(0)?;
@@ -137,7 +137,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
                             .map(|s| *s.iter().next().unwrap())
                             .join(" ")
                     );
-                    error_chain::bail!("Pulse check failed")
+                    bail!("Pulse check failed")
                 }
             }
         }

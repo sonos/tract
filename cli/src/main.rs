@@ -1,6 +1,4 @@
 #[macro_use]
-extern crate error_chain;
-#[macro_use]
 extern crate log;
 #[macro_use]
 extern crate serde_derive;
@@ -15,7 +13,6 @@ use tract_itertools::Itertools;
 use tract_core::internal::*;
 use tract_hir::internal::*;
 
-use crate::errors::*;
 use crate::model::Model;
 
 use readings_probe::*;
@@ -27,7 +24,7 @@ mod cost;
 mod display_params;
 mod draw;
 mod dump;
-mod errors;
+mod errors {}
 mod export;
 mod model;
 mod optimize_check;
@@ -41,6 +38,8 @@ mod terminal;
 mod utils;
 
 use params::*;
+
+type CliResult<T> = tract_core::anyhow::Result<T>;
 
 readings_probe::instrumented_allocator!();
 
@@ -335,8 +334,7 @@ fn main() {
     info_usage("init", probe.as_ref());
 
     if let Err(e) = handle(matches, probe.as_ref()) {
-        use error_chain::ChainedError;
-        error!("{}", e.display_chain());
+        error!("{}", e);
         process::exit(1)
     }
 
@@ -436,7 +434,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
     let mut params = match builder_result {
         Ok(params) => params,
         Err(e) => {
-            if let CliError(CliErrorKind::ModelBuilding(ref broken_model), _) = e {
+            if let Some(params::ModelBuildingError(ref broken_model, _)) = e.downcast_ref() {
                 let mut broken_model: Box<dyn Model> =
                     tract_hir::tract_core::dyn_clone::clone(broken_model);
                 let annotations =
@@ -535,7 +533,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             )
         }
 
-        (s, _) => error_chain::bail!("Unknown subcommand {}.", s),
+        (s, _) => bail!("Unknown subcommand {}.", s),
     }?;
 
     if need_optimisations {

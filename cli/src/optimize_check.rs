@@ -8,7 +8,7 @@ pub fn handle(params: &Parameters, _options: display_params::DisplayParams) -> C
     let optimized = params
         .tract_model
         .downcast_ref::<TypedModel>()
-        .expect("Can only optmize-check typed models");
+        .context("Can only optmize-check typed models")?;
     let generated = crate::tensor::make_inputs(&[plain.input_fact(0)?])?;
 
     let original_plan = SimplePlan::new(plain)?;
@@ -33,7 +33,7 @@ pub fn handle(params: &Parameters, _options: display_params::DisplayParams) -> C
             let optim_result: TVec<_> =
                 optimized_state.compute_recursively(optim)?.into_iter().cloned().collect();
             if orig_result.len() != optim_result.len() {
-                error_chain::bail!(
+                bail!(
                     "Number of output differ: optimized:{}, original:{}",
                     optim_result.len(),
                     orig_result.len()
@@ -51,7 +51,7 @@ pub fn handle(params: &Parameters, _options: display_params::DisplayParams) -> C
                     println!("{:?}\n", exp);
                     println!("{:?}\n", optimized_state.model().nodes()[optim]);
                     println!("{:?}\n", got);
-                    Err("Mismatch")?
+                    bail!("Mismatch")
                 }
             }
             println!("Checked {} - {}", orig, optim);

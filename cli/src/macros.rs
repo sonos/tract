@@ -27,7 +27,7 @@ macro_rules! dispatch_model_no_pulse {
         } else if let Some(m) = $model.downcast_ref::<TypedModel>() {
             $expr(m)
         } else {
-            error_chain::bail!("Pulse model are unsupported here")
+            bail!("Pulse model are unsupported here")
         }
     };
 }
@@ -40,7 +40,7 @@ macro_rules! dispatch_model_mut_no_pulse {
         } else if let Some(m) = $model.downcast_mut::<TypedModel>() {
             $expr(m)
         } else {
-            error_chain::bail!("Pulse model are unsupported here")
+            bail!("Pulse model are unsupported here")
         }
     };
 }

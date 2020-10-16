@@ -12,7 +12,7 @@ pub fn parse_costs(spec: &str) -> CliResult<Vec<(Cost, usize)>> {
                 "Div(F32)" => Cost::Div(f32::datum_type()),
                 "Buffer(F32)" => Cost::Buffer(f32::datum_type()),
                 "Params(F32)" => Cost::Params(f32::datum_type()),
-                _ => error_chain::bail!("Unknown cost specifier {}", name),
+                _ => bail!("Unknown cost specifier {}", name),
             };
             Ok((c, n))
         })

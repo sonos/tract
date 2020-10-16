@@ -1,4 +1,4 @@
-use crate::errors::*;
+use crate::CliResult;
 use crate::{Model, Parameters};
 use tract_hir::internal::*;
 #[cfg(feature = "pulse")]

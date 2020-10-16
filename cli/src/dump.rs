@@ -1,7 +1,7 @@
 use crate::annotations::*;
 use crate::display_params::*;
-use crate::errors::*;
 use crate::terminal;
+use crate::CliResult;
 use crate::{BenchLimits, Parameters};
 use tract_hir::internal::*;
 
@@ -22,7 +22,7 @@ pub fn handle(
         let model = params
             .tract_model
             .downcast_ref::<TypedModel>()
-            .ok_or("Can only profile typed models")?;
+            .context("Can only profile typed models")?;
         crate::profile::profile(model, bench_limits, &mut annotations)?;
     }
 
@@ -42,7 +42,7 @@ pub fn handle(
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
             nnef.write_to_tar(typed, encoder)?;
         } else {
-            error_chain::bail!("Only typed model can be dumped")
+            bail!("Only typed model can be dumped")
         }
     }
 
@@ -52,7 +52,7 @@ pub fn handle(
             let file = std::fs::File::create(path)?;
             nnef.write_to_tar(typed, file)?;
         } else {
-            error_chain::bail!("Only typed model can be dumped")
+            bail!("Only typed model can be dumped")
         }
     }
 
@@ -61,7 +61,7 @@ pub fn handle(
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
             nnef.write_to_dir(typed, path)?
         } else {
-            error_chain::bail!("Only typed model can be dumped")
+            bail!("Only typed model can be dumped")
         }
     }
 
@@ -74,7 +74,7 @@ pub fn handle(
                 assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();
             let total = total.cost.iter().cloned().collect::<HashMap<_, _>>();
             if assert != total {
-                error_chain::bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);
+                bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);
             }
         }
     }
