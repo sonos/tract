@@ -134,10 +134,10 @@ pub fn handle_reference_stage(
     output_params: &DisplayParams,
 ) -> CliResult<()> {
     let reference_model =
-        params.reference_model.as_ref().ok_or("No reference model. need --with ?")?;
+        params.reference_model.as_ref().context("No reference model. need --with ?")?;
     let reference_model = reference_model
         .downcast_ref::<TypedModel>()
-        .ok_or("Only work with a typed reference model")?;
+        .context("Only work with a typed reference model")?;
     let mut values: HashMap<String, CliResult<Tensor>> = HashMap::new();
 
     let plan = SimplePlan::new(reference_model)?;
@@ -285,7 +285,7 @@ where
     }
 
     if failing.len() > 0 {
-        error_chain::bail!("{} error(s).", failing.len())
+        bail!("{} error(s).", failing.len())
     } else {
         println!("{}", Green.paint(format!("{} node(s) passed the comparison.", ok)));
     };

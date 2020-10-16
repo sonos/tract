@@ -1,4 +1,4 @@
-use crate::errors::*;
+use crate::CliResult;
 use crate::{terminal, BenchLimits, Parameters};
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
@@ -6,7 +6,7 @@ use tract_hir::internal::*;
 
 pub fn criterion(params: &Parameters) -> CliResult<()> {
     let model =
-        params.tract_model.downcast_ref::<TypedModel>().ok_or("Can only bench TypedModel")?;
+        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(plan)?;
 
@@ -19,7 +19,7 @@ pub fn criterion(params: &Parameters) -> CliResult<()> {
 
 pub fn handle(params: &Parameters, limits: &BenchLimits, probe: Option<&Probe>) -> CliResult<()> {
     let model =
-        params.tract_model.downcast_ref::<TypedModel>().ok_or("Can only bench TypedModel")?;
+        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(plan)?;
 

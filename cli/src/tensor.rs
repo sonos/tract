@@ -5,7 +5,6 @@ use std::str::FromStr;
 use crate::model::Model;
 use crate::CliResult;
 use tract_hir::internal::*;
-use crate::errors::CliResultExt;
 
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     if size.len() == 0 {
@@ -14,7 +13,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     let splits = size.split("x").collect::<Vec<_>>();
 
     if splits.len() < 1 {
-        error_chain::bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
+        bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
     }
 
     let last = splits.last().unwrap();
@@ -27,7 +26,7 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
             "i32" => DatumType::I32,
             "i8" => DatumType::I8,
             "u8" => DatumType::U8,
-            _ => error_chain::bail!("Type of the input should be f64, f32, i32, i8 or u8."),
+            _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
         };
         (Some(datum_type), &splits[0..splits.len() - 1])
     };
@@ -55,19 +54,19 @@ pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
 fn parse_values<'a, T: Datum + FromStr>(shape: &[usize], it: Vec<&'a str>) -> CliResult<Tensor> {
     let values = it
         .into_iter()
-        .map(|v| Ok(v.parse::<T>().map_err(|_| format!("Failed to parse {}", v))?))
+        .map(|v| Ok(v.parse::<T>().map_err(|_| format_err!("Failed to parse {}", v))?))
         .collect::<CliResult<Vec<T>>>()?;
     Ok(tract_ndarray::Array::from_shape_vec(shape, values)?.into())
 }
 
 fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
     let mut file = fs::File::open(filename)
-        .map_err(|e| format!("Reading tensor from {}, {:?}", filename, e))?;
+        .map_err(|e| format_err!("Reading tensor from {}, {:?}", filename, e))?;
     let mut data = String::new();
     file.read_to_string(&mut data)?;
 
     let mut lines = data.lines();
-    let proto = parse_spec(lines.next().ok_or("Empty data file")?)?;
+    let proto = parse_spec(lines.next().context("Empty data file")?)?;
     let shape = proto.shape.concretize().unwrap();
 
     let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<&str>>();
@@ -89,7 +88,7 @@ pub fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
         #[cfg(feature = "onnx")]
         {
             let file =
-                fs::File::open(filename).chain_err(|| format!("Can't open {:?}", filename))?;
+                fs::File::open(filename).with_context(|| format!("Can't open {:?}", filename))?;
             let proto = ::tract_onnx::tensor::proto_from_reader(file)?;
             Ok((Some(proto.name.to_string()), Tensor::try_from(proto)?.into()))
         }
@@ -145,7 +144,7 @@ pub fn for_npz(npz: &mut ndarray_npy::NpzReader<fs::File>, name: &str) -> CliRes
     if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<u64>, tract_ndarray::IxDyn>(name) {
         return Ok(rewrap(t));
     }
-    error_chain::bail!("Can not extract tensor from {}", name);
+    bail!("Can not extract tensor from {}", name);
 }
 
 pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
@@ -162,12 +161,14 @@ pub fn for_string(value: &str) -> CliResult<(Option<String>, InferenceFact)> {
             let mut split = value.split("=");
             let spec = parse_spec(split.next().unwrap())?;
             let value = split.next().unwrap().split(",");
-            let dt =
-                spec.datum_type.concretize().ok_or("Must specify type when giving tensor value")?;
+            let dt = spec
+                .datum_type
+                .concretize()
+                .context("Must specify type when giving tensor value")?;
             let shape = spec
                 .shape
                 .as_concrete_finite()?
-                .ok_or("Must specify concrete shape when giving tensor value")?;
+                .context("Must specify concrete shape when giving tensor value")?;
             let tensor = dispatch_datum!(parse_values(dt)(&*shape, value.collect()))?;
             Ok((name, tensor.into()))
         } else {

@@ -1,9 +1,9 @@
 use tract_core::internal::*;
 
 use crate::annotations::*;
-use crate::errors::*;
 use crate::model::Model;
 use crate::BenchLimits;
+use crate::CliResult;
 use std::time::{Duration, Instant};
 
 trait Scalable {

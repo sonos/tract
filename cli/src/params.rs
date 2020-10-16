@@ -11,7 +11,7 @@ use tract_pulse::internal::*;
 use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
 use crate::display_params::DisplayParams;
-use crate::errors::*;
+use crate::CliResult;
 
 use readings_probe::*;
 
@@ -33,6 +33,17 @@ pub enum SomeGraphDef {
     #[cfg(feature = "tf")]
     Tf(GraphDef),
 }
+
+#[derive(Debug)]
+pub struct ModelBuildingError(pub Box<dyn Model>, pub Box<dyn std::error::Error + Send + Sync>);
+
+impl std::fmt::Display for ModelBuildingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&*self.1, f)
+    }
+}
+
+impl std::error::Error for ModelBuildingError {}
 
 #[cfg(not(feature = "pulse"))]
 type PulsedModel = ();
@@ -68,10 +79,10 @@ type TfExt = ();
 
 impl Parameters {
     fn disco_model(matches: &clap::ArgMatches) -> CliResult<(std::path::PathBuf, bool)> {
-        let filename = matches.value_of("model").ok_or("Model argument required")?;
+        let filename = matches.value_of("model").context("Model argument required")?;
         let filename = std::path::PathBuf::from(filename);
         let (filename, onnx_tc) = if !filename.exists() {
-            error_chain::bail!("model not found: {:?}", filename)
+            bail!("model not found: {:?}", filename)
         } else if std::fs::metadata(&filename)?.is_dir() && filename.join("graph.nnef").exists() {
             (filename, false)
         } else if std::fs::metadata(&filename)?.is_dir() && filename.join("model.onnx").exists() {
@@ -134,17 +145,19 @@ impl Parameters {
                 if need_graph {
                     (
                         SomeGraphDef::Nnef(proto_model.clone()),
-                        Box::new(nnef.translate(&proto_model).map_err(|(g, e)| {
-                            CliError::from(e).chain_err(|| CliErrorKind::ModelBuilding(Box::new(g)))
-                        })?),
+                        Box::new(
+                            nnef.translate(&proto_model)
+                                .map_err(|(g, e)| ModelBuildingError(Box::new(g), e.into()))?,
+                        ),
                         Option::<TfExt>::None,
                     )
                 } else {
                     (
                         SomeGraphDef::NoGraphDef,
-                        Box::new(nnef.translate(&proto_model).map_err(|(g, e)| {
-                            CliError::from(e).chain_err(|| CliErrorKind::ModelBuilding(Box::new(g)))
-                        })?),
+                        Box::new(
+                            nnef.translate(&proto_model)
+                                .map_err(|(g, e)| ModelBuildingError(Box::new(g), e.into()))?,
+                        ),
                         Option::<TfExt>::None,
                     )
                 }
@@ -191,7 +204,7 @@ impl Parameters {
                     (SomeGraphDef::NoGraphDef, Box::new(model_and_ext.0), Some(model_and_ext.1))
                 }
             }
-            _ => error_chain::bail!(
+            _ => bail!(
                 "Format {} not supported. You may need to recompile tract with the right features.",
                 format
             ),
@@ -256,7 +269,7 @@ impl Parameters {
         F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
         Graph<F, O>: SpecialOps<F, O>,
-        CliError: From<E>,
+        E: std::fmt::Debug,
     {
         let files = inputs_dir
             .read_dir()?
@@ -265,7 +278,7 @@ impl Parameters {
                 let filename = file
                     .file_name()
                     .into_string()
-                    .map_err(|s| format!("Can't convert OSString to String ({:?})", s))?;
+                    .map_err(|s| format_err!("Can't convert OSString to String ({:?})", s))?;
                 if filename.starts_with("input_") || filename.starts_with("output_") {
                     let ix = filename
                         .split("_")
@@ -295,7 +308,7 @@ impl Parameters {
         for (ix, _, filename, name, tensor) in inputs.into_iter() {
             debug!("Using {} as input {} ({}): {:?}", filename, ix, name, tensor);
             input_values[*ix] = tensor.value.concretize();
-            raw_model.set_input_fact(*ix, (&tensor.clone().without_value()).try_into()?)?;
+            raw_model.set_input_fact(*ix, (&tensor.clone().without_value()).try_into().unwrap())?;
         }
         let outputs = outputs
             .into_iter()
@@ -317,10 +330,17 @@ impl Parameters {
     ) -> CliResult<Vec<Option<Arc<Tensor>>>>
     where
         F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
-        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash + Send + Sync,
+        O: std::fmt::Debug
+            + std::fmt::Display
+            + AsRef<dyn Op>
+            + AsMut<dyn Op>
+            + Clone
+            + Hash
+            + Send
+            + Sync,
         Graph<F, O>: SpecialOps<F, O> + Send,
         tract_core::ops::konst::Const: Into<O>,
-        CliError: From<E>,
+        E: std::fmt::Debug,
     {
         let mut input_values = vec![None; raw_model.inputs.len()];
 
@@ -328,7 +348,7 @@ impl Parameters {
             for (ix, v) in inputs.enumerate() {
                 let (name, t) = tensor::for_string(v)?;
                 let fact = t.clone().without_value();
-                let fact: F = (&fact).try_into()?;
+                let fact: F = (&fact).try_into().unwrap();
                 let outlet = if let Some(name) = name.filter(|s| s.len() > 0) {
                     let node = raw_model.node_by_name(&*name)?;
                     OutletId::new(node.id, 0)
@@ -355,8 +375,7 @@ impl Parameters {
         if let Some(bundle) = matches.values_of("input_bundle") {
             for input in bundle {
                 let mut npz = ndarray_npy::NpzReader::new(
-                    std::fs::File::open(input)
-                        .map_err(|e| format!("{} (opening {:?})", e, input))?,
+                    std::fs::File::open(input).with_context(|| format!("opening {:?}", input))?,
                 )?;
                 for name in npz.names()? {
                     match tensor::for_npz(&mut npz, &*name) {
@@ -370,7 +389,7 @@ impl Parameters {
                     if let Ok(t) = tensor::for_npz(&mut npz, &name) {
                         let shape = t.shape().to_vec();
                         let fact = InferenceFact::dt_shape(t.datum_type(), shape);
-                        raw_model.set_input_fact(ix, (&fact).try_into()?)?;
+                        raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
                         input_values[ix] = Some(t.into_arc_tensor());
                     }
                 }
@@ -402,7 +421,7 @@ impl Parameters {
                 if let Some(v) = input_values[i].take() {
                     raw_model.node_mut(input.node).op = tract_core::ops::konst::Const::new(v).into()
                 } else {
-                    error_chain::bail!(
+                    bail!(
                         "Don't have value for input {}, can't make it const",
                         raw_model.node_name(input.node)
                     );
@@ -475,8 +494,7 @@ impl Parameters {
                         }
                         Err(e) => {
                             if let Some(last_model) = last_model.take() {
-                                return Err(CliError::from(e)
-                                    .chain_err(|| CliErrorKind::ModelBuilding(last_model)));
+                                return Err(ModelBuildingError(last_model, e.into()))?;
                             } else {
                                 return Err(e);
                             }
@@ -499,12 +517,11 @@ impl Parameters {
         };
 
         stage!("analyse", inference_model -> inference_model,
-        |mut m:InferenceModel| {
+        |mut m:InferenceModel| -> TractResult<_> {
             let result = m.analyse(matches.is_present("analyse_fail_fast"));
             match result {
                 Ok(_) => Ok(m),
-                Err(e) => Err(
-                    CliError::from(e).chain_err(|| CliErrorKind::ModelBuilding(Box::new(m))))
+                Err(e) => Err(ModelBuildingError(Box::new(m), e.into()).into())
             }});
         if let Some(ext) = tf_model_extensions {
             #[cfg(feature = "tf")]

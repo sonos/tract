@@ -1,4 +1,4 @@
-use crate::errors::*;
+use crate::CliResult;
 use tract_core::prelude::*;
 
 use crate::model::Model;
