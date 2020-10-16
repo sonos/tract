@@ -33,7 +33,7 @@ pub fn handle(params: &Parameters, _options: display_params::DisplayParams) -> C
             let optim_result: TVec<_> =
                 optimized_state.compute_recursively(optim)?.into_iter().cloned().collect();
             if orig_result.len() != optim_result.len() {
-                bail!(
+                error_chain::bail!(
                     "Number of output differ: optimized:{}, original:{}",
                     optim_result.len(),
                     orig_result.len()

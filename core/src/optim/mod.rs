@@ -1,5 +1,4 @@
-use crate::model::*;
-use crate::TractResult;
+use crate::internal::*;
 use std::fmt::Debug;
 
 pub mod change_axes;
@@ -9,8 +8,6 @@ mod push_split_down;
 use self::change_axes::ChangeAxes;
 use self::prop_const::PropConst;
 use self::push_split_down::PushSplitDown;
-
-use crate::errors::TractResultExt;
 
 pub trait TypedPass: Debug + Send + Sync {
     fn reset(&mut self) -> TractResult<()>;
@@ -48,7 +45,7 @@ impl OpOptim {
         for id in new.eval_order()? {
             let node = &new.nodes()[id];
             let patch = (self.1)(node.op.as_ref(), &new, node)
-                .chain_err(|| format!("{:?} node {}", self, node))?;
+                .with_context(|| format!("{:?} node {}", self, node))?;
             if let Some(mut p) = patch {
                 p.push_context(format!("{:?} {}", self, node));
                 return Ok(Some(p));

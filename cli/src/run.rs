@@ -67,7 +67,12 @@ fn run_regular(
                     if let Ok(floats) = o.as_slice::<f32>() {
                         if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                             eprintln!("{:?}", floats);
-                            bail!("Found {} in output {} of {}", floats[pos], ix, node);
+                            tract_core::anyhow::bail!(
+                                "Found {} in output {} of {}",
+                                floats[pos],
+                                ix,
+                                node
+                            );
                         }
                     }
                 }
@@ -77,7 +82,7 @@ fn run_regular(
     })
 }
 
-#[cfg(feature="pulse")]
+#[cfg(feature = "pulse")]
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
     let input_fact = model.input_fact(0)?;
     let output_fact = model.output_fact(0)?;

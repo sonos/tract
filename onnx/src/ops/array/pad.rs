@@ -117,7 +117,7 @@ impl Expansion for Pad11 {
             .outlet_fact(inputs[1])?
             .konst
             .as_ref()
-            .ok_or("Expect padding to be constant")?
+            .context("Expect padding to be constant")?
             .cast_to::<i64>()?;
         let pads = pads.as_slice::<i64>()?;
         let rank = pads.len() / 2;

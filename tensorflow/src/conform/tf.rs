@@ -15,8 +15,6 @@ use tract_ndarray::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::conform::Result;
-
 pub struct Tensorflow {
     graph: Graph,
 }
@@ -25,14 +23,14 @@ pub fn version() -> String {
     tf::version().unwrap()
 }
 
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Tensorflow> {
+pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Tensorflow> {
     use std::io::Read;
     let mut model = vec![];
     fs::File::open(p)?.read_to_end(&mut model)?;
     for_slice(&*model)
 }
 
-pub fn for_slice(buf: &[u8]) -> Result<Tensorflow> {
+pub fn for_slice(buf: &[u8]) -> TractResult<Tensorflow> {
     let mut graph = Graph::new();
     graph.import_graph_def(buf, &::tensorflow::ImportGraphDefOptions::new())?;
     Ok(Tensorflow { graph })
@@ -90,14 +88,18 @@ impl From<Tensor> for TensorHolder {
     }
 }
 
-fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &tf::Tensor<T>) -> Result<ArrayD<T>> {
+fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &tf::Tensor<T>) -> TractResult<ArrayD<T>> {
     let shape: Vec<usize> = tensor.dims().iter().map(|d| *d as _).collect();
     Ok(Array::from(tensor.into_iter().cloned().collect::<Vec<_>>()).into_shape(shape)?)
 }
 
 impl Tensorflow {
     /// Executes the graph in one batch.
-    pub fn run(&mut self, inputs: Vec<(&str, Tensor)>, output_name: &str) -> Result<Vec<Tensor>> {
+    pub fn run(
+        &mut self,
+        inputs: Vec<(&str, Tensor)>,
+        output_name: &str,
+    ) -> TractResult<Vec<Tensor>> {
         let tensors: Vec<(&str, TensorHolder)> =
             inputs.into_iter().map(|(name, mat)| (name, mat.into())).collect();
 
@@ -142,7 +144,7 @@ impl Tensorflow {
         &mut self,
         inputs: Vec<(&'a str, Tensor)>,
         targets: Vec<&'a str>,
-    ) -> Result<HashMap<&'a str, Vec<Tensor>>> {
+    ) -> TractResult<HashMap<&'a str, Vec<Tensor>>> {
         let mut input_pairs: Vec<(&str, TensorHolder)> = Vec::new();
         let mut excluded = HashSet::new();
 
@@ -176,9 +178,7 @@ impl Tensorflow {
                 continue;
             }
 
-            if let Some(operation) =
-                self.graph.operation_by_name(name).map_err(|e| format!("TfError: {:?}", e))?
-            {
+            if let Some(operation) = self.graph.operation_by_name(name)? {
                 // switch only computes one of its outputs. tf explodes during
                 // the call to run() if we registers them
                 if operation.op_type()? == "Switch" {
@@ -216,7 +216,7 @@ impl Tensorflow {
                         &self.graph.operation_by_name_required(&name)?.output_type(ix);
                     convert_output(&mut step, output_type, *tok)
                 })
-                .collect::<Result<Vec<_>>>()?;
+                .collect::<TractResult<Vec<_>>>()?;
             outputs.insert(name, tensors);
         }
 
@@ -229,7 +229,7 @@ fn convert_output(
     step: &mut SessionRunArgs,
     output_type: &DataType,
     output: FetchToken,
-) -> Result<Tensor> {
+) -> TractResult<Tensor> {
     macro_rules! convert {
         ($dt:ident) => {
             match step.fetch(output) {

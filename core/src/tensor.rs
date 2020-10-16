@@ -504,7 +504,7 @@ impl Tensor {
         {
             *d = s
                 .parse()
-                .map_err(|_| format!("Could not parse {} as {:?}", s, Target::datum_type()))?
+                .map_err(|_| format_err!("Could not parse {} as {:?}", s, Target::datum_type()))?
         }
         Ok(())
     }

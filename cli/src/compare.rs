@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::fmt::{Debug, Display};
 #[allow(unused_imports)]
 use std::fs;
@@ -76,7 +77,7 @@ pub fn handle_tensorflow(
         m,
         &all_values,
         &params,
-        output_params
+        &output_params
     ))
 }
 
@@ -147,11 +148,14 @@ pub fn handle_reference_stage(
         .map(|&i| reference_model.outlet_fact(i))
         .collect::<TractResult<Vec<_>>>()?;
     let generated = crate::tensor::make_inputs(&*input_facts)?;
-    state.run_plan_with_eval(generated.clone(), |session, state, node, input| {
-        let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
-        values.insert(node.name.clone(), Ok(result[0].as_ref().clone()));
-        Ok(result)
-    })?;
+    state.run_plan_with_eval(
+        generated.clone(),
+        |session, state, node, input| -> TractResult<_> {
+            let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
+            values.insert(node.name.clone(), Ok(result[0].as_ref().clone()));
+            Ok(result)
+        },
+    )?;
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
         m,
@@ -281,7 +285,7 @@ where
     }
 
     if failing.len() > 0 {
-        bail!("{} error(s).", failing.len())
+        error_chain::bail!("{} error(s).", failing.len())
     } else {
         println!("{}", Green.paint(format!("{} node(s) passed the comparison.", ok)));
     };

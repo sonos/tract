@@ -42,7 +42,7 @@ pub fn handle(
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
             nnef.write_to_tar(typed, encoder)?;
         } else {
-            bail!("Only typed model can be dumped")
+            error_chain::bail!("Only typed model can be dumped")
         }
     }
 
@@ -52,7 +52,7 @@ pub fn handle(
             let file = std::fs::File::create(path)?;
             nnef.write_to_tar(typed, file)?;
         } else {
-            bail!("Only typed model can be dumped")
+            error_chain::bail!("Only typed model can be dumped")
         }
     }
 
@@ -61,7 +61,7 @@ pub fn handle(
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
             nnef.write_to_dir(typed, path)?
         } else {
-            bail!("Only typed model can be dumped")
+            error_chain::bail!("Only typed model can be dumped")
         }
     }
 
@@ -74,7 +74,7 @@ pub fn handle(
                 assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();
             let total = total.cost.iter().cloned().collect::<HashMap<_, _>>();
             if assert != total {
-                bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);
+                error_chain::bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);
             }
         }
     }

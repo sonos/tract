@@ -21,7 +21,7 @@ impl TryFrom<DataType> for DatumType {
             DataType::Float => Ok(DatumType::F32),
             DataType::Double => Ok(DatumType::F64),
             DataType::String => Ok(DatumType::String),
-            _ => Err(format!("Unknown DatumType {:?}", t))?,
+            _ => bail!("Unknown DatumType {:?}", t),
         }
     }
 }
@@ -100,16 +100,14 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                     t.int32_data.iter().map(|&x| x as u16).collect(),
                 )?
                 .into(),
-                DatumType::U32 => Array::from_shape_vec(
-                    &*shape,
-                    t.int32_data.iter().map(|&x| x).collect(),
-                )?
-                .into(),
-                DatumType::U64 => Array::from_shape_vec(
-                    &*shape,
-                    t.int64_data.iter().map(|&x| x).collect(),
-                )?
-                .into(),
+                DatumType::U32 => {
+                    Array::from_shape_vec(&*shape, t.int32_data.iter().map(|&x| x).collect())?
+                        .into()
+                }
+                DatumType::U64 => {
+                    Array::from_shape_vec(&*shape, t.int64_data.iter().map(|&x| x).collect())?
+                        .into()
+                }
                 DatumType::I8 => {
                     Array::from_shape_vec(&*shape, t.int32_data.iter().map(|&x| x as i8).collect())?
                         .into()
@@ -130,7 +128,7 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                         .cloned()
                         .map(String::from_utf8)
                         .collect::<Result<Vec<String>, _>>()
-                        .map_err(|_| format!("Invalid UTF8 buffer"))?;
+                        .context("Invalid UTF8 buffer")?;
                     Array::from_shape_vec(&*shape, strings)?.into()
                 }
                 _ => unimplemented!("FIXME, struct tensor loading"),
@@ -151,7 +149,7 @@ pub fn proto_from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<TensorProt
     let mut v = vec![];
     r.read_to_end(&mut v)?;
     let b = bytes::Bytes::from(v);
-    TensorProto::decode(b).map_err(|e| format!("Can not parse protobuf input: {:?}", e).into())
+    TensorProto::decode(b).context("Can not parse protobuf input")
 }
 
 pub fn from_reader<R: ::std::io::Read>(r: R) -> TractResult<Tensor> {

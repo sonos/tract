@@ -80,7 +80,7 @@ impl TDim {
         if let Val(v) = self {
             Ok(*v)
         } else {
-            bail!("Not a determined integer: {}", self)
+            crate::internal::bail!("Not a determined integer: {}", self)
         }
     }
 

@@ -47,7 +47,7 @@ impl Expansion for MultiBroadcastTo {
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
             let dims = tract_core::broadcast::multi_broadcast(&[&*input_shape, &*shape])
-                .ok_or("incompatible shapes")?;
+                .context("incompatible shapes")?;
             let op = Typed::new(dims.into());
             model.wire_node(prefix, op, &[inputs[0]])
         } else {

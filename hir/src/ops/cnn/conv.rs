@@ -284,7 +284,7 @@ impl Expansion for Conv {
         let unary = {
             let facts: TVec<&TypedFact> =
                 inputs.iter().map(|t| target.outlet_fact(*t)).collect::<TractResult<_>>()?;
-            self.to_unary(&*facts)?.chain_err(|| {
+            self.to_unary(&*facts)?.with_context(|| {
                 format!("Can not make {} into a typed op. (inputs facts: {:?})", prefix, facts)
             })?
         };

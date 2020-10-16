@@ -76,7 +76,7 @@ impl<'mb> ModelBuilder<'mb> {
             let identifiers = assignment.left.to_identifiers()?;
             self.naming_scopes.push(identifiers[0].to_string());
             let values: TVec<OutletId> =
-                assignment.right.resolve(self).and_then(|v| v.to(self)).chain_err(|| {
+                assignment.right.resolve(self).and_then(|v| v.to(self)).with_context(|| {
                     format!("Plugging in assignement for {:?}", identifiers.join(", "))
                 })?;
             if values.len() != identifiers.len() {
@@ -173,7 +173,7 @@ impl<'mb> ModelBuilder<'mb> {
                 return Ok(outlets);
             }
         }
-        self.model.wire_node(name, op, inputs).chain_err(|| format!("inputs are {:?}", inputs))
+        self.model.wire_node(name, op, inputs).with_context(|| format!("inputs are {:?}", inputs))
     }
 }
 
@@ -191,12 +191,12 @@ impl<'a> ResolvedInvocation<'a> {
         let rv = self.named_arg(name)?;
         let v = rv
             .resolve(builder)
-            .chain_err(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
-        v.to::<T>(builder).chain_err(|| format!("Converting argument `{}' from {:?}", name, v))
+            .with_context(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
+        v.to::<T>(builder).with_context(|| format!("Converting argument `{}' from {:?}", name, v))
     }
 
     pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
-        self.get_named_arg(name).ok_or_else(|| format!("expected argument {}", name).into())
+        self.get_named_arg(name).ok_or_else(|| format_err!("expected argument {}", name))
     }
 
     pub fn get_named_arg(&self, name: &str) -> Option<Cow<RValue>> {
@@ -257,7 +257,7 @@ impl RValue {
                     .unwrap()
                     .get(id)
                     .cloned()
-                    .ok_or_else(|| format!("No value for name {}", id))?;
+                    .ok_or_else(|| format_err!("No value for name {}", id))?;
                 Ok(outlet)
             }
             RValue::Invocation(inv) => builder.wire_invocation(inv),
@@ -296,11 +296,11 @@ impl RValue {
                 if f.contains(".") || f.contains("e") {
                     f.parse::<f32>()
                         .map(Value::Scalar)
-                        .map_err(|_| format!("Can not parse {} as f32", f).into())
+                        .with_context(|| format!("Can not parse {} as f32", f))
                 } else {
                     f.parse::<TDim>()
                         .map(Value::Dim)
-                        .map_err(|_| format!("Can not parse {} as i64", f).into())
+                        .with_context(|| format!("Can not parse {} as i64", f))
                 }
             }
             RValue::Literal(Literal::String(s)) => Ok(Value::String(s.clone())),
@@ -356,7 +356,7 @@ impl CoerceFrom<Value> for Arc<Tensor> {
             Value::Scalar(f) => Ok(rctensor0(*f)),
             Value::String(f) => Ok(rctensor0(f.clone())),
             Value::Wire(o) => {
-                builder.model.outlet_fact(*o)?.konst.clone().ok_or_else(|| "Not a const".into())
+                builder.model.outlet_fact(*o)?.konst.clone().ok_or_else(|| format_err!("Not a const"))
             }
             _ => bail!("Can not build a tensor from {:?}", from),
         }

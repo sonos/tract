@@ -91,7 +91,7 @@ impl InferenceScan {
             input_mapping,
             output_mapping,
             self.seq_length_input_slot,
-            0
+            0,
         )?))
     }
 
@@ -300,11 +300,7 @@ impl InferenceOp for InferenceScan {
                 trace!("  Output inner model: {} {:?} {:?}", ix, output, self.body.output_fact(ix));
             }
             trace!("Inner model analyse");
-            if self
-                .body
-                .analyse(false)
-                .map_err(|e| format!("analysing inner model: {}", e))?
-            {
+            if self.body.analyse(false).context("analysing inner model")? {
                 changed = true;
             }
             if !changed {

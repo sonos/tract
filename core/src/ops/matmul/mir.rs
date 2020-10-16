@@ -138,7 +138,7 @@ pub fn compute_shape<D: DimLike>(
         &ashape[..(ashape.len() - 2)],
         &bshape[..(bshape.len() - 2)],
     ])
-    .ok_or("Could not broadcast")?;
+    .ok_or_else(|| format_err!("Could not broadcast"))?;
     let (mut m, mut ka) = (ashape[ashape.len() - 2].clone(), ashape[ashape.len() - 1].clone());
     let (mut kb, mut n) = (bshape[bshape.len() - 2].clone(), bshape[bshape.len() - 1].clone());
     if a_trans {

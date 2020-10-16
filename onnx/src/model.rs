@@ -221,14 +221,14 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
         let map = unsafe { memmap::Mmap::map(&fs::File::open(p)?)? };
         #[cfg(target_arch = "wasm32")]
         let map = fs::read(p)?;
-        Ok(crate::pb::ModelProto::decode(&*map).map_err(|e| format!("{:?}", e))?)
+        Ok(crate::pb::ModelProto::decode(&*map)?)
     }
 
     fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<pb::ModelProto> {
         let mut v = vec![];
         r.read_to_end(&mut v)?;
         let b = bytes::Bytes::from(v);
-        Ok(crate::pb::ModelProto::decode(b).map_err(|e| format!("{:?}", e))?)
+        Ok(crate::pb::ModelProto::decode(b)?)
     }
 
     fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {

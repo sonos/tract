@@ -2,7 +2,7 @@ use tract_hir::internal::*;
 use tract_hir::tract_core::{downcast_rs, dyn_clone};
 
 /// Common methods for all variants of model.
-pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone + Send {
+pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone + Send + Sync {
     /// Lookup node id by name
     fn node_id_by_name(&self, name: &str) -> TractResult<usize>;
 
@@ -96,15 +96,15 @@ dyn_clone::clone_trait_object!(Model);
 impl<F, O> Model for Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
-    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    Graph<F, O>: Send,
+    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash + Send + Sync,
+    Graph<F, O>: Send + Sync + 'static,
 {
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
         self.nodes
             .iter()
             .find(|n| n.name == name)
             .map(|n| n.id)
-            .ok_or_else(|| format!("No node found for name: \"{}\"", name).into())
+            .with_context(|| format!("No node found for name: \"{}\"", name))
     }
 
     fn node_name(&self, id: usize) -> &str {

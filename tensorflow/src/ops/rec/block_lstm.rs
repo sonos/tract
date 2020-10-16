@@ -85,8 +85,8 @@ impl Expansion for BlockLSTM {
         let mut input_mapping = vec![];
         let mut output_mapping = vec![];
 
-        let w = model.outlet_fact(inputs[4])?.konst.clone().ok_or("W must be cosntant")?;
-        let b = model.outlet_fact(inputs[8])?.konst.clone().ok_or("B must be constant")?;
+        let w = model.outlet_fact(inputs[4])?.konst.clone().context("W must be cosntant")?;
+        let b = model.outlet_fact(inputs[8])?.konst.clone().context("B must be constant")?;
         let cell_size = w.shape()[1] / 4;
         let mut b = b.into_tensor();
         b.insert_axis(0)?;

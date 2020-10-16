@@ -21,7 +21,7 @@ pub trait BinMiniOp:
         let (a, b) = args_2!(inputs);
         let op_type = self.operating_datum_type(a.datum_type(), b.datum_type())?;
         let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
-            .ok_or("Can not compute resulting shape")?;
+            .ok_or_else(|| format_err!("Can not compute resulting shape"))?;
         let a = a.cast_to_dt(op_type)?;
         let b = b.cast_to_dt(op_type)?;
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
@@ -32,7 +32,7 @@ pub trait BinMiniOp:
     fn eval_broadcast(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (a, b) = args_2!(inputs);
         let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
-            .ok_or("Can not compute resulting shape")?;
+            .ok_or_else(|| format_err!("Can not compute resulting shape"))?;
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
         let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &*c_shape)? };
         self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
@@ -113,9 +113,10 @@ impl TypedOp for TypedBinOp {
                 &inputs[0].shape.to_tvec(),
                 &inputs[1].shape.to_tvec()
             ])
-            .ok_or_else(|| format!(
+            .ok_or_else(|| format_err!(
                 "Can not broadcast shapes a:{:?} b:{:?}",
-                &inputs[0], &inputs[1]
+                &inputs[0],
+                &inputs[1]
             ))?
         )?))
     }
@@ -308,7 +309,7 @@ impl TypedOp for UnaryOp {
                 &*self.a.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
                 &*inputs[0].shape.to_tvec()
             ])
-            .ok_or_else(|| format!(
+            .ok_or_else(|| format_err!(
                 "Failed to broadcast {:?} and {:?}",
                 self.a.shape(),
                 inputs[0].shape
@@ -501,7 +502,7 @@ macro_rules! bin_to_super_type {
             }
 
             fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
-                a.common_super_type(b).ok_or_else(|| format!("No super type for {:?} and {:?}", a, b).into())
+                a.common_super_type(b).ok_or_else(|| format_err!("No super type for {:?} and {:?}", a, b))
             }
 
             fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
@@ -602,7 +603,7 @@ macro_rules! bin_to_bool {
             }
 
             fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
-                a.common_super_type(b).ok_or_else(|| format!("No super type for {:?} and {:?}", a, b).into())
+                a.common_super_type(b).ok_or_else(|| format_err!("No super type for {:?} and {:?}", a, b).into())
             }
 
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {

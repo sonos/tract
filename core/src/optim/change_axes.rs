@@ -20,7 +20,7 @@ impl TypedPass for ChangeAxes {
                 let outlet = suggestion.0.as_outlet(&model.node(n));
                 let change = AxisChange { outlet, op: suggestion.1 };
                 if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
-                    .chain_err(|| format!("Making patch for {:?} from {}", change, model.node(n)))?
+                    .with_context(|| format!("Making patch for {:?} from {}", change, model.node(n)))?
                 {
                     return Ok(Some(patch));
                 }
@@ -40,7 +40,7 @@ impl TypedPass for ChangeAxes {
                             model.check_consistent_facts()?;
                             Ok(it)
                         })
-                        .chain_err(|| format!("Applying {:?} from {}", change, model.node(n)))?
+                        .with_context(|| format!("Applying {:?} from {}", change, model.node(n)))?
                         .is_some()
                     {
                         done_something = true;

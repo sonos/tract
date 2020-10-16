@@ -187,7 +187,6 @@ where
         );
     }
     for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
-        use tract_hir::tract_core::error_chain::ChainedError;
         //                println!("computed: {:?}", computed[ix].dump(true));
         //                println!("expected: {:?}", expected[ix].dump(true));
         if let Err(e) = a.close_enough(b, true) {
@@ -197,7 +196,8 @@ where
                 ix,
                 a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
                 b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
-                e.display_chain()
+                e
+//                e.display_chain()
             )
         }
     }

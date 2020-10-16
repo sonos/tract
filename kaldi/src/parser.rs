@@ -24,11 +24,11 @@ mod text;
 
 pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
     let (_, (config, components)) = parse_top_level(slice).map_err(|e| match e {
-        nom::Err::Error(err) => format!(
+        nom::Err::Error(err) => format_err!(
             "Parsing kaldi enveloppe at: {:?}",
             err.0.iter().take(120).map(|b| format!("{}", *b as char)).join("")
         ),
-        e => format!("{:?}", e),
+        e => format_err!("{:?}", e),
     })?;
     let config_lines = config_lines::parse_config(config)?;
     Ok(KaldiProtoModel { config_lines, components, adjust_final_offset: 0 })

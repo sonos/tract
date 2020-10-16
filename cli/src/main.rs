@@ -432,7 +432,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
     }
 
     let builder_result = Parameters::from_clap(&matches, probe);
-    let params = match builder_result {
+    #[allow(unused_mut)]
+    let mut params = match builder_result {
         Ok(params) => params,
         Err(e) => {
             if let CliError(CliErrorKind::ModelBuilding(ref broken_model), _) = e {
@@ -476,6 +477,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             display_params_from_clap(&matches, m)?,
         ),
 
+        #[cfg(not(feature = "conform"))]
         ("compare", Some(m)) => compare::handle_reference_stage(
             m.is_present("cumulative"),
             &params,
@@ -533,7 +535,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             )
         }
 
-        (s, _) => bail!("Unknown subcommand {}.", s),
+        (s, _) => error_chain::bail!("Unknown subcommand {}.", s),
     }?;
 
     if need_optimisations {

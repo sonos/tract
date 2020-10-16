@@ -69,7 +69,7 @@ macro_rules! op_core_lir_mir {
 macro_rules! args_1 {
     ($inputs:expr) => {{
         if $inputs.len() != 1 {
-            $crate::error_chain::bail!("Expected 1 arg, got {:?}", $inputs)
+            $crate::internal::bail!("Expected 1 arg, got {:?}", $inputs)
         }
         let result = $inputs.pop().unwrap();
         ::std::mem::drop($inputs);
@@ -81,7 +81,7 @@ macro_rules! args_1 {
 macro_rules! args_2 {
     ($inputs:expr) => {{
         if $inputs.len() != 2 {
-            $crate::error_chain::bail!("Expected 2 arg, got {:?}", $inputs)
+            $crate::internal::bail!("Expected 2 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = ($inputs.pop().unwrap(), $inputs.pop().unwrap());
@@ -95,7 +95,7 @@ macro_rules! args_2 {
 macro_rules! args_3 {
     ($inputs:expr) => {{
         if $inputs.len() != 3 {
-            $crate::error_chain::bail!("Expected 3 arg, got {:?}", $inputs)
+            $crate::internal::bail!("Expected 3 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = ($inputs.pop().unwrap(), $inputs.pop().unwrap(), $inputs.pop().unwrap());
@@ -109,7 +109,7 @@ macro_rules! args_3 {
 macro_rules! args_4 {
     ($inputs:expr) => {{
         if $inputs.len() != 4 {
-            $crate::error_chain::bail!("Expected 4 arg, got {:?}", $inputs)
+            $crate::internal::bail!("Expected 4 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = (
@@ -128,7 +128,7 @@ macro_rules! args_4 {
 macro_rules! args_5 {
     ($inputs:expr) => {{
         if $inputs.len() != 5 {
-            $crate::error_chain::bail!("Expected 5 arg, got {:?}", $inputs)
+            $crate::internal::bail!("Expected 5 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = (
@@ -148,7 +148,7 @@ macro_rules! args_5 {
 macro_rules! args_6 {
     ($inputs:expr) => {{
         if $inputs.len() != 6 {
-            $crate::error_chain::bail!("Expected 6 arg, got {:?}", $inputs)
+            $crate::internal::bail!("Expected 6 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = (
@@ -169,7 +169,7 @@ macro_rules! args_6 {
 macro_rules! args_7 {
     ($inputs:expr) => {{
         if $inputs.len() != 7 {
-            $crate::error_chain::bail!("Expected 7 arg, got {:?}", $inputs)
+            $crate::internal::bail!("Expected 7 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = (
@@ -191,7 +191,7 @@ macro_rules! args_7 {
 macro_rules! args_8 {
     ($inputs:expr) => {{
         if $inputs.len() != 8 {
-            $crate::error_chain::bail!("Expected 8 arg, got {:?}", $inputs)
+            $crate::internal::bail!("Expected 8 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = (

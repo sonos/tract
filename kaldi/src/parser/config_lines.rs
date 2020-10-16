@@ -23,25 +23,25 @@ pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
             "input-node" => {
                 input_node = Some(
                     parse_input_node_line(line)
-                        .map_err(|e| format!("Error {:?} while parsing {}", e, line))?
+                        .map_err(|e| format_err!("Error {:?} while parsing {}", e, line))?
                         .1,
                 )
             }
             "dim-range-node" => {
                 let (name, it) = parse_dim_range_node_line(line)
-                    .map_err(|e| format!("Error {:?} while parsing {}", e, line))?
+                    .map_err(|e| format_err!("Error {:?} while parsing {}", e, line))?
                     .1;
                 nodes.push((name, NodeLine::DimRange(it)));
             }
             "component-node" => {
                 let (name, it) = parse_component_node_line(line)
-                    .map_err(|e| format!("Error {:?} while parsing {}", e, line))?
+                    .map_err(|e| format_err!("Error {:?} while parsing {}", e, line))?
                     .1;
                 nodes.push((name, NodeLine::Component(it)));
             }
             "output-node" => outputs.push(
                 parse_output_node_line(line)
-                    .map_err(|e| format!("Error {:?} while parsing {}", e, line))?
+                    .map_err(|e| format_err!("Error {:?} while parsing {}", e, line))?
                     .1,
             ),
             _ => bail!("Unknown config line {}", line_kind),

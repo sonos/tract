@@ -2,26 +2,6 @@
 #![allow(deprecated)]
 #![allow(non_snake_case)]
 
-error_chain! {
-    foreign_links {
-        Io(::std::io::Error);
-        NdarrayShape(tract_hir::tract_ndarray::ShapeError);
-        StrUtf8(::std::str::Utf8Error);
-    }
-    links {
-        Tract(TractError, TractErrorKind);
-    }
-    errors {
-        TFString {}
-    }
-}
-
-impl ::std::convert::From<::tensorflow::Status> for Error {
-    fn from(tfs: ::tensorflow::Status) -> Error {
-        format!("Tensorflow error: {:?}", tfs).into()
-    }
-}
-
 pub mod tf;
 
 use crate::tfpb;

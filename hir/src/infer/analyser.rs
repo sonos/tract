@@ -62,9 +62,10 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     }
                 }
                 Err(e) => {
-                    let e = e.chain_err(|| {
-                        format!("Failed analyse for node {}", self.model.borrow().node(node))
-                    });
+                    let e = e.context(format!(
+                        "Failed analyse for node {}",
+                        self.model.borrow().node(node)
+                    ));
                     if !obstinate {
                         return Err(e.into());
                     }
@@ -137,7 +138,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 let old_fact = self.model.borrow().outlet_fact(outlet)?;
                 let unified = inferred_fact
                     .unify(&old_fact)
-                    .map_err(|e| format!("while unifying inputs of {} : {}", node, e))?;
+                    .with_context(|| format!("while unifying inputs of {}", node))?;
 
                 if &unified != old_fact {
                     debug!("  Refined {:?}: {:?} -> {:?}", outlet, old_fact, unified);

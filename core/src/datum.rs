@@ -176,7 +176,7 @@ impl DatumType {
 }
 
 impl std::str::FromStr for DatumType {
-    type Err = crate::errors::TractError;
+    type Err = crate::internal::TractError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -195,7 +195,7 @@ impl std::str::FromStr for DatumType {
             "Blob" | "blob" => Ok(DatumType::Blob),
             "String" | "string" => Ok(DatumType::String),
             "TDim" | "tdim" => Ok(DatumType::TDim),
-            _ => bail!("Unknown type {}", s),
+            _ => crate::internal::bail!("Unknown type {}", s),
         }
     }
 }

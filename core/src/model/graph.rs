@@ -1,5 +1,5 @@
+use crate::internal::*;
 use super::*;
-use crate::errors::TractResult;
 use crate::ops::Op;
 use crate::prelude::*;
 use std::fmt;
@@ -254,7 +254,7 @@ where
                     .get(s)
                     .cloned()
                     .or_else(|| self.nodes.iter().find(|n| n.name == s).map(|n| n.id.into()))
-                    .ok_or_else(|| format!("Node {} not found", s).into())
+                    .ok_or_else(|| format_err!("Node {} not found", s))
             })
             .collect::<TractResult<_>>()?;
         self.outputs = ids;
@@ -306,7 +306,7 @@ where
             .iter()
             .find(|n| n.name == name)
             .map(|n| n.id)
-            .ok_or_else(|| format!("No node found for name: \"{}\"", name).into())
+            .ok_or_else(|| format_err!("No node found for name: \"{}\"", name).into())
     }
 
     /// Find a node by its name.
@@ -369,7 +369,7 @@ where
         outlets
             .get(outlet.slot)
             .map(|o| &o.fact)
-            .ok_or_else(|| format!("Invalid outlet reference: {:?}", outlet).into())
+            .ok_or_else(|| format_err!("Invalid outlet reference: {:?}", outlet).into())
     }
 
     /// Get tensor information for a single outlet.
@@ -378,7 +378,7 @@ where
         outlets
             .get_mut(outlet.slot)
             .map(|o| &mut o.fact)
-            .ok_or_else(|| format!("Invalid outlet reference: {:?}", outlet).into())
+            .ok_or_else(|| format_err!("Invalid outlet reference: {:?}", outlet).into())
     }
 
     /// Get multiple mutable tensor information for outlets.

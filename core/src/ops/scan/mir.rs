@@ -344,7 +344,7 @@ impl Scan {
                                 OutletId::new(successor.node, 0),
                                 new_source_wire_in_patch,
                             )
-                            .chain_err(|| "patching inner model")?;
+                            .with_context(|| "patching inner model")?;
                         inner_patch.apply(&mut new_body)?;
 
                         let mut input_mapping = self.input_mapping.clone();
@@ -367,7 +367,7 @@ impl Scan {
                         for w in output_wires {
                             outside_patch
                                 .shunt_outside(model, OutletId::new(node.id, w.slot), w)
-                                .chain_err(|| "patching outer model")?;
+                                .with_context(|| "patching outer model")?;
                         }
                         return Ok(Some(outside_patch));
                     }
@@ -631,7 +631,7 @@ impl TypedOp for Scan {
 
     fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
         let mut invariants = tvec!();
-        let body_invs = self.body.invariants().chain_err(|| "Computing body invariants")?;
+        let body_invs = self.body.invariants().with_context(|| "Computing body invariants")?;
         for axis in body_invs.axes {
             let mut info = AxisInfo::default().with_period(1);
             for (ix, input_mapping) in self.input_mapping.iter().enumerate() {
@@ -702,7 +702,7 @@ impl TypedOp for Scan {
         macro_rules! pass {
             ($func:ident) => {
                 if let Some(mut r) =
-                    self.$func(model, node).chain_err(|| format!("{}", stringify!($func)))?
+                    self.$func(model, node).with_context(|| format!("{}", stringify!($func)))?
                 {
                     trace!(stringify!($func));
                     r.push_context(stringify!($func));

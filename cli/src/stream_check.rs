@@ -137,7 +137,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
                             .map(|s| *s.iter().next().unwrap())
                             .join(" ")
                     );
-                    bail!("Pulse check failed")
+                    error_chain::bail!("Pulse check failed")
                 }
             }
         }

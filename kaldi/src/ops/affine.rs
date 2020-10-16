@@ -13,8 +13,8 @@ pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn
     let component = &ctx.proto_model.components[&line.component];
     let (kernel_len, dilation) = line.input.as_conv_shape_dilation().unwrap_or((1, 1));
     let kernel: &Tensor =
-        component.attributes.get("LinearParams").ok_or("missing attribute LinearParams")?;
-    let bias = component.attributes.get("BiasParams").ok_or("missing attribute BiasParams")?;
+        component.attributes.get("LinearParams").context("missing attribute LinearParams")?;
+    let bias = component.attributes.get("BiasParams").context("missing attribute BiasParams")?;
     // O•TI -> t -> TI•O -> T•I•O = HWIO
     let o_ti = kernel.to_array_view::<f32>()?;
     let t_i_o_shape = (kernel_len, kernel.len() / kernel_len / bias.len(), bias.len());

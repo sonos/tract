@@ -255,7 +255,7 @@ impl Factoid for ShapeFactoid {
                 ),
             })
             .collect::<TractResult<_>>()
-            .map_err(|e| format!("Unifying shapes {:?} and {:?}, {}", x, y, e))?;
+            .with_context(|| format!("Unifying shapes {:?} and {:?}", x, y))?;
 
         if x.open && y.open {
             Ok(ShapeFactoid::open(dimensions))

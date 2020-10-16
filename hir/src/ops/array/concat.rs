@@ -42,7 +42,7 @@ impl Expansion for Concat {
         s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
         s.given_all((0..n).map(|i| (&inputs[i].datum_type).bex()), move |s, dts| {
             let super_type: DatumType = DatumType::super_type_for(&dts)
-                .ok_or_else(|| format!("No supertype found for {:?}", dts))?;
+                .with_context(|| format!("No supertype found for {:?}", dts))?;
             s.equals(&outputs[0].datum_type, super_type)
         })?;
         s.given(&inputs[0].rank, move |s, rank| {

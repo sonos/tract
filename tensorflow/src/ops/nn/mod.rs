@@ -30,7 +30,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
 pub fn strides(pb: &NodeDef) -> TractResult<Vec<usize>> {
     let strides: Vec<usize> = pb.get_attr_list_int("strides")?;
     if strides.len() != 4 || strides[0] != 1 && strides[3] != 1 {
-        Err(format!("strides must be of the form [1, h, v, 1], found {:?}", strides))?
+        bail!("strides must be of the form [1, h, v, 1], found {:?}", strides)
     };
     Ok(strides)
 }
@@ -49,6 +49,6 @@ pub fn padding(pb: &NodeDef) -> TractResult<PaddingSpec> {
     match padding {
         b"VALID" => Ok(PaddingSpec::Valid),
         b"SAME" => Ok(PaddingSpec::SameUpper),
-        s => Err(format!("unsupported Padding {}", String::from_utf8_lossy(s)))?,
+        s => bail!("unsupported Padding {}", String::from_utf8_lossy(s)),
     }
 }

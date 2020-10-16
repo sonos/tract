@@ -65,13 +65,13 @@ fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>>
                 if remaining_dim_input != TDim::one() {
                     bail!("Invalid");
                 }
-                *slot = input_dims.peek().ok_or("Invalid")?.clone().clone();
+                *slot = input_dims.peek().context("Invalid")?.clone().clone();
             }
             loop {
                 let quotient = remaining_dim_input.maybe_div(slot);
                 if quotient.is_err() || quotient.as_ref().unwrap().1 != 1 {
                     remaining_dim_input =
-                        remaining_dim_input.maybe_mul(input_dims.next().ok_or("Invalid")?)?;
+                        remaining_dim_input.maybe_mul(input_dims.next().context("Invalid")?)?;
                 } else {
                     break;
                 }

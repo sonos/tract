@@ -35,7 +35,7 @@ pub fn variable(
         .proto_model
         .tensors
         .get(&label)
-        .ok_or_else(|| format!("No data for tensor {:?}", label))?;
+        .ok_or_else(|| format_err!("No data for tensor {:?}", label))?;
     if tensor.shape() != &*shape {
         bail!(
             "Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}",

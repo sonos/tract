@@ -71,7 +71,7 @@ impl Parameters {
         let filename = matches.value_of("model").ok_or("Model argument required")?;
         let filename = std::path::PathBuf::from(filename);
         let (filename, onnx_tc) = if !filename.exists() {
-            bail!("model not found: {:?}", filename)
+            error_chain::bail!("model not found: {:?}", filename)
         } else if std::fs::metadata(&filename)?.is_dir() && filename.join("graph.nnef").exists() {
             (filename, false)
         } else if std::fs::metadata(&filename)?.is_dir() && filename.join("model.onnx").exists() {
@@ -191,7 +191,7 @@ impl Parameters {
                     (SomeGraphDef::NoGraphDef, Box::new(model_and_ext.0), Some(model_and_ext.1))
                 }
             }
-            _ => bail!(
+            _ => error_chain::bail!(
                 "Format {} not supported. You may need to recompile tract with the right features.",
                 format
             ),
@@ -317,7 +317,7 @@ impl Parameters {
     ) -> CliResult<Vec<Option<Arc<Tensor>>>>
     where
         F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
-        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash,
+        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + Hash + Send + Sync,
         Graph<F, O>: SpecialOps<F, O> + Send,
         tract_core::ops::konst::Const: Into<O>,
         CliError: From<E>,
@@ -402,7 +402,7 @@ impl Parameters {
                 if let Some(v) = input_values[i].take() {
                     raw_model.node_mut(input.node).op = tract_core::ops::konst::Const::new(v).into()
                 } else {
-                    bail!(
+                    error_chain::bail!(
                         "Don't have value for input {}, can't make it const",
                         raw_model.node_name(input.node)
                     );
@@ -562,7 +562,7 @@ impl Parameters {
         #[cfg(not(feature = "conform"))]
         let tf_model = ();
         #[cfg(feature = "conform")]
-        let tf_model = if format == "tf" && need_tensorflow_model {
+        let tf_model = if need_tensorflow_model {
             info!("Tensorflow version: {}", tract_tensorflow::conform::tf::version());
             if matches.is_present("determinize") {
                 if let SomeGraphDef::Tf(ref graph) = graph {

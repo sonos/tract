@@ -30,7 +30,7 @@ fn proptest_regular_against_pulse(
     let mut ref_model = model.clone();
     let s = stream_symbol();
     debug!("Run reference");
-    ref_model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape()))?;
+    ref_model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape())).unwrap();
     let input = Tensor::from(input_array.clone());
     let plan = SimplePlan::new(&ref_model).unwrap();
     let outputs = plan.run(tvec!(input.clone())).unwrap();
@@ -117,7 +117,7 @@ proptest! {
             .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
             .unwrap();
         let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
-        model.set_output_outlets(&slice)?;
+        model.set_output_outlets(&slice).unwrap();
 
         let input = Array1::range(1.0f32, full_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -131,8 +131,8 @@ proptest! {
             .add_source("a", InferenceFact::dt_shape(f32::datum_type(), shapefactoid!(S)))
             .unwrap();
         let pad = model.wire_node("pad",Pad::new(vec![(begin as _, end as _)],
-            PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a])?;
-        model.set_output_outlets(&pad)?;
+            PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
+        model.set_output_outlets(&pad).unwrap();
 
         let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;

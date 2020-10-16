@@ -9,7 +9,7 @@ tract_linalg::impl_dyn_hash!(MultiBroadcastTo);
 impl MultiBroadcastTo {
     pub fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<Arc<Tensor>>> {
         let input = input.to_array_view::<T>()?;
-        let output = input.broadcast(&*shape).ok_or("incompatible shapes")?;
+        let output = input.broadcast(&*shape).ok_or_else(|| format_err!("incompatible shapes"))?;
         Ok(tvec![output.to_owned().into_arc_tensor()])
     }
 }

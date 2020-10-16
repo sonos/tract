@@ -8,7 +8,7 @@ use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, s
 use crate::ast::*;
 
 fn translate_error<'s, E: std::fmt::Debug>(e: E) -> TractError {
-    format!("Fail to parse NNEF document: {:?}", e).into()
+    format_err!("Fail to parse NNEF document: {:?}", e)
 }
 
 #[inline(never)]

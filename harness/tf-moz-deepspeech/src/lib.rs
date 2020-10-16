@@ -10,6 +10,7 @@ use std::str::FromStr;
 
 use tract_tensorflow::model::TfModelAndExtensions;
 use tract_tensorflow::prelude::*;
+use tract_tensorflow::tract_core::internal::*;
 
 #[cfg(test)]
 fn setup_test_logger() {
@@ -26,7 +27,7 @@ fn download() {
 fn do_download() -> TractResult<()> {
     let run = ::std::process::Command::new("./download.sh").status().unwrap();
     if !run.success() {
-        Err("Failed to download inception model files")?
+        bail!("Failed to download inception model files")
     }
     Ok(())
 }
@@ -45,7 +46,7 @@ fn parse_tensor<T: Datum + FromStr>(s: &str) -> TractResult<Tensor> {
 fn parse_scalar<T: Datum + FromStr>(s: &str) -> TractResult<Tensor> {
     let mut tokens = s.split(" ");
     let _name = tokens.next().unwrap();
-    let value: T = tokens.next().unwrap().parse().map_err(|_| "foo")?;
+    let value: T = tokens.next().unwrap().parse().map_err(|_| format_err!("parsing"))?;
     Ok(tensor0(value))
 }
 

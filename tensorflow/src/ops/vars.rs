@@ -42,11 +42,11 @@ impl OpState for VariableV2State {
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op
             .downcast_ref::<VariableV2>()
-            .ok_or_else(|| format!("wrong op for variable state"))?;
+            .context("wrong op for variable state")?;
         let tensor = session
             .tensors
             .get(&op.id)
-            .ok_or_else(|| format!("Could not find state for variable {}", op.id))?;
+            .with_context(|| format!("Could not find state for variable {}", op.id))?;
         Ok(tvec!(tensor.clone().into()))
     }
 }
@@ -157,7 +157,7 @@ impl OpState for AssignState {
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let (_current, new) = args_2!(inputs);
         let op =
-            op.downcast_ref::<Assign>().ok_or_else(|| format!("wrong op for variable state"))?;
+            op.downcast_ref::<Assign>().context("wrong op for variable state")?;
         let var_id = if let Some(ref var_id) = op.var_id {
             var_id
         } else {
