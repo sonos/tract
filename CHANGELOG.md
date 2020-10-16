@@ -1,3 +1,7 @@
+## Unrelased
+
+* switch from error_chain to anyhow
+
 ## 0.11.0
 
 ### Breaking 
