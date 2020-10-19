@@ -1,6 +1,5 @@
 //! N-way tensor broadcast
-use crate::dim::DimLike;
-use crate::model::TVec;
+use tract_data::internal::*;
 
 /// Computes a shape, if any, to which all shapes can be broadcasted.
 pub fn multi_broadcast<D>(shapes: &[impl AsRef<[D]>]) -> Option<TVec<D>>

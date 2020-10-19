@@ -10,7 +10,7 @@ pub struct StridedSlice {
     pub shrink_axis_mask: i64,
 }
 
-tract_linalg::impl_dyn_hash!(StridedSlice);
+tract_data::impl_dyn_hash!(StridedSlice);
 
 #[derive(Debug, Clone, PartialEq)]
 struct Dim {

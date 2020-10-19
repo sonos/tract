@@ -4,7 +4,7 @@ use tract_ndarray::Dimension;
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct NonZero;
 
-tract_linalg::impl_dyn_hash!(NonZero);
+tract_data::impl_dyn_hash!(NonZero);
 
 impl NonZero {
     unsafe fn eval_t<T: Datum + tract_num_traits::Zero>(input: &Tensor) -> TractResult<Tensor> {

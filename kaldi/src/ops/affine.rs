@@ -36,7 +36,7 @@ struct Affine {
     bias_params: Arc<Tensor>,
 }
 
-tract_linalg::impl_dyn_hash!(Affine);
+tract_data::impl_dyn_hash!(Affine);
 
 impl Affine {
     fn as_conv(&self) -> tract_hir::ops::cnn::Conv {

@@ -1,4 +1,5 @@
 use super::lir::{LirScan, LirScanOpParams};
+use tract_data::internal::*;
 
 use super::*;
 
@@ -12,7 +13,7 @@ pub struct Scan {
     pub output_mapping: Vec<OutputMapping<TDim>>,
 }
 
-tract_linalg::impl_dyn_hash!(Scan);
+impl_dyn_hash!(Scan);
 
 impl Scan {
     pub fn to_codegen_op(&self, optimize_inner: bool) -> TractResult<LirScan> {

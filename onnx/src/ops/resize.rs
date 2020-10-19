@@ -80,7 +80,7 @@ struct Resize {
     optional_sizes_input: Option<usize>,
 }
 
-tract_linalg::impl_dyn_hash!(Resize);
+tract_data::impl_dyn_hash!(Resize);
 
 impl Op for Resize {
     fn name(&self) -> Cow<str> {

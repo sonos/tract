@@ -25,7 +25,7 @@ pub struct Gemm {
     trans_b: bool,
 }
 
-tract_linalg::impl_dyn_hash!(Gemm);
+tract_data::impl_dyn_hash!(Gemm);
 
 impl Expansion for Gemm {
     fn name(&self) -> Cow<str> {

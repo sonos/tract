@@ -3,7 +3,7 @@ use crate::internal::*;
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Tile;
 
-tract_linalg::impl_dyn_hash!(Tile);
+tract_data::impl_dyn_hash!(Tile);
 
 impl Expansion for Tile {
     fn name(&self) -> Cow<str> {

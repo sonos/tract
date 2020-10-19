@@ -160,7 +160,7 @@ pub struct PulsePad {
     pub mode: PadMode,
 }
 
-tract_linalg::impl_dyn_hash!(PulsePad);
+tract_data::impl_dyn_hash!(PulsePad);
 
 impl Op for PulsePad {
     fn name(&self) -> Cow<str> {

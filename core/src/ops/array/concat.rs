@@ -28,7 +28,7 @@ pub struct TypedConcat {
     pub axis: usize,
     pub slices: TVec<ConcatSlice>,
 }
-tract_linalg::impl_dyn_hash!(TypedConcat);
+tract_data::impl_dyn_hash!(TypedConcat);
 
 impl TypedConcat {
     pub fn concat_vars(axis: usize, n: usize) -> TypedConcat {

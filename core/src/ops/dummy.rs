@@ -12,7 +12,7 @@ impl Op for Dummy {
     op_as_typed_op!();
 }
 
-tract_linalg::impl_dyn_hash!(Dummy);
+tract_data::impl_dyn_hash!(Dummy);
 
 impl EvalOp for Dummy {
     fn is_stateless(&self) -> bool {

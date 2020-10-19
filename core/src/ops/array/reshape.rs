@@ -19,7 +19,7 @@ impl Op for FiniteReshape {
     op_as_typed_op!();
 }
 
-tract_linalg::impl_dyn_hash!(FiniteReshape);
+tract_data::impl_dyn_hash!(FiniteReshape);
 
 impl EvalOp for FiniteReshape {
     fn is_stateless(&self) -> bool {

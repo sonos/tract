@@ -82,7 +82,7 @@ impl Op for ElementWiseOp {
     op_as_typed_op!();
 }
 
-tract_linalg::impl_dyn_hash!(ElementWiseOp);
+tract_data::impl_dyn_hash!(ElementWiseOp);
 
 impl EvalOp for ElementWiseOp {
     fn is_stateless(&self) -> bool {
@@ -171,7 +171,7 @@ macro_rules! element_wise {
         #[derive(Debug, Clone, Educe)]
         #[educe(Hash)]
         pub struct $Op { $( $( $(#[$meta])? pub $var: $var_typ),* )? }
-        tract_linalg::impl_dyn_hash!($Op);
+        tract_data::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
@@ -232,7 +232,7 @@ macro_rules! element_wise_oop {
         #[derive(Debug, Clone, Educe)]
         #[educe(Hash)]
         pub struct $Op { $( $($(#[$meta])? pub $var: $var_typ),* )? }
-        tract_linalg::impl_dyn_hash!($Op);
+        tract_data::impl_dyn_hash!($Op);
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))

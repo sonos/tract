@@ -49,7 +49,7 @@ impl Op for SumPool {
     op_as_typed_op!();
 }
 
-tract_linalg::impl_dyn_hash!(SumPool);
+tract_data::impl_dyn_hash!(SumPool);
 
 impl EvalOp for SumPool {
     fn is_stateless(&self) -> bool {
@@ -92,7 +92,7 @@ pub struct SumPoolFixed {
     normalize: bool,
 }
 
-tract_linalg::impl_dyn_hash!(SumPoolFixed);
+tract_data::impl_dyn_hash!(SumPoolFixed);
 
 impl SumPoolFixed {
     fn eval_t<T: Copy + Datum + num_traits::Float + Sum>(

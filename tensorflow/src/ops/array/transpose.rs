@@ -9,7 +9,7 @@ pub struct Transpose {
     t_perm: DatumType,
 }
 
-tract_linalg::impl_dyn_hash!(Transpose);
+tract_data::impl_dyn_hash!(Transpose);
 
 pub fn transpose(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let t = pb.get_attr_datum_type("T")?;

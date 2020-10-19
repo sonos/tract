@@ -3,7 +3,7 @@ use crate::internal::*;
 #[derive(Debug, Clone, new, Hash)]
 pub struct Const(pub Arc<Tensor>);
 
-tract_linalg::impl_dyn_hash!(Const);
+tract_data::impl_dyn_hash!(Const);
 
 impl Op for Const {
     fn name(&self) -> Cow<str> {

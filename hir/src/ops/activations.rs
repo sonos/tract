@@ -3,7 +3,7 @@ use tract_core::ops::math::*;
 
 macro_rules! activation {
     ($op: ident, $wire:expr) => {
-        tract_linalg::impl_dyn_hash!($op);
+        tract_data::impl_dyn_hash!($op);
 
         impl Expansion for $op {
             fn name(&self) -> Cow<str> {

@@ -8,7 +8,7 @@ pub struct LayerHardmax {
     axis: isize,
 }
 
-tract_linalg::impl_dyn_hash!(LayerHardmax);
+tract_data::impl_dyn_hash!(LayerHardmax);
 
 impl LayerHardmax {
     fn eval_t<D: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive>(
@@ -90,7 +90,7 @@ pub struct LayerLogSoftmax {
     axis: isize,
 }
 
-tract_linalg::impl_dyn_hash!(LayerLogSoftmax);
+tract_data::impl_dyn_hash!(LayerLogSoftmax);
 
 impl Expansion for LayerLogSoftmax {
     fn name(&self) -> Cow<str> {
@@ -124,7 +124,7 @@ pub struct LayerSoftmax {
     axis: isize,
 }
 
-tract_linalg::impl_dyn_hash!(LayerSoftmax);
+tract_data::impl_dyn_hash!(LayerSoftmax);
 
 impl Expansion for LayerSoftmax {
     fn name(&self) -> Cow<str> {

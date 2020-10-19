@@ -26,7 +26,7 @@ pub struct Im2Col<T: Copy + Datum + Zero> {
 
 impl<T: Copy + Datum + Zero> DynHash for Im2Col<T> {
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
-        tract_linalg::hash::dyn_hash(self, state)
+        dyn_hash(self, state)
     }
 }
 

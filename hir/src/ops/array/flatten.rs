@@ -5,7 +5,7 @@ use crate::internal::*;
 pub struct Flatten {
     axis: usize,
 }
-tract_linalg::impl_dyn_hash!(Flatten);
+tract_data::impl_dyn_hash!(Flatten);
 
 impl Flatten {
     pub fn compute_shape<D: DimLike>(&self, shape: &[D]) -> TractResult<[D; 2]> {

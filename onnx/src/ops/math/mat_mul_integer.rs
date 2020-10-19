@@ -29,7 +29,7 @@ struct MatMulInteger {
     pub optional_b_zero_point_input: Option<usize>,
 }
 
-tract_linalg::impl_dyn_hash!(MatMulInteger);
+tract_data::impl_dyn_hash!(MatMulInteger);
 
 impl Expansion for MatMulInteger {
     fn name(&self) -> Cow<str> {
@@ -108,7 +108,7 @@ pub fn q_linear_mat_mul(
 #[derive(Debug, Clone, new, Hash)]
 struct QLinearMatMul;
 
-tract_linalg::impl_dyn_hash!(QLinearMatMul);
+tract_data::impl_dyn_hash!(QLinearMatMul);
 
 impl Expansion for QLinearMatMul {
     fn name(&self) -> Cow<str> {

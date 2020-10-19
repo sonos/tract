@@ -9,7 +9,7 @@ pub struct ConstantLike {
     value: f32,
 }
 
-tract_linalg::impl_dyn_hash!(ConstantLike);
+tract_data::impl_dyn_hash!(ConstantLike);
 
 impl Op for ConstantLike {
     fn name(&self) -> Cow<str> {
@@ -74,7 +74,7 @@ pub struct EyeLike {
     k: isize,
 }
 
-tract_linalg::impl_dyn_hash!(EyeLike);
+tract_data::impl_dyn_hash!(EyeLike);
 
 impl EyeLike {
     pub fn make<T>(&self, (r, c): (usize, usize)) -> TractResult<Arc<Tensor>>

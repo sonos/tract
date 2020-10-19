@@ -12,7 +12,7 @@ pub fn pow(
 #[derive(Debug, Clone, new, Hash)]
 pub struct Pow;
 
-tract_linalg::impl_dyn_hash!(Pow);
+tract_data::impl_dyn_hash!(Pow);
 
 impl Expansion for Pow {
     fn name(&self) -> Cow<str> {

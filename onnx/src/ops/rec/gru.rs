@@ -33,7 +33,7 @@ pub struct GRU {
     pub linear_before_reset: bool,
 }
 
-tract_linalg::impl_dyn_hash!(GRU);
+tract_data::impl_dyn_hash!(GRU);
 
 impl Default for GRU {
     fn default() -> GRU {

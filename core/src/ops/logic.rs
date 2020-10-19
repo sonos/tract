@@ -30,7 +30,7 @@ element_wise!(not, Not, [bool] => |_, vs| {
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Iff;
 
-tract_linalg::impl_dyn_hash!(Iff);
+tract_data::impl_dyn_hash!(Iff);
 
 impl Iff {
     pub unsafe fn eval_t<T: Datum>(

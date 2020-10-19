@@ -5,7 +5,7 @@ use crate::internal::*;
 pub struct Size {
     pub dt: DatumType,
 }
-tract_linalg::impl_dyn_hash!(Size);
+tract_data::impl_dyn_hash!(Size);
 
 impl Expansion for Size {
     fn name(&self) -> Cow<str> {

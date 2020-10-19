@@ -33,7 +33,7 @@ pub struct Conv {
     pub override_output_datum_type: Option<DatumType>,
 }
 
-tract_linalg::impl_dyn_hash!(Conv);
+tract_data::impl_dyn_hash!(Conv);
 
 impl Conv {
     pub fn hwc(self) -> Conv {

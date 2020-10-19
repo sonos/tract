@@ -117,7 +117,7 @@ pub struct Reduce {
     reducer: Reducer,
 }
 
-tract_linalg::impl_dyn_hash!(Reduce);
+tract_data::impl_dyn_hash!(Reduce);
 
 impl Reduce {
     pub fn must_reduce(&self, ax: usize, rank: usize) -> bool {

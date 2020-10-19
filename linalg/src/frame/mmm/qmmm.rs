@@ -1,8 +1,8 @@
-use crate::hash::{DynHash, SloppyHash};
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::{Add, Deref, Mul, Neg};
+use tract_data::internal::*;
 
 use num_traits::{AsPrimitive, Bounded, Zero};
 
@@ -51,12 +51,12 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub enum QuantizedParam<T: crate::hash::SloppyHash> {
+pub enum QuantizedParam<T: SloppyHash> {
     Scalar(T),
     Vector(Vec<T>),
 }
 
-impl<T: crate::hash::SloppyHash> std::hash::Hash for QuantizedParam<T> {
+impl<T: SloppyHash> std::hash::Hash for QuantizedParam<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
             Self::Scalar(t) => t.sloppy_hash(state),
@@ -381,7 +381,7 @@ where
     }
 }
 
-impl<TA, TB, TC, TI, K> crate::hash::DynHash for QMatMatMulImpl<K, TA, TB, TC, TI>
+impl<TA, TB, TC, TI, K> DynHash for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero + SloppyHash + 'static,
     TB: Copy + Zero + SloppyHash + 'static,
@@ -390,7 +390,7 @@ where
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        crate::hash::dyn_hash(self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 

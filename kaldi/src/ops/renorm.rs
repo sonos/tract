@@ -19,7 +19,7 @@ struct Renorm {
     target_rms: f32,
 }
 
-tract_linalg::impl_dyn_hash!(Renorm);
+tract_data::impl_dyn_hash!(Renorm);
 
 impl Expansion for Renorm {
     fn name(&self) -> std::borrow::Cow<str> {

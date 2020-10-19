@@ -12,7 +12,7 @@ pub struct MatMulInference {
     pub q_params: Option<QParams>,
 }
 
-tract_linalg::impl_dyn_hash!(MatMulInference);
+tract_data::impl_dyn_hash!(MatMulInference);
 
 impl MatMulInference {
     pub fn with_a_trans(self, a_trans: bool) -> MatMulInference {

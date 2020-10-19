@@ -10,7 +10,7 @@ pub struct Range {
     dtype: DatumType,
 }
 
-tract_linalg::impl_dyn_hash!(Range);
+tract_data::impl_dyn_hash!(Range);
 
 pub fn range(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = pb.get_attr_datum_type("Tidx")?;

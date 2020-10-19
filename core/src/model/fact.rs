@@ -1,6 +1,5 @@
 //! Partial and complete tensor types representations.
 use crate::internal::*;
-use crate::tensor::Tensor;
 use downcast_rs::Downcast;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
@@ -123,7 +122,7 @@ pub struct TypedFact {
     pub konst: Option<Arc<Tensor>>,
 }
 
-tract_linalg::impl_dyn_hash!(TypedFact);
+tract_data::impl_dyn_hash!(TypedFact);
 
 impl TypedFact {
     pub fn shape<T, S, E>(shape: S) -> TractResult<TypedFact>

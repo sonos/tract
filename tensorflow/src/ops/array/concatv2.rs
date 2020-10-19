@@ -9,7 +9,7 @@ pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn Infere
 #[derive(Debug, Clone, new, Hash)]
 pub struct ConcatV2;
 
-tract_linalg::impl_dyn_hash!(ConcatV2);
+tract_data::impl_dyn_hash!(ConcatV2);
 
 impl Expansion for ConcatV2 {
     fn name(&self) -> Cow<str> {

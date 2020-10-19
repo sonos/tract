@@ -31,7 +31,7 @@ pub struct Slice1 {
     ends: Vec<isize>,
 }
 
-tract_linalg::impl_dyn_hash!(Slice1);
+tract_data::impl_dyn_hash!(Slice1);
 
 impl Expansion for Slice1 {
     fn name(&self) -> Cow<str> {

@@ -4,7 +4,7 @@ use crate::internal::*;
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Reshape {}
 
-tract_linalg::impl_dyn_hash!(Reshape);
+tract_data::impl_dyn_hash!(Reshape);
 
 impl Expansion for Reshape {
     fn name(&self) -> Cow<str> {
