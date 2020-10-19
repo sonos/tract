@@ -91,13 +91,16 @@ impl TypedOp for Gather {
             if indices.len() == 1 {
                 let mut patch = TypedModelPatch::default();
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
+                let index = indices.cast_to_scalar::<i64>()?;
+                let index = if index < 0 {
+                    let data_fact = model.outlet_fact(node.inputs[0])?;
+                    data_fact.shape[self.axis].clone() + index.to_dim()
+                } else {
+                    index.to_dim()
+                };
                 wire = patch.wire_node(
                     format!("{}.slice", node.name),
-                    crate::ops::array::Slice {
-                        axis: self.axis,
-                        start: indices.cast_to_scalar::<i64>()? as usize,
-                        end: (indices.cast_to_scalar::<i64>()? + 1) as usize,
-                    },
+                    crate::ops::array::Slice { axis: self.axis, start: index.clone(), end: index + 1 },
                     &[wire],
                 )?[0];
                 wire = patch.wire_node(
@@ -106,7 +109,7 @@ impl TypedOp for Gather {
                     &[wire],
                 )?[0];
                 patch.shunt_outside(model, node.id.into(), wire)?;
-                return Ok(Some(patch))
+                return Ok(Some(patch));
             }
         }
         Ok(None)
