@@ -40,7 +40,7 @@ struct CategoryMapper<Src: Datum + Hash + Eq, Dst: Datum + Hash> {
 
 impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> DynHash for CategoryMapper<Src, Dst> {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        tract_linalg::hash::dyn_hash(self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 

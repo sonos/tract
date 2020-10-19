@@ -7,7 +7,6 @@ extern crate tract_core;
 use criterion::*;
 
 use tract_core::model::*;
-use tract_core::*;
 
 use nn::DataFormat::{HWC, NHWC};
 use tract_core::internal::*;

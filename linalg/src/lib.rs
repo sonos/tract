@@ -161,7 +161,7 @@ mod test {
     use std::fmt::Debug;
     use std::ops::*;
 
-    pub trait Datum:
+    pub trait LADatum:
         Sized
         + Debug
         + Copy
@@ -181,7 +181,7 @@ mod test {
         fn close(&self, other: &Self) -> bool;
     }
 
-    impl Datum for f32 {
+    impl LADatum for f32 {
         fn strat() -> BoxedStrategy<Self> {
             (-1000isize..1000).prop_map(|i| i as f32 / 1000.0).boxed()
         }
@@ -190,7 +190,7 @@ mod test {
         }
     }
 
-    impl Datum for i8 {
+    impl LADatum for i8 {
         fn strat() -> BoxedStrategy<Self> {
             any::<i8>().boxed()
         }
@@ -199,7 +199,7 @@ mod test {
         }
     }
 
-    impl Datum for i32 {
+    impl LADatum for i32 {
         fn strat() -> BoxedStrategy<Self> {
             any::<i32>().boxed()
         }
@@ -208,7 +208,7 @@ mod test {
         }
     }
 
-    pub(crate) fn check_close<T: Datum>(
+    pub(crate) fn check_close<T: LADatum>(
         found: &[T],
         expected: &[T],
     ) -> proptest::test_runner::TestCaseResult {

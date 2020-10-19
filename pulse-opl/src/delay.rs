@@ -50,7 +50,7 @@ unsafe fn assign_slice(
     from_range: Slice,
     axis: usize,
 ) {
-    tract_core::dispatch_copy_by_size!(assign_slice_t(from.datum_type())(
+    dispatch_copy_by_size!(assign_slice_t(from.datum_type())(
         to, to_range, from, from_range, axis
     ));
 }
