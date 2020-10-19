@@ -23,7 +23,8 @@ impl Expansion for Reshape {
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, ishape, shape| {
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
-            let oshape = compute_shape(&ishape, &shape)?;
+            let oshape = compute_shape(&ishape, &shape)
+                .with_context(|| format!("Reshaping {:?} to {:?}", ishape, shape))?;
             s.equals(&outputs[0].shape, ShapeFactoid::from(oshape))
         })
     }
@@ -63,7 +64,7 @@ fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>>
             }
             if *slot == 0.into() {
                 if remaining_dim_input != TDim::one() {
-                    bail!("Invalid");
+                    bail!("Invalid remaining dim");
                 }
                 *slot = input_dims.peek().context("Invalid")?.clone().clone();
             }
