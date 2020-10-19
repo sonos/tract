@@ -80,6 +80,37 @@ impl TypedOp for Gather {
                 .compute_output_shape(&*inputs[0].shape.to_tvec(), &*inputs[1].shape.to_tvec())?
         )?))
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let indices_fact = model.outlet_fact(node.inputs[1])?;
+        if let Some(indices) = indices_fact.konst.as_ref() {
+            if indices.len() == 1 {
+                let mut patch = TypedModelPatch::default();
+                let mut wire = patch.tap_model(model, node.inputs[0])?;
+                wire = patch.wire_node(
+                    format!("{}.slice", node.name),
+                    crate::ops::array::Slice {
+                        axis: self.axis,
+                        start: indices.cast_to_scalar::<i64>()? as usize,
+                        end: (indices.cast_to_scalar::<i64>()? + 1) as usize,
+                    },
+                    &[wire],
+                )?[0];
+                wire = patch.wire_node(
+                    format!("{}.rm_axis", node.name),
+                    crate::ops::change_axes::AxisOp::Rm(self.axis),
+                    &[wire],
+                )?[0];
+                patch.shunt_outside(model, node.id.into(), wire)?;
+                return Ok(Some(patch))
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl EvalOp for Gather {
