@@ -94,7 +94,7 @@ pub struct PulsedSameAxisConcat {
     input_delay: usize,
     input_len: TDim,
 }
-tract_linalg::impl_dyn_hash!(PulsedSameAxisConcat);
+tract_data::impl_dyn_hash!(PulsedSameAxisConcat);
 
 impl Op for PulsedSameAxisConcat {
     fn name(&self) -> Cow<str> {

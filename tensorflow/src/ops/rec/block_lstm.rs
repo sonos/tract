@@ -25,7 +25,7 @@ pub struct BlockLSTM {
     use_peephole: bool,
 }
 
-tract_linalg::impl_dyn_hash!(BlockLSTM);
+tract_data::impl_dyn_hash!(BlockLSTM);
 
 impl Expansion for BlockLSTM {
     fn name(&self) -> Cow<str> {

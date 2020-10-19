@@ -1,11 +1,10 @@
-use crate::internal::*;
 use super::*;
+use crate::internal::*;
 use crate::ops::Op;
 use crate::prelude::*;
 use std::fmt;
 use std::hash::Hash;
-
-use tract_linalg::hash::DynHash;
+use tract_data::internal::*;
 
 pub trait SpecialOps<F, O> {
     fn create_dummy(&self) -> O;
@@ -57,7 +56,7 @@ where
     O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
 {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        tract_linalg::hash::dyn_hash(self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 
@@ -531,7 +530,7 @@ where
 
 impl<F: Fact + Clone + 'static, O> Graph<F, O>
 where
-    F: Fact + Clone + 'static + From<std::sync::Arc<crate::tensor::Tensor>> + Hash,
+    F: Fact + Clone + 'static + From<std::sync::Arc<Tensor>> + Hash,
     O: fmt::Debug
         + fmt::Display
         + From<crate::ops::konst::Const>
@@ -544,7 +543,7 @@ where
     pub fn add_const(
         &mut self,
         name: impl Into<String>,
-        v: impl crate::tensor::IntoArcTensor,
+        v: impl IntoArcTensor,
     ) -> TractResult<OutletId> {
         let v = v.into_arc_tensor();
         let fact = F::from(v.clone());

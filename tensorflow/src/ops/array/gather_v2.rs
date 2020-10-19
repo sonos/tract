@@ -9,7 +9,7 @@ pub fn gather_v2(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn In
 #[derive(Debug, Clone, new, Hash)]
 pub struct GatherV2;
 
-tract_linalg::impl_dyn_hash!(GatherV2);
+tract_data::impl_dyn_hash!(GatherV2);
 
 impl Expansion for GatherV2 {
     fn name(&self) -> Cow<str> {

@@ -19,7 +19,7 @@ pub struct LstmNonlin {
     peepholes_params: Tensor,
 }
 
-tract_linalg::impl_dyn_hash!(LstmNonlin);
+tract_data::impl_dyn_hash!(LstmNonlin);
 
 impl Expansion for LstmNonlin {
     fn name(&self) -> std::borrow::Cow<str> {

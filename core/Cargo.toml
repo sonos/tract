@@ -29,6 +29,7 @@ num-integer = "0.1"
 num-traits = "0.2"
 dyn-clone = "1"
 smallvec = "1"
+tract-data = { path = "../data" }
 tract-linalg = { path = "../linalg" }
 
 [features]

@@ -10,7 +10,7 @@ pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn Infere
 #[derive(Debug, Clone, Hash)]
 pub struct ExpandDims;
 
-tract_linalg::impl_dyn_hash!(ExpandDims);
+tract_data::impl_dyn_hash!(ExpandDims);
 
 impl Expansion for ExpandDims {
     fn name(&self) -> Cow<str> {

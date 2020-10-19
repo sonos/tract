@@ -144,7 +144,7 @@ pub struct Delay {
     pub overlap: usize,
 }
 
-tract_linalg::impl_dyn_hash!(Delay);
+tract_data::impl_dyn_hash!(Delay);
 
 impl Delay {
     pub fn new(axis: usize, input_fact: &TypedFact, delay: usize, overlap: usize) -> Delay {

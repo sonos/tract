@@ -19,7 +19,7 @@ pub struct Pad {
     pub pads: Vec<(usize, usize)>,
     pub mode: PadMode,
 }
-tract_linalg::impl_dyn_hash!(Pad);
+tract_data::impl_dyn_hash!(Pad);
 
 impl Pad {
     fn eval_t<T>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>>

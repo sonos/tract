@@ -48,7 +48,7 @@ pub struct PulsedAxisSlice {
     pub take: TDim,
 }
 
-tract_linalg::impl_dyn_hash!(PulsedAxisSlice);
+tract_data::impl_dyn_hash!(PulsedAxisSlice);
 
 impl Op for PulsedAxisSlice {
     fn name(&self) -> Cow<str> {

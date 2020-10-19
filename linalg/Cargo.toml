@@ -15,13 +15,14 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 derive-new = "0.5"
+dyn-clone = "1"
 half = "1.3"
 educe = "=0.4.11" # locked for rust 1.41.0
 lazy_static = "1.3"
 libc = "0.2"
 log = "0.4"
 num-traits = "0.2"
-dyn-clone = "1"
+tract-data = { path = "../data" }
 
 [build-dependencies]
 cc = "1.0"

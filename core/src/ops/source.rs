@@ -19,7 +19,7 @@ pub struct TypedSource {
     pub fact: TypedFact,
 }
 
-tract_linalg::impl_dyn_hash!(TypedSource);
+tract_data::impl_dyn_hash!(TypedSource);
 
 impl Op for TypedSource {
     fn name(&self) -> Cow<str> {

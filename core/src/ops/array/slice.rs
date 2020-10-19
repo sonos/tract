@@ -10,7 +10,7 @@ pub struct Slice<D: DimLike + ToDim> {
 
 impl<D: DimLike + ToDim + Hash> DynHash for Slice<D> {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        tract_linalg::hash::dyn_hash(&self, hasher)
+        dyn_hash(&self, hasher)
     }
 }
 

@@ -14,7 +14,7 @@ pub struct Compress {
     axis: Option<usize>,
 }
 
-tract_linalg::impl_dyn_hash!(Compress);
+tract_data::impl_dyn_hash!(Compress);
 
 impl Compress {
     unsafe fn eval_t<T: Datum>(&self, input: &Tensor, conds: &[bool], output: &mut Tensor) {

@@ -18,7 +18,7 @@ pub struct Pack {
     axis: usize,
 }
 
-tract_linalg::impl_dyn_hash!(Pack);
+tract_data::impl_dyn_hash!(Pack);
 
 impl Expansion for Pack {
     fn name(&self) -> Cow<str> {

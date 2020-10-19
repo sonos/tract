@@ -51,7 +51,7 @@ impl Hash for Box<dyn Expansion> {
     }
 }
 
-tract_linalg::impl_dyn_hash!(Box<dyn Expansion>);
+tract_data::impl_dyn_hash!(Box<dyn Expansion>);
 
 impl Op for Box<dyn Expansion> {
     fn name(&self) -> Cow<str> {
@@ -188,4 +188,4 @@ impl Expansion for InferenceWrapper {
     }
 }
 
-tract_linalg::impl_dyn_hash!(InferenceWrapper);
+tract_data::impl_dyn_hash!(InferenceWrapper);

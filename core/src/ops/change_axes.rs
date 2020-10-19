@@ -406,7 +406,7 @@ impl Op for AxisOp {
     op_as_typed_op!();
 }
 
-tract_linalg::impl_dyn_hash!(AxisOp);
+tract_data::impl_dyn_hash!(AxisOp);
 
 impl EvalOp for AxisOp {
     fn is_stateless(&self) -> bool {

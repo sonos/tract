@@ -16,7 +16,7 @@ struct OneHot {
     axis: i64,
 }
 
-tract_linalg::impl_dyn_hash!(OneHot);
+tract_data::impl_dyn_hash!(OneHot);
 
 impl Expansion for OneHot {
     fn name(&self) -> Cow<str> {

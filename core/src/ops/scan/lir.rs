@@ -1,6 +1,6 @@
 use ndarray::*;
-
 use super::*;
+use tract_data::internal::*;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct LirScanOpParams {
@@ -20,7 +20,7 @@ impl std::ops::Deref for LirScan {
     }
 }
 
-tract_linalg::impl_dyn_hash!(LirScan);
+impl_dyn_hash!(LirScan);
 
 impl LirScan {
     pub fn iteration_count(&self, inputs: &[&TypedFact]) -> Option<TDim> {

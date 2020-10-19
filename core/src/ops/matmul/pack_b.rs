@@ -22,7 +22,7 @@ where
     T: Copy + Datum + Zero,
 {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        tract_linalg::hash::dyn_hash(&self, hasher)
+        dyn_hash(&self, hasher)
     }
 }
 

@@ -12,7 +12,7 @@ pub struct MaxPool {
     pub with_index_outputs: Option<DatumType>,
 }
 
-tract_linalg::impl_dyn_hash!(MaxPool);
+tract_data::impl_dyn_hash!(MaxPool);
 
 impl MaxPool {
     fn to_fixed<T: Datum + Float>(&self, input_shape: &[usize]) -> TractResult<Box<dyn TypedOp>> {
@@ -95,7 +95,7 @@ impl TypedOp for MaxPool {
     as_op!();
 }
 
-tract_linalg::impl_dyn_hash!(MaxPoolFixed);
+tract_data::impl_dyn_hash!(MaxPoolFixed);
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct MaxPoolFixed {

@@ -291,7 +291,7 @@ pub fn parametric_softplus(
 
 #[derive(Debug, Clone, Hash)]
 struct Prelu;
-tract_linalg::impl_dyn_hash!(Prelu);
+tract_data::impl_dyn_hash!(Prelu);
 
 impl Expansion for Prelu {
     fn name(&self) -> Cow<str> {

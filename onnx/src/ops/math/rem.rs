@@ -17,7 +17,7 @@ pub fn rem(
 #[derive(Debug, Clone, new, Hash)]
 pub struct RemInt;
 
-tract_linalg::impl_dyn_hash!(RemInt);
+tract_data::impl_dyn_hash!(RemInt);
 
 impl Expansion for RemInt {
     fn name(&self) -> Cow<str> {

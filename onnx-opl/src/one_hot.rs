@@ -9,7 +9,7 @@ pub struct OneHot {
     pub on: Arc<Tensor>,
 }
 
-tract_linalg::impl_dyn_hash!(OneHot);
+tract_data::impl_dyn_hash!(OneHot);
 
 impl Op for OneHot {
     fn name(&self) -> Cow<str> {

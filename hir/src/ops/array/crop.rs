@@ -8,7 +8,7 @@ pub struct Crop {
     pub end: usize,
 }
 
-tract_linalg::impl_dyn_hash!(Crop);
+tract_data::impl_dyn_hash!(Crop);
 
 impl Expansion for Crop {
     fn name(&self) -> Cow<str> {

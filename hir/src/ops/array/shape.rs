@@ -5,7 +5,7 @@ use crate::internal::*;
 pub struct Shape {
     pub dt: DatumType,
 }
-tract_linalg::impl_dyn_hash!(Shape);
+tract_data::impl_dyn_hash!(Shape);
 
 impl Expansion for Shape {
     fn name(&self) -> Cow<str> {

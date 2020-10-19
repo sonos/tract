@@ -56,8 +56,8 @@ pub extern crate itertools;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate maplit;
+//#[macro_use]
+//extern crate maplit;
 #[allow(unused_imports)]
 #[macro_use]
 pub extern crate ndarray;
@@ -71,20 +71,20 @@ extern crate smallvec;
 
 pub extern crate tract_linalg;
 
-#[macro_use]
-pub mod macros;
+//#[macro_use]
+//pub mod macros;
 #[macro_use]
 pub mod ops;
 
 pub mod broadcast;
-pub mod datum;
-pub mod dim;
+//pub mod datum;
+//pub mod dim;
 pub mod framework;
 mod hash;
 pub mod model;
 mod optim;
 pub mod plan;
-pub mod tensor;
+//pub mod tensor;
 
 pub use dyn_clone;
 
@@ -93,16 +93,12 @@ pub type TractResult<T> = Result<T, anyhow::Error>;
 
 /// This prelude is meant for code using tract.
 pub mod prelude {
-    pub use crate::datum::{Blob, Datum, DatumType};
-    pub use crate::dim::{Symbol, SymbolValues, TDim};
     pub use crate::framework::Framework;
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
-    pub use crate::tensor::litteral::*;
-    pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor};
-    pub use crate::tvec;
     pub use crate::{TractError, TractResult};
     pub use std::sync::Arc;
+    pub use tract_data::prelude::*;
 
     pub use itertools as tract_itertools;
     pub use ndarray as tract_ndarray;
@@ -112,7 +108,6 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
-    pub use crate::dim::{DimLike, MaybeProduct, TDim, ToDim};
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
@@ -120,21 +115,20 @@ pub mod internal {
     pub use crate::ops::{AxisInfo, Cost, EvalOp, Invariants, Op, OpState, Validation};
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
-    pub use anyhow::{bail, Context as TractErrorContext, format_err};
+    pub use anyhow::{bail, format_err, Context as TractErrorContext};
     pub use downcast_rs as tract_downcast_rs;
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::hash::Hash;
     pub use std::marker::PhantomData;
-    pub use tract_linalg::f16::f16;
-    pub use tract_linalg::hash::{hash_f32, hash_opt_f32, DynHash};
+    pub use tract_data::internal::*;
+    pub use tract_data::{
+        dispatch_copy, dispatch_datum, dispatch_datum_by_size, dispatch_floatlike, dispatch_numbers,
+    };
     pub use tvec;
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
     pub use {as_op, impl_op_same_as, not_a_typed_op, op_as_typed_op};
     pub use {bin_to_super_type, element_wise, element_wise_oop};
-    pub use {
-        dispatch_copy, dispatch_datum, dispatch_datum_by_size, dispatch_floatlike, dispatch_numbers,
-    };
 }
 
 #[cfg(test)]

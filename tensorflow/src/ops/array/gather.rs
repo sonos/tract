@@ -7,7 +7,7 @@ use crate::tfpb::tensorflow::NodeDef;
 #[derive(Debug, Clone, new, Hash)]
 pub struct GatherNd {}
 
-tract_linalg::impl_dyn_hash!(GatherNd);
+tract_data::impl_dyn_hash!(GatherNd);
 
 pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     Ok(Box::new(GatherNd::new()))

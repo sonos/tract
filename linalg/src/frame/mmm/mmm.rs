@@ -2,6 +2,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul};
+use tract_data::internal::*;
 
 use num_traits::Zero;
 
@@ -11,7 +12,7 @@ use super::fuse::ScratchSpaceFusedNonLinear;
 use super::*;
 
 pub trait MatMatMul<TA, TB, TC, TI>:
-    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + crate::hash::DynHash + std::any::Any
+    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + DynHash + std::any::Any
 where
     TA: Copy + Zero + 'static,
     TB: Copy + Zero + 'static,
@@ -306,7 +307,7 @@ where
     }
 }
 
-impl<K, TA, TB, TC, TI> crate::hash::DynHash for MatMatMulImpl<K, TA, TB, TC, TI>
+impl<K, TA, TB, TC, TI> DynHash for MatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero + 'static,
     TB: Copy + Zero + 'static,
@@ -315,7 +316,7 @@ where
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        crate::hash::dyn_hash(self, hasher)
+        dyn_hash(self, hasher)
     }
 }
 

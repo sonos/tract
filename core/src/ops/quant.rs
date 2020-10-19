@@ -183,7 +183,7 @@ impl Op for DequantizeLinearF32 {
     op_as_typed_op!();
 }
 
-tract_linalg::impl_dyn_hash!(DequantizeLinearF32);
+tract_data::impl_dyn_hash!(DequantizeLinearF32);
 
 impl EvalOp for DequantizeLinearF32 {
     fn is_stateless(&self) -> bool {

@@ -9,7 +9,7 @@ pub struct Concat {
     axis: i64,
 }
 
-tract_linalg::impl_dyn_hash!(Concat);
+tract_data::impl_dyn_hash!(Concat);
 
 impl Concat {
     fn resolve_axis(&self, rank: i64) -> TractResult<usize> {
