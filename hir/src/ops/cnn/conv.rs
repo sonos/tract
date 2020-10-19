@@ -2,7 +2,6 @@ use crate::infer::*;
 use crate::internal::*;
 
 use std::borrow::Borrow;
-use tract_core::dim::DimLike;
 use tract_core::ops::cnn::conv::ConvUnary;
 use tract_core::ops::cnn::conv::KernelFormat;
 use tract_core::ops::cnn::{PaddingSpec, PoolSpec};

@@ -12,8 +12,6 @@ mod model;
 mod ops;
 mod optim;
 
-pub use tract_core::dim::TDim;
-
 pub use self::fact::InferenceFact;
 pub use self::factoid::*;
 pub use self::model::InferenceModelExt;

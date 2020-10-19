@@ -419,7 +419,6 @@ where
 mod tests {
     use super::GenericFactoid::*;
     use super::*;
-    use tract_core::datum::DatumType;
 
     #[test]
     fn unify_same_datum_type() {

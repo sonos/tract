@@ -1,6 +1,6 @@
-use tract_nnef::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops::array::PadMode;
+use tract_nnef::internal::*;
 
 #[derive(Debug, Clone, Default, Hash)]
 struct PulsePadOpState {
@@ -69,7 +69,7 @@ impl PulsePadOpState {
             if after != 0 && pulse_begin < end_input {
                 let latest_valid_frame = (end_input - pulse_begin).min(op.pulse) - 1;
                 unsafe {
-                    tract_core::dispatch_copy_by_size!(Self::save_frame(input.datum_type())(
+                    dispatch_copy_by_size!(Self::save_frame(input.datum_type())(
                         self,
                         op,
                         &input,
@@ -93,18 +93,17 @@ impl PulsePadOpState {
             let fill_up_to = (op.begin_input - pulse_begin).min(op.pulse);
             match &op.mode {
                 PadMode::Constant(c) => unsafe {
-                    tract_core::dispatch_copy_by_size!(Self::fill_slice_constant(
-                        input.datum_type()
-                    )(
-                        &mut input, c, op.axis, 0..fill_up_to
+                    dispatch_copy_by_size!(Self::fill_slice_constant(input.datum_type())(
+                        &mut input,
+                        c,
+                        op.axis,
+                        0..fill_up_to
                     ))
                 },
                 PadMode::Edge => {
                     let frame = input.slice(op.axis, fill_up_to, fill_up_to + 1)?;
                     unsafe {
-                        tract_core::dispatch_copy_by_size!(Self::fill_slice_with_frame(
-                            input.datum_type()
-                        )(
+                        dispatch_copy_by_size!(Self::fill_slice_with_frame(input.datum_type())(
                             &mut input,
                             op.axis,
                             &frame,
@@ -119,9 +118,7 @@ impl PulsePadOpState {
             let fill_from = op.pulse - (pulse_end - end_input).min(op.pulse);
             match &op.mode {
                 PadMode::Constant(c) => unsafe {
-                    tract_core::dispatch_copy_by_size!(Self::fill_slice_constant(
-                        input.datum_type()
-                    )(
+                    dispatch_copy_by_size!(Self::fill_slice_constant(input.datum_type())(
                         &mut input,
                         c,
                         op.axis,
@@ -131,9 +128,7 @@ impl PulsePadOpState {
                 PadMode::Edge => {
                     let last_frame = self.last_valid_frame.as_ref().unwrap();
                     unsafe {
-                        tract_core::dispatch_copy_by_size!(Self::fill_slice_with_frame(
-                            input.datum_type()
-                        )(
+                        dispatch_copy_by_size!(Self::fill_slice_with_frame(input.datum_type())(
                             &mut input,
                             op.axis,
                             last_frame,

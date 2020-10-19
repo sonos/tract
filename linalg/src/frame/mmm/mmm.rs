@@ -542,7 +542,7 @@ pub mod test {
         };
     }
 
-    pub fn strat_mat_mat_mul<TA: Datum, TB: Datum>(
+    pub fn strat_mat_mat_mul<TA: LADatum, TB: LADatum>(
     ) -> BoxedStrategy<(usize, usize, usize, Vec<TA>, Vec<TB>)> {
         (1usize..5, 1usize..5, 1usize..5)
             .prop_flat_map(move |(m, k, n)| {
@@ -557,7 +557,7 @@ pub mod test {
             .boxed()
     }
 
-    pub fn strat_mat_vec_mul<TA: Datum, TB: Datum>(
+    pub fn strat_mat_vec_mul<TA: LADatum, TB: LADatum>(
     ) -> BoxedStrategy<(usize, usize, Vec<TA>, Vec<TB>)> {
         (1usize..15, 1usize..15)
             .prop_flat_map(move |(m, k)| {
@@ -579,10 +579,10 @@ pub mod test {
         b: &[TB],
     ) -> Result<(), proptest::test_runner::TestCaseError>
     where
-        TA: Datum + AsPrimitive<TI> + 'static,
-        TB: Datum + AsPrimitive<TI> + 'static,
-        TC: Datum + 'static,
-        TI: Datum + AsPrimitive<TC> + 'static,
+        TA: LADatum + AsPrimitive<TI> + 'static,
+        TB: LADatum + AsPrimitive<TI> + 'static,
+        TC: LADatum + 'static,
+        TI: LADatum + AsPrimitive<TC> + 'static,
     {
         let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
         unsafe {
@@ -619,10 +619,10 @@ pub mod test {
         b: &[TB],
     ) -> Result<(), proptest::test_runner::TestCaseError>
     where
-        TA: Datum + AsPrimitive<TI> + 'static,
-        TB: Datum + AsPrimitive<TI> + 'static,
-        TC: Datum + 'static,
-        TI: Datum + AsPrimitive<TC> + 'static,
+        TA: LADatum + AsPrimitive<TI> + 'static,
+        TB: LADatum + AsPrimitive<TI> + 'static,
+        TC: LADatum + 'static,
+        TI: LADatum + AsPrimitive<TC> + 'static,
     {
         unsafe {
             let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, 1);
@@ -665,10 +665,10 @@ pub mod test {
         expect: F,
     ) -> proptest::test_runner::TestCaseResult
     where
-        TA: Datum + AsPrimitive<TI>,
-        TB: Datum + AsPrimitive<TI>,
-        TC: Datum,
-        TI: Datum + AsPrimitive<TC>,
+        TA: LADatum + AsPrimitive<TI>,
+        TB: LADatum + AsPrimitive<TI>,
+        TC: LADatum,
+        TI: LADatum + AsPrimitive<TC>,
     {
         let a = vec![TA::one(); m * k];
         let b = vec![TB::one(); n * k];
@@ -706,10 +706,10 @@ pub mod test {
         n: usize,
     ) -> proptest::test_runner::TestCaseResult
     where
-        TA: Datum + AsPrimitive<TI>,
-        TB: Datum + AsPrimitive<TI>,
-        TC: Datum,
-        TI: Datum + AsPrimitive<TC>,
+        TA: LADatum + AsPrimitive<TI>,
+        TB: LADatum + AsPrimitive<TI>,
+        TC: LADatum,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TI>,
     {
         let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
@@ -728,10 +728,10 @@ pub mod test {
         n: usize,
     ) -> proptest::test_runner::TestCaseResult
     where
-        TA: Datum + AsPrimitive<TI>,
-        TB: Datum + AsPrimitive<TI>,
-        TC: Datum,
-        TI: Datum + AsPrimitive<TC>,
+        TA: LADatum + AsPrimitive<TI>,
+        TB: LADatum + AsPrimitive<TI>,
+        TC: LADatum,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TI>,
     {
         let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
@@ -750,10 +750,10 @@ pub mod test {
         n: usize,
     ) -> proptest::test_runner::TestCaseResult
     where
-        TA: Datum + AsPrimitive<TI>,
-        TB: Datum + AsPrimitive<TI>,
-        TC: Datum,
-        TI: Datum + AsPrimitive<TC>,
+        TA: LADatum + AsPrimitive<TI>,
+        TB: LADatum + AsPrimitive<TI>,
+        TC: LADatum,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TI>,
     {
         let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
@@ -772,10 +772,10 @@ pub mod test {
         n: usize,
     ) -> proptest::test_runner::TestCaseResult
     where
-        TA: Datum + AsPrimitive<TI>,
-        TB: Datum + AsPrimitive<TI>,
-        TC: Datum,
-        TI: Datum + AsPrimitive<TC>,
+        TA: LADatum + AsPrimitive<TI>,
+        TB: LADatum + AsPrimitive<TI>,
+        TC: LADatum,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TI>,
     {
         let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
@@ -794,10 +794,10 @@ pub mod test {
         n: usize,
     ) -> proptest::test_runner::TestCaseResult
     where
-        TA: Datum + AsPrimitive<TI>,
-        TB: Datum + AsPrimitive<TI>,
-        TC: Datum,
-        TI: Datum + AsPrimitive<TC>,
+        TA: LADatum + AsPrimitive<TI>,
+        TB: LADatum + AsPrimitive<TI>,
+        TC: LADatum,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TI>,
     {
         let five: TI = 5.as_();
@@ -812,10 +812,10 @@ pub mod test {
         n: usize,
     ) -> proptest::test_runner::TestCaseResult
     where
-        TA: Datum + AsPrimitive<TI>,
-        TB: Datum + AsPrimitive<TI>,
-        TC: Datum,
-        TI: Datum + AsPrimitive<TC>,
+        TA: LADatum + AsPrimitive<TI>,
+        TB: LADatum + AsPrimitive<TI>,
+        TC: LADatum,
+        TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TI>,
     {
         let five: TI = 5.as_();
@@ -825,7 +825,7 @@ pub mod test {
     }
 
     #[derive(Clone, Debug)]
-    pub struct ConvProblem<TA: Datum, TB: Datum> {
+    pub struct ConvProblem<TA: LADatum, TB: LADatum> {
         pub ci: usize,
         pub co: usize,
         pub kt: usize,
@@ -835,7 +835,7 @@ pub mod test {
         pub data: Vec<TB>,
     }
 
-    impl<TA: Datum, TB: Datum> ConvProblem<TA, TB> {
+    impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
         pub fn kernel_field(&self) -> usize {
             self.dilation * (self.kt - 1) + 1
         }
@@ -870,10 +870,10 @@ pub mod test {
 
         pub fn expected<TC, TI>(&self) -> Vec<TC>
         where
-            TA: Datum + AsPrimitive<TI>,
-            TB: Datum + AsPrimitive<TI>,
-            TC: Datum,
-            TI: Datum + AsPrimitive<TC>,
+            TA: LADatum + AsPrimitive<TI>,
+            TB: LADatum + AsPrimitive<TI>,
+            TC: LADatum,
+            TI: LADatum + AsPrimitive<TC>,
         {
             let mut expect = vec![TI::zero(); self.co * self.output_width()];
             for x in 0..self.output_width() {
@@ -894,8 +894,8 @@ pub mod test {
 
         pub fn run<K: MatMatMulKer<TA, TB, TC, TI>, TC, TI>(&self) -> Vec<TC>
         where
-            TI: Datum,
-            TC: Datum,
+            TI: LADatum,
+            TC: LADatum,
         {
             unsafe {
                 let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(self.m(), self.k(), self.n());
@@ -916,7 +916,7 @@ pub mod test {
         }
     }
 
-    pub fn strat_conv_1d<TA: Datum, TB: Datum>() -> BoxedStrategy<ConvProblem<TA, TB>>
+    pub fn strat_conv_1d<TA: LADatum, TB: LADatum>() -> BoxedStrategy<ConvProblem<TA, TB>>
     where
         isize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
