@@ -5,12 +5,6 @@ use std::fmt;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-/// A Smallvec instantiation with 4 embeddable values.
-///
-/// Used about everywhere in tract, for node inputs and outputs, or
-/// tensor dimensions.
-pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
-
 /// A Node in an Model.
 ///
 /// Parameterized by a Fact implementation matching the one used in the
