@@ -6,7 +6,6 @@ extern crate serde_derive;
 #[macro_use]
 mod macros;
 
-use std::process;
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
 
@@ -74,7 +73,7 @@ pub const STAGES: &'static [&'static str] = &[
 ];
 
 /// Entrypoint for the command-line interface.
-fn main() {
+fn main() -> tract_core::anyhow::Result<()> {
     use clap::*;
     let mut app = clap_app!(("tract") =>
     (author: "Romain Liautaud <romain.liautaud@snips.ai>")
@@ -333,12 +332,10 @@ fn main() {
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
 
-    if let Err(e) = handle(matches, probe.as_ref()) {
-        error!("{}", e);
-        process::exit(1)
-    }
+    handle(matches, probe.as_ref())?;
 
     info_usage("done", probe.as_ref());
+    Ok(())
 }
 
 fn benchlimits_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
