@@ -43,7 +43,11 @@ impl std::fmt::Display for ModelBuildingError {
     }
 }
 
-impl std::error::Error for ModelBuildingError {}
+impl std::error::Error for ModelBuildingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.1)
+    }
+}
 
 #[cfg(not(feature = "pulse"))]
 type PulsedModel = ();
