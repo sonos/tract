@@ -67,7 +67,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                         self.model.borrow().node(node)
                     ));
                     if !obstinate {
-                        return Err(e.into());
+                        return Err(e);
                     }
                     debug!("{:?}", e);
                     if first_error.is_none() {

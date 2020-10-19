@@ -46,7 +46,7 @@ where
         for i in source.input_outlets()? {
             if !mapping.contains_key(i) {
                 let node = source.node(i.node);
-                debug!("Translate useless source {}", node);
+                trace!("Translate useless source {}", node);
                 let outlets = self
                     .translate_node(&source, node, &mut target, &mapping)
                     .with_context(|| format!("Translating input {} {:?}", node, self))?;

@@ -332,7 +332,10 @@ fn main() -> tract_core::anyhow::Result<()> {
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
 
-    handle(matches, probe.as_ref())?;
+    if let Err(e) = handle(matches, probe.as_ref()) {
+        error!("{:?}", e);
+        std::process::exit(1);
+    }
 
     info_usage("done", probe.as_ref());
     Ok(())
@@ -500,7 +503,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             optimize_check::handle(&params, display_params_from_clap(&matches, m)?)
         }
 
-        #[cfg(feature="pulse")]
+        #[cfg(feature = "pulse")]
         ("stream-check", Some(m)) => {
             stream_check::handle(&params, &display_params_from_clap(&matches, m)?)
         }
