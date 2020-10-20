@@ -65,6 +65,7 @@ impl std::fmt::Debug for OpOptim {
 
 impl TypedPass for OpOptim {
     fn reset(&mut self) -> TractResult<()> {
+        self.2 = 0;
         Ok(())
     }
 
