@@ -19,8 +19,10 @@ impl Symbol {
         table.push(c);
         Symbol(c, table.len() - 1)
     }
+}
 
-    pub fn ensure(c: char) -> Symbol {
+impl From<char> for Symbol {
+    fn from(c: char) -> Symbol {
         let mut table = SYMBOL_TABLE.lock().unwrap();
         if let Some(pos) = table.iter().position(|s| *s == c) {
             Symbol(c, pos)
