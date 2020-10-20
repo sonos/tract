@@ -2,6 +2,8 @@
 
 * switch from error_chain to anyhow
 * simplify trivial gathers to a slice
+* generalize symbolic dimension a bit: support "2S" and the like
+* deprecate "x" syntax in CLI, please use , instead
 
 ## 0.11.0
 

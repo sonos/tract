@@ -506,6 +506,26 @@ impl TypedOp for AxisOp {
         };
         Ok(Some(op))
     }
+
+    fn concretize_dims(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        values: &SymbolValues,
+    ) -> TractResult<TVec<OutletId>> {
+        let op = if let AxisOp::Reshape(axis, from, to) = self {
+            AxisOp::Reshape(
+                *axis,
+                from.iter().map(|d| d.eval(&values)).collect(),
+                to.iter().map(|d| d.eval(&values)).collect(),
+            )
+        } else {
+            self.clone()
+        };
+        target.wire_node(&node.name, op, &[mapping[&node.inputs[0]]])
+    }
 }
 
 pub fn change_axes(

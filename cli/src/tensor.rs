@@ -84,7 +84,7 @@ pub fn parse_dim(i: &str) -> CliResult<TDim> {
         return Ok(number.to_dim());
     }
     let symbol = i.chars().last().unwrap();
-    let symbol = Symbol::ensure(symbol);
+    let symbol = Symbol::from(symbol);
     Ok(symbol.to_dim() * number)
 }
 

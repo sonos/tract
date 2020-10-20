@@ -187,6 +187,12 @@ impl<I: Into<TDim> + Clone> ToDim for I {
     }
 }
 
+impl From<char> for TDim {
+    fn from(c: char) -> Self {
+        Symbol::from(c).to_dim()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
