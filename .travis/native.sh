@@ -90,50 +90,50 @@ cd $CACHEDIR
 
 ./target/release/tract \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
-    -i 1x299x299x3xf32 \
+    -i 1,299,299,3,f32 \
     run -q --assert-output-fact 1x1001xf32
 
 ./target/release/tract \
     $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
-    -i 1x299x299x3xf32 -O \
+    -i 1,299,299,3,f32 -O \
     run -q --assert-output-fact 1x1001xf32
 
 ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
-    -O -i 49x10xf32 --partial \
+    -O -i 49,10,f32 --partial \
     --input-node Mfcc run -q
 
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-    -O -i Sx40xf32 --output-node output --pulse 24 \
+    -O -i S,40,f32 --output-node output --pulse 24 \
     run -q
 
 ./target/release/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
-    -O -i 1x224x224x3xf32 \
+    -O -i 1,224,224,3,f32 \
     run -q --assert-output-fact 1x1001xf32
 
 ./target/release/tract $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
-    -O -i 1x224x224x3xf32 \
+    -O -i 1,224,224,3,f32 \
     run -q --assert-output-fact 1x1001xf32
 
 ./target/release/tract $CACHEDIR/GRU128KeywordSpotter-v2-10epochs.onnx \
-    -O run -q --assert-output-fact 1x3xf32
+    -O run -q --assert-output-fact 1,3,f32
 
 ./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb \
-    -i Sx20xf32 --pulse 8 dump --cost -q \
+    -i S,20,f32 --pulse 8 dump --cost -q \
     --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
 
 # fragile test (generated names...) but kinda vital for AM perf
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-    -i Sx40 --output-node output dump \
+    -i S,40 --output-node output dump \
     --node-name "fastlstm1.c_final.extracted.fastlstm1.four_parts" \
     | grep -c MatMul | grep 4
 
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-    -i Sx40 --output-node output dump \
+    -i S,40 --output-node output dump \
     --node-name "fastlstm2.c_final.extracted.fastlstm2.four_parts" \
     | grep -c MatMul | grep 4
 
-[ ! -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 --pass type dump --op-name AddAxis)" ]
-[ -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i Sx20xf32 dump --op-name AddAxis)" ]
+[ ! -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 --pass type dump --op-name AddAxis)" ]
+[ -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 dump --op-name AddAxis)" ]
 
 ( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
 ( cd onnx/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )

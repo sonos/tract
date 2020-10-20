@@ -106,11 +106,12 @@ pub fn to_axis_ops(input_orig: &[TDim], output_spec: &[TDim]) -> TractResult<TVe
     let final_output = compute_shape(input_orig, output_spec)?;
     let mut stack: TVec<AxisOp> = tvec!();
     'top: loop {
-        let current_input = stack.iter().fold(TVec::from(input_orig), |shape, op| {
-            let mut shape = shape.into();
-            op.change_shape_array(&mut shape);
-            shape
-        });
+        let current_input =
+            stack.iter().try_fold(TVec::from(input_orig), |shape, op| -> TractResult<_> {
+                let mut shape = shape.into();
+                op.change_shape_array(&mut shape)?;
+                Ok(shape)
+            })?;
         if &current_input == &final_output {
             return Ok(stack);
         }

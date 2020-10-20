@@ -2,19 +2,32 @@ use crate::prelude::TractResult;
 use itertools::Itertools;
 use num_traits::{AsPrimitive, Zero};
 use std::collections::HashMap;
-use std::sync::atomic::AtomicUsize;
 use std::{fmt, ops};
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
-static SYMBOL_ID: AtomicUsize = AtomicUsize::new(1);
+lazy_static::lazy_static! {
+    static ref SYMBOL_TABLE: std::sync::Mutex<Vec<char>> = std::sync::Mutex::new(Vec::new());
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug)]
 pub struct Symbol(char, usize);
 
 impl Symbol {
     pub fn new(c: char) -> Symbol {
-        Symbol(c, SYMBOL_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+        let mut table = SYMBOL_TABLE.lock().unwrap();
+        table.push(c);
+        Symbol(c, table.len() - 1)
+    }
+
+    pub fn ensure(c: char) -> Symbol {
+        let mut table = SYMBOL_TABLE.lock().unwrap();
+        if let Some(pos) = table.iter().position(|s| *s == c) {
+            Symbol(c, pos)
+        } else {
+            table.push(c);
+            Symbol(c, table.len() - 1)
+        }
     }
 }
 
