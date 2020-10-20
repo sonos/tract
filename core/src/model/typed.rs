@@ -127,28 +127,35 @@ impl TypedModel {
         for i in 0.. {
             model = model.compact()?;
             let mut done_something_this_time = false;
-            for p in passes.iter_mut() {
-                while let Some(mut patch) = p.next(&model)? {
-                    patch.push_context(format!("{:?}/{}", p, i));
+            'pass: for p in passes.iter_mut() {
+                loop {
+                    let mut done_something_this_pass = false;
+                    p.reset()?;
+                    while let Some(mut patch) = p.next(&model)? {
+                        patch.push_context(format!("{:?}/{}", p, i));
+                        #[cfg(debug_assertions)]
+                        {
+                            patch.model.check_consistent_facts()?;
+                            model.check_consistent_facts()?;
+                            patch.model.invariants()?;
+                            model.invariants()?;
+                        }
+                        debug!("applying: {}", patch.context.iter().rev().join(" / "),);
+                        patch.apply(&mut model)?;
+                        done_something_this_pass = true;
+                        done_something_this_time = true;
+                    }
                     #[cfg(debug_assertions)]
                     {
-                        patch.model.check_consistent_facts()?;
-                        model.check_consistent_facts()?;
-                        patch.model.invariants()?;
-                        model.invariants()?;
+                        model.check_edges()?;
+                        model
+                            .check_consistent_facts()
+                            .with_context(|| format!("after declutter pass {:?}", p))?
                     }
-                    debug!("applying: {}", patch.context.iter().rev().join(" / "),);
-                    patch.apply(&mut model)?;
-                    done_something_this_time = true;
+                    if !done_something_this_pass {
+                        continue 'pass;
+                    }
                 }
-                #[cfg(debug_assertions)]
-                {
-                    model.check_edges()?;
-                    model
-                        .check_consistent_facts()
-                        .with_context(|| format!("after declutter pass {:?}", p))?
-                }
-                model = model.compact()?;
             }
             if !done_something_this_time {
                 return Ok(model);
