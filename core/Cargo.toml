@@ -1,6 +1,6 @@
 [package]
 name = "tract-core"
-version = "0.11.1-pre"
+version = "0.11.1"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -29,7 +29,7 @@ num-integer = "0.1"
 num-traits = "0.2"
 dyn-clone = "1"
 smallvec = "1"
-tract-linalg = { path = "../linalg" }
+tract-linalg = "0.11.1"
 
 [features]
 default = [ ]
