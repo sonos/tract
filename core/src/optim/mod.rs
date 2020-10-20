@@ -16,7 +16,7 @@ pub trait TypedPass: Debug + Send + Sync {
 
 pub fn declutter() -> Vec<Box<dyn TypedPass>> {
     vec![
-        Box::new(OpOptim("declutter", TypedOp::declutter)),
+        Box::new(OpOptim("declutter", TypedOp::declutter, 0)),
         Box::new(PropConst),
         Box::new(PushSplitDown),
         Box::new(ChangeAxes),
@@ -25,9 +25,9 @@ pub fn declutter() -> Vec<Box<dyn TypedPass>> {
 
 pub fn codegen() -> Vec<Box<dyn TypedPass>> {
     vec![
-        Box::new(OpOptim("codegen", TypedOp::codegen)),
+        Box::new(OpOptim("codegen", TypedOp::codegen, 0)),
         Box::new(PushSplitDown),
-        Box::new(OpOptim("fuse", TypedOp::fuse)),
+        Box::new(OpOptim("fuse", TypedOp::fuse, 0)),
     ]
 }
 
@@ -38,16 +38,18 @@ pub struct OpOptim(
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>>,
+    usize,
 );
 
 impl OpOptim {
     fn full_pass(&mut self, new: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
-        for id in new.eval_order()? {
+        for (ix, &id) in new.eval_order()?.iter().enumerate().skip(self.2) {
             let node = &new.nodes()[id];
             let patch = (self.1)(node.op.as_ref(), &new, node)
                 .with_context(|| format!("{:?} node {}", self, node))?;
             if let Some(mut p) = patch {
                 p.push_context(format!("{:?} {}", self, node));
+                self.2 = ix;
                 return Ok(Some(p));
             }
         }
