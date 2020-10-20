@@ -4,7 +4,7 @@ use std::ops::{Add, Mul};
 
 use crate::internal::*;
 use crate::ops::matmul::*;
-use crate::ops::quant::QParams;
+use crate::ops::quant::{QParams, QParamsInputKind};
 use ndarray::*;
 
 use itertools::Itertools;
@@ -167,6 +167,36 @@ pub fn compute_shape<D: DimLike>(
     Ok(c_shape)
 }
 
+fn q_params_from_inputs(q_params: &Option<QParams>, inputs: &TVec<Arc<Tensor>>) -> TractResult<Option<QParams>> {
+    q_params.as_ref().and_then(|q_params| {
+        q_params.inputs_kind.as_ref().and_then(|inputs_kind| {
+            let q_params = q_params.clone();
+
+            Some(inputs_kind.iter().try_fold(q_params, |mut q_params, kind| {
+                match kind {
+                    QParamsInputKind::ZeroPointA(ix) => {
+                        q_params.set_zero_point_a(&inputs[*ix]);
+                    }
+                    QParamsInputKind::ZeroPointB(ix) => {
+                        q_params.set_zero_point_b(&inputs[*ix].clone());
+                    }
+                    QParamsInputKind::ZeroPointC(ix) => {
+                        q_params.set_zero_point_c(&inputs[*ix].clone());
+                    }
+                    QParamsInputKind::ScaleABC(a_ix, b_ix, c_ix) => {
+                        let scale = *inputs[*a_ix].to_scalar::<f32>()?
+                            * *inputs[*b_ix].to_scalar::<f32>()?
+                            / *inputs[*c_ix].to_scalar::<f32>()?;
+
+                        q_params.set_scale_factor(scale);
+                    }
+                };
+                Ok(q_params)
+            }))
+        })
+    }).transpose()
+}
+
 #[derive(Debug, Clone, Default, Hash)]
 pub struct MatMul {
     pub a_trans: bool,
@@ -211,14 +241,11 @@ impl EvalOp for MatMul {
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         assert_eq!(&inputs[0].rank(), &inputs[1].rank());
-        let t = eval(
-            &inputs[0],
-            &inputs[1],
-            self.a_trans,
-            self.b_trans,
-            self.c_trans,
-            self.q_params.as_ref(),
-        )?;
+
+        let q_params = q_params_from_inputs(&self.q_params, &inputs)?;
+        let q_params = q_params.as_ref().or(self.q_params.as_ref());
+
+        let t = eval(&inputs[0], &inputs[1], self.a_trans, self.b_trans, self.c_trans, q_params)?;
         Ok(tvec!(t.into_arc_tensor()))
     }
 }
@@ -328,13 +355,16 @@ impl EvalOp for MatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let q_params = q_params_from_inputs(&self.q_params, &inputs)?;
+        let q_params = q_params.as_ref().or(self.q_params.as_ref());
+
         let t = eval(
             &self.a,
             &inputs[0],
             self.a_trans,
             self.b_trans,
             self.c_trans,
-            self.q_params.as_ref(),
+            q_params,
         )?;
         Ok(tvec!(t.into_arc_tensor()))
     }
