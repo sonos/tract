@@ -1,6 +1,5 @@
 use crate::internal::*;
 use itertools::Itertools;
-use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Clone, Default)]
@@ -25,7 +24,7 @@ impl Invariants {
             .map(|axis| {
                 Ok(AxisInfo::for_node(model, node, axis)?.disposable(shape[axis] == 1.into()))
             })
-        .collect::<TractResult<_>>()?;
+            .collect::<TractResult<_>>()?;
         Ok(Invariants { element_wise: true, axes })
     }
 
@@ -56,11 +55,11 @@ impl From<TVec<AxisInfo>> for Invariants {
 
 impl std::iter::FromIterator<AxisInfo> for Invariants {
     fn from_iter<T>(iter: T) -> Self
-        where
-            T: IntoIterator<Item = AxisInfo>,
-        {
-            Invariants { element_wise: false, axes: iter.into_iter().collect() }
-        }
+    where
+        T: IntoIterator<Item = AxisInfo>,
+    {
+        Invariants { element_wise: false, axes: iter.into_iter().collect() }
+    }
 }
 
 /// Translation invariance property.
@@ -78,14 +77,14 @@ impl fmt::Debug for AxisInfo {
             fmt,
             "{}->{}",
             self.inputs
-            .iter()
-            .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
-            .join(","),
+                .iter()
+                .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
+                .join(","),
             self.outputs
-            .iter()
-            .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
-            .join(",")
-            )?;
+                .iter()
+                .map(|i| i.map(|a| a.to_string()).unwrap_or("_".to_string()))
+                .join(",")
+        )?;
         if !self.disposable {
             write!(fmt, " not disposable")?;
         }
@@ -143,7 +142,7 @@ impl Invariants {
                 .find(|connection| {
                     connection.outputs.get(0) == Some(&Some(axis)) && connection.period == 1
                 })
-            .filter(|conn| conn.disposable || !only_disposable)
+                .filter(|conn| conn.disposable || !only_disposable)
                 .and_then(|connection| connection.inputs.get(0))
                 .and_then(|d| *d)
         }
@@ -159,7 +158,7 @@ impl Invariants {
                 .find(|connection| {
                     connection.inputs.get(0) == Some(&Some(axis)) && connection.period == 1
                 })
-            .filter(|conn| conn.disposable || !only_disposable)
+                .filter(|conn| conn.disposable || !only_disposable)
                 .and_then(|connection| connection.outputs.get(0))
                 .and_then(|d| *d)
         }
@@ -250,10 +249,10 @@ impl<'a, T> std::iter::Iterator for OutletMapKeysIter<'a, T> {
     type Item = OutletId;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if self.1.node >= self.0.0.len() {
-                return None
+            if self.1.node >= (self.0).0.len() {
+                return None;
             }
-            if self.1.slot >= self.0.0[self.1.node].len() {
+            if self.1.slot >= (self.0).0[self.1.node].len() {
                 self.1.slot = 0;
                 self.1.node += 1;
                 continue;
@@ -261,7 +260,7 @@ impl<'a, T> std::iter::Iterator for OutletMapKeysIter<'a, T> {
             let current = self.1.clone();
             self.1.slot += 1;
             if self.0.get(&current).is_some() {
-                return Some(current)
+                return Some(current);
             }
         }
     }
@@ -280,7 +279,7 @@ impl AxisTracking {
         model: &TypedModel,
         outlet: OutletId,
         axis: usize,
-        ) -> TractResult<AxisTracking> {
+    ) -> TractResult<AxisTracking> {
         let mut mapped_outlets = OutletMap::default();
         let mut todo = OutletMap::default();
         let mut disposable = true;
@@ -372,5 +371,5 @@ pub fn for_model(model: &TypedModel) -> TractResult<Invariants> {
                 model.input_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
             Ok(AxisInfo { inputs, outputs, disposable: tracking.disposable, period: 1 })
         })
-    .collect()
+        .collect()
 }
