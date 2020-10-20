@@ -21,6 +21,7 @@ educe = "=0.4.11" # locked for rust 1.41.0
 anyhow = "1"
 half = "1.3"
 itertools = "0.9"
+lazy_static = "1"
 log = "0.4"
 maplit = "1"
 ndarray = { version = "=0.13.0" }

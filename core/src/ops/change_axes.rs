@@ -219,7 +219,7 @@ impl AxisOp {
         }
     }
 
-    pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) {
+    pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) -> TractResult<()> {
         use std::convert::TryInto;
         match self.canonical().as_ref() {
             Add(ix) => shape.insert(*ix, D::one()),
@@ -235,10 +235,11 @@ impl AxisOp {
                     shape.remove(*at);
                 }
                 for d in to.iter().rev() {
-                    shape.insert(*at, d.try_into().unwrap());
+                    shape.insert(*at, d.try_into()?);
                 }
             }
         }
+        Ok(())
     }
 
     pub fn change_shape(&self, shape: &mut ShapeFact) -> TractResult<()> {
@@ -255,7 +256,7 @@ impl AxisOp {
             }
             _ => {
                 let mut array = shape.to_tvec();
-                self.change_shape_array(&mut array);
+                self.change_shape_array(&mut array)?;
                 let mut new_shape = ShapeFact::from_dims(array).unwrap();
                 std::mem::swap(shape, &mut new_shape);
                 Ok(())
@@ -285,7 +286,7 @@ impl AxisOp {
             }
             Reshape(at, from, to) => {
                 let mut shape: TVec<usize> = tensor.shape().into();
-                self.change_shape_array(&mut shape);
+                self.change_shape_array(&mut shape)?;
                 if tensor.set_shape(&shape).is_ok() {
                     Ok(())
                 } else if broadcasting
@@ -924,7 +925,7 @@ mod proptests {
                     AxisOp::arbitrary_with(shape.clone().into())
                         .prop_flat_map(move |op| {
                             let mut shape = shape.clone();
-                            op.change_shape_array(&mut shape);
+                            op.change_shape_array(&mut shape).unwrap();
                             tail(len - 1, shape.clone()).prop_map(move |mut t| {
                                 t.insert(0, op.clone());
                                 t

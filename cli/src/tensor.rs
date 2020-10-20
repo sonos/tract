@@ -6,28 +6,103 @@ use crate::model::Model;
 use crate::CliResult;
 use tract_hir::internal::*;
 
+fn parse_dt(dt: &str) -> CliResult<DatumType> {
+    Ok(match dt.to_lowercase().as_ref() {
+        "f16" => DatumType::F16,
+        "f32" => DatumType::F32,
+        "f64" => DatumType::F64,
+        "i8" => DatumType::I8,
+        "i16" => DatumType::I16,
+        "i32" => DatumType::I32,
+        "i64" => DatumType::I64,
+        "u8" => DatumType::U8,
+        "u16" => DatumType::U16,
+        "u32" => DatumType::U32,
+        "u64" => DatumType::U64,
+        _ => bail!(
+            "Type of the input should be f16, f32, f64, i8, i16, i16, i32, u8, u16, u32, u64."
+        ),
+    })
+}
+
 pub fn parse_spec(size: &str) -> CliResult<InferenceFact> {
     if size.len() == 0 {
         return Ok(InferenceFact::default());
     }
+    if size.contains("x") && !size.contains(",") {
+        parse_x_spec(size)
+    } else {
+        parse_coma_spec(size)
+    }
+}
+
+pub fn parse_coma_spec(size: &str) -> CliResult<InferenceFact> {
+    let splits = size.split(",").collect::<Vec<_>>();
+
+    if splits.len() < 1 {
+        bail!("The <size> argument should be formatted as {size},{...},{type}.");
+    }
+
+    let last = splits.last().unwrap();
+    let (datum_type, shape) = if let Ok(dt) = parse_dt(last) {
+        (Some(dt), &splits[0..splits.len() - 1])
+    } else {
+        (None, &*splits)
+    };
+
+    let shape = ShapeFactoid::closed(
+        shape
+            .iter()
+            .map(|&s| {
+                Ok(if s == "_" { GenericFactoid::Any } else { GenericFactoid::Only(parse_dim(s)?) })
+            })
+            .collect::<CliResult<TVec<DimFact>>>()?,
+    );
+
+    if let Some(dt) = datum_type {
+        Ok(InferenceFact::dt_shape(dt, shape))
+    } else {
+        Ok(InferenceFact::shape(shape))
+    }
+}
+
+pub fn parse_dim(i: &str) -> CliResult<TDim> {
+    // ensure the magic S is pre-registered
+    #[cfg(feature = "pulse")]
+    let _ = tract_pulse::internal::stream_symbol();
+
+    if i.len() == 0 {
+        bail!("Can not parse empty string as Dim")
+    }
+    let number_len = i.chars().take_while(|c| c.is_digit(10)).count();
+    let symbol_len = i.len() - number_len;
+    if symbol_len > 1 {
+        bail!("Can not parse {} as Dim", i)
+    }
+    let number: i64 = if number_len > 0 { i[..number_len].parse()? } else { 1 };
+    if symbol_len == 0 {
+        return Ok(number.to_dim());
+    }
+    let symbol = i.chars().last().unwrap();
+    let symbol = Symbol::ensure(symbol);
+    Ok(symbol.to_dim() * number)
+}
+
+pub fn parse_x_spec(size: &str) -> CliResult<InferenceFact> {
+    warn!(
+        "Deprecated \"x\" syntax for shape : please use the comma as separator, x is now a symbol."
+    );
     let splits = size.split("x").collect::<Vec<_>>();
 
     if splits.len() < 1 {
-        bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
+        bail!("The <size> argument should be formatted as {size},{...},{type}.");
     }
 
     let last = splits.last().unwrap();
     let (datum_type, shape) = if last.ends_with("S") || last.parse::<i32>().is_ok() {
         (None, &*splits)
     } else {
-        let datum_type = match splits.last().unwrap().to_lowercase().as_str() {
-            "f64" => DatumType::F64,
-            "f32" => DatumType::F32,
-            "i32" => DatumType::I32,
-            "i8" => DatumType::I8,
-            "u8" => DatumType::U8,
-            _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
-        };
+        let datum_type = parse_dt(splits.last().unwrap())?;
         (Some(datum_type), &splits[0..splits.len() - 1])
     };
 
