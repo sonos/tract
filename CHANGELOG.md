@@ -1,6 +1,7 @@
 ## Unrelased
 
 * switch from error_chain to anyhow
+* simplify trivial gathers to a slice
 
 ## 0.11.0
 
