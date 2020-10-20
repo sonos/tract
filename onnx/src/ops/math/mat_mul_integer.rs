@@ -1,7 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
-use tract_hir::ops::quant::QParams;
+use tract_hir::ops::quant::{QParams, QParamsInputKind};
 
 pub fn mat_mul_integer(
     _ctx: &ParsingContext,
@@ -20,6 +20,90 @@ fn cleanup_zero_point(mut t: Tensor) -> TractResult<Option<Tensor>> {
         Ok(None)
     } else {
         Ok(Some(t))
+    }
+}
+
+struct QParamsBuilder {
+    qp: QParams,
+    inputs_kind: TVec<QParamsInputKind>,
+    inputs_kind_ix_start: usize,
+    qp_inputs: TVec<OutletId>,
+}
+
+macro_rules! make_set_zero_point {
+    ($func:ident, $set_zero_point:expr, $get_input_kind:expr) => {
+        fn $func(
+            &mut self,
+            target: &TypedModel,
+            inputs: &[OutletId],
+            zero_point_input: &Option<usize>,
+        ) -> TractResult<()> {
+            self.set_zero_point(target, inputs, zero_point_input, $set_zero_point, $get_input_kind)
+        }
+    };
+}
+
+impl QParamsBuilder {
+    fn new(qp: QParams, inputs_kind_ix_start: usize) -> Self {
+        Self { qp, inputs_kind_ix_start, inputs_kind: tvec!(), qp_inputs: tvec!() }
+    }
+
+    fn build(mut self) -> (QParams, TVec<OutletId>) {
+        self.qp.set_inputs_kind(self.inputs_kind);
+        (self.qp, self.qp_inputs)
+    }
+
+    // set the zero_point directly in the QParams if it is a constant tensor,
+    // otherwise set the zero point to be read from the inputs
+    fn set_zero_point(
+        &mut self,
+        target: &TypedModel,
+        inputs: &[OutletId],
+        zero_point_input: &Option<usize>,
+        set_zero_point: impl Fn(&mut QParams, &Arc<Tensor>),
+        get_input_kind: impl Fn(usize) -> QParamsInputKind,
+    ) -> TractResult<()> {
+        if let Some(&ix) = zero_point_input.as_ref() {
+            if let Some(zp) = target.outlet_fact(inputs[ix])?.konst.as_ref() {
+                if let Some(zp) = cleanup_zero_point(zp.clone().into_tensor())? {
+                    set_zero_point(&mut self.qp, &zp.into_arc_tensor());
+                }
+            } else {
+                self.inputs_kind
+                    .push(get_input_kind(self.qp_inputs.len() + self.inputs_kind_ix_start));
+                self.qp_inputs.push(inputs[ix]);
+            }
+        };
+
+        Ok(())
+    }
+
+    make_set_zero_point!(set_zero_point_a, QParams::set_zero_point_a, QParamsInputKind::ZeroPointA);
+    make_set_zero_point!(set_zero_point_b, QParams::set_zero_point_b, QParamsInputKind::ZeroPointB);
+    make_set_zero_point!(set_zero_point_c, QParams::set_zero_point_c, QParamsInputKind::ZeroPointC);
+
+    fn set_scale(
+        &mut self,
+        target: &TypedModel,
+        inputs: &[OutletId],
+        scales_input: [usize; 3],
+    ) -> TractResult<()> {
+        let scales = scales_input
+            .iter()
+            .map(|ix| Ok(target.outlet_fact(inputs[*ix])?.konst.as_ref()))
+            .collect::<TractResult<Vec<_>>>()?;
+
+        if let [Some(a_scale), Some(b_scale), Some(c_scale)] = scales.as_slice() {
+            let scale = a_scale.to_scalar::<f32>()? * b_scale.to_scalar::<f32>()?
+                / c_scale.to_scalar::<f32>()?;
+            self.qp.set_scale_factor(scale);
+        } else {
+            let index = self.qp_inputs.len() + self.inputs_kind_ix_start;
+            self.inputs_kind.push(QParamsInputKind::ScaleABC(index, index + 1, index + 2));
+            self.qp_inputs.extend(scales_input.iter().map(|ix| inputs[*ix]));
+        }
+
+        Ok(())
     }
 }
 
@@ -71,29 +155,16 @@ impl Expansion for MatMulInteger {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let mut qp = QParams::new(i32::datum_type());
-        if let Some(ix) = self.optional_a_zero_point_input {
-            let zp = target
-                .outlet_fact(inputs[ix])?
-                .konst
-                .as_ref()
-                .context("zero_point_a must be a constant")?;
-            if let Some(zp) = cleanup_zero_point(zp.clone().into_tensor())? {
-                qp = qp.with_zero_point_a(&zp.into_arc_tensor());
-            }
-        };
-        if let Some(ix) = self.optional_b_zero_point_input {
-            let zp = target
-                .outlet_fact(inputs[ix])?
-                .konst
-                .as_ref()
-                .context("zero_point_b must be a constant")?;
-            if let Some(zp) = cleanup_zero_point(zp.clone().into_tensor())? {
-                qp = qp.with_zero_point_b(&zp.into_arc_tensor());
-            }
-        };
+        let mut qp_builder = QParamsBuilder::new(QParams::new(i32::datum_type()), 2);
+
+        qp_builder.set_zero_point_a(target, inputs, &self.optional_a_zero_point_input)?;
+        qp_builder.set_zero_point_b(target, inputs, &self.optional_b_zero_point_input)?;
+        let (qp, qp_inputs) = qp_builder.build();
+
         let op = tract_hir::ops::matmul::MatMul::default().with_q_params(qp);
-        let inputs = tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
+        let mut inputs =
+            tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
+        inputs.extend_from_slice(&qp_inputs);
         target.wire_node(prefix, op, &inputs)
     }
 }
@@ -148,36 +219,20 @@ impl Expansion for QLinearMatMul {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let mut qp = QParams::new(target.outlet_fact(inputs[7])?.datum_type);
-        // a, a_scale, a_zp, b, b_scale, b_zp, y_scale, y_zp
-        let mut konsts: Vec<Tensor> = [2, 5, 7, 1, 4, 6]
-            .iter()
-            .rev()
-            .map(|ix| {
-                Ok(target
-                    .outlet_fact(inputs[*ix])?
-                    .konst
-                    .clone()
-                    .with_context(|| format!("Input {} must be a constant", ix))?
-                    .into_tensor())
-            })
-            .collect::<TractResult<Vec<_>>>()?;
-        if let Some(zp) = cleanup_zero_point(konsts.pop().unwrap())? {
-            qp = qp.with_zero_point_a(&zp.into_arc_tensor());
-        }
-        if let Some(zp) = cleanup_zero_point(konsts.pop().unwrap())? {
-            qp = qp.with_zero_point_b(&zp.into_arc_tensor());
-        }
-        if let Some(zp) = cleanup_zero_point(konsts.pop().unwrap())? {
-            qp = qp.with_zero_point_c(&zp.into_arc_tensor());
-        }
-        let scale = konsts.pop().unwrap().to_scalar::<f32>()?
-            * konsts.pop().unwrap().to_scalar::<f32>()?
-            / konsts.pop().unwrap().to_scalar::<f32>()?;
+        let mut qp_builder =
+            QParamsBuilder::new(QParams::new(target.outlet_fact(inputs[7])?.datum_type), 2);
 
-        qp = qp.with_scale_factor(scale);
+        // a, a_scale, a_zp, b, b_scale, b_zp, y_scale, y_zp
+        qp_builder.set_zero_point_a(target, inputs, &Some(2))?;
+        qp_builder.set_zero_point_b(target, inputs, &Some(5))?;
+        qp_builder.set_zero_point_c(target, inputs, &Some(7))?;
+        qp_builder.set_scale(target, inputs, [1, 4, 6])?;
+        let (qp, qp_inputs) = qp_builder.build();
+
         let op = tract_hir::ops::matmul::MatMul::default().with_q_params(qp);
-        let inputs = tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;
+        let mut inputs =
+            tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;
+        inputs.extend_from_slice(&qp_inputs);
         target.wire_node(prefix, op, &inputs)
     }
 }
