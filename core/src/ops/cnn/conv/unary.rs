@@ -81,7 +81,7 @@ impl ConvUnary {
 
     fn kernel_as_packed_as<T: Datum + Copy + Zero>(
         &self,
-        packer: &PackA<T>,
+        packer: &PackA,
     ) -> TractResult<ArrayD<Arc<Tensor>>> {
         let kernel = self.kernel_as_group_o_ihw()?;
         let kernel = kernel.to_array_view::<T>()?;
@@ -232,12 +232,14 @@ impl ConvUnary {
                     self.group,
                     c_dim / self.group,
                     mmm.as_mmm().b_pack(),
-                    self.q_params
-                        .as_ref()
-                        .and_then(|q| q.zero_point_b.as_ref())
-                        .map(|t| t.to_scalar::<TB>().map(|x| *x))
-                        .transpose()?
-                        .unwrap_or(TB::default()),
+                    tensor0(
+                        self.q_params
+                            .as_ref()
+                            .and_then(|q| q.zero_point_b.as_ref())
+                            .map(|t| t.to_scalar::<TB>().map(|x| *x))
+                            .transpose()?
+                            .unwrap_or(TB::zero()),
+                    ),
                 )?,
                 &[wire],
             )?[0];
@@ -263,7 +265,7 @@ impl ConvUnary {
                 bc_c_shape: output_shape.shape.clone(),
                 c_fact: TypedFact::dt_shape(TC::datum_type(), &*output_shape.shape)?,
                 c_prefix_dim_and_stride,
-                packed_as: self.kernel_as_packed_as(&mmm.as_mmm().a_pack())?,
+                packed_as: self.kernel_as_packed_as::<TA>(&mmm.as_mmm().a_pack())?,
                 fused_ops: self.bias_as_non_linear()?,
                 mmm,
             },
