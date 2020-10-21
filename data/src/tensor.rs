@@ -1,15 +1,16 @@
 //! `Tensor`, tract main data object of interest.
+use crate::datum::{Blob, Datum, DatumType};
 use crate::dim::TDim;
-use crate::internal::*;
+use crate::f16::f16;
+use crate::TVec;
 use ndarray::prelude::*;
-use std::alloc;
-use std::fmt;
-use std::mem::{align_of, size_of};
-
-use tract_linalg::f16::f16;
-
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
+use std::alloc;
+use std::borrow::Cow;
+use std::fmt;
+use std::hash::Hash;
+use std::mem::{align_of, size_of};
 use std::sync::Arc;
 
 pub mod litteral;
@@ -99,12 +100,12 @@ impl Drop for Tensor {
 
 impl Tensor {
     /// Create an uninitialized tensor (dt as type paramater).
-    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
+    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> anyhow::Result<Tensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
     }
 
     /// Create an uninitialized tensor (dt as regular parameter).
-    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
+    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> anyhow::Result<Tensor> {
         Self::uninitialized_aligned_dt(dt, shape, dt.alignment())
     }
 
@@ -112,7 +113,7 @@ impl Tensor {
     pub unsafe fn uninitialized_aligned<T: Datum>(
         shape: &[usize],
         alignment: usize,
-    ) -> TractResult<Tensor> {
+    ) -> anyhow::Result<Tensor> {
         Self::uninitialized_aligned_dt(T::datum_type(), shape, alignment)
     }
 
@@ -121,7 +122,7 @@ impl Tensor {
         dt: DatumType,
         shape: &[usize],
         alignment: usize,
-    ) -> TractResult<Tensor> {
+    ) -> anyhow::Result<Tensor> {
         if dt == String::datum_type() {
             return Ok(ndarray::ArrayD::<String>::default(shape).into());
         } else if dt == TDim::datum_type() {
@@ -142,11 +143,11 @@ impl Tensor {
     pub fn stack_tensors(
         axis: usize,
         tensors: &[impl std::borrow::Borrow<Tensor>],
-    ) -> TractResult<Tensor> {
+    ) -> anyhow::Result<Tensor> {
         use crate::datum::ArrayDatum;
         let dt = tensors[0].borrow().datum_type();
         if tensors.iter().any(|t| t.borrow().datum_type() != dt) {
-            bail!("Inconsistent datum type in stack.")
+            anyhow::bail!("Inconsistent datum type in stack.")
         }
         // map all copy types to the i* of the same size
         let mut tensor = unsafe {
@@ -172,33 +173,51 @@ impl Tensor {
         Ok(tensor)
     }
 
-    pub fn zero<T: Datum + num_traits::Zero>(shape: &[usize]) -> TractResult<Tensor> {
+    pub fn zero<T: Datum + num_traits::Zero>(shape: &[usize]) -> anyhow::Result<Tensor> {
         let mut t = unsafe { Tensor::uninitialized::<T>(shape)? };
         t.as_slice_mut::<T>().unwrap().iter_mut().for_each(|item| *item = T::zero());
         Ok(t)
     }
 
-    pub fn zero_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
+    pub fn zero_dt(dt: DatumType, shape: &[usize]) -> anyhow::Result<Tensor> {
         dispatch_numbers!(Self::zero(dt)(shape))
     }
 
     /// Create an tensor from raw data.
     ///
     /// It copies the data, aligning it to the size of T.
-    pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
+    pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> anyhow::Result<Tensor> {
         Tensor::from_raw_dt(T::datum_type(), shape, content)
+    }
+
+    pub unsafe fn from_raw_aligned<T: Datum>(shape: &[usize], content: &[u8], align: usize) -> anyhow::Result<Tensor> {
+        Tensor::from_raw_dt_align(T::datum_type(), shape, content, align)
     }
 
     pub unsafe fn from_raw_dt(
         dt: DatumType,
         shape: &[usize],
         content: &[u8],
-    ) -> TractResult<Tensor> {
+    ) -> anyhow::Result<Tensor> {
+        Self::from_raw_dt_align(dt, shape, content, dt.alignment())
+    }
+
+    pub unsafe fn from_raw_dt_align(
+        dt: DatumType,
+        shape: &[usize],
+        content: &[u8],
+        align: usize,
+    ) -> anyhow::Result<Tensor> {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
-        let layout = alloc::Layout::from_size_align(bytes, dt.alignment())?;
+        let layout = alloc::Layout::from_size_align(bytes, align)?;
         let data = alloc::alloc(layout);
         content.as_ptr().copy_to_nonoverlapping(data, bytes);
         Ok(Tensor { dt, shape: shape.into(), data, layout })
+    }
+
+    pub unsafe fn from_slice_align<T: Datum>(content: &[T], align: usize) -> anyhow::Result<Tensor> {
+        let bytes = std::slice::from_raw_parts(content.as_ptr() as *const u8, content.len() * T::datum_type().size_of());
+        Self::from_raw_dt_align(T::datum_type(), &[content.len()], bytes, align)
     }
 
     /// Get the number of dimensions (or axes) of the tensor.
@@ -222,15 +241,15 @@ impl Tensor {
     }
 
     /// Force the tensor shape.
-    pub fn set_shape(&mut self, shape: &[usize]) -> TractResult<()> {
+    pub fn set_shape(&mut self, shape: &[usize]) -> anyhow::Result<()> {
         if self.len() != shape.iter().product::<usize>() {
-            bail!("Invalid reshape {:?} to {:?}", self.shape, shape);
+            anyhow::bail!("Invalid reshape {:?} to {:?}", self.shape, shape);
         }
         self.shape = shape.into();
         Ok(())
     }
 
-    pub fn permute_axes(self, axes: &[usize]) -> TractResult<Tensor> {
+    pub fn permute_axes(self, axes: &[usize]) -> anyhow::Result<Tensor> {
         unsafe {
             #[inline]
             unsafe fn permute<T: Datum>(axes: &[usize], input: Tensor) -> Tensor {
@@ -244,29 +263,29 @@ impl Tensor {
     }
 
     /// Reshape the tensor to `shape`.
-    pub fn into_shape(mut self, shape: &[usize]) -> TractResult<Tensor> {
+    pub fn into_shape(mut self, shape: &[usize]) -> anyhow::Result<Tensor> {
         self.set_shape(shape)?;
         Ok(self)
     }
 
-    pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
+    pub fn insert_axis(&mut self, axis: usize) -> anyhow::Result<()> {
         self.shape.insert(axis, 1);
         Ok(())
     }
 
-    pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
+    pub fn remove_axis(&mut self, axis: usize) -> anyhow::Result<()> {
         self.shape.remove(axis);
         Ok(())
     }
 
-    pub fn broadcast_into_rank(mut self, rank: usize) -> TractResult<Tensor> {
+    pub fn broadcast_into_rank(mut self, rank: usize) -> anyhow::Result<Tensor> {
         self.broadcast_to_rank(rank)?;
         Ok(self)
     }
 
-    pub fn broadcast_to_rank(&mut self, rank: usize) -> TractResult<()> {
+    pub fn broadcast_to_rank(&mut self, rank: usize) -> anyhow::Result<()> {
         if rank < self.rank() {
-            bail!("Can only broadcast to higher rank")
+            anyhow::bail!("Can only broadcast to higher rank")
         }
         while self.shape.len() < rank {
             self.shape.insert(0, 1)
@@ -274,9 +293,9 @@ impl Tensor {
         Ok(())
     }
 
-    pub fn broadcast_scalar_to_shape(&self, shape: &[usize]) -> TractResult<Tensor> {
+    pub fn broadcast_scalar_to_shape(&self, shape: &[usize]) -> anyhow::Result<Tensor> {
         if self.rank() > 0 {
-            bail!("broadcast_scalar_to_shape called on {:?}", self);
+            anyhow::bail!("broadcast_scalar_to_shape called on {:?}", self);
         }
         unsafe fn make<T: Datum>(src: &Tensor, dst: &mut Tensor) {
             let value: &T = src.to_scalar_unchecked::<T>();
@@ -302,27 +321,31 @@ impl Tensor {
     /// Dump the tensor in a human readable form.
     ///
     /// `force_full` will force the tensor to be dump in full even if it is big.
-    pub fn dump(&self, force_full: bool) -> TractResult<String> {
-        let spec = TypedFact::dt_shape(self.datum_type(), &*self.shape)?;
+    pub fn dump(&self, force_full: bool) -> anyhow::Result<String> {
+        use itertools::Itertools;
         unsafe fn dump_t<D: Datum>(tensor: &Tensor, n: usize) -> String {
-            use itertools::Itertools;
             tensor.as_slice_unchecked::<D>()[0..n].iter().join(", ")
         }
         unsafe {
-            if force_full || self.len() <= 12 {
-                let data = dispatch_datum!(dump_t(self.datum_type())(self, self.len()));
-                Ok(format!("{} {}", spec.format_dt_shape(), data))
-            } else {
-                let data = dispatch_datum!(dump_t(self.datum_type())(self, 12));
-                Ok(format!("{} {}...", spec.format_dt_shape(), data))
-            }
+            let trunc = self.len() > 12 && !force_full;
+            let data = dispatch_datum!(dump_t(self.datum_type())(
+                self,
+                if trunc { 12 } else { self.len() }
+            ));
+            Ok(format!(
+                "{}x{:?} {}{}",
+                self.shape.iter().join("x"),
+                self.dt,
+                data,
+                if trunc { "..." } else { "" }
+            ))
         }
     }
 
     /// Compare two tensors, allowing for rounding errors.
-    pub fn close_enough(&self, other: &Self, approx: bool) -> TractResult<()> {
+    pub fn close_enough(&self, other: &Self, approx: bool) -> anyhow::Result<()> {
         if self.shape() != other.shape() {
-            bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
+            anyhow::bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
         if approx {
             let atol = 5e-4;
@@ -338,7 +361,7 @@ impl Tensor {
                     || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
                     || (a - b).abs() <= atol + rtol * b.abs())
                 {
-                    bail!("Mismatch at {:?} {} != {}", indices.slice(), a, b)
+                    anyhow::bail!("Mismatch at {:?} {} != {}", indices.slice(), a, b)
                 }
                 Ok(())
             })
@@ -346,13 +369,13 @@ impl Tensor {
             if self.eq(other) {
                 Ok(())
             } else {
-                bail!("Mismatch")
+                anyhow::bail!("Mismatch")
             }
         }
     }
 
     /// Transform the tensor into a `ndarray::Array`.
-    pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
+    pub fn into_array<D: Datum>(self) -> anyhow::Result<ArrayD<D>> {
         Ok(self.to_array_view::<D>()?.to_owned())
     }
 
@@ -361,9 +384,9 @@ impl Tensor {
         self.to_array_view_unchecked::<D>().to_owned()
     }
 
-    fn check_for_access<D: Datum>(&self) -> TractResult<()> {
+    fn check_for_access<D: Datum>(&self) -> anyhow::Result<()> {
         if self.datum_type() != D::datum_type() {
-            bail!(
+            anyhow::bail!(
                 "Tensor datum type error: tensor is {:?}, accessed as {:?}",
                 self.datum_type(),
                 D::datum_type(),
@@ -373,13 +396,13 @@ impl Tensor {
     }
 
     /// Transform the data as a `ndarray::Array`.
-    pub fn to_array_view<'a, D: Datum>(&'a self) -> TractResult<ArrayViewD<'a, D>> {
+    pub fn to_array_view<'a, D: Datum>(&'a self) -> anyhow::Result<ArrayViewD<'a, D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_unchecked()) }
     }
 
     /// Transform the data as a mutable `ndarray::Array`.
-    pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
+    pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> anyhow::Result<ArrayViewMutD<'a, D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_mut_unchecked()) }
     }
@@ -403,7 +426,7 @@ impl Tensor {
     }
 
     /// Access the data as a pointer.
-    pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
+    pub fn as_ptr<D: Datum>(&self) -> anyhow::Result<*const D> {
         self.check_for_access::<D>()?;
         Ok(self.data as *const D)
     }
@@ -419,17 +442,17 @@ impl Tensor {
     }
 
     /// Access the data as a mutable pointer.
-    pub fn as_ptr_mut<D: Datum>(&mut self) -> TractResult<*mut D> {
+    pub fn as_ptr_mut<D: Datum>(&mut self) -> anyhow::Result<*mut D> {
         self.as_ptr::<D>().map(|p| p as *mut D)
     }
 
     /// Access the data as a slice.
-    pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
+    pub fn as_slice<D: Datum>(&self) -> anyhow::Result<&[D]> {
         unsafe { Ok(std::slice::from_raw_parts::<D>(self.as_ptr()?, self.len())) }
     }
 
     /// Access the data as a mutable slice.
-    pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
+    pub fn as_slice_mut<D: Datum>(&mut self) -> anyhow::Result<&mut [D]> {
         unsafe { Ok(std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut()?, self.len())) }
     }
 
@@ -444,7 +467,7 @@ impl Tensor {
     }
 
     /// Access the data as a scalar.
-    pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<&D> {
+    pub fn to_scalar<'a, D: Datum>(&'a self) -> anyhow::Result<&D> {
         unsafe { Ok(&*(self.as_ptr::<D>()?)) }
     }
 
@@ -461,12 +484,12 @@ impl Tensor {
         std::slice::from_raw_parts_mut(self.data, self.layout.size())
     }
 
-    fn is_uniform_t<T: Datum>(&self) -> TractResult<bool> {
+    fn is_uniform_t<T: Datum>(&self) -> anyhow::Result<bool> {
         let slice = self.as_slice::<T>()?;
         Ok(slice[1..].iter().all(|x| x == &slice[0]))
     }
 
-    pub fn is_uniform(&self) -> TractResult<bool> {
+    pub fn is_uniform(&self) -> anyhow::Result<bool> {
         if self.len() <= 1 {
             return Ok(true);
         }
@@ -496,15 +519,15 @@ impl Tensor {
     unsafe fn cast_from_string<Target: Datum + core::str::FromStr>(
         &self,
         other: &mut Tensor,
-    ) -> TractResult<()> {
+    ) -> anyhow::Result<()> {
         for (s, d) in self
             .as_slice_unchecked::<String>()
             .iter()
             .zip(other.as_slice_mut_unchecked::<Target>().iter_mut())
         {
-            *d = s
-                .parse()
-                .map_err(|_| format_err!("Could not parse {} as {:?}", s, Target::datum_type()))?
+            *d = s.parse().map_err(|_| {
+                anyhow::format_err!("Could not parse {} as {:?}", s, Target::datum_type())
+            })?
         }
         Ok(())
     }
@@ -520,12 +543,12 @@ impl Tensor {
     }
 
     /// Optionnaly convert data to a tensor for a new DatumType.
-    pub fn cast_to<D: Datum>(&self) -> TractResult<Cow<Tensor>> {
+    pub fn cast_to<D: Datum>(&self) -> anyhow::Result<Cow<Tensor>> {
         self.cast_to_dt(D::datum_type())
     }
 
     /// Optionnaly convert data to a tensor for a new DatumType.
-    pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<Cow<Tensor>> {
+    pub fn cast_to_dt(&self, dt: DatumType) -> anyhow::Result<Cow<Tensor>> {
         unsafe {
             if self.dt == dt {
                 return Ok(Cow::Borrowed(self));
@@ -598,22 +621,27 @@ impl Tensor {
             n!(f16);
             n!(f32);
             n!(f64);
-            bail!("Unsupported cast from {:?} to {:?}", self.dt, dt)
+            anyhow::bail!("Unsupported cast from {:?} to {:?}", self.dt, dt)
         }
     }
 
     /// Access the data as a scalar, after a cast.
-    pub fn cast_to_scalar<D: Datum + Copy>(&self) -> TractResult<D> {
+    pub fn cast_to_scalar<D: Datum + Copy>(&self) -> anyhow::Result<D> {
         let casted = self.cast_to::<D>()?;
         casted.to_scalar::<D>().map(|&x| x)
     }
 
     /// Access the nth element of the tensor, returned as a 0-rank Tensor
-    pub fn nth(&self, nth: usize) -> TractResult<Tensor> {
+    pub fn nth(&self, nth: usize) -> anyhow::Result<Tensor> {
         if nth >= self.len() {
-            bail!("nth called with {}th element on a tensor of len {} ({:?}", nth, self.len(), self);
+            anyhow::bail!(
+                "nth called with {}th element on a tensor of len {} ({:?}",
+                nth,
+                self.len(),
+                self
+            );
         }
-        unsafe fn nth_t<T:Datum>(me: &Tensor, nth: usize, output: &mut Tensor) {
+        unsafe fn nth_t<T: Datum>(me: &Tensor, nth: usize, output: &mut Tensor) {
             let value = me.as_slice_unchecked::<T>()[nth].clone();
             output.as_slice_mut_unchecked::<T>()[0] = value;
         }
@@ -625,7 +653,7 @@ impl Tensor {
     }
 
     /// Strict equality test on tensors.
-    fn eq_dt(&self, other: &Tensor) -> TractResult<bool> {
+    fn eq_dt(&self, other: &Tensor) -> anyhow::Result<bool> {
         unsafe fn eq_t<D: Datum>(me: &Tensor, other: &Tensor) -> bool {
             me.as_slice_unchecked::<D>() == other.as_slice_unchecked::<D>()
         }
@@ -670,16 +698,16 @@ impl Tensor {
         }
     }
 
-    pub fn slice(&self, axis: usize, start: usize, end: usize) -> TractResult<Tensor> {
+    pub fn slice(&self, axis: usize, start: usize, end: usize) -> anyhow::Result<Tensor> {
         if axis >= self.rank() {
-            bail!("Can not slice at axis {} tensor {:?}", axis, self);
+            anyhow::bail!("Can not slice at axis {} tensor {:?}", axis, self);
         }
         fn slice_t<T: Datum>(
             t: &Tensor,
             axis: usize,
             start: usize,
             end: usize,
-        ) -> TractResult<Tensor> {
+        ) -> anyhow::Result<Tensor> {
             Ok(t.to_array_view::<T>()?
                 .slice_axis(ndarray::Axis(axis), (start..end).into())
                 .into_owned()

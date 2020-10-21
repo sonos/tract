@@ -9,7 +9,6 @@ extern crate num_traits;
 #[cfg(test)]
 extern crate proptest;
 
-pub mod align;
 #[macro_use]
 pub mod frame;
 mod generic;
@@ -176,6 +175,7 @@ mod test {
         + MulAssign
         + PartialOrd
         + Bounded
+        + tract_data::prelude::Datum
     {
         fn strat() -> BoxedStrategy<Self>;
         fn close(&self, other: &Self) -> bool;
@@ -187,6 +187,15 @@ mod test {
         }
         fn close(&self, other: &Self) -> bool {
             (self - other).abs() < 0.001
+        }
+    }
+
+    impl LADatum for u8 {
+        fn strat() -> BoxedStrategy<Self> {
+            any::<u8>().boxed()
+        }
+        fn close(&self, other: &Self) -> bool {
+            self == other
         }
     }
 

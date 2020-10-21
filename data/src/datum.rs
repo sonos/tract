@@ -1,12 +1,11 @@
 //! `Tensor` is the main data container for tract
 use crate::dim::TDim;
-use crate::prelude::TVec;
+use crate::f16::f16;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
+use crate::TVec;
 use std::hash::Hash;
 use std::{fmt, ops};
-
-use tract_linalg::f16::f16;
 
 mod arrays;
 pub use arrays::ArrayDatum;
@@ -35,7 +34,7 @@ impl std::str::FromStr for Blob {
     }
 }
 
-impl tract_linalg::hash::SloppyHash for Blob {
+impl crate::hash::SloppyHash for Blob {
     fn sloppy_hash<S: std::hash::Hasher>(&self, state: &mut S) {
         self.0.hash(state)
     }
@@ -176,7 +175,7 @@ impl DatumType {
 }
 
 impl std::str::FromStr for DatumType {
-    type Err = crate::internal::TractError;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -195,7 +194,7 @@ impl std::str::FromStr for DatumType {
             "Blob" | "blob" => Ok(DatumType::Blob),
             "String" | "string" => Ok(DatumType::String),
             "TDim" | "tdim" => Ok(DatumType::TDim),
-            _ => crate::internal::bail!("Unknown type {}", s),
+            _ => anyhow::bail!("Unknown type {}", s),
         }
     }
 }
@@ -209,7 +208,7 @@ pub trait Datum:
     + Default
     + 'static
     + PartialEq
-    + tract_linalg::hash::SloppyHash
+    + crate::hash::SloppyHash
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
@@ -234,7 +233,7 @@ macro_rules! datum {
         }
     };
 }
-impl tract_linalg::hash::SloppyHash for TDim {
+impl crate::hash::SloppyHash for TDim {
     fn sloppy_hash<S: std::hash::Hasher>(&self, state: &mut S) {
         self.hash(state)
     }
