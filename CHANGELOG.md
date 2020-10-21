@@ -1,6 +1,6 @@
 ## Unrelased
 
-## 0.11.0 - 2020-10-20
+## 0.11.1 - 2020-10-20
 
 * switch from error_chain to anyhow
 * simplify trivial gathers to a slice
