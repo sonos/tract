@@ -1,20 +1,17 @@
-use num_traits::Zero;
-use std::fmt::Debug;
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug, Eq, PartialEq, Educe)]
 #[educe(Hash)]
-pub struct PackB<T: Copy + Zero> {
+pub struct PackB {
     k: usize,
     n: usize,
     nr: usize,
     alignment: usize,
-    _boo: PhantomData<T>,
 }
 
-impl<T: Copy + Zero + Debug> PackB<T> {
-    pub fn new(k: usize, n: usize, nr: usize, alignment: usize) -> PackB<T> {
-        PackB { k, n, nr, alignment, _boo: PhantomData }
+impl PackB {
+    pub fn new(k: usize, n: usize, nr: usize, alignment: usize) -> PackB {
+        PackB { k, n, nr, alignment }
     }
 
     pub fn alignment(&self) -> usize {
@@ -25,7 +22,7 @@ impl<T: Copy + Zero + Debug> PackB<T> {
         (self.n + self.nr - 1) / self.nr * self.nr * self.k
     }
 
-    pub fn pack(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
+    pub fn pack<T: Copy>(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
         let nr = self.nr;
         assert!(pb as usize % self.alignment == 0);
         unsafe {
@@ -50,7 +47,7 @@ impl<T: Copy + Zero + Debug> PackB<T> {
         }
     }
 
-    fn pack_panel_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize) {
+    fn pack_panel_b<T: Copy>(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize) {
         let nr = self.nr;
         for i in 0..self.k {
             for j in 0..cols {
@@ -59,16 +56,10 @@ impl<T: Copy + Zero + Debug> PackB<T> {
                         *b.offset(j as isize * csb + i as isize * rsb)
                 }
             }
-            #[cfg(debug_assertions)]
-            for j in cols..nr {
-                unsafe {
-                    *pb.offset((i * nr + j) as isize) = T::zero();
-                }
-            }
         }
     }
 
-    pub fn write_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
+    pub fn write_packed_by_rows<'p, T: Copy>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
         PackedWriter::new(pb, self.nr, self.n, self.k)
     }
 }
@@ -76,7 +67,7 @@ impl<T: Copy + Zero + Debug> PackB<T> {
 #[derive(Debug)]
 pub struct PackedWriter<'p, T>
 where
-    T: Copy + Debug,
+    T: Copy,
 {
     ptr: *mut T,
     panels: usize,
@@ -91,7 +82,7 @@ where
 
 impl<'p, T> PackedWriter<'p, T>
 where
-    T: Copy + Debug,
+    T: Copy,
 {
     pub fn new(data: &'p mut [T], panel_width: usize, mn: usize, k: usize) -> PackedWriter<'p, T> {
         let panels = (mn + panel_width - 1) / panel_width;

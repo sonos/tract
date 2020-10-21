@@ -42,35 +42,28 @@ where
     }
 
     fn run(&self, buf: &mut [u8]) {
-        let align = K::input_alignment_bytes();
-        let aligned_start = (buf.as_ptr() as usize + align - 1) / align * align;
-        let prefix = (aligned_start - buf.as_ptr() as usize).min(buf.len());
-        for i in 0..(prefix as isize) {
-            unsafe {
+        unsafe {
+            let table: *const u8 = self.table.as_ptr_unchecked();
+            let align = K::input_alignment_bytes();
+            let aligned_start = (buf.as_ptr() as usize + align - 1) / align * align;
+            let prefix = (aligned_start - buf.as_ptr() as usize).min(buf.len());
+            for i in 0..(prefix as isize) {
                 let ptr = buf.as_mut_ptr().offset(i);
-                *ptr = self.table.as_slice_unchecked()[*ptr as usize];
+                *ptr = *table.offset(*ptr as isize);
             }
-        }
-        let remaining = buf.len() - prefix;
-        if remaining == 0 {
-            return;
-        }
-        let n = K::n();
-        let aligned_len = remaining / n * n;
-        if aligned_len > 0 {
-            unsafe {
-                K::run(
-                    buf.as_mut_ptr().offset(prefix as isize),
-                    aligned_len,
-                    self.table.as_ptr_unchecked(),
-                );
+            let remaining = buf.len() - prefix;
+            if remaining == 0 {
+                return;
             }
-        }
-        let remaining = buf.len() - aligned_len - prefix;
-        for i in 0..remaining {
-            unsafe {
+            let n = K::n();
+            let aligned_len = remaining / n * n;
+            if aligned_len > 0 {
+                K::run(buf.as_mut_ptr().offset(prefix as isize), aligned_len, table);
+            }
+            let remaining = buf.len() - aligned_len - prefix;
+            for i in 0..remaining {
                 let ptr = buf.as_mut_ptr().offset((i + prefix + aligned_len) as isize);
-                *ptr = self.table.as_slice_unchecked()[*ptr as usize];
+                *ptr = *table.offset(*ptr as isize);
             }
         }
     }

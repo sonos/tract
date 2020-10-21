@@ -19,8 +19,8 @@ where
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
 {
-    fn a_pack(&self) -> PackA<TA>;
-    fn b_pack(&self) -> PackB<TB>;
+    fn a_pack(&self) -> PackA;
+    fn b_pack(&self) -> PackB;
 
     fn a_storage(&self) -> &MatrixStoreSpec;
     fn b_storage(&self) -> &MatrixStoreSpec;
@@ -137,11 +137,11 @@ where
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
-    fn a_pack(&self) -> PackA<TA> {
+    fn a_pack(&self) -> PackA {
         PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a())
     }
 
-    fn b_pack(&self) -> PackB<TB> {
+    fn b_pack(&self) -> PackB {
         PackB::new(self.k, self.n, K::nr(), K::alignment_bytes_packed_b())
     }
 
