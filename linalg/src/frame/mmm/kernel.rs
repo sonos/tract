@@ -111,13 +111,13 @@ macro_rules! test_mmm_kernel_u8 {
 #[macro_use]
 pub mod test {
     use super::*;
-    use crate::align::Buffer;
     use num_traits::{AsPrimitive, One, Zero};
     use proptest::collection::vec;
     use proptest::prelude::*;
     use std::fmt;
     use std::marker::PhantomData;
     use std::ops::{Add, Mul};
+    use tract_data::internal::*;
 
     #[test]
     fn check_non_linear_enum_size() {
@@ -314,8 +314,8 @@ pub mod test {
     impl<K, TA, TB, TC, TI> PackedPackedProblem<K, TA, TB, TC, TI>
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: 'static + Debug + AsPrimitive<TI>,
-        TB: 'static + Debug + AsPrimitive<TI>,
+        TA: 'static + Debug + AsPrimitive<TI> + Datum,
+        TB: 'static + Debug + AsPrimitive<TI> + Datum,
         TC: Copy + Zero + PartialEq + 'static + Debug,
         TI: Copy + Add + Mul<Output = TI> + Zero + One + Debug + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
@@ -339,25 +339,28 @@ pub mod test {
         }
 
         pub fn run(&self) -> Vec<TC> {
-            let pa = Buffer::realign_data(&self.a, K::alignment_bytes_packed_a());
-            let pb = Buffer::realign_data(&self.b, K::alignment_bytes_packed_b());
-            let mut v = vec![TC::zero(); K::mr() * K::nr()];
-            let mut c = if self.trans_c {
-                mmm_stride_storage(&mut v, 1, K::mr())
-            } else {
-                mmm_stride_storage(&mut v, K::nr(), 1)
-            };
-            let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
-            let non_linear = if self.add_one { non_linear_ops.as_ptr() } else { std::ptr::null() };
-            let err = K::kernel(&MatMatMulKerSpec {
-                a: &PanelStore::Packed { ptr: pa.as_ptr() },
-                b: &PanelStore::Packed { ptr: pb.as_ptr() },
-                c: &mut c,
-                linear: &LinearSpec::k(self.k),
-                non_linear,
-            });
-            assert_eq!(err, 0);
-            v
+            unsafe {
+                let pa = Tensor::from_slice_align(&*self.a, K::alignment_bytes_packed_a()).unwrap();
+                let pb = Tensor::from_slice_align(&*self.b, K::alignment_bytes_packed_b()).unwrap();
+                let mut v = vec![TC::zero(); K::mr() * K::nr()];
+                let mut c = if self.trans_c {
+                    mmm_stride_storage(&mut v, 1, K::mr())
+                } else {
+                    mmm_stride_storage(&mut v, K::nr(), 1)
+                };
+                let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
+                let non_linear =
+                    if self.add_one { non_linear_ops.as_ptr() } else { std::ptr::null() };
+                let err = K::kernel(&MatMatMulKerSpec {
+                    a: &PanelStore::Packed { ptr: pa.as_ptr_unchecked() },
+                    b: &PanelStore::Packed { ptr: pb.as_ptr_unchecked() },
+                    c: &mut c,
+                    linear: &LinearSpec::k(self.k),
+                    non_linear,
+                });
+                assert_eq!(err, 0);
+                v
+            }
         }
     }
 
@@ -423,8 +426,8 @@ pub mod test {
     impl<K, TA, TB, TC, TI> PackedOffsetsProblem<K, TA, TB, TC, TI>
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: 'static + Debug + AsPrimitive<TI>,
-        TB: 'static + Debug + AsPrimitive<TI>,
+        TA: 'static + Debug + AsPrimitive<TI> + Datum,
+        TB: 'static + Debug + AsPrimitive<TI> + Datum,
         TC: Copy + Zero + PartialEq + 'static + Debug,
         TI: Copy + Add + Mul<Output = TI> + Zero + One + Debug + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
@@ -448,7 +451,9 @@ pub mod test {
         }
 
         pub fn run(&self) -> Vec<TC> {
-            let pa = Buffer::realign_data(&self.a, K::alignment_bytes_packed_a());
+            let pa = unsafe {
+                Tensor::from_slice_align(&self.a, K::alignment_bytes_packed_a()).unwrap()
+            };
             let rows_offset: Vec<isize> = self
                 .rows_offsets
                 .iter()
@@ -462,7 +467,7 @@ pub mod test {
             let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
             let non_linear = if self.add_one { non_linear_ops.as_ptr() } else { std::ptr::null() };
             let err = K::kernel(&MatMatMulKerSpec {
-                a: &PanelStore::Packed { ptr: pa.as_ptr() },
+                a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked() } },
                 b: &PanelStore::OffsetsAndPtrs {
                     row_byte_offsets: rows_offset.as_ptr(),
                     col_ptrs: col_ptrs.as_ptr(),
@@ -479,20 +484,26 @@ pub mod test {
     pub fn packed_packed<K, TA, TB, TC, TI>(k: usize)
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + One,
-        TB: Copy + One,
+        TA: Copy + One + Datum,
+        TB: Copy + One + Datum,
         TC: Copy + PartialEq + Zero + 'static + Debug,
         TI: Copy + Add + Mul + Zero + Debug + fmt::Display,
         usize: AsPrimitive<TC>,
     {
         let len = K::mr() * K::nr();
-        let pa = Buffer::realign_data(&vec![TA::one(); K::mr() * k], K::alignment_bytes_packed_a());
-        let pb = Buffer::realign_data(&vec![TB::one(); K::nr() * k], K::alignment_bytes_packed_b());
+        let pa = unsafe {
+            Tensor::from_slice_align(&vec![TA::one(); K::mr() * k], K::alignment_bytes_packed_a())
+                .unwrap()
+        };
+        let pb = unsafe {
+            Tensor::from_slice_align(&vec![TB::one(); K::nr() * k], K::alignment_bytes_packed_b())
+                .unwrap()
+        };
         let mut v: Vec<TC> = vec![TC::zero(); len];
         let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &PanelStore::Packed { ptr: pa.as_ptr() },
-            b: &PanelStore::Packed { ptr: pb.as_ptr() },
+            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked() } },
+            b: &PanelStore::Packed { ptr: unsafe { pb.as_ptr_unchecked() } },
             c: &mut c,
             linear: &LinearSpec::k(k),
             non_linear: std::ptr::null(),
@@ -514,14 +525,14 @@ pub mod test {
     pub fn packed_offsets<K, TA, TB, TC, TI>(k: usize, t: usize)
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + One + AsPrimitive<TI>,
-        TB: Copy + One + AsPrimitive<TI>,
+        TA: Copy + One + AsPrimitive<TI> + Datum,
+        TB: Copy + One + AsPrimitive<TI> + Datum,
         TC: Copy + PartialEq + Zero + 'static + Debug,
         TI: Copy + Add + Zero + Mul<Output = TI> + Debug + fmt::Display + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         let a: Vec<TA> = (1..=(k * K::mr())).map(|x| x.as_()).collect();
-        let pa = Buffer::realign_data(&a, K::alignment_bytes_packed_a());
+        let pa = unsafe { Tensor::from_slice_align(&a, K::alignment_bytes_packed_a()).unwrap() };
         let b: Vec<TB> = (0..(k * t)).map(|x| x.as_()).collect();
         let len = K::mr() * K::nr();
         let mut v: Vec<TC> = vec![TC::zero(); len];
@@ -530,7 +541,7 @@ pub mod test {
         let row_byte_offsets =
             (0..k).map(|i| (i * std::mem::size_of::<TB>() * t) as isize).collect::<Vec<_>>();
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &PanelStore::Packed { ptr: pa.as_ptr() },
+            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked() } },
             b: &PanelStore::OffsetsAndPtrs {
                 col_ptrs: col_ptrs.as_ptr(),
                 row_byte_offsets: row_byte_offsets.as_ptr(),
@@ -545,7 +556,9 @@ pub mod test {
                 let row = ix / K::nr();
                 let col = ix % K::nr();
                 (0..k)
-                    .map(|i| pa[K::mr() * i + row].as_() * b[t * i + col].as_())
+                    .map(|i| {
+                        pa.as_slice::<TA>().unwrap()[K::mr() * i + row].as_() * b[t * i + col].as_()
+                    })
                     .fold(TI::zero(), |s, a| s + a)
                     .as_()
             })
@@ -556,17 +569,20 @@ pub mod test {
     pub fn packed_vec<K, TA, TB, TC, TI>(k: usize)
     where
         K: MatMatMulKer<TA, TB, TC, TI>,
-        TA: Copy + One + AsPrimitive<TI> + Debug,
-        TB: Copy + One + AsPrimitive<TI> + Debug,
+        TA: Copy + One + AsPrimitive<TI> + Debug + Datum,
+        TB: Copy + One + AsPrimitive<TI> + Debug + Datum,
         TC: Copy + PartialEq + Zero + 'static + Debug,
         TI: Copy + Add + Zero + Mul<Output = TI> + Debug + fmt::Display + 'static + AsPrimitive<TC>,
         usize: AsPrimitive<TC>,
     {
-        let pa = Buffer::realign_data(&vec![TA::one(); K::mr() * k], K::alignment_bytes_packed_a());
+        let pa = unsafe {
+            Tensor::from_slice_align(&vec![TA::one(); K::mr() * k], K::alignment_bytes_packed_a())
+                .unwrap()
+        };
         let b = vec![TB::one(); k];
         let c: Vec<TC> = vec![TC::zero(); K::mr()];
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &PanelStore::Packed { ptr: pa.as_ptr() },
+            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked() } },
             b: &PanelStore::VecStride {
                 ptr: b.as_ptr(),
                 byte_stride: std::mem::size_of::<TB>() as isize,

@@ -349,7 +349,6 @@ where
 #[macro_use]
 pub mod test {
     use super::*;
-    use crate::align::Buffer;
     use crate::test::*;
     use num_traits::AsPrimitive;
     use proptest::prelude::*;
@@ -586,15 +585,24 @@ pub mod test {
     {
         let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
         unsafe {
-            let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
-            op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+            let mut packed_a =
+                Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len()], op.a_pack().alignment())
+                    .unwrap();
+            op.a_pack().pack(packed_a.as_ptr_mut_unchecked(), a.as_ptr(), k as isize, 1);
 
-            let mut packed_b = Buffer::uninitialized(op.b_pack().len(), op.b_pack().alignment());
-            op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
+            let mut packed_b =
+                Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len()], op.b_pack().alignment())
+                    .unwrap();
+            op.b_pack().pack(packed_b.as_ptr_mut_unchecked(), b.as_ptr(), n as isize, 1);
 
             let mut found = vec![TC::max_value(); m * n];
 
-            op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), &[]);
+            op.run(
+                packed_a.as_ptr_unchecked(),
+                packed_b.as_ptr_unchecked(),
+                found.as_mut_ptr(),
+                &[],
+            );
 
             let mut expected = vec![TC::zero(); m * n];
             for x in 0..n {
@@ -628,12 +636,14 @@ pub mod test {
             let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, 1);
             op.b_vec_from_data_and_stride(1);
             op.c_vec_from_data_and_stride(1);
-            let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
-            op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+            let mut packed_a =
+                Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len()], op.a_pack().alignment())
+                    .unwrap();
+            op.a_pack().pack(packed_a.as_ptr_mut_unchecked(), a.as_ptr(), k as isize, 1);
 
             let mut found = vec![TC::zero(); m];
 
-            op.run(packed_a.as_ptr(), b.as_ptr(), found.as_mut_ptr(), &[]);
+            op.run(packed_a.as_ptr_unchecked(), b.as_ptr(), found.as_mut_ptr(), &[]);
 
             let mut expected = vec![TC::zero(); m];
             for y in 0..m {
@@ -674,15 +684,19 @@ pub mod test {
         let b = vec![TB::one(); n * k];
         let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
 
-        let mut packed_a = Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
-        op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+        let mut packed_a =
+            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len()], op.a_pack().alignment())
+                .unwrap();
+        op.a_pack().pack(packed_a.as_ptr_mut_unchecked(), a.as_ptr(), k as isize, 1);
 
-        let mut packed_b = Buffer::uninitialized(op.b_pack().len(), op.b_pack().alignment());
-        op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
+        let mut packed_b =
+            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len()], op.b_pack().alignment())
+                .unwrap();
+        op.b_pack().pack(packed_b.as_ptr_mut_unchecked(), b.as_ptr(), n as isize, 1);
 
         let mut found = vec![TC::zero(); m * n];
 
-        op.run(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), spec);
+        op.run(packed_a.as_ptr_unchecked(), packed_b.as_ptr_unchecked(), found.as_mut_ptr(), spec);
 
         let mut inter = vec![TI::zero(); m * n];
         for x in 0..n {
@@ -900,17 +914,20 @@ pub mod test {
             unsafe {
                 let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(self.m(), self.k(), self.n());
                 op.b_from_data_and_offsets(&self.data_rows_offsets(), &self.data_cols_offsets());
-                let mut packed_a =
-                    Buffer::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+                let mut packed_a = Tensor::uninitialized_aligned::<TA>(
+                    &[op.a_pack().len()],
+                    op.a_pack().alignment(),
+                )
+                .unwrap();
                 op.a_pack().pack(
-                    packed_a.as_mut_ptr(),
+                    packed_a.as_ptr_mut_unchecked(),
                     self.filters.as_ptr(),
                     self.k() as isize,
                     1,
                 );
 
                 let mut found: Vec<TC> = vec![TC::max_value(); self.co * self.output_width()];
-                op.run(packed_a.as_ptr(), self.data.as_ptr(), found.as_mut_ptr(), &[]);
+                op.run(packed_a.as_ptr_unchecked(), self.data.as_ptr(), found.as_mut_ptr(), &[]);
                 found
             }
         }

@@ -1,7 +1,10 @@
 #[macro_use]
 extern crate criterion;
+extern crate tract_data;
 extern crate tract_linalg;
 use criterion::Criterion;
+
+use tract_data::prelude::*;
 
 fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) {
     c.bench_function(&format!("conv_d{}p{}ci{}co{}", dilation, pulse, ci, co), move |be| {
@@ -13,14 +16,14 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
         unsafe {
             conv.c_from_data_and_strides(t as _, 1);
         }
-        let a = tract_linalg::align::Buffer::realign_data(
-            &vec![0.0; conv.a_pack().len()],
-            conv.a_pack().alignment(),
-        );
+        let a = unsafe {
+            Tensor::from_slice_align(&vec![0.0; conv.a_pack().len()], conv.a_pack().alignment())
+                .unwrap()
+        };
         let input = vec![0.0; ci * t];
         let mut output = vec![0.0; co * t];
         be.iter(move || unsafe {
-            conv.run(a.as_ptr(), input.as_ptr(), output.as_mut_ptr(), &[]);
+            conv.run(a.as_ptr_unchecked(), input.as_ptr(), output.as_mut_ptr(), &[]);
         });
     });
 }

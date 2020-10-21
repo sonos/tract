@@ -1,4 +1,3 @@
-use crate::prelude::TractResult;
 use itertools::Itertools;
 use num_traits::{AsPrimitive, Zero};
 use std::collections::HashMap;
@@ -91,11 +90,11 @@ impl TDim {
         self == &Val(1)
     }
 
-    pub fn to_i64(&self) -> TractResult<i64> {
+    pub fn to_i64(&self) -> anyhow::Result<i64> {
         if let Val(v) = self {
             Ok(*v)
         } else {
-            crate::internal::bail!("Not a determined integer: {}", self)
+            anyhow::bail!("Not a determined integer: {}", self)
         }
     }
 
@@ -396,9 +395,9 @@ impl TDim {
 
     pub fn symbols(&self) -> std::collections::HashSet<Symbol> {
         match self {
-            Val(_) => hashset!(),
-            Sym(s) => hashset!(*s),
-            Add(terms) => terms.iter().fold(hashset!(), |mut set, v| {
+            Val(_) => maplit::hashset!(),
+            Sym(s) => maplit::hashset!(*s),
+            Add(terms) => terms.iter().fold(maplit::hashset!(), |mut set, v| {
                 set.extend(v.symbols().into_iter());
                 set
             }),
@@ -409,7 +408,7 @@ impl TDim {
 }
 
 pub(super) fn reduce_ratio(mut p: i64, mut q: i64) -> (i64, u64) {
-    use crate::num_integer::Integer;
+    use num_integer::Integer;
     let gcd = p.abs().gcd(&q.abs());
     if gcd > 1 {
         p /= gcd;

@@ -399,7 +399,6 @@ where
 #[macro_use]
 pub mod test {
     use super::*;
-    use crate::align::Buffer;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use std::marker::PhantomData;
@@ -469,8 +468,22 @@ pub mod test {
 
     impl<TA, TB, TC, TI> QMatMulProblem<TA, TB, TC, TI>
     where
-        TA: Arbitrary + SloppyHash + 'static + Debug + AsPrimitive<TI> + Zero + Copy,
-        TB: Arbitrary + SloppyHash + 'static + Debug + AsPrimitive<TI> + Zero + Copy,
+        TA: Arbitrary
+            + SloppyHash
+            + 'static
+            + Debug
+            + AsPrimitive<TI>
+            + Zero
+            + Copy
+            + crate::test::LADatum,
+        TB: Arbitrary
+            + SloppyHash
+            + 'static
+            + Debug
+            + AsPrimitive<TI>
+            + Zero
+            + Copy
+            + crate::test::LADatum,
         TC: Arbitrary
             + SloppyHash
             + 'static
@@ -526,12 +539,30 @@ pub mod test {
                 let mut mmm = QMatMatMulImpl::from(MatMatMulImpl::<K, TA, TB, TC, TI>::new(
                     self.m, self.k, self.n,
                 ));
-                let mut packed_a =
-                    Buffer::uninitialized(mmm.a_pack().len(), mmm.a_pack().alignment());
-                mmm.a_pack().pack(packed_a.as_mut_ptr(), self.a.as_ptr(), self.k as isize, 1);
-                let mut packed_b =
-                    Buffer::uninitialized(mmm.b_pack().len(), mmm.b_pack().alignment());
-                mmm.b_pack().pack(packed_b.as_mut_ptr(), self.b.as_ptr(), self.n as isize, 1);
+                let mut packed_a = Tensor::uninitialized_aligned::<TA>(
+                    &[mmm.a_pack().len()],
+                    mmm.a_pack().alignment(),
+                )
+                .unwrap();
+                mmm.a_pack().pack(
+                    packed_a.as_ptr_mut_unchecked(),
+                    self.a.as_ptr(),
+                    self.k as isize,
+                    1,
+                );
+
+                let mut packed_b = Tensor::uninitialized_aligned::<TB>(
+                    &[mmm.b_pack().len()],
+                    mmm.b_pack().alignment(),
+                )
+                .unwrap();
+                mmm.b_pack().pack(
+                    packed_b.as_ptr_mut_unchecked(),
+                    self.b.as_ptr(),
+                    self.n as isize,
+                    1,
+                );
+
                 match &self.a0 {
                     QuantizedParam::Scalar(a0) => mmm.set_zero_point_a_scalar(*a0),
                     QuantizedParam::Vector(a0) => mmm.set_zero_point_a_vector(a0.clone()),
@@ -540,7 +571,12 @@ pub mod test {
                     QuantizedParam::Scalar(b0) => mmm.set_zero_point_b_scalar(*b0),
                     QuantizedParam::Vector(b0) => mmm.set_zero_point_b_vector(b0.clone()),
                 }
-                mmm.run(packed_a.as_ptr(), packed_b.as_ptr(), c.as_mut_ptr(), &[]);
+                mmm.run(
+                    packed_a.as_ptr_unchecked(),
+                    packed_b.as_ptr_unchecked(),
+                    c.as_mut_ptr(),
+                    &[],
+                );
                 c
             }
         }
