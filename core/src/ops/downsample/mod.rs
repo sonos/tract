@@ -110,7 +110,7 @@ fn pull_downsample_up(
     model: &TypedModel,
     down_node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
     {
         model.check_consistent_facts()?;
     }

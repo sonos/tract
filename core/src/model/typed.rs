@@ -51,7 +51,8 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 let outputs = op.eval(tensors)?;
                 outputs.into_iter().map(|t| TypedFact::from(t)).collect()
             } else {
-                op.output_facts(&*input_facts).with_context(|| format!("wiring {} ({:?})", name, op))?
+                op.output_facts(&*input_facts)
+                    .with_context(|| format!("wiring {} ({:?})", name, op))?
             }
         };
         let id = self.add_node(name, op, output_facts)?;
@@ -75,7 +76,7 @@ impl TypedModel {
         self.declutter()?.optimize()
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
     pub fn check_consistent_facts(&self) -> TractResult<()> {
         for node_id in &self.eval_order()? {
             let input_facts = self.node_input_facts(*node_id)?;
@@ -118,7 +119,7 @@ impl TypedModel {
         &self,
         passes: &mut [Box<dyn crate::optim::TypedPass>],
     ) -> TractResult<TypedModel> {
-        #[cfg(debug_assertions)]
+        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
             self.check_consistent_facts()?;
         }
@@ -133,19 +134,19 @@ impl TypedModel {
                     p.reset()?;
                     while let Some(mut patch) = p.next(&model)? {
                         patch.push_context(format!("{:?}/{}", p, i));
-                        #[cfg(debug_assertions)]
+                        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
                         {
                             patch.model.check_consistent_facts()?;
                             model.check_consistent_facts()?;
                             patch.model.invariants()?;
                             model.invariants()?;
                         }
-                        debug!("applying: {}", patch.context.iter().rev().join(" / "),);
+                        debug!("applying: {}", patch.context.iter().rev().join(" >> "),);
                         patch.apply(&mut model)?;
                         done_something_this_pass = true;
                         done_something_this_time = true;
                     }
-                    #[cfg(debug_assertions)]
+                    #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
                     {
                         model.check_edges()?;
                         model

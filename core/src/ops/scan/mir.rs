@@ -68,7 +68,7 @@ impl Scan {
         seq_length_input_slot: Option<usize>,
         skip: usize,
     ) -> TractResult<Scan> {
-        #[cfg(debug_assertions)]
+        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
             body.check_consistent_facts()?;
             assert_eq!(input_mapping.len(), body.input_outlets()?.len());
@@ -476,7 +476,7 @@ impl Scan {
         change: AxisChange,
         locked_interface: bool,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        #[cfg(debug_assertions)]
+        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
             self.body.check_consistent_facts()?;
         }
@@ -550,7 +550,7 @@ impl Scan {
                 }
             };
         }
-        #[cfg(debug_assertions)]
+        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
             body.check_consistent_facts()?;
         }
