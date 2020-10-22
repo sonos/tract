@@ -170,7 +170,7 @@ impl Expansion for DequantizeLinear {
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct DynamicQuantizeLinear {}
 
-tract_linalg::impl_dyn_hash!(DynamicQuantizeLinear);
+impl_dyn_hash!(DynamicQuantizeLinear);
 
 impl Expansion for DynamicQuantizeLinear {
     fn name(&self) -> Cow<str> {
@@ -273,7 +273,7 @@ impl Op for DynamicQuantizeLinearU8 {
     op_as_typed_op!();
 }
 
-tract_linalg::impl_dyn_hash!(DynamicQuantizeLinearU8);
+impl_dyn_hash!(DynamicQuantizeLinearU8);
 
 impl EvalOp for DynamicQuantizeLinearU8 {
     fn is_stateless(&self) -> bool {
