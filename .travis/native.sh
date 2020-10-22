@@ -44,18 +44,26 @@ cargo -q test -q -p tract-core -p tract-hir -p tract-onnx -p tract-linalg
 # doc test are not finding libtensorflow.so
 cargo -q test -q -p tract-tensorflow --lib $ALL_FEATURES
 # useful as debug_asserts will come into play
-cargo -q test -q -p onnx-test-suite -- --skip real_ 1_7_0
+cargo -q test -q -p onnx-test-suite -- --skip real_
 
 if [ -n "$SHORT" ]
 then
     exit 0
 fi
 
-cargo -q test -q -p onnx-test-suite --release
-
 if [ -n "$CI" ]
 then
-    rm -rf $CACHEDIR/onnx
+    for opset in onnx_1_4_1 onnx_1_5_0 onnx_1_6_0 onnx_1_7_0
+    do
+        cd harness/onnx-test-suite
+        cargo -q check -q --features $opset
+        cargo -q test -q --release --features $opset
+        cd ../..
+        rm -rf $CACHEDIR/onnx/$opset
+    done
+else
+    cargo -q check -p onnx-test-suite --all-features
+    cargo -q test -q -p onnx-test-suite --release --all-features
 fi
 
 HARNESS=""

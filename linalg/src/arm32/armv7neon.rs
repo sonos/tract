@@ -3,13 +3,9 @@ use crate::frame::sigmoid::*;
 use crate::frame::tanh::*;
 
 extern "C" {
-    #[no_mangle]
     fn armv7neon_mmm_i8_8x4(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
-    #[no_mangle]
     fn armv7neon_mmm_f32_8x4(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
-    #[no_mangle]
     fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize);
-    #[no_mangle]
     fn armv7neon_tanh_f32_4n(ptr: *mut f32, count: usize);
 }
 

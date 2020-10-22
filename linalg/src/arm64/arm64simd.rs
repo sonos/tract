@@ -3,15 +3,10 @@ use crate::frame::sigmoid::*;
 use crate::frame::tanh::*;
 
 extern "C" {
-    #[no_mangle]
     fn arm64simd_mmm_f32_8x8_a5x(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
-    #[no_mangle]
     fn arm64simd_mmm_f32_8x8_gen(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
-    #[no_mangle]
     fn arm64simd_mmm_i8_8x8(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
-    #[no_mangle]
     fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize);
-    #[no_mangle]
     fn arm64simd_tanh_f32_4n(ptr: *mut f32, count: usize);
 }
 
