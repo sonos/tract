@@ -1,5 +1,7 @@
 ## Unrelased
 
+* ONNX: new op: DynamicQuantizeLinear
+
 ## 0.11.1 - 2020-10-20
 
 * switch from error_chain to anyhow
