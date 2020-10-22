@@ -1,9 +1,7 @@
 use crate::frame::mmm::*;
 
 extern "C" {
-    #[no_mangle]
     fn fma_mmm_f32_16x6(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
-    #[no_mangle]
     fn fma_mmm_i8_8x8(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
 }
 

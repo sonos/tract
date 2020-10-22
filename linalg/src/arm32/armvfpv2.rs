@@ -1,7 +1,6 @@
 use crate::frame::mmm::*;
 
 extern "C" {
-    #[no_mangle]
     fn armvfpv2_mmm_f32_4x4(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
 }
 

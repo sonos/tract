@@ -4,6 +4,10 @@ set -ex
 
 start=$(date +%s)
 
+cat /proc/cpuinfo
+hostname
+ip a
+
 ROOT=`pwd`
 CACHEDIR=${CACHEDIR:-$HOME/.cache}
 if [ -x tract ]
@@ -75,14 +79,14 @@ net_bench() {
 
 mem=$(free -m | grep Mem | awk '{ print $2 }')
 
-if [ $mem -gt 600 ]
-then
-    net_bench deepspeech_0_4_1 pass \
-        $CACHEDIR/deepspeech-0.4.1.pb \
-        --input-node input_node -i 1,16,19,26,f32 \
-        --input-node input_lengths -i 1,i32=16 --const-input input_lengths \
-        --tf-initializer-output-node initialize_state
-fi
+# if [ $mem -gt 600 ]
+# then
+#     net_bench deepspeech_0_4_1 pass \
+#         $CACHEDIR/deepspeech-0.4.1.pb \
+#         --input-node input_node -i 1,16,19,26,f32 \
+#         --input-node input_lengths -i 1,i32=16 --const-input input_lengths \
+#         --tf-initializer-output-node initialize_state
+# fi
 
 net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49,10,f32 --partial --input-node Mfcc
 
