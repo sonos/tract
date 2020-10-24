@@ -25,8 +25,12 @@ where
     pub fn new(table: &[u8]) -> LutImpl<K> {
         unsafe {
             LutImpl {
-                table: Tensor::from_raw_aligned::<u8>(&[256], table, K::table_alignment_bytes())
-                    .unwrap(),
+                table: Tensor::from_raw_aligned::<u8>(
+                    &[table.len()],
+                    table,
+                    K::table_alignment_bytes(),
+                )
+                .unwrap(),
                 _boo: PhantomData,
             }
         }
