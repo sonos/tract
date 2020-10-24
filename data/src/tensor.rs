@@ -190,7 +190,11 @@ impl Tensor {
         Tensor::from_raw_dt(T::datum_type(), shape, content)
     }
 
-    pub unsafe fn from_raw_aligned<T: Datum>(shape: &[usize], content: &[u8], align: usize) -> anyhow::Result<Tensor> {
+    pub unsafe fn from_raw_aligned<T: Datum>(
+        shape: &[usize],
+        content: &[u8],
+        align: usize,
+    ) -> anyhow::Result<Tensor> {
         Tensor::from_raw_dt_align(T::datum_type(), shape, content, align)
     }
 
@@ -208,15 +212,21 @@ impl Tensor {
         content: &[u8],
         align: usize,
     ) -> anyhow::Result<Tensor> {
-        let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
-        let layout = alloc::Layout::from_size_align(bytes, align)?;
+        assert_eq!(shape.iter().cloned().product::<usize>() * dt.size_of(), content.len());
+        let layout = alloc::Layout::from_size_align(content.len(), align)?;
         let data = alloc::alloc(layout);
-        content.as_ptr().copy_to_nonoverlapping(data, bytes);
+        content.as_ptr().copy_to_nonoverlapping(data, content.len());
         Ok(Tensor { dt, shape: shape.into(), data, layout })
     }
 
-    pub unsafe fn from_slice_align<T: Datum>(content: &[T], align: usize) -> anyhow::Result<Tensor> {
-        let bytes = std::slice::from_raw_parts(content.as_ptr() as *const u8, content.len() * T::datum_type().size_of());
+    pub unsafe fn from_slice_align<T: Datum>(
+        content: &[T],
+        align: usize,
+    ) -> anyhow::Result<Tensor> {
+        let bytes = std::slice::from_raw_parts(
+            content.as_ptr() as *const u8,
+            content.len() * T::datum_type().size_of(),
+        );
         Self::from_raw_dt_align(T::datum_type(), &[content.len()], bytes, align)
     }
 
