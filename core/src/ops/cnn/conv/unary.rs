@@ -34,7 +34,7 @@ pub struct ConvUnary {
     pub q_params: Option<QParams>,
 }
 
-tract_data::impl_dyn_hash!(ConvUnary);
+impl_dyn_hash!(ConvUnary);
 
 impl ConvUnary {
     fn input_channels(&self) -> usize {

@@ -211,7 +211,7 @@ pub struct MatMul {
     pub q_params: Option<QParams>,
 }
 
-tract_data::impl_dyn_hash!(MatMul);
+impl_dyn_hash!(MatMul);
 
 impl MatMul {
     pub fn with_a_trans(self, a_trans: bool) -> MatMul {
@@ -330,7 +330,7 @@ pub struct MatMulUnary {
     pub q_params: Option<QParams>,
 }
 
-tract_data::impl_dyn_hash!(MatMulUnary);
+impl_dyn_hash!(MatMulUnary);
 
 impl Op for MatMulUnary {
     fn name(&self) -> Cow<str> {

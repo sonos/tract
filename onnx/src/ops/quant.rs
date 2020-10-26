@@ -39,7 +39,7 @@ pub struct QuantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
 
-tract_data::impl_dyn_hash!(QuantizeLinear);
+impl_dyn_hash!(QuantizeLinear);
 
 impl Expansion for QuantizeLinear {
     fn name(&self) -> Cow<str> {
@@ -106,7 +106,7 @@ pub struct DequantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
 
-tract_data::impl_dyn_hash!(DequantizeLinear);
+impl_dyn_hash!(DequantizeLinear);
 
 impl Expansion for DequantizeLinear {
     fn name(&self) -> Cow<str> {

@@ -16,7 +16,7 @@ pub struct Cast {
     to: DatumType,
 }
 
-tract_data::impl_dyn_hash!(Cast);
+impl_dyn_hash!(Cast);
 
 impl ElementWiseMiniOp for Cast {
     fn name(&self) -> String {

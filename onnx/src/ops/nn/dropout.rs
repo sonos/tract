@@ -14,7 +14,7 @@ pub struct Dropout {
     output_mask: bool,
 }
 
-tract_data::impl_dyn_hash!(Dropout);
+impl_dyn_hash!(Dropout);
 
 impl Op for Dropout {
     fn name(&self) -> Cow<str> {

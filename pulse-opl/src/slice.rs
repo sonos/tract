@@ -8,7 +8,7 @@ pub struct PulsedAxisSlice {
     pub take: TDim,
 }
 
-tract_data::impl_dyn_hash!(PulsedAxisSlice);
+impl_dyn_hash!(PulsedAxisSlice);
 
 impl Op for PulsedAxisSlice {
     fn name(&self) -> Cow<str> {

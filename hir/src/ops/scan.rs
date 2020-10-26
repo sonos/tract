@@ -14,7 +14,7 @@ pub struct InferenceScan {
     pub iter_count_fact: GenericFactoid<TDim>,
 }
 
-tract_data::impl_dyn_hash!(InferenceScan);
+impl_dyn_hash!(InferenceScan);
 
 impl Op for InferenceScan {
     fn name(&self) -> Cow<str> {

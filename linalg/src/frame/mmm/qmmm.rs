@@ -1,8 +1,6 @@
 use std::fmt;
 use std::fmt::Debug;
-use std::hash::Hash;
 use std::ops::{Add, Deref, Mul, Neg};
-use tract_data::internal::*;
 
 use num_traits::{AsPrimitive, Bounded, Zero};
 
@@ -10,7 +8,7 @@ use super::MatMatMul;
 use super::*;
 
 pub trait QMatMatMul<TA, TB, TC, TI>:
-    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + DynHash
+    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync
 where
     TA: Copy + Zero + 'static,
     TB: Copy + Zero + 'static,
@@ -35,46 +33,22 @@ dyn_clone::clone_trait_object!(<TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> where
     TA: Copy + Zero + 'static,
     TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + SloppyHash + 'static,
+    TI: Copy + Add + Mul + Zero + Debug  + 'static,
 );
 
-impl<TA, TB, TC, TI> Hash for Box<dyn QMatMatMul<TA, TB, TC, TI>>
-where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
-    TC: Copy + Debug + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
-{
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.dyn_hash(state)
-    }
-}
-
 #[derive(Debug, Clone)]
-pub enum QuantizedParam<T: SloppyHash> {
+pub enum QuantizedParam<T> {
     Scalar(T),
     Vector(Vec<T>),
-}
-
-impl<T: SloppyHash> std::hash::Hash for QuantizedParam<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            Self::Scalar(t) => t.sloppy_hash(state),
-            Self::Vector(t) => {
-                t.len().hash(state);
-                t.iter().for_each(|v| v.sloppy_hash(state))
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + SloppyHash + 'static,
-    TB: Copy + Zero + SloppyHash + 'static,
-    TC: Copy + Debug + SloppyHash + 'static,
-    TI: Copy + Add + SloppyHash + Mul + Zero + Debug + 'static,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     pub mmm: MatMatMulImpl<K, TA, TB, TC, TI>,
@@ -87,10 +61,10 @@ where
 
 impl<K, TA, TB, TC, TI> QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + SloppyHash + AsPrimitive<TI>,
-    TB: Copy + Zero + SloppyHash + AsPrimitive<TI> + Debug + 'static,
-    TC: Copy + Debug + SloppyHash + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + SloppyHash + 'static,
+    TA: Copy + Zero + AsPrimitive<TI>,
+    TB: Copy + Zero + AsPrimitive<TI> + Debug + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     fn sum_a_over_k(&self, mut a: *const TA) -> Vec<TI> {
@@ -167,10 +141,10 @@ where
 
 impl<K, TA, TB, TC, TI> From<MatMatMulImpl<K, TA, TB, TC, TI>> for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + SloppyHash + 'static,
-    TB: Copy + Zero + SloppyHash + 'static,
-    TC: Copy + Debug + SloppyHash + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + SloppyHash + 'static,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     fn from(mmm: MatMatMulImpl<K, TA, TB, TC, TI>) -> QMatMatMulImpl<K, TA, TB, TC, TI> {
@@ -186,10 +160,10 @@ where
 
 impl<K, TA, TB, TC, TI> Deref for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + SloppyHash + 'static,
-    TB: Copy + Zero + SloppyHash + 'static,
-    TC: Copy + Debug + SloppyHash + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + SloppyHash + 'static,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
     type Target = MatMatMulImpl<K, TA, TB, TC, TI>;
@@ -200,30 +174,30 @@ where
 
 unsafe impl<K, TA, TB, TC, TI> Send for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + SloppyHash + 'static,
-    TB: Copy + Zero + SloppyHash + 'static,
-    TC: Copy + Debug + SloppyHash + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + SloppyHash + 'static,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
 }
 
 unsafe impl<K, TA, TB, TC, TI> Sync for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + SloppyHash + 'static,
-    TB: Copy + Zero + SloppyHash + 'static,
-    TC: Copy + Debug + SloppyHash + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + SloppyHash + 'static,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI> + 'static,
 {
 }
 
 impl<K, TA, TB, TC, TI> QMatMatMul<TA, TB, TC, TI> for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + Debug + SloppyHash + AsPrimitive<TI> + 'static,
-    TB: Copy + Zero + Debug + SloppyHash + AsPrimitive<TI> + 'static,
-    TC: Copy + Debug + Bounded + AsPrimitive<TI> + SloppyHash + 'static,
-    TI: Copy + Add + Mul<Output = TI> + Zero + Neg<Output = TI> + Debug + SloppyHash + 'static,
+    TA: Copy + Zero + Debug + AsPrimitive<TI> + 'static,
+    TB: Copy + Zero + Debug + AsPrimitive<TI> + 'static,
+    TC: Copy + Debug + Bounded + AsPrimitive<TI> + 'static,
+    TI: Copy + Add + Mul<Output = TI> + Zero + Neg<Output = TI> + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI> + 'static,
     usize: AsPrimitive<TI>,
     i32: AsPrimitive<TI>,
@@ -343,54 +317,14 @@ where
 
 impl<K, TA, TB, TC, TI> fmt::Display for QMatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + SloppyHash + 'static,
-    TB: Copy + Zero + SloppyHash + 'static,
-    TC: Copy + Debug + SloppyHash + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + SloppyHash + 'static,
+    TA: Copy + Zero + 'static,
+    TB: Copy + Zero + 'static,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TA, TB, TC, TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.mmm)
-    }
-}
-
-impl<TA, TB, TC, TI, K> std::hash::Hash for QMatMatMulImpl<K, TA, TB, TC, TI>
-where
-    TA: Copy + Zero + SloppyHash + 'static,
-    TB: Copy + Zero + SloppyHash + 'static,
-    TC: Copy + Debug + SloppyHash + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + SloppyHash + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI>,
-{
-    fn hash<S: std::hash::Hasher>(&self, state: &mut S) {
-        /*
-        pub mmm: MatMatMulImpl<K, TA, TB, TC, TI>,
-        pub zero_point_a: Option<QuantizedParam<TA>>,
-        pub zero_point_b: Option<QuantizedParam<TB>>,
-
-        pub zero_point_c: Option<TC>,
-        pub scale_factor: Option<(TI, usize)>,
-        */
-        self.mmm.hash(state);
-        if let Some(a) = &self.zero_point_a {
-            a.hash(state);
-        }
-        if let Some(b) = &self.zero_point_b {
-            b.hash(state);
-        }
-    }
-}
-
-impl<TA, TB, TC, TI, K> DynHash for QMatMatMulImpl<K, TA, TB, TC, TI>
-where
-    TA: Copy + Zero + SloppyHash + 'static,
-    TB: Copy + Zero + SloppyHash + 'static,
-    TC: Copy + Debug + SloppyHash + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + SloppyHash + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI>,
-{
-    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(self, hasher)
     }
 }
 
@@ -403,9 +337,10 @@ pub mod test {
     use proptest::prelude::*;
     use std::marker::PhantomData;
     use std::ops::{AddAssign, Sub};
+    use tract_data::prelude::*;
 
     #[derive(Debug)]
-    pub struct QMatMulProblem<TA: SloppyHash, TB: SloppyHash, TC, TI: SloppyHash> {
+    pub struct QMatMulProblem<TA, TB, TC, TI> {
         pub m: usize,
         pub k: usize,
         pub n: usize,
@@ -416,7 +351,7 @@ pub mod test {
         pub boo: PhantomData<(TC, TI)>,
     }
 
-    impl<TI: Arbitrary + 'static + SloppyHash> Arbitrary for QuantizedParam<TI> {
+    impl<TI: Arbitrary + 'static> Arbitrary for QuantizedParam<TI> {
         type Parameters = usize;
         type Strategy = BoxedStrategy<Self>;
 
@@ -431,10 +366,10 @@ pub mod test {
 
     impl<TA, TB, TC, TI> Arbitrary for QMatMulProblem<TA, TB, TC, TI>
     where
-        TA: Arbitrary + 'static + Debug + 'static + SloppyHash,
-        TB: Arbitrary + 'static + Debug + 'static + SloppyHash,
+        TA: Arbitrary + 'static + Debug + 'static,
+        TB: Arbitrary + 'static + Debug + 'static,
         TC: Arbitrary + 'static + Debug + 'static,
-        TI: Arbitrary + 'static + Debug + 'static + SloppyHash,
+        TI: Arbitrary + 'static + Debug + 'static,
     {
         type Parameters = ();
         type Strategy = BoxedStrategy<Self>;
@@ -468,31 +403,9 @@ pub mod test {
 
     impl<TA, TB, TC, TI> QMatMulProblem<TA, TB, TC, TI>
     where
-        TA: Arbitrary
-            + SloppyHash
-            + 'static
-            + Debug
-            + AsPrimitive<TI>
-            + Zero
-            + Copy
-            + crate::test::LADatum,
-        TB: Arbitrary
-            + SloppyHash
-            + 'static
-            + Debug
-            + AsPrimitive<TI>
-            + Zero
-            + Copy
-            + crate::test::LADatum,
-        TC: Arbitrary
-            + SloppyHash
-            + 'static
-            + Debug
-            + Copy
-            + Bounded
-            + AsPrimitive<TI>
-            + Zero
-            + 'static,
+        TA: Arbitrary + 'static + Debug + AsPrimitive<TI> + Zero + Copy + crate::test::LADatum,
+        TB: Arbitrary + 'static + Debug + AsPrimitive<TI> + Zero + Copy + crate::test::LADatum,
+        TC: Arbitrary + 'static + Debug + Copy + Bounded + AsPrimitive<TI> + Zero + 'static,
         TI: Arbitrary
             + 'static
             + Debug
@@ -504,7 +417,6 @@ pub mod test {
             + AddAssign
             + Neg<Output = TI>
             + Zero
-            + SloppyHash
             + Ord,
         usize: AsPrimitive<TI>,
         i32: AsPrimitive<TI>,

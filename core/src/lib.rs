@@ -101,6 +101,8 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
+    pub use crate::hash::{dyn_hash, hash_f32, hash_opt_f32, DynHash, SloppyHash};
+    pub use crate::impl_dyn_hash;
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;

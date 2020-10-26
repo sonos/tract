@@ -7,8 +7,7 @@ use crate::ops::quant::QParams;
 
 use tract_linalg::mmm::{FusedSpec, MatMatMul, QMatMatMul};
 
-#[derive(Clone, Debug, Educe)]
-#[educe(Hash)]
+#[derive(Clone, Debug)]
 pub enum MMMWrapper<TA, TB, TC, TI>
 where
     TA: Datum + Copy + Zero,
@@ -89,6 +88,20 @@ where
             }
         }
         Ok(())
+    }
+}
+
+impl<TA, TB, TC, TI> Hash for MMMWrapper<TA, TB, TC, TI>
+where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u8(self.as_quant().is_some() as u8);
+        self.as_mmm().type_id().hash(state);
+        // TODO: we should also hash q params
     }
 }
 

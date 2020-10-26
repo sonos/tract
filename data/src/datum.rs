@@ -34,12 +34,6 @@ impl std::str::FromStr for Blob {
     }
 }
 
-impl crate::hash::SloppyHash for Blob {
-    fn sloppy_hash<S: std::hash::Hasher>(&self, state: &mut S) {
-        self.0.hash(state)
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum DatumType {
     Bool,
@@ -200,15 +194,7 @@ impl std::str::FromStr for DatumType {
 }
 
 pub trait Datum:
-    Clone
-    + Send
-    + Sync
-    + fmt::Debug
-    + fmt::Display
-    + Default
-    + 'static
-    + PartialEq
-    + crate::hash::SloppyHash
+    Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
@@ -232,11 +218,6 @@ macro_rules! datum {
             }
         }
     };
-}
-impl crate::hash::SloppyHash for TDim {
-    fn sloppy_hash<S: std::hash::Hasher>(&self, state: &mut S) {
-        self.hash(state)
-    }
 }
 
 datum!(bool, Bool);

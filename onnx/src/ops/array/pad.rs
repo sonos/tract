@@ -57,7 +57,7 @@ pub struct Pad11 {
     constant_input: Option<usize>,
 }
 
-tract_data::impl_dyn_hash!(Pad11);
+impl_dyn_hash!(Pad11);
 
 impl Expansion for Pad11 {
     fn name(&self) -> Cow<str> {

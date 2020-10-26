@@ -11,7 +11,7 @@ pub struct BatchNorm {
     spatial: bool,
 }
 
-tract_data::impl_dyn_hash!(BatchNorm);
+impl_dyn_hash!(BatchNorm);
 
 impl BatchNorm {
     fn to_slope_and_inter<T>(

@@ -40,7 +40,7 @@ pub struct PulsedFact {
     pub delay: usize,
 }
 
-tract_data::impl_dyn_hash!(PulsedFact);
+impl_dyn_hash!(PulsedFact);
 
 impl PulsedFact {
     pub fn from_tensor_fact_pulse(tf: &TypedFact, pulse: usize) -> TractResult<PulsedFact> {

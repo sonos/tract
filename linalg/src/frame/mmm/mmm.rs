@@ -2,7 +2,6 @@ use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul};
-use tract_data::internal::*;
 
 use num_traits::Zero;
 
@@ -12,7 +11,7 @@ use super::fuse::ScratchSpaceFusedNonLinear;
 use super::*;
 
 pub trait MatMatMul<TA, TB, TC, TI>:
-    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + DynHash + std::any::Any
+    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
 where
     TA: Copy + Zero + 'static,
     TB: Copy + Zero + 'static,
@@ -49,18 +48,6 @@ dyn_clone::clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
 );
-
-impl<TA, TB, TC, TI> std::hash::Hash for Box<dyn MatMatMul<TA, TB, TC, TI>>
-where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
-    TC: Copy + Debug + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
-{
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.dyn_hash(state)
-    }
-}
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
@@ -307,19 +294,6 @@ where
     }
 }
 
-impl<K, TA, TB, TC, TI> DynHash for MatMatMulImpl<K, TA, TB, TC, TI>
-where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
-    TC: Copy + Debug + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI>,
-{
-    fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
-        dyn_hash(self, hasher)
-    }
-}
-
 impl<K, TA, TB, TC, TI> fmt::Display for MatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero + 'static,
@@ -352,6 +326,7 @@ pub mod test {
     use crate::test::*;
     use num_traits::AsPrimitive;
     use proptest::prelude::*;
+    use tract_data::prelude::*;
 
     #[macro_export]
     macro_rules! mmm_frame_tests {

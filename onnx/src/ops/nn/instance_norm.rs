@@ -17,7 +17,7 @@ pub struct InstanceNorm {
     epsilon: f32,
 }
 
-tract_data::impl_dyn_hash!(InstanceNorm);
+impl_dyn_hash!(InstanceNorm);
 
 impl Expansion for InstanceNorm {
     fn name(&self) -> Cow<str> {

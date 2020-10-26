@@ -16,7 +16,7 @@ struct FusedBatchNorm {
     epsilon: f32,
 }
 
-tract_data::impl_dyn_hash!(FusedBatchNorm);
+impl_dyn_hash!(FusedBatchNorm);
 
 impl Expansion for FusedBatchNorm {
     fn name(&self) -> Cow<str> {

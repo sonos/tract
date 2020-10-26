@@ -26,8 +26,6 @@ pub mod prelude {
 
 pub mod internal {
     pub use crate::dim::{DimLike, MaybeProduct, TDim, ToDim};
-    pub use crate::hash::{dyn_hash, hash_f32, hash_opt_f32, DynHash, SloppyHash};
-    pub use crate::impl_dyn_hash;
     pub use crate::prelude::*;
 }
 
@@ -36,5 +34,5 @@ pub use anyhow;
 mod datum;
 mod dim;
 mod f16;
-mod hash;
+//mod hash;
 mod tensor;
