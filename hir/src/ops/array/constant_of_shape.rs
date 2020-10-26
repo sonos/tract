@@ -6,7 +6,7 @@ pub struct ConstantOfShape {
     scalar: Arc<Tensor>,
 }
 
-tract_data::impl_dyn_hash!(ConstantOfShape);
+impl_dyn_hash!(ConstantOfShape);
 
 impl Expansion for ConstantOfShape {
     fn name(&self) -> Cow<str> {

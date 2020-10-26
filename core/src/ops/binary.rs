@@ -76,7 +76,7 @@ impl Hash for Box<dyn BinMiniOp> {
 
 #[derive(Debug, Clone, Hash)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
-tract_data::impl_dyn_hash!(TypedBinOp);
+impl_dyn_hash!(TypedBinOp);
 
 impl Op for TypedBinOp {
     fn name(&self) -> Cow<str> {
@@ -268,7 +268,8 @@ pub struct UnaryOp {
     pub mini_op: Box<dyn BinMiniOp>,
     pub a: Arc<Tensor>,
 }
-tract_data::impl_dyn_hash!(UnaryOp);
+
+impl_dyn_hash!(UnaryOp);
 
 impl Op for UnaryOp {
     fn name(&self) -> Cow<str> {
@@ -407,7 +408,7 @@ impl TypedOp for UnaryOp {
 
 #[derive(Debug, Clone, Hash)]
 pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
-tract_data::impl_dyn_hash!(MergeOpUnicast);
+impl_dyn_hash!(MergeOpUnicast);
 
 impl Op for MergeOpUnicast {
     fn name(&self) -> Cow<str> {
@@ -462,7 +463,7 @@ macro_rules! bin_to_super_type {
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
-        tract_data::impl_dyn_hash!($Op);
+        $crate::impl_dyn_hash!($Op);
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
@@ -563,7 +564,7 @@ macro_rules! bin_to_bool {
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
-        tract_data::impl_dyn_hash!($Op);
+        $crate::impl_dyn_hash!($Op);
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)

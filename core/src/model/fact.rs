@@ -122,7 +122,7 @@ pub struct TypedFact {
     pub konst: Option<Arc<Tensor>>,
 }
 
-tract_data::impl_dyn_hash!(TypedFact);
+impl_dyn_hash!(TypedFact);
 
 impl TypedFact {
     pub fn shape<T, S, E>(shape: S) -> TractResult<TypedFact>

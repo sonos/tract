@@ -10,7 +10,7 @@ pub struct Memory {
     pub offset: isize,
 }
 
-tract_data::impl_dyn_hash!(Memory);
+impl_dyn_hash!(Memory);
 
 impl Op for Memory {
     fn name(&self) -> Cow<str> {

@@ -6,7 +6,7 @@ pub struct PermuteAxes {
     pub axes: Option<TVec<usize>>,
 }
 
-tract_data::impl_dyn_hash!(PermuteAxes);
+impl_dyn_hash!(PermuteAxes);
 
 impl PermuteAxes {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {

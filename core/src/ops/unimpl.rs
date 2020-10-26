@@ -7,7 +7,7 @@ pub struct UnimplementedOp {
     message: String,
 }
 
-tract_data::impl_dyn_hash!(UnimplementedOp);
+impl_dyn_hash!(UnimplementedOp);
 
 impl UnimplementedOp {
     pub fn new(outputs: usize, name: impl AsRef<str>, message: impl AsRef<str>) -> UnimplementedOp {

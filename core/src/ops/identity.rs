@@ -12,7 +12,7 @@ impl Op for Identity {
     op_as_typed_op!();
 }
 
-tract_data::impl_dyn_hash!(Identity);
+impl_dyn_hash!(Identity);
 
 impl EvalOp for Identity {
     fn is_stateless(&self) -> bool {

@@ -7,7 +7,7 @@ pub struct Fill {
     dt: DatumType,
 }
 
-tract_data::impl_dyn_hash!(Fill);
+impl_dyn_hash!(Fill);
 
 pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;

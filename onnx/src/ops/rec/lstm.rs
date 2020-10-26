@@ -39,7 +39,7 @@ pub struct LSTM {
     pub h: Box<dyn TypedOp>,
 }
 
-tract_data::impl_dyn_hash!(LSTM);
+impl_dyn_hash!(LSTM);
 
 impl Default for LSTM {
     fn default() -> LSTM {

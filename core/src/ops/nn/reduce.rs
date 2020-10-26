@@ -186,7 +186,7 @@ pub struct Reduce {
     pub reducer: Reducer,
 }
 
-tract_data::impl_dyn_hash!(Reduce);
+impl_dyn_hash!(Reduce);
 
 impl Op for Reduce {
     fn name(&self) -> Cow<str> {

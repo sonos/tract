@@ -13,7 +13,7 @@ pub struct Lrn {
     pub size: usize,
 }
 
-tract_data::impl_dyn_hash!(Lrn);
+impl_dyn_hash!(Lrn);
 
 impl Lrn {
     fn eval_t<
