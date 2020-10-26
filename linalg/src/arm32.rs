@@ -2,7 +2,6 @@ use std::{env, fs};
 mod armv7neon;
 mod armvfpv2;
 use crate::frame::MatMatMulImpl;
-use crate::frame::QMatMatMulImpl;
 use crate::frame::SigmoidImpl;
 use crate::frame::TanhImpl;
 
@@ -29,22 +28,12 @@ pub fn plug(ops: &mut Ops) {
             Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4, f32, f32, f32, f32>::new(m, k, n))
         });
         ops.qmmm_i8_i8 = Box::new(|m, k, n| {
-            Box::new(QMatMatMulImpl::from(MatMatMulImpl::<
-                armv7neon::MatMatMulI8x8x4,
-                i8,
-                i8,
-                i8,
-                i32,
-            >::new(m, k, n)))
+            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x8x4, i8, i8, i8, i32>::new(m, k, n))
         });
         ops.qmmm_i8_i32 = Box::new(|m, k, n| {
-            Box::new(QMatMatMulImpl::from(MatMatMulImpl::<
-                armv7neon::MatMatMulI8xI32x8x4,
-                i8,
-                i8,
-                i32,
-                i32,
-            >::new(m, k, n)))
+            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8xI32x8x4, i8, i8, i32, i32>::new(
+                m, k, n,
+            ))
         });
         ops.sigmoid_f32 =
             Box::new(|| Box::new(SigmoidImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
