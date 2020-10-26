@@ -1,6 +1,9 @@
 ## Unrelased
 
+## 0.11.2 - 2020-10-26
+
 * ONNX: new op: DynamicQuantizeLinear
+* tract-data crate split from core, containing tensor, dim, and datum types.
 
 ## 0.11.1 - 2020-10-20
 
