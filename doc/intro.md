@@ -25,6 +25,11 @@ browser or a small embeddable CPU.
 
 ## Crates
 
+### tract-data
+
+Contains the Tensor struct, DatumType enum, and TDim (symbolic dimension
+value type).
+
 ### tract-linalg
 
 It is bit of a misnomer: this crate contains the low-level optimised
@@ -36,7 +41,6 @@ platforms. It is not meant to be used directly.
 
 The heart of tract. It contains
 
-    * the Tensors and DatumType structs (and friends)
     * the network graph representation manipulation (Graph, Node)
     * the "core" operator set of tract
     * most of the network optimisation logic.
@@ -77,10 +81,13 @@ This crate is not meant to be used directly.
 Support for ONNX protobuf format and mapping of ONNX operators to tract-hir,
 tract-core or ad-hoc operators.
 
-tract-onnx is the library to use to load and run an ONNX network.
+tract-onnx-opl depends only on tract-core and tract-nnef. It contains 
+operators implementation from ONNX operators which do not have an equivalent
+in tract-core, including dumping to / loading from OPL.
 
-tract-onnx-opl contains tract-core and tract-nnef compatible logic for the
-ONNX operators which do not have an equivalent in tract-core.
+tract-onnx is the library to use to load and run an ONNX network. It uses
+tract-hir for type inference and translate ONNX operators to operators from
+tract-core and tract-onnx-opl.
 
 ### tract-tensorflow
 
