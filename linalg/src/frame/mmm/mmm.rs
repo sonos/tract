@@ -1,14 +1,18 @@
+use super::fuse::ScratchSpaceFusedNonLinear;
+use super::*;
+use crate::frame::{PackA, PackB};
+use num_traits::{AsPrimitive, Bounded, Zero};
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, Neg};
+use tract_data::prelude::Datum;
 
-use num_traits::Zero;
-
-use crate::frame::{PackA, PackB};
-
-use super::fuse::ScratchSpaceFusedNonLinear;
-use super::*;
+#[derive(Debug, Clone)]
+pub enum QuantizedParam<T> {
+    Scalar(T),
+    Vector(Vec<T>),
+}
 
 pub trait MatMatMul<TA, TB, TC, TI>:
     Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
@@ -28,6 +32,14 @@ where
     fn m(&self) -> usize;
     fn k(&self) -> usize;
     fn n(&self) -> usize;
+
+    unsafe fn set_zero_point_a_scalar(&mut self, value: TA);
+    unsafe fn set_zero_point_a_vector(&mut self, values: Vec<TA>);
+    unsafe fn set_zero_point_b_scalar(&mut self, value: TB);
+    unsafe fn set_zero_point_b_vector(&mut self, values: Vec<TB>);
+
+    unsafe fn set_zero_point_c_scalar(&mut self, value: TC);
+    unsafe fn set_scale_factor(&mut self, factor: f32);
 
     unsafe fn b_from_data_and_offsets(&mut self, rows_offsets: &[isize], cols_offsets: &[isize]);
 
@@ -49,8 +61,7 @@ dyn_clone::clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
     TI: Copy + Add + Mul + Zero + Debug + 'static,
 );
 
-#[derive(Debug, Clone, Educe)]
-#[educe(Hash)]
+#[derive(Debug, Clone)]
 pub struct MatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Copy + Zero + 'static,
@@ -66,6 +77,12 @@ where
     pub a_storage: MatrixStoreSpec,
     pub b_storage: MatrixStoreSpec,
     pub c_storage: MatrixStoreSpec,
+
+    pub zero_point_a: Option<QuantizedParam<TA>>,
+    pub zero_point_b: Option<QuantizedParam<TB>>,
+
+    pub zero_point_c: Option<TC>,
+    pub scale_factor: Option<(TI, usize)>,
 
     phantom: PhantomData<(K, TA, TB, TC, TI)>,
 }
@@ -111,6 +128,10 @@ where
                 mr: K::mr(),
                 nr: K::nr(),
             },
+            zero_point_a: None,
+            zero_point_b: None,
+            zero_point_c: None,
+            scale_factor: None,
             phantom: PhantomData,
         }
     }
@@ -118,11 +139,13 @@ where
 
 impl<K, TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> for MatMatMulImpl<K, TA, TB, TC, TI>
 where
-    TA: Copy + Zero + Debug + 'static,
-    TB: Copy + Zero + Debug + 'static,
-    TC: Copy + Debug + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    TA: Datum + Copy + Zero + Debug + 'static + AsPrimitive<TI>,
+    TB: Datum + Copy + Zero + Debug + 'static + AsPrimitive<TI>,
+    TC: Datum + Copy + Debug + 'static + Bounded + AsPrimitive<TI>,
+    TI: Datum + Copy + Add + Mul<Output = TI> + Zero + Debug + 'static + Neg<Output = TI>,
     K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+    i32: AsPrimitive<TI>,
+    usize: AsPrimitive<TI>,
 {
     fn a_pack(&self) -> PackA {
         PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a())
@@ -227,16 +250,83 @@ where
             nr,
         };
         let ref mut tmp_tile = tmp_c_storage.wrap(tmpc.as_ptr());
+        let ref linear = LinearSpec::k(self.k);
+        let mut non_linear = non_linear.to_vec();
+        if let Some(ref a0) = self.zero_point_a {
+            let mut sum_b_over_k = self.sum_b_over_k(b);
+            for n in 0..self.n {
+                sum_b_over_k[n] = sum_b_over_k[n].neg();
+            }
+            let term = match a0 {
+                QuantizedParam::Scalar(a0) => {
+                    for n in 0..self.n {
+                        sum_b_over_k[n] = sum_b_over_k[n] * a0.as_();
+                    }
+                    FusedSpec::PerColAdd(sum_b_over_k)
+                }
+                QuantizedParam::Vector(a0) => {
+                    let a0 = a0.iter().map(|a| a.as_()).collect();
+                    FusedSpec::AddRowColProducts(a0, sum_b_over_k)
+                }
+            };
+            non_linear.insert(0, term);
+        }
+        if let Some(ref b0) = self.zero_point_b {
+            let mut sum_a_over_k = self.sum_a_over_k(a);
+            for m in 0..self.m {
+                sum_a_over_k[m] = sum_a_over_k[m].neg();
+                if let Some(ref a0) = self.zero_point_a {
+                    match a0 {
+                        QuantizedParam::Scalar(a0) => {
+                            sum_a_over_k[m] = a0.as_() * self.k.as_() + sum_a_over_k[m];
+                        }
+                        QuantizedParam::Vector(a0) => {
+                            sum_a_over_k[m] = a0[m].as_() * self.k.as_() + sum_a_over_k[m];
+                        }
+                    }
+                }
+            }
+            let term = match b0 {
+                QuantizedParam::Scalar(b0) => {
+                    for m in 0..self.m {
+                        sum_a_over_k[m] = sum_a_over_k[m] * b0.as_();
+                    }
+                    FusedSpec::PerRowAdd(sum_a_over_k)
+                }
+                QuantizedParam::Vector(b0) => {
+                    let b0 = b0.iter().map(|b| b.as_()).collect();
+                    FusedSpec::AddRowColProducts(sum_a_over_k, b0)
+                }
+            };
+            non_linear.insert(0, term);
+        }
+        if let Some(scale) = self.scale_factor {
+            non_linear.push(FusedSpec::QTowardsPlusInf(scale.0, scale.1));
+        }
+        if let Some(c0) = self.zero_point_c {
+            non_linear.push(FusedSpec::ScalarAdd(c0.as_()));
+        }
+        // makeshift Q detection
+        //        if TC::datum_type().size_of() < TI::datum_type().size_of() && self.scale_factor.is_some() {
+        if TC::datum_type().size_of() < TI::datum_type().size_of()
+            && (self.scale_factor.is_some()
+                || self.zero_point_a.is_some()
+                || self.zero_point_b.is_some()
+                || self.zero_point_c.is_some()
+                || self.scale_factor.is_some())
+        {
+            non_linear.push(FusedSpec::Min(TC::max_value().as_()));
+            non_linear.push(FusedSpec::Max(TC::min_value().as_()));
+        }
         let a = self.a_storage.wrap(a);
         let b = self.b_storage.wrap(b);
         let mut c = self.c_storage.wrap(c);
-        let ref linear = LinearSpec::k(self.k);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
                 let ref direct_c = c.tile_c(ia, ib);
-                let non_linear = scratch.for_tile::<TA, TB, TC, K>(non_linear, ia, ib);
+                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -249,7 +339,7 @@ where
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
-                let non_linear = scratch.for_tile::<TA, TB, TC, K>(non_linear, ia, n / nr);
+                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -266,7 +356,7 @@ where
             let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
-                let non_linear = scratch.for_tile::<TA, TB, TC, K>(non_linear, m / mr, ib);
+                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -279,7 +369,7 @@ where
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
-                let non_linear = scratch.for_tile::<TA, TB, TC, K>(non_linear, m / mr, n / nr);
+                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -291,6 +381,125 @@ where
                 c.set_from_tile(m / mr, n / nr, m % mr, n % nr, &*tmpc);
             }
         }
+    }
+
+    unsafe fn set_zero_point_a_scalar(&mut self, value: TA) {
+        self.zero_point_a = Some(QuantizedParam::Scalar(value))
+    }
+
+    unsafe fn set_zero_point_b_scalar(&mut self, value: TB) {
+        self.zero_point_b = Some(QuantizedParam::Scalar(value))
+    }
+
+    unsafe fn set_zero_point_c_scalar(&mut self, value: TC) {
+        self.zero_point_c = Some(value)
+    }
+
+    unsafe fn set_zero_point_a_vector(&mut self, mut values: Vec<TA>) {
+        let wanted = self.m() + K::mr() - 1 / K::mr() * K::mr();
+        while values.len() < wanted {
+            values.push(values[values.len() - 1])
+        }
+        self.zero_point_a = Some(QuantizedParam::Vector(values))
+    }
+
+    unsafe fn set_zero_point_b_vector(&mut self, mut values: Vec<TB>) {
+        let wanted = self.n() + K::nr() - 1 / K::nr() * K::nr();
+        while values.len() < wanted {
+            values.push(values[values.len() - 1])
+        }
+        self.zero_point_b = Some(QuantizedParam::Vector(values))
+    }
+
+    unsafe fn set_scale_factor(&mut self, factor: f32) {
+        // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
+        let factor_bits = factor.to_bits();
+        let current_exponent = factor_bits >> 23;
+        let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
+        let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as i32;
+        let shift = 126 - current_exponent;
+        self.scale_factor = Some((int_multi.as_(), shift as usize));
+    }
+}
+
+impl<K, TA, TB, TC, TI> MatMatMulImpl<K, TA, TB, TC, TI>
+where
+    TA: Copy + Zero + Debug + 'static + AsPrimitive<TI>,
+    TB: Copy + Zero + Debug + 'static + AsPrimitive<TI>,
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+    i32: AsPrimitive<TI>,
+{
+    fn sum_a_over_k(&self, mut a: *const TA) -> Vec<TI> {
+        match &self.a_storage {
+            MatrixStoreSpec::Packed { .. } => {
+                let mr = K::mr();
+                let mut result = vec![TI::zero(); self.m];
+                unsafe {
+                    for p in 0..(self.m / mr) {
+                        for _k in 0..self.k {
+                            for row in 0..mr {
+                                result[p * mr + row] = result[p * mr + row] + (*a).as_();
+                                a = a.offset(1);
+                            }
+                        }
+                    }
+                    if self.m % mr != 0 {
+                        let p = self.m / mr;
+                        for _k in 0..self.k {
+                            for row in 0..mr {
+                                if row < self.m % mr {
+                                    result[p * mr + row] = result[p * mr + row] + (*a).as_();
+                                }
+                                a = a.offset(1);
+                            }
+                        }
+                    }
+                }
+                result
+            }
+            a => panic!("Storage for A {:?} not supported for quantized ops", a),
+        }
+    }
+
+    fn sum_b_over_k(&self, mut b: *const TB) -> Vec<TI> {
+        let mut result = vec![TI::zero(); self.n];
+        match &self.b_storage {
+            MatrixStoreSpec::Packed { .. } => unsafe {
+                let nr = K::nr();
+                for p in 0..(self.n / nr) {
+                    for _k in 0..self.k {
+                        for col in 0..nr {
+                            result[p * nr + col] = result[p * nr + col] + (*b).as_();
+                            b = b.offset(1);
+                        }
+                    }
+                }
+                if self.n % nr != 0 {
+                    let p = self.n / nr;
+                    for _k in 0..self.k {
+                        for col in 0..nr {
+                            if col < self.n % nr {
+                                result[p * nr + col] = result[p * nr + col] + (*b).as_();
+                            }
+                            b = b.offset(1);
+                        }
+                    }
+                }
+            },
+            MatrixStoreSpec::OffsetsAndPtrs { row_byte_offsets, col_byte_offsets, .. } => unsafe {
+                for n in 0..self.n {
+                    for k in 0..self.k {
+                        let offset = (row_byte_offsets[k] + col_byte_offsets[n])
+                            / std::mem::size_of::<TB>() as isize;
+                        result[n] = result[n] + (*b.offset(offset)).as_();
+                    }
+                }
+            },
+            b => panic!("Storage {:?} for B not supported for quantized ops", b),
+        }
+        result
     }
 }
 
@@ -316,627 +525,5 @@ where
             K::mr(),
             K::nr()
         )
-    }
-}
-
-#[cfg(test)]
-#[macro_use]
-pub mod test {
-    use super::*;
-    use crate::test::*;
-    use num_traits::AsPrimitive;
-    use proptest::prelude::*;
-    use tract_data::prelude::*;
-
-    #[macro_export]
-    macro_rules! mmm_frame_tests {
-        ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
-            mod frame {
-                #[allow(unused_imports)]
-                use $crate::frame::mmm::mmm::test::*;
-                use $crate::num_traits::{AsPrimitive, One, Zero};
-
-                proptest::proptest! {
-                    #[test]
-                    fn mat_mul_prepacked_prop((m, k, n, ref a, ref b) in strat_mat_mat_mul()) {
-                        if $cond {
-                            test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &**a, &*b)?
-                        }
-                    }
-
-                    #[test]
-                    fn mat_vec_prepacked_prop((m, k, ref a, ref b) in strat_mat_vec_mul()) {
-                        if $cond {
-                            test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, a, b)?
-                        }
-                    }
-
-                    #[test]
-                    fn conv_prepacked_prop(pb in strat_conv_1d()) {
-                        if $cond {
-                            let found = pb.run::<$ker, $tc, $ti>();
-                            let expected = pb.expected::<$tc, $ti>();
-                            crate::test::check_close(&found, &expected)?;
-                        }
-                    }
-                }
-
-                #[test]
-                fn mat_mul_1() {
-                    if $cond {
-                        let a: Vec<$ta> = [-3isize, 3, 5, -5, 6, 0, -6, -5, 0, 0, 9, 7]
-                            .iter()
-                            .map(|x| x.as_())
-                            .collect();
-                        let b: Vec<$tb> =
-                            [-8isize, 5, 5, -3, 5, 7, -8, -1].iter().map(|x| x.as_()).collect();
-                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(3, 4, 2, &*a, &*b)
-                            .unwrap()
-                    }
-                }
-
-                #[test]
-                fn mat_mul_2() {
-                    if $cond {
-                        let a: Vec<$ta> = [-1isize, -1, 0, 0].iter().map(|x| x.as_()).collect();
-                        let b: Vec<$tb> = [0isize, 1, 0, 1].iter().map(|x| x.as_()).collect();
-                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(2, 2, 2, &*a, &*b)
-                            .unwrap()
-                    }
-                }
-
-                #[test]
-                fn mat_mul_1_2_1() {
-                    if $cond {
-                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(
-                            1,
-                            2,
-                            1,
-                            &[<$ta>::zero(), <$ta>::one()],
-                            &[<$tb>::zero(), <$tb>::one()],
-                        )
-                        .unwrap()
-                    }
-                }
-
-                #[test]
-                fn conv_prepacked_1() {
-                    if $cond {
-                        let filters: Vec<$ta> = vec![1isize.as_()];
-                        let data: Vec<$tb> = vec![0.as_(), 1.as_()];
-                        let pb = ConvProblem::<$ta, $tb> {
-                            ci: 1,
-                            co: 1,
-                            kt: 1,
-                            stride: 1,
-                            dilation: 1,
-                            filters,
-                            data,
-                        };
-                        let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
-                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
-                    }
-                }
-
-                #[test]
-                fn conv_prepacked_2() {
-                    if $cond {
-                        let mut filters = vec![<$ta>::zero(); 3 * 14 * 2];
-                        filters[13 * 6 + 5] = <$ta>::one();
-                        let mut data = vec![<$tb>::zero(); 3 * 10];
-                        data[8 + 2 * 10] = <$tb>::one(); // last used input
-                        let pb = ConvProblem::<$ta, $tb> {
-                            ci: 3,
-                            co: 14,
-                            kt: 2,
-                            stride: 3,
-                            dilation: 2,
-                            filters,
-                            data,
-                        };
-                        let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
-                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
-                    }
-                }
-
-                #[test]
-                fn row_mul_2_1_3() {
-                    if $cond {
-                        unsafe { row_mul::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
-                    }
-                }
-
-                #[test]
-                fn row_add_2_1_3() {
-                    if $cond {
-                        unsafe { row_add::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
-                    }
-                }
-
-                #[test]
-                fn col_mul_2_1_3() {
-                    if $cond {
-                        unsafe { col_mul::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
-                    }
-                }
-
-                #[test]
-                fn col_add_2_1_3() {
-                    if $cond {
-                        unsafe { col_add::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
-                    }
-                }
-
-                #[test]
-                fn max_2_1_3() {
-                    if $cond {
-                        unsafe { max::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
-                    }
-                }
-
-                #[test]
-                fn min_2_1_3() {
-                    if $cond {
-                        unsafe { min::<$ker, $ta, $tb, $tc, $ti>(2, 3, 3).unwrap() }
-                    }
-                }
-            }
-        };
-    }
-
-    #[macro_export]
-    macro_rules! mmm_s_frame_tests {
-        ($cond:expr, $ker:ty, $ta: ty, $tb: ty, $tc: ty, $ti: ty) => {
-            mod frame_s {
-                #[allow(unused_imports)]
-                use num_traits::*;
-                use std::ops::Neg;
-                use $crate::frame::mmm::mmm::test::ConvProblem;
-
-                #[test]
-                fn conv_prepacked_3() {
-                    if $cond {
-                        let mut filters = vec![<$ta>::zero(); 4];
-                        filters[3] = <$ta>::one().neg();
-                        let data = vec![<$tb>::zero(); 4];
-                        let pb = ConvProblem::<$ta, $tb> {
-                            ci: 1,
-                            co: 1,
-                            kt: 1,
-                            stride: 1,
-                            dilation: 1,
-                            filters,
-                            data,
-                        };
-                        let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
-                        crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
-                    }
-                }
-            }
-        };
-    }
-
-    pub fn strat_mat_mat_mul<TA: LADatum, TB: LADatum>(
-    ) -> BoxedStrategy<(usize, usize, usize, Vec<TA>, Vec<TB>)> {
-        (1usize..5, 1usize..5, 1usize..5)
-            .prop_flat_map(move |(m, k, n)| {
-                (
-                    Just(m),
-                    Just(k),
-                    Just(n),
-                    proptest::collection::vec(TA::strat(), m * k),
-                    proptest::collection::vec(TB::strat(), n * k),
-                )
-            })
-            .boxed()
-    }
-
-    pub fn strat_mat_vec_mul<TA: LADatum, TB: LADatum>(
-    ) -> BoxedStrategy<(usize, usize, Vec<TA>, Vec<TB>)> {
-        (1usize..15, 1usize..15)
-            .prop_flat_map(move |(m, k)| {
-                (
-                    Just(m),
-                    Just(k),
-                    proptest::collection::vec(TA::strat(), m * k),
-                    proptest::collection::vec(TB::strat(), k),
-                )
-            })
-            .boxed()
-    }
-
-    pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
-        m: usize,
-        k: usize,
-        n: usize,
-        a: &[TA],
-        b: &[TB],
-    ) -> Result<(), proptest::test_runner::TestCaseError>
-    where
-        TA: LADatum + AsPrimitive<TI> + 'static,
-        TB: LADatum + AsPrimitive<TI> + 'static,
-        TC: LADatum + 'static,
-        TI: LADatum + AsPrimitive<TC> + 'static,
-    {
-        let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
-        unsafe {
-            let mut packed_a =
-                Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len()], op.a_pack().alignment())
-                    .unwrap();
-            op.a_pack().pack(packed_a.as_ptr_mut_unchecked(), a.as_ptr(), k as isize, 1);
-
-            let mut packed_b =
-                Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len()], op.b_pack().alignment())
-                    .unwrap();
-            op.b_pack().pack(packed_b.as_ptr_mut_unchecked(), b.as_ptr(), n as isize, 1);
-
-            let mut found = vec![TC::max_value(); m * n];
-
-            op.run(
-                packed_a.as_ptr_unchecked(),
-                packed_b.as_ptr_unchecked(),
-                found.as_mut_ptr(),
-                &[],
-            );
-
-            let mut expected = vec![TC::zero(); m * n];
-            for x in 0..n {
-                for y in 0..m {
-                    let mut v: TI = TI::zero();
-                    for i in 0..k {
-                        let a: TI = a[i + k * y].as_();
-                        let b: TI = b[x + i * n].as_();
-                        v = v + a * b;
-                    }
-                    expected[x + y * n] = v.as_();
-                }
-            }
-            crate::test::check_close(&*found, &*expected)
-        }
-    }
-
-    pub fn test_mat_vec_mul_prep<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
-        m: usize,
-        k: usize,
-        a: &[TA],
-        b: &[TB],
-    ) -> Result<(), proptest::test_runner::TestCaseError>
-    where
-        TA: LADatum + AsPrimitive<TI> + 'static,
-        TB: LADatum + AsPrimitive<TI> + 'static,
-        TC: LADatum + 'static,
-        TI: LADatum + AsPrimitive<TC> + 'static,
-    {
-        unsafe {
-            let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, 1);
-            op.b_vec_from_data_and_stride(1);
-            op.c_vec_from_data_and_stride(1);
-            let mut packed_a =
-                Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len()], op.a_pack().alignment())
-                    .unwrap();
-            op.a_pack().pack(packed_a.as_ptr_mut_unchecked(), a.as_ptr(), k as isize, 1);
-
-            let mut found = vec![TC::zero(); m];
-
-            op.run(packed_a.as_ptr_unchecked(), b.as_ptr(), found.as_mut_ptr(), &[]);
-
-            let mut expected = vec![TC::zero(); m];
-            for y in 0..m {
-                let mut inter = TI::zero();
-                for i in 0..k {
-                    let a: TI = a[i + k * y].as_();
-                    let b: TI = b[i].as_();
-                    inter = inter + a * b;
-                }
-                expected[y] = inter.as_();
-            }
-
-            crate::test::check_close(&*found, &*expected)
-        }
-    }
-
-    pub unsafe fn fused_op<
-        K: MatMatMulKer<TA, TB, TC, TI> + 'static,
-        TA,
-        TB,
-        TC,
-        TI,
-        F: Fn(&mut [TI]),
-    >(
-        m: usize,
-        k: usize,
-        n: usize,
-        spec: &[FusedSpec<TI>],
-        expect: F,
-    ) -> proptest::test_runner::TestCaseResult
-    where
-        TA: LADatum + AsPrimitive<TI>,
-        TB: LADatum + AsPrimitive<TI>,
-        TC: LADatum,
-        TI: LADatum + AsPrimitive<TC>,
-    {
-        let a = vec![TA::one(); m * k];
-        let b = vec![TB::one(); n * k];
-        let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
-
-        let mut packed_a =
-            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len()], op.a_pack().alignment())
-                .unwrap();
-        op.a_pack().pack(packed_a.as_ptr_mut_unchecked(), a.as_ptr(), k as isize, 1);
-
-        let mut packed_b =
-            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len()], op.b_pack().alignment())
-                .unwrap();
-        op.b_pack().pack(packed_b.as_ptr_mut_unchecked(), b.as_ptr(), n as isize, 1);
-
-        let mut found = vec![TC::zero(); m * n];
-
-        op.run(packed_a.as_ptr_unchecked(), packed_b.as_ptr_unchecked(), found.as_mut_ptr(), spec);
-
-        let mut inter = vec![TI::zero(); m * n];
-        for x in 0..n {
-            for y in 0..m {
-                let mut s = TI::zero();
-                for i in 0..k {
-                    s += a[i + k * y].as_() * b[x + i * n].as_()
-                }
-                inter[x + y * n] = s;
-            }
-        }
-        expect(&mut inter);
-        let expected: Vec<TC> = inter.into_iter().map(|i| i.as_()).collect();
-
-        crate::test::check_close(&*found, &*expected)
-    }
-
-    pub unsafe fn row_add<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
-        m: usize,
-        k: usize,
-        n: usize,
-    ) -> proptest::test_runner::TestCaseResult
-    where
-        TA: LADatum + AsPrimitive<TI>,
-        TB: LADatum + AsPrimitive<TI>,
-        TC: LADatum,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TI>,
-    {
-        let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
-        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerRowAdd(bias.clone())], |exp| {
-            for x in 0..n {
-                for y in 0..m {
-                    exp[x + y * n] += bias[y]
-                }
-            }
-        })
-    }
-
-    pub unsafe fn row_mul<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
-        m: usize,
-        k: usize,
-        n: usize,
-    ) -> proptest::test_runner::TestCaseResult
-    where
-        TA: LADatum + AsPrimitive<TI>,
-        TB: LADatum + AsPrimitive<TI>,
-        TC: LADatum,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TI>,
-    {
-        let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
-        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerRowMul(bias.clone())], |exp| {
-            for x in 0..n {
-                for y in 0..m {
-                    exp[x + y * n] *= bias[y]
-                }
-            }
-        })
-    }
-
-    pub unsafe fn col_add<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
-        m: usize,
-        k: usize,
-        n: usize,
-    ) -> proptest::test_runner::TestCaseResult
-    where
-        TA: LADatum + AsPrimitive<TI>,
-        TB: LADatum + AsPrimitive<TI>,
-        TC: LADatum,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TI>,
-    {
-        let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColAdd(bias.clone())], |exp| {
-            for x in 0..n {
-                for y in 0..m {
-                    exp[x + y * n] += bias[x]
-                }
-            }
-        })
-    }
-
-    pub unsafe fn col_mul<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
-        m: usize,
-        k: usize,
-        n: usize,
-    ) -> proptest::test_runner::TestCaseResult
-    where
-        TA: LADatum + AsPrimitive<TI>,
-        TB: LADatum + AsPrimitive<TI>,
-        TC: LADatum,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TI>,
-    {
-        let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColMul(bias.clone())], |exp| {
-            for x in 0..n {
-                for y in 0..m {
-                    exp[x + y * n] *= bias[x]
-                }
-            }
-        })
-    }
-
-    pub unsafe fn max<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
-        m: usize,
-        k: usize,
-        n: usize,
-    ) -> proptest::test_runner::TestCaseResult
-    where
-        TA: LADatum + AsPrimitive<TI>,
-        TB: LADatum + AsPrimitive<TI>,
-        TC: LADatum,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TI>,
-    {
-        let five: TI = 5.as_();
-        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::Max(five)], |exp| {
-            exp.iter_mut().for_each(|x| *x = if *x < five { five } else { *x })
-        })
-    }
-
-    pub unsafe fn min<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
-        m: usize,
-        k: usize,
-        n: usize,
-    ) -> proptest::test_runner::TestCaseResult
-    where
-        TA: LADatum + AsPrimitive<TI>,
-        TB: LADatum + AsPrimitive<TI>,
-        TC: LADatum,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TI>,
-    {
-        let five: TI = 5.as_();
-        fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::Min(five)], |exp| {
-            exp.iter_mut().for_each(|x| *x = if *x > five { five } else { *x })
-        })
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct ConvProblem<TA: LADatum, TB: LADatum> {
-        pub ci: usize,
-        pub co: usize,
-        pub kt: usize,
-        pub stride: usize,
-        pub dilation: usize,
-        pub filters: Vec<TA>,
-        pub data: Vec<TB>,
-    }
-
-    impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
-        pub fn kernel_field(&self) -> usize {
-            self.dilation * (self.kt - 1) + 1
-        }
-        // this is not n, but the T in NTC of input to direct convolution
-        pub fn input_width(&self) -> usize {
-            assert!(self.data.len() % self.ci == 0);
-            self.data.len() / self.ci
-        }
-        pub fn output_width(&self) -> usize {
-            (self.input_width() - self.kernel_field()) / self.stride + 1
-        }
-        pub fn m(&self) -> usize {
-            self.co
-        }
-        pub fn k(&self) -> usize {
-            self.ci * self.kt
-        }
-        pub fn n(&self) -> usize {
-            self.output_width()
-        }
-        pub fn data_cols_offsets(&self) -> Vec<isize> {
-            (0..self.output_width()).map(|i| (i * self.stride) as isize).collect()
-        }
-        pub fn data_rows_offsets(&self) -> Vec<isize> {
-            (0..self.ci)
-                .flat_map(move |ici| {
-                    (0..self.kt)
-                        .map(move |ikt| (ikt * self.dilation + ici * self.input_width()) as isize)
-                })
-                .collect()
-        }
-
-        pub fn expected<TC, TI>(&self) -> Vec<TC>
-        where
-            TA: LADatum + AsPrimitive<TI>,
-            TB: LADatum + AsPrimitive<TI>,
-            TC: LADatum,
-            TI: LADatum + AsPrimitive<TC>,
-        {
-            let mut expect = vec![TI::zero(); self.co * self.output_width()];
-            for x in 0..self.output_width() {
-                for ico in 0..self.co {
-                    for ikt in 0..self.kt {
-                        for ici in 0..self.ci {
-                            let f = self.filters[ici * self.kt + ikt + self.ci * self.kt * ico];
-                            let d = self.data
-                                [x * self.stride + ikt * self.dilation + ici * self.input_width()];
-                            let ref mut pv = expect[x + ico * self.output_width()];
-                            *pv += f.as_() * d.as_();
-                        }
-                    }
-                }
-            }
-            expect.into_iter().map(|ti| ti.as_()).collect()
-        }
-
-        pub fn run<K: MatMatMulKer<TA, TB, TC, TI>, TC, TI>(&self) -> Vec<TC>
-        where
-            TI: LADatum,
-            TC: LADatum,
-        {
-            unsafe {
-                let mut op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(self.m(), self.k(), self.n());
-                op.b_from_data_and_offsets(&self.data_rows_offsets(), &self.data_cols_offsets());
-                let mut packed_a = Tensor::uninitialized_aligned::<TA>(
-                    &[op.a_pack().len()],
-                    op.a_pack().alignment(),
-                )
-                .unwrap();
-                op.a_pack().pack(
-                    packed_a.as_ptr_mut_unchecked(),
-                    self.filters.as_ptr(),
-                    self.k() as isize,
-                    1,
-                );
-
-                let mut found: Vec<TC> = vec![TC::max_value(); self.co * self.output_width()];
-                op.run(packed_a.as_ptr_unchecked(), self.data.as_ptr(), found.as_mut_ptr(), &[]);
-                found
-            }
-        }
-    }
-
-    pub fn strat_conv_1d<TA: LADatum, TB: LADatum>() -> BoxedStrategy<ConvProblem<TA, TB>>
-    where
-        isize: AsPrimitive<TA> + AsPrimitive<TB>,
-    {
-        (1usize..40, 1usize..40, 1usize..10, 1usize..5, 1usize..5)
-            .prop_flat_map(|(ci, co, kt, stride, dilation)| {
-                let min = ((kt - 1) * dilation + 1) * stride;
-                (Just(ci), Just(co), Just(kt), Just(stride), Just(dilation), min..min + 10)
-            })
-            .prop_flat_map(move |(ci, co, kt, stride, dilation, t)| {
-                (
-                    Just(ci),
-                    Just(co),
-                    Just(kt),
-                    Just(stride),
-                    Just(dilation),
-                    proptest::collection::vec(TA::strat(), ci * co * kt),
-                    proptest::collection::vec(TB::strat(), t * ci),
-                )
-            })
-            .prop_map(move |(ci, co, kt, stride, dilation, filters, data)| ConvProblem {
-                ci,
-                co,
-                kt,
-                stride,
-                dilation,
-                filters,
-                data,
-            })
-            .boxed()
     }
 }

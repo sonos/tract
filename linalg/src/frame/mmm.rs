@@ -4,12 +4,15 @@ pub(crate) mod fuse;
 pub(crate) mod kernel;
 #[macro_use]
 pub(crate) mod mmm;
-#[macro_use]
-pub(crate) mod qmmm;
 mod storage;
+#[cfg(test)]
+#[macro_use]
+pub mod tests;
 
 pub use fuse::*;
 pub use kernel::*;
 pub use mmm::*;
-pub use qmmm::*;
 pub use storage::*;
+
+#[cfg(test)]
+pub use tests::*;
