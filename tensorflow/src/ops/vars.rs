@@ -40,9 +40,7 @@ impl OpState for VariableV2State {
         op: &dyn Op,
         _inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
-        let op = op
-            .downcast_ref::<VariableV2>()
-            .context("wrong op for variable state")?;
+        let op = op.downcast_ref::<VariableV2>().context("wrong op for variable state")?;
         let tensor = session
             .tensors
             .get(&op.id)
@@ -156,8 +154,7 @@ impl OpState for AssignState {
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let (_current, new) = args_2!(inputs);
-        let op =
-            op.downcast_ref::<Assign>().context("wrong op for variable state")?;
+        let op = op.downcast_ref::<Assign>().context("wrong op for variable state")?;
         let var_id = if let Some(ref var_id) = op.var_id {
             var_id
         } else {

@@ -16,10 +16,10 @@ mod cast;
 mod category_mapper;
 mod logic;
 mod math;
-mod resize;
 mod nn;
 mod quant;
 pub mod rec;
+mod resize;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast::cast);

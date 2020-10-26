@@ -100,7 +100,11 @@ impl TypedOp for Gather {
                 };
                 wire = patch.wire_node(
                     format!("{}.slice", node.name),
-                    crate::ops::array::Slice { axis: self.axis, start: index.clone(), end: index + 1 },
+                    crate::ops::array::Slice {
+                        axis: self.axis,
+                        start: index.clone(),
+                        end: index + 1,
+                    },
                     &[wire],
                 )?[0];
                 wire = patch.wire_node(

@@ -1,4 +1,3 @@
-
 #[macro_export]
 macro_rules! op_pulse {
     () => {
@@ -7,4 +6,3 @@ macro_rules! op_pulse {
         }
     };
 }
-

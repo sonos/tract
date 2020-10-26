@@ -35,9 +35,9 @@ impl ElementWiseMiniOp for Cast {
                 let input = t.as_slice_unchecked::<String>();
                 for i in 0..input.len() {
                     output_slice[i] = match &*input[i] {
-                       "-INF" => -std::f32::INFINITY,
+                        "-INF" => -std::f32::INFINITY,
                         "INF" | "+INF" => std::f32::INFINITY,
-                        v => v.parse()?
+                        v => v.parse()?,
                     };
                 }
                 Ok(output)

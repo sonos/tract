@@ -1,6 +1,6 @@
-use tract_hir::internal::*;
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
+use tract_hir::internal::*;
 
 use tract_onnx_opl::lrn::Lrn;
 

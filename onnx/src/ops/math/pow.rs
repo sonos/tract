@@ -57,7 +57,11 @@ impl Expansion for Pow {
         let mut wires = tract_hir::ops::binary::wire_rank_broadcast(name, model, inputs)?;
         if dta.is_integer() != dtb.is_integer() {
             wires = tract_hir::ops::binary::wire_cast(name, model, &wires, F64)?;
-            wires = model.wire_node(format!("{}.pow", name), tract_hir::ops::math::pow::bin_typed(), &wires)?;
+            wires = model.wire_node(
+                format!("{}.pow", name),
+                tract_hir::ops::math::pow::bin_typed(),
+                &wires,
+            )?;
             model.wire_node(name, tract_hir::ops::cast(dta), &wires)
         } else {
             let dt = dta.common_super_type(dtb).unwrap();

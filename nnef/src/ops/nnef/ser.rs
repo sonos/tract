@@ -346,10 +346,7 @@ pub fn axis_op(
             "reshape",
             &[wire],
             &[
-                (
-                    "shape",
-                    ints(&*to.iter().map(|d| d.to_usize().unwrap()).collect::<Vec<_>>()),
-                ),
+                ("shape", ints(&*to.iter().map(|d| d.to_usize().unwrap()).collect::<Vec<_>>())),
                 ("axis_start", numeric(start)),
                 ("axis_count", numeric(from.len())),
             ],

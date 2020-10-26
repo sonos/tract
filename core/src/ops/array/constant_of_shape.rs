@@ -86,4 +86,3 @@ impl OpState for ConstantOfShapeState {
         Ok(tvec!(op.scalar.broadcast_scalar_to_shape(&*shape)?.into_arc_tensor()))
     }
 }
-

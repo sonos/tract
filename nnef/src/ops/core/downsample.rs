@@ -40,4 +40,3 @@ fn de_downsample(
     let modulo = invocation.named_arg_as(builder, "modulo")?;
     builder.wire(ops::Downsample { axis, stride, modulo }, &[wire])
 }
-

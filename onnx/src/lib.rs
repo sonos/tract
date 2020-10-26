@@ -26,8 +26,8 @@ pub use model::Onnx;
 pub use tract_hir::tract_core;
 pub mod prelude {
     pub use crate::onnx;
-    pub use tract_onnx_opl::WithOnnx;
     pub use tract_hir::prelude::*;
+    pub use tract_onnx_opl::WithOnnx;
 }
 pub use tract_onnx_opl::WithOnnx;
 

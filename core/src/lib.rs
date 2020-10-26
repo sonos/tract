@@ -104,8 +104,8 @@ pub mod prelude {
     pub use itertools as tract_itertools;
     pub use ndarray as tract_ndarray;
     pub use num_traits as tract_num_traits;
-    pub use tract_linalg;
     pub use tract_data;
+    pub use tract_linalg;
 }
 
 /// This prelude is meant for code extending tract (like implementing new ops).

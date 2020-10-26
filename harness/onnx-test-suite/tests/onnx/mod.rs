@@ -196,8 +196,7 @@ where
                 ix,
                 a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
                 b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
-                e
-//                e.display_chain()
+                e //                e.display_chain()
             )
         }
     }

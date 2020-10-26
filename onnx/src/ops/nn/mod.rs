@@ -18,7 +18,11 @@ pub fn arg_max_min(
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let keepdims = node.get_attr_opt("keepdims")?.unwrap_or(true);
     let take_last = node.get_attr_opt("select_last_index")?.unwrap_or(false);
-    let red = if node.op_type == "ArgMax" { nn::Reducer::ArgMax(take_last) } else { nn::Reducer::ArgMin(take_last) };
+    let red = if node.op_type == "ArgMax" {
+        nn::Reducer::ArgMax(take_last)
+    } else {
+        nn::Reducer::ArgMin(take_last)
+    };
     Ok((expand(nn::Reduce::new(Some(vec![axis]), keepdims, red)), vec![]))
 }
 

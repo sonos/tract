@@ -104,11 +104,8 @@ impl Expansion for InstanceNorm {
         let mut bias =
             model.wire_node(format!("{}.add-bias-axis-n", name), AxisOp::Add(0), &inputs[2..3])?;
         for i in 2..rank {
-            bias = model.wire_node(
-                format!("{}.add-bias-axis-{}", name, i),
-                AxisOp::Add(2),
-                &bias,
-            )?;
+            bias =
+                model.wire_node(format!("{}.add-bias-axis-{}", name, i), AxisOp::Add(2), &bias)?;
         }
         model.wire_node(name, tract_hir::ops::math::add::bin_typed(), &[scaled[0], bias[0]])
     }

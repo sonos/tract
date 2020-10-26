@@ -43,7 +43,6 @@ fn cleanup_zeropoint_t<T: Datum + Zero + Copy>(zp: &Arc<Tensor>) -> Option<Arc<T
     }
 }
 
-
 #[derive(Clone, Debug, Hash)]
 pub enum QParamsInputKind {
     ZeroPointA(usize),
@@ -103,7 +102,6 @@ impl QParams {
     pub fn set_inputs_kind(&mut self, inputs_kind: TVec<QParamsInputKind>) {
         self.inputs_kind = Some(inputs_kind);
     }
-
 }
 
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {

@@ -19,7 +19,6 @@ fn ser_delay(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RVal
     )))
 }
 
-
 impl PulsedOp for Delay {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();

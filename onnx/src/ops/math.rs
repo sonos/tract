@@ -71,5 +71,3 @@ fn isinf(
     let detect_negative = node.get_attr_opt("detect_negative")?.unwrap_or(1) != 0;
     Ok((Box::new(tract_onnx_opl::is_inf::is_inf(detect_positive, detect_negative)), vec![]))
 }
-
-

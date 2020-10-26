@@ -82,11 +82,7 @@ impl Expansion for PermuteAxes {
         };
         let mut wire: TVec<OutletId> = inputs.into();
         for (ix, op) in perm_to_ops(&axes).into_iter().enumerate() {
-            wire = target.wire_node(
-                format!("{}.{}-{}", prefix, op.name(), ix),
-                op,
-                &wire,
-            )?;
+            wire = target.wire_node(format!("{}.{}-{}", prefix, op.name(), ix), op, &wire)?;
         }
         Ok(wire)
     }

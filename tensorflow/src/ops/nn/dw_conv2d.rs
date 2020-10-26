@@ -37,7 +37,7 @@ impl Expansion for DepthwiseConv2d {
         s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
-        ) -> InferenceResult {
+    ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].rank, 4)?;
@@ -55,7 +55,7 @@ impl Expansion for DepthwiseConv2d {
                     &ker[0..2],
                     &self.dilations[img.hw_axes()],
                     &self.strides[img.hw_axes()],
-                    );
+                );
                 let in_channels = ker[2].to_usize()?;
                 let multiplier = ker[3].to_usize()?;
                 s.equals(&outputs[0].shape[img.h_axis()], &output_shape[0].output)?;
@@ -72,7 +72,7 @@ impl Expansion for DepthwiseConv2d {
         prefix: &str,
         model: &mut TypedModel,
         inputs: &[OutletId],
-        ) -> TractResult<TVec<OutletId>> {
+    ) -> TractResult<TVec<OutletId>> {
         let input = model.outlet_fact(inputs[0])?;
         let kernel = model.outlet_fact(inputs[1])?;
         let input_shape = input.shape.to_tvec();

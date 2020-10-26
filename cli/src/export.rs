@@ -1,6 +1,6 @@
-use tract_core::internal::*;
 use crate::annotations::Annotations;
 use std::collections::HashMap;
+use tract_core::internal::*;
 
 use crate::model::Model;
 

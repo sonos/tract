@@ -1,5 +1,5 @@
-use crate::internal::*;
 use super::*;
+use crate::internal::*;
 use crate::ops::Op;
 use itertools::Itertools;
 use std::fmt;

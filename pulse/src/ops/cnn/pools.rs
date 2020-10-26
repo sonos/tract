@@ -1,6 +1,6 @@
 use crate::internal::*;
-use tract_core::ops::cnn::{MaxPool, PaddingSpec, PoolSpec, SumPool};
 use tract_core::num_traits::Zero;
+use tract_core::ops::cnn::{MaxPool, PaddingSpec, PoolSpec, SumPool};
 
 submit_op_pulsifier!(MaxPool, pulsify_max_pool);
 submit_op_pulsifier!(SumPool, pulsify_sum_pool);
@@ -139,7 +139,7 @@ pub fn pulsify(
             fact = target.outlet_fact(wire)?.clone();
         }
         let op = tract_pulse_opl::ops::PulsePad {
-           axis: fact.axis,
+            axis: fact.axis,
             pulse,
             before,
             after: computed_padding.pad_after.clone(),

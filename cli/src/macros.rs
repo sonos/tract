@@ -1,14 +1,14 @@
 #[macro_export]
 macro_rules! dispatch_model {
     ($model: expr, $expr: expr) => {
-        (|model:&dyn Model| {
+        (|model: &dyn Model| {
             if let Some(m) = model.downcast_ref::<tract_hir::prelude::InferenceModel>() {
                 return $expr(m);
             }
             if let Some(m) = model.downcast_ref::<TypedModel>() {
                 return $expr(m);
             }
-            #[cfg(feature="pulse")]
+            #[cfg(feature = "pulse")]
             {
                 if let Some(m) = model.downcast_ref::<PulsedModel>() {
                     return $expr(m);

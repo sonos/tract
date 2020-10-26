@@ -2,7 +2,9 @@ use tract_hir::internal::*;
 use tract_hir::tract_core::{downcast_rs, dyn_clone};
 
 /// Common methods for all variants of model.
-pub trait Model: downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone + Send + Sync {
+pub trait Model:
+    downcast_rs::Downcast + std::fmt::Debug + dyn_clone::DynClone + Send + Sync
+{
     /// Lookup node id by name
     fn node_id_by_name(&self, name: &str) -> TractResult<usize>;
 
@@ -96,7 +98,15 @@ dyn_clone::clone_trait_object!(Model);
 impl<F, O> Model for Graph<F, O>
 where
     F: Fact + Hash + Clone + 'static,
-    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash + Send + Sync,
+    O: std::fmt::Debug
+        + std::fmt::Display
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + 'static
+        + Hash
+        + Send
+        + Sync,
     Graph<F, O>: Send + Sync + 'static,
 {
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {

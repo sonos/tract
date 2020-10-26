@@ -43,7 +43,9 @@ impl PulsedOp for Scan {
             .iter()
             .enumerate()
             .find(|(_ix, om)| om.full_slot == Some(0))
-            .ok_or_else(|| format_err!("Expects output 0 to be the full stream (and no other output)"))?;
+            .ok_or_else(|| {
+                format_err!("Expects output 0 to be the full stream (and no other output)")
+            })?;
         let output_body_fact = self.body.output_fact(output_body_ix)?;
         let shape = output_body_fact
             .shape

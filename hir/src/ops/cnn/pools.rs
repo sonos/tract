@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-pub use tract_core::ops::cnn::{SumPool, MaxPool, PoolSpec};
+pub use tract_core::ops::cnn::{MaxPool, PoolSpec, SumPool};
 
 impl InferenceRulesOp for SumPool {
     fn rules<'r, 'p: 'r, 's: 'r>(

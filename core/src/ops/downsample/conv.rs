@@ -11,7 +11,7 @@ pub fn fuse_downsample_into_conv(
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
     if down_op.stride < 0 {
-        return Ok(None)
+        return Ok(None);
     }
     let input_fact = model.outlet_fact(conv_node.inputs[0])?;
     let input_shape =

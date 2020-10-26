@@ -214,7 +214,7 @@ impl TypedOp for TypedConcat {
                 };
                 let mut inputs = node.inputs.to_vec();
                 inputs.remove(ix);
-                return Ok(Some(TypedModelPatch::replace_single_op(model, node, &*inputs, op)?))
+                return Ok(Some(TypedModelPatch::replace_single_op(model, node, &*inputs, op)?));
             }
         }
         Ok(None)

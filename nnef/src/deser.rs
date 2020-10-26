@@ -355,9 +355,12 @@ impl CoerceFrom<Value> for Arc<Tensor> {
             Value::Tensor(t) => Ok(t.clone()),
             Value::Scalar(f) => Ok(rctensor0(*f)),
             Value::String(f) => Ok(rctensor0(f.clone())),
-            Value::Wire(o) => {
-                builder.model.outlet_fact(*o)?.konst.clone().ok_or_else(|| format_err!("Not a const"))
-            }
+            Value::Wire(o) => builder
+                .model
+                .outlet_fact(*o)?
+                .konst
+                .clone()
+                .ok_or_else(|| format_err!("Not a const")),
             _ => bail!("Can not build a tensor from {:?}", from),
         }
     }

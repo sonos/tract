@@ -24,9 +24,9 @@ fn main() {
                         let mut lib_exe = cc::windows_registry::find(&*target, "lib.exe")
                             .expect("Could not find lib.exe");
                         lib_exe.arg(format!(
-                                "/out:{}",
-                                out_dir.join("x86_64_fma.lib").to_str().unwrap()
-                                ));
+                            "/out:{}",
+                            out_dir.join("x86_64_fma.lib").to_str().unwrap()
+                        ));
                         for f in files {
                             let mut obj = f.clone();
                             for (i, l) in std::fs::read_to_string(&f).unwrap().lines().enumerate() {
@@ -36,13 +36,13 @@ fn main() {
                             let mut ml_exe = cc::windows_registry::find(&*target, "ml64.exe")
                                 .expect("Could not find ml64.exe");
                             assert!(ml_exe
-                                    .arg("/Fo")
-                                    .arg(&obj)
-                                    .arg("/c")
-                                    .arg(f)
-                                    .status()
-                                    .unwrap()
-                                    .success());
+                                .arg("/Fo")
+                                .arg(&obj)
+                                .arg("/c")
+                                .arg(f)
+                                .status()
+                                .unwrap()
+                                .success());
                             lib_exe.arg(obj);
                         }
                         assert!(lib_exe.status().unwrap().success());
@@ -73,12 +73,12 @@ fn main() {
                         let mut obj = f.clone();
                         obj.set_extension("o");
                         assert!(std::process::Command::new("cc")
-                                .args(&["-c", "-o"])
-                                .arg(&obj)
-                                .arg(&f)
-                                .status()
-                                .unwrap()
-                                .success());
+                            .args(&["-c", "-o"])
+                            .arg(&obj)
+                            .arg(&f)
+                            .status()
+                            .unwrap()
+                            .success());
                         lib.arg(obj);
                     }
                     assert!(lib.status().unwrap().success());
@@ -111,7 +111,7 @@ fn main() {
                 .compile("armv7neon");
         }
         "aarch64" => {
-            let files = preprocess_files("arm64/arm64simd", &[("core", vec!("a5x", "gen"))]);
+            let files = preprocess_files("arm64/arm64simd", &[("core", vec!["a5x", "gen"])]);
             cc::Build::new().files(files).static_flag(true).compile("arm64");
         }
         _ => {}
@@ -127,12 +127,13 @@ fn preprocess_files(input: impl AsRef<path::Path>, variants: &[Variant]) -> Vec<
         let f = f.unwrap();
         if f.path().extension() == Some(ffi::OsStr::new("tmpl")) {
             let tmpl_file = f.path().file_name().unwrap().to_str().unwrap().to_owned();
-            let concerned_variants:Vec<&Variant> = variants.iter().filter(|v| tmpl_file.contains(v.0)).collect();
+            let concerned_variants: Vec<&Variant> =
+                variants.iter().filter(|v| tmpl_file.contains(v.0)).collect();
             let expanded_variants = concerned_variants.iter().map(|pair| pair.1.len()).product();
             for v in 0..expanded_variants {
                 let mut tmpl_file = tmpl_file.clone();
                 let mut id = v;
-                let mut globals = vec!();
+                let mut globals = vec![];
                 for variable in variants {
                     let key = variable.0;
                     let value = variable.1[id % variable.1.len()];
@@ -150,7 +151,11 @@ fn preprocess_files(input: impl AsRef<path::Path>, variants: &[Variant]) -> Vec<
     files
 }
 
-fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>, variants: &[(&'static str, &'static str)]) {
+fn preprocess_file(
+    input: impl AsRef<path::Path>,
+    output: impl AsRef<path::Path>,
+    variants: &[(&'static str, &'static str)],
+) {
     let family = var("CARGO_CFG_TARGET_FAMILY");
     let os = var("CARGO_CFG_TARGET_OS");
     // We also check to see if we're on a windows host, if we aren't, we won't be
@@ -175,7 +180,7 @@ fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>
         "os": os,
         "L": l,
     });
-    for (k,v) in variants {
+    for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
     }
     liquid::ParserBuilder::with_stdlib()

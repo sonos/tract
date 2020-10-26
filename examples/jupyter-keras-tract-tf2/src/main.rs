@@ -1,6 +1,5 @@
-use tract_onnx::prelude::*;
 use rand::*;
-
+use tract_onnx::prelude::*;
 
 fn main() -> TractResult<()> {
     let model = tract_onnx::onnx()

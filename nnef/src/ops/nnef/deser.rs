@@ -379,7 +379,7 @@ pub fn reduce(
 
     let fact = builder.model.outlet_fact(wire[0])?;
     let input_shape = &builder.model.outlet_fact(input)?.shape;
-    let cardinality:TDim = axes.iter().map(|ax| &input_shape[*ax]).maybe_product()?;
+    let cardinality: TDim = axes.iter().map(|ax| &input_shape[*ax]).maybe_product()?;
     if let Ok(c) = cardinality.to_isize() {
         if fact.datum_type.is_float() {
             let cardinality = tensor0((c as f64).recip())

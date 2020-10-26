@@ -4,11 +4,7 @@ use tract_hir::internal::*;
 /// Compares the outputs of a node in tract and tensorflow.
 pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> CliResult<()> {
     if got.len() != expected.len() {
-        bail!(
-            "Number of output differ: got:{}, expected:{}",
-            got.len(),
-            expected.len()
-        )
+        bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
     }
 
     for (ix, (got, exp)) in got.iter().zip(expected.iter()).enumerate() {
@@ -40,11 +36,7 @@ pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> C
 /// Compares the outputs of a node in tract and tensorflow.
 pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> CliResult<()> {
     if got.len() != expected.len() {
-        bail!(
-            "Number of output differ: got:{}, expected:{}",
-            got.len(),
-            expected.len()
-        )
+        bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
     }
 
     for (got, exp) in got.iter().zip(expected.iter()) {

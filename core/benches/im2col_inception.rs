@@ -50,9 +50,7 @@ fn b(
     }
     let im2col = m.node(1).op_as::<Im2Col>().unwrap();
     let args = tvec!(image.into());
-    c.bench_function(name, move |b| {
-        b.iter(|| im2col.eval(args.clone()).unwrap())
-    });
+    c.bench_function(name, move |b| b.iter(|| im2col.eval(args.clone()).unwrap()));
 }
 
 macro_rules! b {

@@ -1,5 +1,5 @@
-use ndarray::*;
 use super::*;
+use ndarray::*;
 use tract_data::internal::*;
 
 #[derive(Debug, Clone, new, Hash)]
@@ -304,10 +304,8 @@ impl TypedOp for LirScan {
             }
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();
-                let scanning_dim = output
-                    .full_dim_hint
-                    .clone()
-                    .unwrap_or(shape[output.axis].maybe_mul(&iters)?);
+                let scanning_dim =
+                    output.full_dim_hint.clone().unwrap_or(shape[output.axis].maybe_mul(&iters)?);
                 shape[output.axis] = scanning_dim;
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }

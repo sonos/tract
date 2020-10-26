@@ -101,4 +101,3 @@ impl<'a> From<&'a Box<dyn PulsedOp>> for Box<dyn TypedOp> {
         op.to_typed()
     }
 }
-

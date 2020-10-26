@@ -11,7 +11,7 @@ fn parse_alexnet() {
 fn parse_dump_parse_alexnet() {
     let content = std::fs::read_to_string("tests/alexnet.nnef").unwrap();
     let ast = parse::parse_document(&content).unwrap();
-    let mut dumped = vec!();
+    let mut dumped = vec![];
     dump::Dumper::new(&mut dumped).document(&ast).unwrap();
 
     let dumped = String::from_utf8(dumped).unwrap();
@@ -30,7 +30,7 @@ fn parse_stdlib() {
 fn parse_dump_parse_stdlib() {
     let content = std::fs::read_to_string("stdlib.nnef").unwrap();
     let ast = parse::parse_fragments(&content).unwrap();
-    let mut dumped = vec!();
+    let mut dumped = vec![];
     dump::Dumper::new(&mut dumped).fragments(&ast).unwrap();
 
     let dumped = String::from_utf8(dumped).unwrap();

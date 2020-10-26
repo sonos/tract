@@ -1,7 +1,7 @@
 use std::{fs, path};
 
 fn versions() -> Vec<&'static str> {
-    let mut versions = vec!();
+    let mut versions = vec![];
     if cfg!(feature = "onnx_1_4_1") {
         versions.push("1.4.1");
     }
@@ -74,8 +74,10 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     use std::io::Write;
     use Mode::*;
     ensure_onnx_git_checkout();
-    let node_tests =
-        dir().join(format!("onnx-{}", onnx_tag.replace(".", "_"))).join("onnx/backend/test/data").join(tests_set);
+    let node_tests = dir()
+        .join(format!("onnx-{}", onnx_tag.replace(".", "_")))
+        .join("onnx/backend/test/data")
+        .join(tests_set);
     assert!(node_tests.exists());
     let working_list_file =
         path::PathBuf::from(".").join(format!("{}-{}.txt", tests_set, onnx_tag));

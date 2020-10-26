@@ -12,7 +12,6 @@ pub fn stream_dim() -> TDim {
     (*S).into()
 }
 
-
 pub trait StreamFact {
     fn stream_info(&self) -> Option<(usize, &TDim)>;
 }
@@ -46,8 +45,10 @@ tract_data::impl_dyn_hash!(PulsedFact);
 impl PulsedFact {
     pub fn from_tensor_fact_pulse(tf: &TypedFact, pulse: usize) -> TractResult<PulsedFact> {
         let datum_type = tf.datum_type;
-        let (axis, len) =
-            tf.shape.stream_info().ok_or_else(|| format_err!("Can not pulse a tensor with no streaming dim"))?;
+        let (axis, len) = tf
+            .shape
+            .stream_info()
+            .ok_or_else(|| format_err!("Can not pulse a tensor with no streaming dim"))?;
         let mut shape: TVec<TDim> = tf.shape.iter().collect();
         shape[axis] = pulse.into();
         Ok(PulsedFact { datum_type, shape, axis, dim: len.clone(), delay: 0 })
@@ -116,4 +117,3 @@ impl<'a> From<&'a PulsedFact> for TypedFact {
         TypedFact::dt_shape(fact.datum_type, &*fact.shape).unwrap()
     }
 }
-

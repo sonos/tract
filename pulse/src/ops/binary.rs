@@ -107,10 +107,19 @@ impl PulsedOp for Iff {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         fact.datum_type = inputs[1].datum_type;
-        fact.shape = tract_core::broadcast::multi_broadcast(&[&inputs[0].shape, &inputs[1].shape, &inputs[2].shape])
-            .ok_or_else(|| {
-                format_err!("Can not broadcast: {:?}, {:?}, {:?}", inputs[0].shape, inputs[1].shape, inputs[2].shape)
-            })?;
+        fact.shape = tract_core::broadcast::multi_broadcast(&[
+            &inputs[0].shape,
+            &inputs[1].shape,
+            &inputs[2].shape,
+        ])
+        .ok_or_else(|| {
+            format_err!(
+                "Can not broadcast: {:?}, {:?}, {:?}",
+                inputs[0].shape,
+                inputs[1].shape,
+                inputs[2].shape
+            )
+        })?;
         Ok(tvec!(fact))
     }
 

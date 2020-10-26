@@ -37,9 +37,8 @@ impl Expansion for Shape {
                 s.equals(&outputs[0].value, tensor)
             } else if self.dt == DatumType::I64 {
                 s.equals(&outputs[0].datum_type, DatumType::I64)?;
-                let tensor = rctensor1(
-                    &shape.iter().map(|i| i.to_i64().unwrap()).collect::<Vec<_>>(),
-                );
+                let tensor =
+                    rctensor1(&shape.iter().map(|i| i.to_i64().unwrap()).collect::<Vec<_>>());
                 s.equals(&outputs[0].value, tensor)
             } else {
                 s.equals(&outputs[0].datum_type, DatumType::I32)?;

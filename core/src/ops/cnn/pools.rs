@@ -1,6 +1,5 @@
 use crate::internal::*;
 
-
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
 use crate::ops::nn::{DataFormat, DataShape};
 
@@ -95,7 +94,6 @@ impl PoolSpec {
         )?;
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*oshape.shape)?))
     }
-
 
     pub fn dispose_n_axis(&self) -> PoolSpec {
         PoolSpec { data_format: self.data_format.dispose_n_axis(), ..self.clone() }

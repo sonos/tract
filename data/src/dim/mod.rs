@@ -1,7 +1,7 @@
 //! Extended dimension support
+use num_traits::Zero;
 use std::fmt;
 use std::ops;
-use num_traits::Zero;
 
 mod tree;
 

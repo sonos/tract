@@ -16,7 +16,8 @@ fn pulsify(
     }
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
     let zero = dispatch_numbers!(zero(fact.datum_type)());
-    let (wire, pool_spec) = super::pools::pulsify(&op.pool_spec, source, node, target, mapping, Some(zero))?;
+    let (wire, pool_spec) =
+        super::pools::pulsify(&op.pool_spec, source, node, target, mapping, Some(zero))?;
     target.wire_node(&node.name, ConvUnary { pool_spec, ..op.clone() }, &[wire])
 }
 

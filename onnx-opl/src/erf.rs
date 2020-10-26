@@ -29,4 +29,3 @@ fn erf_f32(x: f32) -> f32 {
 
     y.copysign(signum)
 }
-

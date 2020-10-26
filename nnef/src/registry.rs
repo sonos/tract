@@ -75,18 +75,18 @@ impl Registry {
         use tract_core::ops;
         if let Some(op) = node.op().downcast_ref::<ops::element_wise::ElementWiseOp>() {
             if std::mem::size_of_val(op.0.as_ref()) == 0 {
-                if let Some(op) =
-                    self.unit_element_wise_ops.iter().find(|ew| ew.1.as_ref().type_id() == op.0.type_id())
+                if let Some(op) = self
+                    .unit_element_wise_ops
+                    .iter()
+                    .find(|ew| ew.1.as_ref().type_id() == op.0.type_id())
                 {
                     let a = ast.mapping[&node.inputs[0]].clone();
                     return Ok(Some(invocation(&*op.0, &[a], &[])));
                 }
             } else {
-                if let Some(op) =
-                    self.element_wise_ops.iter().find(|ew| ew.1 == op.0.type_id())
-                {
+                if let Some(op) = self.element_wise_ops.iter().find(|ew| ew.1 == op.0.type_id()) {
                     if let Some(result) = (op.2)(ast, node)? {
-                        return Ok(Some(result))
+                        return Ok(Some(result));
                     }
                 }
             }
@@ -108,7 +108,7 @@ impl Registry {
             }
         } else if let Some(op) = self.from_tract.get(&node.op().type_id()) {
             if let Some(result) = op(ast, node)? {
-                return Ok(Some(result))
+                return Ok(Some(result));
             }
         }
         Ok(None)
@@ -132,7 +132,7 @@ impl Registry {
         }
         if let Some(ew) = self.element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
             let resolved = ResolvedInvocation { invocation, default_params: &ew.3 };
-            return Ok(Some(Value::Wire((ew.4)(builder, &resolved)?[0])))
+            return Ok(Some(Value::Wire((ew.4)(builder, &resolved)?[0])));
         }
         if let Some(bin) = self.binary_ops.iter().find(|bin| bin.0 == invocation.id) {
             let a = invocation.arguments[0].rvalue.resolve(builder)?.to::<OutletId>(builder)?;

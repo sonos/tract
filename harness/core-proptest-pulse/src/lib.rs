@@ -30,7 +30,9 @@ fn proptest_regular_against_pulse(
     let mut ref_model = model.clone();
     let s = stream_symbol();
     debug!("Run reference");
-    ref_model.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape())).unwrap();
+    ref_model
+        .set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape()))
+        .unwrap();
     let input = Tensor::from(input_array.clone());
     let plan = SimplePlan::new(&ref_model).unwrap();
     let outputs = plan.run(tvec!(input.clone())).unwrap();

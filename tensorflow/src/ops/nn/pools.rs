@@ -19,7 +19,7 @@ pub fn avgpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
             None,
         ),
         false,
-        true
+        true,
     )))
 }
 

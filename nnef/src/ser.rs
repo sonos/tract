@@ -155,7 +155,9 @@ impl<'a> IntoAst<'a> {
             .collect::<Vec<_>>();
         properties.push(tuple_2(
             string("tract_nnef_format_version".to_string()),
-            self.konst("tract_nnef_format_version", &rctensor0("alpha1".to_string())).as_ref().clone(),
+            self.konst("tract_nnef_format_version", &rctensor0("alpha1".to_string()))
+                .as_ref()
+                .clone(),
         ));
         let properties: Assignment = assignment("properties", Arc::new(array(properties)));
         let IntoAst { prefix, mut fragments, body, tensors, parameters, results, .. } = self;

@@ -1,7 +1,7 @@
 use crate::datum::Blob;
 use crate::dim::TDim;
-use crate::tensor::IntoTensor;
 use crate::prelude::*;
+use crate::tensor::IntoTensor;
 use ndarray::*;
 
 pub trait ArrayDatum: Sized {

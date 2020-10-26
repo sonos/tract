@@ -239,7 +239,7 @@ impl RNN {
         // scan inner: [chunk=1, batch_size, hidden_size]
         // onnx inner: [batch_size, hidden_size]
         let initializer = if let Some(initial_h_input) = self.optional_initial_h_input {
-            target_wire!(h_dir = array::Slice::new(0, dir, dir+1), inputs[initial_h_input]);
+            target_wire!(h_dir = array::Slice::new(0, dir, dir + 1), inputs[initial_h_input]);
             target_wire!(h = AxisOp::Rm(0), h_dir);
             target_wire!(h_chunk = AxisOp::Add(0), h);
             outer_inputs.push(h_chunk);

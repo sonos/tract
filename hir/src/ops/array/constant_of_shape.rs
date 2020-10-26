@@ -38,10 +38,8 @@ impl Expansion for ConstantOfShape {
         if let Some(ref shape) = target.outlet_fact(inputs[0])?.konst {
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
-            let op = tract_core::ops::array::ConstantOfShape::new(
-                shape.into(),
-                self.scalar.clone(),
-            );
+            let op =
+                tract_core::ops::array::ConstantOfShape::new(shape.into(), self.scalar.clone());
             return target.wire_node(&*prefix, op, &[]);
         }
         bail!("shape input is variable")
