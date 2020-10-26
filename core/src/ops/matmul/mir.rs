@@ -9,6 +9,8 @@ use ndarray::*;
 
 use itertools::Itertools;
 
+use tract_linalg::frame::MatMatMul;
+
 fn eval(
     a: &Tensor,
     b: &Tensor,
@@ -21,27 +23,27 @@ fn eval(
         if (a.datum_type(), b.datum_type()) == (i8::datum_type(), i8::datum_type()) {
             if q.c_datum_type == i32::datum_type() {
                 return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-                    MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n))
+                    (tract_linalg::ops().qmmm_i8_i32)(m, k, n)
                 });
             } else if q.c_datum_type == i8::datum_type() {
                 return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-                    MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i8)(m, k, n))
+                    (tract_linalg::ops().qmmm_i8_i8)(m, k, n)
                 });
             }
         } else if (a.datum_type(), b.datum_type()) == (u8::datum_type(), u8::datum_type()) {
             if q.c_datum_type == i32::datum_type() {
                 return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-                    MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_i32)(m, k, n))
+                    (tract_linalg::ops().qmmm_u8_i32)(m, k, n)
                 });
             } else if q.c_datum_type == u8::datum_type() {
                 return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-                    MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_u8)(m, k, n))
+                    (tract_linalg::ops().qmmm_u8_u8)(m, k, n)
                 });
             }
         }
     } else if (a.datum_type(), b.datum_type()) == (f32::datum_type(), f32::datum_type()) {
         return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-            MMMWrapper::Plain((tract_linalg::ops().mmm_f32)(m, k, n))
+            (tract_linalg::ops().mmm_f32)(m, k, n)
         });
     }
     bail!(
@@ -59,7 +61,7 @@ fn eval_t<TA, TB, TC, TI>(
     b_trans: bool,
     c_trans: bool,
     q_params: Option<&QParams>,
-    mmm: impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
+    mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
 ) -> TractResult<Tensor>
 where
     TA: Datum + Copy + Zero,
@@ -76,23 +78,20 @@ where
     let mut mm = mmm(m, k, n);
     let c_shape = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
     unsafe {
-        mm.as_mmm_mut().c_from_data_and_strides(
+        mm.c_from_data_and_strides(
             if c_trans { 1 } else { c_shape[rank - 1] as isize },
             if !c_trans { 1 } else { c_shape[rank - 1] as isize },
         );
         if let Some(q) = q_params {
-            mm.set_quant_params(q)?;
+            q.inject_into_mmm(&mut *mm)?;
         }
     }
     let mut c = unsafe { Array::<TC, IxDyn>::uninitialized(&*c_shape) };
 
-    let b_pack = mm.as_mmm().b_pack();
+    let b_pack = mm.b_pack();
 
     let mut pa = unsafe {
-        Tensor::uninitialized_aligned::<TA>(
-            &[mm.as_mmm().a_pack().len()],
-            mm.as_mmm().a_pack().alignment(),
-        )?
+        Tensor::uninitialized_aligned::<TA>(&[mm.a_pack().len()], mm.a_pack().alignment())?
     };
     let mut pb =
         unsafe { Tensor::uninitialized_aligned::<TB>(&[b_pack.len()], b_pack.alignment())? };
@@ -108,7 +107,7 @@ where
             b.slice_axis_inplace(Axis(axis), (d..=d).into());
             c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
         }
-        mm.as_mmm().a_pack().pack(
+        mm.a_pack().pack(
             pa.as_ptr_mut()?,
             a.as_ptr(),
             a.strides()[prefix.ndim() + a_trans as usize],
@@ -579,7 +578,7 @@ impl TypedOp for MatMulUnary {
                         self.b_trans,
                         self.c_trans,
                         self.q_params.as_ref(),
-                        &|m, k, n| MMMWrapper::Plain((tract_linalg::ops().mmm_f32)(m, k, n)),
+                        &|m, k, n| (tract_linalg::ops().mmm_f32)(m, k, n),
                     )?
                 } else if (
                     self.a.datum_type(),
@@ -596,7 +595,7 @@ impl TypedOp for MatMulUnary {
                         self.b_trans,
                         self.c_trans,
                         self.q_params.as_ref(),
-                        &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i8)(m, k, n)),
+                        &|m, k, n| (tract_linalg::ops().qmmm_i8_i8)(m, k, n),
                     )?
                 } else if (
                     self.a.datum_type(),
@@ -613,7 +612,7 @@ impl TypedOp for MatMulUnary {
                         self.b_trans,
                         self.c_trans,
                         self.q_params.as_ref(),
-                        &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n)),
+                        &|m, k, n| (tract_linalg::ops().qmmm_i8_i32)(m, k, n),
                     )?
                 } else {
                     bail!(
@@ -640,7 +639,7 @@ fn new_mat_mul_unary_finite<TA, TB, TC, TI>(
     b_trans: bool,
     c_trans: bool,
     q_params: Option<&QParams>,
-    mmm: &impl Fn(usize, usize, usize) -> MMMWrapper<TA, TB, TC, TI>,
+    mmm: &impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
 ) -> TractResult<TypedModelPatch>
 where
     TA: Datum + Copy + Zero,
@@ -664,13 +663,10 @@ where
             a.index_axis_inplace(Axis(0), *x);
         }
         let mut pa = unsafe {
-            Tensor::uninitialized_aligned::<TA>(
-                &[mm.as_mmm().a_pack().len()],
-                mm.as_mmm().a_pack().alignment(),
-            )
-            .unwrap()
+            Tensor::uninitialized_aligned::<TA>(&[mm.a_pack().len()], mm.a_pack().alignment())
+                .unwrap()
         };
-        mm.as_mmm().a_pack().pack(
+        mm.a_pack().pack(
             pa.as_ptr_mut().unwrap(),
             a.as_ptr(),
             a.strides()[a_trans as usize],
@@ -680,34 +676,34 @@ where
     });
     unsafe {
         if n == 1 {
-            mm.as_mmm_mut().b_vec_from_data_and_stride(if b_trans {
+            mm.b_vec_from_data_and_stride(if b_trans {
                 1
             } else {
                 *b_shape.last().unwrap() as isize
             });
-            mm.as_mmm_mut().c_vec_from_data_and_stride(if c_trans {
+            mm.c_vec_from_data_and_stride(if c_trans {
                 1
             } else {
                 *c_shape.last().unwrap() as isize
             });
         } else {
-            mm.as_mmm_mut().c_from_data_and_strides(
+            mm.c_from_data_and_strides(
                 if c_trans { 1 } else { *c_shape.last().unwrap() as isize },
                 if !c_trans { 1 } else { *c_shape.last().unwrap() as isize },
             );
         };
         if let Some(q) = q_params {
-            mm.set_quant_params(q)?;
+            q.inject_into_mmm(&mut *mm)?;
         }
     }
     let rank = c_shape.len();
     if n > 1 {
         let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
-        packed_b_shape.push(mm.as_mmm().b_pack().len());
+        packed_b_shape.push(mm.b_pack().len());
         wire = patch.wire_node(
             format!("{}.pack", &*node.name),
             super::MatMatMulPackB {
-                pack_b: mm.as_mmm().b_pack().clone(),
+                pack_b: mm.b_pack().clone(),
                 col_stride: if b_trans { *b_shape.last().unwrap() as isize } else { 1 },
                 row_stride: if b_trans { 1 } else { *b_shape.last().unwrap() as isize },
                 output_shape: packed_b_shape,

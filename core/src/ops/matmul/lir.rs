@@ -5,8 +5,7 @@ use std::ops::{Add, Mul};
 use crate::internal::*;
 use ndarray::*;
 
-use super::MMMWrapper;
-use tract_linalg::mmm::FusedSpec;
+use tract_linalg::mmm::{FusedSpec, MatMatMul};
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
@@ -23,7 +22,23 @@ where
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
     pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec<TI>>>>,
-    pub(crate) mmm: MMMWrapper<TA, TB, TC, TI>,
+    #[educe(Hash(method = "hash_mmm"))]
+    pub(crate) mmm: Box<dyn MatMatMul<TA, TB, TC, TI>>,
+}
+
+fn hash_mmm<H: std::hash::Hasher, TA, TB, TC: std::fmt::Debug, TI>(
+    mmm: &Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    state: &mut H,
+) where
+    TA: Datum + Copy + Zero,
+    TB: Datum + Copy + Zero,
+    TC: Datum + Copy,
+    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+{
+    // FIXME: this is buggy, but it should not matter too much
+    mmm.m().hash(state);
+    mmm.k().hash(state);
+    mmm.n().hash(state);
 }
 
 impl<TA, TB, TC, TI> DynHash for MatMatMulUnaryFinite<TA, TB, TC, TI>
@@ -46,16 +61,16 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
     fn name(&self) -> Cow<str> {
-        if self.mmm.as_mmm().n() == 1 { "MatVecMul" } else { "MatMatMul" }.into()
+        if self.mmm.n() == 1 { "MatVecMul" } else { "MatMatMul" }.into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
             "c_prefix: {:?} m:{} k:{} n:{} c_trans:{:?}",
             self.c_prefix_dim_and_stride,
-            self.mmm.as_mmm().m(),
-            self.mmm.as_mmm().k(),
-            self.mmm.as_mmm().n(),
+            self.mmm.m(),
+            self.mmm.k(),
+            self.mmm.n(),
             self.c_trans
         )];
         infos.push(format!("Mult: {}", self.mmm));
@@ -155,10 +170,12 @@ where
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let mmm = self.mmm.as_mmm();
         let mul = self.c_prefix_dim_and_stride.as_ref().map(|c| c.0.iter().product()).unwrap_or(1);
         Ok(tvec!(
-            (Cost::FMA(TI::datum_type()), (mul * mmm.m() * mmm.n() * mmm.k()).to_dim()),
+            (
+                Cost::FMA(TI::datum_type()),
+                (mul * self.mmm.m() * self.mmm.n() * self.mmm.k()).to_dim()
+            ),
             (
                 Cost::Params(TA::datum_type()),
                 self.packed_as.iter().fold(0.to_dim(), |sum, a| sum + a.len())
@@ -179,7 +196,7 @@ where
                 }
             }
             let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                let m = self.mmm.as_mmm().m();
+                let m = self.mmm.m();
                 if op.a.len() == m
                     && op.a.shape()[op.a.rank() - 1 - ((!self.c_trans) as usize)] == m
                 {

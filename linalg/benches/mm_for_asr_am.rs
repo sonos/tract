@@ -16,8 +16,8 @@ fn mat_mul_f32(be: &mut Bencher, &(m, k, n): &(usize, usize, usize)) {
 
 fn mat_mul_i8(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     let mm = (tract_linalg::ops().qmmm_i8_i8)(m, k, n);
-    let pa = vec(mm.as_mmm().a_pack().len(), mm.as_mmm().a_pack().alignment());
-    let pb = vec(mm.as_mmm().b_pack().len(), mm.as_mmm().b_pack().alignment());
+    let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
+    let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
     let mut c = vec![0i8; m * n];
     be.iter(move || unsafe { mm.run(pa, pb, c.as_mut_ptr(), &[]) });
 }
@@ -63,7 +63,7 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
     let mut c = vec![0; m * n];
     let mut mm = (tract_linalg::ops().qmmm_i8_i8)(m, k, n);
     unsafe {
-        mm.as_mmm_mut().b_from_data_and_offsets(&rows_offsets, &cols_offsets);
+        mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
     }
     be.iter(move || unsafe { mm.run(pa, pb.as_ptr(), c.as_mut_ptr(), &[]) });
 }
