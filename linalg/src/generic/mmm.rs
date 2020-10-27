@@ -96,7 +96,7 @@ where
 {
 }
 
-impl<TA, TB, TC, TI> MatMatMulKer<TA, TB, TC, TI> for GenericMmm4x4<TA, TB, TC, TI>
+impl<TA, TB, TC, TI> MatMatMulKer<TI> for GenericMmm4x4<TA, TB, TC, TI>
 where
     TA: Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Copy + fmt::Debug + AsPrimitive<TI>,
@@ -136,11 +136,13 @@ where
         std::mem::size_of::<TB>()
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<TA, TB, TC, TI>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<TI>) -> isize {
         unsafe {
             let mut ab = [[TI::zero(); 4]; 4];
             match (*spec.a, *spec.b, *spec.linear) {
                 (Packed { ptr: a }, Packed { ptr: b }, Mul { k }) => {
+                    let a = a as *const TA;
+                    let b = b as *const TB;
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
                         let b = std::slice::from_raw_parts(b.offset(4 * i as isize), 4);
@@ -163,6 +165,8 @@ where
                     }
                 }
                 (Packed { ptr: a }, OffsetsAndPtrs { row_byte_offsets, col_ptrs }, Mul { k }) => {
+                    let a = a as *const TA;
+                    let col_ptrs = col_ptrs as *const *const TB;
                     let pb0 = *(col_ptrs.offset(0));
                     let pb1 = *(col_ptrs.offset(1));
                     let pb2 = *(col_ptrs.offset(2));
@@ -194,6 +198,8 @@ where
                     }
                 }
                 (Packed { ptr: a }, VecStride { ptr: b, byte_stride, .. }, Mul { k }) => {
+                    let a = a as *const TA;
+                    let b = b as *const TB;
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
                         let b = *b
@@ -215,9 +221,10 @@ where
                     FusedKerSpec::Done => break,
                     FusedKerSpec::AddC => match *spec.c {
                         Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
+                            let c = c as *const TC;
                             let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
                             let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
-                            let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
+                            let c = std::slice::from_raw_parts(c, 1 + 3 * csc + 3 * rsc);
                             ab[0][0] += c[0 * csc + 0 * rsc].as_();
                             ab[0][1] += c[1 * csc + 0 * rsc].as_();
                             ab[0][2] += c[2 * csc + 0 * rsc].as_();
@@ -325,6 +332,7 @@ where
                 Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
                     let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
                     let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
+                    let c = c as *mut TC;
                     let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
                     c[0 * csc + 0 * rsc] = ab[0][0].as_();
                     c[1 * csc + 0 * rsc] = ab[0][1].as_();
@@ -415,7 +423,7 @@ where
 }
 
 #[cfg(test)]
-impl<TA, TB, TC, TI> MatMatMulKer<TA, TB, TC, TI> for GenericMmmTest3x2<TA, TB, TC, TI>
+impl<TA, TB, TC, TI> MatMatMulKer<TI> for GenericMmmTest3x2<TA, TB, TC, TI>
 where
     TA: Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Copy + fmt::Debug + AsPrimitive<TI>,
@@ -455,7 +463,7 @@ where
         std::mem::size_of::<TB>()
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<TA, TB, TC, TI>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<TI>) -> isize {
         unsafe {
             let mut ab = [[TI::zero(); 2]; 3];
             match (*spec.a, *spec.b, *spec.linear) {
