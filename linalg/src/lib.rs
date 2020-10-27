@@ -28,17 +28,11 @@ pub use self::frame::sigmoid;
 pub use self::frame::tanh;
 
 pub struct Ops {
-    pub mmm_f32: Box<
-        dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<f32, f32, f32, f32>> + Send + Sync,
-    >,
-    pub qmmm_i8_i32:
-        Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<i8, i8, i32, i32>> + Send + Sync>,
-    pub qmmm_u8_i32:
-        Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<u8, u8, i32, i32>> + Send + Sync>,
-    pub qmmm_u8_u8:
-        Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<u8, u8, u8, i32>> + Send + Sync>,
-    pub qmmm_i8_i8:
-        Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<i8, i8, i8, i32>> + Send + Sync>,
+    pub mmm_f32: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
+    pub qmmm_i8_i32: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
+    pub qmmm_u8_i32: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
+    pub qmmm_u8_u8: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
+    pub qmmm_i8_i8: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn sigmoid::Sigmoid<f32>> + Send + Sync>,
     pub tanh_f32: Box<dyn Fn() -> Box<dyn tanh::Tanh<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,

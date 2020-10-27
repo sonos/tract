@@ -252,7 +252,12 @@ where
 
         let mut found = vec![TC::max_value(); m * n];
 
-        op.run(packed_a.as_ptr_unchecked(), packed_b.as_ptr_unchecked(), found.as_mut_ptr(), &[]);
+        op.run(
+            packed_a.as_ptr_unchecked::<TA>() as _,
+            packed_b.as_ptr_unchecked::<TB>() as _,
+            found.as_mut_ptr() as _,
+            &[],
+        );
 
         let mut expected = vec![TC::zero(); m * n];
         for x in 0..n {
@@ -295,7 +300,12 @@ where
 
         let mut found = vec![TC::zero(); m];
 
-        op.run(packed_a.as_ptr_unchecked(), b.as_ptr(), found.as_mut_ptr(), &[]);
+        op.run(
+            packed_a.as_ptr_unchecked::<TA>() as _,
+            b.as_ptr() as _,
+            found.as_mut_ptr() as _,
+            &[],
+        );
 
         let mut expected = vec![TC::zero(); m];
         for y in 0..m {
@@ -312,14 +322,7 @@ where
     }
 }
 
-pub unsafe fn fused_op<
-    K: MatMatMulKer<TI> + 'static,
-    TA,
-    TB,
-    TC,
-    TI,
-    F: Fn(&mut [TI]),
->(
+pub unsafe fn fused_op<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI, F: Fn(&mut [TI])>(
     m: usize,
     k: usize,
     n: usize,
@@ -348,7 +351,12 @@ where
 
     let mut found = vec![TC::zero(); m * n];
 
-    op.run(packed_a.as_ptr_unchecked(), packed_b.as_ptr_unchecked(), found.as_mut_ptr(), spec);
+    op.run(
+        packed_a.as_ptr_unchecked::<TA>() as _,
+        packed_b.as_ptr_unchecked::<TB>() as _,
+        found.as_mut_ptr() as _,
+        spec,
+    );
 
     let mut inter = vec![TI::zero(); m * n];
     for x in 0..n {
@@ -587,7 +595,12 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
             );
 
             let mut found: Vec<TC> = vec![TC::max_value(); self.co * self.output_width()];
-            op.run(packed_a.as_ptr_unchecked(), self.data.as_ptr(), found.as_mut_ptr(), &[]);
+            op.run(
+                packed_a.as_ptr_unchecked::<TA>() as _,
+                self.data.as_ptr() as _,
+                found.as_mut_ptr() as _,
+                &[],
+            );
             found
         }
     }
@@ -631,29 +644,21 @@ pub struct QMatMulProblem<TA, TB, TC, TI> {
     pub k: usize,
     pub n: usize,
     pub a: Vec<TA>,
-    pub a0: QuantizedParam<TA>,
+    pub a0: Tensor,
     pub b: Vec<TB>,
-    pub b0: QuantizedParam<TB>,
+    pub b0: Tensor,
     pub boo: PhantomData<(TC, TI)>,
 }
 
-impl<TI: Arbitrary + 'static> Arbitrary for QuantizedParam<TI> {
-    type Parameters = usize;
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(n: usize) -> Self::Strategy {
-        prop_oneof![
-            any::<TI>().prop_map(QuantizedParam::Scalar),
-            vec(any::<TI>(), n..=n).prop_map(QuantizedParam::Vector),
-        ]
+fn arbitrary_zero_point_with<TI: Arbitrary + Datum>(n: usize) -> BoxedStrategy<Tensor> {
+    prop_oneof![any::<TI>().prop_map(tensor0), vec(any::<TI>(), n..=n).prop_map(|v| tensor1(&*v)),]
         .boxed()
-    }
 }
 
 impl<TA, TB, TC, TI> Arbitrary for QMatMulProblem<TA, TB, TC, TI>
 where
-    TA: Arbitrary + 'static + Debug + 'static,
-    TB: Arbitrary + 'static + Debug + 'static,
+    TA: Datum + Arbitrary + 'static,
+    TB: Datum + Arbitrary + 'static,
     TC: Arbitrary + 'static + Debug + 'static,
     TI: Arbitrary + 'static + Debug + 'static,
 {
@@ -668,9 +673,9 @@ where
                     Just(k),
                     Just(n),
                     vec(any::<TA>(), m * k..=m * k),
-                    any_with::<QuantizedParam<TA>>(m),
+                    arbitrary_zero_point_with::<TA>(m),
                     vec(any::<TB>(), k * n..=k * n),
-                    any_with::<QuantizedParam<TB>>(n),
+                    arbitrary_zero_point_with::<TB>(n),
                 )
             })
             .prop_map(|(m, k, n, a, a0, b, b0)| QMatMulProblem {
@@ -714,13 +719,15 @@ where
                 for k in 0..self.k {
                     let a: TI = self.a[k + self.k * m].as_();
                     let b: TI = self.b[n + self.n * k].as_();
-                    let a0 = match &self.a0 {
-                        QuantizedParam::Scalar(a0) => a0.as_(),
-                        QuantizedParam::Vector(a0) => a0[m].as_(),
+                    let a0: TI = if self.a0.rank() == 0 {
+                        self.a0.to_scalar::<TA>().unwrap().as_()
+                    } else {
+                        self.a0.as_slice::<TA>().unwrap()[m].as_()
                     };
-                    let b0 = match &self.b0 {
-                        QuantizedParam::Scalar(b0) => b0.as_(),
-                        QuantizedParam::Vector(b0) => b0[n].as_(),
+                    let b0: TI = if self.b0.rank() == 0 {
+                        self.b0.to_scalar::<TB>().unwrap().as_()
+                    } else {
+                        self.b0.as_slice::<TB>().unwrap()[n].as_()
                     };
                     i[n + self.n * m] += (a - a0) * (b - b0);
                 }
@@ -749,15 +756,15 @@ where
             .unwrap();
             mmm.b_pack().pack(packed_b.as_ptr_mut_unchecked(), self.b.as_ptr(), self.n as isize, 1);
 
-            match &self.a0 {
-                QuantizedParam::Scalar(a0) => mmm.set_zero_point_a_scalar(*a0),
-                QuantizedParam::Vector(a0) => mmm.set_zero_point_a_vector(a0.clone()),
-            }
-            match &self.b0 {
-                QuantizedParam::Scalar(b0) => mmm.set_zero_point_b_scalar(*b0),
-                QuantizedParam::Vector(b0) => mmm.set_zero_point_b_vector(b0.clone()),
-            }
-            mmm.run(packed_a.as_ptr_unchecked(), packed_b.as_ptr_unchecked(), c.as_mut_ptr(), &[]);
+            mmm.set_zero_point_a(self.a0.clone());
+            mmm.set_zero_point_b(self.b0.clone());
+
+            mmm.run(
+                packed_a.as_ptr_unchecked::<TA>() as _,
+                packed_b.as_ptr_unchecked::<TB>() as _,
+                c.as_mut_ptr() as _,
+                &[],
+            );
             c
         }
     }
@@ -767,11 +774,12 @@ where
 macro_rules! qmmm_frame_tests {
     ($cond:expr, $ker:ty, $ta: ty, $tb: ty, $tc: ty, $ti: ty) => {
         mod qframe {
+            use num_traits::One;
             use proptest::prelude::*;
             use std::marker::PhantomData;
+            use tract_data::prelude::*;
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::*;
-            use $crate::frame::mmm::QuantizedParam;
 
             type QProblem = QMatMulProblem<$ta, $tb, $tc, $ti>;
 
@@ -791,9 +799,9 @@ macro_rules! qmmm_frame_tests {
                         m: 1,
                         k: 1,
                         n: 1,
-                        a0: QuantizedParam::Vector(vec![1]),
+                        a0: tensor1(&[<$ta>::one()]),
                         a: vec![0],
-                        b0: QuantizedParam::Vector(vec![1]),
+                        b0: tensor1(&[<$tb>::one()]),
                         b: vec![0],
                         boo: PhantomData,
                     };
@@ -808,9 +816,9 @@ macro_rules! qmmm_frame_tests {
                         m: 1,
                         k: 1,
                         n: 1,
-                        a0: QuantizedParam::Vector(vec![0]),
+                        a0: tensor1(&[0]).cast_to::<$ta>().unwrap().into_owned(),
                         a: vec![3],
-                        b0: QuantizedParam::Vector(vec![43]),
+                        b0: tensor1(&[43]).cast_to::<$tb>().unwrap().into_owned(),
                         b: vec![0],
                         boo: PhantomData,
                     };
@@ -825,9 +833,9 @@ macro_rules! qmmm_frame_tests {
                         m: 1,
                         k: 1,
                         n: 1,
-                        a0: QuantizedParam::Vector(vec![0]),
+                        a0: tensor1(&[0]).cast_to::<$ta>().unwrap().into_owned(),
                         a: vec![<$ta>::min_value()],
-                        b0: QuantizedParam::Vector(vec![0]),
+                        b0: tensor1(&[0]).cast_to::<$tb>().unwrap().into_owned(),
                         b: vec![1],
                         boo: PhantomData,
                     };
@@ -843,9 +851,9 @@ macro_rules! qmmm_frame_tests {
                         k: 1,
                         n: 2,
                         a: vec![0],
-                        a0: QuantizedParam::Vector(vec![1]),
+                        a0: tensor1(&[1]).cast_to::<$ta>().unwrap().into_owned(),
                         b: vec![0, 0],
-                        b0: QuantizedParam::Vector(vec![0, 1]),
+                        b0: tensor1(&[0, 1]).cast_to::<$tb>().unwrap().into_owned(),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());
@@ -860,9 +868,9 @@ macro_rules! qmmm_frame_tests {
                         k: 2,
                         n: 1,
                         a: vec![0, 1],
-                        a0: QuantizedParam::Vector(vec![0]),
+                        a0: tensor1(&[0]).cast_to::<$ta>().unwrap().into_owned(),
                         b: vec![0, 1],
-                        b0: QuantizedParam::Vector(vec![0]),
+                        b0: tensor1(&[0]).cast_to::<$tb>().unwrap().into_owned(),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());
@@ -877,9 +885,9 @@ macro_rules! qmmm_s_frame_tests {
     ($cond:expr, $ker:ty, $ta: ty, $tb: ty, $tc: ty, $ti: ty) => {
         mod qframe_s {
             use std::marker::PhantomData;
+            use tract_data::prelude::*;
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::*;
-            use $crate::frame::mmm::QuantizedParam;
 
             type QProblem = QMatMulProblem<$ta, $tb, $tc, $ti>;
 
@@ -891,9 +899,9 @@ macro_rules! qmmm_s_frame_tests {
                         k: 1,
                         n: 5,
                         a: vec![-1],
-                        a0: QuantizedParam::Scalar(0),
+                        a0: tensor0(0i32).cast_to::<$ta>().unwrap().into_owned(),
                         b: vec![0, 0, 0, 0, -2],
-                        b0: QuantizedParam::Scalar(0),
+                        b0: tensor0(0i32).cast_to::<$tb>().unwrap().into_owned(),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());
@@ -908,9 +916,9 @@ macro_rules! qmmm_s_frame_tests {
                         k: 1,
                         n: 1,
                         a: vec![11],
-                        a0: QuantizedParam::Scalar(10),
+                        a0: tensor0(10i32).cast_to::<$ta>().unwrap().into_owned(),
                         b: vec![-1],
-                        b0: QuantizedParam::Scalar(0),
+                        b0: tensor0(0i32).cast_to::<$tb>().unwrap().into_owned(),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());

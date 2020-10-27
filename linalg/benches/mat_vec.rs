@@ -23,7 +23,9 @@ fn mat_vec_mul(c: &mut Criterion) {
                 unsafe {
                     mm.b_vec_from_data();
                 }
-                be.iter(move || unsafe { mm.run(pa, b.as_ptr(), c.as_mut_ptr(), &[]) });
+                be.iter(move || unsafe {
+                    mm.run(pa as _, b.as_ptr() as _, c.as_mut_ptr() as _, &[])
+                });
             },
         );
     }

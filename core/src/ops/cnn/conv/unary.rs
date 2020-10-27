@@ -121,7 +121,7 @@ impl ConvUnary {
                 bias.iter()
                     .chunks(self.output_channels() / self.group)
                     .into_iter()
-                        .map(|c| vec![FusedSpec::PerRowAdd(tensor1(&*c.cloned().collect::<Vec<_>>()))])
+                    .map(|c| vec![FusedSpec::PerRowAdd(tensor1(&*c.cloned().collect::<Vec<_>>()))])
                     .collect::<Vec<_>>(),
             )
             .into_dyn();
@@ -144,42 +144,59 @@ impl ConvUnary {
         let a = self.kernel.datum_type();
         let b = model.outlet_fact(wire)?.datum_type;
         if (a, b) == (f32::datum_type(), f32::datum_type()) {
-            return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
-                (tract_linalg::ops().mmm_f32)(m, k, n)
-            });
+            return self.wire_as_im2col_pair_t::<f32, f32, f32, f32, _>(
+                model,
+                name,
+                wire,
+                direct,
+                &|m, k, n| (tract_linalg::ops().mmm_f32)(m, k, n),
+            );
         } else if (a, b) == (u8::datum_type(), u8::datum_type()) {
-            return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
-                (tract_linalg::ops().qmmm_u8_i32)(m, k, n)
-            });
+            return self.wire_as_im2col_pair_t::<u8, u8, i32, i32, _>(
+                model,
+                name,
+                wire,
+                direct,
+                &|m, k, n| (tract_linalg::ops().qmmm_u8_i32)(m, k, n),
+            );
         } else if (a, b) == (i8::datum_type(), i8::datum_type()) {
             if let Some(q) = &self.q_params {
                 if q.c_datum_type == i8::datum_type() {
-                    return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
-                        (tract_linalg::ops().qmmm_i8_i8)(m, k, n)
-                    });
+                    return self.wire_as_im2col_pair_t::<i8, i8, i8, i32, _>(
+                        model,
+                        name,
+                        wire,
+                        direct,
+                        &|m, k, n| (tract_linalg::ops().qmmm_i8_i8)(m, k, n),
+                    );
                 }
             } else {
-                return self.wire_as_im2col_pair_t(model, name, wire, direct, &|m, k, n| {
-                    (tract_linalg::ops().qmmm_i8_i32)(m, k, n)
-                });
+                return self.wire_as_im2col_pair_t::<i8, i8, i32, i32, _>(
+                    model,
+                    name,
+                    wire,
+                    direct,
+                    &|m, k, n| (tract_linalg::ops().qmmm_i8_i32)(m, k, n),
+                );
             }
         }
         bail!("Unsupported combination for Conv (filters: {:?}, data:{:?})", a, b);
     }
 
-    unsafe fn wire_as_im2col_pair_t<TA, TB, TC, TI>(
+    unsafe fn wire_as_im2col_pair_t<TA, TB, TC, TI, MMM>(
         &self,
         model: &mut TypedModel,
         name: &str,
         mut wire: OutletId,
         direct: bool,
-        mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
+        mmm: MMM,
     ) -> TractResult<OutletId>
     where
         TA: Datum + Copy + Zero,
         TB: Datum + Copy + Zero,
         TC: Datum + Copy,
         TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+        MMM: Fn(usize, usize, usize) -> Box<dyn MatMatMul>,
     {
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =
@@ -200,7 +217,7 @@ impl ConvUnary {
         mmm.c_from_data_and_strides(rsc, csc);
 
         if let Some(q) = self.q_params.as_ref() {
-            q.inject_into_mmm(&mut *mmm)?;
+            q.inject_into_mmm::<TA, TB, TC, TI>(&mut *mmm)?;
         }
 
         trace!(
@@ -259,7 +276,7 @@ impl ConvUnary {
         let kernels = self.kernel_as_packed_as::<TA>(&mmm.a_pack())?;
         wire = model.wire_node(
             format!("{}.matmatmul", name),
-            matmul::lir::MatMatMulUnaryFinite {
+            matmul::lir::MatMatMulUnaryFinite::<TA, TB, TC, TI> {
                 c_trans: true,
                 bc_c_shape: output_shape.shape.clone(),
                 c_fact: TypedFact::dt_shape(TC::datum_type(), &*output_shape.shape)?,
@@ -267,6 +284,7 @@ impl ConvUnary {
                 packed_as: kernels,
                 fused_ops: self.bias_as_non_linear::<TI>()?,
                 mmm,
+                boo: PhantomData,
             },
             &[wire],
         )?[0];

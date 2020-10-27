@@ -23,11 +23,17 @@ impl PackA {
 
     fn pack_panel_a<T: Copy>(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize) {
         let mr = self.mr;
-        for i in 0..self.k {
-            for j in 0..rows {
-                unsafe {
+        unsafe {
+            for i in 0..self.k {
+                for j in 0..rows {
                     *pa.offset((i * mr + j) as isize) =
                         *a.offset(i as isize * csa + j as isize * rsa)
+                }
+                #[cfg(debug_assertions)]
+                {
+                    for j in rows..self.mr {
+                        *pa.offset((i * mr + j) as isize) = std::mem::zeroed();
+                    }
                 }
             }
         }

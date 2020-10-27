@@ -49,11 +49,17 @@ impl PackB {
 
     fn pack_panel_b<T: Copy>(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize) {
         let nr = self.nr;
-        for i in 0..self.k {
-            for j in 0..cols {
-                unsafe {
+        unsafe {
+            for i in 0..self.k {
+                for j in 0..cols {
                     *pb.offset((i * nr + j) as isize) =
                         *b.offset(j as isize * csb + i as isize * rsb)
+                }
+                #[cfg(debug_assertions)]
+                {
+                    for j in cols..self.nr {
+                        *pb.offset((i * nr + j) as isize) = std::mem::zeroed();
+                    }
                 }
             }
         }

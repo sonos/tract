@@ -11,7 +11,7 @@ fn mat_mul_f32(be: &mut Bencher, &(m, k, n): &(usize, usize, usize)) {
     let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
     let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
     let mut c = vec![0.0; m * n];
-    be.iter(move || unsafe { mm.run(pa, pb, c.as_mut_ptr(), &[]) });
+    be.iter(move || unsafe { mm.run(pa, pb, c.as_mut_ptr() as _, &[]) });
 }
 
 fn mat_mul_i8(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
@@ -19,7 +19,7 @@ fn mat_mul_i8(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
     let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
     let mut c = vec![0i8; m * n];
-    be.iter(move || unsafe { mm.run(pa, pb, c.as_mut_ptr(), &[]) });
+    be.iter(move || unsafe { mm.run(pa, pb, c.as_mut_ptr() as _, &[]) });
 }
 
 fn packed_packed(c: &mut Criterion, m: usize, k: usize, n: usize) {
@@ -52,7 +52,7 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
     unsafe {
         mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
     }
-    be.iter(move || unsafe { mm.run(pa, pb.as_ptr(), c.as_mut_ptr(), &[]) });
+    be.iter(move || unsafe { mm.run(pa, pb.as_ptr() as _, c.as_mut_ptr() as _, &[]) });
 }
 
 fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
@@ -65,7 +65,7 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
     unsafe {
         mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
     }
-    be.iter(move || unsafe { mm.run(pa, pb.as_ptr(), c.as_mut_ptr(), &[]) });
+    be.iter(move || unsafe { mm.run(pa, pb.as_ptr() as _, c.as_mut_ptr() as _, &[]) });
 }
 
 fn direct_conv(c: &mut Criterion, p: usize, kl: usize, ci: usize, co: usize, stride: usize) {

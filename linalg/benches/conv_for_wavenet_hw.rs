@@ -23,7 +23,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
         let input = vec![0.0; ci * t];
         let mut output = vec![0.0; co * t];
         be.iter(move || unsafe {
-            conv.run(a.as_ptr_unchecked(), input.as_ptr(), output.as_mut_ptr(), &[]);
+            conv.run(a.as_ptr_unchecked::<f32>() as _, input.as_ptr() as _, output.as_mut_ptr() as _, &[]);
         });
     });
 }

@@ -22,29 +22,59 @@ fn eval(
     if let Some(q) = q_params {
         if (a.datum_type(), b.datum_type()) == (i8::datum_type(), i8::datum_type()) {
             if q.c_datum_type == i32::datum_type() {
-                return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-                    (tract_linalg::ops().qmmm_i8_i32)(m, k, n)
-                });
+                return eval_t::<i8, i8, i32, i32, _>(
+                    a,
+                    b,
+                    a_trans,
+                    b_trans,
+                    c_trans,
+                    q_params,
+                    &|m, k, n| (tract_linalg::ops().qmmm_i8_i32)(m, k, n),
+                );
             } else if q.c_datum_type == i8::datum_type() {
-                return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-                    (tract_linalg::ops().qmmm_i8_i8)(m, k, n)
-                });
+                return eval_t::<i8, i8, i8, i32, _>(
+                    a,
+                    b,
+                    a_trans,
+                    b_trans,
+                    c_trans,
+                    q_params,
+                    &|m, k, n| (tract_linalg::ops().qmmm_i8_i8)(m, k, n),
+                );
             }
         } else if (a.datum_type(), b.datum_type()) == (u8::datum_type(), u8::datum_type()) {
             if q.c_datum_type == i32::datum_type() {
-                return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-                    (tract_linalg::ops().qmmm_u8_i32)(m, k, n)
-                });
+                return eval_t::<u8, u8, i32, i32, _>(
+                    a,
+                    b,
+                    a_trans,
+                    b_trans,
+                    c_trans,
+                    q_params,
+                    &|m, k, n| (tract_linalg::ops().qmmm_u8_i32)(m, k, n),
+                );
             } else if q.c_datum_type == u8::datum_type() {
-                return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-                    (tract_linalg::ops().qmmm_u8_u8)(m, k, n)
-                });
+                return eval_t::<u8, u8, u8, i32, _>(
+                    a,
+                    b,
+                    a_trans,
+                    b_trans,
+                    c_trans,
+                    q_params,
+                    &|m, k, n| (tract_linalg::ops().qmmm_u8_u8)(m, k, n),
+                );
             }
         }
     } else if (a.datum_type(), b.datum_type()) == (f32::datum_type(), f32::datum_type()) {
-        return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
-            (tract_linalg::ops().mmm_f32)(m, k, n)
-        });
+        return eval_t::<f32, f32, f32, f32, _>(
+            a,
+            b,
+            a_trans,
+            b_trans,
+            c_trans,
+            q_params,
+            &|m, k, n| (tract_linalg::ops().mmm_f32)(m, k, n),
+        );
     }
     bail!(
         "Unsupported combination for MatMul eval (a: {:?}, b:{:?} q:{:?})",
@@ -54,20 +84,21 @@ fn eval(
     );
 }
 
-fn eval_t<TA, TB, TC, TI>(
+fn eval_t<TA, TB, TC, TI, MMM>(
     a: &Tensor,
     b: &Tensor,
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
     q_params: Option<&QParams>,
-    mmm: impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    mmm: MMM,
 ) -> TractResult<Tensor>
 where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
     TC: Datum + Copy + Zero + fmt::Debug,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+    MMM: Fn(usize, usize, usize) -> Box<dyn MatMatMul>,
 {
     let rank = a.rank();
     let a = a.to_array_view::<TA>()?;
@@ -83,7 +114,7 @@ where
             if !c_trans { 1 } else { c_shape[rank - 1] as isize },
         );
         if let Some(q) = q_params {
-            q.inject_into_mmm(&mut *mm)?;
+            q.inject_into_mmm::<TA, TB, TC, TI>(&mut *mm)?;
         }
     }
     let mut c = unsafe { Array::<TC, IxDyn>::uninitialized(&*c_shape) };
@@ -120,7 +151,7 @@ where
             b.strides()[prefix.ndim() + !b_trans as usize],
         );
         unsafe {
-            mm.run(pa.as_ptr()?, pb.as_ptr()?, c.as_mut_ptr(), &[]);
+            mm.run(pa.as_ptr::<TA>()? as _, pb.as_ptr::<TB>()? as _, c.as_mut_ptr() as _, &[]);
         }
     }
     Ok(c.into_tensor())
@@ -569,7 +600,7 @@ impl TypedOp for MatMulUnary {
         if let Some(b_shape) = b.shape.as_finite() {
             let patch =
                 if (self.a.datum_type(), b.datum_type) == (f32::datum_type(), f32::datum_type()) {
-                    new_mat_mul_unary_finite(
+                    new_mat_mul_unary_finite::<f32, f32, f32, f32, _>(
                         model,
                         node,
                         self.a.clone(),
@@ -586,7 +617,7 @@ impl TypedOp for MatMulUnary {
                     self.q_params.as_ref().map(|q| q.c_datum_type),
                 ) == (i8::datum_type(), i8::datum_type(), Some(i8::datum_type()))
                 {
-                    new_mat_mul_unary_finite(
+                    new_mat_mul_unary_finite::<i8, i8, i8, i32, _>(
                         model,
                         node,
                         self.a.clone(),
@@ -603,7 +634,7 @@ impl TypedOp for MatMulUnary {
                     self.q_params.as_ref().map(|q| q.c_datum_type),
                 ) == (i8::datum_type(), i8::datum_type(), Some(i32::datum_type()))
                 {
-                    new_mat_mul_unary_finite(
+                    new_mat_mul_unary_finite::<i8, i8, i32, i32, _>(
                         model,
                         node,
                         self.a.clone(),
@@ -630,7 +661,7 @@ impl TypedOp for MatMulUnary {
     as_op!();
 }
 
-fn new_mat_mul_unary_finite<TA, TB, TC, TI>(
+fn new_mat_mul_unary_finite<TA, TB, TC, TI, MMM>(
     model: &TypedModel,
     node: &TypedNode,
     a: Arc<Tensor>,
@@ -639,13 +670,14 @@ fn new_mat_mul_unary_finite<TA, TB, TC, TI>(
     b_trans: bool,
     c_trans: bool,
     q_params: Option<&QParams>,
-    mmm: &impl Fn(usize, usize, usize) -> Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    mmm: MMM,
 ) -> TractResult<TypedModelPatch>
 where
     TA: Datum + Copy + Zero,
     TB: Datum + Copy + Zero,
     TC: Datum + Copy,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
+    MMM: Fn(usize, usize, usize) -> Box<dyn MatMatMul>,
 {
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.tap_model(model, node.inputs[0])?;
@@ -693,7 +725,7 @@ where
             );
         };
         if let Some(q) = q_params {
-            q.inject_into_mmm(&mut *mm)?;
+            q.inject_into_mmm::<TA, TB, TC, TI>(&mut *mm)?;
         }
     }
     let rank = c_shape.len();
@@ -731,7 +763,7 @@ where
     };
     wire = patch.wire_node(
         format!("{}.matmatmul", &*node.name),
-        lir::MatMatMulUnaryFinite {
+        lir::MatMatMulUnaryFinite::<TA, TB, TC, TI> {
             c_trans,
             c_fact: TypedFact::dt_shape(TC::datum_type(), &*c_shape)?,
             bc_c_shape: c_shape,
@@ -739,6 +771,7 @@ where
             packed_as,
             fused_ops: None,
             mmm: mm,
+            boo: PhantomData,
         },
         &[wire],
     )?[0];

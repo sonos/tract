@@ -104,10 +104,7 @@ impl QParams {
         self.inputs_kind = Some(inputs_kind);
     }
 
-    pub fn inject_into_mmm<TA, TB, TC, TI>(
-        &self,
-        mmm: &mut dyn MatMatMul<TA, TB, TC, TI>,
-    ) -> TractResult<()>
+    pub fn inject_into_mmm<TA, TB, TC, TI>(&self, mmm: &mut dyn MatMatMul) -> TractResult<()>
     where
         TA: Datum + Copy + Zero,
         TB: Datum + Copy + Zero,
@@ -116,21 +113,13 @@ impl QParams {
     {
         unsafe {
             if let Some(t) = self.zero_point_a.as_ref() {
-                if t.rank() == 0 {
-                    mmm.set_zero_point_a_scalar(*t.to_scalar()?)
-                } else {
-                    mmm.set_zero_point_a_vector(t.as_slice()?.to_vec())
-                }
+                mmm.set_zero_point_a(t.clone().into_tensor());
             }
             if let Some(t) = self.zero_point_b.as_ref() {
-                if t.rank() == 0 {
-                    mmm.set_zero_point_b_scalar(*t.to_scalar()?)
-                } else {
-                    mmm.set_zero_point_b_vector(t.as_slice()?.to_vec())
-                }
+                mmm.set_zero_point_b(t.clone().into_tensor());
             }
             if let Some(t) = self.zero_point_c.as_ref() {
-                mmm.set_zero_point_c_scalar(t.cast_to_scalar()?)
+                mmm.set_zero_point_c(t.clone().into_tensor());
             }
             if let Some(factor) = self.scale_factor {
                 mmm.set_scale_factor(factor);
