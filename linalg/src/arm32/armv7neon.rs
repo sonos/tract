@@ -3,8 +3,8 @@ use crate::frame::sigmoid::*;
 use crate::frame::tanh::*;
 
 extern "C" {
-    fn armv7neon_mmm_i8_8x4(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
-    fn armv7neon_mmm_f32_8x4(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
+    fn armv7neon_mmm_i8_8x4(op: *const MatMatMulKerSpec<i32>) -> isize;
+    fn armv7neon_mmm_f32_8x4(op: *const MatMatMulKerSpec<f32>) -> isize;
     fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize);
     fn armv7neon_tanh_f32_4n(ptr: *mut f32, count: usize);
 }
@@ -12,7 +12,7 @@ extern "C" {
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulI8x8x4;
 
-impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x4 {
+impl MatMatMulKer<i32> for MatMatMulI8x8x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "neon"
@@ -32,7 +32,7 @@ impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x4 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<i8, i8, i8, i32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<i32>) -> isize {
         unsafe { armv7neon_mmm_i8_8x4(spec) }
     }
 }
@@ -40,7 +40,7 @@ impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x4 {
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulI8xI32x8x4;
 
-impl MatMatMulKer<i8, i8, i32, i32> for MatMatMulI8xI32x8x4 {
+impl MatMatMulKer<i32> for MatMatMulI8xI32x8x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "neon"
@@ -60,7 +60,7 @@ impl MatMatMulKer<i8, i8, i32, i32> for MatMatMulI8xI32x8x4 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<i8, i8, i32, i32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<i32>) -> isize {
         unsafe { armv7neon_mmm_i8_8x4(spec as *const _ as _) }
     }
 }
@@ -68,7 +68,7 @@ impl MatMatMulKer<i8, i8, i32, i32> for MatMatMulI8xI32x8x4 {
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulF32x8x4;
 
-impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x4 {
+impl MatMatMulKer<f32> for MatMatMulF32x8x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "neon"
@@ -88,7 +88,7 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x4 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
         unsafe { armv7neon_mmm_f32_8x4(spec) }
     }
 }
