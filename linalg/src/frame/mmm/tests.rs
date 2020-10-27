@@ -32,7 +32,7 @@ macro_rules! mmm_frame_tests {
                 }
 
                 #[test]
-                fn conv_prepacked_prop(pb in strat_conv_1d()) {
+                fn conv_prepacked_prop(pb in strat_conv_1d::<$ta, $tb>()) {
                     if $cond {
                         let found = pb.run::<$ker, $tc, $ti>();
                         let expected = pb.expected::<$tc, $ti>();
@@ -773,6 +773,8 @@ macro_rules! qmmm_frame_tests {
             use $crate::frame::mmm::tests::*;
             use $crate::frame::mmm::QuantizedParam;
 
+            type QProblem = QMatMulProblem<$ta, $tb, $tc, $ti>;
+
             proptest::proptest! {
                 #[test]
                 fn q_mat_mul_prop(pb in any::<QMatMulProblem<$ta, $tb, $tc, $ti>>()) {
@@ -785,7 +787,7 @@ macro_rules! qmmm_frame_tests {
             #[test]
             fn q_mat_mul_1() {
                 if $cond {
-                    let pb = QMatMulProblem {
+                    let pb = QProblem {
                         m: 1,
                         k: 1,
                         n: 1,
@@ -802,7 +804,7 @@ macro_rules! qmmm_frame_tests {
             #[test]
             fn q_mat_mul_sat_1() {
                 if $cond {
-                    let pb = QMatMulProblem {
+                    let pb = QProblem {
                         m: 1,
                         k: 1,
                         n: 1,
@@ -819,7 +821,7 @@ macro_rules! qmmm_frame_tests {
 
             fn q_mat_mul_sat_2() {
                 if $cond {
-                    let pb = QMatMulProblem {
+                    let pb = QProblem {
                         m: 1,
                         k: 1,
                         n: 1,
@@ -836,7 +838,7 @@ macro_rules! qmmm_frame_tests {
             #[test]
             fn q_mat_mul_n2() {
                 if $cond {
-                    let pb = QMatMulProblem {
+                    let pb = QProblem {
                         m: 1,
                         k: 1,
                         n: 2,
@@ -853,7 +855,7 @@ macro_rules! qmmm_frame_tests {
             #[test]
             fn q_mat_mul_k2() {
                 if $cond {
-                    let pb = QMatMulProblem {
+                    let pb = QProblem {
                         m: 1,
                         k: 2,
                         n: 1,
@@ -879,10 +881,12 @@ macro_rules! qmmm_s_frame_tests {
             use $crate::frame::mmm::tests::*;
             use $crate::frame::mmm::QuantizedParam;
 
+            type QProblem = QMatMulProblem<$ta, $tb, $tc, $ti>;
+
             #[test]
             fn q_mat_mul_1_1_5() {
                 if $cond {
-                    let pb = QMatMulProblem {
+                    let pb = QProblem {
                         m: 1,
                         k: 1,
                         n: 5,
@@ -899,7 +903,7 @@ macro_rules! qmmm_s_frame_tests {
             #[test]
             fn q_mat_mul_1_1_1() {
                 if $cond {
-                    let pb = QMatMulProblem {
+                    let pb = QProblem {
                         m: 1,
                         k: 1,
                         n: 1,
