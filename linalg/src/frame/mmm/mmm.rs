@@ -6,7 +6,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul, Neg};
-use tract_data::prelude::Datum;
+use tract_data::prelude::*;
 
 #[derive(Debug, Clone)]
 pub enum QuantizedParam<T> {
@@ -51,7 +51,7 @@ where
     unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize);
     unsafe fn c_vec_from_data(&mut self);
 
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]);
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec]);
 }
 
 dyn_clone::clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
@@ -235,7 +235,7 @@ where
         self.c_vec_from_data_and_stride(1)
     }
 
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec<TI>]) {
+    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec]) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
@@ -262,11 +262,11 @@ where
                     for n in 0..self.n {
                         sum_b_over_k[n] = sum_b_over_k[n] * a0.as_();
                     }
-                    FusedSpec::PerColAdd(sum_b_over_k)
+                    FusedSpec::PerColAdd(tensor1(&*sum_b_over_k))
                 }
                 QuantizedParam::Vector(a0) => {
-                    let a0 = a0.iter().map(|a| a.as_()).collect();
-                    FusedSpec::AddRowColProducts(a0, sum_b_over_k)
+                    let a0 = tensor1(&*a0.iter().map(|a| a.as_()).collect::<Vec<_>>());
+                    FusedSpec::AddRowColProducts(a0, tensor1(&*sum_b_over_k))
                 }
             };
             non_linear.insert(0, term);
@@ -291,20 +291,20 @@ where
                     for m in 0..self.m {
                         sum_a_over_k[m] = sum_a_over_k[m] * b0.as_();
                     }
-                    FusedSpec::PerRowAdd(sum_a_over_k)
+                    FusedSpec::PerRowAdd(tensor1(&*sum_a_over_k))
                 }
                 QuantizedParam::Vector(b0) => {
-                    let b0 = b0.iter().map(|b| b.as_()).collect();
-                    FusedSpec::AddRowColProducts(sum_a_over_k, b0)
+                    let b0 = tensor1(&*b0.iter().map(|b| b.as_()).collect::<Vec<_>>());
+                    FusedSpec::AddRowColProducts(tensor1(&*sum_a_over_k), b0)
                 }
             };
             non_linear.insert(0, term);
         }
         if let Some(scale) = self.scale_factor {
-            non_linear.push(FusedSpec::QTowardsPlusInf(scale.0, scale.1));
+            non_linear.push(FusedSpec::QTowardsPlusInf(tensor0(scale.0), scale.1));
         }
         if let Some(c0) = self.zero_point_c {
-            non_linear.push(FusedSpec::ScalarAdd(c0.as_()));
+            non_linear.push(FusedSpec::ScalarAdd(tensor0(c0.as_())));
         }
         // makeshift Q detection
         //        if TC::datum_type().size_of() < TI::datum_type().size_of() && self.scale_factor.is_some() {
@@ -315,8 +315,8 @@ where
                 || self.zero_point_c.is_some()
                 || self.scale_factor.is_some())
         {
-            non_linear.push(FusedSpec::Min(TC::max_value().as_()));
-            non_linear.push(FusedSpec::Max(TC::min_value().as_()));
+            non_linear.push(FusedSpec::Min(tensor0(TC::max_value().as_())));
+            non_linear.push(FusedSpec::Max(tensor0(TC::min_value().as_())));
         }
         let a = self.a_storage.wrap(a);
         let b = self.b_storage.wrap(b);

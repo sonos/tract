@@ -21,7 +21,7 @@ where
     pub(crate) c_fact: TypedFact,
     pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
-    pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec<TI>>>>,
+    pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec>>>,
     #[educe(Hash(method = "hash_mmm"))]
     pub(crate) mmm: Box<dyn MatMatMul<TA, TB, TC, TI>>,
 }
@@ -201,19 +201,19 @@ where
                     && op.a.shape()[op.a.rank() - 1 - ((!self.c_trans) as usize)] == m
                 {
                     if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(FusedSpec::PerRowMul(op.a.as_slice::<TI>()?.to_vec(),)))
+                        Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
                     } else if op.mini_op.is::<ops::math::Add>() {
-                        Some(tvec!(FusedSpec::PerRowAdd(op.a.as_slice::<TI>()?.to_vec(),)))
+                        Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
                     } else {
                         None
                     }
                 } else if op.a.len() == 1 {
                     if op.mini_op.is::<ops::math::Max>() {
-                        Some(tvec!(FusedSpec::Max(op.a.cast_to_scalar()?)))
+                        Some(tvec!(FusedSpec::Max(op.a.clone().into_tensor())))
                     } else if op.mini_op.is::<ops::math::Min>() {
-                        Some(tvec!(FusedSpec::Min(op.a.cast_to_scalar()?)))
+                        Some(tvec!(FusedSpec::Min(op.a.clone().into_tensor())))
                     } else if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(FusedSpec::ScalarMul(op.a.cast_to_scalar()?)))
+                        Some(tvec!(FusedSpec::ScalarMul(op.a.clone().into_tensor())))
                     } else {
                         None
                     }
