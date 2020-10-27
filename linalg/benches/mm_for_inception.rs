@@ -14,7 +14,7 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
     let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
     let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
     let mut c = vec![0.0; m * n];
-    be.iter(move || unsafe { mm.run(pa, pb, c.as_mut_ptr(), &[]) });
+    be.iter(move || unsafe { mm.run(pa as _, pb as _, c.as_mut_ptr() as _, &[]) });
 }
 
 fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {

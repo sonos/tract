@@ -8,19 +8,8 @@ use std::marker::PhantomData;
 use std::ops::{Add, Mul, Neg};
 use tract_data::prelude::*;
 
-#[derive(Debug, Clone)]
-pub enum QuantizedParam<T> {
-    Scalar(T),
-    Vector(Vec<T>),
-}
-
-pub trait MatMatMul<TA, TB, TC, TI>:
+pub trait MatMatMul:
     Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
-where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
-    TC: Copy + Debug + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
 {
     fn a_pack(&self) -> PackA;
     fn b_pack(&self) -> PackB;
@@ -33,12 +22,10 @@ where
     fn k(&self) -> usize;
     fn n(&self) -> usize;
 
-    unsafe fn set_zero_point_a_scalar(&mut self, value: TA);
-    unsafe fn set_zero_point_a_vector(&mut self, values: Vec<TA>);
-    unsafe fn set_zero_point_b_scalar(&mut self, value: TB);
-    unsafe fn set_zero_point_b_vector(&mut self, values: Vec<TB>);
+    unsafe fn set_zero_point_a(&mut self, value: Tensor);
+    unsafe fn set_zero_point_b(&mut self, value: Tensor);
+    unsafe fn set_zero_point_c(&mut self, value: Tensor);
 
-    unsafe fn set_zero_point_c_scalar(&mut self, value: TC);
     unsafe fn set_scale_factor(&mut self, factor: f32);
 
     unsafe fn b_from_data_and_offsets(&mut self, rows_offsets: &[isize], cols_offsets: &[isize]);
@@ -51,15 +38,10 @@ where
     unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize);
     unsafe fn c_vec_from_data(&mut self);
 
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec]);
+    unsafe fn run(&self, a: *const (), b: *const (), c: *mut (), non_linear: &[FusedSpec]);
 }
 
-dyn_clone::clone_trait_object!(<TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
-    TC: Copy + Debug + 'static,
-    TI: Copy + Add + Mul + Zero + Debug + 'static,
-);
+dyn_clone::clone_trait_object!(MatMatMul);
 
 #[derive(Debug, Clone)]
 pub struct MatMatMulImpl<K, TA, TB, TC, TI>
@@ -78,10 +60,10 @@ where
     pub b_storage: MatrixStoreSpec,
     pub c_storage: MatrixStoreSpec,
 
-    pub zero_point_a: Option<QuantizedParam<TA>>,
-    pub zero_point_b: Option<QuantizedParam<TB>>,
+    pub zero_point_a: Option<Tensor>,
+    pub zero_point_b: Option<Tensor>,
 
-    pub zero_point_c: Option<TC>,
+    pub zero_point_c: Option<Tensor>,
     pub scale_factor: Option<(TI, usize)>,
 
     phantom: PhantomData<(K, TA, TB, TC, TI)>,
@@ -137,7 +119,7 @@ where
     }
 }
 
-impl<K, TA, TB, TC, TI> MatMatMul<TA, TB, TC, TI> for MatMatMulImpl<K, TA, TB, TC, TI>
+impl<K, TA, TB, TC, TI> MatMatMul for MatMatMulImpl<K, TA, TB, TC, TI>
 where
     TA: Datum + Copy + Zero + Debug + 'static + AsPrimitive<TI>,
     TB: Datum + Copy + Zero + Debug + 'static + AsPrimitive<TI>,
@@ -235,7 +217,7 @@ where
         self.c_vec_from_data_and_stride(1)
     }
 
-    unsafe fn run(&self, a: *const TA, b: *const TB, c: *mut TC, non_linear: &[FusedSpec]) {
+    unsafe fn run(&self, a: *const (), b: *const (), c: *mut (), non_linear: &[FusedSpec]) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
@@ -249,6 +231,9 @@ where
             mr,
             nr,
         };
+        let a = a as *const TA;
+        let b = b as *const TB;
+        let c = c as *mut TC;
         let ref mut tmp_tile = tmp_c_storage.wrap(tmpc.as_ptr());
         let ref linear = LinearSpec::k(self.k);
         let mut non_linear = non_linear.to_vec();
@@ -257,17 +242,14 @@ where
             for n in 0..self.n {
                 sum_b_over_k[n] = sum_b_over_k[n].neg();
             }
-            let term = match a0 {
-                QuantizedParam::Scalar(a0) => {
-                    for n in 0..self.n {
-                        sum_b_over_k[n] = sum_b_over_k[n] * a0.as_();
-                    }
-                    FusedSpec::PerColAdd(tensor1(&*sum_b_over_k))
+            let term = if a0.rank() == 0 {
+                for n in 0..self.n {
+                    sum_b_over_k[n] = sum_b_over_k[n] * a0.to_scalar_unchecked::<TA>().as_();
                 }
-                QuantizedParam::Vector(a0) => {
-                    let a0 = tensor1(&*a0.iter().map(|a| a.as_()).collect::<Vec<_>>());
-                    FusedSpec::AddRowColProducts(a0, tensor1(&*sum_b_over_k))
-                }
+                FusedSpec::PerColAdd(tensor1(&*sum_b_over_k))
+            } else {
+                let a0 = a0.cast_to::<TI>().unwrap();
+                FusedSpec::AddRowColProducts(a0.into_owned(), tensor1(&*sum_b_over_k))
             };
             non_linear.insert(0, term);
         }
@@ -276,35 +258,31 @@ where
             for m in 0..self.m {
                 sum_a_over_k[m] = sum_a_over_k[m].neg();
                 if let Some(ref a0) = self.zero_point_a {
-                    match a0 {
-                        QuantizedParam::Scalar(a0) => {
-                            sum_a_over_k[m] = a0.as_() * self.k.as_() + sum_a_over_k[m];
-                        }
-                        QuantizedParam::Vector(a0) => {
-                            sum_a_over_k[m] = a0[m].as_() * self.k.as_() + sum_a_over_k[m];
-                        }
+                    if a0.rank() == 0 {
+                        sum_a_over_k[m] =
+                            a0.to_scalar_unchecked::<TA>().as_() * self.k.as_() + sum_a_over_k[m];
+                    } else {
+                        sum_a_over_k[m] =
+                            a0.as_slice_unchecked::<TA>()[m].as_() * self.k.as_() + sum_a_over_k[m];
                     }
                 }
             }
-            let term = match b0 {
-                QuantizedParam::Scalar(b0) => {
-                    for m in 0..self.m {
-                        sum_a_over_k[m] = sum_a_over_k[m] * b0.as_();
-                    }
-                    FusedSpec::PerRowAdd(tensor1(&*sum_a_over_k))
+            let term = if b0.rank() == 0 {
+                for m in 0..self.m {
+                    sum_a_over_k[m] = sum_a_over_k[m] * b0.to_scalar_unchecked::<TB>().as_();
                 }
-                QuantizedParam::Vector(b0) => {
-                    let b0 = tensor1(&*b0.iter().map(|b| b.as_()).collect::<Vec<_>>());
-                    FusedSpec::AddRowColProducts(tensor1(&*sum_a_over_k), b0)
-                }
+                FusedSpec::PerRowAdd(tensor1(&*sum_a_over_k))
+            } else {
+                let b0 = tensor1(&*b0.as_slice_unchecked::<TB>().iter().map(|b| b.as_()).collect::<Vec<_>>());
+                FusedSpec::AddRowColProducts(tensor1(&*sum_a_over_k), b0)
             };
             non_linear.insert(0, term);
         }
         if let Some(scale) = self.scale_factor {
             non_linear.push(FusedSpec::QTowardsPlusInf(tensor0(scale.0), scale.1));
         }
-        if let Some(c0) = self.zero_point_c {
-            non_linear.push(FusedSpec::ScalarAdd(tensor0(c0.as_())));
+        if let Some(c0) = &self.zero_point_c {
+            non_linear.push(FusedSpec::ScalarAdd(c0.cast_to::<TI>().unwrap().into_owned()));
         }
         // makeshift Q detection
         //        if TC::datum_type().size_of() < TI::datum_type().size_of() && self.scale_factor.is_some() {
@@ -383,32 +361,16 @@ where
         }
     }
 
-    unsafe fn set_zero_point_a_scalar(&mut self, value: TA) {
-        self.zero_point_a = Some(QuantizedParam::Scalar(value))
+    unsafe fn set_zero_point_a(&mut self, value: Tensor) {
+        self.zero_point_a = Some(value)
     }
 
-    unsafe fn set_zero_point_b_scalar(&mut self, value: TB) {
-        self.zero_point_b = Some(QuantizedParam::Scalar(value))
+    unsafe fn set_zero_point_b(&mut self, value: Tensor) {
+        self.zero_point_b = Some(value)
     }
 
-    unsafe fn set_zero_point_c_scalar(&mut self, value: TC) {
+    unsafe fn set_zero_point_c(&mut self, value: Tensor) {
         self.zero_point_c = Some(value)
-    }
-
-    unsafe fn set_zero_point_a_vector(&mut self, mut values: Vec<TA>) {
-        let wanted = self.m() + K::mr() - 1 / K::mr() * K::mr();
-        while values.len() < wanted {
-            values.push(values[values.len() - 1])
-        }
-        self.zero_point_a = Some(QuantizedParam::Vector(values))
-    }
-
-    unsafe fn set_zero_point_b_vector(&mut self, mut values: Vec<TB>) {
-        let wanted = self.n() + K::nr() - 1 / K::nr() * K::nr();
-        while values.len() < wanted {
-            values.push(values[values.len() - 1])
-        }
-        self.zero_point_b = Some(QuantizedParam::Vector(values))
     }
 
     unsafe fn set_scale_factor(&mut self, factor: f32) {

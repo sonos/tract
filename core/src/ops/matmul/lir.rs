@@ -23,18 +23,11 @@ where
     pub(crate) packed_as: ArrayD<Arc<Tensor>>,
     pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec>>>,
     #[educe(Hash(method = "hash_mmm"))]
-    pub(crate) mmm: Box<dyn MatMatMul<TA, TB, TC, TI>>,
+    pub(crate) mmm: Box<dyn MatMatMul>,
+    pub(crate) boo: PhantomData<(TA, TB, TC, TI)>,
 }
 
-fn hash_mmm<H: std::hash::Hasher, TA, TB, TC: std::fmt::Debug, TI>(
-    mmm: &Box<dyn MatMatMul<TA, TB, TC, TI>>,
-    state: &mut H,
-) where
-    TA: Datum + Copy + Zero,
-    TB: Datum + Copy + Zero,
-    TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
-{
+fn hash_mmm<H: std::hash::Hasher>(mmm: &Box<dyn MatMatMul>, state: &mut H) {
     // FIXME: this is buggy, but it should not matter too much
     mmm.m().hash(state);
     mmm.k().hash(state);
@@ -120,24 +113,24 @@ where
                             let d = dim.min(fused.shape()[0] - 1);
                             fused.index_axis_inplace(Axis(0), d);
                         }
-                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), pc, &fused.as_slice().unwrap()[0]);
+                        self.mmm.run(pa.as_ptr::<TA>()? as _, b.as_ptr() as _, pc as _, &fused.as_slice().unwrap()[0]);
                     } else {
-                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), pc, &[]);
+                        self.mmm.run(pa.as_ptr::<TA>()? as _, b.as_ptr() as _, pc as _, &[]);
                     }
                 }
             } else {
                 if let Some(fused) = &self.fused_ops {
                     self.mmm.run(
-                        self.packed_as.as_slice().unwrap()[0].as_ptr()?,
-                        b.as_ptr()?,
-                        c.as_ptr_mut()?,
+                        self.packed_as.as_slice().unwrap()[0].as_ptr::<TA>()? as _,
+                        b.as_ptr::<TB>()? as _,
+                        c.as_ptr_mut::<TC>()? as _,
                         &fused.as_slice().unwrap()[0],
                     );
                 } else {
                     self.mmm.run(
-                        self.packed_as.as_slice().unwrap()[0].as_ptr()?,
-                        b.as_ptr()?,
-                        c.as_ptr_mut()?,
+                        self.packed_as.as_slice().unwrap()[0].as_ptr::<TA>()? as _,
+                        b.as_ptr::<TB>()? as _,
+                        c.as_ptr_mut::<TC>()? as _,
                         &[],
                     );
                 }
