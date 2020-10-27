@@ -3,9 +3,9 @@ use crate::frame::sigmoid::*;
 use crate::frame::tanh::*;
 
 extern "C" {
-    fn arm64simd_mmm_f32_8x8_a5x(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
-    fn arm64simd_mmm_f32_8x8_gen(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
-    fn arm64simd_mmm_i8_8x8(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
+    fn arm64simd_mmm_f32_8x8_a5x(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn arm64simd_mmm_f32_8x8_gen(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn arm64simd_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize;
     fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize);
     fn arm64simd_tanh_f32_4n(ptr: *mut f32, count: usize);
 }
@@ -13,7 +13,7 @@ extern "C" {
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulF32x8x8A5x;
 
-impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8A5x {
+impl MatMatMulKer<f32> for MatMatMulF32x8x8A5x {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -33,7 +33,7 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8A5x {
         16
     }
     #[inline(never)]
-    fn kernel(op: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
+    fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
         unsafe { arm64simd_mmm_f32_8x8_a5x(op) }
     }
 }
@@ -41,7 +41,7 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8A5x {
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulF32x8x8;
 
-impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8 {
+impl MatMatMulKer<f32> for MatMatMulF32x8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -61,7 +61,7 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8 {
         16
     }
     #[inline(never)]
-    fn kernel(op: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
+    fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
         unsafe { arm64simd_mmm_f32_8x8_gen(op) }
     }
 }
@@ -69,7 +69,7 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x8x8 {
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulI8x8x8;
 
-impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x8 {
+impl MatMatMulKer<i32> for MatMatMulI8x8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -89,7 +89,7 @@ impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x8 {
         16
     }
     #[inline(never)]
-    fn kernel(op: &MatMatMulKerSpec<i8, i8, i8, i32>) -> isize {
+    fn kernel(op: &MatMatMulKerSpec<i32>) -> isize {
         unsafe { arm64simd_mmm_i8_8x8(op) }
     }
 }
@@ -97,7 +97,7 @@ impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x8 {
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulI8xI32x8x8;
 
-impl MatMatMulKer<i8, i8, i32, i32> for MatMatMulI8xI32x8x8 {
+impl MatMatMulKer<i32> for MatMatMulI8xI32x8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -117,7 +117,7 @@ impl MatMatMulKer<i8, i8, i32, i32> for MatMatMulI8xI32x8x8 {
         16
     }
     #[inline(never)]
-    fn kernel(op: &MatMatMulKerSpec<i8, i8, i32, i32>) -> isize {
+    fn kernel(op: &MatMatMulKerSpec<i32>) -> isize {
         unsafe { arm64simd_mmm_i8_8x8(op as *const _ as _) }
     }
 }
