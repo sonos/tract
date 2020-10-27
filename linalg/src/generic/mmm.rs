@@ -468,6 +468,8 @@ where
             let mut ab = [[TI::zero(); 2]; 3];
             match (*spec.a, *spec.b, *spec.linear) {
                 (Packed { ptr: a }, Packed { ptr: b }, Mul { k }) => {
+                    let a = a as *const TA;
+                    let b = b as *const TB;
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
                         let b = std::slice::from_raw_parts(b.offset(2 * i as isize), 2);
@@ -480,6 +482,8 @@ where
                     }
                 }
                 (Packed { ptr: a }, OffsetsAndPtrs { row_byte_offsets, col_ptrs }, Mul { k }) => {
+                    let a = a as *const TA;
+                    let col_ptrs = col_ptrs as *const *const TB;
                     let pb0 = *(col_ptrs.offset(0));
                     let pb1 = *(col_ptrs.offset(1));
                     for i in 0..k {
@@ -497,6 +501,8 @@ where
                     }
                 }
                 (Packed { ptr: a }, VecStride { ptr: b, byte_stride, .. }, Mul { k }) => {
+                    let a = a as *const TA;
+                    let b = b as *const TB;
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
                         let b = *b
@@ -517,9 +523,10 @@ where
                     FusedKerSpec::Done => break,
                     FusedKerSpec::AddC => match *spec.c {
                         Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
+                            let c = c as *const TC;
                             let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
                             let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
-                            let c = std::slice::from_raw_parts_mut(c, 1 + 1 * csc + 2 * rsc);
+                            let c = std::slice::from_raw_parts(c, 1 + 1 * csc + 2 * rsc);
                             ab[0][0] += c[0 * csc + 0 * rsc].as_();
                             ab[0][1] += c[1 * csc + 0 * rsc].as_();
                             ab[1][0] += c[0 * csc + 1 * rsc].as_();
@@ -609,6 +616,7 @@ where
             }
             match *spec.c {
                 Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
+                    let c = c as *mut TC;
                     let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
                     let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
                     let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
