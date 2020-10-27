@@ -1,14 +1,14 @@
 use crate::frame::mmm::*;
 
 extern "C" {
-    fn fma_mmm_f32_16x6(op: *const MatMatMulKerSpec<f32, f32, f32, f32>) -> isize;
-    fn fma_mmm_i8_8x8(op: *const MatMatMulKerSpec<i8, i8, i8, i32>) -> isize;
+    fn fma_mmm_f32_16x6(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn fma_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize;
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulF32x16x6;
 
-impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x16x6 {
+impl MatMatMulKer<f32> for MatMatMulF32x16x6 {
     #[inline(always)]
     fn name() -> &'static str {
         "fma"
@@ -28,7 +28,7 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x16x6 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<f32, f32, f32, f32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
         unsafe { fma_mmm_f32_16x6(spec) }
     }
 }
@@ -36,7 +36,7 @@ impl MatMatMulKer<f32, f32, f32, f32> for MatMatMulF32x16x6 {
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulI8x8x8;
 
-impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x8 {
+impl MatMatMulKer<i32> for MatMatMulI8x8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "avx2"
@@ -56,7 +56,7 @@ impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x8 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<i8, i8, i8, i32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<i32>) -> isize {
         unsafe { fma_mmm_i8_8x8(spec) }
     }
 }
@@ -64,7 +64,7 @@ impl MatMatMulKer<i8, i8, i8, i32> for MatMatMulI8x8x8 {
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulI8xI32x8x8;
 
-impl MatMatMulKer<i8, i8, i32, i32> for MatMatMulI8xI32x8x8 {
+impl MatMatMulKer<i32> for MatMatMulI8xI32x8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "avx2"
@@ -84,7 +84,7 @@ impl MatMatMulKer<i8, i8, i32, i32> for MatMatMulI8xI32x8x8 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &MatMatMulKerSpec<i8, i8, i32, i32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<i32>) -> isize {
         unsafe { fma_mmm_i8_8x8(spec as *const _ as _) }
     }
 }

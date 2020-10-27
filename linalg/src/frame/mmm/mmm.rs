@@ -68,7 +68,7 @@ where
     TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+    K: MatMatMulKer<TI> + 'static,
 {
     pub m: usize,
     pub k: usize,
@@ -93,7 +93,7 @@ where
     TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+    K: MatMatMulKer<TI> + 'static,
 {
 }
 
@@ -103,7 +103,7 @@ where
     TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+    K: MatMatMulKer<TI> + 'static,
 {
 }
 
@@ -113,7 +113,7 @@ where
     TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+    K: MatMatMulKer<TI> + 'static,
 {
     pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TA, TB, TC, TI> {
         MatMatMulImpl {
@@ -143,7 +143,7 @@ where
     TB: Datum + Copy + Zero + Debug + 'static + AsPrimitive<TI>,
     TC: Datum + Copy + Debug + 'static + Bounded + AsPrimitive<TI>,
     TI: Datum + Copy + Add + Mul<Output = TI> + Zero + Debug + 'static + Neg<Output = TI>,
-    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+    K: MatMatMulKer<TI> + 'static,
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
@@ -428,7 +428,7 @@ where
     TB: Copy + Zero + Debug + 'static + AsPrimitive<TI>,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+    K: MatMatMulKer<TI> + 'static,
     i32: AsPrimitive<TI>,
 {
     fn sum_a_over_k(&self, mut a: *const TA) -> Vec<TI> {
@@ -509,7 +509,7 @@ where
     TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
-    K: MatMatMulKer<TA, TB, TC, TI>,
+    K: MatMatMulKer<TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(

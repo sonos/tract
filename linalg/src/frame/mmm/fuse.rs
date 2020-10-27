@@ -103,7 +103,7 @@ impl<TI: Copy> Default for ScratchSpaceFusedNonLinear<TI> {
 }
 
 impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
-    pub unsafe fn for_tile<TA, TB, TC, K: MatMatMulKer<TA, TB, TC, TI>>(
+    pub unsafe fn for_tile<TA, TB, TC, K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec<TI>],
         down: usize,
@@ -386,13 +386,13 @@ pub mod test {
         };
     }
 
-    pub fn null_packed_storage<T: Copy>() -> PanelStore<T> {
+    pub fn null_packed_storage<T: Copy>() -> PanelStore {
         PanelStore::Packed { ptr: std::ptr::null::<T>() as _ }
     }
 
-    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> PanelStore<T> {
+    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> PanelStore {
         PanelStore::Strides {
-            ptr: v.as_mut_ptr(),
+            ptr: v.as_mut_ptr() as _,
             row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
             col_byte_stride: std::mem::size_of::<T>() as isize,
             item_size: std::mem::size_of::<T>(),
@@ -401,7 +401,7 @@ pub mod test {
 
     pub fn return_zeros<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + Debug + Bounded + Zero + PartialEq,
@@ -410,8 +410,8 @@ pub mod test {
         let mut v = vec![TC::max_value(); K::mr() * K::nr()];
         let mut c = mmm_stride_storage(&mut v, K::nr());
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &null_packed_storage(),
-            b: &null_packed_storage(),
+            a: &null_packed_storage::<TA>(),
+            b: &null_packed_storage::<TB>(),
             c: &mut c,
             linear: &LinearSpec::k(0),
             non_linear: std::ptr::null(),
@@ -423,7 +423,7 @@ pub mod test {
 
     pub fn fused_ops<K, TA, TB, TC, TI>(c: &[TC], ops: &[FusedKerSpec<TI>]) -> Vec<TC>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + 'static + PartialEq,
@@ -437,8 +437,8 @@ pub mod test {
         ops.insert(0, FusedKerSpec::AddC);
         ops.push(FusedKerSpec::Done);
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &null_packed_storage(),
-            b: &null_packed_storage(),
+            a: &null_packed_storage::<TA>(),
+            b: &null_packed_storage::<TB>(),
             c: &mut c,
             linear: &LinearSpec::k(0),
             non_linear: ops.as_ptr(),
@@ -449,7 +449,7 @@ pub mod test {
 
     pub fn return_c<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + Debug + 'static + PartialEq,
@@ -464,7 +464,7 @@ pub mod test {
 
     pub fn return_c_mul_row<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + Debug + 'static + PartialEq,
@@ -487,7 +487,7 @@ pub mod test {
 
     pub fn return_c_add_row<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + PartialEq + 'static,
@@ -507,7 +507,7 @@ pub mod test {
 
     pub fn return_c_mul_col<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + 'static + PartialEq,
@@ -527,7 +527,7 @@ pub mod test {
 
     pub fn return_c_add_col<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + PartialEq + 'static + Debug,
@@ -559,7 +559,7 @@ pub mod test {
 
     pub fn return_c_add_row_col_product<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + Debug + PartialEq + 'static,
@@ -595,7 +595,7 @@ pub mod test {
 
     pub fn return_c_scalar_mul<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + PartialEq + 'static + Debug,
@@ -621,7 +621,7 @@ pub mod test {
 
     pub fn return_c_max<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + PartialEq + 'static,
@@ -648,7 +648,7 @@ pub mod test {
 
     pub fn return_c_min<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + PartialEq + 'static,
@@ -675,7 +675,7 @@ pub mod test {
 
     pub fn return_c_scalar_add<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy + PartialEq + 'static,
@@ -701,7 +701,7 @@ pub mod test {
 
     pub fn return_q_towards_even<K, TA, TB, TC, TI>()
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy,
         TB: Copy,
         TC: Copy
@@ -757,7 +757,7 @@ pub mod test {
     #[derive(Debug, new)]
     pub struct QTowardsPlusInfProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
         TC: Copy + Debug + 'static,
@@ -770,7 +770,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> Arbitrary for QTowardsPlusInfProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
         TC: Copy + Debug + 'static,
@@ -789,7 +789,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> QTowardsPlusInfProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
         TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
@@ -822,7 +822,7 @@ pub mod test {
     #[derive(Debug, new)]
     pub struct ReturnCProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
         TC: Copy + Debug + 'static,
@@ -834,7 +834,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> Arbitrary for ReturnCProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
         TC: Copy + Debug + 'static + Arbitrary,
@@ -852,7 +852,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> ReturnCProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy + Debug,
         TB: Copy + Debug,
         TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,

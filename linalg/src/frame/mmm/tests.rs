@@ -223,7 +223,7 @@ pub fn strat_mat_vec_mul<TA: LADatum, TB: LADatum>(
         .boxed()
 }
 
-pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
+pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     n: usize,
@@ -270,7 +270,7 @@ where
     }
 }
 
-pub fn test_mat_vec_mul_prep<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
+pub fn test_mat_vec_mul_prep<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     a: &[TA],
@@ -313,7 +313,7 @@ where
 }
 
 pub unsafe fn fused_op<
-    K: MatMatMulKer<TA, TB, TC, TI> + 'static,
+    K: MatMatMulKer<TI> + 'static,
     TA,
     TB,
     TC,
@@ -366,7 +366,7 @@ where
     crate::test::check_close(&*found, &*expected)
 }
 
-pub unsafe fn row_add<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
+pub unsafe fn row_add<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     n: usize,
@@ -389,7 +389,7 @@ where
     })
 }
 
-pub unsafe fn row_mul<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
+pub unsafe fn row_mul<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     n: usize,
@@ -412,7 +412,7 @@ where
     })
 }
 
-pub unsafe fn col_add<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
+pub unsafe fn col_add<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     n: usize,
@@ -435,7 +435,7 @@ where
     })
 }
 
-pub unsafe fn col_mul<K: MatMatMulKer<TA, TB, TC, TI> + 'static, TA, TB, TC, TI>(
+pub unsafe fn col_mul<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     n: usize,
@@ -458,7 +458,7 @@ where
     })
 }
 
-pub unsafe fn max<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
+pub unsafe fn max<K: MatMatMulKer<TI>, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     n: usize,
@@ -477,7 +477,7 @@ where
     })
 }
 
-pub unsafe fn min<K: MatMatMulKer<TA, TB, TC, TI>, TA, TB, TC, TI>(
+pub unsafe fn min<K: MatMatMulKer<TI>, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     n: usize,
@@ -564,7 +564,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
         expect.into_iter().map(|ti| ti.as_()).collect()
     }
 
-    pub fn run<K: MatMatMulKer<TA, TB, TC, TI>, TC, TI>(&self) -> Vec<TC>
+    pub fn run<K: MatMatMulKer<TI>, TC, TI>(&self) -> Vec<TC>
     where
         TA: LADatum + AsPrimitive<TI> + 'static,
         TB: LADatum + AsPrimitive<TI> + 'static,
@@ -729,7 +729,7 @@ where
         i.iter().map(|i| i.max(&TC::min_value().as_()).min(&TC::max_value().as_()).as_()).collect()
     }
 
-    pub fn run<K: MatMatMulKer<TA, TB, TC, TI>>(&self) -> Vec<TC> {
+    pub fn run<K: MatMatMulKer<TI>>(&self) -> Vec<TC> {
         unsafe {
             let mut c = vec![TC::zero(); self.m * self.n];
             let mut mmm = MatMatMulImpl::from(MatMatMulImpl::<K, TA, TB, TC, TI>::new(

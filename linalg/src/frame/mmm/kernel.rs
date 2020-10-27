@@ -4,16 +4,13 @@ use super::*;
 
 #[repr(C)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub struct MatMatMulKerSpec<'a, TA, TB, TC, TI>
+pub struct MatMatMulKerSpec<'a, TI>
 where
-    TA: Copy,
-    TB: Copy,
-    TC: Copy,
     TI: Copy + Debug,
 {
-    pub a: &'a PanelStore<TA>,
-    pub b: &'a PanelStore<TB>,
-    pub c: &'a PanelStore<TC>,
+    pub a: &'a PanelStore,
+    pub b: &'a PanelStore,
+    pub c: &'a PanelStore,
     pub linear: &'a LinearSpec,
     pub non_linear: *const FusedKerSpec<TI>,
 }
@@ -31,15 +28,12 @@ impl LinearSpec {
     }
 }
 
-pub trait MatMatMulKer<TA, TB, TC, TI>: Copy + Clone + Debug + Send + Sync + 'static
+pub trait MatMatMulKer<TI>: Copy + Clone + Debug + Send + Sync + 'static
 where
-    TA: Copy,
-    TB: Copy,
-    TC: Copy,
     TI: Copy + Debug,
 {
     fn name() -> &'static str;
-    fn kernel(op: &MatMatMulKerSpec<TA, TB, TC, TI>) -> isize;
+    fn kernel(op: &MatMatMulKerSpec<TI>) -> isize;
     fn mr() -> usize;
     fn nr() -> usize;
     fn alignment_bytes_packed_a() -> usize;
@@ -263,7 +257,7 @@ pub mod test {
     #[derive(Debug, new)]
     pub struct PackedPackedProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
@@ -280,7 +274,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> Arbitrary for PackedPackedProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
@@ -313,7 +307,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> PackedPackedProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: 'static + Debug + AsPrimitive<TI> + Datum,
         TB: 'static + Debug + AsPrimitive<TI> + Datum,
         TC: Copy + Zero + PartialEq + 'static + Debug,
@@ -352,8 +346,8 @@ pub mod test {
                 let non_linear =
                     if self.add_one { non_linear_ops.as_ptr() } else { std::ptr::null() };
                 let err = K::kernel(&MatMatMulKerSpec {
-                    a: &PanelStore::Packed { ptr: pa.as_ptr_unchecked() },
-                    b: &PanelStore::Packed { ptr: pb.as_ptr_unchecked() },
+                    a: &PanelStore::Packed { ptr: pa.as_ptr_unchecked::<TA>() as _ },
+                    b: &PanelStore::Packed { ptr: pb.as_ptr_unchecked::<TB>() as _ },
                     c: &mut c,
                     linear: &LinearSpec::k(self.k),
                     non_linear,
@@ -367,7 +361,7 @@ pub mod test {
     #[derive(Debug, new)]
     pub struct PackedOffsetsProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
@@ -384,7 +378,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> Arbitrary for PackedOffsetsProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
@@ -425,7 +419,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> PackedOffsetsProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: 'static + Debug + AsPrimitive<TI> + Datum,
         TB: 'static + Debug + AsPrimitive<TI> + Datum,
         TC: Copy + Zero + PartialEq + 'static + Debug,
@@ -467,10 +461,10 @@ pub mod test {
             let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
             let non_linear = if self.add_one { non_linear_ops.as_ptr() } else { std::ptr::null() };
             let err = K::kernel(&MatMatMulKerSpec {
-                a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked() } },
+                a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
                 b: &PanelStore::OffsetsAndPtrs {
                     row_byte_offsets: rows_offset.as_ptr(),
-                    col_ptrs: col_ptrs.as_ptr(),
+                    col_ptrs: col_ptrs.as_ptr() as _,
                 },
                 c: &mut c,
                 linear: &LinearSpec::k(self.rows_offsets.len()),
@@ -483,7 +477,7 @@ pub mod test {
 
     pub fn packed_packed<K, TA, TB, TC, TI>(k: usize)
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy + One + Datum,
         TB: Copy + One + Datum,
         TC: Copy + PartialEq + Zero + 'static + Debug,
@@ -502,8 +496,8 @@ pub mod test {
         let mut v: Vec<TC> = vec![TC::zero(); len];
         let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked() } },
-            b: &PanelStore::Packed { ptr: unsafe { pb.as_ptr_unchecked() } },
+            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
+            b: &PanelStore::Packed { ptr: unsafe { pb.as_ptr_unchecked::<TB>() as _ } },
             c: &mut c,
             linear: &LinearSpec::k(k),
             non_linear: std::ptr::null(),
@@ -513,9 +507,9 @@ pub mod test {
         assert_eq!(v, expected);
     }
 
-    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> PanelStore<T> {
+    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> PanelStore {
         PanelStore::Strides {
-            ptr: v.as_mut_ptr(),
+            ptr: v.as_mut_ptr() as _,
             row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
             col_byte_stride: (std::mem::size_of::<T>() * csc) as isize,
             item_size: std::mem::size_of::<T>(),
@@ -524,7 +518,7 @@ pub mod test {
 
     pub fn packed_offsets<K, TA, TB, TC, TI>(k: usize, t: usize)
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy + One + AsPrimitive<TI> + Datum,
         TB: Copy + One + AsPrimitive<TI> + Datum,
         TC: Copy + PartialEq + Zero + 'static + Debug,
@@ -537,11 +531,11 @@ pub mod test {
         let len = K::mr() * K::nr();
         let mut v: Vec<TC> = vec![TC::zero(); len];
         let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
-        let col_ptrs = (0..K::nr()).map(|i| (&b[i]) as _).collect::<Vec<_>>();
+        let col_ptrs = (0..K::nr()).map(|i| (&b[i]) as *const TB as _).collect::<Vec<_>>();
         let row_byte_offsets =
             (0..k).map(|i| (i * std::mem::size_of::<TB>() * t) as isize).collect::<Vec<_>>();
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked() } },
+            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
             b: &PanelStore::OffsetsAndPtrs {
                 col_ptrs: col_ptrs.as_ptr(),
                 row_byte_offsets: row_byte_offsets.as_ptr(),
@@ -568,7 +562,7 @@ pub mod test {
 
     pub fn packed_vec<K, TA, TB, TC, TI>(k: usize)
     where
-        K: MatMatMulKer<TA, TB, TC, TI>,
+        K: MatMatMulKer<TI>,
         TA: Copy + One + AsPrimitive<TI> + Debug + Datum,
         TB: Copy + One + AsPrimitive<TI> + Debug + Datum,
         TC: Copy + PartialEq + Zero + 'static + Debug,
@@ -582,14 +576,14 @@ pub mod test {
         let b = vec![TB::one(); k];
         let c: Vec<TC> = vec![TC::zero(); K::mr()];
         let err = K::kernel(&MatMatMulKerSpec {
-            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked() } },
+            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
             b: &PanelStore::VecStride {
-                ptr: b.as_ptr(),
+                ptr: b.as_ptr() as _,
                 byte_stride: std::mem::size_of::<TB>() as isize,
                 item_size: std::mem::size_of::<TB>(),
             },
             c: &PanelStore::VecStride {
-                ptr: c.as_ptr(),
+                ptr: c.as_ptr() as _,
                 byte_stride: std::mem::size_of::<TC>() as isize,
                 item_size: std::mem::size_of::<TC>(),
             },
