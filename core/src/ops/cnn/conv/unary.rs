@@ -109,7 +109,7 @@ impl ConvUnary {
         Ok(packed_as)
     }
 
-    fn bias_as_non_linear<T>(&self) -> TractResult<Option<ArrayD<Vec<FusedSpec<T>>>>>
+    fn bias_as_non_linear<T>(&self) -> TractResult<Option<ArrayD<Vec<FusedSpec>>>>
     where
         T: Datum + Copy,
     {
@@ -121,7 +121,7 @@ impl ConvUnary {
                 bias.iter()
                     .chunks(self.output_channels() / self.group)
                     .into_iter()
-                    .map(|c| vec![FusedSpec::PerRowAdd(c.into_iter().cloned().collect())])
+                        .map(|c| vec![FusedSpec::PerRowAdd(tensor1(&*c.cloned().collect::<Vec<_>>()))])
                     .collect::<Vec<_>>(),
             )
             .into_dyn();
@@ -265,7 +265,7 @@ impl ConvUnary {
                 c_fact: TypedFact::dt_shape(TC::datum_type(), &*output_shape.shape)?,
                 c_prefix_dim_and_stride: Some((dims, strides)),
                 packed_as: kernels,
-                fused_ops: self.bias_as_non_linear()?,
+                fused_ops: self.bias_as_non_linear::<TI>()?,
                 mmm,
             },
             &[wire],
