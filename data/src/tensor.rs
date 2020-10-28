@@ -174,10 +174,16 @@ impl Tensor {
         Ok(tensor)
     }
 
+    pub unsafe fn clear<T: Datum + num_traits::Zero>(&mut self) {
+        self.as_slice_mut_unchecked::<T>().iter_mut().for_each(|item| *item = T::zero());
+    }
+
     pub fn zero<T: Datum + num_traits::Zero>(shape: &[usize]) -> anyhow::Result<Tensor> {
-        let mut t = unsafe { Tensor::uninitialized::<T>(shape)? };
-        t.as_slice_mut::<T>().unwrap().iter_mut().for_each(|item| *item = T::zero());
-        Ok(t)
+        unsafe {
+            let mut t = Tensor::uninitialized::<T>(shape)?;
+            t.clear::<T>();
+            Ok(t)
+        }
     }
 
     pub fn zero_dt(dt: DatumType, shape: &[usize]) -> anyhow::Result<Tensor> {
@@ -736,6 +742,14 @@ impl Tensor {
                 .into_tensor())
         }
         dispatch_datum!(slice_t(self.datum_type())(&self, axis, start, end))
+    }
+
+    pub fn view(&self) -> view::TensorView {
+        unsafe { view::TensorView::at_prefix(self, &[]) }
+    }
+
+    pub fn view_mut(&mut self) -> view::TensorViewMut {
+        unsafe { view::TensorViewMut::at_prefix(self, &[]) }
     }
 }
 

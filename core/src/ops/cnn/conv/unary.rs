@@ -78,37 +78,32 @@ impl ConvUnary {
         }
     }
 
-    // returns an Array of Tensors. shape of the array is [group]
-    fn kernel_as_packed_as<T: Datum + Copy + Zero>(
-        &self,
-        packer: &PackA,
-    ) -> TractResult<ArrayD<Arc<Tensor>>> {
-        let kernel_g_o_ihw = self.kernel_as_group_o_ihw()?;
-        let kernel = kernel_g_o_ihw.to_array_view::<T>()?;
-        let mut packed_as = Array1::from(
-            kernel
-                .outer_iter()
-                .map(|subkernel| {
-                    let mut packed = unsafe {
-                        Tensor::uninitialized_aligned::<T>(&[packer.len()], packer.alignment())?
-                    };
-                    unsafe {
+    fn kernel_as_packed_as(&self, packer: &PackA) -> TractResult<ArrayD<Arc<Tensor>>> {
+        let kernel = self.kernel_as_group_o_ihw()?;
+        unsafe {
+            let mut packed_as = Array1::from(
+                (0..self.group)
+                    .map(|g| {
+                        let mut packed = Tensor::uninitialized_aligned_dt(
+                            kernel.datum_type(),
+                            &[packer.len()],
+                            packer.alignment(),
+                        )?;
                         packer.pack(
                             &mut TensorViewMut::at_prefix(&mut packed, &[]),
-                            subkernel.as_ptr() as _,
-                            subkernel.strides()[0],
-                            subkernel.strides()[1],
+                            &TensorView::at_prefix(&kernel, &[g]),
+                            false,
                         );
-                    }
-                    Ok(packed.into_arc_tensor())
-                })
-                .collect::<TractResult<Vec<_>>>()?,
-        )
-        .into_dyn();
-        if self.pool_spec.data_format.has_n() {
-            packed_as.insert_axis_inplace(Axis(0));
+                        Ok(packed.into_arc_tensor())
+                    })
+                    .collect::<TractResult<Vec<_>>>()?,
+            )
+            .into_dyn();
+            if self.pool_spec.data_format.has_n() {
+                packed_as.insert_axis_inplace(Axis(0));
+            }
+            Ok(packed_as.into_dyn())
         }
-        Ok(packed_as)
     }
 
     fn bias_as_non_linear<T>(&self) -> TractResult<Option<ArrayD<Vec<FusedSpec>>>>
@@ -275,7 +270,7 @@ impl ConvUnary {
             strides.insert(0, *output_shape.n_stride().unwrap() as isize);
         }
 
-        let kernels = self.kernel_as_packed_as::<TA>(&mmm.a_pack())?;
+        let kernels = self.kernel_as_packed_as(&mmm.a_pack())?;
         wire = model.wire_node(
             format!("{}.matmatmul", name),
             matmul::lir::MatMatMulUnaryFinite::<TA, TB, TC, TI> {

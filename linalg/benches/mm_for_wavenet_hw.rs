@@ -1,29 +1,39 @@
 #[macro_use]
 extern crate criterion;
-extern crate tract_linalg;
 use criterion::Criterion;
 
-pub fn vec(len: usize, align: usize) -> *mut f32 {
-    let layout =
-        std::alloc::Layout::from_size_align(len * std::mem::size_of::<f32>(), align).unwrap();
-    unsafe { std::alloc::alloc_zeroed(layout) as *mut f32 }
+use tract_data::internal::*;
+
+pub fn vec(len: usize, align: usize) -> Tensor {
+    unsafe {
+        let mut tensor = Tensor::uninitialized_aligned::<f32>(&[len], align).unwrap();
+        tensor.clear::<f32>();
+        tensor
+    }
 }
 
 fn pack_a(c: &mut Criterion, m: usize, k: usize, n: usize) {
     c.bench_function(&format!("pack_a_{}x{}x{}", m, k, n), move |b| {
         let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
-        let a = vec(m * k, 4);
-        let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
-        b.iter(move || mm.a_pack().pack(pa, a, k as _, 1))
+        let a = Tensor::zero::<f32>(&[m, k]).unwrap();
+        let mut pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
+        b.iter(move || unsafe { mm.a_pack().pack(&mut pa.view_mut(), &a.view(), false) })
     });
 }
 
 fn pack_b(c: &mut Criterion, m: usize, k: usize, n: usize) {
-    c.bench_function(&format!("pack_b_{}x{}x{}", m, k, n), move |be| {
+    c.bench_function(&format!("pack_b_{}x{}x{}", m, k, n), move |be| unsafe {
         let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
-        let b = vec(n * k, 4);
-        let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
-        be.iter(move || mm.b_pack().pack(pb, b, n as _, 1))
+        let b = Tensor::zero::<f32>(&[k, n]).unwrap();
+        let mut pb = Tensor::uninitialized_aligned::<f32>(&[n * k], 4).unwrap();
+        be.iter(move || {
+            mm.b_pack().pack(
+                pb.as_ptr_mut_unchecked::<f32>(),
+                b.as_ptr_unchecked::<f32>(),
+                n as _,
+                1,
+            )
+        })
     });
 }
 
@@ -34,7 +44,14 @@ fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {
         let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
         let mut c = vec![0.0; m * n];
         unsafe {
-            be.iter(move || mm.run(pa as _, pb as _, c.as_mut_ptr() as _, &[]));
+            be.iter(move || {
+                mm.run(
+                    pa.as_ptr_unchecked::<f32>() as _,
+                    pb.as_ptr_unchecked::<f32>() as _,
+                    c.as_mut_ptr() as _,
+                    &[],
+                )
+            });
         }
     });
 }

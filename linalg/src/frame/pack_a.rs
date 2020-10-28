@@ -32,15 +32,15 @@ impl PackA {
     ) {
         let mr = self.mr;
         unsafe {
-            for i in 0..self.k {
-                for j in 0..rows {
-                    *pa.offset((i * mr + j) as isize) =
-                        *a.offset(i as isize * csa + j as isize * rsa)
+            for k in 0..self.k {
+                for m in 0..rows {
+                    *pa.offset((k * mr + m) as isize) =
+                        *a.offset(k as isize * csa + m as isize * rsa)
                 }
                 #[cfg(debug_assertions)]
                 {
-                    for j in rows..self.mr {
-                        *pa.offset((i * mr + j) as isize) = std::mem::zeroed();
+                    for m in rows..self.mr {
+                        *pa.offset((k * mr + m) as isize) = std::mem::zeroed();
                     }
                 }
             }
@@ -50,8 +50,8 @@ impl PackA {
     fn pack_panel_a(
         &self,
         dt: DatumType,
-        pa: *mut (),
-        a: *const (),
+        pa: *mut u8,
+        a: *const u8,
         rsa: isize,
         csa: isize,
         rows: usize,
@@ -59,16 +59,29 @@ impl PackA {
         dispatch_copy_by_size!(Self::pack_panel_a_t(dt)(self, pa as _, a as _, rsa, csa, rows))
     }
 
-    pub unsafe fn pack<'a>(&self, pa: &mut TensorViewMut<'a>, a: *const (), rsa: isize, csa: isize) {
+    pub unsafe fn pack<'a>(
+        &self,
+        mut pa: impl std::borrow::BorrowMut<TensorViewMut<'a>>,
+        a: impl std::borrow::Borrow<TensorView<'a>>,
+        trans: bool,
+    ) {
+        let pa = pa.borrow_mut();
+        let a = a.borrow();
         let dt = pa.datum_type();
-        let pa = pa.as_ptr_unchecked::<u8>() as *mut ();
+        let (rsa, csa) = if trans {
+            (1, a.shape()[a.rank() - 1] as isize)
+        } else {
+            (a.shape()[a.rank() - 1] as isize, 1)
+        };
+        let pa = pa.as_ptr_mut_unchecked::<u8>();
+        let a = a.as_ptr_unchecked::<u8>();
         let mr = self.mr;
         assert!(pa as usize % self.alignment == 0);
         for p in 0..(self.m / mr) {
             self.pack_panel_a(
                 dt,
-                pa.offset((p * mr * self.k) as isize),
-                a.offset((p * mr) as isize * rsa),
+                pa.offset((p * mr * self.k * dt.size_of()) as isize),
+                a.offset((p * mr * dt.size_of()) as isize * rsa),
                 rsa,
                 csa,
                 mr,
@@ -77,8 +90,8 @@ impl PackA {
         if self.m % mr != 0 {
             self.pack_panel_a(
                 dt,
-                pa.offset((self.m / mr * mr * self.k) as isize),
-                a.offset((self.m / mr * mr) as isize * rsa),
+                pa.offset((self.m / mr * mr * self.k * dt.size_of()) as isize),
+                a.offset((self.m / mr * mr * dt.size_of()) as isize * rsa),
                 rsa,
                 csa,
                 self.m % mr,
