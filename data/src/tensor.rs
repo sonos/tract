@@ -14,6 +14,7 @@ use std::mem::{align_of, size_of};
 use std::sync::Arc;
 
 pub mod litteral;
+pub mod view;
 
 /// Tensor is a concrete tensor in tract.
 pub struct Tensor {
@@ -243,6 +244,17 @@ impl Tensor {
     /// Get the number of valeus in the tensor.
     pub fn len(&self) -> usize {
         self.shape.iter().cloned().product::<usize>()
+    }
+
+    /// Get the shape of the tensor.
+    pub fn strides(&self) -> TVec<usize> {
+        let mut strides: TVec<usize> = tvec![1];
+        for dim in self.shape.as_ref().iter().skip(1).rev() {
+            let previous = strides.last().unwrap().clone();
+            strides.push(previous * dim)
+        }
+        strides.reverse();
+        strides
     }
 
     /// Force the tensor shape, no consistency check.

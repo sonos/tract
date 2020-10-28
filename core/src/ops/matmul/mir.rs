@@ -100,61 +100,74 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
     MMM: Fn(usize, usize, usize) -> Box<dyn MatMatMul>,
 {
-    let rank = a.rank();
-    let a = a.to_array_view::<TA>()?;
-    let b = b.to_array_view::<TB>()?;
-    let m = a.shape()[a.shape().len() - 2 + a_trans as usize];
-    let k = a.shape()[a.shape().len() - 1 - a_trans as usize];
-    let n = b.shape()[b.shape().len() - 1 - b_trans as usize];
-    let mut mm = mmm(m, k, n);
-    let c_shape = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
+    use tract_linalg::frame::PackA;
+    use tract_linalg::frame::PackB;
     unsafe {
+        let rank = a.rank();
+        let m = a.shape()[a.shape().len() - 2 + a_trans as usize];
+        let k = a.shape()[a.shape().len() - 1 - a_trans as usize];
+        let n = b.shape()[b.shape().len() - 1 - b_trans as usize];
+        let mut mm = mmm(m, k, n);
+        let c_shape = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
         mm.c_from_data_and_strides(
             if c_trans { 1 } else { c_shape[rank - 1] as isize },
             if !c_trans { 1 } else { c_shape[rank - 1] as isize },
         );
         if let Some(q) = q_params {
-            q.inject_into_mmm::<TA, TB, TC, TI>(&mut *mm)?;
+            q.inject_into_mmm(&mut *mm)?;
         }
+        let mut c = Array::<TC, IxDyn>::uninitialized(&*c_shape);
+
+        let a_pack = mm.a_pack();
+        let b_pack = mm.b_pack();
+
+        let mut packed_a =
+            Tensor::uninitialized_aligned_dt(a.datum_type(), &[a_pack.len()], a_pack.alignment())?;
+        let mut packed_b =
+            Tensor::uninitialized_aligned_dt(b.datum_type(), &[b_pack.len()], b_pack.alignment())?;
+
+        for prefix in indices(&c_shape[..rank - 2]).into_iter() {
+            let mut pa = a.as_bytes().as_ptr();
+            let mut pb = b.as_bytes().as_ptr();
+            let mut c = c.view_mut();
+            for (axis, &dim) in prefix.slice().iter().enumerate() {
+                let d = dim.min(a.shape()[axis] - 1);
+                pa = pa.offset((a.strides()[axis] * d * a.datum_type().size_of()) as isize);
+                let d = dim.min(b.shape()[axis] - 1);
+                pb = pb.offset((b.strides()[axis] * d * b.datum_type().size_of()) as isize);
+                c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
+            }
+            a_pack.pack(
+                &mut TensorViewMut::at_prefix(&mut packed_a, &[]),
+                pa as _,
+                a.strides()[prefix.ndim() + a_trans as usize] as isize,
+                a.strides()[prefix.ndim() + !a_trans as usize] as isize,
+            );
+            fn pack_b<T: Datum + Copy>(
+                packer: &PackB,
+                packed_b: *mut u8,
+                pb: *const u8,
+                rsb: isize,
+                csb: isize,
+            ) {
+                packer.pack(packed_b as *mut T, pb as *const T, rsb, csb);
+            }
+            dispatch_copy!(pack_b(b.datum_type())(
+                &b_pack,
+                packed_b.as_ptr_mut_unchecked(),
+                pb,
+                b.strides()[prefix.ndim() + b_trans as usize] as isize,
+                b.strides()[prefix.ndim() + !b_trans as usize] as isize
+            ));
+            mm.run(
+                packed_a.as_bytes().as_ptr() as _,
+                packed_b.as_bytes().as_ptr() as _,
+                c.as_mut_ptr() as _,
+                &[],
+            );
+        }
+        Ok(c.into_tensor())
     }
-    let mut c = unsafe { Array::<TC, IxDyn>::uninitialized(&*c_shape) };
-
-    let b_pack = mm.b_pack();
-
-    let mut pa = unsafe {
-        Tensor::uninitialized_aligned::<TA>(&[mm.a_pack().len()], mm.a_pack().alignment())?
-    };
-    let mut pb =
-        unsafe { Tensor::uninitialized_aligned::<TB>(&[b_pack.len()], b_pack.alignment())? };
-
-    for prefix in indices(&c_shape[..rank - 2]).into_iter() {
-        let mut a = a.view();
-        let mut b = b.view();
-        let mut c = c.view_mut();
-        for (axis, &dim) in prefix.slice().iter().enumerate() {
-            let d = dim.min(a.shape()[axis] - 1);
-            a.slice_axis_inplace(Axis(axis), (d..=d).into());
-            let d = dim.min(b.shape()[axis] - 1);
-            b.slice_axis_inplace(Axis(axis), (d..=d).into());
-            c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
-        }
-        mm.a_pack().pack(
-            pa.as_ptr_mut()?,
-            a.as_ptr(),
-            a.strides()[prefix.ndim() + a_trans as usize],
-            a.strides()[prefix.ndim() + !a_trans as usize],
-        );
-        b_pack.pack(
-            pb.as_ptr_mut()?,
-            b.as_ptr(),
-            b.strides()[prefix.ndim() + b_trans as usize],
-            b.strides()[prefix.ndim() + !b_trans as usize],
-        );
-        unsafe {
-            mm.run(pa.as_ptr::<TA>()? as _, pb.as_ptr::<TB>()? as _, c.as_mut_ptr() as _, &[]);
-        }
-    }
-    Ok(c.into_tensor())
 }
 
 pub fn compute_shape<D: DimLike>(
@@ -694,17 +707,18 @@ where
         for x in a_prefix.slice() {
             a.index_axis_inplace(Axis(0), *x);
         }
-        let mut pa = unsafe {
-            Tensor::uninitialized_aligned::<TA>(&[mm.a_pack().len()], mm.a_pack().alignment())
-                .unwrap()
-        };
-        mm.a_pack().pack(
-            pa.as_ptr_mut().unwrap(),
-            a.as_ptr(),
-            a.strides()[a_trans as usize],
-            a.strides()[!a_trans as usize],
-        );
-        pa.into_arc_tensor()
+        unsafe {
+            let mut pa =
+                Tensor::uninitialized_aligned::<TA>(&[mm.a_pack().len()], mm.a_pack().alignment())
+                    .unwrap();
+            mm.a_pack().pack(
+                &mut TensorViewMut::at_prefix(&mut pa, &[]),
+                a.as_ptr() as _,
+                a.strides()[a_trans as usize],
+                a.strides()[!a_trans as usize],
+            );
+            pa.into_arc_tensor()
+        }
     });
     unsafe {
         if n == 1 {
@@ -725,7 +739,7 @@ where
             );
         };
         if let Some(q) = q_params {
-            q.inject_into_mmm::<TA, TB, TC, TI>(&mut *mm)?;
+            q.inject_into_mmm(&mut *mm)?;
         }
     }
     let rank = c_shape.len();
