@@ -129,7 +129,7 @@ fma_mmm_i8_8x8:
 {{L}}main_loop_packed_tops_and_offsets:
     mov             rsi,    [rbx]   // rsi: current row offset
 
-    movq         xmm8,   [rax]
+    movq            xmm8, qword ptr [rax]
     vpmovsxbw       ymm8,   xmm8
 
     vpbroadcastb    ymm9, byte ptr [r8 + rsi]           // broadcast 1 byte from B
