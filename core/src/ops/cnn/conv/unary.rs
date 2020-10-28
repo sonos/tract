@@ -92,12 +92,14 @@ impl ConvUnary {
                     let mut packed = unsafe {
                         Tensor::uninitialized_aligned::<T>(&[packer.len()], packer.alignment())?
                     };
-                    packer.pack(
-                        packed.as_slice_mut()?.as_mut_ptr(),
-                        subkernel.as_ptr(),
-                        subkernel.strides()[0],
-                        subkernel.strides()[1],
-                    );
+                    unsafe {
+                        packer.pack(
+                            &mut TensorViewMut::at_prefix(&mut packed, &[]),
+                            subkernel.as_ptr() as _,
+                            subkernel.strides()[0],
+                            subkernel.strides()[1],
+                        );
+                    }
                     Ok(packed.into_arc_tensor())
                 })
                 .collect::<TractResult<Vec<_>>>()?,
@@ -217,7 +219,7 @@ impl ConvUnary {
         mmm.c_from_data_and_strides(rsc, csc);
 
         if let Some(q) = self.q_params.as_ref() {
-            q.inject_into_mmm::<TA, TB, TC, TI>(&mut *mmm)?;
+            q.inject_into_mmm(&mut *mmm)?;
         }
 
         trace!(

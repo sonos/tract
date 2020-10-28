@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use tract_data::internal::*;
 
 #[derive(Clone, Debug, Eq, PartialEq, Educe)]
 #[educe(Hash)]
@@ -21,7 +22,14 @@ impl PackA {
         (self.m + self.mr - 1) / self.mr * self.mr * self.k
     }
 
-    fn pack_panel_a<T: Copy>(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize) {
+    fn pack_panel_a_t<T: Datum + Copy>(
+        &self,
+        pa: *mut T,
+        a: *const T,
+        rsa: isize,
+        csa: isize,
+        rows: usize,
+    ) {
         let mr = self.mr;
         unsafe {
             for i in 0..self.k {
@@ -39,28 +47,42 @@ impl PackA {
         }
     }
 
-    pub fn pack<T: Copy>(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize) {
+    fn pack_panel_a(
+        &self,
+        dt: DatumType,
+        pa: *mut (),
+        a: *const (),
+        rsa: isize,
+        csa: isize,
+        rows: usize,
+    ) {
+        dispatch_copy_by_size!(Self::pack_panel_a_t(dt)(self, pa as _, a as _, rsa, csa, rows))
+    }
+
+    pub unsafe fn pack<'a>(&self, pa: &mut TensorViewMut<'a>, a: *const (), rsa: isize, csa: isize) {
+        let dt = pa.datum_type();
+        let pa = pa.as_ptr_unchecked::<u8>() as *mut ();
         let mr = self.mr;
         assert!(pa as usize % self.alignment == 0);
-        unsafe {
-            for p in 0..(self.m / mr) {
-                self.pack_panel_a(
-                    pa.offset((p * mr * self.k) as isize),
-                    a.offset((p * mr) as isize * rsa),
-                    rsa,
-                    csa,
-                    mr,
-                )
-            }
-            if self.m % mr != 0 {
-                self.pack_panel_a(
-                    pa.offset((self.m / mr * mr * self.k) as isize),
-                    a.offset((self.m / mr * mr) as isize * rsa),
-                    rsa,
-                    csa,
-                    self.m % mr,
-                )
-            }
+        for p in 0..(self.m / mr) {
+            self.pack_panel_a(
+                dt,
+                pa.offset((p * mr * self.k) as isize),
+                a.offset((p * mr) as isize * rsa),
+                rsa,
+                csa,
+                mr,
+            )
+        }
+        if self.m % mr != 0 {
+            self.pack_panel_a(
+                dt,
+                pa.offset((self.m / mr * mr * self.k) as isize),
+                a.offset((self.m / mr * mr) as isize * rsa),
+                rsa,
+                csa,
+                self.m % mr,
+            )
         }
     }
 }

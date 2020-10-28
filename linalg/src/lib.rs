@@ -27,6 +27,8 @@ pub use self::frame::mmm;
 pub use self::frame::sigmoid;
 pub use self::frame::tanh;
 
+use tract_data::prelude::*;
+
 pub struct Ops {
     pub mmm_f32: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     pub qmmm_i8_i32: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
@@ -36,6 +38,26 @@ pub struct Ops {
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn sigmoid::Sigmoid<f32>> + Send + Sync>,
     pub tanh_f32: Box<dyn Fn() -> Box<dyn tanh::Tanh<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
+}
+
+impl Ops {
+    pub fn mmm(
+        &self,
+        ab: DatumType,
+        c: DatumType,
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> Option<Box<dyn mmm::MatMatMul>> {
+        match (ab, c) {
+            (DatumType::F32, DatumType::F32) => Some((self.mmm_f32)(m, k, n)),
+            (DatumType::I8, DatumType::I32) => Some((self.qmmm_i8_i32)(m, k, n)),
+            (DatumType::U8, DatumType::I32) => Some((self.qmmm_u8_i32)(m, k, n)),
+            (DatumType::I8, DatumType::I8) => Some((self.qmmm_i8_i8)(m, k, n)),
+            (DatumType::U8, DatumType::U8) => Some((self.qmmm_u8_u8)(m, k, n)),
+            _ => None,
+        }
+    }
 }
 
 pub fn generic() -> Ops {

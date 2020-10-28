@@ -104,13 +104,7 @@ impl QParams {
         self.inputs_kind = Some(inputs_kind);
     }
 
-    pub fn inject_into_mmm<TA, TB, TC, TI>(&self, mmm: &mut dyn MatMatMul) -> TractResult<()>
-    where
-        TA: Datum + Copy + Zero,
-        TB: Datum + Copy + Zero,
-        TC: Datum + Copy,
-        TI: Datum + Copy + std::ops::Add + std::ops::Mul + Zero,
-    {
+    pub fn inject_into_mmm(&self, mmm: &mut dyn MatMatMul) -> TractResult<()> {
         unsafe {
             if let Some(t) = self.zero_point_a.as_ref() {
                 mmm.set_zero_point_a(t.clone().into_tensor());
