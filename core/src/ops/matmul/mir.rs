@@ -100,7 +100,6 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
     MMM: Fn(usize, usize, usize) -> Box<dyn MatMatMul>,
 {
-    use tract_linalg::frame::PackA;
     use tract_linalg::frame::PackB;
     unsafe {
         let rank = a.rank();
@@ -127,21 +126,19 @@ where
             Tensor::uninitialized_aligned_dt(b.datum_type(), &[b_pack.len()], b_pack.alignment())?;
 
         for prefix in indices(&c_shape[..rank - 2]).into_iter() {
-            let mut pa = a.as_bytes().as_ptr();
             let mut pb = b.as_bytes().as_ptr();
             let mut c = c.view_mut();
+            let mut a_prefix = tvec!();
             for (axis, &dim) in prefix.slice().iter().enumerate() {
-                let d = dim.min(a.shape()[axis] - 1);
-                pa = pa.offset((a.strides()[axis] * d * a.datum_type().size_of()) as isize);
+                a_prefix.push(dim.min(a.shape()[axis] - 1));
                 let d = dim.min(b.shape()[axis] - 1);
                 pb = pb.offset((b.strides()[axis] * d * b.datum_type().size_of()) as isize);
                 c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
             }
             a_pack.pack(
                 &mut TensorViewMut::at_prefix(&mut packed_a, &[]),
-                pa as _,
-                a.strides()[prefix.ndim() + a_trans as usize] as isize,
-                a.strides()[prefix.ndim() + !a_trans as usize] as isize,
+                &TensorView::at_prefix(&a, &a_prefix),
+                a_trans,
             );
             fn pack_b<T: Datum + Copy>(
                 packer: &PackB,
@@ -701,24 +698,19 @@ where
 
     let mut mm = mmm(m, k, n);
     let c_shape = compute_shape(&a.shape(), b_shape, a_trans, b_trans, c_trans)?;
-    let a = a.to_array_view::<TA>()?;
-    let packed_as = Array::from_shape_fn(&a.shape()[0..a.ndim() - 2], |a_prefix| {
-        let mut a = a.view();
-        for x in a_prefix.slice() {
-            a.index_axis_inplace(Axis(0), *x);
-        }
-        unsafe {
-            let mut pa =
-                Tensor::uninitialized_aligned::<TA>(&[mm.a_pack().len()], mm.a_pack().alignment())
-                    .unwrap();
-            mm.a_pack().pack(
-                &mut TensorViewMut::at_prefix(&mut pa, &[]),
-                a.as_ptr() as _,
-                a.strides()[a_trans as usize],
-                a.strides()[!a_trans as usize],
-            );
-            pa.into_arc_tensor()
-        }
+    let packed_as = Array::from_shape_fn(&a.shape()[0..a.rank() - 2], |a_prefix| unsafe {
+        let mut pa = Tensor::uninitialized_aligned_dt(
+            a.datum_type(),
+            &[mm.a_pack().len()],
+            mm.a_pack().alignment(),
+        )
+        .unwrap();
+        mm.a_pack().pack(
+            &mut TensorViewMut::at_prefix(&mut pa, &[]),
+            &TensorView::at_prefix(&a, a_prefix.slice()),
+            a_trans,
+        );
+        pa.into_arc_tensor()
     });
     unsafe {
         if n == 1 {
@@ -820,6 +812,12 @@ mod test {
 
     #[test]
     fn bin() {
+        //           0
+        //           1
+        //           2
+        //
+        // 0 1 2     5
+        // 3 4 5    14
         let a = rctensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
         let b = rctensor2(&[[0f32], [1.0], [2.0]]);
         let c = rctensor2(&[[5f32], [14.0]]);
