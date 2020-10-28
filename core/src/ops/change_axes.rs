@@ -177,7 +177,7 @@ impl AxisOp {
                 }
             }
             (Rm(op), Reshape(at, from, to)) => {
-                if op <= at {
+                if op < at {
                     Some((Some(Rm(*op)), Some(Reshape(at - 1, from.clone(), to.clone()))))
                 } else if *op > at + from.len() {
                     Some((
