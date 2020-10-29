@@ -135,12 +135,7 @@ where
             }
             a_pack.pack(packed_a.view_mut(), TensorView::at_prefix(&a, &a_prefix), a_trans);
             b_pack.pack(packed_b.view_mut(), TensorView::at_prefix(&b, &b_prefix), b_trans);
-            mm.run(
-                packed_a.as_bytes().as_ptr() as _,
-                packed_b.as_bytes().as_ptr() as _,
-                c.as_mut_ptr() as _,
-                &[],
-            );
+            mm.run(&packed_a.view(), &packed_b.view(), c.as_mut_ptr() as _, &[])?;
         }
         Ok(c.into_tensor())
     }
@@ -382,7 +377,6 @@ impl EvalOp for MatMulUnary {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let q_params = q_params_from_inputs(&self.q_params, &inputs)?;
         let q_params = q_params.as_ref().or(self.q_params.as_ref());
-
         let t = eval(&self.a, &inputs[0], self.a_trans, self.b_trans, self.c_trans, q_params)?;
         Ok(tvec!(t.into_arc_tensor()))
     }

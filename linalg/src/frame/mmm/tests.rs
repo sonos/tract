@@ -262,12 +262,7 @@ where
 
         let mut found = vec![TC::max_value(); m * n];
 
-        op.run(
-            packed_a.as_ptr_unchecked::<TA>() as _,
-            packed_b.as_ptr_unchecked::<TB>() as _,
-            found.as_mut_ptr() as _,
-            &[],
-        );
+        op.run(&packed_a.view(), &packed_b.view(), found.as_mut_ptr() as _, &[]).unwrap();
 
         let mut expected = vec![TC::zero(); m * n];
         for x in 0..n {
@@ -310,12 +305,7 @@ where
 
         let mut found = vec![TC::zero(); m];
 
-        op.run(
-            packed_a.as_ptr_unchecked::<TA>() as _,
-            b.as_ptr::<TB>().unwrap() as _,
-            found.as_mut_ptr() as _,
-            &[],
-        );
+        op.run(&packed_a.view(), &b.view(), found.as_mut_ptr() as _, &[]).unwrap();
 
         let mut expected = vec![TC::zero(); m];
         for y in 0..m {
@@ -361,12 +351,7 @@ where
 
     let mut found = vec![TC::zero(); m * n];
 
-    op.run(
-        packed_a.as_ptr_unchecked::<TA>() as _,
-        packed_b.as_ptr_unchecked::<TB>() as _,
-        found.as_mut_ptr() as _,
-        spec,
-    );
+    op.run(&packed_a.view(), &packed_b.view(), found.as_mut_ptr() as _, spec).unwrap();
 
     let mut inter = vec![TI::zero(); m * n];
     for x in 0..n {
@@ -603,12 +588,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
             op.a_pack().pack(packed_a.view_mut(), self.filters.view(), false);
 
             let mut found: Vec<TC> = vec![TC::max_value(); self.co * self.output_width()];
-            op.run(
-                packed_a.as_ptr_unchecked::<TA>() as _,
-                self.data.as_ptr_unchecked::<TB>() as _,
-                found.as_mut_ptr() as _,
-                &[],
-            );
+            op.run(&packed_a.view(), &self.data.view(), found.as_mut_ptr() as _, &[]).unwrap();
             found
         }
     }
@@ -769,12 +749,7 @@ where
             mmm.set_zero_point_a(self.a0.clone());
             mmm.set_zero_point_b(self.b0.clone());
 
-            mmm.run(
-                packed_a.as_ptr_unchecked::<TA>() as _,
-                packed_b.as_ptr_unchecked::<TB>() as _,
-                c.as_mut_ptr() as _,
-                &[],
-            );
+            mmm.run(&packed_a.view(), &packed_b.view(), c.as_mut_ptr() as _, &[]).unwrap();
             c
         }
     }
@@ -880,7 +855,7 @@ macro_rules! qmmm_frame_tests {
                         a0: tensor1(&[0]).cast_to::<$ta>().unwrap().into_owned(),
                         a: tensor2(&[[<$ta>::zero(), <$ta>::one()]]),
                         b0: tensor1(&[0]).cast_to::<$tb>().unwrap().into_owned(),
-                        b: tensor2(&[[<$tb>::zero(), <$tb>::zero()]]),
+                        b: tensor2(&[[<$tb>::zero()], [<$tb>::zero()]]),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());

@@ -4,20 +4,14 @@ use criterion::Criterion;
 
 use tract_data::internal::*;
 
-pub fn vec(len: usize, align: usize) -> Tensor {
-    unsafe {
-        let mut tensor = Tensor::uninitialized_aligned::<f32>(&[len], align).unwrap();
-        tensor.clear::<f32>();
-        tensor
-    }
-}
-
 fn pack_a(c: &mut Criterion, m: usize, k: usize, n: usize) {
-    c.bench_function(&format!("pack_a_{}x{}x{}", m, k, n), move |b| {
+    c.bench_function(&format!("pack_a_{}x{}x{}", m, k, n), move |b| unsafe {
         let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
         let a = Tensor::zero::<f32>(&[m, k]).unwrap();
-        let mut pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
-        b.iter(move || unsafe { mm.a_pack().pack(pa.view_mut(), a.view(), false) })
+        let mut pa =
+            Tensor::uninitialized_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment())
+                .unwrap();
+        b.iter(move || mm.a_pack().pack(pa.view_mut(), a.view(), false))
     });
 }
 
@@ -31,21 +25,16 @@ fn pack_b(c: &mut Criterion, m: usize, k: usize, n: usize) {
 }
 
 fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {
-    c.bench_function(&format!("mat_mul_prepacked_{}x{}x{}", m, k, n), move |be| {
+    c.bench_function(&format!("mat_mul_prepacked_{}x{}x{}", m, k, n), move |be| unsafe {
         let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
-        let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
-        let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
+        let pa =
+            Tensor::uninitialized_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment())
+                .unwrap();
+        let pb =
+            Tensor::uninitialized_aligned::<f32>(&[mm.b_pack().len()], mm.b_pack().alignment())
+                .unwrap();
         let mut c = vec![0.0; m * n];
-        unsafe {
-            be.iter(move || {
-                mm.run(
-                    pa.as_ptr_unchecked::<f32>() as _,
-                    pb.as_ptr_unchecked::<f32>() as _,
-                    c.as_mut_ptr() as _,
-                    &[],
-                )
-            });
-        }
+        be.iter(move || mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]).unwrap());
     });
 }
 

@@ -6,7 +6,8 @@ use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul, Neg};
-use tract_data::prelude::*;
+use tract_data::internal::*;
+use tract_data::anyhow;
 
 pub trait MatMatMul:
     Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
@@ -38,7 +39,7 @@ pub trait MatMatMul:
     unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize);
     unsafe fn c_vec_from_data(&mut self);
 
-    unsafe fn run(&self, a: *const (), b: *const (), c: *mut (), non_linear: &[FusedSpec]);
+    unsafe fn run(&self, a: &TensorView, b: &TensorView, c: *mut (), non_linear: &[FusedSpec]) -> anyhow::Result<()>;
 }
 
 dyn_clone::clone_trait_object!(MatMatMul);
@@ -217,7 +218,7 @@ where
         self.c_vec_from_data_and_stride(1)
     }
 
-    unsafe fn run(&self, a: *const (), b: *const (), c: *mut (), non_linear: &[FusedSpec]) {
+    unsafe fn run(&self, a: &TensorView, b: &TensorView, c: *mut (), non_linear: &[FusedSpec]) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
@@ -231,8 +232,8 @@ where
             mr,
             nr,
         };
-        let a = a as *const TA;
-        let b = b as *const TB;
+        let a = a.as_ptr::<TA>()?;
+        let b = b.as_ptr::<TB>()?;
         let c = c as *mut TC;
         let ref mut tmp_tile = tmp_c_storage.wrap(tmpc.as_ptr());
         let ref linear = LinearSpec::k(self.k);
@@ -273,7 +274,9 @@ where
                 }
                 FusedSpec::PerRowAdd(tensor1(&*sum_a_over_k))
             } else {
-                let b0 = tensor1(&*b0.as_slice_unchecked::<TB>().iter().map(|b| b.as_()).collect::<Vec<_>>());
+                let b0 = tensor1(
+                    &*b0.as_slice_unchecked::<TB>().iter().map(|b| b.as_()).collect::<Vec<_>>(),
+                );
                 FusedSpec::AddRowColProducts(tensor1(&*sum_a_over_k), b0)
             };
             non_linear.insert(0, term);
@@ -359,6 +362,7 @@ where
                 c.set_from_tile(m / mr, n / nr, m % mr, n % nr, &*tmpc);
             }
         }
+        Ok(())
     }
 
     unsafe fn set_zero_point_a(&mut self, value: Tensor) {
