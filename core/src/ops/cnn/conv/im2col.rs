@@ -90,33 +90,38 @@ impl Im2Col {
         output_shape.push(self.b_pack.len().into());
         Ok(output_shape)
     }
+    /*
+    <<<<<<< HEAD
 
-    pub(super) unsafe fn im2col<'i, T: Copy + Datum>(
-        &'i self,
-        input: &'i Tensor,
-        packed: &mut Tensor,
-    ) {
-        if input.len() == 0 {
-            return;
-        }
-        let pad_value = *self.pad_value.to_scalar_unchecked();
-        let mut input = input.to_array_view_unchecked::<T>();
-        let mut packed = packed.to_array_view_mut_unchecked::<T>();
-        if !self.data_format.has_n() {
-            input.insert_axis_inplace(Axis(0));
-            packed.insert_axis_inplace(Axis(0));
-        }
-        for n in 0..*self.data_format_with_n.shape(&input.shape()).unwrap().n().unwrap() {
-            let mut input = input.view();
-            let mut packed = packed.view_mut();
-            input.slice_axis_inplace(Axis(0), (n..=n).into());
-            packed.index_axis_inplace(Axis(0), n);
-            for g in 0..self.group {
-                let mut packed = packed.index_axis_mut(Axis(0), g);
-                self.patcher.patch(self, &input, packed.as_slice_mut().unwrap(), g, pad_value);
+        pub(super) unsafe fn im2col<'i, T: Copy + Datum>(
+            &'i self,
+            input: &'i Tensor,
+            packed: &mut Tensor,
+        ) {
+            if input.len() == 0 {
+                return;
+            }
+            let pad_value = *self.pad_value.to_scalar_unchecked();
+            let mut input = input.to_array_view_unchecked::<T>();
+            let mut packed = packed.to_array_view_mut_unchecked::<T>();
+            if !self.data_format.has_n() {
+                input.insert_axis_inplace(Axis(0));
+                packed.insert_axis_inplace(Axis(0));
+            }
+            for n in 0..*self.data_format_with_n.shape(&input.shape()).unwrap().n().unwrap() {
+                let mut input = input.view();
+                let mut packed = packed.view_mut();
+                input.slice_axis_inplace(Axis(0), (n..=n).into());
+                packed.index_axis_inplace(Axis(0), n);
+                for g in 0..self.group {
+                    let mut packed = packed.index_axis_mut(Axis(0), g);
+                    self.patcher.patch(self, &input, packed.as_slice_mut().unwrap(), g, pad_value);
+                }
             }
         }
-    }
+    =======
+    >>>>>>> 9737dff5... pack_b on Tensor
+    */
 }
 
 impl Op for Im2Col {
@@ -143,18 +148,35 @@ impl EvalOp for Im2Col {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
+            let input = args_1!(inputs);
+            let output_shape = self.output_shape(input.shape())?;
             let mut tensor = Tensor::uninitialized_aligned_dt(
-                inputs[0].datum_type(),
-                &*self.output_shape(&*inputs[0].shape())?,
+                input.datum_type(),
+                &*output_shape,
                 self.b_pack.alignment(),
             )?;
-            dispatch_copy_by_size!(Self::im2col(inputs[0].datum_type())(
-                self,
-                &inputs[0],
-                &mut tensor
-            ));
+            if !output_shape.iter().any(|d| *d == 0) {
+                let input_shape = self.data_format.shape(input.shape())?;
+                for i in 0..*input_shape.n().unwrap_or(&1) {
+                    for g in 0..self.group {
+                        let input = if let Some(ref n_axis) = input_shape.n_axis() {
+                            debug_assert!(*n_axis == 0);
+                            input.view_at_prefix(&[i])
+                        } else {
+                            input.view()
+                        };
+                        dispatch_copy_by_size!(Patcher::patch(input.datum_type())(
+                            &self.patcher,
+                            self,
+                            &input,
+                            &mut tensor.view_at_prefix_mut(&[i, g]),
+                            g
+                        ))?
+                    }
+                }
+            }
             Ok(tvec!(tensor.into()))
         }
     }
@@ -183,51 +205,36 @@ impl Patcher {
     fn patch<'i, 'p, T: Copy + Datum>(
         &self,
         im2col: &'i Im2Col,
-        input: &'i ArrayViewD<'i, T>,
-        pack: &'p mut [T],
+        input: &'i TensorView,
+        pack: &'p mut TensorViewMut,
         g: usize,
-        pad_value: T,
-    ) {
+    ) -> TractResult<()> {
         match self {
-            Patcher::Valid1d => Self::valid_1d(
-                im2col,
-                input.view().into_dimensionality().as_ref().unwrap(),
-                pack,
-                g,
-            ),
-            Patcher::Valid2d => Self::valid_2d(
-                im2col,
-                input.view().into_dimensionality().as_ref().unwrap(),
-                pack,
-                g,
-            ),
-            Patcher::Padded2d => Self::padded_2d(
-                im2col,
-                input.view().into_dimensionality().as_ref().unwrap(),
-                pack,
-                g,
-                pad_value,
-            ),
-            _ => Self::generic(im2col, input, pack, g, pad_value),
+            Patcher::Valid1d => Self::valid_1d::<T>(im2col, input, pack, g),
+            Patcher::Valid2d => Self::valid_2d::<T>(im2col, input, pack, g),
+            Patcher::Padded2d => Self::padded_2d::<T>(im2col, input, pack, g),
+            _ => Self::generic::<T>(im2col, input, pack, g),
         }
     }
 
     #[inline(never)]
     fn generic<'i, 'p, T: Copy + Datum>(
         im2col: &'i Im2Col,
-        input: &'i ArrayViewD<'i, T>,
-        pack: &'p mut [T],
+        input: &'i TensorView,
+        pack: &'p mut TensorViewMut,
         g: usize,
-        pad_value: T,
-    ) {
-        let mut mega_matrix = unsafe { Array2::<T>::uninitialized((im2col.k, im2col.n)) };
-        let input_shape: TVec<usize> = input.shape().into();
-        let shape = im2col.data_format_with_n.shape(&input_shape).unwrap();
+    ) -> TractResult<()> {
         unsafe {
-            let ptr = input.as_ptr().offset((g * im2col.ci_per_group * shape.c_stride()) as isize);
+            let pad_value = *im2col.pad_value.to_scalar_unchecked::<T>();
+            let input_shape: TVec<usize> = input.shape().into();
+            let mut mega_matrix = Tensor::uninitialized::<T>(&[im2col.k, im2col.n])?;
+            let shape = im2col.data_format_with_n.shape(&input_shape).unwrap();
+            let mut mega_matrix_view = mega_matrix.to_array_view_mut_unchecked::<T>();
+            let ptr = input.as_ptr_unchecked::<T>();
+            let ptr = ptr.offset((shape.c_stride() * (g * im2col.ci_per_group)) as isize);
             for (spatial, mut col) in ndarray::indices(&*im2col.patch.output_shape)
                 .into_iter()
-                .zip(mega_matrix.axis_iter_mut(Axis(1)))
+                .zip(mega_matrix_view.axis_iter_mut(Axis(1)))
             {
                 let mut col = col.iter_mut();
                 for ci in 0..im2col.ci_per_group {
@@ -238,29 +245,27 @@ impl Patcher {
                     }
                 }
             }
-            im2col.b_pack.pack(
-                pack.as_mut_ptr(),
-                mega_matrix.as_ptr(),
-                mega_matrix.strides()[0],
-                mega_matrix.strides()[1],
-            );
+            im2col.b_pack.pack(pack, mega_matrix.view(), false);
+            Ok(())
         }
     }
 
     #[inline(never)]
     fn valid_1d<'i, 'p, T: Copy + Datum>(
         im2col: &'i Im2Col,
-        input: &'i ArrayView3<'i, T>,
-        pack: &'p mut [T],
+        input: &'i TensorView,
+        pack: &'p mut TensorViewMut,
         g: usize,
-    ) {
+    ) -> TractResult<()> {
         unsafe {
             let input_shape: TVec<usize> = input.shape().into();
             let shape = im2col.data_format_with_n.shape(&input_shape).unwrap();
             let x_stride = *shape.h_stride() as isize * im2col.patch.spec.strides[0] as isize;
             let c_stride = *shape.c_stride() as isize;
+            let pack = pack.as_slice_mut_unchecked::<T>();
             let mut writer = im2col.b_pack.write_packed_by_rows(pack);
-            let iptr = input.as_ptr().offset((g * im2col.ci_per_group * shape.c_stride()) as isize);
+            let iptr =
+                input.as_ptr::<T>()?.offset((g * im2col.ci_per_group * shape.c_stride()) as isize);
             for ci in 0..im2col.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &im2col.patch.standard_layout_data_field {
@@ -270,20 +275,22 @@ impl Patcher {
                     }
                 }
             }
+            Ok(())
         }
     }
 
     #[inline(never)]
     fn padded_2d<'i, 'p, T: Copy + Datum>(
         im2col: &'i Im2Col,
-        input: &'i ArrayView4<'i, T>,
-        pack: &'p mut [T],
+        input: &'i TensorView,
+        pack: &'p mut TensorViewMut,
         g: usize,
-        pad_value: T,
-    ) {
+    ) -> TractResult<()> {
         unsafe {
             let input_shape: TVec<usize> = input.shape().into();
             let shape = im2col.data_format_with_n.shape(&input_shape).unwrap();
+            let pad_value = *im2col.pad_value.to_scalar_unchecked::<T>();
+            let pack = pack.as_slice_mut_unchecked::<T>();
             let y_stride = im2col.patch.spec.strides[0] as isize;
             let x_stride = im2col.patch.spec.strides[1] as isize;
             let y_stride_ptr = y_stride * *shape.h_stride() as isize;
@@ -293,7 +300,8 @@ impl Patcher {
             let input_width = shape.hw_dims()[1] as isize;
             let kernel_len = im2col.patch.standard_layout_data_field.len();
             let mut writer = im2col.b_pack.write_packed_by_rows(pack);
-            let iptr = input.as_ptr().offset((g * im2col.ci_per_group * shape.c_stride()) as isize);
+            let iptr =
+                input.as_ptr::<T>()?.offset((g * im2col.ci_per_group * shape.c_stride()) as isize);
             for ci in 0..im2col.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
                 for kitem in 0..kernel_len {
@@ -322,25 +330,28 @@ impl Patcher {
                 }
             }
         }
+        Ok(())
     }
 
     #[inline(never)]
     fn valid_2d<'i, 'p, T: Copy + Datum>(
         im2col: &'i Im2Col,
-        input: &'i ArrayView4<'i, T>,
-        pack: &'p mut [T],
+        input: &'i TensorView,
+        pack: &'p mut TensorViewMut,
         g: usize,
-    ) {
+    ) -> TractResult<()> {
         unsafe {
             let input_shape: TVec<usize> = input.shape().into();
             let shape = im2col.data_format_with_n.shape(&input_shape).unwrap();
+            let pack = pack.as_slice_mut_unchecked::<T>();
             let y_stride = im2col.patch.spec.strides[0] as isize;
             let x_stride = im2col.patch.spec.strides[1] as isize;
             let y_stride_ptr = y_stride * *shape.h_stride() as isize;
             let x_stride_ptr = x_stride * *shape.w_stride() as isize;
             let c_stride_ptr = *shape.c_stride() as isize;
             let mut writer = im2col.b_pack.write_packed_by_rows(pack);
-            let iptr = input.as_ptr().offset((g * im2col.ci_per_group * shape.c_stride()) as isize);
+            let iptr =
+                input.as_ptr::<T>()?.offset((g * im2col.ci_per_group * shape.c_stride()) as isize);
             for ci in 0..im2col.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
                 for koffset in &im2col.patch.standard_layout_data_field {
@@ -353,6 +364,7 @@ impl Patcher {
                     }
                 }
             }
+            Ok(())
         }
     }
 }

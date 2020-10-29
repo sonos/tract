@@ -190,6 +190,25 @@ impl Tensor {
         dispatch_numbers!(Self::zero(dt)(shape))
     }
 
+    pub fn zero_aligned_dt(
+        dt: DatumType,
+        shape: &[usize],
+        alignment: usize,
+    ) -> anyhow::Result<Tensor> {
+        dispatch_numbers!(Self::zero_aligned(dt)(shape, alignment))
+    }
+
+    pub fn zero_aligned<T: Datum + num_traits::Zero>(
+        shape: &[usize],
+        alignment: usize,
+    ) -> anyhow::Result<Tensor> {
+        unsafe {
+            let mut tensor = Self::uninitialized_aligned::<T>(shape, alignment)?;
+            tensor.clear::<T>();
+            Ok(tensor)
+        }
+    }
+
     /// Create an tensor from raw data.
     ///
     /// It copies the data, aligning it to the size of T.
@@ -748,8 +767,16 @@ impl Tensor {
         unsafe { view::TensorView::at_prefix(self, &[]) }
     }
 
+    pub fn view_at_prefix(&self, prefix: &[usize]) -> view::TensorView {
+        unsafe { view::TensorView::at_prefix(self, prefix) }
+    }
+
     pub fn view_mut(&mut self) -> view::TensorViewMut {
         unsafe { view::TensorViewMut::at_prefix(self, &[]) }
+    }
+
+    pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> view::TensorViewMut {
+        unsafe { view::TensorViewMut::at_prefix(self, prefix) }
     }
 }
 

@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use tract_data::internal::*;
 
 #[derive(Clone, Debug, Eq, PartialEq, Educe)]
 #[educe(Hash)]
@@ -22,32 +23,14 @@ impl PackB {
         (self.n + self.nr - 1) / self.nr * self.nr * self.k
     }
 
-    pub fn pack<T: Copy>(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
-        let nr = self.nr;
-        assert!(pb as usize % self.alignment == 0);
-        unsafe {
-            for p in 0..(self.n / nr) {
-                self.pack_panel_b(
-                    pb.offset((p * nr * self.k) as isize),
-                    b.offset((p * nr) as isize * csb),
-                    rsb,
-                    csb,
-                    nr,
-                )
-            }
-            if self.n % nr != 0 {
-                self.pack_panel_b(
-                    pb.offset((self.n / nr * nr * self.k) as isize),
-                    b.offset((self.n / nr * nr) as isize * csb),
-                    rsb,
-                    csb,
-                    self.n % nr,
-                )
-            }
-        }
-    }
-
-    fn pack_panel_b<T: Copy>(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize) {
+    fn pack_panel_b_t<T: Copy>(
+        &self,
+        pb: *mut T,
+        b: *const T,
+        rsb: isize,
+        csb: isize,
+        cols: usize,
+    ) {
         let nr = self.nr;
         unsafe {
             for i in 0..self.k {
@@ -62,6 +45,58 @@ impl PackB {
                     }
                 }
             }
+        }
+    }
+
+    fn pack_panel_b(
+        &self,
+        dt: DatumType,
+        pb: *mut u8,
+        b: *const u8,
+        rsb: isize,
+        csb: isize,
+        cols: usize,
+    ) {
+        dispatch_copy_by_size!(Self::pack_panel_b_t(dt)(self, pb as _, b as _, rsb, csb, cols))
+    }
+
+    pub unsafe fn pack<'a, 'b>(
+        &self,
+        mut pb: impl std::borrow::BorrowMut<TensorViewMut<'a>>,
+        b: impl std::borrow::Borrow<TensorView<'b>>,
+        trans: bool,
+    ) {
+        let pb = pb.borrow_mut();
+        let b = b.borrow();
+        let dt = pb.datum_type();
+        let (rsb, csb) = if trans {
+            (1, b.shape()[b.rank() - 1] as isize)
+        } else {
+            ( b.shape()[b.rank() - 1] as isize, 1)
+        };
+        let pb = pb.as_ptr_mut_unchecked::<u8>();
+        let b = b.as_ptr_unchecked::<u8>();
+        let nr = self.nr;
+        assert!(pb as usize % self.alignment == 0);
+        for p in 0..(self.n / nr) {
+            self.pack_panel_b(
+                dt,
+                pb.offset((p * nr * self.k * dt.size_of()) as isize),
+                b.offset((p * nr * dt.size_of()) as isize * csb),
+                rsb,
+                csb,
+                nr,
+            )
+        }
+        if self.n % nr != 0 {
+            self.pack_panel_b(
+                dt,
+                pb.offset((self.n / nr * nr * self.k * dt.size_of()) as isize),
+                b.offset((self.n / nr * nr * dt.size_of()) as isize * csb),
+                rsb,
+                csb,
+                self.n % nr,
+            )
         }
     }
 

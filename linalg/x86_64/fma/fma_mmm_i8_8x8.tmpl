@@ -189,7 +189,7 @@ fma_mmm_i8_8x8:
     mov     rbx,   [rbx + 8] // B 
 
 {{L}}main_loop_packed_packed:
-    vmovups         xmm8, [rax]                    // load 16 bytes from A (will only use first 8)
+    movq            xmm8, qword ptr [rax]          // read 8 bytes
     vpmovsxbw       ymm8, xmm8                     // promote byte to i32x8
 
     vpbroadcastb    ymm9, byte ptr [rbx]           // broadcast 1 byte from B
@@ -251,7 +251,7 @@ fma_mmm_i8_8x8:
 {{L}}packed_vec_loop:
     vpbroadcastb    ymm14,  byte ptr [rbx]
     vpmovsxbw       ymm14,  xmm14
-    vmovups         ymm12,  [rax]
+    movq            xmm12,  qword ptr [rax]
     vpmovsxbw       ymm12,  xmm12
 
     vpmullw         ymm12,  ymm12, ymm14

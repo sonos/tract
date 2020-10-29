@@ -17,7 +17,7 @@ fn pack_a(c: &mut Criterion, m: usize, k: usize, n: usize) {
         let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
         let a = Tensor::zero::<f32>(&[m, k]).unwrap();
         let mut pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
-        b.iter(move || unsafe { mm.a_pack().pack(&mut pa.view_mut(), &a.view(), false) })
+        b.iter(move || unsafe { mm.a_pack().pack(pa.view_mut(), a.view(), false) })
     });
 }
 
@@ -26,14 +26,7 @@ fn pack_b(c: &mut Criterion, m: usize, k: usize, n: usize) {
         let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
         let b = Tensor::zero::<f32>(&[k, n]).unwrap();
         let mut pb = Tensor::uninitialized_aligned::<f32>(&[n * k], 4).unwrap();
-        be.iter(move || {
-            mm.b_pack().pack(
-                pb.as_ptr_mut_unchecked::<f32>(),
-                b.as_ptr_unchecked::<f32>(),
-                n as _,
-                1,
-            )
-        })
+        be.iter(move || mm.b_pack().pack(pb.view_mut(), b.view(), false))
     });
 }
 
