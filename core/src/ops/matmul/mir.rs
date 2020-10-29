@@ -100,7 +100,6 @@ where
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
     MMM: Fn(usize, usize, usize) -> Box<dyn MatMatMul>,
 {
-    use tract_linalg::frame::PackB;
     unsafe {
         let rank = a.rank();
         let m = a.shape()[a.shape().len() - 2 + a_trans as usize];
@@ -126,36 +125,16 @@ where
             Tensor::uninitialized_aligned_dt(b.datum_type(), &[b_pack.len()], b_pack.alignment())?;
 
         for prefix in indices(&c_shape[..rank - 2]).into_iter() {
-            let mut pb = b.as_bytes().as_ptr();
             let mut c = c.view_mut();
             let mut a_prefix = tvec!();
+            let mut b_prefix = tvec!();
             for (axis, &dim) in prefix.slice().iter().enumerate() {
                 a_prefix.push(dim.min(a.shape()[axis] - 1));
-                let d = dim.min(b.shape()[axis] - 1);
-                pb = pb.offset((b.strides()[axis] * d * b.datum_type().size_of()) as isize);
+                b_prefix.push(dim.min(b.shape()[axis] - 1));
                 c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
             }
-            a_pack.pack(
-                &mut TensorViewMut::at_prefix(&mut packed_a, &[]),
-                &TensorView::at_prefix(&a, &a_prefix),
-                a_trans,
-            );
-            fn pack_b<T: Datum + Copy>(
-                packer: &PackB,
-                packed_b: *mut u8,
-                pb: *const u8,
-                rsb: isize,
-                csb: isize,
-            ) {
-                packer.pack(packed_b as *mut T, pb as *const T, rsb, csb);
-            }
-            dispatch_copy!(pack_b(b.datum_type())(
-                &b_pack,
-                packed_b.as_ptr_mut_unchecked(),
-                pb,
-                b.strides()[prefix.ndim() + b_trans as usize] as isize,
-                b.strides()[prefix.ndim() + !b_trans as usize] as isize
-            ));
+            a_pack.pack(packed_a.view_mut(), TensorView::at_prefix(&a, &a_prefix), a_trans);
+            b_pack.pack(packed_b.view_mut(), TensorView::at_prefix(&b, &b_prefix), b_trans);
             mm.run(
                 packed_a.as_bytes().as_ptr() as _,
                 packed_b.as_bytes().as_ptr() as _,
@@ -742,8 +721,7 @@ where
             format!("{}.pack", &*node.name),
             super::MatMatMulPackB {
                 pack_b: mm.b_pack().clone(),
-                col_stride: if b_trans { *b_shape.last().unwrap() as isize } else { 1 },
-                row_stride: if b_trans { 1 } else { *b_shape.last().unwrap() as isize },
+                trans: b_trans,
                 output_shape: packed_b_shape,
             },
             &[wire],

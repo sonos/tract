@@ -295,7 +295,6 @@ impl Expansion for Conv {
 mod test {
     use super::*;
     use crate::setup_test_logger;
-    use tract_ndarray::*;
 
     #[test]
     fn test_infer_with_known_kshape() {
@@ -350,16 +349,15 @@ mod test {
     }
 
     #[test]
-    fn test_eval_nhwc_1() {
+    fn test_eval_nhwc_1() -> TractResult<()> {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let res = op
             .eval(tvec!(
-                ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into_arc_tensor(),
-                ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into_arc_tensor()
-            ))
-            .unwrap();
-        Tensor::from(ArrayD::<f32>::zeros(vec![1, 2, 2, 1])).close_enough(&res[0], false).unwrap()
+                Tensor::zero::<f32>(&[1, 2, 2, 2]).unwrap().into_arc_tensor(),
+                Tensor::zero::<f32>(&[2, 2, 2, 1]).unwrap().into_arc_tensor(),
+            ))?;
+        Tensor::zero::<f32>(&[1, 2, 2, 1]).unwrap().close_enough(&res[0], false)
     }
 
     #[test]

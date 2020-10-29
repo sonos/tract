@@ -14,14 +14,14 @@ macro_rules! mmm_frame_tests {
         mod frame {
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::*;
-            use $crate::num_traits::{AsPrimitive, One, Zero};
+            use $crate::num_traits::{One, Zero};
             use tract_data::internal::*;
 
             proptest::proptest! {
                 #[test]
                 fn mat_mul_prepacked_prop((m, k, n, ref a, ref b) in strat_mat_mat_mul::<$ta, $tb>()) {
                     if $cond {
-                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &a, &*b)?
+                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &a, &b)?
                     }
                 }
 
@@ -46,9 +46,8 @@ macro_rules! mmm_frame_tests {
             fn mat_mul_1() {
                 if $cond {
                     let a = tensor2(&[[-3i32, 3, 5, -5], [6, 0, -6, -5], [0, 0, 9, 7]]).cast_to::<$ta>().unwrap().into_owned();
-                    let b: Vec<$tb> =
-                        [-8isize, 5, 5, -3, 5, 7, -8, -1].iter().map(|x| x.as_()).collect();
-                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(3, 4, 2, &a, &*b).unwrap()
+                    let b = tensor2(&[[-8i32, 5],[ 5, -3], [5, 7],[ -8, -1]]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(3, 4, 2, &a, &b).unwrap()
                 }
             }
 
@@ -56,8 +55,8 @@ macro_rules! mmm_frame_tests {
             fn mat_mul_2() {
                 if $cond {
                     let a = tensor2(&[[-1i32, -1],[ 0, 0]]).cast_to::<$ta>().unwrap().into_owned();
-                    let b: Vec<$tb> = [0isize, 1, 0, 1].iter().map(|x| x.as_()).collect();
-                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(2, 2, 2, &a, &*b).unwrap()
+                    let b = tensor2(&[[032, 1], [0, 1]]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(2, 2, 2, &a, &b).unwrap()
                 }
             }
 
@@ -69,16 +68,15 @@ macro_rules! mmm_frame_tests {
                         2,
                         1,
                         &tensor2(&[[0, 1]]).cast_to::<$ta>().unwrap(),
-                        &[<$tb>::zero(), <$tb>::one()],
-                    )
-                    .unwrap()
+                        &tensor2(&[[0], [1]]).cast_to::<$tb>().unwrap(),
+                        )
+                        .unwrap()
                 }
             }
 
             #[test]
             fn conv_prepacked_1() {
                 if $cond {
-                    let data: Vec<$tb> = vec![0.as_(), 1.as_()];
                     let pb = ConvProblem::<$ta, $tb> {
                         ci: 1,
                         co: 1,
@@ -86,7 +84,7 @@ macro_rules! mmm_frame_tests {
                         stride: 1,
                         dilation: 1,
                         filters: tensor2(&[[1i32]]).cast_to::<$ta>().unwrap().into_owned(),
-                        data,
+                        data: tensor2(&[[<$tb>::zero(), <$ta>::one()]]),
                         phantom: std::marker::PhantomData,
                     };
                     let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
@@ -108,7 +106,7 @@ macro_rules! mmm_frame_tests {
                         stride: 3,
                         dilation: 2,
                         filters,
-                        data,
+                        data: tensor1(&data).into_shape(&[6, 5]).unwrap(),
                         phantom: std::marker::PhantomData,
                     };
                     let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
@@ -184,7 +182,7 @@ macro_rules! mmm_s_frame_tests {
                         stride: 1,
                         dilation: 1,
                         filters: tensor1(&filters),
-                        data,
+                        data: tensor1(&data).into_shape(&[1, 4]).unwrap(),
                         phantom: std::marker::PhantomData,
                     };
                     let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
@@ -196,7 +194,7 @@ macro_rules! mmm_s_frame_tests {
 }
 
 pub fn strat_mat_mat_mul<TA: LADatum, TB: LADatum>(
-) -> BoxedStrategy<(usize, usize, usize, Tensor, Vec<TB>)> {
+) -> BoxedStrategy<(usize, usize, usize, Tensor, Tensor)> {
     (1usize..5, 1usize..5, 1usize..5)
         .prop_flat_map(move |(m, k, n)| {
             (
@@ -207,12 +205,20 @@ pub fn strat_mat_mat_mul<TA: LADatum, TB: LADatum>(
                 proptest::collection::vec(TB::strat(), n * k),
             )
         })
-        .prop_map(move |(m, k, n, a, b)| (m, k, n, tensor1(&a).into_shape(&[m, k]).unwrap(), b))
+        .prop_map(move |(m, k, n, a, b)| {
+            (
+                m,
+                k,
+                n,
+                tensor1(&a).into_shape(&[m, k]).unwrap(),
+                tensor1(&b).into_shape(&[k, n]).unwrap(),
+            )
+        })
         .boxed()
 }
 
-pub fn strat_mat_vec_mul<TA: LADatum, TB: LADatum>(
-) -> BoxedStrategy<(usize, usize, Tensor, Vec<TB>)> {
+pub fn strat_mat_vec_mul<TA: LADatum, TB: LADatum>() -> BoxedStrategy<(usize, usize, Tensor, Tensor)>
+{
     (1usize..15, 1usize..15)
         .prop_flat_map(move |(m, k)| {
             (
@@ -222,7 +228,7 @@ pub fn strat_mat_vec_mul<TA: LADatum, TB: LADatum>(
                 proptest::collection::vec(TB::strat(), k),
             )
         })
-        .prop_map(move |(m, k, a, b)| (m, k, tensor1(&a).into_shape(&[m, k]).unwrap(), b))
+        .prop_map(move |(m, k, a, b)| (m, k, tensor1(&a).into_shape(&[m, k]).unwrap(), tensor1(&b)))
         .boxed()
 }
 
@@ -231,7 +237,7 @@ pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     k: usize,
     n: usize,
     a: &Tensor,
-    b: &[TB],
+    b: &Tensor,
 ) -> Result<(), proptest::test_runner::TestCaseError>
 where
     TA: LADatum + AsPrimitive<TI> + 'static,
@@ -247,12 +253,12 @@ where
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len()], op.a_pack().alignment())
                 .unwrap();
-        op.a_pack().pack(&mut packed_a.view_mut(), &a.view(), false);
+        op.a_pack().pack(packed_a.view_mut(), a.view(), false);
 
         let mut packed_b =
             Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len()], op.b_pack().alignment())
                 .unwrap();
-        op.b_pack().pack(packed_b.as_ptr_mut_unchecked(), b.as_ptr(), n as isize, 1);
+        op.b_pack().pack(packed_b.view_mut(), b.view(), false);
 
         let mut found = vec![TC::max_value(); m * n];
 
@@ -269,7 +275,7 @@ where
                 let mut v: TI = TI::zero();
                 for i in 0..k {
                     let a: TI = a.as_slice::<TA>().unwrap()[i + k * y].as_();
-                    let b: TI = b[x + i * n].as_();
+                    let b: TI = b.as_slice::<TB>().unwrap()[x + i * n].as_();
                     v = v + a * b;
                 }
                 expected[x + y * n] = v.as_();
@@ -283,7 +289,7 @@ pub fn test_mat_vec_mul_prep<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     a: &Tensor,
-    b: &[TB],
+    b: &Tensor,
 ) -> Result<(), proptest::test_runner::TestCaseError>
 where
     TA: LADatum + AsPrimitive<TI> + 'static,
@@ -306,7 +312,7 @@ where
 
         op.run(
             packed_a.as_ptr_unchecked::<TA>() as _,
-            b.as_ptr() as _,
+            b.as_ptr::<TB>().unwrap() as _,
             found.as_mut_ptr() as _,
             &[],
         );
@@ -316,7 +322,7 @@ where
             let mut inter = TI::zero();
             for i in 0..k {
                 let a: TI = a.as_slice::<TA>().unwrap()[i + k * y].as_();
-                let b: TI = b[i].as_();
+                let b: TI = b.as_slice::<TB>().unwrap()[i].as_();
                 inter = inter + a * b;
             }
             expected[y] = inter.as_();
@@ -342,7 +348,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let a = tensor1(&*vec![TA::one(); m * k]).into_shape(&[m, k]).unwrap();
-    let b = vec![TB::one(); n * k];
+    let b = tensor1(&*vec![TA::one(); k * n]).into_shape(&[k, n]).unwrap();
     let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
 
     let mut packed_a =
@@ -351,7 +357,7 @@ where
 
     let mut packed_b =
         Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len()], op.b_pack().alignment()).unwrap();
-    op.b_pack().pack(packed_b.as_ptr_mut_unchecked(), b.as_ptr(), n as isize, 1);
+    op.b_pack().pack(packed_b.view_mut(), b.view(), false);
 
     let mut found = vec![TC::zero(); m * n];
 
@@ -367,7 +373,8 @@ where
         for y in 0..m {
             let mut s = TI::zero();
             for i in 0..k {
-                s += a.as_slice::<TA>().unwrap()[i + k * y].as_() * b[x + i * n].as_()
+                s += a.as_slice::<TA>().unwrap()[i + k * y].as_()
+                    * b.as_slice::<TB>().unwrap()[x + i * n].as_()
             }
             inter[x + y * n] = s;
         }
@@ -516,7 +523,7 @@ pub struct ConvProblem<TA: LADatum, TB: LADatum> {
     pub stride: usize,
     pub dilation: usize,
     pub filters: Tensor,
-    pub data: Vec<TB>,
+    pub data: Tensor,
     pub phantom: std::marker::PhantomData<(TA, TB)>,
 }
 
@@ -567,7 +574,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                     for ici in 0..self.ci {
                         let f = self.filters.as_slice::<TA>().unwrap()
                             [ici * self.kt + ikt + self.ci * self.kt * ico];
-                        let d = self.data
+                        let d = self.data.as_slice::<TB>().unwrap()
                             [x * self.stride + ikt * self.dilation + ici * self.input_width()];
                         let ref mut pv = expect[x + ico * self.output_width()];
                         *pv += f.as_() * d.as_();
@@ -598,7 +605,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
             let mut found: Vec<TC> = vec![TC::max_value(); self.co * self.output_width()];
             op.run(
                 packed_a.as_ptr_unchecked::<TA>() as _,
-                self.data.as_ptr() as _,
+                self.data.as_ptr_unchecked::<TB>() as _,
                 found.as_mut_ptr() as _,
                 &[],
             );
@@ -621,20 +628,21 @@ where
                 Just(ci),
                 Just(co),
                 Just(kt),
+                Just(t),
                 Just(stride),
                 Just(dilation),
                 proptest::collection::vec(TA::strat(), ci * co * kt),
                 proptest::collection::vec(TB::strat(), t * ci),
             )
         })
-        .prop_map(move |(ci, co, kt, stride, dilation, filters, data)| ConvProblem {
+        .prop_map(move |(ci, co, kt, t, stride, dilation, filters, data)| ConvProblem {
             ci,
             co,
             kt,
             stride,
             dilation,
             filters: tensor1(&filters).into_shape(&[co, ci * kt]).unwrap(),
-            data,
+            data: tensor1(&data).into_shape(&[ci, t]).unwrap(),
             phantom: PhantomData,
         })
         .boxed()
@@ -647,9 +655,9 @@ pub struct QMatMulProblem<TA, TB, TC, TI> {
     pub n: usize,
     pub a: Tensor,
     pub a0: Tensor,
-    pub b: Vec<TB>,
+    pub b: Tensor,
     pub b0: Tensor,
-    pub boo: PhantomData<(TA, TC, TI)>,
+    pub boo: PhantomData<(TA, TB, TC, TI)>,
 }
 
 fn arbitrary_zero_point_with<TI: Arbitrary + Datum>(n: usize) -> BoxedStrategy<Tensor> {
@@ -686,7 +694,7 @@ where
                 n,
                 a: tensor1(&a).into_shape(&[m, k]).unwrap(),
                 a0,
-                b,
+                b: tensor1(&b).into_shape(&[k, n]).unwrap(),
                 b0,
                 boo: PhantomData,
             })
@@ -720,7 +728,7 @@ where
             for n in 0..self.n {
                 for k in 0..self.k {
                     let a: TI = self.a.as_slice::<TA>().unwrap()[k + self.k * m].as_();
-                    let b: TI = self.b[n + self.n * k].as_();
+                    let b: TI = self.b.as_slice::<TB>().unwrap()[n + self.n * k].as_();
                     let a0: TI = if self.a0.rank() == 0 {
                         self.a0.to_scalar::<TA>().unwrap().as_()
                     } else {
@@ -756,7 +764,7 @@ where
                 mmm.b_pack().alignment(),
             )
             .unwrap();
-            mmm.b_pack().pack(packed_b.as_ptr_mut_unchecked(), self.b.as_ptr(), self.n as isize, 1);
+            mmm.b_pack().pack(packed_b.view_mut(), self.b.view(), false);
 
             mmm.set_zero_point_a(self.a0.clone());
             mmm.set_zero_point_b(self.b0.clone());
@@ -804,7 +812,7 @@ macro_rules! qmmm_frame_tests {
                         a0: tensor1(&[<$ta>::one()]),
                         a: tensor2(&[[<$ta>::zero()]]),
                         b0: tensor1(&[<$tb>::one()]),
-                        b: vec![0],
+                        b: tensor2(&[[<$tb>::one()]]),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());
@@ -821,7 +829,7 @@ macro_rules! qmmm_frame_tests {
                         a0: tensor1(&[0]).cast_to::<$ta>().unwrap().into_owned(),
                         a: tensor2(&[[3]]).cast_to::<$ta>().unwrap().into_owned(),
                         b0: tensor1(&[43]).cast_to::<$tb>().unwrap().into_owned(),
-                        b: vec![0],
+                        b: tensor2(&[[0]]).cast_to::<$tb>().unwrap().into_owned(),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());
@@ -838,7 +846,7 @@ macro_rules! qmmm_frame_tests {
                         a0: tensor1(&[0]).cast_to::<$ta>().unwrap().into_owned(),
                         a: tensor2(&[[<$ta>::min_value()]]),
                         b0: tensor1(&[0]).cast_to::<$tb>().unwrap().into_owned(),
-                        b: vec![1],
+                        b: tensor2(&[[<$tb>::one()]]),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());
@@ -854,8 +862,8 @@ macro_rules! qmmm_frame_tests {
                         n: 2,
                         a0: tensor1(&[1]).cast_to::<$ta>().unwrap().into_owned(),
                         a: tensor2(&[[<$ta>::zero()]]),
-                        b: vec![0, 0],
                         b0: tensor1(&[0, 1]).cast_to::<$tb>().unwrap().into_owned(),
+                        b: tensor2(&[[<$tb>::zero(), <$tb>::zero()]]),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());
@@ -869,10 +877,10 @@ macro_rules! qmmm_frame_tests {
                         m: 1,
                         k: 2,
                         n: 1,
-                        a: tensor2(&[[<$ta>::zero(), <$ta>::one()]]),
                         a0: tensor1(&[0]).cast_to::<$ta>().unwrap().into_owned(),
-                        b: vec![0, 1],
+                        a: tensor2(&[[<$ta>::zero(), <$ta>::one()]]),
                         b0: tensor1(&[0]).cast_to::<$tb>().unwrap().into_owned(),
+                        b: tensor2(&[[<$tb>::zero(), <$tb>::zero()]]),
                         boo: PhantomData,
                     };
                     assert_eq!(pb.run::<$ker>(), pb.reference());
@@ -902,7 +910,7 @@ macro_rules! qmmm_s_frame_tests {
                         n: 5,
                         a: tensor2(&[[-1]]).cast_to::<$ta>().unwrap().into_owned(),
                         a0: tensor0(0i32).cast_to::<$ta>().unwrap().into_owned(),
-                        b: vec![0, 0, 0, 0, -2],
+                        b: tensor2(&[[0, 0, 0, 0, -2]]).cast_to::<$tb>().unwrap().into_owned(),
                         b0: tensor0(0i32).cast_to::<$tb>().unwrap().into_owned(),
                         boo: PhantomData,
                     };
@@ -919,7 +927,7 @@ macro_rules! qmmm_s_frame_tests {
                         n: 1,
                         a: tensor2(&[[11]]).cast_to::<$ta>().unwrap().into_owned(),
                         a0: tensor0(10i32).cast_to::<$ta>().unwrap().into_owned(),
-                        b: vec![-1],
+                        b: tensor2(&[[-1]]).cast_to::<$tb>().unwrap().into_owned(),
                         b0: tensor0(0i32).cast_to::<$tb>().unwrap().into_owned(),
                         boo: PhantomData,
                     };
