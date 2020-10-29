@@ -6,9 +6,7 @@ fn mat_mul_f32(be: &mut Bencher, &(m, k, n): &(usize, usize, usize)) {
     let pa = Tensor::zero_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
     let pb = Tensor::zero_aligned::<f32>(&[mm.b_pack().len()], mm.b_pack().alignment()).unwrap();
     let mut c = vec![0.0; m * n];
-    be.iter(move || unsafe {
-        mm.run(pa.as_bytes().as_ptr() as _, pb.as_bytes().as_ptr() as _, c.as_mut_ptr() as _, &[])
-    });
+    be.iter(move || unsafe { mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]) });
 }
 
 fn mat_mul_i8(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
@@ -16,9 +14,7 @@ fn mat_mul_i8(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     let pa = Tensor::zero_aligned::<i8>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
     let pb = Tensor::zero_aligned::<i8>(&[mm.b_pack().len()], mm.b_pack().alignment()).unwrap();
     let mut c = vec![0i8; m * n];
-    be.iter(move || unsafe {
-        mm.run(pa.as_bytes().as_ptr() as _, pb.as_bytes().as_ptr() as _, c.as_mut_ptr() as _, &[])
-    });
+    be.iter(move || unsafe { mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]) });
 }
 
 fn packed_packed(c: &mut Criterion, m: usize, k: usize, n: usize) {
@@ -47,12 +43,10 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
         let mut mm = (tract_linalg::ops().mmm_f32)(m, k, n);
         let pa =
             Tensor::zero_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
-        let pb = vec![0.0; b_len];
+        let pb = Tensor::zero_aligned::<f32>(&[b_len], mm.b_pack().alignment()).unwrap();
         let mut c = vec![0.0; m * n];
         mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
-        be.iter(move || {
-            mm.run(pa.as_bytes().as_ptr() as _, pb.as_ptr() as _, c.as_mut_ptr() as _, &[])
-        });
+        be.iter(move || mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]));
     }
 }
 
@@ -61,12 +55,10 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
         let (m, k, n, rows_offsets, cols_offsets, b_len) = direct_conv_geo(geo);
         let mut mm = (tract_linalg::ops().qmmm_i8_i8)(m, k, n);
         let pa = Tensor::zero_aligned::<i8>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
-        let pb = vec![0.0; b_len];
+        let pb = Tensor::zero_aligned::<i8>(&[b_len], mm.b_pack().alignment()).unwrap();
         let mut c = vec![0; m * n];
         mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
-        be.iter(move || {
-            mm.run(pa.as_bytes().as_ptr() as _, pb.as_ptr() as _, c.as_mut_ptr() as _, &[])
-        });
+        be.iter(move || mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]));
     }
 }
 

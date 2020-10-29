@@ -1,33 +1,28 @@
-extern crate criterion;
-extern crate tract_linalg;
 use criterion::*;
-
-pub fn vec(len: usize, align: usize) -> *mut f32 {
-    let layout =
-        std::alloc::Layout::from_size_align(len * std::mem::size_of::<f32>(), align).unwrap();
-    unsafe { std::alloc::alloc_zeroed(layout) as *mut f32 }
-}
+use tract_data::internal::*;
 
 fn mat_vec_mul(c: &mut Criterion) {
     let mut group = c.benchmark_group("mat_vec_mul");
-    for (m, k) in [(64usize, 64usize)].iter() {
-        group.throughput(Throughput::Elements((m * k) as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(format!("{}x{}", m, k)),
-            &(m, k),
-            |be, (&m, &k)| {
-                let mut mm = (tract_linalg::ops().mmm_f32)(m, k, 1);
-                let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
-                let b = vec![0.0; k];
-                let mut c = vec![0.0; m];
-                unsafe {
+    unsafe {
+        for (m, k) in [(64usize, 64usize)].iter() {
+            group.throughput(Throughput::Elements((m * k) as u64));
+            group.bench_with_input(
+                BenchmarkId::from_parameter(format!("{}x{}", m, k)),
+                &(m, k),
+                |be, (&m, &k)| {
+                    let mut mm = (tract_linalg::ops().mmm_f32)(m, k, 1);
+                    let pa = Tensor::uninitialized_aligned::<f32>(
+                        &[mm.a_pack().len()],
+                        mm.a_pack().alignment(),
+                    )
+                    .unwrap();
+                    let b = tensor1(&vec![0.0; k]);
+                    let mut c = vec![0.0; m];
                     mm.b_vec_from_data();
-                }
-                be.iter(move || unsafe {
-                    mm.run(pa as _, b.as_ptr() as _, c.as_mut_ptr() as _, &[])
-                });
-            },
-        );
+                    be.iter(move || mm.run(&pa.view(), &b.view(), c.as_mut_ptr() as _, &[]));
+                },
+            );
+        }
     }
     group.finish();
 }
