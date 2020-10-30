@@ -236,7 +236,6 @@ where
         debug_assert_eq!(a.datum_type(), TA::datum_type());
         debug_assert_eq!(b.datum_type(), TB::datum_type());
         debug_assert_eq!(c.datum_type(), TC::datum_type());
-        dbg!(&c);
         let m = self.m;
         let n = self.n;
         let mut scratch = ScratchSpaceFusedNonLinear::default();
