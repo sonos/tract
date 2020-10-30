@@ -12,8 +12,8 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
         let pb =
             Tensor::uninitialized_aligned::<f32>(&[mm.b_pack().len()], mm.b_pack().alignment())
                 .unwrap();
-        let mut c = vec![0.0; m * n];
-        be.iter(move || mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]));
+        let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
+        be.iter(move || mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]));
     }
 }
 

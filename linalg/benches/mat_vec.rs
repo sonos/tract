@@ -17,9 +17,9 @@ fn mat_vec_mul(c: &mut Criterion) {
                     )
                     .unwrap();
                     let b = tensor1(&vec![0.0; k]);
-                    let mut c = vec![0.0; m];
+                    let mut c = Tensor::zero::<f32>(&[m]).unwrap();
                     mm.b_vec_from_data();
-                    be.iter(move || mm.run(&pa.view(), &b.view(), c.as_mut_ptr() as _, &[]));
+                    be.iter(move || mm.run(&pa.view(), &b.view(), &mut c.view_mut(), &[]));
                 },
             );
         }

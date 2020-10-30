@@ -8,9 +8,11 @@ pub struct TensorView<'a> {
 }
 
 impl<'a> TensorView<'a> {
-    pub unsafe fn at_prefix(tensor: &'a Tensor, prefix: &[usize]) -> TensorView<'a> {
+    pub fn at_prefix(tensor: &'a Tensor, prefix: &[usize]) -> anyhow::Result<TensorView<'a>> {
+        anyhow::ensure!(prefix.len() <= tensor.rank(), "prefix longer than tensor shape");
+        anyhow::ensure!(prefix.iter().zip(tensor.shape()).all(|(p, d)| p < d), "prefix invalid");
         let offset = prefix.iter().zip(tensor.strides()).map(|(a, b)| a * b).sum();
-        TensorView { tensor, prefix_len: prefix.len(), offset }
+        Ok(TensorView { tensor, prefix_len: prefix.len(), offset })
     }
 
     pub fn len(&self) -> usize {
@@ -77,9 +79,14 @@ pub struct TensorViewMut<'a> {
 }
 
 impl<'a> TensorViewMut<'a> {
-    pub unsafe fn at_prefix(tensor: &'a mut Tensor, prefix: &[usize]) -> TensorViewMut<'a> {
+    pub fn at_prefix(
+        tensor: &'a mut Tensor,
+        prefix: &[usize],
+    ) -> anyhow::Result<TensorViewMut<'a>> {
+        anyhow::ensure!(prefix.len() <= tensor.rank(), "prefix longer than tensor shape");
+        anyhow::ensure!(prefix.iter().zip(tensor.shape()).all(|(p, d)| p < d), "prefix invalid");
         let offset = prefix.iter().zip(tensor.strides()).map(|(a, b)| a * b).sum();
-        TensorViewMut { tensor, prefix_len: prefix.len(), offset }
+        Ok(TensorViewMut { tensor, prefix_len: prefix.len(), offset })
     }
 
     pub fn datum_type(&self) -> DatumType {
@@ -88,6 +95,10 @@ impl<'a> TensorViewMut<'a> {
 
     pub fn shape(&self) -> &[usize] {
         &self.tensor.shape()[self.prefix_len..]
+    }
+
+    pub fn len(&self) -> usize {
+        self.tensor.shape.iter().skip(self.prefix_len).product::<usize>()
     }
 
     pub fn rank(&self) -> usize {

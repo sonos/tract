@@ -1,6 +1,6 @@
+use std::ffi::c_void;
 use std::fmt;
 use std::fmt::Debug;
-use std::ffi::c_void;
 
 #[derive(PartialEq, Clone, Debug, Hash)]
 pub enum MatrixStoreSpec {
@@ -76,7 +76,7 @@ impl<'a, T: Copy> MatrixStore<'a, T> {
                         item_size: std::mem::size_of::<T>(),
                     }
                 } else {
-                    PanelStore::Packed { ptr: ptr.offset((panel_len * i) as isize)  as _}
+                    PanelStore::Packed { ptr: ptr.offset((panel_len * i) as isize) as _ }
                 }
             }
             MatrixStore::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr } => {

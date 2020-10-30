@@ -18,8 +18,8 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
             Tensor::from_slice_align(&vec![0.0; conv.a_pack().len()], conv.a_pack().alignment())
                 .unwrap();
         let input = Tensor::zero::<f32>(&[ci, t]).unwrap();
-        let mut output = vec![0.0; co * t];
-        be.iter(move || conv.run(&a.view(), &input.view(), output.as_mut_ptr() as _, &[]).unwrap());
+        let mut output = Tensor::zero::<f32>(&[co, t]).unwrap();
+        be.iter(move || conv.run(&a.view(), &input.view(), &mut output.view_mut(), &[]).unwrap());
     });
 }
 

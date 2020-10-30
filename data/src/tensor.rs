@@ -764,19 +764,19 @@ impl Tensor {
     }
 
     pub fn view(&self) -> view::TensorView {
-        unsafe { view::TensorView::at_prefix(self, &[]) }
+        view::TensorView::at_prefix(self, &[]).unwrap()
     }
 
-    pub fn view_at_prefix(&self, prefix: &[usize]) -> view::TensorView {
-        unsafe { view::TensorView::at_prefix(self, prefix) }
+    pub fn view_at_prefix(&self, prefix: &[usize]) -> anyhow::Result<view::TensorView> {
+        view::TensorView::at_prefix(self, prefix)
     }
 
     pub fn view_mut(&mut self) -> view::TensorViewMut {
-        unsafe { view::TensorViewMut::at_prefix(self, &[]) }
+        view::TensorViewMut::at_prefix(self, &[]).unwrap()
     }
 
-    pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> view::TensorViewMut {
-        unsafe { view::TensorViewMut::at_prefix(self, prefix) }
+    pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> anyhow::Result<view::TensorViewMut> {
+        view::TensorViewMut::at_prefix(self, prefix)
     }
 }
 

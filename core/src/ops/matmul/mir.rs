@@ -114,7 +114,7 @@ where
         if let Some(q) = q_params {
             q.inject_into_mmm(&mut *mm)?;
         }
-        let mut c = Array::<TC, IxDyn>::uninitialized(&*c_shape);
+        let mut c = Tensor::uninitialized::<TC>(&c_shape)?;
 
         let a_pack = mm.a_pack();
         let b_pack = mm.b_pack();
@@ -125,19 +125,22 @@ where
             Tensor::uninitialized_aligned_dt(b.datum_type(), &[b_pack.len()], b_pack.alignment())?;
 
         for prefix in indices(&c_shape[..rank - 2]).into_iter() {
-            let mut c = c.view_mut();
             let mut a_prefix = tvec!();
             let mut b_prefix = tvec!();
             for (axis, &dim) in prefix.slice().iter().enumerate() {
                 a_prefix.push(dim.min(a.shape()[axis] - 1));
                 b_prefix.push(dim.min(b.shape()[axis] - 1));
-                c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
             }
-            a_pack.pack(packed_a.view_mut(), TensorView::at_prefix(&a, &a_prefix), a_trans);
-            b_pack.pack(packed_b.view_mut(), TensorView::at_prefix(&b, &b_prefix), b_trans);
-            mm.run(&packed_a.view(), &packed_b.view(), c.as_mut_ptr() as _, &[])?;
+            a_pack.pack(packed_a.view_mut(), &a.view_at_prefix(&a_prefix)?, a_trans);
+            b_pack.pack(packed_b.view_mut(), &b.view_at_prefix(&b_prefix)?, b_trans);
+            mm.run(
+                &packed_a.view(),
+                &packed_b.view(),
+                &mut c.view_at_prefix_mut(prefix.slice())?,
+                &[],
+            )?;
         }
-        Ok(c.into_tensor())
+        Ok(c)
     }
 }
 
@@ -678,11 +681,7 @@ where
             mm.a_pack().alignment(),
         )
         .unwrap();
-        mm.a_pack().pack(
-            &mut TensorViewMut::at_prefix(&mut pa, &[]),
-            &TensorView::at_prefix(&a, a_prefix.slice()),
-            a_trans,
-        );
+        mm.a_pack().pack(&mut pa.view_mut(), &a.view_at_prefix(a_prefix.slice()).unwrap(), a_trans);
         pa.into_arc_tensor()
     });
     unsafe {

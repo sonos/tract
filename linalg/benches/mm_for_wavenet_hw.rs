@@ -9,8 +9,7 @@ fn pack_a(c: &mut Criterion, m: usize, k: usize, n: usize) {
         let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
         let a = Tensor::zero::<f32>(&[m, k]).unwrap();
         let mut pa =
-            Tensor::uninitialized_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment())
-                .unwrap();
+            Tensor::zero_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
         b.iter(move || mm.a_pack().pack(pa.view_mut(), a.view(), false))
     });
 }
@@ -28,13 +27,11 @@ fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {
     c.bench_function(&format!("mat_mul_prepacked_{}x{}x{}", m, k, n), move |be| unsafe {
         let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
         let pa =
-            Tensor::uninitialized_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment())
-                .unwrap();
+            Tensor::zero_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
         let pb =
-            Tensor::uninitialized_aligned::<f32>(&[mm.b_pack().len()], mm.b_pack().alignment())
-                .unwrap();
-        let mut c = vec![0.0; m * n];
-        be.iter(move || mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]).unwrap());
+            Tensor::zero_aligned::<f32>(&[mm.b_pack().len()], mm.b_pack().alignment()).unwrap();
+        let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
+        be.iter(move || mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]).unwrap());
     });
 }
 

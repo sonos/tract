@@ -44,8 +44,8 @@ impl EvalOp for MatMatMulPackB {
                     .unwrap();
             for prefix in indices(&b.shape()[..b.rank() - 2]) {
                 self.pack_b.pack(
-                    TensorViewMut::at_prefix(&mut packed, prefix.slice()),
-                    TensorView::at_prefix(&b, prefix.slice()),
+                    &mut packed.view_at_prefix_mut(prefix.slice())?,
+                    &b.view_at_prefix(prefix.slice())?,
                     self.trans,
                 )
             }
