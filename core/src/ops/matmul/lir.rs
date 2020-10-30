@@ -91,22 +91,22 @@ where
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
             let b = args_1!(inputs);
-            let mut c_tmp_shape: TVec<usize> =
-                if let Some((shape, _)) = &self.c_prefix_dim_and_stride {
-                    shape.clone()
-                } else {
-                    tvec!()
-                };
-            c_tmp_shape.push(self.mmm.m());
-            c_tmp_shape.push(self.mmm.n());
-            let mut c = Tensor::uninitialized::<TC>(&c_tmp_shape)?;
-            if let Some((prefix_dim, _prefix_strides)) = &self.c_prefix_dim_and_stride {
+            let mut c = Tensor::uninitialized::<TC>(&self.c_fact.shape.as_finite().unwrap())?;
+            if let Some((prefix_dim, prefix_strides)) = &self.c_prefix_dim_and_stride {
+                let mut tmp_shape:TVec<usize> = prefix_dim.iter().copied().collect();
+                tmp_shape.push(self.mmm.m());
+                tmp_shape.push(self.mmm.n());
+                let mut tmp_strides:TVec<isize> = prefix_strides.iter().copied().collect();
+                tmp_strides.push(0);
+                tmp_strides.push(0);
                 for prefix in indices(&**prefix_dim).into_iter() {
+                    let mut c = TensorViewMut::from_bytes(TC::datum_type(), c.as_bytes_mut(), &tmp_shape, &tmp_strides);
                     let mut a = self.packed_as.view();
                     let mut b_prefix = tvec!();
                     for (ix, &dim) in prefix.slice().iter().enumerate() {
                         a.index_axis_inplace(Axis(0), dim.min(a.shape()[0] - 1));
                         b_prefix.push(dim.min(b.shape()[ix] - 1));
+                        c.offset_axis(ix, dim as isize);
                     }
                     let pa: &Tensor = a.iter().next().unwrap();
                     if let Some(fused) = &self.fused_ops {
@@ -118,17 +118,11 @@ where
                         self.mmm.run(
                             &pa.view(),
                             &b.view_at_prefix(&b_prefix)?,
-                            &mut c.view_at_prefix_mut(prefix.slice())?,
+                            &mut c,
                             &fused.as_slice().unwrap()[0],
                         )?;
                     } else {
-                        dbg!(prefix.slice());
-                        self.mmm.run(
-                            &pa.view(),
-                            &b.view_at_prefix(&b_prefix)?,
-                            &mut c.view_at_prefix_mut(prefix.slice())?,
-                            &[],
-                        )?;
+                        self.mmm.run(&pa.view(), &b.view_at_prefix(&b_prefix)?, &mut c, &[])?;
                     }
                 }
             } else {
