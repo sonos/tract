@@ -75,20 +75,18 @@ proptest! {
             .input("paddings")
             .attr("T", DtFloat)
             );
-        let graph = graph.write_to_bytes()?;
+        let graph = graph.write_to_bytes().unwrap();
         let inputs = vec!(("input", i.clone()));
         compare(&graph, inputs, "op")?
     }
 }
 
 fn batch_to_space_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
-    use tract_tensorflow::tract_hir::internal::StatefullOp;
+    use crate::tract_tensorflow::tract_hir::internal::EvalOp;
     space_to_batch_strat()
         .prop_map(|(i, bs, p)| {
             let batches: Tensor =
                 tract_tensorflow::ops::nn::s2b::raw::SpaceToBatch::new(f32::datum_type())
-                    .as_stateless()
-                    .unwrap()
                     .eval(tvec![i.into(), bs.clone().into(), p.clone().into()])
                     .unwrap()
                     .remove(0)
@@ -110,7 +108,7 @@ proptest! {
             .input("crops")
             .attr("T", DtFloat)
             );
-        let graph = graph.write_to_bytes()?;
+        let graph = graph.write_to_bytes().unwrap();
         let inputs = vec!(("input", b.clone()));
         compare(&graph, inputs, "op")?
     }

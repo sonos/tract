@@ -21,7 +21,7 @@ fn convolution_pb(
     h_stride: usize,
     valid: bool,
     kernel: &Tensor,
-) -> Result<Vec<u8>> {
+) -> TractResult<Vec<u8>> {
     let conv = tfpb::node()
         .name("conv")
         .op("Conv2D")

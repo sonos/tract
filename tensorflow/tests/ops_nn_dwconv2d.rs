@@ -17,7 +17,7 @@ use tract_tensorflow::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::DataType::DtFloat;
 
-fn convolution_pb(stride: usize, valid: bool, k: &Tensor) -> Result<Vec<u8>> {
+fn convolution_pb(stride: usize, valid: bool, k: &Tensor) -> TractResult<Vec<u8>> {
     let conv = tfpb::node()
         .name("conv")
         .op("DepthwiseConv2dNative")

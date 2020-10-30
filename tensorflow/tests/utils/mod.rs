@@ -17,7 +17,9 @@ pub fn compare<S: AsRef<str>>(
     inputs: Vec<(S, Tensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
+    setup_test_logger();
     for mode in &[Mode::Infer, Mode::Type, Mode::Declutter, Mode::Opt] {
+        debug!("mode: {:?}", mode);
         compare_optim(graph, &inputs, output, *mode)?;
     }
     Ok(())
@@ -65,25 +67,20 @@ pub fn compare_optim<S: AsRef<str>>(
     setup_test_logger();
     let tf_inputs: Vec<(&str, Tensor)> =
         inputs.iter().map(|(s, m)| (s.as_ref(), m.clone())).collect();
-    let expected =
-        tract_tensorflow::conform::tf::for_slice(&graph)?.run(tf_inputs.clone(), &output)?;
+    let expected = tract_tensorflow::conform::tf::for_slice(&graph)
+        .unwrap()
+        .run(tf_inputs.clone(), &output)
+        .unwrap();
     info!("Mode: {:?} starting", mode);
     info!("Tensorflow says: {:?}", expected);
 
-    let found = match run_tract(graph, inputs, output, mode) {
-        Err(e) => {
-            use tract_tensorflow::tract_core::error_chain::ChainedError;
-            error!("{}", e.display_chain());
-            return Err(e.into());
-        }
-        Ok(t) => t,
-    };
+    let found = run_tract(graph, inputs, output, mode).unwrap();
 
     if let Err(e) = expected[0].close_enough(&found[0], true) {
         error!("{:?} (mode: {:?})", e, mode);
         error!("Tensorflow says: {:?}", expected);
         error!("Tract says     : {:?}", found);
-        Err(e)?
+        Err(e).unwrap()
     } else {
         info!("Mode: {:?} passed", mode);
         Ok(())
@@ -97,20 +94,22 @@ pub fn infer<S: AsRef<str>>(
     output_str: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     setup_test_logger();
-    let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
-    model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
-    model.set_output_names(&[output_str])?;
+    let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph).unwrap();
+    model
+        .set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())
+        .unwrap();
+    model.set_output_names(&[output_str]).unwrap();
     for (ix, (_, tf)) in inputs.iter().enumerate() {
-        model.set_input_fact(ix, InferenceFact::dt_shape(tf.datum_type(), tf.shape()))?;
+        model.set_input_fact(ix, InferenceFact::dt_shape(tf.datum_type(), tf.shape())).unwrap();
     }
-    let plan = SimplePlan::new(&model)?;
-    let mut state = SimpleState::new(&plan)?;
+    let plan = SimplePlan::new(&model).unwrap();
+    let mut state = SimpleState::new(&plan).unwrap();
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
     }
-    let output = model.node_by_name(output_str)?;
+    let output = model.node_by_name(output_str).unwrap();
     info!("Checking {} behaviour against tensorflow", output.name);
-    state.compute_recursively(output.id)?;
+    state.compute_recursively(output.id).unwrap();
     let _found = &state.values[output.id].as_ref().unwrap();
 
     info!("Checking inference consistency on {}", output.name);
@@ -131,7 +130,7 @@ pub fn infer<S: AsRef<str>>(
     let input_facts = input_vectors.iter().collect();
     let output_facts = output_vectors.iter().collect();
 
-    let output = model.node_by_name_mut(output_str)?;
+    let output = model.node_by_name_mut(output_str).unwrap();
     let e = output.op.infer_facts(input_facts, output_facts, tvec!());
     prop_assert!(e.is_ok(), "{:?}", e);
 

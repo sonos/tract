@@ -30,9 +30,16 @@ fn strided_slice_strat(
                 any::<bool>(), // make end negative
             )
         }),
-        1..4, // rank
+        1..=2, // rank
     )
-    .prop_filter("Negatives stride are not typable yet", |dims| dims.iter().all(|d| d.1 <= d.2))
+    .prop_map(|mut tuples| {
+        tuples.iter_mut().for_each(|tuple| {
+            if tuple.1 > tuple.2 {
+                std::mem::swap(&mut tuple.1, &mut tuple.2)
+            }
+        });
+        tuples
+    })
     .prop_flat_map(|dims| {
         let rank = dims.iter().len();
         (Just(dims), (0..(1 << rank), 0..(1 << rank), Just(0), Just(0), 0..(1 << rank)))
@@ -86,7 +93,7 @@ proptest! {
                   .input("input").input("begin")
                   .input("end").input("stride")
                   .op("StridedSlice")
-            ).write_to_bytes().unwrap();
+                 ).write_to_bytes().unwrap();
 
         let inputs = vec!(("input", i.clone()));
         let res = compare(&graph, inputs, "op")?;
