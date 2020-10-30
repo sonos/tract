@@ -17,6 +17,9 @@ where
 {
     /// patch label for auditing and debugging
     pub context: Vec<String>,
+    /// optimizer will ignore this patch in node to node loop if it was already
+    /// encountered
+    pub dont_apply_twice: Option<String>,
     /// the model-like 'patch' of nodes to add to the model
     pub model: Graph<F, O>,
     /// map of replaced inputs (patch node id to model node id)
@@ -37,6 +40,7 @@ where
     fn default() -> ModelPatch<F, O> {
         ModelPatch {
             context: vec![],
+            dont_apply_twice: None,
             model: Graph::default(),
             inputs: HashMap::default(),
             incoming: HashMap::new(),

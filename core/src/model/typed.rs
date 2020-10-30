@@ -39,7 +39,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         name: impl Into<String>,
         op: impl Into<Box<dyn TypedOp>>,
         inputs: &[OutletId],
-    ) -> TractResult<TVec<OutletId>> {
+        ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
         let name = name.into();
         let output_facts = {
@@ -91,19 +91,19 @@ impl TypedModel {
                     output_facts.len(),
                     node.outputs.len(),
                     node
-                );
+                    );
             }
             if node
                 .outputs
-                .iter()
-                .map(|o| &o.fact)
-                .zip(output_facts.iter())
-                .any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape)
-            {
-                bail!(
+                    .iter()
+                    .map(|o| &o.fact)
+                    .zip(output_facts.iter())
+                    .any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape)
+                    {
+                        bail!(
                             "Inconsistent model, node output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}",
                             output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts)
-            }
+                    }
         }
         for node in &self.nodes {
             for (ix, output) in node.outputs.iter().enumerate() {
@@ -118,19 +118,20 @@ impl TypedModel {
     fn optimize_passes(
         &self,
         passes: &mut [Box<dyn crate::optim::TypedPass>],
-    ) -> TractResult<TypedModel> {
+        ) -> TractResult<TypedModel> {
         #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
             self.check_consistent_facts()?;
         }
         let mut model = self.clone();
-        let mut seen = std::collections::HashSet::new();
+        let mut patches = 0;
         for i in 0.. {
             model = model.compact()?;
             let mut done_something_this_time = false;
             'pass: for p in passes.iter_mut() {
                 loop {
                     let mut done_something_this_pass = false;
+                    let mut seen = std::collections::HashSet::new();
                     p.reset()?;
                     while let Some(mut patch) = p.next(&model)? {
                         patch.push_context(format!("{:?}/{}", p, i));
@@ -141,10 +142,19 @@ impl TypedModel {
                             patch.model.invariants()?;
                             model.invariants()?;
                         }
-                        debug!("applying: {}", patch.context.iter().rev().join(" >> "),);
-                        patch.apply(&mut model)?;
+                        if let Some(watchdog) = patch.dont_apply_twice.take() {
+                            if !seen.contains(&watchdog) {
+                                debug!("Loop detected: {} seen before", watchdog);
+                                break 'pass;
+                            } else {
+                                seen.insert(watchdog);
+                            }
+                        }
+                        debug!("applying patch #{}: {}", patches, patch.context.iter().rev().join(" >> "),);
                         done_something_this_pass = true;
                         done_something_this_time = true;
+                        patch.apply(&mut model)?;
+                        patches += 1
                     }
                     #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
                     {
@@ -161,14 +171,6 @@ impl TypedModel {
             if !done_something_this_time {
                 return Ok(model);
             }
-            if i < 10 {
-                continue;
-            }
-            let sig = model.signature();
-            if seen.contains(&sig) {
-                return Ok(model);
-            }
-            seen.insert(sig);
             model = model.compact()?;
         }
         unreachable!()
@@ -188,7 +190,7 @@ impl TypedModel {
                 node: &TypedNode,
                 target: &mut TypedModel,
                 mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
+                ) -> TractResult<TVec<OutletId>> {
                 node.op.concretize_dims(source, node, target, mapping, self)
             }
         }

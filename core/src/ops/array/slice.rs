@@ -143,6 +143,9 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
             patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
             if patch.model.nodes.len() == 2 && patch.model.node(1).op().same_as(self) {
                 return Ok(None);
+            } else if patch.model.nodes.len() == 3 {
+                let other = model.node(node.inputs[0].node);
+                patch.dont_apply_twice = Some(format!("Swap {} and {}", node.name, other.name));
             }
             return Ok(Some(patch));
         }
