@@ -129,7 +129,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     let have = v.len() - down * K::mr();
                     let ptr = if have < K::mr() {
                         let mut buf = vec![TI::zero(); K::mr()];
-                        buf[..have].copy_from_slice(&v.as_slice_unchecked()[down * K::mr()..][..have]);
+                        buf[..have]
+                            .copy_from_slice(&v.as_slice_unchecked()[down * K::mr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
                         ptr
@@ -142,7 +143,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     let have = v.len() - down * K::mr();
                     let ptr = if have < K::mr() {
                         let mut buf = vec![TI::zero(); K::mr()];
-                        buf[..have].copy_from_slice(&v.as_slice_unchecked()[down * K::mr()..][..have]);
+                        buf[..have]
+                            .copy_from_slice(&v.as_slice_unchecked()[down * K::mr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
                         ptr
@@ -155,7 +157,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     let have = v.len() - right * K::nr();
                     let ptr = if have < K::nr() {
                         let mut buf = vec![TI::zero(); K::nr()];
-                        buf[..have].copy_from_slice(&v.as_slice_unchecked()[right * K::nr()..][..have]);
+                        buf[..have]
+                            .copy_from_slice(&v.as_slice_unchecked()[right * K::nr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
                         ptr
@@ -168,7 +171,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     let have = v.len() - right * K::nr();
                     let ptr = if have < K::nr() {
                         let mut buf = vec![TI::zero(); K::nr()];
-                        buf[..have].copy_from_slice(&v.as_slice_unchecked()[right * K::nr()..][..have]);
+                        buf[..have]
+                            .copy_from_slice(&v.as_slice_unchecked()[right * K::nr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
                         ptr
@@ -181,7 +185,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     let have = rows.len() - down * K::mr();
                     let row_ptr = if have < K::mr() {
                         let mut buf = vec![TI::zero(); K::mr()];
-                        buf[..have].copy_from_slice(&rows.as_slice_unchecked()[down * K::mr()..][..have]);
+                        buf[..have]
+                            .copy_from_slice(&rows.as_slice_unchecked()[down * K::mr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
                         ptr
@@ -191,7 +196,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     let have = cols.len() - right * K::nr();
                     let col_ptr = if have < K::nr() {
                         let mut buf = vec![TI::zero(); K::nr()];
-                        buf[..have].copy_from_slice(&cols.as_slice_unchecked()[right * K::nr()..][..have]);
+                        buf[..have]
+                            .copy_from_slice(&cols.as_slice_unchecked()[right * K::nr()..][..have]);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
                         ptr
@@ -202,8 +208,12 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 }
                 FusedSpec::ScalarMul(t) => FusedKerSpec::ScalarMul(*t.to_scalar_unchecked()),
                 FusedSpec::ScalarAdd(t) => FusedKerSpec::ScalarAdd(*t.to_scalar_unchecked()),
-                FusedSpec::QTowardsEven(m, s) => FusedKerSpec::QTowardsEven(*m.to_scalar_unchecked(), *s),
-                FusedSpec::QTowardsPlusInf(m, s) => FusedKerSpec::QTowardsPlusInf(*m.to_scalar_unchecked(), *s),
+                FusedSpec::QTowardsEven(m, s) => {
+                    FusedKerSpec::QTowardsEven(*m.to_scalar_unchecked(), *s)
+                }
+                FusedSpec::QTowardsPlusInf(m, s) => {
+                    FusedKerSpec::QTowardsPlusInf(*m.to_scalar_unchecked(), *s)
+                }
             };
             self.uspecs.push(s);
         }

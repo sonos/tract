@@ -37,7 +37,7 @@ macro_rules! mmm_frame_tests {
                     if $cond {
                         let found = pb.run::<$ker, $tc, $ti>();
                         let expected = pb.expected::<$tc, $ti>();
-                        crate::test::check_close(&found, &expected)?;
+                        found.close_enough(&expected, true).unwrap()
                     }
                 }
             }
@@ -87,8 +87,8 @@ macro_rules! mmm_frame_tests {
                         data: tensor2(&[[<$tb>::zero(), <$ta>::one()]]),
                         phantom: std::marker::PhantomData,
                     };
-                    let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
-                    crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
+                    let expected = pb.expected::<$tc, $ti>();
+                    pb.run::<$ker, $tc, $ti>().close_enough(&expected, true).unwrap()
                 }
             }
 
@@ -109,10 +109,29 @@ macro_rules! mmm_frame_tests {
                         data: tensor1(&data).into_shape(&[6, 5]).unwrap(),
                         phantom: std::marker::PhantomData,
                     };
-                    let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
-                    crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
+                    let expected = pb.expected::<$tc, $ti>();
+                    pb.run::<$ker, $tc, $ti>().close_enough(&expected, true).unwrap();
                 }
             }
+
+            #[test]
+            fn conv_3() {
+                if $cond {
+                    let pb = ConvProblem::<$ta, $tb> {
+                        ci: 1,
+                        co: 1,
+                        kt: 1,
+                        stride: 1,
+                        dilation: 1,
+                        filters: tensor2(&[[2 as $ta]]),
+                        data: tensor2(&[[-65i32 as $tb]]),
+                        phantom: std::marker::PhantomData,
+                    };
+                    let expected = pb.expected::<$tc, $ti>();
+                    pb.run::<$ker, $tc, $ti>().close_enough(&expected, true).unwrap();
+                }
+            }
+
 
             #[test]
             fn row_mul_2_1_3() {
@@ -185,8 +204,8 @@ macro_rules! mmm_s_frame_tests {
                         data: tensor1(&data).into_shape(&[1, 4]).unwrap(),
                         phantom: std::marker::PhantomData,
                     };
-                    let expected: Vec<$tc> = pb.expected::<$tc, $ti>();
-                    crate::test::check_close(&*pb.run::<$ker, $tc, $ti>(), &*expected).unwrap();
+                    let expected = pb.expected::<$tc, $ti>();
+                    pb.run::<$ker, $tc, $ti>().close_enough(&expected, true).unwrap();
                 }
             }
         }
@@ -260,11 +279,11 @@ where
                 .unwrap();
         op.b_pack().pack(packed_b.view_mut(), b.view(), false);
 
-        let mut found = vec![TC::max_value(); m * n];
+        let mut found = tensor0(TC::max_value()).broadcast_scalar_to_shape(&[m, n]).unwrap();
 
-        op.run(&packed_a.view(), &packed_b.view(), found.as_mut_ptr() as _, &[]).unwrap();
+        op.run(&packed_a.view(), &packed_b.view(), &mut found.view_mut(), &[]).unwrap();
 
-        let mut expected = vec![TC::zero(); m * n];
+        let mut expected = Tensor::zero::<TC>(&[m, n]).unwrap();
         for x in 0..n {
             for y in 0..m {
                 let mut v: TI = TI::zero();
@@ -273,10 +292,11 @@ where
                     let b: TI = b.as_slice::<TB>().unwrap()[x + i * n].as_();
                     v = v + a * b;
                 }
-                expected[x + y * n] = v.as_();
+                expected.as_slice_mut::<TC>().unwrap()[x + y * n] = v.as_();
             }
         }
-        crate::test::check_close(&*found, &*expected)
+        found.close_enough(&expected, true).unwrap();
+        Ok(())
     }
 }
 
@@ -303,11 +323,11 @@ where
                 .unwrap();
         op.a_pack().pack(&mut packed_a.view_mut(), &a.view(), false);
 
-        let mut found = vec![TC::zero(); m];
+        let mut found = Tensor::zero::<TC>(&[m]).unwrap();
 
-        op.run(&packed_a.view(), &b.view(), found.as_mut_ptr() as _, &[]).unwrap();
+        op.run(&packed_a.view(), &b.view(), &mut found.view_mut(), &[]).unwrap();
 
-        let mut expected = vec![TC::zero(); m];
+        let mut expected = Tensor::zero::<TC>(&[m]).unwrap();
         for y in 0..m {
             let mut inter = TI::zero();
             for i in 0..k {
@@ -315,10 +335,11 @@ where
                 let b: TI = b.as_slice::<TB>().unwrap()[i].as_();
                 inter = inter + a * b;
             }
-            expected[y] = inter.as_();
+            expected.as_slice_mut().unwrap()[y] = inter.as_();
         }
 
-        crate::test::check_close(&*found, &*expected)
+        found.close_enough(&expected, true).unwrap();
+        Ok(())
     }
 }
 
@@ -349,11 +370,11 @@ where
         Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len()], op.b_pack().alignment()).unwrap();
     op.b_pack().pack(packed_b.view_mut(), b.view(), false);
 
-    let mut found = vec![TC::zero(); m * n];
+    let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
 
-    op.run(&packed_a.view(), &packed_b.view(), found.as_mut_ptr() as _, spec).unwrap();
+    op.run(&packed_a.view(), &packed_b.view(), &mut found.view_mut(), spec).unwrap();
 
-    let mut inter = vec![TI::zero(); m * n];
+    let mut inter = Tensor::zero::<TI>(&[m, n]).unwrap();
     for x in 0..n {
         for y in 0..m {
             let mut s = TI::zero();
@@ -361,13 +382,14 @@ where
                 s += a.as_slice::<TA>().unwrap()[i + k * y].as_()
                     * b.as_slice::<TB>().unwrap()[x + i * n].as_()
             }
-            inter[x + y * n] = s;
+            inter.as_slice_mut::<TI>().unwrap()[x + y * n] = s;
         }
     }
-    expect(&mut inter);
-    let expected: Vec<TC> = inter.into_iter().map(|i| i.as_()).collect();
+    expect(inter.as_slice_mut::<TI>().unwrap());
+    let expected = inter.cast_to::<TC>().unwrap().into_owned();
 
-    crate::test::check_close(&*found, &*expected)
+    found.close_enough(&expected, true).unwrap();
+    Ok(())
 }
 
 pub unsafe fn row_add<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
@@ -545,14 +567,14 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
             .collect()
     }
 
-    pub fn expected<TC, TI>(&self) -> Vec<TC>
+    pub fn expected<TC, TI>(&self) -> Tensor
     where
         TA: LADatum + AsPrimitive<TI>,
         TB: LADatum + AsPrimitive<TI>,
         TC: LADatum,
         TI: LADatum + AsPrimitive<TC>,
     {
-        let mut expect = vec![TI::zero(); self.co * self.output_width()];
+        let mut expect = Tensor::zero::<TI>(&[self.co, self.output_width()]).unwrap();
         for x in 0..self.output_width() {
             for ico in 0..self.co {
                 for ikt in 0..self.kt {
@@ -561,16 +583,17 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                             [ici * self.kt + ikt + self.ci * self.kt * ico];
                         let d = self.data.as_slice::<TB>().unwrap()
                             [x * self.stride + ikt * self.dilation + ici * self.input_width()];
-                        let ref mut pv = expect[x + ico * self.output_width()];
+                        let ref mut pv =
+                            expect.as_slice_mut::<TI>().unwrap()[x + ico * self.output_width()];
                         *pv += f.as_() * d.as_();
                     }
                 }
             }
         }
-        expect.into_iter().map(|ti| ti.as_()).collect()
+        expect.cast_to::<TC>().unwrap().into_owned()
     }
 
-    pub fn run<K: MatMatMulKer<TI>, TC, TI>(&self) -> Vec<TC>
+    pub fn run<K: MatMatMulKer<TI>, TC, TI>(&self) -> Tensor
     where
         TA: LADatum + AsPrimitive<TI> + 'static,
         TB: LADatum + AsPrimitive<TI> + 'static,
@@ -587,8 +610,10 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                     .unwrap();
             op.a_pack().pack(packed_a.view_mut(), self.filters.view(), false);
 
-            let mut found: Vec<TC> = vec![TC::max_value(); self.co * self.output_width()];
-            op.run(&packed_a.view(), &self.data.view(), found.as_mut_ptr() as _, &[]).unwrap();
+            let mut found = tensor0(TC::max_value())
+                .broadcast_scalar_to_shape(&[self.co, self.output_width()])
+                .unwrap();
+            op.run(&packed_a.view(), &self.data.view(), &mut found.view_mut(), &[]).unwrap();
             found
         }
     }
@@ -702,8 +727,8 @@ where
     usize: AsPrimitive<TI>,
     i32: AsPrimitive<TI>,
 {
-    pub fn reference(&self) -> Vec<TC> {
-        let mut i = vec![TI::zero(); self.m * self.n];
+    pub fn reference(&self) -> Tensor {
+        let mut i = Tensor::zero::<TI>(&[self.m, self.n]).unwrap();
         for m in 0..self.m {
             for n in 0..self.n {
                 for k in 0..self.k {
@@ -719,16 +744,20 @@ where
                     } else {
                         self.b0.as_slice::<TB>().unwrap()[n].as_()
                     };
-                    i[n + self.n * m] += (a - a0) * (b - b0);
+                    i.as_slice_mut::<TI>().unwrap()[n + self.n * m] += (a - a0) * (b - b0);
                 }
             }
         }
-        i.iter().map(|i| i.max(&TC::min_value().as_()).min(&TC::max_value().as_()).as_()).collect()
+        i.as_slice_mut::<TI>()
+            .unwrap()
+            .iter_mut()
+            .for_each(|i| *i = (*i).max(TC::min_value().as_()).min(TC::max_value().as_()));
+        i.cast_to::<TC>().unwrap().into_owned()
     }
 
-    pub fn run<K: MatMatMulKer<TI>>(&self) -> Vec<TC> {
+    pub fn run<K: MatMatMulKer<TI>>(&self) -> Tensor {
         unsafe {
-            let mut c = vec![TC::zero(); self.m * self.n];
+            let mut c = Tensor::zero::<TC>(&[self.m, self.n]).unwrap();
             let mut mmm = MatMatMulImpl::from(MatMatMulImpl::<K, TA, TB, TC, TI>::new(
                 self.m, self.k, self.n,
             ));
@@ -749,7 +778,7 @@ where
             mmm.set_zero_point_a(self.a0.clone());
             mmm.set_zero_point_b(self.b0.clone());
 
-            mmm.run(&packed_a.view(), &packed_b.view(), c.as_mut_ptr() as _, &[]).unwrap();
+            mmm.run(&packed_a.view(), &packed_b.view(), &mut c.view_mut(), &[]).unwrap();
             c
         }
     }

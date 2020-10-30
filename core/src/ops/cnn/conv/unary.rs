@@ -90,8 +90,8 @@ impl ConvUnary {
                             packer.alignment(),
                         )?;
                         packer.pack(
-                            &mut TensorViewMut::at_prefix(&mut packed, &[]),
-                            &TensorView::at_prefix(&kernel, &[g]),
+                            &mut TensorViewMut::at_prefix(&mut packed, &[])?,
+                            &TensorView::at_prefix(&kernel, &[g])?,
                             false,
                         );
                         Ok(packed.into_arc_tensor())

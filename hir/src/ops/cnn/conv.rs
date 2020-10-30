@@ -352,11 +352,10 @@ mod test {
     fn test_eval_nhwc_1() -> TractResult<()> {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let res = op
-            .eval(tvec!(
-                Tensor::zero::<f32>(&[1, 2, 2, 2]).unwrap().into_arc_tensor(),
-                Tensor::zero::<f32>(&[2, 2, 2, 1]).unwrap().into_arc_tensor(),
-            ))?;
+        let res = op.eval(tvec!(
+            Tensor::zero::<f32>(&[1, 2, 2, 2]).unwrap().into_arc_tensor(),
+            Tensor::zero::<f32>(&[2, 2, 2, 1]).unwrap().into_arc_tensor(),
+        ))?;
         Tensor::zero::<f32>(&[1, 2, 2, 1]).unwrap().close_enough(&res[0], false)
     }
 

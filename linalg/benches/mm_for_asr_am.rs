@@ -5,16 +5,16 @@ fn mat_mul_f32(be: &mut Bencher, &(m, k, n): &(usize, usize, usize)) {
     let mm = (tract_linalg::ops().mmm_f32)(m, k, n);
     let pa = Tensor::zero_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
     let pb = Tensor::zero_aligned::<f32>(&[mm.b_pack().len()], mm.b_pack().alignment()).unwrap();
-    let mut c = vec![0.0; m * n];
-    be.iter(move || unsafe { mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]) });
+    let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
+    be.iter(move || unsafe { mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]) });
 }
 
 fn mat_mul_i8(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     let mm = (tract_linalg::ops().qmmm_i8_i8)(m, k, n);
     let pa = Tensor::zero_aligned::<i8>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
     let pb = Tensor::zero_aligned::<i8>(&[mm.b_pack().len()], mm.b_pack().alignment()).unwrap();
-    let mut c = vec![0i8; m * n];
-    be.iter(move || unsafe { mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]) });
+    let mut c = Tensor::zero::<i8>(&[m, n]).unwrap();
+    be.iter(move || unsafe { mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]) });
 }
 
 fn packed_packed(c: &mut Criterion, m: usize, k: usize, n: usize) {
@@ -44,9 +44,9 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
         let pa =
             Tensor::zero_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
         let pb = Tensor::zero_aligned::<f32>(&[b_len], mm.b_pack().alignment()).unwrap();
-        let mut c = vec![0.0; m * n];
+        let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
         mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
-        be.iter(move || mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]));
+        be.iter(move || mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]));
     }
 }
 
@@ -56,9 +56,9 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
         let mut mm = (tract_linalg::ops().qmmm_i8_i8)(m, k, n);
         let pa = Tensor::zero_aligned::<i8>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
         let pb = Tensor::zero_aligned::<i8>(&[b_len], mm.b_pack().alignment()).unwrap();
-        let mut c = vec![0; m * n];
+        let mut c = Tensor::zero::<i8>(&[m, n]).unwrap();
         mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
-        be.iter(move || mm.run(&pa.view(), &pb.view(), c.as_mut_ptr() as _, &[]));
+        be.iter(move || mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]));
     }
 }
 

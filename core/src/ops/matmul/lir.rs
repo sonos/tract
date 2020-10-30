@@ -91,17 +91,22 @@ where
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
             let b = args_1!(inputs);
-            let mut c = Tensor::uninitialized::<TC>(&*self.c_fact.shape.as_finite().unwrap())?;
-            if let Some((prefix_dim, prefix_strides)) = &self.c_prefix_dim_and_stride {
-                let mut c = c.to_array_view_mut::<TC>()?;
+            let mut c_tmp_shape: TVec<usize> =
+                if let Some((shape, _)) = &self.c_prefix_dim_and_stride {
+                    shape.clone()
+                } else {
+                    tvec!()
+                };
+            c_tmp_shape.push(self.mmm.m());
+            c_tmp_shape.push(self.mmm.n());
+            let mut c = Tensor::uninitialized::<TC>(&c_tmp_shape)?;
+            if let Some((prefix_dim, _prefix_strides)) = &self.c_prefix_dim_and_stride {
                 for prefix in indices(&**prefix_dim).into_iter() {
                     let mut a = self.packed_as.view();
                     let mut b_prefix = tvec!();
-                    let mut c: *mut TC = c.as_mut_ptr();
                     for (ix, &dim) in prefix.slice().iter().enumerate() {
                         a.index_axis_inplace(Axis(0), dim.min(a.shape()[0] - 1));
                         b_prefix.push(dim.min(b.shape()[ix] - 1));
-                        c = c.offset(prefix_strides[ix] * dim as isize);
                     }
                     let pa: &Tensor = a.iter().next().unwrap();
                     if let Some(fused) = &self.fused_ops {
@@ -112,12 +117,18 @@ where
                         }
                         self.mmm.run(
                             &pa.view(),
-                            &b.view_at_prefix(&b_prefix),
-                            c as _,
+                            &b.view_at_prefix(&b_prefix)?,
+                            &mut c.view_at_prefix_mut(prefix.slice())?,
                             &fused.as_slice().unwrap()[0],
                         )?;
                     } else {
-                        self.mmm.run(&pa.view(), &b.view_at_prefix(&b_prefix), c as _, &[])?;
+                        dbg!(prefix.slice());
+                        self.mmm.run(
+                            &pa.view(),
+                            &b.view_at_prefix(&b_prefix)?,
+                            &mut c.view_at_prefix_mut(prefix.slice())?,
+                            &[],
+                        )?;
                     }
                 }
             } else {
@@ -125,19 +136,21 @@ where
                     self.mmm.run(
                         &self.packed_as.as_slice().unwrap()[0].view(),
                         &b.view(),
-                        c.as_ptr_mut::<TC>()? as _,
+                        &mut c.view_mut(),
                         &fused.as_slice().unwrap()[0],
                     )?;
                 } else {
                     self.mmm.run(
                         &self.packed_as.as_slice().unwrap()[0].view(),
                         &b.view(),
-                        c.as_ptr_mut::<TC>()? as _,
+                        &mut c.view_mut(),
                         &[],
                     )?;
                 }
             }
-            Ok(tvec!(c.into_arc_tensor()))
+            Ok(tvec!(c
+                .into_shape(&*self.c_fact.shape.as_finite().context("Non finite mmm")?)?
+                .into_arc_tensor()))
         }
     }
 }

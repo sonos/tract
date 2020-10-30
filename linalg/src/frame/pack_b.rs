@@ -72,7 +72,7 @@ impl PackB {
         let (rsb, csb) = if trans {
             (1, b.shape()[b.rank() - 1] as isize)
         } else {
-            ( b.shape()[b.rank() - 1] as isize, 1)
+            (b.shape()[b.rank() - 1] as isize, 1)
         };
         let pb = pb.as_ptr_mut_unchecked::<u8>();
         let b = b.as_ptr_unchecked::<u8>();
