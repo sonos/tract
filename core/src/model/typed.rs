@@ -154,6 +154,7 @@ impl TypedModel {
                         done_something_this_pass = true;
                         done_something_this_time = true;
                         patch.apply(&mut model)?;
+                        seen.clear();
                         patches += 1
                     }
                     #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
