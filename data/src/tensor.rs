@@ -343,7 +343,7 @@ impl Tensor {
                 if trunc { 12 } else { self.len() }
             ));
             Ok(format!(
-                "{}x{:?} {}{}",
+                "{},{:?} {}{}",
                 self.shape.iter().join("x"),
                 self.dt,
                 data,

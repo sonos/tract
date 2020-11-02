@@ -83,7 +83,7 @@ impl InferenceFact {
             )
         } else {
             format!(
-                "{:?}x{}",
+                "{:?},{}",
                 self.shape,
                 self.datum_type
                     .concretize()

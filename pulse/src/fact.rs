@@ -82,8 +82,8 @@ impl fmt::Debug for PulsedFact {
         use tract_itertools::Itertools;
         write!(
             fmt,
-            "{}x{:?} [pulse axis:{} ∂:{} full dim:{}]",
-            self.shape.iter().join("x"),
+            "{},{:?} [pulse axis:{} ∂:{} full dim:{}]",
+            self.shape.iter().join(","),
             self.datum_type,
             self.axis,
             self.delay,

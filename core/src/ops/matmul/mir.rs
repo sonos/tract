@@ -150,8 +150,8 @@ pub fn compute_shape<D: DimLike>(
     if ka != kb {
         bail!(
             "Inconsistent matmul: a: {} b: {}, a_trans: {} b_trans: {} c_trans: {}",
-            ashape.iter().join("x"),
-            bshape.iter().join("x"),
+            ashape.iter().join(","),
+            bshape.iter().join(","),
             a_trans,
             b_trans,
             c_trans

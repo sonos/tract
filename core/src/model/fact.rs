@@ -100,7 +100,7 @@ impl TryFrom<&[usize]> for ShapeFact {
 impl fmt::Debug for ShapeFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use itertools::Itertools;
-        write!(fmt, "{}", self.iter().join("x"))
+        write!(fmt, "{}", self.iter().join(","))
     }
 }
 
@@ -151,7 +151,7 @@ impl TypedFact {
 
     fn format_dt_shape_nocheck(&self) -> String {
         if self.shape.rank() > 0 {
-            format!("{:?}x{:?}", self.shape, self.datum_type)
+            format!("{:?},{:?}", self.shape, self.datum_type)
         } else {
             format!("{:?}", self.datum_type)
         }
@@ -237,7 +237,7 @@ impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.konst {
             Some(ref k) => write!(fmt, "{:?}", k),
-            None if self.rank() > 0 => write!(fmt, "{:?}x{:?}", self.shape, self.datum_type),
+            None if self.rank() > 0 => write!(fmt, "{:?},{:?}", self.shape, self.datum_type),
             None => write!(fmt, "{:?}", self.datum_type),
         }
     }
