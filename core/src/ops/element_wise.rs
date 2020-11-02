@@ -164,6 +164,7 @@ macro_rules! element_wise {
     ($func:ident, $Op:ident $({$( $(#[$meta: meta])? $var: ident : $var_typ: path),*})?,
         $( [$($typ:ident),*] => $f:expr ),*
         $(; cost: $cost:expr )?
+        $(; declutter: $declutter:expr )?
         $(; prefix: $prefix:expr )?
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
@@ -192,6 +193,15 @@ macro_rules! element_wise {
             fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
                 $cost(dt)
             }
+            )?
+            $(
+                fn declutter(
+                    &self,
+                    model: &TypedModel,
+                    node: &TypedNode,
+                ) -> TractResult<Option<TypedModelPatch>> {
+                    $declutter(model, node)
+                }
             )?
             $(
             fn prefix(&self) -> &'static str {
