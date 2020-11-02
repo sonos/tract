@@ -66,13 +66,9 @@ else
     cargo -q test -q -p onnx-test-suite --release --all-features
 fi
 
-HARNESS=""
-for p in $(ls harness | grep -v onnx-test-suite)
-do
-    HARNESS="$HARNESS -p $p"
-done
-
-cargo -q test -q --release $HARNESS $ALL_FEATURES
+cargo -q test -q --release -p core-proptest-pulse -p lstm-proptest-onnx-vs-tf \
+                -p nnef-inceptionv3 -p tf-inceptionv3 -p tf-mobilenet-v2 \
+                -p tf-moz-deepspeech $ALL_FEATURES
 
 cargo -q build -q -p tract --release
 
@@ -173,6 +169,11 @@ cd $CACHEDIR
     run \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
 
+for t in harness/pre-optimized-graphes/*
+do
+    (export TRACT_RUN=`pwd`/target/release/tract ; cd $t ; ./runme.sh)
+done
+
 # these tests require access to private snips models
 if [ -e "$HOME/.aws/credentials" ]
 then
@@ -183,4 +184,3 @@ then
     TRACT_RUN=../../target/release/tract ./run_all.sh en_tdnn_lstm_bn_q7
 )
 fi
-
