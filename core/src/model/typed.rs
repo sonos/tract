@@ -39,7 +39,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         name: impl Into<String>,
         op: impl Into<Box<dyn TypedOp>>,
         inputs: &[OutletId],
-        ) -> TractResult<TVec<OutletId>> {
+    ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
         let name = name.into();
         let output_facts = {
@@ -91,19 +91,19 @@ impl TypedModel {
                     output_facts.len(),
                     node.outputs.len(),
                     node
-                    );
+                );
             }
             if node
                 .outputs
-                    .iter()
-                    .map(|o| &o.fact)
-                    .zip(output_facts.iter())
-                    .any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape)
-                    {
-                        bail!(
+                .iter()
+                .map(|o| &o.fact)
+                .zip(output_facts.iter())
+                .any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape)
+            {
+                bail!(
                             "Inconsistent model, node output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}",
                             output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts)
-                    }
+            }
         }
         for node in &self.nodes {
             for (ix, output) in node.outputs.iter().enumerate() {
@@ -115,71 +115,9 @@ impl TypedModel {
         Ok(())
     }
 
-    fn optimize_passes(
-        &self,
-        passes: &mut [Box<dyn crate::optim::TypedPass>],
-        ) -> TractResult<TypedModel> {
-        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-        {
-            self.check_consistent_facts()?;
-        }
-        let mut model = self.clone();
-        let mut patches = 0;
-        for i in 0.. {
-            model = model.compact()?;
-            let mut done_something_this_time = false;
-            'pass: for p in passes.iter_mut() {
-                loop {
-                    let mut done_something_this_pass = false;
-                    let mut seen = std::collections::HashSet::new();
-                    p.reset()?;
-                    while let Some(mut patch) = p.next(&model)? {
-                        patch.push_context(format!("{:?}/{}", p, i));
-                        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-                        {
-                            patch.model.check_consistent_facts()?;
-                            model.check_consistent_facts()?;
-                            patch.model.invariants()?;
-                            model.invariants()?;
-                        }
-                        if let Some(watchdog) = patch.dont_apply_twice.take() {
-                            if !seen.contains(&watchdog) {
-                                debug!("Loop detected: {} seen before", watchdog);
-                                break 'pass;
-                            } else {
-                                seen.insert(watchdog);
-                            }
-                        }
-                        debug!("applying patch #{}: {}", patches, patch.context.iter().rev().join(" >> "),);
-                        done_something_this_pass = true;
-                        done_something_this_time = true;
-                        patch.apply(&mut model)?;
-                        seen.clear();
-                        patches += 1
-                    }
-                    #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-                    {
-                        model.check_edges()?;
-                        model
-                            .check_consistent_facts()
-                            .with_context(|| format!("after declutter pass {:?}", p))?
-                    }
-                    if !done_something_this_pass {
-                        continue 'pass;
-                    }
-                }
-            }
-            if !done_something_this_time {
-                return Ok(model);
-            }
-            model = model.compact()?;
-        }
-        unreachable!()
-    }
-
     /// Perform declutter passes on the network.
     pub fn declutter(&self) -> TractResult<TypedModel> {
-        self.optimize_passes(&mut crate::optim::declutter())
+        crate::optim::Optimizer::declutter().optimize(&self)
     }
 
     pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
@@ -191,7 +129,7 @@ impl TypedModel {
                 node: &TypedNode,
                 target: &mut TypedModel,
                 mapping: &HashMap<OutletId, OutletId>,
-                ) -> TractResult<TVec<OutletId>> {
+            ) -> TractResult<TVec<OutletId>> {
                 node.op.concretize_dims(source, node, target, mapping, self)
             }
         }
@@ -200,7 +138,7 @@ impl TypedModel {
 
     /// Translate the graph to locally optimized operators (LIR or MIR ops).
     pub fn optimize(self) -> TractResult<TypedModel> {
-        self.optimize_passes(&mut crate::optim::codegen())
+        crate::optim::Optimizer::codegen().optimize(&self)
     }
 
     pub fn invariants(&self) -> TractResult<invariants::Invariants> {

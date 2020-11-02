@@ -47,10 +47,10 @@ pub fn concat(
     Ok(Some(invocation("concat", &[array(&wires).into()], &[("axis", numeric(op.axis))])))
 }
 
-pub fn slice<D: DimLike>(
+pub fn slice(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &ops::array::Slice<D>,
+    op: &ops::array::Slice,
 ) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let start = op.start.to_usize()?;

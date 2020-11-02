@@ -533,7 +533,12 @@ impl Parameters {
         }
         stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { Ok(m.incorporate()?)});
         stage!("type", inference_model -> typed_model, |m:InferenceModel| Ok(m.into_typed()?));
-        stage!("declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
+        stage!("declutter", typed_model -> typed_model, |m:TypedModel| { let mut dec = tract_core::optim::Optimizer::declutter();
+            if let Some(steps) = matches.value_of("declutter_step") {
+                dec = dec.stopping_at(steps.parse()?);
+            }
+            dec.optimize(&m)
+        });
         #[cfg(feature = "pulse")]
         {
             if let Some(dim) = concretize_stream_dim {

@@ -56,36 +56,27 @@ pub extern crate itertools;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
-//#[macro_use]
-//extern crate maplit;
 #[allow(unused_imports)]
 #[macro_use]
 pub extern crate ndarray;
 #[cfg(test)]
 extern crate env_logger;
-extern crate num_integer;
 pub extern crate num_traits;
 #[cfg(test)]
 extern crate proptest;
-extern crate smallvec;
 
 pub extern crate tract_data;
 pub extern crate tract_linalg;
 
-//#[macro_use]
-//pub mod macros;
 #[macro_use]
 pub mod ops;
 
 pub mod broadcast;
-//pub mod datum;
-//pub mod dim;
 pub mod framework;
 mod hash;
 pub mod model;
-mod optim;
+pub mod optim;
 pub mod plan;
-//pub mod tensor;
 
 pub use dyn_clone;
 

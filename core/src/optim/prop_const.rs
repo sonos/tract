@@ -1,7 +1,7 @@
 use crate::model::*;
 use crate::TractResult;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PropConst;
 
 impl super::TypedPass for PropConst {

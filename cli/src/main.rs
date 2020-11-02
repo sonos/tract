@@ -138,6 +138,8 @@ fn main() -> tract_core::anyhow::Result<()> {
     (@arg partial: --partial "Before analyse, eliminate dead branches")
 
     (@arg pass: --pass +takes_value possible_values(STAGES) "Pass to stop preprocessing after.")
+    (@arg declutter_step: --("declutter-step") +takes_value "Stop decluttering process after application of patch number N")
+
     (@arg nnef_cycle: --("nnef-cycle") "Perform NNEF dump and reload before optimizing")
     (@arg nnef_tract_core: --("nnef-tract-core") "Allow usage of tract-core extension in NNEF dump and load")
     (@arg nnef_tract_onnx: --("nnef-tract-onnx") "Allow usage of tract-onnx extension in NNEF dump and load")

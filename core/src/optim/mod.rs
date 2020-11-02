@@ -1,75 +1,121 @@
 use crate::internal::*;
 use std::fmt::Debug;
+use tract_itertools::Itertools;
 
 pub mod change_axes;
+mod op_optim;
 mod prop_const;
 mod push_split_down;
 
 use self::change_axes::ChangeAxes;
 use self::prop_const::PropConst;
 use self::push_split_down::PushSplitDown;
+use op_optim::OpOptim;
 
-pub trait TypedPass: Debug + Send + Sync {
+pub trait TypedPass: Debug + Send + Sync + dyn_clone::DynClone {
     fn reset(&mut self) -> TractResult<()>;
     fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>>;
 }
 
-pub fn declutter() -> Vec<Box<dyn TypedPass>> {
-    vec![
-        Box::new(OpOptim("declutter", TypedOp::declutter, 0)),
-        Box::new(PropConst),
-        Box::new(PushSplitDown),
-        Box::new(ChangeAxes),
-    ]
+dyn_clone::clone_trait_object!(TypedPass);
+
+pub struct Optimizer {
+    passes: Vec<Box<dyn TypedPass>>,
+    steps: Option<usize>,
 }
 
-pub fn codegen() -> Vec<Box<dyn TypedPass>> {
-    vec![
-        Box::new(OpOptim("codegen", TypedOp::codegen, 0)),
-        Box::new(PushSplitDown),
-        Box::new(OpOptim("fuse", TypedOp::fuse, 0)),
-    ]
-}
+impl Optimizer {
+    fn passes(passes: Vec<Box<dyn TypedPass>>) -> Optimizer {
+        Optimizer { passes, steps: None }
+    }
 
-pub struct OpOptim(
-    &'static str,
-    fn(
-        op: &dyn TypedOp,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>>,
-    usize,
-);
+    pub fn stopping_at(self, steps: usize) -> Optimizer {
+        Optimizer { steps: Some(steps), .. self }
+    }
 
-impl OpOptim {
-    fn full_pass(&mut self, new: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
-        for (ix, &id) in new.eval_order()?.iter().enumerate().skip(self.2) {
-            let node = &new.nodes()[id];
-            let patch = (self.1)(node.op.as_ref(), &new, node)
-                .with_context(|| format!("{:?} node {}", self, node))?;
-            if let Some(mut p) = patch {
-                p.push_context(format!("{:?} {}", self, node));
-                self.2 = ix;
-                return Ok(Some(p));
-            }
+    pub fn declutter() -> Optimizer {
+        Optimizer::passes(vec![
+            Box::new(OpOptim("declutter", TypedOp::declutter, 0)),
+            Box::new(PropConst),
+            Box::new(PushSplitDown),
+            Box::new(ChangeAxes),
+        ])
+    }
+
+    pub fn codegen() -> Optimizer {
+        Optimizer::passes(vec![
+            Box::new(OpOptim("codegen", TypedOp::codegen, 0)),
+            Box::new(PushSplitDown),
+            Box::new(OpOptim("fuse", TypedOp::fuse, 0)),
+        ])
+    }
+
+    pub fn optimize(&self, model: &TypedModel) -> TractResult<TypedModel> {
+        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
+        {
+            model.check_consistent_facts()?;
         }
-        Ok(None)
-    }
-}
-
-impl std::fmt::Debug for OpOptim {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "{}", self.0)
-    }
-}
-
-impl TypedPass for OpOptim {
-    fn reset(&mut self) -> TractResult<()> {
-        self.2 = 0;
-        Ok(())
-    }
-
-    fn next(&mut self, model: &TypedModel) -> TractResult<Option<TypedModelPatch>> {
-        self.full_pass(model)
+        let mut model = model.clone();
+        let mut patches = 0;
+        let mut passes = self.passes.clone();
+        for i in 0.. {
+            model = model.compact()?;
+            let mut done_something_this_time = false;
+            'pass: for p in passes.iter_mut() {
+                loop {
+                    let mut done_something_this_pass = false;
+                    let mut seen = std::collections::HashSet::new();
+                    p.reset()?;
+                    while let Some(mut patch) = p.next(&model)? {
+                        patch.push_context(format!("{:?}/{}", p, i));
+                        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
+                        {
+                            patch.model.check_consistent_facts()?;
+                            model.check_consistent_facts()?;
+                            patch.model.invariants()?;
+                            model.invariants()?;
+                        }
+                        if let Some(watchdog) = patch.dont_apply_twice.take() {
+                            if !seen.contains(&watchdog) {
+                                debug!("Loop detected: {} seen before", watchdog);
+                                break 'pass;
+                            } else {
+                                seen.insert(watchdog);
+                            }
+                        }
+                        debug!(
+                            "applying patch #{}: {}",
+                            patches,
+                            patch.context.iter().rev().join(" >> "),
+                        );
+                        done_something_this_pass = true;
+                        done_something_this_time = true;
+                        patch.apply(&mut model)?;
+                        seen.clear();
+                        patches += 1;
+                        if let Some(steps) = self.steps {
+                            if steps >= patches {
+                                return Ok(model)
+                            }
+                        }
+                    }
+                    #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
+                    {
+                        model.check_edges()?;
+                        model
+                            .check_consistent_facts()
+                            .with_context(|| format!("after declutter pass {:?}", p))?
+                    }
+                    if !done_something_this_pass {
+                        continue 'pass;
+                    }
+                }
+            }
+            if !done_something_this_time {
+                return Ok(model);
+            }
+            model = model.compact()?;
+        }
+        unreachable!()
     }
 }

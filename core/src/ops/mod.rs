@@ -198,7 +198,7 @@ pub trait TypedOp:
             let wire = patch.tap_model(model, outlet)?;
             let wire = patch.wire_node(
                 &format!("{}-{}-slice-{}-{}..{}", node.name, output_slot, axis, start, end),
-                crate::ops::array::Slice { start, axis, end },
+                crate::ops::array::Slice { start: start.to_dim(), axis, end: end.to_dim() },
                 &[wire],
             )?[0];
             Ok(Some(wire))
