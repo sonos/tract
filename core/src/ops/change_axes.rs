@@ -396,8 +396,8 @@ impl Op for AxisOp {
             Reshape(at, from, to) => Ok(vec![format!(
                 "Axes starting at {}: {:?} to {:?}",
                 at,
-                from.iter().join("x"),
-                to.iter().join("x")
+                from.iter().join(","),
+                to.iter().join(",")
             )]),
         }
     }

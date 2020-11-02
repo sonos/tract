@@ -12,7 +12,7 @@ impl Op for FiniteReshape {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("to shape: {}", self.shape.iter().join("x"))])
+        Ok(vec![format!("to shape: {}", self.shape.iter().join(","))])
     }
 
     op_core_lir!();

@@ -296,7 +296,7 @@ impl fmt::Debug for ShapeFactoid {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         for (ix, d) in self.dims.iter().enumerate() {
             if ix != 0 {
-                write!(formatter, "x")?
+                write!(formatter, ",")?
             }
             write!(formatter, "{}", d)?;
         }
@@ -304,7 +304,7 @@ impl fmt::Debug for ShapeFactoid {
             if self.dims.len() == 0 {
                 write!(formatter, "..")?;
             } else {
-                write!(formatter, "x..")?;
+                write!(formatter, ",..")?;
             }
         }
         Ok(())
