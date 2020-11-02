@@ -4,6 +4,7 @@ use crate::internal::*;
 use crate::ser::*;
 use tract_core::ops;
 use tract_core::ops::scan::*;
+use tract_itertools::Itertools;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(TypeId::of::<ops::scan::Scan>(), ser_scan);
@@ -95,7 +96,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
             }
         }
     }
-    for tensor in &body_tensors {
+    for tensor in body_tensors.iter().sorted_by_key(|t| &t.label) {
         let t = ast.konst_variable(&tensor.label, &tensor.value);
         full.push(tuple_2(string(&tensor.parameter_id), t.as_ref().clone()));
     }

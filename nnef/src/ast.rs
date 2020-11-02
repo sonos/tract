@@ -6,7 +6,7 @@ pub mod parse;
 #[derive(Clone, Debug)]
 pub struct ProtoModel {
     pub doc: Document,
-    pub tensors: HashMap<String, Arc<Tensor>>,
+    pub tensors: Vec<(String, Arc<Tensor>)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

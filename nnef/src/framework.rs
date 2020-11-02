@@ -108,7 +108,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
             return self.proto_model_for_read(&mut f);
         }
         let mut text: Option<String> = None;
-        let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
+        let mut tensors: Vec<(String, Arc<Tensor>)> = Default::default();
         for entry in walkdir::WalkDir::new(path) {
             let entry =
                 entry.map_err(|e| format_err!("Can not walk directory {:?}: {:?}", path, e))?;
@@ -127,7 +127,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
 
     fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
         let mut text: Option<String> = None;
-        let mut tensors: std::collections::HashMap<String, Arc<Tensor>> = Default::default();
+        let mut tensors: Vec<(String, Arc<Tensor>)> = Default::default();
         let mut tar = tar::Archive::new(reader);
         for entry in tar.entries()? {
             let mut entry = entry?;
@@ -148,7 +148,7 @@ fn read_stream<R: std::io::Read>(
     path: &std::path::Path,
     reader: &mut R,
     text: &mut Option<String>,
-    tensors: &mut HashMap<String, Arc<Tensor>>,
+    tensors: &mut Vec<(String, Arc<Tensor>)>,
 ) -> TractResult<()> {
     if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
         let mut t = String::new();
@@ -161,7 +161,7 @@ fn read_stream<R: std::io::Read>(
             .to_str()
             .ok_or_else(|| format_err!("Badly encoded filename for tensor: {:?}", path))?;
         let tensor = crate::tensors::read_tensor(reader)?;
-        tensors.insert(id.to_string(), tensor.into_arc_tensor());
+        tensors.push((id.to_string(), tensor.into_arc_tensor()));
     }
     Ok(())
 }

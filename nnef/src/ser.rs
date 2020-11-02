@@ -27,7 +27,7 @@ pub struct IntoAst<'a> {
     pub parameters: Vec<String>,
     pub results: Vec<String>,
     pub mapping: HashMap<OutletId, Arc<RValue>>,
-    pub tensors: HashMap<String, Arc<Tensor>>,
+    pub tensors: Vec<(String, Arc<Tensor>)>,
     pub fragments: HashMap<String, FragmentDef>,
     pub body: Vec<Assignment>,
 }
@@ -274,7 +274,7 @@ impl<'a> IntoAst<'a> {
             }
         } else {
             let name = name.into();
-            self.tensors.insert(name.clone(), tensor.clone());
+            self.tensors.push((name.clone(), tensor.clone()));
             let id = self.scoped_id(&name);
             self.assignment(
                 &id,

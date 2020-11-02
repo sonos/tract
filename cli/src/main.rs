@@ -243,6 +243,12 @@ fn main() -> tract_core::anyhow::Result<()> {
             .help("Dump the network in NNEF format (as a tar.gz file)"),
             )
         .arg(
+            Arg::with_name("nnef-graph")
+            .takes_value(true)
+            .long("nnef-graph")
+            .help("Dump the network definition (without the weights) as a graph.nnef-like file"),
+            )
+        .arg(
             Arg::with_name("assert-output")
             .takes_value(true)
             .long("assert-output")
