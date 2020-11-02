@@ -1,11 +1,10 @@
 use crate::internal::*;
 use tract_core::ops::array::Slice;
 
-submit_op_pulsifier!(Slice<TDim>, pulsify::<TDim>);
-submit_op_pulsifier!(Slice<usize>, pulsify::<usize>);
+submit_op_pulsifier!(Slice, pulsify);
 
-fn pulsify<D: DimLike + ToDim + Hash>(
-    op: &Slice<D>,
+fn pulsify(
+    op: &Slice,
     _source: &TypedModel,
     node: &TypedNode,
     target: &mut PulsedModel,
@@ -24,7 +23,7 @@ fn pulsify<D: DimLike + ToDim + Hash>(
     target.wire_node(&*node.name, op, &[input])
 }
 
-impl<D: DimLike + ToDim + Hash> PulsedOp for Slice<D> {
+impl PulsedOp for Slice {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         let len = (self.end.clone() - &self.start).to_dim();

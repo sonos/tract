@@ -2,7 +2,7 @@ use crate::internal::*;
 
 use itertools::Itertools;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PushSplitDown;
 
 impl super::TypedPass for PushSplitDown {

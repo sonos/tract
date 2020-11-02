@@ -32,8 +32,7 @@ pub fn tract_nnef() -> Registry {
     primitive(&mut registry, "concat", deser::concat);
     dumper!(ops::array::TypedConcat, ser::concat);
     primitive(&mut registry, "slice", deser::slice);
-    dumper!(ops::array::Slice<TDim>, ser::slice<TDim>);
-    dumper!(ops::array::Slice<usize>, ser::slice<usize>);
+    dumper!(ops::array::Slice, ser::slice);
 
     primitive(&mut registry, "squeeze", deser::squeeze);
     primitive(&mut registry, "unsqueeze", deser::unsqueeze);

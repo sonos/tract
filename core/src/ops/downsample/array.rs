@@ -2,16 +2,13 @@ use super::Downsample;
 use crate::internal::*;
 use crate::ops;
 
-pub fn pull_downsample_over_slice<D: DimLike>(
+pub fn pull_downsample_over_slice(
     model: &TypedModel,
     slice_node: &TypedNode,
-    slice_op: &ops::array::Slice<D>,
+    slice_op: &ops::array::Slice,
     down_node: &TypedNode,
     down_op: &Downsample,
-) -> TractResult<Option<TypedModelPatch>>
-where
-    TDim: From<D>,
-{
+) -> TractResult<Option<TypedModelPatch>> {
     if down_op.axis != slice_op.axis {
         return Ok(None);
     }
@@ -27,7 +24,7 @@ where
     let ds = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
     let new_start = left;
     let new_end = (final_len + left).to_usize()?;
-    let op = ops::array::Slice::new(slice_op.axis, new_start, new_end);
+    let op = ops::array::Slice::new(slice_op.axis, new_start.to_dim(), new_end.to_dim());
     let new_slice = patch.wire_node(&*slice_node.name, op, &*ds)?[0];
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), new_slice)?;
     return Ok(Some(patch));
@@ -86,7 +83,11 @@ mod tests {
                 )
                 .unwrap();
             let crop = model
-                .wire_node("crop", ops::array::Slice::new(0, left, len - right), &[input])
+                .wire_node(
+                    "crop",
+                    ops::array::Slice::new(0, left.to_dim(), (len - right).to_dim()),
+                    &[input],
+                )
                 .unwrap();
             let down = model
                 .wire_node("down", Downsample::new(0, stride as isize, modulo), &crop)

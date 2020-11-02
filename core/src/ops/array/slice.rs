@@ -1,31 +1,36 @@
 use crate::internal::*;
 use ndarray::prelude::*;
+use crate::num_traits::Zero;
 
-#[derive(Debug, Clone, new, Default, PartialEq, Hash)]
-pub struct Slice<D: DimLike + ToDim> {
+#[derive(Debug, Clone, Default, PartialEq, Hash)]
+pub struct Slice {
     pub axis: usize,
-    pub start: D,
-    pub end: D,
+    pub start: TDim,
+    pub end: TDim,
 }
 
-impl<D: DimLike + ToDim + Hash> DynHash for Slice<D> {
+impl DynHash for Slice {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
         dyn_hash(&self, hasher)
     }
 }
 
-impl<D: DimLike + ToDim + Hash> Slice<D> {
+impl Slice {
+    pub fn new(axis: usize, start: impl ToDim, end: impl ToDim) -> Slice {
+        Slice { axis, start: start.to_dim(), end: end.to_dim() }
+    }
+
     unsafe fn eval_t<T: Datum>(&self, input: &Tensor) -> TractResult<Tensor> {
         let mut input = input.to_array_view_unchecked::<T>();
         input.slice_axis_inplace(
             Axis(self.axis),
-            ::ndarray::Slice::from((self.start.to_isize()?)..(self.end.to_isize()?)),
+            ndarray::Slice::from((self.start.to_isize()?)..(self.end.to_isize()?)),
         );
         Ok(Tensor::from(input.to_owned()).into())
     }
 }
 
-impl<D: DimLike + ToDim + Hash> Op for Slice<D> {
+impl Op for Slice {
     fn name(&self) -> Cow<str> {
         "Slice".into()
     }
@@ -46,7 +51,7 @@ impl<D: DimLike + ToDim + Hash> Op for Slice<D> {
     }
 }
 
-impl<D: DimLike + ToDim + Hash> EvalOp for Slice<D> {
+impl EvalOp for Slice {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -62,7 +67,7 @@ impl<D: DimLike + ToDim + Hash> EvalOp for Slice<D> {
     }
 }
 
-impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
+impl TypedOp for Slice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
         fact.shape[self.axis] = (self.end.clone() - &self.start).to_dim();
@@ -107,21 +112,7 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let prec = model.node(node.inputs[0].node);
-        if let Some(tdim) = node.op_as::<Slice<TDim>>() {
-            if let (Ok(start), Ok(end)) = (tdim.start.to_usize(), tdim.end.to_usize()) {
-                return Ok(Some(
-                    TypedModelPatch::replace_single_op(
-                        model,
-                        node,
-                        &node.inputs,
-                        Slice { start, end, axis: self.axis },
-                    )?
-                    .with_context("dim to integer"),
-                ));
-            }
-        }
-        if self.start == D::zero()
-            && (self.end.clone().to_dim() == model.outlet_fact(node.inputs[0])?.shape[self.axis])
+        if self.start.is_zero() && (self.end == model.outlet_fact(node.inputs[0])?.shape[self.axis])
         {
             return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?.with_context("noop")));
         }
@@ -145,7 +136,9 @@ impl<D: DimLike + ToDim + Hash> TypedOp for Slice<D> {
                 return Ok(None);
             } else if patch.model.nodes.len() == 3 {
                 let other = model.node(node.inputs[0].node);
-                patch.dont_apply_twice = Some(format!("Swap {} and {}", node.name, other.name));
+                if other.op_is::<Self>() {
+                    patch.dont_apply_twice = Some(format!("Swap {} and {}", node.name, other.name));
+                }
             }
             return Ok(Some(patch));
         }

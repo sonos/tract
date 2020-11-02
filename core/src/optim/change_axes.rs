@@ -5,7 +5,7 @@ use crate::TractResult;
 
 use crate::ops::change_axes::*;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ChangeAxes;
 
 impl TypedPass for ChangeAxes {

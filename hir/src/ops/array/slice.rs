@@ -3,7 +3,7 @@ use crate::internal::*;
 
 pub use tract_core::ops::array::Slice;
 
-impl<D: DimLike + ToDim> InferenceRulesOp for Slice<D> {
+impl InferenceRulesOp for Slice {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,

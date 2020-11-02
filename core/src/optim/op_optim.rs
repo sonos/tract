@@ -1,5 +1,6 @@
 use crate::internal::*;
 
+#[derive(Clone)]
 pub struct OpOptim(
     pub &'static str,
     pub  fn(
