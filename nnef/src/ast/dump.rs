@@ -1,5 +1,6 @@
 use crate::ast::*;
 use tract_core::internal::*;
+use tract_core::itertools::Itertools;
 
 macro_rules! comma_loop {
     ($self:ident, $rec: ident, $items: expr) => {
@@ -22,7 +23,7 @@ impl<'a> Dumper<'a> {
     }
     pub fn document(&mut self, document: &Document) -> TractResult<()> {
         writeln!(self.w, "version {};\n", document.version)?;
-        for ext in &document.extension {
+        for ext in document.extension.iter().sorted() {
             writeln!(self.w, "extension {};", ext.join(" "))?;
         }
         if document.extension.len() > 0 {
@@ -34,7 +35,7 @@ impl<'a> Dumper<'a> {
     }
 
     pub fn fragments(&mut self, defs: &[FragmentDef]) -> TractResult<()> {
-        for fragment_def in defs {
+        for fragment_def in defs.iter().sorted_by_key(|frag| &frag.decl.id) {
             self.fragment_def(&fragment_def)?
         }
         Ok(())

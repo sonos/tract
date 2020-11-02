@@ -65,6 +65,17 @@ pub fn handle(
         }
     }
 
+    if let Some(path) = sub_matches.value_of("nnef-graph") {
+        let nnef = super::nnef(&matches);
+        if let Some(typed) = model.downcast_ref::<TypedModel>() {
+            let proto = tract_nnef::ser::to_proto_model(&nnef, typed)?;
+            let mut file = std::fs::File::create(path)?;
+            tract_nnef::ast::dump::Dumper::new(&mut file).document(&proto.doc)?;
+        } else {
+            bail!("Only typed model can be dumped")
+        }
+    }
+
     if options.cost {
         let total = annotations.tags.values().sum::<NodeTags>();
         let assert =

@@ -34,8 +34,11 @@ pub fn variable(
     let tensor = builder
         .proto_model
         .tensors
-        .get(&label)
-        .ok_or_else(|| format_err!("No data for tensor {:?}", label))?;
+        .iter()
+        .find(|pair| pair.0 == label)
+        .ok_or_else(|| format_err!("No data for tensor {:?}", label))?
+        .1
+        .clone();
     if tensor.shape() != &*shape {
         bail!(
             "Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}",
