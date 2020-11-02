@@ -145,8 +145,7 @@ graph network( input ) -> ( output_affine_output ) {
   tdnn1_renorm_reduced_sq = square(tdnn1_relu_output_low);
   tdnn1_renorm_reduced_sum = sum_reduce(tdnn1_renorm_reduced_sq, axes = [1]);
   tdnn1_renorm_scaled = mul(0.00390625, tdnn1_renorm_reduced_sum);
-  tdnn1_renorm_norm = sqrt(tdnn1_renorm_scaled);
-  tdnn1_renorm_output_recip = recip(tdnn1_renorm_norm);
+  tdnn1_renorm_output_recip = rsqrt(tdnn1_renorm_scaled);
   tdnn1_renorm_output = mul(tdnn1_relu_output_low, tdnn1_renorm_output_recip);
   tdnn2_affine_output_delay = tract_pulse_delay(tdnn1_renorm_output, axis = 0, delay = 0, overlap = 2);
   tdnn2_affine_output_weigths = variable<scalar>(label = "tdnn2.affine.output_weigths", shape = [256, 256, 3]);
@@ -156,8 +155,7 @@ graph network( input ) -> ( output_affine_output ) {
   tdnn2_renorm_reduced_sq = square(tdnn2_relu_output_low);
   tdnn2_renorm_reduced_sum = sum_reduce(tdnn2_renorm_reduced_sq, axes = [1]);
   tdnn2_renorm_scaled = mul(0.00390625, tdnn2_renorm_reduced_sum);
-  tdnn2_renorm_norm = sqrt(tdnn2_renorm_scaled);
-  tdnn2_renorm_output_recip = recip(tdnn2_renorm_norm);
+  tdnn2_renorm_output_recip = rsqrt(tdnn2_renorm_scaled);
   tdnn2_renorm_output = mul(tdnn2_relu_output_low, tdnn2_renorm_output_recip);
   tdnn3_affine_output_delay = tract_pulse_delay(tdnn2_renorm_output, axis = 0, delay = 0, overlap = 0);
   tdnn3_affine_output_weigths = variable<scalar>(label = "tdnn3.affine.output_weigths", shape = [256, 256, 3]);
@@ -167,8 +165,7 @@ graph network( input ) -> ( output_affine_output ) {
   tdnn3_renorm_reduced_sq = square(tdnn3_relu_output_low);
   tdnn3_renorm_reduced_sum = sum_reduce(tdnn3_renorm_reduced_sq, axes = [1]);
   tdnn3_renorm_scaled = mul(0.00390625, tdnn3_renorm_reduced_sum);
-  tdnn3_renorm_norm = sqrt(tdnn3_renorm_scaled);
-  tdnn3_renorm_output_recip = recip(tdnn3_renorm_norm);
+  tdnn3_renorm_output_recip = rsqrt(tdnn3_renorm_scaled);
   tdnn3_renorm_output = mul(tdnn3_relu_output_low, tdnn3_renorm_output_recip);
   fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_sliced_m_0_256_a = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.k-0-256.sliced-m-0-256_a", shape = [256, 256]);
   fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_sliced_m_0_256 = matmul(tdnn3_renorm_output, fastlstm1_c_final_extracted_fastlstm1_four_parts_W_k_0_256_sliced_m_0_256_a, transposeA = false, transposeB = false);
@@ -206,8 +203,7 @@ graph network( input ) -> ( output_affine_output ) {
   tdnn4_renorm_reduced_sq = square(tdnn4_relu_output_low);
   tdnn4_renorm_reduced_sum = sum_reduce(tdnn4_renorm_reduced_sq, axes = [1]);
   tdnn4_renorm_scaled = mul(0.00390625, tdnn4_renorm_reduced_sum);
-  tdnn4_renorm_norm = sqrt(tdnn4_renorm_scaled);
-  tdnn4_renorm_output_recip = recip(tdnn4_renorm_norm);
+  tdnn4_renorm_output_recip = rsqrt(tdnn4_renorm_scaled);
   tdnn4_renorm_output = mul(tdnn4_relu_output_low, tdnn4_renorm_output_recip);
   tdnn5_affine_output_delay = tract_pulse_delay(tdnn4_renorm_output, axis = 0, delay = 0, overlap = 2);
   tdnn5_affine_output_weigths = variable<scalar>(label = "tdnn5.affine.output_weigths", shape = [256, 256, 3]);
@@ -217,8 +213,7 @@ graph network( input ) -> ( output_affine_output ) {
   tdnn5_renorm_reduced_sq = square(tdnn5_relu_output_low);
   tdnn5_renorm_reduced_sum = sum_reduce(tdnn5_renorm_reduced_sq, axes = [1]);
   tdnn5_renorm_scaled = mul(0.00390625, tdnn5_renorm_reduced_sum);
-  tdnn5_renorm_norm = sqrt(tdnn5_renorm_scaled);
-  tdnn5_renorm_output_recip = recip(tdnn5_renorm_norm);
+  tdnn5_renorm_output_recip = rsqrt(tdnn5_renorm_scaled);
   tdnn5_renorm_output = mul(tdnn5_relu_output_low, tdnn5_renorm_output_recip);
   fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_sliced_m_0_256_a = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.k-0-256.sliced-m-0-256_a", shape = [256, 256]);
   fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_sliced_m_0_256 = matmul(tdnn5_renorm_output, fastlstm2_c_final_extracted_fastlstm2_four_parts_W_k_0_256_sliced_m_0_256_a, transposeA = false, transposeB = false);
