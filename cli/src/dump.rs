@@ -69,8 +69,12 @@ pub fn handle(
         let nnef = super::nnef(&matches);
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
             let proto = tract_nnef::ser::to_proto_model(&nnef, typed)?;
-            let mut file = std::fs::File::create(path)?;
-            tract_nnef::ast::dump::Dumper::new(&mut file).document(&proto.doc)?;
+            if path == "-" {
+                tract_nnef::ast::dump::Dumper::new(&mut std::io::stdout()).document(&proto.doc)?;
+            } else {
+                let mut file = std::fs::File::create(path)?;
+                tract_nnef::ast::dump::Dumper::new(&mut file).document(&proto.doc)?;
+            }
         } else {
             bail!("Only typed model can be dumped")
         }
