@@ -21,6 +21,7 @@ impl<'a> Dumper<'a> {
     pub fn new(w: &'a mut dyn std::io::Write) -> Dumper {
         Dumper { w }
     }
+
     pub fn document(&mut self, document: &Document) -> TractResult<()> {
         writeln!(self.w, "version {};\n", document.version)?;
         for ext in document.extension.iter().sorted() {
