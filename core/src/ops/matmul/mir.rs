@@ -38,6 +38,18 @@ fn eval(
                     MMMWrapper::Quant((tract_linalg::ops().qmmm_u8_u8)(m, k, n))
                 });
             }
+        } else if (a.datum_type(), b.datum_type(), q.c_datum_type)
+            == (i8::datum_type(), u8::datum_type(), i32::datum_type())
+        {
+            return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
+                MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_u8_i32)(m, k, n))
+            });
+        } else if (a.datum_type(), b.datum_type(), q.c_datum_type)
+            == (u8::datum_type(), i8::datum_type(), i32::datum_type())
+        {
+            return eval_t(b, a, !a_trans, !b_trans, !c_trans, q_params, &|m, k, n| {
+                MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_u8_i32)(m, k, n))
+            });
         }
     } else if (a.datum_type(), b.datum_type()) == (f32::datum_type(), f32::datum_type()) {
         return eval_t(a, b, a_trans, b_trans, c_trans, q_params, &|m, k, n| {
@@ -614,6 +626,23 @@ impl TypedOp for MatMulUnary {
                         self.c_trans,
                         self.q_params.as_ref(),
                         &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_i32)(m, k, n)),
+                    )?
+                } else if (
+                    self.a.datum_type(),
+                    b.datum_type,
+                    self.q_params.as_ref().map(|q| q.c_datum_type),
+                ) == (i8::datum_type(), u8::datum_type(), Some(i32::datum_type()))
+                {
+                    new_mat_mul_unary_finite(
+                        model,
+                        node,
+                        self.a.clone(),
+                        &b_shape,
+                        self.a_trans,
+                        self.b_trans,
+                        self.c_trans,
+                        self.q_params.as_ref(),
+                        &|m, k, n| MMMWrapper::Quant((tract_linalg::ops().qmmm_i8_u8_i32)(m, k, n)),
                     )?
                 } else {
                     bail!(

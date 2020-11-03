@@ -34,6 +34,9 @@ pub struct Ops {
     pub qmmm_i8_i32: Box<
         dyn Fn(usize, usize, usize) -> Box<dyn mmm::QMatMatMul<i8, i8, i32, i32>> + Send + Sync,
     >,
+    pub qmmm_i8_u8_i32: Box<
+            dyn Fn(usize, usize, usize) -> Box<dyn mmm::QMatMatMul<i8, u8, i32, i32>> + Send + Sync,
+        >,
     pub qmmm_u8_i32: Box<
         dyn Fn(usize, usize, usize) -> Box<dyn mmm::QMatMatMul<u8, u8, i32, i32>> + Send + Sync,
     >,
@@ -65,6 +68,15 @@ pub fn generic() -> Ops {
                 i32,
                 i32,
             >::new(m, k, n)))
+        }),
+        qmmm_i8_u8_i32: Box::new(|m, k, n| {
+            Box::new(mmm::QMatMatMulImpl::from(mmm::MatMatMulImpl::<
+                    generic::GenericMmm4x4<i8, u8, i32, i32>,
+                i8,
+                u8,
+                i32,
+                i32,
+                >::new(m, k, n)))
         }),
         qmmm_u8_i32: Box::new(|m, k, n| {
             Box::new(mmm::QMatMatMulImpl::from(mmm::MatMatMulImpl::<
