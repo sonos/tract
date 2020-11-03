@@ -84,7 +84,7 @@ macro_rules! mmm_frame_tests {
                         stride: 1,
                         dilation: 1,
                         filters: tensor2(&[[1i32]]).cast_to::<$ta>().unwrap().into_owned(),
-                        data: tensor2(&[[<$tb>::zero(), <$ta>::one()]]),
+                        data: tensor2(&[[<$tb>::zero(), <$tb>::one()]]),
                         phantom: std::marker::PhantomData,
                     };
                     let expected = pb.expected::<$tc, $ti>();
@@ -340,7 +340,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let a = tensor1(&*vec![TA::one(); m * k]).into_shape(&[m, k]).unwrap();
-    let b = tensor1(&*vec![TA::one(); k * n]).into_shape(&[k, n]).unwrap();
+    let b = tensor1(&*vec![TB::one(); k * n]).into_shape(&[k, n]).unwrap();
     let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
 
     let mut packed_a =
