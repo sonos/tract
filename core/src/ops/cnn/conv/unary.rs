@@ -90,7 +90,7 @@ impl ConvUnary {
                             packer.alignment(),
                         )?;
                         packer.pack(
-                            &mut TensorViewMut::at_prefix(&mut packed, &[])?,
+                            &mut TensorView::at_prefix(&mut packed, &[])?,
                             &TensorView::at_prefix(&kernel, &[g])?,
                             false,
                         );

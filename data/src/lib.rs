@@ -27,7 +27,7 @@ pub mod prelude {
 pub mod internal {
     pub use crate::dim::{DimLike, MaybeProduct, TDim, ToDim};
     pub use crate::prelude::*;
-    pub use crate::tensor::view::{TensorView, TensorViewMut};
+    pub use crate::tensor::view::TensorView;
 }
 
 pub use anyhow;
@@ -35,5 +35,4 @@ pub use anyhow;
 mod datum;
 mod dim;
 mod f16;
-//mod hash;
 mod tensor;

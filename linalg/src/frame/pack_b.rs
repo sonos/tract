@@ -62,7 +62,7 @@ impl PackB {
 
     pub unsafe fn pack<'a, 'b>(
         &self,
-        mut pb: impl std::borrow::BorrowMut<TensorViewMut<'a>>,
+        mut pb: impl std::borrow::BorrowMut<TensorView<'a>>,
         b: impl std::borrow::Borrow<TensorView<'b>>,
         trans: bool,
     ) {

@@ -771,12 +771,12 @@ impl Tensor {
         view::TensorView::at_prefix(self, prefix)
     }
 
-    pub fn view_mut(&mut self) -> view::TensorViewMut {
-        view::TensorViewMut::at_prefix(self, &[]).unwrap()
+    pub fn view_mut(&mut self) -> view::TensorView {
+        view::TensorView::at_prefix(self, &[]).unwrap()
     }
 
-    pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> anyhow::Result<view::TensorViewMut> {
-        view::TensorViewMut::at_prefix(self, prefix)
+    pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> anyhow::Result<view::TensorView> {
+        view::TensorView::at_prefix(self, prefix)
     }
 }
 
