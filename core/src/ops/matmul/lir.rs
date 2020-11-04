@@ -100,7 +100,7 @@ where
                 tmp_strides.push(0);
                 tmp_strides.push(0);
                 for prefix in indices(&**prefix_dim).into_iter() {
-                    let mut c = TensorViewMut::from_bytes(TC::datum_type(), c.as_bytes_mut(), &tmp_shape, &tmp_strides);
+                    let mut c = TensorView::from_bytes(TC::datum_type(), c.as_bytes_mut(), &tmp_shape, &tmp_strides);
                     let mut a = self.packed_as.view();
                     let mut b_prefix = tvec!();
                     for (ix, &dim) in prefix.slice().iter().enumerate() {

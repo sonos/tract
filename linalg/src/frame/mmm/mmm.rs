@@ -43,7 +43,7 @@ pub trait MatMatMul:
         &self,
         a: &TensorView,
         b: &TensorView,
-        c: &mut TensorViewMut,
+        c: &mut TensorView,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
 }
@@ -228,7 +228,7 @@ where
         &self,
         a: &TensorView,
         b: &TensorView,
-        c: &mut TensorViewMut,
+        c: &mut TensorView,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mr = K::mr();
