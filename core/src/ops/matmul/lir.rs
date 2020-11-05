@@ -1,7 +1,3 @@
-use num_traits::Zero;
-use std::fmt;
-use std::ops::{Add, Mul};
-
 use crate::internal::*;
 use ndarray::*;
 
@@ -9,13 +5,7 @@ use tract_linalg::mmm::{FusedSpec, MatMatMul};
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
-pub(crate) struct MatMatMulUnaryFinite<TA, TB, TC, TI>
-where
-    TA: Datum + Copy + Zero,
-    TB: Datum + Copy + Zero,
-    TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
-{
+pub(crate) struct MatMatMulUnaryFinite {
     pub(crate) c_trans: bool,
     pub(crate) bc_c_shape: TVec<usize>,
     pub(crate) c_fact: TypedFact,
@@ -24,7 +14,6 @@ where
     pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec>>>,
     #[educe(Hash(method = "hash_mmm"))]
     pub(crate) mmm: Box<dyn MatMatMul>,
-    pub(crate) boo: PhantomData<(TA, TB, TC, TI)>,
 }
 
 fn hash_mmm<H: std::hash::Hasher>(mmm: &Box<dyn MatMatMul>, state: &mut H) {
@@ -34,25 +23,13 @@ fn hash_mmm<H: std::hash::Hasher>(mmm: &Box<dyn MatMatMul>, state: &mut H) {
     mmm.n().hash(state);
 }
 
-impl<TA, TB, TC, TI> DynHash for MatMatMulUnaryFinite<TA, TB, TC, TI>
-where
-    TA: Datum + Copy + Zero,
-    TB: Datum + Copy + Zero,
-    TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
-{
+impl DynHash for MatMatMulUnaryFinite {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
         dyn_hash(&self, hasher)
     }
 }
 
-impl<TA, TB, TC, TI> Op for MatMatMulUnaryFinite<TA, TB, TC, TI>
-where
-    TA: Datum + Copy + Zero,
-    TB: Datum + Copy + Zero,
-    TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
-{
+impl Op for MatMatMulUnaryFinite {
     fn name(&self) -> Cow<str> {
         if self.mmm.n() == 1 { "MatVecMul" } else { "MatMatMul" }.into()
     }
@@ -77,13 +54,7 @@ where
     op_as_typed_op!();
 }
 
-impl<TA, TB, TC, TI> EvalOp for MatMatMulUnaryFinite<TA, TB, TC, TI>
-where
-    TA: Datum + Copy + Zero,
-    TB: Datum + Copy + Zero,
-    TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
-{
+impl EvalOp for MatMatMulUnaryFinite {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -91,16 +62,24 @@ where
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
             let b = args_1!(inputs);
-            let mut c = Tensor::uninitialized::<TC>(&self.c_fact.shape.as_finite().unwrap())?;
+            let mut c = Tensor::uninitialized_dt(
+                self.c_fact.datum_type,
+                &self.c_fact.shape.as_finite().unwrap(),
+            )?;
             if let Some((prefix_dim, prefix_strides)) = &self.c_prefix_dim_and_stride {
-                let mut tmp_shape:TVec<usize> = prefix_dim.iter().copied().collect();
+                let mut tmp_shape: TVec<usize> = prefix_dim.iter().copied().collect();
                 tmp_shape.push(self.mmm.m());
                 tmp_shape.push(self.mmm.n());
-                let mut tmp_strides:TVec<isize> = prefix_strides.iter().copied().collect();
+                let mut tmp_strides: TVec<isize> = prefix_strides.iter().copied().collect();
                 tmp_strides.push(0);
                 tmp_strides.push(0);
                 for prefix in indices(&**prefix_dim).into_iter() {
-                    let mut c = TensorView::from_bytes(TC::datum_type(), c.as_bytes_mut(), &tmp_shape, &tmp_strides);
+                    let mut c = TensorView::from_bytes(
+                        self.c_fact.datum_type,
+                        c.as_bytes_mut(),
+                        &tmp_shape,
+                        &tmp_strides,
+                    );
                     let mut a = self.packed_as.view();
                     let mut b_prefix = tvec!();
                     for (ix, &dim) in prefix.slice().iter().enumerate() {
@@ -149,13 +128,7 @@ where
     }
 }
 
-impl<TA, TB, TC, TI> TypedOp for MatMatMulUnaryFinite<TA, TB, TC, TI>
-where
-    TA: Datum + Copy + Zero,
-    TB: Datum + Copy + Zero,
-    TC: Datum + Copy,
-    TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
-{
+impl TypedOp for MatMatMulUnaryFinite {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if let Some(f) = &self.fused_ops {
             let c_prefix_len =
@@ -175,11 +148,11 @@ where
         let mul = self.c_prefix_dim_and_stride.as_ref().map(|c| c.0.iter().product()).unwrap_or(1);
         Ok(tvec!(
             (
-                Cost::FMA(TI::datum_type()),
+                Cost::FMA(self.mmm.internal_type()),
                 (mul * self.mmm.m() * self.mmm.n() * self.mmm.k()).to_dim()
             ),
             (
-                Cost::Params(TA::datum_type()),
+                Cost::Params(self.packed_as[0].datum_type()),
                 self.packed_as.iter().fold(0.to_dim(), |sum, a| sum + a.len())
             )
         ))
