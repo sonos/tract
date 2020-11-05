@@ -130,7 +130,8 @@ impl Expansion for BlockLSTM {
 
         wire!(xh = array::TypedConcat::concat_vars(1, 2), x, h_prev);
 
-        wire!(i_ci_f_o_1 = matmul::mir::MatMulUnary::new(w, true, true, true, None), xh);
+        let w = body.add_const(format!("{}-w", prefix), w)?;
+        wire!(i_ci_f_o_1 = matmul::mir::MatMul::default(), xh, w);
         wire!(i_ci_f_o = math::add::unary(b.into_arc_tensor()), i_ci_f_o_1);
 
         wire!(i_1 = array::Slice::new(1, 0, cell_size), i_ci_f_o);

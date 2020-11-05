@@ -21,15 +21,16 @@ fn pulsify(
 impl PulsedOp for MatMulUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.datum_type =
-            self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
-        fact.shape = tract_core::ops::matmul::compute_shape(
+        let (_m, _k, _n, c_shape) = tract_core::ops::matmul::compute_shape(
             &self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
             &inputs[0].shape,
             self.a_trans,
             self.b_trans,
             self.c_trans,
         )?;
+        fact.datum_type =
+            self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
+        fact.shape = c_shape;
         Ok(tvec!(fact))
     }
 

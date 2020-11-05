@@ -214,7 +214,7 @@ impl ConvUnary {
         let kernels = self.kernel_as_packed_as(&mmm.a_pack())?;
         wire = model.wire_node(
             format!("{}.matmatmul", name),
-            matmul::lir::MatMatMulUnaryFinite {
+            matmul::lir_unary::LirMatMulUnary {
                 c_trans: true,
                 bc_c_shape: output_shape.shape.clone(),
                 c_fact: TypedFact::dt_shape(
