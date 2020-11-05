@@ -1,13 +1,14 @@
 use crate::tensor::*;
+use anyhow::*;
 use std::marker::PhantomData;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TensorView<'a> {
     datum_type: DatumType,
     data: *const u8,
     shape: TVec<usize>,
     strides: TVec<isize>,
-    boo: PhantomData<&'a ()>,
+    phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> TensorView<'a> {
@@ -22,24 +23,22 @@ impl<'a> TensorView<'a> {
             data: data.as_ptr(),
             shape: shape.into(),
             strides: strides.into(),
-            boo: PhantomData,
+            phantom: PhantomData,
         }
     }
 
-    pub fn at_prefix(
-        tensor: &'a Tensor,
-        prefix: &[usize],
-    ) -> anyhow::Result<TensorView<'a>> {
-        anyhow::ensure!(prefix.len() <= tensor.rank(), "prefix longer than tensor shape");
-        anyhow::ensure!(prefix.iter().zip(tensor.shape()).all(|(p, d)| p < d), "prefix invalid");
+    pub fn at_prefix(tensor: &'a Tensor, prefix: &[usize]) -> anyhow::Result<TensorView<'a>> {
+        ensure!(prefix.len() <= tensor.rank(), "prefix longer than tensor shape");
+        ensure!(prefix.iter().zip(tensor.shape()).all(|(p, d)| p < d), "prefix invalid");
         unsafe {
             let datum_type = tensor.datum_type();
-            let offset = prefix.iter().zip(tensor.strides()).map(|(a, b)| a * b).sum::<usize>()
+            let tensor_strides = tensor.strides();
+            let offset = prefix.iter().zip(&tensor_strides).map(|(a, b)| a * b).sum::<usize>()
                 * datum_type.size_of();
             let data = (tensor.as_ptr_unchecked() as *const u8).offset(offset as isize);
             let shape = tensor.shape().iter().skip(prefix.len()).copied().collect();
-            let strides = tensor.strides().iter().skip(prefix.len()).map(|&d| d as isize).collect();
-            Ok(TensorView { datum_type, data, shape, strides, boo: PhantomData })
+            let strides = tensor_strides.iter().skip(prefix.len()).map(|&d| d as isize).collect();
+            Ok(TensorView { datum_type, data, shape, strides, phantom: PhantomData })
         }
     }
 
@@ -59,7 +58,7 @@ impl<'a> TensorView<'a> {
         self.shape().len()
     }
 
-    fn check_for_access<D: Datum>(&self) -> anyhow::Result<()> {
+    fn check_dt<D: Datum>(&self) -> anyhow::Result<()> {
         if self.datum_type() != D::datum_type() {
             anyhow::bail!(
                 "TensorView datum type error: tensor is {:?}, accessed as {:?}",
@@ -70,9 +69,19 @@ impl<'a> TensorView<'a> {
         Ok(())
     }
 
+    fn check_coords(&self, coords: &[usize]) -> anyhow::Result<()> {
+        ensure!(
+            coords.len() == self.rank() && coords.iter().zip(&self.shape).all(|(&x, &dim)| x < dim),
+            "Can't access coordinates {:?} of TensorView of shape {:?}",
+            coords,
+            self.shape
+        );
+        Ok(())
+    }
+
     /// Access the data as a pointer.
     pub fn as_ptr<D: Datum>(&self) -> anyhow::Result<*const D> {
-        self.check_for_access::<D>()?;
+        self.check_dt::<D>()?;
         Ok(unsafe { self.as_ptr_unchecked() })
     }
 
@@ -98,7 +107,7 @@ impl<'a> TensorView<'a> {
 
     /// Access the data as a slice.
     pub fn as_slice<D: Datum>(&self) -> anyhow::Result<&[D]> {
-        self.check_for_access::<D>()?;
+        self.check_dt::<D>()?;
         unsafe { Ok(self.as_slice_unchecked()) }
     }
 
@@ -109,7 +118,7 @@ impl<'a> TensorView<'a> {
 
     /// Access the data as a mutable slice.
     pub fn as_slice_mut<D: Datum>(&mut self) -> anyhow::Result<&mut [D]> {
-        self.check_for_access::<D>()?;
+        self.check_dt::<D>()?;
         unsafe { Ok(self.as_slice_mut_unchecked()) }
     }
 
@@ -117,8 +126,60 @@ impl<'a> TensorView<'a> {
         self.data = self.data.offset(offset)
     }
 
+    pub unsafe fn offset_axis_unchecked(&mut self, axis: usize, pos: isize) {
+        let stride = self.strides[axis] * self.datum_type().size_of() as isize;
+        self.offset_bytes(stride * pos)
+    }
+
     pub unsafe fn offset_axis(&mut self, axis: usize, pos: isize) {
         let stride = self.strides[axis] * self.datum_type().size_of() as isize;
         self.offset_bytes(stride * pos)
     }
+
+    fn offset_for_coords(&self, coords: &[usize]) -> isize {
+        self.strides
+            .iter()
+            .zip(coords.as_ref())
+            .map(|(s, c)| *s as isize * *c as isize)
+            .sum::<isize>()
+    }
+
+    pub unsafe fn at_unchecked<T: Datum>(&self, coords: impl AsRef<[usize]>) -> &T {
+        (self.data as *const T).offset(self.offset_for_coords(coords.as_ref())).as_ref().unwrap()
+    }
+
+    pub unsafe fn at_mut_unchecked<T: Datum>(&self, coords: impl AsRef<[usize]>) -> &mut T {
+        (self.data as *mut T).offset(self.offset_for_coords(coords.as_ref())).as_mut().unwrap()
+    }
+
+    pub fn at<T: Datum>(&self, coords: impl AsRef<[usize]>) -> anyhow::Result<&T> {
+        self.check_dt::<T>()?;
+        let coords = coords.as_ref();
+        self.check_coords(coords)?;
+        unsafe { Ok(self.at_unchecked(coords)) }
+    }
+
+    pub fn at_mut<T: Datum>(&mut self, coords: impl AsRef<[usize]>) -> anyhow::Result<&mut T> {
+        self.check_dt::<T>()?;
+        let coords = coords.as_ref();
+        self.check_coords(coords)?;
+        unsafe { Ok(self.at_mut_unchecked(coords)) }
+    }
+
+    /*
+    pub unsafe fn reshaped(&self, shape: impl AsRef<[usize]>) -> TensorView<'a> {
+        let shape = shape.as_ref();
+        let mut strides: TVec<isize> = shape
+            .iter()
+            .rev()
+            .scan(1, |state, d| {
+                let old = *state;
+                *state = *state * d;
+                Some(old as isize)
+            })
+            .collect();
+        strides.reverse();
+        TensorView { shape: shape.into(), strides, ..*self }
+    }
+    */
 }
