@@ -5,7 +5,7 @@ use tract_linalg::mmm::{FusedSpec, MatMatMul};
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
-pub(crate) struct MatMatMulUnaryFinite {
+pub(crate) struct LirMatMulUnary {
     pub(crate) c_trans: bool,
     pub(crate) bc_c_shape: TVec<usize>,
     pub(crate) c_fact: TypedFact,
@@ -23,15 +23,15 @@ fn hash_mmm<H: std::hash::Hasher>(mmm: &Box<dyn MatMatMul>, state: &mut H) {
     mmm.n().hash(state);
 }
 
-impl DynHash for MatMatMulUnaryFinite {
+impl DynHash for LirMatMulUnary {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
         dyn_hash(&self, hasher)
     }
 }
 
-impl Op for MatMatMulUnaryFinite {
+impl Op for LirMatMulUnary {
     fn name(&self) -> Cow<str> {
-        if self.mmm.n() == 1 { "MatVecMul" } else { "MatMatMul" }.into()
+        "LirMatMulUnary".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -54,7 +54,7 @@ impl Op for MatMatMulUnaryFinite {
     op_as_typed_op!();
 }
 
-impl EvalOp for MatMatMulUnaryFinite {
+impl EvalOp for LirMatMulUnary {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -128,7 +128,7 @@ impl EvalOp for MatMatMulUnaryFinite {
     }
 }
 
-impl TypedOp for MatMatMulUnaryFinite {
+impl TypedOp for LirMatMulUnary {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if let Some(f) = &self.fused_ops {
             let c_prefix_len =
