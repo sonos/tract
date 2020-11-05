@@ -1,9 +1,4 @@
-use std::fmt;
-use std::ops::{Add, Mul};
-
 use ndarray::*;
-
-use num_traits::Zero;
 
 use crate::internal::*;
 use crate::model::*;
@@ -17,7 +12,7 @@ use crate::ops::nn::{DataFormat, DataShape};
 use crate::ops::quant::QParams;
 
 use tract_linalg::frame::PackA;
-use tract_linalg::mmm::{FusedSpec, MatMatMul};
+use tract_linalg::mmm::FusedSpec;
 
 use std::iter::Sum;
 
@@ -135,78 +130,26 @@ impl ConvUnary {
         &self,
         model: &mut TypedModel,
         name: &str,
-        wire: OutletId,
+        mut wire: OutletId,
+        b_dt: DatumType,
         direct: bool,
     ) -> TractResult<OutletId> {
-        let a = self.kernel.datum_type();
-        let b = model.outlet_fact(wire)?.datum_type;
-        if (a, b) == (f32::datum_type(), f32::datum_type()) {
-            return self.wire_as_im2col_pair_t::<f32, f32, f32, f32, _>(
-                model,
-                name,
-                wire,
-                direct,
-                &|m, k, n| (tract_linalg::ops().mmm_f32)(m, k, n),
-            );
-        } else if (a, b) == (u8::datum_type(), u8::datum_type()) {
-            return self.wire_as_im2col_pair_t::<u8, u8, i32, i32, _>(
-                model,
-                name,
-                wire,
-                direct,
-                &|m, k, n| (tract_linalg::ops().qmmm_u8_i32)(m, k, n),
-            );
-        } else if (a, b) == (i8::datum_type(), i8::datum_type()) {
-            if let Some(q) = &self.q_params {
-                if q.c_datum_type == i8::datum_type() {
-                    return self.wire_as_im2col_pair_t::<i8, i8, i8, i32, _>(
-                        model,
-                        name,
-                        wire,
-                        direct,
-                        &|m, k, n| (tract_linalg::ops().qmmm_i8_i8)(m, k, n),
-                    );
-                }
-            } else {
-                return self.wire_as_im2col_pair_t::<i8, i8, i32, i32, _>(
-                    model,
-                    name,
-                    wire,
-                    direct,
-                    &|m, k, n| (tract_linalg::ops().qmmm_i8_i32)(m, k, n),
-                );
-            }
-        }
-        bail!("Unsupported combination for Conv (filters: {:?}, data:{:?})", a, b);
-    }
-
-    unsafe fn wire_as_im2col_pair_t<TA, TB, TC, TI, MMM>(
-        &self,
-        model: &mut TypedModel,
-        name: &str,
-        mut wire: OutletId,
-        direct: bool,
-        mmm: MMM,
-    ) -> TractResult<OutletId>
-    where
-        TA: Datum + Copy + Zero,
-        TB: Datum + Copy + Zero,
-        TC: Datum + Copy,
-        TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
-        MMM: Fn(usize, usize, usize) -> Box<dyn MatMatMul>,
-    {
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =
             self.pool_spec.compute_geo(&*model.outlet_fact(wire)?.shape.as_finite().unwrap())?;
 
         trace!("input: {:?}", input_shape);
+        let a_dt = self.kernel.datum_type();
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
         let k = self.kernel.len() / self.output_channels();
         let n = geo.output_shape.iter().cloned().product::<usize>();
 
-        let mut mmm = mmm(m, k, n);
+        let c_dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(a_dt);
+        let mut mmm = tract_linalg::ops()
+            .mmm(a_dt, b_dt, c_dt, m, k, n)
+            .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
         let (rsc, csc) = match output_shape.fmt {
             DataFormat::NHWC | DataFormat::HWC => (1, self.output_channels() as isize),
             DataFormat::NCHW | DataFormat::CHW => (n as isize, 1),
@@ -250,14 +193,11 @@ impl ConvUnary {
                     self.group,
                     c_dim / self.group,
                     mmm.b_pack(),
-                    tensor0(
-                        self.q_params
-                            .as_ref()
-                            .and_then(|q| q.zero_point_b.as_ref())
-                            .map(|t| t.to_scalar::<TB>().map(|x| *x))
-                            .transpose()?
-                            .unwrap_or(TB::zero()),
-                    ),
+                    self.q_params
+                        .as_ref()
+                        .and_then(|q| q.zero_point_b.clone())
+                        .map(|a| a.into_tensor())
+                        .unwrap_or(Tensor::zero_dt(b_dt, &[]).unwrap()),
                 )?,
                 &[wire],
             )?[0];
@@ -269,19 +209,22 @@ impl ConvUnary {
             dims.insert(0, *output_shape.n().unwrap());
             strides.insert(0, *output_shape.n_stride().unwrap() as isize);
         }
+        let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
 
         let kernels = self.kernel_as_packed_as(&mmm.a_pack())?;
         wire = model.wire_node(
             format!("{}.matmatmul", name),
-            matmul::lir::MatMatMulUnaryFinite::<TA, TB, TC, TI> {
+            matmul::lir::MatMatMulUnaryFinite {
                 c_trans: true,
                 bc_c_shape: output_shape.shape.clone(),
-                c_fact: TypedFact::dt_shape(TC::datum_type(), &*output_shape.shape)?,
+                c_fact: TypedFact::dt_shape(
+                    self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(a_dt),
+                    &*output_shape.shape,
+                )?,
                 c_prefix_dim_and_stride: Some((dims, strides)),
                 packed_as: kernels,
-                fused_ops: self.bias_as_non_linear::<TI>()?,
+                fused_ops,
                 mmm,
-                boo: PhantomData,
             },
             &[wire],
         )?[0];
@@ -464,7 +407,15 @@ impl EvalOp for ConvUnary {
         let mut model = TypedModel::default();
         let dt = inputs[0].datum_type();
         let wire = model.add_source("source", TypedFact::dt_shape(dt, inputs[0].shape())?)?;
-        let wire = unsafe { self.wire_as_im2col_pair(&mut model, "im2col-adhoc", wire, false)? };
+        let wire = unsafe {
+            self.wire_as_im2col_pair(
+                &mut model,
+                "im2col-adhoc",
+                wire,
+                inputs[0].datum_type(),
+                false,
+            )?
+        };
         model.set_output_outlets(&[wire])?;
         let plan = SimplePlan::new(model)?;
         plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
@@ -752,7 +703,13 @@ impl TypedOp for ConvUnary {
                     let mut patch = TypedModelPatch::default();
                     let wire = patch.tap_model(model, node.inputs[0])?;
                     let wire = self
-                        .wire_as_im2col_pair(&mut patch, &*node.name, wire, true)
+                        .wire_as_im2col_pair(
+                            &mut patch,
+                            &*node.name,
+                            wire,
+                            input_fact.datum_type,
+                            true,
+                        )
                         .context("in wire_as_im2col_pair, direct")?;
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
@@ -767,7 +724,13 @@ impl TypedOp for ConvUnary {
                     let mut patch = TypedModelPatch::default();
                     let wire = patch.tap_model(model, node.inputs[0])?;
                     let wire = self
-                        .wire_as_im2col_pair(&mut patch, &*node.name, wire, false)
+                        .wire_as_im2col_pair(
+                            &mut patch,
+                            &*node.name,
+                            wire,
+                            input_fact.datum_type,
+                            false,
+                        )
                         .context("in wire_as_im2col_pair, indirect")?;
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));

@@ -61,7 +61,9 @@ impl Problem {
 
         let mut model = TypedModel::default();
         let input = model.add_source("input", self.image_type()).unwrap();
-        let output = unsafe { conv.wire_as_im2col_pair(&mut model, "", input, direct).unwrap() };
+        let output = unsafe {
+            conv.wire_as_im2col_pair(&mut model, "", input, f32::datum_type(), direct).unwrap()
+        };
         model.set_output_outlets(&[output]).unwrap();
         SimplePlan::new(model).unwrap()
     }

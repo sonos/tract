@@ -43,18 +43,20 @@ pub struct Ops {
 impl Ops {
     pub fn mmm(
         &self,
-        ab: DatumType,
+        a: DatumType,
+        b: DatumType,
         c: DatumType,
         m: usize,
         k: usize,
         n: usize,
     ) -> Option<Box<dyn mmm::MatMatMul>> {
-        match (ab, c) {
-            (DatumType::F32, DatumType::F32) => Some((self.mmm_f32)(m, k, n)),
-            (DatumType::I8, DatumType::I32) => Some((self.qmmm_i8_i32)(m, k, n)),
-            (DatumType::U8, DatumType::I32) => Some((self.qmmm_u8_i32)(m, k, n)),
-            (DatumType::I8, DatumType::I8) => Some((self.qmmm_i8_i8)(m, k, n)),
-            (DatumType::U8, DatumType::U8) => Some((self.qmmm_u8_u8)(m, k, n)),
+        use DatumType::*;
+        match (a, b, c) {
+            (F32, F32, F32) => Some((self.mmm_f32)(m, k, n)),
+            (I8, I8, I32) => Some((self.qmmm_i8_i32)(m, k, n)),
+            (U8, U8, I32) => Some((self.qmmm_u8_i32)(m, k, n)),
+            (I8, I8, I8) => Some((self.qmmm_i8_i8)(m, k, n)),
+            (U8, U8, U8) => Some((self.qmmm_u8_u8)(m, k, n)),
             _ => None,
         }
     }

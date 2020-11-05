@@ -23,6 +23,8 @@ pub trait MatMatMul:
     fn k(&self) -> usize;
     fn n(&self) -> usize;
 
+    fn internal_type(&self) -> DatumType;
+
     unsafe fn set_zero_point_a(&mut self, value: Tensor);
     unsafe fn set_zero_point_b(&mut self, value: Tensor);
     unsafe fn set_zero_point_c(&mut self, value: Tensor);
@@ -154,6 +156,10 @@ where
 
     fn k(&self) -> usize {
         self.k
+    }
+
+    fn internal_type(&self) -> DatumType {
+        TI::datum_type()
     }
 
     fn a_storage(&self) -> &MatrixStoreSpec {
