@@ -12,14 +12,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - uses: actions/cache@v2
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          .cache
-        key: ${{ runner.os }}-cargo-${{matrix.rust}}-2
+      #    - uses: actions/cache@v2
+      #      with:
+      #        path: |
+      #          ~/.rustup
+      #          ~/.cargo/registry
+      #          ~/.cargo/git
+      #          target
+      #          .cache
+      #        key: ${{ runner.os }}-cargo-${{matrix.rust}}-2
     - name: Full test 
       run: .travis/native.sh
