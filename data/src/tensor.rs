@@ -63,7 +63,7 @@ impl Clone for Tensor {
 
 impl Default for Tensor {
     fn default() -> Tensor {
-        Tensor::from(arr0(0f32))
+        litteral::tensor0(0f32)
     }
 }
 
@@ -238,11 +238,9 @@ impl Tensor {
         content: &[u8],
         align: usize,
     ) -> anyhow::Result<Tensor> {
-        assert_eq!(shape.iter().cloned().product::<usize>() * dt.size_of(), content.len());
-        let layout = alloc::Layout::from_size_align(content.len(), align)?;
-        let data = alloc::alloc(layout);
-        content.as_ptr().copy_to_nonoverlapping(data, content.len());
-        Ok(Tensor { dt, shape: shape.into(), data, layout })
+        let mut tensor = Tensor::uninitialized_aligned_dt(dt, shape, align)?;
+        tensor.as_bytes_mut().copy_from_slice(content);
+        Ok(tensor)
     }
 
     pub unsafe fn from_slice_align<T: Datum>(
@@ -738,9 +736,9 @@ impl Tensor {
             t
         } else {
             unsafe {
-                let data = alloc::alloc(self.layout) as *mut u8;
-                self.data.copy_to_nonoverlapping(data, self.layout.size());
-                Tensor { data, shape: self.shape.clone(), ..*self }
+                let tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
+                self.data.copy_to_nonoverlapping(tensor.data, self.len() * self.datum_type().size_of());
+                tensor
             }
         }
     }
