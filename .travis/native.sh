@@ -66,9 +66,12 @@ else
     cargo -q test -q -p onnx-test-suite --release --all-features
 fi
 
-cargo -q test -q --release -p core-proptest-pulse -p lstm-proptest-onnx-vs-tf \
-                -p nnef-inceptionv3 -p tf-inceptionv3 -p tf-mobilenet-v2 \
-                -p tf-moz-deepspeech $ALL_FEATURES
+cargo -q test -q --release -p core-proptest-pulse $ALL_FEATURES
+cargo -q test -q --release -p lstm-proptest-onnx-vs-tf $ALL_FEATURES
+cargo -q test -q --release -p nnef-inceptionv3 $ALL_FEATURES
+cargo -q test -q --release -p tf-inceptionv3 $ALL_FEATURES
+cargo -q test -q --release -p tf-mobilenet-v2 $ALL_FEATURES
+cargo -q test -q --release -p tf-moz-deepspeech $ALL_FEATURES
 
 cargo -q build -q -p tract --release
 
