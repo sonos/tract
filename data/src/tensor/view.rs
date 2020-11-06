@@ -4,8 +4,8 @@ use std::marker::PhantomData;
 
 #[derive(Clone, Debug)]
 pub struct TensorView<'a> {
-    datum_type: DatumType,
-    data: *const u8,
+    tensor: &'a Tensor,
+    offset_bytes: isize,
     shape: TVec<usize>,
     strides: TVec<isize>,
     phantom: PhantomData<&'a ()>,
@@ -13,14 +13,14 @@ pub struct TensorView<'a> {
 
 impl<'a> TensorView<'a> {
     pub unsafe fn from_bytes(
-        datum_type: DatumType,
-        data: &'a mut [u8],
+        tensor: &'a Tensor,
+        offset_bytes: isize,
         shape: &[usize],
         strides: &[isize],
     ) -> TensorView<'a> {
         TensorView {
-            datum_type,
-            data: data.as_ptr(),
+            tensor,
+            offset_bytes,
             shape: shape.into(),
             strides: strides.into(),
             phantom: PhantomData,
@@ -34,18 +34,22 @@ impl<'a> TensorView<'a> {
     }
 
     pub unsafe fn at_prefix_unchecked(tensor: &'a Tensor, prefix: &[usize]) -> TensorView<'a> {
-        let datum_type = tensor.datum_type();
         let tensor_strides = tensor.strides();
-        let offset = prefix.iter().zip(&tensor_strides).map(|(a, b)| a * b).sum::<usize>()
-            * datum_type.size_of();
-        let data = (tensor.as_ptr_unchecked() as *const u8).offset(offset as isize);
+        let offset_bytes = prefix.iter().zip(&tensor_strides).map(|(a, b)| a * b).sum::<usize>()
+            * tensor.datum_type().size_of();
         let shape = tensor.shape().iter().skip(prefix.len()).copied().collect();
         let strides = tensor_strides.iter().skip(prefix.len()).map(|&d| d as isize).collect();
-        TensorView { datum_type, data, shape, strides, phantom: PhantomData }
+        TensorView {
+            tensor,
+            offset_bytes: offset_bytes as isize,
+            shape,
+            strides,
+            phantom: PhantomData,
+        }
     }
 
     pub fn datum_type(&self) -> DatumType {
-        self.datum_type
+        self.tensor.datum_type()
     }
 
     pub fn shape(&self) -> &[usize] {
@@ -89,7 +93,7 @@ impl<'a> TensorView<'a> {
 
     /// Access the data as a pointer.
     pub unsafe fn as_ptr_unchecked<D: Datum>(&self) -> *const D {
-        self.data as *const D
+        self.tensor.as_bytes().as_ptr().offset(self.offset_bytes) as *const D
     }
 
     /// Access the data as a pointer.
@@ -125,7 +129,7 @@ impl<'a> TensorView<'a> {
     }
 
     pub unsafe fn offset_bytes(&mut self, offset: isize) {
-        self.data = self.data.offset(offset)
+        self.offset_bytes += offset
     }
 
     pub unsafe fn offset_axis_unchecked(&mut self, axis: usize, pos: isize) {
@@ -147,11 +151,17 @@ impl<'a> TensorView<'a> {
     }
 
     pub unsafe fn at_unchecked<T: Datum>(&self, coords: impl AsRef<[usize]>) -> &T {
-        (self.data as *const T).offset(self.offset_for_coords(coords.as_ref())).as_ref().unwrap()
+        self.as_ptr_unchecked::<T>()
+            .offset(self.offset_for_coords(coords.as_ref()))
+            .as_ref()
+            .unwrap()
     }
 
-    pub unsafe fn at_mut_unchecked<T: Datum>(&self, coords: impl AsRef<[usize]>) -> &mut T {
-        (self.data as *mut T).offset(self.offset_for_coords(coords.as_ref())).as_mut().unwrap()
+    pub unsafe fn at_mut_unchecked<T: Datum>(&mut self, coords: impl AsRef<[usize]>) -> &mut T {
+        self.as_ptr_mut_unchecked::<T>()
+            .offset(self.offset_for_coords(coords.as_ref()))
+            .as_mut()
+            .unwrap()
     }
 
     pub fn at<T: Datum>(&self, coords: impl AsRef<[usize]>) -> anyhow::Result<&T> {
