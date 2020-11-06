@@ -85,7 +85,7 @@ impl EvalOp for LirMatMulUnary {
                     for (ix, &dim) in prefix.slice().iter().enumerate() {
                         a.index_axis_inplace(Axis(0), dim.min(a.shape()[0] - 1));
                         b_prefix.push(dim.min(b.shape()[ix] - 1));
-                        c.offset_axis(ix, dim as isize);
+                        c.offset_axis_unchecked(ix, dim as isize);
                     }
                     let pa: &Tensor = a.iter().next().unwrap();
                     if let Some(fused) = &self.fused_ops {
@@ -96,12 +96,17 @@ impl EvalOp for LirMatMulUnary {
                         }
                         self.mmm.run(
                             &pa.view(),
-                            &b.view_at_prefix(&b_prefix)?,
+                            &TensorView::at_prefix_unchecked(&b, &*b_prefix),
                             &mut c,
                             &fused.as_slice().unwrap()[0],
                         )?;
                     } else {
-                        self.mmm.run(&pa.view(), &b.view_at_prefix(&b_prefix)?, &mut c, &[])?;
+                        self.mmm.run(
+                            &pa.view(),
+                            &TensorView::at_prefix_unchecked(&b, &*b_prefix),
+                            &mut c,
+                            &[],
+                        )?;
                     }
                 }
             } else {

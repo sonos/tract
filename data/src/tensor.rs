@@ -764,7 +764,7 @@ impl Tensor {
     }
 
     pub fn view(&self) -> view::TensorView {
-        view::TensorView::at_prefix(self, &[]).unwrap()
+        unsafe { view::TensorView::at_prefix_unchecked(self, &[]) }
     }
 
     pub fn view_at_prefix(&self, prefix: &[usize]) -> anyhow::Result<view::TensorView> {
@@ -772,7 +772,7 @@ impl Tensor {
     }
 
     pub fn view_mut(&mut self) -> view::TensorView {
-        view::TensorView::at_prefix(self, &[]).unwrap()
+        unsafe { view::TensorView::at_prefix_unchecked(self, &[]) }
     }
 
     pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> anyhow::Result<view::TensorView> {
