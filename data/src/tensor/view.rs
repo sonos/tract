@@ -30,16 +30,18 @@ impl<'a> TensorView<'a> {
     pub fn at_prefix(tensor: &'a Tensor, prefix: &[usize]) -> anyhow::Result<TensorView<'a>> {
         ensure!(prefix.len() <= tensor.rank(), "prefix longer than tensor shape");
         ensure!(prefix.iter().zip(tensor.shape()).all(|(p, d)| p < d), "prefix invalid");
-        unsafe {
-            let datum_type = tensor.datum_type();
-            let tensor_strides = tensor.strides();
-            let offset = prefix.iter().zip(&tensor_strides).map(|(a, b)| a * b).sum::<usize>()
-                * datum_type.size_of();
-            let data = (tensor.as_ptr_unchecked() as *const u8).offset(offset as isize);
-            let shape = tensor.shape().iter().skip(prefix.len()).copied().collect();
-            let strides = tensor_strides.iter().skip(prefix.len()).map(|&d| d as isize).collect();
-            Ok(TensorView { datum_type, data, shape, strides, phantom: PhantomData })
-        }
+        unsafe { Ok(Self::at_prefix_unchecked(tensor, prefix)) }
+    }
+
+    pub unsafe fn at_prefix_unchecked(tensor: &'a Tensor, prefix: &[usize]) -> TensorView<'a> {
+        let datum_type = tensor.datum_type();
+        let tensor_strides = tensor.strides();
+        let offset = prefix.iter().zip(&tensor_strides).map(|(a, b)| a * b).sum::<usize>()
+            * datum_type.size_of();
+        let data = (tensor.as_ptr_unchecked() as *const u8).offset(offset as isize);
+        let shape = tensor.shape().iter().skip(prefix.len()).copied().collect();
+        let strides = tensor_strides.iter().skip(prefix.len()).map(|&d| d as isize).collect();
+        TensorView { datum_type, data, shape, strides, phantom: PhantomData }
     }
 
     pub fn datum_type(&self) -> DatumType {
@@ -167,19 +169,19 @@ impl<'a> TensorView<'a> {
     }
 
     /*
-    pub unsafe fn reshaped(&self, shape: impl AsRef<[usize]>) -> TensorView<'a> {
-        let shape = shape.as_ref();
-        let mut strides: TVec<isize> = shape
-            .iter()
-            .rev()
-            .scan(1, |state, d| {
-                let old = *state;
-                *state = *state * d;
-                Some(old as isize)
-            })
-            .collect();
-        strides.reverse();
-        TensorView { shape: shape.into(), strides, ..*self }
+      pub unsafe fn reshaped(&self, shape: impl AsRef<[usize]>) -> TensorView<'a> {
+      let shape = shape.as_ref();
+      let mut strides: TVec<isize> = shape
+      .iter()
+      .rev()
+      .scan(1, |state, d| {
+      let old = *state;
+    *state = *state * d;
+    Some(old as isize)
+    })
+    .collect();
+    strides.reverse();
+    TensorView { shape: shape.into(), strides, ..*self }
     }
     */
 }
