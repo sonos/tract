@@ -20,6 +20,7 @@ pub mod view;
 pub struct Tensor {
     dt: DatumType,
     shape: TVec<usize>,
+    strides: TVec<isize>,
     layout: alloc::Layout,
     data: *mut u8,
 }
@@ -138,7 +139,9 @@ impl Tensor {
             assert!(!ptr.is_null());
             ptr
         } as *mut u8;
-        Ok(Tensor { layout, dt, shape: shape.into(), data })
+        let mut tensor = Tensor { strides: tvec!(), layout, dt, shape: shape.into(), data };
+        tensor.update_strides();
+        Ok(tensor)
     }
 
     pub fn stack_tensors(
@@ -270,19 +273,23 @@ impl Tensor {
     }
 
     /// Get the shape of the tensor.
-    pub fn strides(&self) -> TVec<usize> {
-        let mut strides: TVec<usize> = tvec![1];
+    pub fn strides(&self) -> &[isize] {
+        &self.strides
+    }
+
+    fn update_strides(&mut self) {
+        self.strides = tvec![1];
         for dim in self.shape.as_ref().iter().skip(1).rev() {
-            let previous = strides.last().unwrap().clone();
-            strides.push(previous * dim)
+            let previous = self.strides.last().unwrap().clone();
+            self.strides.push(previous * *dim as isize)
         }
-        strides.reverse();
-        strides
+        self.strides.reverse();
     }
 
     /// Force the tensor shape, no consistency check.
     pub unsafe fn set_shape_unchecked(&mut self, shape: &[usize]) {
         self.shape = shape.into();
+        self.update_strides();
     }
 
     /// Force the tensor shape.
@@ -720,24 +727,37 @@ impl Tensor {
         let layout =
             alloc::Layout::from_size_align(vec.len() * size_of::<T>(), align_of::<T>()).unwrap();
         let data = Box::into_raw(vec) as *mut u8;
-        Tensor { dt: T::datum_type(), shape, layout, data }
+        let mut t = Tensor { dt: T::datum_type(), shape, layout, data, strides: tvec!() };
+        t.update_strides();
+        t
     }
 
     pub fn deep_clone(&self) -> Tensor {
         if self.dt == DatumType::String {
             let data: Vec<String> = self.as_slice::<String>().unwrap().to_vec();
-            let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
+            let t = Tensor {
+                data: data.as_ptr() as *mut u8,
+                shape: self.shape.clone(),
+                strides: self.strides.clone(),
+                ..*self
+            };
             std::mem::forget(data);
             t
         } else if self.dt == DatumType::TDim {
             let data: Vec<TDim> = self.as_slice::<TDim>().unwrap().to_vec();
-            let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
+            let t = Tensor {
+                data: data.as_ptr() as *mut u8,
+                shape: self.shape.clone(),
+                strides: self.strides.clone(),
+                ..*self
+            };
             std::mem::forget(data);
             t
         } else {
             unsafe {
                 let tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
-                self.data.copy_to_nonoverlapping(tensor.data, self.len() * self.datum_type().size_of());
+                self.data
+                    .copy_to_nonoverlapping(tensor.data, self.len() * self.datum_type().size_of());
                 tensor
             }
         }
