@@ -3,11 +3,16 @@ use anyhow::*;
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug)]
+enum Indexing {
+    Prefix(usize),
+    Custom { shape: TVec<usize>, strides: TVec<isize> },
+}
+
+#[derive(Clone, Debug)]
 pub struct TensorView<'a> {
     tensor: &'a Tensor,
     offset_bytes: isize,
-    shape: TVec<usize>,
-    strides: TVec<isize>,
+    indexing: Indexing,
     phantom: PhantomData<&'a ()>,
 }
 
@@ -21,8 +26,7 @@ impl<'a> TensorView<'a> {
         TensorView {
             tensor,
             offset_bytes,
-            shape: shape.into(),
-            strides: strides.into(),
+            indexing: Indexing::Custom { shape: shape.into(), strides: strides.into() },
             phantom: PhantomData,
         }
     }
@@ -34,16 +38,13 @@ impl<'a> TensorView<'a> {
     }
 
     pub unsafe fn at_prefix_unchecked(tensor: &'a Tensor, prefix: &[usize]) -> TensorView<'a> {
-        let tensor_strides = tensor.strides();
-        let offset_bytes = prefix.iter().zip(&tensor_strides).map(|(a, b)| a * b).sum::<usize>()
-            * tensor.datum_type().size_of();
-        let shape = tensor.shape().iter().skip(prefix.len()).copied().collect();
-        let strides = tensor_strides.iter().skip(prefix.len()).map(|&d| d as isize).collect();
+        let offset_bytes =
+            prefix.iter().zip(tensor.strides()).map(|(a, b)| *a as isize * b).sum::<isize>()
+                * tensor.datum_type().size_of() as isize;
         TensorView {
             tensor,
-            offset_bytes: offset_bytes as isize,
-            shape,
-            strides,
+            offset_bytes,
+            indexing: Indexing::Prefix(prefix.len()),
             phantom: PhantomData,
         }
     }
@@ -53,11 +54,21 @@ impl<'a> TensorView<'a> {
     }
 
     pub fn shape(&self) -> &[usize] {
-        &self.shape
+        match &self.indexing {
+            Indexing::Prefix(i) => &self.tensor.shape()[*i..],
+            Indexing::Custom { shape, .. } => &*shape,
+        }
+    }
+
+    pub fn strides(&self) -> &[isize] {
+        match &self.indexing {
+            Indexing::Prefix(i) => &self.tensor.strides()[*i..],
+            Indexing::Custom { strides, .. } => &*strides,
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.shape.iter().product::<usize>()
+        self.shape().iter().product::<usize>()
     }
 
     pub fn rank(&self) -> usize {
@@ -77,10 +88,11 @@ impl<'a> TensorView<'a> {
 
     fn check_coords(&self, coords: &[usize]) -> anyhow::Result<()> {
         ensure!(
-            coords.len() == self.rank() && coords.iter().zip(&self.shape).all(|(&x, &dim)| x < dim),
+            coords.len() == self.rank()
+                && coords.iter().zip(self.shape()).all(|(&x, &dim)| x < dim),
             "Can't access coordinates {:?} of TensorView of shape {:?}",
             coords,
-            self.shape
+            self.shape(),
         );
         Ok(())
     }
@@ -133,17 +145,17 @@ impl<'a> TensorView<'a> {
     }
 
     pub unsafe fn offset_axis_unchecked(&mut self, axis: usize, pos: isize) {
-        let stride = self.strides[axis] * self.datum_type().size_of() as isize;
+        let stride = self.strides()[axis] * self.datum_type().size_of() as isize;
         self.offset_bytes(stride * pos)
     }
 
     pub unsafe fn offset_axis(&mut self, axis: usize, pos: isize) {
-        let stride = self.strides[axis] * self.datum_type().size_of() as isize;
+        let stride = self.strides()[axis] * self.datum_type().size_of() as isize;
         self.offset_bytes(stride * pos)
     }
 
     fn offset_for_coords(&self, coords: &[usize]) -> isize {
-        self.strides
+        self.strides()
             .iter()
             .zip(coords.as_ref())
             .map(|(s, c)| *s as isize * *c as isize)
