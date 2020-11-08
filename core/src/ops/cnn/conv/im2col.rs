@@ -222,7 +222,7 @@ impl Patcher {
     ) {
         let mut mega_matrix = unsafe { Array2::<T>::uninitialized((im2col.k, im2col.n)) };
         let input_shape: TVec<usize> = input.shape().into();
-        let shape = im2col.data_format.shape(&input_shape).unwrap();
+        let shape = im2col.data_format_with_n.shape(&input_shape).unwrap();
         unsafe {
             let ptr = input.as_ptr().offset((g * im2col.ci_per_group * shape.c_stride()) as isize);
             for (spatial, mut col) in ndarray::indices(&*im2col.patch.output_shape)
