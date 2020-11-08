@@ -11,6 +11,7 @@ struct ConvProblem {
     shape_in: DataShape,
     shape_out: DataShape,
     kernel_format: KernelFormat,
+    group: usize,
     data: ArrayD<f32>,
     kernel: ArrayD<f32>,
 }
@@ -24,40 +25,43 @@ impl ConvProblem {
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
         let mut out = ArrayD::zeros(&*self.shape_out.shape);
         let n = *self.shape_in.n().clone().unwrap_or(&1);
+        let ci_per_g = self.shape_in.c() / self.group;
+        let co_per_g = self.shape_out.c() / self.group;
         for n in 0..n {
-            for geo_out in tract_ndarray::indices(self.shape_out.hw_dims()) {
-                let mut output_coords: TVec<usize> = geo_out.slice().into();
-                if self.shape_in.fmt.has_n() {
-                    output_coords.insert(0, n);
-                }
-                output_coords.insert(self.shape_out.c_axis(), 0);
-                for geo_ker in tract_ndarray::indices(self.geo_ker()) {
-                    let mut input_coords: TVec<usize> =
-                        izip!(geo_out.slice(), geo_ker.slice()).map(|(a, b)| a + b).collect();
+            for g in 0..self.group {
+                for geo_out in tract_ndarray::indices(self.shape_out.hw_dims()) {
+                    let mut output_coords: TVec<usize> = geo_out.slice().into();
                     if self.shape_in.fmt.has_n() {
-                        input_coords.insert(0, n);
+                        output_coords.insert(0, n);
                     }
-                    input_coords.insert(self.shape_in.c_axis(), 0);
-                    for ci in 0..*self.shape_in.c() {
-                        input_coords[self.shape_in.c_axis()] = ci;
-                        let i = self.data[&*input_coords];
-                        eprintln!("I: {:?} {}", input_coords, i);
-                        for co in 0..*self.shape_out.c() {
-                            output_coords[self.shape_out.c_axis()] = co;
-                            let mut kernel_coords: TVec<usize> = geo_ker.slice().into();
-                            match self.kernel_format {
-                                KernelFormat::OIHW => {
-                                    kernel_coords.insert(0, ci);
-                                    kernel_coords.insert(0, co);
+                    output_coords.insert(self.shape_out.c_axis(), 0);
+                    for geo_ker in tract_ndarray::indices(self.geo_ker()) {
+                        let mut input_coords: TVec<usize> =
+                            izip!(geo_out.slice(), geo_ker.slice()).map(|(a, b)| a + b).collect();
+                        if self.shape_in.fmt.has_n() {
+                            input_coords.insert(0, n);
+                        }
+                        input_coords.insert(self.shape_in.c_axis(), 0);
+                        for ci in 0..ci_per_g {
+                            input_coords[self.shape_in.c_axis()] = ci + g * ci_per_g;
+                            let i = self.data[&*input_coords];
+                            for co in 0..co_per_g {
+                                output_coords[self.shape_out.c_axis()] = co + g * co_per_g;
+                                let mut kernel_coords: TVec<usize> = geo_ker.slice().into();
+
+                                match self.kernel_format {
+                                    KernelFormat::OIHW => {
+                                        kernel_coords.insert(0, ci);
+                                        kernel_coords.insert(0, co + g * co_per_g);
+                                    }
+                                    KernelFormat::HWIO => {
+                                        kernel_coords.push(ci);
+                                        kernel_coords.push(co + g * co_per_g);
+                                    }
                                 }
-                                KernelFormat::HWIO => {
-                                    kernel_coords.push(ci);
-                                    kernel_coords.push(co);
-                                }
+                                let k = self.kernel[&*kernel_coords];
+                                out[&*output_coords] += k * i;
                             }
-                            let k = self.kernel[&*kernel_coords];
-                            eprintln!("K: {:?} {}", kernel_coords, k);
-                            out[&*output_coords] += k * i;
                         }
                     }
                 }
@@ -82,13 +86,12 @@ impl ConvProblem {
             ),
             self.kernel_format.clone(),
             self.kernel.clone().into_arc_tensor(),
-            1,
+            self.group,
             None,
             None,
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
-        dbg!(&model);
         let mut output =
             model.into_optimized()?.into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
         Ok(output.remove(0).into_tensor().into_array::<f32>()?)
@@ -102,36 +105,36 @@ impl Arbitrary for ConvProblem {
         (
             any::<DataFormat>(),
             any::<KernelFormat>(),
-            1usize..3,
-            1usize..4,
-            1usize..4,
-            (1usize..3).prop_flat_map(|r| shapes(r)),
+            1usize..=3,
+            1usize..=4,
+            1usize..=4,
+            1usize..=3,
+            (1usize..=3).prop_flat_map(|r| shapes(r)),
         )
-            .prop_flat_map(|(df, kf, n, ci, co, (mut ker_shape, data_shape))| {
-                dbg!(&ker_shape);
-                dbg!(&data_shape);
-                let shape_in = df.from_n_c_hw(n, ci, &data_shape).unwrap();
+            .prop_flat_map(|(df, kf, n, ci0, co0, group, (mut ker_shape, data_shape))| {
+                let shape_in = df.from_n_c_hw(n, ci0 * group, &data_shape).unwrap();
                 let shape_out: TVec<_> =
                     izip!(&ker_shape, data_shape).map(|(k, d)| d - k + 1).collect();
-                let shape_out = df.from_n_c_hw(n, co, &shape_out).unwrap();
+                let shape_out = df.from_n_c_hw(n, co0 * group, &shape_out).unwrap();
                 let data_in = tensor(shape_in.shape.iter().cloned().collect());
                 match kf {
                     KernelFormat::HWIO => {
-                        ker_shape.push(ci);
-                        ker_shape.push(co)
+                        ker_shape.push(ci0);
+                        ker_shape.push(co0 * group)
                     }
                     KernelFormat::OIHW => {
-                        ker_shape.insert(0, ci);
-                        ker_shape.insert(0, co)
+                        ker_shape.insert(0, ci0);
+                        ker_shape.insert(0, co0 * group)
                     }
                 };
                 let kernel = tensor(ker_shape);
-                (Just((kf, shape_in, shape_out)), data_in, kernel)
+                (Just((kf, shape_in, shape_out, group)), data_in, kernel)
             })
-            .prop_map(|((kernel_format, shape_in, shape_out), data, kernel)| ConvProblem {
+            .prop_map(|((kernel_format, shape_in, shape_out, group), data, kernel)| ConvProblem {
                 shape_in,
                 shape_out,
                 kernel_format,
+                group,
                 data,
                 kernel,
             })
@@ -187,6 +190,7 @@ fn trivial_1() -> anyhow::Result<()> {
         shape_in: DataFormat::NHWC.from_n_c_hw(1, 1, &[1])?,
         shape_out: DataFormat::NHWC.from_n_c_hw(1, 1, &[1])?,
         kernel_format: KernelFormat::OIHW,
+        group: 1,
         data: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
     };
@@ -200,6 +204,7 @@ fn trivial_2() -> anyhow::Result<()> {
         shape_in: DataFormat::NHWC.from_n_c_hw(1, 1, &[2])?,
         shape_out: DataFormat::NHWC.from_n_c_hw(1, 1, &[2])?,
         kernel_format: KernelFormat::OIHW,
+        group: 1,
         data: ndarray::arr3(&[[[1.0f32], [0.0]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
     };
@@ -213,9 +218,170 @@ fn trivial_3() -> anyhow::Result<()> {
         shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, &[1])?,
         shape_out: DataFormat::NHWC.from_n_c_hw(1, 1, &[1])?,
         kernel_format: KernelFormat::OIHW,
+        group: 1,
         data: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32], [1.0]]]).into_dyn(),
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
 }
+
+#[test]
+fn group_1() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
+        kernel: ndarray::arr3(&[[[0.0f32]], [[1.0]]]).into_dyn(),
+    };
+    assert_eq!(pb.tract()?, pb.reference());
+    Ok(())
+}
+
+#[test]
+fn group_2() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        kernel_format: KernelFormat::HWIO,
+        group: 2,
+        data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
+        kernel: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn group_3() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
+        kernel: ndarray::arr3(&[[[0.0f32]], [[1.0]]]).into_dyn(),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn group_4() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 4, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
+        kernel: ndarray::arr3(&[[[0.0f32]], [[0.0]], [[0.0]], [[1.0]]]).into_dyn(),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn group_5() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1, 1])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 4, &[1, 1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
+        kernel: tensor4(&[[[[0.0f32]]], [[[0.0]]], [[[0.0]]], [[[0.0]]]])
+            .into_array::<f32>()
+            .unwrap()
+            .into_dyn(),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn group_6() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, &[1])?,
+        shape_out: DataFormat::NHWC.from_n_c_hw(1, 4, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
+        kernel: tensor3(&[[[0.0f32]], [[0.0]], [[0.0]], [[0.0]]])
+            .into_array::<f32>()
+            .unwrap()
+            .into_dyn(),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn group_7() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::NCHW.from_n_c_hw(1, 2, &[2])?,
+        shape_out: DataFormat::NCHW.from_n_c_hw(1, 4, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::arr3(&[[[0.0f32, 0.0], [0.0, 1.0]]]).into_dyn(),
+        kernel: tensor3(&[[[0.0f32, 0.0]], [[0.0, 0.0]], [[0.0, 0.0]], [[0.0, 1.0]]])
+            .into_array::<f32>()
+            .unwrap()
+            .into_dyn(),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn group_8() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 4, &[1])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::arr2(&[[0.0f32, 0.0, 0.0, 1.0]]).into_dyn(),
+        kernel: tensor3(&[[[0.0f32], [0.0]], [[0.0], [0.0]]])
+            .into_array::<f32>()
+            .unwrap()
+            .into_dyn(),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn group_9() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[2])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 4, &[2])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::arr2(&[[0.0f32, 0.0], [0.0, 1.0]]).into_dyn(),
+        kernel: tensor3(&[[[0.0f32]], [[0.0]], [[0.0]], [[1.0]]])
+            .into_array::<f32>()
+            .unwrap()
+            .into_dyn(),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+/*
+#[test]
+fn group_10() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 2, &[1, 1, 3])?,
+        shape_out: DataFormat::CHW.from_n_c_hw(1, 4, &[1, 1, 3])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::arr4(&[[[[0.0f32, 0.0, 0.0, 1.0]]]]).into_dyn(),
+        kernel: tensor3(&[[[0.0f32]], [[0.0]], [[0.0]], [[1.0]]])
+            .into_array::<f32>()
+            .unwrap()
+            .into_dyn(),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+*/

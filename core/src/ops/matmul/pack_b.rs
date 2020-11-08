@@ -42,7 +42,7 @@ impl MatMatMulPackB {
                 b.index_axis_inplace(Axis(0), dim);
                 p.index_axis_inplace(Axis(0), dim);
             }
-            self.pack_b.pack(p.as_mut_ptr(), b.as_ptr(), self.row_stride, self.col_stride)
+            self.pack_b.pack(p.as_mut_ptr(), b.as_ptr(), self.row_stride, self.col_stride);
         }
     }
 }
