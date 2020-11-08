@@ -14,6 +14,7 @@ struct ConvProblem {
     group: usize,
     data: ArrayD<f32>,
     kernel: ArrayD<f32>,
+    bias: Option<ArrayD<f32>>,
 }
 
 impl ConvProblem {
@@ -67,6 +68,11 @@ impl ConvProblem {
                 }
             }
         }
+        if let Some(bias) = &self.bias {
+            let mut shape = vec!(1; out.ndim());
+            shape[self.shape_out.c_axis()] = bias.len();
+            out += &bias.clone().into_shape(shape).unwrap();
+        }
         out
     }
 
@@ -87,13 +93,13 @@ impl ConvProblem {
             self.kernel_format.clone(),
             self.kernel.clone().into_arc_tensor(),
             self.group,
-            None,
+            self.bias.clone().map(|a| a.into_arc_tensor()),
             None,
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
         let mut output =
-            model.into_optimized()?.into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
+            dbg!(model.into_optimized()?).into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
         Ok(output.remove(0).into_tensor().into_array::<f32>()?)
     }
 }
@@ -128,15 +134,11 @@ impl Arbitrary for ConvProblem {
                     }
                 };
                 let kernel = tensor(ker_shape);
-                (Just((kf, shape_in, shape_out, group)), data_in, kernel)
+                let bias = proptest::option::of(tensor(vec![co0 * group]));
+                (Just((kf, shape_in, shape_out, group)), data_in, kernel, bias)
             })
-            .prop_map(|((kernel_format, shape_in, shape_out, group), data, kernel)| ConvProblem {
-                shape_in,
-                shape_out,
-                kernel_format,
-                group,
-                data,
-                kernel,
+            .prop_map(|((kernel_format, shape_in, shape_out, group), data, kernel, bias)| {
+                ConvProblem { shape_in, shape_out, kernel_format, group, data, kernel, bias }
             })
             .boxed()
     }
@@ -193,6 +195,7 @@ fn trivial_1() -> anyhow::Result<()> {
         group: 1,
         data: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
@@ -207,6 +210,7 @@ fn trivial_2() -> anyhow::Result<()> {
         group: 1,
         data: ndarray::arr3(&[[[1.0f32], [0.0]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[1.0f32]]]).into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
@@ -221,6 +225,7 @@ fn trivial_3() -> anyhow::Result<()> {
         group: 1,
         data: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32], [1.0]]]).into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
@@ -235,6 +240,7 @@ fn group_1() -> anyhow::Result<()> {
         group: 2,
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32]], [[1.0]]]).into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract()?, pb.reference());
     Ok(())
@@ -249,6 +255,7 @@ fn group_2() -> anyhow::Result<()> {
         group: 2,
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -263,6 +270,7 @@ fn group_3() -> anyhow::Result<()> {
         group: 2,
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32]], [[1.0]]]).into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -277,6 +285,7 @@ fn group_4() -> anyhow::Result<()> {
         group: 2,
         data: ndarray::arr2(&[[0.0f32, 1.0]]).into_dyn(),
         kernel: ndarray::arr3(&[[[0.0f32]], [[0.0]], [[0.0]], [[1.0]]]).into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -294,6 +303,7 @@ fn group_5() -> anyhow::Result<()> {
             .into_array::<f32>()
             .unwrap()
             .into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -311,6 +321,7 @@ fn group_6() -> anyhow::Result<()> {
             .into_array::<f32>()
             .unwrap()
             .into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -328,6 +339,7 @@ fn group_7() -> anyhow::Result<()> {
             .into_array::<f32>()
             .unwrap()
             .into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -345,6 +357,7 @@ fn group_8() -> anyhow::Result<()> {
             .into_array::<f32>()
             .unwrap()
             .into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -362,6 +375,7 @@ fn group_9() -> anyhow::Result<()> {
             .into_array::<f32>()
             .unwrap()
             .into_dyn(),
+        bias: None,
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
@@ -376,6 +390,37 @@ fn group_10() -> anyhow::Result<()> {
         group: 2,
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 2, 1, 4]),
         kernel: ndarray::ArrayD::from_elem(vec![4, 1, 1, 1, 2], 1.0f32),
+        bias: None,
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn group_bias_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, &[1])?,
+        shape_out: DataFormat::NHWC.from_n_c_hw(1, 4, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
+        kernel: ndarray::ArrayD::<f32>::zeros(vec![4, 1, 1]),
+        bias: Some(ndarray::ArrayD::<f32>::zeros(vec!(4))),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn bias_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[2])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 1, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: ndarray::ArrayD::<f32>::zeros(vec![2, 1]),
+        kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
+        bias: Some(ndarray::ArrayD::<f32>::zeros(vec!(1))),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())

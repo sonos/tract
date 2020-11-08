@@ -118,16 +118,18 @@ impl ConvUnary {
         if let Some(bias) = &self.bias {
             let bias = bias.cast_to::<T>()?;
             let bias = bias.as_slice::<T>()?;
-            Ok(Some(
-                Array1::from(
-                    bias.iter()
-                        .chunks(self.output_channels() / self.group)
-                        .into_iter()
-                        .map(|c| vec![FusedSpec::PerRowAdd(c.into_iter().cloned().collect())])
-                        .collect::<Vec<_>>(),
-                )
-                .into_dyn(),
-            ))
+            let mut bias = Array1::from(
+                bias.iter()
+                    .chunks(self.output_channels() / self.group)
+                    .into_iter()
+                    .map(|c| vec![FusedSpec::PerRowAdd(c.into_iter().cloned().collect())])
+                    .collect::<Vec<_>>(),
+            )
+            .into_dyn();
+            if self.pool_spec.data_format.has_n() {
+                bias.insert_axis_inplace(Axis(0));
+            }
+            Ok(Some(bias))
         } else {
             Ok(None)
         }
@@ -248,27 +250,21 @@ impl ConvUnary {
             )?[0];
         }
 
-        let c_prefix_dim_and_stride = if *output_shape.n().unwrap_or(&1) != 1 || self.group != 1 {
-            let mut dims = tvec!(self.group as usize);
-            let mut strides =
-                tvec!((output_shape.c() / self.group * output_shape.c_stride()) as isize);
-            if output_shape.n().is_some() {
-                dims.insert(0, *output_shape.n().unwrap());
-                strides.insert(0, *output_shape.n_stride().unwrap() as isize);
-            }
-            Some((dims, strides))
-        } else {
-            None
-        };
+        let mut dims = tvec!(self.group as usize);
+        let mut strides = tvec!((output_shape.c() / self.group * output_shape.c_stride()) as isize);
+        if output_shape.n().is_some() {
+            dims.insert(0, *output_shape.n().unwrap());
+            strides.insert(0, *output_shape.n_stride().unwrap() as isize);
+        }
 
-        let mut kernels = self.kernel_as_packed_as::<TA>(&mmm.as_mmm().a_pack())?;
+        let kernels = self.kernel_as_packed_as::<TA>(&mmm.as_mmm().a_pack())?;
         wire = model.wire_node(
             format!("{}.matmatmul", name),
             matmul::lir::MatMatMulUnaryFinite {
                 c_trans: true,
                 bc_c_shape: output_shape.shape.clone(),
                 c_fact: TypedFact::dt_shape(TC::datum_type(), &*output_shape.shape)?,
-                c_prefix_dim_and_stride,
+                c_prefix_dim_and_stride: Some((dims, strides)),
                 packed_as: kernels,
                 fused_ops: self.bias_as_non_linear()?,
                 mmm,
@@ -746,7 +742,10 @@ impl TypedOp for ConvUnary {
                         .context("in wire_as_im2col_pair, direct")?;
                     patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                     return Ok(Some(patch));
-                } else if self.group != 1 && self.group == self.output_channels() && self.group == self.input_channels() {
+                } else if self.group != 1
+                    && self.group == self.output_channels()
+                    && self.group == self.input_channels()
+                {
                     let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))
                         .context("in to_depth_wise")?;
                     return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
