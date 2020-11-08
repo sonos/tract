@@ -367,21 +367,16 @@ fn group_9() -> anyhow::Result<()> {
     Ok(())
 }
 
-/*
 #[test]
 fn group_10() -> anyhow::Result<()> {
     let pb = ConvProblem {
-        shape_in: DataFormat::CHW.from_n_c_hw(1, 2, &[1, 1, 3])?,
-        shape_out: DataFormat::CHW.from_n_c_hw(1, 4, &[1, 1, 3])?,
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 2, &[2, 1, 4])?,
+        shape_out: DataFormat::CHW.from_n_c_hw(1, 4, &[2, 1, 3])?,
         kernel_format: KernelFormat::OIHW,
         group: 2,
-        data: ndarray::arr4(&[[[[0.0f32, 0.0, 0.0, 1.0]]]]).into_dyn(),
-        kernel: tensor3(&[[[0.0f32]], [[0.0]], [[0.0]], [[1.0]]])
-            .into_array::<f32>()
-            .unwrap()
-            .into_dyn(),
+        data: ndarray::ArrayD::<f32>::zeros(vec![2, 2, 1, 4]),
+        kernel: ndarray::ArrayD::from_elem(vec![4, 1, 1, 1, 2], 1.0f32),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
-*/
