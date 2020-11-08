@@ -139,7 +139,18 @@ where
     TC: Datum + Copy,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if let Some(f) = &self.fused_ops {
+            let c_prefix_len =
+                self.c_prefix_dim_and_stride.as_ref().map(|prefix| prefix.0.len()).unwrap_or(0);
+            if f.ndim() != c_prefix_len {
+                bail!(
+                    "Fused op prefix and c_prefix should have the same len. (resp {} and {})",
+                    f.ndim(),
+                    c_prefix_len
+                );
+            }
+        }
         Ok(tvec!(self.c_fact.clone()))
     }
 
@@ -201,8 +212,8 @@ where
                     .fused_ops
                     .get_or_insert_with(|| {
                         let shape = vec![
-                        1;
-                        self.c_prefix_dim_and_stride
+                            1;
+                            self.c_prefix_dim_and_stride
                                 .as_ref()
                                 .map(|c| c.0.len())
                                 .unwrap_or(0)
