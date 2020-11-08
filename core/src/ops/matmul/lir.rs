@@ -90,13 +90,13 @@ where
                 for prefix in indices(&**prefix_dim).into_iter() {
                     let mut a = self.packed_as.view();
                     let mut b = b.view();
-                    let mut c: *mut TC = c.as_mut_ptr();
+                    let mut pc: *mut TC = c.as_mut_ptr();
                     for (ix, &dim) in prefix.slice().iter().enumerate() {
                         let d = dim.min(a.shape()[0] - 1);
                         a.index_axis_inplace(Axis(0), d);
                         let d = dim.min(b.shape()[0] - 1);
                         b.index_axis_inplace(Axis(0), d);
-                        c = c.offset(prefix_strides[ix] * dim as isize);
+                        pc = pc.offset(prefix_strides[ix] * dim as isize);
                     }
                     let pa: &Tensor = a.iter().next().unwrap();
                     if let Some(fused) = &self.fused_ops {
@@ -105,9 +105,9 @@ where
                             let d = dim.min(fused.shape()[0] - 1);
                             fused.index_axis_inplace(Axis(0), d);
                         }
-                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), c, &fused.as_slice().unwrap()[0]);
+                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), pc, &fused.as_slice().unwrap()[0]);
                     } else {
-                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), c, &[]);
+                        self.mmm.run(pa.as_ptr()?, b.as_ptr(), pc, &[]);
                     }
                 }
             } else {
@@ -139,7 +139,7 @@ where
     TC: Datum + Copy,
     TI: Datum + Copy + Add + Mul + Zero + fmt::Debug,
 {
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(self.c_fact.clone()))
     }
 
@@ -201,8 +201,8 @@ where
                     .fused_ops
                     .get_or_insert_with(|| {
                         let shape = vec![
-                            1;
-                            self.c_prefix_dim_and_stride
+                        1;
+                        self.c_prefix_dim_and_stride
                                 .as_ref()
                                 .map(|c| c.0.len())
                                 .unwrap_or(0)
