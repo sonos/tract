@@ -297,7 +297,7 @@ impl Tensor {
         if self.len() != shape.iter().product::<usize>() {
             anyhow::bail!("Invalid reshape {:?} to {:?}", self.shape, shape);
         }
-        self.shape = shape.into();
+        unsafe { self.set_shape_unchecked(shape) }
         Ok(())
     }
 
@@ -322,16 +322,19 @@ impl Tensor {
 
     pub fn insert_axis(&mut self, axis: usize) -> anyhow::Result<()> {
         self.shape.insert(axis, 1);
+        self.update_strides();
         Ok(())
     }
 
     pub fn remove_axis(&mut self, axis: usize) -> anyhow::Result<()> {
         self.shape.remove(axis);
+        self.update_strides();
         Ok(())
     }
 
     pub fn broadcast_into_rank(mut self, rank: usize) -> anyhow::Result<Tensor> {
         self.broadcast_to_rank(rank)?;
+        self.update_strides();
         Ok(self)
     }
 
@@ -342,6 +345,7 @@ impl Tensor {
         while self.shape.len() < rank {
             self.shape.insert(0, 1)
         }
+        self.update_strides();
         Ok(())
     }
 
