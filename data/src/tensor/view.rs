@@ -41,9 +41,6 @@ impl<'a> TensorView<'a> {
         let offset_bytes =
             prefix.iter().zip(tensor.strides()).map(|(a, b)| *a as isize * b).sum::<isize>()
                 * tensor.datum_type().size_of() as isize;
-        dbg!(tensor.shape());
-        dbg!(tensor.strides());
-        dbg!(offset_bytes);
         TensorView {
             tensor,
             offset_bytes,
