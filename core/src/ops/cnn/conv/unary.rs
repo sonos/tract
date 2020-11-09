@@ -40,7 +40,7 @@ impl ConvUnary {
     fn input_channels(&self) -> usize {
         match self.kernel_fmt {
             KernelFormat::OIHW => self.kernel.shape()[1] * self.group,
-            KernelFormat::HWIO => self.kernel.shape()[self.kernel.shape().len() - 2] * self.group,
+            KernelFormat::HWIO => self.kernel.shape()[self.kernel.shape().len() - 2],
         }
     }
 
@@ -48,7 +48,7 @@ impl ConvUnary {
         let kshape = self.kernel.shape();
         match self.kernel_fmt {
             KernelFormat::OIHW => kshape[0],
-            KernelFormat::HWIO => kshape[kshape.len() - 1],
+            KernelFormat::HWIO => kshape[kshape.len() - 1] * self.group,
         }
     }
 
@@ -64,7 +64,7 @@ impl ConvUnary {
             KernelFormat::HWIO => {
                 let mut shape = self.kernel.shape().to_vec();
                 shape.insert(hw_rank + 1, self.group); // HWIGO
-                shape[self.kernel.rank()] = self.output_channels() / self.group; // O = O/g
+                shape[self.pool_spec.rank()] = self.input_channels() / self.group;
                 let mut kernel = self.kernel.as_ref().clone();
                 kernel.set_shape(&shape)?;
                 let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
