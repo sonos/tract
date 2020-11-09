@@ -570,14 +570,14 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
         }
     }
     if matches.is_present("nnef_tract_pulse") {
-        #[cfg(feature = "pulse")]
+        #[cfg(feature = "pulse-opl")]
         {
             use tract_pulse::WithPulse;
             fw = fw.with_pulse();
         }
-        #[cfg(not(feature = "pulse"))]
+        #[cfg(not(feature = "pulse-opl"))]
         {
-            panic!("tract is build without ONNX support")
+            panic!("tract is build without pulse-opl support")
         }
     }
     if matches.is_present("nnef_tract_core") {

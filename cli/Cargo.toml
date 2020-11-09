@@ -37,6 +37,7 @@ serde_derive = "1.0.110"
 tract-core = { path = "../core" }
 tract-hir = { path = "../hir" }
 tract-nnef = { path = "../nnef" }
+tract-pulse-opl = { optional = true, path = "../pulse-opl" }
 tract-pulse = { optional = true, path = "../pulse" }
 tract-kaldi = { optional = true, path = "../kaldi" }
 tract-onnx = { optional = true, path = "../onnx" }
@@ -46,6 +47,7 @@ tract-tensorflow = { optional = true, path = "../tensorflow" }
 default = ["kaldi", "onnx", "tf", "pulse"]
 kaldi = [ "tract-kaldi" ]
 onnx = [ "tract-onnx" ]
+pulse-opl = [ "tract-pulse-opl", "tract-pulse" ]
 pulse = [ "tract-pulse" ]
 tf = [ "tract-tensorflow" ]
 conform = [ "tract-tensorflow/conform"  ]
