@@ -44,7 +44,7 @@ tract-onnx = { optional = true, path = "../onnx" }
 tract-tensorflow = { optional = true, path = "../tensorflow" }
 
 [features]
-default = ["kaldi", "onnx", "tf", "pulse"]
+default = ["kaldi", "onnx", "tf", "pulse", "pulse-opl"]
 kaldi = [ "tract-kaldi" ]
 onnx = [ "tract-onnx" ]
 pulse-opl = [ "tract-pulse-opl", "tract-pulse" ]
