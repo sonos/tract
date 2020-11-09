@@ -292,6 +292,7 @@ fn group_4() -> anyhow::Result<()> {
         kernel: ndarray::arr3(&[[[0.0f32]], [[0.0]], [[0.0]], [[1.0]]]).into_dyn(),
         bias: None,
     };
+    dbg!(&pb);
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }

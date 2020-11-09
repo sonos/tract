@@ -75,6 +75,8 @@ impl ConvUnary {
 
     fn kernel_as_packed_as(&self, packer: &PackA) -> TractResult<ArrayD<Arc<Tensor>>> {
         let kernel = self.kernel_as_group_o_ihw()?;
+        dbg!(&kernel.shape());
+        dbg!(&kernel);
         unsafe {
             let mut packed_as = Array1::from(
                 (0..self.group)
@@ -86,9 +88,10 @@ impl ConvUnary {
                         )?;
                         packer.pack(
                             &mut TensorView::at_prefix(&mut packed, &[])?,
-                            &TensorView::at_prefix(&kernel, &[g])?,
+                            &kernel.view_at_prefix(&[g])?,
                             false,
                         );
+                        dbg!(&kernel.view_at_prefix(&[g])?.as_ptr::<f32>());
                         Ok(packed.into_arc_tensor())
                     })
                     .collect::<TractResult<Vec<_>>>()?,
@@ -97,6 +100,7 @@ impl ConvUnary {
             if self.pool_spec.data_format.has_n() {
                 packed_as.insert_axis_inplace(Axis(0));
             }
+        dbg!(&packed_as);
             Ok(packed_as.into_dyn())
         }
     }
