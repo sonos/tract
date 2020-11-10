@@ -47,5 +47,9 @@ name = "conv_direct_vs_im2col"
 harness = false
 
 [[bench]]
+name = "im2col"
+harness = false
+
+[[bench]]
 name = "im2col_inception"
 harness = false
