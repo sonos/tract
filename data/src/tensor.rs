@@ -322,13 +322,13 @@ impl Tensor {
 
     pub fn insert_axis(&mut self, axis: usize) -> anyhow::Result<()> {
         self.shape.insert(axis, 1);
-        self.update_strides();
+        self.strides.insert(axis, self.strides.get(axis).copied().unwrap_or(1));
         Ok(())
     }
 
     pub fn remove_axis(&mut self, axis: usize) -> anyhow::Result<()> {
         self.shape.remove(axis);
-        self.update_strides();
+        self.strides.remove(axis);
         Ok(())
     }
 

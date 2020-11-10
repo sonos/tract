@@ -32,7 +32,7 @@ impl DataFormat {
         if shape.as_ref().iter().filter(|d| d.to_i64().is_err()).count() > 1 {
             panic!("Can not work out a data format with two actual symbolic dim")
         }
-        let mut strides: Vec<D> = vec![D::one()];
+        let mut strides: TVec<D> = tvec![D::one()];
         for dim in shape.as_ref().iter().skip(1).rev() {
             let previous = strides.last().unwrap().clone();
             strides.push(previous.maybe_mul(dim)?)
@@ -75,7 +75,7 @@ where
 {
     pub fmt: DataFormat,
     pub shape: S,
-    pub strides: Vec<D>,
+    pub strides: TVec<D>,
 }
 
 impl<D, S> BaseDataShape<D, S>
