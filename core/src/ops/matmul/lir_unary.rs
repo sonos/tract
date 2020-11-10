@@ -5,15 +5,15 @@ use tract_linalg::mmm::{FusedSpec, MatMatMul};
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
-pub(crate) struct LirMatMulUnary {
-    pub(crate) c_trans: bool,
-    pub(crate) bc_c_shape: TVec<usize>,
-    pub(crate) c_fact: TypedFact,
-    pub(crate) c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
-    pub(crate) packed_as: ArrayD<Arc<Tensor>>,
-    pub(crate) fused_ops: Option<ArrayD<Vec<FusedSpec>>>,
+pub struct LirMatMulUnary {
+    pub c_trans: bool,
+    pub bc_c_shape: TVec<usize>,
+    pub c_fact: TypedFact,
+    pub c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
+    pub packed_as: ArrayD<Arc<Tensor>>,
+    pub fused_ops: Option<ArrayD<Vec<FusedSpec>>>,
     #[educe(Hash(method = "hash_mmm"))]
-    pub(crate) mmm: Box<dyn MatMatMul>,
+    pub mmm: Box<dyn MatMatMul>,
 }
 
 fn hash_mmm<H: std::hash::Hasher>(mmm: &Box<dyn MatMatMul>, state: &mut H) {

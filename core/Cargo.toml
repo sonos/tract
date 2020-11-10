@@ -47,7 +47,7 @@ name = "conv_direct_vs_im2col"
 harness = false
 
 [[bench]]
-name = "im2col"
+name = "wavenet"
 harness = false
 
 [[bench]]
