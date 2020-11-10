@@ -255,9 +255,9 @@ where
         };
         let ref mut tmp_tile = tmp_c_storage.wrap(tmpc.as_ptr());
 
-        let a = a.as_ptr::<TA>()?;
-        let b = b.as_ptr::<TB>()?;
-        let c = c.as_ptr_mut::<TC>()?;
+        let a = a.as_ptr_unchecked::<TA>();
+        let b = b.as_ptr_unchecked::<TB>();
+        let c = c.as_ptr_mut_unchecked::<TC>();
         let ref linear = LinearSpec::k(self.k);
         let mut non_linear = non_linear.to_vec();
         if let Some(ref a0) = self.zero_point_a {

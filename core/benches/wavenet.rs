@@ -6,8 +6,8 @@ use nn::DataFormat::HWC;
 use tract_core::internal::*;
 use tract_core::ops::{cnn, nn};
 
-fn wavenet_dil(c: &mut Criterion) {
-    let mut group = c.benchmark_group("wavenet");
+fn im2col(c: &mut Criterion) {
+    let mut group = c.benchmark_group("im2col");
     for dil in &[1, 2, 4, 8] {
         group.bench_function(&format!("dil_{}", dil), |b| {
             b.iter_with_setup(
@@ -43,5 +43,37 @@ fn wavenet_dil(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, wavenet_dil);
+fn mmm(c: &mut Criterion) {
+    c.bench_function("matmatmul", |b| {
+        b.iter_with_setup(
+            || {
+                let mmm = (tract_linalg::ops().mmm_f32)(64, 48, 8);
+                let packed_a = Tensor::zero_aligned_dt(
+                    f32::datum_type(),
+                    &[mmm.a_pack().len()],
+                    mmm.a_pack().alignment(),
+                )
+                .unwrap();
+                let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[1, mmm.b_pack().len()])
+                    .unwrap()
+                    .into_arc_tensor());
+                let op = tract_core::ops::matmul::lir_unary::LirMatMulUnary {
+                    c_trans: true,
+                    bc_c_shape: tvec!(8, 64),
+                    c_fact: TypedFact::dt_shape(f32::datum_type(), [8, 64].as_ref()).unwrap(),
+                    c_prefix_dim_and_stride: Some((tvec![1], tvec![64])),
+                    packed_as: tract_ndarray::arr1(&[packed_a.into_arc_tensor()]).into_dyn(),
+                    fused_ops:None,
+                    mmm,
+                };
+                (input, op)
+            },
+            |(input, op)| {
+                op.eval(input).unwrap();
+            },
+        )
+    });
+}
+
+criterion_group!(benches, im2col, mmm);
 criterion_main!(benches);
