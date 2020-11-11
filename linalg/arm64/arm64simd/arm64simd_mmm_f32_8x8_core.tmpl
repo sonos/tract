@@ -286,10 +286,11 @@
     b           .non_linear
 
 .packed_packed:
+
+{% if core == "a5x" %}
     ld1         { v0.4s, v1.4s }, [ x1 ], #32
     ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
-{% if core == "a5x" %}
     cmp         x3, #4
     blt         .packed_packed_loop_1
 
@@ -444,6 +445,8 @@
 {% endif %}
 
 .packed_packed_loop_1:
+    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+    ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
     fmla        v16.4s, v0.4s, v4.s[0]
     fmla        v17.4s, v1.4s, v4.s[0]
@@ -462,9 +465,6 @@
     fmla        v29.4s, v1.4s, v5.s[2]
     fmla        v30.4s, v0.4s, v5.s[3]
     fmla        v31.4s, v1.4s, v5.s[3]
-
-    ld1         { v0.4s, v1.4s }, [ x1 ], #32
-    ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
     subs        x3, x3, #1
     bne .packed_packed_loop_1
