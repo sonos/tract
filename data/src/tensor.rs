@@ -285,13 +285,13 @@ impl Tensor {
             2 => self.strides.extend_from_slice(&[self.shape[1] as isize, 1]),
             3 => self.strides.extend_from_slice(&[
                 (self.shape[1] * self.shape[2]) as isize,
-                self.shape[1] as _,
+                self.shape[2] as _,
                 1,
             ]),
             4 => self.strides.extend_from_slice(&[
                 (self.shape[1] * self.shape[2] * self.shape[3]) as isize,
-                (self.shape[1] * self.shape[2]) as _,
-                self.shape[1] as _,
+                (self.shape[2] * self.shape[3]) as _,
+                self.shape[3] as _,
                 1,
             ]),
             _ => {
