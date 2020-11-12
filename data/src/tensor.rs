@@ -279,12 +279,30 @@ impl Tensor {
 
     fn update_strides(&mut self) {
         self.strides.clear();
-        self.strides.push(1);
-        for dim in self.shape.as_ref().iter().skip(1).rev() {
-            let previous = self.strides.last().unwrap().clone();
-            self.strides.push(previous * *dim as isize)
+        match self.shape.len() {
+            0 => (),
+            1 => self.strides.push(1),
+            2 => self.strides.extend_from_slice(&[self.shape[1] as isize, 1]),
+            3 => self.strides.extend_from_slice(&[
+                (self.shape[1] * self.shape[2]) as isize,
+                self.shape[1] as _,
+                1,
+            ]),
+            4 => self.strides.extend_from_slice(&[
+                (self.shape[1] * self.shape[2] * self.shape[3]) as isize,
+                (self.shape[1] * self.shape[2]) as _,
+                self.shape[1] as _,
+                1,
+            ]),
+            _ => {
+                self.strides.push(1);
+                for dim in self.shape.as_ref().iter().skip(1).rev() {
+                    let previous = self.strides.last().unwrap().clone();
+                    self.strides.push(previous * *dim as isize)
+                }
+                self.strides.reverse();
+            }
         }
-        self.strides.reverse();
     }
 
     /// Force the tensor shape, no consistency check.
@@ -293,7 +311,6 @@ impl Tensor {
             self.shape.clear();
             self.shape.extend_from_slice(shape);
             self.update_strides();
-
         }
     }
 

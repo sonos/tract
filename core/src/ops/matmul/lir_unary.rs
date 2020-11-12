@@ -107,14 +107,14 @@ impl EvalOp for LirMatMulUnary {
             } else {
                 if let Some(fused) = &self.fused_ops {
                     self.mmm.run(
-                        &self.packed_as.as_slice().unwrap()[0].view(),
+                        &self.packed_as.as_ptr().as_ref().unwrap().view(),
                         &b.view(),
                         &mut c.view_mut(),
-                        &fused.as_slice().unwrap()[0],
+                        &fused.as_ptr().as_ref().unwrap(),
                     )?;
                 } else {
                     self.mmm.run(
-                        &self.packed_as.as_slice().unwrap()[0].view(),
+                        &self.packed_as.as_ptr().as_ref().unwrap().view(),
                         &b.view(),
                         &mut c.view_mut(),
                         &[],
