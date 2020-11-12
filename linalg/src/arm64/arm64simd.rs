@@ -32,6 +32,12 @@ impl MatMatMulKer<f32> for MatMatMulF32x8x8A5x {
     fn alignment_bytes_packed_b() -> usize {
         16
     }
+    fn end_padding_packed_a() -> usize {
+        1
+    }
+    fn end_padding_packed_b() -> usize {
+        1
+    }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
         unsafe { arm64simd_mmm_f32_8x8_a5x(op) }
@@ -59,6 +65,12 @@ impl MatMatMulKer<f32> for MatMatMulF32x8x8 {
     }
     fn alignment_bytes_packed_b() -> usize {
         16
+    }
+    fn end_padding_packed_a() -> usize {
+        1
+    }
+    fn end_padding_packed_b() -> usize {
+        1
     }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
@@ -88,6 +100,12 @@ impl MatMatMulKer<i32> for MatMatMulI8x8x8 {
     fn alignment_bytes_packed_b() -> usize {
         16
     }
+    fn end_padding_packed_a() -> usize {
+        0
+    }
+    fn end_padding_packed_b() -> usize {
+        0
+    }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<i32>) -> isize {
         unsafe { arm64simd_mmm_i8_8x8(op) }
@@ -115,6 +133,12 @@ impl MatMatMulKer<i32> for MatMatMulI8xI32x8x8 {
     }
     fn alignment_bytes_packed_b() -> usize {
         16
+    }
+    fn end_padding_packed_a() -> usize {
+        0
+    }
+    fn end_padding_packed_b() -> usize {
+        0
     }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<i32>) -> isize {

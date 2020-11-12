@@ -8,18 +8,20 @@ pub struct PackA {
     m: usize,
     mr: usize,
     alignment: usize,
+    end_padding_record: usize,
 }
 
 impl PackA {
-    pub fn new(k: usize, m: usize, mr: usize, alignment: usize) -> PackA {
-        PackA { k, m, mr, alignment }
+    pub fn new(k: usize, m: usize, mr: usize, alignment: usize, end_padding_record: usize) -> PackA {
+        PackA { k, m, mr, alignment, end_padding_record }
     }
+
     pub fn alignment(&self) -> usize {
         self.alignment
     }
 
     pub fn len(&self) -> usize {
-        (self.m + self.mr - 1) / self.mr * self.mr * self.k
+        (self.m + self.mr - 1) / self.mr * self.mr * self.k + self.end_padding_record * self.mr
     }
 
     fn pack_panel_a_t<T: Datum + Copy>(

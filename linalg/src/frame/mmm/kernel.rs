@@ -37,7 +37,9 @@ where
     fn mr() -> usize;
     fn nr() -> usize;
     fn alignment_bytes_packed_a() -> usize;
+    fn end_padding_packed_a() -> usize;
     fn alignment_bytes_packed_b() -> usize;
+    fn end_padding_packed_b() -> usize;
 }
 
 #[macro_export]

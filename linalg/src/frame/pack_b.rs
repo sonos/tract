@@ -8,11 +8,12 @@ pub struct PackB {
     n: usize,
     nr: usize,
     alignment: usize,
+    end_padding_record: usize,
 }
 
 impl PackB {
-    pub fn new(k: usize, n: usize, nr: usize, alignment: usize) -> PackB {
-        PackB { k, n, nr, alignment }
+    pub fn new(k: usize, n: usize, nr: usize, alignment: usize, end_padding_record: usize) -> PackB {
+        PackB { k, n, nr, alignment, end_padding_record }
     }
 
     pub fn alignment(&self) -> usize {
@@ -20,7 +21,7 @@ impl PackB {
     }
 
     pub fn len(&self) -> usize {
-        (self.n + self.nr - 1) / self.nr * self.nr * self.k
+        (self.n + self.nr - 1) / self.nr * self.nr * self.k + self.end_padding_record * self.nr
     }
 
     fn pack_panel_b_t<T: Copy>(

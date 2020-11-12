@@ -127,6 +127,12 @@ where
     fn nr() -> usize {
         4
     }
+    fn end_padding_packed_a() -> usize {
+        0
+    }
+    fn end_padding_packed_b() -> usize {
+        0
+    }
     #[inline(always)]
     fn alignment_bytes_packed_a() -> usize {
         std::mem::size_of::<TA>()
@@ -453,6 +459,12 @@ where
     #[inline(always)]
     fn nr() -> usize {
         2
+    }
+    fn end_padding_packed_a() -> usize {
+        0
+    }
+    fn end_padding_packed_b() -> usize {
+        0
     }
     #[inline(always)]
     fn alignment_bytes_packed_a() -> usize {
