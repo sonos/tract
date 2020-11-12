@@ -121,9 +121,7 @@ impl EvalOp for LirMatMulUnary {
                     )?;
                 }
             }
-            Ok(tvec!(c
-                .into_shape(&*self.c_fact.shape.as_finite().context("Non finite mmm")?)?
-                .into_arc_tensor()))
+            Ok(tvec!(c.into_arc_tensor()))
         }
     }
 }

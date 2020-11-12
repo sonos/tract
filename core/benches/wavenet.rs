@@ -54,15 +54,15 @@ fn mmm(c: &mut Criterion) {
                     mmm.a_pack().alignment(),
                 )
                 .unwrap();
-                let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[1, mmm.b_pack().len()])
+                let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack().len()])
                     .unwrap()
                     .into_arc_tensor());
                 let op = tract_core::ops::matmul::lir_unary::LirMatMulUnary {
                     c_trans: true,
                     bc_c_shape: tvec!(8, 64),
                     c_fact: TypedFact::dt_shape(f32::datum_type(), [8, 64].as_ref()).unwrap(),
-                    c_prefix_dim_and_stride: Some((tvec![1], tvec![64])),
-                    packed_as: tract_ndarray::arr1(&[packed_a.into_arc_tensor()]).into_dyn(),
+                    c_prefix_dim_and_stride: None,
+                    packed_as: tract_ndarray::arr0(packed_a.into_arc_tensor()).into_dyn(),
                     fused_ops:None,
                     mmm,
                 };

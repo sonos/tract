@@ -3,16 +3,16 @@ use anyhow::*;
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug)]
-enum Indexing {
+enum Indexing<'a> {
     Prefix(usize),
-    Custom { shape: TVec<usize>, strides: TVec<isize> },
+    Custom { shape: &'a [usize], strides: &'a [isize] },
 }
 
 #[derive(Clone, Debug)]
 pub struct TensorView<'a> {
     tensor: &'a Tensor,
     offset_bytes: isize,
-    indexing: Indexing,
+    indexing: Indexing<'a>,
     phantom: PhantomData<&'a ()>,
 }
 
@@ -20,20 +20,24 @@ impl<'a> TensorView<'a> {
     pub unsafe fn from_bytes(
         tensor: &'a Tensor,
         offset_bytes: isize,
-        shape: &[usize],
-        strides: &[isize],
+        shape: &'a [usize],
+        strides: &'a [isize],
     ) -> TensorView<'a> {
         TensorView {
             tensor,
             offset_bytes,
-            indexing: Indexing::Custom { shape: shape.into(), strides: strides.into() },
+            indexing: Indexing::Custom { shape, strides },
             phantom: PhantomData,
         }
     }
 
     pub fn at_prefix(tensor: &'a Tensor, prefix: &[usize]) -> anyhow::Result<TensorView<'a>> {
-        ensure!(prefix.len() <= tensor.rank(), "prefix longer than tensor shape");
-        ensure!(prefix.iter().zip(tensor.shape()).all(|(p, d)| p < d), "prefix invalid");
+        ensure!(
+            prefix.len() <= tensor.rank() && prefix.iter().zip(tensor.shape()).all(|(p, d)| p < d),
+            "Invalid prefix {:?} for shape {:?}",
+            prefix,
+            tensor.shape()
+        );
         unsafe { Ok(Self::at_prefix_unchecked(tensor, prefix)) }
     }
 

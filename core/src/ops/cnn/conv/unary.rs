@@ -94,10 +94,13 @@ impl ConvUnary {
                     .collect::<TractResult<Vec<_>>>()?,
             )
             .into_dyn();
+            if self.group == 1 {
+                packed_as.index_axis_inplace(Axis(0), 0);
+            }
             if self.pool_spec.data_format.has_n() {
                 packed_as.insert_axis_inplace(Axis(0));
             }
-            Ok(packed_as.into_dyn())
+            Ok(packed_as)
         }
     }
 
@@ -117,6 +120,9 @@ impl ConvUnary {
                     .collect::<Vec<_>>(),
             )
             .into_dyn();
+            if self.group == 1 {
+                bias.index_axis_inplace(Axis(0), 0);
+            }
             if self.pool_spec.data_format.has_n() {
                 bias.insert_axis_inplace(Axis(0));
             }
@@ -205,10 +211,15 @@ impl ConvUnary {
 
         let mut dims = tvec!(self.group as usize);
         let mut strides = tvec!((output_shape.c() / self.group * output_shape.c_stride()) as isize);
+        if self.group == 1 {
+            dims.clear();
+            strides.clear();
+        }
         if output_shape.n().is_some() {
             dims.insert(0, *output_shape.n().unwrap());
             strides.insert(0, *output_shape.n_stride().unwrap() as isize);
         }
+        let c_prefix_dim_and_stride = Some((dims, strides)).filter(|it| it.0.len() > 0);
         let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
 
         let kernels = self.kernel_as_packed_as(&mmm.a_pack())?;
@@ -221,7 +232,7 @@ impl ConvUnary {
                     self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(a_dt),
                     &*output_shape.shape,
                 )?,
-                c_prefix_dim_and_stride: Some((dims, strides)),
+                c_prefix_dim_and_stride,
                 packed_as: kernels,
                 fused_ops,
                 mmm,
