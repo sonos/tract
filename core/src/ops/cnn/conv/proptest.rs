@@ -430,3 +430,18 @@ fn bias_0() -> anyhow::Result<()> {
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
+
+#[test]
+fn batch_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::NHWC.from_n_c_hw(2, 1, &[2])?,
+        shape_out: DataFormat::NHWC.from_n_c_hw(2, 1, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: ndarray::ArrayD::<f32>::zeros(vec![2, 2, 1]),
+        kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
+        bias: None,
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}

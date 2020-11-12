@@ -86,7 +86,9 @@ impl Im2Col {
         if self.data_format.has_n() {
             output_shape.push(self.data_format.shape(input_shape)?.n().unwrap().clone());
         }
-        output_shape.push(self.group.into());
+        if self.group != 1 {
+            output_shape.push(self.group.into());
+        }
         output_shape.push(self.b_pack.len().into());
         Ok(output_shape)
     }
@@ -120,21 +122,28 @@ impl EvalOp for Im2Col {
         unsafe {
             let mut input = args_1!(inputs).into_tensor();
             let output_shape = self.output_shape(input.shape())?;
-            let mut tensor = Tensor::uninitialized_aligned_dt(
+            let mut output = Tensor::uninitialized_aligned_dt(
                 input.datum_type(),
                 &*output_shape,
                 self.b_pack.alignment(),
             )?;
             if !self.data_format.has_n() {
                 input.insert_axis(0)?;
-                tensor.insert_axis(0)?;
+                output.insert_axis(0)?;
+            }
+            if self.group == 1 {
+                output.insert_axis(1)?;
             }
             let input_shape = self.data_format_with_n.shape(input.shape().into())?;
+            // in the loop, we have normalized the input so that N is
+            // always here, and output so that N and G are there.
             if !output_shape.iter().any(|d| *d == 0) {
                 for i in 0..*input_shape.n().unwrap_or(&1) {
                     let input = input.view_at_prefix(&[i])?;
                     for g in 0..self.group {
-                        let mut packed = tensor.view_at_prefix_mut(&[i, g])?;
+                        let full_prefix = [i, g];
+                        let actual_prefix = &full_prefix[..=(self.group > 1) as usize];
+                        let mut packed = output.view_at_prefix_mut(actual_prefix)?;
                         dispatch_copy_by_size!(Patcher::patch(input.datum_type())(
                             &self.patcher,
                             self,
@@ -146,10 +155,13 @@ impl EvalOp for Im2Col {
                     }
                 }
             }
-            if !self.data_format.has_n() {
-                tensor.remove_axis(0)?;
+            if self.group == 1 {
+                output.remove_axis(1)?;
             }
-            Ok(tvec!(tensor.into()))
+            if !self.data_format.has_n() {
+                output.remove_axis(0)?;
+            }
+            Ok(tvec!(output.into()))
         }
     }
 }

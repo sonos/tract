@@ -278,7 +278,8 @@ impl Tensor {
     }
 
     fn update_strides(&mut self) {
-        self.strides = tvec![1];
+        self.strides.clear();
+        self.strides.push(1);
         for dim in self.shape.as_ref().iter().skip(1).rev() {
             let previous = self.strides.last().unwrap().clone();
             self.strides.push(previous * *dim as isize)
@@ -288,8 +289,12 @@ impl Tensor {
 
     /// Force the tensor shape, no consistency check.
     pub unsafe fn set_shape_unchecked(&mut self, shape: &[usize]) {
-        self.shape = shape.into();
-        self.update_strides();
+        if shape != &*self.shape {
+            self.shape.clear();
+            self.shape.extend_from_slice(shape);
+            self.update_strides();
+
+        }
     }
 
     /// Force the tensor shape.
