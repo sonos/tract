@@ -139,11 +139,11 @@ where
     usize: AsPrimitive<TI>,
 {
     fn a_pack(&self) -> PackA {
-        PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a())
+        PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
     }
 
     fn b_pack(&self) -> PackB {
-        PackB::new(self.k, self.n, K::nr(), K::alignment_bytes_packed_b())
+        PackB::new(self.k, self.n, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
     }
 
     fn m(&self) -> usize {

@@ -26,6 +26,12 @@ impl MatMatMulKer<f32> for MatMatMulF32x4x4 {
     fn alignment_bytes_packed_b() -> usize {
         4
     }
+    fn end_padding_packed_a() -> usize {
+        0
+    }
+    fn end_padding_packed_b() -> usize {
+        0
+    }
     #[inline(never)]
     fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
         unsafe { armvfpv2_mmm_f32_4x4(spec) }
