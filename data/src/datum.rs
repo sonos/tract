@@ -113,6 +113,17 @@ impl DatumType {
         }
     }
 
+    pub fn is_float(&self) -> bool {
+        match self {
+            DatumType::F16 | DatumType::F32 | DatumType::F64 => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_copy(&self) -> bool {
+        *self == DatumType::Bool || self.is_unsigned() || self.is_signed() || self.is_float()
+    }
+
     pub fn integer(signed: bool, size: usize) -> Self {
         use DatumType::*;
         match (signed, size) {
@@ -128,35 +139,12 @@ impl DatumType {
         }
     }
 
-    pub fn is_float(&self) -> bool {
-        match self {
-            DatumType::F16 | DatumType::F32 | DatumType::F64 => true,
-            _ => false,
-        }
-    }
-
     pub fn is_integer(&self) -> bool {
         self.is_signed() || self.is_unsigned()
     }
 
     pub fn size_of(&self) -> usize {
-        match self {
-            DatumType::Bool => std::mem::size_of::<bool>(),
-            DatumType::U8 => std::mem::size_of::<u8>(),
-            DatumType::U16 => std::mem::size_of::<u16>(),
-            DatumType::U32 => std::mem::size_of::<u32>(),
-            DatumType::U64 => std::mem::size_of::<u64>(),
-            DatumType::I8 => std::mem::size_of::<i8>(),
-            DatumType::I16 => std::mem::size_of::<i16>(),
-            DatumType::I32 => std::mem::size_of::<i32>(),
-            DatumType::I64 => std::mem::size_of::<i64>(),
-            DatumType::F16 => std::mem::size_of::<f16>(),
-            DatumType::F32 => std::mem::size_of::<f32>(),
-            DatumType::F64 => std::mem::size_of::<f64>(),
-            DatumType::Blob => std::mem::size_of::<Blob>(),
-            DatumType::TDim => std::mem::size_of::<TDim>(),
-            DatumType::String => std::mem::size_of::<String>(),
-        }
+        dispatch_datum!(std::mem::size_of(self)())
     }
 
     pub fn alignment(&self) -> usize {

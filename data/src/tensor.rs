@@ -11,6 +11,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::hash::Hash;
 use std::mem::{align_of, size_of};
+use std::ops::Range;
 use std::sync::Arc;
 
 pub mod litteral;
@@ -383,6 +384,121 @@ impl Tensor {
             let mut t = Tensor::uninitialized_dt(self.datum_type(), shape)?;
             dispatch_datum_by_size!(make(self.datum_type())(self, &mut t));
             Ok(t)
+        }
+    }
+
+    fn clip_range_bounds(&self, axis: usize, range: impl std::ops::RangeBounds<usize>) -> Range<usize> {
+        use std::ops::Bound;
+        let start = match range.start_bound() {
+            Bound::Included(ix) => *ix,
+            Bound::Excluded(ix) => ix + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(ix) => *ix + 1,
+            Bound::Excluded(ix) => *ix,
+            Bound::Unbounded => self.shape()[axis],
+        };
+        start..end
+    }
+
+    pub fn assign_slice(
+        &mut self,
+        range: impl std::ops::RangeBounds<usize>,
+        src: &Tensor,
+        src_range: impl std::ops::RangeBounds<usize>,
+        axis: usize,
+    ) -> anyhow::Result<()> {
+        let range = self.clip_range_bounds(axis, range);
+        let src_range = src.clip_range_bounds(axis, src_range);
+        anyhow::ensure!(
+            src.datum_type() == self.datum_type(),
+            "Attempt to assign into {:?} from {:?}, datum type mismatch",
+            self.datum_type(),
+            src.datum_type()
+        );
+        anyhow::ensure!(
+            src_range.len() == range.len(),
+            "Attempt to assign a range of {:?} from a range of {:?}",
+            range,
+            src_range,
+        );
+        anyhow::ensure!(
+            self.rank() == src.rank()
+                && itertools::izip!(0.., self.shape(), src.shape())
+                    .all(|(ix, dst, src)| ix == axis || src == dst),
+            "Attempt to assign a {}-axis range of {:?} from a range of {:?}",
+            axis,
+            self,
+            src
+        );
+        anyhow::ensure!(src_range.end <= src.shape()[axis],
+            "Assigning from invalid slice (axis {}, {:?}) of {:?}",
+            axis,
+            src_range,
+            src
+        );
+        anyhow::ensure!(range.end <= self.shape()[axis],
+            "Assigning to invalid slice (axis {}, {:?}) of {:?}",
+            axis,
+            range,
+            self
+        );
+        self.assign_slice_from_resolved(range, src, src_range, axis);
+        Ok(())
+    }
+
+    pub unsafe fn assign_slice_unchecked(
+        &mut self,
+        range: impl std::ops::RangeBounds<usize>,
+        src: &Tensor,
+        src_range: impl std::ops::RangeBounds<usize>,
+        axis: usize,
+    ) {
+        let range = self.clip_range_bounds(axis, range);
+        let src_range = src.clip_range_bounds(axis, src_range);
+        self.assign_slice_from_resolved(range, src, src_range, axis);
+    }
+
+    fn assign_slice_from_resolved(
+        &mut self,
+        range: std::ops::Range<usize>,
+        src: &Tensor,
+        src_range: std::ops::Range<usize>,
+        axis: usize,
+    ) {
+        use ndarray::Slice;
+        unsafe fn assign_slice_t<T: Datum>(
+            to: &mut Tensor,
+            to_range: Range<usize>,
+            from: &Tensor,
+            from_range: Range<usize>,
+            axis: usize,
+        ) {
+            to.to_array_view_mut_unchecked::<T>()
+                .slice_axis_mut(Axis(axis), Slice::from(to_range))
+                .assign(
+                    &from
+                        .to_array_view_unchecked::<T>()
+                        .slice_axis(Axis(axis), Slice::from(from_range)),
+                )
+        }
+        unsafe {
+            if axis == 0 {
+                let stride = self.strides[0] as usize * self.datum_type().size_of();
+                let dst_start = (stride * range.start) as isize;
+                let src_start = (stride * src_range.start) as isize;
+                let len = stride * range.len();
+                if self.data != src.data {
+                    std::ptr::copy_nonoverlapping(src.data.offset(src_start), self.data.offset(dst_start), len);
+                } else {
+                    std::ptr::copy(src.data.offset(src_start), self.data.offset(dst_start), len);
+                }
+            } else {
+                dispatch_copy_by_size!(assign_slice_t(self.datum_type())(
+                    self, range, src, src_range, axis
+                ));
+            }
         }
     }
 
