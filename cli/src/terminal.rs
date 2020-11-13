@@ -117,13 +117,15 @@ fn render_node_prefixed(
     // profile column
     let mut profile_column = tags.profile.map(|measure| {
         let profile_summary = annotations.profile_summary.as_ref().unwrap();
+        let use_micros = profile_summary.sum < Duration::from_millis(1);
         let ratio = measure.as_secs_f64() / profile_summary.sum.as_secs_f64();
         let ratio_for_color = measure.as_secs_f64() / profile_summary.max.as_secs_f64();
         let color = colorous::RED_YELLOW_GREEN.eval_continuous(1.0 - ratio_for_color);
         let color = ansi_term::Color::RGB(color.r, color.g, color.b);
         let label = format!(
-            "{:7.3} ms/i {}  ",
-            measure.as_secs_f64() * 1e3,
+            "{:7.3} {}s/i {}  ",
+            measure.as_secs_f64() * if use_micros { 1e6 } else { 1e3 },
+            if use_micros { "µ" } else { "m" },
             color.bold().paint(format!("{:>4.1}%", ratio * 100.0))
         );
         std::iter::once(label)
