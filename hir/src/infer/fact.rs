@@ -55,23 +55,6 @@ impl InferenceFact {
         InferenceFact { shape: shape.into(), ..self }
     }
 
-    /*
-    pub fn with_streaming_shape<S: IntoIterator<Item = Option<usize>>>(
-        self,
-        shape: S,
-    ) -> InferenceFact {
-        let shape: ShapeFactoid = shape
-            .into_iter()
-            .map(|d| d.map(|d| (d as isize).to_dim()).unwrap_or(TDim::s()))
-            .collect();
-        self.with_shape(shape)
-    }
-
-    pub fn stream_info(&self) -> TractResult<Option<StreamFact>> {
-        self.shape.stream_info()
-    }
-    */
-
     pub fn format_dt_shape(&self) -> String {
         if !self.shape.open && self.shape.dims.len() == 0 {
             format!(
@@ -160,7 +143,7 @@ impl<'a> TryFrom<&'a InferenceFact> for TypedFact {
         if let (Some(datum_type), Some(shape)) =
             (fact.datum_type.concretize(), fact.shape.concretize())
         {
-            let shape = ShapeFact::from_dims(shape)?;
+            let shape = ShapeFact::from_dims(shape);
             Ok(TypedFact { datum_type, shape, konst: fact.value.concretize() })
         } else {
             bail!("Can not make a TypedFact out of {:?}", fact)

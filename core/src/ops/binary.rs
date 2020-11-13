@@ -118,7 +118,7 @@ impl TypedOp for TypedBinOp {
                 &inputs[0],
                 &inputs[1]
             ))?
-        )?))
+        )))
     }
 
     fn change_axes(
@@ -315,7 +315,7 @@ impl TypedOp for UnaryOp {
                 self.a.shape(),
                 inputs[0].shape
             ))?
-        )?))
+        )))
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {

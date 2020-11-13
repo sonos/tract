@@ -257,7 +257,7 @@ impl AxisOp {
             _ => {
                 let mut array = shape.to_tvec();
                 self.change_shape_array(&mut array)?;
-                let mut new_shape = ShapeFact::from_dims(array).unwrap();
+                let mut new_shape = ShapeFact::from_dims(array);
                 std::mem::swap(shape, &mut new_shape);
                 Ok(())
             }
@@ -426,7 +426,7 @@ impl TypedOp for AxisOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape = inputs[0].shape.clone();
         self.change_shape(&mut shape)?;
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)))
     }
 
     fn invariants(&self, _model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
@@ -964,8 +964,8 @@ mod proptests {
     impl ComposeProblem {
         pub fn model(&self) -> TractResult<TypedModel> {
             let mut model = TypedModel::default();
-            let mut wire = model
-                .add_source("source", TypedFact::dt_shape(i64::datum_type(), &*self.input)?)?;
+            let mut wire =
+                model.add_source("source", TypedFact::dt_shape(i64::datum_type(), &self.input))?;
             for (ix, op) in self.ops.iter().enumerate() {
                 wire = model.wire_node(format!("op_{}", ix), op.clone(), &[wire])?[0];
             }

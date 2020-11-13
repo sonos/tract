@@ -170,7 +170,7 @@ impl EvalOp for SumPoolFixed {
 
 impl TypedOp for SumPoolFixed {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &self.output_shape.shape)))
     }
 
     as_op!();

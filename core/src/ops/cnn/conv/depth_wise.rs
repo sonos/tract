@@ -88,7 +88,7 @@ impl DepthWise {
 
 impl TypedOp for DepthWise {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.output_shape.shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &self.output_shape.shape)))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

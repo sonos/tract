@@ -97,7 +97,7 @@ impl InferenceRulesOp for Noop {
 
 impl TypedOp for Noop {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(bool::datum_type(), ())?))
+        Ok(tvec!(TypedFact::dt_shape(bool::datum_type(), &[0; 0])))
     }
 
     as_op!();

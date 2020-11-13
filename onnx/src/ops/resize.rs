@@ -256,7 +256,7 @@ impl TypedOp for Resize {
             scales.and_then(|f| f.konst.as_deref()),
             sizes.and_then(|f| f.konst.as_deref()),
         )?;
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*output_shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &output_shape)))
     }
 
     fn declutter(

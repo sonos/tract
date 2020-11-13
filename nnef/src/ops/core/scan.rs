@@ -176,7 +176,7 @@ fn de_scan(
                     initializer: StateInitializer::FromInput(outer_inputs.len()),
                 });
                 let fact = builder.model.outlet_fact(*wire)?.clone();
-                (*wire, TypedFact::dt_shape(fact.datum_type, fact.shape)?)
+                (*wire, TypedFact::dt_shape(fact.datum_type, fact.shape))
             } else {
                 bail!("Unbound body input parameter {}", par.id);
             };

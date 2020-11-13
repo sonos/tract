@@ -98,7 +98,7 @@ impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> InferenceRulesOp
 
 impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> TypedOp for CategoryMapper<Src, Dst> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(Dst::datum_type(), inputs[0].shape.clone())?))
+        Ok(tvec!(TypedFact::dt_shape(Dst::datum_type(), inputs[0].shape.iter())))
     }
 
     as_op!();

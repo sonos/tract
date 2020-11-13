@@ -38,7 +38,7 @@ impl EvalOp for MultiBroadcastTo {
 
 impl TypedOp for MultiBroadcastTo {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)))
     }
 
     fn concretize_dims(

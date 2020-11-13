@@ -121,7 +121,7 @@ impl TypedOp for VariableV2 {
     as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(self.dt, &*self.shape)?))
+        Ok(tvec!(TypedFact::dt_shape(self.dt, &self.shape)))
     }
 }
 

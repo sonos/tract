@@ -253,10 +253,7 @@ impl GRU {
         };
         input_mapping.push(scan::InputMapping::State { initializer });
         let h_source = body
-            .add_source(
-                "h_source",
-                TypedFact::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
-            )?
+            .add_source("h_source", TypedFact::dt_shape(x_fact.datum_type, &[1, b_size, h_size]))?
             .into();
 
         wire!(Ht_1 = AxisOp::Rm(0), h_source);

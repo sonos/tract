@@ -90,6 +90,6 @@ impl TypedOp for Iff {
             inputs[2].shape.to_tvec(),
         ])
         .unwrap();
-        Ok(tvec!(TypedFact::dt_shape(inputs[1].datum_type, &*shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[1].datum_type, shape)))
     }
 }

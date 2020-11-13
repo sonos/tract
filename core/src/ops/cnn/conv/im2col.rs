@@ -170,10 +170,7 @@ impl TypedOp for Im2Col {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(
-            inputs[0].datum_type,
-            &*self.output_shape(&*inputs[0].shape)?
-        )?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, self.output_shape(&*inputs[0].shape)?)))
     }
 }
 

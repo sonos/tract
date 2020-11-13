@@ -47,9 +47,7 @@ mod tests {
     #[test]
     fn test_source_must_stream() {
         let mut model = TypedModel::default();
-        let _a = model
-            .add_source("a", TypedFact::dt_shape(f32::datum_type(), [1, 2, 3].as_ref()).unwrap())
-            .unwrap();
+        let _a = model.add_source("a", TypedFact::dt_shape(f32::datum_type(), &[1, 2, 3])).unwrap();
         model.auto_outputs().unwrap();
         assert!(PulsedModel::new(&model, 4).is_err());
 
@@ -60,15 +58,14 @@ mod tests {
                 TypedFact::dt_shape(
                     f32::datum_type(),
                     [1.to_dim(), stream_dim(), 3.to_dim()].as_ref(),
-                )
-                .unwrap(),
+                ),
             )
             .unwrap();
         model.auto_outputs().unwrap();
         let pulse = PulsedModel::new(&model, 4).unwrap();
         assert_eq!(
             pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_typed_fact().unwrap(),
-            TypedFact::dt_shape(DatumType::F32, [1usize, 4, 3].as_ref()).unwrap()
+            TypedFact::dt_shape(DatumType::F32, &[1usize, 4, 3])
         );
     }
 
@@ -81,8 +78,7 @@ mod tests {
                 TypedFact::dt_shape(
                     f32::datum_type(),
                     [stream_dim(), 2.to_dim(), 3.to_dim()].as_ref(),
-                )
-                .unwrap(),
+                ),
             )
             .unwrap();
         model.auto_outputs().unwrap();
@@ -91,11 +87,11 @@ mod tests {
 
         assert_eq!(
             pulse.input_fact(0).unwrap().to_typed_fact().unwrap(),
-            TypedFact::dt_shape(DatumType::F32, &*vec!(4, 2, 3)).unwrap()
+            TypedFact::dt_shape(DatumType::F32, &[4, 2, 3])
         );
         assert_eq!(
             pulse.output_fact(0).unwrap().to_typed_fact().unwrap(),
-            TypedFact::dt_shape(DatumType::F32, &*vec!(4, 2, 3)).unwrap()
+            TypedFact::dt_shape(DatumType::F32, &[4, 2, 3])
         );
     }
 }

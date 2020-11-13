@@ -1,7 +1,6 @@
 //! Partial and complete tensor types representations.
 use crate::internal::*;
 use downcast_rs::Downcast;
-use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
 /// Type information about a tensor: shape, and element type, in various state
@@ -79,13 +78,11 @@ impl ShapeFact {
         self.dims.clone()
     }
 
-    pub fn from_dims<D: ToDim, T: IntoIterator<Item = D> + std::fmt::Debug>(
-        it: T,
-    ) -> TractResult<ShapeFact> {
+    pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> ShapeFact {
         let mut fact =
             ShapeFact { dims: it.into_iter().map(|d| d.to_dim()).collect(), concrete: None };
         fact.compute_concrete();
-        Ok(fact)
+        fact
     }
 
     fn compute_concrete(&mut self) {
@@ -94,24 +91,9 @@ impl ShapeFact {
     }
 }
 
-impl TryFrom<()> for ShapeFact {
-    type Error = TractError;
-    fn try_from(_it: ()) -> TractResult<ShapeFact> {
-        ShapeFact::from_dims(&[0usize; 0])
-    }
-}
-
-impl TryFrom<&[TDim]> for ShapeFact {
-    type Error = TractError;
-    fn try_from(it: &[TDim]) -> TractResult<ShapeFact> {
-        ShapeFact::from_dims(it.iter())
-    }
-}
-
-impl TryFrom<&[usize]> for ShapeFact {
-    type Error = TractError;
-    fn try_from(it: &[usize]) -> TractResult<ShapeFact> {
-        Ok(ShapeFact::from_dims(it.iter()).unwrap())
+impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
+    fn from(it: T) -> ShapeFact {
+        ShapeFact::from_dims(it)
     }
 }
 
@@ -143,21 +125,19 @@ pub struct TypedFact {
 impl_dyn_hash!(TypedFact);
 
 impl TypedFact {
-    pub fn shape<T, S, E>(shape: S) -> TractResult<TypedFact>
+    pub fn shape<T, S>(shape: S) -> TypedFact
     where
         T: Datum,
-        S: TryInto<ShapeFact, Error = E>,
-        TractError: From<E>,
+        S: Into<ShapeFact>,
     {
         Self::dt_shape(T::datum_type(), shape)
     }
 
-    pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<TypedFact>
+    pub fn dt_shape<S>(datum_type: DatumType, shape: S) -> TypedFact
     where
-        S: TryInto<ShapeFact, Error = E>,
-        TractError: From<E>,
+        S: Into<ShapeFact>,
     {
-        Ok(TypedFact { datum_type, shape: shape.try_into()?, konst: None })
+        TypedFact { datum_type, shape: shape.into(), konst: None }
     }
 
     pub fn rank(&self) -> usize {
@@ -192,7 +172,7 @@ impl TypedFact {
     }
 
     pub fn without_value(&self) -> Self {
-        Self::dt_shape(self.datum_type, &*self.shape).unwrap()
+        Self::dt_shape(self.datum_type, &*self.shape)
     }
 }
 
@@ -239,7 +219,7 @@ impl From<Arc<Tensor>> for TypedFact {
     fn from(t: Arc<Tensor>) -> TypedFact {
         TypedFact {
             datum_type: t.datum_type(),
-            shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)).unwrap(),
+            shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             konst: Some(t),
         }
     }

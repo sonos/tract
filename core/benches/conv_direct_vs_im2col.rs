@@ -27,11 +27,11 @@ impl Problem {
     }
 
     pub fn image_fact(&self) -> TypedFact {
-        TypedFact::dt_shape(DatumType::F32, &*self.input.shape).unwrap()
+        TypedFact::dt_shape(DatumType::F32, &*self.input.shape)
     }
 
     pub fn image_type(&self) -> TypedFact {
-        TypedFact::dt_shape(f32::datum_type(), &*self.input.shape).unwrap()
+        TypedFact::dt_shape(f32::datum_type(), &*self.input.shape)
     }
 
     pub fn to_plan(&self, direct: bool) -> SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel> {

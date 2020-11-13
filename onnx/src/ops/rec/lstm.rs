@@ -295,10 +295,7 @@ impl LSTM {
         };
         input_mapping.push(scan::InputMapping::State { initializer });
         let h_source = body
-            .add_source(
-                "h_source",
-                TypedFact::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
-            )?
+            .add_source("h_source", TypedFact::dt_shape(x_fact.datum_type, &[1, b_size, h_size]))?
             .into();
 
         let initializer = if let Some(initial_c_input) = self.optional_initial_c_input {
@@ -314,10 +311,7 @@ impl LSTM {
         };
         input_mapping.push(scan::InputMapping::State { initializer });
         let c_source = body
-            .add_source(
-                "c_source",
-                TypedFact::dt_shape(x_fact.datum_type, [1, b_size, h_size].as_ref())?,
-            )?
+            .add_source("c_source", TypedFact::dt_shape(x_fact.datum_type, &[1, b_size, h_size]))?
             .into();
 
         // P: onnx [num_directions, 3*hidde_size]

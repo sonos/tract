@@ -77,10 +77,7 @@ mod tests {
         let model = {
             let mut model = TypedModel::default();
             let input = model
-                .add_source(
-                    "input",
-                    TypedFact::dt_shape(i32::datum_type(), [len].as_ref()).unwrap(),
-                )
+                .add_source("input", TypedFact::dt_shape(i32::datum_type(), [len].as_ref()))
                 .unwrap();
             let crop = model
                 .wire_node(

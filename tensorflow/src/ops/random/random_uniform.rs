@@ -148,7 +148,7 @@ impl EvalOp for TypedRandomUniform {
 
 impl TypedOp for TypedRandomUniform {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(self.t, &*self.shape)?))
+        Ok(tvec!(TypedFact::dt_shape(self.t, &self.shape)))
     }
 
     as_op!();

@@ -112,7 +112,7 @@ impl TypedOp for MatMul {
             self.b_trans,
             self.c_trans,
         )?;
-        Ok(tvec!(TypedFact::dt_shape(dt, &*c_shape)?))
+        Ok(tvec!(TypedFact::dt_shape(dt, c_shape)))
     }
 
     fn declutter(
@@ -213,7 +213,7 @@ mod test {
         let mut model = TypedModel::default();
         let input_shape = tvec!(batch, len, ci);
         let mut wire =
-            tvec!(model.add_source("s", TypedFact::dt_shape(f32::datum_type(), &*input_shape)?)?);
+            tvec!(model.add_source("s", TypedFact::dt_shape(f32::datum_type(), &*input_shape))?);
         let a = unsafe { Tensor::uninitialized::<f32>(&[1, ci, co])?.into_arc_tensor() };
         wire = model.wire_node(
             "m",

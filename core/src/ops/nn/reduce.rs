@@ -221,7 +221,7 @@ impl TypedOp for Reduce {
         } else {
             inputs[0].datum_type
         };
-        Ok(tvec!(TypedFact::dt_shape(dt, &*shape)?))
+        Ok(tvec!(TypedFact::dt_shape(dt, shape)))
     }
 
     #[allow(unused_variables)]

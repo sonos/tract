@@ -29,6 +29,6 @@ fn external_load(
 ) -> TractResult<TVec<OutletId>> {
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     let dt = invocation.named_arg_as::<String>(builder, "datum_type")?.parse()?;
-    let fact = TypedFact::dt_shape(dt, &*shape)?;
+    let fact = TypedFact::dt_shape(dt, &*shape);
     Ok(tvec!(builder.model.add_source("", fact)?))
 }

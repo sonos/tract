@@ -70,7 +70,7 @@ impl TypedOp for MatMulUnary {
             self.c_trans,
         )?;
         let c_dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
-        Ok(tvec!(TypedFact::dt_shape(c_dt, &*c_shape)?))
+        Ok(tvec!(TypedFact::dt_shape(c_dt, c_shape)))
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
@@ -358,7 +358,7 @@ impl MatMulUnary {
             format!("{}.matmatmul", &*node.name),
             LirMatMulUnary {
                 c_trans: self.c_trans,
-                c_fact: TypedFact::dt_shape(c_dt, &*c_shape)?,
+                c_fact: TypedFact::dt_shape(c_dt, &c_shape),
                 bc_c_shape: c_shape,
                 c_prefix_dim_and_stride,
                 packed_as,
