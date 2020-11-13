@@ -1,6 +1,6 @@
 use crate::internal::*;
-use ndarray::prelude::*;
 use crate::num_traits::Zero;
+use ndarray::prelude::*;
 
 #[derive(Debug, Clone, Default, PartialEq, Hash)]
 pub struct Slice {
@@ -70,7 +70,7 @@ impl EvalOp for Slice {
 impl TypedOp for Slice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape[self.axis] = (self.end.clone() - &self.start).to_dim();
+        fact.shape.set(self.axis, (self.end.clone() - &self.start).to_dim());
         Ok(tvec!(fact))
     }
 

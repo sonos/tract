@@ -98,7 +98,7 @@ impl TypedOp for TypedConcat {
                 .filter_map(|s| s.as_const())
                 .map(|s| s.shape()[self.axis])
                 .sum::<usize>();
-        fact.shape[self.axis] = dim;
+        fact.shape.set(self.axis, dim);
         Ok(tvec!(fact))
     }
 

@@ -306,7 +306,7 @@ impl TypedOp for LirScan {
                 let mut shape = fact.shape.clone();
                 let scanning_dim =
                     output.full_dim_hint.clone().unwrap_or(shape[output.axis].maybe_mul(&iters)?);
-                shape[output.axis] = scanning_dim;
+                shape.set(output.axis, scanning_dim);
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }
         }
