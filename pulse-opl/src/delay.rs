@@ -1,4 +1,3 @@
-use tract_core::ndarray::*;
 use tract_nnef::internal::*;
 
 pub fn register(registry: &mut Registry) {
@@ -32,27 +31,6 @@ struct DelayState {
     buffer: Tensor,
 }
 
-unsafe fn assign_slice_t<T: Datum>(
-    to: &mut Tensor,
-    to_range: Slice,
-    from: &Tensor,
-    from_range: Slice,
-    axis: usize,
-) {
-    to.to_array_view_mut_unchecked::<T>().slice_axis_mut(Axis(axis), Slice::from(to_range)).assign(
-        &from.to_array_view_unchecked::<T>().slice_axis(Axis(axis), Slice::from(from_range)),
-    )
-}
-unsafe fn assign_slice(
-    to: &mut Tensor,
-    to_range: Slice,
-    from: &Tensor,
-    from_range: Slice,
-    axis: usize,
-) {
-    dispatch_copy_by_size!(assign_slice_t(from.datum_type())(to, to_range, from, from_range, axis));
-}
-
 impl OpState for DelayState {
     fn eval(
         &mut self,
@@ -78,38 +56,14 @@ impl OpState for DelayState {
             if op.delay < input_pulse {
                 let from_input = input_pulse - op.delay;
                 let from_buffer = output_pulse - from_input;
-                assign_slice(
-                    &mut output,
-                    Slice::from(..from_buffer),
-                    &self.buffer,
-                    Slice::from(..from_buffer),
-                    op.axis,
-                );
-                assign_slice(
-                    &mut output,
-                    Slice::from(from_buffer..),
-                    &input,
-                    Slice::from(..from_input),
-                    op.axis,
-                );
+                output.assign_slice_unchecked(..from_buffer, &self.buffer, ..from_buffer, op.axis);
+                output.assign_slice_unchecked(from_buffer.., &input, ..from_input, op.axis);
             } else {
-                assign_slice(
-                    &mut output,
-                    Slice::from(..),
-                    &self.buffer,
-                    Slice::from(..output_pulse),
-                    op.axis,
-                );
+                output.assign_slice_unchecked(.., &self.buffer, ..output_pulse, op.axis);
             };
             // maintain buffer
             if buffered < input_pulse {
-                assign_slice(
-                    &mut self.buffer,
-                    Slice::from(..),
-                    &input,
-                    Slice::from((input_pulse - buffered)..),
-                    op.axis,
-                );
+                self.buffer.assign_slice_unchecked(.., &input, (input_pulse - buffered).., op.axis);
             } else {
                 let stride = self.buffer.shape().iter().skip(op.axis + 1).product::<usize>()
                     * input.datum_type().size_of()
@@ -119,13 +73,7 @@ impl OpState for DelayState {
                     self.buffer.len() * input.datum_type().size_of(),
                 )
                 .rotate_left(stride);
-                assign_slice(
-                    &mut self.buffer,
-                    Slice::from((buffered - input_pulse)..),
-                    &input,
-                    Slice::from(..),
-                    op.axis,
-                )
+                self.buffer.assign_slice_unchecked((buffered - input_pulse).., &input, .., op.axis);
             }
             let output = output.into_arc_tensor();
             Ok(tvec!(output))
