@@ -1,5 +1,4 @@
 use super::*;
-use ndarray::*;
 use tract_data::internal::*;
 
 #[derive(Debug, Clone, new, Hash)]
@@ -93,73 +92,61 @@ struct MutableState {
 }
 
 impl MutableState {
-    pub(super) fn slice_input_t<T: Datum>(
+    pub(super) fn slice_input(
         &self,
         input: &Tensor,
         axis: usize,
         chunk_ix: usize,
         chunk_dim: isize,
     ) -> TractResult<Tensor> {
-        let view = input.to_array_view::<T>()?;
-        let full_len = view.shape()[axis];
-        if chunk_dim < 0 {
-            let mut shape: TVec<usize> = view.shape().into();
-            let chunk_dim = (-chunk_dim) as usize;
-            shape[axis] = chunk_dim;
-            let mut t = ArrayD::<T>::default(&*shape);
-            for i in 0..chunk_dim {
-                if chunk_dim * chunk_ix + i < full_len {
-                    t.index_axis_mut(Axis(axis), chunk_dim - i - 1).assign(
-                        &view.index_axis(Axis(axis), full_len - 1 - (chunk_ix * chunk_dim + i)),
-                    );
+        unsafe {
+            let full_len = input.shape()[axis];
+            let mut shape: TVec<usize> = input.shape().into();
+            shape[axis] = chunk_dim.abs() as usize;
+            let mut t = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
+            if chunk_dim < 0 {
+                let chunk_dim = (-chunk_dim) as usize;
+                for i in 0..chunk_dim {
+                    if chunk_dim * chunk_ix + i < full_len {
+                        let dst_ix = chunk_dim - i - 1;
+                        let src_ix = full_len - 1 - (chunk_ix * chunk_dim + i);
+                        t.assign_slice_unchecked(dst_ix..=dst_ix, input, src_ix..=src_ix, axis);
+                    }
                 }
+            } else if (chunk_ix + 1) * chunk_dim as usize > full_len {
+                let chunk_dim = chunk_dim as usize;
+                let remain = full_len - chunk_ix * chunk_dim;
+                let mut shape: TVec<usize> = input.shape().into();
+                shape[axis] = chunk_dim;
+                let mut t = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
+                t.assign_slice_unchecked(..remain, input, chunk_ix * chunk_dim.., axis);
+            } else {
+                let start = chunk_dim as usize * chunk_ix;
+                let end = start + chunk_dim as usize;
+                t.assign_slice_unchecked(.., input, start..end, axis);
             }
-            Ok(t.into_tensor())
-        } else if (chunk_ix + 1) * chunk_dim as usize > full_len {
-            let chunk_dim = chunk_dim as usize;
-            let remain = full_len - chunk_ix * chunk_dim;
-            let mut shape: TVec<usize> = view.shape().into();
-            shape[axis] = chunk_dim;
-            let mut t = ArrayD::<T>::default(&*shape);
-            t.slice_axis_mut(Axis(axis), (0..remain).into())
-                .assign(&view.slice_axis(Axis(axis), (chunk_ix * chunk_dim..).into()));
-            Ok(t.into_tensor())
-        } else {
-            let chunk_dim = chunk_dim as usize;
-            Ok(view
-                .slice_axis(Axis(axis), (chunk_ix * chunk_dim..(chunk_ix + 1) * chunk_dim).into())
-                .to_owned()
-                .into_tensor())
+            Ok(t)
         }
     }
 
-    pub(super) fn alloc_output_t<T: Datum + Default>(
-        &self,
-        shape: &[usize],
-    ) -> TractResult<Tensor> {
-        unsafe { Tensor::uninitialized::<T>(&shape) }
-    }
-
-    pub(super) fn assign_output_t<T: Datum + Default>(
+    pub(super) fn assign_output(
         &self,
         output: &mut Tensor,
         axis: usize,
         element_value: &Tensor,
         i: usize,
         backward: bool,
-    ) -> TractResult<()> {
-        let mut view = output.to_array_view_mut::<T>()?;
-        let full_len = view.shape()[axis];
-        let element = element_value.to_array_view::<T>()?;
+    ) {
+        let full_len = output.shape()[axis];
         let offset = if backward {
             full_len - 1 - i * element_value.shape()[axis]
         } else {
             i * element_value.shape()[axis]
         };
-        let count = element_value.shape()[axis].min(view.shape()[axis] - offset);
-        view.slice_axis_mut(Axis(axis), (offset..offset + count).into())
-            .assign(&element.slice_axis(Axis(axis), (..count).into()));
-        Ok(())
+        let count = element_value.shape()[axis].min(output.shape()[axis] - offset);
+        unsafe {
+            output.assign_slice_unchecked(offset..offset + count, element_value, ..count, axis)
+        };
     }
 }
 
@@ -207,9 +194,7 @@ impl OpState for State {
                     .and_then(|d| d.to_usize().ok())
                     .unwrap_or(shape[output.axis] * iters);
                 shape[output.axis] = scanning_dim;
-                let t = dispatch_datum!(MutableState::alloc_output_t(fact.datum_type)(
-                    mutable, &*shape
-                ))?;
+                let t = unsafe { Tensor::uninitialized_dt(fact.datum_type, &*shape)? };
                 outputs.push((slot, t));
             }
             if let Some(slot) = output.last_value_slot {
@@ -232,15 +217,15 @@ impl OpState for State {
                 .map(|m| {
                     Ok(match m {
                         InputMapping::State { .. } => Some(mutable.hidden_state.pop().unwrap()),
-                        InputMapping::Scan { slot, axis, chunk } => Some(dispatch_datum!(
-                            MutableState::slice_input_t(inputs[*slot].datum_type())(
+                        InputMapping::Scan { slot, axis, chunk } => {
+                            Some(MutableState::slice_input(
                                 mutable,
                                 inputs[*slot].as_ref(),
                                 *axis,
                                 i,
-                                *chunk
-                            )
-                        )?),
+                                *chunk,
+                            )?)
+                        }
                         InputMapping::Full { slot } => Some(inputs[*slot].clone().into_tensor()),
                     })
                 })
@@ -256,14 +241,13 @@ impl OpState for State {
 
             for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
                 if let Some(slot) = mapping.full_slot {
-                    dispatch_datum!(MutableState::assign_output_t(v.datum_type())(
-                        mutable,
+                    mutable.assign_output(
                         &mut outputs[slot],
                         mapping.axis,
                         v.as_ref(),
                         i,
-                        mapping.chunk < 0
-                    ))?;
+                        mapping.chunk < 0,
+                    );
                 }
                 if i == iters - 1 {
                     if let Some(slot) = mapping.last_value_slot {
