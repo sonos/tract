@@ -484,7 +484,7 @@ impl Tensor {
                 )
         }
         unsafe {
-            if axis == 0 {
+            if axis == 0 && self.datum_type().is_copy() {
                 let stride = self.strides[0] as usize * self.datum_type().size_of();
                 let dst_start = (stride * range.start) as isize;
                 let src_start = (stride * src_range.start) as isize;
@@ -495,7 +495,7 @@ impl Tensor {
                     std::ptr::copy(src.data.offset(src_start), self.data.offset(dst_start), len);
                 }
             } else {
-                dispatch_copy_by_size!(assign_slice_t(self.datum_type())(
+                dispatch_datum!(assign_slice_t(self.datum_type())(
                     self, range, src, src_range, axis
                 ));
             }

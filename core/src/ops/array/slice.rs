@@ -1,6 +1,5 @@
 use crate::internal::*;
 use crate::num_traits::Zero;
-use ndarray::prelude::*;
 
 #[derive(Debug, Clone, Default, PartialEq, Hash)]
 pub struct Slice {
@@ -18,15 +17,6 @@ impl DynHash for Slice {
 impl Slice {
     pub fn new(axis: usize, start: impl ToDim, end: impl ToDim) -> Slice {
         Slice { axis, start: start.to_dim(), end: end.to_dim() }
-    }
-
-    unsafe fn eval_t<T: Datum>(&self, input: &Tensor) -> TractResult<Tensor> {
-        let mut input = input.to_array_view_unchecked::<T>();
-        input.slice_axis_inplace(
-            Axis(self.axis),
-            ndarray::Slice::from((self.start.to_isize()?)..(self.end.to_isize()?)),
-        );
-        Ok(Tensor::from(input.to_owned()).into())
     }
 }
 
@@ -59,9 +49,12 @@ impl EvalOp for Slice {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         unsafe {
-            let mut tensor =
-                dispatch_datum_by_size!(Self::eval_t(input.datum_type())(self, &input))?;
-            tensor.set_datum_type(input.datum_type());
+            let start = self.start.to_usize()?;
+            let end = self.end.to_usize()?;
+            let mut shape: TVec<_> = input.shape().into();
+            shape[self.axis] = end - start;
+            let mut tensor = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
+            tensor.assign_slice_unchecked(.., &input, start..end, self.axis);
             Ok(tvec!(tensor.into_arc_tensor()))
         }
     }
