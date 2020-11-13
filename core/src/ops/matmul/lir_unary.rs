@@ -150,7 +150,7 @@ impl TypedOp for LirMatMulUnary {
                 (mul * self.mmm.m() * self.mmm.n() * self.mmm.k()).to_dim()
             ),
             (
-                Cost::Params(self.packed_as[0].datum_type()),
+                Cost::Params(self.packed_as.as_slice().unwrap()[0].datum_type()),
                 self.packed_as.iter().fold(0.to_dim(), |sum, a| sum + a.len())
             )
         ))
