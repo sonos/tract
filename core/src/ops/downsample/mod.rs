@@ -21,7 +21,7 @@ impl Downsample {
     pub(crate) fn transform_fact(&self, input_fact: &TypedFact) -> TractResult<TypedFact> {
         let mut downed = input_fact.clone();
         let down_len = self.transform_dim(&input_fact.shape[self.axis]);
-        downed.shape[self.axis] = down_len.clone();
+        downed.shape.set(self.axis, down_len.clone());
         if let Some(k) = downed.konst {
             let mut outputs = self.eval(tvec!(k))?;
             downed.konst = Some(outputs.remove(0));
@@ -88,7 +88,7 @@ impl TypedOp for Downsample {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut downed = inputs[0].clone();
         let down_len = self.transform_dim(&downed.shape[self.axis]);
-        downed.shape[self.axis] = down_len.clone();
+        downed.shape.set(self.axis, down_len.clone());
         Ok(tvec!(downed))
     }
 

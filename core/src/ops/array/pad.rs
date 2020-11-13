@@ -116,7 +116,7 @@ impl TypedOp for Pad {
             bail!("Inconsistent pad: input of rank {}, pads are: {:?}", fact.rank(), self.pads);
         }
         for (ix, (b, e)) in self.pads.iter().enumerate() {
-            fact.shape[ix] = fact.shape[ix].clone() + *b + *e;
+            fact.shape.set(ix, fact.shape[ix].clone() + *b + *e);
         }
         Ok(tvec!(fact))
     }

@@ -329,7 +329,7 @@ impl Scan {
                         patch_inputs.push(new_input_wire);
                         let new_input_outer_fact = outside_patch.outlet_fact(new_input_wire)?;
                         let mut new_input_inner_fact = new_input_outer_fact.clone();
-                        new_input_inner_fact.shape[axis_after] = chunk.abs().to_dim();
+                        new_input_inner_fact.shape.set(axis_after, chunk.abs().to_dim());
 
                         let mut new_body = self.body.clone();
                         let new_source_wire = new_body.add_source(
@@ -618,7 +618,7 @@ impl TypedOp for Scan {
                 let mut shape = fact.shape.clone();
                 let scanning_dim =
                     output.full_dim_hint.clone().unwrap_or(shape[output.axis].maybe_mul(&iters)?);
-                shape[output.axis] = scanning_dim;
+                shape.set(output.axis, scanning_dim);
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
             }
             if let Some(slot) = output.last_value_slot {

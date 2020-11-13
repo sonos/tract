@@ -72,7 +72,7 @@ impl PulsedFact {
 
     pub fn to_streaming_fact(&self) -> TypedFact {
         let mut info = self.to_pulse_fact();
-        info.shape[self.axis] = self.dim.clone();
+        info.shape.set(self.axis, self.dim.clone());
         info
     }
 }

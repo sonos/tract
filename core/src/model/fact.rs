@@ -25,75 +25,93 @@ dyn_clone::clone_trait_object!(Fact);
 /// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
 /// (sometimes hypothetical) tensor length on the streaming axis.
 #[derive(Clone, PartialEq, Hash)]
-pub struct ShapeFact(TVec<TDim>);
+pub struct ShapeFact {
+    dims: TVec<TDim>,
+    concrete: Option<TVec<usize>>,
+}
 
 impl std::ops::Deref for ShapeFact {
     type Target = [TDim];
     fn deref(&self) -> &[TDim] {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for ShapeFact {
-    fn deref_mut(&mut self) -> &mut [TDim] {
-        &mut self.0
+        &self.dims
     }
 }
 
 impl ShapeFact {
     /// Rank of the tensor.
     pub fn rank(&self) -> usize {
-        self.0.len()
+        self.dims.len()
     }
 
     pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
-        self.0.insert(axis, 1.into());
+        self.dims.insert(axis, 1.into());
+        if let Some(concrete) = &mut self.concrete {
+            concrete.insert(axis, 1);
+        }
         Ok(())
     }
 
     pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
-        self.0.remove(axis);
+        self.dims.remove(axis);
+        if let Some(concrete) = &mut self.concrete {
+            concrete.remove(axis);
+        }
         Ok(())
     }
 
+    pub fn set(&mut self, ix: usize, dim: TDim) {
+        self.dims[ix] = dim;
+        self.compute_concrete();
+    }
+
     /// Shape of the tensor, unless it is streaming.
-    pub fn as_finite(&self) -> Option<TVec<usize>> {
-        self.0.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
+    pub fn as_finite(&self) -> Option<&[usize]> {
+        self.concrete.as_deref()
     }
 
     /// Iterator over dimension of the shape.
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = TDim> + 'a {
-        self.0.iter().cloned()
+        self.dims.iter().cloned()
     }
 
     /// Convert the shape to an array of extended dimensions.
     pub fn to_tvec(&self) -> TVec<TDim> {
-        self.iter().collect::<TVec<TDim>>()
+        self.dims.clone()
     }
 
-    pub fn from_dims<T: AsRef<[TDim]> + std::fmt::Debug>(it: T) -> TractResult<ShapeFact> {
-        Ok(ShapeFact(it.as_ref().iter().cloned().collect()))
+    pub fn from_dims<D: ToDim, T: IntoIterator<Item = D> + std::fmt::Debug>(
+        it: T,
+    ) -> TractResult<ShapeFact> {
+        let mut fact =
+            ShapeFact { dims: it.into_iter().map(|d| d.to_dim()).collect(), concrete: None };
+        fact.compute_concrete();
+        Ok(fact)
+    }
+
+    fn compute_concrete(&mut self) {
+        self.concrete =
+            self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
     }
 }
 
 impl TryFrom<()> for ShapeFact {
     type Error = TractError;
     fn try_from(_it: ()) -> TractResult<ShapeFact> {
-        ShapeFact::from_dims([0.to_dim(); 0].as_ref())
+        ShapeFact::from_dims(&[0usize; 0])
     }
 }
 
 impl TryFrom<&[TDim]> for ShapeFact {
     type Error = TractError;
     fn try_from(it: &[TDim]) -> TractResult<ShapeFact> {
-        ShapeFact::from_dims(it)
+        ShapeFact::from_dims(it.iter())
     }
 }
 
 impl TryFrom<&[usize]> for ShapeFact {
     type Error = TractError;
     fn try_from(it: &[usize]) -> TractResult<ShapeFact> {
-        Ok(ShapeFact(it.iter().map(|d| d.to_dim()).collect()))
+        Ok(ShapeFact::from_dims(it.iter()).unwrap())
     }
 }
 
@@ -107,7 +125,7 @@ impl fmt::Debug for ShapeFact {
 impl<T: AsRef<[usize]>> std::cmp::PartialEq<T> for ShapeFact {
     fn eq(&self, other: &T) -> bool {
         let other = other.as_ref();
-        other.len() == self.rank() && other.iter().zip(self.0.iter()).all(|(i, d)| &i.to_dim() == d)
+        other.len() == self.rank() && other.iter().zip(self.iter()).all(|(i, d)| i.to_dim() == d)
     }
 }
 
@@ -221,7 +239,7 @@ impl From<Arc<Tensor>> for TypedFact {
     fn from(t: Arc<Tensor>) -> TypedFact {
         TypedFact {
             datum_type: t.datum_type(),
-            shape: ShapeFact(t.shape().iter().map(TDim::from).collect()),
+            shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)).unwrap(),
             konst: Some(t),
         }
     }

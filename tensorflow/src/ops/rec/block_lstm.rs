@@ -106,7 +106,7 @@ impl Expansion for BlockLSTM {
         outer_inputs.push(inputs[1]);
         input_mapping.push(scan::InputMapping::Scan { slot: 1, axis: 0, chunk: 1 });
         let mut x_source_fact = model.outlet_fact(inputs[1])?.clone();
-        x_source_fact.shape[0] = 1.to_dim();
+        x_source_fact.shape.set(0, 1.to_dim());
         let x_source = body.add_source("x_source", x_source_fact)?.into();
         wire!(x = AxisOp::Rm(0), x_source);
 
