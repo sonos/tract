@@ -38,7 +38,7 @@ impl EvalOp for FiniteReshape {
 
 impl TypedOp for FiniteReshape {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &self.shape)))
     }
 
     as_op!();

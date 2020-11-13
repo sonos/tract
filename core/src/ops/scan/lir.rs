@@ -300,14 +300,14 @@ impl TypedOp for LirScan {
         for (ix, output) in self.output_mapping.iter().enumerate() {
             let fact = self.plan.model().output_fact(ix)?;
             if let Some(slot) = output.last_value_slot {
-                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())?));
+                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())));
             }
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();
                 let scanning_dim =
                     output.full_dim_hint.clone().unwrap_or(shape[output.axis].maybe_mul(&iters)?);
                 shape.set(output.axis, scanning_dim);
-                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
+                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)));
             }
         }
         outputs.sort_by_key(|a| a.0);

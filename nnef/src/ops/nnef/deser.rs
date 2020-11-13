@@ -21,7 +21,7 @@ pub fn external(
         todo!()
     };
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
-    Ok(tvec!(builder.model.add_source("", TypedFact::dt_shape(dt, &*shape)?)?))
+    Ok(tvec!(builder.model.add_source("", TypedFact::dt_shape(dt, &shape))?))
 }
 
 // fragment variable<? = scalar>( shape: integer[], label: string ) -> ( output: tensor<?> );

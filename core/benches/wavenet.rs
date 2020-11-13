@@ -60,10 +60,10 @@ fn mmm(c: &mut Criterion) {
                 let op = tract_core::ops::matmul::lir_unary::LirMatMulUnary {
                     c_trans: true,
                     bc_c_shape: tvec!(8, 64),
-                    c_fact: TypedFact::dt_shape(f32::datum_type(), [8, 64].as_ref()).unwrap(),
+                    c_fact: TypedFact::dt_shape(f32::datum_type(), &[8, 64]),
                     c_prefix_dim_and_stride: None,
                     packed_as: tract_ndarray::arr0(packed_a.into_arc_tensor()).into_dyn(),
-                    fused_ops:None,
+                    fused_ops: None,
                     mmm,
                 };
                 (input, op)

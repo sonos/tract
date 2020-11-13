@@ -12,7 +12,7 @@
 //! // build a simple model that just add 3 to each input component
 //! let mut model = TypedModel::default();
 //!
-//! let input_fact = TypedFact::dt_shape(f32::datum_type(), [3].as_ref()).unwrap();
+//! let input_fact = TypedFact::dt_shape(f32::datum_type(), &[3]);
 //! let input = model.add_source("input", input_fact).unwrap();
 //! let three = model.add_const("three".to_string(), tensor1(&[3f32])).unwrap();
 //! let add = model.wire_node("add".to_string(),

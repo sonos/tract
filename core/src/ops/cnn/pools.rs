@@ -92,7 +92,7 @@ impl PoolSpec {
             self.output_channel_override.map(|i| i.to_dim()).unwrap_or(ishape.c().clone()),
             spatial_dims,
         )?;
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*oshape.shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, oshape.shape)))
     }
 
     pub fn dispose_n_axis(&self) -> PoolSpec {

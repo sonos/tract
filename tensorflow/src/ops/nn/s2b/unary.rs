@@ -61,7 +61,7 @@ impl EvalOp for SpaceToBatchUnary {
 
 impl TypedOp for SpaceToBatchUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.batch_shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &self.batch_shape)))
     }
 
     fn declutter(
@@ -156,6 +156,6 @@ impl TypedOp for BatchToSpaceUnary {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.space_shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &self.space_shape)))
     }
 }

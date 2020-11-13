@@ -303,7 +303,7 @@ impl TypedOp for DequantizeLinearF32 {
                 if incoming_dt == DatumType::I8 || incoming_dt == DatumType::U8 {
                     let mut adhoc_model = TypedModel::default();
                     let mut wire = adhoc_model
-                        .add_source("ad-hoc", TypedFact::dt_shape(dt, [256].as_ref())?)?;
+                        .add_source("ad-hoc", TypedFact::dt_shape(dt, &[256]))?;
                     let mut next = model.single_succ(dequant.id)?.unwrap();
                     let mut name = None;
                     // plug in dequant

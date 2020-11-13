@@ -619,10 +619,10 @@ impl TypedOp for Scan {
                 let scanning_dim =
                     output.full_dim_hint.clone().unwrap_or(shape[output.axis].maybe_mul(&iters)?);
                 shape.set(output.axis, scanning_dim);
-                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)?));
+                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)));
             }
             if let Some(slot) = output.last_value_slot {
-                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())?));
+                outputs.push((slot, TypedFact::dt_shape(fact.datum_type, fact.shape.clone())));
             }
         }
         outputs.sort_by_key(|a| a.0);

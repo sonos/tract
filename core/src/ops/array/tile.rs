@@ -62,6 +62,6 @@ impl TypedOp for Tile {
             .zip(self.multipliers.iter())
             .map(|(a, &b)| a.clone() * b)
             .collect::<TVec<_>>();
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)?))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)))
     }
 }

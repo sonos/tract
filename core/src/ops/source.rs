@@ -76,7 +76,7 @@ impl TypedOp for TypedSource {
         let shape: TVec<_> = self.fact.shape.iter().map(|d| d.eval(values)).collect();
         target.wire_node(
             &node.name,
-            Self { fact: TypedFact::dt_shape(self.fact.datum_type, &*shape)? },
+            Self { fact: TypedFact::dt_shape(self.fact.datum_type, &*shape) },
             &[],
         )
     }

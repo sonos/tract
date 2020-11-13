@@ -155,9 +155,6 @@ impl TypedOp for EyeLike {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(
-            self.dt.unwrap_or(inputs[0].datum_type),
-            inputs[0].shape.clone()
-        )?))
+        Ok(tvec!(TypedFact::dt_shape(self.dt.unwrap_or(inputs[0].datum_type), inputs[0].shape.iter())))
     }
 }

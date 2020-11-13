@@ -230,8 +230,8 @@ impl ConvUnary {
                 bc_c_shape: output_shape.shape.clone(),
                 c_fact: TypedFact::dt_shape(
                     self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(a_dt),
-                    &*output_shape.shape,
-                )?,
+                    output_shape.shape,
+                ),
                 c_prefix_dim_and_stride,
                 packed_as: kernels,
                 fused_ops,
@@ -417,7 +417,7 @@ impl EvalOp for ConvUnary {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut model = TypedModel::default();
         let dt = inputs[0].datum_type();
-        let wire = model.add_source("source", TypedFact::dt_shape(dt, inputs[0].shape())?)?;
+        let wire = model.add_source("source", TypedFact::dt_shape(dt, inputs[0].shape()))?;
         let wire = unsafe {
             self.wire_as_im2col_pair(
                 &mut model,
