@@ -9,7 +9,7 @@ pub struct OneHot {
     pub on: Arc<Tensor>,
 }
 
-tract_data::impl_dyn_hash!(OneHot);
+impl_dyn_hash!(OneHot);
 
 impl Op for OneHot {
     fn name(&self) -> Cow<str> {
@@ -24,7 +24,7 @@ impl TypedOp for OneHot {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape = inputs[0].shape.to_tvec();
         shape.insert(self.axis, self.dim.to_dim());
-        Ok(tvec!(TypedFact::dt_shape(self.off.datum_type(), &*shape)?))
+        Ok(tvec!(TypedFact::dt_shape(self.off.datum_type(), &*shape)))
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {

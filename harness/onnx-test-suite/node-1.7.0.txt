@@ -187,13 +187,13 @@ test_greater_equal_expanded
 test_gru_defaults
 test_gru_seq_length
 test_gru_with_initial_bias
-test_hardmax_axis_0 not-nnef
-test_hardmax_axis_1 not-nnef
-test_hardmax_axis_2 not-nnef
-test_hardmax_default_axis not-nnef
-test_hardmax_example not-nnef
-test_hardmax_negative_axis not-nnef
-test_hardmax_one_hot not-nnef
+test_hardmax_axis_0
+test_hardmax_axis_1
+test_hardmax_axis_2
+test_hardmax_default_axis
+test_hardmax_example
+test_hardmax_negative_axis
+test_hardmax_one_hot
 test_hardsigmoid
 test_hardsigmoid_default
 test_hardsigmoid_example

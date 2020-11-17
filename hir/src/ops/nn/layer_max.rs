@@ -10,49 +10,12 @@ pub struct LayerHardmax {
 
 impl_dyn_hash!(LayerHardmax);
 
-impl LayerHardmax {
-    fn eval_t<D: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive>(
-        &self,
-        input: Arc<Tensor>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        let array = input.into_tensor().into_array::<D>()?;
-        let shape = array.shape().to_vec();
-        let axis =
-            if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
-        let first_dim: usize = array.shape()[0..axis].iter().product();
-        let second_dim: usize = array.len() / first_dim;
-        let mut array = array.into_shape((first_dim, second_dim))?;
-        array.outer_iter_mut().for_each(|mut layer| {
-            let max = layer
-                .iter()
-                .enumerate()
-                .rev()
-                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(b.0.cmp(&a.0)))
-                .map(|(ix, _)| ix)
-                .unwrap_or(0);
-            layer
-                .iter_mut()
-                .enumerate()
-                .for_each(|(ix, r)| *r = D::from_usize((ix == max) as usize).unwrap());
-        });
-        Ok(tvec!(array.into_shape(shape)?.into_arc_tensor()))
-    }
-}
-
-impl Op for LayerHardmax {
+impl Expansion for LayerHardmax {
     fn name(&self) -> Cow<str> {
         "LayerHardmax".into()
     }
-
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axis: {}", self.axis)])
-    }
-
     op_hir!();
-    op_as_typed_op!();
-}
 
-impl InferenceRulesOp for LayerHardmax {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
@@ -62,28 +25,49 @@ impl InferenceRulesOp for LayerHardmax {
         rules(solver, inputs, outputs)
     }
 
-    as_op!();
-    to_typed!();
+    fn wire(
+        &self,
+        name: &str,
+        target: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        use tract_core::ops::{array, change_axes, nn};
+        let input = inputs[0];
+        let input_fact = target.outlet_fact(input)?.clone();
+        let input_dt = input_fact.datum_type;
+        let rank = input_fact.rank();
+        let axis = if self.axis < 0 { rank as isize + self.axis } else { self.axis } as usize;
+        let suffix_dim: TDim = input_fact.shape[axis..].iter().maybe_product()?;
+        let dim = suffix_dim
+            .to_usize()
+            .context("OneHot assumes known dimension on working axes suffix.")?;
+        let off = tensor0(0f32).cast_to_dt(input_dt)?.into_owned().into_arc_tensor();
+        let on = tensor0(1f32).cast_to_dt(input_dt)?.into_owned().into_arc_tensor();
+        let mut wires = target.wire_node(
+            format!("{}.reshaped", name),
+            AxisOp::Reshape(axis, input_fact.shape[axis..].into(), tvec!(suffix_dim.clone())),
+            &[input],
+        )?;
+        wires = target.wire_node(
+            format!("{}.argmax", name),
+            nn::Reduce::new(tvec!(axis), nn::Reducer::ArgMax(false)),
+            &wires,
+        )?;
+        wires =
+            target.wire_node(format!("{}.rm_axis", name), change_axes::AxisOp::Rm(axis), &wires)?;
+        wires = target.wire_node(
+            format!("{}.hardmax", name),
+            array::OneHot { axis, dim, off, on },
+            &wires,
+        )?;
+        target.wire_node(
+            format!("{}.hardmax_reshaped", name),
+            AxisOp::Reshape(axis, tvec!(suffix_dim), input_fact.shape[axis..].into()),
+            &wires,
+        )
+    }
 }
 
-impl EvalOp for LayerHardmax {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
-    }
-}
-
-impl TypedOp for LayerHardmax {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].clone()))
-    }
-
-    as_op!();
-}
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct LayerLogSoftmax {
