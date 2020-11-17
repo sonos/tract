@@ -182,32 +182,13 @@ macro_rules! mmm_frame_tests {
 macro_rules! mmm_s_frame_tests {
     ($cond:expr, $ker:ty, $ta: ty, $tb: ty, $tc: ty, $ti: ty) => {
         mod frame_s {
+            /*
             #[allow(unused_imports)]
             use num_traits::*;
             use std::ops::Neg;
             use $crate::frame::mmm::tests::ConvProblem;
             use $crate::*;
-
-            #[test]
-            fn conv_prepacked_3() {
-                if $cond {
-                    let mut filters = vec![<$ta>::zero(); 4];
-                    filters[3] = <$ta>::one().neg();
-                    let data = vec![<$tb>::zero(); 4];
-                    let pb = ConvProblem::<$ta, $tb> {
-                        ci: 1,
-                        co: 1,
-                        kt: 1,
-                        stride: 1,
-                        dilation: 1,
-                        filters: tensor1(&filters),
-                        data: tensor1(&data).into_shape(&[1, 4]).unwrap(),
-                        phantom: std::marker::PhantomData,
-                    };
-                    let expected = pb.expected::<$tc, $ti>();
-                    pb.run::<$ker, $tc, $ti>().close_enough(&expected, true).unwrap();
-                }
-            }
+            */
         }
     };
 }
