@@ -19,10 +19,6 @@ pub trait MatMatMul:
     fn b_storage(&self) -> &MatrixStoreSpec;
     fn c_storage(&self) -> &MatrixStoreSpec;
 
-    fn m(&self) -> usize;
-    fn k(&self) -> usize;
-    fn n(&self) -> usize;
-
     fn internal_type(&self) -> DatumType;
 
     unsafe fn set_zero_point_a(&mut self, value: Tensor);
@@ -144,18 +140,6 @@ where
 
     fn b_pack(&self) -> PackB {
         PackB::new(self.k, self.n, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
-    }
-
-    fn m(&self) -> usize {
-        self.m
-    }
-
-    fn n(&self) -> usize {
-        self.n
-    }
-
-    fn k(&self) -> usize {
-        self.k
     }
 
     fn internal_type(&self) -> DatumType {

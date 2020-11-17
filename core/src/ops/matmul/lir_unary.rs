@@ -14,13 +14,26 @@ pub struct LirMatMulUnary {
     pub fused_ops: Option<ArrayD<Vec<FusedSpec>>>,
     #[educe(Hash(method = "hash_mmm"))]
     pub mmm: Box<dyn MatMatMul>,
+    pub k: usize,
+}
+
+impl LirMatMulUnary {
+    pub fn m(&self) -> usize {
+        self.c_fact.shape[self.c_fact.rank() - 2 + !self.c_trans as usize].to_usize().unwrap()
+    }
+
+    pub fn k(&self) -> usize {
+        self.k
+    }
+
+    pub fn n(&self) -> &TDim {
+        &self.c_fact.shape[self.c_fact.rank() - 2 + self.c_trans as usize]
+    }
 }
 
 fn hash_mmm<H: std::hash::Hasher>(mmm: &Box<dyn MatMatMul>, state: &mut H) {
     // FIXME: this is buggy, but it should not matter too much
-    mmm.m().hash(state);
-    mmm.k().hash(state);
-    mmm.n().hash(state);
+    mmm.type_id().hash(state)
 }
 
 impl DynHash for LirMatMulUnary {
@@ -37,11 +50,7 @@ impl Op for LirMatMulUnary {
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
             "c_prefix: {:?} m:{} k:{} n:{} c_trans:{:?}",
-            self.c_prefix_dim_and_stride,
-            self.mmm.m(),
-            self.mmm.k(),
-            self.mmm.n(),
-            self.c_trans
+            self.c_prefix_dim_and_stride, 0, 0, 0, self.c_trans
         )];
         infos.push(format!("Mult: {}", self.mmm));
         if let Some(f) = &self.fused_ops {
@@ -54,75 +63,103 @@ impl Op for LirMatMulUnary {
     op_as_typed_op!();
 }
 
+#[derive(Clone, Debug)]
+struct State;
+impl OpState for State {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        op: &dyn Op,
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
+        let c_shape: TVec<usize> = op
+            .c_fact
+            .shape
+            .iter()
+            .map(|d| d.eval(&session.resolved_symbols).to_usize())
+            .collect::<TractResult<_>>()?;
+        eval(op, &inputs[0], &c_shape)
+    }
+}
+
 impl EvalOp for LirMatMulUnary {
     fn is_stateless(&self) -> bool {
-        true
+        self.c_fact.shape.as_finite().is_some()
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        unsafe {
-            let b = args_1!(inputs);
-            let mut c = Tensor::uninitialized_dt(
-                self.c_fact.datum_type,
-                &self.c_fact.shape.as_finite().unwrap(),
-            )?;
-            if let Some((prefix_dim, prefix_strides)) = &self.c_prefix_dim_and_stride {
-                let mut tmp_shape: TVec<usize> = prefix_dim.iter().copied().collect();
-                tmp_shape.push(self.mmm.m());
-                tmp_shape.push(self.mmm.n());
-                let mut tmp_strides: TVec<isize> = prefix_strides.iter().copied().collect();
-                tmp_strides.push(0);
-                tmp_strides.push(0);
-                for prefix in indices(&**prefix_dim).into_iter() {
-                    let mut c = TensorView::from_bytes(&c, 0, &tmp_shape, &tmp_strides);
-                    let mut a = self.packed_as.view();
-                    let mut b_prefix = tvec!();
-                    for (ix, &dim) in prefix.slice().iter().enumerate() {
-                        a.index_axis_inplace(Axis(0), dim.min(a.shape()[0] - 1));
-                        b_prefix.push(dim.min(b.shape()[ix] - 1));
-                        c.offset_axis_unchecked(ix, dim as isize);
-                    }
-                    let pa: &Tensor = a.iter().next().unwrap();
-                    if let Some(fused) = &self.fused_ops {
-                        let mut fused = fused.view();
-                        for &dim in prefix.slice() {
-                            let d = dim.min(fused.shape()[0] - 1);
-                            fused.index_axis_inplace(Axis(0), d);
-                        }
-                        self.mmm.run(
-                            &pa.view(),
-                            &TensorView::at_prefix_unchecked(&b, &*b_prefix),
-                            &mut c,
-                            &fused.as_slice().unwrap()[0],
-                        )?;
-                    } else {
-                        self.mmm.run(
-                            &pa.view(),
-                            &TensorView::at_prefix_unchecked(&b, &*b_prefix),
-                            &mut c,
-                            &[],
-                        )?;
-                    }
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(State)))
+    }
+
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        eval(self, &inputs[0], self.c_fact.shape.as_finite().unwrap())
+    }
+}
+
+fn eval(op: &LirMatMulUnary, input: &Tensor, c_shape: &[usize]) -> TractResult<TVec<Arc<Tensor>>> {
+    unsafe {
+        let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
+        if let Some((prefix_dim, prefix_strides)) = &op.c_prefix_dim_and_stride {
+            let mut tmp_shape: TVec<usize> = prefix_dim.iter().copied().collect();
+            tmp_shape.push(c_shape[c_shape.len() - 2 + op.c_trans as usize]);
+            tmp_shape.push(c_shape[c_shape.len() - 2 + op.c_trans as usize]);
+            let mut tmp_strides: TVec<isize> = prefix_strides.iter().copied().collect();
+            tmp_strides.push(0);
+            tmp_strides.push(0);
+            for prefix in indices(&**prefix_dim).into_iter() {
+                let mut c = TensorView::from_bytes(&c, 0, &tmp_shape, &tmp_strides);
+                let mut a = op.packed_as.view();
+                let mut b_prefix = tvec!();
+                for (ix, &dim) in prefix.slice().iter().enumerate() {
+                    a.index_axis_inplace(Axis(0), dim.min(a.shape()[0] - 1));
+                    b_prefix.push(dim.min(input.shape()[ix] - 1));
+                    c.offset_axis_unchecked(ix, dim as isize);
                 }
-            } else {
-                if let Some(fused) = &self.fused_ops {
-                    self.mmm.run(
-                        &self.packed_as.as_ptr().as_ref().unwrap().view(),
-                        &b.view(),
-                        &mut c.view_mut(),
-                        &fused.as_ptr().as_ref().unwrap(),
+                let pa: &Tensor = a.iter().next().unwrap();
+                if let Some(fused) = &op.fused_ops {
+                    let mut fused = fused.view();
+                    for &dim in prefix.slice() {
+                        let d = dim.min(fused.shape()[0] - 1);
+                        fused.index_axis_inplace(Axis(0), d);
+                    }
+                    op.mmm.run(
+                        &pa.view(),
+                        &TensorView::at_prefix_unchecked(&input, &*b_prefix),
+                        &mut c,
+                        &fused.as_slice().unwrap()[0],
                     )?;
                 } else {
-                    self.mmm.run(
-                        &self.packed_as.as_ptr().as_ref().unwrap().view(),
-                        &b.view(),
-                        &mut c.view_mut(),
+                    op.mmm.run(
+                        &pa.view(),
+                        &TensorView::at_prefix_unchecked(&input, &*b_prefix),
+                        &mut c,
                         &[],
                     )?;
                 }
             }
-            Ok(tvec!(c.into_arc_tensor()))
+        } else {
+            if let Some(fused) = &op.fused_ops {
+                op.mmm.run(
+                    &op.packed_as.as_ptr().as_ref().unwrap().view(),
+                    &input.view(),
+                    &mut c.view_mut(),
+                    &fused.as_ptr().as_ref().unwrap(),
+                )?;
+            } else {
+                op.mmm.run(
+                    &op.packed_as.as_ptr().as_ref().unwrap().view(),
+                    &input.view(),
+                    &mut c.view_mut(),
+                    &[],
+                )?;
+            }
         }
+        Ok(tvec!(c.into_arc_tensor()))
     }
 }
 
@@ -143,12 +180,14 @@ impl TypedOp for LirMatMulUnary {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let mul = self.c_prefix_dim_and_stride.as_ref().map(|c| c.0.iter().product()).unwrap_or(1);
+        let mul = self
+            .c_prefix_dim_and_stride
+            .as_ref()
+            .map(|c| c.0.iter().product())
+            .unwrap_or(1)
+            .to_dim();
         Ok(tvec!(
-            (
-                Cost::FMA(self.mmm.internal_type()),
-                (mul * self.mmm.m() * self.mmm.n() * self.mmm.k()).to_dim()
-            ),
+            (Cost::FMA(self.mmm.internal_type()), mul.maybe_mul(self.n())? * self.m() * self.k()),
             (
                 Cost::Params(self.packed_as.as_slice().unwrap()[0].datum_type()),
                 self.packed_as.iter().fold(0.to_dim(), |sum, a| sum + a.len())
@@ -169,7 +208,7 @@ impl TypedOp for LirMatMulUnary {
                 }
             }
             let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                let m = self.mmm.m();
+                let m = self.m();
                 if op.a.len() == m
                     && op.a.shape()[op.a.rank() - 1 - ((!self.c_trans) as usize)] == m
                 {
