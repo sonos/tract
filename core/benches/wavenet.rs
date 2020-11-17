@@ -2,6 +2,7 @@ extern crate criterion;
 extern crate tract_core;
 use criterion::*;
 
+use DatumType::F32;
 use nn::DataFormat::HWC;
 use tract_core::internal::*;
 use tract_core::ops::{cnn, nn};
@@ -29,7 +30,7 @@ fn im2col(c: &mut Criterion) {
                         1,
                         16,
                         //        tract_linalg::ops().mmm(64, 48, 8, f32::datum_type(), f32::datum_type(), f32::datum_type()),
-                        (tract_linalg::ops().mmm_f32)(64, 48, 8).b_pack(),
+                        tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap().b_pack(),
                         tensor0(0.0f32),
                     )
                     .unwrap();
@@ -47,7 +48,7 @@ fn mmm(c: &mut Criterion) {
     c.bench_function("matmatmul", |b| {
         b.iter_with_setup(
             || {
-                let mmm = (tract_linalg::ops().mmm_f32)(64, 48, 8);
+                let mmm = tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap();
                 let packed_a = Tensor::zero_aligned_dt(
                     f32::datum_type(),
                     &[mmm.a_pack().len()],
@@ -65,6 +66,7 @@ fn mmm(c: &mut Criterion) {
                     packed_as: tract_ndarray::arr0(packed_a.into_arc_tensor()).into_dyn(),
                     fused_ops: None,
                     mmm,
+                    k: 48
                 };
                 (input, op)
             },

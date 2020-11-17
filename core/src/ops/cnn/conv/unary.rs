@@ -236,6 +236,7 @@ impl ConvUnary {
                 packed_as: kernels,
                 fused_ops,
                 mmm,
+                k
             },
             &[wire],
         )?[0];

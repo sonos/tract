@@ -5,6 +5,7 @@ extern crate tract_linalg;
 use criterion::Criterion;
 
 use tract_data::internal::*;
+use DatumType::F32;
 
 fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) {
     c.bench_function(&format!("conv_d{}p{}ci{}co{}", dilation, pulse, ci, co), move |be| unsafe {
@@ -12,7 +13,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
         let data_offsets: Vec<_> = (0..pulse).map(|x| x as isize).collect();
         let kernel_offsets: Vec<_> =
             (0..ci).flat_map(|ici| (0..3).map(move |x| (ici * t * 3 + x * t) as isize)).collect();
-        let mut conv = (tract_linalg::ops().mmm_f32)(co, kernel_offsets.len(), data_offsets.len());
+        let mut conv = tract_linalg::ops().mmm(F32, F32, F32, co, kernel_offsets.len(), data_offsets.len()).unwrap();
         conv.c_from_data_and_strides(t as _, 1);
         let a =
             Tensor::zero_aligned::<f32>(&[conv.a_pack().len()], conv.a_pack().alignment()).unwrap();

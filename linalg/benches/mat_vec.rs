@@ -1,6 +1,8 @@
 use criterion::*;
 use tract_data::internal::*;
 
+use DatumType::F32;
+
 fn mat_vec_mul(c: &mut Criterion) {
     let mut group = c.benchmark_group("mat_vec_mul");
     unsafe {
@@ -10,7 +12,7 @@ fn mat_vec_mul(c: &mut Criterion) {
                 BenchmarkId::from_parameter(format!("{}x{}", m, k)),
                 &(m, k),
                 |be, (&m, &k)| {
-                    let mut mm = (tract_linalg::ops().mmm_f32)(m, k, 1);
+                    let mut mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, 1).unwrap();
                     let pa = Tensor::uninitialized_aligned::<f32>(
                         &[mm.a_pack().len()],
                         mm.a_pack().alignment(),
