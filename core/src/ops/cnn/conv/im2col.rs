@@ -1,4 +1,4 @@
-use tract_linalg::frame::PackB;
+use tract_linalg::frame::Packer;
 
 use crate::internal::*;
 use ndarray::prelude::*;
@@ -17,7 +17,7 @@ pub struct Im2Col {
     pub n: usize,
     pub group: usize,
     pub ci_per_group: usize,
-    pub b_pack: PackB,
+    pub b_pack: Packer,
     patcher: Patcher,
     pad_value: Tensor,
 }
@@ -49,7 +49,7 @@ impl Im2Col {
         n: usize,
         group: usize,
         ci_per_group: usize,
-        b_pack: PackB,
+        b_pack: Packer,
         pad_value: Tensor,
     ) -> TractResult<Im2Col> {
         let patcher = if !patch.padded && patch.rank() == 2 {

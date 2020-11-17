@@ -1,25 +1,25 @@
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::frame::PackB;
+use tract_linalg::frame::Packer;
 
 #[derive(Debug, Clone, PartialEq, Educe)]
 #[educe(Hash)]
-pub struct MatMatMulPackB {
-    pub(crate) pack_b: PackB,
+pub struct MatMatMulPack {
+    pub(crate) packer: Packer,
     pub(crate) trans: bool,
     pub(crate) output_shape: TVec<usize>,
 }
 
-impl DynHash for MatMatMulPackB {
+impl DynHash for MatMatMulPack {
     fn dyn_hash(&self, hasher: &mut dyn std::hash::Hasher) {
         dyn_hash(&self, hasher)
     }
 }
 
-impl Op for MatMatMulPackB {
+impl Op for MatMatMulPack {
     fn name(&self) -> Cow<str> {
-        "MatMatMulPackB".into()
+        "MatMatMulPacker".into()
     }
 
     fn same_as(&self, other: &dyn Op) -> bool {
@@ -30,7 +30,7 @@ impl Op for MatMatMulPackB {
     op_as_typed_op!();
 }
 
-impl EvalOp for MatMatMulPackB {
+impl EvalOp for MatMatMulPack {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -40,10 +40,10 @@ impl EvalOp for MatMatMulPackB {
         let dt = b.datum_type();
         unsafe {
             let mut packed =
-                Tensor::uninitialized_aligned_dt(dt, &*self.output_shape, self.pack_b.alignment())
+                Tensor::uninitialized_aligned_dt(dt, &*self.output_shape, self.packer.alignment())
                     .unwrap();
             for prefix in indices(&b.shape()[..b.rank() - 2]) {
-                self.pack_b.pack(
+                self.packer.pack(
                     &mut packed.view_at_prefix_mut(prefix.slice())?,
                     &b.view_at_prefix(prefix.slice())?,
                     self.trans as usize,
@@ -55,7 +55,7 @@ impl EvalOp for MatMatMulPackB {
     }
 }
 
-impl TypedOp for MatMatMulPackB {
+impl TypedOp for MatMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &self.output_shape)))
     }

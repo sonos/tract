@@ -1,6 +1,6 @@
 use super::fuse::ScratchSpaceFusedNonLinear;
 use super::*;
-use crate::frame::{PackA, PackB};
+use crate::frame::Packer;
 use num_traits::{AsPrimitive, Bounded, Zero};
 use std::fmt;
 use std::fmt::Debug;
@@ -12,8 +12,8 @@ use tract_data::internal::*;
 pub trait MatMatMul:
     Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
 {
-    fn a_pack(&self) -> PackA;
-    fn b_pack(&self) -> PackB;
+    fn a_pack(&self) -> Packer;
+    fn b_pack(&self) -> Packer;
 
     fn a_storage(&self) -> &MatrixStoreSpec;
     fn b_storage(&self) -> &MatrixStoreSpec;
@@ -134,12 +134,12 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
-    fn a_pack(&self) -> PackA {
-        PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
+    fn a_pack(&self) -> Packer {
+        Packer::new(self.k, K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
     }
 
-    fn b_pack(&self) -> PackB {
-        PackB::new(self.k, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
+    fn b_pack(&self) -> Packer {
+        Packer::new(self.k, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
     }
 
     fn internal_type(&self) -> DatumType {

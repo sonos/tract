@@ -3,16 +3,16 @@ use tract_data::internal::*;
 
 #[derive(Clone, Debug, Eq, PartialEq, Educe)]
 #[educe(Hash)]
-pub struct PackB {
+pub struct Packer {
     k: usize,
     r: usize,
     alignment: usize,
     end_padding_record: usize,
 }
 
-impl PackB {
-    pub fn new(k: usize, nr: usize, alignment: usize, end_padding_record: usize) -> PackB {
-        PackB { k, r: nr, alignment, end_padding_record }
+impl Packer {
+    pub fn new(k: usize, nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
+        Packer { k, r: nr, alignment, end_padding_record }
     }
 
     pub fn alignment(&self) -> usize {

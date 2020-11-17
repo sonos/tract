@@ -289,14 +289,15 @@ impl MatMulUnary {
             Array::from_shape_fn(&self.a.shape()[0..self.a.rank() - 2], |a_prefix| unsafe {
                 let mut pa = Tensor::uninitialized_aligned_dt(
                     self.a.datum_type(),
-                    &[mm.a_pack().len()],
+                    &[mm.a_pack().len(m)],
                     mm.a_pack().alignment(),
                 )
                 .unwrap();
                 mm.a_pack().pack(
                     &mut pa.view_mut(),
                     &self.a.view_at_prefix(a_prefix.slice()).unwrap(),
-                    self.a_trans,
+                    !self.a_trans as usize,
+                    self.a_trans as usize,
                 );
                 pa.into_arc_tensor()
             });
@@ -328,8 +329,8 @@ impl MatMulUnary {
             packed_b_shape.push(mm.b_pack().len(n));
             wire = patch.wire_node(
                 format!("{}.pack", &*node.name),
-                super::MatMatMulPackB {
-                    pack_b: mm.b_pack().clone(),
+                super::MatMatMulPack {
+                    packer: mm.b_pack(),
                     trans: self.b_trans,
                     output_shape: packed_b_shape,
                 },
