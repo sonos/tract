@@ -2,15 +2,13 @@
 pub mod lut;
 #[macro_use]
 pub mod mmm;
-pub mod pack_a;
-pub mod pack_b;
+pub mod pack;
 #[macro_use]
 pub mod sigmoid;
 #[macro_use]
 pub mod tanh;
 
-pub use pack_a::PackA;
-pub use pack_b::PackB;
+pub use pack::Packer;
 
 pub use self::mmm::{MatMatMul, MatMatMulImpl};
 

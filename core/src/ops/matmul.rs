@@ -1,7 +1,7 @@
 pub mod lir_unary;
 pub mod mir;
 pub mod mir_unary;
-pub mod pack_b;
+pub mod pack;
 
 use crate::internal::*;
 use tract_itertools::Itertools;
@@ -9,7 +9,7 @@ use tract_ndarray::prelude::*;
 
 pub use self::mir::MatMul;
 pub use self::mir_unary::MatMulUnary;
-use self::pack_b::MatMatMulPackB;
+use self::pack::MatMatMulPack;
 use crate::ops::quant::QParams;
 
 pub fn compute_shape<D: DimLike>(
@@ -87,7 +87,7 @@ pub(super) fn eval(
         let b_pack = mm.b_pack();
 
         let mut packed_a =
-            Tensor::uninitialized_aligned_dt(a.datum_type(), &[a_pack.len()], a_pack.alignment())?;
+            Tensor::uninitialized_aligned_dt(a.datum_type(), &[a_pack.len(m)], a_pack.alignment())?;
         let mut packed_b =
             Tensor::uninitialized_aligned_dt(b.datum_type(), &[b_pack.len(n)], b_pack.alignment())?;
 
@@ -98,7 +98,7 @@ pub(super) fn eval(
                 a_prefix.push(dim.min(a.shape()[axis] - 1));
                 b_prefix.push(dim.min(b.shape()[axis] - 1));
             }
-            a_pack.pack(packed_a.view_mut(), &a.view_at_prefix(&a_prefix)?, a_trans);
+            a_pack.pack(packed_a.view_mut(), &a.view_at_prefix(&a_prefix)?, !a_trans as usize, a_trans as usize);
             b_pack.pack(packed_b.view_mut(), &b.view_at_prefix(&b_prefix)?, b_trans as usize, !b_trans as usize);
             mm.run(
                 &packed_a.view(),

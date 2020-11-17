@@ -11,7 +11,7 @@ use crate::ops::matmul;
 use crate::ops::nn::{DataFormat, DataShape};
 use crate::ops::quant::QParams;
 
-use tract_linalg::frame::PackA;
+use tract_linalg::frame::Packer;
 use tract_linalg::mmm::FusedSpec;
 
 use std::iter::Sum;
@@ -73,7 +73,7 @@ impl ConvUnary {
         }
     }
 
-    fn kernel_as_packed_as(&self, packer: &PackA) -> TractResult<ArrayD<Arc<Tensor>>> {
+    fn kernel_as_packed_as(&self, packer: &Packer, m: usize) -> TractResult<ArrayD<Arc<Tensor>>> {
         let kernel = self.kernel_as_group_o_ihw()?;
         unsafe {
             let mut packed_as = Array1::from(
@@ -81,13 +81,14 @@ impl ConvUnary {
                     .map(|g| {
                         let mut packed = Tensor::uninitialized_aligned_dt(
                             kernel.datum_type(),
-                            &[packer.len()],
+                            &[packer.len(m)],
                             packer.alignment(),
                         )?;
                         packer.pack(
                             &mut TensorView::at_prefix(&mut packed, &[])?,
                             &kernel.view_at_prefix(&[g])?,
-                            false,
+                            1,
+                            0,
                         );
                         Ok(packed.into_arc_tensor())
                     })
@@ -222,7 +223,7 @@ impl ConvUnary {
         let c_prefix_dim_and_stride = Some((dims, strides)).filter(|it| it.0.len() > 0);
         let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
 
-        let kernels = self.kernel_as_packed_as(&mmm.a_pack())?;
+        let kernels = self.kernel_as_packed_as(&mmm.a_pack(), m)?;
         wire = model.wire_node(
             format!("{}.matmatmul", name),
             matmul::lir_unary::LirMatMulUnary {
@@ -236,7 +237,7 @@ impl ConvUnary {
                 packed_as: kernels,
                 fused_ops,
                 mmm,
-                k
+                k,
             },
             &[wire],
         )?[0];

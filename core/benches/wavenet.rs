@@ -51,7 +51,7 @@ fn mmm(c: &mut Criterion) {
                 let mmm = tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap();
                 let packed_a = Tensor::zero_aligned_dt(
                     f32::datum_type(),
-                    &[mmm.a_pack().len()],
+                    &[mmm.a_pack().len(64)],
                     mmm.a_pack().alignment(),
                 )
                 .unwrap();

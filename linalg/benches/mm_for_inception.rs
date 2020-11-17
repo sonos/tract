@@ -9,7 +9,7 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
     unsafe {
         let mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, n).unwrap();
         let pa =
-            Tensor::uninitialized_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment())
+            Tensor::uninitialized_aligned::<f32>(&[mm.a_pack().len(m)], mm.a_pack().alignment())
                 .unwrap();
         let pb =
             Tensor::uninitialized_aligned::<f32>(&[mm.b_pack().len(n)], mm.b_pack().alignment())
