@@ -12,7 +12,7 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
             Tensor::uninitialized_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment())
                 .unwrap();
         let pb =
-            Tensor::uninitialized_aligned::<f32>(&[mm.b_pack().len()], mm.b_pack().alignment())
+            Tensor::uninitialized_aligned::<f32>(&[mm.b_pack().len(n)], mm.b_pack().alignment())
                 .unwrap();
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
         be.iter(move || mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]));

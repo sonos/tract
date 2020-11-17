@@ -6,7 +6,7 @@ use DatumType::*;
 fn mat_mul_f32(be: &mut Bencher, &(m, k, n): &(usize, usize, usize)) {
     let mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, n).unwrap();
     let pa = Tensor::zero_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
-    let pb = Tensor::zero_aligned::<f32>(&[mm.b_pack().len()], mm.b_pack().alignment()).unwrap();
+    let pb = Tensor::zero_aligned::<f32>(&[mm.b_pack().len(n)], mm.b_pack().alignment()).unwrap();
     let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
     be.iter(move || unsafe { mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]) });
 }
@@ -14,7 +14,7 @@ fn mat_mul_f32(be: &mut Bencher, &(m, k, n): &(usize, usize, usize)) {
 fn mat_mul_i8(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     let mm = tract_linalg::ops().mmm(I8, I8, I8, m, k, n).unwrap();
     let pa = Tensor::zero_aligned::<i8>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
-    let pb = Tensor::zero_aligned::<i8>(&[mm.b_pack().len()], mm.b_pack().alignment()).unwrap();
+    let pb = Tensor::zero_aligned::<i8>(&[mm.b_pack().len(n)], mm.b_pack().alignment()).unwrap();
     let mut c = Tensor::zero::<i8>(&[m, n]).unwrap();
     be.iter(move || unsafe { mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]) });
 }

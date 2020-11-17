@@ -55,7 +55,7 @@ fn mmm(c: &mut Criterion) {
                     mmm.a_pack().alignment(),
                 )
                 .unwrap();
-                let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack().len()])
+                let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack().len(8)])
                     .unwrap()
                     .into_arc_tensor());
                 let op = tract_core::ops::matmul::lir_unary::LirMatMulUnary {

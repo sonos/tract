@@ -83,7 +83,7 @@ macro_rules! dispatch_copy {
             DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
-            _ => $crate::anyhow::bail!("{:?} is not Copy", $dt)
+            _ => panic!("{:?} is not Copy", $dt)
         }
     } }
 }

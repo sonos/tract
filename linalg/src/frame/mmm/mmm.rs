@@ -139,7 +139,7 @@ where
     }
 
     fn b_pack(&self) -> PackB {
-        PackB::new(self.k, self.n, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
+        PackB::new(self.k, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
     }
 
     fn internal_type(&self) -> DatumType {

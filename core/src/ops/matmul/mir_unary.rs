@@ -325,7 +325,7 @@ impl MatMulUnary {
         let rank = c_shape.len();
         if n > 1 {
             let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
-            packed_b_shape.push(mm.b_pack().len());
+            packed_b_shape.push(mm.b_pack().len(n));
             wire = patch.wire_node(
                 format!("{}.pack", &*node.name),
                 super::MatMatMulPackB {
