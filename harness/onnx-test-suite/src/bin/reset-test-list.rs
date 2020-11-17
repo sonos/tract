@@ -10,7 +10,7 @@ const VERSIONS: &[&str] = &["1.4.1", "1.5.0", "1.6.0", "1.7.0"];
 fn run_set(set: &str, ver: &str) -> HashMap<String, usize> {
     let filter = format!("{}_{}::", set, ver).replace(['.', '-'].as_ref(), "_");
     let mut command = std::process::Command::new("cargo");
-    command.arg("test");
+    command.arg("test").arg("--all-features");
     if set == "real" {
         command.arg("--release");
     }

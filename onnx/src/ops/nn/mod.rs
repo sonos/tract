@@ -241,7 +241,7 @@ pub fn layer_hard_max(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
-    Ok((Box::new(ops::nn::LayerHardmax::new(axis)), vec![]))
+    Ok((expand(ops::nn::LayerHardmax::new(axis)), vec![]))
 }
 
 pub fn layer_log_soft_max(
