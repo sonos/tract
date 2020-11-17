@@ -46,7 +46,8 @@ impl EvalOp for MatMatMulPackB {
                 self.pack_b.pack(
                     &mut packed.view_at_prefix_mut(prefix.slice())?,
                     &b.view_at_prefix(prefix.slice())?,
-                    self.trans,
+                    self.trans as usize,
+                    !self.trans as usize,
                 )
             }
             Ok(tvec!(packed.into_arc_tensor()))

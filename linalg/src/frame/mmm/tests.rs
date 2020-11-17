@@ -275,9 +275,9 @@ where
         op.a_pack().pack(packed_a.view_mut(), a.view(), false);
 
         let mut packed_b =
-            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len()], op.b_pack().alignment())
+            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(n)], op.b_pack().alignment())
                 .unwrap();
-        op.b_pack().pack(packed_b.view_mut(), b.view(), false);
+        op.b_pack().pack(packed_b.view_mut(), b.view(), 0, 1);
 
         let mut found = tensor0(TC::max_value()).broadcast_scalar_to_shape(&[m, n]).unwrap();
 
@@ -367,8 +367,8 @@ where
     op.a_pack().pack(packed_a.view_mut(), a.view(), false);
 
     let mut packed_b =
-        Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len()], op.b_pack().alignment()).unwrap();
-    op.b_pack().pack(packed_b.view_mut(), b.view(), false);
+        Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(n)], op.b_pack().alignment()).unwrap();
+    op.b_pack().pack(packed_b.view_mut(), b.view(), 0, 1);
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
 
@@ -769,11 +769,11 @@ where
             mmm.a_pack().pack(packed_a.view_mut(), self.a.view(), false);
 
             let mut packed_b = Tensor::uninitialized_aligned::<TB>(
-                &[mmm.b_pack().len()],
+                &[mmm.b_pack().len(self.n)],
                 mmm.b_pack().alignment(),
             )
             .unwrap();
-            mmm.b_pack().pack(packed_b.view_mut(), self.b.view(), false);
+            mmm.b_pack().pack(packed_b.view_mut(), self.b.view(), 0, 1);
 
             mmm.set_zero_point_a(self.a0.clone());
             mmm.set_zero_point_b(self.b0.clone());

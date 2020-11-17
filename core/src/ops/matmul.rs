@@ -89,7 +89,7 @@ pub(super) fn eval(
         let mut packed_a =
             Tensor::uninitialized_aligned_dt(a.datum_type(), &[a_pack.len()], a_pack.alignment())?;
         let mut packed_b =
-            Tensor::uninitialized_aligned_dt(b.datum_type(), &[b_pack.len()], b_pack.alignment())?;
+            Tensor::uninitialized_aligned_dt(b.datum_type(), &[b_pack.len(n)], b_pack.alignment())?;
 
         for prefix in tract_ndarray::indices(&c_shape[..rank - 2]).into_iter() {
             let mut a_prefix = tvec!();
@@ -99,7 +99,7 @@ pub(super) fn eval(
                 b_prefix.push(dim.min(b.shape()[axis] - 1));
             }
             a_pack.pack(packed_a.view_mut(), &a.view_at_prefix(&a_prefix)?, a_trans);
-            b_pack.pack(packed_b.view_mut(), &b.view_at_prefix(&b_prefix)?, b_trans);
+            b_pack.pack(packed_b.view_mut(), &b.view_at_prefix(&b_prefix)?, b_trans as usize, !b_trans as usize);
             mm.run(
                 &packed_a.view(),
                 &packed_b.view(),

@@ -5,104 +5,83 @@ use tract_data::internal::*;
 #[educe(Hash)]
 pub struct PackB {
     k: usize,
-    n: usize,
-    nr: usize,
+    r: usize,
     alignment: usize,
     end_padding_record: usize,
 }
 
 impl PackB {
-    pub fn new(k: usize, n: usize, nr: usize, alignment: usize, end_padding_record: usize) -> PackB {
-        PackB { k, n, nr, alignment, end_padding_record }
+    pub fn new(k: usize, nr: usize, alignment: usize, end_padding_record: usize) -> PackB {
+        PackB { k, r: nr, alignment, end_padding_record }
     }
 
     pub fn alignment(&self) -> usize {
         self.alignment
     }
 
-    pub fn len(&self) -> usize {
-        (self.n + self.nr - 1) / self.nr * self.nr * self.k + self.end_padding_record * self.nr
+    pub fn len(&self, n: usize) -> usize {
+        (n + self.r - 1) / self.r * self.r * self.k + self.end_padding_record * self.r
     }
 
-    fn pack_panel_b_t<T: Copy>(
+    unsafe fn pack_t<'p, 'i, T: Datum + Copy>(
         &self,
-        pb: *mut T,
-        b: *const T,
-        rsb: isize,
-        csb: isize,
-        cols: usize,
+        pb: &mut TensorView<'p>,
+        b: &TensorView<'i>,
+        mn: usize,
+        k_stride: isize,
+        mn_stride: isize,
     ) {
-        let nr = self.nr;
-        unsafe {
-            for i in 0..self.k {
-                for j in 0..cols {
-                    *pb.offset((i * nr + j) as isize) =
-                        *b.offset(j as isize * csb + i as isize * rsb)
+        let pb = pb.as_slice_mut_unchecked::<T>();
+        let b = b.as_slice_unchecked::<T>();
+        let mut packer = self.write_packed_by_rows(pb, mn);
+        if mn_stride == 1 {
+            for k in 0..self.k as isize {
+                for x in 0..mn as isize {
+                    packer.write(*b.get_unchecked((x + k_stride * k) as usize))
                 }
-                #[cfg(debug_assertions)]
-                {
-                    for j in cols..self.nr {
-                        *pb.offset((i * nr + j) as isize) = std::mem::zeroed();
-                    }
+            }
+        } else if k_stride == 1 {
+            for k in 0..self.k as isize {
+                for x in 0..mn as isize {
+                    packer.write(*b.get_unchecked((x * mn_stride + k) as usize))
+                }
+            }
+        } else {
+            for k in 0..self.k as isize {
+                for x in 0..mn as isize {
+                    packer.write(*b.get_unchecked((x * mn_stride + k_stride * k) as usize))
                 }
             }
         }
-    }
-
-    fn pack_panel_b(
-        &self,
-        dt: DatumType,
-        pb: *mut u8,
-        b: *const u8,
-        rsb: isize,
-        csb: isize,
-        cols: usize,
-    ) {
-        dispatch_copy_by_size!(Self::pack_panel_b_t(dt)(self, pb as _, b as _, rsb, csb, cols))
     }
 
     pub unsafe fn pack<'a, 'b>(
         &self,
         mut pb: impl std::borrow::BorrowMut<TensorView<'a>>,
         b: impl std::borrow::Borrow<TensorView<'b>>,
-        trans: bool,
+        k_axis: usize,
+        mn_axis: usize,
     ) {
         let pb = pb.borrow_mut();
         let b = b.borrow();
+        debug_assert_eq!(b.shape()[k_axis], self.k);
         let dt = pb.datum_type();
-        let (rsb, csb) = if trans {
-            (1, b.shape()[b.rank() - 1] as isize)
-        } else {
-            (b.shape()[b.rank() - 1] as isize, 1)
-        };
-        let pb = pb.as_ptr_mut_unchecked::<u8>();
-        let b = b.as_ptr_unchecked::<u8>();
-        let nr = self.nr;
-        assert!(pb as usize % self.alignment == 0);
-        for p in 0..(self.n / nr) {
-            self.pack_panel_b(
-                dt,
-                pb.offset((p * nr * self.k * dt.size_of()) as isize),
-                b.offset((p * nr * dt.size_of()) as isize * csb),
-                rsb,
-                csb,
-                nr,
-            )
-        }
-        if self.n % nr != 0 {
-            self.pack_panel_b(
-                dt,
-                pb.offset((self.n / nr * nr * self.k * dt.size_of()) as isize),
-                b.offset((self.n / nr * nr * dt.size_of()) as isize * csb),
-                rsb,
-                csb,
-                self.n % nr,
-            )
-        }
+        dispatch_copy!(Self::pack_t(dt)(
+            self,
+            pb,
+            b,
+            b.shape()[mn_axis],
+            b.strides()[k_axis],
+            b.strides()[mn_axis]
+        ));
     }
 
-    pub fn write_packed_by_rows<'p, T: Copy>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
-        PackedWriter::new(pb, self.nr, self.n, self.k)
+    pub fn write_packed_by_rows<'p, T: Copy>(
+        &self,
+        pb: &'p mut [T],
+        mn: usize,
+    ) -> PackedWriter<'p, T> {
+        PackedWriter::new(pb, self.r, mn, self.k)
     }
 }
 

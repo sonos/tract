@@ -20,7 +20,7 @@ fn pack_b(c: &mut Criterion, m: usize, k: usize, n: usize) {
         let mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, n).unwrap();
         let b = Tensor::zero::<f32>(&[k, n]).unwrap();
         let mut pb = Tensor::uninitialized_aligned::<f32>(&[n * k], 4).unwrap();
-        be.iter(move || mm.b_pack().pack(pb.view_mut(), b.view(), false))
+        be.iter(move || mm.b_pack().pack(pb.view_mut(), b.view(), 0, 1))
     });
 }
 
@@ -30,7 +30,7 @@ fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {
         let pa =
             Tensor::zero_aligned::<f32>(&[mm.a_pack().len()], mm.a_pack().alignment()).unwrap();
         let pb =
-            Tensor::zero_aligned::<f32>(&[mm.b_pack().len()], mm.b_pack().alignment()).unwrap();
+            Tensor::zero_aligned::<f32>(&[mm.b_pack().len(n)], mm.b_pack().alignment()).unwrap();
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
         be.iter(move || mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]).unwrap());
     });
