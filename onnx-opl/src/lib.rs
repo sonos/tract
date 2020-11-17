@@ -10,7 +10,6 @@ pub mod erf;
 pub mod is_inf;
 pub mod is_nan;
 pub mod lrn;
-pub mod one_hot;
 
 pub trait WithOnnx {
     fn with_onnx(self) -> Self;
@@ -37,7 +36,5 @@ fn onnx_opl_registry() -> Registry {
     registry.register_unit_element_wise("tract_onnx_is_nan", &is_nan::IsNan {});
     registry.register_dumper(TypeId::of::<lrn::Lrn>(), lrn::dump);
     registry.register_primitive("tract_onnx_lrn", &lrn::parameters(), lrn::load);
-    registry.register_dumper(TypeId::of::<one_hot::OneHot>(), one_hot::dump);
-    registry.register_primitive("tract_onnx_one_hot", &one_hot::parameters(), one_hot::load);
     registry
 }

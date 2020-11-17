@@ -43,7 +43,7 @@ impl Expansion for OneHot {
             }
             let off = values.nth(0)?;
             let on = values.nth(1)?;
-            let op = tract_onnx_opl::one_hot::OneHot {
+            let op = tract_core::ops::array::OneHot {
                 axis,
                 dim: dim as usize,
                 off: off.into_arc_tensor(),
