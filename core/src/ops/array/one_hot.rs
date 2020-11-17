@@ -24,7 +24,7 @@ impl TypedOp for OneHot {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape = inputs[0].shape.to_tvec();
         shape.insert(self.axis, self.dim.to_dim());
-        Ok(tvec!(TypedFact::dt_shape(self.off.datum_type(), &*shape)?))
+        Ok(tvec!(TypedFact::dt_shape(self.off.datum_type(), &*shape)))
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
