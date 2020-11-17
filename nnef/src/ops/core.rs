@@ -5,9 +5,11 @@ mod broadcast;
 mod cast;
 mod downsample;
 mod gather;
+mod one_hot;
 mod reduce;
 mod scan;
 mod source;
+
 
 pub fn register(registry: &mut Registry) {
     registry.register_unit_element_wise("tract_core_tan", &ops::math::Tan {});
@@ -28,6 +30,7 @@ pub fn register(registry: &mut Registry) {
     cast::register(registry);
     downsample::register(registry);
     gather::register(registry);
+    one_hot::register(registry);
     reduce::register(registry);
     scan::register(registry);
     source::register(registry);
