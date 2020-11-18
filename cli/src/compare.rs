@@ -234,6 +234,9 @@ where
                             Ok(t) => {
                                 let found = &state.values[n].as_ref().unwrap()[ix];
                                 if let Err(e) = found
+                                    .1
+                                    .as_ref()
+                                    .unwrap()
                                     .close_enough(t, node.op().validation() == Validation::Rounding)
                                 {
                                     failing.push(n);
@@ -250,7 +253,8 @@ where
                                 }
                                 if !cumulative {
                                     // Use the output from reference to keep tract from drifting.
-                                    state.values[node.id].as_mut().unwrap()[ix] = t.to_owned()
+                                    state.values[node.id].as_mut().unwrap()[ix] =
+                                        (node.outputs[ix].successors.len(), Some(t.to_owned()))
                                 }
                             }
                             Err(e) => {

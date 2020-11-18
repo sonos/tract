@@ -33,23 +33,25 @@ pub fn profile(
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(&plan)?;
     let mut iters = 0usize;
+    let mut entire = Duration::default();
+    let inputs: TVec<Tensor> = crate::tensor::make_inputs_for_model(model)?;
+    let inputs: TVec<TensorVar> = inputs.iter().map(TensorVar::Borrow).collect();
+    for i in model.eval_order()? {
+        dg.node_mut(NodeQId(tvec!(), i)).profile = Some(Duration::default());
+    }
     let start = Instant::now();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
-        let _ = state.run_plan_with_eval(
-            crate::tensor::make_inputs_for_model(model)?.into_iter().map(|t| t.into()).collect(),
-            |session_state, state, node, input| {
-                let start = Instant::now();
-                let r = tract_core::plan::eval(session_state, state, node, input);
-                let elapsed = start.elapsed();
-                *dg.node_mut(NodeQId(tvec!(), node.id))
-                    .profile
-                    .get_or_insert(Duration::default()) += elapsed;
-                r
-            },
-        )?;
+        let start = Instant::now();
+        let _ = state.run_plan_with_eval(inputs.clone(), |session_state, state, node, input| {
+            let start = Instant::now();
+            let r = tract_core::plan::eval(session_state, state, node, input);
+            let elapsed = start.elapsed();
+            *dg.node_mut(NodeQId(tvec!(), node.id)).profile.as_mut().unwrap() += elapsed;
+            r
+        })?;
+        entire += start.elapsed();
         iters += 1;
     }
-    let entire = start.elapsed();
 
     info!("Running {} iterations max. for each node.", bench_limits.max_iters);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
