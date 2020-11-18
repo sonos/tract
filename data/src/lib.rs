@@ -30,6 +30,7 @@ pub mod internal {
     pub use crate::dim::{DimLike, MaybeProduct, TDim, ToDim};
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
+    pub use ndarray as tract_ndarray;
 }
 
 pub use anyhow;

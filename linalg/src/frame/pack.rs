@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use tract_data::internal::*;
 
@@ -33,20 +34,22 @@ impl Packer {
     ) {
         let pb = pb.as_slice_mut_unchecked::<T>();
         let b = b.as_slice_unchecked::<T>();
-        let mut packer = self.write_packed_by_rows(pb, mn);
         if mn_stride == 1 {
+            let mut packer = self.write_with_k_outer(pb, mn);
             for k in 0..self.k as isize {
                 for x in 0..mn as isize {
                     packer.write(*b.get_unchecked((x + k_stride * k) as usize))
                 }
             }
         } else if k_stride == 1 {
-            for k in 0..self.k as isize {
-                for x in 0..mn as isize {
+            let mut packer = self.write_with_k_inner(pb, mn);
+            for x in 0..mn as isize {
+                for k in 0..self.k as isize {
                     packer.write(*b.get_unchecked((x * mn_stride + k) as usize))
                 }
             }
         } else {
+            let mut packer = self.write_with_k_outer(pb, mn);
             for k in 0..self.k as isize {
                 for x in 0..mn as isize {
                     packer.write(*b.get_unchecked((x * mn_stride + k_stride * k) as usize))
@@ -76,19 +79,27 @@ impl Packer {
         ));
     }
 
-    pub fn write_packed_by_rows<'p, T: Copy>(
+    pub fn write_with_k_outer<'p, T: Copy + Debug>(
         &self,
         pb: &'p mut [T],
         mn: usize,
-    ) -> PackedWriter<'p, T> {
-        PackedWriter::new(pb, self.r, mn, self.k)
+    ) -> KOutWriter<'p, T> {
+        KOutWriter::new(pb, self.r, mn, self.k)
+    }
+
+    pub fn write_with_k_inner<'p, T: Copy + Debug>(
+        &self,
+        pb: &'p mut [T],
+        mn: usize,
+    ) -> KInWriter<'p, T> {
+        KInWriter::new(pb, self.r, mn, self.k)
     }
 }
 
 #[derive(Debug)]
-pub struct PackedWriter<'p, T>
+pub struct KOutWriter<'p, T>
 where
-    T: Copy,
+    T: Copy + std::fmt::Debug,
 {
     ptr: *mut T,
     panels: usize,
@@ -101,14 +112,14 @@ where
     _phantom: PhantomData<&'p T>,
 }
 
-impl<'p, T> PackedWriter<'p, T>
+impl<'p, T> KOutWriter<'p, T>
 where
-    T: Copy,
+    T: Copy + std::fmt::Debug,
 {
-    pub fn new(data: &'p mut [T], panel_width: usize, mn: usize, k: usize) -> PackedWriter<'p, T> {
+    pub fn new(data: &'p mut [T], panel_width: usize, mn: usize, k: usize) -> KOutWriter<'p, T> {
         let panels = (mn + panel_width - 1) / panel_width;
         let last_panel_width = mn - (panels - 1) * panel_width;
-        PackedWriter {
+        KOutWriter {
             ptr: data.as_mut_ptr(),
             panels,
             panel_width,
@@ -143,5 +154,176 @@ where
                 }
             }
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct KInWriter<'p, T>
+where
+    T: Copy + Debug,
+{
+    ptr: *mut T,
+    k: usize,
+    panels: usize,
+    panel_width: usize,
+    last_panel_width: usize,
+    remain_on_k: usize,
+    remain_on_mn: usize,
+    current_panel: usize,
+    next_mn_offset: isize,
+    next_panel_offset: isize,
+    _phantom: PhantomData<&'p T>,
+}
+
+impl<'p, T> KInWriter<'p, T>
+where
+    T: Copy + Debug,
+{
+    pub fn new(data: &'p mut [T], panel_width: usize, mn: usize, k: usize) -> KInWriter<'p, T> {
+        let panels = (mn + panel_width - 1) / panel_width;
+        let last_panel_width = mn - (panels - 1) * panel_width;
+        KInWriter {
+            ptr: data.as_mut_ptr(),
+            k,
+            panels,
+            panel_width,
+            last_panel_width,
+            remain_on_k: k,
+            remain_on_mn: if panels == 1 { last_panel_width } else { panel_width },
+            current_panel: 0,
+            next_mn_offset: 1 - (k * panel_width) as isize,
+            next_panel_offset: 1 - panel_width as isize,
+            _phantom: PhantomData,
+        }
+    }
+
+    #[inline]
+    pub fn write(&mut self, t: T) {
+        eprintln!("{:?}", self);
+        unsafe {
+            *self.ptr = t;
+            self.remain_on_k -= 1;
+            self.ptr = self.ptr.offset(self.panel_width as isize);
+            if self.remain_on_k == 0 {
+                self.remain_on_k = self.k;
+                self.remain_on_mn -= 1;
+                if self.remain_on_mn > 0 {
+                    self.ptr = self.ptr.offset(self.next_mn_offset);
+                } else {
+                    self.ptr = self.ptr.offset(self.next_panel_offset);
+                    self.current_panel += 1;
+                    if self.current_panel == self.panels - 1 {
+                        self.remain_on_mn = self.last_panel_width;
+                    } else {
+                        self.remain_on_mn = self.panel_width;
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use proptest::prelude::*;
+    use tract_data::internal::*;
+    use tract_ndarray::prelude::*;
+
+    #[derive(Debug)]
+    struct PackProblem {
+        k: usize,
+        mn: usize,
+        is_a: bool,
+        r: usize,
+        input: Array2<u32>,
+    }
+
+    impl PackProblem {
+        fn packer(&self) -> Vec<u32> {
+            let packer = super::Packer::new(self.k, self.r, 1, 0);
+            let input = self.input.clone().into_tensor();
+            let mut output = Tensor::zero::<u32>(&[packer.len(self.mn)]).unwrap();
+            unsafe {
+                packer.pack(
+                    output.view_mut(),
+                    input.view(),
+                    self.is_a as usize,
+                    !self.is_a as usize,
+                )
+            };
+            output.as_slice::<u32>().unwrap().to_vec()
+        }
+
+        fn reference(&self) -> Vec<u32> {
+            let panels = self.mn.div_ceil(self.r);
+            dbg!(panels);
+            let len = panels * self.k * self.r;
+            dbg!(len);
+            let mut vec = vec![0; len];
+            for panel in 0..panels {
+                for k in 0..self.k {
+                    for x in 0..self.r {
+                        let ix = panel * self.r + x;
+                        let v = *self
+                            .input
+                            .get(if self.is_a { (ix, k) } else { (k, ix) })
+                            .unwrap_or(&0);
+                        vec[panel * self.k * self.r + k * self.r + x] = v;
+                    }
+                }
+            }
+            vec
+        }
+    }
+
+    impl Arbitrary for PackProblem {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<PackProblem>;
+        fn arbitrary_with(_args: ()) -> Self::Strategy {
+            (any::<bool>(), 1usize..4, 1usize..8, 1usize..8)
+                .prop_flat_map(|(is_a, r, mn, k)| {
+                    (Just((is_a, r, mn, k)), proptest::collection::vec(0u32..40, mn * k..=mn * k))
+                })
+                .prop_map(|((is_a, r, mn, k), input)| PackProblem {
+                    k,
+                    mn,
+                    is_a,
+                    r,
+                    input: arr1(&*input).into_shape(if is_a { (mn, k) } else { (k, mn) }).unwrap(),
+                })
+                .boxed()
+        }
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn prop(pb in any::<PackProblem>()) {
+            assert_eq!(pb.reference(), pb.packer());
+        }
+    }
+
+    #[test]
+    fn simple_b_1() {
+        let pb = PackProblem { k: 2, mn: 1, is_a: false, r: 1, input: arr2(&[[0], [1]]) };
+        assert_eq!(pb.reference(), pb.packer());
+    }
+
+    #[test]
+    fn simple_b_2() {
+        let pb = PackProblem { k: 2, mn: 2, is_a: false, r: 1, input: arr2(&[[0, 0], [0, 1]]) };
+        assert_eq!(pb.reference(), pb.packer());
+    }
+
+    #[test]
+    fn simple_a_1() {
+        let pb = PackProblem { k: 2, mn: 2, is_a: true, r: 1, input: arr2(&[[0, 0], [0, 1]]) };
+        assert_eq!(pb.reference(), pb.packer());
+    }
+
+    #[test]
+    fn simple_a_2() {
+        let pb =
+            PackProblem { k: 2, mn: 3, is_a: true, r: 2, input: arr2(&[[0, 0], [0, 0], [0, 1]]) };
+        assert_eq!(pb.reference(), pb.packer());
     }
 }
