@@ -13,8 +13,8 @@ impl_dyn_hash!(LayerHardmax);
 impl LayerHardmax {
     fn eval_t<D: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive>(
         &self,
-        input: Arc<Tensor>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        input: TensorVar,
+    ) -> TractResult<TVec<Tensor>> {
         let array = input.into_tensor().into_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis =
@@ -35,7 +35,7 @@ impl LayerHardmax {
                 .enumerate()
                 .for_each(|(ix, r)| *r = D::from_usize((ix == max) as usize).unwrap());
         });
-        Ok(tvec!(array.into_shape(shape)?.into_arc_tensor()))
+        Ok(tvec!(array.into_shape(shape)?.into_tensor()))
     }
 }
 
@@ -71,7 +71,7 @@ impl EvalOp for LayerHardmax {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }

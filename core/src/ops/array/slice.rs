@@ -46,7 +46,7 @@ impl EvalOp for Slice {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         unsafe {
             let start = self.start.to_usize()?;
@@ -55,7 +55,7 @@ impl EvalOp for Slice {
             shape[self.axis] = end - start;
             let mut tensor = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
             tensor.assign_slice_unchecked(.., &input, start..end, self.axis);
-            Ok(tvec!(tensor.into_arc_tensor()))
+            Ok(tvec!(tensor))
         }
     }
 }

@@ -56,7 +56,7 @@ impl EvalOp for SumPool {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         self.to_fixed(inputs[0].datum_type(), inputs[0].shape())?.eval(inputs)
     }
 }
@@ -159,12 +159,12 @@ impl EvalOp for SumPoolFixed {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let mut values =
             unsafe { Tensor::uninitialized_dt(self.datum_type, &*self.output_shape.shape)? };
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, &*input, values.as_ptr_mut()?))?;
-        Ok(tvec!(values.into_arc_tensor()))
+        Ok(tvec!(values))
     }
 }
 

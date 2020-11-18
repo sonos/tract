@@ -22,9 +22,9 @@ impl Downsample {
         let mut downed = input_fact.clone();
         let down_len = self.transform_dim(&input_fact.shape[self.axis]);
         downed.shape.set(self.axis, down_len.clone());
-        if let Some(k) = downed.konst {
-            let mut outputs = self.eval(tvec!(k))?;
-            downed.konst = Some(outputs.remove(0));
+        if let Some(k) = downed.konst.as_ref() {
+            let mut outputs = self.eval(tvec!(TensorVar::Borrow(k)))?;
+            downed.konst = Some(outputs.remove(0).into_arc_tensor());
         }
         if cfg!(debug_assertions) {
             downed.consistent()?;
@@ -54,7 +54,7 @@ impl EvalOp for Downsample {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         unsafe {
             let t = if self.modulo > input.shape()[self.axis] {
@@ -79,7 +79,7 @@ impl EvalOp for Downsample {
                 }
                 dispatch_datum_by_size!(do_slice(input.datum_type())(&*input, self.axis, slice))
             };
-            Ok(tvec!(t.into_arc_tensor()))
+            Ok(tvec!(t))
         }
     }
 }

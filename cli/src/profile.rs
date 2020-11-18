@@ -36,7 +36,7 @@ pub fn profile(
     let start = Instant::now();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
         let _ = state.run_plan_with_eval(
-            crate::tensor::make_inputs_for_model(model)?,
+            crate::tensor::make_inputs_for_model(model)?.into_iter().map(|t| t.into()).collect(),
             |session_state, state, node, input| {
                 let start = Instant::now();
                 let r = tract_core::plan::eval(session_state, state, node, input);
@@ -76,7 +76,10 @@ pub fn profile(
                         let inner_plan = SimplePlan::new(inner_model)?;
                         let mut state = SimpleState::new(inner_plan)?;
                         let _ = state.run_plan_with_eval(
-                            crate::tensor::make_inputs_for_model(inner_model)?,
+                            crate::tensor::make_inputs_for_model(inner_model)?
+                                .into_iter()
+                                .map(|t| t.into())
+                                .collect(),
                             |session_state, state, node, input| {
                                 let start = Instant::now();
                                 let r = tract_core::plan::eval(session_state, state, node, input);

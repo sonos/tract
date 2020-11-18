@@ -71,7 +71,7 @@ impl EvalOp for Box<dyn Expansion> {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let mut adhoc = TypedModel::default();
         let wires = inputs
             .iter()
@@ -80,7 +80,7 @@ impl EvalOp for Box<dyn Expansion> {
             .collect::<TractResult<TVec<OutletId>>>()?;
         let wires = self.wire("adhoc", &mut adhoc, &*wires)?;
         adhoc.set_output_outlets(&*wires)?;
-        SimplePlan::new(adhoc)?.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
+        SimplePlan::new(adhoc)?.run(inputs)
     }
 }
 

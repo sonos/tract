@@ -6,21 +6,19 @@ pub fn infer_forward_concrete(
     op: &dyn Op,
     inputs: &Vec<&InferenceFact>,
 ) -> TractResult<Option<TVec<InferenceFact>>> {
-    let input_values: TVec<_> =
-        inputs.iter().filter_map(|t| t.value.concretize()).map(|v| v.clone().into()).collect();
-
-    if input_values.len() < inputs.len() {
+    if let Some(inputs) =
+        inputs.iter().map(|v| v.value.concretize().map(|t| (&*t).clone().into())).collect()
+    {
+        if op.is_stateless() {
+            let output_value = op.eval(inputs)?.pop().unwrap();
+            Ok(Some(tvec![output_value.into()]))
+        } else {
+            Ok(None)
+        }
+    } else {
         debug!("Can't infer value: some inputs are still unknown.");
-        return Ok(None);
+        Ok(None)
     }
-
-    // If we know the value of all the inputs, we can deduce everything.
-    if op.is_stateless() {
-        let output_value = op.eval(input_values)?.pop().unwrap();
-        return Ok(Some(tvec![output_value.into()]));
-    }
-
-    Ok(None)
 }
 
 /// Infers basic shape facts in the case of broadcasting operators.

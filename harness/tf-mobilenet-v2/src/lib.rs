@@ -77,7 +77,7 @@ mod tests {
         let tfd = tract_tensorflow::tensorflow().model_for_path(mobilenet_v2()).unwrap();
         let plan = SimplePlan::new(&tfd).unwrap();
         let input = load_image(grace_hopper());
-        let outputs = plan.run(tvec![input]).unwrap();
+        let outputs = plan.run(tvec![input.into()]).unwrap();
         let labels = load_labels();
         let label_id = argmax(outputs[0].to_array_view::<f32>().unwrap());
         let label = &labels[label_id];
@@ -92,7 +92,7 @@ mod tests {
         let tfd = tfd.into_optimized().unwrap();
         let plan = SimplePlan::new(&tfd).unwrap();
         let input = load_image(grace_hopper());
-        let outputs = plan.run(tvec![input]).unwrap();
+        let outputs = plan.run(tvec![input.into()]).unwrap();
         let labels = load_labels();
         let label_id = argmax(outputs[0].to_array_view::<f32>().unwrap());
         let label = &labels[label_id];

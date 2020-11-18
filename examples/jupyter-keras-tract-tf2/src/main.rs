@@ -15,7 +15,7 @@ fn main() -> TractResult<()> {
     // Generate some input data for the model
     let mut rng = thread_rng();
     let vals: Vec<_> = (0..1000).map(|_| rng.gen::<f32>()).collect();
-    let input = tract_ndarray::arr1(&vals).into_shape((10, 100)).unwrap();
+    let input = tensor1(&vals).into_shape(&[10, 100]).unwrap();
 
     // Input the generated data into the model
     let result = model.run(tvec![input.into()]).unwrap();

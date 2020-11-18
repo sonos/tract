@@ -75,7 +75,7 @@ mod tests {
         let mut tar = flate2::read::GzDecoder::new(fs::File::open(inception_v3_tgz())?);
         let model = nnef.model_for_read(&mut tar)?.into_optimized()?.into_runnable()?;
         let input = load_image(hopper());
-        let outputs = model.run(tvec![input]).unwrap();
+        let outputs = model.run(tvec![input.into()]).unwrap();
         let labels = load_labels();
         let label_id = outputs[0]
             .to_array_view::<f32>()

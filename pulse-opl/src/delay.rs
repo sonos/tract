@@ -36,8 +36,8 @@ impl OpState for DelayState {
         &mut self,
         _state: &mut SessionState,
         op: &dyn Op,
-        mut inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        mut inputs: TVec<TensorVar>,
+    ) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let buffered = op.delay + op.overlap;
@@ -75,7 +75,6 @@ impl OpState for DelayState {
                 .rotate_left(stride);
                 self.buffer.assign_slice_unchecked((buffered - input_pulse).., &input, .., op.axis);
             }
-            let output = output.into_arc_tensor();
             Ok(tvec!(output))
         }
     }

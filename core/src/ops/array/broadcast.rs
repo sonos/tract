@@ -7,10 +7,10 @@ pub struct MultiBroadcastTo {
 impl_dyn_hash!(MultiBroadcastTo);
 
 impl MultiBroadcastTo {
-    pub fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<Arc<Tensor>>> {
+    pub fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<Tensor>> {
         let input = input.to_array_view::<T>()?;
         let output = input.broadcast(&*shape).ok_or_else(|| format_err!("incompatible shapes"))?;
-        Ok(tvec![output.to_owned().into_arc_tensor()])
+        Ok(tvec![output.to_owned().into_tensor()])
     }
 }
 
@@ -28,7 +28,7 @@ impl EvalOp for MultiBroadcastTo {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let dims: Vec<usize> =
             self.shape.iter().map(|d| Ok(d.to_usize()?)).collect::<TractResult<_>>()?;

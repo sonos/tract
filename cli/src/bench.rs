@@ -12,8 +12,13 @@ pub fn criterion(params: &Parameters) -> CliResult<()> {
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
-    let inputs = crate::tensor::make_inputs_for_model(model)?;
-    group.bench_function("run", move |b| b.iter(|| state.run(inputs.clone())));
+    let inputs = crate::tensor::make_inputs_for_model(model)?
+        .into_iter()
+        .map(|t| t.into())
+        .collect::<TVec<_>>();
+    group.bench_function("run", move |b| {
+        b.iter_with_setup(|| inputs.clone(), |inputs| state.run(inputs))
+    });
     Ok(())
 }
 
@@ -34,7 +39,9 @@ pub fn handle(params: &Parameters, limits: &BenchLimits, probe: Option<&Probe>) 
         if let Some(p) = &progress {
             p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
         }
-        state.run(crate::tensor::make_inputs_for_model(model)?)?;
+        state.run(
+            crate::tensor::make_inputs_for_model(model)?.into_iter().map(|t| t.into()).collect(),
+        )?;
         iters += 1;
     }
     let dur = start.elapsed();

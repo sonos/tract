@@ -47,8 +47,9 @@ fn b(
         unary.wire_as_im2col_pair(&mut m, "", wire, f32::datum_type(), false).unwrap();
     }
     let im2col = m.node(1).op_as::<Im2Col>().unwrap();
-    let args = tvec!(image.into());
-    c.bench_function(name, move |b| b.iter(|| im2col.eval(args.clone()).unwrap()));
+    c.bench_function(name, move |b| {
+        b.iter(|| im2col.eval(tvec!((&image).into())).unwrap())
+    });
 }
 
 macro_rules! b {

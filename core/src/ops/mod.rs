@@ -53,6 +53,50 @@ pub enum Cost {
     Params(DatumType),
 }
 
+#[derive(Clone, PartialEq, Hash)]
+pub enum TensorVar<'a> {
+    Borrow(&'a Tensor),
+    Exclusive(Tensor),
+}
+
+impl<'a> TensorVar<'a> {
+    pub fn into_tensor(self) -> Tensor {
+        match self {
+            TensorVar::Borrow(b) => b.clone(),
+            TensorVar::Exclusive(b) => b,
+        }
+    }
+}
+
+impl<'a> std::ops::Deref for TensorVar<'a> {
+    type Target = Tensor;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            TensorVar::Borrow(b) => &b,
+            TensorVar::Exclusive(b) => b,
+        }
+    }
+}
+
+impl<'a> std::fmt::Debug for TensorVar<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::ops::Deref;
+        self.deref().fmt(f)
+    }
+}
+
+impl<'a> From<&'a Tensor> for TensorVar<'a> {
+    fn from(t: &'a Tensor) -> Self {
+        TensorVar::Borrow(t)
+    }
+}
+
+impl<'a> From<Tensor> for TensorVar<'a> {
+    fn from(t: Tensor) -> Self {
+        TensorVar::Exclusive(t)
+    }
+}
+
 impl Cost {
     pub fn is_compute(&self) -> bool {
         use Cost::*;
@@ -70,14 +114,14 @@ pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
         &mut self,
         session: &mut SessionState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>>;
+        inputs: TVec<TensorVar>,
+    ) -> TractResult<TVec<Tensor>>;
 }
 dyn_clone::clone_trait_object!(OpState);
 
 pub trait EvalOp {
     #[allow(unused_variables)]
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         bail!("stateless evaluation not implemented")
     }
 

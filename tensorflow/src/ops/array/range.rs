@@ -18,7 +18,7 @@ pub fn range(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferen
 }
 
 impl Range {
-    fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
+    fn eval_t<T>(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>>
     where
         T: Datum
             + AsPrimitive<usize>
@@ -34,7 +34,7 @@ impl Range {
         let delta = *delta.to_scalar::<T>()?;
         let value =
             Array1::from_shape_fn(((limit - start) / delta).as_(), |ix| ix.as_() * delta + start);
-        Ok(tvec![value.into_arc_tensor()])
+        Ok(tvec![value.into_tensor()])
     }
 }
 
@@ -52,7 +52,7 @@ impl EvalOp for Range {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         dispatch_numbers!(Self::eval_t(self.dtype)(self, inputs))
     }
 }
@@ -87,13 +87,13 @@ impl InferenceRulesOp for Range {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         if let (Some(start), Some(limit), Some(delta)) = (
-            target.outlet_fact(mapping[&node.inputs[0]])?.konst.as_ref(),
-            target.outlet_fact(mapping[&node.inputs[1]])?.konst.as_ref(),
-            target.outlet_fact(mapping[&node.inputs[2]])?.konst.as_ref(),
+            target.outlet_fact(mapping[&node.inputs[0]])?.konst.as_deref(),
+            target.outlet_fact(mapping[&node.inputs[1]])?.konst.as_deref(),
+            target.outlet_fact(mapping[&node.inputs[2]])?.konst.as_deref(),
         ) {
             let mut value = dispatch_numbers!(Self::eval_t(start.datum_type())(
                 self,
-                tvec!(start.clone(), limit.clone(), delta.clone())
+                tvec!(start.into(), limit.into(), delta.into())
             ))?;
             Ok(tvec!(target.add_const(&*node.name, value.remove(0))?))
         } else {

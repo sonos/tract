@@ -67,8 +67,8 @@ impl EvalOp for PulsedAxisSlice {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(inputs)
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+        Ok(inputs.into_iter().map(|t| t.into_tensor()).collect())
     }
 }
 

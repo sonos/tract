@@ -20,8 +20,8 @@ impl Lrn {
         T: Datum + tract_num_traits::Float + tract_num_traits::FromPrimitive + ::std::iter::Sum,
     >(
         &self,
-        input: Arc<Tensor>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        input: &Tensor,
+    ) -> TractResult<TVec<Tensor>> {
         let input = input.to_array_view::<T>()?;
         let channels = input.shape()[1];
         let output = Array::from_shape_fn(input.shape(), |mut coords| {
@@ -39,7 +39,7 @@ impl Lrn {
                 + T::from(self.alpha).unwrap() / T::from(self.size).unwrap() * square_sum)
                 .powf(T::from(self.beta).unwrap())
         });
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tensor()))
     }
 }
 
@@ -57,9 +57,9 @@ impl EvalOp for Lrn {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
-        dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
+        dispatch_floatlike!(Self::eval_t(input.datum_type())(self, &input))
     }
 }
 

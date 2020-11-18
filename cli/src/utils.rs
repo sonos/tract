@@ -2,12 +2,13 @@ use crate::CliResult;
 use tract_hir::internal::*;
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> CliResult<()> {
+pub fn check_outputs(got: &[impl std::borrow::Borrow<Tensor>], expected: &[Option<Arc<Tensor>>]) -> CliResult<()> {
     if got.len() != expected.len() {
         bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
     }
 
     for (ix, (got, exp)) in got.iter().zip(expected.iter()).enumerate() {
+        let got = got.borrow();
         if let Some(exp) = exp {
             if let Ok(exp) = exp.to_array_view::<f32>() {
                 debug!("Exp: {:?}", exp);

@@ -118,7 +118,7 @@ impl EvalOp for Im2Col {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         unsafe {
             let mut input = args_1!(inputs).into_tensor();
             let output_shape = self.output_shape(input.shape())?;

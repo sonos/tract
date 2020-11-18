@@ -84,7 +84,7 @@ mod tests {
         let tfd = tensorflow().model_for_path(inception_v3_2016_08_28_frozen()).unwrap();
         let plan = SimplePlan::new(&tfd).unwrap();
         let input = load_image(hopper());
-        let outputs = plan.run(tvec![input]).unwrap();
+        let outputs = plan.run(tvec![input.into()]).unwrap();
         let labels = load_labels();
         let label_id = outputs[0]
             .to_array_view::<f32>()

@@ -23,7 +23,7 @@ pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> 
     }
 
     if let Some(asserts) = &params.assertions.assert_outputs {
-        crate::utils::check_outputs(&*outputs, &asserts)?;
+        crate::utils::check_outputs(&outputs, &asserts)?;
     }
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
@@ -38,16 +38,16 @@ fn run_regular(
     tract: &dyn Model,
     params: &Parameters,
     options: &clap::ArgMatches,
-) -> CliResult<TVec<Arc<Tensor>>> {
+) -> CliResult<TVec<Tensor>> {
     let steps = options.is_present("steps");
     let assert_sane_floats = options.is_present("assert-sane-floats");
-    let mut inputs: TVec<Tensor> = tvec!();
+    let mut inputs: TVec<TensorVar> = tvec!();
     for (ix, input) in tract.input_outlets().iter().enumerate() {
-        if let Some(input) = params.input_values.get(ix).and_then(|x| x.as_ref()) {
-            inputs.push(input.clone().into_tensor())
+        if let Some(input) = params.input_values.get(ix).and_then(|x| x.as_deref()) {
+            inputs.push(input.into())
         } else {
             let fact = tract.outlet_typedfact(*input)?;
-            inputs.push(crate::tensor::tensor_for_fact(&fact, None)?);
+            inputs.push(crate::tensor::tensor_for_fact(&fact, None)?.into());
         }
     }
     dispatch_model!(tract, |m| {
@@ -83,7 +83,7 @@ fn run_regular(
 }
 
 #[cfg(feature = "pulse")]
-fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
+fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Tensor>> {
     let input_fact = model.input_fact(0)?;
     let output_fact = model.output_fact(0)?;
 
@@ -125,7 +125,7 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
         } else {
             chunk.to_owned()
         };
-        let outputs = state.run(tvec!(input.into()))?;
+        let outputs = state.run(tvec!(input.into_tensor().into()))?;
         let result_chunk = outputs[0].to_array_view::<f32>()?;
         result
             .slice_axis_mut(
@@ -137,5 +137,5 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     result.slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (output_fact.delay..).into());
     result
         .slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
-    Ok(tvec!(result.into_arc_tensor()))
+    Ok(tvec!(result.into_tensor()))
 }

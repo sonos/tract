@@ -20,8 +20,8 @@ impl EvalOp for Identity {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(inputs)
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+        Ok(tvec!(inputs.remove(0).into_tensor()))
     }
 }
 

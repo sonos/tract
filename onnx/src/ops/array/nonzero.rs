@@ -38,15 +38,15 @@ impl EvalOp for NonZero {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         unsafe {
             let input = args_1!(inputs);
             let output = if input.datum_type() == bool::datum_type() {
-                Self::eval_t::<u8>(input.as_ref())?
+                Self::eval_t::<u8>(&*input)?
             } else {
-                dispatch_numbers!(Self::eval_t(input.datum_type())(input.as_ref()))?
+                dispatch_numbers!(Self::eval_t(input.datum_type())(&*input))?
             };
-            Ok(tvec!(output.into_arc_tensor()))
+            Ok(tvec!(output))
         }
     }
 }

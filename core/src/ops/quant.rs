@@ -21,20 +21,20 @@ fn hash_scale<H: std::hash::Hasher>(it: &Option<f32>, state: &mut H) {
     Hash::hash(&it.clone().unwrap_or(1.0).to_bits(), state)
 }
 
-fn cleanup_zeropoint(zp: &Arc<Tensor>) -> Option<Arc<Tensor>> {
+fn cleanup_zeropoint(zp: &Tensor) -> Option<Arc<Tensor>> {
     match zp.datum_type() {
         DatumType::U8 => cleanup_zeropoint_t::<u8>(zp),
         DatumType::I8 => cleanup_zeropoint_t::<i8>(zp),
-        _ => Some(zp.clone()),
+        _ => Some(zp.clone().into_arc_tensor()),
     }
 }
 
-fn cleanup_zeropoint_t<T: Datum + Zero + Copy>(zp: &Arc<Tensor>) -> Option<Arc<Tensor>> {
+fn cleanup_zeropoint_t<T: Datum + Zero + Copy>(zp: &Tensor) -> Option<Arc<Tensor>> {
     let mut zp = zp.clone();
     if zp.rank() == 1 {
         let slice = zp.as_slice::<T>().unwrap();
         if slice[1..].iter().all(|&x| x == slice[0]) {
-            zp = rctensor0(slice[0]);
+            zp = tensor0(slice[0]);
         }
     }
     if zp.rank() == 0 && *zp.to_scalar::<T>().unwrap() == T::zero() {
@@ -84,15 +84,15 @@ impl QParams {
         QParams { inputs_kind: Some(inputs_kind), ..self }
     }
 
-    pub fn set_zero_point_a(&mut self, zero_point: &Arc<Tensor>) {
+    pub fn set_zero_point_a(&mut self, zero_point: &Tensor) {
         self.zero_point_a = cleanup_zeropoint(zero_point);
     }
 
-    pub fn set_zero_point_b(&mut self, zero_point: &Arc<Tensor>) {
+    pub fn set_zero_point_b(&mut self, zero_point: &Tensor) {
         self.zero_point_b = cleanup_zeropoint(zero_point);
     }
 
-    pub fn set_zero_point_c(&mut self, zero_point: &Arc<Tensor>) {
+    pub fn set_zero_point_c(&mut self, zero_point: &Tensor) {
         self.zero_point_c = cleanup_zeropoint(zero_point);
     }
 
@@ -226,14 +226,14 @@ impl EvalOp for DequantizeLinearF32 {
     fn is_stateless(&self) -> bool {
         true
     }
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let output = match inputs[0].datum_type() {
             DatumType::I8 => self.eval_t::<i8>(&inputs[0])?,
             DatumType::I32 => self.eval_t::<i32>(&inputs[0])?,
             DatumType::U8 => self.eval_t::<u8>(&inputs[0])?,
             dt => bail!("Unsupported type {:?}", dt),
         };
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output))
     }
 }
 
@@ -331,7 +331,7 @@ impl TypedOp for DequantizeLinearF32 {
                         DatumType::U8 => tensor1(&input),
                         _ => unreachable!(),
                     };
-                    let output = SimplePlan::new(adhoc_model)?.run(tvec!(input))?.remove(0);
+                    let output = SimplePlan::new(adhoc_model)?.run(tvec!(input.into()))?.remove(0);
                     let table: &[u8] = match dt {
                         DatumType::I8 => unsafe { std::mem::transmute(output.as_slice::<i8>()?) },
                         DatumType::U8 => output.as_slice::<u8>()?,

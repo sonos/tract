@@ -67,11 +67,11 @@ impl<Src: Datum + Hash + Eq + Ord, Dst: Datum + Hash> EvalOp for CategoryMapper<
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let input = input.to_array_view::<Src>()?;
         let output = input.map(|v| self.hash.get(v).unwrap_or(&self.default).clone());
-        Ok(tvec!(output.into_arc_tensor()))
+        Ok(tvec!(output.into_tensor()))
     }
 }
 

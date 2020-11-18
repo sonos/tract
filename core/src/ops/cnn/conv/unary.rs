@@ -416,7 +416,7 @@ impl EvalOp for ConvUnary {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let mut model = TypedModel::default();
         let dt = inputs[0].datum_type();
         let wire = model.add_source("source", TypedFact::dt_shape(dt, inputs[0].shape()))?;
@@ -431,7 +431,7 @@ impl EvalOp for ConvUnary {
         };
         model.set_output_outlets(&[wire])?;
         let plan = SimplePlan::new(model)?;
-        plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
+        plan.run(inputs)
     }
 }
 

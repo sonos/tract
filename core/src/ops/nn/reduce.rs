@@ -204,8 +204,8 @@ impl EvalOp for Reduce {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec!(self.reducer.reduce(&*self.axes, inputs[0].as_ref())?.into_arc_tensor()))
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+        Ok(tvec!(self.reducer.reduce(&*self.axes, &*inputs[0])?))
     }
 }
 

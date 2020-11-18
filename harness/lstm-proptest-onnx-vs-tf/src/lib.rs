@@ -176,20 +176,19 @@ impl LstmProblem {
         Ok(model.into_typed()?)
     }
 
-    pub fn onnx_run(&self) -> TractResult<Arc<Tensor>> {
+    pub fn onnx_run(&self) -> TractResult<Tensor> {
         let model = self.onnx_model()?;
         let plan = SimplePlan::new(model)?;
         let mut state = SimpleState::new(plan)?;
         let y = state
-            .run(tvec!(self.x.clone().into_tensor()))?
+            .run(tvec!((&*self.x).into()))?
             .remove(0)
-            .into_tensor()
-            .into_array::<f32>()?;
-        let y = y.into_shape((self.length, self.batch_size, self.cell_size)).unwrap();
-        Ok(y.into_arc_tensor())
+            .into_shape(&[self.length, self.batch_size, self.cell_size])
+            .unwrap();
+        Ok(y)
     }
 
-    pub fn tf_run(&self) -> TractResult<Arc<Tensor>> {
+    pub fn tf_run(&self) -> TractResult<Tensor> {
         let model = self.tf_model()?;
         let lstm_id = model.node_by_name("lstm")?.id;
         let memo_id = model.node_by_name("memo")?.id;
@@ -198,7 +197,7 @@ impl LstmProblem {
             &[OutletId::new(lstm_id, 6), OutletId::new(memo_id, 0)],
         )?;
         let mut state = SimpleState::new(plan_run)?;
-        let y = state.run(tvec!(self.x.clone().into_tensor()))?.remove(0);
+        let y = state.run(tvec!((&*self.x).into()))?.remove(0);
         Ok(y)
     }
 }

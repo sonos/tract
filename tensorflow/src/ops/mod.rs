@@ -74,7 +74,7 @@ impl EvalOp for Noop {
         true
     }
 
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, _inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         Ok(tvec!(Tensor::from(false).into()))
     }
 }

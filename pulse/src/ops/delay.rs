@@ -58,7 +58,7 @@ mod test {
             let expect: Vec<u8> = (pulse * i..(pulse * (i + 1) + overlap))
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
-            let output = state.run(tvec!(tensor1(&input))).unwrap();
+            let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             let skip = (delay + overlap).saturating_sub(i * pulse).min(pulse + overlap);
             assert_eq!(&output[0].as_slice::<u8>().unwrap()[skip..], &expect[skip..]);
         }
@@ -113,7 +113,7 @@ mod test {
             let expect: Vec<u8> =
                 (pulse * i..(pulse * (i + 1))).map(|i| i.saturating_sub(4) as u8).collect();
             let skip = 4usize.saturating_sub(i * pulse).min(pulse);
-            let output = state.run(tvec!(tensor1(&input))).unwrap();
+            let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             assert_eq!(&output[0].as_slice::<u8>().unwrap()[skip..], &expect[skip..]);
         }
     }

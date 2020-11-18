@@ -149,10 +149,10 @@ pub fn handle_reference_stage(
         .collect::<TractResult<Vec<_>>>()?;
     let generated = crate::tensor::make_inputs(&*input_facts)?;
     state.run_plan_with_eval(
-        generated.clone(),
+        generated.into_iter().map(|t| t.into()).collect(),
         |session, state, node, input| -> TractResult<_> {
-            let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
-            values.insert(node.name.clone(), Ok(result[0].as_ref().clone()));
+            let result: TVec<Tensor> = tract_core::plan::eval(session, state, node, input)?;
+            values.insert(node.name.clone(), Ok(result[0].clone()));
             Ok(result)
         },
     )?;
@@ -250,8 +250,7 @@ where
                                 }
                                 if !cumulative {
                                     // Use the output from reference to keep tract from drifting.
-                                    state.values[node.id].as_mut().unwrap()[ix] =
-                                        t.to_owned().into_arc_tensor();
+                                    state.values[node.id].as_mut().unwrap()[ix] = t.to_owned()
                                 }
                             }
                             Err(e) => {

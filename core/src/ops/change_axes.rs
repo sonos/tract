@@ -413,10 +413,10 @@ impl EvalOp for AxisOp {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let mut input = args_1!(inputs).into_tensor();
         self.change_tensor(&mut input)?;
-        Ok(tvec!(input.into_arc_tensor()))
+        Ok(tvec!(input))
     }
 }
 
@@ -987,9 +987,9 @@ mod proptests {
             crate::setup_test_logger();
             let input = self.input()?;
             let model = self.model()?;
-            let raw = model.into_runnable()?.run(tvec!(input.clone()))?;
+            let raw = model.into_runnable()?.run(tvec!((&input).into()))?;
             let optimized = self.model()?.declutter()?;
-            let opt = optimized.into_runnable()?.run(tvec!(input))?;
+            let opt = optimized.into_runnable()?.run(tvec!(input.into()))?;
             opt[0].close_enough(&raw[0], false)
         }
     }

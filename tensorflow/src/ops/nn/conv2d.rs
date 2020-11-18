@@ -131,23 +131,22 @@ mod tests {
     fn test_conv_1() {
         let conv = make_conv(1, 1, PaddingSpec::SameUpper);
         // NHWC
-        let data = rctensor4(&[[[[1f32]]]]);
+        let data = tensor4(&[[[[1f32]]]]);
         // HWIO
-        let filter = rctensor4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]);
-        let exp = rctensor4(&[[[[1f32]]]]);
+        let filter = tensor4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]);
+        let exp = tensor4(&[[[[1f32]]]]);
 
-        let result = conv.eval(tvec![data, filter]).unwrap().remove(0);
+        let result = conv.eval(tvec![data.into(), filter.into()]).unwrap().remove(0);
         assert_eq!(exp, result);
     }
 
     #[test]
     fn test_conv_2() {
         let conv = make_conv(1, 1, PaddingSpec::SameUpper);
-        let data = rctensor4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]);
-        let filter =
-            rctensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
-        let exp = rctensor4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]);
-        let got = &conv.eval(tvec![data, filter]).unwrap()[0];
+        let data = tensor4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]);
+        let filter = tensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
+        let exp = tensor4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]);
+        let got = &conv.eval(tvec![data.into(), filter.into()]).unwrap()[0];
         //println!("{:?}", got);
         //println!("{:?}", exp);
         exp.close_enough(&got, true).unwrap()

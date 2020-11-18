@@ -21,7 +21,7 @@ fn main() -> TractResult<()> {
     .into();
 
     // run the model on the input
-    let result = model.run(tvec!(image))?;
+    let result = model.run(tvec!(image.into()))?;
 
     // find and display the max value with its index
     let best = result[0]

@@ -19,7 +19,7 @@ impl EvalOp for Dummy {
         true
     }
 
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, _inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         bail!("eval() called on a Dummy op. This is a bug.")
     }
 }

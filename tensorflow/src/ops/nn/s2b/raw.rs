@@ -22,14 +22,14 @@ impl EvalOp for SpaceToBatch {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
         let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;
         let paddings = paddings.cast_to::<i32>()?;
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
         let r = dispatch_numbers!(super::space_to_batch(input.datum_type())(
-            input,
+            input.into_tensor(),
             &block_shape.view(),
             &paddings.view()
         ))?;
@@ -119,14 +119,14 @@ impl EvalOp for BatchToSpace {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
         let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;
         let crops = crops.cast_to::<i32>()?;
         let crops = crops.to_array_view::<i32>()?.into_dimensionality()?;
         let r = dispatch_numbers!(super::batch_to_space(input.datum_type())(
-            input,
+            &*input,
             &block_shape.view(),
             &crops.view()
         ))?;

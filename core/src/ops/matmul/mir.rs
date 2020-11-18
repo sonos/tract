@@ -4,7 +4,7 @@ use crate::ops::quant::{QParams, QParamsInputKind};
 
 pub(super) fn q_params_from_inputs(
     q_params: &Option<QParams>,
-    inputs: &TVec<Arc<Tensor>>,
+    inputs: &TVec<TensorVar>,
 ) -> TractResult<Option<QParams>> {
     q_params
         .as_ref()
@@ -18,10 +18,10 @@ pub(super) fn q_params_from_inputs(
                             q_params.set_zero_point_a(&inputs[*ix]);
                         }
                         QParamsInputKind::ZeroPointB(ix) => {
-                            q_params.set_zero_point_b(&inputs[*ix].clone());
+                            q_params.set_zero_point_b(&inputs[*ix]);
                         }
                         QParamsInputKind::ZeroPointC(ix) => {
-                            q_params.set_zero_point_c(&inputs[*ix].clone());
+                            q_params.set_zero_point_c(&inputs[*ix]);
                         }
                         QParamsInputKind::ScaleABC(a_ix, b_ix, c_ix) => {
                             let scale = *inputs[*a_ix].to_scalar::<f32>()?
@@ -84,14 +84,14 @@ impl EvalOp for MatMul {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         assert_eq!(&inputs[0].rank(), &inputs[1].rank());
 
         let q_params = q_params_from_inputs(&self.q_params, &inputs)?;
         let q_params = q_params.as_ref().or(self.q_params.as_ref());
 
         let t = eval(&inputs[0], &inputs[1], self.a_trans, self.b_trans, self.c_trans, q_params)?;
-        Ok(tvec!(t.into_arc_tensor()))
+        Ok(tvec!(t))
     }
 }
 
@@ -188,21 +188,29 @@ mod test {
         //
         // 0 1 2     5
         // 3 4 5    14
-        let a = rctensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
-        let b = rctensor2(&[[0f32], [1.0], [2.0]]);
-        let c = rctensor2(&[[5f32], [14.0]]);
+        let a = tensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
+        let b = tensor2(&[[0f32], [1.0], [2.0]]);
+        let c = tensor2(&[[5f32], [14.0]]);
         let op = MatMul::default();
-        let c_found = op.eval(tvec!(a, b)).unwrap().pop().unwrap();
+        let c_found = op
+            .eval(tvec!(TensorVar::Exclusive(a), TensorVar::Exclusive(b)))
+            .unwrap()
+            .pop()
+            .unwrap();
         c.close_enough(&c_found, true).unwrap();
     }
 
     #[test]
     fn bin_transpose() {
-        let a = rctensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
-        let b = rctensor2(&[[0f32], [1.0], [2.0]]);
-        let c = rctensor2(&[[5f32], [14.0]]);
+        let a = tensor2(&[[0f32, 1.0, 2.0], [3.0, 4.0, 5.0]]);
+        let b = tensor2(&[[0f32], [1.0], [2.0]]);
+        let c = tensor2(&[[5f32], [14.0]]);
         let op = MatMul::default().with_a_trans(true).with_b_trans(true).with_c_trans(true);
-        let c_found = op.eval(tvec!(b, a)).unwrap().pop().unwrap();
+        let c_found = op
+            .eval(tvec!(TensorVar::Exclusive(b), TensorVar::Exclusive(a)))
+            .unwrap()
+            .pop()
+            .unwrap();
         c.close_enough(&c_found, true).unwrap();
     }
 
@@ -225,9 +233,9 @@ mod test {
         model.set_output_outlets(&wire)?;
         let input = unsafe { Tensor::uninitialized::<f32>(&input_shape)? };
         trace!("running mir");
-        model.clone().into_runnable()?.run(tvec!(input.clone()))?;
+        model.clone().into_runnable()?.run(tvec!((&input).into()))?;
         trace!("running optimized");
-        model.declutter()?.optimize()?.into_runnable()?.run(tvec!(input))?;
+        model.declutter()?.optimize()?.into_runnable()?.run(tvec!(input.into()))?;
         Ok(())
     }
 }

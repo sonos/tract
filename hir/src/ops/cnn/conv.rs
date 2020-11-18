@@ -353,8 +353,8 @@ mod test {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let res = op.eval(tvec!(
-            Tensor::zero::<f32>(&[1, 2, 2, 2]).unwrap().into_arc_tensor(),
-            Tensor::zero::<f32>(&[2, 2, 2, 1]).unwrap().into_arc_tensor(),
+            Tensor::zero::<f32>(&[1, 2, 2, 2]).unwrap().into(),
+            Tensor::zero::<f32>(&[2, 2, 2, 1]).unwrap().into(),
         ))?;
         Tensor::zero::<f32>(&[1, 2, 2, 1]).unwrap().close_enough(&res[0], false)
     }
@@ -377,10 +377,10 @@ mod test {
     fn test_eval_nhwc_2() {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let i = rctensor4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]);
-        let k = rctensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
-        let e = rctensor4(&[[[[1.0f32], [0.0]]]]);
-        let res = op.eval(tvec!(i, k)).unwrap();
+        let i = tensor4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]);
+        let k = tensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
+        let e = tensor4(&[[[[1.0f32], [0.0]]]]);
+        let res = op.eval(tvec!(i.into(), k.into())).unwrap();
         assert_eq!(res, tvec!(e.into()));
     }
 
@@ -388,9 +388,9 @@ mod test {
     fn test_eval_nhwc_3() {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let i = rctensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
-        let k = rctensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
-        let res = op.eval(tvec!(i.clone(), k)).unwrap();
+        let i = tensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
+        let k = tensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
+        let res = op.eval(tvec!(i.clone().into(), k.into())).unwrap();
         assert_eq!(res, tvec!(i));
     }
 
@@ -399,9 +399,12 @@ mod test {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
-            .eval(tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]]), rctensor4(&[[[[1.0f32]]]])))
+            .eval(tvec!(
+                tensor4(&[[[[2.0f32]]], [[[0.0f32]]]]).into(),
+                tensor4(&[[[[1.0f32]]]]).into()
+            ))
             .unwrap();
-        assert_eq!(result, tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]])));
+        assert_eq!(result, tvec!(tensor4(&[[[[2.0f32]]], [[[0.0f32]]]])));
     }
 
     #[test]
@@ -417,9 +420,10 @@ mod test {
     #[test]
     fn test_eval_ntc_simple() {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let result =
-            op.eval(tvec!(rctensor3(&[[[2.0f32], [0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
-        assert_eq!(result, tvec!(rctensor3(&[[[2.0f32], [0.0f32]]])));
+        let result = op
+            .eval(tvec!(tensor3(&[[[2.0f32], [0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()))
+            .unwrap();
+        assert_eq!(result, tvec!(tensor3(&[[[2.0f32], [0.0f32]]]).into()));
     }
 
     #[test]
@@ -435,9 +439,10 @@ mod test {
     #[test]
     fn test_eval_ntc_batch() {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
-        let result =
-            op.eval(tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
-        assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]])));
+        let result = op
+            .eval(tvec!(tensor3(&[[[2.0f32]], [[0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()))
+            .unwrap();
+        assert_eq!(result, tvec!(tensor3(&[[[2.0f32]], [[0.0f32]]])));
     }
 
     #[test]
@@ -454,8 +459,11 @@ mod test {
     fn test_eval_ntc_channel() {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
-            .eval(tvec!(rctensor3(&[[[2.0f32, 0.0f32]]]), rctensor3(&[[[1.0f32], [0.0f32]]])))
+            .eval(tvec!(
+                tensor3(&[[[2.0f32, 0.0f32]]]).into(),
+                tensor3(&[[[1.0f32], [0.0f32]]]).into()
+            ))
             .unwrap();
-        assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]]])));
+        assert_eq!(result, tvec!(tensor3(&[[[2.0f32]]])));
     }
 }

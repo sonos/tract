@@ -8,9 +8,9 @@ impl OpState for SourceState {
         &mut self,
         session: &mut SessionState,
         _op: &dyn Op,
-        _inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec!(session.inputs[&self.0].clone()))
+        _inputs: TVec<TensorVar>,
+    ) -> TractResult<TVec<Tensor>> {
+        Ok(tvec!((&*session.inputs[&self.0]).clone()))
     }
 }
 

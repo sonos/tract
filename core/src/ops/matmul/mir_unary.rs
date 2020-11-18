@@ -45,11 +45,11 @@ impl EvalOp for MatMulUnary {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let q_params = q_params_from_inputs(&self.q_params, &inputs)?;
         let q_params = q_params.as_ref().or(self.q_params.as_ref());
         let t = eval(&self.a, &inputs[0], self.a_trans, self.b_trans, self.c_trans, q_params)?;
-        Ok(tvec!(t.into_arc_tensor()))
+        Ok(tvec!(t))
     }
 }
 

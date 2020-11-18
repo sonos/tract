@@ -340,7 +340,6 @@ mod tests {
             .unwrap()
             .pop()
             .unwrap()
-            .into_tensor()
     }
 
     // https://www.tensorflow.org/api_docs/python/tf/strided_slice

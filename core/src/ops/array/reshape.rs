@@ -26,13 +26,13 @@ impl EvalOp for FiniteReshape {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let mut tensor = input.into_tensor();
         unsafe {
             tensor.set_shape_unchecked(&*self.shape);
         }
-        Ok(tvec!(tensor.into_arc_tensor()))
+        Ok(tvec!(tensor))
     }
 }
 

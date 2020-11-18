@@ -74,8 +74,8 @@ pub fn pull_downsample_over_scan(
         match input {
             InputMapping::State { ref mut initializer } => {
                 if let StateInitializer::Value(ref v) = initializer {
-                    let new_v = down_op.eval(tvec!(v.clone()))?;
-                    *initializer = StateInitializer::Value(new_v[0].clone())
+                    let new_v = down_op.eval(tvec!(TensorVar::Borrow(v.as_ref())))?;
+                    *initializer = StateInitializer::Value(new_v[0].clone().into_arc_tensor())
                 }
             }
             InputMapping::Scan { ref mut chunk, .. } => {

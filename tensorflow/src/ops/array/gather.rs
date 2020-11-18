@@ -62,7 +62,7 @@ impl EvalOp for GatherNd {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let (data, indices) = args_2!(inputs);
         let shape = self.compute_shape(&data.shape(), &indices.shape())?;
         let indices = indices.cast_to::<i32>()?;
@@ -75,7 +75,7 @@ impl EvalOp for GatherNd {
                 &data,
                 &indices
             ));
-            Ok(tvec!(output.into_arc_tensor()))
+            Ok(tvec!(output))
         }
     }
 }
@@ -167,8 +167,9 @@ mod tests {
     fn simple_indexing() {
         let g = GatherNd::new();
         assert_eq!(
-            g.eval(tvec!(rctensor2(&[[1, 2], [3, 4]]), rctensor2(&[[0, 0], [1, 1]]))).unwrap(),
-            tvec!(rctensor1(&[1, 4]))
+            g.eval(tvec!(tensor2(&[[1, 2], [3, 4]]).into(), tensor2(&[[0, 0], [1, 1]]).into()))
+                .unwrap(),
+            tvec!(tensor1(&[1, 4]))
         );
     }
 
@@ -176,38 +177,38 @@ mod tests {
     fn slice_indexing() {
         let g = GatherNd::new();
         assert_eq!(
-            g.eval(tvec!(rctensor2(&[[1, 2], [3, 4]]), rctensor2(&[[1], [0]]))).unwrap(),
-            tvec!(rctensor2(&[[3, 4], [1, 2]]))
+            g.eval(tvec!(tensor2(&[[1, 2], [3, 4]]).into(), tensor2(&[[1], [0]]).into())).unwrap(),
+            tvec!(tensor2(&[[3, 4], [1, 2]]))
         );
     }
 
     #[test]
     fn tensor_3d_1() {
         let g = GatherNd::new();
-        let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
+        let t = tensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[1]]))).unwrap(),
-            tvec!(rctensor3(&[[[11, 21], [31, 41]]]))
+            g.eval(tvec!(t.into(), tensor2(&[[1]]).into())).unwrap(),
+            tvec!(tensor3(&[[[11, 21], [31, 41]]]))
         );
     }
 
     #[test]
     fn tensor_3d_2() {
         let g = GatherNd::new();
-        let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
+        let t = tensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[0, 1], [1, 0]]))).unwrap(),
-            tvec!(rctensor2(&[[30, 40], [11, 21]]))
+            g.eval(tvec!(t.into(), tensor2(&[[0, 1], [1, 0]]).into())).unwrap(),
+            tvec!(tensor2(&[[30, 40], [11, 21]]))
         );
     }
 
     #[test]
     fn tensor_3d_3() {
         let g = GatherNd::new();
-        let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
+        let t = tensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[0, 0, 1], [1, 0, 1]]))).unwrap(),
-            tvec!(rctensor1(&[20, 21]))
+            g.eval(tvec!(t.into(), tensor2(&[[0, 0, 1], [1, 0, 1]]).into())).unwrap(),
+            tvec!(tensor1(&[20, 21]))
         );
     }
 }

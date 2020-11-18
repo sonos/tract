@@ -18,7 +18,7 @@ impl Pad {
         input: &Tensor,
         paddings: ArrayView2<i32>,
         stream_dim: Option<usize>,
-    ) -> TractResult<Arc<Tensor>> {
+    ) -> TractResult<Tensor> {
         let shape: Vec<usize> = input
             .shape()
             .iter()
@@ -45,7 +45,7 @@ impl Pad {
             }
             input[&*index_in_input]
         });
-        Ok(result.into_arc_tensor())
+        Ok(result.into_tensor())
     }
 }
 
@@ -63,10 +63,10 @@ impl EvalOp for Pad {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let (input, paddings) = args_2!(inputs);
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
-        Ok(tvec![dispatch_copy!(Self::compute_t(input.datum_type())(&input, paddings, None))?])
+        Ok(tvec![dispatch_copy!(Self::compute_t(input.datum_type())(&*input, paddings, None))?])
     }
 }
 
@@ -110,9 +110,10 @@ mod tests {
 
     #[test]
     fn pad_0() {
-        let inputs = tvec![rctensor2(&[[1, 2, 3], [4, 5, 6]]), rctensor2(&[[1, 1], [2, 2]]),];
+        let inputs =
+            tvec![tensor2(&[[1, 2, 3], [4, 5, 6]]).into(), tensor2(&[[1, 1], [2, 2]]).into(),];
 
-        let expected: TVec<_> = tvec!(rctensor2(&[
+        let expected: TVec<_> = tvec!(tensor2(&[
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 1, 2, 3, 0, 0],
             [0, 0, 4, 5, 6, 0, 0],

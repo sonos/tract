@@ -25,9 +25,9 @@ impl EvalOp for ConstantLike {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
-        Ok(tvec!(tensor0(self.value).broadcast_scalar_to_shape(input.shape())?.into_arc_tensor()))
+        Ok(tvec!(tensor0(self.value).broadcast_scalar_to_shape(input.shape())?))
     }
 }
 
@@ -77,7 +77,7 @@ pub struct EyeLike {
 impl_dyn_hash!(EyeLike);
 
 impl EyeLike {
-    pub fn make<T>(&self, (r, c): (usize, usize)) -> TractResult<Arc<Tensor>>
+    pub fn make<T>(&self, (r, c): (usize, usize)) -> TractResult<Tensor>
     where
         T: Copy + Datum + One + Zero,
         f32: AsPrimitive<T>,
@@ -89,7 +89,7 @@ impl EyeLike {
                 array[(y, x as usize)] = T::one()
             }
         }
-        Ok(array.into_dyn().into_arc_tensor())
+        Ok(array.into_dyn().into_tensor())
     }
 }
 
@@ -107,7 +107,7 @@ impl EvalOp for EyeLike {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let dt = self.dt.unwrap_or(input.datum_type());
         Ok(tvec!(dispatch_numbers!(Self::make(dt)(self, (input.shape()[0], input.shape()[1])))?))
@@ -135,11 +135,11 @@ impl InferenceRulesOp for EyeLike {
                 let shape = (r, c);
                 if let Some(dt) = self.dt {
                     let value = dispatch_numbers!(Self::make(dt)(self, shape))?;
-                    s.equals(&outputs[0].value, value)?;
+                    s.equals(&outputs[0].value, value.into_arc_tensor())?;
                 } else {
                     s.given(&inputs[0].datum_type, move |s, dt| {
                         let value = dispatch_numbers!(Self::make(dt)(self, shape))?;
-                        s.equals(&outputs[0].value, value)
+                        s.equals(&outputs[0].value, value.into_arc_tensor())
                     })?;
                 }
             }

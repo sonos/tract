@@ -35,7 +35,7 @@ fn proptest_regular_against_pulse(
         .unwrap();
     let input = Tensor::from(input_array.clone());
     let plan = SimplePlan::new(&ref_model).unwrap();
-    let outputs = plan.run(tvec!(input.clone())).unwrap();
+    let outputs = plan.run(tvec!(input.into())).unwrap();
 
     debug!("Build pulsing model");
     let model = model.into_typed().unwrap();
@@ -101,7 +101,7 @@ fn proptest_regular_against_pulse(
         .into_tensor();
 
     prop_assert!(
-        &pulsed_output.close_enough(&*outputs[0], true).is_ok(),
+        &pulsed_output.close_enough(&outputs[0], true).is_ok(),
         "{:?} == {:?}",
         pulsed_output,
         outputs[0]

@@ -60,7 +60,7 @@ impl QParamsBuilder {
         target: &TypedModel,
         inputs: &[OutletId],
         zero_point_input: &Option<usize>,
-        set_zero_point: impl Fn(&mut QParams, &Arc<Tensor>),
+        set_zero_point: impl Fn(&mut QParams, &Tensor),
         get_input_kind: impl Fn(usize) -> QParamsInputKind,
     ) -> TractResult<()> {
         if let Some(&ix) = zero_point_input.as_ref() {

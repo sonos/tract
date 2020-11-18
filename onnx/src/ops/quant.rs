@@ -279,7 +279,7 @@ impl EvalOp for DynamicQuantizeLinearU8 {
     fn is_stateless(&self) -> bool {
         true
     }
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let input = &inputs[0];
         let a_input = input.to_array_view::<f32>()?;
         let (scale, zero_point) = scale_and_zero_point(a_input);
@@ -294,9 +294,9 @@ impl EvalOp for DynamicQuantizeLinearU8 {
             dst.as_slice_mut::<u8>()?,
         );
 
-        let quantized_tensor = dst.into_arc_tensor();
-        let scale_tensor = rctensor0(scale);
-        let zero_point_tensor = rctensor0(zero_point);
+        let quantized_tensor = dst;
+        let scale_tensor = tensor0(scale);
+        let zero_point_tensor = tensor0(zero_point);
 
         Ok(tvec!(quantized_tensor, scale_tensor, zero_point_tensor))
     }

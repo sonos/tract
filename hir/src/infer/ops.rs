@@ -42,7 +42,7 @@ pub trait InferenceOp:
             if infered_inputs.iter().all(|i| i.value.is_concrete()) {
                 let input_values = infered_inputs
                     .iter()
-                    .map(|i| i.value.concretize().unwrap().clone().into())
+                    .map(|i| i.value.concretize().unwrap().into_tensor().into())
                     .collect(); // checked
                 match self.eval(input_values) {
                     Ok(values) => {

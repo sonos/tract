@@ -87,7 +87,7 @@ fn deepspeech_raw() -> TractResult<()> {
 
     let mut state = SimpleState::new(plan)?;
 
-    let mut inputs = tvec!(tensor0(0), tensor0(1));
+    let mut inputs:TVec<TensorVar> = tvec!(tensor0(0).into(), tensor0(1).into());
     let mut h = None;
     let mut cs = None;
     let mut logits = None;
@@ -95,11 +95,11 @@ fn deepspeech_raw() -> TractResult<()> {
     for line in fs::read_to_string(cachedir().join("deepspeech-0.4.1-smoketest.txt"))?.split("\n") {
         if line.starts_with("INPUT_NODE") {
             let tensor = parse_tensor::<f32>(line)?;
-            inputs[0] = tensor;
+            inputs[0] = tensor.into();
         }
         if line.starts_with("INPUT_LENGTH") {
             let length = parse_scalar::<i32>(line)?;
-            inputs[1] = tensor1(&[*length.to_scalar::<i32>()?]);
+            inputs[1] = tensor1(&[*length.to_scalar::<i32>()?]).into();
         }
         if line.starts_with("H:") {
             h = Some(parse_tensor::<f32>(line)?);
@@ -146,17 +146,17 @@ fn deepspeech_run(opt: bool) -> TractResult<()> {
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(plan)?;
 
-    let mut inputs = tvec!(tensor0(0), tensor0(1));
+    let mut inputs:TVec<TensorVar> = tvec!(tensor0(0).into(), tensor0(1).into());
     let mut logits = None;
 
     for line in fs::read_to_string(cachedir().join("deepspeech-0.4.1-smoketest.txt"))?.split("\n") {
         if line.starts_with("INPUT_NODE") {
             let tensor = parse_tensor::<f32>(line)?;
-            inputs[0] = tensor;
+            inputs[0] = tensor.into();
         }
         if line.starts_with("INPUT_LENGTH") {
             let length = parse_scalar::<i32>(line)?;
-            inputs[1] = tensor1(&[*length.to_scalar::<i32>()?]);
+            inputs[1] = tensor1(&[*length.to_scalar::<i32>()?]).into();
         }
         if line.starts_with("LOGITS") {
             logits = Some(parse_tensor::<f32>(line)?);

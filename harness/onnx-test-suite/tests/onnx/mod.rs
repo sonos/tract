@@ -177,7 +177,7 @@ where
     let plan = SimplePlan::new(&model).unwrap();
     let expected = load_half_dataset("output", data_path);
     trace!("Loaded output asserts: {:?}", expected);
-    let computed = plan.run(inputs).unwrap();
+    let computed = plan.run(inputs.into_iter().map(|t| t.into()).collect()).unwrap();
     if computed.len() != expected.len() {
         panic!(
             "For {:?}, different number of results: got:{} expected:{}",

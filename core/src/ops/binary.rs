@@ -16,8 +16,8 @@ pub trait BinMiniOp:
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_broadcast_and_typecast(
         &self,
-        mut inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+        mut inputs: TVec<TensorVar>,
+    ) -> TractResult<TVec<Tensor>> {
         let (a, b) = args_2!(inputs);
         let op_type = self.operating_datum_type(a.datum_type(), b.datum_type())?;
         let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
@@ -27,16 +27,16 @@ pub trait BinMiniOp:
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
         let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &*c_shape)? };
         self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
-        Ok(tvec!(c.into_arc_tensor()))
+        Ok(tvec!(c))
     }
-    fn eval_broadcast(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_broadcast(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let (a, b) = args_2!(inputs);
         let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
             .ok_or_else(|| format_err!("Can not compute resulting shape"))?;
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
         let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &*c_shape)? };
-        self.eval_out_of_place(&mut c, a.as_ref(), b.as_ref())?;
-        Ok(tvec!(c.into_arc_tensor()))
+        self.eval_out_of_place(&mut c, &*a, &*b)?;
+        Ok(tvec!(c))
     }
     #[allow(unused_variables)]
     fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<UnaryOp> {
@@ -96,7 +96,7 @@ impl EvalOp for TypedBinOp {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         debug_assert_eq!(inputs[0].rank(), inputs[1].rank());
         self.0.eval_broadcast(inputs)
     }
@@ -293,9 +293,9 @@ impl EvalOp for UnaryOp {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         debug_assert_eq!(self.a.rank(), inputs[0].rank());
-        self.mini_op.eval_broadcast(tvec!(self.a.clone(), inputs[0].clone()))
+        self.mini_op.eval_broadcast(tvec!(TensorVar::Borrow(&self.a), inputs.remove(0)))
     }
 }
 
@@ -424,11 +424,11 @@ impl EvalOp for MergeOpUnicast {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
         let (a, b) = args_2!(inputs);
         let mut b = b.into_tensor();
-        self.0.eval_in_place(a.as_ref(), &mut b)?;
-        Ok(tvec!(b.into_arc_tensor()))
+        self.0.eval_in_place(&a, &mut b)?;
+        Ok(tvec!(b))
     }
 }
 

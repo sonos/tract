@@ -33,7 +33,7 @@
 //! // take the first and only output tensor
 //! let mut tensor = outputs.pop().unwrap();
 //!
-//! assert_eq!(tensor, rctensor1(&[4.0f32, 5.5, 8.0]));
+//! assert_eq!(tensor, tensor1(&[4.0f32, 5.5, 8.0]));
 //! # }
 //! ```
 //!
@@ -107,7 +107,7 @@ pub mod internal {
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
-    pub use crate::ops::{AxisInfo, Cost, EvalOp, Invariants, Op, OpState, Validation};
+    pub use crate::ops::{AxisInfo, Cost, EvalOp, Invariants, Op, OpState, TensorVar, Validation};
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use anyhow::{bail, format_err, Context as TractErrorContext};
