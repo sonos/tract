@@ -19,7 +19,7 @@ impl DynHash for MatMatMulPack {
 
 impl Op for MatMatMulPack {
     fn name(&self) -> Cow<str> {
-        "MatMatMulPacker".into()
+        "MatMatMulPack".into()
     }
 
     fn same_as(&self, other: &dyn Op) -> bool {
