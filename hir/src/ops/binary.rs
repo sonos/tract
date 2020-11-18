@@ -160,13 +160,14 @@ impl EvalOp for Nary {
     }
 
     fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+        let len = inputs.len();
         let mut t = inputs.remove(0);
         for i in inputs.drain(..) {
             t = self.0.eval_broadcast_and_typecast(tvec!(t, i))?.remove(0).into();
         }
         let mut t = t.into_tensor();
         if self.1 {
-            dispatch_numbers!(Self::normalize_t(t.datum_type())(&mut t, inputs.len()))?;
+            dispatch_numbers!(Self::normalize_t(t.datum_type())(&mut t, len))?;
             Ok(tvec!(t))
         } else {
             Ok(tvec!(t))

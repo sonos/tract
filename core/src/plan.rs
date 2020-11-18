@@ -248,7 +248,16 @@ where
                 values[node.id] = Some(
                     vs.into_iter()
                         .enumerate()
-                        .map(|(ix, t)| (node.outputs[ix].successors.len(), Some(t)))
+                        .map(|(ix, t)| {
+                            let successors = node.outputs[ix].successors.len();
+                            let outputs = model
+                                .borrow()
+                                .outputs
+                                .iter()
+                                .filter(|o| **o == (node.id, ix).into())
+                                .count();
+                            (successors + outputs, Some(t))
+                        })
                         .collect(),
                 );
             }

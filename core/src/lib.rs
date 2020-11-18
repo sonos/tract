@@ -28,7 +28,7 @@
 //!
 //! // run the computation.
 //! let input = tensor1(&[1.0f32, 2.5, 5.0]);
-//! let mut outputs = plan.run(tvec![input]).unwrap();
+//! let mut outputs = plan.run(tvec![input.into()]).unwrap();
 //!
 //! // take the first and only output tensor
 //! let mut tensor = outputs.pop().unwrap();
