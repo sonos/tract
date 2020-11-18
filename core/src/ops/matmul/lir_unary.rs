@@ -19,7 +19,7 @@ pub struct LirMatMulUnary {
 
 impl LirMatMulUnary {
     pub fn m(&self) -> usize {
-        self.c_fact.shape[self.c_fact.rank() - 2 + !self.c_trans as usize].to_usize().unwrap()
+        self.c_fact.shape[self.c_fact.rank() - 2 + self.c_trans as usize].to_usize().unwrap()
     }
 
     pub fn k(&self) -> usize {
@@ -27,7 +27,7 @@ impl LirMatMulUnary {
     }
 
     pub fn n(&self) -> &TDim {
-        &self.c_fact.shape[self.c_fact.rank() - 2 + self.c_trans as usize]
+        &self.c_fact.shape[self.c_fact.rank() - 2 + !self.c_trans as usize]
     }
 }
 
