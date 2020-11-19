@@ -142,7 +142,7 @@ mod tests {
         for idx in 2..3 {
             let index = Tensor::from(arr0(idx as i64));
             let outputs =
-                gatherer.eval(tvec![TensorVar::Borrow(&data), TensorVar::Exclusive(index)]).unwrap();
+                gatherer.eval(tvec![(&data).into(), index.into()]).unwrap();
             let output = &outputs[0];
             assert_eq!(output.shape().len(), 0);
             assert_eq!(*output.to_scalar::<i64>().unwrap(), idx + 1);

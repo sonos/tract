@@ -192,11 +192,7 @@ mod test {
         let b = tensor2(&[[0f32], [1.0], [2.0]]);
         let c = tensor2(&[[5f32], [14.0]]);
         let op = MatMul::default();
-        let c_found = op
-            .eval(tvec!(TensorVar::Exclusive(a), TensorVar::Exclusive(b)))
-            .unwrap()
-            .pop()
-            .unwrap();
+        let c_found = op.eval(tvec!(a.into(), b.into())).unwrap().pop().unwrap();
         c.close_enough(&c_found, true).unwrap();
     }
 
@@ -206,11 +202,7 @@ mod test {
         let b = tensor2(&[[0f32], [1.0], [2.0]]);
         let c = tensor2(&[[5f32], [14.0]]);
         let op = MatMul::default().with_a_trans(true).with_b_trans(true).with_c_trans(true);
-        let c_found = op
-            .eval(tvec!(TensorVar::Exclusive(b), TensorVar::Exclusive(a)))
-            .unwrap()
-            .pop()
-            .unwrap();
+        let c_found = op.eval(tvec!(b.into(), a.into())).unwrap().pop().unwrap();
         c.close_enough(&c_found, true).unwrap();
     }
 
