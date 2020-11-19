@@ -175,7 +175,8 @@ where
                         .get_unchecked_mut(i.slot);
                     value.0 -= 1;
                     if value.0 == 0 {
-                        exclusive.push(Some(TensorVar::Exclusive(value.1.take().unwrap())))
+                        exclusive
+                            .push(Some(TensorVar::Exclusive(Box::new(value.1.take().unwrap()))))
                     } else {
                         exclusive.push(None)
                     }
@@ -263,7 +264,7 @@ where
             }
             for output in &plan.outputs {
                 trace!("Extracting value {:?} ({})", output, model.node(output.node));
-                result.push(values[output.node].as_ref().unwrap()[output.slot].1.clone().unwrap())
+                result.push(values[output.node].as_mut().unwrap()[output.slot].1.take().unwrap())
             }
         }
         self.reset_wires()?;

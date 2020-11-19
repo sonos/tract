@@ -56,14 +56,14 @@ pub enum Cost {
 #[derive(Clone, PartialEq, Hash)]
 pub enum TensorVar<'a> {
     Borrow(&'a Tensor),
-    Exclusive(Tensor),
+    Exclusive(Box<Tensor>),
 }
 
 impl<'a> TensorVar<'a> {
     pub fn into_tensor(self) -> Tensor {
         match self {
             TensorVar::Borrow(b) => b.clone(),
-            TensorVar::Exclusive(b) => b,
+            TensorVar::Exclusive(b) => *b
         }
     }
 }
@@ -93,7 +93,7 @@ impl<'a> From<&'a Tensor> for TensorVar<'a> {
 
 impl<'a> From<Tensor> for TensorVar<'a> {
     fn from(t: Tensor) -> Self {
-        TensorVar::Exclusive(t)
+        TensorVar::Exclusive(Box::new(t))
     }
 }
 
