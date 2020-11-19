@@ -1,0 +1,41 @@
+on:
+  push:
+    #  release:
+    #    types:
+    #      - created
+
+name: Upload Musl release
+
+jobs:
+  build:
+    name: Upload Release Asset
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        target: [ "aarch64", "armv7" ]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Extract version tag
+        id: version
+        run: echo ::set-output name=value::$(echo ${{ github.ref }} | cut -f 3 -d / )
+
+      - name: Build tract
+        run: ./.travis/musl_build.sh ${{matrix.target}}
+
+      - name: Bundle tract
+        run: |
+          BUNDLE=tract-musl-${{matrix.target}}-${{ steps.version.outputs.value }}
+          mkdir $BUNDLE
+          cp target/tract $BUNDLE/
+          tar czf $BUNDLE.tgz $BUNDLE
+
+          #      - name: Upload asset
+          #        uses: softprops/action-gh-release@v1
+          #        with:
+          #          files: tract-linux-musl-${{ steps.version.outputs.value }}.tgz
+          #          name: ${{ steps.version.outputs.value }}
+          #        env:
+          #          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
