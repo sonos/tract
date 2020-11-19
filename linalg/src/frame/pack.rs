@@ -34,6 +34,9 @@ impl Packer {
     ) {
         let pb = pb.as_slice_mut_unchecked::<T>();
         let b = b.as_slice_unchecked::<T>();
+        #[cfg(debug_assertions)] {
+            pb.iter_mut().for_each(|v| *v = T::default());
+        }
         if mn_stride == 1 {
             let mut packer = self.write_with_k_outer(pb, mn);
             for k in 0..self.k as isize {
@@ -68,6 +71,7 @@ impl Packer {
         let pb = pb.borrow_mut();
         let b = b.borrow();
         debug_assert_eq!(b.shape()[k_axis], self.k);
+        debug_assert_eq!(pb.len(), self.len(b.shape()[mn_axis]));
         let dt = pb.datum_type();
         dispatch_copy!(Self::pack_t(dt)(
             self,
@@ -199,7 +203,6 @@ where
 
     #[inline]
     pub fn write(&mut self, t: T) {
-        eprintln!("{:?}", self);
         unsafe {
             *self.ptr = t;
             self.remain_on_k -= 1;
@@ -256,9 +259,7 @@ mod test {
 
         fn reference(&self) -> Vec<u32> {
             let panels = self.mn.div_ceil(self.r);
-            dbg!(panels);
             let len = panels * self.k * self.r;
-            dbg!(len);
             let mut vec = vec![0; len];
             for panel in 0..panels {
                 for k in 0..self.k {
