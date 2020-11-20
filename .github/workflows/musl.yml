@@ -1,8 +1,7 @@
 on:
-  push:
-    #  release:
-    #    types:
-    #      - created
+  release:
+    types:
+      - created
 
 name: Upload Musl release
 
@@ -31,11 +30,11 @@ jobs:
           cp target/tract $BUNDLE/
           tar czf $BUNDLE.tgz $BUNDLE
 
-          #      - name: Upload asset
-          #        uses: softprops/action-gh-release@v1
-          #        with:
-          #          files: tract-linux-musl-${{ steps.version.outputs.value }}.tgz
-          #          name: ${{ steps.version.outputs.value }}
-          #        env:
-          #          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: tract-musl-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
+          name: ${{ steps.version.outputs.value }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
