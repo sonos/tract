@@ -62,7 +62,7 @@ impl EvalOp for GatherNd {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let (data, indices) = args_2!(inputs);
         let shape = self.compute_shape(&data.shape(), &indices.shape())?;
         let indices = indices.cast_to::<i32>()?;
@@ -75,7 +75,7 @@ impl EvalOp for GatherNd {
                 &data,
                 &indices
             ));
-            Ok(tvec!(output))
+            Ok(tvec!(output.boxed()))
         }
     }
 }

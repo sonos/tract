@@ -71,7 +71,7 @@ impl EvalOp for Box<dyn Expansion> {
         true
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let mut adhoc = TypedModel::default();
         let wires = inputs
             .iter()

@@ -69,7 +69,7 @@ where
         Ok(SimplePlan { model, order, outputs: outputs.to_vec(), _casper: PhantomData })
     }
 
-    pub fn run(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    pub fn run(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let mut state = SimpleState::new(self)?;
         state.run(inputs)
     }
@@ -132,26 +132,25 @@ where
         Ok(())
     }
 
-    pub fn run(&mut self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    pub fn run(&mut self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         self.run_plan_with_eval(inputs, self::eval)
     }
 
-    #[inline(never)]
     pub fn run_plan_with_eval<Eval, E>(
         &mut self,
         inputs: TVec<TensorVar>,
         mut eval: Eval,
-    ) -> TractResult<TVec<Tensor>>
+    ) -> TractResult<TVec<Box<Tensor>>>
     where
         Eval: for<'a, 'b, 'c> FnMut(
             &'a mut SessionState,
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
             TVec<TensorVar>,
-        ) -> Result<TVec<Tensor>, E>,
+        ) -> Result<TVec<Box<Tensor>>, E>,
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
-        let mut result: TVec<Tensor> = tvec!();
+        let mut result: TVec<Box<Tensor>> = tvec!();
         unsafe {
             self.set_inputs(inputs.into_iter().map(|t| t.into_tensor()).collect())?;
             let &mut SimpleState {
@@ -175,8 +174,7 @@ where
                         .get_unchecked_mut(i.slot);
                     value.0 -= 1;
                     if value.0 == 0 {
-                        exclusive
-                            .push(Some(TensorVar::Exclusive(value.1.take().unwrap())))
+                        exclusive.push(Some(TensorVar::Exclusive(value.1.take().unwrap())))
                     } else {
                         exclusive.push(None)
                     }
@@ -257,14 +255,14 @@ where
                                 .iter()
                                 .filter(|o| **o == (node.id, ix).into())
                                 .count();
-                            (successors + outputs, Some(Box::new(t)))
+                            (successors + outputs, Some(t))
                         })
                         .collect(),
                 );
             }
             for output in &plan.outputs {
                 trace!("Extracting value {:?} ({})", output, model.node(output.node));
-                result.push(*(values[output.node].as_mut().unwrap()[output.slot].1.take().unwrap()))
+                result.push(values[output.node].as_mut().unwrap()[output.slot].1.take().unwrap())
             }
         }
         self.reset_wires()?;
@@ -314,7 +312,9 @@ where
             values
                 .into_iter()
                 .enumerate()
-                .map(|(ix, t)| (self.model().node(id).outputs[ix].successors.len(), Some(Box::new(t))))
+                .map(|(ix, t)| {
+                    (self.model().node(id).outputs[ix].successors.len(), Some(Box::new(t)))
+                })
                 .collect(),
         );
         Ok(())
@@ -352,7 +352,7 @@ where
             }
             .with_context(|| format!("Evaluating {:?}", node))?
         };
-        self.values[node] = Some(values.into_iter().map(|t| (1, Some(Box::new(t)))).collect());
+        self.values[node] = Some(values.into_iter().map(|t| (1, Some(t))).collect());
         Ok(self.values[node].as_ref().unwrap().iter().map(|t| &**t.1.as_ref().unwrap()).collect())
     }
 
@@ -379,13 +379,12 @@ where
     }
 }
 
-#[inline(never)]
 pub fn eval<F, O>(
     session_state: &mut SessionState,
     mut state: Option<&mut (dyn OpState + 'static)>,
     node: &Node<F, O>,
     input: TVec<TensorVar>,
-) -> TractResult<TVec<Tensor>>
+) -> TractResult<TVec<Box<Tensor>>>
 where
     F: Fact + Hash + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,

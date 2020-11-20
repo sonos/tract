@@ -279,7 +279,7 @@ impl EvalOp for DynamicQuantizeLinearU8 {
     fn is_stateless(&self) -> bool {
         true
     }
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = &inputs[0];
         let a_input = input.to_array_view::<f32>()?;
         let (scale, zero_point) = scale_and_zero_point(a_input);
@@ -298,7 +298,7 @@ impl EvalOp for DynamicQuantizeLinearU8 {
         let scale_tensor = tensor0(scale);
         let zero_point_tensor = tensor0(zero_point);
 
-        Ok(tvec!(quantized_tensor, scale_tensor, zero_point_tensor))
+        Ok(tvec!(quantized_tensor.boxed(), scale_tensor.boxed(), zero_point_tensor.boxed()))
     }
 }
 
@@ -306,8 +306,8 @@ impl TypedOp for DynamicQuantizeLinearU8 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut quantized_fact = inputs[0].clone();
         quantized_fact.datum_type = u8::datum_type();
-        let scale_fact = TypedFact::dt_shape(f32::datum_type(), &[0;0]);
-        let zero_fact = TypedFact::dt_shape(u8::datum_type(), &[0;0]);
+        let scale_fact = TypedFact::dt_shape(f32::datum_type(), &[0; 0]);
+        let zero_fact = TypedFact::dt_shape(u8::datum_type(), &[0; 0]);
         Ok(tvec!(quantized_fact, scale_fact, zero_fact))
     }
 

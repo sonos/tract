@@ -71,7 +71,7 @@ impl OpState for State {
         session: &mut SessionState,
         op: &dyn Op,
         inputs: TVec<TensorVar>,
-    ) -> TractResult<TVec<Tensor>> {
+    ) -> TractResult<TVec<Box<Tensor>>> {
         let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
         let c_shape: TVec<usize> = op
             .c_fact
@@ -96,12 +96,12 @@ impl EvalOp for LirMatMulUnary {
         Ok(if self.is_stateless() { None } else { Some(Box::new(State)) })
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         eval(self, &inputs[0], self.c_fact.shape.as_finite().unwrap())
     }
 }
 
-fn eval(op: &LirMatMulUnary, input: &Tensor, c_shape: &[usize]) -> TractResult<TVec<Tensor>> {
+fn eval(op: &LirMatMulUnary, input: &Tensor, c_shape: &[usize]) -> TractResult<TVec<Box<Tensor>>> {
     unsafe {
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
         if let Some((prefix_dim, prefix_strides)) = &op.c_prefix_dim_and_stride {
@@ -159,7 +159,7 @@ fn eval(op: &LirMatMulUnary, input: &Tensor, c_shape: &[usize]) -> TractResult<T
                 )?;
             }
         }
-        Ok(tvec!(c))
+        Ok(tvec!(c.boxed()))
     }
 }
 

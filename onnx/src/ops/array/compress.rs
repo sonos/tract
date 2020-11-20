@@ -56,7 +56,7 @@ impl EvalOp for Compress {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let (input, conds) = args_2!(inputs);
         let conds = conds.as_slice()?;
         let compressed_dim = conds.iter().filter(|c| **c).count();
@@ -75,7 +75,7 @@ impl EvalOp for Compress {
                 conds,
                 &mut output
             ));
-            Ok(tvec!(output))
+            Ok(tvec!(output.boxed()))
         }
     }
 }

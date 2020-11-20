@@ -49,9 +49,9 @@ impl TypedOp for ConstantOfShape {
 }
 
 impl EvalOp for ConstantOfShape {
-    fn eval(&self, _inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, _inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let shape: TVec<_> = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
-        Ok(tvec!(self.scalar.broadcast_scalar_to_shape(&*shape)?))
+        Ok(tvec!(self.scalar.broadcast_scalar_to_shape(&*shape)?.boxed()))
     }
 
     fn is_stateless(&self) -> bool {
@@ -76,13 +76,13 @@ impl OpState for ConstantOfShapeState {
         session: &mut SessionState,
         op: &dyn Op,
         _inputs: TVec<TensorVar>,
-    ) -> TractResult<TVec<Tensor>> {
+    ) -> TractResult<TVec<Box<Tensor>>> {
         let op = op.downcast_ref::<ConstantOfShape>().unwrap();
         let shape = op
             .shape
             .iter()
             .map(|d| Ok(d.eval(&session.resolved_symbols).to_usize()?))
             .collect::<TractResult<TVec<_>>>()?;
-        Ok(tvec!(op.scalar.broadcast_scalar_to_shape(&*shape)?))
+        Ok(tvec!(op.scalar.broadcast_scalar_to_shape(&*shape)?.boxed()))
     }
 }

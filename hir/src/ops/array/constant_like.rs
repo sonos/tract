@@ -25,9 +25,9 @@ impl EvalOp for ConstantLike {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs);
-        Ok(tvec!(tensor0(self.value).broadcast_scalar_to_shape(input.shape())?))
+        Ok(tvec!(tensor0(self.value).broadcast_scalar_to_shape(input.shape())?.boxed()))
     }
 }
 
@@ -107,10 +107,12 @@ impl EvalOp for EyeLike {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs);
         let dt = self.dt.unwrap_or(input.datum_type());
-        Ok(tvec!(dispatch_numbers!(Self::make(dt)(self, (input.shape()[0], input.shape()[1])))?))
+        Ok(tvec!(
+            dispatch_numbers!(Self::make(dt)(self, (input.shape()[0], input.shape()[1])))?.boxed()
+        ))
     }
 }
 
@@ -155,6 +157,9 @@ impl TypedOp for EyeLike {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(self.dt.unwrap_or(inputs[0].datum_type), inputs[0].shape.iter())))
+        Ok(tvec!(TypedFact::dt_shape(
+            self.dt.unwrap_or(inputs[0].datum_type),
+            inputs[0].shape.iter()
+        )))
     }
 }

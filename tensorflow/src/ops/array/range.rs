@@ -18,7 +18,7 @@ pub fn range(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferen
 }
 
 impl Range {
-    fn eval_t<T>(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>>
+    fn eval_t<T>(&self, mut inputs: TVec<TensorVar>) -> TractResult<Tensor>
     where
         T: Datum
             + AsPrimitive<usize>
@@ -34,7 +34,7 @@ impl Range {
         let delta = *delta.to_scalar::<T>()?;
         let value =
             Array1::from_shape_fn(((limit - start) / delta).as_(), |ix| ix.as_() * delta + start);
-        Ok(tvec![value.into_tensor()])
+        Ok(value.into_tensor())
     }
 }
 
@@ -52,8 +52,8 @@ impl EvalOp for Range {
         true
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
-        dispatch_numbers!(Self::eval_t(self.dtype)(self, inputs))
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
+        Ok(tvec!(dispatch_numbers!(Self::eval_t(self.dtype)(self, inputs))?.boxed()))
     }
 }
 
@@ -95,7 +95,7 @@ impl InferenceRulesOp for Range {
                 self,
                 tvec!(start.into(), limit.into(), delta.into())
             ))?;
-            Ok(tvec!(target.add_const(&*node.name, value.remove(0))?))
+            Ok(tvec!(target.add_const(&*node.name, value.into_arc_tensor())?))
         } else {
             bail!("Can not type Fill op")
         }

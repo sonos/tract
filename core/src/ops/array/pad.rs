@@ -101,9 +101,9 @@ impl EvalOp for Pad {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(self, input))?))
+        Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(self, input))?.boxed()))
     }
 }
 

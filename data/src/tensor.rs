@@ -938,6 +938,10 @@ impl Tensor {
     pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> anyhow::Result<view::TensorView> {
         view::TensorView::at_prefix(self, prefix)
     }
+
+    pub fn boxed(self) -> Box<Tensor> {
+        Box::new(self)
+    }
 }
 
 impl PartialEq for Tensor {

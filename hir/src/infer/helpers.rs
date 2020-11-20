@@ -11,7 +11,7 @@ pub fn infer_forward_concrete(
     {
         if op.is_stateless() {
             let output_value = op.eval(inputs)?.pop().unwrap();
-            Ok(Some(tvec![output_value.into()]))
+            Ok(Some(tvec![(*output_value).into()]))
         } else {
             Ok(None)
         }

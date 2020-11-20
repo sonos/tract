@@ -97,6 +97,12 @@ impl<'a> From<Tensor> for TensorVar<'a> {
     }
 }
 
+impl<'a> From<Box<Tensor>> for TensorVar<'a> {
+    fn from(t: Box<Tensor>) -> Self {
+        TensorVar::Exclusive(t)
+    }
+}
+
 impl Cost {
     pub fn is_compute(&self) -> bool {
         use Cost::*;
@@ -115,13 +121,13 @@ pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
         session: &mut SessionState,
         op: &dyn Op,
         inputs: TVec<TensorVar>,
-    ) -> TractResult<TVec<Tensor>>;
+    ) -> TractResult<TVec<Box<Tensor>>>;
 }
 dyn_clone::clone_trait_object!(OpState);
 
 pub trait EvalOp {
     #[allow(unused_variables)]
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         bail!("stateless evaluation not implemented")
     }
 

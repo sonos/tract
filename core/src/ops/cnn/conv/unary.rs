@@ -416,7 +416,7 @@ impl EvalOp for ConvUnary {
         true
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let mut model = TypedModel::default();
         let dt = inputs[0].datum_type();
         let wire = model.add_source("source", TypedFact::dt_shape(dt, inputs[0].shape()))?;

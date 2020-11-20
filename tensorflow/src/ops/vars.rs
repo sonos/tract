@@ -39,13 +39,13 @@ impl OpState for VariableV2State {
         session: &mut SessionState,
         op: &dyn Op,
         _inputs: TVec<TensorVar>,
-    ) -> TractResult<TVec<Tensor>> {
+    ) -> TractResult<TVec<Box<Tensor>>> {
         let op = op.downcast_ref::<VariableV2>().context("wrong op for variable state")?;
         let tensor = session
             .tensors
             .get(&op.id)
             .with_context(|| format!("Could not find state for variable {}", op.id))?;
-        Ok(tvec!(tensor.clone().into()))
+        Ok(tvec!(tensor.clone().boxed()))
     }
 }
 
@@ -152,7 +152,7 @@ impl OpState for AssignState {
         session: &mut SessionState,
         op: &dyn Op,
         mut inputs: TVec<TensorVar>,
-    ) -> TractResult<TVec<Tensor>> {
+    ) -> TractResult<TVec<Box<Tensor>>> {
         let (_current, new) = args_2!(inputs);
         let op = op.downcast_ref::<Assign>().context("wrong op for variable state")?;
         let var_id = if let Some(ref var_id) = op.var_id {
@@ -171,7 +171,7 @@ impl OpState for AssignState {
             );
         }
         *store = new.into_tensor();
-        Ok(tvec!(store.clone()))
+        Ok(tvec!(store.clone().boxed()))
     }
 }
 

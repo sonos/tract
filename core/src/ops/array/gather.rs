@@ -121,12 +121,12 @@ impl EvalOp for Gather {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let (data, indices) = args_2!(inputs);
         unsafe {
-            Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
+            Ok(tvec!(Box::new(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
                 &self, &data, &indices
-            ))?))
+            ))?)))
         }
     }
 }
@@ -141,8 +141,7 @@ mod tests {
         let gatherer = Gather::new(0);
         for idx in 2..3 {
             let index = Tensor::from(arr0(idx as i64));
-            let outputs =
-                gatherer.eval(tvec![(&data).into(), index.into()]).unwrap();
+            let outputs = gatherer.eval(tvec![(&data).into(), index.into()]).unwrap();
             let output = &outputs[0];
             assert_eq!(output.shape().len(), 0);
             assert_eq!(*output.to_scalar::<i64>().unwrap(), idx + 1);

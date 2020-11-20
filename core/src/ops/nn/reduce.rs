@@ -204,8 +204,8 @@ impl EvalOp for Reduce {
         true
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
-        Ok(tvec!(self.reducer.reduce(&*self.axes, &*inputs[0])?))
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
+        Ok(tvec!(self.reducer.reduce(&*self.axes, &*inputs[0])?.boxed()))
     }
 }
 

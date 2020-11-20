@@ -35,7 +35,7 @@ impl EvalOp for MatMatMulPack {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let b = args_1!(inputs);
         let dt = b.datum_type();
         unsafe {
@@ -50,7 +50,7 @@ impl EvalOp for MatMatMulPack {
                     !self.trans as usize,
                 )
             }
-            Ok(tvec!(packed))
+            Ok(tvec!(packed.boxed()))
         }
     }
 }

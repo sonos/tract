@@ -21,7 +21,7 @@ impl Lrn {
     >(
         &self,
         input: &Tensor,
-    ) -> TractResult<TVec<Tensor>> {
+    ) -> TractResult<TVec<Box<Tensor>>> {
         let input = input.to_array_view::<T>()?;
         let channels = input.shape()[1];
         let output = Array::from_shape_fn(input.shape(), |mut coords| {
@@ -39,7 +39,7 @@ impl Lrn {
                 + T::from(self.alpha).unwrap() / T::from(self.size).unwrap() * square_sum)
                 .powf(T::from(self.beta).unwrap())
         });
-        Ok(tvec!(output.into_tensor()))
+        Ok(tvec!(output.into_tensor().boxed()))
     }
 }
 
@@ -57,7 +57,7 @@ impl EvalOp for Lrn {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, &input))
     }

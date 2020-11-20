@@ -67,11 +67,11 @@ impl OpState for PulsePadOpState {
         session: &mut SessionState,
         op: &dyn Op,
         mut inputs: TVec<TensorVar>,
-    ) -> TractResult<TVec<Tensor>> {
+    ) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs).into_tensor();
         let op = op.downcast_ref::<PulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let tensor = self.pad(session, op, input)?;
-        Ok(tvec!(tensor))
+        Ok(tvec!(tensor.boxed()))
     }
 }
 

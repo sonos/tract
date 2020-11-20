@@ -15,7 +15,7 @@ pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferenc
 }
 
 impl Fill {
-    fn eval_t<T: Datum>(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval_t<T: Datum>(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let (shape, value) = args_2!(inputs);
         let value = value.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
@@ -24,7 +24,7 @@ impl Fill {
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
             |_| value.clone(),
         );
-        Ok(tvec![array.into_tensor()])
+        Ok(tvec![array.into_tensor().boxed()])
     }
 }
 
@@ -42,7 +42,7 @@ impl EvalOp for Fill {
         true
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         dispatch_datum!(Self::eval_t(self.dt)(self, inputs))
     }
 }
@@ -86,7 +86,7 @@ impl InferenceRulesOp for Fill {
                 self,
                 tvec!(shape.into(), value.into())
             ))?;
-            let id = target.add_const(&*node.name, value.remove(0))?;
+            let id = target.add_const(&*node.name, (*value.remove(0)).into_arc_tensor())?;
             Ok(tvec!(id))
         } else {
             bail!("Can not type Fill op")

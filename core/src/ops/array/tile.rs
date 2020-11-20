@@ -9,7 +9,7 @@ pub struct Tile {
 impl_dyn_hash!(Tile);
 
 impl Tile {
-    fn eval_t<T: Datum>(&self, data: &Tensor) -> TractResult<Tensor> {
+    fn eval_t<T: Datum>(&self, data: &Tensor) -> TractResult<Box<Tensor>> {
         let view = unsafe { data.to_array_view_unchecked::<T>() };
         let output_shape: TVec<usize> = view
             .shape()
@@ -27,7 +27,7 @@ impl Tile {
             output.set_datum_type(data.datum_type());
         }
 
-        Ok(output)
+        Ok(output.boxed())
     }
 }
 
@@ -45,7 +45,7 @@ impl EvalOp for Tile {
         true
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let result =
             dispatch_datum_by_size!(Self::eval_t(inputs[0].datum_type())(self, &inputs[0]))?;
         Ok(tvec!(result))

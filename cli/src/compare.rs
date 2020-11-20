@@ -151,8 +151,8 @@ pub fn handle_reference_stage(
     state.run_plan_with_eval(
         generated.into_iter().map(|t| t.into()).collect(),
         |session, state, node, input| -> TractResult<_> {
-            let result: TVec<Tensor> = tract_core::plan::eval(session, state, node, input)?;
-            values.insert(node.name.clone(), Ok(result[0].clone()));
+            let result: TVec<Box<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
+            values.insert(node.name.clone(), Ok(*result[0].clone()));
             Ok(result)
         },
     )?;

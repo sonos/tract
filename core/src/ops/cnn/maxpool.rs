@@ -40,7 +40,7 @@ impl EvalOp for MaxPool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let op = dispatch_floatlike!(MaxPool::to_fixed(inputs[0].datum_type())(
             self,
             inputs[0].shape()
@@ -118,7 +118,7 @@ impl MaxPoolFixed {
     fn eval_t<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
         &self,
         input: &Tensor,
-    ) -> TractResult<TVec<Tensor>> {
+    ) -> TractResult<TVec<Box<Tensor>>> {
         let input: ArrayViewD<T> = input.to_array_view()?;
         let input_ptr = input.as_ptr();
 
@@ -157,9 +157,12 @@ impl MaxPoolFixed {
             });
         }
         if let Some(dt) = self.with_index_outputs {
-            Ok(tvec!(values.into_tensor(), indices.unwrap().into_tensor().cast_to_dt(dt)?.into_owned()))
+            Ok(tvec!(
+                values.into_tensor().boxed(),
+                indices.unwrap().into_tensor().cast_to_dt(dt)?.into_owned().boxed()
+            ))
         } else {
-            Ok(tvec!(values.into_tensor()))
+            Ok(tvec!(values.into_tensor().boxed()))
         }
     }
 }
@@ -169,7 +172,7 @@ impl EvalOp for MaxPoolFixed {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_numbers!(Self::eval_t(input.datum_type())(self, &*input))
     }

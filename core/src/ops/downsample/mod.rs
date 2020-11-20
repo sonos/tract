@@ -54,7 +54,7 @@ impl EvalOp for Downsample {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs);
         unsafe {
             let t = if self.modulo > input.shape()[self.axis] {
@@ -79,7 +79,7 @@ impl EvalOp for Downsample {
                 }
                 dispatch_datum_by_size!(do_slice(input.datum_type())(&*input, self.axis, slice))
             };
-            Ok(tvec!(t))
+            Ok(tvec!(t.boxed()))
         }
     }
 }

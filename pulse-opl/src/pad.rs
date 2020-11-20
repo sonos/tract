@@ -14,11 +14,11 @@ impl OpState for PulsePadOpState {
         session: &mut SessionState,
         op: &dyn Op,
         mut inputs: TVec<TensorVar>,
-    ) -> TractResult<TVec<Tensor>> {
+    ) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs).into_tensor();
         let op = op.downcast_ref::<PulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let tensor = self.pad(session, op, input)?;
-        Ok(tvec!(tensor))
+        Ok(tvec!(tensor.boxed()))
     }
 }
 
@@ -57,7 +57,7 @@ impl PulsePadOpState {
         session: &mut SessionState,
         op: &PulsePad,
         mut input: Tensor,
-    ) -> TractResult<Tensor> {
+    ) -> TractResult<Box<Tensor>> {
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + op.pulse;
         self.current_pos += op.pulse;
@@ -81,12 +81,12 @@ impl PulsePadOpState {
 
         // pulse is entirely in valid input, just forward
         if pulse_begin >= op.begin_input && pulse_end <= end_input {
-            return Ok(input);
+            return Ok(input.boxed());
         }
         // pulse is entirely before or after output is valid, just forward
         if pulse_end <= op.begin_input - op.before || pulse_begin >= end_input.saturating_add(after)
         {
-            return Ok(input);
+            return Ok(input.boxed());
         }
 
         if pulse_begin < op.begin_input {
@@ -140,7 +140,7 @@ impl PulsePadOpState {
             }
         }
 
-        Ok(input)
+        Ok(input.boxed())
     }
 }
 

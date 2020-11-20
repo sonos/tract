@@ -38,7 +38,7 @@ fn run_regular(
     tract: &dyn Model,
     params: &Parameters,
     options: &clap::ArgMatches,
-) -> CliResult<TVec<Tensor>> {
+) -> CliResult<TVec<Box<Tensor>>> {
     let steps = options.is_present("steps");
     let assert_sane_floats = options.is_present("assert-sane-floats");
     let mut inputs: TVec<TensorVar> = tvec!();
@@ -83,7 +83,7 @@ fn run_regular(
 }
 
 #[cfg(feature = "pulse")]
-fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Tensor>> {
+fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Box<Tensor>>> {
     let input_fact = model.input_fact(0)?;
     let output_fact = model.output_fact(0)?;
 
@@ -137,5 +137,5 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Tenso
     result.slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (output_fact.delay..).into());
     result
         .slice_axis_inplace(tract_ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
-    Ok(tvec!(result.into_tensor()))
+    Ok(tvec!(result.into_tensor().boxed()))
 }

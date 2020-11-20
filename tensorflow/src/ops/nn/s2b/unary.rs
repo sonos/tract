@@ -35,7 +35,7 @@ impl EvalOp for SpaceToBatchUnary {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {
@@ -55,7 +55,7 @@ impl EvalOp for SpaceToBatchUnary {
             &self.block_shape.view(),
             &paddings.view()
         ))?;
-        Ok(tvec!(r))
+        Ok(tvec!(r.boxed()))
     }
 }
 
@@ -128,7 +128,7 @@ impl EvalOp for BatchToSpaceUnary {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {
@@ -148,7 +148,7 @@ impl EvalOp for BatchToSpaceUnary {
             &self.block_shape.view(),
             &paddings.view()
         ))?;
-        Ok(tvec!(r))
+        Ok(tvec!(r.boxed()))
     }
 }
 

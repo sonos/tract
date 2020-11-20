@@ -19,8 +19,8 @@ impl EvalOp for Const {
         true
     }
 
-    fn eval(&self, _inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
-        Ok(tvec![self.0.clone().into_tensor()])
+    fn eval(&self, _inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
+        Ok(tvec![self.0.clone().into_tensor().boxed()])
     }
 }
 

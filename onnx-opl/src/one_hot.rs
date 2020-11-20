@@ -35,7 +35,7 @@ impl EvalOp for OneHot {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let input = args_1!(inputs);
         let mut shape: TVec<usize> = input.shape().into();
         shape.insert(self.axis, self.dim);
@@ -46,7 +46,7 @@ impl EvalOp for OneHot {
                 &input,
                 &mut output
             ))?;
-            Ok(tvec!(output))
+            Ok(tvec!(output.boxed()))
         }
     }
 }

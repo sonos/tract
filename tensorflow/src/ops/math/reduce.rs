@@ -55,7 +55,7 @@ impl EvalOp for Reduce {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let (input, axes) = args_2!(inputs);
         let axes: Vec<i64> = axes.cast_to::<i64>()?.as_slice::<i64>()?.to_vec();
         let op = nn::Reduce::new(Some(axes), self.keep_dims, self.reducer);

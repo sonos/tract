@@ -413,10 +413,10 @@ impl EvalOp for AxisOp {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let mut input = args_1!(inputs).into_tensor();
         self.change_tensor(&mut input)?;
-        Ok(tvec!(input))
+        Ok(tvec!(input.boxed()))
     }
 }
 

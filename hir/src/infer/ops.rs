@@ -47,7 +47,7 @@ pub trait InferenceOp:
                 match self.eval(input_values) {
                     Ok(values) => {
                         let output_values =
-                            values.into_iter().map(|t| t.into()).collect::<TVec<_>>();
+                            values.into_iter().map(|t| (*t).into()).collect::<TVec<_>>();
                         return Ok((infered_inputs, output_values, observed));
                     }
                     Err(e) => match e {

@@ -28,7 +28,7 @@ impl EvalOp for DepthWise {
         true
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -37,7 +37,7 @@ impl DepthWise {
     fn eval_t<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
         &self,
         mut inputs: TVec<TensorVar>,
-    ) -> TractResult<TVec<Tensor>> {
+    ) -> TractResult<TVec<Box<Tensor>>> {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
         let iptr = img.as_ptr();
@@ -82,7 +82,7 @@ impl DepthWise {
                 }
             });
         }
-        Ok(tvec!(output.into_tensor()))
+        Ok(tvec!(output.into_tensor().boxed()))
     }
 }
 

@@ -51,7 +51,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                     .map(|f| TensorVar::Borrow(f.konst.as_ref().unwrap()))
                     .collect::<TVec<_>>();
                 let outputs = op.eval(tensors)?;
-                outputs.into_iter().map(|t| TypedFact::from(t)).collect()
+                outputs.into_iter().map(|t| TypedFact::from(*t)).collect()
             } else {
                 op.output_facts(&*input_facts)
                     .with_context(|| format!("wiring {} ({:?})", name, op))?

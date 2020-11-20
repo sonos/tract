@@ -226,14 +226,14 @@ impl EvalOp for DequantizeLinearF32 {
     fn is_stateless(&self) -> bool {
         true
     }
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let output = match inputs[0].datum_type() {
             DatumType::I8 => self.eval_t::<i8>(&inputs[0])?,
             DatumType::I32 => self.eval_t::<i32>(&inputs[0])?,
             DatumType::U8 => self.eval_t::<u8>(&inputs[0])?,
             dt => bail!("Unsupported type {:?}", dt),
         };
-        Ok(tvec!(output))
+        Ok(tvec!(output.boxed()))
     }
 }
 

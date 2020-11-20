@@ -226,11 +226,11 @@ impl EvalOp for TypedConcat {
         true
     }
 
-    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let refs: TVec<&Tensor> = inputs.iter().map(|i| &**i).collect();
         let mats = slices(&self.slices, &refs)?;
         let result = Tensor::stack_tensors(self.axis, &mats)?;
-        Ok(tvec![result])
+        Ok(tvec![result.boxed()])
     }
 }
 

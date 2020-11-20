@@ -63,10 +63,12 @@ impl EvalOp for Pad {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         let (input, paddings) = args_2!(inputs);
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
-        Ok(tvec![dispatch_copy!(Self::compute_t(input.datum_type())(&*input, paddings, None))?])
+        Ok(tvec![
+            dispatch_copy!(Self::compute_t(input.datum_type())(&*input, paddings, None))?.boxed()
+        ])
     }
 }
 
@@ -113,13 +115,13 @@ mod tests {
         let inputs =
             tvec![tensor2(&[[1, 2, 3], [4, 5, 6]]).into(), tensor2(&[[1, 1], [2, 2]]).into(),];
 
-        let expected: TVec<_> = tvec!(tensor2(&[
+        let expected = tensor2(&[
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 1, 2, 3, 0, 0],
             [0, 0, 4, 5, 6, 0, 0],
             [0, 0, 0, 0, 0, 0, 0],
-        ]));
+        ]);
 
-        assert_eq!(Pad::new().eval(inputs).unwrap(), expected);
+        assert_eq!(&*Pad::new().eval(inputs).unwrap()[0], &expected);
     }
 }

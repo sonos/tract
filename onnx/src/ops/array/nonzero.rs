@@ -38,7 +38,7 @@ impl EvalOp for NonZero {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         unsafe {
             let input = args_1!(inputs);
             let output = if input.datum_type() == bool::datum_type() {
@@ -46,7 +46,7 @@ impl EvalOp for NonZero {
             } else {
                 dispatch_numbers!(Self::eval_t(input.datum_type())(&*input))?
             };
-            Ok(tvec!(output))
+            Ok(tvec!(output.boxed()))
         }
     }
 }

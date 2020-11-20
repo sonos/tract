@@ -30,13 +30,13 @@ impl EvalOp for Dropout {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<TensorVar>) -> TractResult<TVec<Box<Tensor>>> {
         if self.output_mask {
             let input = args_1!(inputs);
             let mask = tract_ndarray::ArrayD::from_elem(input.shape(), true);
-            Ok(tvec!(input.into_tensor(), mask.into_tensor()))
+            Ok(tvec!(input.into_tensor().boxed(), mask.into_tensor().boxed()))
         } else {
-            Ok(inputs.into_iter().map(|t| t.into_tensor()).collect())
+            Ok(inputs.into_iter().map(|t| t.into_tensor().boxed()).collect())
         }
     }
 }
