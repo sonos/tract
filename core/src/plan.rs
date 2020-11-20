@@ -90,7 +90,7 @@ where
     plan: P,
     pub states: Vec<Option<Box<dyn OpState>>>,
     pub session_state: SessionState,
-    pub values: Vec<Option<TVec<(usize, Option<Tensor>)>>>,
+    pub values: Vec<Option<TVec<(usize, Option<Box<Tensor>>)>>>,
     _phantom: PhantomData<(M, F, O)>,
 }
 
@@ -176,7 +176,7 @@ where
                     value.0 -= 1;
                     if value.0 == 0 {
                         exclusive
-                            .push(Some(TensorVar::Exclusive(Box::new(value.1.take().unwrap()))))
+                            .push(Some(TensorVar::Exclusive(value.1.take().unwrap())))
                     } else {
                         exclusive.push(None)
                     }
@@ -257,14 +257,14 @@ where
                                 .iter()
                                 .filter(|o| **o == (node.id, ix).into())
                                 .count();
-                            (successors + outputs, Some(t))
+                            (successors + outputs, Some(Box::new(t)))
                         })
                         .collect(),
                 );
             }
             for output in &plan.outputs {
                 trace!("Extracting value {:?} ({})", output, model.node(output.node));
-                result.push(values[output.node].as_mut().unwrap()[output.slot].1.take().unwrap())
+                result.push(*(values[output.node].as_mut().unwrap()[output.slot].1.take().unwrap()))
             }
         }
         self.reset_wires()?;
@@ -304,7 +304,7 @@ where
                     &plan.borrow().model().nodes()[o.node]
                 )
             })?;
-            v.push(vs[o.slot].clone().1.unwrap())
+            v.push(*(vs[o.slot].clone().1.unwrap()))
         }
         Ok(v)
     }
@@ -314,7 +314,7 @@ where
             values
                 .into_iter()
                 .enumerate()
-                .map(|(ix, t)| (self.model().node(id).outputs[ix].successors.len(), Some(t)))
+                .map(|(ix, t)| (self.model().node(id).outputs[ix].successors.len(), Some(Box::new(t))))
                 .collect(),
         );
         Ok(())
@@ -352,8 +352,8 @@ where
             }
             .with_context(|| format!("Evaluating {:?}", node))?
         };
-        self.values[node] = Some(values.into_iter().map(|t| (1, Some(t))).collect());
-        Ok(self.values[node].as_ref().unwrap().iter().map(|t| t.1.as_ref().unwrap()).collect())
+        self.values[node] = Some(values.into_iter().map(|t| (1, Some(Box::new(t)))).collect());
+        Ok(self.values[node].as_ref().unwrap().iter().map(|t| &**t.1.as_ref().unwrap()).collect())
     }
 
     pub fn take_by_name(&mut self, name: &str) -> TractResult<TVec<Tensor>> {
@@ -366,7 +366,7 @@ where
             .take()
             .ok_or_else(|| format_err!("Node is not computed"))?
             .into_iter()
-            .map(|t| t.1.unwrap())
+            .map(|t| *t.1.unwrap())
             .collect())
     }
 
@@ -379,6 +379,7 @@ where
     }
 }
 
+#[inline(never)]
 pub fn eval<F, O>(
     session_state: &mut SessionState,
     mut state: Option<&mut (dyn OpState + 'static)>,

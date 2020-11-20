@@ -254,7 +254,7 @@ where
                                 if !cumulative {
                                     // Use the output from reference to keep tract from drifting.
                                     state.values[node.id].as_mut().unwrap()[ix] =
-                                        (node.outputs[ix].successors.len(), Some(t.to_owned()))
+                                        (node.outputs[ix].successors.len(), Some(Box::new(t.to_owned())))
                                 }
                             }
                             Err(e) => {
