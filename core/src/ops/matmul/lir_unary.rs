@@ -93,7 +93,7 @@ impl EvalOp for LirMatMulUnary {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(State)))
+        Ok(if self.is_stateless() { None } else { Some(Box::new(State)) })
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
