@@ -4,10 +4,6 @@ set -ex
 
 start=$(date +%s)
 
-cat /proc/cpuinfo
-hostname
-ip a
-
 ROOT=`pwd`
 CACHEDIR=${CACHEDIR:-$HOME/.cache}
 if [ -x tract ]
