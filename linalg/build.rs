@@ -174,11 +174,13 @@ fn preprocess_file(
         "."
     }
     .to_owned();
+    let g = if os == "macos" || os == "ios" { "_" } else { "" };
     let mut globals = liquid::object!({
         "msvc": msvc,
         "family": family,
         "os": os,
         "L": l,
+        "G": g,
     });
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));

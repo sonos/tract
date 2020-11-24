@@ -20,16 +20,7 @@ Windows ABI:
 */
 {% endcomment %}
 
-{% if os == "macos" or os == "ios" %}
-
-.intel_syntax noprefix
-.text
-.p2align 5
-.globl _fma_mmm_f32_16x6
-_fma_mmm_f32_16x6:
-.cfi_startproc
-
-{% elsif msvc %}
+{% if msvc %}
 
 _text segment
 fma_mmm_f32_16x6 proc
@@ -39,8 +30,8 @@ fma_mmm_f32_16x6 proc
 .intel_syntax noprefix
 .text
 .p2align 5
-.globl fma_mmm_f32_16x6
-fma_mmm_f32_16x6:
+.globl {{G}}fma_mmm_f32_16x6
+{{G}}fma_mmm_f32_16x6:
 .cfi_startproc
 
 {% endif %}

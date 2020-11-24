@@ -18,14 +18,10 @@
 
 .text
 .align 4
-{% if os == "ios" %}
-    .global _arm64simd_mmm_f32_8x8_{{core}}
-    _arm64simd_mmm_f32_8x8_{{core}}:
-{% else %}
-    .cpu generic+fp+simd
-    .global arm64simd_mmm_f32_8x8_{{core}}
-    arm64simd_mmm_f32_8x8_{{core}}:
-{% endif %}
+
+.cpu generic+fp+simd
+.global {{G}}arm64simd_mmm_f32_8x8_{{core}}
+{{G}}arm64simd_mmm_f32_8x8_{{core}}:
 
 /*
     prfm        pldl1keep, [x1]
