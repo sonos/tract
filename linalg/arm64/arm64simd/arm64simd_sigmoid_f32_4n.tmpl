@@ -4,14 +4,10 @@
 
 .text
 .align 4
-{% if os == "ios" %}
-    .global _arm64simd_sigmoid_f32_4n
-    _arm64simd_sigmoid_f32_4n:
-{% else %}
-    .cpu generic+fp+simd
-    .global arm64simd_sigmoid_f32_4n
-    arm64simd_sigmoid_f32_4n:
-{% endif %}
+
+.cpu generic+fp+simd
+.global {{G}}arm64simd_sigmoid_f32_4n
+{{G}}arm64simd_sigmoid_f32_4n:
 
     cmp         x1, #0
     beq         .return
