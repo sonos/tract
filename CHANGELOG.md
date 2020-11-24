@@ -1,5 +1,7 @@
 ## Unrelased
 
+* Early, basic support for i8 by u8 matrix mult.
+
 ## 0.11.2 - 2020-10-26
 
 * ONNX: new op: DynamicQuantizeLinear
