@@ -12,7 +12,7 @@ pub fn source(
         Ok(Some(invocation(
             "external",
             &[],
-            &[("shape", ints(&*op.fact.shape.as_finite().unwrap()))],
+            &[("shape", ints(&*op.fact.shape.as_concrete().unwrap()))],
         )))
     } else {
         Ok(None)

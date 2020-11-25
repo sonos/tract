@@ -244,7 +244,7 @@ impl TypedOp for Resize {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let input_shape = if let Some(s) = inputs[0].shape.as_finite() {
+        let input_shape = if let Some(s) = inputs[0].shape.as_concrete() {
             s
         } else {
             bail!("Only constant input shape are supported in Resize")

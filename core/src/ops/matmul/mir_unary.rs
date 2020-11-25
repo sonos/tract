@@ -250,7 +250,7 @@ impl TypedOp for MatMulUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let b = args_1!(model.node_input_facts(node.id)?);
-        if let Some(b_shape) = b.shape.as_finite() {
+        if let Some(b_shape) = b.shape.as_concrete() {
             return Ok(Some(self.new_mat_mul_unary_finite(model, node, &b_shape, b.datum_type)?));
         }
         Ok(None)
@@ -338,7 +338,7 @@ impl MatMulUnary {
             )?[0];
         }
         let c_prefix_dim_and_stride = if c_shape[..rank - 2].iter().any(|d| *d > 1) {
-            let c_prefix_strides: TVec<isize> = c_shape
+            let c_prefix_strides: TVec<TDim> = c_shape
                 .iter()
                 .rev()
                 .scan(1isize, |s, &d| {
@@ -350,8 +350,9 @@ impl MatMulUnary {
                 .into_iter()
                 .skip(2)
                 .rev()
+                .map(|d| d.to_dim())
                 .collect::<TVec<_>>();
-            Some((c_shape[..rank - 2].into(), c_prefix_strides))
+            Some((c_shape[..rank - 2].into(), c_prefix_strides.into()))
         } else {
             None
         };

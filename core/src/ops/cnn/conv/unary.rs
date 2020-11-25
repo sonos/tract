@@ -143,7 +143,7 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =
-            self.pool_spec.compute_geo(&*model.outlet_fact(wire)?.shape.as_finite().unwrap())?;
+            self.pool_spec.compute_geo(&*model.outlet_fact(wire)?.shape.as_concrete().unwrap())?;
 
         trace!("input: {:?}", input_shape);
         let a_dt = self.kernel.datum_type();
@@ -220,7 +220,7 @@ impl ConvUnary {
             dims.insert(0, *output_shape.n().unwrap());
             strides.insert(0, *output_shape.n_stride().unwrap() as isize);
         }
-        let c_prefix_dim_and_stride = Some((dims, strides)).filter(|it| it.0.len() > 0);
+        let c_prefix_dim_and_stride = Some((ShapeFact::from(dims), ShapeFact::from(strides))).filter(|it| it.0.len() > 0);
         let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
 
         let kernels = self.kernel_as_packed_as(&mmm.a_pack(), m)?;
@@ -637,7 +637,7 @@ impl TypedOp for ConvUnary {
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
         let spatial_rank = input_shape.hw_rank();
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
-        if let Some(shape) = input_fact.shape.as_finite() {
+        if let Some(shape) = input_fact.shape.as_concrete() {
             unsafe {
                 let dt = input_fact.datum_type;
                 if kernel_spatial_shape.iter().product::<usize>() == 1
