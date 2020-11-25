@@ -16,7 +16,7 @@ fn main() -> TractResult<()> {
     let mean = Array::from_shape_vec((1, 3, 1, 1), vec![0.485, 0.456, 0.406])?;
     let std = Array::from_shape_vec((1, 3, 1, 1), vec![0.229, 0.224, 0.225])?;
 
-    let img = image::open("elephants.jpg").unwrap().to_rgb();
+    let img = image::open("elephants.jpg").unwrap().to_rgb8();
     let resized = image::imageops::resize(&img, 224, 224, ::image::imageops::FilterType::Triangle);
     let image: Tensor =
         ((tract_ndarray::Array4::from_shape_fn((1, 3, 224, 224), |(_, c, y, x)| {

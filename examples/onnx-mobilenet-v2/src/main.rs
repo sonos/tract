@@ -12,7 +12,7 @@ fn main() -> TractResult<()> {
         .into_runnable()?;
 
     // open image, resize it and make a Tensor out of it
-    let image = image::open("grace_hopper.jpg").unwrap().to_rgb();
+    let image = image::open("grace_hopper.jpg").unwrap().to_rgb8();
     let resized =
         image::imageops::resize(&image, 224, 224, ::image::imageops::FilterType::Triangle);
     let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, 224, 224), |(_, c, y, x)| {

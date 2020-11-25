@@ -40,7 +40,7 @@ pub fn imagenet_slim_labels() -> path::PathBuf {
 }
 
 pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
-    let image = image::open(&p).unwrap().to_rgb();
+    let image = image::open(&p).unwrap().to_rgb8();
     let resized =
         image::imageops::resize(&image, 299, 299, ::image::imageops::FilterType::Triangle);
     let image = tract_ndarray::Array4::from_shape_fn((1, 3, 299, 299), |(_, c, y, x)| {
