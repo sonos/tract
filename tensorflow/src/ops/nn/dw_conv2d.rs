@@ -76,7 +76,7 @@ impl Expansion for DepthwiseConv2d {
         let input = model.outlet_fact(inputs[0])?;
         let kernel = model.outlet_fact(inputs[1])?;
         let input_shape = input.shape.to_tvec();
-        let kernel_shape = if let Some(s) = kernel.shape.as_finite() {
+        let kernel_shape = if let Some(s) = kernel.shape.as_concrete() {
             s
         } else {
             bail!("Do not expect streaming on kernel dims");

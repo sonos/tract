@@ -84,7 +84,7 @@ impl TypedOp for MaxPool {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
-        if let Some(shape) = inputs[0].shape.as_finite() {
+        if let Some(shape) = inputs[0].shape.as_concrete() {
             let dt = inputs[0].datum_type;
             let op = dispatch_floatlike!(MaxPool::to_fixed(dt)(self, &*shape))?;
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));

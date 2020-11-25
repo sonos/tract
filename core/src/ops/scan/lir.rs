@@ -187,7 +187,7 @@ impl OpState for State {
         for (ix, output) in op.output_mapping.iter().enumerate() {
             if let Some(slot) = output.full_slot {
                 let fact = op.plan.model().output_fact(ix)?;
-                let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
+                let mut shape: TVec<usize> = fact.shape.as_concrete().unwrap().into();
                 let scanning_dim = output
                     .full_dim_hint
                     .as_ref()

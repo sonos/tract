@@ -8,7 +8,7 @@ use tract_linalg::mmm::{FusedSpec, MatMatMul};
 pub struct LirMatMulUnary {
     pub c_trans: bool,
     pub c_fact: TypedFact,
-    pub c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
+    pub c_prefix_dim_and_stride: Option<(ShapeFact, ShapeFact)>,
     pub packed_as: ArrayD<Arc<Tensor>>,
     pub fused_ops: Option<ArrayD<Vec<FusedSpec>>>,
     #[educe(Hash(method = "hash_mmm"))]
@@ -49,7 +49,11 @@ impl Op for LirMatMulUnary {
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
             "c_prefix: {:?} m:{} k:{} n:{} c_trans:{:?}",
-            self.c_prefix_dim_and_stride, 0, 0, 0, self.c_trans
+            self.c_prefix_dim_and_stride,
+            self.m(),
+            self.k(),
+            self.n(),
+            self.c_trans
         )];
         infos.push(format!("Mult: {}", self.mmm));
         if let Some(f) = &self.fused_ops {
@@ -72,19 +76,29 @@ impl OpState for State {
         inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
-        let c_shape: TVec<usize> = op
-            .c_fact
-            .shape
-            .iter()
-            .map(|d| d.eval(&session.resolved_symbols).to_usize())
-            .collect::<TractResult<_>>()?;
-        eval(op, &inputs[0], &c_shape)
+        if let Some(prefix) = &op.c_prefix_dim_and_stride {
+            let shape = prefix.0.eval(&session.resolved_symbols)?;
+            let strides = prefix.1.eval_to_isize(&session.resolved_symbols)?;
+            eval(
+                op,
+                &inputs[0],
+                &op.c_fact.shape.eval(&session.resolved_symbols)?,
+                Some((&shape, &strides)),
+            )
+        } else {
+            eval(op, &inputs[0], &op.c_fact.shape.eval(&session.resolved_symbols)?, None)
+        }
     }
 }
 
 impl EvalOp for LirMatMulUnary {
     fn is_stateless(&self) -> bool {
-        self.c_fact.shape.as_finite().is_some()
+        self.c_fact.shape.is_concrete()
+            && self
+                .c_prefix_dim_and_stride
+                .as_ref()
+                .map(|p| p.0.is_concrete() && p.1.is_concrete())
+                .unwrap_or(true)
     }
 
     fn state(
@@ -96,14 +110,30 @@ impl EvalOp for LirMatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        eval(self, &inputs[0], self.c_fact.shape.as_finite().unwrap())
+        if let Some(p) = &self.c_prefix_dim_and_stride {
+            let shape = p.0.as_concrete().unwrap();
+            let strides = p.1.as_concrete().unwrap();
+            eval(
+                self,
+                &inputs[0],
+                self.c_fact.shape.as_concrete().unwrap(),
+                Some((shape, unsafe { std::mem::transmute(strides) })),
+            )
+        } else {
+            eval(self, &inputs[0], self.c_fact.shape.as_concrete().unwrap(), None)
+        }
     }
 }
 
-fn eval(op: &LirMatMulUnary, input: &Tensor, c_shape: &[usize]) -> TractResult<TVec<Arc<Tensor>>> {
+fn eval(
+    op: &LirMatMulUnary,
+    input: &Tensor,
+    c_shape: &[usize],
+    c_prefix_dim_and_stride: Option<(&[usize], &[isize])>,
+) -> TractResult<TVec<Arc<Tensor>>> {
     unsafe {
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-        if let Some((prefix_dim, prefix_strides)) = &op.c_prefix_dim_and_stride {
+        if let Some((prefix_dim, prefix_strides)) = &c_prefix_dim_and_stride {
             let mut tmp_shape: TVec<usize> = prefix_dim.iter().copied().collect();
             tmp_shape.push(c_shape[c_shape.len() - 2 + op.c_trans as usize]);
             tmp_shape.push(c_shape[c_shape.len() - 2 + op.c_trans as usize]);
@@ -182,9 +212,8 @@ impl TypedOp for LirMatMulUnary {
         let mul = self
             .c_prefix_dim_and_stride
             .as_ref()
-            .map(|c| c.0.iter().product())
-            .unwrap_or(1)
-            .to_dim();
+            .map(|c| c.0.iter().maybe_product().unwrap())
+            .unwrap_or(1.to_dim());
         Ok(tvec!(
             (Cost::FMA(self.mmm.internal_type()), mul.maybe_mul(self.n())? * self.m() * self.k()),
             (

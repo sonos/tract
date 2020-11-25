@@ -63,9 +63,14 @@ impl ShapeFact {
         self.compute_concrete();
     }
 
-    /// Shape of the tensor, unless it is streaming.
-    pub fn as_finite(&self) -> Option<&[usize]> {
+    /// Shape of the tensor, unless it has symbolic dimensions.
+    pub fn as_concrete(&self) -> Option<&[usize]> {
         self.concrete.as_deref()
+    }
+
+    /// Do we have a symbol-less value ?
+    pub fn is_concrete(&self) -> bool {
+        self.concrete.is_some()
     }
 
     /// Iterator over dimension of the shape.
@@ -88,6 +93,22 @@ impl ShapeFact {
     fn compute_concrete(&mut self) {
         self.concrete =
             self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
+    }
+
+    pub fn eval(&self, values: &SymbolValues) -> TractResult<Cow<TVec<usize>>> {
+        if let Some(c) = &self.concrete {
+            Ok(Cow::Borrowed(c))
+        } else {
+            Ok(Cow::Owned(
+                self.iter()
+                    .map(|d| d.eval(&values).to_usize())
+                    .collect::<TractResult<TVec<_>>>()?,
+            ))
+        }
+    }
+
+    pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<TVec<isize>> {
+        self.iter().map(|d| d.eval(&values).to_isize()).collect::<TractResult<_>>()
     }
 }
 

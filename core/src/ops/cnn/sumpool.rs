@@ -72,7 +72,7 @@ impl TypedOp for SumPool {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
-        if let Some(shape) = inputs[0].shape.as_finite() {
+        if let Some(shape) = inputs[0].shape.as_concrete() {
             let op = self.to_fixed(inputs[0].datum_type, &*shape)?;
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
