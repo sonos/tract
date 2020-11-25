@@ -7,7 +7,6 @@ use tract_linalg::mmm::{FusedSpec, MatMatMul};
 #[educe(Hash)]
 pub struct LirMatMulUnary {
     pub c_trans: bool,
-    pub bc_c_shape: TVec<usize>,
     pub c_fact: TypedFact,
     pub c_prefix_dim_and_stride: Option<(TVec<usize>, TVec<isize>)>,
     pub packed_as: ArrayD<Arc<Tensor>>,

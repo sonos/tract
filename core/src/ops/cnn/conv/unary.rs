@@ -228,7 +228,6 @@ impl ConvUnary {
             format!("{}.matmatmul", name),
             matmul::lir_unary::LirMatMulUnary {
                 c_trans: true,
-                bc_c_shape: output_shape.shape.clone(),
                 c_fact: TypedFact::dt_shape(
                     self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(a_dt),
                     output_shape.shape,
