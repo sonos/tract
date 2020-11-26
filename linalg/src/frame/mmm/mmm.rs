@@ -21,11 +21,12 @@ pub trait MatMatMul:
 
     fn internal_type(&self) -> DatumType;
 
+    /*
     unsafe fn set_zero_point_a(&mut self, value: Tensor);
     unsafe fn set_zero_point_b(&mut self, value: Tensor);
     unsafe fn set_zero_point_c(&mut self, value: Tensor);
-
     unsafe fn set_scale_factor(&mut self, factor: f32);
+    */
 
     unsafe fn b_from_data_and_offsets(&mut self, rows_offsets: &[isize], cols_offsets: &[isize]);
 
@@ -65,11 +66,12 @@ where
     pub b_storage: MatrixStoreSpec,
     pub c_storage: MatrixStoreSpec,
 
+    /*
     pub zero_point_a: Option<Tensor>,
     pub zero_point_b: Option<Tensor>,
-
     pub zero_point_c: Option<Tensor>,
     pub scale_factor: Option<(TI, usize)>,
+    */
 
     phantom: PhantomData<(K, TA, TB, TC, TI)>,
 }
@@ -115,10 +117,12 @@ where
                 mr: K::mr(),
                 nr: K::nr(),
             },
+            /*
             zero_point_a: None,
             zero_point_b: None,
             zero_point_c: None,
             scale_factor: None,
+            */
             phantom: PhantomData,
         }
     }
@@ -245,6 +249,7 @@ where
         let c = c.as_ptr_mut_unchecked::<TC>();
         let ref linear = LinearSpec::k(self.k);
         let mut non_linear = non_linear.to_vec();
+        /*
         if let Some(ref a0) = self.zero_point_a {
             let mut sum_b_over_k = self.sum_b_over_k(b);
             for n in 0..self.n {
@@ -306,6 +311,7 @@ where
             non_linear.push(FusedSpec::Min(tensor0(TC::max_value().as_())));
             non_linear.push(FusedSpec::Max(tensor0(TC::min_value().as_())));
         }
+        */
         let a = self.a_storage.wrap(a);
         let b = self.b_storage.wrap(b);
         //        eprintln!("{:?} {:?}", a, b);
@@ -405,6 +411,7 @@ where
         Ok(())
     }
 
+    /*
     unsafe fn set_zero_point_a(&mut self, value: Tensor) {
         self.zero_point_a = Some(value)
     }
@@ -426,6 +433,7 @@ where
         let shift = 126 - current_exponent;
         self.scale_factor = Some((int_multi.as_(), shift as usize));
     }
+    */
 }
 
 impl<K, TA, TB, TC, TI> MatMatMulImpl<K, TA, TB, TC, TI>
@@ -437,6 +445,7 @@ where
     K: MatMatMulKer<TI> + 'static,
     i32: AsPrimitive<TI>,
 {
+    /*
     fn sum_a_over_k(&self, mut a: *const TA) -> Vec<TI> {
         match &self.a_storage {
             MatrixStoreSpec::Packed { .. } => {
@@ -507,6 +516,7 @@ where
         }
         result
     }
+    */
 }
 
 impl<K, TA, TB, TC, TI> fmt::Display for MatMatMulImpl<K, TA, TB, TC, TI>
