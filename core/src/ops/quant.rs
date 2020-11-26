@@ -105,6 +105,7 @@ impl QParams {
     }
 
     pub fn inject_into_mmm(&self, mmm: &mut dyn MatMatMul) -> TractResult<()> {
+        /*
         unsafe {
             if let Some(t) = self.zero_point_a.as_ref() {
                 mmm.set_zero_point_a(t.clone().into_tensor());
@@ -119,6 +120,7 @@ impl QParams {
                 mmm.set_scale_factor(factor);
             }
         }
+        */
         Ok(())
     }
 }
