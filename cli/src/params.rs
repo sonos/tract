@@ -69,7 +69,7 @@ pub struct Parameters {
     #[allow(dead_code)]
     pub tf_model: (),
 
-    pub input_values: Vec<Option<Arc<Tensor>>>,
+    pub input_values: HashMap<String, Arc<Tensor>>,
 
     pub assertions: Assertions,
 
@@ -265,7 +265,7 @@ impl Parameters {
 
     fn use_onnx_test_case_data_set<F, O, E>(
         raw_model: &mut Graph<F, O>,
-        input_values: &mut Vec<Option<Arc<Tensor>>>,
+        input_values: &mut HashMap<String, Arc<Tensor>>,
         assertions: &mut Assertions,
         inputs_dir: &std::path::Path,
     ) -> CliResult<()>
@@ -315,7 +315,9 @@ impl Parameters {
         }
         for (ix, _, filename, name, tensor) in inputs.into_iter() {
             debug!("Using {} as input {} ({}): {:?}", filename, ix, name, tensor);
-            input_values[*ix] = tensor.value.concretize();
+            if let Some(v) = tensor.value.concretize() {
+                input_values.insert(name.to_string(), v);
+            }
             raw_model.set_input_fact(*ix, (&tensor.clone().without_value()).try_into().unwrap())?;
         }
         let outputs = outputs
@@ -335,7 +337,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         filename: &std::path::Path,
         onnx_tc: bool,
-    ) -> CliResult<Vec<Option<Arc<Tensor>>>>
+    ) -> CliResult<HashMap<String, Arc<Tensor>>>
     where
         F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
         O: std::fmt::Debug
@@ -350,7 +352,7 @@ impl Parameters {
         tract_core::ops::konst::Const: Into<O>,
         E: std::fmt::Debug,
     {
-        let mut input_values = vec![None; raw_model.inputs.len()];
+        let mut input_values = HashMap::new();
 
         if let Some(inputs) = matches.values_of("input") {
             for (ix, v) in inputs.enumerate() {
@@ -363,7 +365,10 @@ impl Parameters {
                 } else {
                     raw_model.input_outlets()?[ix]
                 };
-                input_values[ix] = t.value.concretize();
+                if let Some(v) = t.value.concretize() {
+                    input_values
+                        .insert(raw_model.node(raw_model.inputs[ix].node).name.to_string(), v);
+                }
                 if !raw_model.inputs.contains(&outlet) {
                     // shed edges from parents to us
                     for input in raw_model.node(outlet.node).inputs.clone() {
@@ -398,7 +403,7 @@ impl Parameters {
                         let shape = t.shape().to_vec();
                         let fact = InferenceFact::dt_shape(t.datum_type(), shape);
                         raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
-                        input_values[ix] = Some(t.into_arc_tensor());
+                        input_values.insert(name, t.into_arc_tensor());
                     }
                 }
             }
@@ -425,8 +430,9 @@ impl Parameters {
         let const_inputs = matches.values_of("const_input").map(|c| c.collect()).unwrap_or(vec![]);
         for i in (0..raw_model.inputs.len()).rev() {
             let input = raw_model.inputs[i];
+            let name = raw_model.node_name(input.node);
             if const_inputs.contains(&raw_model.node_name(input.node)) {
-                if let Some(v) = input_values[i].take() {
+                if let Some(v) = input_values.remove(name) {
                     raw_model.node_mut(input.node).op = tract_core::ops::konst::Const::new(v).into()
                 } else {
                     bail!(
