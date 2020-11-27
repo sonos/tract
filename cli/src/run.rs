@@ -53,8 +53,10 @@ fn run_regular(
     let steps = options.is_present("steps");
     let assert_sane_floats = options.is_present("assert-sane-floats");
     let mut inputs: TVec<Tensor> = tvec!();
-    for (ix, input) in tract.input_outlets().iter().enumerate() {
-        if let Some(input) = params.input_values.get(ix).and_then(|x| x.as_ref()) {
+    dbg!(&params.input_values);
+    for input in tract.input_outlets() {
+        let name = tract.node_name(input.node);
+        if let Some(input) = params.input_values.get(name) {
             inputs.push(input.clone().into_tensor())
         } else {
             let fact = tract.outlet_typedfact(*input)?;
@@ -114,7 +116,8 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     let output_pulse = output_fact.pulse();
     //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
-    let input: &Tensor = &params.input_values[0].as_ref().unwrap();
+    let name = model.node_name(model.input_outlets()?[0].node);
+    let input: &Tensor = &params.input_values.get(name).unwrap();
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);
