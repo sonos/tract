@@ -246,20 +246,8 @@ impl TypedOp for LirMatMulUnary {
                     )?));
                 }
             }
-            /*
             let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                let m = self.m();
-                if op.a.len() == m
-                    && op.a.shape()[op.a.rank() - 1 - ((!self.c_trans) as usize)] == m
-                {
-                    if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
-                    } else if op.mini_op.is::<ops::math::Add>() {
-                        Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
-                    } else {
-                        None
-                    }
-                } else if op.a.len() == 1 {
+                if op.a.len() == 1 {
                     if op.mini_op.is::<ops::math::Max>() {
                         Some(tvec!(FusedSpec::Max(op.a.clone().into_tensor())))
                     } else if op.mini_op.is::<ops::math::Min>() {
@@ -269,6 +257,16 @@ impl TypedOp for LirMatMulUnary {
                     } else {
                         None
                     }
+                    /*
+                } else if op.a.shape()[op.a.rank() - 1] == 1 {
+                    if op.mini_op.is::<ops::math::Mul>() {
+                        Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
+                    } else if op.mini_op.is::<ops::math::Add>() {
+                        Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
+                    } else {
+                        None
+                    }
+                    */
                 } else {
                     None
                 }
@@ -290,7 +288,6 @@ impl TypedOp for LirMatMulUnary {
                     .map_inplace(|v| v.extend(op.iter().cloned()));
                 return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));
             }
-            */
         }
         Ok(None)
     }
