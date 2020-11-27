@@ -128,7 +128,8 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
     fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
         let mut text: Option<String> = None;
         let mut tensors: Vec<(String, Arc<Tensor>)> = Default::default();
-        let mut tar = tar::Archive::new(reader);
+        let decoded = flate2::read::GzDecoder::new(reader);
+        let mut tar = tar::Archive::new(decoded);
         for entry in tar.entries()? {
             let mut entry = entry?;
             let path = entry.path()?.to_path_buf();
