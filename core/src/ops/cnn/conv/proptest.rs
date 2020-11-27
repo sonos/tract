@@ -235,6 +235,21 @@ fn trivial_3() -> anyhow::Result<()> {
 }
 
 #[test]
+fn nchw_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, &[2])?,
+        shape_out: DataFormat::NCHW.from_n_c_hw(1, 1, &[2])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: ndarray::arr3(&[[[0f32, 1.0]]]).into_dyn(),
+        kernel: ndarray::arr3(&[[[1f32]]]).into_dyn(),
+        bias: None,
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
 fn group_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
@@ -445,3 +460,6 @@ fn batch_0() -> anyhow::Result<()> {
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
+
+
+

@@ -3,64 +3,16 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
-/// Type information about a tensor: shape, and element type, in various state
-/// of determination.
-pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
-    fn to_typed_fact(&self) -> TractResult<TypedFact>;
-
-    fn matches(&self, t: &Tensor) -> TractResult<bool> {
-        self.to_typed_fact()?.matches(t)
-    }
-
-    fn same_as(&self, _other: &dyn Fact) -> bool;
-}
-
-impl_downcast!(Fact);
-dyn_clone::clone_trait_object!(Fact);
-
-/// Fully determined dimension of a tensor.
-///
-/// Tensors in tract can have one streaming dimension. TDim generalize the
-/// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
-/// (sometimes hypothetical) tensor length on the streaming axis.
 #[derive(Clone, PartialEq, Hash)]
-pub struct ShapeFact {
+pub struct Dims {
     dims: TVec<TDim>,
     concrete: Option<TVec<usize>>,
 }
 
-impl std::ops::Deref for ShapeFact {
-    type Target = [TDim];
-    fn deref(&self) -> &[TDim] {
-        &self.dims
-    }
-}
-
-impl ShapeFact {
-    /// Rank of the tensor.
-    pub fn rank(&self) -> usize {
-        self.dims.len()
-    }
-
-    pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
-        self.dims.insert(axis, 1.into());
-        if let Some(concrete) = &mut self.concrete {
-            concrete.insert(axis, 1);
-        }
-        Ok(())
-    }
-
-    pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
-        self.dims.remove(axis);
-        if let Some(concrete) = &mut self.concrete {
-            concrete.remove(axis);
-        }
-        Ok(())
-    }
-
-    pub fn set(&mut self, ix: usize, dim: TDim) {
-        self.dims[ix] = dim;
-        self.compute_concrete();
+impl Dims {
+    fn compute_concrete(&mut self) {
+        self.concrete =
+            self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
     }
 
     /// Shape of the tensor, unless it has symbolic dimensions.
@@ -83,19 +35,7 @@ impl ShapeFact {
         self.dims.clone()
     }
 
-    pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> ShapeFact {
-        let mut fact =
-            ShapeFact { dims: it.into_iter().map(|d| d.to_dim()).collect(), concrete: None };
-        fact.compute_concrete();
-        fact
-    }
-
-    fn compute_concrete(&mut self) {
-        self.concrete =
-            self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
-    }
-
-    pub fn eval(&self, values: &SymbolValues) -> TractResult<Cow<TVec<usize>>> {
+    pub fn eval_to_usize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<usize>>> {
         if let Some(c) = &self.concrete {
             Ok(Cow::Borrowed(c))
         } else {
@@ -110,15 +50,96 @@ impl ShapeFact {
     pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<TVec<isize>> {
         self.iter().map(|d| d.eval(&values).to_isize()).collect::<TractResult<_>>()
     }
+
+    pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> Dims {
+        let mut dims = Dims { dims: it.into_iter().map(|d| d.to_dim()).collect(), concrete: None };
+        dims.compute_concrete();
+        dims
+    }
+}
+
+impl std::ops::Deref for Dims {
+    type Target = [TDim];
+    fn deref(&self) -> &[TDim] {
+        &self.dims
+    }
+}
+
+impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for Dims {
+    fn from(it: T) -> Dims {
+        Dims::from_dims(it)
+    }
+}
+
+/// Type information about a tensor: shape, and element type, in various state
+/// of determination.
+pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
+    fn to_typed_fact(&self) -> TractResult<TypedFact>;
+
+    fn matches(&self, t: &Tensor) -> TractResult<bool> {
+        self.to_typed_fact()?.matches(t)
+    }
+
+    fn same_as(&self, _other: &dyn Fact) -> bool;
+}
+
+impl_downcast!(Fact);
+dyn_clone::clone_trait_object!(Fact);
+
+/// Fully determined dimension of a tensor.
+///
+/// Tensors in tract can have one streaming dimension. TDim generalize the
+/// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
+/// (sometimes hypothetical) tensor length on the streaming axis.
+#[derive(Clone, PartialEq, Hash)]
+pub struct ShapeFact(Dims);
+
+impl std::ops::Deref for ShapeFact {
+    type Target = Dims;
+    fn deref(&self) -> &Dims {
+        &self.0
+    }
+}
+
+impl ShapeFact {
+    /// Rank of the tensor.
+    pub fn rank(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
+        self.0.dims.insert(axis, 1.into());
+        if let Some(concrete) = &mut self.0.concrete {
+            concrete.insert(axis, 1);
+        }
+        Ok(())
+    }
+
+    pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
+        self.0.dims.remove(axis);
+        if let Some(concrete) = &mut self.0.concrete {
+            concrete.remove(axis);
+        }
+        Ok(())
+    }
+
+    pub fn set(&mut self, ix: usize, dim: TDim) {
+        self.0.dims[ix] = dim;
+        self.0.compute_concrete();
+    }
+
+    pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> ShapeFact {
+        ShapeFact(Dims::from_dims(it))
+    }
 }
 
 impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
     fn from(it: T) -> ShapeFact {
-        ShapeFact::from_dims(it)
+        ShapeFact(Dims::from_dims(it))
     }
 }
 
-impl fmt::Debug for ShapeFact {
+impl fmt::Debug for Dims {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use itertools::Itertools;
         write!(fmt, "{}", self.iter().join(","))
@@ -129,6 +150,12 @@ impl<T: AsRef<[usize]>> std::cmp::PartialEq<T> for ShapeFact {
     fn eq(&self, other: &T) -> bool {
         let other = other.as_ref();
         other.len() == self.rank() && other.iter().zip(self.iter()).all(|(i, d)| i.to_dim() == d)
+    }
+}
+
+impl fmt::Debug for ShapeFact {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
@@ -209,7 +236,7 @@ impl TypedFact {
     }
 
     pub fn without_value(&self) -> Self {
-        Self::dt_shape(self.datum_type, &*self.shape)
+        Self::dt_shape(self.datum_type, &**self.shape)
     }
 }
 

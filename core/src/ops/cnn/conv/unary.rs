@@ -157,11 +157,6 @@ impl ConvUnary {
         let mut mmm = tract_linalg::ops()
             .mmm(a_dt, b_dt, c_dt, m, k, n)
             .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
-        let (rsc, csc) = match output_shape.fmt {
-            DataFormat::NHWC | DataFormat::HWC => (1, self.output_channels() as isize),
-            DataFormat::NCHW | DataFormat::CHW => (n as isize, 1),
-        };
-        mmm.c_from_data_and_strides(rsc, csc);
 
         if let Some(q) = self.q_params.as_ref() {
             q.inject_into_mmm(&mut *mmm)?;
@@ -176,7 +171,7 @@ impl ConvUnary {
         );
         trace!("{:?}", mmm);
 
-        if direct {
+        let b_storage = if direct {
             let channel_stride = input_shape.c_stride();
             let data_offsets: Vec<isize> = geo.centers_offsets();
             let kernel_offsets: Vec<isize> = (0..self.input_channels())
@@ -186,7 +181,7 @@ impl ConvUnary {
                         .map(move |x| x + (ici * channel_stride) as isize)
                 })
                 .collect();
-            mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
+            mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets)
         } else {
             let c_dim = *input_shape.c_dim();
             wire = model.wire_node(
@@ -208,36 +203,41 @@ impl ConvUnary {
                 )?,
                 &[wire],
             )?[0];
-        }
-
-        let mut dims = tvec!(self.group as usize);
-        let mut strides = tvec!((output_shape.c() / self.group * output_shape.c_stride()) as isize);
-        if self.group == 1 {
-            dims.clear();
-            strides.clear();
-        }
-        if output_shape.n().is_some() {
-            dims.insert(0, *output_shape.n().unwrap());
-            strides.insert(0, *output_shape.n_stride().unwrap() as isize);
-        }
-        let c_prefix_dim_and_stride =
-            Some((ShapeFact::from(dims), ShapeFact::from(strides))).filter(|it| it.0.len() > 0);
-        let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
+            mmm.b_packed()
+        };
 
         let kernels = self.kernel_as_packed_as(&mmm.a_pack(), m)?;
+        let mut dims = tvec!();
+        let mut strides = tvec!();
+        if self.pool_spec.data_format.has_n() {
+            dims.push(*output_shape.n().unwrap());
+            strides.push(*output_shape.n_stride().unwrap());
+        }
+        if self.group > 1 {
+            dims.push(self.group);
+            strides.push(output_shape.c() / self.group * output_shape.c_stride());
+        }
+        dims.push(m);
+        dims.push(n);
+        strides.push(*output_shape.c_stride());
+        strides.push(*output_shape.w_stride());
+        debug_assert_eq!(dims.iter().product::<usize>(), output_shape.shape.iter().product());
+        let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
+
         wire = model.wire_node(
             format!("{}.matmatmul", name),
             matmul::lir_unary::LirMatMulUnary {
-                c_trans: true,
+                b_storage,
                 c_fact: TypedFact::dt_shape(
                     self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(a_dt),
                     output_shape.shape,
                 ),
-                c_prefix_dim_and_stride,
+                c_shape_override: Some((Dims::from(&*dims), Dims::from(&*strides))),
                 packed_as: kernels,
                 fused_ops,
                 mmm,
                 k,
+                m,
             },
             &[wire],
         )?[0];
@@ -437,7 +437,7 @@ impl EvalOp for ConvUnary {
 
 impl TypedOp for ConvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if self.pool_spec.data_format.shape(&*inputs[0].shape)?.c()
+        if self.pool_spec.data_format.shape(&**inputs[0].shape)?.c()
             != &self.input_channels().to_dim()
         {
             bail!(
