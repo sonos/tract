@@ -32,7 +32,14 @@ fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {
         let pb =
             Tensor::zero_aligned::<f32>(&[mm.b_pack().len(n)], mm.b_pack().alignment()).unwrap();
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
-        be.iter(move || mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]).unwrap());
+        be.iter(move || {
+            mm.run(
+                &mm.a_packed().wrap(&pa.view()),
+                &mm.b_packed().wrap(&pb.view()),
+                &mut mm.c_view().wrap(&mut c.view_mut()),
+                &[],
+            )
+        });
     });
 }
 

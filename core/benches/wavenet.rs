@@ -59,13 +59,14 @@ fn mmm(c: &mut Criterion) {
                     .unwrap()
                     .into_arc_tensor());
                 let op = tract_core::ops::matmul::lir_unary::LirMatMulUnary {
-                    c_trans: true,
+                    b_storage: unsafe { mmm.b_packed() },
                     c_fact: TypedFact::dt_shape(f32::datum_type(), &[8, 64]),
-                    c_prefix_dim_and_stride: None,
+                    c_shape_override: Some(([64, 8].iter().into(), [1, 8].iter().into())),
                     packed_as: tract_ndarray::arr0(packed_a.into_arc_tensor()).into_dyn(),
                     fused_ops: None,
                     mmm,
                     k: 48,
+                    m: 64,
                 };
                 (input, op)
             },

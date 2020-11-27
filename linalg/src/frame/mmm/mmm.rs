@@ -15,34 +15,33 @@ pub trait MatMatMul:
     fn a_pack(&self) -> Packer;
     fn b_pack(&self) -> Packer;
 
-    fn a_storage(&self) -> &MatrixStoreSpec;
-    fn b_storage(&self) -> &MatrixStoreSpec;
-    fn c_storage(&self) -> &MatrixStoreSpec;
-
     fn internal_type(&self) -> DatumType;
 
-    /*
-    unsafe fn set_zero_point_a(&mut self, value: Tensor);
-    unsafe fn set_zero_point_b(&mut self, value: Tensor);
-    unsafe fn set_zero_point_c(&mut self, value: Tensor);
-    unsafe fn set_scale_factor(&mut self, factor: f32);
-    */
+    unsafe fn a_packed(&self) -> MatrixStoreSpec;
 
-    unsafe fn b_from_data_and_offsets(&mut self, rows_offsets: &[isize], cols_offsets: &[isize]);
+    unsafe fn b_packed(&self) -> MatrixStoreSpec;
+    unsafe fn b_from_data_and_offsets(
+        &self,
+        rows_offsets: &[isize],
+        cols_offsets: &[isize],
+    ) -> MatrixStoreSpec;
+    unsafe fn b_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec;
+    unsafe fn b_vec_from_data(&self) -> MatrixStoreSpec;
 
-    unsafe fn b_vec_from_data_and_stride(&mut self, stride: isize);
-    unsafe fn b_vec_from_data(&mut self);
-
-    unsafe fn c_from_data_and_strides(&mut self, row_stride: isize, col_stride: isize);
-
-    unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize);
-    unsafe fn c_vec_from_data(&mut self);
+    unsafe fn c_view(&self) -> MatrixStoreSpec;
+    unsafe fn c_from_data_and_strides(
+        &self,
+        row_stride: isize,
+        col_stride: isize,
+    ) -> MatrixStoreSpec;
+    unsafe fn c_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec;
+    unsafe fn c_vec_from_data(&self) -> MatrixStoreSpec;
 
     unsafe fn run(
         &self,
-        a: &TensorView,
-        b: &TensorView,
-        c: &mut TensorView,
+        a: &MatrixStore,
+        b: &MatrixStore,
+        c: &mut MatrixStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
 }
@@ -61,17 +60,6 @@ where
     pub m: usize,
     pub k: usize,
     pub n: usize,
-
-    pub a_storage: MatrixStoreSpec,
-    pub b_storage: MatrixStoreSpec,
-    pub c_storage: MatrixStoreSpec,
-
-    /*
-    pub zero_point_a: Option<Tensor>,
-    pub zero_point_b: Option<Tensor>,
-    pub zero_point_c: Option<Tensor>,
-    pub scale_factor: Option<(TI, usize)>,
-    */
 
     phantom: PhantomData<(K, TA, TB, TC, TI)>,
 }
@@ -109,20 +97,6 @@ where
             m,
             k,
             n,
-            a_storage: MatrixStoreSpec::Packed { panel_len: (k * K::mr()) },
-            b_storage: MatrixStoreSpec::Packed { panel_len: (k * K::nr()) },
-            c_storage: MatrixStoreSpec::Strides {
-                row_byte_stride: (n * std::mem::size_of::<TC>()) as isize,
-                col_byte_stride: (std::mem::size_of::<TC>()) as isize,
-                mr: K::mr(),
-                nr: K::nr(),
-            },
-            /*
-            zero_point_a: None,
-            zero_point_b: None,
-            zero_point_c: None,
-            scale_factor: None,
-            */
             phantom: PhantomData,
         }
     }
@@ -150,17 +124,19 @@ where
         TI::datum_type()
     }
 
-    fn a_storage(&self) -> &MatrixStoreSpec {
-        &self.a_storage
-    }
-    fn b_storage(&self) -> &MatrixStoreSpec {
-        &self.b_storage
-    }
-    fn c_storage(&self) -> &MatrixStoreSpec {
-        &self.c_storage
+    unsafe fn a_packed(&self) -> MatrixStoreSpec {
+        MatrixStoreSpec::Packed { panel_len: (self.k * K::mr()) }
     }
 
-    unsafe fn b_from_data_and_offsets(&mut self, rows_offsets: &[isize], cols_offsets: &[isize]) {
+    unsafe fn b_packed(&self) -> MatrixStoreSpec {
+        MatrixStoreSpec::Packed { panel_len: (self.k * K::nr()) }
+    }
+
+    unsafe fn b_from_data_and_offsets(
+        &self,
+        rows_offsets: &[isize],
+        cols_offsets: &[isize],
+    ) -> MatrixStoreSpec {
         debug_assert!(rows_offsets.len() > 0);
         debug_assert!(cols_offsets.len() > 0);
         // repeat the last offset to get to the panel boundary (pad to next multiple of nr)
@@ -181,74 +157,71 @@ where
         for i in 0..4 {
             *row_byte_offsets.get_unchecked_mut(rows_offsets.len() + i) = pad;
         }
-        self.b_storage =
-            MatrixStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() };
+        MatrixStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() }
     }
 
-    unsafe fn b_vec_from_data_and_stride(&mut self, stride: isize) {
-        self.b_storage = MatrixStoreSpec::VecStride {
+    unsafe fn b_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec {
+        MatrixStoreSpec::VecStride {
             byte_stride: stride * std::mem::size_of::<TB>() as isize,
             mr: K::mr(),
             nr: K::nr(),
         }
     }
 
-    unsafe fn b_vec_from_data(&mut self) {
+    unsafe fn b_vec_from_data(&self) -> MatrixStoreSpec {
         self.b_vec_from_data_and_stride(1)
     }
 
-    unsafe fn c_from_data_and_strides(&mut self, row_stride: isize, col_stride: isize) {
-        self.c_storage = MatrixStoreSpec::Strides {
+    unsafe fn c_view(&self) -> MatrixStoreSpec {
+        MatrixStoreSpec::View
+    }
+
+    unsafe fn c_from_data_and_strides(
+        &self,
+        row_stride: isize,
+        col_stride: isize,
+    ) -> MatrixStoreSpec {
+        MatrixStoreSpec::Strides {
             row_byte_stride: row_stride * std::mem::size_of::<TC>() as isize,
             col_byte_stride: col_stride * std::mem::size_of::<TC>() as isize,
-            mr: K::mr(),
-            nr: K::nr(),
         }
     }
 
-    unsafe fn c_vec_from_data_and_stride(&mut self, stride: isize) {
-        self.c_storage = MatrixStoreSpec::VecStride {
+    unsafe fn c_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec {
+        MatrixStoreSpec::VecStride {
             byte_stride: stride * std::mem::size_of::<TC>() as isize,
             mr: K::mr(),
             nr: K::nr(),
         }
     }
 
-    unsafe fn c_vec_from_data(&mut self) {
+    unsafe fn c_vec_from_data(&self) -> MatrixStoreSpec {
         self.c_vec_from_data_and_stride(1)
     }
 
     unsafe fn run(
         &self,
-        a: &TensorView,
-        b: &TensorView,
-        c: &mut TensorView,
+        a: &MatrixStore,
+        b: &MatrixStore,
+        c: &mut MatrixStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
-        debug_assert_eq!(a.datum_type(), TA::datum_type());
-        debug_assert_eq!(b.datum_type(), TB::datum_type());
-        debug_assert_eq!(c.datum_type(), TC::datum_type());
+        debug_assert_eq!(a.tensor.datum_type(), TA::datum_type());
+        debug_assert_eq!(b.tensor.datum_type(), TB::datum_type());
+        debug_assert_eq!(c.tensor.datum_type(), TC::datum_type());
         let prefetch = crate::ops().prefetch.as_ref();
         let m = self.m;
         let n = self.n;
         let mut scratch = ScratchSpaceFusedNonLinear::default();
-        let mut tmpc = Vec::with_capacity(mr * nr);
-        tmpc.set_len(mr * nr);
-        let tmp_c_storage = MatrixStoreSpec::Strides {
-            row_byte_stride: (std::mem::size_of::<TC>() * nr) as isize,
-            col_byte_stride: std::mem::size_of::<TC>() as isize,
-            mr,
-            nr,
-        };
-        let ref mut tmp_tile = tmp_c_storage.wrap(tmpc.as_ptr());
+        let mut tmpc_buffer = Tensor::uninitialized::<TC>(&[mr, nr])?;
+        let tmp_c_storage = self.c_view();
+        let tmpc_view = tmpc_buffer.view_mut();
+        let tmpc = tmp_c_storage.wrap(&tmpc_view);
 
-        let a = a.as_ptr_unchecked::<TA>();
-        let b = b.as_ptr_unchecked::<TB>();
-        let c = c.as_ptr_mut_unchecked::<TC>();
         let ref linear = LinearSpec::k(self.k);
-        let mut non_linear = non_linear.to_vec();
+        let non_linear = non_linear.to_vec();
         /*
         if let Some(ref a0) = self.zero_point_a {
             let mut sum_b_over_k = self.sum_b_over_k(b);
@@ -312,10 +285,6 @@ where
             non_linear.push(FusedSpec::Max(tensor0(TC::min_value().as_())));
         }
         */
-        let a = self.a_storage.wrap(a);
-        let b = self.b_storage.wrap(b);
-        //        eprintln!("{:?} {:?}", a, b);
-        let mut c = self.c_storage.wrap(c);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
@@ -328,7 +297,7 @@ where
                     PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
                     _ => (),
                 }
-                let ref direct_c = c.tile_c(ia, ib);
+                let ref direct_c = c.tile_c(ia, ib, mr, nr);
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
@@ -349,7 +318,7 @@ where
                     PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
                     _ => (),
                 }
-                let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
+                let ref tmp_tile_c = tmpc.tile_c(0, 0, mr, nr);
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
@@ -359,12 +328,12 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(ia, n / nr, mr, n % nr, &*tmpc);
+                c.set_from_tile::<TC>(ia, n / nr, mr, n % nr, tmpc.tensor, mr, nr);
             }
         }
         if m % mr != 0 {
             let ref panel_a = a.panel_a(m / mr);
-            let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
+            let ref tmp_tile_c = tmpc.tile_c(0, 0, mr, nr);
             for ib in 0..n / nr {
                 if let PanelStore::Packed { ptr } = panel_a {
                     prefetch(*ptr as *const u8, 512);
@@ -384,7 +353,7 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(m / mr, ib, m % mr, nr, &*tmpc);
+                c.set_from_tile::<TC>(m / mr, ib, m % mr, nr, tmpc.tensor, mr, nr);
             }
             if n % nr != 0 {
                 if let PanelStore::Packed { ptr } = panel_a {
@@ -405,7 +374,7 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(m / mr, n / nr, m % mr, n % nr, &*tmpc);
+                c.set_from_tile::<TC>(m / mr, n / nr, m % mr, n % nr, tmpc.tensor, mr, nr);
             }
         }
         Ok(())
@@ -530,10 +499,7 @@ where
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,
-            "A:{}, B:{} C:{} (m:{}, k:{}, n:{}) ({} {}x{})",
-            self.a_storage,
-            self.b_storage,
-            self.c_storage,
+            "(m:{}, k:{}, n:{}) ({} {}x{})",
             self.m,
             self.k,
             self.n,

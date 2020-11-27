@@ -18,7 +18,7 @@ pub trait StreamFact {
 
 impl StreamFact for ShapeFact {
     fn stream_info(&self) -> Option<(usize, &TDim)> {
-        let streaming_dims: TVec<(usize, &TDim)> = (&**self)
+        let streaming_dims: TVec<(usize, &TDim)> = (&***self)
             .iter()
             .enumerate()
             .filter(|(_ix, d)| d.symbols().contains(&stream_symbol()))

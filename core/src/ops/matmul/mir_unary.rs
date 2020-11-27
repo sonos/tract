@@ -274,16 +274,16 @@ impl MatMulUnary {
         let (m, k, n, c_shape) =
             compute_shape(&self.a.shape(), b_shape, self.a_trans, self.b_trans, self.c_trans)?;
 
-        let mut mm = tract_linalg::ops()
-            .mmm(self.a.datum_type(), b_dt, c_dt, m, k, n)
-            .with_context(|| {
+        let mm = tract_linalg::ops().mmm(self.a.datum_type(), b_dt, c_dt, m, k, n).with_context(
+            || {
                 format!(
                     "No matrix multiplier for {:?}x{:?} to {:?}",
                     self.a.datum_type(),
                     b_dt,
                     c_dt
                 )
-            })?;
+            },
+        )?;
 
         let packed_as =
             Array::from_shape_fn(&self.a.shape()[0..self.a.rank() - 2], |a_prefix| unsafe {
@@ -302,74 +302,68 @@ impl MatMulUnary {
                 pa.into_arc_tensor()
             });
         unsafe {
-            if n == 1 {
+            let b_storage = if n == 1 {
                 mm.b_vec_from_data_and_stride(if self.b_trans {
                     1
                 } else {
                     *b_shape.last().unwrap() as isize
-                });
-                mm.c_vec_from_data_and_stride(if self.c_trans {
-                    1
-                } else {
-                    *c_shape.last().unwrap() as isize
-                });
+                })
             } else {
-                mm.c_from_data_and_strides(
-                    if self.c_trans { 1 } else { *c_shape.last().unwrap() as isize },
-                    if !self.c_trans { 1 } else { *c_shape.last().unwrap() as isize },
-                );
+                let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
+                packed_b_shape.push(mm.b_pack().len(n));
+                wire = patch.wire_node(
+                    format!("{}.pack", &*node.name),
+                    super::MatMatMulPack {
+                        packer: mm.b_pack(),
+                        trans: self.b_trans,
+                        output_shape: packed_b_shape,
+                    },
+                    &[wire],
+                )?[0];
+                mm.b_packed()
             };
+            /*
+              let c_storage = if n == 1 {
+              mm.c_vec_from_data_and_stride(if self.c_trans {
+              1
+              } else {
+            *c_shape.last().unwrap() as isize
+            })
+            } else {
+            mm.c_from_data_and_strides(
+            if self.c_trans { 1 } else { *c_shape.last().unwrap() as isize },
+            if !self.c_trans { 1 } else { *c_shape.last().unwrap() as isize },
+            )
+            };
+            */
+            /*
             if let Some(q) = self.q_params.as_ref() {
-                q.inject_into_mmm(&mut *mm)?;
+            q.inject_into_mmm(&mut *mm)?;
             }
-        }
-        let rank = c_shape.len();
-        if n > 1 {
-            let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
-            packed_b_shape.push(mm.b_pack().len(n));
+            */
+            let rank = c_shape.len();
+            let mut strides = natural_strides(&c_shape);
+            let mut overrided_shape = c_shape.clone();
+            if self.c_trans {
+                overrided_shape.swap(rank - 2, rank - 1);
+                strides.swap(rank - 2, rank - 1);
+            }
             wire = patch.wire_node(
-                format!("{}.pack", &*node.name),
-                super::MatMatMulPack {
-                    packer: mm.b_pack(),
-                    trans: self.b_trans,
-                    output_shape: packed_b_shape,
+                format!("{}.matmatmul", &*node.name),
+                LirMatMulUnary {
+                    b_storage,
+                    c_fact: TypedFact::dt_shape(c_dt, &c_shape),
+                    c_shape_override: Some((Dims::from(&overrided_shape), Dims::from(strides))),
+                    packed_as,
+                    fused_ops: None,
+                    mmm: mm,
+                    k,
+                    m,
                 },
                 &[wire],
             )?[0];
+            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
         }
-        let c_prefix_dim_and_stride = if c_shape[..rank - 2].iter().any(|d| *d > 1) {
-            let c_prefix_strides: TVec<TDim> = c_shape
-                .iter()
-                .rev()
-                .scan(1isize, |s, &d| {
-                    let now: isize = *s;
-                    *s *= d as isize;
-                    Some(now)
-                })
-                .collect::<TVec<_>>()
-                .into_iter()
-                .skip(2)
-                .rev()
-                .map(|d| d.to_dim())
-                .collect::<TVec<_>>();
-            Some((c_shape[..rank - 2].into(), c_prefix_strides.into()))
-        } else {
-            None
-        };
-        wire = patch.wire_node(
-            format!("{}.matmatmul", &*node.name),
-            LirMatMulUnary {
-                c_trans: self.c_trans,
-                c_fact: TypedFact::dt_shape(c_dt, &c_shape),
-                c_prefix_dim_and_stride,
-                packed_as,
-                fused_ops: None,
-                mmm: mm,
-                k,
-            },
-            &[wire],
-        )?[0];
-        patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
         Ok(patch)
     }
 }

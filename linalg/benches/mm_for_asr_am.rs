@@ -1,5 +1,6 @@
 use criterion::*;
 use tract_data::internal::*;
+use tract_linalg::frame::mmm::MatrixStore;
 use tract_linalg::frame::MatMatMul;
 
 use DatumType::*;
@@ -8,29 +9,27 @@ fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
 }
 
-fn run(
+unsafe fn run(
     be: &mut Bencher,
-    mm: Box<dyn MatMatMul>,
-    pa: &Tensor,
-    pb: &Tensor,
-    c: &mut Tensor,
+    mm: &dyn MatMatMul,
+    pa: &MatrixStore,
+    pb: &MatrixStore,
+    c: &mut MatrixStore,
     cold: bool,
 ) {
-    unsafe {
-        be.iter_custom(move |iters| {
-            let mut dur = std::time::Duration::default();
-            for _ in 0..iters {
-                if cold {
-                    ruin_cache();
-                }
-                let instant = std::time::Instant::now();
-                mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]).unwrap();
-                let time = instant.elapsed();
-                dur += time;
+    be.iter_custom(move |iters| {
+        let mut dur = std::time::Duration::default();
+        for _ in 0..iters {
+            if cold {
+                ruin_cache();
             }
-            dur
-        });
-    }
+            let instant = std::time::Instant::now();
+            mm.run(&pa, &pb, c, &[]).unwrap();
+            let time = instant.elapsed();
+            dur += time;
+        }
+        dur
+    });
 }
 
 fn mat_mat(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool)) {
@@ -38,18 +37,33 @@ fn mat_mat(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
     let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(n)], mm.b_pack().alignment()).unwrap();
     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
-    run(be, mm, &pa, &pb, &mut c, cold);
+    unsafe {
+        run(
+            be,
+            &*mm,
+            &mm.a_packed().wrap(&pa.view()),
+            &mm.b_packed().wrap(&pb.view()),
+            &mut mm.c_view().wrap(&mut c.view_mut()),
+            cold,
+        );
+    }
 }
 
 fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool)) {
-    let mut mm = tract_linalg::ops().mmm(dt, dt, dt, m, k, n).unwrap();
+    let mm = tract_linalg::ops().mmm(dt, dt, dt, m, k, n).unwrap();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
     let pb = Tensor::zero_dt(dt, &[k, 1]).unwrap();
     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
     unsafe {
-        mm.b_vec_from_data();
+        run(
+            be,
+            &*mm,
+            &mm.a_packed().wrap(&pa.view()),
+            &mm.b_vec_from_data().wrap(&pb.view()),
+            &mut mm.c_view().wrap(&mut c.view_mut()),
+            cold,
+        );
     }
-    run(be, mm, &pa, &pb, &mut c, cold);
 }
 
 fn packed_packed(c: &mut Criterion, m: usize, k: usize, n: usize) {
@@ -87,26 +101,40 @@ fn direct_conv_geo(
 fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
     unsafe {
         let (m, k, n, rows_offsets, cols_offsets, b_len) = direct_conv_geo(geo);
-        let mut mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, n).unwrap();
+        let mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, n).unwrap();
         let pa =
             Tensor::zero_aligned::<f32>(&[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
         let pb = Tensor::zero_aligned::<f32>(&[b_len], mm.b_pack().alignment()).unwrap();
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
         mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
-        be.iter(move || mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]));
+        be.iter(move || {
+            mm.run(
+                &mm.a_packed().wrap(&pa.view()),
+                &mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets).wrap(&pb.view()),
+                &mut mm.c_view().wrap(&c.view_mut()),
+                &[],
+            )
+        })
     }
 }
 
 fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
     unsafe {
         let (m, k, n, rows_offsets, cols_offsets, b_len) = direct_conv_geo(geo);
-        let mut mm = tract_linalg::ops().mmm(I8, I8, I8, m, k, n).unwrap();
+        let mm = tract_linalg::ops().mmm(I8, I8, I8, m, k, n).unwrap();
         let pa =
             Tensor::zero_aligned::<i8>(&[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
         let pb = Tensor::zero_aligned::<i8>(&[b_len], mm.b_pack().alignment()).unwrap();
         let mut c = Tensor::zero::<i8>(&[m, n]).unwrap();
         mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
-        be.iter(move || mm.run(&pa.view(), &pb.view(), &mut c.view_mut(), &[]));
+        be.iter(move || {
+            mm.run(
+                &mm.a_packed().wrap(&pa.view()),
+                &mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets).wrap(&pb.view()),
+                &mut mm.c_view().wrap(&c.view_mut()),
+                &[],
+            )
+        })
     }
 }
 

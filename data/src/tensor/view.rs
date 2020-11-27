@@ -10,7 +10,7 @@ enum Indexing<'a> {
 
 #[derive(Clone, Debug)]
 pub struct TensorView<'a> {
-    tensor: &'a Tensor,
+    pub tensor: &'a Tensor,
     offset_bytes: isize,
     indexing: Indexing<'a>,
     phantom: PhantomData<&'a ()>,
