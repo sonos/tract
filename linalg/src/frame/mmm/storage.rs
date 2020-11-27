@@ -145,7 +145,6 @@ impl<'s, 't> MatrixStore<'s, 't> {
         nr: usize,
     ) {
         let ptr = self.tensor.as_ptr_unchecked::<u8>();
-        eprintln!("{:?}", self);
         match self.spec {
             MatrixStoreSpec::Strides { .. } | MatrixStoreSpec::View { .. } => {
                 let ptr = self.tensor.as_ptr_unchecked::<u8>();
