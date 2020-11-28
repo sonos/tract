@@ -115,10 +115,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
                     return self.proto_model_for_read(&mut f);
                 }
                 #[cfg(not(feature = "flate2"))]
-                {
-                    eprintln!("Cannot read file {:?} without flate2 enabled.", path);
-                    std::process::exit(1);
-                }
+                bail!("Cannot read file {:?} without flate2 enabled.", path);
             } else {
                 return self.proto_model_for_read(&mut f);
             }
