@@ -1,12 +1,14 @@
 pub mod lir_unary;
 pub mod mir;
 pub mod mir_unary;
+pub mod mir_quant;
 pub mod pack;
 
 use crate::internal::*;
 use tract_itertools::Itertools;
 use tract_ndarray::prelude::*;
 
+pub use self::mir_quant::QMatMul;
 pub use self::mir::MatMul;
 pub use self::mir_unary::MatMulUnary;
 use self::pack::MatMatMulPack;
@@ -58,30 +60,27 @@ pub(super) fn eval(
     a_trans: bool,
     b_trans: bool,
     c_trans: bool,
-    q_params: Option<&QParams>,
 ) -> TractResult<Tensor> {
     unsafe {
         let rank = a.rank();
         let (m, k, n, c_shape) = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
-        let c_dt = q_params.map(|q| q.c_datum_type).unwrap_or(a.datum_type());
+        let dt = a.datum_type();
         let mut mm = tract_linalg::ops()
-            .mmm(a.datum_type(), b.datum_type(), c_dt, m, k, n)
+            .mmm(a.datum_type(), b.datum_type(), dt, m, k, n)
             .with_context(|| {
                 format!(
                     "No matrix multiplier for {:?}x{:?} to {:?}",
                     a.datum_type(),
                     b.datum_type(),
-                    c_dt
+                    dt
                 )
             })?;
         let c_storage = mm.c_from_data_and_strides(
             if c_trans { 1 } else { c_shape[rank - 1] as isize },
             if !c_trans { 1 } else { c_shape[rank - 1] as isize },
         );
-        if let Some(q) = q_params {
-            q.inject_into_mmm(&mut *mm)?;
-        }
-        let mut c = Tensor::uninitialized_dt(c_dt, &c_shape)?;
+
+        let mut c = Tensor::uninitialized_dt(dt, &c_shape)?;
 
         let a_pack = mm.a_pack();
         let b_pack = mm.b_pack();

@@ -1,42 +1,5 @@
 use crate::internal::*;
 use crate::ops::matmul::*;
-use crate::ops::quant::{QParams, QParamsInputKind};
-
-pub(super) fn q_params_from_inputs(
-    q_params: &Option<QParams>,
-    inputs: &TVec<Arc<Tensor>>,
-) -> TractResult<Option<QParams>> {
-    q_params
-        .as_ref()
-        .and_then(|q_params| {
-            q_params.inputs_kind.as_ref().and_then(|inputs_kind| {
-                let q_params = q_params.clone();
-
-                Some(inputs_kind.iter().try_fold(q_params, |mut q_params, kind| {
-                    match kind {
-                        QParamsInputKind::ZeroPointA(ix) => {
-                            q_params.set_zero_point_a(&inputs[*ix]);
-                        }
-                        QParamsInputKind::ZeroPointB(ix) => {
-                            q_params.set_zero_point_b(&inputs[*ix].clone());
-                        }
-                        QParamsInputKind::ZeroPointC(ix) => {
-                            q_params.set_zero_point_c(&inputs[*ix].clone());
-                        }
-                        QParamsInputKind::ScaleABC(a_ix, b_ix, c_ix) => {
-                            let scale = *inputs[*a_ix].to_scalar::<f32>()?
-                                * *inputs[*b_ix].to_scalar::<f32>()?
-                                / *inputs[*c_ix].to_scalar::<f32>()?;
-
-                            q_params.set_scale_factor(scale);
-                        }
-                    };
-                    Ok(q_params)
-                }))
-            })
-        })
-        .transpose()
-}
 
 /// The binary op. It will declutter to MatMulUnary if either A or B is constant.
 ///
@@ -47,7 +10,6 @@ pub struct MatMul {
     pub a_trans: bool,
     pub b_trans: bool,
     pub c_trans: bool,
-    pub q_params: Option<QParams>,
 }
 
 impl_dyn_hash!(MatMul);
@@ -63,10 +25,6 @@ impl MatMul {
 
     pub fn with_c_trans(self, c_trans: bool) -> MatMul {
         MatMul { c_trans, ..self }
-    }
-
-    pub fn with_q_params(self, q_params: QParams) -> MatMul {
-        MatMul { q_params: Some(q_params), ..self }
     }
 }
 
@@ -85,13 +43,11 @@ impl EvalOp for MatMul {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        assert_eq!(&inputs[0].rank(), &inputs[1].rank());
-
-        let q_params = q_params_from_inputs(&self.q_params, &inputs)?;
-        let q_params = q_params.as_ref().or(self.q_params.as_ref());
-
-        let t = eval(&inputs[0], &inputs[1], self.a_trans, self.b_trans, self.c_trans, q_params)?;
-        Ok(tvec!(t.into_arc_tensor()))
+        if &inputs[0].rank() != &inputs[1].rank() {
+            bail!("Rank mismatch {:?} vs {:?}", inputs[0], inputs[1]);
+        }
+        Ok(tvec!(eval(&inputs[0], &inputs[1], self.a_trans, self.b_trans, self.c_trans)?
+            .into_arc_tensor()))
     }
 }
 
@@ -104,7 +60,6 @@ impl TypedOp for MatMul {
                 inputs[1]
             );
         }
-        let dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
         let (_m, _k, _n, c_shape) = compute_shape(
             &inputs[0].shape,
             &inputs[1].shape,
@@ -112,7 +67,7 @@ impl TypedOp for MatMul {
             self.b_trans,
             self.c_trans,
         )?;
-        Ok(tvec!(TypedFact::dt_shape(dt, c_shape)))
+        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, c_shape)))
     }
 
     fn declutter(
@@ -139,7 +94,7 @@ impl TypedOp for MatMul {
             model,
             node,
             &node.inputs[var_ix..][..1],
-            MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip, self.q_params.clone()),
+            MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip),
         )?
         .with_context("to unary");
         return Ok(Some(patch));

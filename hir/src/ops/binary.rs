@@ -3,6 +3,7 @@ use crate::internal::*;
 
 use tract_core::ops as mir;
 use tract_core::ops::binary::BinMiniOp;
+pub use tract_core::ops::binary::wire_rank_broadcast;
 
 #[derive(Debug, Clone, Hash)]
 pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
@@ -67,28 +68,6 @@ pub fn rules<'r, 'p: 'r, 's: 'r, DT: Fn(DatumType, DatumType) -> TractResult<Dat
         s.equals(&outputs[0].datum_type, dt(typa, typb)?)
     })?;
     Ok(())
-}
-
-pub fn wire_rank_broadcast(
-    prefix: &str,
-    target: &mut TypedModel,
-    inputs: &[OutletId],
-) -> TractResult<TVec<OutletId>> {
-    let facts = [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
-    let max_rank = facts[0].rank().max(facts[1].rank());
-    let mut wires = tvec!();
-    for i in 0..2 {
-        let mut wire = inputs[i];
-        for j in facts[i].rank()..max_rank {
-            wire = target.wire_node(
-                format!("{}.fix-rank-{}-{}", prefix, i, j),
-                AxisOp::Add(0),
-                &[wire],
-            )?[0];
-        }
-        wires.push(wire);
-    }
-    Ok(wires)
 }
 
 pub fn wire_cast(
