@@ -1,8 +1,6 @@
 use super::lir_unary::LirMatMulUnary;
-use super::mir::q_params_from_inputs;
 use super::*;
 use crate::internal::*;
-use crate::ops::quant::QParams;
 use tract_ndarray::prelude::*;
 
 /// The pseudo Unary matrix multiplier. A is constant, B is the input
@@ -12,7 +10,6 @@ pub struct MatMulUnary {
     pub a_trans: bool,
     pub b_trans: bool,
     pub c_trans: bool,
-    pub q_params: Option<QParams>,
 }
 
 impl_dyn_hash!(MatMulUnary);
@@ -30,9 +27,6 @@ impl Op for MatMulUnary {
             ),
             format!("A: {:?}", self.a),
         ];
-        if let Some(qp) = &self.q_params {
-            v.push(format!("{:?}", qp));
-        }
         Ok(v)
     }
 
@@ -46,9 +40,7 @@ impl EvalOp for MatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let q_params = q_params_from_inputs(&self.q_params, &inputs)?;
-        let q_params = q_params.as_ref().or(self.q_params.as_ref());
-        let t = eval(&self.a, &inputs[0], self.a_trans, self.b_trans, self.c_trans, q_params)?;
+        let t = eval(&self.a, &inputs[0], self.a_trans, self.b_trans, self.c_trans)?;
         Ok(tvec!(t.into_arc_tensor()))
     }
 }
@@ -69,7 +61,7 @@ impl TypedOp for MatMulUnary {
             self.b_trans,
             self.c_trans,
         )?;
-        let c_dt = self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
+        let c_dt = inputs[0].datum_type;
         Ok(tvec!(TypedFact::dt_shape(c_dt, c_shape)))
     }
 
@@ -270,17 +262,17 @@ impl MatMulUnary {
         let mut patch = TypedModelPatch::default();
         let mut wire = patch.tap_model(model, node.inputs[0])?;
 
-        let c_dt = self.q_params.as_ref().map(|q| q.c_datum_type).unwrap_or(self.a.datum_type());
+        let dt = self.a.datum_type();
         let (m, k, n, c_shape) =
             compute_shape(&self.a.shape(), b_shape, self.a_trans, self.b_trans, self.c_trans)?;
 
-        let mm = tract_linalg::ops().mmm(self.a.datum_type(), b_dt, c_dt, m, k, n).with_context(
+        let mm = tract_linalg::ops().mmm(self.a.datum_type(), b_dt, dt, m, k, n).with_context(
             || {
                 format!(
                     "No matrix multiplier for {:?}x{:?} to {:?}",
                     self.a.datum_type(),
                     b_dt,
-                    c_dt
+                    dt
                 )
             },
         )?;
@@ -352,7 +344,7 @@ impl MatMulUnary {
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
                     b_storage,
-                    c_fact: TypedFact::dt_shape(c_dt, &c_shape),
+                    c_fact: TypedFact::dt_shape(dt, &c_shape),
                     c_shape_override: Some((Dims::from(&overrided_shape), Dims::from(strides))),
                     packed_as,
                     fused_ops: None,

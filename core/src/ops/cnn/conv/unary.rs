@@ -341,7 +341,7 @@ impl ConvUnary {
             } else {
                 self.q_params.clone()
             };
-            let op = MatMulUnary::new(a, a_trans, trans_data, trans_data, q_params);
+            let op = MatMulUnary::new(a, a_trans, trans_data, trans_data);
             wire = patch.wire_node(&*node.name, op, &[wire])?[0];
             if let Some(b) = &self.bias {
                 let mut bias_shape = tvec!(1; input_shape.rank());
@@ -678,7 +678,6 @@ impl TypedOp for ConvUnary {
                             self.kernel_fmt == KernelFormat::HWIO,
                             input_c_is_last,
                             input_c_is_last,
-                            self.q_params.clone(),
                         ),
                         &[wire],
                     )?[0];

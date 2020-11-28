@@ -3,6 +3,28 @@ use crate::ops::invariants::*;
 use downcast_rs::Downcast;
 use std::fmt;
 
+pub fn wire_rank_broadcast(
+    prefix: &str,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
+) -> TractResult<TVec<OutletId>> {
+    let facts = [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
+    let max_rank = facts[0].rank().max(facts[1].rank());
+    let mut wires = tvec!();
+    for i in 0..2 {
+        let mut wire = inputs[i];
+        for j in facts[i].rank()..max_rank {
+            wire = target.wire_node(
+                format!("{}.fix-rank-{}-{}", prefix, i, j),
+                AxisOp::Add(0),
+                &[wire],
+            )?[0];
+        }
+        wires.push(wire);
+    }
+    Ok(wires)
+}
+
 pub trait BinMiniOp:
     fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
 {
@@ -97,7 +119,9 @@ impl EvalOp for TypedBinOp {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        debug_assert_eq!(inputs[0].rank(), inputs[1].rank());
+        if inputs[0].rank() != inputs[1].rank() {
+            bail!("Ranks mismatch: {:?} vs {:?}", inputs[0], inputs[1]);
+        }
         self.0.eval_broadcast(inputs)
     }
 }
