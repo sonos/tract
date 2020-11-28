@@ -17,6 +17,9 @@ maintenance = { status = "actively-developed" }
 log = "0.4"
 nom = "5"
 tar = "0.4"
-flate2 = "1.0"
+flate2 = { version = "1.0", optional = true }
 tract-core = { path = "../core" }
 walkdir = "2"
+
+[features]
+default = ["flate2"]
