@@ -38,7 +38,6 @@ fn b(
         kernel,
         group: 1,
         bias: None,
-        q_params: None,
     };
 
     let mut m = TypedModel::default();

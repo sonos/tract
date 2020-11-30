@@ -56,7 +56,6 @@ impl Problem {
             kernel: kernel.into_arc_tensor(),
             group: 1,
             bias: None,
-            q_params: None,
         };
 
         let mut model = TypedModel::default();

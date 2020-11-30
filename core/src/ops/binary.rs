@@ -25,6 +25,29 @@ pub fn wire_rank_broadcast(
     Ok(wires)
 }
 
+pub fn wire_with_rank_broadcast(
+    prefix: &str,
+    target: &mut TypedModel,
+    op: impl Into<Box<dyn TypedOp>>,
+    inputs: &[OutletId],
+) -> TractResult<TVec<OutletId>> {
+    let facts = [target.outlet_fact(inputs[0])?.clone(), target.outlet_fact(inputs[1])?.clone()];
+    let max_rank = facts[0].rank().max(facts[1].rank());
+    let mut wires = tvec!();
+    for i in 0..2 {
+        let mut wire = inputs[i];
+        for j in facts[i].rank()..max_rank {
+            wire = target.wire_node(
+                format!("{}.fix-rank-{}-{}", prefix, i, j),
+                AxisOp::Add(0),
+                &[wire],
+            )?[0];
+        }
+        wires.push(wire);
+    }
+    target.wire_node(prefix, &op.into(), &wires)
+}
+
 pub trait BinMiniOp:
     fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + DynHash
 {
