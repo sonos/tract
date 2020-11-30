@@ -20,14 +20,13 @@ impl Op for MatMulUnary {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        let mut v = vec![
+        Ok(vec![
             format!(
                 "a_trans:{:?} b_trans:{:?} c_trans:{:?}",
                 self.a_trans, self.b_trans, self.c_trans
             ),
             format!("A: {:?}", self.a),
-        ];
-        Ok(v)
+        ])
     }
 
     op_core_mir!();
@@ -266,16 +265,10 @@ impl MatMulUnary {
         let (m, k, n, c_shape) =
             compute_shape(&self.a.shape(), b_shape, self.a_trans, self.b_trans, self.c_trans)?;
 
-        let mm = tract_linalg::ops().mmm(self.a.datum_type(), b_dt, dt, m, k, n).with_context(
-            || {
-                format!(
-                    "No matrix multiplier for {:?}x{:?} to {:?}",
-                    self.a.datum_type(),
-                    b_dt,
-                    dt
-                )
-            },
-        )?;
+        let mm =
+            tract_linalg::ops().mmm(self.a.datum_type(), b_dt, dt, m, k, n).with_context(|| {
+                format!("No matrix multiplier for {:?}x{:?} to {:?}", self.a.datum_type(), b_dt, dt)
+            })?;
 
         let packed_as =
             Array::from_shape_fn(&self.a.shape()[0..self.a.rank() - 2], |a_prefix| unsafe {

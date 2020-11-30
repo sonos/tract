@@ -2,14 +2,12 @@ use crate::infer::*;
 use crate::internal::*;
 
 pub use tract_core::ops::matmul::MatMul;
-pub use tract_core::ops::quant::QParams;
 
 #[derive(Debug, Clone, Default, Hash)]
 pub struct MatMulInference {
     pub a_trans: bool,
     pub b_trans: bool,
     pub c_trans: bool,
-    pub q_params: Option<QParams>,
 }
 
 impl_dyn_hash!(MatMulInference);
@@ -25,10 +23,6 @@ impl MatMulInference {
 
     pub fn with_c_trans(self, c_trans: bool) -> MatMulInference {
         MatMulInference { c_trans, ..self }
-    }
-
-    pub fn with_q_params(self, q_params: QParams) -> MatMulInference {
-        MatMulInference { q_params: Some(q_params), ..self }
     }
 }
 
@@ -48,11 +42,7 @@ impl Expansion for MatMulInference {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
-        if let Some(qp) = &self.q_params {
-            s.equals(&outputs[0].datum_type, &qp.c_datum_type)?;
-        } else {
-            s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        }
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ashape, bshape| {
             let (_, _, _, cshape) =
                 compute_shapes(ashape, bshape, self.a_trans, self.b_trans, self.c_trans)?;
