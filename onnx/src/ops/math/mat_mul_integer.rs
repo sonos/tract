@@ -178,7 +178,7 @@ impl Expansion for MatMulInteger {
             target.add_const(format!("{}.b_scale", prefix), tensor0(1f32))?,
             b0,
             target.add_const(format!("{}.c_scale", prefix), tensor0(1f32))?,
-            target.add_const(format!("{}.c0", prefix), tensor0(1i32))?,
+            target.add_const(format!("{}.c0", prefix), tensor0(0i32))?,
         ];
         target.wire_node(prefix, op, &inputs)
     }
