@@ -1,3 +1,5 @@
+use ops::binary::wire_with_rank_broadcast;
+
 use crate::internal::*;
 use crate::ops;
 use crate::ops::matmul::*;
@@ -129,48 +131,22 @@ impl QMatMul {
         c_scale: OutletId,
         c0: OutletId,
     ) -> TractResult<OutletId> {
-        let rank = model.outlet_fact(a)?.rank();
-
-        let a0 = model.wire_node(
-            format!("{}.cast_a0", name),
-            ops::cast::cast(i32::datum_type()),
-            &[a0],
-        )?[0];
-
-        let b0 = model.wire_node(
-            format!("{}.cast_b0", name),
-            ops::cast::cast(i32::datum_type()),
-            &[b0],
-        )?[0];
-
-        let c0 = model.wire_node(
-            format!("{}.cast_c0", name),
-            ops::cast::cast(i32::datum_type()),
-            &[c0],
-        )?[0];
-
+        let a_fact = model.outlet_fact(a)?.clone();
+        let rank = a_fact.rank();
         let k = model.outlet_fact(a)?.shape[rank - 2 + !self.a_trans as usize].clone();
-        let k = model.add_const(format!("{}.k", name), rctensor0(k.clone()))?;
-        let k = model.wire_node(
-            format!("{}.cast_k", name),
-            ops::cast::cast(i32::datum_type()),
-            &[k],
-        )?[0];
 
-        let wires = crate::ops::binary::wire_rank_broadcast(
-            &format!("{}.ab_scales", name),
+        let ab_scale = wire_with_rank_broadcast(
+            &format!("{}.ab_scale", name),
             model,
+            ops::math::mul::bin_typed(),
             &[a_scale, b_scale],
-        )?;
-        let ab_scale =
-            model.wire_node(format!("{}.ab_scale", name), ops::math::mul::bin_typed(), &wires)?[0];
-        let wires = crate::ops::binary::wire_rank_broadcast(
+        )?[0];
+        let abc_scale = wire_with_rank_broadcast(
             &format!("{}.abc_scales", name),
             model,
+            ops::math::div::bin_typed(),
             &[ab_scale, c_scale],
-        )?;
-        let abc_scale =
-            model.wire_node(format!("{}.abc_scale", name), ops::math::div::bin_typed(), &wires)?[0];
+        )?[0];
 
         let a_i32 = model.wire_node(
             format!("{}.a_as_i32", name),
@@ -193,113 +169,143 @@ impl QMatMul {
             &[b_i32],
         )?[0];
 
-        let wires = crate::ops::binary::wire_rank_broadcast(
-            &format!("{}.a0_sum_b", name),
-            model,
-            &[a0, sum_b],
-        )?;
-        let a0_sum_b =
-            model.wire_node(format!("{}.a0_sum_b", name), ops::math::mul::bin_typed(), &wires)?[0];
-
-        let wires = crate::ops::binary::wire_rank_broadcast(
-            &format!("{}.b0_sum_a", name),
-            model,
-            &[b0, sum_a],
-        )?;
-        let b0_sum_a =
-            model.wire_node(format!("{}.b0_sum_a", name), ops::math::mul::bin_typed(), &wires)?[0];
-
-        let wires =
-            crate::ops::binary::wire_rank_broadcast(&format!("{}.a0_k", name), model, &[a0, k])?;
-        let a0_k =
-            model.wire_node(format!("{}.a0_k", name), ops::math::mul::bin_typed(), &wires)?[0];
-
-        let wires = crate::ops::binary::wire_rank_broadcast(
-            &format!("{}.a0_k_b0", name),
-            model,
-            &[a0_k, b0],
-        )?;
-        let a0_k_b0 =
-            model.wire_node(format!("{}.a0_k_b0", name), ops::math::mul::bin_typed(), &wires)?[0];
-
         let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
         let result = model.wire_node(format!("{}.matmul", &name), new_op, &[a, b])?[0];
-        let result = model.wire_node(
-            &format!("{}.minus_a0_B", &name),
-            ops::math::sub::bin_typed(),
-            &[result, a0_sum_b],
-        )?[0];
-        let result = model.wire_node(
-            &format!("{}.minus_b0_A", &name),
-            ops::math::sub::bin_typed(),
-            &[result, b0_sum_a],
-        )?[0];
+        let result = compensate_zero_points(model, name, result, k, a0, b0, sum_a, sum_b)?;
+        requant(model, name, result, self.output_type, abc_scale, c0)
+    }
+}
 
-        let wires = crate::ops::binary::wire_rank_broadcast(
-            &format!("{}.plus_a0_k_b0", name),
-            model,
-            &[result, a0_k_b0],
-        )?;
-        let result = model.wire_node(
-            &format!("{}.plus_a0_k_b0", &name),
-            ops::math::add::bin_typed(),
-            &wires,
-        )?[0];
+pub(crate) fn compensate_zero_points(
+    model: &mut TypedModel,
+    name: &str,
+    result: OutletId,
+    k: TDim,
+    a0: OutletId,
+    b0: OutletId,
+    sum_a: OutletId,
+    sum_b: OutletId,
+) -> TractResult<OutletId> {
+    let a0 =
+        model.wire_node(format!("{}.cast_a0", name), ops::cast::cast(i32::datum_type()), &[a0])?[0];
 
-        let result = model.wire_node(
-            format!("{}.dequant", name),
-            ops::cast::cast(f32::datum_type()),
-            &[result],
-        )?[0];
+    let b0 =
+        model.wire_node(format!("{}.cast_b0", name), ops::cast::cast(i32::datum_type()), &[b0])?[0];
 
-        let wires = crate::ops::binary::wire_rank_broadcast(
-            &format!("{}.scale", name),
-            model,
-            &[result, abc_scale],
-        )?;
-        let result =
-            model.wire_node(format!("{}.scale", name), ops::math::mul::bin_typed(), &wires)?[0];
+    let k = model.add_const(format!("{}.k", name), rctensor0(k.clone()))?;
+    let k =
+        model.wire_node(format!("{}.cast_k", name), ops::cast::cast(i32::datum_type()), &[k])?[0];
 
-        let result = model.wire_node(format!("{}.round", name), ops::math::round(), &[result])?[0];
+    let a0_sum_b = wire_with_rank_broadcast(
+        &format!("{}.a0_sum_b", name),
+        model,
+        ops::math::mul::bin_typed(),
+        &[a0, sum_b],
+    )?[0];
 
-        let result = model.wire_node(
-            format!("{}.requant", name),
-            ops::cast::cast(i32::datum_type()),
-            &[result],
-        )?[0];
+    let b0_sum_a = wire_with_rank_broadcast(
+        &format!("{}.b0_sum_a", name),
+        model,
+        ops::math::mul::bin_typed(),
+        &[b0, sum_a],
+    )?[0];
 
-        let wires =
-            crate::ops::binary::wire_rank_broadcast(&format!("{}.c0", name), model, &[result, c0])?;
-        let result =
-            model.wire_node(format!("{}.plus_c0", name), ops::math::add::bin_typed(), &wires)?[0];
+    let a0_k = wire_with_rank_broadcast(
+        &format!("{}.a0_k", name),
+        model,
+        ops::math::mul::bin_typed(),
+        &[a0, k],
+    )?[0];
 
-        if self.output_type != i32::datum_type() {
-            self.requant(model, name, result)
-        } else {
-            Ok(result)
-        }
+    let a0_k_b0 = wire_with_rank_broadcast(
+        &format!("{}.a0_k_b0", name),
+        model,
+        ops::math::mul::bin_typed(),
+        &[a0_k, b0],
+    )?[0];
+
+    let result = model.wire_node(
+        &format!("{}.minus_a0_B", &name),
+        ops::math::sub::bin_typed(),
+        &[result, a0_sum_b],
+    )?[0];
+    let result = model.wire_node(
+        &format!("{}.minus_b0_A", &name),
+        ops::math::sub::bin_typed(),
+        &[result, b0_sum_a],
+    )?[0];
+
+    let result = wire_with_rank_broadcast(
+        &format!("{}.plus_a0_k_b0", &name),
+        model,
+        ops::math::add::bin_typed(),
+        &[result, a0_k_b0],
+    )?[0];
+    Ok(result)
+}
+
+pub(crate) fn requant(
+    model: &mut TypedModel,
+    name: &str,
+    wire: OutletId,
+    dt: DatumType,
+    scale: OutletId,
+    zero_point: OutletId,
+) -> TractResult<OutletId> {
+    let wire = model.wire_node(
+        format!("{}.dequant", name),
+        ops::cast::cast(f32::datum_type()),
+        &[wire],
+    )?[0];
+
+    let wire = wire_with_rank_broadcast(
+        &format!("{}.scale", name),
+        model,
+        ops::math::mul::bin_typed(),
+        &[wire, scale],
+    )?;
+
+    let wire = model.wire_node(format!("{}.round", name), ops::math::round(), &wire)?[0];
+
+    let wire = model.wire_node(
+        format!("{}.requant", name),
+        ops::cast::cast(i32::datum_type()),
+        &[wire],
+    )?[0];
+
+    let zero_point = model.wire_node(
+        format!("{}.cast_c0", name),
+        ops::cast::cast(i32::datum_type()),
+        &[zero_point],
+    )?[0];
+
+    let wire = wire_with_rank_broadcast(
+        &format!("{}.zeropoint", name),
+        model,
+        ops::math::add::bin_typed(),
+        &[wire, zero_point],
+    )?[0];
+
+    if dt == i32::datum_type() {
+        return Ok(wire);
     }
 
-    fn requant(&self, model: &mut TypedModel, name: &str, wire: OutletId) -> TractResult<OutletId> {
-        let dt = self.output_type;
-        let rank = model.outlet_fact(wire)?.rank();
-        let inf = tensor0(if dt == DatumType::I8 { -128i32 } else { 0 })
-            .broadcast_into_rank(rank)?
-            .into_arc_tensor();
-        let sup = tensor0(if dt == DatumType::I8 { 127i32 } else { 255 })
-            .broadcast_into_rank(rank)?
-            .into_arc_tensor();
-        let wire = model.wire_node(format!("{}.min", name), ops::math::min::unary(sup), &[wire])?;
-        let wire = model.wire_node(format!("{}.max", name), ops::math::max::unary(inf), &wire)?;
-        let wire = model.wire_node(format!("{}.cast", name), ops::cast::cast(dt), &wire)?;
-        Ok(wire[0])
-    }
+    let rank = model.outlet_fact(wire)?.rank();
+    let inf = tensor0(if dt == DatumType::I8 { -128i32 } else { 0 })
+        .broadcast_into_rank(rank)?
+        .into_arc_tensor();
+    let sup = tensor0(if dt == DatumType::I8 { 127i32 } else { 255 })
+        .broadcast_into_rank(rank)?
+        .into_arc_tensor();
+    let wire = model.wire_node(format!("{}.min", name), ops::math::min::unary(sup), &[wire])?;
+    let wire = model.wire_node(format!("{}.max", name), ops::math::max::unary(inf), &wire)?;
+    let wire = model.wire_node(format!("{}.cast", name), ops::cast::cast(dt), &wire)?;
+    Ok(wire[0])
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::internal::*;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_ndarray::prelude::*;
