@@ -6,7 +6,6 @@ use tract_core::ops::cnn::conv::ConvUnary;
 use tract_core::ops::cnn::conv::KernelFormat;
 use tract_core::ops::cnn::{PaddingSpec, PoolSpec};
 use tract_core::ops::nn::DataFormat;
-use tract_core::ops::quant::QParams;
 
 #[derive(Debug, Clone, Default, Hash)]
 pub struct Conv {
@@ -122,8 +121,6 @@ impl Conv {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
         }
         if let Some(kvalue) = kernel.konst.clone() {
-            let mut qp = None;
-            let dt = self.override_output_datum_type.unwrap_or(input.datum_type);
             let mut scale = 1.0;
             if let Some(slot) = self.x_scale_input {
                 if let Some(ref value) = inputs[slot].borrow().konst {
@@ -144,30 +141,6 @@ impl Conv {
                     scale /= value.to_scalar::<f32>()?;
                 } else {
                     bail!("Output scale must be const")
-                }
-            }
-            if scale != 1.0 {
-                qp.get_or_insert(QParams::new(dt)).set_scale_factor(scale);
-            }
-            if let Some(slot) = self.x_zero_point_input {
-                if let Some(ref value) = inputs[slot].borrow().konst {
-                    qp.get_or_insert(QParams::new(dt)).set_zero_point_b(value);
-                } else {
-                    bail!("Input zero point must be const")
-                }
-            }
-            if let Some(slot) = self.k_zero_point_input {
-                if let Some(ref value) = inputs[slot].borrow().konst {
-                    qp.get_or_insert(QParams::new(dt)).set_zero_point_a(value);
-                } else {
-                    bail!("Kernel zero point must be const")
-                }
-            }
-            if let Some(slot) = self.y_zero_point_input {
-                if let Some(ref value) = inputs[slot].borrow().konst {
-                    qp.get_or_insert(QParams::new(dt)).set_zero_point_c(value);
-                } else {
-                    bail!("Output zero point must be const")
                 }
             }
             let bias = if let Some(slot) = self.bias_input {
@@ -194,7 +167,7 @@ impl Conv {
                 kernel_shape: kshape[self.kernel_fmt.h_axis()..][..spatial_rank].into(),
                 output_channel_override: Some(output_channels),
             };
-            let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kvalue, group, bias, qp);
+            let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kvalue, group, bias);
             return Ok(Some(reduced));
         } else {
             bail!("Kernel should be a const, found {:?}", kernel)

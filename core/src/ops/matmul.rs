@@ -12,7 +12,6 @@ pub use self::mir_quant::QMatMul;
 pub use self::mir::MatMul;
 pub use self::mir_unary::MatMulUnary;
 use self::pack::MatMatMulPack;
-use crate::ops::quant::QParams;
 
 pub fn compute_shape<D: DimLike>(
     ashape: &[D],
