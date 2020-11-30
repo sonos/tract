@@ -67,7 +67,7 @@ impl TypedOp for MatMul {
             self.b_trans,
             self.c_trans,
         )?;
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, c_shape)))
+        Ok(tvec!(TypedFact::dt_shape(output_type(inputs[0].datum_type), c_shape)))
     }
 
     fn declutter(
@@ -172,7 +172,7 @@ mod test {
         let a = unsafe { Tensor::uninitialized::<f32>(&[1, ci, co])?.into_arc_tensor() };
         wire = model.wire_node(
             "m",
-            MatMulUnary { a, a_trans: true, b_trans: true, c_trans: true, q_params: None },
+            MatMulUnary { a, a_trans: true, b_trans: true, c_trans: true },
             &wire,
         )?;
         let b = unsafe { Tensor::uninitialized::<f32>(&[1, 1, co])?.into_arc_tensor() };

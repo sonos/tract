@@ -401,7 +401,7 @@ pub fn matmul(
     let b = invocation.named_arg_as(builder, "B")?;
     let a_trans = invocation.named_arg_as(builder, "transposeA")?;
     let b_trans = invocation.named_arg_as(builder, "transposeB")?;
-    builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false, q_params: None }, &[a, b])
+    builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b])
 }
 
 /*

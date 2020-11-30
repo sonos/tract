@@ -74,7 +74,6 @@ impl Expansion for MatMulInference {
                 a_trans: self.a_trans,
                 b_trans: self.b_trans,
                 c_trans: self.c_trans,
-                q_params: self.q_params.clone(),
             },
             &inputs,
         )

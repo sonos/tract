@@ -28,8 +28,7 @@ impl PulsedOp for MatMulUnary {
             self.b_trans,
             self.c_trans,
         )?;
-        fact.datum_type =
-            self.q_params.as_ref().map(|qp| qp.c_datum_type).unwrap_or(inputs[0].datum_type);
+        fact.datum_type = tract_core::ops::matmul::output_type(inputs[0].datum_type);
         fact.shape = c_shape;
         Ok(tvec!(fact))
     }
