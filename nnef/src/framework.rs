@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read};
 use crate::ast::ProtoModel;
 use crate::internal::*;
 
@@ -105,21 +105,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         let path = path.as_ref();
         if path.is_file() {
             let mut f = std::fs::File::open(path)?;
-            let mut buf = [0u8; 2];
-            f.read_exact(&mut buf)?;
-            if buf[0] == 31 && buf[1] == 139 {
-                f.seek(SeekFrom::Start(0));
-                #[cfg(feature = "flate2")]
-                {
-                    let mut f = flate2::read::GzDecoder::new(f);
-                    return self.proto_model_for_read(&mut f);
-                }
-                #[cfg(not(feature = "flate2"))]
-                bail!("Cannot read file {:?} without flate2 enabled.", path);
-            } else {
-                return self.proto_model_for_read(&mut f);
-            }
-           
+            return self.proto_model_for_read(&mut f);
         }
         let mut text: Option<String> = None;
         let mut tensors: Vec<(String, Arc<Tensor>)> = Default::default();
@@ -142,7 +128,21 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
     fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
         let mut text: Option<String> = None;
         let mut tensors: Vec<(String, Arc<Tensor>)> = Default::default();
-        let mut tar = tar::Archive::new(reader);
+        let mut buffer = vec![0u8; 2];
+        reader.read_exact(&mut buffer)?;
+        let header = std::io::Cursor::new(buffer.clone());
+        let stream = header.chain(reader);
+        let mut tar = if buffer == [0x1f, 0x8b] {
+            #[cfg(feature = "flate2")]
+            {
+                let f = flate2::read::GzDecoder::new(stream);
+                tar::Archive::new(Box::new(f) as Box<dyn Read>)
+            }
+            #[cfg(not(feature = "flate2"))]
+            bail!("Cannot read gzip file without flate2 enabled.");
+        } else {
+            tar::Archive::new(Box::new(stream) as Box<dyn Read>)
+        };
         for entry in tar.entries()? {
             let mut entry = entry?;
             let path = entry.path()?.to_path_buf();
