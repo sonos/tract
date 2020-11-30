@@ -423,6 +423,21 @@ mod test {
         assert_eq!(pb.reference(), pb.tract())
     }
 
+    #[test]
+    fn onnx_test_matmulinteger() {
+        let pb = QMatMulProblem {
+            a: arr2(&[[11, 7, 3], [10, 6, 2], [9, 5, 1], [8, 4, 0]]),
+            b: arr2(&[[1, 4], [2, 5], [3, 6]]),
+            a0: 12,
+            b0: 0,
+            c0: 0,
+            a_scale: 1.0,
+            b_scale: 1.0,
+            c_scale: 1.0,
+        };
+        assert_eq!(pb.reference(), pb.tract())
+    }
+
     #[derive(Debug)]
     struct QMatMulProblem {
         a: Array2<i8>,
@@ -440,9 +455,7 @@ mod test {
             let a = self.a.map(|&x| (x as f32 - self.a0 as f32) * self.a_scale);
             let b = self.b.map(|&x| (x as f32 - self.b0 as f32) * self.b_scale);
             let c = a.dot(&b);
-            dbg!(&c);
             let c = c.map(|&x| ((x / self.c_scale).round() + self.c0 as f32));
-            dbg!(&c);
             c.map(|&x| (x as i32).max(-128).min(127) as i8)
         }
 
