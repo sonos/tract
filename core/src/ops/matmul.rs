@@ -54,6 +54,10 @@ pub fn compute_shape<D: DimLike>(
     Ok((m, ka, n, c_shape))
 }
 
+pub fn output_type(input: DatumType) -> DatumType {
+    if input.is_float() { input } else { i32::datum_type() }
+}
+
 pub(super) fn eval(
     a: &Tensor,
     b: &Tensor,
@@ -64,8 +68,8 @@ pub(super) fn eval(
     unsafe {
         let rank = a.rank();
         let (m, k, n, c_shape) = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
-        let dt = a.datum_type();
-        let mut mm = tract_linalg::ops()
+        let dt = output_type(a.datum_type());
+        let mm = tract_linalg::ops()
             .mmm(a.datum_type(), b.datum_type(), dt, m, k, n)
             .with_context(|| {
                 format!(
@@ -118,4 +122,22 @@ pub(super) fn eval(
         }
         Ok(c)
     }
+}
+
+pub(super) fn cost<A: DimLike + Clone, B: DimLike + Clone>(
+    a: &[A],
+    b: &[B],
+    dt: DatumType,
+    a_trans: bool,
+    b_trans: bool,
+) -> TractResult<TVec<(Cost, TDim)>> {
+    let (m, k, n, c_shape) = compute_shape(
+        &a.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
+        &b.iter().map(|d| d.clone().to_dim()).collect::<TVec<_>>(),
+        a_trans,
+        b_trans,
+        false,
+    )?;
+    let mul = c_shape.iter().rev().skip(2).cloned().maybe_product()?;
+    Ok(tvec!((Cost::FMA(dt), [mul, m.to_dim(), k.to_dim(), n.to_dim()].iter().maybe_product()?)))
 }

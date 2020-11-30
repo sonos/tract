@@ -155,16 +155,31 @@ impl Expansion for MatMulInteger {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let mut qp_builder = QParamsBuilder::new(QParams::new(i32::datum_type()), 2);
-
-        qp_builder.set_zero_point_a(target, inputs, &self.optional_a_zero_point_input)?;
-        qp_builder.set_zero_point_b(target, inputs, &self.optional_b_zero_point_input)?;
-        let (qp, qp_inputs) = qp_builder.build();
-
-        let op = tract_hir::ops::matmul::MatMul::default().with_q_params(qp);
-        let mut inputs =
+        let op = tract_core::ops::matmul::QMatMul::new(false, false, false, i32::datum_type());
+        let mut a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
-        inputs.extend_from_slice(&qp_inputs);
+        let a0 = if let Some(o) = self.optional_a_zero_point_input {
+            inputs[o]
+        } else {
+            let a_dt = target.outlet_fact(inputs[0])?.datum_type;
+            target.add_const(format!("{}.a0", prefix), tensor0(0).cast_to_dt(a_dt)?.into_owned())?
+        };
+        let b0 = if let Some(o) = self.optional_b_zero_point_input {
+            inputs[o]
+        } else {
+            let b_dt = target.outlet_fact(inputs[1])?.datum_type;
+            target.add_const(format!("{}.b0", prefix), tensor0(0).cast_to_dt(b_dt)?.into_owned())?
+        };
+        let inputs = [
+            a_and_b.remove(0),
+            target.add_const(format!("{}.a_scale", prefix), tensor0(1f32))?,
+            a0,
+            a_and_b.remove(0),
+            target.add_const(format!("{}.b_scale", prefix), tensor0(1f32))?,
+            b0,
+            target.add_const(format!("{}.c_scale", prefix), tensor0(1f32))?,
+            target.add_const(format!("{}.c0", prefix), tensor0(1i32))?,
+        ];
         target.wire_node(prefix, op, &inputs)
     }
 }
@@ -219,20 +234,17 @@ impl Expansion for QLinearMatMul {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let mut qp_builder =
-            QParamsBuilder::new(QParams::new(target.outlet_fact(inputs[7])?.datum_type), 2);
-
-        // a, a_scale, a_zp, b, b_scale, b_zp, y_scale, y_zp
-        qp_builder.set_zero_point_a(target, inputs, &Some(2))?;
-        qp_builder.set_zero_point_b(target, inputs, &Some(5))?;
-        qp_builder.set_zero_point_c(target, inputs, &Some(7))?;
-        qp_builder.set_scale(target, inputs, [1, 4, 6])?;
-        let (qp, qp_inputs) = qp_builder.build();
-
-        let op = tract_hir::ops::matmul::MatMul::default().with_q_params(qp);
-        let mut inputs =
+        let op = tract_core::ops::matmul::QMatMul::new(
+            false,
+            false,
+            false,
+            target.outlet_fact(inputs[7])?.datum_type,
+        );
+        let mut a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;
-        inputs.extend_from_slice(&qp_inputs);
+        let mut inputs:TVec<OutletId> = inputs.into();
+        inputs[0] = a_and_b.remove(0);
+        inputs[3] = a_and_b.remove(0);
         target.wire_node(prefix, op, &inputs)
     }
 }

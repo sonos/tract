@@ -175,12 +175,25 @@ pub struct TypedFact {
 impl_dyn_hash!(TypedFact);
 
 impl TypedFact {
+    pub fn scalar<T>() -> TypedFact
+    where
+        T: Datum,
+    {
+        let foo: &[usize] = &[];
+        Self::dt_shape(T::datum_type(), foo)
+    }
+
     pub fn shape<T, S>(shape: S) -> TypedFact
     where
         T: Datum,
         S: Into<ShapeFact>,
     {
         Self::dt_shape(T::datum_type(), shape)
+    }
+
+    pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
+        let foo: &[usize] = &[];
+        TypedFact { datum_type, shape: ShapeFact::from(foo), konst: None }
     }
 
     pub fn dt_shape<S>(datum_type: DatumType, shape: S) -> TypedFact
