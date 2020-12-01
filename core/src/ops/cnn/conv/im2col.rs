@@ -12,7 +12,6 @@ pub struct Im2Col {
     pub patch: Patch,
     pub data_format: DataFormat,
     pub data_format_with_n: DataFormat,
-    pub m: usize,
     pub k: usize,
     pub n: usize,
     pub group: usize,
@@ -31,7 +30,6 @@ impl DynHash for Im2Col {
 impl PartialEq for Im2Col {
     fn eq(&self, other: &Im2Col) -> bool {
         self.patch == other.patch
-            && self.m == other.m
             && self.n == other.n
             && self.k == other.k
             && self.group == other.group
@@ -44,7 +42,6 @@ impl Im2Col {
     pub fn new(
         patch: Patch,
         data_format: DataFormat,
-        m: usize,
         k: usize,
         n: usize,
         group: usize,
@@ -70,7 +67,6 @@ impl Im2Col {
             patch,
             data_format,
             data_format_with_n,
-            m,
             k,
             n,
             group,
@@ -100,12 +96,7 @@ impl Op for Im2Col {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!(
-            "MatMul: (m,k,n):{:?} groups:{} {:?}",
-            (self.m, self.k, self.n),
-            self.group,
-            self.b_pack
-        )])
+        Ok(vec![format!("k:{} n:{} groups:{} {:?}", self.k, self.n, self.group, self.b_pack)])
     }
 
     op_core_lir!();
