@@ -307,25 +307,6 @@ impl MatMulUnary {
                 )?[0];
                 mm.b_packed()
             };
-            /*
-              let c_storage = if n == 1 {
-              mm.c_vec_from_data_and_stride(if self.c_trans {
-              1
-              } else {
-            *c_shape.last().unwrap() as isize
-            })
-            } else {
-            mm.c_from_data_and_strides(
-            if self.c_trans { 1 } else { *c_shape.last().unwrap() as isize },
-            if !self.c_trans { 1 } else { *c_shape.last().unwrap() as isize },
-            )
-            };
-            */
-            /*
-            if let Some(q) = self.q_params.as_ref() {
-            q.inject_into_mmm(&mut *mm)?;
-            }
-            */
             let rank = c_shape.len();
             let mut strides = natural_strides(&c_shape);
             let mut overrided_shape = c_shape.clone();
