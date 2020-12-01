@@ -173,8 +173,8 @@ impl ConvUnary {
         name: &str,
         wire: OutletId,
     ) -> TractResult<OutletId> {
-        let b_fact = model.outlet_fact(wire)?;
-        let (input_shape, geo, output_shape, m, k, n, mmm) = self.compute_geo(b_fact)?;
+        let b_fact = model.outlet_fact(wire)?.clone();
+        let (input_shape, geo, output_shape, m, k, n, mmm) = self.compute_geo(&b_fact)?;
 
         let channel_stride = input_shape.c_stride();
         let data_offsets: Vec<isize> = geo.centers_offsets();
@@ -212,8 +212,6 @@ impl ConvUnary {
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =
             self.pool_spec.compute_geo(input_fact.shape.as_concrete().unwrap())?;
-
-        trace!("input: {:?}", input_shape);
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
