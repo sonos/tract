@@ -135,18 +135,7 @@ impl QMatMul {
         let rank = a_fact.rank();
         let k = model.outlet_fact(a)?.shape[rank - 2 + !self.a_trans as usize].clone();
 
-        let ab_scale = wire_with_rank_broadcast(
-            &format!("{}.ab_scale", name),
-            model,
-            ops::math::mul::bin_typed(),
-            &[a_scale, b_scale],
-        )?[0];
-        let abc_scale = wire_with_rank_broadcast(
-            &format!("{}.abc_scales", name),
-            model,
-            ops::math::div::bin_typed(),
-            &[ab_scale, c_scale],
-        )?[0];
+        let abc_scale = combine_scales(model, name, a_scale, b_scale, c_scale)?;
 
         let a_i32 = model.wire_node(
             format!("{}.a_as_i32", name),
@@ -174,6 +163,28 @@ impl QMatMul {
         let result = compensate_zero_points(model, name, result, k, a0, b0, sum_a, sum_b)?;
         requant(model, name, result, self.output_type, abc_scale, c0)
     }
+}
+
+pub(crate) fn combine_scales(
+    model: &mut TypedModel,
+    name: &str,
+    a_scale: OutletId,
+    b_scale: OutletId,
+    c_scale: OutletId,
+) -> TractResult<OutletId> {
+    let ab_scale = wire_with_rank_broadcast(
+        &format!("{}.ab_scale", name),
+        model,
+        ops::math::mul::bin_typed(),
+        &[a_scale, b_scale],
+    )?[0];
+    let abc_scale = wire_with_rank_broadcast(
+        &format!("{}.abc_scales", name),
+        model,
+        ops::math::div::bin_typed(),
+        &[ab_scale, c_scale],
+    )?[0];
+    Ok(abc_scale)
 }
 
 pub(crate) fn compensate_zero_points(

@@ -121,28 +121,6 @@ impl Conv {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
         }
         if let Some(kvalue) = kernel.konst.clone() {
-            let mut scale = 1.0;
-            if let Some(slot) = self.x_scale_input {
-                if let Some(ref value) = inputs[slot].borrow().konst {
-                    scale *= value.to_scalar::<f32>()?;
-                } else {
-                    bail!("Input scale must be const")
-                }
-            }
-            if let Some(slot) = self.k_scale_input {
-                if let Some(ref value) = inputs[slot].borrow().konst {
-                    scale *= value.to_scalar::<f32>()?;
-                } else {
-                    bail!("Filter scale must be const")
-                }
-            }
-            if let Some(slot) = self.y_scale_input {
-                if let Some(ref value) = inputs[slot].borrow().konst {
-                    scale /= value.to_scalar::<f32>()?;
-                } else {
-                    bail!("Output scale must be const")
-                }
-            }
             let bias = if let Some(slot) = self.bias_input {
                 if let Some(ref value) = inputs[slot].borrow().konst {
                     Some(value.clone())
