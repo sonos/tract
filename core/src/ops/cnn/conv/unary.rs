@@ -26,6 +26,8 @@ pub struct ConvUnary {
     pub group: usize,
 
     pub bias: Option<Arc<Tensor>>,
+
+    pub quantized: bool,
 }
 
 impl_dyn_hash!(ConvUnary);
@@ -140,36 +142,28 @@ impl ConvUnary {
         mut wire: OutletId,
     ) -> TractResult<OutletId> {
         let b_fact = model.outlet_fact(wire)?;
-        let a_dt = self.kernel.datum_type();
         let b_dt = b_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_dt);
 
-        let (input_shape, geo, output_shape, m, k, n) =
+        let (input_shape, geo, output_shape, m, k, n, mmm) =
             self.compute_geo(model.outlet_fact(wire)?)?;
 
-        let mmm = tract_linalg::ops()
-            .mmm(a_dt, b_dt, c_dt, m, k, n)
-            .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
-
-        let c_dim = *input_shape.c_dim();
         wire = model.wire_node(
             format!("{}.im2col", name),
             Im2Col::new(
-                geo.clone(),
+                geo,
                 self.pool_spec.data_format.clone(),
-                m,
                 k,
                 n,
                 self.group,
-                c_dim / self.group,
+                *input_shape.c_dim() / self.group,
                 mmm.b_pack(),
-                tensor0(0f32).cast_to_dt(b_dt).unwrap().into_owned(),
+                Tensor::zero_dt(b_dt, &[])?,
             )?,
             &[wire],
         )?[0];
 
         let b_storage = mmm.b_packed();
-
         self.wire_lir_matmatmul(model, name, wire, mmm, c_dt, m, k, n, b_storage, output_shape)
     }
 
@@ -180,16 +174,7 @@ impl ConvUnary {
         wire: OutletId,
     ) -> TractResult<OutletId> {
         let b_fact = model.outlet_fact(wire)?;
-        let a_dt = self.kernel.datum_type();
-        let b_dt = b_fact.datum_type;
-        let c_dt = crate::ops::matmul::output_type(b_dt);
-
-        let (input_shape, geo, output_shape, m, k, n) =
-            self.compute_geo(model.outlet_fact(wire)?)?;
-
-        let mmm = tract_linalg::ops()
-            .mmm(a_dt, b_dt, c_dt, m, k, n)
-            .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
+        let (input_shape, geo, output_shape, m, k, n, mmm) = self.compute_geo(b_fact)?;
 
         let channel_stride = input_shape.c_stride();
         let data_offsets: Vec<isize> = geo.centers_offsets();
@@ -202,13 +187,28 @@ impl ConvUnary {
             .collect();
         let b_storage = mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
 
-        self.wire_lir_matmatmul(model, name, wire, mmm, c_dt, m, k, n, b_storage, output_shape)
+        self.wire_lir_matmatmul(
+            model,
+            name,
+            wire,
+            mmm,
+            b_fact.datum_type,
+            m,
+            k,
+            n,
+            b_storage,
+            output_shape,
+        )
     }
 
     fn compute_geo(
         &self,
         input_fact: &TypedFact,
-    ) -> TractResult<(DataShape, Patch, DataShape, usize, usize, usize)> {
+    ) -> TractResult<(DataShape, Patch, DataShape, usize, usize, usize, Box<dyn MatMatMul>)> {
+        let a_dt = self.kernel.datum_type();
+        let b_dt = input_fact.datum_type;
+        let c_dt = crate::ops::matmul::output_type(b_dt);
+
         trace!("to_im2col_pair: {:?}", self);
         let (input_shape, geo, output_shape) =
             self.pool_spec.compute_geo(input_fact.shape.as_concrete().unwrap())?;
@@ -219,7 +219,12 @@ impl ConvUnary {
         let m = self.output_channels() / self.group;
         let k = self.kernel.len() / self.output_channels();
         let n = geo.output_shape.iter().cloned().product::<usize>();
-        Ok((input_shape, geo, output_shape, m, k, n))
+
+        let mmm = tract_linalg::ops()
+            .mmm(a_dt, b_dt, c_dt, m, k, n)
+            .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
+
+        Ok((input_shape, geo, output_shape, m, k, n, mmm))
     }
 
     fn wire_lir_matmatmul(
@@ -592,6 +597,7 @@ impl TypedOp for ConvUnary {
             kernel: kernel.into_arc_tensor(),
             group: self.group,
             bias: self.bias.clone(),
+            quantized: self.quantized,
         };
         return Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(new_op)),
