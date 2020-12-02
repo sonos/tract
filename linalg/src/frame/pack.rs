@@ -20,6 +20,10 @@ impl Packer {
         self.alignment
     }
 
+    pub fn panel_width(&self) -> usize {
+        self.r
+    }
+
     pub fn len(&self, n: usize) -> usize {
         (n + self.r - 1) / self.r * self.r * self.k + self.end_padding_record * self.r
     }

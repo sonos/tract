@@ -135,6 +135,74 @@ impl ConvUnary {
         }
     }
 
+    pub unsafe fn wire_as_quant_im2col(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        wires: &[OutletId],
+    ) -> TractResult<OutletId> {
+        use crate::ops::matmul::mir_quant as qmm;
+        let b_fact = model.outlet_fact(wires[0])?;
+        let b_dt = b_fact.datum_type;
+        let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
+
+        let (input_shape, geo, output_shape, m, k, n, mmm) =
+            self.compute_geo(model.outlet_fact(wires[0])?)?;
+
+        let a0 = wires[1];
+        let a_scale = wires[2];
+        let b0 = wires[3];
+        let b_scale = wires[4];
+        let c0 = wires[5];
+        let c_scale = wires[6];
+
+        let abc_scale = qmm::combine_scales(model, name, a_scale, b_scale, c_scale)?;
+
+        let im2col = model.wire_node(
+            format!("{}.im2col", name),
+            Im2Col::new(
+                geo,
+                self.pool_spec.data_format.clone(),
+                k,
+                n,
+                self.group,
+                *input_shape.c_dim() / self.group,
+                mmm.b_pack(),
+                Tensor::zero_dt(b_dt, &[])?,
+            )?,
+            &[wires[0]],
+        )?[0];
+
+        let a = self.kernel_as_group_o_ihw()?.into_tensor();
+        let a = a.cast_to_dt(i32::datum_type())?;
+        let a = a.to_array_view::<i32>()?;
+        let sum_a = a.sum_axis(Axis(a.ndim() - 1));
+        let sum_a = model.add_const(format!("{}.sum_a", name), sum_a)?;
+
+        let sum_b = model.wire_node(
+            format!("{}.sum_b", name),
+            super::QSumB { n, r: mmm.b_pack().panel_width(), k },
+            &[im2col],
+        )?[0];
+
+        let b_storage = mmm.b_packed();
+        let res = self.wire_lir_matmatmul(
+            model,
+            name,
+            im2col,
+            mmm,
+            c_dt,
+            m,
+            k,
+            n,
+            b_storage,
+            output_shape,
+        )?;
+        let res = qmm::compensate_zero_points(model, name, res, k.to_dim(), a0, b0, sum_a, sum_b)?;
+        let c_dt = model.outlet_fact(c0)?.datum_type;
+        qmm::requant(model, name, res, c_dt, abc_scale, c0)
+    }
+
     pub unsafe fn wire_as_im2col_pair(
         &self,
         model: &mut TypedModel,
@@ -143,7 +211,7 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         let b_fact = model.outlet_fact(wire)?;
         let b_dt = b_fact.datum_type;
-        let c_dt = crate::ops::matmul::output_type(b_dt);
+        let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
 
         let (input_shape, geo, output_shape, m, k, n, mmm) =
             self.compute_geo(model.outlet_fact(wire)?)?;
@@ -406,7 +474,13 @@ impl EvalOp for ConvUnary {
         let mut model = TypedModel::default();
         let dt = inputs[0].datum_type();
         let wire = model.add_source("source", TypedFact::dt_shape(dt, inputs[0].shape()))?;
-        let wire = unsafe { self.wire_as_im2col_pair(&mut model, "im2col-adhoc", wire)? };
+        let wire = unsafe {
+            if self.quantized {
+                self.wire_as_quant_im2col(&mut model, "im2col-adhoc", &[wire])?
+            } else {
+                self.wire_as_im2col_pair(&mut model, "im2col-adhoc", wire)?
+            }
+        };
         model.set_output_outlets(&[wire])?;
         let plan = SimplePlan::new(model)?;
         plan.run(inputs.into_iter().map(|t| t.into_tensor()).collect())
@@ -427,11 +501,11 @@ impl TypedOp for ConvUnary {
         }
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
             bail!(
-                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
-                self.pool_spec.output_channel_override,
-                self.output_channels(),
-                self
-                );
+                    "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
+                    self.pool_spec.output_channel_override,
+                    self.output_channels(),
+                    self
+                    );
         }
         let fact = self.pool_spec.output_facts(inputs)?.remove(0);
 
@@ -724,12 +798,12 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
         return false;
     }
     let direct =
-        // no real rationale here, pure heuristic to force "right" pick in
-        // both hey_snips v3 and v4. just hope this will generalize ok
-        (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
-        // that one kind of make sense, better use direct that generate a huge
-        // im2col matrix (when both kernel and input are big)
-        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
+            // no real rationale here, pure heuristic to force "right" pick in
+            // both hey_snips v3 and v4. just hope this will generalize ok
+            (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
+            // that one kind of make sense, better use direct that generate a huge
+            // im2col matrix (when both kernel and input are big)
+            pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
     direct
 }
 

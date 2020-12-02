@@ -1,7 +1,6 @@
 use crate::infer::*;
 use crate::internal::*;
 
-use std::borrow::Borrow;
 use tract_core::ops::cnn::conv::ConvUnary;
 use tract_core::ops::cnn::conv::KernelFormat;
 use tract_core::ops::cnn::{PaddingSpec, PoolSpec};
@@ -107,50 +106,6 @@ impl Conv {
         }
         Ok(result)
     }
-
-    pub fn wire_as_unary(
-        &self,
-        model: &mut TypedModel,
-        name: &str,
-        inputs: &[OutletId],
-    ) -> TractResult<TVec<OutletId>> {
-        let kernel = model
-            .outlet_fact(inputs[self.k_input.unwrap_or(1)])?
-            .konst
-            .clone()
-            .context("Kernel must be const")?;
-        let input = model.outlet_fact(inputs[0])?;
-        let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>())?;
-        let channels_in = match self.kernel_fmt {
-            KernelFormat::OIHW => kernel.shape()[1].clone() * self.group.unwrap_or(1),
-            KernelFormat::HWIO => kernel.shape()[kernel.rank() - 2].clone(),
-        };
-        if input_shape.c_dim() != &channels_in.to_dim() {
-            bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
-        }
-        let bias = if let Some(slot) = self.bias_input {
-            Some(model.outlet_fact(inputs[slot])?.konst.clone().context("Bias must be const")?)
-        } else {
-            None
-        };
-        let spatial_rank = kernel.rank() - 2;
-        let kshape = kernel.shape();
-        let group = self.group.unwrap_or(1);
-        let output_channels = match self.kernel_fmt {
-            KernelFormat::OIHW => kshape[0],
-            KernelFormat::HWIO => kshape[kshape.len() - 1] * group,
-        };
-        let pool_spec = PoolSpec {
-            data_format: self.data_format,
-            padding: self.padding.clone(),
-            strides: self.strides.clone(),
-            dilations: self.dilations.clone(),
-            kernel_shape: kshape[self.kernel_fmt.h_axis()..][..spatial_rank].into(),
-            output_channel_override: Some(output_channels),
-        };
-        let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kernel, group, bias, false);
-        model.wire_node(name, reduced, &inputs[0..1])
-    }
 }
 
 impl Expansion for Conv {
@@ -228,26 +183,25 @@ impl Expansion for Conv {
     fn wire(
         &self,
         prefix: &str,
-        target: &mut TypedModel,
+        model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let kernel = target
+        let kernel = model
             .outlet_fact(inputs[self.k_input.unwrap_or(1)])?
             .konst
             .clone()
-            .context("Kernel must be constant")?
-            .into_arc_tensor();
-        let input = target.outlet_fact(inputs[0])?;
+            .context("Kernel must be const")?;
+        let input = model.outlet_fact(inputs[0])?;
         let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>())?;
         let channels_in = match self.kernel_fmt {
-            KernelFormat::OIHW => kernel.shape()[1] * self.group.unwrap_or(1),
+            KernelFormat::OIHW => kernel.shape()[1].clone() * self.group.unwrap_or(1),
             KernelFormat::HWIO => kernel.shape()[kernel.rank() - 2].clone(),
         };
         if input_shape.c_dim() != &channels_in.to_dim() {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
         }
         let bias = if let Some(slot) = self.bias_input {
-            Some(target.outlet_fact(inputs[slot])?.konst.clone().context("Bias must be const")?)
+            Some(model.outlet_fact(inputs[slot])?.konst.clone().context("Bias must be const")?)
         } else {
             None
         };
@@ -266,8 +220,16 @@ impl Expansion for Conv {
             kernel_shape: kshape[self.kernel_fmt.h_axis()..][..spatial_rank].into(),
             output_channel_override: Some(output_channels),
         };
-        let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kernel, group, bias, false);
-        target.wire_node(&*prefix, reduced, &[inputs[0]])
+
+        let quantized = self.k_zero_point_input.is_some()
+            || self.k_scale_input.is_some()
+            || self.x_zero_point_input.is_some()
+            || self.x_scale_input.is_some()
+            || self.y_zero_point_input.is_some()
+            || self.y_scale_input.is_some();
+
+        let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kernel, group, bias, quantized);
+        model.wire_node(prefix, reduced, &inputs[0..1])
     }
 }
 

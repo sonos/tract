@@ -3,9 +3,11 @@ mod im2col;
 #[cfg(test)]
 mod proptest;
 mod unary;
+mod q_sum_b;
 
 pub use self::im2col::Im2Col;
 pub use self::unary::ConvUnary;
+pub(crate) use self::q_sum_b::QSumB;
 
 #[derive(Debug, Copy, Clone, PartialEq, Hash)]
 pub enum KernelFormat {
