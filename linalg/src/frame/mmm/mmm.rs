@@ -307,6 +307,7 @@ where
         }
         let a = self.a_storage.wrap(a);
         let b = self.b_storage.wrap(b);
+//        eprintln!("{:?} {:?}", a, b);
         let mut c = self.c_storage.wrap(c);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
