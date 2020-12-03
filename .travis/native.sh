@@ -4,7 +4,7 @@ set -ex
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-. $HOME/.cargo/env
+PATH=$PATH:$HOME/.cargo/bin
 
 : "${RUST_VERSION:=stable}"
 rustup toolchain add $RUST_VERSION
