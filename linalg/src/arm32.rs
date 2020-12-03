@@ -7,6 +7,7 @@ use crate::frame::TanhImpl;
 
 use crate::Ops;
 
+
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
     let cpu_info = fs::read_to_string("/proc/cpuinfo")?;
     let neon =
@@ -38,6 +39,7 @@ pub fn plug(ops: &mut Ops) {
         ops.sigmoid_f32 =
             Box::new(|| Box::new(SigmoidImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(TanhImpl::<armv7neon::TanhF32x4n, f32>::new()));
+        ops.prefetch = Box::new(armv7neon::prefetch);
     } else {
         log::info!("armvfpv2 activated for smmm");
         ops.mmm_f32 = Box::new(|m, k, n| {
