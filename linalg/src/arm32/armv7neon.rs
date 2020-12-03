@@ -26,7 +26,7 @@ impl MatMatMulKer<i32> for MatMatMulI8x8x4 {
         4
     }
     fn alignment_bytes_packed_a() -> usize {
-        4
+        32
     }
     fn alignment_bytes_packed_b() -> usize {
         4
