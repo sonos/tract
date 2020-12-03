@@ -226,6 +226,7 @@ where
         debug_assert_eq!(a.datum_type(), TA::datum_type());
         debug_assert_eq!(b.datum_type(), TB::datum_type());
         debug_assert_eq!(c.datum_type(), TC::datum_type());
+        let prefetch = crate::ops().prefetch.as_ref();
         let m = self.m;
         let n = self.n;
         let mut scratch = ScratchSpaceFusedNonLinear::default();
@@ -307,12 +308,20 @@ where
         }
         let a = self.a_storage.wrap(a);
         let b = self.b_storage.wrap(b);
-//        eprintln!("{:?} {:?}", a, b);
+        //        eprintln!("{:?} {:?}", a, b);
         let mut c = self.c_storage.wrap(c);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
+                if let PanelStore::Packed { ptr } = a {
+                    prefetch(*ptr as *const u8, 512);
+                }
                 let ref b = b.panel_b(nr, ib, nr);
+                match b {
+                    PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
+                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
+                    _ => panic!(),
+                }
                 let ref direct_c = c.tile_c(ia, ib);
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -325,7 +334,15 @@ where
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
             if n % nr != 0 {
+                if let PanelStore::Packed { ptr } = a {
+                    prefetch(*ptr as *const u8, 512);
+                }
                 let ref b = b.panel_b(nr, n / nr, n % nr);
+                match b {
+                    PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
+                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
+                    _ => panic!(),
+                }
                 let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -343,7 +360,15 @@ where
             let ref panel_a = a.panel_a(m / mr);
             let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
             for ib in 0..n / nr {
+                if let PanelStore::Packed { ptr } = panel_a {
+                    prefetch(*ptr as *const u8, 512);
+                }
                 let ref b = b.panel_b(nr, ib, nr);
+                match b {
+                    PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
+                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
+                    _ => panic!(),
+                }
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
@@ -356,7 +381,15 @@ where
                 c.set_from_tile(m / mr, ib, m % mr, nr, &*tmpc);
             }
             if n % nr != 0 {
+                if let PanelStore::Packed { ptr } = panel_a {
+                    prefetch(*ptr as *const u8, 512);
+                }
                 let ref b = b.panel_b(nr, n / nr, n % nr);
+                match b {
+                    PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
+                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
+                    _ => panic!(),
+                }
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
