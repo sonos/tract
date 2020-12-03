@@ -320,7 +320,7 @@ where
                 match b {
                     PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
                     PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
-                    _ => panic!(),
+                    _ => (),
                 }
                 let ref direct_c = c.tile_c(ia, ib);
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, ib);
@@ -341,7 +341,7 @@ where
                 match b {
                     PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
                     PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
-                    _ => panic!(),
+                    _ => (),
                 }
                 let ref tmp_tile_c = tmp_tile.tile_c(0, 0);
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, n / nr);
@@ -367,7 +367,7 @@ where
                 match b {
                     PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
                     PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
-                    _ => panic!(),
+                    _ => (),
                 }
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -388,7 +388,7 @@ where
                 match b {
                     PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
                     PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
-                    _ => panic!(),
+                    _ => (),
                 }
                 let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
