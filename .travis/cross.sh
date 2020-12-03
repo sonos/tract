@@ -26,7 +26,7 @@ ROOT=$(dirname $(dirname $(realpath $0)))
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-. $HOME/.cargo/env
+PATH=$PATH:$HOME/.cargo/bin
 
 which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
 cd /tmp/cargo-dinghy

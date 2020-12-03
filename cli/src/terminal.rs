@@ -87,32 +87,18 @@ fn render_node_prefixed(
     let name_color = tags.style.clone().unwrap_or(White.into());
     let node_name = model.node_name(node_id);
     let node_op_name = model.node_op(node_id).name();
-    let cost_column_pad = format!("{:>1$}", "", options.cost as usize * 25);
     let profile_column_pad = format!("{:>1$}", "", options.profile as usize * 20);
+    let cost_column_pad = format!("{:>1$}", "", options.cost as usize * 25);
+    let flops_column_pad = format!("{:>1$}", "", (options.profile && options.cost) as usize * 20);
 
     if let Some(ref mut ds) = &mut drawing_state {
         for l in ds.draw_node_vprefix(model, node_id, &options)? {
-            println!("{}{}{}{} ", cost_column_pad, profile_column_pad, prefix, l);
+            println!(
+                "{}{}{}{}{} ",
+                cost_column_pad, profile_column_pad, flops_column_pad, prefix, l
+            );
         }
     }
-
-    // cost column
-    let mut cost_column = if options.cost {
-        Some(
-            tags.cost
-                .iter()
-                .map(|c| {
-                    let key = format!("{:?}:", c.0);
-                    let value = render_tdim(&c.1);
-                    let value_visible_len = c.1.to_string().len();
-                    let padding = 25usize.saturating_sub(value_visible_len + key.len());
-                    key + &value + &*std::iter::repeat(' ').take(padding).join("")
-                })
-                .peekable(),
-        )
-    } else {
-        None
-    };
 
     // profile column
     let mut profile_column = tags.profile.map(|measure| {
@@ -130,6 +116,50 @@ fn render_node_prefixed(
         );
         std::iter::once(label)
     });
+
+    // cost column
+    let mut cost_column = if options.cost {
+        Some(
+            tags.cost
+                .iter()
+                .map(|c| {
+                    let key = format!("{:?}", c.0);
+                    let value = render_tdim(&c.1);
+                    let value_visible_len = c.1.to_string().len();
+                    let padding = 24usize.saturating_sub(value_visible_len + key.len());
+                    key + &*std::iter::repeat(' ').take(padding).join("") + &value + " "
+                })
+                .peekable(),
+        )
+    } else {
+        None
+    };
+
+    // flops column
+    let mut flops_column = if options.profile && options.cost {
+        let timing: f64 = tags.profile.as_ref().unwrap().as_secs_f64();
+        let flops_column_pad = flops_column_pad.clone();
+        let it = tags.cost.iter().map(move |c| {
+            if c.0.is_compute() {
+                let flops = c.1.to_usize().unwrap_or(0) as f64 / timing;
+                let unpadded = if flops > 1e9 {
+                    format!("{:.3} GF/s", flops / 1e9)
+                } else if flops > 1e6 {
+                    format!("{:.3} MF/s", flops / 1e6)
+                } else if flops > 1e3 {
+                    format!("{:.3} kF/s", flops / 1e3)
+                } else {
+                    format!("{:.3}  F/s", flops)
+                };
+                format!("{:>1$} ", unpadded, 19)
+            } else {
+                flops_column_pad.clone()
+            }
+        });
+        Some(it)
+    } else {
+        None
+    };
 
     // drawing column
     let mut drawing_lines: Box<dyn Iterator<Item = String>> =
@@ -152,7 +182,11 @@ fn render_node_prefixed(
                 .as_mut()
                 .map(|it| it.next().unwrap_or_else(|| profile_column_pad.to_string()))
                 .unwrap_or("".to_string());
-            print!("{}{}{}{} ", cost, profile, prefix, drawing_lines.next().unwrap(),)
+            let flops = flops_column
+                .as_mut()
+                .map(|it| it.next().unwrap_or_else(|| flops_column_pad.to_string()))
+                .unwrap_or("".to_string());
+            print!("{}{}{}{}{} ", profile, cost, flops, prefix, drawing_lines.next().unwrap(),)
         };
     };
 
