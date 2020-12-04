@@ -7,6 +7,7 @@ use DatumType::*;
 fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
 }
+
 fn run(
     be: &mut Bencher,
     mm: Box<dyn MatMatMul>,
@@ -133,6 +134,7 @@ fn all(c: &mut Criterion) {
 
     // 8M
     packed_packed(c, 512, 200, 24); // tdnn1
+    packed_packed(c, 512, 512, 24); // tdnn2
     packed_packed(c, 512, 256, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
     packed_vec(c, 512, 256, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
 }

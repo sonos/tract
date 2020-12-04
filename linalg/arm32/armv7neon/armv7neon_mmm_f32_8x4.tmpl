@@ -233,21 +233,23 @@ armv7neon_mmm_f32_8x4:
     blt .packed_packed_loop_1
 
     .packed_packed_loop_4:
-    pld             [r1, #64]
-    pld             [r5, #64]
 
     // 1
+    pld             [r1, #128]
     vldmia          r1!, { q0, q1 }
+    pld             [r5, #128]
     vldmia          r5!, { q4 }
 
     vmla.f32        q8, q0, d8[0]
     vmla.f32        q9, q1, d8[0]
 
+    pld             [r1, #128]
     vldmia          r1!, { q2, q3 }
 
     vmla.f32        q10, q0, d8[1]
     vmla.f32        q11, q1, d8[1]
 
+    pld             [r5, #128]
     vldmia          r5!, { q5 }
 
     vmla.f32        q12, q0, d9[0]
@@ -257,6 +259,7 @@ armv7neon_mmm_f32_8x4:
     vmla.f32        q15, q1, d9[1]
 
     // 2
+    pld             [r1, #128]
     vldmia          r1!, { q0, q1 }
 
     vmla.f32        q8, q2, d10[0]
@@ -274,11 +277,13 @@ armv7neon_mmm_f32_8x4:
     vmla.f32        q15, q3, d11[1]
 
     // 3
+    pld             [r1, #128]
     vldmia          r1!, { q2, q3 }
 
     vmla.f32        q8, q0, d8[0]
     vmla.f32        q9, q1, d8[0]
 
+    pld             [r5, #128]
     vldmia          r5!, { q5 }
 
     vmla.f32        q10, q0, d8[1]
