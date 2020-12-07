@@ -26,7 +26,7 @@ macro_rules! impl_stack_views_by_copy(
             }
 
             unsafe fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> anyhow::Result<ArrayD<$t>> {
-                Ok(ndarray::stack(ndarray::Axis(axis), views)?)
+                Ok(ndarray::concatenate(ndarray::Axis(axis), views)?)
             }
             unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
                 Sh: ShapeBuilder<Dim = D>,
