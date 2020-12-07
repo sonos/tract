@@ -1,5 +1,6 @@
 ## Unrelased
 
+* Breaking: minimal rust version is now 1.42.0
 * Early, basic support for i8 by u8 matrix mult.
 
 ## 0.11.2 - 2020-10-26
