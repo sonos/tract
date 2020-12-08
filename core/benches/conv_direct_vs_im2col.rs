@@ -56,12 +56,17 @@ impl Problem {
             kernel: kernel.into_arc_tensor(),
             group: 1,
             bias: None,
+            quantized: false,
         };
 
         let mut model = TypedModel::default();
         let input = model.add_source("input", self.image_type()).unwrap();
         let output = unsafe {
-            conv.wire_as_im2col_pair(&mut model, "", input, f32::datum_type(), direct).unwrap()
+            if direct {
+                conv.wire_as_direct(&mut model, "", input).unwrap()
+            } else {
+                conv.wire_as_im2col_pair(&mut model, "", input).unwrap()
+            }
         };
         model.set_output_outlets(&[output]).unwrap();
         SimplePlan::new(model).unwrap()
@@ -189,41 +194,41 @@ fn co(c: &mut Criterion) {
 }
 
 #[rustfmt::skip]
-mod b {
-    use super::*;
-    macro_rules! b {
-        ($id:ident, $($args:expr),*) => {
-            #[allow(non_snake_case)]
-            pub fn $id(c: &mut Criterion) {
-                b(c, stringify!($id), vec!((1, Problem::new($($args),*))));
+    mod b {
+        use super::*;
+        macro_rules! b {
+            ($id:ident, $($args:expr),*) => {
+                #[allow(non_snake_case)]
+                pub fn $id(c: &mut Criterion) {
+                    b(c, stringify!($id), vec!((1, Problem::new($($args),*))));
+                }
             }
         }
+
+        b!(ARM_ML_KWS_CNN_M_0, NHWC.from_n_c_hw(1, 1,  &[49, 10]).unwrap(),   tvec!(10, 4), 64, tvec!(1, 1), tvec!(1, 1));
+        b!(ARM_ML_KWS_CNN_M_1, NHWC.from_n_c_hw(1, 64, &[40, 7]).unwrap(),    tvec!(10, 4), 48, tvec!(2, 1), tvec!(1, 1));
+
+        // Hey_Snips_v3
+        b!(Hey_Snips_v3_tdnn1_dil3, HWC.from_n_c_hw(1, 128, &[36]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(3));
+        b!(Hey_Snips_v3_tdnn1_dil6, HWC.from_n_c_hw(1, 128, &[33]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(6));
+        b!(Hey_Snips_v3_tdnn1_dil9, HWC.from_n_c_hw(1, 128, &[27]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(9));
+        b!(Hey_Snips_v3_tdnn1_dil12,HWC.from_n_c_hw(1, 128, &[18]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(12));
+
+        // Hey_Snips_v4
+        b!(Hey_Snips_v4_dil1,  HWC.from_n_c_hw(1, 16, &[10]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(1));
+        b!(Hey_Snips_v4_dil2,  HWC.from_n_c_hw(1, 16, &[12]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(2));
+        b!(Hey_Snips_v4_dil4,  HWC.from_n_c_hw(1, 16, &[16]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(4));
+        b!(Hey_Snips_v4_dil8,  HWC.from_n_c_hw(1, 16, &[24]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(8));
+
+        // inception (?)
+        b!(Conv2d_2a_3x3,      HWC.from_n_c_hw(1, 32, &[149, 149]).unwrap(), tvec!(3, 3),  32, tvec!(1, 1), tvec!(1, 1));
+
+        // 2M acoustic model conv
+        b!(AM_2M_lda,          HWC.from_n_c_hw(1, 40, &[28]).unwrap(),       tvec!(5),    200, tvec!(1),    tvec!(1));
+        b!(AM_2M_tdnn2,        HWC.from_n_c_hw(1, 256, &[26]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
+        b!(AM_2M_tdnn3,        HWC.from_n_c_hw(1, 256, &[24]).unwrap(),      tvec!(3),    256, tvec!(3),    tvec!(1));
+        b!(AM_2M_tdnn4_5,      HWC.from_n_c_hw(1, 256, &[10]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
     }
-
-    b!(ARM_ML_KWS_CNN_M_0, NHWC.from_n_c_hw(1, 1,  &[49, 10]).unwrap(),   tvec!(10, 4), 64, tvec!(1, 1), tvec!(1, 1));
-    b!(ARM_ML_KWS_CNN_M_1, NHWC.from_n_c_hw(1, 64, &[40, 7]).unwrap(),    tvec!(10, 4), 48, tvec!(2, 1), tvec!(1, 1));
-
-    // Hey_Snips_v3
-    b!(Hey_Snips_v3_tdnn1_dil3, HWC.from_n_c_hw(1, 128, &[36]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(3));
-    b!(Hey_Snips_v3_tdnn1_dil6, HWC.from_n_c_hw(1, 128, &[33]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(6));
-    b!(Hey_Snips_v3_tdnn1_dil9, HWC.from_n_c_hw(1, 128, &[27]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(9));
-    b!(Hey_Snips_v3_tdnn1_dil12,HWC.from_n_c_hw(1, 128, &[18]).unwrap(), tvec!(2),     128, tvec!(1),    tvec!(12));
-
-    // Hey_Snips_v4
-    b!(Hey_Snips_v4_dil1,  HWC.from_n_c_hw(1, 16, &[10]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(1));
-    b!(Hey_Snips_v4_dil2,  HWC.from_n_c_hw(1, 16, &[12]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(2));
-    b!(Hey_Snips_v4_dil4,  HWC.from_n_c_hw(1, 16, &[16]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(4));
-    b!(Hey_Snips_v4_dil8,  HWC.from_n_c_hw(1, 16, &[24]).unwrap(),       tvec!(3),     64, tvec!(1),    tvec!(8));
-
-    // inception (?)
-    b!(Conv2d_2a_3x3,      HWC.from_n_c_hw(1, 32, &[149, 149]).unwrap(), tvec!(3, 3),  32, tvec!(1, 1), tvec!(1, 1));
-
-    // 2M acoustic model conv
-    b!(AM_2M_lda,          HWC.from_n_c_hw(1, 40, &[28]).unwrap(),       tvec!(5),    200, tvec!(1),    tvec!(1));
-    b!(AM_2M_tdnn2,        HWC.from_n_c_hw(1, 256, &[26]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
-    b!(AM_2M_tdnn3,        HWC.from_n_c_hw(1, 256, &[24]).unwrap(),      tvec!(3),    256, tvec!(3),    tvec!(1));
-    b!(AM_2M_tdnn4_5,      HWC.from_n_c_hw(1, 256, &[10]).unwrap(),      tvec!(3),    256, tvec!(1),    tvec!(1));
-}
 
 criterion_group!(
     benches,

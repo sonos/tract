@@ -38,12 +38,13 @@ fn b(
         kernel,
         group: 1,
         bias: None,
+        quantized: false,
     };
 
     let mut m = TypedModel::default();
     let wire = m.add_source("", TypedFact::dt_shape(f32::datum_type(), &[1, h, w, ci])).unwrap();
     unsafe {
-        unary.wire_as_im2col_pair(&mut m, "", wire, f32::datum_type(), false).unwrap();
+        unary.wire_as_im2col_pair(&mut m, "", wire).unwrap();
     }
     let im2col = m.node(1).op_as::<Im2Col>().unwrap();
     let args = tvec!(image.into());

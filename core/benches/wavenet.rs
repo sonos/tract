@@ -23,13 +23,11 @@ fn im2col(c: &mut Criterion) {
                             .with_kernel_shape(tvec![3])
                             .with_dilations(tvec!(*dil))
                             .into_patch(),
-                        HWC, // .shape(tvec![len, 16]).unwrap(),
-                        64,
+                        HWC,
                         48,
                         8,
                         1,
                         16,
-                        //        tract_linalg::ops().mmm(64, 48, 8, f32::datum_type(), f32::datum_type(), f32::datum_type()),
                         tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap().b_pack(),
                         tensor0(0.0f32),
                     )

@@ -93,11 +93,12 @@ impl ConvProblem {
             self.kernel.clone().into_arc_tensor(),
             self.group,
             self.bias.clone().map(|a| a.into_arc_tensor()),
+            false,
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
         let mut output =
-            model.into_optimized()?.into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
+            dbg!(model.into_optimized()?).into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
         Ok(output.remove(0).into_tensor().into_array::<f32>()?)
     }
 }
@@ -459,6 +460,3 @@ fn batch_0() -> anyhow::Result<()> {
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())
 }
-
-
-

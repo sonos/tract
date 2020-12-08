@@ -34,25 +34,11 @@ impl EvalOp for QSumB {
         let mut shape: TVec<usize> = input.shape().into();
         shape[input.rank() - 1] = self.n;
         let mut output = ArrayD::zeros(&*shape);
-        for prefix in tract_ndarray::indices(&shape[0..output.ndim() - 1]) {
-            let mut panel = input.to_array_view::<i8>()?;
-            for (ix, d) in prefix.slice().iter().enumerate() {
-                panel.index_axis_inplace(Axis(ix), *d);
-                output.index_axis_inplace(Axis(ix), *d);
-                let panel = panel.as_slice().unwrap();
-                for p in 0..(self.n.div_ceil(self.r)) {
-                    let mut vec = vec![0i32; self.r];
-                    for k in 0..self.k {
-                        for r in 0..self.r {
-                            vec[r] += panel[k * self.r + r] as i32;
-                        }
-                    }
-                    let r_slice = &mut output.as_slice_mut().unwrap()[p * self.r..];
-                    let len = r_slice.len().min(self.r);
-                    r_slice.copy_from_slice(&vec[..len]);
-                }
-            }
-        }
+        match input.datum_type() {
+            DatumType::I8 => self.eval_t::<i8>(&input, &mut output.view_mut())?,
+            DatumType::U8 => self.eval_t::<u8>(&input, &mut output.view_mut())?,
+            dt => bail!("Unsupported input type in quantized operation ({:?})", dt)
+        } 
         Ok(tvec!(output.into_arc_tensor()))
     }
 }
@@ -64,5 +50,34 @@ impl TypedOp for QSumB {
         let mut shape: ShapeFact = inputs[0].shape.clone();
         shape.set(shape.rank() - 1, self.n.to_dim());
         Ok(tvec!(TypedFact::shape::<i32, _>(shape)))
+    }
+}
+
+impl QSumB {
+    fn eval_t<T: Datum + tract_num_traits::AsPrimitive<i32>>(
+        &self,
+        input: &Tensor,
+        output: &mut ArrayViewMutD<i32>,
+    ) -> TractResult<()> {
+        for prefix in tract_ndarray::indices(&output.shape()[0..output.ndim() - 1]) {
+            let mut panel = input.to_array_view::<T>()?;
+            for (ix, d) in prefix.slice().iter().enumerate() {
+                panel.index_axis_inplace(Axis(ix), *d);
+                output.index_axis_inplace(Axis(ix), *d);
+                let panel = panel.as_slice().unwrap();
+                for p in 0..(self.n.div_ceil(self.r)) {
+                    let mut vec = vec![0i32; self.r];
+                    for k in 0..self.k {
+                        for r in 0..self.r {
+                            vec[r] += panel[k * self.r + r].as_();
+                        }
+                    }
+                    let r_slice = &mut output.as_slice_mut().unwrap()[p * self.r..];
+                    let len = r_slice.len().min(self.r);
+                    r_slice.copy_from_slice(&vec[..len]);
+                }
+            }
+        }
+        Ok(())
     }
 }

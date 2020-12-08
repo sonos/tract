@@ -8,13 +8,15 @@ use tract_linalg::mmm::{FusedSpec, MatMatMul, MatrixStoreSpec};
 pub struct LirMatMulUnary {
     pub b_storage: MatrixStoreSpec,
     pub c_fact: TypedFact,
-    pub c_shape_override: Option<(Dims, Dims)>,
+    pub c_m_axis: usize,
+    pub c_n_axis: usize,
     pub packed_as: ArrayD<Arc<Tensor>>,
     pub fused_ops: Option<ArrayD<Vec<FusedSpec>>>,
     #[educe(Hash(method = "hash_mmm"))]
     pub mmm: Box<dyn MatMatMul>,
     pub m: usize,
     pub k: usize,
+//    pub c_final_shape: Dims,
 }
 
 impl LirMatMulUnary {
@@ -27,11 +29,7 @@ impl LirMatMulUnary {
     }
 
     pub fn n(&self) -> &TDim {
-        if let Some(over) = &self.c_shape_override {
-            over.0.last().unwrap()
-        } else {
-            self.c_fact.shape.last().unwrap()
-        }
+        &self.c_fact.shape[self.c_n_axis]
     }
 }
 
@@ -53,8 +51,8 @@ impl Op for LirMatMulUnary {
 
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
-            "c_shape_orerride: {:?} m:{} k:{} n:{}",
-            self.c_shape_override,
+            "c_shape: {:?} m:{} k:{} n:{}",
+            self.c_fact,
             self.m(),
             self.k(),
             self.n(),
@@ -80,29 +78,14 @@ impl OpState for State {
         inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
-        if let Some(prefix) = &op.c_shape_override {
-            let shape = prefix.0.eval_to_usize(&session.resolved_symbols)?;
-            let strides = prefix.1.eval_to_isize(&session.resolved_symbols)?;
-            eval(
-                op,
-                &inputs[0],
-                &op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?,
-                Some((&shape, &strides)),
-            )
-        } else {
-            eval(op, &inputs[0], &op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?, None)
-        }
+        let shape = op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
+        eval(op, &inputs[0], &shape, op.c_m_axis, op.c_n_axis)
     }
 }
 
 impl EvalOp for LirMatMulUnary {
     fn is_stateless(&self) -> bool {
         self.c_fact.shape.is_concrete()
-            && self
-                .c_shape_override
-                .as_ref()
-                .map(|p| p.0.is_concrete() && p.1.is_concrete())
-                .unwrap_or(true)
     }
 
     fn state(
@@ -114,18 +97,13 @@ impl EvalOp for LirMatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        if let Some(p) = &self.c_shape_override {
-            let shape = p.0.as_concrete().unwrap();
-            let strides = p.1.as_concrete().unwrap();
-            eval(
-                self,
-                &inputs[0],
-                self.c_fact.shape.as_concrete().unwrap(),
-                Some((shape, unsafe { std::mem::transmute(strides) })),
-            )
-        } else {
-            eval(self, &inputs[0], self.c_fact.shape.as_concrete().unwrap(), None)
-        }
+        eval(
+            self,
+            &inputs[0],
+            self.c_fact.shape.as_concrete().unwrap(),
+            self.c_m_axis,
+            self.c_n_axis,
+        )
     }
 }
 
@@ -133,33 +111,36 @@ fn eval(
     op: &LirMatMulUnary,
     input: &Tensor,
     c_shape: &[usize],
-    c_shape_override: Option<(&[usize], &[isize])>,
+    c_m_axis: usize,
+    c_n_axis: usize,
 ) -> TractResult<TVec<Arc<Tensor>>> {
     unsafe {
-        let c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-        let c_view = if let Some((dims, strides)) = c_shape_override {
-            TensorView::from_bytes(&c, 0, &dims, &strides)
-        } else {
-            c.view()
-        };
-        let c_storage = op.mmm.c_view();
-        if op.packed_as.ndim() > 0 {
-            for prefix in indices(&c_view.shape()[..c_view.rank() - 2]).into_iter() {
+        let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
+        let c_storage = op.mmm.c_view_with_axis(c_m_axis, c_n_axis);
+        if op.c_fact.shape.iter().enumerate().any(|(ix, d)| ix != c_m_axis && ix != c_n_axis && d != 1.to_dim()) {
+            let mut looping_shape:TVec<usize> = c_shape.into();
+            looping_shape[c_m_axis] = 1;
+            looping_shape[c_n_axis] = 1;
+            dbg!(&looping_shape);
+            dbg!(&op.packed_as);
+            for prefix in indices(&*looping_shape) {
                 let mut a = op.packed_as.view();
                 let mut b_prefix = tvec!();
-                let mut c_view = c_view.clone();
+                let mut c_view = c.view();
+                let mut fused = op.fused_ops.as_ref().map(|f| f.view());
                 for (ix, &dim) in prefix.slice().iter().enumerate() {
-                    a.index_axis_inplace(Axis(0), dim.min(a.shape()[0] - 1));
-                    b_prefix.push(dim.min(input.shape()[ix] - 1));
+                    if ix != c_m_axis && ix != c_n_axis {
+                        a.index_axis_inplace(Axis(0), dim.min(a.shape()[0] - 1));
+                        b_prefix.push(dim.min(input.shape()[ix] - 1));
+                        if let Some(f) = fused.as_mut() {
+                            let d = dim.min(f.shape()[0] - 1);
+                            f.index_axis_inplace(Axis(0), d);
+                        }
+                    }
                     c_view.offset_axis_unchecked(ix, dim as isize);
                 }
                 let pa: &Tensor = a.iter().next().unwrap();
-                if let Some(fused) = &op.fused_ops {
-                    let mut fused = fused.view();
-                    for &dim in prefix.slice() {
-                        let d = dim.min(fused.shape()[0] - 1);
-                        fused.index_axis_inplace(Axis(0), d);
-                    }
+                if let Some(fused) = fused {
                     op.mmm.run(
                         &op.mmm.a_packed().wrap(&pa.view()),
                         &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&input, &*b_prefix)),
@@ -180,14 +161,14 @@ fn eval(
                 op.mmm.run(
                     &op.mmm.a_packed().wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
                     &op.b_storage.wrap(&input.view()),
-                    &mut c_storage.wrap(&c_view),
+                    &mut c_storage.wrap(&c.view_mut()),
                     &fused.as_ptr().as_ref().unwrap(),
                 )?;
             } else {
                 op.mmm.run(
                     &op.mmm.a_packed().wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
                     &op.b_storage.wrap(&input.view()),
-                    &mut c_storage.wrap(&c_view),
+                    &mut c_storage.wrap(&c.view_mut()),
                     &[],
                 )?;
             }
@@ -198,11 +179,10 @@ fn eval(
 
 impl TypedOp for LirMatMulUnary {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let c_prefix_len =
-            self.c_shape_override.as_ref().map(|prefix| prefix.0.len() - 2).unwrap_or(0);
+        let c_prefix_len = self.c_fact.rank() - 2;
         if self.packed_as.ndim() != c_prefix_len {
             bail!(
-                "Constant table and c_prefix should have the same len. (resp {} and {})",
+                "Constant A table and c_prefix should have the same len. (resp {} and {})",
                 self.packed_as.ndim(),
                 c_prefix_len
             );
@@ -220,11 +200,7 @@ impl TypedOp for LirMatMulUnary {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let sums = self
-            .c_shape_override
-            .as_ref()
-            .map(|c| c.0.iter().maybe_product().unwrap())
-            .unwrap_or(self.n().clone() * self.m());
+        let sums = self.c_fact.shape.iter().maybe_product()?;
         Ok(tvec!(
             (Cost::FMA(self.mmm.internal_type()), sums.maybe_mul(&self.k().to_dim())?),
             (
@@ -236,16 +212,19 @@ impl TypedOp for LirMatMulUnary {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
+        /*
         if let Some(succ) = model.single_succ(node.id)? {
+            /*
             if let Some(op) = succ.op_as::<ops::AxisOp>() {
                 if op.only_shape() {
                     return Ok(Some(TypedModelPatch::fuse_with_next(
                         model,
                         &node,
-                        Self { c_fact: succ.outputs[0].fact.clone(), ..self.clone() },
+                        Self { c_final_shape: (*succ.outputs[0].fact.shape).clone(), ..self.clone() },
                     )?));
                 }
             }
+            */
             let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
                 if op.a.len() == 1 {
                     if op.mini_op.is::<ops::math::Max>() {
@@ -257,16 +236,16 @@ impl TypedOp for LirMatMulUnary {
                     } else {
                         None
                     }
-                    /*
+                /*
                 } else if op.a.shape()[op.a.rank() - 1] == 1 {
-                    if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
-                    } else if op.mini_op.is::<ops::math::Add>() {
-                        Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
-                    } else {
-                        None
-                    }
-                    */
+                if op.mini_op.is::<ops::math::Mul>() {
+                Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
+                } else if op.mini_op.is::<ops::math::Add>() {
+                Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
+                } else {
+                None
+                }
+                */
                 } else {
                     None
                 }
@@ -278,17 +257,14 @@ impl TypedOp for LirMatMulUnary {
                 new_op
                     .fused_ops
                     .get_or_insert_with(|| {
-                        let shape =
-                            vec![
-                                1;
-                                self.c_shape_override.as_ref().map(|c| c.0.len() - 2).unwrap_or(0)
-                            ];
+                        let shape = vec![1; self.c_fact.rank()];
                         ArrayD::from_shape_fn(shape, |_| vec![])
                     })
                     .map_inplace(|v| v.extend(op.iter().cloned()));
                 return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));
             }
         }
+    */
         Ok(None)
     }
 

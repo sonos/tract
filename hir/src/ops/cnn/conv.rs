@@ -191,7 +191,7 @@ impl Expansion for Conv {
             .konst
             .clone()
             .context("Kernel must be const")?;
-        let input = model.outlet_fact(inputs[0])?;
+        let input = model.outlet_fact(inputs[0])?.clone();
         let input_shape = self.data_format.shape(input.shape.iter().collect::<TVec<_>>())?;
         let channels_in = match self.kernel_fmt {
             KernelFormat::OIHW => kernel.shape()[1].clone() * self.group.unwrap_or(1),
@@ -227,9 +227,56 @@ impl Expansion for Conv {
             || self.x_scale_input.is_some()
             || self.y_zero_point_input.is_some()
             || self.y_scale_input.is_some();
+        let mut wires = tvec!(inputs[0]);
+        if quantized {
+            let output_type = self.override_output_datum_type.unwrap_or(input.datum_type);
+            wires.push(if let Some(a0) = self.x_zero_point_input {
+                inputs[a0]
+            } else {
+                model.add_const(
+                    format!("{}.a0", prefix),
+                    Tensor::zero_scalar_dt(kernel.datum_type())?,
+                )?
+            });
+            wires.push(if let Some(a_scale) = self.x_scale_input {
+                inputs[a_scale]
+            } else {
+                model.add_const(format!("{}.a_scale", prefix), tensor0(1f32))?
+            });
+            wires.push(if let Some(b0) = self.k_zero_point_input {
+                inputs[b0]
+            } else {
+                model.add_const(
+                    format!("{}.b0", prefix),
+                    Tensor::zero_scalar_dt(input.datum_type)?,
+                )?
+            });
+            wires.push(if let Some(b_scale) = self.k_scale_input {
+                inputs[b_scale]
+            } else {
+                model.add_const(format!("{}.b_scale", prefix), tensor0(1f32))?
+            });
+            wires.push(if let Some(c0) = self.y_zero_point_input {
+                inputs[c0]
+            } else {
+                model.add_const(format!("{}.c0", prefix), Tensor::zero_scalar_dt(output_type)?)?
+            });
+            wires.push(if let Some(c_scale) = self.y_scale_input {
+                inputs[c_scale]
+            } else {
+                model.add_const(format!("{}.c_scale", prefix), tensor0(1f32))?
+            });
+        }
 
-        let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kernel, group, bias, quantized);
-        model.wire_node(prefix, reduced, &inputs[0..1])
+        let reduced = ConvUnary::new(
+            pool_spec,
+            self.kernel_fmt,
+            kernel,
+            group,
+            bias,
+            self.override_output_datum_type.clone().filter(|&it| it != input.datum_type),
+        );
+        model.wire_node(prefix, reduced, &wires)
     }
 }
 

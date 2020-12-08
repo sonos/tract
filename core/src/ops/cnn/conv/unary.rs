@@ -27,7 +27,7 @@ pub struct ConvUnary {
 
     pub bias: Option<Arc<Tensor>>,
 
-    pub quantized: bool,
+    pub quantized: Option<DatumType>,
 }
 
 impl_dyn_hash!(ConvUnary);
@@ -186,21 +186,26 @@ impl ConvUnary {
         )?[0];
 
         let b_storage = mmm.b_packed();
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
         let res = self.wire_lir_matmatmul(
             model,
             name,
             im2col,
             mmm,
             c_dt,
+            &mmm_output_shape,
             m,
             k,
             n,
             b_storage,
-            output_shape,
+            c_axis,
+            h_axis,
         )?;
         let res = qmm::compensate_zero_points(model, name, res, k.to_dim(), a0, b0, sum_a, sum_b)?;
         let c_dt = model.outlet_fact(c0)?.datum_type;
-        qmm::requant(model, name, res, c_dt, abc_scale, c0)
+        let wire = qmm::requant(model, name, res, c_dt, abc_scale, c0)?;
+        let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
+        Ok(wire)
     }
 
     pub unsafe fn wire_as_im2col_pair(
@@ -232,7 +237,81 @@ impl ConvUnary {
         )?[0];
 
         let b_storage = mmm.b_packed();
-        self.wire_lir_matmatmul(model, name, wire, mmm, c_dt, m, k, n, b_storage, output_shape)
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let mut wire = self.wire_lir_matmatmul(
+            model,
+            name,
+            wire,
+            mmm,
+            c_dt,
+            &mmm_output_shape,
+            m,
+            k,
+            n,
+            b_storage,
+            c_axis,
+            h_axis,
+        )?;
+
+
+        if self.group > 1 {
+            wire = model.wire_node(
+                format!("{}.reshape_group", name),
+                AxisOp::Reshape(
+                    c_axis - 1,
+                    mmm_output_shape[c_axis - 1 ..][..2].iter().map(|d| d.to_dim()).collect(),
+                    tvec!((m * self.group).to_dim()),
+                ),
+                &[wire],
+            )?[0];
+        }
+        let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
+        Ok(wire)
+    }
+
+    fn mmm_output_shape(
+        &self,
+        output_shape: &DataShape,
+    ) -> TractResult<(TVec<usize>, usize, usize)> {
+        let geo_collapsed_out: usize = output_shape.hw_dims().iter().maybe_product()?;
+        let shape = output_shape.fmt.from_n_c_hw(
+            *output_shape.n().clone().unwrap_or(&1),
+            *output_shape.c(),
+            tvec!(geo_collapsed_out),
+        )?;
+        let mut mmm_output_shape: TVec<usize> = shape.shape.clone().into();
+        let mut c_axis = shape.c_axis();
+        let mut h_axis = shape.h_axis();
+        if self.group > 1 {
+            mmm_output_shape[shape.c_axis()] /= self.group;
+            mmm_output_shape.insert(shape.c_axis(), self.group);
+            if self.group > 1 {
+                if h_axis > c_axis {
+                    h_axis += 1;
+                }
+                c_axis += 1;
+            }
+        }
+        Ok((mmm_output_shape, c_axis, h_axis))
+    }
+
+    fn wire_geo_reshape(
+        model: &mut TypedModel,
+        name: &str,
+        wire: OutletId,
+        output_shape: &DataShape,
+    ) -> TractResult<OutletId> {
+        let geo_collapsed_out: usize = output_shape.hw_dims().iter().maybe_product()?;
+        let wire = model.wire_node(
+            name,
+            AxisOp::Reshape(
+                output_shape.h_axis(),
+                tvec!(geo_collapsed_out.to_dim()),
+                output_shape.hw_dims().iter().map(|d| d.to_dim()).collect(),
+            ),
+            &[wire],
+        )?;
+        Ok(wire[0])
     }
 
     pub unsafe fn wire_as_direct(
@@ -242,6 +321,7 @@ impl ConvUnary {
         wire: OutletId,
     ) -> TractResult<OutletId> {
         let b_fact = model.outlet_fact(wire)?.clone();
+        let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
         let (input_shape, geo, output_shape, m, k, n, mmm) = self.compute_geo(&b_fact)?;
 
         let channel_stride = input_shape.c_stride();
@@ -254,18 +334,21 @@ impl ConvUnary {
             })
             .collect();
         let b_storage = mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
 
         self.wire_lir_matmatmul(
             model,
             name,
             wire,
             mmm,
-            b_fact.datum_type,
+            c_dt,
+            &mmm_output_shape,
             m,
             k,
             n,
             b_storage,
-            output_shape,
+            c_axis,
+            h_axis,
         )
     }
 
@@ -299,42 +382,30 @@ impl ConvUnary {
         name: &str,
         wire: OutletId,
         mmm: Box<dyn MatMatMul>,
-        c_dt: DatumType,
+        c_datum_type: DatumType,
+        mmm_output_shape: &[usize],
         m: usize,
         k: usize,
         n: usize,
         input_storage: MatrixStoreSpec,
-        output_shape: DataShape,
+        c_m_axis: usize,
+        c_n_axis: usize,
     ) -> TractResult<OutletId> {
         let kernels = self.kernel_as_packed_as(&mmm.a_pack(), m)?;
-        let mut dims = tvec!();
-        let mut strides = tvec!();
-        if self.pool_spec.data_format.has_n() {
-            dims.push(*output_shape.n().unwrap());
-            strides.push(*output_shape.n_stride().unwrap());
-        }
-        if self.group > 1 {
-            dims.push(self.group);
-            strides.push(output_shape.c() / self.group * output_shape.c_stride());
-        }
-        dims.push(m);
-        dims.push(n);
-        strides.push(*output_shape.c_stride());
-        strides.push(*output_shape.w_stride());
-        debug_assert_eq!(dims.iter().product::<usize>(), output_shape.shape.iter().product());
         let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
 
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
             matmul::lir_unary::LirMatMulUnary {
                 b_storage: input_storage,
-                c_fact: TypedFact::dt_shape(c_dt, output_shape.shape),
-                c_shape_override: Some((Dims::from(&*dims), Dims::from(&*strides))),
+                c_fact: TypedFact::dt_shape(c_datum_type, mmm_output_shape),
                 packed_as: kernels,
                 fused_ops,
                 mmm,
                 k,
                 m,
+                c_m_axis,
+                c_n_axis,
             },
             &[wire],
         )?[0];
@@ -472,13 +543,21 @@ impl EvalOp for ConvUnary {
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut model = TypedModel::default();
-        let dt = inputs[0].datum_type();
-        let wire = model.add_source("source", TypedFact::dt_shape(dt, inputs[0].shape()))?;
+        let wires: TVec<OutletId> = inputs
+            .iter()
+            .enumerate()
+            .map(|(ix, v)| {
+                model.add_source(
+                    format!("source.{}", ix),
+                    TypedFact::dt_shape(v.datum_type(), v.shape()),
+                )
+            })
+            .collect::<TractResult<_>>()?;
         let wire = unsafe {
-            if self.quantized {
-                self.wire_as_quant_im2col(&mut model, "im2col-adhoc", &[wire])?
+            if self.quantized.is_some() {
+                self.wire_as_quant_im2col(&mut model, "im2col-adhoc", &*wires)?
             } else {
-                self.wire_as_im2col_pair(&mut model, "im2col-adhoc", wire)?
+                self.wire_as_im2col_pair(&mut model, "im2col-adhoc", wires[0])?
             }
         };
         model.set_output_outlets(&[wire])?;
@@ -501,18 +580,21 @@ impl TypedOp for ConvUnary {
         }
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
             bail!(
-                    "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
-                    self.pool_spec.output_channel_override,
-                    self.output_channels(),
-                    self
-                    );
+                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
+                self.pool_spec.output_channel_override,
+                self.output_channels(),
+                self
+                );
         }
-        let fact = self.pool_spec.output_facts(inputs)?.remove(0);
-
         if let Some(bias) = &self.bias {
             if bias.len() != self.output_channels() {
                 bail!("Bias should have one value per output channel, got:{:?}", bias);
             }
+        }
+
+        let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
+        if let Some(dt) = self.quantized {
+            fact.datum_type = dt;
         }
         Ok(tvec!(fact))
     }
@@ -798,12 +880,12 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
         return false;
     }
     let direct =
-            // no real rationale here, pure heuristic to force "right" pick in
-            // both hey_snips v3 and v4. just hope this will generalize ok
-            (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
-            // that one kind of make sense, better use direct that generate a huge
-            // im2col matrix (when both kernel and input are big)
-            pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
+        // no real rationale here, pure heuristic to force "right" pick in
+        // both hey_snips v3 and v4. just hope this will generalize ok
+        (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
+        // that one kind of make sense, better use direct that generate a huge
+        // im2col matrix (when both kernel and input are big)
+        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
     direct
 }
 

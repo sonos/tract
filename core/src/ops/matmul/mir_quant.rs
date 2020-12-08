@@ -235,13 +235,15 @@ pub(crate) fn compensate_zero_points(
         &[a0_k, b0],
     )?[0];
 
-    let result = model.wire_node(
+    let result = wire_with_rank_broadcast(
         &format!("{}.minus_a0_B", &name),
+        model,
         ops::math::sub::bin_typed(),
         &[result, a0_sum_b],
     )?[0];
-    let result = model.wire_node(
+    let result = wire_with_rank_broadcast(
         &format!("{}.minus_b0_A", &name),
+        model,
         ops::math::sub::bin_typed(),
         &[result, b0_sum_a],
     )?[0];
@@ -324,13 +326,13 @@ mod test {
     proptest! {
         #[test]
         fn prop(pb in any::<QMatMulProblem>()) {
-            assert_eq!(pb.tract(), pb.reference());
+            pb.check()
         }
     }
 
     #[test]
     fn c0() {
-        let pb = QMatMulProblem {
+        QMatMulProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
             a0: 0,
@@ -339,13 +341,12 @@ mod test {
             a_scale: 1.0,
             b_scale: 1.0,
             c_scale: 1.0,
-        };
-        assert_eq!(pb.reference(), pb.tract())
+        }.check()
     }
 
     #[test]
     fn b_scale() {
-        let pb = QMatMulProblem {
+        QMatMulProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
             a0: 0,
@@ -354,13 +355,12 @@ mod test {
             a_scale: 1.0,
             b_scale: 2.0,
             c_scale: 1.0,
-        };
-        assert_eq!(pb.reference(), pb.tract())
+        }.check();
     }
 
     #[test]
     fn sat() {
-        let pb = QMatMulProblem {
+        QMatMulProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[34]]),
             a0: -17,
@@ -369,13 +369,12 @@ mod test {
             a_scale: 1.0,
             b_scale: 0.05,
             c_scale: 0.25,
-        };
-        assert_eq!(pb.reference(), pb.tract())
+        }.check();
     }
 
     #[test]
     fn rounding() {
-        let pb = QMatMulProblem {
+        QMatMulProblem {
             a: arr2(&[[26]]),
             b: arr2(&[[0]]),
             a0: 27,
@@ -384,13 +383,12 @@ mod test {
             a_scale: 1.0,
             b_scale: 0.05,
             c_scale: 1.0,
-        };
-        assert_eq!(pb.reference(), pb.tract())
+        }.check();
     }
 
     #[test]
     fn neg_rounding() {
-        let pb = QMatMulProblem {
+        QMatMulProblem {
             a: arr2(&[[-23]]),
             b: arr2(&[[-2]]),
             a0: -11,
@@ -399,13 +397,40 @@ mod test {
             a_scale: 0.1,
             b_scale: 1.0,
             c_scale: 1.0,
+        }.check();
+    }
+
+    #[test]
+    fn rounding_ties_2() {
+        QMatMulProblem {
+            a: arr2(&[[47], [0]]),
+            b: arr2(&[[1, 0, 30]]),
+            a0: 86,
+            b0: 19,
+            c0: 0,
+            a_scale: 0.1,
+            b_scale: 1.0,
+            c_scale: 0.6,
+        }.check();
+    }
+
+    #[test]
+    fn rounding_ties_3() {
+        QMatMulProblem {
+            a: arr2(&[[-30]]),
+            b: arr2(&[[0, 107, 0]]),
+            a0: -59,
+            b0: 117,
+            c0: 0,
+            a_scale: 1.0,
+            b_scale: 0.15,
+            c_scale: 0.6,
         };
-        assert_eq!(pb.reference(), pb.tract())
     }
 
     #[test]
     fn onnx_test_matmulinteger() {
-        let pb = QMatMulProblem {
+        QMatMulProblem {
             a: arr2(&[[11, 7, 3], [10, 6, 2], [9, 5, 1], [8, 4, 0]]),
             b: arr2(&[[1, 4], [2, 5], [3, 6]]),
             a0: 12,
@@ -414,8 +439,7 @@ mod test {
             a_scale: 1.0,
             b_scale: 1.0,
             c_scale: 1.0,
-        };
-        assert_eq!(pb.reference(), pb.tract())
+        }.check()
     }
 
     #[derive(Debug)]
@@ -430,13 +454,26 @@ mod test {
         c_scale: f32,
     }
 
+    fn round_ties_to_right(x: f32) -> i32 {
+        (x + 0.5).floor() as i32
+    }
+
     impl QMatMulProblem {
+        fn check(&self) {
+            let r = self.reference();
+            let t = self.tract();
+            if r.iter().zip(t.iter()).any(|(r, t)| r.max(t) - r.min(t) > 1) {
+                panic!("mismatch! refernce: {:?} tract: {:?}", r, t)
+            }
+        }
+
         fn reference(&self) -> Array2<i8> {
             let a = self.a.map(|&x| (x as f32 - self.a0 as f32) * self.a_scale);
             let b = self.b.map(|&x| (x as f32 - self.b0 as f32) * self.b_scale);
             let c = a.dot(&b);
-            let c = c.map(|&x| ((x / self.c_scale).round() + self.c0 as f32));
-            c.map(|&x| (x as i32).max(-128).min(127) as i8)
+            dbg!(&c);
+            let c = c.map(|&x| round_ties_to_right(x / self.c_scale) + self.c0 as i32);
+            c.map(|&x| x.max(-128).min(127) as i8)
         }
 
         fn tract(&self) -> Array2<i8> {

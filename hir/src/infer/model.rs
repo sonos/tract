@@ -106,7 +106,9 @@ impl InferenceModelExt for InferenceModel {
                 target: &mut TypedModel,
                 mapping: &HashMap<OutletId, OutletId>,
             ) -> TractResult<TVec<OutletId>> {
-                node.op.to_typed(source, node, target, mapping)
+                node.op
+                    .to_typed(source, node, target, mapping)
+                    .with_context(|| format!("translating op {:?}", node.op))
             }
         }
 

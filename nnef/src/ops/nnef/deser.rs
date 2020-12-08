@@ -250,7 +250,7 @@ pub fn conv(
 
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
-    let op = ConvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), group, bias, false);
+    let op = ConvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), group, bias, None);
     builder.wire(op, &[input])
 }
 
