@@ -5,7 +5,7 @@ use tract_data::internal::*;
 
 #[derive(PartialEq, Clone, Debug, Hash)]
 pub enum MatrixStoreSpec {
-    View,
+    View { axes: Option<(usize, usize)> },
     Packed { panel_len: usize },
     Strides { row_byte_stride: isize, col_byte_stride: isize },
     OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_byte_offsets: Vec<isize>, nr: usize },
@@ -95,12 +95,17 @@ impl<'s, 't> MatrixStore<'s, 't> {
 
     fn strides(&self) -> (isize, isize) {
         match self.spec {
-            MatrixStoreSpec::View => {
-                let rank = self.tensor.rank();
+            MatrixStoreSpec::View { axes } => {
+                let (m_axis, n_axis) = if let Some(axes) = axes {
+                    axes.clone()
+                } else {
+                    let rank = self.tensor.rank();
+                    (rank - 2, rank - 1)
+                };
                 let row_byte_stride =
-                    self.tensor.strides()[rank - 2] * self.tensor.datum_type().size_of() as isize;
+                    self.tensor.strides()[m_axis] * self.tensor.datum_type().size_of() as isize;
                 let col_byte_stride =
-                    self.tensor.strides()[rank - 1] * self.tensor.datum_type().size_of() as isize;
+                    self.tensor.strides()[n_axis] * self.tensor.datum_type().size_of() as isize;
                 (row_byte_stride, col_byte_stride)
             }
             MatrixStoreSpec::Strides { row_byte_stride, col_byte_stride } => {

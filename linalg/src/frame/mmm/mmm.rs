@@ -29,6 +29,7 @@ pub trait MatMatMul:
     unsafe fn b_vec_from_data(&self) -> MatrixStoreSpec;
 
     unsafe fn c_view(&self) -> MatrixStoreSpec;
+    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> MatrixStoreSpec;
     unsafe fn c_from_data_and_strides(
         &self,
         row_stride: isize,
@@ -173,7 +174,11 @@ where
     }
 
     unsafe fn c_view(&self) -> MatrixStoreSpec {
-        MatrixStoreSpec::View
+        MatrixStoreSpec::View { axes: None }
+    }
+
+    unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> MatrixStoreSpec {
+        MatrixStoreSpec::View { axes: Some((m_axis, n_axis)) }
     }
 
     unsafe fn c_from_data_and_strides(

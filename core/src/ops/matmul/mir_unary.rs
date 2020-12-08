@@ -319,12 +319,13 @@ impl MatMulUnary {
                 LirMatMulUnary {
                     b_storage,
                     c_fact: TypedFact::dt_shape(dt, &c_shape),
-                    c_shape_override: Some((Dims::from(&overrided_shape), Dims::from(strides))),
                     packed_as,
                     fused_ops: None,
                     mmm: mm,
                     k,
                     m,
+                    c_m_axis: rank - 2 + self.c_trans as usize,
+                    c_n_axis: rank - 2 + !self.c_trans as usize,
                 },
                 &[wire],
             )?[0];

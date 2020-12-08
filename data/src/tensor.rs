@@ -199,6 +199,14 @@ impl Tensor {
         }
     }
 
+    pub fn zero_scalar<T: Datum + num_traits::Zero>() -> anyhow::Result<Tensor> {
+        Tensor::zero::<T>(&[])
+    }
+
+    pub fn zero_scalar_dt(dt: DatumType) -> anyhow::Result<Tensor> {
+        dispatch_numbers!(Self::zero_scalar(dt)())
+    }
+
     pub fn zero_dt(dt: DatumType, shape: &[usize]) -> anyhow::Result<Tensor> {
         dispatch_numbers!(Self::zero(dt)(shape))
     }
