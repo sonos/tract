@@ -93,7 +93,7 @@ impl ConvProblem {
             self.kernel.clone().into_arc_tensor(),
             self.group,
             self.bias.clone().map(|a| a.into_arc_tensor()),
-            false,
+            None,
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;

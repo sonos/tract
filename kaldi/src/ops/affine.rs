@@ -102,7 +102,7 @@ impl Expansion for Affine {
                 kernel: self.linear_params.clone(),
                 group: 1,
                 bias: Some(self.bias_params.clone().into_arc_tensor()),
-                quantized: false,
+                quantized: None,
             },
             inputs,
         )

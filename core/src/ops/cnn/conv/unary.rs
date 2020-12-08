@@ -203,6 +203,7 @@ impl ConvUnary {
         )?;
         let res = qmm::compensate_zero_points(model, name, res, k.to_dim(), a0, b0, sum_a, sum_b)?;
         let c_dt = model.outlet_fact(c0)?.datum_type;
+        dbg!(c_dt);
         let wire = qmm::requant(model, name, res, c_dt, abc_scale, c0)?;
         let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
         Ok(wire)
@@ -253,13 +254,12 @@ impl ConvUnary {
             h_axis,
         )?;
 
-
         if self.group > 1 {
             wire = model.wire_node(
                 format!("{}.reshape_group", name),
                 AxisOp::Reshape(
                     c_axis - 1,
-                    mmm_output_shape[c_axis - 1 ..][..2].iter().map(|d| d.to_dim()).collect(),
+                    mmm_output_shape[c_axis - 1..][..2].iter().map(|d| d.to_dim()).collect(),
                     tvec!((m * self.group).to_dim()),
                 ),
                 &[wire],
@@ -894,7 +894,37 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
 mod test {
     use super::*;
     use crate::ops::cnn::PaddingSpec;
-    use DataFormat::{HWC, NHWC};
+    use DataFormat::*;
+
+    #[test]
+    fn onnx_basic_convinteger() {
+        let op = ConvUnary {
+            pool_spec: PoolSpec {
+                data_format: NCHW,
+                kernel_shape: tvec!(2, 2),
+                padding: PaddingSpec::Valid,
+                dilations: None,
+                strides: None,
+                output_channel_override: Some(1),
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            kernel: rctensor4(&[[[[1u8, 1], [1, 1]]]]),
+            group: 1,
+            bias: None,
+            quantized: Some(i32::datum_type()),
+        };
+        let input = tvec!(
+            rctensor4(&[[[[1u8, 2, 3], [4, 5, 6], [7, 8, 9]]]]),
+            rctensor0(0u8),
+            rctensor0(1.0f32),
+            rctensor0(1u8),
+            rctensor0(1.0f32),
+            rctensor0(0u8),
+            rctensor0(1.0f32)
+        );
+        let output = op.eval(input).unwrap();
+        assert_eq!(&*output[0], &tensor4(&[[[[8i32, 12], [20, 24]]]]));
+    }
 
     #[test]
     fn conv_vs_direct_arm_ml_kws_cnn_m_0() {
