@@ -87,7 +87,7 @@ impl TypedOp for SpaceToBatchUnary {
                         kernel: conv_op.kernel.clone(),
                         group: conv_op.group,
                         bias: None,
-                        quantized: false,
+                        quantized: None,
                     };
                     let mut patch = TypedModelPatch::default();
                     let tap = patch.tap_model(&model, node.inputs[0])?;

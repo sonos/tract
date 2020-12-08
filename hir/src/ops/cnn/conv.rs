@@ -230,29 +230,29 @@ impl Expansion for Conv {
         let mut wires = tvec!(inputs[0]);
         if quantized {
             let output_type = self.override_output_datum_type.unwrap_or(input.datum_type);
-            wires.push(if let Some(a0) = self.x_zero_point_input {
-                inputs[a0]
+            wires.push(if let Some(o) = self.k_zero_point_input {
+                inputs[o]
             } else {
                 model.add_const(
                     format!("{}.a0", prefix),
-                    Tensor::zero_scalar_dt(kernel.datum_type())?,
-                )?
-            });
-            wires.push(if let Some(a_scale) = self.x_scale_input {
-                inputs[a_scale]
-            } else {
-                model.add_const(format!("{}.a_scale", prefix), tensor0(1f32))?
-            });
-            wires.push(if let Some(b0) = self.k_zero_point_input {
-                inputs[b0]
-            } else {
-                model.add_const(
-                    format!("{}.b0", prefix),
                     Tensor::zero_scalar_dt(input.datum_type)?,
                 )?
             });
-            wires.push(if let Some(b_scale) = self.k_scale_input {
-                inputs[b_scale]
+            wires.push(if let Some(o) = self.k_scale_input {
+                inputs[o]
+            } else {
+                model.add_const(format!("{}.b_scale", prefix), tensor0(1f32))?
+            });
+            wires.push(if let Some(o) = self.x_zero_point_input {
+                inputs[o]
+            } else {
+                model.add_const(
+                    format!("{}.b0", prefix),
+                    Tensor::zero_scalar_dt(kernel.datum_type())?,
+                )?
+            });
+            wires.push(if let Some(o) = self.x_scale_input {
+                inputs[o]
             } else {
                 model.add_const(format!("{}.b_scale", prefix), tensor0(1f32))?
             });
