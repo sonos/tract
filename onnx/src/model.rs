@@ -199,8 +199,8 @@ impl Onnx {
             .opset_import
             .iter()
             .find(|import| import.domain == "" || import.domain == "ai.onnx")
-            .unwrap()
-            .version;
+            .map(|op| op.version)
+            .unwrap_or(0);
         let graph = &proto.graph;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
         if onnx_operator_set_version != 0
