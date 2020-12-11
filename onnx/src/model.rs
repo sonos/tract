@@ -151,8 +151,12 @@ impl<'a> ParsingContext<'a> {
         }
         let mut outputs = vec![];
         for output in graph.output.iter() {
-            let fact = output.r#type.as_ref().unwrap().value.as_ref().unwrap();
-            let pb::type_proto::Value::TensorType(fact) = fact;
+            let fact = if let Some(fact) = output.r#type.as_ref().unwrap().value.as_ref() {
+                let pb::type_proto::Value::TensorType(fact) = fact;
+                fact.try_into()?
+            } else {
+                InferenceFact::default()
+            };
             let outlet = outlets_by_name[&*output.name];
             outputs.push(outlet);
             model.set_outlet_label(outlet, output.name.clone())?;
