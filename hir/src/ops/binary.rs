@@ -202,11 +202,11 @@ impl InferenceRulesOp for Nary {
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<Vec<_>>();
         let mut wire = inputs[0];
         for (ix, i) in inputs[1..].iter().enumerate() {
-            let wires = wire_rank_broadcast(&node.name, target, &[wire, *i])?;
+            let wires = wire_rank_broadcast(&format!("{}.{}", node.name, ix), target, &[wire, *i])?;
             wire = target.wire_node(
-                format!("{}-{}", node.name, ix),
+                format!("{}.{}", node.name, ix),
                 mir::binary::TypedBinOp(self.0.clone()),
-                &wires
+                &wires,
             )?[0];
         }
         if self.1 {
@@ -214,9 +214,9 @@ impl InferenceRulesOp for Nary {
                 .cast_to_dt(node.outputs[0].fact.datum_type.concretize().unwrap())?
                 .into_owned()
                 .broadcast_into_rank(target.outlet_fact(inputs[0])?.rank())?;
-            let n = target.add_const(format!("{}-n", node.name), n.into_arc_tensor())?;
+            let n = target.add_const(format!("{}.n", node.name), n.into_arc_tensor())?;
             wire = target.wire_node(
-                format!("{}-norm", node.name),
+                format!("{}.norm", node.name),
                 crate::ops::math::div::bin_typed(),
                 [wire, n.into()].as_ref(),
             )?[0];
