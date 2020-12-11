@@ -1,6 +1,15 @@
 ## Unrelased
 
-* Early, basic support for i8 by u8 matrix mult.
+* API BREAKING: TypedFact::dt_shape & friends can not fail anymore, no longer return a result (remove `?`)
+* Breaking: Rust minimal version bumped to 1.42
+
+* Early, basic, correct but slow support for i8 by u8 matrix mult.
+* Support for Apple Silicon, aka M1, aka aarch64 darwin (but not in CI yet)
+* dynamic quantization convolution support
+* release now ships cli musl builds for linux
+* optimizations targetting small Cortex-A (like 7, 8, and 9)
+* command line dump --profile --cost now computes flops
+* ONNX: OneHot op support
 
 ## 0.11.2 - 2020-10-26
 
@@ -12,7 +21,7 @@
 * switch from error_chain to anyhow
 * simplify trivial gathers to a slice
 * generalize symbolic dimension a bit: support "2S" and the like
-* deprecate "x" syntax in CLI, please use , instead
+* deprecate "x" syntax in CLI, please use `,`  instead
 
 ## 0.11.0
 
