@@ -307,8 +307,12 @@ impl Parameters {
         let output_names = outputs.iter().map(|i| &*i.3).collect::<Vec<_>>();
         debug!("input_names from files: {:?}", input_names);
         debug!("output_names from files: {:?}", output_names);
-        raw_model.set_input_names(input_names)?;
-        raw_model.set_output_names(output_names)?;
+        if input_names.iter().all(|n| n.len() > 0) {
+            raw_model.set_input_names(input_names)?;
+        }
+        if output_names.iter().all(|n| n.len() > 0) {
+            raw_model.set_output_names(output_names)?;
+        }
         for (ix, _, filename, name, tensor) in inputs.into_iter() {
             debug!("Using {} as input {} ({}): {:?}", filename, ix, name, tensor);
             input_values[*ix] = tensor.value.concretize();
