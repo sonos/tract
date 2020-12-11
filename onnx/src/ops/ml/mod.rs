@@ -163,27 +163,18 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
     let mut leaf_map: HashMap<(usize, usize), (usize, usize)> = HashMap::default();
     let mut leaves: Vec<Vec<Leaf>> = iter::repeat_with(Vec::default).take(n_trees).collect();
 
-    let mut prev_leaf_tree_id = -1i64 as usize;
-    let mut prev_leaf_node_id = 0;
-
     for i in 0..n_leaves {
         let leaf_tree_id = leaf_tree_ids[i];
         let leaf_node_id = leaf_node_ids[i];
         let leaf_class_id = leaf_class_ids[i];
         let leaf_weight = leaf_weights[i];
 
-        if leaf_tree_id == prev_leaf_tree_id {
-            node.expect(leaf_node_id >= prev_leaf_node_id, "leaf node ids must be increasing")?;
-        }
         let tree_leaves = &mut leaves[leaf_tree_id];
         leaf_map
             .entry((leaf_tree_id, leaf_node_id))
             .or_insert_with(|| (tree_leaves.len(), tree_leaves.len()))
             .1 += 1;
         tree_leaves.push(Leaf::new(leaf_class_id, leaf_weight));
-
-        prev_leaf_tree_id = leaf_tree_id;
-        prev_leaf_node_id = leaf_node_id;
     }
 
     // collect all nodes
