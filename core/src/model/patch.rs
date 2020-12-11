@@ -125,7 +125,7 @@ where
     ) -> TractResult<()> {
         let original_fact = model.outlet_fact(outlet)?;
         let new_fact = self.model.outlet_fact(by)?;
-        if original_fact.to_typed_fact()?.without_value() != new_fact.to_typed_fact()?.without_value() {
+        if !original_fact.compatible_with(new_fact) {
             bail!("Trying to substitute a {:?} by {:?}.\n{:?}", original_fact, new_fact, self);
         }
         self.shunt_outlet_by.insert(outlet, by);

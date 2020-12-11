@@ -465,7 +465,7 @@ impl ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::matmul::MatMulUnary;
+        use crate::ops::matmul::MatMul;
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let full_input_shape = input_fact.shape.to_tvec();
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
@@ -474,6 +474,7 @@ impl ConvUnary {
             && self.pool_spec.stride(0) == 1
             && self.pool_spec.dilation(0) == 1
             && self.kernel.len() == self.input_channels() * self.output_channels()
+            && self.quantized.is_none()
         {
             let ci = self.input_channels();
             let co = self.output_channels();
@@ -490,9 +491,10 @@ impl ConvUnary {
             let trans_data = self.pool_spec.data_format == DataFormat::HWC
                 || self.pool_spec.data_format == DataFormat::NHWC;
             let mut patch = TypedModelPatch::default();
+            let a = patch.add_const(format!("{}.filters", &node.name), a)?;
             let mut wire = patch.tap_model(model, node.inputs[0])?;
-            let op = MatMulUnary::new(a, a_trans, trans_data, trans_data);
-            wire = patch.wire_node(&*node.name, op, &[wire])?[0];
+            let op = MatMul { a_trans, b_trans: trans_data, c_trans: trans_data };
+            wire = patch.wire_node(&*node.name, op, &[a, wire])?[0];
             if let Some(b) = &self.bias {
                 let mut bias_shape = tvec!(1; input_shape.rank());
                 bias_shape[input_shape.c_axis()] = co;

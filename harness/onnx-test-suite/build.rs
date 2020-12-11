@@ -110,6 +110,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
     writeln!(rs, "mod {} {{", tests_set_ver).unwrap();
     for &mode in &[Plain, Optim, NNEF] {
         writeln!(rs, "mod {} {{", format!("{:?}", mode).to_lowercase()).unwrap();
+        writeln!(rs, "use tract_core::internal::*;").unwrap();
         writeln!(rs, "use crate::onnx::{{run_one, Mode}};").unwrap();
         for t in &tests {
             writeln!(rs, "#[test]").unwrap();
@@ -127,7 +128,7 @@ pub fn make_test_file(root: &mut fs::File, tests_set: &str, onnx_tag: &str) {
                 writeln!(rs, "#[ignore]").unwrap();
             }
             let more = pair.map(|p| &*p.1).unwrap_or(&[]);
-            writeln!(rs, "fn {}() {{", t).unwrap();
+            writeln!(rs, "fn {}() -> TractResult<()> {{", t).unwrap();
             writeln!(rs, "run_one({:?}, {:?}, Mode::{:?}, &{:?})", node_tests, t, mode, more)
                 .unwrap();
             writeln!(rs, "}}").unwrap();

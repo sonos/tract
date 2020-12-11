@@ -104,6 +104,10 @@ impl Fact for PulsedFact {
             false
         }
     }
+
+    fn compatible_with(&self, other: &dyn Fact) -> bool {
+        self.same_as(other)
+    }
 }
 
 impl From<PulsedFact> for TypedFact {

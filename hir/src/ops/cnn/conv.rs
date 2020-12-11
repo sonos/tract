@@ -228,8 +228,8 @@ impl Expansion for Conv {
             || self.y_zero_point_input.is_some()
             || self.y_scale_input.is_some();
         let mut wires = tvec!(inputs[0]);
+        let output_type = self.override_output_datum_type.unwrap_or(input.datum_type);
         if quantized {
-            let output_type = self.override_output_datum_type.unwrap_or(input.datum_type);
             wires.push(if let Some(o) = self.k_zero_point_input {
                 inputs[o]
             } else {
@@ -274,7 +274,7 @@ impl Expansion for Conv {
             kernel,
             group,
             bias,
-            self.override_output_datum_type.clone().filter(|&it| it != input.datum_type),
+            Some(output_type).filter(|&it| quantized || it != input.datum_type),
         );
         model.wire_node(prefix, reduced, &wires)
     }
