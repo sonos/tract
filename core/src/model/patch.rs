@@ -125,7 +125,7 @@ where
     ) -> TractResult<()> {
         let original_fact = model.outlet_fact(outlet)?;
         let new_fact = self.model.outlet_fact(by)?;
-        if !original_fact.same_as(new_fact) {
+        if original_fact.to_typed_fact()?.without_value() != new_fact.to_typed_fact()?.without_value() {
             bail!("Trying to substitute a {:?} by {:?}.\n{:?}", original_fact, new_fact, self);
         }
         self.shunt_outlet_by.insert(outlet, by);
@@ -146,18 +146,13 @@ where
     ) -> TractResult<ModelPatch<F, O>> {
         let mut patch = ModelPatch::default();
         let new_op = new_op.into();
-        let outputs = node.outputs.iter().map(|o| dyn_clone::clone(&o.fact)).collect();
-        let by = patch.add_node(&*node.name, new_op, outputs)?;
-        for (ix, i) in inputs.iter().enumerate() {
-            let o = patch.tap_model(&patched_model, *i)?;
-            patch.add_edge(o, InletId::new(by, ix))?;
-        }
-        for ix in 0..node.outputs.len() {
-            patch.shunt_outside(
-                patched_model,
-                OutletId::new(node.id, ix),
-                OutletId::new(by, ix),
-            )?;
+        let inputs = inputs
+            .iter()
+            .map(|i| patch.tap_model(patched_model, *i))
+            .collect::<TractResult<TVec<_>>>()?;
+        let wires = patch.wire_node(&node.name, new_op, &inputs)?;
+        for (ix, o) in wires.iter().enumerate() {
+            patch.shunt_outside(patched_model, OutletId::new(node.id, ix), *o)?;
         }
         Ok(patch)
     }

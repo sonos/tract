@@ -121,8 +121,6 @@ fn eval(
             let mut looping_shape:TVec<usize> = c_shape.into();
             looping_shape[c_m_axis] = 1;
             looping_shape[c_n_axis] = 1;
-            dbg!(&looping_shape);
-            dbg!(&op.packed_as);
             for prefix in indices(&*looping_shape) {
                 let mut a = op.packed_as.view();
                 let mut b_prefix = tvec!();

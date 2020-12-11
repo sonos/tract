@@ -552,6 +552,7 @@ where
     ) -> TractResult<OutletId> {
         let v = v.into_arc_tensor();
         let fact = F::from(v.clone());
+        let name = name.into();
         self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }
 }

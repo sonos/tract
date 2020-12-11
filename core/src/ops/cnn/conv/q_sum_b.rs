@@ -69,12 +69,12 @@ impl QSumB {
                     let mut vec = vec![0i32; self.r];
                     for k in 0..self.k {
                         for r in 0..self.r {
-                            vec[r] += panel[k * self.r + r].as_();
+                            vec[r] += panel[(p * self.k + k) * self.r + r].as_();
                         }
                     }
                     let r_slice = &mut output.as_slice_mut().unwrap()[p * self.r..];
                     let len = r_slice.len().min(self.r);
-                    r_slice.copy_from_slice(&vec[..len]);
+                    r_slice[..len].copy_from_slice(&vec[..len]);
                 }
             }
         }

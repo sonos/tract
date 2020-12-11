@@ -252,10 +252,10 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
         if let Some(patch) = self.0.declutter_bin(model, node)? {
             return Ok(Some(patch));
         }
+        // FIXME: i think this thing is useless now that ranks are assumed equals.
         for i in 0..2 {
             use super::array::MultiBroadcastTo;
             let prec = model.node(node.inputs[i].node);
@@ -263,27 +263,7 @@ impl TypedOp for TypedBinOp {
                 return Ok(Some(TypedModelPatch::shunt_one_op(model, prec)?));
             }
         }
-        if let Some(a) = inputs[0].konst.clone() {
-            let op = UnaryOp::new(self.0.clone(), a.into_arc_tensor());
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                &model,
-                &node,
-                &node.inputs[1..2],
-                op,
-            )?));
-        }
-        if let Some(b) = inputs[1].konst.clone() {
-            let b = b.into_arc_tensor();
-            if let Some(op) = self.0.unary_with_b_const(&b) {
-                return Ok(Some(TypedModelPatch::replace_single_op(
-                    &model,
-                    &node,
-                    &node.inputs[0..1],
-                    op,
-                )?));
-            }
-        }
-        return Ok(None);
+        declutter_bin_to_unary(model, node, self.0.as_ref())
     }
 
     fn codegen(
@@ -308,6 +288,34 @@ impl TypedOp for TypedBinOp {
     }
 
     as_op!();
+}
+
+fn declutter_bin_to_unary(
+    model: &TypedModel,
+    node: &TypedNode,
+    mini_op: &dyn BinMiniOp,
+) -> TractResult<Option<TypedModelPatch>> {
+    if let Some(a) = model.outlet_fact(node.inputs[0])?.konst.clone() {
+        let op = UnaryOp::new(dyn_clone::clone_box(mini_op), a.into_arc_tensor());
+        return Ok(Some(TypedModelPatch::replace_single_op(
+            &model,
+            &node,
+            &node.inputs[1..2],
+            op,
+        )?.with_context("Left is const")));
+    }
+    if let Some(b) = model.outlet_fact(node.inputs[1])?.konst.clone() {
+        let b = b.into_arc_tensor();
+        if let Some(op) = mini_op.unary_with_b_const(&b) {
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                &model,
+                &node,
+                &node.inputs[0..1],
+                op,
+            )?.with_context("Right is const")));
+        }
+    }
+    return Ok(None);
 }
 
 #[derive(Debug, Clone, new, Hash)]
@@ -495,6 +503,17 @@ impl TypedOp for MergeOpUnicast {
             .collect())
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(p) = declutter_bin_to_unary(model, node, self.0.as_ref())? {
+            return Ok(Some(p))
+        }
+        self.0.declutter_bin(model, node)
+    }
+
     as_op!();
 }
 
@@ -530,23 +549,23 @@ macro_rules! bin_to_super_type {
                         return Ok(())
                     }
                     )*
-                )*
-                bail!("{} does not support {:?} (inplace)", self.name(), a.datum_type());
+                 )*
+                    bail!("{} does not support {:?} (inplace)", self.name(), a.datum_type());
             }
 
             fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
                 $(if $out_of_place(c, a, b)? { return Ok(()) } )?
-                $(
-                    $(if c.datum_type() == $typ::datum_type() {
-                        let a = a.to_array_view::<$typ>()?;
-                        let b = b.to_array_view::<$typ>()?;
-                        let mut c = c.to_array_view_mut::<$typ>()?;
-                        $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).apply($cab);
-                        return Ok(())
-                    }
-                    )*
-                )*
-                bail!("{} does not support {:?} (out of place)", self.name(), c.datum_type());
+                    $(
+                        $(if c.datum_type() == $typ::datum_type() {
+                            let a = a.to_array_view::<$typ>()?;
+                            let b = b.to_array_view::<$typ>()?;
+                            let mut c = c.to_array_view_mut::<$typ>()?;
+                            $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).apply($cab);
+                            return Ok(())
+                        }
+                        )*
+                     )*
+                    bail!("{} does not support {:?} (out of place)", self.name(), c.datum_type());
             }
 
             fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
@@ -561,36 +580,36 @@ macro_rules! bin_to_super_type {
                 fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
                     ($flip)(self, b)
                 }
-            )?
-            $(
-                fn declutter_bin(
-                    &self,
-                    model: &TypedModel,
-                    node: &TypedNode,
-                ) -> TractResult<Option<TypedModelPatch>> {
-                    ($declutter_bin)(self, model, node)
-                }
-            )?
-            $(
-                fn declutter_unary(
-                    &self,
-                    model: &TypedModel,
-                    node: &TypedNode,
-                    a: &Arc<Tensor>,
-                ) -> TractResult<Option<TypedModelPatch>> {
-                    ($declutter_unary)(self, model, node, a)
-                }
-            )?
-            $(
-                fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
-                    ($cost)(dt)
-                }
-            )?
-            $(
-            fn validation(&self) -> Validation {
-                $validation
-            }
-            )?
+             )?
+                $(
+                    fn declutter_bin(
+                        &self,
+                        model: &TypedModel,
+                        node: &TypedNode,
+                        ) -> TractResult<Option<TypedModelPatch>> {
+                        ($declutter_bin)(self, model, node)
+                    }
+                 )?
+                $(
+                    fn declutter_unary(
+                        &self,
+                        model: &TypedModel,
+                        node: &TypedNode,
+                        a: &Arc<Tensor>,
+                        ) -> TractResult<Option<TypedModelPatch>> {
+                        ($declutter_unary)(self, model, node, a)
+                    }
+                 )?
+                $(
+                    fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
+                        ($cost)(dt)
+                    }
+                 )?
+                $(
+                    fn validation(&self) -> Validation {
+                        $validation
+                    }
+                 )?
         }
 
         pub mod $func {
@@ -632,8 +651,8 @@ macro_rules! bin_to_bool {
                         return Ok(())
                     }
                     )*
-                )*
-                bail!("{} does not support {:?}", self.name(), a.datum_type());
+                 )*
+                    bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
             fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
@@ -646,8 +665,8 @@ macro_rules! bin_to_bool {
                         return Ok(())
                     }
                     )*
-                )*
-                bail!("{} does not support {:?}", self.name(), a.datum_type());
+                 )*
+                    bail!("{} does not support {:?}", self.name(), a.datum_type());
             }
 
             fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
@@ -662,20 +681,20 @@ macro_rules! bin_to_bool {
                 fn unary_with_b_const(&self, b: &Arc<Tensor>) -> Option<$crate::ops::binary::UnaryOp> {
                     ($flip)(self, b)
                 }
-            )?
-            $(
-                fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
-                    ($cost)(dt)
-                }
-            )?
+             )?
+                $(
+                    fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {
+                        ($cost)(dt)
+                    }
+                 )?
         }
 
         pub mod $func {
             /*
-            pub fn bin() -> $crate::ops::binary::InferenceBinOp {
-                $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
-            }
-            */
+               pub fn bin() -> $crate::ops::binary::InferenceBinOp {
+               $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
+               }
+               */
             pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
                 $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
             }
