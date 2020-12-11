@@ -44,7 +44,7 @@ pub fn run_one<P: AsRef<path::Path>>(
     test: &str,
     mode: Mode,
     more: &'static [&'static str],
-) {
+) -> TractResult<()> {
     use Mode::*;
     setup_test_logger();
     let test_path = root.as_ref().join(test);
@@ -91,8 +91,8 @@ pub fn run_one<P: AsRef<path::Path>>(
     let onnx = onnx();
     let nnef = tract_nnef::nnef().with_onnx();
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
-    for d in fs::read_dir(&path).unwrap() {
-        let mut model = onnx.model_for_path(&model_file).unwrap();
+    for d in fs::read_dir(&path)? {
+        let mut model = onnx.model_for_path(&model_file)?;
         let d = d.unwrap();
         if d.metadata().unwrap().is_dir()
             && d.file_name().to_str().unwrap().starts_with("test_data_set_")
@@ -167,6 +167,7 @@ pub fn run_one<P: AsRef<path::Path>>(
             info!("Test model (mode: {:?}) {:#?} OK.", mode, path);
         }
     }
+    Ok(())
 }
 
 fn run_model<F, O>(model: Graph<F, O>, inputs: TVec<Tensor>, data_path: &path::Path)

@@ -81,6 +81,8 @@ pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync +
     }
 
     fn same_as(&self, _other: &dyn Fact) -> bool;
+
+    fn compatible_with(&self, _other: &dyn Fact) -> bool;
 }
 
 impl_downcast!(Fact);
@@ -274,6 +276,20 @@ impl Fact for TypedFact {
                 other.consistent().unwrap()
             }
             self == other
+        } else {
+            false
+        }
+    }
+
+    fn compatible_with(&self, other: &dyn Fact) -> bool {
+        if cfg!(debug_assertions) {
+            self.consistent().unwrap()
+        }
+        if let Some(other) = other.downcast_ref::<Self>() {
+            if cfg!(debug_assertions) {
+                other.consistent().unwrap()
+            }
+            self.without_value().same_as(&other.without_value())
         } else {
             false
         }
