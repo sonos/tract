@@ -229,7 +229,7 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
 
     for i in 0..n_trees {
         let tree = Tree::build(n_classes, &nodes[i], &leaves[i])
-            .chain_err(|| format!("Building tree {}", i))?;
+            .with_context(|| format!("Building tree {}", i))?;
         trees.push(tree);
     }
 
@@ -273,7 +273,7 @@ pub struct TreeEnsembleClassifier {
     class_labels: ClassLabels,
 }
 
-tract_linalg::impl_dyn_hash!(TreeEnsembleClassifier);
+impl_dyn_hash!(TreeEnsembleClassifier);
 
 impl TreeEnsembleClassifier {
     fn parse(
@@ -328,7 +328,9 @@ impl EvalOp for TreeEnsembleClassifier {
             })
             .collect();
         let categ = match &self.class_labels {
-            ClassLabels::Ints(v) => rctensor1(&*tops.into_iter().map(|c| v[c]).collect::<Vec<i64>>()),
+            ClassLabels::Ints(v) => {
+                rctensor1(&*tops.into_iter().map(|c| v[c]).collect::<Vec<i64>>())
+            }
             ClassLabels::Strings(v) => {
                 rctensor1(&*tops.into_iter().map(|c| v[c].clone()).collect::<Vec<String>>())
             }
@@ -341,11 +343,11 @@ impl TypedOp for TreeEnsembleClassifier {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let n = &inputs[0].shape[0];
         Ok(tvec!(
-            TypedFact::dt_shape(self.class_labels.datum_type(), [n.clone()].as_ref())?,
+            TypedFact::dt_shape(self.class_labels.datum_type(), [n.clone()].as_ref()),
             TypedFact::dt_shape(
                 f32::datum_type(),
                 [n.clone(), self.class_labels.len().to_dim()].as_ref()
-            )?
+            )
         ))
     }
 

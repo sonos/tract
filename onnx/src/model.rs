@@ -107,7 +107,7 @@ impl<'a> ParsingContext<'a> {
             trace!("  outputs {:?}", pbnode.output);
             let (op, closures) = match self.framework.op_register.0.get(&pbnode.op_type) {
                 Some(builder) => (builder)(&ctx, pbnode)
-                    .chain_err(|| format!("Building node {} ({})", pbnode.name, pbnode.op_type))?,
+                    .with_context(|| format!("Building node {} ({})", pbnode.name, pbnode.op_type))?,
                 None => (
                     tract_hir::ops::unimpl::UnimplementedOp::new(
                         pbnode.output.len(),
