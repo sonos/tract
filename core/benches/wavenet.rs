@@ -9,6 +9,7 @@ use DatumType::F32;
 
 fn im2col(c: &mut Criterion) {
     let mut group = c.benchmark_group("im2col");
+    let pad = rctensor0(0.0f32);
     for dil in &[1, 2, 4, 8] {
         group.bench_function(&format!("dil_{}", dil), |b| {
             b.iter_with_setup(
@@ -16,7 +17,7 @@ fn im2col(c: &mut Criterion) {
                     let len = 8 + 2 * *dil;
                     let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[len, 16])
                         .unwrap()
-                        .into_arc_tensor());
+                        .into_arc_tensor(), pad.clone());
                     let op = tract_core::ops::cnn::conv::Im2Col::new(
                         cnn::PatchSpec::for_full_shape(HWC, &[len, 16])
                             .unwrap()
@@ -29,7 +30,6 @@ fn im2col(c: &mut Criterion) {
                         1,
                         16,
                         tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap().b_pack(),
-                        tensor0(0.0f32),
                     )
                     .unwrap();
                     (input, op)
@@ -59,12 +59,13 @@ fn mmm(c: &mut Criterion) {
                 let op = tract_core::ops::matmul::lir_unary::LirMatMulUnary {
                     b_storage: unsafe { mmm.b_packed() },
                     c_fact: TypedFact::dt_shape(f32::datum_type(), &[8, 64]),
-                    c_shape_override: Some(([64, 8].iter().into(), [1, 8].iter().into())),
                     packed_as: tract_ndarray::arr0(packed_a.into_arc_tensor()).into_dyn(),
                     fused_ops: None,
                     mmm,
                     k: 48,
                     m: 64,
+                    c_m_axis: 1,
+                    c_n_axis: 0,
                 };
                 (input, op)
             },

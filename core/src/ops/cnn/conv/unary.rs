@@ -143,7 +143,6 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         use crate::ops::matmul::mir_quant as qmm;
         let b_fact = model.outlet_fact(wires[0])?;
-        let b_dt = b_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
 
         let (input_shape, geo, output_shape, m, k, n, mmm) =
@@ -168,9 +167,8 @@ impl ConvUnary {
                 self.group,
                 *input_shape.c_dim() / self.group,
                 mmm.b_pack(),
-                Tensor::zero_dt(b_dt, &[])?,
             )?,
-            &[wires[0]],
+            &[wires[0], b0],
         )?[0];
 
         let a = self.kernel_as_group_o_ihw()?.into_tensor();
@@ -203,7 +201,6 @@ impl ConvUnary {
         )?;
         let res = qmm::compensate_zero_points(model, name, res, k.to_dim(), a0, b0, sum_a, sum_b)?;
         let c_dt = model.outlet_fact(c0)?.datum_type;
-        dbg!(c_dt);
         let wire = qmm::requant(model, name, res, c_dt, abc_scale, c0)?;
         let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
         Ok(wire)
@@ -221,6 +218,7 @@ impl ConvUnary {
 
         let (input_shape, geo, output_shape, m, k, n, mmm) =
             self.compute_geo(model.outlet_fact(wire)?)?;
+        let padding = model.add_const(format!("{}.b0", name), Tensor::zero_dt(b_dt, &[])?)?;
 
         wire = model.wire_node(
             format!("{}.im2col", name),
@@ -232,9 +230,8 @@ impl ConvUnary {
                 self.group,
                 *input_shape.c_dim() / self.group,
                 mmm.b_pack(),
-                Tensor::zero_dt(b_dt, &[])?,
             )?,
-            &[wire],
+            &[wire, padding],
         )?[0];
 
         let b_storage = mmm.b_packed();
@@ -604,14 +601,18 @@ impl TypedOp for ConvUnary {
         let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
         let mut axes = vec![];
         if let Some(n_axis) = shape.n_axis() {
-            axes.push(AxisInfo::simple(n_axis).disposable(true));
+            let mut info = AxisInfo::simple(n_axis).disposable(true);
+            info.inputs.extend(std::iter::repeat(None).take(node.inputs.len() - 1));
+            axes.push(info);
         }
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let h_axis = shape.h_axis();
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
             if dim == 1 && self.pool_spec.stride(ix) == 1 {
-                axes.push(AxisInfo::simple(ix + h_axis))
+                let mut info = AxisInfo::simple(ix + h_axis).disposable(true);
+                info.inputs.extend(std::iter::repeat(None).take(node.inputs.len() - 1));
+                axes.push(info)
             }
         }
         Ok(axes.into_iter().collect())
@@ -772,7 +773,17 @@ impl TypedOp for ConvUnary {
         if let Some(shape) = input_fact.shape.as_concrete() {
             unsafe {
                 let dt = input_fact.datum_type;
-                if kernel_spatial_shape.iter().product::<usize>() == 1
+                if self.quantized.is_some() {
+                    let mut patch = TypedModelPatch::default();
+                    let inputs = node
+                        .inputs
+                        .iter()
+                        .map(|w| patch.tap_model(model, *w))
+                        .collect::<TractResult<TVec<_>>>()?;
+                    let wire = self.wire_as_quant_im2col(&mut patch, &node.name, &inputs)?;
+                    patch.shunt_outside(model, node.id.into(), wire)?;
+                    return Ok(Some(patch));
+                } else if kernel_spatial_shape.iter().product::<usize>() == 1
                     && (0..spatial_rank)
                         .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
                     && self.group == 1
@@ -919,7 +930,7 @@ mod test {
             rctensor0(1.0f32),
             rctensor0(1u8),
             rctensor0(1.0f32),
-            rctensor0(0u8),
+            rctensor0(0i32),
             rctensor0(1.0f32)
         );
         let output = op.eval(input).unwrap();

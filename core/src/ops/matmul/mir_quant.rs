@@ -471,7 +471,6 @@ mod test {
             let a = self.a.map(|&x| (x as f32 - self.a0 as f32) * self.a_scale);
             let b = self.b.map(|&x| (x as f32 - self.b0 as f32) * self.b_scale);
             let c = a.dot(&b);
-            dbg!(&c);
             let c = c.map(|&x| round_ties_to_right(x / self.c_scale) + self.c0 as i32);
             c.map(|&x| x.max(-128).min(127) as i8)
         }

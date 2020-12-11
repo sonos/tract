@@ -18,7 +18,6 @@ pub struct Im2Col {
     pub ci_per_group: usize,
     pub b_pack: Packer,
     patcher: Patcher,
-    pad_value: Tensor,
 }
 
 impl DynHash for Im2Col {
@@ -34,7 +33,6 @@ impl PartialEq for Im2Col {
             && self.k == other.k
             && self.group == other.group
             && self.b_pack == other.b_pack
-            && self.pad_value == other.pad_value
     }
 }
 
@@ -47,7 +45,6 @@ impl Im2Col {
         group: usize,
         ci_per_group: usize,
         b_pack: Packer,
-        pad_value: Tensor,
     ) -> TractResult<Im2Col> {
         let patcher = if !patch.padded && patch.rank() == 2 {
             Patcher::Valid2d
@@ -73,7 +70,6 @@ impl Im2Col {
             ci_per_group,
             b_pack,
             patcher,
-            pad_value,
         })
     }
 
@@ -111,7 +107,8 @@ impl EvalOp for Im2Col {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
-            let mut input = args_1!(inputs).into_tensor();
+            let (input, pad_value) = args_2!(inputs);
+            let mut input = input.into_tensor();
             let output_shape = self.output_shape(input.shape())?;
             let mut output = Tensor::uninitialized_aligned_dt(
                 input.datum_type(),
@@ -141,7 +138,8 @@ impl EvalOp for Im2Col {
                             &input,
                             &input_shape,
                             &mut packed,
-                            g
+                            g,
+                            &pad_value
                         ))?
                     }
                 }
@@ -181,12 +179,13 @@ impl Patcher {
         input_shape: &DataShape,
         pack: &'p mut TensorView,
         g: usize,
+        pad_value: &Tensor,
     ) -> TractResult<()> {
         match self {
             Patcher::Valid1d => Self::valid_1d::<T>(im2col, input, input_shape, pack, g),
             Patcher::Valid2d => Self::valid_2d::<T>(im2col, input, input_shape, pack, g),
-            Patcher::Padded2d => Self::padded_2d::<T>(im2col, input, input_shape, pack, g),
-            _ => Self::generic::<T>(im2col, input, input_shape, pack, g),
+            Patcher::Padded2d => Self::padded_2d::<T>(im2col, input, input_shape, pack, g, pad_value),
+            _ => Self::generic::<T>(im2col, input, input_shape, pack, g, pad_value),
         }
     }
 
@@ -197,9 +196,10 @@ impl Patcher {
         shape: &DataShape,
         pack: &'p mut TensorView,
         g: usize,
+        pad_value: &Tensor,
     ) -> TractResult<()> {
         unsafe {
-            let pad_value = *im2col.pad_value.to_scalar_unchecked::<T>();
+            let pad_value = *pad_value.to_scalar_unchecked();
             let mut mega_matrix = Tensor::uninitialized::<T>(&[im2col.k, im2col.n])?;
             let mut mega_matrix_view = mega_matrix.to_array_view_mut_unchecked::<T>();
             let ptr = input.as_ptr_unchecked::<T>();
@@ -257,9 +257,10 @@ impl Patcher {
         shape: &DataShape,
         pack: &'p mut TensorView,
         g: usize,
+        pad_value: &Tensor,
     ) -> TractResult<()> {
         unsafe {
-            let pad_value = *im2col.pad_value.to_scalar_unchecked::<T>();
+            let pad_value = *pad_value.to_scalar_unchecked();
             let pack = pack.as_slice_mut_unchecked::<T>();
             let y_stride = im2col.patch.spec.strides[0] as isize;
             let x_stride = im2col.patch.spec.strides[1] as isize;

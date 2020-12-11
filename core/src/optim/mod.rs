@@ -45,6 +45,8 @@ impl Optimizer {
     pub fn codegen() -> Optimizer {
         Optimizer::passes(vec![
             Box::new(OpOptim("codegen", TypedOp::codegen, 0)),
+            Box::new(OpOptim("declutter", TypedOp::declutter, 0)),
+            Box::new(PropConst),
             Box::new(PushSplitDown),
             Box::new(OpOptim("fuse", TypedOp::fuse, 0)),
         ])
