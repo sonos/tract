@@ -241,7 +241,7 @@ impl Expansion for Conv {
             wires.push(if let Some(o) = self.k_scale_input {
                 inputs[o]
             } else {
-                model.add_const(format!("{}.b_scale", prefix), tensor0(1f32))?
+                model.add_const(format!("{}.a_scale", prefix), tensor0(1f32))?
             });
             wires.push(if let Some(o) = self.x_zero_point_input {
                 inputs[o]

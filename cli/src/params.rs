@@ -434,7 +434,9 @@ impl Parameters {
             let name = raw_model.node_name(input.node);
             if const_inputs.contains(&raw_model.node_name(input.node)) {
                 if let Some(v) = input_values.remove(name) {
-                    raw_model.node_mut(input.node).op = tract_core::ops::konst::Const::new(v).into()
+                    raw_model.node_mut(input.node).op =
+                        tract_core::ops::konst::Const::new(v.clone()).into();
+                    raw_model.node_mut(input.node).outputs[0].fact = F::try_from(&InferenceFact::from(v.into_tensor())).unwrap();
                 } else {
                     bail!(
                         "Don't have value for input {}, can't make it const",
