@@ -1,1 +1,1 @@
-IGNORE="plain decl opti nnef"
+IGNORE="nnef"
