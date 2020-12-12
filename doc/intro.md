@@ -1,23 +1,23 @@
 # Tract
 
-tract is a neural network inference library. It takes over TensorFlow or
-PyTorch (for instance) once the network is trained, in order to run the network
-on the end-user data. It is designed to be very portable and embedding
+tract is a neural network inference library. It takes trained networks from higher-level
+frameworks (Tensorflow, PyTorch, etc.), converts them to an intermediate representation
+and runs them on the end-user data. It is designed to be very portable and embedding
 friendly. We believe in running Neural Network Inference on the Edge, on a
 browser or a small embeddable CPU.
 
 ## How to use tract ?
 
 * tract-onnx is a Rust library that can load and run an ONNX network. About 85%
-    of ONNX is supported.
+    of ONNX operators are supported.
 * tract-tensorflow is a Rust library that can load and run a TensorFlow 1
     network. Because of the huge size of TensorFlow, a smaller portion of the
     operator set is supported.
 * tract-nnef is a Rust lbrary that can load and run NNEF networks. Most of
     NNEF is supported (missing deconv, ROI operations and quantization).
-* tract is a command line (can be installed with "cargo install"). It can
-    load network in any of the previously listed format, dump them in a
-    so-called user friendly form, bench and profile a network.
+* tract is the main command line interface (can be installed with "cargo install").
+    It can load network in any of the previously listed formats, dump them in a
+    user friendly form, bench and profile a network.
     Additionaly, the tract command line can be used to convert a network to
     NNEF (with some extensions). tract-nnef is significanly smaller and
     lighter to start than tract-onnx or tract-tensorflow, so this conversion
@@ -57,7 +57,7 @@ or tensorflow formats (requiring model translation to NNEF before hand).
 
 ### tract-hir
 
-Python-based training framework (TensorFlow or ONNX) have to support lots of
+Python-based training frameworks (TensorFlow or ONNX) have to support lots of
 "python-isms" or "numpy-isms". While they are helpful at model design time,
 they can be a burden at inference time. As a consequence, we try to have most
 of them translated before getting into tract-core. This allow us to comply with
@@ -81,7 +81,7 @@ This crate is not meant to be used directly.
 Support for ONNX protobuf format and mapping of ONNX operators to tract-hir,
 tract-core or ad-hoc operators.
 
-tract-onnx-opl depends only on tract-core and tract-nnef. It contains 
+tract-onnx-opl depends only on tract-core and tract-nnef. It contains
 operators implementation from ONNX operators which do not have an equivalent
 in tract-core, including dumping to / loading from OPL.
 
@@ -114,10 +114,10 @@ In the `cli/` sub-directory, implements the command line tool.
 ## tract-OPL
 
 Tract OPL (for Operation Programming Language) is an intermediate
-representation of a Neural Network. It is based in NNEF. NNEF is a
-specification aiming at being to *inference* application what ONNX is
-to *training* frameworks. As it turns out, inference implementor and 
-training framework have widely divergent objectives.
+representation of a Neural Network. It is based on NNEF. NNEF is a
+specification aiming to be for *inference* applications what ONNX is
+to *training* frameworks. As it turns out, inference implementations and
+training frameworks have widely divergent objectives.
 
 Tract can be used as a monolithic library, accepting an ONNX or
 TensorFlow model, loading it and optimising it on the fly (using
@@ -129,19 +129,19 @@ very straightforward.
 
 We have built tract OPL on top the tract NNEF support: we have extended
 NNEF to support tract operators that are not present in NNEF. The same
-extension mecanism can be used to extend NNEF with operators belonging
+extension mechanism can be used to extend NNEF with operators belonging
 to ONNX that we chose not to include in tract-core. That way it is
 possible to reduce runtime footprint and startup time:
-    * tract command line include tract-onnx. It can be used to translate
-an onnx to a tract-core-plus-extensions model in memory, then dump this
-network in NNEF form. This is done once, right after training.
-    * for runtime, on device, we only to tract-core, tract-nnef (for the
-format parser) and optionaly tract-onnx-opl if the network use one of the
+    * tract command line includes tract-onnx. It can be used to translate
+an onnx network to a tract-core-plus-extensions model in memory, then dump
+this network in NNEF form. This is done once, right after training.
+    * At runtime we only to tract-core, tract-nnef (for the
+format parser) and optionaly tract-onnx-opl if the network used one of the
 handful of ONNX operations that are not supported natively by tract-core.
 
-The split between tranlation time and runtime have also been done for the
+The split between translation time and runtime have also been done for the
 streaming (aka pulse) capabilities. We only need tract-pulse to preprocess
-the network (which we can do with the command line) but only ship 
+the network (which we can do with the command line) but only ship
 `tract-pulse-opl`.
 
 It could (and should) be done with tract-tensorflow too.
@@ -152,6 +152,6 @@ possible, but this operation is actually much lighter than the "decluttering"
 of the network from the training formats to the tract-core/NNEF semantics.
 
 We are playing with the idea of adding another similar split (tract R for
-tract Runtime). The machine optimized network form would be stored this time,
-shedding most of the optimisation code from tract-core and making networks
-even faster to load.
+tract Runtime). The machine optimized network form would be stored at this
+time, shedding most of the optimisation code from tract-core and making
+networks even faster to load.
