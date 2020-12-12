@@ -1,4 +1,8 @@
-## Unrelased
+## Unreleased
+
+## 0.12.1 - 2020-12-11
+
+* 0.12.0 is a misfire.
 
 * API BREAKING: TypedFact::dt_shape & friends can not fail anymore, no longer return a result (remove `?`)
 * Breaking: Rust minimal version bumped to 1.42
