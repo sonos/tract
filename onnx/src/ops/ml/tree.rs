@@ -409,10 +409,6 @@ impl TreeEnsemble {
         })
     }
 
-    pub fn n_classes(&self) -> usize {
-        self.n_classes
-    }
-
     unsafe fn eval_one_unchecked<A, T>(
         &self, input: &ArrayView1<T>, output: &mut ArrayViewMut1<f32>, aggs: &mut [A],
     ) where

@@ -3,7 +3,7 @@ use std::iter;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
-use crate::pb_helpers::{AttrTVecType, OptionExt, TryCollect};
+use crate::pb_helpers::{AttrTVecType, TryCollect};
 
 use tract_hir::internal::*;
 
@@ -35,49 +35,70 @@ where
     }
 }
 
-fn parse_node_mode(s: &str) -> Option<Option<Cmp>> {
+fn parse_node_mode(s: &str) -> TractResult<Option<Cmp>> {
     match s {
-        "BRANCH_LEQ" => Some(Some(Cmp::LessEqual)),
-        "BRANCH_LT" => Some(Some(Cmp::Less)),
-        "BRANCH_GTE" => Some(Some(Cmp::GreaterEqual)),
-        "BRANCH_GT" => Some(Some(Cmp::Greater)),
-        "BRANCH_EQ" => Some(Some(Cmp::Equal)),
-        "BRANCH_NEQ" => Some(Some(Cmp::NotEqual)),
-        "LEAF" => Some(None),
-        _ => None,
+        "BRANCH_LEQ" => Ok(Some(Cmp::LessEqual)),
+        "BRANCH_LT" => Ok(Some(Cmp::Less)),
+        "BRANCH_GTE" => Ok(Some(Cmp::GreaterEqual)),
+        "BRANCH_GT" => Ok(Some(Cmp::Greater)),
+        "BRANCH_EQ" => Ok(Some(Cmp::Equal)),
+        "BRANCH_NEQ" => Ok(Some(Cmp::NotEqual)),
+        "LEAF" => Ok(None),
+        _ => bail!("Unsupported mode node: {}", s),
     }
 }
 
-fn parse_post_transform(s: &str) -> Option<Option<PostTransform>> {
+fn parse_post_transform(s: &str) -> TractResult<Option<PostTransform>> {
     match s {
-        "NONE" => Some(None),
-        "SOFTMAX" => Some(Some(PostTransform::Softmax)),
-        "LOGISTIC" => Some(Some(PostTransform::Logistic)),
-        "SOFTMAX_ZERO" => Some(Some(PostTransform::SoftmaxZero)),
-        "PROBIT" => None, // we don't support it for now
-        _ => None,
+        "NONE" => Ok(None),
+        "SOFTMAX" => Ok(Some(PostTransform::Softmax)),
+        "LOGISTIC" => Ok(Some(PostTransform::Logistic)),
+        "SOFTMAX_ZERO" => Ok(Some(PostTransform::SoftmaxZero)),
+        "PROBIT" => bail!("PROBIT unsupported"),
+        _ => bail!("Invalid post transform: {}", s),
     }
 }
 
-fn parse_aggregate(s: &str) -> Option<Aggregate> {
+fn parse_aggregate(s: &str) -> TractResult<Aggregate> {
     match s {
-        "SUM" => Some(Aggregate::Sum),
-        "AVERAGE" => Some(Aggregate::Avg),
-        "MAX" => Some(Aggregate::Max),
-        "MIN" => Some(Aggregate::Min),
-        _ => None,
+        "SUM" => Ok(Aggregate::Sum),
+        "AVERAGE" => Ok(Aggregate::Avg),
+        "MAX" => Ok(Aggregate::Max),
+        "MIN" => Ok(Aggregate::Min),
+        _ => bail!("Invalid aggregate function: {}", s),
     }
 }
 
-fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEnsemble> {
+struct NodesData {
+    n_classes: usize,
+    base_values: Option<Vec<f32>>,
+    classlabels: Option<Tensor>,
+    node_ids: Vec<usize>,
+    tree_ids: Vec<usize>,
+    feature_ids: Vec<usize>,
+    true_ids: Vec<usize>,
+    false_ids: Vec<usize>,
+    node_values: Vec<f32>,
+    nan_is_true: Vec<bool>,
+    node_modes: Vec<Option<Cmp>>,
+    post_transform: Option<String>,
+    aggregate_fn: String,
+    leaf_node_ids: Vec<usize>,
+    leaf_tree_ids: Vec<usize>,
+    leaf_class_ids: Vec<usize>,
+    leaf_weights: Vec<f32>,
+}
+
+fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<NodesData> {
     // parse n_classes from protobuf
-
-    let (n_classes, attr) = if is_classifier {
-        let n_ints = node.get_attr_opt_slice::<i64>("classlabels_int64s")?.map(|l| l.len());
-        let n_strs = node.get_attr_opt_tvec::<&str>("classlabels_strings")?.map(|l| l.len());
-        match (n_ints, n_strs) {
-            (Some(n), None) => (n, "classlabels_ints64s"),
-            (None, Some(n)) => (n, "classlabels_strings"),
+    let (n_classes, classlabels) = if is_classifier {
+        let ints = node.get_attr_opt_slice::<i64>("classlabels_int64s")?;
+        let strs = node.get_attr_opt_tvec::<&str>("classlabels_strings")?;
+        match (ints, strs) {
+            (Some(n), None) => (n.len(), Some(tensor1(n))),
+            (None, Some(n)) => {
+                (n.len(), Some(tensor1(&n.iter().map(|d| d.to_string()).collect::<Vec<_>>())))
+            }
             (None, None) => {
                 bail!("cannot find neither 'classlabels_int64s' not 'classlabels_strings'")
             }
@@ -86,35 +107,13 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
             }
         }
     } else {
-        (node.get_attr("n_targets")?, "n_targets")
+        (node.get_attr("n_targets")?, None)
     };
-    node.expect_attr(attr, n_classes != 0, "at least one class/target")?;
-
-    // parse base_values from protobuf
-
-    let base_values = get_vec_attr_opt::<f32>(node, "base_values", n_classes)?;
-
-    // parse post_transform from protobuf
-
-    let post_transform = node
-        .get_attr_opt("post_transform")?
-        .and_try(|s| node.check_value("post_transform", parse_post_transform(s).ok_or(s)))?
-        .unwrap_or(None);
-
-    // parse aggregate_fn from protobuf (for regressors)
-
-    let aggregate_fn = if is_classifier {
-        Aggregate::Sum
-    } else {
-        node.get_attr_opt("aggregate")?
-            .and_try(|s| node.check_value("aggregate", parse_aggregate(s).ok_or(s)))?
-            .unwrap_or(Aggregate::Sum)
-    };
-
-    // parse node data from protobuf
-
     let n_nodes = node.get_attr_slice::<i64>("nodes_featureids")?.len();
     node.expect_attr("nodes_featureids", n_nodes != 0, "at least one node")?;
+
+    // parse base_values from protobuf
+    let base_values = get_vec_attr_opt::<f32>(node, "base_values", n_classes)?;
 
     let node_ids = get_vec_attr::<usize>(node, "nodes_nodeids", n_nodes)?;
     let tree_ids = get_vec_attr::<usize>(node, "nodes_treeids", n_nodes)?;
@@ -124,16 +123,23 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
     let node_values = get_vec_attr::<f32>(node, "nodes_values", n_nodes)?;
     let nan_is_true = get_vec_attr_opt::<bool>(node, "nodes_missing_value_tracks_true", n_nodes)?
         .unwrap_or_else(|| iter::repeat(false).take(n_nodes).collect());
-    let node_modes = node.check_value(
+    let node_modes: Vec<Option<Cmp>> = node.check_value(
         "nodes_modes",
         get_vec_attr::<&str>(node, "nodes_modes", n_nodes)?
             .into_iter()
-            .map(|s| node.check_value("nodes_modes", parse_node_mode(s).ok_or(s)))
+            .map(|s| node.check_value("nodes_modes", parse_node_mode(s)))
             .try_collect::<Vec<_>>(),
     )?;
 
-    // parse leaf data from protobuf
+    // parse post_transform from protobuf
+    let post_transform = node.get_attr_opt("post_transform")?;
 
+    // parse aggregate_fn from protobuf (for regressors)
+    let aggregate_fn =
+        if is_classifier { "SUM" } else { node.get_attr_opt("aggregate")?.unwrap_or("SUM") }
+            .to_string();
+
+    // parse leaf data from protobuf
     let leaf_prefix = if is_classifier { "class" } else { "target" };
     let cls = |name| format!("{}_{}", leaf_prefix, name);
 
@@ -144,8 +150,6 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
     let leaf_tree_ids = get_vec_attr::<usize>(node, &cls("treeids"), n_leaves)?;
     let leaf_class_ids = get_vec_attr::<usize>(node, &cls("ids"), n_leaves)?;
     let leaf_weights = get_vec_attr::<f32>(node, &cls("weights"), n_leaves)?;
-
-    // check tree ids and count the trees
 
     let inc_by_1 = |x: &[_]| x.iter().zip(x.iter().skip(1)).all(|(&x, &y)| y == x || y == x + 1);
     node.expect_attr("nodes_treeids", inc_by_1(&tree_ids), "tree ids to increase by 1")?;
@@ -158,110 +162,127 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
         "mismatching # of trees (nodes/leaves)",
     )?;
 
-    // build the leaf map and collect all leaves
+    Ok(NodesData {
+        n_classes,
+        base_values,
+        classlabels,
+        node_ids,
+        tree_ids,
+        feature_ids,
+        true_ids,
+        false_ids,
+        node_values,
+        nan_is_true,
+        node_modes,
+        post_transform,
+        aggregate_fn,
+        leaf_node_ids,
+        leaf_tree_ids,
+        leaf_class_ids,
+        leaf_weights,
+    })
+}
 
-    let mut leaf_map: HashMap<(usize, usize), (usize, usize)> = HashMap::default();
-    let mut leaves: Vec<Vec<Leaf>> = iter::repeat_with(Vec::default).take(n_trees).collect();
+// let data = parse_nodes_data(proto_node, is_classifier)?;
 
-    for i in 0..n_leaves {
-        let leaf_tree_id = leaf_tree_ids[i];
-        let leaf_node_id = leaf_node_ids[i];
-        let leaf_class_id = leaf_class_ids[i];
-        let leaf_weight = leaf_weights[i];
+impl NodesData {
+    fn build_tree_ensemble(&self) -> TractResult<TreeEnsemble> {
+        // parse node data from protobuf
+        let n_nodes = self.tree_ids.len();
 
-        let tree_leaves = &mut leaves[leaf_tree_id];
-        leaf_map
-            .entry((leaf_tree_id, leaf_node_id))
-            .or_insert_with(|| (tree_leaves.len(), tree_leaves.len()))
-            .1 += 1;
-        tree_leaves.push(Leaf::new(leaf_class_id, leaf_weight));
-    }
+        // build the leaf map and collect all leaves
+        let n_trees = *self.tree_ids.last().unwrap() + 1;
+        let n_leaves = self.leaf_class_ids.len();
+        let mut leaf_map: HashMap<(usize, usize), (usize, usize)> = HashMap::default();
+        let mut leaves: Vec<Vec<Leaf>> = iter::repeat_with(Vec::default).take(n_trees).collect();
 
-    // collect all nodes
+        for i in 0..n_leaves {
+            let leaf_tree_id = self.leaf_tree_ids[i];
+            let leaf_node_id = self.leaf_node_ids[i];
+            let leaf_class_id = self.leaf_class_ids[i];
+            let leaf_weight = self.leaf_weights[i];
 
-    let mut nodes: Vec<Vec<TreeNode>> = vec![vec!(); n_trees];
-
-    let mut prev_tree_id = -1i64 as usize;
-    let mut prev_node_id = 0;
-
-    for i in 0..n_nodes {
-        let tree_id = tree_ids[i];
-        let node_id = node_ids[i];
-        let node_mode = node_modes[i];
-
-        if tree_id != prev_tree_id {
-            node.expect(node_id == 0, "node ids must start from 0 for each tree")?;
-        } else {
-            node.expect(node_id == prev_node_id + 1, "node ids must increase by 1")?;
+            let tree_leaves = &mut leaves[leaf_tree_id];
+            leaf_map
+                .entry((leaf_tree_id, leaf_node_id))
+                .or_insert_with(|| (tree_leaves.len(), tree_leaves.len()))
+                .1 += 1;
+            tree_leaves.push(Leaf::new(leaf_class_id, leaf_weight));
         }
-        let tree_node = if let Some(cmp) = node_mode {
-            let feature_id = feature_ids[i];
-            let value = node_values[i];
-            let true_id = true_ids[i];
-            let false_id = false_ids[i];
-            let nan_is_true = nan_is_true[i];
-            TreeNode::new_branch(cmp, feature_id, value, true_id, false_id, nan_is_true)
-        } else {
-            if let Some(&(start, end)) = leaf_map.get(&(tree_id, node_id)) {
-                TreeNode::new_leaf(start, end)
+
+        // collect all nodes
+
+        let mut nodes: Vec<Vec<TreeNode>> = vec![vec!(); n_trees];
+
+        let mut prev_tree_id = -1i64 as usize;
+        let mut prev_node_id = 0;
+
+        for i in 0..n_nodes {
+            let tree_id = self.tree_ids[i];
+            let node_id = self.node_ids[i];
+            let node_mode = self.node_modes[i];
+
+            if tree_id != prev_tree_id {
+                tract_core::anyhow::ensure!(
+                    node_id == 0,
+                    "node ids must start from 0 for each tree"
+                )
             } else {
-                bail!("leaf not found: tree_id={}, node_id={}", tree_id, node_id)
+                tract_core::anyhow::ensure!(
+                    node_id == prev_node_id + 1,
+                    "node ids must increase by 1"
+                )
             }
-        };
-        nodes[tree_id].push(tree_node);
+            let tree_node = if let Some(cmp) = node_mode {
+                let feature_id = self.feature_ids[i];
+                let value = self.node_values[i];
+                let true_id = self.true_ids[i];
+                let false_id = self.false_ids[i];
+                let nan_is_true = self.nan_is_true[i];
+                TreeNode::new_branch(cmp, feature_id, value, true_id, false_id, nan_is_true)
+            } else {
+                if let Some(&(start, end)) = leaf_map.get(&(tree_id, node_id)) {
+                    TreeNode::new_leaf(start, end)
+                } else {
+                    bail!("leaf not found: tree_id={}, node_id={}", tree_id, node_id)
+                }
+            };
+            nodes[tree_id].push(tree_node);
 
-        prev_tree_id = tree_id;
-        prev_node_id = node_id;
+            prev_tree_id = tree_id;
+            prev_node_id = node_id;
+        }
+
+        // build the trees
+
+        let mut trees: Vec<Tree> = Vec::default();
+
+        for i in 0..n_trees {
+            let tree = Tree::build(self.n_classes, &nodes[i], &leaves[i])
+                .with_context(|| format!("Building tree {}", i))?;
+            trees.push(tree);
+        }
+
+        // build the tree ensemble
+
+        let base_scores = self.base_values.as_ref().map(Vec::as_slice);
+        let post_transform =
+            self.post_transform.as_deref().map(parse_post_transform).transpose()?.unwrap_or(None);
+        let aggregate_fn = parse_aggregate(&self.aggregate_fn)?;
+
+        let ensemble = TreeEnsemble::build(&trees, aggregate_fn, post_transform, base_scores)?;
+        Ok(ensemble)
     }
-
-    // build the trees
-
-    let mut trees: Vec<Tree> = Vec::default();
-
-    for i in 0..n_trees {
-        let tree = Tree::build(n_classes, &nodes[i], &leaves[i])
-            .with_context(|| format!("Building tree {}", i))?;
-        trees.push(tree);
-    }
-
-    // build the tree ensemble
-
-    let base_scores = base_values.as_ref().map(Vec::as_slice);
-    let ensemble = TreeEnsemble::build(&trees, aggregate_fn, post_transform, base_scores)?;
-
-    Ok(ensemble)
 }
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("TreeEnsembleClassifier", TreeEnsembleClassifier::parse);
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ClassLabels {
-    Ints(Vec<i64>),
-    Strings(Vec<String>),
-}
-
-impl ClassLabels {
-    fn datum_type(&self) -> DatumType {
-        match self {
-            ClassLabels::Ints(_) => i64::datum_type(),
-            ClassLabels::Strings(_) => String::datum_type(),
-        }
-    }
-
-    fn len(&self) -> usize {
-        match self {
-            ClassLabels::Ints(v) => v.len(),
-            ClassLabels::Strings(v) => v.len(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Hash)]
 pub struct TreeEnsembleClassifier {
     ensemble: TreeEnsemble,
-    class_labels: ClassLabels,
+    class_labels: Tensor,
 }
 
 impl_dyn_hash!(TreeEnsembleClassifier);
@@ -271,15 +292,9 @@ impl TreeEnsembleClassifier {
         _ctx: &ParsingContext,
         node: &NodeProto,
     ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-        let ensemble = parse_tree_ensemble(node, true)?;
-        let class_labels = match node.get_attr_opt_slice::<i64>("classlabels_int64s")? {
-            Some(int_labels) => ClassLabels::Ints(int_labels.into()),
-            _ => {
-                let str_labels = node.get_attr_opt_vec::<String>("classlabels_strings")?;
-                ClassLabels::Strings(str_labels.unwrap())
-            }
-        };
-        Ok((Box::new(Self { ensemble, class_labels }), vec![]))
+        let data = parse_nodes_data(node, true)?;
+        let ensemble = data.build_tree_ensemble()?;
+        Ok((Box::new(Self { ensemble, class_labels: data.classlabels.unwrap() }), vec![]))
     }
 }
 
@@ -318,15 +333,12 @@ impl EvalOp for TreeEnsembleClassifier {
                     .0 as usize
             })
             .collect();
-        let categ = match &self.class_labels {
-            ClassLabels::Ints(v) => {
-                rctensor1(&*tops.into_iter().map(|c| v[c]).collect::<Vec<i64>>())
-            }
-            ClassLabels::Strings(v) => {
-                rctensor1(&*tops.into_iter().map(|c| v[c].clone()).collect::<Vec<String>>())
-            }
-        };
-        Ok(tvec!(categ, scores.into_arc_tensor()))
+        let categ = tops
+            .iter()
+            .map(|&ix| self.class_labels.slice(0, ix, ix + 1))
+            .collect::<TractResult<Vec<Tensor>>>()?;
+        let categ = Tensor::stack_tensors(0, &categ)?;
+        Ok(tvec!(categ.into_arc_tensor(), scores.into_arc_tensor()))
     }
 }
 
