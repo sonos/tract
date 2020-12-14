@@ -3,6 +3,7 @@ use crate::internal::*;
 use crate::ast;
 use crate::deser::Value;
 
+use tract_core::dyn_clone::clone_box;
 use tract_core::ops::binary::*;
 
 pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<TVec<OutletId>>;
@@ -14,7 +15,7 @@ pub struct Registry {
     pub primitives: HashMap<String, (Vec<ast::Parameter>, ToTract)>,
     pub unit_element_wise_ops: Vec<(String, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(String, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
-    pub binary_ops: Vec<(String, Box<dyn BinMiniOp>)>,
+    pub binary_ops: Vec<(String, Box<dyn BinMiniOp>, Option<Box<dyn BinMiniOp>>)>,
     pub from_tract: HashMap<TypeId, FromTract>,
 }
 
@@ -49,7 +50,7 @@ impl Registry {
         ew: &dyn ElementWiseMiniOp,
     ) {
         assert!(std::mem::size_of_val(ew) == 0);
-        self.unit_element_wise_ops.push((id.into(), tract_core::dyn_clone::clone_box(ew)));
+        self.unit_element_wise_ops.push((id.into(), clone_box(ew)));
     }
 
     pub fn register_element_wise(
@@ -64,7 +65,16 @@ impl Registry {
     }
 
     pub fn register_binary(&mut self, id: impl Into<String>, op: &dyn BinMiniOp) {
-        self.binary_ops.push((id.into(), tract_core::dyn_clone::clone_box(op)));
+        self.binary_ops.push((id.into(), clone_box(op), None));
+    }
+
+    pub fn register_binary_with_flipped(
+        &mut self,
+        id: impl Into<String>,
+        op: &dyn BinMiniOp,
+        flipped: &dyn BinMiniOp,
+    ) {
+        self.binary_ops.push((id.into(), clone_box(op), Some(clone_box(flipped))));
     }
 
     pub fn serialize(
@@ -97,6 +107,14 @@ impl Registry {
                 let a = ast.mapping[&node.inputs[0]].clone();
                 let b = ast.mapping[&node.inputs[1]].clone();
                 return Ok(Some(invocation(&*op.0, &[a, b], &[])));
+            } else if let Some(op) = self
+                .binary_ops
+                .iter()
+                .find(|ew| ew.2.as_ref().map(|op| op.type_id()) == Some(op.0.type_id()))
+            {
+                let a = ast.mapping[&node.inputs[0]].clone();
+                let b = ast.mapping[&node.inputs[1]].clone();
+                return Ok(Some(invocation(&*op.0, &[b, a], &[])));
             }
         } else if let Some(unary) = node.op().downcast_ref::<ops::binary::UnaryOp>() {
             if let Some(o) =
@@ -105,6 +123,14 @@ impl Registry {
                 let a = ast.konst(format!("{}-a", node.name), &unary.a);
                 let b = ast.mapping[&node.inputs[0]].clone();
                 return Ok(Some(invocation(&*o.0, &[a, b], &[])));
+            } else if let Some(o) = self
+                .binary_ops
+                .iter()
+                .find(|bo| bo.2.as_ref().map(|op| op.type_id()) == Some(unary.mini_op.type_id()))
+            {
+                let a = ast.konst(format!("{}-a", node.name), &unary.a);
+                let b = ast.mapping[&node.inputs[0]].clone();
+                return Ok(Some(invocation(&*o.0, &[b, a], &[])));
             }
         } else if let Some(op) = self.from_tract.get(&node.op().type_id()) {
             if let Some(result) = op(ast, node)? {
@@ -135,8 +161,19 @@ impl Registry {
             return Ok(Some(Value::Wire((ew.4)(builder, &resolved)?[0])));
         }
         if let Some(bin) = self.binary_ops.iter().find(|bin| bin.0 == invocation.id) {
-            let a = invocation.arguments[0].rvalue.resolve(builder)?.to::<OutletId>(builder)?;
-            let b = invocation.arguments[1].rvalue.resolve(builder)?.to::<OutletId>(builder)?;
+            let mut a = invocation.arguments[0].rvalue.resolve(builder)?.to::<OutletId>(builder)?;
+            let mut b = invocation.arguments[1].rvalue.resolve(builder)?.to::<OutletId>(builder)?;
+            let a_dt = builder.model.outlet_fact(a)?.datum_type;
+            let b_dt = builder.model.outlet_fact(b)?.datum_type;
+            // mitigation of nnef "scalar" type mismatch with tract-core more
+            // strict types
+            if a_dt != b_dt {
+                if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
+                    a = builder.wire(tract_core::ops::cast::cast(b_dt), &[a])?[0];
+                } else {
+                    b = builder.wire(tract_core::ops::cast::cast(a_dt), &[b])?[0];
+                };
+            }
             let inputs = multicast(builder, &[a, b])?;
             return Ok(Some(Value::Wire(
                 builder.wire(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0],

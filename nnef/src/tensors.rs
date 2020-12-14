@@ -1,4 +1,7 @@
 use tract_core::internal::*;
+use byteorder::{LE, WriteBytesExt, ReadBytesExt};
+
+const TRACT_ITEM_TYPE_VENDOR: u16 = unsafe { std::mem::transmute([b'T', b'R']) };
 
 #[repr(C)]
 #[derive(Debug)]
@@ -23,7 +26,7 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
         reader.read_exact(buffer)?;
         if header.magic != [0x4e, 0xef] {
             bail!("Wrong magic number");
-        }
+        };
         if header.version_maj != 1 && header.version_min != 0 {
             bail!("Wrong version number");
         }
@@ -33,7 +36,9 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
         let shape: TVec<usize> =
             header.dims[0..header.rank as usize].iter().map(|d| *d as _).collect();
         let len = shape.iter().product::<usize>();
-        if len * (header.bits_per_item as usize / 8) != header.data_size_bytes as usize {
+        if header.bits_per_item != 0xFFFFFFFF
+            && len * (header.bits_per_item as usize / 8) != header.data_size_bytes as usize
+        {
             bail!(
                 "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
                 shape,
@@ -41,30 +46,45 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
                 header.data_size_bytes
             );
         }
-        if header.item_type_vendor != 0 {
+        if header.item_type_vendor != 0 && header.item_type_vendor != TRACT_ITEM_TYPE_VENDOR {
             bail!("Unknownn item type vendor {}", header.item_type_vendor);
         }
-        let dt = match (header.item_type, header.bits_per_item) {
-            (0, 16) => DatumType::F16,
-            (0, 32) => DatumType::F32,
-            (0, 64) => DatumType::F64,
-            (1, 8) => DatumType::U8,
-            (1, 16) => DatumType::U16,
-            (1, 32) => DatumType::U32,
-            (1, 64) => DatumType::U64,
-            (0x0100, 8) => DatumType::I8,
-            (0x0100, 16) => DatumType::I16,
-            (0x0100, 32) => DatumType::I32,
-            (0x0100, 64) => DatumType::I64,
+        let dt = match (header.item_type_vendor, header.item_type, header.bits_per_item) {
+            (0, 0, 16) => DatumType::F16,
+            (0, 0, 32) => DatumType::F32,
+            (0, 0, 64) => DatumType::F64,
+            (0, 1, 8) => DatumType::U8,
+            (0, 1, 16) => DatumType::U16,
+            (0, 1, 32) => DatumType::U32,
+            (0, 1, 64) => DatumType::U64,
+            (0, 0x0100, 8) => DatumType::I8,
+            (0, 0x0100, 16) => DatumType::I16,
+            (0, 0x0100, 32) => DatumType::I32,
+            (0, 0x0100, 64) => DatumType::I64,
+            (TRACT_ITEM_TYPE_VENDOR, 0x1000, 0xFFFF) => DatumType::String,
             _ => bail!(
                 "Unsupported type in tensor type:{} bits_per_item:{}",
                 header.item_type,
                 header.bits_per_item
             ),
         };
-        let mut tensor = Tensor::uninitialized_dt(dt, &shape)?;
-        reader.read_exact(tensor.as_bytes_mut())?;
-        Ok(tensor)
+        if dt.is_copy() {
+            let mut tensor = Tensor::uninitialized_dt(dt, &shape)?;
+            reader.read_exact(tensor.as_bytes_mut())?;
+            Ok(tensor)
+        } else if dt == DatumType::String {
+            let mut tensor = Tensor::zero_dt(dt, &shape)?;
+            for item in tensor.as_slice_mut_unchecked::<String>() {
+                let len: u32 = reader.read_u32::<LE>()?;
+                let mut bytes = Vec::with_capacity(len as usize);
+                bytes.set_len(len as usize);
+                reader.read_exact(&mut bytes)?;
+                *item = String::from_utf8(bytes)?;
+            }
+            Ok(tensor)
+        } else {
+            todo!()
+        }
     }
 }
 
@@ -89,12 +109,23 @@ pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResul
             0x100
         } else if tensor.datum_type().is_unsigned() {
             1
+        } else if tensor.datum_type() == DatumType::String {
+            header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
+            header.bits_per_item = 0xFFFF;
+            0x1000
         } else {
             bail!("Don't know how to serialize {:?}", tensor.datum_type())
         };
         let header_buf: &[u8; 128] = std::mem::transmute(&header);
         w.write_all(&*header_buf)?;
-        w.write_all(tensor.as_bytes())?;
+        if tensor.datum_type().is_copy() {
+            w.write_all(tensor.as_bytes())?;
+        } else if tensor.datum_type() == DatumType::String {
+            for s in tensor.as_slice_unchecked::<String>() {
+                w.write_u32::<LE>(s.as_bytes().len() as u32)?;
+                w.write_all(s.as_bytes())?;
+            }
+        }
         Ok(())
     }
 }

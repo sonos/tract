@@ -1,1 +1,1 @@
-IGNORE="nnef"
+IGNORE=
