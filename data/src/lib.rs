@@ -31,6 +31,7 @@ pub mod internal {
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
     pub use ndarray as tract_ndarray;
+    pub use smallvec as tract_smallvec;
 }
 
 pub use anyhow;
