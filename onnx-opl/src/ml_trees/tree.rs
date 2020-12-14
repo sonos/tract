@@ -2,14 +2,13 @@ use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
 use std::iter;
 
-use tract_hir::internal::*;
+use tract_nnef::internal::*;
 
 use tract_ndarray::{
     Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD, ArrayViewMut1, Axis, Ix1, Ix2,
 };
 
 use tract_num_traits::AsPrimitive;
-use smallvec::SmallVec;
 
 macro_rules! ensure {
     ($cond: expr, $($rest: expr),* $(,)?) => {
@@ -449,7 +448,7 @@ impl TreeEnsemble {
         self.check_n_features(input.shape()[1])?;
         let n = input.shape()[0];
         let mut output = Array2::zeros((n, self.n_classes));
-        let mut aggs: SmallVec<[A; 16]> =
+        let mut aggs: tract_smallvec::SmallVec<[A; 16]> =
             iter::repeat_with(Default::default).take(self.n_classes).collect();
         for i in 0..n {
             unsafe {
@@ -470,7 +469,7 @@ impl TreeEnsemble {
     {
         self.check_n_features(input.len())?;
         let mut output = Array1::zeros(self.n_classes);
-        let mut aggs: SmallVec<[A; 16]> =
+        let mut aggs: tract_smallvec::SmallVec<[A; 16]> =
             iter::repeat_with(Default::default).take(self.n_classes).collect();
         unsafe {
             self.eval_one_unchecked::<A, T>(input, &mut output.view_mut(), &mut aggs);
