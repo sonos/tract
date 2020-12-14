@@ -47,11 +47,6 @@ pub fn variable(
             shape
         );
     }
-    let tensor = if tensor.datum_type() == f32::datum_type() {
-        tensor.clone()
-    } else {
-        tensor.cast_to::<f32>()?.into_owned().into_arc_tensor()
-    };
     builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
 }
 

@@ -26,6 +26,9 @@ pub fn register(registry: &mut Registry) {
 
     registry.register_binary("tract_core_xor", &ops::logic::Xor {});
 
+    registry.register_binary_with_flipped("tract_shl", &ops::math::ShiftLeft, &ops::math::FlippedShiftLeft);
+    registry.register_binary_with_flipped("tract_shr", &ops::math::ShiftRight, &ops::math::FlippedShiftRight);
+
     broadcast::register(registry);
     cast::register(registry);
     downsample::register(registry);

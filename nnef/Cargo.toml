@@ -14,6 +14,7 @@ edition = "2018"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+byteorder = "1"
 log = "0.4"
 nom = "5"
 tar = "0.4"
