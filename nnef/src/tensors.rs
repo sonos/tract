@@ -1,7 +1,7 @@
 use tract_core::internal::*;
 use byteorder::{LE, WriteBytesExt, ReadBytesExt};
 
-const TRACT_ITEM_TYPE_VENDOR: u16 = unsafe { std::mem::transmute([b'T', b'R']) };
+const TRACT_ITEM_TYPE_VENDOR: u16 = (b'T' as u16) << 8u16 | b'R' as u16;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -38,14 +38,14 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
         let len = shape.iter().product::<usize>();
         if header.bits_per_item != 0xFFFFFFFF
             && len * (header.bits_per_item as usize / 8) != header.data_size_bytes as usize
-        {
-            bail!(
-                "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
-                shape,
-                header.bits_per_item,
-                header.data_size_bytes
-            );
-        }
+            {
+                bail!(
+                    "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
+                    shape,
+                    header.bits_per_item,
+                    header.data_size_bytes
+                    );
+            }
         if header.item_type_vendor != 0 && header.item_type_vendor != TRACT_ITEM_TYPE_VENDOR {
             bail!("Unknownn item type vendor {}", header.item_type_vendor);
         }
@@ -66,7 +66,7 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
                 "Unsupported type in tensor type:{} bits_per_item:{}",
                 header.item_type,
                 header.bits_per_item
-            ),
+                ),
         };
         if dt.is_copy() {
             let mut tensor = Tensor::uninitialized_dt(dt, &shape)?;
