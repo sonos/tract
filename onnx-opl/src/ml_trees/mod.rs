@@ -1,23 +1,12 @@
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::iter;
 use tract_nnef::internal::*;
 
 mod tree;
 
-use self::tree::{Aggregate, Cmp, Leaf, PostTransform, Tree, TreeEnsemble, TreeNode};
-
-fn parse_node_mode(s: &str) -> TractResult<Option<Cmp>> {
-    match s {
-        "BRANCH_LEQ" => Ok(Some(Cmp::LessEqual)),
-        "BRANCH_LT" => Ok(Some(Cmp::Less)),
-        "BRANCH_GTE" => Ok(Some(Cmp::GreaterEqual)),
-        "BRANCH_GT" => Ok(Some(Cmp::Greater)),
-        "BRANCH_EQ" => Ok(Some(Cmp::Equal)),
-        "BRANCH_NEQ" => Ok(Some(Cmp::NotEqual)),
-        "LEAF" => Ok(None),
-        _ => bail!("Unsupported mode node: {}", s),
-    }
-}
+use self::tree::{Aggregate, Leaf, PostTransform, Tree, TreeEnsemble, TreeNode};
+pub use self::tree::Cmp;
 
 fn parse_post_transform(s: &str) -> TractResult<Option<PostTransform>> {
     match s {
@@ -44,40 +33,42 @@ pub struct NodesData {
     pub n_classes: usize,
     pub base_values: Option<Vec<f32>>,
     pub classlabels: Option<Tensor>,
-    pub node_ids: Vec<usize>,
-    pub tree_ids: Vec<usize>,
-    pub feature_ids: Vec<usize>,
-    pub true_ids: Vec<usize>,
-    pub false_ids: Vec<usize>,
-    pub node_values: Vec<f32>,
-    pub nan_is_true: Vec<bool>,
-    pub node_modes: Vec<String>,
+    // dt is u32, shape is [n_nodes, 7]
+    // 7 cols are [ node_id, tree_id, feature_id, true_id, false_id,
+    //   transmuted-from-f32 node_value, flags ]
+    // flags last significant byte encodes node_mode
+    // nan_is_true is 9th bit
+    pub nodes: Tensor,
     pub post_transform: Option<String>,
     pub aggregate_fn: String,
-    pub leaf_node_ids: Vec<usize>,
-    pub leaf_tree_ids: Vec<usize>,
-    pub leaf_class_ids: Vec<usize>,
-    pub leaf_weights: Vec<f32>,
+    // dt is u32, shape is [ n_leaves, 4 ]
+    // 4 cols = anre node_id, tree_id, class_id, transmuted-from-f32 weight
+    pub leaves: Tensor,
 }
 
 impl NodesData {
     pub fn build_tree_ensemble(&self) -> TractResult<TreeEnsemble> {
         // parse node data from protobuf
-        let n_nodes = self.tree_ids.len();
+        let n_nodes = self.nodes.shape()[0];
+        let n_leaves = self.leaves.shape()[0];
+        let t_nodes =
+            self.nodes.to_array_view::<u32>()?.into_dimensionality::<tract_ndarray::Ix2>()?;
+        let t_leaves =
+            self.leaves.to_array_view::<u32>()?.into_dimensionality::<tract_ndarray::Ix2>()?;
 
         // build the leaf map and collect all leaves
-        let n_trees = *self.tree_ids.last().unwrap() + 1;
-        let n_leaves = self.leaf_class_ids.len();
-        let mut leaf_map: HashMap<(usize, usize), (usize, usize)> = HashMap::default();
+        let n_trees = t_nodes.outer_iter().last().unwrap()[1] as usize + 1;
+        let mut leaf_map: HashMap<(u32, u32), (usize, usize)> = HashMap::default();
         let mut leaves: Vec<Vec<Leaf>> = iter::repeat_with(Vec::default).take(n_trees).collect();
 
         for i in 0..n_leaves {
-            let leaf_tree_id = self.leaf_tree_ids[i];
-            let leaf_node_id = self.leaf_node_ids[i];
-            let leaf_class_id = self.leaf_class_ids[i];
-            let leaf_weight = self.leaf_weights[i];
+            let row = t_leaves.index_axis(tract_ndarray::Axis(0), i);
+            let leaf_node_id = row[0];
+            let leaf_tree_id = row[1];
+            let leaf_class_id = row[2];
+            let leaf_weight = f32::from_bits(row[3]);
 
-            let tree_leaves = &mut leaves[leaf_tree_id];
+            let tree_leaves = &mut leaves[leaf_tree_id as usize];
             leaf_map
                 .entry((leaf_tree_id, leaf_node_id))
                 .or_insert_with(|| (tree_leaves.len(), tree_leaves.len()))
@@ -89,13 +80,14 @@ impl NodesData {
 
         let mut nodes: Vec<Vec<TreeNode>> = vec![vec!(); n_trees];
 
-        let mut prev_tree_id = -1i64 as usize;
+        let mut prev_tree_id = -1i64 as u32;
         let mut prev_node_id = 0;
 
         for i in 0..n_nodes {
-            let tree_id = self.tree_ids[i];
-            let node_id = self.node_ids[i];
-            let node_mode = parse_node_mode(&self.node_modes[i])?;
+            let row = t_nodes.index_axis(tract_ndarray::Axis(0), i);
+            let node_id = row[0];
+            let tree_id = row[1];
+            let kind: Option<Cmp> = ((row[6] & 0xFF) as u8).try_into().ok();
 
             if tree_id != prev_tree_id {
                 tract_core::anyhow::ensure!(
@@ -108,13 +100,13 @@ impl NodesData {
                     "node ids must increase by 1"
                 )
             }
-            let tree_node = if let Some(mode) = node_mode {
-                let feature_id = self.feature_ids[i];
-                let value = self.node_values[i];
-                let true_id = self.true_ids[i];
-                let false_id = self.false_ids[i];
-                let nan_is_true = self.nan_is_true[i];
-                TreeNode::new_branch(mode, feature_id, value, true_id, false_id, nan_is_true)
+            let tree_node = if let Some(kind) = kind {
+                let feature_id = row[2];
+                let value = f32::from_bits(row[6]);
+                let true_id =row[3];
+                let false_id = row[4];
+                let nan_is_true = (row[6] & 0x0100) != 0;
+                TreeNode::new_branch(kind, feature_id, value, true_id, false_id, nan_is_true)
             } else {
                 if let Some(&(start, end)) = leaf_map.get(&(tree_id, node_id)) {
                     TreeNode::new_leaf(start, end)
@@ -122,7 +114,7 @@ impl NodesData {
                     bail!("leaf not found: tree_id={}, node_id={}", tree_id, node_id)
                 }
             };
-            nodes[tree_id].push(tree_node);
+            nodes[tree_id as usize].push(tree_node);
 
             prev_tree_id = tree_id;
             prev_node_id = node_id;

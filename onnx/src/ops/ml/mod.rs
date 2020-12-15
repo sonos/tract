@@ -1,4 +1,5 @@
 use std::iter;
+use tract_onnx_opl::ml_trees::Cmp;
 use tract_onnx_opl::ml_trees::*;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
@@ -6,6 +7,19 @@ use crate::pb::NodeProto;
 use crate::pb_helpers::AttrTVecType;
 
 use tract_hir::internal::*;
+
+fn parse_node_mode(s: &str) -> TractResult<Option<Cmp>> {
+    match s {
+        "BRANCH_LEQ" => Ok(Some(Cmp::LessEqual)),
+        "BRANCH_LT" => Ok(Some(Cmp::Less)),
+        "BRANCH_GTE" => Ok(Some(Cmp::GreaterEqual)),
+        "BRANCH_GT" => Ok(Some(Cmp::Greater)),
+        "BRANCH_EQ" => Ok(Some(Cmp::Equal)),
+        "BRANCH_NEQ" => Ok(Some(Cmp::NotEqual)),
+        "LEAF" => Ok(None),
+        _ => bail!("Unsupported mode node: {}", s),
+    }
+}
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("TreeEnsembleClassifier", tree_classifier);
@@ -85,7 +99,10 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<NodesD
     let node_values = get_vec_attr::<f32>(node, "nodes_values", n_nodes)?;
     let nan_is_true = get_vec_attr_opt::<bool>(node, "nodes_missing_value_tracks_true", n_nodes)?
         .unwrap_or_else(|| iter::repeat(false).take(n_nodes).collect());
-    let node_modes = get_vec_attr::<String>(node, "nodes_modes", n_nodes)?;
+    let node_modes: Vec<Option<Cmp>> = get_vec_attr::<&str>(node, "nodes_modes", n_nodes)?
+        .iter()
+        .map(|s| parse_node_mode(s))
+        .collect::<TractResult<_>>()?;
 
     // parse post_transform from protobuf
     let post_transform = node.get_attr_opt("post_transform")?;
@@ -118,24 +135,42 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<NodesD
         "mismatching # of trees (nodes/leaves)",
     )?;
 
+    let nodes =
+        tract_ndarray::Array2::<u32>::from_shape_fn((node_ids.len(), 7), |(n, col)| match col {
+            0 => node_ids[n] as u32,
+            1 => tree_ids[n] as u32,
+            2 => feature_ids[n] as u32,
+            3 => true_ids[n] as u32,
+            4 => false_ids[n] as u32,
+            5 => node_values[n].to_bits(),
+            6 => {
+                (0x0100u32 * nan_is_true[n] as u32)
+                    | node_modes[n].as_ref().map(Cmp::to_u8).unwrap_or(0u8) as u32
+            }
+            _ => unreachable!(),
+        })
+        .into_tensor();
+
+    let leaves = tract_ndarray::Array2::<u32>::from_shape_fn(
+        (leaf_weights.len(), 4),
+        |(leaf, col)| match col {
+            0 => leaf_node_ids[leaf] as u32,
+            1 => leaf_tree_ids[leaf] as u32,
+            2 => leaf_class_ids[leaf] as u32,
+            3 => leaf_weights[leaf].to_bits(),
+            _ => unreachable!(),
+        },
+    )
+    .into_tensor();
+
     Ok(NodesData {
         n_classes,
         base_values,
         classlabels,
-        node_ids,
-        tree_ids,
-        feature_ids,
-        true_ids,
-        false_ids,
-        node_values,
-        nan_is_true,
-        node_modes,
+        nodes,
         post_transform,
         aggregate_fn,
-        leaf_node_ids,
-        leaf_tree_ids,
-        leaf_class_ids,
-        leaf_weights,
+        leaves,
     })
 }
 
@@ -192,6 +227,6 @@ fn rules<'r, 'p, 's>(
 
 /*
 fn nboutputs(&self) -> TractResult<usize> {
-    Ok(2)
+Ok(2)
 }
 */
