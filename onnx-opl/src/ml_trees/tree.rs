@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display};
 use std::iter;
 
@@ -18,14 +19,15 @@ macro_rules! ensure {
     }
 }
 
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Cmp {
-    LessEqual,
-    Less,
-    GreaterEqual,
-    Greater,
-    Equal,
-    NotEqual,
+    Equal = 1,
+    NotEqual = 2,
+    Less = 3,
+    Greater = 4,
+    LessEqual = 5,
+    GreaterEqual = 6,
 }
 
 impl Cmp {
@@ -40,6 +42,20 @@ impl Cmp {
             Cmp::Greater => x > y,
             Cmp::Equal => x == y,
             Cmp::NotEqual => x != y,
+        }
+    }
+    pub fn to_u8(&self) -> u8 {
+        unsafe { std::mem::transmute(*self) }
+    }
+}
+
+impl TryFrom<u8> for Cmp {
+    type Error = TractError;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value >= 1 && value <= 5 {
+            unsafe { Ok(std::mem::transmute(value)) }
+        } else {
+            bail!("Invalid value for Cmp: {}", value);
         }
     }
 }
@@ -61,11 +77,11 @@ impl Display for Cmp {
 #[educe(Hash)]
 pub struct BranchNode {
     pub cmp: Cmp, // TODO: perf: most real forests have only 1 type of comparison
-    pub feature_id: usize,
+    pub feature_id: u32,
     #[educe(Hash(method = "hash_f32"))]
     pub value: f32,
-    pub true_id: usize,
-    pub false_id: usize,
+    pub true_id: u32,
+    pub false_id: u32,
     pub nan_is_true: bool,
 }
 
@@ -74,9 +90,9 @@ impl BranchNode {
         let condition =
             if feature.is_nan() { self.nan_is_true } else { self.cmp.compare(feature, self.value) };
         if condition {
-            self.true_id
+            self.true_id as usize
         } else {
-            self.false_id
+            self.false_id as usize
         }
     }
 }
@@ -95,7 +111,12 @@ pub enum TreeNode {
 
 impl TreeNode {
     pub fn new_branch(
-        cmp: Cmp, feature_id: usize, value: f32, true_id: usize, false_id: usize, nan_is_true: bool,
+        cmp: Cmp,
+        feature_id: u32,
+        value: f32,
+        true_id: u32,
+        false_id: u32,
+        nan_is_true: bool,
     ) -> Self {
         TreeNode::Branch(BranchNode { cmp, feature_id, value, true_id, false_id, nan_is_true })
     }
@@ -108,13 +129,13 @@ impl TreeNode {
 #[derive(Copy, Clone, Debug, Educe)]
 #[educe(Hash)]
 pub struct Leaf {
-    class_id: usize,
+    class_id: u32,
     #[educe(Hash(method = "hash_f32"))]
     weight: f32,
 }
 
 impl Leaf {
-    pub fn new(class_id: usize, weight: f32) -> Leaf {
+    pub fn new(class_id: u32, weight: f32) -> Leaf {
         Leaf { class_id, weight }
     }
 }
@@ -241,11 +262,18 @@ impl PostTransform {
 pub struct Tree {
     n_classes: usize,
     nodes: Vec<TreeNode>, // TODO: can this be a slice/view into ensemble's contiguous storage?
-    leaves: Vec<Leaf>, // TODO: store as a collection of direct slices instead of indices?
+    leaves: Vec<Leaf>,    // TODO: store as a collection of direct slices instead of indices?
 }
 
 fn ensure<O, T>(
-    t: &str, index: usize, obj: O, an: &str, a: T, cmp: Cmp, bn: &str, b: T,
+    t: &str,
+    index: usize,
+    obj: O,
+    an: &str,
+    a: T,
+    cmp: Cmp,
+    bn: &str,
+    b: T,
 ) -> TractResult<()>
 where
     O: Debug,
@@ -272,12 +300,10 @@ impl Tree {
         for (i, node) in nodes.iter().enumerate() {
             match node {
                 TreeNode::Branch(ref b) => {
-                    // i think this one if bogus -- K.
-                    // ensure("node", i, node, "feature_id", b.feature_id, Less, "n_nodes", n_nodes)?;
-                    ensure("node", i, node, "true_id", b.true_id, Less, "n_nodes", n_nodes)?;
-                    ensure("node", i, node, "false_id", b.false_id, Less, "n_nodes", n_nodes)?;
-                    has_parents[b.true_id] = true;
-                    has_parents[b.false_id] = true;
+                    ensure("node", i, node, "true_id", b.true_id, Less, "n_nodes", n_nodes as _)?;
+                    ensure("node", i, node, "false_id", b.false_id, Less, "n_nodes", n_nodes as _)?;
+                    has_parents[b.true_id as usize] = true;
+                    has_parents[b.false_id as usize] = true;
                 }
                 TreeNode::Leaf(ref l) => {
                     ensure("node", i, node, "start_id", l.start_id, Less, "end_id", l.end_id)?;
@@ -297,7 +323,7 @@ impl Tree {
         ensure!(n_orphan_leaves == 0, "Invalid tree: {} orphan leaves", n_orphan_leaves);
 
         for (i, leaf) in leaves.iter().enumerate() {
-            ensure("leaf", i, leaf, "class_id", leaf.class_id, Less, "n_classes", n_classes)?;
+            ensure("leaf", i, leaf, "class_id", leaf.class_id, Less, "n_classes", n_classes as _)?;
             // TODO: be more strict and check for nan/inf/-inf here, or not?
             let w_finite = leaf.weight.is_finite();
             ensure("leaf", i, leaf, "weight.is_finite()", w_finite, Equal, "true", true)?;
@@ -314,7 +340,7 @@ impl Tree {
     }
 
     pub fn max_feature_id(&self) -> usize {
-        self.branches().map(|b| b.feature_id).max().unwrap_or(0)
+        self.branches().map(|b| b.feature_id).max().unwrap_or(0) as usize
     }
 
     unsafe fn get_leaves_unchecked<T>(&self, input: &ArrayView1<T>) -> &[Leaf]
@@ -326,7 +352,7 @@ impl Tree {
             let node = self.nodes.get_unchecked(node_id);
             match node {
                 TreeNode::Branch(ref b) => {
-                    let feature = *input.uget(b.feature_id);
+                    let feature = *input.uget(b.feature_id as usize);
                     node_id = b.get_child_id(feature.as_());
                 }
                 TreeNode::Leaf(ref l) => return &self.leaves[l.start_id..l.end_id],
@@ -335,14 +361,17 @@ impl Tree {
     }
 
     unsafe fn eval_unchecked<A, T>(
-        &self, input: &ArrayView1<T>, output: &mut ArrayViewMut1<f32>, aggs: &mut [A],
+        &self,
+        input: &ArrayView1<T>,
+        output: &mut ArrayViewMut1<f32>,
+        aggs: &mut [A],
     ) where
         A: AggregateFn,
         T: AsPrimitive<f32>,
     {
         for leaf in self.get_leaves_unchecked(input) {
-            let agg_fn = aggs.get_unchecked_mut(leaf.class_id);
-            agg_fn.aggregate(leaf.weight, output.uget_mut(leaf.class_id));
+            let agg_fn = aggs.get_unchecked_mut(leaf.class_id as usize);
+            agg_fn.aggregate(leaf.weight, output.uget_mut(leaf.class_id as usize));
         }
     }
 }
@@ -371,7 +400,9 @@ fn hash_base_scores(scores: &Option<Vec<f32>>, state: &mut impl std::hash::Hashe
 
 impl TreeEnsemble {
     pub fn build(
-        trees: &[Tree], aggregate_fn: Aggregate, post_transform: Option<PostTransform>,
+        trees: &[Tree],
+        aggregate_fn: Aggregate,
+        post_transform: Option<PostTransform>,
         base_scores: Option<&[f32]>,
     ) -> TractResult<Self> {
         ensure!(trees.len() > 0, "Invalid tree ensemble: cannot be empty");
@@ -409,7 +440,10 @@ impl TreeEnsemble {
     }
 
     unsafe fn eval_one_unchecked<A, T>(
-        &self, input: &ArrayView1<T>, output: &mut ArrayViewMut1<f32>, aggs: &mut [A],
+        &self,
+        input: &ArrayView1<T>,
+        output: &mut ArrayViewMut1<f32>,
+        aggs: &mut [A],
     ) where
         A: AggregateFn,
         T: AsPrimitive<f32>,
