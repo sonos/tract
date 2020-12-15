@@ -120,7 +120,7 @@ impl InferenceRulesOp for Box<dyn Expansion> {
     as_op!();
 }
 
-pub fn inference_wrap<O, R>(op: O, rules: R) -> Box<dyn InferenceOp>
+pub fn inference_wrap<O, R>(op: O, outputs: usize, rules: R) -> Box<dyn InferenceOp>
 where
     O: TypedOp,
     R: for<'r, 'p, 's> Fn(
@@ -133,7 +133,7 @@ where
         + Sync
         + 'static,
 {
-    expand(InferenceWrapper { typed_op: Box::new(op), rules: Arc::new(rules) })
+    expand(InferenceWrapper { typed_op: Box::new(op), rules: Arc::new(rules), outputs })
 }
 
 #[derive(Clone, new, Educe)]
@@ -152,6 +152,7 @@ pub struct InferenceWrapper {
             + Sync
             + 'static,
     >,
+    outputs: usize,
 }
 
 impl std::fmt::Debug for InferenceWrapper {
@@ -185,6 +186,10 @@ impl Expansion for InferenceWrapper {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         (self.rules)(self.typed_op.as_op(), s, inputs, outputs)
+    }
+
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(self.outputs)
     }
 }
 

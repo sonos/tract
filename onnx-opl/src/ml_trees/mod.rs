@@ -95,7 +95,7 @@ impl NodesData {
         for i in 0..n_nodes {
             let tree_id = self.tree_ids[i];
             let node_id = self.node_ids[i];
-            let node_mode = &self.node_modes[i];
+            let node_mode = parse_node_mode(&self.node_modes[i])?;
 
             if tree_id != prev_tree_id {
                 tract_core::anyhow::ensure!(
@@ -108,20 +108,13 @@ impl NodesData {
                     "node ids must increase by 1"
                 )
             }
-            let tree_node = if node_mode != "" {
+            let tree_node = if let Some(mode) = node_mode {
                 let feature_id = self.feature_ids[i];
                 let value = self.node_values[i];
                 let true_id = self.true_ids[i];
                 let false_id = self.false_ids[i];
                 let nan_is_true = self.nan_is_true[i];
-                TreeNode::new_branch(
-                    parse_node_mode(node_mode)?.unwrap(),
-                    feature_id,
-                    value,
-                    true_id,
-                    false_id,
-                    nan_is_true,
-                )
+                TreeNode::new_branch(mode, feature_id, value, true_id, false_id, nan_is_true)
             } else {
                 if let Some(&(start, end)) = leaf_map.get(&(tree_id, node_id)) {
                     TreeNode::new_leaf(start, end)

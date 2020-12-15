@@ -20,6 +20,7 @@ fn tree_classifier(
     Ok((
         inference_wrap(
             TreeEnsembleClassifier { ensemble, class_labels: data.classlabels.unwrap() },
+            2,
             rules,
         ),
         vec![],
