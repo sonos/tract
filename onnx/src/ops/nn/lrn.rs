@@ -12,7 +12,7 @@ pub fn lrn(
     let beta = node.get_attr_opt("beta")?.unwrap_or(0.75);
     let bias = node.get_attr_opt("bias")?.unwrap_or(1.);
     let size = node.get_attr("size")?;
-    Ok((inference_wrap(Lrn { alpha, beta, bias, size }, lrn_rules), vec![]))
+    Ok((inference_wrap(Lrn { alpha, beta, bias, size }, 1, lrn_rules), vec![]))
 }
 
 fn lrn_rules<'r, 'p, 's>(
