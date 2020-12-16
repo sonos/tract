@@ -1,0 +1,44 @@
+# add whatever else we support.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "x86_64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+    { triple = "aarch64-linux-android" },
+]
+
+[advisories]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+ignore = []
+
+[bans]
+multiple-versions = "deny"
+wildcards = "allow"
+deny = [
+    # List crates we don't want in our dependency tree here.
+]
+
+# Skip some multiple-versions checks, until they can be fixed.
+skip = [
+    { name = "rand" },  # A patched version is used.
+    { name = "rand_core" },  # A patched version is used.
+    { name = "rand_chacha" },  # A patched version is used.
+    { name = "num-bigint", version="<0.3.1" },  # ndarray-npy brings in a different version.
+    { name = "itertools", version="<0.9.0" },  # ndarray/criterion brings in an older version.
+    { name = "ansi_term", version="<0.12.1" },  # clap brings in an old one.
+]
+
+[sources]
+# trusted git sources.
+allow-git = [
+    "https://github.com/rust-lang-nursery/rand"
+]
+
+[licenses]
+allow = [
+    "Apache-2.0",                     # https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)
+    "BSD-2-Clause",                   # https://tldrlegal.com/license/bsd-2-clause-license-(freebsd)
+    "MIT",                            # https://tldrlegal.com/license/mit-license
+    "Zlib",                           # https://tldrlegal.com/license/zlib-libpng-license-(zlib)
+]
