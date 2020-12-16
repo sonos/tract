@@ -152,8 +152,10 @@ impl<'a> ParsingContext<'a> {
         for output in graph.output.iter() {
             let fact = output.r#type.as_ref().unwrap().value.as_ref().unwrap();
             let pb::type_proto::Value::TensorType(fact) = fact;
-            outputs.push(outlets_by_name[&*output.name]);
-            model.set_outlet_fact(outlets_by_name[&*output.name], fact.try_into()?)?;
+            let outlet = outlets_by_name[&*output.name];
+            outputs.push(outlet);
+            model.set_outlet_label(outlet, output.name.clone())?;
+            model.set_outlet_fact(outlet, fact.try_into()?)?;
         }
         model.set_output_outlets(&outputs)?;
         let result = ParseResult { model, unresolved_inputs, outlets_by_name };

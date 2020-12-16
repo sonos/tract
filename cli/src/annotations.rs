@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::time::Duration;
 use tract_core::internal::*;
+use tract_hir::tract_core::itertools::izip;
 use tract_itertools::Itertools;
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
@@ -48,6 +49,7 @@ pub struct NodeTags {
     pub profile: Option<Duration>,
     pub model_input: Option<String>,
     pub model_output: Option<String>,
+    pub outlet_labels: Vec<Vec<String>>,
 }
 
 impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
@@ -70,7 +72,19 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
         let sections = self.sections.iter().chain(other.sections.iter()).cloned().collect();
         let model_input = self.model_input.clone().or(other.model_input.clone());
         let model_output = self.model_output.clone().or(other.model_output.clone());
-        NodeTags { cost, profile, style, labels, sections, model_input, model_output }
+        let outlet_labels = izip!(&self.outlet_labels, &other.outlet_labels)
+            .map(|(s, o)| s.iter().chain(o.iter()).cloned().collect())
+            .collect();
+        NodeTags {
+            cost,
+            profile,
+            style,
+            labels,
+            sections,
+            model_input,
+            model_output,
+            outlet_labels,
+        }
     }
 }
 
@@ -91,6 +105,7 @@ const EMPTY: NodeTags = NodeTags {
     profile: None,
     model_output: None,
     model_input: None,
+    outlet_labels: Vec::new(),
 };
 
 #[derive(Debug, Clone, Default)]
@@ -112,13 +127,25 @@ impl Annotations {
             annotations: &mut Annotations,
         ) {
             for n in 0..model.nodes_len() {
+                for output in 0..model.node_output_count(n) {
+                    if let Some(label) = model.outlet_label((n, output).into()) {
+                        let qid = NodeQId(prefix.into(), n);
+                        annotations
+                            .tags
+                            .entry(qid.clone())
+                            .or_default()
+                            .outlet_labels
+                            .resize(output + 1, vec![]);
+                        annotations.tags.entry(qid).or_default().outlet_labels[output] =
+                            vec![label.to_string()];
+                    }
+                }
                 for (label, sub /*, ins, outs*/) in model.nested_models(n) {
                     let mut prefix: TVec<(usize, String)> = prefix.into();
                     prefix.push((n, label.to_string()));
                     set_subio_labels(sub, &*prefix, annotations);
                     /*
                     ins.into_iter().enumerate().for_each(|(ix, i)| {
-                    let qid = NodeQId(prefix.clone(), ix);
                     annotations.tags.entry(qid).or_default().model_input = Some(i);
                     });
                     outs.into_iter().enumerate().for_each(|(ix, o)| {

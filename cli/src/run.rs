@@ -1,5 +1,6 @@
 use crate::CliResult;
 use crate::{Model, Parameters};
+use ansi_term::Color::*;
 use tract_hir::internal::*;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
@@ -22,9 +23,8 @@ pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> 
         }
     }
 
-    if let Some(asserts) = &params.assertions.assert_outputs {
-        crate::utils::check_outputs(&*outputs, &asserts)?;
-    }
+    crate::utils::check_outputs(&*outputs, &params.assertions.assert_outputs)?;
+
     if let Some(facts) = &params.assertions.assert_output_facts {
         let outputs: Vec<InferenceFact> =
             outputs.iter().map(|t| InferenceFact::dt_shape(t.datum_type(), t.shape())).collect();
@@ -55,11 +55,16 @@ fn run_regular(
         let mut state = SimpleState::new(plan)?;
         Ok(state.run_plan_with_eval(inputs, |session_state, state, node, input| {
             if steps {
-                eprintln!("{}: <{:?}", node, input);
+                eprintln!("{}: {}{:?}", White.bold().paint(node.to_string()), White.bold().paint("<"), input);
             }
             let r = tract_core::plan::eval(session_state, state, node, input);
             if steps {
-                eprintln!("{}: >{:?}", node, r);
+                eprintln!(
+                    "{}: {}{:?}",
+                    White.bold().paint(node.to_string()),
+                    White.bold().paint("<"),
+                    r.as_ref().unwrap()[0].dump(true)
+                );
             }
             let r = r?;
             if assert_sane_floats {

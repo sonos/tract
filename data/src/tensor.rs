@@ -128,9 +128,12 @@ impl Tensor {
     ) -> anyhow::Result<Tensor> {
         if dt == String::datum_type() {
             return Ok(ndarray::ArrayD::<String>::default(shape).into());
+        } else if dt == Blob::datum_type() {
+            return Ok(ndarray::ArrayD::<Blob>::default(shape).into());
         } else if dt == TDim::datum_type() {
             return Ok(ndarray::ArrayD::<TDim>::default(shape).into());
         }
+        assert!(dt.is_copy());
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
         let layout = alloc::Layout::from_size_align(bytes, alignment)?;
         let data = if bytes == 0 {
@@ -141,6 +144,12 @@ impl Tensor {
             ptr
         } as *mut u8;
         let mut tensor = Tensor { strides: tvec!(), layout, dt, shape: shape.into(), data };
+        #[cfg(debug_assertions)]
+        {
+            if dt == DatumType::F32 {
+                tensor.as_slice_mut_unchecked::<f32>().iter_mut().for_each(|f| *f = f32::NAN)
+            }
+        }
         tensor.update_strides();
         Ok(tensor)
     }
