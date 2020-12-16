@@ -142,9 +142,6 @@ cd $CACHEDIR
 [ ! -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 --pass type dump --op-name AddAxis)" ]
 [ -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 dump --op-name AddAxis)" ]
 
-( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
-( cd onnx/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
-
 #./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
 #    -f kaldi --output-node output \
 #    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
@@ -184,6 +181,11 @@ then
     (
     cd onnx/test_cases
     [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
+    echo 'IGNORE="plain nnef"' >> en_tdnn_lstm_bn_q7/vars.sh
     TRACT_RUN=../../target/release/tract ./run_all.sh en_tdnn_lstm_bn_q7
 )
 fi
+
+( cd kaldi/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
+( cd onnx/test_cases ; TRACT_RUN=../../target/release/tract ./run_all.sh )
+
