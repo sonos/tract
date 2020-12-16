@@ -147,7 +147,7 @@ impl Tensor {
         #[cfg(debug_assertions)]
         {
             if dt == DatumType::F32 {
-                tensor.as_slice_mut_unchecked::<f32>().iter_mut().for_each(|f| *f = f32::NAN)
+                tensor.as_slice_mut_unchecked::<f32>().iter_mut().for_each(|f| *f = std::f32::NAN)
             }
         }
         tensor.update_strides();
