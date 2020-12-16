@@ -20,3 +20,16 @@ jobs:
       env:
         RUST_VERSION: ${{matrix.rust}}
       run: .travis/native.sh
+
+  cargo-deny:
+    strategy:
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install cargo-deny
+      run: cargo install cargo-dey
+    - name: Run cargo-deny
+      run: cargo deny check
