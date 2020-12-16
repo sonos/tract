@@ -1,9 +1,18 @@
 # add whatever else we support.
 targets = [
     { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "x86_64-unknown-linux-musl" },
     { triple = "x86_64-apple-darwin" },
     { triple = "x86_64-pc-windows-msvc" },
     { triple = "aarch64-linux-android" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-musl" },
+    { triple = "aarch64-apple-ios" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "armv7-unknown-linux-gnueabihf" },
+    { triple = "armv7-unknown-linux-musleabi" },
+    { triple = "arm-unknown-linux-gnueabihf" },
+    { triple = "wasm32-unknown-unknown" },
 ]
 
 [advisories]
@@ -38,7 +47,6 @@ allow-git = [
 [licenses]
 allow = [
     "Apache-2.0",                     # https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)
-    "BSD-2-Clause",                   # https://tldrlegal.com/license/bsd-2-clause-license-(freebsd)
     "MIT",                            # https://tldrlegal.com/license/mit-license
     "Zlib",                           # https://tldrlegal.com/license/zlib-libpng-license-(zlib)
 ]
