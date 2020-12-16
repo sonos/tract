@@ -118,7 +118,6 @@ impl MutableState {
                 let remain = full_len - chunk_ix * chunk_dim;
                 let mut shape: TVec<usize> = input.shape().into();
                 shape[axis] = chunk_dim;
-                let mut t = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
                 t.assign_slice_unchecked(..remain, input, chunk_ix * chunk_dim.., axis);
             } else {
                 let start = chunk_dim as usize * chunk_ix;
@@ -157,6 +156,7 @@ impl OpState for State {
         _op: &dyn Op,
         inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
+
         let State { op, ref mut mutable } = self;
         // initialize state at first pass
         if mutable.hidden_state.len() == 0 {

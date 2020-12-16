@@ -321,7 +321,7 @@ impl Parameters {
             })
             .map(|(_, _, _, _, tensor)| tensor.concretize())
             .collect();
-        assertions.assert_outputs = Some(outputs);
+        assertions.assert_outputs = outputs;
         Ok(())
     }
 
@@ -640,13 +640,19 @@ impl Parameters {
             }
         };
 
-        let output_names: Vec<String> = raw_model
+        let output_names_and_labels: Vec<Vec<String>> = raw_model
             .output_outlets()
             .iter()
-            .map(|o| raw_model.node_name(o.node).to_string())
+            .map(|o| {
+                let mut v = vec![raw_model.node_name(o.node).to_string()];
+                if let Some(l) = raw_model.outlet_label(*o) {
+                    v.push(l.to_string());
+                }
+                v
+            })
             .collect();
 
-        let mut assertions = Assertions::from_clap(matches, &output_names)?;
+        let mut assertions = Assertions::from_clap(matches, &*output_names_and_labels)?;
 
         if let Some(sub) = matches.value_of("kaldi_downsample") {
             dispatch_model_mut_no_pulse!(raw_model, |m| Self::kaldi_downsample(m, sub.parse()?))?;
@@ -756,38 +762,40 @@ pub fn display_params_from_clap(
 
 #[derive(Debug)]
 pub struct Assertions {
-    pub assert_outputs: Option<Vec<Option<Arc<Tensor>>>>,
+    pub assert_outputs: Vec<Option<Arc<Tensor>>>,
     pub assert_output_facts: Option<Vec<InferenceFact>>,
 }
 
 impl Assertions {
-    fn from_clap(sub_matches: &clap::ArgMatches, output_names: &[String]) -> CliResult<Assertions> {
-        let mut assert_outputs: Option<Vec<Option<Arc<Tensor>>>> = sub_matches
-            .values_of("assert-output")
-            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1.value.concretize()).collect());
-
-        if assert_outputs.is_none() {
-            if sub_matches.values_of("assert-output-bundle").is_some() {
-                let values = output_names
-                    .iter()
-                    .map(move |name| {
-                        let npy_name = format!("{}.npy", name);
-                        for output_bundle in sub_matches.values_of("assert-output-bundle").unwrap()
-                        {
-                            let mut npz =
-                                ndarray_npy::NpzReader::new(std::fs::File::open(output_bundle)?)?;
-                            if let Ok(t) = tensor::for_npz(&mut npz, &npy_name) {
-                                return Ok(Some(t.into_arc_tensor()));
-                            }
-                        }
-                        return Ok(None);
-                    })
-                    .collect::<CliResult<_>>()?;
-                assert_outputs = Some(values)
+    fn from_clap(
+        matches: &clap::ArgMatches,
+        output_names: &[Vec<String>],
+    ) -> CliResult<Assertions> {
+        let mut assert_outputs: Vec<Option<Arc<Tensor>>> = vec![None; output_names.len()];
+        if let Some(values) = matches.values_of("assert-output") {
+            for (ix, o) in values.enumerate() {
+                assert_outputs[ix] = tensor::for_string(o).unwrap().1.value.concretize();
             }
         }
 
-        let assert_output_facts: Option<Vec<InferenceFact>> = sub_matches
+        if let Some(bundles) = matches.subcommand.as_ref().map(|sub| &sub.matches).and_then(|s| s.values_of("assert-output-bundle")) {
+            for bundle in bundles {
+                let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(bundle)?)?;
+                for (ix, labels) in output_names.iter().enumerate() {
+                    for label in labels {
+                        if assert_outputs[ix].is_some() {
+                            continue;
+                        }
+                        let npy_name = format!("{}.npy", label);
+                        if let Ok(t) = tensor::for_npz(&mut npz, &npy_name) {
+                            assert_outputs[ix] = Some(t.into_arc_tensor())
+                        }
+                    }
+                }
+            }
+        }
+
+        let assert_output_facts: Option<Vec<InferenceFact>> = matches
             .values_of("assert-output-fact")
             .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
         Ok(Assertions { assert_outputs, assert_output_facts })
