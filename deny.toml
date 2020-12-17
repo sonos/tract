@@ -34,9 +34,7 @@ skip = [
     { name = "itertools", version="<0.9.0" },  # ndarray/criterion brings in an older version.
     { name = "ansi_term", version="<0.12.1" },  # clap brings in an old one.
     { name = "miniz_oxide", version="<0.4" }, # ndarray-npy pulls in an old version of flate
-    { name = "crossbeam-utils", version="<0.8" }, # old version pulled by pbr.
-    { name = "crossbeam-channel", version="<0.5" }, # old version pulled by pbr.
-    { name = "cfg-if", version="<1.0" }, # cascading from crossbeam
+    { name = "cfg-if", version="<1.0" }, # cascading from flate too
 ]
 
 [sources]
