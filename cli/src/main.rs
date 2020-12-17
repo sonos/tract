@@ -288,6 +288,12 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .help("Checks values against these tensor (.npz)"),
         )
         .arg(
+            Arg::with_name("assert-output-count")
+                .takes_value(true)
+                .long("assert-output-count")
+                .help("Check the number of outputs found."),
+        )
+        .arg(
             Arg::with_name("assert-output")
                 .takes_value(true)
                 .long("assert-output")
