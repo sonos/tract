@@ -648,7 +648,10 @@ impl Parameters {
             .output_outlets()
             .iter()
             .map(|o| {
-                let mut v = vec![raw_model.node_name(o.node).to_string()];
+                let mut v = vec![format!("{}:{}", raw_model.node_name(o.node), o.slot)];
+                if o.slot == 0 {
+                    v.push(raw_model.node_name(o.node).to_string());
+                }
                 if let Some(l) = raw_model.outlet_label(*o) {
                     v.push(l.to_string());
                 }
@@ -775,33 +778,49 @@ impl Assertions {
         matches: &clap::ArgMatches,
         output_names: &[Vec<String>],
     ) -> CliResult<Assertions> {
-        let mut assert_outputs: Vec<Option<Arc<Tensor>>> = vec![None; output_names.len()];
-        if let Some(values) = matches.values_of("assert-output") {
-            for (ix, o) in values.enumerate() {
-                assert_outputs[ix] = tensor::for_string(o).unwrap().1.value.concretize();
+        if let Some(sub) = matches.subcommand.as_ref().map(|sub| &sub.matches) {
+            let mut assert_outputs: Vec<Option<Arc<Tensor>>> = vec![None; output_names.len()];
+            if let Some(values) = sub.values_of("assert-output") {
+                for (ix, o) in values.enumerate() {
+                    assert_outputs[ix] = tensor::for_string(o).unwrap().1.value.concretize();
+                }
             }
-        }
 
-        if let Some(bundles) = matches.subcommand.as_ref().map(|sub| &sub.matches).and_then(|s| s.values_of("assert-output-bundle")) {
-            for bundle in bundles {
-                let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(bundle)?)?;
-                for (ix, labels) in output_names.iter().enumerate() {
-                    for label in labels {
-                        if assert_outputs[ix].is_some() {
-                            continue;
-                        }
-                        let npy_name = format!("{}.npy", label);
-                        if let Ok(t) = tensor::for_npz(&mut npz, &npy_name) {
-                            assert_outputs[ix] = Some(t.into_arc_tensor())
+            if let Some(bundles) = sub.values_of("assert-output-bundle") {
+                for bundle in bundles {
+                    let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(bundle)?)?;
+                    for (ix, labels) in output_names.iter().enumerate() {
+                        for label in labels {
+                            if assert_outputs[ix].is_some() {
+                                continue;
+                            }
+                            let npy_name = format!("{}.npy", label);
+                            if let Ok(t) = tensor::for_npz(&mut npz, &npy_name) {
+                                assert_outputs[ix] = Some(t.into_arc_tensor())
+                            }
                         }
                     }
                 }
             }
-        }
 
-        let assert_output_facts: Option<Vec<InferenceFact>> = matches
-            .values_of("assert-output-fact")
-            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
-        Ok(Assertions { assert_outputs, assert_output_facts })
+            if sub.values_of("assert_output").is_some()
+                || sub.values_of("assert-output-bundle").is_some()
+            {
+                if assert_outputs.contains(&None) {
+                    bail!("Could not find assertions for all outputs: names and aliases are {:?}, found {:?}", output_names, assert_outputs);
+                }
+            }
+
+            let assert_output_facts: Option<Vec<InferenceFact>> = matches
+                .values_of("assert-output-fact")
+                .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
+
+            Ok(Assertions { assert_outputs, assert_output_facts })
+        } else {
+            Ok(Assertions {
+                assert_outputs: vec![None; output_names.len()],
+                assert_output_facts: None,
+            })
+        }
     }
 }

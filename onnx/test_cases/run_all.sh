@@ -26,7 +26,7 @@ do
     then
         continue
     fi
-    unset IGNORE MODEL left_context right_context subsampling adjust_final_offset
+    unset OPTIONS IGNORE MODEL left_context right_context subsampling adjust_final_offset
     . $tc/vars.sh
     for file in $CACHE_FILES
     do
@@ -47,7 +47,7 @@ do
             opti) opti="-O" ;;
             nnef) opti="--nnef-cycle --nnef-tract-core" ;;
         esac
-        options=""
+        options="$OPTIONS"
         if [ -n "$left_context" ]
         then
             options="$options --kaldi-left-context $left_context"

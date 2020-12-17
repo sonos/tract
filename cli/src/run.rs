@@ -55,18 +55,26 @@ fn run_regular(
         let mut state = SimpleState::new(plan)?;
         Ok(state.run_plan_with_eval(inputs, |session_state, state, node, input| {
             if steps {
-                eprintln!("{}: {}{:?}", White.bold().paint(node.to_string()), White.bold().paint("<"), input);
+                for i in &input {
+                    eprintln!(
+                        "{}{}{:?}",
+                        White.bold().paint(node.to_string()),
+                        Blue.bold().paint(" << "),
+                        i
+                    );
+                }
             }
-            let r = tract_core::plan::eval(session_state, state, node, input);
+            let r = tract_core::plan::eval(session_state, state, node, input)?;
             if steps {
-                eprintln!(
-                    "{}: {}{:?}",
-                    White.bold().paint(node.to_string()),
-                    White.bold().paint("<"),
-                    r.as_ref().unwrap()[0].dump(true)
-                );
+                for o in &r {
+                    eprintln!(
+                        "{}{}{:?}",
+                        White.bold().paint(node.to_string()),
+                        Blue.bold().paint(" >> "),
+                        o
+                    );
+                }
             }
-            let r = r?;
             if assert_sane_floats {
                 for (ix, o) in r.iter().enumerate() {
                     if let Ok(floats) = o.as_slice::<f32>() {

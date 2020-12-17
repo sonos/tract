@@ -102,7 +102,7 @@ impl NodesData {
             }
             let tree_node = if let Some(kind) = kind {
                 let feature_id = row[2];
-                let value = f32::from_bits(row[6]);
+                let value = f32::from_bits(row[5]);
                 let true_id =row[3];
                 let false_id = row[4];
                 let nan_is_true = (row[6] & 0x0100) != 0;
