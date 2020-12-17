@@ -9,7 +9,7 @@ edition = "2018"
 
 [dependencies]
 
-rand = { git = "https://github.com/rust-lang-nursery/rand" }
+rand = "0.7"
 tract-core = { path="../../core" }
 #tract-tensorflow = { path = "../../tensorflow" }
 tract-onnx = { path = "../../onnx" }
