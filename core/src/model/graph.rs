@@ -243,8 +243,13 @@ where
         &mut self,
         outputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<()> {
-        let labels: HashMap<&str, OutletId> =
-            self.outlet_labels.iter().map(|(o, s)| (&**s, *o)).collect();
+        let mut labels: HashMap<Cow<str>, OutletId> =
+            self.outlet_labels.iter().map(|(o, s)| (Cow::Borrowed(&**s), *o)).collect();
+        for n in self.nodes() {
+            for ix in 0..n.outputs.len() {
+                labels.insert(Cow::Owned(format!("{}:{}", &n.name, ix)), OutletId::new(n.id, ix));
+            }
+        }
         let ids: Vec<OutletId> = outputs
             .into_iter()
             .map(|s| {
