@@ -182,6 +182,7 @@ then
     cd onnx/test_cases
     [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
     echo 'IGNORE="plain nnef"' >> en_tdnn_lstm_bn_q7/vars.sh
+    echo 'OPTIONS="--output-node output"' >> en_tdnn_lstm_bn_q7/vars.sh
     TRACT_RUN=../../target/release/tract ./run_all.sh en_tdnn_lstm_bn_q7
 )
 fi

@@ -73,7 +73,7 @@ impl Display for Cmp {
     }
 }
 
-#[derive(Copy, Clone, Debug, Educe)]
+#[derive(Copy, Clone, Educe)]
 #[educe(Hash)]
 pub struct BranchNode {
     pub cmp: Cmp, // TODO: perf: most real forests have only 1 type of comparison
@@ -83,6 +83,12 @@ pub struct BranchNode {
     pub true_id: u32,
     pub false_id: u32,
     pub nan_is_true: bool,
+}
+
+impl std::fmt::Debug for BranchNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "if feat({}) {} {} then {} else {}", self.feature_id, self.cmp, self.value, self.true_id, self.false_id)
+    }
 }
 
 impl BranchNode {
