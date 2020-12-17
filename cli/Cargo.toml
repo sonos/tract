@@ -26,7 +26,6 @@ flate2 = "1"
 lazy_static = "1.0"
 log = "0.4"
 ndarray-npy = { version = "0.6", features = [ "compressed_npz" ] }
-pbr = "1.0"
 py_literal = "0.2"
 rand = "0.7"
 readings-probe = "0.1.1"
