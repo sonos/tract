@@ -30,18 +30,18 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "rand" },  # A patched version is used.
-    { name = "rand_core" },  # A patched version is used.
-    { name = "rand_chacha" },  # A patched version is used.
     { name = "num-bigint", version="<0.3.1" },  # ndarray-npy brings in a different version.
     { name = "itertools", version="<0.9.0" },  # ndarray/criterion brings in an older version.
     { name = "ansi_term", version="<0.12.1" },  # clap brings in an old one.
+    { name = "miniz_oxide", version="<0.4" }, # ndarray-npy pulls in an old version of flate
+    { name = "crossbeam-utils", version="<0.8" }, # old version pulled by pbr.
+    { name = "crossbeam-channel", version="<0.5" }, # old version pulled by pbr.
+    { name = "cfg-if", version="<1.0" }, # cascading from crossbeam
 ]
 
 [sources]
 # trusted git sources.
 allow-git = [
-    "https://github.com/rust-lang-nursery/rand"
 ]
 
 [licenses]
