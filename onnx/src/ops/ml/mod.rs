@@ -29,16 +29,9 @@ fn tree_classifier(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let data = parse_nodes_data(node, true)?;
-    let ensemble = data.build_tree_ensemble()?;
-    Ok((
-        inference_wrap(
-            TreeEnsembleClassifier { ensemble, class_labels: data.classlabels.unwrap() },
-            2,
-            rules,
-        ),
-        vec![],
-    ))
+    let ensemble = parse_nodes_data(node, true)?;
+    let class_labels = parse_class_data(node)?;
+    Ok((inference_wrap(TreeEnsembleClassifier { ensemble, class_labels }, 2, rules), vec![]))
 }
 
 fn get_vec_attr<'a, T>(node: &'a NodeProto, attr: &str, n: usize) -> TractResult<Vec<T>>
@@ -65,16 +58,30 @@ where
     }
 }
 
-fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<NodesData> {
+fn parse_class_data(node: &NodeProto) -> TractResult<Tensor> {
     // parse n_classes from protobuf
-    let (n_classes, classlabels) = if is_classifier {
+    let ints = node.get_attr_opt_slice::<i64>("classlabels_int64s")?;
+    let strs = node.get_attr_opt_tvec::<&str>("classlabels_strings")?;
+    match (ints, strs) {
+        (Some(n), None) => Ok(tensor1(n)),
+        (None, Some(n)) => Ok(tensor1(&n.iter().map(|d| d.to_string()).collect::<Vec<_>>())),
+        (None, None) => {
+            bail!("cannot find neither 'classlabels_int64s' not 'classlabels_strings'")
+        }
+        (Some(_), Some(_)) => {
+            bail!("only one of 'classlabels_int64s' and 'classlabels_strings' can be set")
+        }
+    }
+}
+
+fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEnsemble> {
+    // parse n_classes from protobuf
+    let n_classes = if is_classifier {
         let ints = node.get_attr_opt_slice::<i64>("classlabels_int64s")?;
         let strs = node.get_attr_opt_tvec::<&str>("classlabels_strings")?;
         match (ints, strs) {
-            (Some(n), None) => (n.len(), Some(tensor1(n))),
-            (None, Some(n)) => {
-                (n.len(), Some(tensor1(&n.iter().map(|d| d.to_string()).collect::<Vec<_>>())))
-            }
+            (Some(n), None) => n.len(),
+            (None, Some(n)) => n.len(),
             (None, None) => {
                 bail!("cannot find neither 'classlabels_int64s' not 'classlabels_strings'")
             }
@@ -83,7 +90,7 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<NodesD
             }
         }
     } else {
-        (node.get_attr("n_targets")?, None)
+        node.get_attr("n_targets")?
     };
     let n_nodes = node.get_attr_slice::<i64>("nodes_featureids")?.len();
     node.expect_attr("nodes_featureids", n_nodes != 0, "at least one node")?;
@@ -104,13 +111,18 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<NodesD
         .map(|s| parse_node_mode(s))
         .collect::<TractResult<_>>()?;
 
+    let n_features = feature_ids.iter().max().copied().unwrap_or(0) + 1;
+
     // parse post_transform from protobuf
-    let post_transform = node.get_attr_opt("post_transform")?;
+    let post_transform =
+        node.get_attr_opt("post_transform")?.map(parse_post_transform).transpose()?.unwrap_or(None);
 
     // parse aggregate_fn from protobuf (for regressors)
-    let aggregate_fn =
-        if is_classifier { "SUM" } else { node.get_attr_opt("aggregate")?.unwrap_or("SUM") }
-            .to_string();
+    let aggregate_fn = parse_aggregate(if is_classifier {
+        "SUM"
+    } else {
+        node.get_attr_opt("aggregate")?.unwrap_or("SUM")
+    })?;
 
     // parse leaf data from protobuf
     let leaf_prefix = if is_classifier { "class" } else { "target" };
@@ -135,43 +147,56 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<NodesD
         "mismatching # of trees (nodes/leaves)",
     )?;
 
-    let nodes =
-        tract_ndarray::Array2::<u32>::from_shape_fn((node_ids.len(), 7), |(n, col)| match col {
-            0 => node_ids[n] as u32,
-            1 => tree_ids[n] as u32,
-            2 => feature_ids[n] as u32,
-            3 => true_ids[n] as u32,
-            4 => false_ids[n] as u32,
-            5 => node_values[n].to_bits(),
-            6 => {
-                (0x0100u32 * nan_is_true[n] as u32)
-                    | node_modes[n].as_ref().map(Cmp::to_u8).unwrap_or(0u8) as u32
+    let mut node_order: Vec<usize> = (0usize..node_ids.len()).collect();
+    node_order.sort_by_key(|&ix| (tree_ids[ix], node_ids[ix]));
+
+    let mut leaf_order: Vec<usize> = (0usize..leaf_node_ids.len()).collect();
+    leaf_order.sort_by_key(|&ix| (leaf_tree_ids[ix], leaf_node_ids[ix]));
+
+    let mut trees = vec![];
+    let mut nodes: Vec<u32> = vec![];
+    let mut leaves: Vec<u32> = vec![];
+    let mut current_tree_id = None;
+    let mut in_leaf_ix = 0;
+    for n in node_order.into_iter() {
+        let node_id = node_ids[n];
+        let tree_id = tree_ids[n];
+        if Some(tree_id) != current_tree_id {
+            current_tree_id = Some(tree_id);
+            trees.push(nodes.len() as u32 / 5);
+        }
+        if let Some(mode) = node_modes[n] {
+            let mut row = [0u32; 5];
+            row[0] = feature_ids[n] as u32;
+            row[1] = true_ids[n] as u32 + trees.last().unwrap();
+            row[2] = false_ids[n] as u32 + trees.last().unwrap();
+            row[3] = node_values[n].to_bits();
+            row[4] = (0x0100u32 * nan_is_true[n] as u32) | mode as u32;
+            nodes.extend(row.iter());
+        } else {
+            let mut row = [0u32; 5];
+            row[0] = leaves.len() as u32 / 2;
+            loop {
+                if in_leaf_ix >= leaf_order.len()
+                    || leaf_tree_ids[leaf_order[in_leaf_ix]] != tree_id
+                    || leaf_node_ids[leaf_order[in_leaf_ix]] != node_id
+                {
+                    break;
+                }
+                let leaf_ix = leaf_order[in_leaf_ix];
+                leaves.push(leaf_class_ids[leaf_ix] as u32);
+                leaves.push(leaf_weights[leaf_ix].to_bits());
+                in_leaf_ix += 1;
             }
-            _ => unreachable!(),
-        })
-        .into_tensor();
-
-    let leaves = tract_ndarray::Array2::<u32>::from_shape_fn(
-        (leaf_weights.len(), 4),
-        |(leaf, col)| match col {
-            0 => leaf_node_ids[leaf] as u32,
-            1 => leaf_tree_ids[leaf] as u32,
-            2 => leaf_class_ids[leaf] as u32,
-            3 => leaf_weights[leaf].to_bits(),
-            _ => unreachable!(),
-        },
-    )
-    .into_tensor();
-
-    Ok(NodesData {
-        n_classes,
-        base_values,
-        classlabels,
-        nodes,
-        post_transform,
-        aggregate_fn,
-        leaves,
-    })
+            row[1] = leaves.len() as u32 / 2;
+            nodes.extend(row.iter());
+        };
+    }
+    let trees = tensor1(&*trees);
+    let nodes = tensor1(&*nodes).into_shape(&[nodes.len() / 5, 5])?;
+    let leaves = tensor1(&*leaves).into_shape(&[leaves.len() / 2, 2])?;
+    let data = TreeEnsembleData { trees, nodes, leaves };
+    TreeEnsemble::build(data, n_features, n_classes, aggregate_fn, post_transform, base_values)
 }
 
 fn rules<'r, 'p, 's>(
