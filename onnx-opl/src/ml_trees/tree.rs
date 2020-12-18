@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::fmt::{self, Debug, Display};
 use std::iter;
 
@@ -73,12 +74,83 @@ impl Display for Cmp {
     }
 }
 
-#[derive(Copy, Clone, Educe)]
-#[educe(Hash)]
-pub struct BranchNode {
+#[derive(Clone, Debug, Hash)]
+pub struct TreeEnsembleData {
+    // u32, [Ntrees], root row of each tree in nodes array (in rows)
+    pub trees: Tensor,
+    // u32, [_, 5],
+    // 5th number is flags: last byte is comparator, 0 for leaves, transmuted Cmp for the internal nodes
+    //                      is_nan is 0x100 bit
+    // intern nodes:    feature_id, true_id, false_id, value.to_bits(),
+    //                  comp | (0x100 if nan_is_true)
+    // leaves:          start row, end row in leaves array, 3 zeros for padding
+    pub nodes: Tensor,
+    // categ,
+    pub leaves: Tensor,
+}
+
+impl TreeEnsembleData {
+    unsafe fn get_unchecked(&self, node: usize) -> TreeNode {
+        let row = &self.nodes.as_slice_unchecked::<u32>()[node * 5..][..5];
+        if let Some(cmp) = ((row[4] & 0xFF) as u8).try_into().ok() {
+            let feature_id = row[0];
+            let true_id = row[1];
+            let false_id = row[2];
+            let value = f32::from_bits(row[3]);
+            let nan_is_true = (row[4] & 0x0100) != 0;
+            TreeNode::Branch(BranchNode { cmp, feature_id, value, true_id, false_id, nan_is_true })
+        } else {
+            TreeNode::Leaf(LeafNode { start_id: row[0] as usize, end_id: row[1] as usize })
+        }
+    }
+
+    unsafe fn get_leaves_unchecked<T>(&self, tree: usize, input: &ArrayView1<T>) -> LeafNode
+    where
+        T: AsPrimitive<f32>,
+    {
+        let mut node_id = self.trees.as_slice_unchecked::<u32>()[tree] as usize;
+        loop {
+            let node = self.get_unchecked(node_id);
+            match node {
+                TreeNode::Branch(ref b) => {
+                    let feature = *input.uget(b.feature_id as usize);
+                    node_id = b.get_child_id(feature.as_());
+                }
+                TreeNode::Leaf(l) => return l,
+            }
+        }
+    }
+
+    unsafe fn eval_unchecked<A, T>(
+        &self,
+        tree: usize,
+        input: &ArrayView1<T>,
+        output: &mut ArrayViewMut1<f32>,
+        aggs: &mut [A],
+    ) where
+        A: AggregateFn,
+        T: AsPrimitive<f32>,
+    {
+        let leaf = self.get_leaves_unchecked(tree, input);
+        for leaf in self
+            .leaves
+            .to_array_view_unchecked::<u32>()
+            .outer_iter()
+            .skip(leaf.start_id)
+            .take(leaf.end_id - leaf.start_id)
+        {
+            let class_id = leaf[0] as usize;
+            let weight = f32::from_bits(leaf[1]);
+            let agg_fn = aggs.get_unchecked_mut(class_id);
+            agg_fn.aggregate(weight, output.uget_mut(class_id));
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct BranchNode {
     pub cmp: Cmp, // TODO: perf: most real forests have only 1 type of comparison
     pub feature_id: u32,
-    #[educe(Hash(method = "hash_f32"))]
     pub value: f32,
     pub true_id: u32,
     pub false_id: u32,
@@ -87,7 +159,11 @@ pub struct BranchNode {
 
 impl std::fmt::Debug for BranchNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "if feat({}) {} {} then {} else {}", self.feature_id, self.cmp, self.value, self.true_id, self.false_id)
+        write!(
+            f,
+            "if feat({}) {} {} then {} else {}",
+            self.feature_id, self.cmp, self.value, self.true_id, self.false_id
+        )
     }
 }
 
@@ -104,46 +180,21 @@ impl BranchNode {
 }
 
 #[derive(Copy, Clone, Debug, Hash)]
-pub struct LeafNode {
+struct LeafNode {
     pub start_id: usize,
     pub end_id: usize,
 }
 
-#[derive(Copy, Clone, Debug, Hash)]
-pub enum TreeNode {
+#[derive(Copy, Clone, Debug)]
+enum TreeNode {
     Branch(BranchNode),
     Leaf(LeafNode),
 }
 
-impl TreeNode {
-    pub fn new_branch(
-        cmp: Cmp,
-        feature_id: u32,
-        value: f32,
-        true_id: u32,
-        false_id: u32,
-        nan_is_true: bool,
-    ) -> Self {
-        TreeNode::Branch(BranchNode { cmp, feature_id, value, true_id, false_id, nan_is_true })
-    }
-
-    pub fn new_leaf(start_id: usize, end_id: usize) -> Self {
-        TreeNode::Leaf(LeafNode { start_id, end_id })
-    }
-}
-
-#[derive(Copy, Clone, Debug, Educe)]
-#[educe(Hash)]
-pub struct Leaf {
+#[derive(Copy, Clone, Debug)]
+struct Leaf {
     class_id: u32,
-    #[educe(Hash(method = "hash_f32"))]
     weight: f32,
-}
-
-impl Leaf {
-    pub fn new(class_id: u32, weight: f32) -> Leaf {
-        Leaf { class_id, weight }
-    }
 }
 
 pub trait AggregateFn: Default {
@@ -264,129 +315,11 @@ impl PostTransform {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
-pub struct Tree {
-    n_classes: usize,
-    nodes: Vec<TreeNode>, // TODO: can this be a slice/view into ensemble's contiguous storage?
-    leaves: Vec<Leaf>,    // TODO: store as a collection of direct slices instead of indices?
-}
-
-fn ensure<O, T>(
-    t: &str,
-    index: usize,
-    obj: O,
-    an: &str,
-    a: T,
-    cmp: Cmp,
-    bn: &str,
-    b: T,
-) -> TractResult<()>
-where
-    O: Debug,
-    T: Display + PartialOrd + Copy,
-{
-    let cond = cmp.compare(a, b);
-    ensure!(cond, "Invalid {} #{}: {} = {} {} {} = {} ({:?})", t, index, an, a, cmp, bn, b, obj);
-    Ok(())
-}
-
-impl Tree {
-    pub fn build(n_classes: usize, nodes: &[TreeNode], leaves: &[Leaf]) -> TractResult<Self> {
-        use self::Cmp::{Equal, Less, LessEqual};
-
-        ensure!(n_classes != 0, "Invalid tree: n_classes == 0");
-
-        let n_nodes = nodes.len();
-        ensure!(n_nodes != 0, "Invalid tree: no nodes");
-        let n_leaves = leaves.len();
-        ensure!(n_leaves != 0, "Invalid tree: no leaves");
-
-        let mut has_parents: Vec<_> = iter::repeat(false).take(n_nodes).collect();
-        let mut leaf_coverage: Vec<_> = iter::repeat(0).take(n_leaves).collect();
-        for (i, node) in nodes.iter().enumerate() {
-            match node {
-                TreeNode::Branch(ref b) => {
-                    ensure("node", i, node, "true_id", b.true_id, Less, "n_nodes", n_nodes as _)?;
-                    ensure("node", i, node, "false_id", b.false_id, Less, "n_nodes", n_nodes as _)?;
-                    has_parents[b.true_id as usize] = true;
-                    has_parents[b.false_id as usize] = true;
-                }
-                TreeNode::Leaf(ref l) => {
-                    ensure("node", i, node, "start_id", l.start_id, Less, "end_id", l.end_id)?;
-                    ensure("node", i, node, "end_id", l.start_id, LessEqual, "n_leaves", n_leaves)?;
-                    for j in l.start_id..l.end_id {
-                        leaf_coverage[j] += 1;
-                    }
-                }
-            }
-        }
-
-        ensure!(!has_parents[0], "Invalid tree: expected node #0 to have no parents (root)");
-        let n_orphans = has_parents.iter().skip(1).filter(|&x| !*x).count();
-        ensure!(n_orphans == 0, "Invalid tree: {} orphan nodes", n_orphans);
-
-        let n_orphan_leaves = leaf_coverage.iter().filter(|&x| *x == 0).count();
-        ensure!(n_orphan_leaves == 0, "Invalid tree: {} orphan leaves", n_orphan_leaves);
-
-        for (i, leaf) in leaves.iter().enumerate() {
-            ensure("leaf", i, leaf, "class_id", leaf.class_id, Less, "n_classes", n_classes as _)?;
-            // TODO: be more strict and check for nan/inf/-inf here, or not?
-            let w_finite = leaf.weight.is_finite();
-            ensure("leaf", i, leaf, "weight.is_finite()", w_finite, Equal, "true", true)?;
-        }
-
-        Ok(Self { n_classes, nodes: nodes.into(), leaves: leaves.into() })
-    }
-
-    pub fn branches(&self) -> impl Iterator<Item = &BranchNode> {
-        self.nodes.iter().filter_map(|node| match node {
-            TreeNode::Branch(ref branch) => Some(branch),
-            _ => None,
-        })
-    }
-
-    pub fn max_feature_id(&self) -> usize {
-        self.branches().map(|b| b.feature_id).max().unwrap_or(0) as usize
-    }
-
-    unsafe fn get_leaves_unchecked<T>(&self, input: &ArrayView1<T>) -> &[Leaf]
-    where
-        T: AsPrimitive<f32>,
-    {
-        let mut node_id = 0;
-        loop {
-            let node = self.nodes.get_unchecked(node_id);
-            match node {
-                TreeNode::Branch(ref b) => {
-                    let feature = *input.uget(b.feature_id as usize);
-                    node_id = b.get_child_id(feature.as_());
-                }
-                TreeNode::Leaf(ref l) => return &self.leaves[l.start_id..l.end_id],
-            }
-        }
-    }
-
-    unsafe fn eval_unchecked<A, T>(
-        &self,
-        input: &ArrayView1<T>,
-        output: &mut ArrayViewMut1<f32>,
-        aggs: &mut [A],
-    ) where
-        A: AggregateFn,
-        T: AsPrimitive<f32>,
-    {
-        for leaf in self.get_leaves_unchecked(input) {
-            let agg_fn = aggs.get_unchecked_mut(leaf.class_id as usize);
-            agg_fn.aggregate(leaf.weight, output.uget_mut(leaf.class_id as usize));
-        }
-    }
-}
-
 #[derive(Clone, Debug, Educe)]
 #[educe(Hash)]
 pub struct TreeEnsemble {
-    trees: Vec<Tree>,
-    max_feature_id: usize,
+    data: TreeEnsembleData,
+    n_features: usize,
     n_classes: usize,
     aggregate_fn: Aggregate, // TODO: should this be an argument to eval()?
     post_transform: Option<PostTransform>, // TODO: should this be an argument to eval()?
@@ -406,43 +339,14 @@ fn hash_base_scores(scores: &Option<Vec<f32>>, state: &mut impl std::hash::Hashe
 
 impl TreeEnsemble {
     pub fn build(
-        trees: &[Tree],
+        data: TreeEnsembleData,
+        n_features: usize,
+        n_classes: usize,
         aggregate_fn: Aggregate,
         post_transform: Option<PostTransform>,
-        base_scores: Option<&[f32]>,
+        base_scores: Option<Vec<f32>>,
     ) -> TractResult<Self> {
-        ensure!(trees.len() > 0, "Invalid tree ensemble: cannot be empty");
-        let max_feature_id = trees.iter().map(Tree::max_feature_id).max().unwrap_or(0);
-        let n_classes = trees[0].n_classes;
-        for tree in trees.iter().skip(1) {
-            ensure!(
-                tree.n_classes == n_classes,
-                "Invalid tree ensemble: n_classes must be the same (got {} and {})",
-                n_classes,
-                tree.n_classes
-            );
-        }
-        let base_scores = match base_scores {
-            Some(base_scores) => {
-                let base_scores = base_scores.to_owned();
-                ensure!(
-                    base_scores.len() == n_classes,
-                    "Invalid tree ensemble: base_scores.len() = {} != n_classes = {}",
-                    base_scores.len(),
-                    n_classes,
-                );
-                Some(base_scores)
-            }
-            None => None,
-        };
-        Ok(Self {
-            trees: trees.into(),
-            max_feature_id,
-            n_classes,
-            aggregate_fn,
-            post_transform,
-            base_scores,
-        })
+        Ok(Self { data, n_features, n_classes, aggregate_fn, post_transform, base_scores })
     }
 
     unsafe fn eval_one_unchecked<A, T>(
@@ -460,8 +364,8 @@ impl TreeEnsemble {
                 *output.uget_mut(i) += base_scores[i];
             }
         }
-        for tree in &self.trees {
-            tree.eval_unchecked(input, output, aggs);
+        for t in 0..self.data.trees.len() {
+            self.data.eval_unchecked(t, input, output, aggs)
         }
         for i in 0..self.n_classes {
             aggs.get_unchecked_mut(i).post_aggregate(output.uget_mut(i));
@@ -473,10 +377,10 @@ impl TreeEnsemble {
 
     pub fn check_n_features(&self, n_features: usize) -> TractResult<()> {
         Ok(ensure!(
-            n_features > self.max_feature_id,
-            "Invalid input shape: got {} features, expected > {}",
+            n_features == self.n_features,
+            "Invalid input shape: got {} features, expected {}",
             n_features,
-            self.max_feature_id
+            self.n_features
         ))
     }
 
@@ -550,137 +454,135 @@ mod tests {
     use super::*;
     use tract_ndarray::prelude::*;
 
-    fn generate_gbm_trees() -> Vec<Tree> {
-        vec![
-            Tree::build(
-                3,
-                &[
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 3.15, 1, 2, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 1, 3.35, 3, 4, true),
-                    TreeNode::new_leaf(0, 1),
-                    TreeNode::new_leaf(1, 2),
-                    TreeNode::new_leaf(2, 3),
-                ],
-                &[Leaf::new(0, -0.075), Leaf::new(0, 0.13928571), Leaf::new(0, 0.15)],
-            )
-            .unwrap(),
-            Tree::build(
-                3,
-                &[
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 1.8, 1, 2, true),
-                    TreeNode::new_leaf(0, 1),
-                    TreeNode::new_branch(Cmp::LessEqual, 3, 1.65, 3, 4, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.45, 5, 6, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.35, 7, 8, true),
-                    TreeNode::new_leaf(1, 2),
-                    TreeNode::new_leaf(2, 3),
-                    TreeNode::new_leaf(3, 4),
-                    TreeNode::new_leaf(4, 5),
-                ],
-                &[
-                    Leaf::new(1, -0.075),
-                    Leaf::new(1, 0.13548388),
-                    Leaf::new(1, 0.110869564),
-                    Leaf::new(1, -0.052500002),
-                    Leaf::new(1, -0.075),
-                ],
-            )
-            .unwrap(),
-            Tree::build(
-                3,
-                &[
-                    TreeNode::new_branch(Cmp::LessEqual, 3, 1.65, 1, 2, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.45, 3, 4, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.35, 5, 6, true),
-                    TreeNode::new_leaf(0, 1),
-                    TreeNode::new_leaf(1, 2),
-                    TreeNode::new_leaf(2, 3),
-                    TreeNode::new_leaf(3, 4),
-                ],
-                &[
-                    Leaf::new(2, -0.075),
-                    Leaf::new(2, -0.035869565),
-                    Leaf::new(2, 0.1275),
-                    Leaf::new(2, 0.15),
-                ],
-            )
-            .unwrap(),
-            Tree::build(
-                3,
-                &[
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 3.15, 1, 2, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 1, 3.35, 3, 4, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.45, 5, 6, true),
-                    TreeNode::new_leaf(0, 1),
-                    TreeNode::new_leaf(1, 2),
-                    TreeNode::new_leaf(2, 3),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.35, 7, 8, true),
-                    TreeNode::new_leaf(3, 4),
-                    TreeNode::new_leaf(4, 5),
-                ],
-                &[
-                    Leaf::new(0, 0.12105576),
-                    Leaf::new(0, 0.1304589),
-                    Leaf::new(0, -0.07237862),
-                    Leaf::new(0, -0.07226522),
-                    Leaf::new(0, -0.07220469),
-                ],
-            )
-            .unwrap(),
-            Tree::build(
-                3,
-                &[
-                    TreeNode::new_branch(Cmp::LessEqual, 3, 0.45, 1, 2, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 1.45, 3, 4, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 3, 1.65, 5, 6, true),
-                    TreeNode::new_leaf(0, 1),
-                    TreeNode::new_leaf(1, 2),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.45, 7, 8, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.35, 9, 10, true),
-                    TreeNode::new_leaf(2, 3),
-                    TreeNode::new_leaf(3, 4),
-                    TreeNode::new_leaf(4, 5),
-                    TreeNode::new_leaf(5, 6),
-                ],
-                &[
-                    Leaf::new(1, -0.07226842),
-                    Leaf::new(1, -0.07268012),
-                    Leaf::new(1, 0.119391434),
-                    Leaf::new(1, 0.097440675),
-                    Leaf::new(1, -0.049815115),
-                    Leaf::new(1, -0.07219931),
-                ],
-            )
-            .unwrap(),
-            Tree::build(
-                3,
-                &[
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.75, 1, 2, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 1, 2.75, 3, 4, true),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 5.15, 7, 8, true),
-                    TreeNode::new_leaf(0, 1),
-                    TreeNode::new_branch(Cmp::LessEqual, 2, 4.15, 5, 6, true),
-                    TreeNode::new_leaf(1, 2),
-                    TreeNode::new_leaf(2, 3),
-                    TreeNode::new_leaf(3, 4),
-                    TreeNode::new_leaf(4, 5),
-                ],
-                &[
-                    Leaf::new(2, -0.061642267),
-                    Leaf::new(2, -0.0721846),
-                    Leaf::new(2, -0.07319043),
-                    Leaf::new(2, 0.076814815),
-                    Leaf::new(2, 0.1315959),
-                ],
-            )
-            .unwrap(),
+    fn b(
+        node_offset: usize,
+        cmp: Cmp,
+        feat: usize,
+        v: f32,
+        left: usize,
+        right: usize,
+        nan_is_true: bool,
+    ) -> [u32; 5] {
+        [
+            feat as u32,
+            (node_offset + left) as u32,
+            (node_offset + right) as u32,
+            v.to_bits(),
+            cmp as u32 | if nan_is_true { 0x100 } else { 0 },
         ]
+    }
+
+    fn l(leaf_offset: usize, start_id: usize, end_id: usize) -> [u32; 5] {
+        [(leaf_offset + start_id) as u32, (leaf_offset + end_id) as u32, 0, 0, 0]
+    }
+
+    fn w(categ: usize, weight: f32) -> [u32; 2] {
+        [categ as u32, weight.to_bits()]
+    }
+
+    fn generate_gbm_trees() -> TreeEnsembleData {
+        let trees = tensor1(&[0u32, 5u32, 14, 21, 30, 41]);
+        let nodes = tensor2(&[
+            b(0, Cmp::LessEqual, 2, 3.15, 1, 2, true),
+            b(0, Cmp::LessEqual, 1, 3.35, 3, 4, true),
+            l(0, 0, 1),
+            l(0, 1, 2),
+            l(0, 2, 3),
+            //
+            b(5, Cmp::LessEqual, 2, 1.8, 1, 2, true),
+            l(3, 0, 1),
+            b(5, Cmp::LessEqual, 3, 1.65, 3, 4, true),
+            b(5, Cmp::LessEqual, 2, 4.45, 5, 6, true),
+            b(5, Cmp::LessEqual, 2, 5.35, 7, 8, true),
+            l(3, 1, 2),
+            l(3, 2, 3),
+            l(3, 3, 4),
+            l(3, 4, 5),
+            //
+            b(14, Cmp::LessEqual, 3, 1.65, 1, 2, true),
+            b(14, Cmp::LessEqual, 2, 4.45, 3, 4, true),
+            b(14, Cmp::LessEqual, 2, 5.35, 5, 6, true),
+            l(8, 0, 1),
+            l(8, 1, 2),
+            l(8, 2, 3),
+            l(8, 3, 4),
+            //
+            b(21, Cmp::LessEqual, 2, 3.15, 1, 2, true),
+            b(21, Cmp::LessEqual, 1, 3.35, 3, 4, true),
+            b(21, Cmp::LessEqual, 2, 4.45, 5, 6, true),
+            l(12, 0, 1),
+            l(12, 1, 2),
+            l(12, 2, 3),
+            b(21, Cmp::LessEqual, 2, 5.35, 7, 8, true),
+            l(12, 3, 4),
+            l(12, 4, 5),
+            //
+            b(30, Cmp::LessEqual, 3, 0.45, 1, 2, true),
+            b(30, Cmp::LessEqual, 2, 1.45, 3, 4, true),
+            b(30, Cmp::LessEqual, 3, 1.65, 5, 6, true),
+            l(17, 0, 1),
+            l(17, 1, 2),
+            b(30, Cmp::LessEqual, 2, 4.45, 7, 8, true),
+            b(30, Cmp::LessEqual, 2, 5.35, 9, 10, true),
+            l(17, 2, 3),
+            l(17, 3, 4),
+            l(17, 4, 5),
+            l(17, 5, 6),
+            //
+            b(41, Cmp::LessEqual, 2, 4.75, 1, 2, true),
+            b(41, Cmp::LessEqual, 1, 2.75, 3, 4, true),
+            b(41, Cmp::LessEqual, 2, 5.15, 7, 8, true),
+            l(23, 0, 1),
+            b(41, Cmp::LessEqual, 2, 4.15, 5, 6, true),
+            l(23, 1, 2),
+            l(23, 2, 3),
+            l(23, 3, 4),
+            l(23, 4, 5),
+        ]);
+        assert_eq!(nodes.shape(), &[50, 5]);
+        let leaves = tensor2(&[
+            w(0, -0.075),
+            w(0, 0.13928571),
+            w(0, 0.15),
+            //
+            w(1, -0.075),
+            w(1, 0.13548388),
+            w(1, 0.110869564),
+            w(1, -0.052500002),
+            w(1, -0.075),
+            //
+            w(2, -0.075),
+            w(2, -0.035869565),
+            w(2, 0.1275),
+            w(2, 0.15),
+            //
+            w(0, 0.12105576),
+            w(0, 0.1304589),
+            w(0, -0.07237862),
+            w(0, -0.07226522),
+            w(0, -0.07220469),
+            //
+            w(1, -0.07226842),
+            w(1, -0.07268012),
+            w(1, 0.119391434),
+            w(1, 0.097440675),
+            w(1, -0.049815115),
+            w(1, -0.07219931),
+            //
+            w(2, -0.061642267),
+            w(2, -0.0721846),
+            w(2, -0.07319043),
+            w(2, 0.076814815),
+            w(2, 0.1315959),
+        ]);
+        assert_eq!(leaves.shape(), &[28, 2]);
+        TreeEnsembleData { nodes, trees, leaves }
     }
 
     fn generate_gbm_ensemble(post_transform: Option<PostTransform>) -> TreeEnsemble {
         // converted manually from LightGBM, fitted on iris dataset
         let trees = generate_gbm_trees();
-        TreeEnsemble::build(&trees, Aggregate::Sum, post_transform, None).unwrap()
+        TreeEnsemble::build(trees, 4, 3, Aggregate::Sum, post_transform, None).unwrap()
     }
 
     fn generate_gbm_input() -> Array2<f32> {
