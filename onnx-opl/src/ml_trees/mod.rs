@@ -5,8 +5,8 @@ use tract_nnef::internal::*;
 
 mod tree;
 
-use self::tree::{Aggregate, Leaf, PostTransform, Tree, TreeEnsemble, TreeNode};
 pub use self::tree::Cmp;
+use self::tree::{Aggregate, PostTransform, TreeEnsemble};
 
 fn parse_post_transform(s: &str) -> TractResult<Option<PostTransform>> {
     match s {
@@ -29,21 +29,13 @@ fn parse_aggregate(s: &str) -> TractResult<Aggregate> {
     }
 }
 
+/*
 pub struct NodesData {
     pub n_classes: usize,
     pub base_values: Option<Vec<f32>>,
     pub classlabels: Option<Tensor>,
-    // dt is u32, shape is [n_nodes, 7]
-    // 7 cols are [ node_id, tree_id, feature_id, true_id, false_id,
-    //   transmuted-from-f32 node_value, flags ]
-    // flags last significant byte encodes node_mode
-    // nan_is_true is 9th bit
-    pub nodes: Tensor,
     pub post_transform: Option<String>,
     pub aggregate_fn: String,
-    // dt is u32, shape is [ n_leaves, 4 ]
-    // 4 cols = anre node_id, tree_id, class_id, transmuted-from-f32 weight
-    pub leaves: Tensor,
 }
 
 impl NodesData {
@@ -141,11 +133,13 @@ impl NodesData {
         Ok(ensemble)
     }
 }
+*/
 
 #[derive(Debug, Clone, Hash)]
 pub struct TreeEnsembleClassifier {
     pub ensemble: TreeEnsemble,
     pub class_labels: Tensor,
+    pub post_transform: Option<PostTransform>,
 }
 
 impl_dyn_hash!(TreeEnsembleClassifier);
