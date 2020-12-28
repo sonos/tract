@@ -14,6 +14,7 @@ edition = "2018"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+ctor = "=0.1.16"
 downcast-rs = "1.0"
 inventory = "0.1"
 lazy_static = "1.4.0"
