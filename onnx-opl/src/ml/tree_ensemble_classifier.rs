@@ -1,9 +1,6 @@
 use tract_nnef::internal::*;
 
-mod tree;
-
-pub use self::tree::Cmp;
-pub use self::tree::{Aggregate, PostTransform, TreeEnsemble, TreeEnsembleData};
+pub use super::tree::{Aggregate, Cmp, PostTransform, TreeEnsemble, TreeEnsembleData};
 
 pub fn parse_post_transform(s: &str) -> TractResult<Option<PostTransform>> {
     match s {
