@@ -18,7 +18,7 @@ pub fn register(registry: &mut Registry) {
 }
 
 #[derive(Clone, Debug)]
-struct CategoryMapper<Src: Datum + Hash + Eq, Dst: Datum + Hash> {
+pub struct CategoryMapper<Src: Datum + Hash + Eq, Dst: Datum + Hash> {
     pub hash: HashMap<Src, Dst>,
     pub default: Dst,
 }
