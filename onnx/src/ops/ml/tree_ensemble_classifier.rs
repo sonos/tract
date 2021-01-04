@@ -15,7 +15,33 @@ fn tree_classifier(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let ensemble = parse_nodes_data(node, true)?;
     let class_labels = parse_class_data(node)?;
-    Ok((expand(TreeEnsembleClassifier { ensemble, class_labels }), vec![]))
+    let base_class_score =
+        get_vec_attr_opt::<f32>(node, "base_values", ensemble.n_classes())?.map(|t| rctensor1(&t));
+    let post_transform =
+        node.get_attr_opt("post_transform")?.map(parse_post_transform).transpose()?.unwrap_or(None);
+
+    Ok((
+        expand(TreeEnsembleClassifier { ensemble, class_labels, base_class_score, post_transform }),
+        vec![],
+    ))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PostTransform {
+    Softmax,
+    Logistic,
+    // SoftmaxZero,
+    // Probit, // probit, especially multinomial, is p.i.t.a. - so let's ignore it for now
+}
+
+pub fn parse_post_transform(s: &str) -> TractResult<Option<PostTransform>> {
+    match s {
+        "NONE" => Ok(None),
+        "SOFTMAX" => Ok(Some(PostTransform::Softmax)),
+        "LOGISTIC" => Ok(Some(PostTransform::Logistic)),
+        "PROBIT" | "SOFTMAX_ZERO" => bail!("PROBIT and SOFTMAX_ZERO unsupported"),
+        _ => bail!("Invalid post transform: {}", s),
+    }
 }
 
 fn parse_node_mode(s: &str) -> TractResult<Option<Cmp>> {
@@ -55,13 +81,13 @@ where
     }
 }
 
-fn parse_class_data(node: &NodeProto) -> TractResult<Tensor> {
+fn parse_class_data(node: &NodeProto) -> TractResult<Arc<Tensor>> {
     // parse n_classes from protobuf
     let ints = node.get_attr_opt_slice::<i64>("classlabels_int64s")?;
     let strs = node.get_attr_opt_tvec::<&str>("classlabels_strings")?;
     match (ints, strs) {
-        (Some(n), None) => Ok(tensor1(n)),
-        (None, Some(n)) => Ok(tensor1(&n.iter().map(|d| d.to_string()).collect::<Vec<_>>())),
+        (Some(n), None) => Ok(rctensor1(n)),
+        (None, Some(n)) => Ok(rctensor1(&n.iter().map(|d| d.to_string()).collect::<Vec<_>>())),
         (None, None) => {
             bail!("cannot find neither 'classlabels_int64s' not 'classlabels_strings'")
         }
@@ -93,8 +119,6 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
     node.expect_attr("nodes_featureids", n_nodes != 0, "at least one node")?;
 
     // parse base_values from protobuf
-    let base_values = get_vec_attr_opt::<f32>(node, "base_values", n_classes)?;
-
     let node_ids = get_vec_attr::<usize>(node, "nodes_nodeids", n_nodes)?;
     let tree_ids = get_vec_attr::<usize>(node, "nodes_treeids", n_nodes)?;
     let feature_ids = get_vec_attr::<usize>(node, "nodes_featureids", n_nodes)?;
@@ -110,11 +134,8 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
 
     let n_features = feature_ids.iter().max().copied().unwrap_or(0) + 1;
 
-    use tract_onnx_opl::ml::tree_ensemble_classifier::{parse_aggregate, parse_post_transform};
+    use tract_onnx_opl::ml::tree_ensemble_classifier::parse_aggregate;
     // parse post_transform from protobuf
-    let post_transform =
-        node.get_attr_opt("post_transform")?.map(parse_post_transform).transpose()?.unwrap_or(None);
-
     // parse aggregate_fn from protobuf (for regressors)
     let aggregate_fn = parse_aggregate(if is_classifier {
         "SUM"
@@ -194,13 +215,15 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
     let nodes = tensor1(&*nodes).into_shape(&[nodes.len() / 5, 5])?;
     let leaves = tensor1(&*leaves).into_shape(&[leaves.len() / 2, 2])?;
     let data = TreeEnsembleData { trees, nodes, leaves };
-    TreeEnsemble::build(data, n_features, n_classes, aggregate_fn, post_transform, base_values)
+    TreeEnsemble::build(data, n_features, n_classes, aggregate_fn)
 }
 
 #[derive(Debug, Clone, Hash)]
 pub struct TreeEnsembleClassifier {
     pub ensemble: TreeEnsemble,
-    pub class_labels: Tensor,
+    pub class_labels: Arc<Tensor>,
+    pub base_class_score: Option<Arc<Tensor>>,
+    pub post_transform: Option<PostTransform>,
 }
 
 impl_dyn_hash!(TreeEnsembleClassifier);
@@ -241,17 +264,43 @@ impl Expansion for TreeEnsembleClassifier {
     ) -> TractResult<TVec<OutletId>> {
         use tract_core::ops::nn::*;
 
-        let scores = model.wire_node(
+        let mut scores = model.wire_node(
             format!("{}.classifier", prefix),
             tract_onnx_opl::ml::tree_ensemble_classifier::TreeEnsembleClassifier {
                 ensemble: self.ensemble.clone(),
             },
             inputs,
-        )?[0];
+        )?;
+        if let Some(base_class_score) = self.base_class_score.as_deref() {
+            scores = model.wire_node(
+                format!("{}.base_class_score", prefix),
+                tract_core::ops::math::add::unary(
+                    base_class_score.clone().broadcast_into_rank(2)?.into_arc_tensor(),
+                ),
+                &scores,
+            )?;
+        }
+        match self.post_transform {
+            None => (),
+            Some(PostTransform::Softmax) => {
+                scores = tract_hir::ops::nn::LayerSoftmax::new(1).wire(
+                    &format!("{}.softmax", prefix),
+                    model,
+                    &scores,
+                )?;
+            }
+            Some(PostTransform::Logistic) => {
+                scores = model.wire_node(
+                    &format!("{}.logistic", prefix),
+                    tract_core::ops::nn::sigmoid(),
+                    &scores,
+                )?;
+            }
+        }
         let winners = model.wire_node(
             format!("{}.argmax", prefix),
             Reduce::new(tvec!(1), Reducer::ArgMax(false)),
-            &[scores],
+            &scores,
         )?;
         let reduced = model.wire_node(
             format!("{}.rm_axis", prefix),
@@ -266,12 +315,12 @@ impl Expansion for TreeEnsembleClassifier {
         let labels = model.wire_node(
             format!("{}.labels", prefix),
             tract_onnx_opl::ml::DirectLookup::new(
-                Arc::new(self.class_labels.clone()),
+                self.class_labels.clone(),
                 Tensor::zero_dt(self.class_labels.datum_type(), &[])?.into_arc_tensor(),
             )?,
             &casted,
         )?[0];
-        Ok(tvec!(labels, scores))
+        Ok(tvec!(labels, scores[0]))
     }
 
     fn nboutputs(&self) -> TractResult<usize> {
