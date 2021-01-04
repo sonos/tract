@@ -13,7 +13,6 @@ macro_rules! op_onnx {
 
 mod array;
 mod cast;
-mod category_mapper;
 mod logic;
 mod math;
 mod ml;
@@ -28,7 +27,6 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Identity", |_, _| Ok((Box::new(ops::identity::Identity::default()), vec![])));
     reg.insert("Resize", resize::resize);
     array::register_all_ops(reg);
-    category_mapper::register_all_ops(reg);
     logic::register_all_ops(reg);
     math::register_all_ops(reg);
     ml::register_all_ops(reg);
