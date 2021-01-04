@@ -407,8 +407,8 @@ mod tests {
     }
 
     fn generate_gbm_trees() -> TreeEnsembleData {
-        let trees = tensor1(&[0u32, 5u32, 14, 21, 30, 41]);
-        let nodes = tensor2(&[
+        let trees = rctensor1(&[0u32, 5u32, 14, 21, 30, 41]);
+        let nodes = rctensor2(&[
             b(0, Cmp::LessEqual, 2, 3.15, 1, 2, true),
             b(0, Cmp::LessEqual, 1, 3.35, 3, 4, true),
             l(0, 0, 1),
@@ -466,7 +466,7 @@ mod tests {
             l(23, 4, 5),
         ]);
         assert_eq!(nodes.shape(), &[50, 5]);
-        let leaves = tensor2(&[
+        let leaves = rctensor2(&[
             w(0, -0.075),
             w(0, 0.13928571),
             w(0, 0.15),
