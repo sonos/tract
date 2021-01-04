@@ -1,6 +1,8 @@
 use std::iter;
 use tract_onnx_opl::ml::tree::*;
 
+mod category_mapper;
+
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::AttrTVecType;
@@ -8,6 +10,7 @@ use crate::pb_helpers::AttrTVecType;
 use tract_hir::internal::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
+    category_mapper::register_all_ops(reg);
     reg.insert("TreeEnsembleClassifier", tree_classifier);
 }
 
