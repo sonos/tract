@@ -76,16 +76,16 @@ impl Display for Cmp {
 #[derive(Clone, Debug, Hash)]
 pub struct TreeEnsembleData {
     // u32, [Ntrees], root row of each tree in nodes array (in rows)
-    pub trees: Tensor,
+    pub trees: Arc<Tensor>,
     // u32, [_, 5],
     // 5th number is flags: last byte is comparator, 0 for leaves, transmuted Cmp for the internal nodes
     //                      is_nan is 0x100 bit
     // intern nodes:    feature_id, true_id, false_id, value.to_bits(),
     //                  comp | (0x100 if nan_is_true)
     // leaves:          start row, end row in leaves array, 3 zeros for padding
-    pub nodes: Tensor,
+    pub nodes: Arc<Tensor>,
     // categ,
-    pub leaves: Tensor,
+    pub leaves: Arc<Tensor>,
 }
 
 impl TreeEnsembleData {
@@ -264,10 +264,10 @@ impl Default for Aggregate {
 
 #[derive(Clone, Debug, Hash)]
 pub struct TreeEnsemble {
-    data: TreeEnsembleData,
-    n_features: usize,
-    n_classes: usize,
-    aggregate_fn: Aggregate, // TODO: should this be an argument to eval()?
+    pub data: TreeEnsembleData,
+    pub n_features: usize,
+    pub n_classes: usize,
+    pub aggregate_fn: Aggregate, // TODO: should this be an argument to eval()?
 }
 
 impl TreeEnsemble {

@@ -26,6 +26,7 @@ impl WithOnnx for tract_nnef::framework::Nnef {
 
 fn onnx_opl_registry() -> Registry {
     let mut registry: Registry = Registry::new("tract_onnx");
+    ml::register(&mut registry);
     registry.register_unit_element_wise("tract_onnx_erf", &erf::Erf {});
     registry.register_element_wise(
         "tract_onnx_isinf",

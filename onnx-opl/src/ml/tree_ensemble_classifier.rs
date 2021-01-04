@@ -1,6 +1,10 @@
+pub use super::tree::{Aggregate, Cmp, TreeEnsemble, TreeEnsembleData};
 use tract_nnef::internal::*;
 
-pub use super::tree::{Aggregate, Cmp, TreeEnsemble, TreeEnsembleData};
+pub fn register(registry: &mut Registry) {
+    registry.register_primitive("tract_onnx_ml_tree_ensemble_classifier", &parameters(), load);
+    registry.register_dumper(TypeId::of::<TreeEnsembleClassifier>(), dump);
+}
 
 pub fn parse_aggregate(s: &str) -> TractResult<Aggregate> {
     match s {
@@ -55,4 +59,57 @@ impl TypedOp for TreeEnsembleClassifier {
     }
 
     as_op!();
+}
+
+fn parameters() -> Vec<Parameter> {
+    vec![
+        TypeName::Scalar.tensor().named("input"),
+        TypeName::Scalar.tensor().named("trees"),
+        TypeName::Scalar.tensor().named("nodes"),
+        TypeName::Scalar.tensor().named("leaves"),
+        TypeName::Integer.named("n_features"),
+        TypeName::Integer.named("n_classes"),
+        TypeName::String.named("aggregate_fn"),
+    ]
+}
+
+fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let op = node.op_as::<TreeEnsembleClassifier>().context("wrong op")?;
+    let input = ast.mapping[&node.inputs[0]].clone();
+    let trees = ast.konst_variable(format!("{}_trees", node.name), &op.ensemble.data.trees);
+    let nodes = ast.konst_variable(format!("{}_nodes", node.name), &op.ensemble.data.nodes);
+    let leaves = ast.konst_variable(format!("{}_leaves", node.name), &op.ensemble.data.leaves);
+    let agg = match op.ensemble.aggregate_fn {
+        Aggregate::Min => "MIN",
+        Aggregate::Max => "MAX",
+        Aggregate::Sum => "SUM",
+        Aggregate::Avg => "AVERAGE",
+    };
+    Ok(Some(invocation(
+        "tract_onnx_ml_tree_ensemble_classifier",
+        &[input, trees, nodes, leaves],
+        &[
+            ("n_features", numeric(op.ensemble.n_features)),
+            ("n_classes", numeric(op.ensemble.n_classes)),
+            ("aggregate_fn", string(agg)),
+        ],
+    )))
+}
+
+fn load(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let trees = invocation.named_arg_as(builder, "trees")?;
+    let nodes = invocation.named_arg_as(builder, "nodes")?;
+    let leaves = invocation.named_arg_as(builder, "leaves")?;
+    let n_features = invocation.named_arg_as(builder, "n_features")?;
+    let n_classes = invocation.named_arg_as(builder, "n_classes")?;
+    let aggregate_fn: String = invocation.named_arg_as(builder, "aggregate_fn")?;
+    let aggregate_fn = parse_aggregate(&aggregate_fn)?;
+    let data = TreeEnsembleData { trees, nodes, leaves };
+    let ensemble = TreeEnsemble { data, n_classes, n_features, aggregate_fn };
+    let op = TreeEnsembleClassifier { ensemble };
+    builder.wire(op, &[input])
 }
