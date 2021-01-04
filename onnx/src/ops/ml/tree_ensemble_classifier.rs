@@ -211,9 +211,9 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
             nodes.extend(row.iter());
         };
     }
-    let trees = tensor1(&*trees);
-    let nodes = tensor1(&*nodes).into_shape(&[nodes.len() / 5, 5])?;
-    let leaves = tensor1(&*leaves).into_shape(&[leaves.len() / 2, 2])?;
+    let trees = rctensor1(&*trees);
+    let nodes = tensor1(&*nodes).into_shape(&[nodes.len() / 5, 5])?.into_arc_tensor();
+    let leaves = tensor1(&*leaves).into_shape(&[leaves.len() / 2, 2])?.into_arc_tensor();
     let data = TreeEnsembleData { trees, nodes, leaves };
     TreeEnsemble::build(data, n_features, n_classes, aggregate_fn)
 }

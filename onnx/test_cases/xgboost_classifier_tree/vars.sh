@@ -1,2 +1,2 @@
-IGNORE=nnef
-OPTIONS="--output-node probabilities"
+IGNORE=
+OPTIONS="--output-node probabilities --nnef-tract-onnx"
