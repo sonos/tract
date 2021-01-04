@@ -349,6 +349,10 @@ impl TreeEnsemble {
         Ok(Self { data, n_features, n_classes, aggregate_fn, post_transform, base_scores })
     }
 
+    pub fn n_classes(&self) -> usize {
+        self.n_classes
+    }
+
     unsafe fn eval_one_unchecked<A, T>(
         &self,
         input: &ArrayView1<T>,

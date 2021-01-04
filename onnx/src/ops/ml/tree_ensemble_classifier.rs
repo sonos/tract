@@ -1,9 +1,9 @@
-use tract_hir::internal::*;
-use std::iter;
-use tract_onnx_opl::ml::tree::*;
+use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::*;
-use crate::model::{ OnnxOpRegister, ParsingContext };
+use std::iter;
+use tract_hir::internal::*;
+use tract_onnx_opl::ml::tree::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("TreeEnsembleClassifier", tree_classifier);
@@ -110,7 +110,7 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
 
     let n_features = feature_ids.iter().max().copied().unwrap_or(0) + 1;
 
-    use tract_onnx_opl::ml::tree_ensemble_classifier::{ parse_post_transform, parse_aggregate};
+    use tract_onnx_opl::ml::tree_ensemble_classifier::{parse_aggregate, parse_post_transform};
     // parse post_transform from protobuf
     let post_transform =
         node.get_attr_opt("post_transform")?.map(parse_post_transform).transpose()?.unwrap_or(None);
@@ -239,11 +239,39 @@ impl Expansion for TreeEnsembleClassifier {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let op = tract_onnx_opl::ml::tree_ensemble_classifier::TreeEnsembleClassifier {
-            ensemble: self.ensemble.clone(),
-            class_labels: self.class_labels.clone(),
-        };
-        model.wire_node(prefix, op, inputs)
+        use tract_core::ops::nn::*;
+
+        let scores = model.wire_node(
+            format!("{}.classifier", prefix),
+            tract_onnx_opl::ml::tree_ensemble_classifier::TreeEnsembleClassifier {
+                ensemble: self.ensemble.clone(),
+            },
+            inputs,
+        )?[0];
+        let winners = model.wire_node(
+            format!("{}.argmax", prefix),
+            Reduce::new(tvec!(1), Reducer::ArgMax(false)),
+            &[scores],
+        )?;
+        let reduced = model.wire_node(
+            format!("{}.rm_axis", prefix),
+            tract_core::ops::change_axes::AxisOp::Rm(1),
+            &winners,
+        )?;
+        let casted = model.wire_node(
+            format!("{}.argmax", prefix),
+            tract_core::ops::cast::cast(i32::datum_type()),
+            &reduced,
+        )?;
+        let labels = model.wire_node(
+            format!("{}.labels", prefix),
+            tract_onnx_opl::ml::DirectLookup::new(
+                Arc::new(self.class_labels.clone()),
+                Tensor::zero_dt(self.class_labels.datum_type(), &[])?.into_arc_tensor(),
+            )?,
+            &casted,
+        )?[0];
+        Ok(tvec!(labels, scores))
     }
 
     fn nboutputs(&self) -> TractResult<usize> {

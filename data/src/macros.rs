@@ -161,3 +161,25 @@ macro_rules! dispatch_signed {
         }
     } }
 }
+
+#[macro_export]
+macro_rules! dispatch_hash {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::prelude::DatumType;
+        match $dt {
+            DatumType::Bool => $($path)::*::<bool>($($args),*),
+            DatumType::U8   => $($path)::*::<u8>($($args),*),
+            DatumType::U16  => $($path)::*::<u16>($($args),*),
+            DatumType::U32  => $($path)::*::<u32>($($args),*),
+            DatumType::U64  => $($path)::*::<u64>($($args),*),
+            DatumType::I8   => $($path)::*::<i8>($($args),*),
+            DatumType::I16  => $($path)::*::<i16>($($args),*),
+            DatumType::I32  => $($path)::*::<i32>($($args),*),
+            DatumType::I64  => $($path)::*::<i64>($($args),*),
+            DatumType::Blob => $($path)::*::<Blob>($($args),*),
+            DatumType::TDim => $($path)::*::<TDim>($($args),*),
+            DatumType::String => $($path)::*::<String>($($args),*),
+            _ => $crate::anyhow::bail!("{:?} is not Hash", $dt)
+        }
+    } }
+}
