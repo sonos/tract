@@ -4,20 +4,18 @@ use tract_nnef::tract_core::itertools::Itertools;
 use tract_smallvec::SmallVec;
 
 pub fn register(registry: &mut Registry) {
-    /*
     registry.register_primitive(
-    "tract_onnx_ml_category_mapper_to_int",
-    &parameters_to_int(),
-    load_to_int,
+        "tract_onnx_ml_direct_lookup",
+        &parameters_direct_lookup(),
+        load_direct_lookup,
     );
     registry.register_primitive(
-    "tract_onnx_ml_category_mapper_to_string",
-    &parameters_to_string(),
-    load_to_string,
+        "tract_onnx_ml_reverse_lookup",
+        &parameters_reverse_lookup(),
+        load_reverse_lookup,
     );
-    registry.register_dumper(TypeId::of::<CategoryMapper<i64, String>>(), dump_to_string);
-    registry.register_dumper(TypeId::of::<CategoryMapper<String, i64>>(), dump_to_int);
-    */
+    registry.register_dumper(TypeId::of::<DirectLookup>(), dump_direct_lookup);
+    registry.register_dumper(TypeId::of::<ReverseLookup>(), dump_reverse_lookup);
 }
 
 #[derive(Clone, Debug, Hash)]
@@ -204,89 +202,63 @@ impl TypedOp for ReverseLookup {
     as_op!();
 }
 
-/*
-   fn parameters_to_int() -> Vec<Parameter> {
-   vec![
-   TypeName::String.tensor().named("input"),
-   TypeName::String.tensor().named("keys"),
-   TypeName::Scalar.tensor().named("values"),
-   TypeName::Scalar.named("default").default(-1),
-   ]
-   }
+fn parameters_direct_lookup() -> Vec<Parameter> {
+    vec![
+        TypeName::String.tensor().named("input"),
+        TypeName::Scalar.tensor().named("values"),
+        TypeName::Scalar.named("fallback"),
+    ]
+}
 
-   fn parameters_to_string() -> Vec<Parameter> {
-   vec![
-   TypeName::Scalar.tensor().named("input"),
-   TypeName::Scalar.tensor().named("keys"),
-   TypeName::String.tensor().named("values"),
-   TypeName::String.named("default").default(""),
-   ]
-   }
+fn parameters_reverse_lookup() -> Vec<Parameter> {
+    vec![
+        TypeName::Scalar.tensor().named("input"),
+        TypeName::Scalar.tensor().named("keys"),
+        TypeName::Scalar.named("fallback"),
+    ]
+}
 
-   fn dump_to_string(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-   let input = ast.mapping[&node.inputs[0]].clone();
-   let to_string = node.op_as::<CategoryMapper<i64, String>>().context("wrong op")?;
-   let (keys, values) =
-   to_string.hash.iter().map(|(k, v)| (*k, v.clone())).unzip::<i64, String, Vec<_>, Vec<_>>();
-   let keys = ast.konst_variable(format!("{}_keys", node.name), &rctensor1(&keys));
-   let values = ast.konst_variable(format!("{}_values", node.name), &rctensor1(&values));
-   Ok(Some(invocation(
-   "tract_onnx_ml_category_mapper_to_string",
-   &[input, keys, values],
-   &[("default", string(to_string.default.clone()))],
-   )))
-   }
+fn dump_direct_lookup(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    let op = node.op_as::<DirectLookup>().context("wrong op")?;
+    let keys = ast.konst_variable(format!("{}.values", node.name), &op.values);
+    let fallback = if let Ok(s) = op.fallback_value.to_scalar::<String>() {
+        string(s)
+    } else {
+        numeric(op.fallback_value.cast_to_scalar::<f64>()?)
+    };
+    Ok(Some(invocation("tract_onnx_ml_direct_lookup", &[input, keys], &[("fallback", fallback)])))
+}
 
-   fn dump_to_int(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-   let input = ast.mapping[&node.inputs[0]].clone();
-   let from_string = node.op_as::<CategoryMapper<String, i64>>().context("wrong op")?;
-   let (keys, values) = from_string
-   .hash
-   .iter()
-   .map(|(k, v)| (k.clone(), *v))
-   .unzip::<String, i64, Vec<_>, Vec<_>>();
-   let keys = ast.konst_variable(format!("{}_keys", node.name), &rctensor1(&keys));
-   let values = ast.konst_variable(format!("{}_values", node.name), &rctensor1(&values));
-   Ok(Some(invocation(
-   "tract_onnx_ml_category_mapper_to_int",
-   &[input, keys, values],
-   &[("default", numeric(from_string.default))],
-   )))
-   }
+fn dump_reverse_lookup(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    let op = node.op_as::<ReverseLookup>().context("wrong op")?;
+    let values = ast.konst_variable(format!("{}.keys", node.name), &op.keys);
+    Ok(Some(invocation(
+        "tract_onnx_ml_reverse_lookup",
+        &[input, values],
+        &[("fallback", numeric(op.fallback_value))],
+    )))
+}
 
-   fn load_to_string(
-   builder: &mut ModelBuilder,
-   invocation: &ResolvedInvocation,
-   ) -> TractResult<TVec<OutletId>> {
-   let input = invocation.named_arg_as(builder, "input")?;
-   let default = invocation.named_arg_as(builder, "default")?;
-   let keys: Arc<Tensor> = invocation.named_arg_as(builder, "keys")?;
-   let values: Arc<Tensor> = invocation.named_arg_as(builder, "values")?;
-   let hash = keys
-   .as_slice::<i64>()?
-   .iter()
-   .copied()
-   .zip(values.as_slice::<String>()?.iter().cloned())
-   .collect();
-   let op = CategoryMapper::<i64, String> { hash, default };
-   builder.wire(op, &[input])
-   }
-
-   fn load_to_int(
-   builder: &mut ModelBuilder,
-   invocation: &ResolvedInvocation,
+fn load_direct_lookup(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
-    let default = invocation.named_arg_as(builder, "default")?;
-    let keys: Arc<Tensor> = invocation.named_arg_as(builder, "keys")?;
     let values: Arc<Tensor> = invocation.named_arg_as(builder, "values")?;
-    let hash = keys
-        .as_slice::<String>()?
-        .iter()
-        .cloned()
-        .zip(values.as_slice::<i64>()?.iter().copied())
-        .collect();
-    let op = CategoryMapper::<String, i64> { hash, default };
+    let fallback_value = invocation.named_arg_as(builder, "fallback")?;
+    let op = DirectLookup { fallback_value, values };
     builder.wire(op, &[input])
 }
-*/
+
+fn load_reverse_lookup(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let keys: isize = invocation.named_arg_as(builder, "keys")?;
+    let fallback_value = invocation.named_arg_as(builder, "fallback")?;
+    let op = ReverseLookup::new(fallback_value, keys as i32)?;
+    builder.wire(op, &[input])
+}

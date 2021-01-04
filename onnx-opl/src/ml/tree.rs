@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt::{self, Debug, Display};
@@ -263,78 +262,12 @@ impl Default for Aggregate {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum PostTransform {
-    Softmax,
-    Logistic,
-    SoftmaxZero,
-    // Probit, // probit, especially multinomial, is p.i.t.a. - so let's ignore it for now
-}
-
-impl PostTransform {
-    pub fn apply(&self, scores: &mut ArrayViewMut1<f32>) {
-        match self {
-            PostTransform::Softmax => {
-                // TODO: stability w.r.t. nan/inf/-inf?
-                let max: f32 = scores
-                    .iter()
-                    .cloned()
-                    .max_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
-                    .unwrap_or(0.0);
-                let mut norm = 0.;
-                scores.map_inplace(|a| {
-                    *a = (*a - max).exp();
-                    norm += *a;
-                });
-                scores.map_inplace(|a| *a = *a / norm);
-            }
-            PostTransform::Logistic => {
-                scores.map_inplace(|a| {
-                    let v = 1. / (1. + f32::exp(-f32::abs(*a)));
-                    *a = if a.is_sign_negative() { 1. - v } else { v };
-                });
-            }
-            PostTransform::SoftmaxZero => {
-                // TODO: stability w.r.t. nan/inf/-inf?
-                let max: f32 = scores
-                    .iter()
-                    .cloned()
-                    .filter(|&a| a != 0.)
-                    .max_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
-                    .unwrap_or(0.0);
-                let mut norm = 0.;
-                scores.map_inplace(|a| {
-                    if *a != 0. {
-                        *a = (*a - max).exp();
-                        norm += *a;
-                    }
-                });
-                scores.map_inplace(|a| *a = *a / norm);
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug, Educe)]
-#[educe(Hash)]
+#[derive(Clone, Debug, Hash)]
 pub struct TreeEnsemble {
     data: TreeEnsembleData,
     n_features: usize,
     n_classes: usize,
     aggregate_fn: Aggregate, // TODO: should this be an argument to eval()?
-    post_transform: Option<PostTransform>, // TODO: should this be an argument to eval()?
-    #[educe(Hash(method = "hash_base_scores"))]
-    base_scores: Option<Vec<f32>>,
-}
-
-fn hash_base_scores(scores: &Option<Vec<f32>>, state: &mut impl std::hash::Hasher) {
-    std::hash::Hash::hash(&(scores.is_some() as usize), state);
-    if let Some(scores) = scores.as_deref() {
-        std::hash::Hash::hash(&scores.len(), state);
-        for s in scores {
-            hash_f32(s, state);
-        }
-    }
 }
 
 impl TreeEnsemble {
@@ -343,10 +276,8 @@ impl TreeEnsemble {
         n_features: usize,
         n_classes: usize,
         aggregate_fn: Aggregate,
-        post_transform: Option<PostTransform>,
-        base_scores: Option<Vec<f32>>,
     ) -> TractResult<Self> {
-        Ok(Self { data, n_features, n_classes, aggregate_fn, post_transform, base_scores })
+        Ok(Self { data, n_features, n_classes, aggregate_fn })
     }
 
     pub fn n_classes(&self) -> usize {
@@ -362,20 +293,11 @@ impl TreeEnsemble {
         A: AggregateFn,
         T: AsPrimitive<f32>,
     {
-        if let Some(ref base_scores) = self.base_scores {
-            for i in 0..self.n_classes {
-                // TODO: should this be done at initialization time?
-                *output.uget_mut(i) += base_scores[i];
-            }
-        }
         for t in 0..self.data.trees.len() {
             self.data.eval_unchecked(t, input, output, aggs)
         }
         for i in 0..self.n_classes {
             aggs.get_unchecked_mut(i).post_aggregate(output.uget_mut(i));
-        }
-        if let Some(post_transform) = self.post_transform {
-            post_transform.apply(output);
         }
     }
 
@@ -583,10 +505,10 @@ mod tests {
         TreeEnsembleData { nodes, trees, leaves }
     }
 
-    fn generate_gbm_ensemble(post_transform: Option<PostTransform>) -> TreeEnsemble {
+    fn generate_gbm_ensemble() -> TreeEnsemble {
         // converted manually from LightGBM, fitted on iris dataset
         let trees = generate_gbm_trees();
-        TreeEnsemble::build(trees, 4, 3, Aggregate::Sum, post_transform, None).unwrap()
+        TreeEnsemble::build(trees, 4, 3, Aggregate::Sum).unwrap()
     }
 
     fn generate_gbm_input() -> Array2<f32> {
@@ -629,35 +551,11 @@ mod tests {
         ])
     }
 
-    fn generate_gbm_softmax_output_approx() -> Array2<f32> {
-        arr2(&[
-            [0.43402156, 0.28297736, 0.28300108],
-            [0.43407212, 0.28289383, 0.28303405],
-            [0.43407212, 0.28289383, 0.28303405],
-            [0.42913692, 0.28536082, 0.28550226],
-            [0.43402156, 0.28297736, 0.28300108],
-            [0.28852151, 0.41172066, 0.29975782],
-            [0.28522654, 0.42646814, 0.28830533],
-            [0.28840992, 0.30166975, 0.40992033],
-            [0.28522654, 0.42646814, 0.28830533],
-            [0.28522654, 0.42646814, 0.28830533],
-            [0.28285181, 0.28285333, 0.43429486],
-            [0.28840992, 0.30166975, 0.40992033],
-            [0.28285181, 0.28285333, 0.43429486],
-            [0.28285181, 0.28285333, 0.43429486],
-            [0.28285181, 0.28285333, 0.43429486],
-        ])
-    }
-
     #[test]
     fn test_tree_ensemble() {
-        let ensemble = generate_gbm_ensemble(None);
+        let ensemble = generate_gbm_ensemble();
         let input = generate_gbm_input();
         let output = ensemble.eval(&input.view().into_dyn()).unwrap();
         assert_eq!(output, generate_gbm_raw_output().into_dyn());
-
-        let ensemble = generate_gbm_ensemble(Some(PostTransform::Softmax));
-        let output = ensemble.eval(&input.view().into_dyn()).unwrap();
-        assert!(output.all_close(&generate_gbm_softmax_output_approx(), 1e-7));
     }
 }

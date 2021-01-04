@@ -1,17 +1,6 @@
 use tract_nnef::internal::*;
 
-pub use super::tree::{Aggregate, Cmp, PostTransform, TreeEnsemble, TreeEnsembleData};
-
-pub fn parse_post_transform(s: &str) -> TractResult<Option<PostTransform>> {
-    match s {
-        "NONE" => Ok(None),
-        "SOFTMAX" => Ok(Some(PostTransform::Softmax)),
-        "LOGISTIC" => Ok(Some(PostTransform::Logistic)),
-        "SOFTMAX_ZERO" => Ok(Some(PostTransform::SoftmaxZero)),
-        "PROBIT" => bail!("PROBIT unsupported"),
-        _ => bail!("Invalid post transform: {}", s),
-    }
-}
+pub use super::tree::{Aggregate, Cmp, TreeEnsemble, TreeEnsembleData};
 
 pub fn parse_aggregate(s: &str) -> TractResult<Aggregate> {
     match s {
@@ -59,12 +48,10 @@ impl EvalOp for TreeEnsembleClassifier {
 impl TypedOp for TreeEnsembleClassifier {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let n = &inputs[0].shape[0];
-        Ok(tvec!(
-            TypedFact::dt_shape(
-                f32::datum_type(),
-                &[n.clone(), self.ensemble.n_classes().into()]
-            )
-        ))
+        Ok(tvec!(TypedFact::dt_shape(
+            f32::datum_type(),
+            &[n.clone(), self.ensemble.n_classes().into()]
+        )))
     }
 
     as_op!();
