@@ -22,7 +22,7 @@ pub mod prelude {
     pub use crate::TVec;
     pub use crate::{
         dispatch_copy, dispatch_copy_by_size, dispatch_datum, dispatch_datum_by_size,
-        dispatch_floatlike, dispatch_numbers, dispatch_signed,
+        dispatch_floatlike, dispatch_hash, dispatch_numbers, dispatch_signed,
     };
 }
 

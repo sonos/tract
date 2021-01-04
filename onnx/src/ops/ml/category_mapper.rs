@@ -1,10 +1,61 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
 use tract_hir::internal::*;
-use tract_onnx_opl::ml::CategoryMapper;
+use tract_onnx_opl::ml::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("CategoryMapper", category_mapper);
+}
+
+#[derive(Debug, Clone, Hash)]
+struct CategoryMapper {
+    pub from: Arc<Tensor>,
+    pub to: Arc<Tensor>,
+    pub fallback: Arc<Tensor>,
+}
+
+impl_dyn_hash!(CategoryMapper);
+
+impl Expansion for CategoryMapper {
+    fn name(&self) -> Cow<str> {
+        "CategoryMapper".into()
+    }
+
+    fn op_families(&self) -> &'static [&'static str] {
+        &["onnx-ml"]
+    }
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
+        s.equals(&inputs[0].shape, &outputs[0].shape)?;
+        s.equals(&inputs[0].datum_type, self.from.datum_type())?;
+        s.equals(&outputs[0].datum_type, self.to.datum_type())?;
+        Ok(())
+    }
+
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let wire = model.wire_node(
+            format!("{}.reverse", prefix),
+            ReverseLookup::new(self.from.clone(), -1)?,
+            inputs,
+        )?;
+        model.wire_node(
+            format!("{}.reverse", prefix),
+            DirectLookup::new(self.to.clone(), self.fallback.clone())?,
+            &wire,
+        )
+    }
 }
 
 fn category_mapper(
@@ -20,38 +71,18 @@ fn category_mapper(
             "CategoryMapper requires exactly one of default_int64 and default_string (found {:?})",
             (default_int, default_string)
         ),
-        (Some(def), None) => inference_wrap(
-            CategoryMapper { hash: tract_itertools::zip(strings, ints).collect(), default: def },
-            1,
-            rules,
-        ),
-        (None, Some(def)) => inference_wrap(
-            CategoryMapper {
-                hash: tract_itertools::zip(ints, strings).collect(),
-                default: def.to_string(),
-            },
-            1,
-            rules,
-        ),
+        (Some(def), None) => expand(CategoryMapper {
+            from: rctensor1(&strings),
+            to: rctensor1(&ints),
+            fallback: rctensor0(def),
+        }),
+        (None, Some(def)) => expand(CategoryMapper {
+            from: rctensor1(&ints),
+            to: rctensor1(&strings),
+            fallback: rctensor0(def.clone()),
+        }),
+
     };
     Ok((op, vec![]))
 }
 
-fn rules<'r, 'p, 's>(
-    op: &'s dyn Op,
-    s: &mut Solver<'r>,
-    inputs: &'p [TensorProxy],
-    outputs: &'p [TensorProxy],
-) -> InferenceResult {
-    let (src, dst) = if op.downcast_ref::<CategoryMapper<i64, String>>().is_some() {
-        (i64::datum_type(), String::datum_type())
-    } else {
-        (String::datum_type(), i64::datum_type())
-    };
-    check_input_arity(&inputs, 1)?;
-    check_output_arity(&outputs, 1)?;
-    s.equals(&inputs[0].shape, &outputs[0].shape)?;
-    s.equals(&inputs[0].datum_type, src)?;
-    s.equals(&outputs[0].datum_type, dst)?;
-    Ok(())
-}

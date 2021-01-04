@@ -26,7 +26,6 @@ pub fn parse_aggregate(s: &str) -> TractResult<Aggregate> {
 #[derive(Debug, Clone, Hash)]
 pub struct TreeEnsembleClassifier {
     pub ensemble: TreeEnsemble,
-    pub class_labels: Tensor,
 }
 
 impl_dyn_hash!(TreeEnsembleClassifier);
@@ -53,25 +52,7 @@ impl EvalOp for TreeEnsembleClassifier {
         let input = input.cast_to::<f32>()?;
         let input = input.to_array_view::<f32>()?;
         let scores = self.ensemble.eval(input)?;
-        let tops: Vec<usize> = scores
-            .view()
-            .into_dimensionality::<tract_ndarray::Ix2>()?
-            .outer_iter()
-            .map(|scores| {
-                scores
-                    .iter()
-                    .enumerate()
-                    .max_by(|a, b| (a.1).partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Less))
-                    .unwrap()
-                    .0 as usize
-            })
-            .collect();
-        let categ = tops
-            .iter()
-            .map(|&ix| self.class_labels.slice(0, ix, ix + 1))
-            .collect::<TractResult<Vec<Tensor>>>()?;
-        let categ = Tensor::stack_tensors(0, &categ)?;
-        Ok(tvec!(categ.into_arc_tensor(), scores.into_arc_tensor()))
+        Ok(tvec!(scores.into_arc_tensor()))
     }
 }
 
@@ -79,10 +60,9 @@ impl TypedOp for TreeEnsembleClassifier {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let n = &inputs[0].shape[0];
         Ok(tvec!(
-            TypedFact::dt_shape(self.class_labels.datum_type(), [n.clone()].as_ref()),
             TypedFact::dt_shape(
                 f32::datum_type(),
-                [n.clone(), self.class_labels.len().to_dim()].as_ref()
+                &[n.clone(), self.ensemble.n_classes().into()]
             )
         ))
     }
