@@ -1,12 +1,24 @@
 use std::iter;
-use tract_onnx_opl::ml_trees::Cmp;
-use tract_onnx_opl::ml_trees::*;
+use tract_onnx_opl::ml::tree::*;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::AttrTVecType;
 
 use tract_hir::internal::*;
+
+pub fn register_all_ops(reg: &mut OnnxOpRegister) {
+    reg.insert("TreeEnsembleClassifier", tree_classifier);
+}
+
+fn tree_classifier(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let ensemble = parse_nodes_data(node, true)?;
+    let class_labels = parse_class_data(node)?;
+    Ok((expand(TreeEnsembleClassifier { ensemble, class_labels }), vec![]))
+}
 
 fn parse_node_mode(s: &str) -> TractResult<Option<Cmp>> {
     match s {
@@ -19,19 +31,6 @@ fn parse_node_mode(s: &str) -> TractResult<Option<Cmp>> {
         "LEAF" => Ok(None),
         _ => bail!("Unsupported mode node: {}", s),
     }
-}
-
-pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("TreeEnsembleClassifier", tree_classifier);
-}
-
-fn tree_classifier(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let ensemble = parse_nodes_data(node, true)?;
-    let class_labels = parse_class_data(node)?;
-    Ok((inference_wrap(TreeEnsembleClassifier { ensemble, class_labels }, 2, rules), vec![]))
 }
 
 fn get_vec_attr<'a, T>(node: &'a NodeProto, attr: &str, n: usize) -> TractResult<Vec<T>>
@@ -113,6 +112,7 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
 
     let n_features = feature_ids.iter().max().copied().unwrap_or(0) + 1;
 
+    use tract_onnx_opl::ml::tree_ensemble_classifier::{ parse_post_transform, parse_aggregate};
     // parse post_transform from protobuf
     let post_transform =
         node.get_attr_opt("post_transform")?.map(parse_post_transform).transpose()?.unwrap_or(None);
@@ -199,59 +199,56 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
     TreeEnsemble::build(data, n_features, n_classes, aggregate_fn, post_transform, base_values)
 }
 
-fn rules<'r, 'p, 's>(
-    op: &'s dyn Op,
-    s: &mut Solver<'r>,
-    inputs: &'p [TensorProxy],
-    outputs: &'p [TensorProxy],
-) -> InferenceResult {
-    let op = op.downcast_ref::<TreeEnsembleClassifier>().context("Wrong op")?;
-
-    check_input_arity(&inputs, 1)?;
-    check_output_arity(&outputs, 2)?;
-
-    s.equals(&outputs[0].datum_type, op.class_labels.datum_type())?;
-    s.equals(&outputs[1].datum_type, DatumType::F32)?;
-
-    s.equals(&outputs[0].rank, 1)?;
-    s.equals(&outputs[1].rank, 2)?;
-    s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?;
-    s.equals(&outputs[1].shape[0], &inputs[0].shape[0])?;
-    s.equals(&outputs[1].shape[1], &op.class_labels.len().to_dim())?;
-
-    /*
-    s.given(&inputs[0].rank, move |s, rank| {
-    if rank < 1 || rank > 2 {
-    bail!("First input rank must be 1 or 2");
-    }
-    if rank == 2 {
-    s.equals(&inputs[0].shape[0], &outputs[0].shape[0])?;
-    s.equals(&inputs[0].shape[0], &outputs[1].shape[0])?;
-    }
-    s.given(&inputs[0].shape[rank as usize - 1], move |_, feats| {
-    self.ensemble.check_n_features(feats.to_usize()?)
-    })?;
-    s.equals(&outputs[1].shape[rank as usize - 1], self.ensemble.n_classes().to_dim())?;
-    Ok(())
-    })?;
-
-    s.given(&inputs[0].datum_type, move |_, dt| {
-    Ok(match dt {
-    DatumType::F32 | DatumType::F64 | DatumType::I64 | DatumType::I32 => (),
-    _ => bail!("invalid input type for tree ensemble classifier: {:?}", dt),
-    })
-    })?;
-    match self.class_labels {
-    ClassLabels::Ints(_) => s.equals(&outputs[0].datum_type, &DatumType::I64)?,
-    ClassLabels::Strings(_) => s.equals(&outputs[0].datum_type, &DatumType::String)?,
-    };
-    */
-
-    Ok(())
+#[derive(Debug, Clone, Hash)]
+pub struct TreeEnsembleClassifier {
+    pub ensemble: TreeEnsemble,
+    pub class_labels: Tensor,
 }
 
-/*
-fn nboutputs(&self) -> TractResult<usize> {
-Ok(2)
+impl_dyn_hash!(TreeEnsembleClassifier);
+
+impl Expansion for TreeEnsembleClassifier {
+    fn name(&self) -> Cow<str> {
+        "TreeEnsembleClassifier".into()
+    }
+
+    op_onnx!();
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 2)?;
+
+        s.equals(&outputs[0].datum_type, self.class_labels.datum_type())?;
+        s.equals(&outputs[1].datum_type, DatumType::F32)?;
+
+        s.equals(&outputs[0].rank, 1)?;
+        s.equals(&outputs[1].rank, 2)?;
+        s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?;
+        s.equals(&outputs[1].shape[0], &inputs[0].shape[0])?;
+        s.equals(&outputs[1].shape[1], &self.class_labels.len().to_dim())?;
+
+        Ok(())
+    }
+
+    fn wire(
+        &self,
+        prefix: &str,
+        model: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let op = tract_onnx_opl::ml::tree_ensemble_classifier::TreeEnsembleClassifier {
+            ensemble: self.ensemble.clone(),
+            class_labels: self.class_labels.clone(),
+        };
+        model.wire_node(prefix, op, inputs)
+    }
+
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(2)
+    }
 }
-*/
