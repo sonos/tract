@@ -308,7 +308,7 @@ impl Expansion for TreeEnsembleClassifier {
             &winners,
         )?;
         let casted = model.wire_node(
-            format!("{}.argmax", prefix),
+            format!("{}.casted", prefix),
             tract_core::ops::cast::cast(i32::datum_type()),
             &reduced,
         )?;
