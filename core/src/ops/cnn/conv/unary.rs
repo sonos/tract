@@ -531,6 +531,10 @@ impl Op for ConvUnary {
         Ok(info)
     }
 
+    fn validation(&self) -> Validation {
+        Validation::Rounding
+    }
+
     op_core_mir!();
     op_as_typed_op!();
 }
