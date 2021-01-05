@@ -51,7 +51,7 @@ impl Expansion for CategoryMapper {
             inputs,
         )?;
         model.wire_node(
-            format!("{}.reverse", prefix),
+            format!("{}.direct", prefix),
             DirectLookup::new(self.to.clone(), self.fallback.clone())?,
             &wire,
         )

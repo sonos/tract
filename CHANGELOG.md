@@ -1,6 +1,9 @@
 ## Unreleased
 
+## 0.12.2 - 2021-01-05
+
 * ONNX-ML: CategoryMapper and TreeEnsembleClassifier (partial, SoftmaxZero and Probits are missing). With NNEF support.
+* cargo-deny enforces licences choices
 
 ## 0.12.1 - 2020-12-11
 
