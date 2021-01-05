@@ -90,6 +90,8 @@ pub trait Model:
     fn auto_outputs(&mut self) -> TractResult<()>;
 
     fn properties(&self) -> &HashMap<String, Arc<Tensor>>;
+
+    fn rename_node(&mut self, id: usize, name: &str) -> TractResult<()>;
 }
 
 downcast_rs::impl_downcast!(Model);
@@ -191,5 +193,9 @@ where
 
     fn properties(&self) -> &HashMap<String, Arc<Tensor>> {
         &self.properties
+    }
+
+    fn rename_node(&mut self, id: usize, name: &str) -> TractResult<()> {
+        self.rename_node(id, name)
     }
 }

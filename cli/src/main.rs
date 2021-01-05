@@ -225,6 +225,13 @@ fn main() -> tract_core::anyhow::Result<()> {
             .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
             )
         .arg(
+            Arg::with_name("nnef-override-output-name")
+            .takes_value(true)
+            .number_of_values(1)
+            .long("nnef-override-output-name")
+            .help("Rename output before dumping network")
+            )
+        .arg(
             Arg::with_name("nnef-dir")
             .takes_value(true)
             .long("nnef-dir")

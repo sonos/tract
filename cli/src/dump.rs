@@ -12,7 +12,7 @@ pub fn handle(
     sub_matches: &clap::ArgMatches,
     bench_limits: &BenchLimits,
     _inner: Vec<String>,
-) -> CliResult<()> {
+    ) -> CliResult<()> {
     let model = &*params.tract_model;
     let mut annotations = Annotations::from_model(model)?.with_graph_def(model, &params.graph)?;
     if options.cost {
@@ -37,10 +37,11 @@ pub fn handle(
 
     if let Some(path) = sub_matches.value_of("nnef") {
         let nnef = super::nnef(&matches);
-        if let Some(typed) = model.downcast_ref::<TypedModel>() {
+        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+            rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-            nnef.write_to_tar(typed, encoder)?;
+            nnef.write_to_tar(&typed, encoder)?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -48,9 +49,10 @@ pub fn handle(
 
     if let Some(path) = sub_matches.value_of("nnef-tar") {
         let nnef = super::nnef(&matches);
-        if let Some(typed) = model.downcast_ref::<TypedModel>() {
+        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+            rename_outputs(&mut typed, sub_matches)?;
             let file = std::fs::File::create(path)?;
-            nnef.write_to_tar(typed, file)?;
+            nnef.write_to_tar(&typed, file)?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -58,8 +60,15 @@ pub fn handle(
 
     if let Some(path) = sub_matches.value_of("nnef-dir") {
         let nnef = super::nnef(&matches);
-        if let Some(typed) = model.downcast_ref::<TypedModel>() {
-            nnef.write_to_dir(typed, path)?
+        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+            rename_outputs(&mut typed, sub_matches)?;
+            if let Some(renamed) = sub_matches.values_of("nnef-override-output-name") {
+                for (ix, name) in renamed.into_iter().enumerate() {
+                    let output = typed.wire_node(name, tract_core::ops::identity::Identity, &[typed.output_outlets()?[ix]])?;
+                    typed.outputs[ix] = output[0];
+                }
+            }
+            nnef.write_to_dir(&typed, path)?
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -67,8 +76,9 @@ pub fn handle(
 
     if let Some(path) = sub_matches.value_of("nnef-graph") {
         let nnef = super::nnef(&matches);
-        if let Some(typed) = model.downcast_ref::<TypedModel>() {
-            let proto = tract_nnef::ser::to_proto_model(&nnef, typed)?;
+        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+            rename_outputs(&mut typed, sub_matches)?;
+            let proto = tract_nnef::ser::to_proto_model(&nnef, &typed)?;
             if path == "-" {
                 tract_nnef::ast::dump::Dumper::new(&mut std::io::stdout()).document(&proto.doc)?;
             } else {
@@ -102,5 +112,15 @@ pub fn handle(
         terminal::render_summaries(model, &annotations, options)?;
     }
 
+    Ok(())
+}
+
+fn rename_outputs(typed: &mut TypedModel, sub_matches: &clap::ArgMatches) -> TractResult<()> {
+    if let Some(renamed) = sub_matches.values_of("nnef-override-output-name") {
+        for (ix, name) in renamed.into_iter().enumerate() {
+            let output = typed.wire_node(name, tract_core::ops::identity::Identity, &[typed.output_outlets()?[ix]])?;
+            typed.outputs[ix] = output[0];
+        }
+    }
     Ok(())
 }

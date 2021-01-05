@@ -83,7 +83,9 @@ impl Registry {
         node: &TypedNode,
     ) -> TractResult<Option<Arc<RValue>>> {
         use tract_core::ops;
-        if let Some(op) = node.op().downcast_ref::<ops::element_wise::ElementWiseOp>() {
+        if node.op_is::<ops::identity::Identity>() {
+            return Ok(Some(ast.mapping[&node.inputs[0]].clone()))
+        } else if let Some(op) = node.op().downcast_ref::<ops::element_wise::ElementWiseOp>() {
             if std::mem::size_of_val(op.0.as_ref()) == 0 {
                 if let Some(op) = self
                     .unit_element_wise_ops
