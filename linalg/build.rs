@@ -73,6 +73,7 @@ fn main() {
                         let mut obj = f.clone();
                         obj.set_extension("o");
                         assert!(std::process::Command::new("cc")
+                            .args(&["-arch", "x86_64"])
                             .args(&["-c", "-o"])
                             .arg(&obj)
                             .arg(&f)
