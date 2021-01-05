@@ -132,8 +132,6 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
         .map(|s| parse_node_mode(s))
         .collect::<TractResult<_>>()?;
 
-    dbg!(&node_ids);
-    dbg!(&feature_ids);
     let max_used_features = feature_ids.iter().max().copied().unwrap_or(0);
 
     use tract_onnx_opl::ml::tree_ensemble_classifier::parse_aggregate;
