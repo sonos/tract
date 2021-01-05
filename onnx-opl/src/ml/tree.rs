@@ -265,7 +265,7 @@ impl Default for Aggregate {
 #[derive(Clone, Debug, Hash)]
 pub struct TreeEnsemble {
     pub data: TreeEnsembleData,
-    pub n_features: usize,
+    pub max_used_feature: usize,
     pub n_classes: usize,
     pub aggregate_fn: Aggregate, // TODO: should this be an argument to eval()?
 }
@@ -273,11 +273,11 @@ pub struct TreeEnsemble {
 impl TreeEnsemble {
     pub fn build(
         data: TreeEnsembleData,
-        n_features: usize,
+        max_used_feature: usize,
         n_classes: usize,
         aggregate_fn: Aggregate,
     ) -> TractResult<Self> {
-        Ok(Self { data, n_features, n_classes, aggregate_fn })
+        Ok(Self { data, max_used_feature, n_classes, aggregate_fn })
     }
 
     pub fn n_classes(&self) -> usize {
@@ -303,10 +303,10 @@ impl TreeEnsemble {
 
     pub fn check_n_features(&self, n_features: usize) -> TractResult<()> {
         Ok(ensure!(
-            n_features == self.n_features,
-            "Invalid input shape: got {} features, expected {}",
+            n_features > self.max_used_feature,
+            "Invalid input shape: input has {} features, tree ensemble use feature #{}",
             n_features,
-            self.n_features
+            self.max_used_feature
         ))
     }
 

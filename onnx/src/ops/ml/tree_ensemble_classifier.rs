@@ -132,7 +132,9 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
         .map(|s| parse_node_mode(s))
         .collect::<TractResult<_>>()?;
 
-    let n_features = feature_ids.iter().max().copied().unwrap_or(0) + 1;
+    dbg!(&node_ids);
+    dbg!(&feature_ids);
+    let max_used_features = feature_ids.iter().max().copied().unwrap_or(0);
 
     use tract_onnx_opl::ml::tree_ensemble_classifier::parse_aggregate;
     // parse post_transform from protobuf
@@ -215,7 +217,7 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
     let nodes = tensor1(&*nodes).into_shape(&[nodes.len() / 5, 5])?.into_arc_tensor();
     let leaves = tensor1(&*leaves).into_shape(&[leaves.len() / 2, 2])?.into_arc_tensor();
     let data = TreeEnsembleData { trees, nodes, leaves };
-    TreeEnsemble::build(data, n_features, n_classes, aggregate_fn)
+    TreeEnsemble::build(data, max_used_features, n_classes, aggregate_fn)
 }
 
 #[derive(Debug, Clone, Hash)]

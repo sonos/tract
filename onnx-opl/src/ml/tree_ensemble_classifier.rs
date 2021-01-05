@@ -67,7 +67,7 @@ fn parameters() -> Vec<Parameter> {
         TypeName::Scalar.tensor().named("trees"),
         TypeName::Scalar.tensor().named("nodes"),
         TypeName::Scalar.tensor().named("leaves"),
-        TypeName::Integer.named("n_features"),
+        TypeName::Integer.named("max_used_feature"),
         TypeName::Integer.named("n_classes"),
         TypeName::String.named("aggregate_fn"),
     ]
@@ -89,7 +89,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>>
         "tract_onnx_ml_tree_ensemble_classifier",
         &[input, trees, nodes, leaves],
         &[
-            ("n_features", numeric(op.ensemble.n_features)),
+            ("max_used_feature", numeric(op.ensemble.max_used_feature)),
             ("n_classes", numeric(op.ensemble.n_classes)),
             ("aggregate_fn", string(agg)),
         ],
@@ -104,12 +104,12 @@ fn load(
     let trees = invocation.named_arg_as(builder, "trees")?;
     let nodes = invocation.named_arg_as(builder, "nodes")?;
     let leaves = invocation.named_arg_as(builder, "leaves")?;
-    let n_features = invocation.named_arg_as(builder, "n_features")?;
+    let max_used_feature = invocation.named_arg_as(builder, "max_used_feature")?;
     let n_classes = invocation.named_arg_as(builder, "n_classes")?;
     let aggregate_fn: String = invocation.named_arg_as(builder, "aggregate_fn")?;
     let aggregate_fn = parse_aggregate(&aggregate_fn)?;
     let data = TreeEnsembleData { trees, nodes, leaves };
-    let ensemble = TreeEnsemble { data, n_classes, n_features, aggregate_fn };
+    let ensemble = TreeEnsemble { data, n_classes, max_used_feature, aggregate_fn };
     let op = TreeEnsembleClassifier { ensemble };
     builder.wire(op, &[input])
 }
