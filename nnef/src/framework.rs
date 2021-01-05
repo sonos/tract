@@ -1,7 +1,7 @@
-use std::path::Path;
-use std::io::{Read};
 use crate::ast::ProtoModel;
 use crate::internal::*;
+use std::io::Read;
+use std::path::Path;
 
 pub fn stdlib() -> Vec<FragmentDef> {
     crate::ast::parse::parse_fragments(include_str!("../stdlib.nnef")).unwrap()

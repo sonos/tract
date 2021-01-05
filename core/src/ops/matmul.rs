@@ -98,8 +98,18 @@ pub(super) fn eval(
                 a_prefix.push(dim.min(a.shape()[axis] - 1));
                 b_prefix.push(dim.min(b.shape()[axis] - 1));
             }
-            a_pack.pack(packed_a.view_mut(), &a.view_at_prefix(&a_prefix)?, !a_trans as usize, a_trans as usize);
-            b_pack.pack(packed_b.view_mut(), &b.view_at_prefix(&b_prefix)?, b_trans as usize, !b_trans as usize);
+            a_pack.pack(
+                packed_a.view_mut(),
+                &a.view_at_prefix(&a_prefix)?,
+                !a_trans as usize,
+                a_trans as usize,
+            );
+            b_pack.pack(
+                packed_b.view_mut(),
+                &b.view_at_prefix(&b_prefix)?,
+                b_trans as usize,
+                !b_trans as usize,
+            );
             mm.run(
                 &packed_a.view(),
                 &packed_b.view(),

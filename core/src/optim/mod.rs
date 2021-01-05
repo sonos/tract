@@ -30,7 +30,7 @@ impl Optimizer {
     }
 
     pub fn stopping_at(self, steps: usize) -> Optimizer {
-        Optimizer { steps: Some(steps), .. self }
+        Optimizer { steps: Some(steps), ..self }
     }
 
     pub fn declutter() -> Optimizer {
@@ -95,7 +95,7 @@ impl Optimizer {
                         patches += 1;
                         if let Some(steps) = self.steps {
                             if steps >= patches {
-                                return Ok(model)
+                                return Ok(model);
                             }
                         }
                     }

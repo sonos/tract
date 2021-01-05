@@ -156,7 +156,6 @@ impl OpState for State {
         _op: &dyn Op,
         inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
-
         let State { op, ref mut mutable } = self;
         // initialize state at first pass
         if mutable.hidden_state.len() == 0 {

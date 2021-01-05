@@ -1,8 +1,8 @@
 mod depth_wise;
 mod im2col;
-mod unary;
 #[cfg(test)]
 mod proptest;
+mod unary;
 
 pub use self::im2col::Im2Col;
 pub use self::unary::ConvUnary;

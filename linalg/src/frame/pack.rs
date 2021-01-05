@@ -34,7 +34,8 @@ impl Packer {
     ) {
         let pb = pb.as_slice_mut_unchecked::<T>();
         let b = b.as_slice_unchecked::<T>();
-        #[cfg(debug_assertions)] {
+        #[cfg(debug_assertions)]
+        {
             pb.iter_mut().for_each(|v| *v = T::default());
         }
         if mn_stride == 1 {

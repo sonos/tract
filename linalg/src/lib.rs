@@ -120,7 +120,7 @@ pub fn generic() -> Ops {
         sigmoid_f32: Box::new(|| Box::new(sigmoid::SigmoidImpl::<generic::SSigmoid4, f32>::new())),
         tanh_f32: Box::new(|| Box::new(tanh::TanhImpl::<generic::STanh4, f32>::new())),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
-        prefetch: Box::new(|_,_| {}),
+        prefetch: Box::new(|_, _| {}),
     }
 }
 

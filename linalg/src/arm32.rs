@@ -7,7 +7,6 @@ use crate::frame::TanhImpl;
 
 use crate::Ops;
 
-
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
     let cpu_info = fs::read_to_string("/proc/cpuinfo")?;
     let neon =

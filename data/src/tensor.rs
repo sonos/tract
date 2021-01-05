@@ -396,7 +396,11 @@ impl Tensor {
         }
     }
 
-    fn clip_range_bounds(&self, axis: usize, range: impl std::ops::RangeBounds<usize>) -> Range<usize> {
+    fn clip_range_bounds(
+        &self,
+        axis: usize,
+        range: impl std::ops::RangeBounds<usize>,
+    ) -> Range<usize> {
         use std::ops::Bound;
         let start = match range.start_bound() {
             Bound::Included(ix) => *ix,
@@ -441,13 +445,15 @@ impl Tensor {
             self,
             src
         );
-        anyhow::ensure!(src_range.end <= src.shape()[axis],
+        anyhow::ensure!(
+            src_range.end <= src.shape()[axis],
             "Assigning from invalid slice (axis {}, {:?}) of {:?}",
             axis,
             src_range,
             src
         );
-        anyhow::ensure!(range.end <= self.shape()[axis],
+        anyhow::ensure!(
+            range.end <= self.shape()[axis],
             "Assigning to invalid slice (axis {}, {:?}) of {:?}",
             axis,
             range,
@@ -499,7 +505,11 @@ impl Tensor {
                 let src_start = (stride * src_range.start) as isize;
                 let len = stride * range.len();
                 if self.data != src.data {
-                    std::ptr::copy_nonoverlapping(src.data.offset(src_start), self.data.offset(dst_start), len);
+                    std::ptr::copy_nonoverlapping(
+                        src.data.offset(src_start),
+                        self.data.offset(dst_start),
+                        len,
+                    );
                 } else {
                     std::ptr::copy(src.data.offset(src_start), self.data.offset(dst_start), len);
                 }

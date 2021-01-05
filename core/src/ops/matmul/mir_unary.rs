@@ -365,7 +365,7 @@ impl MatMulUnary {
                 packed_as,
                 fused_ops: None,
                 mmm: mm,
-                k
+                k,
             },
             &[wire],
         )?[0];

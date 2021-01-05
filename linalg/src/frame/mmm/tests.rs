@@ -344,7 +344,8 @@ where
     let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
 
     let mut packed_a =
-        Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment()).unwrap();
+        Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
+            .unwrap();
     op.a_pack().pack(packed_a.view_mut(), a.view(), 1, 0);
 
     let mut packed_b =

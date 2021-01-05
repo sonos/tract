@@ -60,7 +60,8 @@ fn pool(
                 .attr("ksize", vec![1, k.0 as i64, k.1 as i64, 1])
                 .attr("padding", padding),
         )
-        .write_to_bytes().unwrap();
+        .write_to_bytes()
+        .unwrap();
     compare(&graph, vec![("data", i.clone().into())], "pool")
 }
 

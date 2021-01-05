@@ -68,7 +68,6 @@ impl Expansion for LayerHardmax {
     }
 }
 
-
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct LayerLogSoftmax {
     axis: isize,

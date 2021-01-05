@@ -254,7 +254,12 @@ fn render_node_prefixed(
                     model.outlet_fact_format(outlet),
                     White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
                     io,
-                    White.italic().paint(tags.outlet_labels.get(ix).map(|s| s.join(",")).unwrap_or_else(|| "".to_string()))
+                    White.italic().paint(
+                        tags.outlet_labels
+                            .get(ix)
+                            .map(|s| s.join(","))
+                            .unwrap_or_else(|| "".to_string())
+                    )
                 );
                 if options.outlet_labels {
                     if let Some(label) = model.outlet_label(OutletId::new(node_id, ix)) {

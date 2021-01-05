@@ -220,7 +220,8 @@ impl ConvUnary {
             dims.insert(0, *output_shape.n().unwrap());
             strides.insert(0, *output_shape.n_stride().unwrap() as isize);
         }
-        let c_prefix_dim_and_stride = Some((ShapeFact::from(dims), ShapeFact::from(strides))).filter(|it| it.0.len() > 0);
+        let c_prefix_dim_and_stride =
+            Some((ShapeFact::from(dims), ShapeFact::from(strides))).filter(|it| it.0.len() > 0);
         let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
 
         let kernels = self.kernel_as_packed_as(&mmm.a_pack(), m)?;

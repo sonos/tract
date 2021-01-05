@@ -2,10 +2,10 @@ extern crate criterion;
 extern crate tract_core;
 use criterion::*;
 
-use DatumType::F32;
 use nn::DataFormat::HWC;
 use tract_core::internal::*;
 use tract_core::ops::{cnn, nn};
+use DatumType::F32;
 
 fn im2col(c: &mut Criterion) {
     let mut group = c.benchmark_group("im2col");
@@ -65,7 +65,7 @@ fn mmm(c: &mut Criterion) {
                     packed_as: tract_ndarray::arr0(packed_a.into_arc_tensor()).into_dyn(),
                     fused_ops: None,
                     mmm,
-                    k: 48
+                    k: 48,
                 };
                 (input, op)
             },

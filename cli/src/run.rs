@@ -26,7 +26,11 @@ pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> 
     if let Some(count) = options.value_of("assert-output-count") {
         let count = count.parse::<usize>()?;
         if count != outputs.len() {
-            bail!("Wrong number of outputs, command line expected {}, found {:?}", count, outputs.len());
+            bail!(
+                "Wrong number of outputs, command line expected {}, found {:?}",
+                count,
+                outputs.len()
+            );
         }
     }
 

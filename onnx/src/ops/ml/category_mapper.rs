@@ -81,8 +81,6 @@ fn category_mapper(
             to: rctensor1(&strings),
             fallback: rctensor0(def.clone()),
         }),
-
     };
     Ok((op, vec![]))
 }
-

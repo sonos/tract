@@ -13,10 +13,12 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
         let data_offsets: Vec<_> = (0..pulse).map(|x| x as isize).collect();
         let kernel_offsets: Vec<_> =
             (0..ci).flat_map(|ici| (0..3).map(move |x| (ici * t * 3 + x * t) as isize)).collect();
-        let mut conv = tract_linalg::ops().mmm(F32, F32, F32, co, kernel_offsets.len(), data_offsets.len()).unwrap();
+        let mut conv = tract_linalg::ops()
+            .mmm(F32, F32, F32, co, kernel_offsets.len(), data_offsets.len())
+            .unwrap();
         conv.c_from_data_and_strides(t as _, 1);
-        let a =
-            Tensor::zero_aligned::<f32>(&[conv.a_pack().len(co)], conv.a_pack().alignment()).unwrap();
+        let a = Tensor::zero_aligned::<f32>(&[conv.a_pack().len(co)], conv.a_pack().alignment())
+            .unwrap();
         let input = Tensor::zero::<f32>(&[ci, t]).unwrap();
         let mut output = Tensor::zero::<f32>(&[co, t]).unwrap();
         be.iter(move || conv.run(&a.view(), &input.view(), &mut output.view_mut(), &[]).unwrap());
