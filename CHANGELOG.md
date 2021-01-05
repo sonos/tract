@@ -1,5 +1,7 @@
 ## Unreleased
 
+* ONNX-ML: CategoryMapper and TreeEnsembleClassifier (partial, SoftmaxZero and Probits are missing). With NNEF support.
+
 ## 0.12.1 - 2020-12-11
 
 * 0.12.0 is a misfire.
