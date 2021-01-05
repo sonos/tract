@@ -206,7 +206,7 @@ fn parameters_direct_lookup() -> Vec<Parameter> {
     vec![
         TypeName::String.tensor().named("input"),
         TypeName::Scalar.tensor().named("values"),
-        TypeName::Scalar.named("fallback"),
+        TypeName::Scalar.tensor().named("fallback"),
     ]
 }
 
@@ -222,12 +222,8 @@ fn dump_direct_lookup(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option
     let input = ast.mapping[&node.inputs[0]].clone();
     let op = node.op_as::<DirectLookup>().context("wrong op")?;
     let keys = ast.konst_variable(format!("{}.values", node.name), &op.values);
-    let fallback = if let Ok(s) = op.fallback_value.to_scalar::<String>() {
-        string(s)
-    } else {
-        numeric(op.fallback_value.cast_to_scalar::<f64>()?)
-    };
-    Ok(Some(invocation("tract_onnx_ml_direct_lookup", &[input, keys], &[("fallback", fallback)])))
+    let fallback = ast.konst_variable(format!("{}.fallback", node.name), &op.fallback_value);
+    Ok(Some(invocation("tract_onnx_ml_direct_lookup", &[input, keys, fallback], &[])))
 }
 
 fn dump_reverse_lookup(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
