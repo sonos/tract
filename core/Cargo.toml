@@ -1,40 +1,52 @@
 [package]
-name = "tract-core"
-version = "0.12.3-pre"
-license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
-description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
-keywords = [ "TensorFlow", "NeuralNetworks" ]
-categories = [ "science" ]
 autobenches = false
+categories = ["science"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 edition = "2018"
+keywords = [
+    "TensorFlow",
+    "NeuralNetworks",
+]
+license = "MIT/Apache-2.0"
+name = "tract-core"
+repository = "https://github.com/snipsco/tract"
+version = "0.12.3"
 
-[badges]
-maintenance = { status = "actively-developed" }
+[[bench]]
+harness = false
+name = "conv_direct_vs_im2col"
+
+[[bench]]
+harness = false
+name = "wavenet"
+
+[[bench]]
+harness = false
+name = "im2col_inception"
+[badges.maintenance]
+status = "actively-developed"
 
 [dependencies]
-bit-set="0.5"
+anyhow = "1"
+bit-set = "0.5"
 derive-new = "0.5"
 downcast-rs = "1.0"
-educe = "=0.4.11" # locked for rust 1.41.0
-anyhow = "1"
+dyn-clone = "1"
+educe = "=0.4.11"
 half = "1.3"
 itertools = "0.9"
 lazy_static = "1"
 log = "0.4"
 maplit = "1"
-ndarray = { version = "=0.13.0" }
 num-integer = "0.1"
 num-traits = "0.2"
-dyn-clone = "1"
 smallvec = "1"
-tract-data = { path = "../data" }
-tract-linalg = { path = "../linalg" }
+tract-data = "0.12.3"
+tract-linalg = "0.12.3"
 
-[features]
-default = [ ]
-paranoid_assertions = []
+[dependencies.ndarray]
+version = "=0.13.0"
 
 [dev-dependencies]
 criterion = "0.3"
@@ -42,14 +54,6 @@ env_logger = "0.7"
 lazy_static = "1"
 proptest = "0.10"
 
-[[bench]]
-name = "conv_direct_vs_im2col"
-harness = false
-
-[[bench]]
-name = "wavenet"
-harness = false
-
-[[bench]]
-name = "im2col_inception"
-harness = false
+[features]
+default = []
+paranoid_assertions = []

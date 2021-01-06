@@ -1,26 +1,32 @@
 [package]
-name = "tract-nnef"
-version = "0.12.3-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
-license = "MIT/Apache-2.0"
-description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
-keywords = [ "NeuralNetworks", "NNEF" ]
-categories = [ "science" ]
 autobenches = false
+categories = ["science"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 edition = "2018"
+keywords = [
+    "NeuralNetworks",
+    "NNEF",
+]
+license = "MIT/Apache-2.0"
+name = "tract-nnef"
+repository = "https://github.com/snipsco/tract"
+version = "0.12.3"
 
-[badges]
-maintenance = { status = "actively-developed" }
+[badges.maintenance]
+status = "actively-developed"
 
 [dependencies]
 byteorder = "1"
 log = "0.4"
 nom = "5"
 tar = "0.4"
-flate2 = { version = "1.0", optional = true }
-tract-core = { path = "../core" }
+tract-core = "0.12.3"
 walkdir = "2"
+
+[dependencies.flate2]
+optional = true
+version = "1.0"
 
 [features]
 default = ["flate2"]

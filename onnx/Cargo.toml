@@ -1,33 +1,36 @@
 [package]
-name = "tract-onnx"
-version = "0.12.3-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
-license = "MIT/Apache-2.0"
-description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
-keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
-categories = [ "science" ]
 autobenches = false
+categories = ["science"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 edition = "2018"
-exclude = [ "test_cases" ]
+exclude = ["test_cases"]
+keywords = [
+    "TensorFlow",
+    "NeuralNetworks",
+    "ONNX",
+]
+license = "MIT/Apache-2.0"
+name = "tract-onnx"
+repository = "https://github.com/snipsco/tract"
+version = "0.12.3"
 
-[badges]
-maintenance = { status = "actively-developed" }
+[badges.maintenance]
+status = "actively-developed"
+
+[build-dependencies]
+prost-build = "0.6"
 
 [dependencies]
 bytes = "0.5"
 derive-new = "0.5"
-educe = "=0.4.11" # locked for rust 1.41.0
+educe = "=0.4.11"
 log = "0.4"
 num-integer = "0.1"
 prost = "0.6"
 smallvec = "1"
-tract-hir = { path = "../hir" }
-tract-nnef = { path = "../nnef" }
-tract-onnx-opl = { path = "../onnx-opl" }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tract-hir = "0.12.3"
+tract-nnef = "0.12.3"
+tract-onnx-opl = "0.12.3"
+[target."cfg(not(target_arch = \"wasm32\"))".dependencies]
 mapr = "0.8"
-
-[build-dependencies]
-prost-build = "0.6"

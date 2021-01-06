@@ -1,59 +1,61 @@
 [package]
-name = "tract-linalg"
-version = "0.12.3-pre"
-license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
-description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
-keywords = [ "TensorFlow", "NeuralNetworks" ]
-categories = [ "science" ]
 autobenches = false
+categories = ["science"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 edition = "2018"
+keywords = [
+    "TensorFlow",
+    "NeuralNetworks",
+]
+license = "MIT/Apache-2.0"
+name = "tract-linalg"
+repository = "https://github.com/snipsco/tract"
+version = "0.12.3"
 
-[badges]
-maintenance = { status = "actively-developed" }
+[[bench]]
+harness = false
+name = "mat_vec"
 
-[dependencies]
-derive-new = "0.5"
-dyn-clone = "1"
-half = "1.3"
-educe = "=0.4.11" # locked for rust 1.41.0
-lazy_static = "1.3"
-libc = "0.2"
-log = "0.4"
-num-traits = "0.2"
-tract-data = { path = "../data" }
+[[bench]]
+harness = false
+name = "mm_for_wavenet_hw"
+
+[[bench]]
+harness = false
+name = "conv_for_wavenet_hw"
+
+[[bench]]
+harness = false
+name = "mm_for_inception"
+
+[[bench]]
+harness = false
+name = "mm_for_asr_am"
+
+[[bench]]
+harness = false
+name = "sigmoid"
+[badges.maintenance]
+status = "actively-developed"
 
 [build-dependencies]
 cc = "1.0"
 liquid = "0.21"
-unicode-normalization = "0.1"
 smallvec = "1"
+unicode-normalization = "0.1"
+
+[dependencies]
+derive-new = "0.5"
+dyn-clone = "1"
+educe = "=0.4.11"
+half = "1.3"
+lazy_static = "1.3"
+libc = "0.2"
+log = "0.4"
+num-traits = "0.2"
+tract-data = "0.12.3"
 
 [dev-dependencies]
 criterion = "0.3"
 proptest = "0.10"
-
-[[bench]]
-name = "mat_vec"
-harness = false
-
-[[bench]]
-name = "mm_for_wavenet_hw"
-harness = false
-
-[[bench]]
-name = "conv_for_wavenet_hw"
-harness = false
-
-[[bench]]
-name = "mm_for_inception"
-harness = false
-
-[[bench]]
-name = "mm_for_asr_am"
-harness = false
-
-[[bench]]
-name = "sigmoid"
-harness = false

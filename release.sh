@@ -55,5 +55,6 @@ then
     git push -f --tags
 fi
 
+sleep 5
 cargo update
-sleep 10
+sleep 5

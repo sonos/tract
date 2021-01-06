@@ -1,27 +1,31 @@
 [package]
-name = "tract-kaldi"
-version = "0.12.3-pre"
 authors = [
     "Mathieu Poumeyrol <kali@zoy.org>",
-    "Theodore Bluche <theodore.bluche@snips.ai>"
+    "Theodore Bluche <theodore.bluche@snips.ai>",
+]
+categories = ["science"]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+edition = "2018"
+keywords = [
+    "TensorFlow",
+    "NeuralNetworks",
+    "ONNX",
 ]
 license = "MIT/Apache-2.0"
-description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+name = "tract-kaldi"
 repository = "https://github.com/snipsco/tract"
-keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
-categories = [ "science" ]
-edition = "2018"
+version = "0.12.3"
 
-[badges]
-maintenance = { status = "actively-developed" }
+[badges.maintenance]
+status = "actively-developed"
 
 [dependencies]
-bit-set="0.5"
+bit-set = "0.5"
 derive-new = "0.5"
-educe = "=0.4.11" # locked for rust 1.41.0
+educe = "=0.4.11"
 lazy_static = "1"
 log = "0.4"
 maplit = "1"
 nom = "5"
-tract-hir = { path = "../hir" }
-tract-pulse = { path = "../pulse" }
+tract-hir = "0.12.3"
+tract-pulse = "0.12.3"
