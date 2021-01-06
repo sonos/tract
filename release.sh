@@ -42,7 +42,7 @@ set_version() {
 
 for crate in $CRATES
 do
-    cargo update -p tract-$crate || /bin/true
+    cargo update -p tract-$crate || true
 done
 
 set_version $CRATE/Cargo.toml $VERSION
