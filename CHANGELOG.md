@@ -1,7 +1,8 @@
 ## Unreleased
 
-## 0.12.3 - 2021-01-06
+## 0.12.4 - 2021-01-06
 
+* 0.12.3 is a misfire
 * hotfixes on 0.12.2 new tree classifier
 * fix X compilation from macos/aarch64 to macos/intel
 
