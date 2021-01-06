@@ -1,5 +1,10 @@
 ## Unreleased
 
+## 0.12.3 - 2021-01-06
+
+* hotfixes on 0.12.2 new tree classifier
+* fix X compilation from macos/aarch64 to macos/intel
+
 ## 0.12.2 - 2021-01-05
 
 * ONNX-ML: CategoryMapper and TreeEnsembleClassifier (partial, SoftmaxZero and Probits are missing). With NNEF support.
