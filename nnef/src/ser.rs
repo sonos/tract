@@ -240,10 +240,10 @@ impl<'a> IntoAst<'a> {
 
     pub fn sanitize(name: impl Into<String>) -> String {
         let mut name = name.into();
-        if name.len() > 0 && char::is_digit(name.chars().next().unwrap(), 10) {
+        if name.len() > 0 && !char::is_alphabetic(name.chars().next().unwrap()) {
             name = "_".to_string() + &name;
         }
-        name.replace("/", "_").replace(".", "_").replace("-", "_").into()
+        name.replace("/", "_").replace(".", "_").replace("-", "_").replace(":", "_").into()
     }
 
     pub fn force_assign(&mut self, name: impl Into<String>, exp: &Arc<RValue>) -> Arc<RValue> {
