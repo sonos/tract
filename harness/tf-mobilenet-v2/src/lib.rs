@@ -63,39 +63,56 @@ mod tests {
         cachedir().join("mobilenet_v2_1.4_224_frozen.pb")
     }
 
-    pub fn argmax(input: tract_ndarray::ArrayViewD<f32>) -> usize {
-        input
+    fn run<F, O>(runnable: SimplePlan<F, O, Graph<F, O>>) -> TractResult<()>
+    where
+        F: Fact + Hash + Clone + 'static,
+        O: std::fmt::Debug
+            + std::fmt::Display
+            + AsRef<dyn Op>
+            + AsMut<dyn Op>
+            + Clone
+            + 'static
+            + Hash,
+    {
+        let input = load_image(grace_hopper());
+        let outputs = runnable.run(tvec![input])?;
+        let label_id = outputs[0]
+            .as_slice::<f32>()?
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(0u32.cmp(&1)))
             .unwrap()
-            .0
+            .0;
+        let labels = load_labels();
+        let label = &labels[label_id];
+        assert_eq!(label, "military uniform");
+        Ok(())
     }
 
     #[test]
-    fn plain() {
-        let tfd = tract_tensorflow::tensorflow().model_for_path(mobilenet_v2()).unwrap();
-        let plan = SimplePlan::new(&tfd).unwrap();
-        let input = load_image(grace_hopper());
-        let outputs = plan.run(tvec![input]).unwrap();
-        let labels = load_labels();
-        let label_id = argmax(outputs[0].to_array_view::<f32>().unwrap());
-        let label = &labels[label_id];
-        assert_eq!(label, "military uniform");
+    fn plain() -> TractResult<()> {
+        let tfd = tract_tensorflow::tensorflow().model_for_path(mobilenet_v2())?.into_runnable()?;
+        run(tfd)
     }
 
     #[test]
-    fn optimized() {
-        let mut tfd = tract_tensorflow::tensorflow().model_for_path(mobilenet_v2()).unwrap();
-        tfd.set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), &[1, 224, 224, 3]))
-            .unwrap();
-        let tfd = tfd.into_optimized().unwrap();
-        let plan = SimplePlan::new(&tfd).unwrap();
-        let input = load_image(grace_hopper());
-        let outputs = plan.run(tvec![input]).unwrap();
-        let labels = load_labels();
-        let label_id = argmax(outputs[0].to_array_view::<f32>().unwrap());
-        let label = &labels[label_id];
-        assert_eq!(label, "military uniform");
+    fn declutter() -> TractResult<()> {
+        let tfd = tract_tensorflow::tensorflow()
+            .model_for_path(mobilenet_v2())?
+            .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), &[1, 224, 224, 3]))?
+            .into_typed()?
+            .declutter()?
+            .into_runnable()?;
+        run(tfd)
+    }
+
+    #[test]
+    fn optimized() -> TractResult<()> {
+        let tfd = tract_tensorflow::tensorflow()
+            .model_for_path(mobilenet_v2())?
+            .with_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), &[1, 224, 224, 3]))?
+            .into_optimized()?
+            .into_runnable()?;
+        run(tfd)
     }
 }
