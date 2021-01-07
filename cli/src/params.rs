@@ -398,8 +398,9 @@ impl Parameters {
                 }
                 let input_outlets = raw_model.input_outlets()?.to_vec();
                 for (ix, input) in input_outlets.iter().enumerate() {
-                    let name = format!("{}.npy", raw_model.node(input.node).name);
-                    if let Ok(t) = tensor::for_npz(&mut npz, &name) {
+                    let name = raw_model.node(input.node).name.clone();
+                    let npy_name = format!("{}.npy", name);
+                    if let Ok(t) = tensor::for_npz(&mut npz, &npy_name) {
                         let shape = t.shape().to_vec();
                         let fact = InferenceFact::dt_shape(t.datum_type(), shape);
                         raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
