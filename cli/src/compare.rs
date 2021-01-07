@@ -236,9 +236,7 @@ where
                         match ref_value {
                             Ok(t) => {
                                 let found = &state.values[n].as_ref().unwrap()[ix];
-                                if let Err(e) = found
-                                    .close_enough(t, node.op().validation() == Validation::Rounding)
-                                {
+                                if let Err(e) = found.close_enough(t, true) {
                                     failing.push(n);
                                     ok_node = false;
                                     tags.style = Some(Red.bold());

@@ -110,7 +110,7 @@ impl Conv {
 
 impl Expansion for Conv {
     fn name(&self) -> Cow<str> {
-        "Conv".into()
+        "ConvHir".into()
     }
 
     fn validation(&self) -> Validation {

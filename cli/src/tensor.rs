@@ -321,10 +321,12 @@ pub fn random(sizes: &[usize], datum_type: DatumType) -> Tensor {
         D: Datum,
         rand::distributions::Standard: rand::distributions::Distribution<D>,
     {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(21242);
         let len = shape.iter().product();
         tract_core::ndarray::ArrayD::from_shape_vec(
             shape,
-            repeat_with(|| rand::random::<D>()).take(len).collect(),
+            repeat_with(|| rng.gen::<D>()).take(len).collect(),
         )
         .unwrap()
         .into()

@@ -63,6 +63,9 @@ impl Op for Box<dyn Expansion> {
     fn info(&self) -> TractResult<Vec<String>> {
         self.as_ref().info()
     }
+    fn validation(&self) -> Validation {
+        self.as_ref().validation()
+    }
     not_a_typed_op!();
 }
 

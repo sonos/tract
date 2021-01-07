@@ -514,7 +514,7 @@ impl ConvUnary {
 
 impl Op for ConvUnary {
     fn name(&self) -> Cow<str> {
-        "Conv".into()
+        "ConvUnary".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
