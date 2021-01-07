@@ -57,9 +57,11 @@ fn run_regular(
     for input in tract.input_outlets() {
         let name = tract.node_name(input.node);
         if let Some(input) = params.input_values.get(name) {
+            info!("Using fixed input for input called {:?}: {:?}", name, input);
             inputs.push(input.clone().into_tensor())
         } else {
             let fact = tract.outlet_typedfact(*input)?;
+            info!("Using random input for input called {:?}: {:?}", name, fact);
             inputs.push(crate::tensor::tensor_for_fact(&fact, None)?);
         }
     }
