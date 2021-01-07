@@ -19,6 +19,10 @@ impl Op for DepthWise {
         "DepthWiseConv".into()
     }
 
+    fn validation(&self) -> Validation {
+        Validation::Rounding
+    }
+
     op_core_lir!();
     op_as_typed_op!();
 }
