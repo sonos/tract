@@ -246,7 +246,6 @@ where
                                         .to_string()];
                                     msg.push(format!("got     : {:?}", found));
                                     msg.push(format!("ref     : {:?}", t));
-                                    msg.push(format!("check   : {:?}", node.op().validation()));
                                     tags.sections.push(msg);
                                 }
                                 if !cumulative {

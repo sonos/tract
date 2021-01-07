@@ -129,7 +129,7 @@ fn eval(
                 for (ix, &dim) in prefix.slice().iter().enumerate() {
                     if ix != c_m_axis && ix != c_n_axis {
                         a.index_axis_inplace(Axis(0), dim.min(a.shape()[0] - 1));
-                        b_prefix.push(dim.min(input.shape()[ix] - 1));
+                        b_prefix.push(dim);
                         if let Some(f) = fused.as_mut() {
                             let d = dim.min(f.shape()[0] - 1);
                             f.index_axis_inplace(Axis(0), d);
