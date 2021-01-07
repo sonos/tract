@@ -333,7 +333,7 @@ impl ConvUnary {
         let b_storage = mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
 
-        self.wire_lir_matmatmul(
+        let wire = self.wire_lir_matmatmul(
             model,
             name,
             wire,
@@ -346,7 +346,10 @@ impl ConvUnary {
             b_storage,
             c_axis,
             h_axis,
-        )
+        )?;
+
+        let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
+        Ok(wire)
     }
 
     fn compute_geo(
