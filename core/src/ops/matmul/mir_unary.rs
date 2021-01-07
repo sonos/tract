@@ -60,7 +60,7 @@ impl TypedOp for MatMulUnary {
             self.b_trans,
             self.c_trans,
         )?;
-        let c_dt = inputs[0].datum_type;
+        let c_dt = output_type(inputs[0].datum_type);
         Ok(tvec!(TypedFact::dt_shape(c_dt, c_shape)))
     }
 
