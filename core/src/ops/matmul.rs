@@ -1,15 +1,15 @@
 pub mod lir_unary;
 pub mod mir;
-pub mod mir_unary;
 pub mod mir_quant;
+pub mod mir_unary;
 pub mod pack;
 
 use crate::internal::*;
 use tract_itertools::Itertools;
 use tract_ndarray::prelude::*;
 
-pub use self::mir_quant::QMatMul;
 pub use self::mir::MatMul;
+pub use self::mir_quant::{QMatMul, QuantizedParam, QuantizedParams};
 pub use self::mir_unary::MatMulUnary;
 use self::pack::MatMatMulPack;
 
@@ -54,7 +54,11 @@ pub fn compute_shape<D: DimLike>(
 }
 
 pub fn output_type(input: DatumType) -> DatumType {
-    if input.is_float() { input } else { i32::datum_type() }
+    if input.is_float() {
+        input
+    } else {
+        i32::datum_type()
+    }
 }
 
 pub(super) fn eval(

@@ -4,12 +4,69 @@ use crate::internal::*;
 use crate::ops;
 use crate::ops::matmul::*;
 
+#[derive(Debug, Clone, Hash)]
+pub enum QuantizedParam {
+    Static(Arc<Tensor>),
+    Dynamic(usize),
+}
+
+impl QuantizedParam {
+    fn tensor(&self, inputs: &[Arc<Tensor>]) -> Arc<Tensor> {
+        match self {
+            QuantizedParam::Static(t) => t.clone(),
+            QuantizedParam::Dynamic(slot) => inputs[*slot].clone(),
+        }
+    }
+
+    fn remove_input(&mut self, ix: usize) {
+        if let QuantizedParam::Dynamic(slot) = self {
+            *slot = *slot - (*slot > ix) as usize;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct QuantizedParams {
+    pub a0: QuantizedParam,
+    pub a_scale: QuantizedParam,
+    pub b0: QuantizedParam,
+    pub b_scale: QuantizedParam,
+    pub c0: QuantizedParam,
+    pub c_scale: QuantizedParam,
+}
+
+impl QuantizedParams {
+    pub fn all_dynamic() -> QuantizedParams {
+        QuantizedParams {
+            a0: QuantizedParam::Dynamic(2),
+            a_scale: QuantizedParam::Dynamic(3),
+            b0: QuantizedParam::Dynamic(4),
+            b_scale: QuantizedParam::Dynamic(5),
+            c0: QuantizedParam::Dynamic(6),
+            c_scale: QuantizedParam::Dynamic(7),
+        }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&str, &QuantizedParam)> {
+        vec![
+            ("a0", &self.a0),
+            ("a_scale", &self.a_scale),
+            ("b0", &self.b0),
+            ("b_scale", &self.b_scale),
+            ("c0", &self.c0),
+            ("c_scale", &self.c_scale),
+        ]
+        .into_iter()
+    }
+}
+
 #[derive(Debug, Clone, new, Hash)]
 pub struct QMatMul {
     pub a_trans: bool,
     pub b_trans: bool,
     pub c_trans: bool,
     pub output_type: DatumType,
+    pub params: QuantizedParams,
 }
 
 impl_dyn_hash!(QMatMul);
@@ -42,40 +99,44 @@ impl EvalOp for QMatMul {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        if &inputs[0].rank() != &inputs[3].rank() {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        if &inputs[0].rank() != &inputs[1].rank() {
             bail!("Rank mismatch {:?} vs {:?}", inputs[0], inputs[1]);
         }
 
         let mut model = TypedModel::default();
-        let a = model.add_const("source_a", inputs.remove(0))?;
-        let a_scale = model.add_const("source_a_scale", inputs.remove(0))?;
-        let a0 = model.add_const("source_a0", inputs.remove(0))?;
-        let b = model.add_const("source_b", inputs.remove(0))?;
-        let b_scale = model.add_const("source_b_scale", inputs.remove(0))?;
-        let b0 = model.add_const("source_b0", inputs.remove(0))?;
-        let c_scale = model.add_const("source_c_scale", inputs.remove(0))?;
-        let c0 = model.add_const("source_c0", inputs.remove(0))?;
+        let a = model.add_const("source_a", inputs[0].clone())?;
+        let b = model.add_const("source_b", inputs[1].clone())?;
 
-        let result = self.wire(&mut model, "adhoc", a, a_scale, a0, b, b_scale, b0, c_scale, c0)?;
+        self.params.iter().for_each(|(name, qp)| eprintln!("{} : {:?}", name, qp.tensor(&inputs)));
+        let params = self
+            .params
+            .iter()
+            .map(|(name, qp)| model.add_const(format!("source_{}", name), qp.tensor(&inputs)))
+            .collect::<TractResult<Vec<_>>>()?;
+
+        let result = self.wire(&mut model, "adhoc", a, b, &params)?;
         model.set_output_outlets(&[result])?;
-        model.into_runnable()?.run(inputs.into_iter().map(|i| i.into_tensor()).collect())
+        model.into_runnable()?.run(tvec![])
     }
 }
 
 impl TypedOp for QMatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if inputs[0].rank() != inputs[3].rank() {
+        if inputs[0].rank() != inputs[1].rank() {
             bail!(
                 "Inconsistent matmul between {:?} and {:?} (rank mismatch)",
                 inputs[0],
-                inputs[3]
+                inputs[1]
             );
         }
-        let dt = inputs[7].datum_type;
+        let dt = match &self.params.c0 {
+            QuantizedParam::Static(t) => t.datum_type(),
+            QuantizedParam::Dynamic(i) => inputs[*i].datum_type,
+        };
         let (_m, _k, _n, c_shape) = compute_shape(
             &inputs[0].shape,
-            &inputs[3].shape,
+            &inputs[1].shape,
             self.a_trans,
             self.b_trans,
             self.c_trans,
@@ -90,16 +151,18 @@ impl TypedOp for QMatMul {
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
         let a = patch.tap_model(model, node.inputs[0])?;
-        let a_scale = patch.tap_model(model, node.inputs[1])?;
-        let a0 = patch.tap_model(model, node.inputs[2])?;
-        let b = patch.tap_model(model, node.inputs[3])?;
-        let b_scale = patch.tap_model(model, node.inputs[4])?;
-        let b0 = patch.tap_model(model, node.inputs[5])?;
-        let c_scale = patch.tap_model(model, node.inputs[6])?;
-        let c0 = patch.tap_model(model, node.inputs[7])?;
+        let b = patch.tap_model(model, node.inputs[1])?;
 
-        let result =
-            self.wire(&mut patch, &node.name, a, a_scale, a0, b, b_scale, b0, c_scale, c0)?;
+        let params = self
+            .params
+            .iter()
+            .map(|(name, qp)| match qp {
+                QuantizedParam::Dynamic(o) => patch.tap_model(model, node.inputs[*o]),
+                QuantizedParam::Static(t) => patch.add_const(format!("source_{}", name), t.clone()),
+            })
+            .collect::<TractResult<Vec<OutletId>>>()?;
+
+        let result = self.wire(&mut patch, &node.name, a, b, &params)?;
         patch.shunt_outside(model, node.id.into(), result)?;
         Ok(Some(patch))
     }
@@ -123,19 +186,14 @@ impl QMatMul {
         model: &mut TypedModel,
         name: &str,
         a: OutletId,
-        a_scale: OutletId,
-        a0: OutletId,
         b: OutletId,
-        b_scale: OutletId,
-        b0: OutletId,
-        c_scale: OutletId,
-        c0: OutletId,
+        params: &[OutletId],
     ) -> TractResult<OutletId> {
         let a_fact = model.outlet_fact(a)?.clone();
         let rank = a_fact.rank();
         let k = model.outlet_fact(a)?.shape[rank - 2 + !self.a_trans as usize].clone();
 
-        let abc_scale = combine_scales(model, name, a_scale, b_scale, c_scale)?;
+        let abc_scale = combine_scales(model, name, params[1], params[3], params[5])?;
 
         let a_i32 = model.wire_node(
             format!("{}.a_as_i32", name),
@@ -166,9 +224,18 @@ impl QMatMul {
 
         let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
         let result = model.wire_node(format!("{}.matmul", &name), new_op, &[a, b])?[0];
-        let result =
-            compensate_zero_points(model, name, result, self.c_trans, k, a0, b0, sum_a, sum_b)?;
-        requant(model, name, result, self.output_type, abc_scale, c0)
+        let result = compensate_zero_points(
+            model,
+            name,
+            result,
+            self.c_trans,
+            k,
+            params[0],
+            params[2],
+            sum_a,
+            sum_b,
+        )?;
+        requant(model, name, result, self.output_type, abc_scale, params[4])
     }
 }
 
@@ -210,7 +277,7 @@ pub(crate) fn compensate_zero_points(
     assert_eq!(model.outlet_fact(sum_a)?.rank(), rank - 1);
     assert_eq!(model.outlet_fact(sum_b)?.rank(), rank - 1);
 
-    // make sum_a into from a 1D vector to a vertical matrix, sum_b horizontal 
+    // make sum_a into from a 1D vector to a vertical matrix, sum_b horizontal
     // switch shapes if c_trans
     let sum_a = model.wire_node(
         format!("{}.reshape_sum_a", name),
@@ -520,8 +587,6 @@ mod test {
                     )
                     .unwrap(),
             );
-            inputs.push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
-            inputs.push(model.add_source("a0", TypedFact::scalar::<i8>()).unwrap());
             inputs.push(
                 model
                     .add_source(
@@ -530,12 +595,24 @@ mod test {
                     )
                     .unwrap(),
             );
-            inputs.push(model.add_source("b_scale", TypedFact::scalar::<f32>()).unwrap());
+            inputs.push(model.add_source("a0", TypedFact::scalar::<i8>()).unwrap());
+            inputs.push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
             inputs.push(model.add_source("b0", TypedFact::scalar::<i8>()).unwrap());
-            inputs.push(model.add_source("c_scale", TypedFact::scalar::<f32>()).unwrap());
+            inputs.push(model.add_source("b_scale", TypedFact::scalar::<f32>()).unwrap());
             inputs.push(model.add_source("c0", TypedFact::scalar::<i8>()).unwrap());
+            inputs.push(model.add_source("c_scale", TypedFact::scalar::<f32>()).unwrap());
             let result = model
-                .wire_node("qmm", QMatMul::new(false, false, false, i8::datum_type()), &inputs)
+                .wire_node(
+                    "qmm",
+                    QMatMul::new(
+                        false,
+                        false,
+                        false,
+                        i8::datum_type(),
+                        QuantizedParams::all_dynamic(),
+                    ),
+                    &inputs,
+                )
                 .unwrap();
             model.set_output_outlets(&result).unwrap();
             let mut result = model
@@ -543,13 +620,13 @@ mod test {
                 .unwrap()
                 .run(tvec!(
                     self.a.clone().into_tensor(),
-                    self.a_scale.into(),
-                    self.a0.into(),
                     self.b.clone().into_tensor(),
-                    self.b_scale.into(),
+                    self.a0.into(),
+                    self.a_scale.into(),
                     self.b0.into(),
+                    self.b_scale.into(),
+                    self.c0.into(),
                     self.c_scale.into(),
-                    self.c0.into()
                 ))
                 .unwrap();
             result
