@@ -1,5 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
+use tract_core::ops::matmul::*;
 use tract_hir::internal::*;
 
 pub fn mat_mul_integer(
@@ -59,31 +60,33 @@ impl Expansion for MatMulInteger {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let op = tract_core::ops::matmul::QMatMul::new(false, false, false, i32::datum_type());
-        let mut a_and_b =
+        use QuantizedParam::*;
+        let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
         let a0 = if let Some(o) = self.optional_a_zero_point_input {
-            inputs[o]
+            Dynamic(o)
         } else {
             let a_dt = target.outlet_fact(inputs[0])?.datum_type;
-            target.add_const(format!("{}.a0", prefix), tensor0(0).cast_to_dt(a_dt)?.into_owned())?
+            Static(tensor0(0).cast_to_dt(a_dt)?.into_owned().into_arc_tensor())
         };
         let b0 = if let Some(o) = self.optional_b_zero_point_input {
-            inputs[o]
+            Dynamic(o)
         } else {
             let b_dt = target.outlet_fact(inputs[1])?.datum_type;
-            target.add_const(format!("{}.b0", prefix), tensor0(0).cast_to_dt(b_dt)?.into_owned())?
+            Static(tensor0(0).cast_to_dt(b_dt)?.into_owned().into_arc_tensor())
         };
-        let inputs = [
-            a_and_b.remove(0),
-            target.add_const(format!("{}.a_scale", prefix), tensor0(1f32))?,
+        let params = QuantizedParams {
             a0,
-            a_and_b.remove(0),
-            target.add_const(format!("{}.b_scale", prefix), tensor0(1f32))?,
             b0,
-            target.add_const(format!("{}.c_scale", prefix), tensor0(1f32))?,
-            target.add_const(format!("{}.c0", prefix), tensor0(0i32))?,
-        ];
+            c0: Static(rctensor0(0i32)),
+            c_scale: Static(rctensor0(1f32)),
+            a_scale: Static(rctensor0(1f32)),
+            b_scale: Static(rctensor0(1f32)),
+        };
+        let op = QMatMul::new(false, false, false, i32::datum_type(), params);
+        let mut inputs: TVec<OutletId> = inputs.into();
+        inputs[0] = a_and_b[0];
+        inputs[1] = a_and_b[1];
         target.wire_node(prefix, op, &inputs)
     }
 }
@@ -143,12 +146,17 @@ impl Expansion for QLinearMatMul {
             false,
             false,
             target.outlet_fact(inputs[7])?.datum_type,
+            tract_core::ops::matmul::QuantizedParams::all_dynamic(),
         );
-        let mut a_and_b =
+        let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;
-        let mut inputs:TVec<OutletId> = inputs.into();
-        inputs[0] = a_and_b.remove(0);
-        inputs[3] = a_and_b.remove(0);
-        target.wire_node(prefix, op, &inputs)
+        target.wire_node(
+            prefix,
+            op,
+            &[
+                a_and_b[0], a_and_b[1], inputs[2], inputs[1], inputs[5], inputs[4], inputs[7],
+                inputs[6],
+            ],
+        )
     }
 }
