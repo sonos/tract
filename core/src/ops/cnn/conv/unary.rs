@@ -142,7 +142,7 @@ impl ConvUnary {
         wires: &[OutletId],
     ) -> TractResult<OutletId> {
         use crate::ops::matmul::mir_quant as qmm;
-        let b_fact = model.outlet_fact(wires[0])?;
+        let b_fact = model.outlet_fact(wires[0])?.clone();
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
 
         let (input_shape, geo, output_shape, m, k, n, mmm) =
@@ -199,7 +199,17 @@ impl ConvUnary {
             c_axis,
             h_axis,
         )?;
-        let res = qmm::compensate_zero_points(model, name, res, k.to_dim(), a0, b0, sum_a, sum_b)?;
+        let res = qmm::compensate_zero_points(
+            model,
+            name,
+            res,
+            c_axis == b_fact.rank() - 1,
+            k.to_dim(),
+            a0,
+            b0,
+            sum_a,
+            sum_b,
+        )?;
         let c_dt = model.outlet_fact(c0)?.datum_type;
         let wire = qmm::requant(model, name, res, c_dt, abc_scale, c0)?;
         let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;

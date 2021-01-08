@@ -261,13 +261,13 @@ impl MatMulUnary {
         let mut patch = TypedModelPatch::default();
         let mut wire = patch.tap_model(model, node.inputs[0])?;
 
-        let dt = self.a.datum_type();
+        let c_dt = output_type(self.a.datum_type());
         let (m, k, n, c_shape) =
             compute_shape(&self.a.shape(), b_shape, self.a_trans, self.b_trans, self.c_trans)?;
 
         let mm =
-            tract_linalg::ops().mmm(self.a.datum_type(), b_dt, dt, m, k, n).with_context(|| {
-                format!("No matrix multiplier for {:?}x{:?} to {:?}", self.a.datum_type(), b_dt, dt)
+            tract_linalg::ops().mmm(self.a.datum_type(), b_dt, c_dt, m, k, n).with_context(|| {
+                format!("No matrix multiplier for {:?}x{:?} to {:?}", self.a.datum_type(), b_dt, c_dt)
             })?;
 
         let packed_as =
@@ -318,7 +318,7 @@ impl MatMulUnary {
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
                     b_storage,
-                    c_fact: TypedFact::dt_shape(dt, &c_shape),
+                    c_fact: TypedFact::dt_shape(c_dt, &c_shape),
                     packed_as,
                     fused_ops: None,
                     mmm: mm,
