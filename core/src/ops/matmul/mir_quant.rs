@@ -147,20 +147,27 @@ impl QMatMul {
             ops::cast::cast(i32::datum_type()),
             &[b],
         )?[0];
+        let a_k_axis = rank - 2 + !self.a_trans as usize;
         let sum_a = model.wire_node(
             format!("{}.sum_a", name),
-            ops::nn::Reduce::new(tvec!(rank - 2 + !self.a_trans as usize), ops::nn::Reducer::Sum),
+            ops::nn::Reduce::new(tvec!(a_k_axis), ops::nn::Reducer::Sum),
             &[a_i32],
         )?[0];
+        let sum_a =
+            model.wire_node(format!("{}.sum_a_reduced", name), AxisOp::Rm(a_k_axis), &[sum_a])?[0];
+        let b_k_axis = rank - 2 + self.b_trans as usize;
         let sum_b = model.wire_node(
             format!("{}.sum_b", name),
-            ops::nn::Reduce::new(tvec!(rank - 2 + self.b_trans as usize), ops::nn::Reducer::Sum),
+            ops::nn::Reduce::new(tvec!(b_k_axis), ops::nn::Reducer::Sum),
             &[b_i32],
         )?[0];
+        let sum_b =
+            model.wire_node(format!("{}.sum_b_reduced", name), AxisOp::Rm(b_k_axis), &[sum_b])?[0];
 
         let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
         let result = model.wire_node(format!("{}.matmul", &name), new_op, &[a, b])?[0];
-        let result = compensate_zero_points(model, name, result, k, a0, b0, sum_a, sum_b)?;
+        let result =
+            compensate_zero_points(model, name, result, self.c_trans, k, a0, b0, sum_a, sum_b)?;
         requant(model, name, result, self.output_type, abc_scale, c0)
     }
 }
@@ -191,12 +198,32 @@ pub(crate) fn compensate_zero_points(
     model: &mut TypedModel,
     name: &str,
     result: OutletId,
+    c_trans: bool,
     k: TDim,
     a0: OutletId,
     b0: OutletId,
     sum_a: OutletId,
     sum_b: OutletId,
 ) -> TractResult<OutletId> {
+    let rank = model.outlet_fact(result)?.rank();
+
+    assert_eq!(model.outlet_fact(sum_a)?.rank(), rank - 1);
+    assert_eq!(model.outlet_fact(sum_b)?.rank(), rank - 1);
+
+    // make sum_a into from a 1D vector to a vertical matrix, sum_b horizontal 
+    // switch shapes if c_trans
+    let sum_a = model.wire_node(
+        format!("{}.reshape_sum_a", name),
+        AxisOp::Add(rank - 1 - c_trans as usize),
+        &[sum_a],
+    )?[0];
+
+    let sum_b = model.wire_node(
+        format!("{}.reshape_sum_b", name),
+        AxisOp::Add(rank - 1 - !c_trans as usize),
+        &[sum_b],
+    )?[0];
+
     let a0 =
         model.wire_node(format!("{}.cast_a0", name), ops::cast::cast(i32::datum_type()), &[a0])?[0];
 
@@ -341,7 +368,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 1.0,
             c_scale: 1.0,
-        }.check()
+        }
+        .check()
     }
 
     #[test]
@@ -355,7 +383,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 2.0,
             c_scale: 1.0,
-        }.check();
+        }
+        .check();
     }
 
     #[test]
@@ -369,7 +398,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 0.05,
             c_scale: 0.25,
-        }.check();
+        }
+        .check();
     }
 
     #[test]
@@ -383,7 +413,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 0.05,
             c_scale: 1.0,
-        }.check();
+        }
+        .check();
     }
 
     #[test]
@@ -397,7 +428,8 @@ mod test {
             a_scale: 0.1,
             b_scale: 1.0,
             c_scale: 1.0,
-        }.check();
+        }
+        .check();
     }
 
     #[test]
@@ -411,7 +443,8 @@ mod test {
             a_scale: 0.1,
             b_scale: 1.0,
             c_scale: 0.6,
-        }.check();
+        }
+        .check();
     }
 
     #[test]
@@ -439,7 +472,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 1.0,
             c_scale: 1.0,
-        }.check()
+        }
+        .check()
     }
 
     #[derive(Debug)]

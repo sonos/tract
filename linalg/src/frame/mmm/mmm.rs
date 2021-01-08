@@ -213,9 +213,9 @@ where
     ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
-        debug_assert_eq!(a.tensor.datum_type(), TA::datum_type());
-        debug_assert_eq!(b.tensor.datum_type(), TB::datum_type());
-        debug_assert_eq!(c.tensor.datum_type(), TC::datum_type());
+        anyhow::ensure!(a.tensor.datum_type() == TA::datum_type());
+        anyhow::ensure!(b.tensor.datum_type() == TB::datum_type());
+        anyhow::ensure!(c.tensor.datum_type() == TC::datum_type());
         let prefetch = crate::ops().prefetch.as_ref();
         let m = self.m;
         let n = self.n;
