@@ -155,7 +155,6 @@ impl EvalOp for QMatMul {
         let a = model.add_const("source_a", inputs[0].clone())?;
         let b = model.add_const("source_b", inputs[1].clone())?;
 
-        self.params.iter().for_each(|(name, qp)| eprintln!("{} : {:?}", name, qp.tensor(&inputs)));
         let params = self
             .params
             .iter()
