@@ -697,16 +697,29 @@ impl Tensor {
         std::slice::from_raw_parts_mut(self.data, self.layout.size())
     }
 
-    fn is_uniform_t<T: Datum>(&self) -> anyhow::Result<bool> {
-        let slice = self.as_slice::<T>()?;
-        Ok(slice[1..].iter().all(|x| x == &slice[0]))
+    unsafe fn is_uniform_t<T: Datum>(&self) -> bool {
+        let slice = self.as_slice_unchecked::<T>();
+        slice[1..].iter().all(|x| x == &slice[0])
     }
 
-    pub fn is_uniform(&self) -> anyhow::Result<bool> {
+    pub fn is_uniform(&self) -> bool {
         if self.len() <= 1 {
-            return Ok(true);
+            return true;
         }
-        dispatch_datum!(Tensor::is_uniform_t(self.datum_type())(self))
+        unsafe { dispatch_datum!(Tensor::is_uniform_t(self.datum_type())(self)) }
+    }
+
+    unsafe fn as_uniform_t<T: Datum>(&self) -> Tensor {
+        let v: T = self.as_slice_unchecked::<T>()[0].clone();
+        litteral::tensor0(v)
+    }
+
+    pub fn as_uniform(&self) -> Option<Tensor> {
+        if self.len() >= 1 && self.is_uniform() {
+            unsafe { Some(dispatch_datum!(Tensor::as_uniform_t(self.datum_type())(self))) }
+        } else {
+            None
+        }
     }
 
     unsafe fn natural_cast<

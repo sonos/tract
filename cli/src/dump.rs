@@ -12,7 +12,7 @@ pub fn handle(
     sub_matches: &clap::ArgMatches,
     bench_limits: &BenchLimits,
     _inner: Vec<String>,
-    ) -> CliResult<()> {
+) -> CliResult<()> {
     let model = &*params.tract_model;
     let mut annotations = Annotations::from_model(model)?.with_graph_def(model, &params.graph)?;
     if options.cost {
@@ -64,7 +64,11 @@ pub fn handle(
             rename_outputs(&mut typed, sub_matches)?;
             if let Some(renamed) = sub_matches.values_of("nnef-override-output-name") {
                 for (ix, name) in renamed.into_iter().enumerate() {
-                    let output = typed.wire_node(name, tract_core::ops::identity::Identity, &[typed.output_outlets()?[ix]])?;
+                    let output = typed.wire_node(
+                        name,
+                        tract_core::ops::identity::Identity,
+                        &[typed.output_outlets()?[ix]],
+                    )?;
                     typed.outputs[ix] = output[0];
                 }
             }
@@ -118,7 +122,11 @@ pub fn handle(
 fn rename_outputs(typed: &mut TypedModel, sub_matches: &clap::ArgMatches) -> TractResult<()> {
     if let Some(renamed) = sub_matches.values_of("nnef-override-output-name") {
         for (ix, name) in renamed.into_iter().enumerate() {
-            let output = typed.wire_node(name, tract_core::ops::identity::Identity, &[typed.output_outlets()?[ix]])?;
+            let output = typed.wire_node(
+                name,
+                tract_core::ops::identity::Identity,
+                &[typed.output_outlets()?[ix]],
+            )?;
             typed.outputs[ix] = output[0];
         }
     }

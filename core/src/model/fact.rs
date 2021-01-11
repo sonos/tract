@@ -141,6 +141,8 @@ pub struct TypedFact {
     pub shape: ShapeFact,
     /// optional constant value
     pub konst: Option<Arc<Tensor>>,
+    /// optional uniform value
+    pub uniform: Option<Arc<Tensor>>,
 }
 
 impl_dyn_hash!(TypedFact);
@@ -158,7 +160,7 @@ impl TypedFact {
     where
         S: Into<ShapeFact>,
     {
-        TypedFact { datum_type, shape: shape.into(), konst: None }
+        TypedFact { datum_type, shape: shape.into(), konst: None, uniform: None }
     }
 
     pub fn rank(&self) -> usize {
@@ -187,6 +189,20 @@ impl TypedFact {
         if let Some(k) = &self.konst {
             if !self.matches(k.as_ref())? {
                 bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);
+            }
+        }
+        if let Some(u) = &self.uniform {
+            if self.datum_type != u.datum_type() {
+                bail!("fact as uniform value {:?}, but is of type {:?}", u, self.datum_type);
+            }
+        }
+        if let (Some(u), Some(k)) = (self.uniform.as_deref(), self.konst.as_deref()) {
+            if let Some(k) = k.as_uniform() {
+                if &k != u {
+                    bail!("Uniform value and uniform constant mismatch: {:?}, {:?}", u, k);
+                }
+            } else {
+                bail!("Fact said to be uniform ({:?}) and equal to {:?} which is not.", u, k);
             }
         }
         Ok(())
@@ -241,6 +257,7 @@ impl From<Arc<Tensor>> for TypedFact {
         TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
+            uniform: t.as_uniform().map(Arc::new),
             konst: Some(t),
         }
     }

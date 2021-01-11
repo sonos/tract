@@ -135,12 +135,12 @@ fn declutter_unary_mul_magic_values(
     node: &TypedNode,
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if a.is_uniform()?
+    if a.is_uniform()
         && a.cast_to_scalar::<f64>()? == 1.0
         && model.outlet_fact(node.inputs[0])? == &node.outputs[0].fact
     {
         return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
-    } else if a.is_uniform()? && a.cast_to_scalar::<f64>()?.is_zero() {
+    } else if a.is_uniform() && a.cast_to_scalar::<f64>()?.is_zero() {
         let fact = model.outlet_fact(node.inputs[0])?;
         let zero = Tensor::zero_dt(fact.datum_type, &[])?;
         Ok(Some(TypedModelPatch::replace_single_op(

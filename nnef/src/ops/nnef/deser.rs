@@ -246,7 +246,7 @@ pub fn conv(
     );
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
     let bias: Option<Arc<Tensor>> =
-        if bias.is_uniform()? && bias.cast_to_scalar::<f32>()? == 0.0 { None } else { Some(bias) };
+        if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 { None } else { Some(bias) };
 
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
