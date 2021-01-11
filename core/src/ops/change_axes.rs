@@ -444,6 +444,14 @@ impl TypedOp for AxisOp {
         Ok(axes.into_iter().collect())
     }
 
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        if self.is_noop() {
+            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
         Ok(tvec!((InOut::Out(0), self.recip()), (InOut::In(0), self.clone())))
     }
