@@ -22,7 +22,9 @@ impl TypedOp for ConstantOfShape {
         if self.scalar.rank() > 0 {
             bail!("ConstantOfShape attribute must be a scalar, {:?}", self.scalar)
         }
-        Ok(tvec!(TypedFact::dt_shape(self.scalar.datum_type(), &self.shape)))
+        let mut fact = TypedFact::dt_shape(self.scalar.datum_type(), &self.shape);
+        fact.uniform = Some(self.scalar.clone());
+        Ok(tvec!(fact))
     }
 
     fn declutter(

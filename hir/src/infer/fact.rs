@@ -144,7 +144,9 @@ impl<'a> TryFrom<&'a InferenceFact> for TypedFact {
             (fact.datum_type.concretize(), fact.shape.concretize())
         {
             let shape = ShapeFact::from_dims(shape);
-            Ok(TypedFact { datum_type, shape, konst: fact.value.concretize() })
+            let konst = fact.value.concretize();
+            let uniform = konst.as_ref().and_then(|k| k.as_uniform()).map(Arc::new);
+            Ok(TypedFact { datum_type, shape, konst, uniform })
         } else {
             bail!("Can not make a TypedFact out of {:?}", fact)
         }
