@@ -146,7 +146,7 @@ impl Expansion for QLinearMatMul {
             false,
             false,
             target.outlet_fact(inputs[7])?.datum_type,
-            tract_core::ops::matmul::QuantizedParams::all_dynamic(),
+            tract_core::ops::matmul::QuantizedParams::all_dynamic(2),
         );
         let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;

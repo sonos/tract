@@ -4,7 +4,7 @@ use crate::internal::*;
 use crate::ops;
 use crate::ops::matmul::*;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub enum QuantizedParam {
     Static(Arc<Tensor>),
     Dynamic(usize),
@@ -25,7 +25,7 @@ impl QuantizedParam {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct QuantizedParams {
     pub a0: QuantizedParam,
     pub a_scale: QuantizedParam,
@@ -36,18 +36,18 @@ pub struct QuantizedParams {
 }
 
 impl QuantizedParams {
-    pub fn all_dynamic() -> QuantizedParams {
+    pub fn all_dynamic(offset: usize) -> QuantizedParams {
         QuantizedParams {
-            a0: QuantizedParam::Dynamic(2),
-            a_scale: QuantizedParam::Dynamic(3),
-            b0: QuantizedParam::Dynamic(4),
-            b_scale: QuantizedParam::Dynamic(5),
-            c0: QuantizedParam::Dynamic(6),
-            c_scale: QuantizedParam::Dynamic(7),
+            a0: QuantizedParam::Dynamic(offset),
+            a_scale: QuantizedParam::Dynamic(offset + 1),
+            b0: QuantizedParam::Dynamic(offset + 2),
+            b_scale: QuantizedParam::Dynamic(offset + 3),
+            c0: QuantizedParam::Dynamic(offset + 4),
+            c_scale: QuantizedParam::Dynamic(offset + 5),
         }
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&str, &QuantizedParam)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &QuantizedParam)> {
         vec![
             ("a0", &self.a0),
             ("a_scale", &self.a_scale),
@@ -57,6 +57,53 @@ impl QuantizedParams {
             ("c_scale", &self.c_scale),
         ]
         .into_iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&str, &mut QuantizedParam)> {
+        vec![
+            ("a0", &mut self.a0),
+            ("a_scale", &mut self.a_scale),
+            ("b0", &mut self.b0),
+            ("b_scale", &mut self.b_scale),
+            ("c0", &mut self.c0),
+            ("c_scale", &mut self.c_scale),
+        ]
+        .into_iter()
+    }
+
+    pub fn inline_static(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<(Vec<OutletId>, QuantizedParams)>> {
+        let mut new = self.clone();
+        let mut inputs = vec![];
+        for (ix, input) in node.inputs.iter().enumerate() {
+            if let (Some(position), Some(k)) = (
+                self.iter().position(|qp| &QuantizedParam::Dynamic(ix) == qp.1),
+                model.outlet_fact(*input)?.konst.as_ref(),
+            ) {
+                *new.iter_mut().nth(position).unwrap().1 = QuantizedParam::Static(k.clone());
+                for qp in new.iter_mut() {
+                    qp.1.remove_input(ix);
+                }
+            } else {
+                inputs.push(*input)
+            }
+        }
+        Ok(Some((inputs, new)).filter(|pair| &pair.1 != self))
+    }
+
+    pub fn remove_input(&mut self, ix: usize) {
+        for qp in self.iter_mut() {
+            if let QuantizedParam::Dynamic(slot) = qp.1 {
+                *slot = *slot - (*slot > ix) as usize;
+            }
+        }
+    }
+
+    pub fn input_count(&self) -> usize {
+        self.iter().filter(|qp| matches!(qp.1, QuantizedParam::Dynamic(_))).count()
     }
 }
 
@@ -150,6 +197,16 @@ impl TypedOp for QMatMul {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
+
+        if let Some((inputs, qp)) = self.params.inline_static(model, node)? {
+            let mut patch = TypedModelPatch::new("inlining matmul quantized params");
+            let inputs: Vec<OutletId> =
+                inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<_>>()?;
+            let op = Self { params: qp, ..self.clone() };
+            patch.wire_node(&node.name, op, &inputs)?;
+            return Ok(Some(patch));
+        }
+
         let a = patch.tap_model(model, node.inputs[0])?;
         let b = patch.tap_model(model, node.inputs[1])?;
 
@@ -273,7 +330,6 @@ pub(crate) fn compensate_zero_points(
     sum_b: OutletId,
 ) -> TractResult<OutletId> {
     let rank = model.outlet_fact(result)?.rank();
-
     assert_eq!(model.outlet_fact(sum_a)?.rank(), rank - 1);
     assert_eq!(model.outlet_fact(sum_b)?.rank(), rank - 1);
 
@@ -609,7 +665,7 @@ mod test {
                         false,
                         false,
                         i8::datum_type(),
-                        QuantizedParams::all_dynamic(),
+                        QuantizedParams::all_dynamic(2),
                     ),
                     &inputs,
                 )
