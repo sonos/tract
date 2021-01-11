@@ -127,7 +127,6 @@ pub fn generic() -> Ops {
 #[allow(unreachable_code, unused_mut)]
 pub fn best() -> Ops {
     let mut ops = generic();
-    /*
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("fma") {
@@ -160,7 +159,6 @@ pub fn best() -> Ops {
             log::info!("mmm_i8_i8 and mmm_i8_i32 x86_64/fma activated");
         }
     }
-    */
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
     arm32::plug(&mut ops);
     #[cfg(target_arch = "aarch64")]

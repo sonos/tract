@@ -16,7 +16,7 @@ pub struct LirMatMulUnary {
     pub mmm: Box<dyn MatMatMul>,
     pub m: usize,
     pub k: usize,
-//    pub c_final_shape: Dims,
+    //    pub c_final_shape: Dims,
 }
 
 impl LirMatMulUnary {
@@ -117,8 +117,14 @@ fn eval(
     unsafe {
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
         let c_storage = op.mmm.c_view_with_axis(c_m_axis, c_n_axis);
-        if op.c_fact.shape.iter().enumerate().any(|(ix, d)| ix != c_m_axis && ix != c_n_axis && d != 1.to_dim()) {
-            let mut looping_shape:TVec<usize> = c_shape.into();
+        if op
+            .c_fact
+            .shape
+            .iter()
+            .enumerate()
+            .any(|(ix, d)| ix != c_m_axis && ix != c_n_axis && d != 1.to_dim())
+        {
+            let mut looping_shape: TVec<usize> = c_shape.into();
             looping_shape[c_m_axis] = 1;
             looping_shape[c_n_axis] = 1;
             for prefix in indices(&*looping_shape) {
@@ -186,11 +192,11 @@ impl TypedOp for LirMatMulUnary {
             );
         }
         if let Some(f) = &self.fused_ops {
-            if f.ndim() != c_prefix_len {
+            if f.ndim() != self.c_fact.rank() - 2 {
                 bail!(
-                    "Fused op prefix and c_prefix should have the same len. (resp {} and {})",
-                    f.ndim(),
-                    c_prefix_len
+                    "Fused op prefix and c_prefix should be of rank two less than output. fused: {:?} output: {:?}",
+                    self.fused_ops,
+                    self.c_fact
                 );
             }
         }
@@ -210,7 +216,6 @@ impl TypedOp for LirMatMulUnary {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
-        /*
         if let Some(succ) = model.single_succ(node.id)? {
             /*
             if let Some(op) = succ.op_as::<ops::AxisOp>() {
@@ -234,16 +239,14 @@ impl TypedOp for LirMatMulUnary {
                     } else {
                         None
                     }
-                /*
-                } else if op.a.shape()[op.a.rank() - 1] == 1 {
-                if op.mini_op.is::<ops::math::Mul>() {
-                Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
-                } else if op.mini_op.is::<ops::math::Add>() {
-                Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
-                } else {
-                None
-                }
-                */
+                } else if op.a.shape()[op.a.rank() - 2] == 1 {
+                    if op.mini_op.is::<ops::math::Mul>() {
+                        Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
+                    } else if op.mini_op.is::<ops::math::Add>() {
+                        Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -255,14 +258,13 @@ impl TypedOp for LirMatMulUnary {
                 new_op
                     .fused_ops
                     .get_or_insert_with(|| {
-                        let shape = vec![1; self.c_fact.rank()];
+                        let shape = vec![1; self.c_fact.rank() - 2];
                         ArrayD::from_shape_fn(shape, |_| vec![])
                     })
                     .map_inplace(|v| v.extend(op.iter().cloned()));
                 return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));
             }
         }
-    */
         Ok(None)
     }
 
