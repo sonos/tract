@@ -195,7 +195,7 @@ impl TypedFact {
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
         let foo: &[usize] = &[];
-        TypedFact { datum_type, shape: ShapeFact::from(foo), konst: None }
+        TypedFact { datum_type, shape: ShapeFact::from(foo), konst: None, uniform: None }
     }
 
     pub fn dt_shape<S>(datum_type: DatumType, shape: S) -> TypedFact
