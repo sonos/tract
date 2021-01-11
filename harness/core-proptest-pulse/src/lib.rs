@@ -39,7 +39,9 @@ fn proptest_regular_against_pulse(
 
     debug!("Build pulsing model");
     let model = model.into_typed().unwrap();
+    dbg!(&model);
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
+    dbg!(&pulsed);
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
     let output_stream_axis = output_fact.axis;

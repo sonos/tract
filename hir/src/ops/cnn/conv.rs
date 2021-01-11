@@ -227,56 +227,57 @@ impl Expansion for Conv {
             || self.x_scale_input.is_some()
             || self.y_zero_point_input.is_some()
             || self.y_scale_input.is_some();
-        let mut wires = tvec!(inputs[0]);
         let output_type = self.override_output_datum_type.unwrap_or(input.datum_type);
-        if quantized {
-            wires.push(if let Some(o) = self.k_zero_point_input {
-                inputs[o]
-            } else {
-                model.add_const(
-                    format!("{}.a0", prefix),
-                    Tensor::zero_scalar_dt(input.datum_type)?,
-                )?
-            });
-            wires.push(if let Some(o) = self.k_scale_input {
-                inputs[o]
-            } else {
-                model.add_const(format!("{}.a_scale", prefix), tensor0(1f32))?
-            });
-            wires.push(if let Some(o) = self.x_zero_point_input {
-                inputs[o]
-            } else {
-                model.add_const(
-                    format!("{}.b0", prefix),
-                    Tensor::zero_scalar_dt(kernel.datum_type())?,
-                )?
-            });
-            wires.push(if let Some(o) = self.x_scale_input {
-                inputs[o]
-            } else {
-                model.add_const(format!("{}.b_scale", prefix), tensor0(1f32))?
-            });
-            wires.push(if let Some(c0) = self.y_zero_point_input {
-                inputs[c0]
-            } else {
-                model.add_const(format!("{}.c0", prefix), Tensor::zero_scalar_dt(output_type)?)?
-            });
-            wires.push(if let Some(c_scale) = self.y_scale_input {
-                inputs[c_scale]
-            } else {
-                model.add_const(format!("{}.c_scale", prefix), tensor0(1f32))?
-            });
-        }
+        let q_params = if quantized {
+            use tract_core::ops::matmul::QuantizedParam::*;
+            use tract_core::ops::matmul::QuantizedParams;
 
-        let reduced = ConvUnary::new(
-            pool_spec,
-            self.kernel_fmt,
-            kernel,
-            group,
-            bias,
-            Some(output_type).filter(|&it| quantized || it != input.datum_type),
-        );
-        model.wire_node(prefix, reduced, &wires)
+            let a0 = if let Some(o) = self.k_zero_point_input {
+                Dynamic(o)
+            } else {
+                Static(Tensor::zero_scalar_dt(input.datum_type)?.into_arc_tensor())
+            };
+            let a_scale =
+                if let Some(o) = self.k_scale_input { Dynamic(o) } else { Static(rctensor0(1f32)) };
+
+            let b0 = if let Some(o) = self.x_zero_point_input {
+                Dynamic(o)
+            } else {
+                Static(Tensor::zero_scalar_dt(input.datum_type)?.into_arc_tensor())
+            };
+            let b_scale =
+                if let Some(o) = self.x_scale_input { Dynamic(o) } else { Static(rctensor0(1f32)) };
+
+            let c0 = if let Some(o) = self.y_zero_point_input {
+                Dynamic(o)
+            } else {
+                Static(Tensor::zero_scalar_dt(input.datum_type)?.into_arc_tensor())
+            };
+            let c_scale =
+                if let Some(o) = self.y_scale_input { Dynamic(o) } else { Static(rctensor0(1f32)) };
+
+            let mut qp = QuantizedParams { a0, b0, c0, a_scale, b_scale, c_scale };
+            qp.remove_input(self.k_input.unwrap_or(1));
+            if let Some(b) = self.bias_input {
+                qp.remove_input(b);
+            }
+
+            Some((output_type, qp))
+        } else {
+            None
+        };
+
+        let inputs = inputs
+            .into_iter()
+            .enumerate()
+            .filter(|&(ix, _)| {
+                ix != self.k_input.unwrap_or(1) && self.bias_input.map(|b| ix != b).unwrap_or(true)
+            })
+            .map(|pair| *pair.1)
+            .collect::<TVec<_>>();
+
+        let reduced = ConvUnary::new(pool_spec, self.kernel_fmt, kernel, group, bias, q_params);
+        model.wire_node(prefix, reduced, &inputs)
     }
 }
 
