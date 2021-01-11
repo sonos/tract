@@ -263,7 +263,23 @@ impl TypedOp for TypedBinOp {
                 return Ok(Some(TypedModelPatch::shunt_one_op(model, prec)?));
             }
         }
-        declutter_bin_to_unary(model, node, self.0.as_ref())
+        if let Some(unary) = declutter_bin_to_unary(model, node, self.0.as_ref())? {
+            return Ok(Some(unary))
+        }
+        let fact_a = model.outlet_fact(node.inputs[0])?;
+        if fact_a.konst.is_none() && fact_a.uniform.is_some() {
+            let a = fact_a.uniform.clone().unwrap().into_tensor().broadcast_into_rank(fact_a.rank())?;
+            let op = UnaryOp::new(self.0.clone(), a.into_arc_tensor());
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs[1..2], op)?))
+        }
+        let fact_b = model.outlet_fact(node.inputs[1])?;
+        if fact_b.konst.is_none() && fact_b.uniform.is_some() {
+            let b = fact_b.uniform.clone().unwrap().into_tensor().broadcast_into_rank(fact_b.rank())?;
+            if let Some(op) = self.0.unary_with_b_const(&b.into_arc_tensor()) {
+                return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs[0..1], op)?))
+            }
+        }
+        return Ok(None)
     }
 
     fn codegen(
