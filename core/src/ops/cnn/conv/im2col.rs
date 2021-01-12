@@ -107,8 +107,8 @@ impl EvalOp for Im2Col {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unsafe {
-            let (input, pad_value) = args_2!(inputs);
-            let mut input = input.into_tensor();
+            let mut input = inputs.remove(0).into_tensor();
+            let pad_value = if inputs.len() > 0 { Some(inputs.remove(0)) } else { None };
             let output_shape = self.output_shape(input.shape())?;
             let mut output = Tensor::uninitialized_aligned_dt(
                 input.datum_type(),
@@ -139,7 +139,7 @@ impl EvalOp for Im2Col {
                             &input_shape,
                             &mut packed,
                             g,
-                            &pad_value
+                            pad_value.as_deref()
                         ))?
                     }
                 }
@@ -161,6 +161,27 @@ impl TypedOp for Im2Col {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, self.output_shape(&*inputs[0].shape)?)))
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        if node.inputs.len() == 2
+            && model.outlet_fact(node.inputs[1])?.konst.as_ref().and_then(|t| t.as_uniform())
+                == Some(Tensor::zero_scalar_dt(input_fact.datum_type)?)
+        {
+            Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs[0..1],
+                self.clone(),
+            )?))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Hash)]
@@ -172,20 +193,34 @@ enum Patcher {
 }
 
 impl Patcher {
-    fn patch<'i, 'p, T: Copy + Datum>(
+    fn patch<'i, 'p, T: Copy + Datum + num_traits::Zero>(
         &self,
         im2col: &'i Im2Col,
         input: &'i TensorView,
         input_shape: &DataShape,
         pack: &'p mut TensorView,
         g: usize,
-        pad_value: &Tensor,
+        pad_value: Option<&Tensor>,
     ) -> TractResult<()> {
         match self {
             Patcher::Valid1d => Self::valid_1d::<T>(im2col, input, input_shape, pack, g),
             Patcher::Valid2d => Self::valid_2d::<T>(im2col, input, input_shape, pack, g),
-            Patcher::Padded2d => Self::padded_2d::<T>(im2col, input, input_shape, pack, g, pad_value),
-            _ => Self::generic::<T>(im2col, input, input_shape, pack, g, pad_value),
+            Patcher::Padded2d => Self::padded_2d::<T>(
+                im2col,
+                input,
+                input_shape,
+                pack,
+                g,
+                pad_value.unwrap_or(&Tensor::zero_scalar::<T>()?),
+            ),
+            _ => Self::generic::<T>(
+                im2col,
+                input,
+                input_shape,
+                pack,
+                g,
+                pad_value.unwrap_or(&Tensor::zero_scalar::<T>()?),
+            ),
         }
     }
 
