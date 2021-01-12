@@ -2,7 +2,7 @@ test_operator_add_broadcast
 test_operator_add_size1_broadcast
 test_operator_add_size1_right_broadcast
 test_operator_add_size1_singleton_broadcast
-test_operator_addconstant not-nnef
+test_operator_addconstant
 test_operator_addmm
 test_operator_basic
 test_operator_chunk
@@ -16,7 +16,7 @@ test_operator_max
 test_operator_maxpool
 test_operator_min
 test_operator_mm
-test_operator_non_float_params not-nnef
+test_operator_non_float_params
 test_operator_pad
 test_operator_params
 test_operator_permute2
