@@ -6,10 +6,10 @@ license = "MIT/Apache-2.0"
 edition = "2018"
 
 [dependencies]
-bytes = "0.5"
+bytes = "1"
 fs2 = "0.4"
 log = "0.4.6"
-prost = "0.6"
+prost = "0.7"
 tract-core = { path = "../../core", features = [ "paranoid_assertions" ] }
 tract-nnef = { path = "../../nnef" }
 tract-onnx = { path = "../../onnx" }

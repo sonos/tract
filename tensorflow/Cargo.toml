@@ -14,12 +14,12 @@ edition = "2018"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-bytes = "0.5"
+bytes = "1"
 derive-new = "0.5"
 educe = "=0.4.11" # locked for rust 1.41.0
 log = "0.4"
-prost = "0.6"
-prost-types = "0.6"
+prost = "0.7"
+prost-types = "0.7"
 tensorflow = { version = "0", optional = true }
 tract-hir = { path = "../hir" }
 tract-pulse = { path = "../pulse" }
@@ -28,7 +28,7 @@ tract-pulse = { path = "../pulse" }
 mapr = "0.8"
 
 [build-dependencies]
-prost-build = "0.6"
+prost-build = "0.7"
 
 [features]
 conform = [ "tensorflow" ]
