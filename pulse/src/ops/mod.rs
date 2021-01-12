@@ -14,7 +14,19 @@ pub mod quant;
 pub mod scan;
 pub mod source;
 
-register_all_mod!(array, binary, change_axes, cnn, downsample, matmul, nn, quant, scan, source);
+register_all_mod!(
+    array,
+    binary,
+    change_axes,
+    cnn,
+    downsample,
+    element_wise,
+    matmul,
+    nn,
+    quant,
+    scan,
+    source
+);
 
 pub struct OpPulsifier {
     pub type_id: std::any::TypeId,
