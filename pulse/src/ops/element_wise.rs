@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::element_wise::ElementWiseOp;
 
-submit_op_pulsifier!(ElementWiseOp, pulsify);
+register_all!(ElementWiseOp: pulsify);
 
 fn pulsify(
     op: &ElementWiseOp,

@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::quant::DequantizeLinearF32;
 
-submit_op_pulsifier!(DequantizeLinearF32, pulsify);
+register_all!(DequantizeLinearF32: pulsify);
 
 fn pulsify(
     op: &DequantizeLinearF32,

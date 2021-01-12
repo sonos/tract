@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::change_axes::AxisOp;
 
-submit_op_pulsifier!(AxisOp, pulsify);
+register_all!(AxisOp: pulsify);
 
 fn pulsify(
     op: &AxisOp,

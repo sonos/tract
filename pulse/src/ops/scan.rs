@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::scan::{InputMapping, Scan};
 
-submit_op_pulsifier!(Scan, pulsify);
+register_all!(Scan: pulsify);
 
 fn pulsify(
     op: &Scan,

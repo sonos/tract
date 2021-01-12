@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::cnn::ConvUnary;
 
-submit_op_pulsifier!(ConvUnary, pulsify);
+register_all!(ConvUnary: pulsify);
 
 fn pulsify(
     op: &ConvUnary,

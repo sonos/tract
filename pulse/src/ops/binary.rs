@@ -3,9 +3,7 @@ use tract_core::ops::binary::*;
 use tract_core::ops::logic::Iff;
 use tract_pulse_opl::ops::Delay;
 
-submit_op_pulsifier!(UnaryOp, pulsify_un);
-submit_op_pulsifier!(TypedBinOp, pulsify_bin);
-submit_op_pulsifier!(Iff, pulsify_iff);
+register_all!(UnaryOp: pulsify_un, TypedBinOp: pulsify_bin, Iff: pulsify_iff);
 
 fn sync_inputs(
     node: &TypedNode,

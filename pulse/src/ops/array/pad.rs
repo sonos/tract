@@ -3,7 +3,7 @@ use tract_core::ndarray::*;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_pulse_opl::ops::{Delay, PulsePad};
 
-submit_op_pulsifier!(Pad, pulsify);
+register_all!(Pad: pulsify);
 
 fn pulsify(
     op: &Pad,

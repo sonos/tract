@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::Downsample;
 
-submit_op_pulsifier!(Downsample, pulsify);
+register_all!(Downsample: pulsify);
 
 fn pulsify(
     op: &Downsample,
