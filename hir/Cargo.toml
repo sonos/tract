@@ -21,4 +21,3 @@ tract-core = { path = "../core" }
 
 [dev-dependencies]
 env_logger = "0.7"
-tract-pulse = { path = "../pulse" }
