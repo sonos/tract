@@ -156,7 +156,9 @@ mod tests {
     use super::*;
     use AxisOp::*;
 
-    use tract_pulse::internal::stream_dim as stream;
+    fn stream() -> TDim {
+        Symbol::from('S').into()
+    }
 
     macro_rules! s {
         ($($a:expr),*) => {&[ $($a.into()),* ]}
