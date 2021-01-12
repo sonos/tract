@@ -9,7 +9,6 @@ edition = "2018"
 
 [dependencies]
 
-rand = "0.7"
+rand = "*"
 tract-core = { path="../../core" }
-#tract-tensorflow = { path = "../../tensorflow" }
 tract-onnx = { path = "../../onnx" }
