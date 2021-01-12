@@ -2,8 +2,7 @@ use crate::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::cnn::{MaxPool, PaddingSpec, PoolSpec, SumPool};
 
-submit_op_pulsifier!(MaxPool, pulsify_max_pool);
-submit_op_pulsifier!(SumPool, pulsify_sum_pool);
+register_all!(MaxPool: pulsify_max_pool, SumPool: pulsify_sum_pool);
 
 fn pulsify_max_pool(
     op: &MaxPool,

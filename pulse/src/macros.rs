@@ -7,20 +7,36 @@ macro_rules! pulsed_op_to_typed_op {
     };
 }
 
-macro_rules! submit_op_pulsifier {
-    ($op: ty, $func: expr) => {
-        inventory::submit!(OpPulsifier {
-            type_id: std::any::TypeId::of::<$op>(),
-            func: |source: &TypedModel,
-                   node: &TypedNode,
-                   target: &mut PulsedModel,
-                   mapping: &HashMap<OutletId, OutletId>,
-                   pulse: usize|
-             -> TractResult<TVec<OutletId>> {
-                let op = node.op_as::<$op>().unwrap();
-                ($func)(op, source, node, target, mapping, pulse)
-            },
-            name: stringify!($op)
-        });
+#[macro_export]
+macro_rules! register_all_mod {
+    ($($m: ident),*) => {
+        pub fn register_all(inventory: &mut HashMap<TypeId, OpPulsifier>) {
+            $( $m::register_all(inventory); )*
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! register_all {
+    ($($op: ty: $func: expr),*) => {
+        pub fn register_all(inventory: &mut HashMap<TypeId, OpPulsifier>) {
+            $(
+            inventory.insert(
+                std::any::TypeId::of::<$op>(),
+                OpPulsifier {
+                    type_id: std::any::TypeId::of::<$op>(),
+                    func: |source: &TypedModel,
+                           node: &TypedNode,
+                           target: &mut PulsedModel,
+                           mapping: &HashMap<OutletId, OutletId>,
+                           pulse: usize|
+                     -> TractResult<TVec<OutletId>> {
+                        let op = node.op_as::<$op>().unwrap();
+                        ($func)(op, source, node, target, mapping, pulse)
+                    },
+                    name: stringify!($op)
+                }
+            );)*
+        }
     };
 }

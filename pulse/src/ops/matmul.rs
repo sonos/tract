@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::matmul::MatMulUnary;
 
-submit_op_pulsifier!(MatMulUnary, pulsify);
+register_all!(MatMulUnary: pulsify);
 
 fn pulsify(
     op: &MatMulUnary,

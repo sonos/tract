@@ -14,7 +14,8 @@ pub mod quant;
 pub mod scan;
 pub mod source;
 
-inventory::collect!(OpPulsifier);
+register_all_mod!(array, binary, change_axes, cnn, downsample, matmul, nn, quant, scan, source);
+
 pub struct OpPulsifier {
     pub type_id: std::any::TypeId,
     pub name: &'static str,
@@ -25,6 +26,14 @@ pub struct OpPulsifier {
         &HashMap<OutletId, OutletId>,
         usize,
     ) -> TractResult<TVec<OutletId>>,
+}
+
+impl OpPulsifier {
+    pub fn inventory() -> HashMap<TypeId, OpPulsifier> {
+        let mut inventory = HashMap::default();
+        register_all(&mut inventory);
+        inventory
+    }
 }
 
 pub trait PulsedOp:

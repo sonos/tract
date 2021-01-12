@@ -4,7 +4,7 @@ use tract_core::ndarray::*;
 use tract_core::ops::array::TypedConcat;
 use tract_pulse_opl::ops::Delay;
 
-submit_op_pulsifier!(TypedConcat, pulsify);
+register_all!(TypedConcat: pulsify);
 
 fn pulsify(
     op: &TypedConcat,

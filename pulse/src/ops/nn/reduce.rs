@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::nn::Reduce;
 
-submit_op_pulsifier!(Reduce, pulsify);
+register_all!(Reduce: pulsify);
 
 fn pulsify(
     op: &Reduce,

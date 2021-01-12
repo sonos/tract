@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::array::Slice;
 
-submit_op_pulsifier!(Slice, pulsify);
+register_all!(Slice: pulsify);
 
 fn pulsify(
     op: &Slice,

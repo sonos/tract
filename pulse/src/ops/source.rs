@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::source::*;
 
-submit_op_pulsifier!(TypedSource, pulsify);
+register_all!(TypedSource: pulsify);
 
 fn pulsify(
     _op: &TypedSource,

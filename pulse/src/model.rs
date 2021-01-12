@@ -24,7 +24,8 @@ impl PulsedModelExt for PulsedModel {
         source: &TypedModel,
         pulse: usize,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
-        Pulsifier(pulse).translate_model_with_mappings(source)
+        let pulsifiers = crate::ops::OpPulsifier::inventory();
+        Pulsifier(pulse, pulsifiers).translate_model_with_mappings(source)
     }
 
     fn into_typed(self) -> TractResult<TypedModel> {
@@ -75,8 +76,13 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
     }
 }
 
-#[derive(Debug)]
-struct Pulsifier(usize);
+struct Pulsifier(usize, HashMap<TypeId, crate::ops::OpPulsifier>);
+
+impl std::fmt::Debug for Pulsifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Pulsifier({})", self.0)
+    }
+}
 
 impl
     tract_core::model::translator::Translate<
@@ -93,8 +99,7 @@ impl
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(pulsifier) =
-            inventory::iter::<crate::ops::OpPulsifier>().find(|p| p.type_id == node.op.type_id())
+        if let Some(pulsifier) = self.1.get(&node.op.type_id())
         {
             (pulsifier.func)(source, node, target, mapping, self.0)
         } else {
