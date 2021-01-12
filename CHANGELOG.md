@@ -1,5 +1,9 @@
 ## Unreleased
 
+## 0.12.5 - 2021-01-12
+
+* Dependency bumps
+
 ## 0.12.4 - 2021-01-06
 
 * 0.12.3 is a misfire
