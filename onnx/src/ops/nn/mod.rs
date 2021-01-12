@@ -7,6 +7,7 @@ use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
 mod batch_norm;
+mod conv_transpose;
 mod dropout;
 mod instance_norm;
 mod lrn;
@@ -42,6 +43,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("BatchNormalization", batch_normalization);
     reg.insert("Conv", conv);
     reg.insert("ConvInteger", conv_integer);
+    reg.insert("ConvTranspose", conv_transpose::conv_transpose);
     reg.insert("Dropout", dropout::dropout);
     reg.insert("Elu", elu);
     reg.insert("GlobalAveragePool", |_, _| Ok((expand(ops::nn::GlobalAvgPool), vec![])));
