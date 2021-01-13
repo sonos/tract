@@ -19,7 +19,7 @@ use self::tensorflow::{AttrValue, DataType, GraphDef, NodeDef, TensorProto, Tens
 use std::convert::TryInto;
 
 pub fn graph() -> GraphDef {
-    GraphDef { library: None, node: vec![], version: 0, versions: None }
+    GraphDef::default()
 }
 
 pub fn node() -> NodeDef {
