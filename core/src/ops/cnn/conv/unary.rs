@@ -844,7 +844,7 @@ impl TypedOp for ConvUnary {
                     let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
                     let geo_dim: TDim = input_shape.hw_dims().iter().maybe_product()?;
                     wire = patch.wire_node(
-                        format!("{}.reshape", &*node.name),
+                        format!("{}.reshape_input", &*node.name),
                         AxisOp::Reshape(
                             input_shape.h_axis(),
                             input_shape.hw_dims().into(),
@@ -864,7 +864,7 @@ impl TypedOp for ConvUnary {
                         .into_shape(&kernel_shape)?
                         .broadcast_into_rank(operating_rank)?;
                     wire = patch.wire_node(
-                        &*node.name,
+                        &format!("{}.matmul", &node.name),
                         MatMulUnary::new(
                             kernel.into_arc_tensor(),
                             self.kernel_fmt == KernelFormat::HWIO,

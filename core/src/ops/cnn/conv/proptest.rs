@@ -191,6 +191,21 @@ proptest::proptest! {
 }
 
 #[test]
+fn trivial_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 1, &[1, 1])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 1, &[1, 1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: ndarray::arr3(&[[[0.0f32]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0f32]]]]).into_dyn(),
+        bias: None,
+    };
+    assert_eq!(pb.tract()?, pb.reference());
+    Ok(())
+}
+
+#[test]
 fn trivial_1() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::NHWC.from_n_c_hw(1, 1, &[1])?,
