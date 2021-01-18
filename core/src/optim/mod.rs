@@ -94,6 +94,7 @@ impl Optimizer {
                         done_something_this_pass = true;
                         done_something_this_time = true;
                         patch.apply(&mut model)?;
+                        model = model.compact()?;
                         seen.clear();
                         patches += 1;
                         if let Some(steps) = self.steps {

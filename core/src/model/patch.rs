@@ -293,7 +293,7 @@ where
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         target.set_input_outlets(&model_input_outlets)?;
-        prune(target)?;
+        // prune(target)?;
         Ok(())
     }
 }
@@ -313,6 +313,7 @@ where
             continue;
         }
         target.node_mut(node).op = target.create_dummy();
+        target.node_mut(node).name = target.node(node).name.to_string() + "_pruned";
         for input in target.node(node).inputs.clone().into_iter() {
             target.nodes_mut()[input.node].outputs[input.slot]
                 .successors
