@@ -143,7 +143,6 @@ impl Fact for InferenceFact {
             false
         }
     }
-
 }
 
 impl<'a> TryFrom<&'a InferenceFact> for TypedFact {

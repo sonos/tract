@@ -94,12 +94,7 @@ where
     K: MatMatMulKer<TI> + 'static,
 {
     pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TA, TB, TC, TI> {
-        MatMatMulImpl {
-            m,
-            k,
-            n,
-            phantom: PhantomData,
-        }
+        MatMatMulImpl { m, k, n, phantom: PhantomData }
     }
 }
 

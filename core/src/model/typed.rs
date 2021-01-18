@@ -48,9 +48,8 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             if input_facts.iter().all(|f| f.konst.is_some()) && op.is_stateless() {
                 let tensors =
                     input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
-                let outputs = op.eval(tensors).with_context(|| {
-                    format!("Eager eval of {} {:?}", name, op)
-                })?;
+                let outputs =
+                    op.eval(tensors).with_context(|| format!("Eager eval of {} {:?}", name, op))?;
                 outputs.into_iter().map(|t| TypedFact::from(t)).collect()
             } else {
                 op.output_facts(&*input_facts)

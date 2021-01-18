@@ -444,7 +444,11 @@ impl TypedOp for AxisOp {
         Ok(axes.into_iter().collect())
     }
 
-    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         if self.is_noop() {
             Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
         } else {

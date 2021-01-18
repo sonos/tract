@@ -293,6 +293,32 @@ where
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         target.set_input_outlets(&model_input_outlets)?;
+        prune(target)?;
         Ok(())
     }
+}
+
+fn prune<F, O>(target: &mut Graph<F, O>) -> TractResult<()>
+where
+    F: Fact + Clone + 'static + Hash,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
+    Graph<F, O>: SpecialOps<F, O>,
+{
+    let active = target.eval_order()?.into_iter().collect::<bit_set::BitSet>();
+    for node in 0..target.nodes().len() {
+        if target.node(node).op_is::<crate::ops::dummy::Dummy>() {
+            continue;
+        }
+        if active.contains(node) {
+            continue;
+        }
+        target.node_mut(node).op = target.create_dummy();
+        for input in target.node(node).inputs.clone().into_iter() {
+            target.nodes_mut()[input.node].outputs[input.slot]
+                .successors
+                .retain(|o| o.node != node);
+        }
+        target.node_mut(node).inputs.clear();
+    }
+    Ok(())
 }

@@ -95,7 +95,8 @@ impl TypedOp for MatMul {
             node,
             &node.inputs[var_ix..][..1],
             MatMulUnary::new(konst, t_konst, t_var, self.c_trans ^ flip),
-        ).map(Some)
+        )
+        .map(Some)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

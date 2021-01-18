@@ -2,8 +2,8 @@ use crate::infer::*;
 use crate::internal::*;
 
 use tract_core::ops as mir;
-use tract_core::ops::binary::BinMiniOp;
 pub use tract_core::ops::binary::wire_rank_broadcast;
+use tract_core::ops::binary::BinMiniOp;
 
 #[derive(Debug, Clone, Hash)]
 pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);

@@ -16,7 +16,7 @@ impl_dyn_hash!(Dummy);
 
 impl EvalOp for Dummy {
     fn is_stateless(&self) -> bool {
-        true
+        false
     }
 
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {

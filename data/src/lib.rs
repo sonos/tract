@@ -17,7 +17,7 @@ pub mod prelude {
     pub use crate::dim::{Symbol, SymbolValues, TDim};
     pub use crate::f16::*;
     pub use crate::tensor::litteral::*;
-    pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor, natural_strides};
+    pub use crate::tensor::{natural_strides, IntoArcTensor, IntoTensor, Tensor};
     pub use crate::tvec;
     pub use crate::TVec;
     pub use crate::{

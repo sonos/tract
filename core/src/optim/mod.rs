@@ -80,6 +80,7 @@ impl Optimizer {
                         if let Some(watchdog) = patch.dont_apply_twice.take() {
                             if !seen.contains(&watchdog) {
                                 debug!("Loop detected: {} seen before", watchdog);
+                                model = model.compact()?;
                                 break 'pass;
                             } else {
                                 seen.insert(watchdog);
@@ -97,7 +98,7 @@ impl Optimizer {
                         patches += 1;
                         if let Some(steps) = self.steps {
                             if patches >= steps {
-                                return Ok(model)
+                                return Ok(model);
                             }
                         }
                     }

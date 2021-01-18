@@ -15,9 +15,10 @@ fn im2col(c: &mut Criterion) {
             b.iter_with_setup(
                 || {
                     let len = 8 + 2 * *dil;
-                    let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[len, 16])
-                        .unwrap()
-                        .into_arc_tensor(), pad.clone());
+                    let input = tvec!(
+                        Tensor::zero_dt(f32::datum_type(), &[len, 16]).unwrap().into_arc_tensor(),
+                        pad.clone()
+                    );
                     let op = tract_core::ops::cnn::conv::Im2Col::new(
                         cnn::PatchSpec::for_full_shape(HWC, &[len, 16])
                             .unwrap()
@@ -66,6 +67,7 @@ fn mmm(c: &mut Criterion) {
                     m: 64,
                     c_m_axis: 1,
                     c_n_axis: 0,
+                    c_final_shape: (&[0, 64]).into(),
                 };
                 (input, op)
             },

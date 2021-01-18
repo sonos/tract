@@ -619,6 +619,7 @@ where
                 }
             }
         }
+        writeln!(fmt, "outputs: {}", self.outputs.iter().map(|o| format!("{:?}", o)).join(", "))?;
         Ok(())
     }
 }
