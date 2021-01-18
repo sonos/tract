@@ -97,8 +97,9 @@ impl ConvProblem {
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
-        let mut output =
-            dbg!(model.into_optimized()?).into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
+        let mut output = dbg!(model.into_optimized()?)
+            .into_runnable()?
+            .run(tvec![self.data.clone().into_tensor()])?;
         Ok(output.remove(0).into_tensor().into_array::<f32>()?)
     }
 }

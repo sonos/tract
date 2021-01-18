@@ -425,7 +425,7 @@ impl ConvUnary {
             format!("{}.matmatmul", name),
             matmul::lir_unary::LirMatMulUnary {
                 b_storage: input_storage,
-                c_fact: TypedFact::dt_shape(c_datum_type, mmm_output_shape),
+                c_fact: TypedFact::dt_shape(c_datum_type, mmm_output_shape.clone()),
                 packed_as: kernels,
                 fused_ops,
                 mmm,
@@ -433,6 +433,7 @@ impl ConvUnary {
                 m,
                 c_m_axis,
                 c_n_axis,
+                c_final_shape: mmm_output_shape.into(),
             },
             &[wire],
         )?[0];

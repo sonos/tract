@@ -16,7 +16,7 @@ pub struct LirMatMulUnary {
     pub mmm: Box<dyn MatMatMul>,
     pub m: usize,
     pub k: usize,
-    //    pub c_final_shape: Dims,
+    pub c_final_shape: ShapeFact,
 }
 
 impl LirMatMulUnary {
@@ -79,7 +79,8 @@ impl OpState for State {
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
         let shape = op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
-        eval(op, &inputs[0], &shape, op.c_m_axis, op.c_n_axis)
+        let final_shape = op.c_final_shape.eval_to_usize(&session.resolved_symbols)?;
+        eval(op, &inputs[0], &shape, op.c_m_axis, op.c_n_axis, &final_shape)
     }
 }
 
@@ -103,6 +104,7 @@ impl EvalOp for LirMatMulUnary {
             self.c_fact.shape.as_concrete().unwrap(),
             self.c_m_axis,
             self.c_n_axis,
+            self.c_final_shape.as_concrete().unwrap(),
         )
     }
 }
@@ -113,6 +115,7 @@ fn eval(
     c_shape: &[usize],
     c_m_axis: usize,
     c_n_axis: usize,
+    c_final_shape: &[usize],
 ) -> TractResult<TVec<Arc<Tensor>>> {
     unsafe {
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
@@ -177,6 +180,7 @@ fn eval(
                 )?;
             }
         }
+        c.set_shape_unchecked(c_final_shape);
         Ok(tvec!(c.into_arc_tensor()))
     }
 }
@@ -197,10 +201,12 @@ impl TypedOp for LirMatMulUnary {
                     "Fused op prefix and c_prefix should be of rank two less than output. fused: {:?} output: {:?}",
                     self.fused_ops,
                     self.c_fact
-                );
+                    );
             }
         }
-        Ok(tvec!(self.c_fact.clone()))
+        let mut fact = self.c_fact.clone();
+        fact.shape = self.c_final_shape.clone();
+        Ok(tvec!(fact))
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -217,17 +223,15 @@ impl TypedOp for LirMatMulUnary {
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
         if let Some(succ) = model.single_succ(node.id)? {
-            /*
             if let Some(op) = succ.op_as::<ops::AxisOp>() {
                 if op.only_shape() {
                     return Ok(Some(TypedModelPatch::fuse_with_next(
                         model,
                         &node,
-                        Self { c_final_shape: (*succ.outputs[0].fact.shape).clone(), ..self.clone() },
+                        Self { c_final_shape: succ.outputs[0].fact.shape.clone(), ..self.clone() },
                     )?));
                 }
             }
-            */
             let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
                 if op.a.len() == 1 {
                     if op.mini_op.is::<ops::math::Max>() {
@@ -239,7 +243,9 @@ impl TypedOp for LirMatMulUnary {
                     } else {
                         None
                     }
-                } else if op.a.shape()[op.a.rank() - 2] == 1 {
+                } else if op.a.shape()[op.a.rank() - 2] == 1
+                    && op.a.shape()[op.a.rank() - 1].to_dim() == self.c_fact.shape[self.c_m_axis]
+                {
                     if op.mini_op.is::<ops::math::Mul>() {
                         Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
                     } else if op.mini_op.is::<ops::math::Add>() {

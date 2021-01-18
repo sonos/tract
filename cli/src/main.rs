@@ -26,7 +26,6 @@ mod dump;
 mod errors {}
 mod export;
 mod model;
-mod optimize_check;
 mod params;
 mod profile;
 mod run;
@@ -317,10 +316,6 @@ fn main() -> tract_core::anyhow::Result<()> {
     let optimize = clap::SubCommand::with_name("optimize").help("Optimize the graph");
     app = app.subcommand(output_options(optimize));
 
-    let optimize_check = clap::SubCommand::with_name("optimize-check")
-        .long_about("Compare output of optimized and un-optimized graph");
-    app = app.subcommand(output_options(optimize_check));
-
     let stream_check = clap::SubCommand::with_name("stream-check")
         .long_about("Compare output of streamed and regular exec");
     app = app.subcommand(output_options(stream_check));
@@ -519,10 +514,6 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
         ),
 
         ("run", Some(m)) => run::handle(&params, m),
-
-        ("optimize-check", Some(m)) => {
-            optimize_check::handle(&params, display_params_from_clap(&matches, m)?)
-        }
 
         #[cfg(feature = "pulse")]
         ("stream-check", Some(m)) => {

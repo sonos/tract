@@ -37,8 +37,8 @@ impl EvalOp for QSumB {
         match input.datum_type() {
             DatumType::I8 => self.eval_t::<i8>(&input, &mut output.view_mut())?,
             DatumType::U8 => self.eval_t::<u8>(&input, &mut output.view_mut())?,
-            dt => bail!("Unsupported input type in quantized operation ({:?})", dt)
-        } 
+            dt => bail!("Unsupported input type in quantized operation ({:?})", dt),
+        }
         Ok(tvec!(output.into_arc_tensor()))
     }
 }

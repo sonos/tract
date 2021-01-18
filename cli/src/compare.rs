@@ -54,12 +54,14 @@ pub fn handle_tensorflow(
         }
     }
 
-    let mut all_values: HashMap<String, CliResult<Tensor>> = HashMap::new();
+    let mut all_values: HashMap<String, CliResult<Arc<Tensor>>> = HashMap::new();
     if resilient {
         for name in wanted_outputs {
             all_values.insert(
                 name.to_string(),
-                tf.run(pairs.clone(), &name).map(|t| t[0].clone().into()).map_err(|e| e.into()),
+                tf.run(pairs.clone(), &name)
+                    .map(|t| Arc::new(t[0].clone().into()))
+                    .map_err(|e| e.into()),
             );
         }
     } else {
@@ -111,13 +113,13 @@ pub fn handle_pbdir(
     params: &Parameters,
     output_params: &DisplayParams,
 ) -> CliResult<()> {
-    let mut values: HashMap<String, CliResult<Tensor>> = HashMap::new();
+    let mut values: HashMap<String, CliResult<Arc<Tensor>>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
         use std::convert::TryInto;
         let entry = entry?;
         let file = fs::File::open(entry.path())?;
         let tensor = tract_onnx::tensor::proto_from_reader(file)?;
-        values.insert(tensor.name.to_string(), Ok(tensor.try_into()?));
+        values.insert(tensor.name.to_string(), Ok(Arc::new(tensor.try_into()?)));
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
@@ -138,7 +140,7 @@ pub fn handle_reference_stage(
     let reference_model = reference_model
         .downcast_ref::<TypedModel>()
         .context("Only work with a typed reference model")?;
-    let mut values: HashMap<String, CliResult<Tensor>> = HashMap::new();
+    let mut values: HashMap<String, CliResult<Arc<Tensor>>> = HashMap::new();
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
@@ -152,7 +154,12 @@ pub fn handle_reference_stage(
         generated.clone(),
         |session, state, node, input| -> TractResult<_> {
             let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
-            values.insert(node.name.clone(), Ok(result[0].as_ref().clone()));
+            values.insert(node.name.clone(), Ok(result[0].clone()));
+            for (output_slot, v) in result.iter().enumerate() {
+                if let Some(tag) = reference_model.outlet_label((node.id, output_slot).into()) {
+                    values.insert(tag.to_string(), Ok(v.clone()));
+                }
+            }
             Ok(result)
         },
     )?;
@@ -168,7 +175,7 @@ pub fn handle_reference_stage(
 pub fn compare<F, O>(
     cumulative: bool,
     tract: &Graph<F, O>,
-    all_values: &HashMap<String, CliResult<Tensor>>,
+    all_values: &HashMap<String, CliResult<Arc<Tensor>>>,
     params: &Parameters,
     output_params: &DisplayParams,
 ) -> CliResult<()>
@@ -186,7 +193,7 @@ where
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {
         let name = &tract.node(input.node).name;
         let value = all_values[name].as_ref().unwrap();
-        state.set_input(ix, value.clone())?;
+        state.set_input(ix, value.clone().into_tensor())?;
     }
 
     let mut annotations = crate::annotations::Annotations::from_model(tract as &dyn Model)?

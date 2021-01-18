@@ -56,7 +56,6 @@ type PulsedModel = ();
 pub struct Parameters {
     pub graph: SomeGraphDef,
 
-    pub decluttered_model: Option<Arc<TypedModel>>,
     pub pulsed_model: Option<Arc<PulsedModel>>,
 
     pub tract_model: Arc<dyn Model>,
@@ -436,7 +435,8 @@ impl Parameters {
                 if let Some(v) = input_values.remove(name) {
                     raw_model.node_mut(input.node).op =
                         tract_core::ops::konst::Const::new(v.clone()).into();
-                    raw_model.node_mut(input.node).outputs[0].fact = F::try_from(&InferenceFact::from(v.into_tensor())).unwrap();
+                    raw_model.node_mut(input.node).outputs[0].fact =
+                        F::try_from(&InferenceFact::from(v.into_tensor())).unwrap();
                 } else {
                     bail!(
                         "Don't have value for input {}, can't make it const",
@@ -456,12 +456,7 @@ impl Parameters {
         raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
         reference_stage: Option<&str>,
-    ) -> CliResult<(
-        Arc<dyn Model>,
-        Option<Arc<TypedModel>>,
-        Option<Arc<PulsedModel>>,
-        Option<Arc<dyn Model>>,
-    )> {
+    ) -> CliResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
         let keep_last = matches.is_present("verbose");
         #[cfg(feature = "pulse")]
         let pulse: Option<usize> =
@@ -481,7 +476,7 @@ impl Parameters {
         info!("Will stop at {}", stop_at);
 
         if stop_at == "load" {
-            return Ok((raw_model.into(), None, None, None));
+            return Ok((raw_model.into(), None, None));
         }
 
         let mut inference_model: Option<Arc<InferenceModel>> = None;
@@ -524,7 +519,6 @@ impl Parameters {
                     if stop_at == $name {
                         return Ok((
                             $to.take().expect("returnable model"),
-                            typed_model,
                             pulsed_model,
                             reference_model,
                         ));
@@ -574,7 +568,7 @@ impl Parameters {
         }
         stage!("before-optimize", typed_model -> typed_model, |m:TypedModel| Ok(m));
         stage!("optimize", typed_model -> typed_model, |m:TypedModel| Ok(m.optimize()?));
-        Ok((typed_model.clone().unwrap(), typed_model, pulsed_model, reference_model))
+        Ok((typed_model.clone().unwrap(), pulsed_model, reference_model))
     }
 
     #[allow(unused_variables)]
@@ -595,6 +589,7 @@ impl Parameters {
                     (true, None)
                 }
             }
+            ("optimize-check", _) => (false, Some("declutter")),
             _ => (false, None),
         };
 
@@ -705,12 +700,11 @@ impl Parameters {
             tf_model_extensions,
             need_reference_model.as_deref(),
         )
-        .map(|(tract_model, decluttered_model, pulsed_model, reference_model)| {
+        .map(|(tract_model, pulsed_model, reference_model)| {
             info!("Model ready");
             info_usage("model ready", probe);
             Parameters {
                 graph,
-                decluttered_model,
                 pulsed_model,
                 tract_model,
                 reference_model,

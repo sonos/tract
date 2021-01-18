@@ -12,9 +12,11 @@ use crate::{CliResult, Parameters};
 
 pub fn handle(params: &Parameters, options: &DisplayParams) -> CliResult<()> {
     let decl = params
-        .decluttered_model
-        .clone()
-        .context("Decluttered model not generated. (using --pass ?)")?;
+        .reference_model
+        .as_deref()
+        .context("Decluttered model not generated. (using --pass ?)")?
+        .downcast_ref::<TypedModel>()
+        .unwrap();
     let pulsed =
         params.pulsed_model.as_ref().context("Pulsed model not generated. (using --pass ?)")?;
     let model = params
