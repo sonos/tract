@@ -270,7 +270,7 @@ impl<'a> IntoAst<'a> {
         tensor: &Arc<Tensor>,
         force_variable: bool,
     ) -> Arc<RValue> {
-        if !force_variable && tensor.is_uniform() {
+        if !force_variable && tensor.is_uniform() && tensor.len() > 0 {
             if tensor.datum_type() == String::datum_type() {
                 string(tensor.to_scalar::<String>().unwrap()).into()
             } else {
