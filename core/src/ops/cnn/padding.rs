@@ -112,13 +112,13 @@ impl PaddingSpec {
     ) -> ComputedPaddedDim<D> {
         match self {
             PaddingSpec::Valid => Self::valid_for_deconv(input, kernel, dilation, stride),
+            PaddingSpec::SameUpper => Self::same_for_deconv(input, kernel, dilation, stride, true),
+            PaddingSpec::SameLower => Self::same_for_deconv(input, kernel, dilation, stride, false),
             _ => panic!(),
             /*
             PaddingSpec::Explicit(ref bef, ref aft, ceil_mode) => {
                 Self::explicit(input, kernel, dilation, stride, bef[axis], aft[axis], *ceil_mode)
             }
-            PaddingSpec::SameUpper => Self::same(input, kernel, dilation, stride, true),
-            PaddingSpec::SameLower => Self::same(input, kernel, dilation, stride, false),
             */
         }
     }
@@ -188,7 +188,23 @@ impl PaddingSpec {
         let lower_pad = pad.clone() / 2;
         let higher_pad = pad - &lower_pad;
         let (before, after) = if upper { (lower_pad, higher_pad) } else { (higher_pad, lower_pad) };
-        ComputedPaddedDim::new(input.clone(), output, before, after)
+        ComputedPaddedDim::new(input.clone(), output, before, after) // TODO input is wrong for stride != 1
+    }
+
+    fn same_for_deconv<D: DimLike>(
+        convoluted: &D,
+        kernel: usize,
+        dilation: usize,
+        stride: usize,
+        upper: bool,
+    ) -> ComputedPaddedDim<D> {
+        assert_eq!(stride, 1);
+        let kernel_field = (kernel - 1) * dilation + 1;
+        let crop = kernel_field - 1;
+        let lower_crop = crop.clone() / 2;
+        let higher_crop = crop - &lower_crop;
+        let (before, after) = if upper { (lower_crop, higher_crop) } else { (higher_crop, lower_crop) };
+        ComputedPaddedDim::new(convoluted.clone(), convoluted.clone(), before.into(), after.into())
     }
 }
 
