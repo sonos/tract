@@ -681,7 +681,11 @@ impl Tensor {
 
     /// Access the data as a scalar.
     pub fn to_scalar<'a, D: Datum>(&'a self) -> anyhow::Result<&D> {
-        unsafe { Ok(&*(self.as_ptr::<D>()?)) }
+        self.check_for_access::<D>()?;
+        if self.len() == 0 {
+            anyhow::bail!("to_scalar called on empty tensor ({:?})", self)
+        }
+        unsafe { Ok(self.to_scalar_unchecked()) }
     }
 
     /// Access the data as a scalar.
