@@ -293,11 +293,11 @@ where
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         target.set_input_outlets(&model_input_outlets)?;
-        // prune(target)?;
         Ok(())
     }
 }
 
+/*
 fn prune<F, O>(target: &mut Graph<F, O>) -> TractResult<()>
 where
     F: Fact + Clone + 'static + Hash,
@@ -323,3 +323,4 @@ where
     }
     Ok(())
 }
+*/
