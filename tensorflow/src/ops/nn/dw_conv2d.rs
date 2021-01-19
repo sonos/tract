@@ -58,8 +58,8 @@ impl Expansion for DepthwiseConv2d {
                 );
                 let in_channels = ker[2].to_usize()?;
                 let multiplier = ker[3].to_usize()?;
-                s.equals(&outputs[0].shape[img.h_axis()], &output_shape[0].output)?;
-                s.equals(&outputs[0].shape[img.h_axis() + 1], &output_shape[1].output)?;
+                s.equals(&outputs[0].shape[img.h_axis()], &output_shape[0].convoluted)?;
+                s.equals(&outputs[0].shape[img.h_axis() + 1], &output_shape[1].convoluted)?;
                 s.equals(&outputs[0].shape[img.c_axis()], (in_channels * multiplier).to_dim())?;
             }
             Ok(())

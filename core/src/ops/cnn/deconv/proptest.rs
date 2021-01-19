@@ -34,7 +34,7 @@ impl Arbitrary for DeconvProblem {
 
 impl DeconvProblem {
     fn tract(&self) -> Array4<f32> {
-        let op = DeconvUnary::new(self.kernel.clone().into_arc_tensor());
+        let op = DeconvUnary::new(PaddingSpec::Valid, self.kernel.clone().into_arc_tensor());
         let mut outputs = op.eval(tvec!(self.input.clone().into_arc_tensor())).unwrap();
         outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
     }
