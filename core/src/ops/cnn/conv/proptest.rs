@@ -5,6 +5,7 @@ use crate::ops::nn::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_ndarray::prelude::*;
+use crate::setup_test_logger;
 
 #[derive(Debug)]
 struct ConvProblem {
@@ -23,6 +24,7 @@ impl ConvProblem {
     }
 
     fn reference(&self) -> ArrayD<f32> {
+        setup_test_logger();
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
         let mut out = ArrayD::zeros(&*self.shape_out.shape);
         let n = *self.shape_in.n().clone().unwrap_or(&1);
@@ -76,6 +78,7 @@ impl ConvProblem {
     }
 
     fn tract(&self) -> anyhow::Result<ArrayD<f32>> {
+        setup_test_logger();
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
         let mut model = TypedModel::default();
         let wire = model

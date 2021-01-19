@@ -225,11 +225,13 @@ impl TypedOp for LirMatMulUnary {
         if let Some(succ) = model.single_succ(node.id)? {
             if let Some(op) = succ.op_as::<ops::AxisOp>() {
                 if op.only_shape() {
-                    return Ok(Some(TypedModelPatch::fuse_with_next(
+                    let mut patch = TypedModelPatch::fuse_with_next(
                         model,
                         &node,
                         Self { c_final_shape: succ.outputs[0].fact.shape.clone(), ..self.clone() },
-                    )?));
+                    )?;
+                    patch.dont_apply_twice = Some(dbg!(format!("Fuse {} into {}", succ, node)));
+                    return Ok(Some(patch));
                 }
             }
             let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
@@ -268,7 +270,9 @@ impl TypedOp for LirMatMulUnary {
                         ArrayD::from_shape_fn(shape, |_| vec![])
                     })
                     .map_inplace(|v| v.extend(op.iter().cloned()));
-                return Ok(Some(TypedModelPatch::fuse_with_next(model, &node, new_op)?));
+                let mut patch = TypedModelPatch::fuse_with_next(model, &node, new_op)?;
+                patch.dont_apply_twice = Some(dbg!(format!("Fuse {} into {}", succ, node)));
+                return Ok(Some(patch));
             }
         }
         Ok(None)
