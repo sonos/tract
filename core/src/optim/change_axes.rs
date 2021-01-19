@@ -29,29 +29,5 @@ impl TypedPass for ChangeAxes {
             }
         }
         Ok(None)
-        /*
-        model.check_consistent_facts()?;
-        let mut done_something = false;
-        'top: loop {
-            for n in model.eval_order()? {
-                for suggestion in model.node(n).op.suggested_axis_changes()? {
-                    let outlet = suggestion.0.as_outlet(&model.node(n));
-                    let change = AxisChange { outlet, op: suggestion.1 };
-                    if change_axes(model, &change, &interfaces, &[])
-                        .and_then(|it| {
-                            model.check_consistent_facts()?;
-                            Ok(it)
-                        })
-                        .with_context(|| format!("Applying {:?} from {}", change, model.node(n)))?
-                        .is_some()
-                    {
-                        done_something = true;
-                        continue 'top;
-                    }
-                }
-            }
-            return Ok(done_something);
-        }
-        */
     }
 }

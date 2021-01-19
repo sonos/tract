@@ -2,10 +2,10 @@ use super::KernelFormat;
 use crate::internal::*;
 use crate::ops::cnn::*;
 use crate::ops::nn::*;
+use crate::setup_test_logger;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_ndarray::prelude::*;
-use crate::setup_test_logger;
 
 #[derive(Debug)]
 struct ConvProblem {
@@ -69,11 +69,14 @@ impl ConvProblem {
                 }
             }
         }
+        dbg!(&out);
         if let Some(bias) = &self.bias {
+            dbg!(&bias);
             let mut shape = vec![1; out.ndim()];
             shape[self.shape_out.c_axis()] = bias.len();
             out += &bias.clone().into_shape(shape).unwrap();
         }
+        dbg!(&out);
         out
     }
 
@@ -100,7 +103,7 @@ impl ConvProblem {
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
-        let mut output = dbg!(model.into_optimized()?)
+        let mut output = dbg!(dbg!(model.declutter()?).into_optimized()?)
             .into_runnable()?
             .run(tvec![self.data.clone().into_tensor()])?;
         Ok(output.remove(0).into_tensor().into_array::<f32>()?)
@@ -460,6 +463,21 @@ fn bias_0() -> anyhow::Result<()> {
         data: ndarray::ArrayD::<f32>::zeros(vec![2, 1]),
         kernel: ndarray::ArrayD::<f32>::zeros(vec![1, 1, 2]),
         bias: Some(ndarray::ArrayD::<f32>::zeros(vec![1])),
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
+fn bias_chw_0() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::CHW.from_n_c_hw(1, 1, &[3])?,
+        shape_out: DataFormat::CHW.from_n_c_hw(1, 3, &[3])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: ndarray::arr2(&[[0f32, 0., 0.]]).into_dyn(),
+        kernel: ndarray::arr3(&[[[0f32]], [[0.]], [[0.]]]).into_dyn(),
+        bias: Some(ndarray::arr1(&[0f32, 0., 1.]).into_dyn()),
     };
     assert_eq!(pb.tract().unwrap(), pb.reference());
     Ok(())

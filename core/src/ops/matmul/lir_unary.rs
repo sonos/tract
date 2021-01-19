@@ -230,11 +230,12 @@ impl TypedOp for LirMatMulUnary {
                         &node,
                         Self { c_final_shape: succ.outputs[0].fact.shape.clone(), ..self.clone() },
                     )?;
-                    patch.dont_apply_twice = Some(dbg!(format!("Fuse {} into {}", succ, node)));
+                    patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
                     return Ok(Some(patch));
                 }
             }
             let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
+                dbg!(op);
                 if op.a.len() == 1 {
                     if op.mini_op.is::<ops::math::Max>() {
                         Some(tvec!(FusedSpec::Max(op.a.clone().into_tensor())))
@@ -247,6 +248,16 @@ impl TypedOp for LirMatMulUnary {
                     }
                 } else if op.a.shape()[op.a.rank() - 2] == 1
                     && op.a.shape()[op.a.rank() - 1].to_dim() == self.c_fact.shape[self.c_m_axis]
+                {
+                    if op.mini_op.is::<ops::math::Mul>() {
+                        Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
+                    } else if op.mini_op.is::<ops::math::Add>() {
+                        Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
+                    } else {
+                        None
+                    }
+                } else if op.a.shape()[op.a.rank() - 1] == 1
+                    && op.a.shape()[op.a.rank() - 2].to_dim() == self.c_fact.shape[self.c_n_axis]
                 {
                     if op.mini_op.is::<ops::math::Mul>() {
                         Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
@@ -271,7 +282,7 @@ impl TypedOp for LirMatMulUnary {
                     })
                     .map_inplace(|v| v.extend(op.iter().cloned()));
                 let mut patch = TypedModelPatch::fuse_with_next(model, &node, new_op)?;
-                patch.dont_apply_twice = Some(dbg!(format!("Fuse {} into {}", succ, node)));
+                patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
                 return Ok(Some(patch));
             }
         }
