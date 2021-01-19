@@ -57,68 +57,95 @@ impl Optimizer {
         {
             model.check_consistent_facts()?;
         }
-        let mut model = model.clone();
-        let mut patches = 0;
-        let mut passes = self.passes.clone();
+        let mut model = model.compact()?;
+        let mut counter = 0;
         for i in 0.. {
-            model = model.compact()?;
-            let mut done_something_this_time = false;
-            'pass: for p in passes.iter_mut() {
-                loop {
-                    let mut done_something_this_pass = false;
-                    let mut seen = std::collections::HashSet::new();
-                    p.reset()?;
-                    while let Some(mut patch) = p.next(&model)? {
-                        patch.push_context(format!("{:?}/{}", p, i));
-                        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-                        {
-                            patch.model.check_consistent_facts()?;
-                            model.check_consistent_facts()?;
-                            patch.model.invariants()?;
-                            model.invariants()?;
-                        }
-                        if let Some(watchdog) = patch.dont_apply_twice.take() {
-                            if !seen.contains(&watchdog) {
-                                debug!("Loop detected: {} seen before", watchdog);
-                                model = model.compact()?;
-                                break 'pass;
-                            } else {
-                                seen.insert(watchdog);
-                            }
-                        }
-                        debug!(
-                            "applying patch #{}: {}",
-                            patches,
-                            patch.context.iter().rev().join(" >> "),
-                        );
-                        done_something_this_pass = true;
-                        done_something_this_time = true;
-                        patch.apply(&mut model)?;
-                        seen.clear();
-                        patches += 1;
-                        if let Some(steps) = self.steps {
-                            if patches >= steps {
-                                return Ok(model);
-                            }
-                        }
-                    }
-                    #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
-                    {
-                        model.check_edges()?;
-                        model
-                            .check_consistent_facts()
-                            .with_context(|| format!("after declutter pass {:?}", p))?
-                    }
-                    if !done_something_this_pass {
-                        continue 'pass;
-                    }
-                }
+            let counter_and_model = self.run_all_passes(i, counter, model)?;
+            if counter_and_model.0 == counter {
+                return Ok(counter_and_model.1);
             }
-            if !done_something_this_time {
-                return Ok(model);
-            }
+            counter = counter_and_model.0;
+            model = counter_and_model.1.compact()?;
             model = model.compact()?;
         }
         unreachable!()
+    }
+
+    pub fn run_all_passes(
+        &self,
+        i: usize,
+        mut counter: usize,
+        mut model: TypedModel,
+    ) -> TractResult<(usize, TypedModel)> {
+        let mut passes = self.passes.clone();
+        for p in passes.iter_mut() {
+            let counter_and_model = self.run_one_pass_outer(i, p.as_mut(), counter, model)?;
+            counter = counter_and_model.0;
+            model = counter_and_model.1.compact()?;
+        }
+        Ok((counter, model))
+    }
+
+    pub fn run_one_pass_outer(
+        &self,
+        i: usize,
+        p: &mut dyn TypedPass,
+        mut counter: usize,
+        mut model: TypedModel,
+    ) -> TractResult<(usize, TypedModel)> {
+        loop {
+            let counter_and_model = self.run_one_pass_inner(i, p, counter, model)?;
+            if counter_and_model.0 == counter {
+                return Ok(counter_and_model);
+            }
+            counter = counter_and_model.0;
+            model = counter_and_model.1.compact()?;
+        }
+    }
+
+    pub fn run_one_pass_inner(
+        &self,
+        i: usize,
+        p: &mut dyn TypedPass,
+        mut counter: usize,
+        mut model: TypedModel,
+    ) -> TractResult<(usize, TypedModel)> {
+        let mut seen = std::collections::HashSet::new();
+        p.reset()?;
+        while let Some(mut patch) = p.next(&model)? {
+            patch.push_context(format!("{:?}/{}", p, i));
+            #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
+            {
+                patch.model.check_consistent_facts()?;
+                model.check_consistent_facts()?;
+                patch.model.invariants()?;
+                model.invariants()?;
+            }
+            if let Some(watchdog) = patch.dont_apply_twice.take() {
+                if seen.contains(&watchdog) {
+                    debug!("Loop detected: {} seen before", watchdog);
+                    continue;
+                } else {
+                    seen.insert(watchdog);
+                }
+            }
+            debug!("applying patch #{}: {}", counter, patch.context.iter().rev().join(" >> "),);
+            patch.apply(&mut model)?;
+            seen.clear();
+            counter += 1;
+            if let Some(steps) = self.steps {
+                if counter >= steps {
+                    return Ok((counter, model));
+                }
+            }
+        }
+        #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
+        {
+            model.check_edges()?;
+            model
+                .check_consistent_facts()
+                .with_context(|| format!("after declutter pass {:?}", p))?
+        }
+        Ok((counter, model))
     }
 }

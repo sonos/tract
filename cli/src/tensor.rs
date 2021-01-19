@@ -310,7 +310,13 @@ pub fn tensor_for_fact(fact: &TypedFact, streaming_dim: Option<usize>) -> CliRes
             }
         }
     }
-    Ok(random(&fact.shape.as_concrete().unwrap(), fact.datum_type))
+    Ok(random(
+        &fact
+            .shape
+            .as_concrete()
+            .with_context(|| format!("Expected concrete shape, found: {:?}", fact))?,
+        fact.datum_type,
+    ))
 }
 
 /// Generates a random tensor of a given size and type.
