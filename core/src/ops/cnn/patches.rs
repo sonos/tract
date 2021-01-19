@@ -69,7 +69,7 @@ impl PatchSpec {
             &*self.dilations,
             &*self.strides,
         );
-        let output: TVec<usize> = dims.iter().map(|d| d.output).collect();
+        let output: TVec<usize> = dims.iter().map(|d| d.convoluted).collect();
         let pad_before: TVec<usize> = dims.iter().map(|d| d.pad_before).collect();
         let pad_after: TVec<usize> = dims.iter().map(|d| d.pad_after).collect();
 
@@ -123,7 +123,7 @@ impl PatchSpec {
                     kernel_dim: self.kernel_shape[ix],
                     pad_before: d.pad_before,
                     pad_after: d.pad_after,
-                    output_dim: d.output,
+                    output_dim: d.convoluted,
                     stride: self.strides[ix],
                     dilation: self.dilations[ix],
                 }

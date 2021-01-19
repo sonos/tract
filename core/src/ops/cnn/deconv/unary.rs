@@ -1,9 +1,11 @@
 use crate::internal::*;
+use crate::ops::cnn::PaddingSpec;
 
 // NCHW OIHW rank=4 valid, no-stride, no-dil, no-bias, no-group, f32
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct DeconvUnary {
+    pub padding: PaddingSpec,
     pub kernel: Arc<Tensor>,
 }
 
@@ -57,11 +59,19 @@ impl EvalOp for DeconvUnary {
 impl TypedOp for DeconvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let x_fact = inputs[0];
+        let spatial_input_shape = &x_fact.shape[2..];
+        let spatial_kernel_shape = &self.kernel.shape()[2..];
+        let spatial_output_shape = self.padding.compute_for_deconv(
+            &spatial_input_shape,
+            &spatial_kernel_shape,
+            &[1, 1],
+            &[1, 1],
+        );
         let output_shape = tvec!(
             x_fact.shape[0].clone(),
             self.kernel.shape()[1].to_dim(),
-            x_fact.shape[2].clone() + self.kernel.shape()[2] - 1,
-            x_fact.shape[3].clone() + self.kernel.shape()[3] - 1,
+            spatial_output_shape[0].deconvoluted.clone(),
+            spatial_output_shape[1].deconvoluted.clone(),
         );
         Ok(tvec!(TypedFact::dt_shape(x_fact.datum_type, &output_shape)))
     }

@@ -718,7 +718,7 @@ impl TypedOp for ConvUnary {
             &*self.pool_spec.dilations.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
             &*self.pool_spec.strides.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
         );
-        let n_output_points: TDim = output_dims.iter().map(|d| d.output.clone()).maybe_product()?;
+        let n_output_points: TDim = output_dims.iter().map(|d| d.convoluted.clone()).maybe_product()?;
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         let one = 1.to_dim();

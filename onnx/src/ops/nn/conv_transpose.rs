@@ -1,6 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
 use tract_hir::internal::*;
+use tract_hir::ops::cnn::PaddingSpec;
 use tract_hir::ops::nn::DataFormat;
 
 pub fn conv_transpose(
@@ -52,7 +53,7 @@ impl Expansion for ConvTranspose {
         if let Some(k) = &target.outlet_fact(inputs[1])?.konst {
             target.wire_node(
                 prefix,
-                tract_core::ops::cnn::DeconvUnary::new(k.clone()),
+                tract_core::ops::cnn::DeconvUnary::new(PaddingSpec::Valid, k.clone()),
                 &[inputs[0]],
             )
         } else {

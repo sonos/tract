@@ -86,7 +86,7 @@ impl PoolSpec {
             &self.dilations(),
             &self.strides(),
         );
-        let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<TDim>>();
+        let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<TDim>>();
         let oshape = self.data_format.from_n_c_hw(
             ishape.n().cloned().unwrap_or(1.to_dim()),
             self.output_channel_override.map(|i| i.to_dim()).unwrap_or(ishape.c().clone()),
