@@ -98,7 +98,6 @@ impl EvalOp for LirMatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-//        dbg!(self);
         eval(
             self,
             &inputs[0],

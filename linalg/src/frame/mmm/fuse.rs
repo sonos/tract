@@ -134,9 +134,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     } else {
                         (down, K::mr())
                     };
-                    dbg!(v);
-                    dbg!(dir);
-                    dbg!(r);
                     let have = v.len().saturating_sub(dir * r);
                     let ptr = if have < K::mr() {
                         let mut buf = vec![TI::zero(); r];
@@ -144,7 +141,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                             buf[..have]
                                 .copy_from_slice(&v.as_slice_unchecked()[dir * r..][..have]);
                         }
-                        dbg!(&buf);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
                         ptr
