@@ -22,58 +22,58 @@ pub enum FusedSpec {
 }
 
 /*
-impl Debug for FusedSpec {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            FusedSpec::Min(t) => write!(fmt, "Min({:?})", t),
-            FusedSpec::Max(t) => write!(fmt, "Max({:?})", t),
-            FusedSpec::AddC => write!(fmt, "AddC"),
-            FusedSpec::PerRowMul(_) => write!(fmt, "PerRowMul"),
-            FusedSpec::PerRowAdd(_) => write!(fmt, "PerRowAdd"),
-            FusedSpec::PerColMul(_) => write!(fmt, "PerColMul"),
-            FusedSpec::PerColAdd(_) => write!(fmt, "PerColAdd"),
-            FusedSpec::AddRowColProducts(_, _) => write!(fmt, "AddRowColProducts"),
-            FusedSpec::ScalarMul(_) => write!(fmt, "ScalarMul"),
-            FusedSpec::ScalarAdd(_) => write!(fmt, "ScalarAdd"),
-            FusedSpec::QTowardsEven(_, _) => write!(fmt, "QTowardsEven"),
-            FusedSpec::QTowardsPlusInf(_, _) => write!(fmt, "QTowardsPlusInf"),
-        }
+   impl Debug for FusedSpec {
+   fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+   match self {
+   FusedSpec::Min(t) => write!(fmt, "Min({:?})", t),
+   FusedSpec::Max(t) => write!(fmt, "Max({:?})", t),
+   FusedSpec::AddC => write!(fmt, "AddC"),
+   FusedSpec::PerRowMul(_) => write!(fmt, "PerRowMul"),
+   FusedSpec::PerRowAdd(_) => write!(fmt, "PerRowAdd"),
+   FusedSpec::PerColMul(_) => write!(fmt, "PerColMul"),
+   FusedSpec::PerColAdd(_) => write!(fmt, "PerColAdd"),
+   FusedSpec::AddRowColProducts(_, _) => write!(fmt, "AddRowColProducts"),
+   FusedSpec::ScalarMul(_) => write!(fmt, "ScalarMul"),
+   FusedSpec::ScalarAdd(_) => write!(fmt, "ScalarAdd"),
+   FusedSpec::QTowardsEven(_, _) => write!(fmt, "QTowardsEven"),
+   FusedSpec::QTowardsPlusInf(_, _) => write!(fmt, "QTowardsPlusInf"),
+   }
+   }
+   }
+
+   impl std::hash::Hash for FusedSpec {
+   fn hash<H>(&self, state: &mut H)
+   where
+   H: std::hash::Hasher,
+   {
+/*
+use FusedSpec::*;
+fn h<TI: Copy, H: std::hash::Hasher>(it: &[TI], state: &mut H) {
+unsafe {
+it.len().hash(state);
+let bytes: &[u8] = std::slice::from_raw_parts(
+it.as_ptr() as _,
+it.len() * std::mem::size_of::<TI>(),
+);
+bytes.hash(state)
+}
+}
+*/
+std::mem::discriminant(self).hash(state);
+match self {
+    AddC => (),
+    Min(a) | Max(a) | ScalarMul(a) | ScalarAdd(a) => h(&[*a], state),
+    PerRowMul(a) | PerRowAdd(a) | PerColMul(a) | PerColAdd(a) => h(&*a, state),
+    AddRowColProducts(a, b) => {
+        h(&*a, state);
+        h(&*b, state);
+    }
+    QTowardsEven(a, b) | QTowardsPlusInf(a, b) => {
+        h(&[*a], state);
+        h(&[*b], state);
     }
 }
-
-impl std::hash::Hash for FusedSpec {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: std::hash::Hasher,
-    {
-        /*
-        use FusedSpec::*;
-        fn h<TI: Copy, H: std::hash::Hasher>(it: &[TI], state: &mut H) {
-            unsafe {
-                it.len().hash(state);
-                let bytes: &[u8] = std::slice::from_raw_parts(
-                    it.as_ptr() as _,
-                    it.len() * std::mem::size_of::<TI>(),
-                );
-                bytes.hash(state)
-            }
-        }
-        */
-        std::mem::discriminant(self).hash(state);
-        match self {
-            AddC => (),
-            Min(a) | Max(a) | ScalarMul(a) | ScalarAdd(a) => h(&[*a], state),
-            PerRowMul(a) | PerRowAdd(a) | PerColMul(a) | PerColAdd(a) => h(&*a, state),
-            AddRowColProducts(a, b) => {
-                h(&*a, state);
-                h(&*b, state);
-            }
-            QTowardsEven(a, b) | QTowardsPlusInf(a, b) => {
-                h(&[*a], state);
-                h(&[*b], state);
-            }
-        }
-    }
+}
 }
 */
 
@@ -125,61 +125,39 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 FusedSpec::Min(m) => FusedKerSpec::Min(*m.to_scalar_unchecked()),
                 FusedSpec::Max(m) => FusedKerSpec::Max(*m.to_scalar_unchecked()),
                 FusedSpec::AddC => FusedKerSpec::AddC,
-                FusedSpec::PerRowMul(v) => {
-                    let have = v.len() - down * K::mr();
+                FusedSpec::PerRowAdd(v)
+                | FusedSpec::PerRowMul(v)
+                | FusedSpec::PerColMul(v)
+                | FusedSpec::PerColAdd(v) => {
+                    let (dir, r) = if matches!(spec, FusedSpec::PerColAdd(_) | FusedSpec::PerColMul(_)) {
+                        (right, K::nr())
+                    } else {
+                        (down, K::mr())
+                    };
+                    dbg!(v);
+                    dbg!(dir);
+                    dbg!(r);
+                    let have = v.len().saturating_sub(dir * r);
                     let ptr = if have < K::mr() {
-                        let mut buf = vec![TI::zero(); K::mr()];
-                        buf[..have]
-                            .copy_from_slice(&v.as_slice_unchecked()[down * K::mr()..][..have]);
+                        let mut buf = vec![TI::zero(); r];
+                        if have > 0 {
+                            buf[..have]
+                                .copy_from_slice(&v.as_slice_unchecked()[dir * r..][..have]);
+                        }
+                        dbg!(&buf);
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
                         ptr
                     } else {
-                        v.as_ptr_unchecked::<TI>().add(down * K::mr())
+                        v.as_ptr_unchecked::<TI>().add(dir * r)
                     };
-                    FusedKerSpec::PerRowMul(ptr)
-                }
-                FusedSpec::PerRowAdd(v) => {
-                    let have = v.len() - down * K::mr();
-                    let ptr = if have < K::mr() {
-                        let mut buf = vec![TI::zero(); K::mr()];
-                        buf[..have]
-                            .copy_from_slice(&v.as_slice_unchecked()[down * K::mr()..][..have]);
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
-                    } else {
-                        v.as_ptr_unchecked::<TI>().add(down * K::mr())
-                    };
-                    FusedKerSpec::PerRowAdd(ptr)
-                }
-                FusedSpec::PerColMul(v) => {
-                    let have = v.len() - right * K::nr();
-                    let ptr = if have < K::nr() {
-                        let mut buf = vec![TI::zero(); K::nr()];
-                        buf[..have]
-                            .copy_from_slice(&v.as_slice_unchecked()[right * K::nr()..][..have]);
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
-                    } else {
-                        v.as_ptr_unchecked::<TI>().add(right * K::nr())
-                    };
-                    FusedKerSpec::PerColMul(ptr)
-                }
-                FusedSpec::PerColAdd(v) => {
-                    let have = v.len() - right * K::nr();
-                    let ptr = if have < K::nr() {
-                        let mut buf = vec![TI::zero(); K::nr()];
-                        buf[..have]
-                            .copy_from_slice(&v.as_slice_unchecked()[right * K::nr()..][..have]);
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
-                    } else {
-                        v.as_ptr_unchecked::<TI>().add(right * K::nr())
-                    };
-                    FusedKerSpec::PerColAdd(ptr)
+                    match spec {
+                        FusedSpec::PerRowAdd(_) => FusedKerSpec::PerRowAdd(ptr),
+                        FusedSpec::PerRowMul(_) => FusedKerSpec::PerRowMul(ptr),
+                        FusedSpec::PerColAdd(_) => FusedKerSpec::PerColAdd(ptr),
+                        FusedSpec::PerColMul(_) => FusedKerSpec::PerColMul(ptr),
+                        _ => unreachable!(),
+                    }
                 }
                 FusedSpec::AddRowColProducts(rows, cols) => {
                     let have = rows.len() - down * K::mr();
@@ -217,6 +195,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
             };
             self.uspecs.push(s);
         }
+        dbg!(&self.uspecs);
         self.uspecs.push(FusedKerSpec::Done);
         self.uspecs.as_ptr()
     }
