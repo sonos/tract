@@ -98,6 +98,7 @@ impl EvalOp for LirMatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+//        dbg!(self);
         eval(
             self,
             &inputs[0],
@@ -235,7 +236,6 @@ impl TypedOp for LirMatMulUnary {
                 }
             }
             let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                dbg!(op);
                 if op.a.len() == 1 {
                     if op.mini_op.is::<ops::math::Max>() {
                         Some(tvec!(FusedSpec::Max(op.a.clone().into_tensor())))
@@ -257,12 +257,13 @@ impl TypedOp for LirMatMulUnary {
                         None
                     }
                 } else if op.a.shape()[op.a.rank() - 1] == 1
-                    && op.a.shape()[op.a.rank() - 2].to_dim() == self.c_fact.shape[self.c_n_axis]
+                    && op.a.shape()[op.a.rank() - 2].to_dim() == self.c_fact.shape[self.c_fact.rank() - 2]
                 {
+                    let arg = op.a.clone().into_tensor();
                     if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
+                        Some(tvec!(FusedSpec::PerRowMul(arg)))
                     } else if op.mini_op.is::<ops::math::Add>() {
-                        Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
+                        Some(tvec!(FusedSpec::PerRowAdd(arg)))
                     } else {
                         None
                     }
