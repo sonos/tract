@@ -191,7 +191,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
             };
             self.uspecs.push(s);
         }
-        dbg!(&self.uspecs);
         self.uspecs.push(FusedKerSpec::Done);
         self.uspecs.as_ptr()
     }
