@@ -215,8 +215,8 @@ where
         let m = self.m;
         let n = self.n;
         let mut scratch = ScratchSpaceFusedNonLinear::default();
-        let mut tmpc_buffer = Tensor::uninitialized::<TC>(&[mr, nr])?;
-        let tmp_c_storage = self.c_view();
+        let mut tmpc_buffer = Tensor::uninitialized::<TC>(&[nr, mr])?;
+        let tmp_c_storage = self.c_view_with_axis(1, 0);
         let tmpc_view = tmpc_buffer.view_mut();
         let tmpc = tmp_c_storage.wrap(&tmpc_view);
 
@@ -356,6 +356,7 @@ where
                 c.set_from_tile::<TC>(m / mr, ib, m % mr, nr, tmpc.tensor, mr, nr);
             }
             if n % nr != 0 {
+                // FIXME: can we write straight to C if n == 1 ?
                 if let PanelStore::Packed { ptr } = panel_a {
                     prefetch(*ptr as *const u8, 512);
                 }

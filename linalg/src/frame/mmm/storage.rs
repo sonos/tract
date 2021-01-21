@@ -161,15 +161,15 @@ impl<'s, 't> MatrixStore<'s, 't> {
                                 + col_byte_stride as usize * (right * nr + x))
                                 as isize,
                         ) as *mut T;
-                        let value = *tile.as_slice_unchecked::<T>().get_unchecked(y * nr + x);
+                        let value = *tile.as_slice_unchecked::<T>().get_unchecked(y + x * mr);
                         *ptr = value;
                     }
                 }
             }
-            MatrixStoreSpec::VecStride { byte_stride, mr, nr } => {
+            MatrixStoreSpec::VecStride { byte_stride, mr, .. } => {
                 for y in 0..height {
                     let ptr = ptr.offset(*byte_stride * (down * *mr + y) as isize) as *mut T;
-                    let value = *tile.as_slice_unchecked::<T>().get_unchecked(y * *nr);
+                    let value = *tile.as_slice_unchecked::<T>().get_unchecked(y);
                     *ptr = value;
                 }
             }
