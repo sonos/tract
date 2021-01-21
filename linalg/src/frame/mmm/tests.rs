@@ -140,6 +140,15 @@ macro_rules! mmm_frame_tests {
                 }
             }
 
+            #[test]
+            fn mat_vec_1() {
+                if $cond {
+                    let a = tensor2(&[[0], [1]]).cast_to::<$ta>().unwrap().into_owned();
+                    let b = tensor1(&[1]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(2, 1, &a, &b).unwrap()
+                }
+            }
+
 
             #[test]
             fn row_mul_2_1_3() {
