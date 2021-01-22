@@ -129,7 +129,8 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 | FusedSpec::PerRowMul(v)
                 | FusedSpec::PerColMul(v)
                 | FusedSpec::PerColAdd(v) => {
-                    let (dir, r) = if matches!(spec, FusedSpec::PerColAdd(_) | FusedSpec::PerColMul(_)) {
+                    let (dir, r) = if matches!(spec, FusedSpec::PerColAdd(_) | FusedSpec::PerColMul(_))
+                    {
                         (right, K::nr())
                     } else {
                         (down, K::mr())
@@ -138,8 +139,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     let ptr = if have < K::mr() {
                         let mut buf = vec![TI::zero(); r];
                         if have > 0 {
-                            buf[..have]
-                                .copy_from_slice(&v.as_slice_unchecked()[dir * r..][..have]);
+                            buf[..have].copy_from_slice(&v.as_slice_unchecked()[dir * r..][..have]);
                         }
                         let ptr = buf.as_ptr();
                         self.non_linear_buffers.push(buf);
