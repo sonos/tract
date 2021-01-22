@@ -111,6 +111,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
             MatrixStoreSpec::Strides { row_byte_stride, col_byte_stride } => {
                 (*row_byte_stride, *col_byte_stride)
             }
+            MatrixStoreSpec::VecStride { byte_stride, .. } => (*byte_stride, 0),
             _ => panic!(),
         }
     }
@@ -149,28 +150,28 @@ impl<'s, 't> MatrixStore<'s, 't> {
         mr: usize,
         nr: usize,
     ) {
-        let ptr = self.tensor.as_ptr_unchecked::<u8>();
+        let (row_byte_stride, col_byte_stride) = self.strides();
+        let mut dst = self.tensor.as_ptr_unchecked::<u8>().offset(
+            (row_byte_stride as usize * (down * mr) + col_byte_stride as usize * (right * nr))
+                as isize,
+        );
         match self.spec {
             MatrixStoreSpec::Strides { .. } | MatrixStoreSpec::View { .. } => {
-                let ptr = self.tensor.as_ptr_unchecked::<u8>();
-                let (row_byte_stride, col_byte_stride) = self.strides();
                 for y in 0..height {
+                    let mut row_dst = dst;
                     for x in 0..width {
-                        let ptr = ptr.offset(
-                            (row_byte_stride as usize * (down * mr + y)
-                                + col_byte_stride as usize * (right * nr + x))
-                                as isize,
-                        ) as *mut T;
-                        let value = *tile.as_slice_unchecked::<T>().get_unchecked(y + x * mr);
-                        *ptr = value;
+                        let value = *tile.as_ptr_unchecked::<T>().offset((y + x * mr) as isize);
+                        *(row_dst as *mut T) = value;
+                        row_dst = row_dst.offset(col_byte_stride);
                     }
+                    dst = dst.offset(row_byte_stride);
                 }
             }
-            MatrixStoreSpec::VecStride { byte_stride, mr, .. } => {
+            MatrixStoreSpec::VecStride { .. } => {
                 for y in 0..height {
-                    let ptr = ptr.offset(*byte_stride * (down * *mr + y) as isize) as *mut T;
-                    let value = *tile.as_slice_unchecked::<T>().get_unchecked(y);
-                    *ptr = value;
+                    let value = *tile.as_ptr_unchecked::<T>().offset(y as isize);
+                    *(dst as *mut T) = value;
+                    dst = dst.offset(row_byte_stride);
                 }
             }
             _ => unimplemented!(),
