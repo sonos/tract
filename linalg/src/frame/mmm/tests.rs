@@ -149,6 +149,15 @@ macro_rules! mmm_frame_tests {
                 }
             }
 
+            #[test]
+            fn mat_vec_2() {
+                if $cond {
+                    let a = tensor1(&[0, 0, 0, 0, 0, 0, -4, 1]).into_shape(&[8,1]).unwrap();
+                    let a = a.cast_to::<$ta>().unwrap();
+                    let b = tensor1(&[-64]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(8, 1, &a, &b).unwrap()
+                }
+            }
 
             #[test]
             fn row_mul_2_1_3() {
@@ -327,7 +336,7 @@ where
                 .unwrap();
         op.a_pack().pack(&mut packed_a.view_mut(), &a.view(), 1, 0);
 
-        let mut found = Tensor::zero::<TC>(&[m]).unwrap();
+        let mut found = Tensor::uninitialized::<TC>(&[m]).unwrap();
 
         op.run(
             &op.a_packed().wrap(&packed_a.view()),

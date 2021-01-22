@@ -512,6 +512,11 @@ armv7neon_mmm_i8_8x4:
     b           .return
 
 .store_vec_strides:
+    // r5, r6, r7: ptr, row_byte_stride, item_stride
+
+    cmp r7, #4
+    beq .store_vec_strides_i32
+
     vmovn.s32   d16, q8
     vmovn.s16   d16, q8
     vmovn.s32   d18, q9
@@ -528,6 +533,18 @@ armv7neon_mmm_i8_8x4:
     vst1.s8     d18[3], [r5]
 
     mov         r0,     #0
+    b           .return
+
+.store_vec_strides_i32:
+
+    {% for reg in (0..3) %}
+        {% for lane in (0..1) %}
+            vst1.s32     d{{reg | plus: 16}}[{{lane}}], [ r5 ], r6
+        {% endfor %}
+    {% endfor %}
+
+    mov         r0,     #0
+    b           .return
 
 .return:
     vpop        { q4-q7 }
