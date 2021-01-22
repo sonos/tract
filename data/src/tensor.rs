@@ -148,6 +148,8 @@ impl Tensor {
         {
             if dt == DatumType::F32 {
                 tensor.as_slice_mut_unchecked::<f32>().iter_mut().for_each(|f| *f = std::f32::NAN)
+            } else if dt == DatumType::I32 {
+                tensor.as_slice_mut_unchecked::<i32>().iter_mut().for_each(|f| *f = std::i32::MIN)
             }
         }
         tensor.update_strides();
