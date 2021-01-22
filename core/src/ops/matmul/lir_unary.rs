@@ -119,7 +119,11 @@ fn eval(
 ) -> TractResult<TVec<Arc<Tensor>>> {
     unsafe {
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-        let c_storage = op.mmm.c_view_with_axis(c_m_axis, c_n_axis);
+        let c_storage = if c_shape[c_n_axis] == 1 {
+            op.mmm.c_vec_from_data()
+        } else {
+            op.mmm.c_view_with_axis(c_m_axis, c_n_axis)
+        };
         if op
             .c_fact
             .shape
@@ -256,7 +260,8 @@ impl TypedOp for LirMatMulUnary {
                         None
                     }
                 } else if op.a.shape()[op.a.rank() - 1] == 1
-                    && op.a.shape()[op.a.rank() - 2].to_dim() == self.c_fact.shape[self.c_fact.rank() - 2]
+                    && op.a.shape()[op.a.rank() - 2].to_dim()
+                        == self.c_fact.shape[self.c_fact.rank() - 2]
                 {
                     let arg = op.a.clone().into_tensor();
                     if op.mini_op.is::<ops::math::Mul>() {
