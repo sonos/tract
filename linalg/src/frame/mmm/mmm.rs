@@ -285,6 +285,7 @@ where
             non_linear.push(FusedSpec::Max(tensor0(TC::min_value().as_())));
         }
         */
+        // FIXME prefetch a are a bit weird
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
@@ -308,7 +309,26 @@ where
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
-            if n % nr != 0 {
+            if let MatrixStoreSpec::VecStride { .. } = c.spec {
+                if let PanelStore::Packed { ptr } = a {
+                    prefetch(*ptr as *const u8, 512);
+                }
+                let ref b = b.panel_b(nr, n / nr, n % nr);
+                match b {
+                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
+                    _ => (),
+                }
+                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, n / nr);
+                let ref direct_c = c.tile_c(ia, 0, mr, nr);
+                let err = K::kernel(&MatMatMulKerSpec {
+                    a: a as _,
+                    b: b as _,
+                    c: direct_c as _,
+                    linear,
+                    non_linear,
+                });
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+            } else if n % nr != 0 {
                 if let PanelStore::Packed { ptr } = a {
                     prefetch(*ptr as *const u8, 512);
                 }

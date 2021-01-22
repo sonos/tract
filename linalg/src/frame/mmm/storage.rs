@@ -136,6 +136,15 @@ impl<'s, 't> MatrixStore<'s, 't> {
                     item_size: self.tensor.datum_type().size_of(),
                 }
             }
+            MatrixStoreSpec::VecStride { .. } => {
+                let ptr = self.tensor.as_ptr_unchecked::<u8>();
+                let (row_byte_stride, _col_byte_stride) = self.strides();
+                PanelStore::VecStride {
+                    ptr: ptr.offset(row_byte_stride * down * mr) as *mut _,
+                    byte_stride: row_byte_stride,
+                    item_size: self.tensor.datum_type().size_of(),
+                }
+            }
             _ => unimplemented!(),
         }
     }

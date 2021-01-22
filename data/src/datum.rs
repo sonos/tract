@@ -143,10 +143,12 @@ impl DatumType {
         self.is_signed() || self.is_unsigned()
     }
 
+    #[inline]
     pub fn size_of(&self) -> usize {
         dispatch_datum!(std::mem::size_of(self)())
     }
 
+    #[inline]
     pub fn alignment(&self) -> usize {
         match self {
             DatumType::TDim => std::mem::size_of::<usize>(),
