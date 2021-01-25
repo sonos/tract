@@ -75,8 +75,7 @@ fn pulsify_un(
 impl PulsedOp for UnaryOp {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.datum_type =
-            self.mini_op.result_datum_type(inputs[0].datum_type, self.a.datum_type())?;
+        fact.datum_type = self.mini_op.result_datum_type(self.a.datum_type(), fact.datum_type)?;
         fact.shape = tract_core::broadcast::multi_broadcast(&[
             &inputs[0].shape,
             &self.a.shape().iter().map(|d| d.into()).collect(),

@@ -414,25 +414,11 @@ pub(crate) fn requant(
     scale: OutletId,
     zero_point: OutletId,
 ) -> TractResult<OutletId> {
-    let wire = model.wire_node(
-        format!("{}.dequant", name),
-        ops::cast::cast(f32::datum_type()),
-        &[wire],
-    )?[0];
-
     let wire = wire_with_rank_broadcast(
         &format!("{}.scale", name),
         model,
-        ops::math::mul::bin_typed(),
-        &[wire, scale],
-    )?;
-
-    let wire = model.wire_node(format!("{}.round", name), ops::math::round(), &wire)?[0];
-
-    let wire = model.wire_node(
-        format!("{}.requant", name),
-        ops::cast::cast(i32::datum_type()),
-        &[wire],
+        ops::quant::scale::bin_typed(),
+        &[scale, wire],
     )?[0];
 
     let zero_point = model.wire_node(

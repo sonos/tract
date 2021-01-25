@@ -264,3 +264,76 @@ element_wise_oop!(lookup_table,
 fn hash_lookup_table<H: std::hash::Hasher>(lut: &Box<dyn Lut>, h: &mut H) {
     Hash::hash_slice(lut.table(), h)
 }
+
+#[derive(Debug, Clone, Hash)]
+pub struct Scale;
+impl_dyn_hash!(Scale);
+
+impl crate::ops::binary::BinMiniOp for Scale {
+    fn name(&self) -> &'static str {
+        "Scale"
+    }
+
+    fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+        if a != f32::datum_type() {
+            bail!("Scale left operand must be f32, got {:?}", a);
+        }
+        Ok(b)
+    }
+
+    fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+        if a != f32::datum_type() {
+            bail!("Scale left operand must be f32, got {:?}", a);
+        }
+        Ok(b)
+    }
+
+    fn eval_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+        let a = a.to_array_view::<f32>()?;
+        unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(
+            a: &ndarray::ArrayViewD<f32>,
+            b: &mut Tensor,
+        ) where
+            f32: AsPrimitive<T>,
+        {
+            let mut b = b.to_array_view_mut_unchecked::<T>();
+            ndarray::Zip::from(&mut b)
+                .and_broadcast(a)
+                .apply(|b, a| *b = ((*b).as_() * a).round().as_())
+        }
+        unsafe { dispatch_numbers!(eval_in_place_t(b.datum_type())(&a, b)) }
+        Ok(())
+    }
+
+    fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
+        let a = a.to_array_view::<f32>()?;
+        unsafe fn eval_out_of_place_t<T: Datum + AsPrimitive<f32>>(
+            c: &mut Tensor,
+            a: &ndarray::ArrayViewD<f32>,
+            b: &Tensor,
+        ) where
+            f32: AsPrimitive<T>,
+        {
+            let b = b.to_array_view_unchecked::<T>();
+            let mut c = c.to_array_view_mut_unchecked::<T>();
+            ndarray::Zip::from(&mut c)
+                .and_broadcast(a)
+                .and_broadcast(b)
+                .apply(|c, a, b| *c = ((*b).as_() * a).round().as_())
+        }
+        unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(c, &a, b)) }
+        Ok(())
+    }
+}
+
+pub mod scale {
+    use crate::internal::*;
+    use crate::ops::binary::*;
+
+    pub fn bin_typed() -> TypedBinOp {
+        TypedBinOp(Box::new(super::Scale))
+    }
+    pub fn unary(t: Arc<Tensor>) -> UnaryOp {
+        UnaryOp::new(Box::new(super::Scale), t)
+    }
+}

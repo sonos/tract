@@ -714,11 +714,6 @@ macro_rules! bin_to_bool {
         }
 
         pub mod $func {
-            /*
-               pub fn bin() -> $crate::ops::binary::InferenceBinOp {
-               $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
-               }
-               */
             pub fn bin_typed() -> $crate::ops::binary::TypedBinOp {
                 $crate::ops::binary::TypedBinOp(Box::new(super::$Op))
             }
