@@ -31,7 +31,7 @@ deny = [
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
     { name = "num-bigint", version="<0.3.1" },  # ndarray-npy brings in a different version.
-    { name = "itertools", version="<0.9.0" },  # ndarray/criterion brings in an older version.
+    { name = "itertools", version="<0.10.0" },  # ndarray/criterion brings in an older version.
     { name = "ansi_term", version="<0.12.1" },  # clap brings in an old one.
     { name = "miniz_oxide", version="<0.4" }, # ndarray-npy pulls in an old version of flate
     { name = "cfg-if", version="<1.0" }, # cascading from flate too
