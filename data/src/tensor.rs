@@ -278,11 +278,13 @@ impl Tensor {
     }
 
     /// Get the number of dimensions (or axes) of the tensor.
+    #[inline]
     pub fn rank(&self) -> usize {
         self.shape.len()
     }
 
     /// Get the shape of the tensor.
+    #[inline]
     pub fn shape(&self) -> &[usize] {
         &self.shape
     }
@@ -293,6 +295,7 @@ impl Tensor {
     }
 
     /// Get the shape of the tensor.
+    #[inline]
     pub fn strides(&self) -> &[isize] {
         &self.strides
     }
