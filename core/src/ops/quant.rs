@@ -324,6 +324,19 @@ impl crate::ops::binary::BinMiniOp for Scale {
         unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(c, &a, b)) }
         Ok(())
     }
+
+    fn declutter_unary(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        a: &Arc<Tensor>,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if a.is_uniform() && *a.to_scalar::<f32>()? == 1. {
+            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 pub mod scale {
