@@ -93,7 +93,8 @@ impl<'s, 't> MatrixStore<'s, 't> {
         }
     }
 
-    fn strides(&self) -> (isize, isize) {
+    #[inline]
+    unsafe fn strides(&self) -> (isize, isize) {
         match self.spec {
             MatrixStoreSpec::View { axes } => {
                 let (m_axis, n_axis) = if let Some(axes) = axes {
@@ -102,10 +103,11 @@ impl<'s, 't> MatrixStore<'s, 't> {
                     let rank = self.tensor.rank();
                     (rank - 2, rank - 1)
                 };
-                let row_byte_stride =
-                    self.tensor.strides()[m_axis] * self.tensor.datum_type().size_of() as isize;
-                let col_byte_stride =
-                    self.tensor.strides()[n_axis] * self.tensor.datum_type().size_of() as isize;
+                let tensor_strides = self.tensor.strides();
+                let row_byte_stride = tensor_strides.get_unchecked(m_axis)
+                    * self.tensor.datum_type().size_of() as isize;
+                let col_byte_stride = tensor_strides.get_unchecked(n_axis)
+                    * self.tensor.datum_type().size_of() as isize;
                 (row_byte_stride, col_byte_stride)
             }
             MatrixStoreSpec::Strides { row_byte_stride, col_byte_stride } => {
