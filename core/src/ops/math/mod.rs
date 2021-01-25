@@ -4,11 +4,39 @@ use num_traits::{Float, Zero};
 use super::binary::*;
 
 bin_to_super_type!(add, Add,
+                   declutter_unary: declutter_unary_add,
                    flip:commute,
                    validation: Validation::Rounding,
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
-bin_to_super_type!(sub, Sub, flip:flip_sub,
+
+fn declutter_unary_add(
+    _op: &Add,
+    model: &TypedModel,
+    node: &TypedNode,
+    a: &Arc<Tensor>,
+) -> TractResult<Option<TypedModelPatch>> {
+    if a.as_uniform().and_then(|a| a.cast_to_scalar::<f64>().ok()).map(|n| n == 0.).unwrap_or(false) {
+        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+    } else {
+        Ok(None)
+    }
+}
+
+bin_to_super_type!(sub, Sub, declutter_unary: declutter_unary_sub, flip:flip_sub,
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
+
+fn declutter_unary_sub(
+    _op: &Sub,
+    model: &TypedModel,
+    node: &TypedNode,
+    a: &Arc<Tensor>,
+) -> TractResult<Option<TypedModelPatch>> {
+    if a.as_uniform().and_then(|a| a.cast_to_scalar::<f64>().ok()).map(|n| n == 0.).unwrap_or(false) {
+        Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, crate::ops::math::neg())?))
+    } else {
+        Ok(None)
+    }
+}
 
 bin_to_super_type!(mul, Mul,
  cost: |dt| tvec!((Cost::FMA(dt), 1)),
