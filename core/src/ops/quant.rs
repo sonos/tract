@@ -359,7 +359,7 @@ mod test {
 
     proptest! {
         #[test]
-        fn test_scale(a in any::<i8>(), b in any::<i8>(), scale in 0f32..) {
+        fn test_scale(a in any::<i8>(), b in any::<i8>(), scale in 0f32..1000.) {
             let input = tvec!(tensor2(&[[b]]));
             let mut model = TypedModel::default();
             let a = model.add_const("a", tensor2(&[[a]])).unwrap();
