@@ -240,7 +240,22 @@ impl TypedOp for LirMatMulUnary {
             }
             let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
                 if op.a.len() == 1 {
-                    if op.mini_op.is::<ops::math::Max>() {
+                    let output_datum_type = model.outlet_fact((node.id, 0).into())?.datum_type;
+                    if op.mini_op.is::<ops::quant::Scale>()
+                        && output_datum_type == i32::datum_type()
+                    {
+                        // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
+                        let factor = op.a.cast_to_scalar::<f32>()?;
+                        if factor < 0.0 || factor > 1.0 {
+                            return Ok(None)
+                        }
+                        let factor_bits = factor.to_bits();
+                        let current_exponent = factor_bits >> 23;
+                        let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
+                        let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as u32;
+                        let shift = 126usize - current_exponent as usize;
+                        Some(tvec!(FusedSpec::QTowardsPlusInf(tensor0(int_multi), shift)))
+                    } else if op.mini_op.is::<ops::math::Max>() {
                         Some(tvec!(FusedSpec::Max(op.a.clone().into_tensor())))
                     } else if op.mini_op.is::<ops::math::Min>() {
                         Some(tvec!(FusedSpec::Min(op.a.clone().into_tensor())))

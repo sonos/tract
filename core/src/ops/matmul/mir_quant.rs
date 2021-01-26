@@ -36,6 +36,17 @@ pub struct QuantizedParams {
 }
 
 impl QuantizedParams {
+    pub fn noop_static(dt: DatumType) -> QuantizedParams {
+        QuantizedParams {
+            a0: QuantizedParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            a_scale: QuantizedParam::Static(rctensor0(1f32)),
+            b0: QuantizedParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            b_scale: QuantizedParam::Static(rctensor0(1f32)),
+            c0: QuantizedParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            c_scale: QuantizedParam::Static(rctensor0(1f32)),
+        }
+    }
+
     pub fn all_dynamic(offset: usize) -> QuantizedParams {
         QuantizedParams {
             a0: QuantizedParam::Dynamic(offset),
