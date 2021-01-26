@@ -210,87 +210,63 @@ fn render_node_prefixed(
         prefix!();
         println!("  * {}", label);
     }
-    match options.io {
-        Io::Long => {
-            for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
-                let star = if ix == 0 { '*' } else { ' ' };
-                prefix!();
-                println!(
-                    "  {} input fact  #{}: {} {}",
-                    star,
-                    ix,
-                    White.bold().paint(format!("{:?}", i)),
-                    model.outlet_fact_format(*i),
-                );
-            }
-            for ix in 0..model.node_output_count(node_id) {
-                let star = if ix == 0 { '*' } else { ' ' };
-                let io = if let Some(id) =
-                    model.input_outlets().iter().position(|n| n.node == node_id && n.slot == ix)
-                {
-                    format!(
-                        "{} {}",
-                        Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string(),
-                        tags.model_input.as_ref().map(|s| &**s).unwrap_or("")
-                    )
-                } else if let Some(id) =
-                    model.output_outlets().iter().position(|n| n.node == node_id && n.slot == ix)
-                {
-                    format!(
-                        "{} {}",
-                        Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string(),
-                        tags.model_output.as_ref().map(|s| &**s).unwrap_or("")
-                    )
-                } else {
-                    "".to_string()
-                };
-                let outlet = OutletId::new(node_id, ix);
-                let successors = model.outlet_successors(outlet);
-                prefix!();
-                println!(
-                    "  {} output fact #{}: {} {} {} {}",
-                    star,
-                    ix,
-                    model.outlet_fact_format(outlet),
-                    White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
-                    io,
-                    White.italic().paint(
-                        tags.outlet_labels
-                            .get(ix)
-                            .map(|s| s.join(","))
-                            .unwrap_or_else(|| "".to_string())
-                    )
-                );
-                if options.outlet_labels {
-                    if let Some(label) = model.outlet_label(OutletId::new(node_id, ix)) {
-                        prefix!();
-                        println!("            {} ", White.italic().paint(label));
-                    }
-                }
-            }
+    if let Io::Long = options.io {
+        for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
+            let star = if ix == 0 { '*' } else { ' ' };
+            prefix!();
+            println!(
+                "  {} input fact  #{}: {} {}",
+                star,
+                ix,
+                White.bold().paint(format!("{:?}", i)),
+                model.outlet_fact_format(*i),
+            );
         }
-        Io::Short => {
-            let same = model.node_inputs(node_id).len() > 0
-                && model.node_output_count(node_id) == 1
-                && model.outlet_fact_format(node_id.into())
-                    == model.outlet_fact_format(model.node_inputs(node_id)[0]);
-            if !same || model.output_outlets().iter().any(|o| o.node == node_id) {
-                let style = drawing_state
-                    .map(|s| s.wires.last().and_then(|w| w.color).unwrap_or(s.latest_node_color))
-                    .unwrap_or(White.into());
-                for ix in 0..model.node_output_count(node_id) {
+        for ix in 0..model.node_output_count(node_id) {
+            let star = if ix == 0 { '*' } else { ' ' };
+            let io = if let Some(id) =
+                model.input_outlets().iter().position(|n| n.node == node_id && n.slot == ix)
+            {
+                format!(
+                    "{} {}",
+                    Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string(),
+                    tags.model_input.as_ref().map(|s| &**s).unwrap_or("")
+                )
+            } else if let Some(id) =
+                model.output_outlets().iter().position(|n| n.node == node_id && n.slot == ix)
+            {
+                format!(
+                    "{} {}",
+                    Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string(),
+                    tags.model_output.as_ref().map(|s| &**s).unwrap_or("")
+                )
+            } else {
+                "".to_string()
+            };
+            let outlet = OutletId::new(node_id, ix);
+            let successors = model.outlet_successors(outlet);
+            prefix!();
+            println!(
+                "  {} output fact #{}: {} {} {} {}",
+                star,
+                ix,
+                model.outlet_fact_format(outlet),
+                White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
+                io,
+                White.italic().paint(
+                    tags.outlet_labels
+                        .get(ix)
+                        .map(|s| s.join(","))
+                        .unwrap_or_else(|| "".to_string())
+                )
+            );
+            if options.outlet_labels {
+                if let Some(label) = model.outlet_label(OutletId::new(node_id, ix)) {
                     prefix!();
-                    println!(
-                        "  {}{}{} {}",
-                        style.paint(box_drawing::heavy::HORIZONTAL),
-                        style.paint(box_drawing::heavy::HORIZONTAL),
-                        style.paint(box_drawing::heavy::HORIZONTAL),
-                        model.outlet_fact_format((node_id, ix).into())
-                    );
+                    println!("            {} ", White.italic().paint(label));
                 }
             }
         }
-        Io::None => (),
     }
     if options.info {
         for info in model.node_op(node_id).info()? {
@@ -326,6 +302,29 @@ fn render_node_prefixed(
         scope.push((node_id, label.to_string()));
         render_prefixed(sub, &format!("{} [{}] ", prefix, label), &*scope, annotations, options)?
     }
+
+    if let Io::Short = options.io {
+        let same = model.node_inputs(node_id).len() > 0
+            && model.node_output_count(node_id) == 1
+            && model.outlet_fact_format(node_id.into())
+                == model.outlet_fact_format(model.node_inputs(node_id)[0]);
+        if !same || model.output_outlets().iter().any(|o| o.node == node_id) {
+            let style = drawing_state
+                .map(|s| s.wires.last().and_then(|w| w.color).unwrap_or(s.latest_node_color))
+                .unwrap_or(White.into());
+            for ix in 0..model.node_output_count(node_id) {
+                prefix!();
+                println!(
+                    "  {}{}{} {}",
+                    style.paint(box_drawing::heavy::HORIZONTAL),
+                    style.paint(box_drawing::heavy::HORIZONTAL),
+                    style.paint(box_drawing::heavy::HORIZONTAL),
+                    model.outlet_fact_format((node_id, ix).into())
+                );
+            }
+        }
+    }
+
     while cost_column.as_mut().map(|cost| cost.peek().is_some()).unwrap_or(false) {
         prefix!();
         println!("");
