@@ -53,7 +53,6 @@ fn run_regular(
     let steps = options.is_present("steps");
     let assert_sane_floats = options.is_present("assert-sane-floats");
     let mut inputs: TVec<Tensor> = tvec!();
-    dbg!(&params.input_values);
     for input in tract.input_outlets() {
         let name = tract.node_name(input.node);
         if let Some(input) = params.input_values.get(name) {
