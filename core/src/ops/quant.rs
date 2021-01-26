@@ -350,3 +350,28 @@ pub mod scale {
         UnaryOp::new(Box::new(super::Scale), t)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use proptest::prelude::*;
+    use crate::internal::*;
+    use crate::ops;
+
+    proptest! {
+        #[test]
+        fn test_scale(a in any::<i8>(), b in any::<i8>(), scale in 0f32..) {
+            let input = tvec!(tensor2(&[[b]]));
+            let mut model = TypedModel::default();
+            let a = model.add_const("a", tensor2(&[[a]])).unwrap();
+            let b = model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
+            let mut qp = ops::matmul::QuantizedParams::noop_static(i8::datum_type());
+            qp.c_scale = ops::matmul::QuantizedParam::Static(rctensor0(scale));
+            let op = ops::matmul::QMatMul::new(false, false, false, i8::datum_type(), qp);
+            let output = model.wire_node("mmm", op, &[a, b]).unwrap();
+            model.set_output_outlets(&*output).unwrap();
+            let plain = model.clone().into_runnable().unwrap();
+            let optim = model.into_optimized().unwrap().into_runnable().unwrap();
+            assert_eq!(optim.run(input.clone()).unwrap(), plain.run(input).unwrap());
+        }
+    }
+}
