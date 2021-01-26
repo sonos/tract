@@ -267,18 +267,20 @@ where
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         for (outlet, by) in shunt_outlet_by {
-            let fixed_by = mapping[&by];
+            let replace_by = mapping[&by];
             let succs = target.nodes()[outlet.node].outputs[outlet.slot].successors.clone();
             for succ in succs {
-                target.add_edge(fixed_by, succ)?;
+                target.add_edge(replace_by, succ)?;
             }
             for o in target.outputs.iter_mut() {
                 if *o == outlet {
-                    *o = fixed_by;
+                    *o = replace_by;
                 }
             }
             if let Some(label) = target.outlet_label(outlet).map(|s| s.to_string()) {
-                target.set_outlet_label(fixed_by, label)?;
+                target.set_outlet_label(replace_by, label)?;
+            } else if outlet.slot == 0 {
+                target.set_outlet_label(replace_by, target.node(outlet.node).name.clone())?;
             }
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);

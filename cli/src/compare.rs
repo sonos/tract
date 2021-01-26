@@ -218,8 +218,11 @@ where
                 .iter()
                 .enumerate()
                 .map(|(ix, o)| {
-                    let tensor = &state.values[o.node].as_ref().and_then(|v| v.get(o.slot));
-                    format!("input value #{}: {:?}", ix, tensor)
+                    if let Some(tensor) = &state.values[o.node].as_ref().and_then(|v| v.get(o.slot)) {
+                        format!("input value #{}: {:?}", ix, tensor)
+                    } else {
+                        format!("input value #{}: <not found>", ix)
+                    }
                 })
                 .collect::<Vec<_>>();
             if let Some(e) = error {
@@ -263,8 +266,8 @@ where
                         }
                     } else {
                         ok_node = false;
-                        tags.style = Some(Yellow.bold());
-                        tags.labels.push(Yellow.paint("Not matched against reference").to_string());
+                        tags.style = Some(White.bold().into());
+                        tags.labels.push(White.paint("No matching wire in reference").to_string());
                     }
                 }
                 tags.sections.push(inputs);
