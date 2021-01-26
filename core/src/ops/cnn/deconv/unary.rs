@@ -14,27 +14,13 @@ pub struct DeconvUnary {
 
 impl DeconvUnary {
     pub fn output_shape<D: DimLike>(&self, x_shape: &[D]) -> TractResult<TVec<D>> {
-        let x_shape = self.data_format.shape(x_shape)?;
-        let spatial_input_shape = x_shape.hw_dims();
-        let spatial_kernel_shape = match self.kernel_format {
-            KernelFormat::OIHW => &self.kernel.shape()[2..],
-            KernelFormat::HWIO => &self.kernel.shape()[..self.kernel.rank() - 2],
-        };
-        let ones = tvec!(1; spatial_input_shape.len());
-        let spatial_output_shape = self.padding.compute_for_deconv(
-            &spatial_input_shape,
-            &spatial_kernel_shape,
-            &ones,
-            &ones,
-        );
-        let deconv_shape: TVec<D> =
-            spatial_output_shape.iter().map(|comp| comp.deconvoluted.clone()).collect();
-        let output_shape = self.data_format.from_n_c_hw(
-            x_shape.n().cloned().unwrap_or(1.into()),
-            self.kernel.shape()[1].into(), // FIXME Kernel format
-            deconv_shape,
-        )?;
-        Ok(output_shape.shape.into())
+        super::output_shape(
+            &self.data_format,
+            &self.kernel_format,
+            &self.padding,
+            &self.kernel.shape(),
+            x_shape,
+        )
     }
 }
 
@@ -62,20 +48,20 @@ impl EvalOp for DeconvUnary {
         let mut output = tensor.to_array_view_mut::<f32>()?.into_dimensionality()?;
         let kernel = self.kernel.to_array_view::<f32>()?.into_dimensionality()?;
         for n in 0..input.shape()[0] {
-            for co in 0..output.shape()[1] {
-                for ci in 0..input.shape()[1] {
-                    for hi in 0..input.shape()[2] {
-                        for wi in 0..input.shape()[3] {
-                            for hk in 0..self.kernel.shape()[2] {
-                                for wk in 0..self.kernel.shape()[3] {
-                                    output[(n, co, hi + hk, wi + wk)] +=
-                                        input[(n, ci, hi, wi)] * kernel[(ci, co, hk, wk)];
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        for co in 0..output.shape()[1] {
+        for ci in 0..input.shape()[1] {
+        for hi in 0..input.shape()[2] {
+        for wi in 0..input.shape()[3] {
+        for hk in 0..self.kernel.shape()[2] {
+        for wk in 0..self.kernel.shape()[3] {
+        output[(n, co, hi + hk, wi + wk)] +=
+        input[(n, ci, hi, wi)] * kernel[(ci, co, hk, wk)];
+        }
+        }
+        }
+        }
+        }
+        }
         }
         */
         Ok(tvec!(tensor.into_arc_tensor()))

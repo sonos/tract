@@ -43,16 +43,21 @@ impl Expansion for ConvTranspose {
         s.equals(&inputs[0].shape[1], &inputs[1].shape[0])?; // O
         s.equals(&outputs[0].shape[1], &inputs[1].shape[1])?; // I
 
-        /* FIXME
-        s.equals(
-            &outputs[0].shape[2],
-            inputs[0].shape[2].bex() + &inputs[1].shape[2] - 1.to_dim(),
-        )?; // H
-        s.equals(
-            &outputs[0].shape[3],
-            inputs[0].shape[3].bex() + &inputs[1].shape[3] - 1.to_dim(),
-        )?; // W
-        */
+        s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, x_shape, w_shape| {
+            if let Ok(w_shape) =
+                w_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>()
+            {
+                let y_shape = tract_core::ops::cnn::deconv::output_shape(
+                    &DataFormat::NCHW,
+                    &KernelFormat::OIHW,
+                    &self.padding_spec,
+                    &*w_shape,
+                    &x_shape,
+                )?;
+                s.equals(&outputs[0].shape, y_shape)?;
+            }
+            Ok(())
+        })?;
         Ok(())
     }
 
