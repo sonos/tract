@@ -297,9 +297,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
             f32: AsPrimitive<T>,
         {
             let mut b = b.to_array_view_mut_unchecked::<T>();
-            ndarray::Zip::from(&mut b)
-                .and_broadcast(a)
-                .apply(|b, a| *b = ((*b).as_() * a).round().as_())
+            ndarray::Zip::from(&mut b).and_broadcast(a).apply(|b, a| *b = scale_by(*b, *a))
         }
         unsafe { dispatch_numbers!(eval_in_place_t(b.datum_type())(&a, b)) }
         Ok(())
@@ -319,7 +317,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
             ndarray::Zip::from(&mut c)
                 .and_broadcast(a)
                 .and_broadcast(b)
-                .apply(|c, a, b| *c = ((*b).as_() * a).round().as_())
+                .apply(|c, a, b| *c = scale_by(*b, *a))
         }
         unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(c, &a, b)) }
         Ok(())
@@ -339,6 +337,14 @@ impl crate::ops::binary::BinMiniOp for Scale {
     }
 }
 
+#[inline]
+fn scale_by<T: Datum + AsPrimitive<f32>>(b: T, a: f32) -> T
+where
+    f32: AsPrimitive<T>,
+{
+    (b.as_() * a).round().as_()
+}
+
 pub mod scale {
     use crate::internal::*;
     use crate::ops::binary::*;
@@ -353,9 +359,9 @@ pub mod scale {
 
 #[cfg(test)]
 mod test {
-    use proptest::prelude::*;
     use crate::internal::*;
     use crate::ops;
+    use proptest::prelude::*;
 
     proptest! {
         #[test]
