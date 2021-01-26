@@ -2,6 +2,7 @@ use crate::internal::*;
 use crate::ops::cnn::{KernelFormat, PaddingSpec};
 use crate::ops::nn::DataFormat;
 
+mod deconv_sum;
 mod unary;
 #[cfg(test)]
 mod proptest;
