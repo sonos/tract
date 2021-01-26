@@ -52,18 +52,7 @@ fn run_regular(
 ) -> CliResult<TVec<Arc<Tensor>>> {
     let steps = options.is_present("steps");
     let assert_sane_floats = options.is_present("assert-sane-floats");
-    let mut inputs: TVec<Tensor> = tvec!();
-    for input in tract.input_outlets() {
-        let name = tract.node_name(input.node);
-        if let Some(input) = params.input_values.get(name) {
-            info!("Using fixed input for input called {:?}: {:?}", name, input);
-            inputs.push(input.clone().into_tensor())
-        } else {
-            let fact = tract.outlet_typedfact(*input)?;
-            info!("Using random input for input called {:?}: {:?}", name, fact);
-            inputs.push(crate::tensor::tensor_for_fact(&fact, None)?);
-        }
-    }
+    let inputs = crate::tensor::retrieve_or_make_inputs(tract, params)?;
     dispatch_model!(tract, |m| {
         let plan = SimplePlan::new(m)?;
         let mut state = SimpleState::new(plan)?;
@@ -88,6 +77,12 @@ fn run_regular(
                         o
                     );
                 }
+            }
+            if r[0].datum_type() == i32::datum_type() {
+                eprintln!("I32: {:?}", &r[0].as_slice::<i32>().unwrap()[110..120]);
+            }
+            if r[0].datum_type() == i8::datum_type() {
+                eprintln!("I32: {:?}", &r[0].as_slice::<i8>().unwrap()[110..120]);
             }
             if assert_sane_floats {
                 for (ix, o) in r.iter().enumerate() {

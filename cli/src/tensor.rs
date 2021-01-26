@@ -3,7 +3,7 @@ use std::io::Read;
 use std::str::FromStr;
 
 use crate::model::Model;
-use crate::CliResult;
+use crate::{CliResult, Parameters};
 use tract_hir::internal::*;
 
 fn parse_dt(dt: &str) -> CliResult<DatumType> {
@@ -269,6 +269,22 @@ fn parse_dim_stream(s: &str) -> CliResult<TDim> {
 #[cfg(not(feature = "pulse"))]
 fn parse_dim_stream(s: &str) -> CliResult<TDim> {
     Ok(s.parse::<i64>().map(|i| i.into())?)
+}
+
+pub fn retrieve_or_make_inputs(tract: &dyn Model, params: &Parameters) -> CliResult<TVec<Tensor>> {
+    let mut inputs: TVec<Tensor> = tvec!();
+    for input in tract.input_outlets() {
+        let name = tract.node_name(input.node);
+        if let Some(input) = params.input_values.get(name) {
+            info!("Using fixed input for input called {:?}: {:?}", name, input);
+            inputs.push(input.clone().into_tensor())
+        } else {
+            let fact = tract.outlet_typedfact(*input)?;
+            info!("Using random input for input called {:?}: {:?}", name, fact);
+            inputs.push(crate::tensor::tensor_for_fact(&fact, None)?);
+        }
+    }
+    Ok(inputs)
 }
 
 pub fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<TVec<Tensor>> {

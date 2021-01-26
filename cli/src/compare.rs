@@ -144,14 +144,8 @@ pub fn handle_reference_stage(
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    let input_facts = reference_model
-        .input_outlets()?
-        .iter()
-        .map(|&i| reference_model.outlet_fact(i))
-        .collect::<TractResult<Vec<_>>>()?;
-    let generated = crate::tensor::make_inputs(&*input_facts)?;
     state.run_plan_with_eval(
-        generated.clone(),
+        crate::tensor::retrieve_or_make_inputs(reference_model, params)?,
         |session, state, node, input| -> TractResult<_> {
             let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
             values.insert(node.name.clone(), Ok(result[0].clone()));
@@ -225,7 +219,8 @@ where
                 .iter()
                 .enumerate()
                 .map(|(ix, o)| {
-                    if let Some(tensor) = &state.values[o.node].as_ref().and_then(|v| v.get(o.slot)) {
+                    if let Some(tensor) = &state.values[o.node].as_ref().and_then(|v| v.get(o.slot))
+                    {
                         format!("input value #{}: {:?}", ix, tensor)
                     } else {
                         format!("input value #{}: <not found>", ix)
