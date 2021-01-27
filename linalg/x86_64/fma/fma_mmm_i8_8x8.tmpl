@@ -440,6 +440,9 @@ fma_mmm_i8_8x8 proc
     cmp     rax,    12
     je      {{L}}q_torwards_plusinf
 
+    cmp     rax,    13
+    je      {{L}}q_away
+
     jmp     {{L}}unimplemented
 
 // NON LINEAR / ADDC
@@ -655,6 +658,45 @@ i128_shuffle dd              0, 4
 
     vpaddd      ymm{{i}}, ymm{{i}}, ymm11   // +=1
     vpsrad      ymm{{i}}, ymm{{i}}, 1       // >>=1
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_away:     // (((abs(x) * arg1) >> (30 + arg2)) as i32 + 1) >> 1 * sign(x)
+
+{% if msvc %}
+    vpbroadcastd    ymm11, dword ptr [offset one_32bit] // 1, broadcasted x8
+{% else %}
+    vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
+{% endif %}
+
+    vpbroadcastd    ymm12, dword ptr [rcx + 8]  // mult // broatcasted x 8
+
+    mov         r8, [rcx + 16]
+    add         r8, 30                      // r8 <- 30 + arg2
+
+    vpxor       ymm8, ymm0, ymm0            // ymm8 <- 0
+    pinsrq      xmm8, r8, 0
+
+{% for i in (0..7) %}
+    vpand       ymm10, ymm{{i}}, ymm{{i}}   // ymm10 <- ymmi
+
+    vpabsd      ymm10, ymm10                // ymm10 <- abs(ymm10)
+    vpsrldq     ymm15, ymm10, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm15, ymm15, ymm12         // ymm15 <- a1*c, a3*c, a5*c, a7*c
+    vpmuldq     ymm10, ymm10, ymm12         // ymm10  <- a0*c, a2*c, a4*c, a6*c
+
+    vpsrlq      ymm10, ymm10, xmm8          // *logical* shift is ok, we are > 0
+    vpsrlq      ymm15, ymm15, xmm8
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm10, ymm15, ymm10, 85     // 0x55 ymmi <- ymmi::ymm15 (back to i32)
+
+    vpaddd      ymm10, ymm10, ymm11         // +=1
+    vpsrad      ymm10, ymm10, 1             // >>=1
+
+    vpsignd     ymm{{i}}, ymm10, ymm{{i}}   // re-apply sign
+
 {% endfor %}
 
     jmp    {{L}}non_linear_loop

@@ -9,6 +9,7 @@ use crate::frame::mmm::*;
 use num_traits::sign::Signed;
 
 pub trait PseudoRightShift {
+    fn q_away(self, mult: Self, shift: usize) -> Self;
     fn q_even(self, mult: Self, shift: usize) -> Self;
     fn q_to_plus_inf(self, mult: Self, shift: usize) -> Self;
 }
@@ -29,6 +30,10 @@ impl PseudoRightShift for i32 {
         let v = ((self as i64 * mult as i64) >> (30 + shift)) as i32;
         (v + 1) >> 1
     }
+    fn q_away(self, mult: Self, shift: usize) -> Self {
+        let v = ((self.abs() as i64 * mult as i64) >> (30 + shift)) as i32;
+        ((v + 1) >> 1) * self.signum()
+    }
 }
 
 impl PseudoRightShift for f32 {
@@ -36,6 +41,9 @@ impl PseudoRightShift for f32 {
         self * mult * 2f32.powi(-(shift as i32))
     }
     fn q_to_plus_inf(self, mult: Self, shift: usize) -> Self {
+        self * mult * 2f32.powi(-(shift as i32))
+    }
+    fn q_away(self, mult: Self, shift: usize) -> Self {
         self * mult * 2f32.powi(-(shift as i32))
     }
 }
@@ -331,6 +339,13 @@ where
                             }
                         }
                     }
+                    FusedKerSpec::QAway(mult, shift) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] = ab[i][j].q_away(mult, shift);
+                            }
+                        }
+                    }
                 }
                 pnl = pnl.add(1);
             }
@@ -620,6 +635,13 @@ where
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] = ab[i][j].q_to_plus_inf(mult, shift);
+                            }
+                        }
+                    }
+                    FusedKerSpec::QAway(mult, shift) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                ab[i][j] = ab[i][j].q_away(mult, shift);
                             }
                         }
                     }
