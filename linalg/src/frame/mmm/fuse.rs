@@ -190,9 +190,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 FusedSpec::QTowardsPlusInf(m, s) => {
                     FusedKerSpec::QTowardsPlusInf(*m.to_scalar_unchecked(), *s)
                 }
-                FusedSpec::QAway(m, s) => {
-                    FusedKerSpec::QTowardsPlusInf(*m.to_scalar_unchecked(), *s)
-                }
+                FusedSpec::QAway(m, s) => FusedKerSpec::QAway(*m.to_scalar_unchecked(), *s),
             };
             self.uspecs.push(s);
         }
