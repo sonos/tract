@@ -113,6 +113,11 @@ impl Optimizer {
         let mut seen = std::collections::HashSet::new();
         p.reset()?;
         while let Some(mut patch) = p.next(&model)? {
+            if let Some(steps) = self.steps {
+                if counter >= steps {
+                    return Ok((counter, model));
+                }
+            }
             patch.push_context(format!("{:?}/{}", p, i));
             #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
             {
@@ -133,11 +138,6 @@ impl Optimizer {
             patch.apply(&mut model)?;
             seen.clear();
             counter += 1;
-            if let Some(steps) = self.steps {
-                if counter >= steps {
-                    return Ok((counter, model));
-                }
-            }
         }
         #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
         {
