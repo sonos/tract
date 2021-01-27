@@ -238,16 +238,42 @@ impl TypedOp for LirMatMulUnary {
                     return Ok(Some(patch));
                 }
             }
-            let fused_micro_op = if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
+            let fused_micro_op = if let Some(op) =
+                succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref())
+            {
+                if let Some(cast) = op.downcast_ref::<ops::cast::Cast>().map(|cast| cast.to) {
+                    if cast == i8::datum_type() && self.c_fact.datum_type == i32::datum_type() {
+                        let mmm = tract_linalg::ops()
+                            .mmm(
+                                self.packed_as.iter().next().unwrap().datum_type(),
+                                model.outlet_fact(node.inputs[0])?.datum_type,
+                                i8::datum_type(),
+                                self.m(),
+                                self.k(),
+                                self.n().to_usize()?,
+                            )
+                            .context("MMM instantiation")?;
+                        let c_fact =
+                            TypedFact::dt_shape(i8::datum_type(), self.c_fact.shape.clone());
+                        let mut patch = TypedModelPatch::fuse_with_next(
+                            model,
+                            &node,
+                            Self { mmm, c_fact, ..self.clone() },
+                        )?;
+                        patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
+                        return Ok(Some(patch));
+                    }
+                }
+                None
+            } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
                 if op.a.len() == 1 {
-                    let output_datum_type = model.outlet_fact((node.id, 0).into())?.datum_type;
                     if op.mini_op.is::<ops::quant::Scale>()
-                        && output_datum_type == i32::datum_type()
+                        && self.c_fact.datum_type == i32::datum_type()
                     {
                         // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
                         let factor = op.a.cast_to_scalar::<f32>()?;
                         if factor < 0.0 || factor > 1.0 {
-                            return Ok(None)
+                            return Ok(None);
                         }
                         let factor_bits = factor.to_bits();
                         let current_exponent = factor_bits >> 23;
