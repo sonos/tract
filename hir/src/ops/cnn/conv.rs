@@ -229,8 +229,8 @@ impl Expansion for Conv {
             || self.y_scale_input.is_some();
         let output_type = self.override_output_datum_type.unwrap_or(input.datum_type);
         let q_params = if quantized {
-            use tract_core::ops::matmul::QuantizedParam::*;
-            use tract_core::ops::matmul::QuantizedParams;
+            use tract_core::ops::matmul::QParam::*;
+            use tract_core::ops::matmul::QParams;
 
             let a0 = if let Some(o) = self.k_zero_point_input {
                 Dynamic(o)
@@ -256,7 +256,7 @@ impl Expansion for Conv {
             let c_scale =
                 if let Some(o) = self.y_scale_input { Dynamic(o) } else { Static(rctensor0(1f32)) };
 
-            let mut qp = QuantizedParams { a0, b0, c0, a_scale, b_scale, c_scale };
+            let mut qp = QParams { a0, b0, c0, a_scale, b_scale, c_scale };
             qp.remove_input(self.k_input.unwrap_or(1));
             if let Some(b) = self.bias_input {
                 qp.remove_input(b);

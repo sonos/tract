@@ -69,14 +69,11 @@ impl ConvProblem {
                 }
             }
         }
-        dbg!(&out);
         if let Some(bias) = &self.bias {
-            dbg!(&bias);
             let mut shape = vec![1; out.ndim()];
             shape[self.shape_out.c_axis()] = bias.len();
             out += &bias.clone().into_shape(shape).unwrap();
         }
-        dbg!(&out);
         out
     }
 
@@ -103,9 +100,8 @@ impl ConvProblem {
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
-        let mut output = dbg!(dbg!(model.declutter()?).into_optimized()?)
-            .into_runnable()?
-            .run(tvec![self.data.clone().into_tensor()])?;
+        let mut output =
+            model.into_optimized()?.into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
         Ok(output.remove(0).into_tensor().into_array::<f32>()?)
     }
 }
