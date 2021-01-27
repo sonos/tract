@@ -17,7 +17,7 @@ fn has_neon_cpuinfo() -> std::io::Result<bool> {
 
 fn has_neon() -> bool {
     if let Ok(v) = env::var("TRACT_CPU_ARM32_NEON") {
-        return v == "true";
+        return v == "true" || v == "1";
     }
     has_neon_cpuinfo().unwrap_or(false)
 }
