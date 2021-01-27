@@ -335,6 +335,8 @@ store_strides_i32:
     beq         .scalar_add
     cmp         x2, #12
     beq         .q_towards_plusinf
+    cmp         x2, #13
+    beq         .q_even
 
     b           .unsupported
 
@@ -511,6 +513,34 @@ non_linear_addc_i32:
     {% for q in (16..31) %}
         sqrshl  v{{q}}.4s, v{{q}}.4s, v1.4s
     {% endfor %}
+
+    b .non_linear_loop
+
+.q_even:
+    add         x2, x1, #8
+    ld1r        { v0.4s }, [ x2 ]
+    add         x2, x1, #16
+    ld1r        { v1.4s }, [ x2 ]
+    neg         v1.4s, v1.4s
+
+    // process data in four chunks, using regs 4 5 6 7 to store sign masks while mul are running
+    {% for chunk in (0..3) %}
+        {% for q in (0..3) %}
+            {% capture sign %}v{{ q | plus:4 }}{% endcapture %}
+            {% capture reg %}v{{chunk | times: 4 | plus: 16 | plus: q }}{% endcapture %}
+            cmlt        {{sign}}.4s, {{reg}}.4s, #0
+            abs         {{reg}}.4s, {{reg}}.4s
+            sqrdmulh    {{reg}}.4s, {{reg}}.4s, v0.4s
+        {% endfor %}
+        {% for q in (0..3) %}
+            {% capture sign %}v{{ q | plus:4 }}{% endcapture %}
+            {% capture reg %}v{{chunk | times: 4 | plus: 16 | plus: q }}{% endcapture %}
+            sqrshl      {{reg}}.4s, {{reg}}.4s, v1.4s
+            neg         v3.4s, {{reg}}.4s
+            bit         {{reg}}.16b, v3.16b, {{sign}}.16b
+        {% endfor %}
+    {% endfor %}
+
 
     b .non_linear_loop
 
