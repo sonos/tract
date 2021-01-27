@@ -18,11 +18,11 @@ pub trait ElementWiseMiniOp:
     }
     #[allow(unused_variables)]
     fn eval_in_place(&self, t: &mut Tensor) -> TractResult<()> {
-        unreachable!()
+        bail!("Element wise eval in-place not defined");
     }
     #[allow(unused_variables)]
     fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
-        unreachable!()
+        bail!("Element wise eval out-of-place place not defined");
     }
     #[allow(unused_variables)]
     fn cost_per_element(&self, dt: DatumType) -> TVec<(Cost, usize)> {

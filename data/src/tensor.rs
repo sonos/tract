@@ -551,7 +551,7 @@ impl Tensor {
             anyhow::bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
         if approx {
-            let atol = 1e-4;
+            let atol = 5e-4;
             let rtol = 1e-4;
             let ma = self.cast_to::<f32>()?;
             let ma = ma.to_array_view::<f32>()?;
