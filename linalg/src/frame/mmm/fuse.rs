@@ -879,7 +879,6 @@ pub mod test {
         i64: AsPrimitive<TC>,
     {
         pub fn reference(&self) -> Vec<TC> {
-            eprintln!("input {:?}", &self.c);
             self.c
                 .iter()
                 .map(|input| {
