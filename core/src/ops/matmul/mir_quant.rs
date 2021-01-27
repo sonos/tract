@@ -5,60 +5,60 @@ use crate::ops;
 use crate::ops::matmul::*;
 
 #[derive(Debug, Clone, Hash, PartialEq)]
-pub enum QuantizedParam {
+pub enum QParam {
     Static(Arc<Tensor>),
     Dynamic(usize),
 }
 
-impl QuantizedParam {
+impl QParam {
     fn tensor(&self, inputs: &[Arc<Tensor>]) -> Arc<Tensor> {
         match self {
-            QuantizedParam::Static(t) => t.clone(),
-            QuantizedParam::Dynamic(slot) => inputs[*slot].clone(),
+            QParam::Static(t) => t.clone(),
+            QParam::Dynamic(slot) => inputs[*slot].clone(),
         }
     }
 
     fn remove_input(&mut self, ix: usize) {
-        if let QuantizedParam::Dynamic(slot) = self {
+        if let QParam::Dynamic(slot) = self {
             *slot = *slot - (*slot > ix) as usize;
         }
     }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq)]
-pub struct QuantizedParams {
-    pub a0: QuantizedParam,
-    pub a_scale: QuantizedParam,
-    pub b0: QuantizedParam,
-    pub b_scale: QuantizedParam,
-    pub c0: QuantizedParam,
-    pub c_scale: QuantizedParam,
+pub struct QParams {
+    pub a0: QParam,
+    pub a_scale: QParam,
+    pub b0: QParam,
+    pub b_scale: QParam,
+    pub c0: QParam,
+    pub c_scale: QParam,
 }
 
-impl QuantizedParams {
-    pub fn noop_static(dt: DatumType) -> QuantizedParams {
-        QuantizedParams {
-            a0: QuantizedParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
-            a_scale: QuantizedParam::Static(rctensor0(1f32)),
-            b0: QuantizedParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
-            b_scale: QuantizedParam::Static(rctensor0(1f32)),
-            c0: QuantizedParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
-            c_scale: QuantizedParam::Static(rctensor0(1f32)),
+impl QParams {
+    pub fn noop_static(dt: DatumType) -> QParams {
+        QParams {
+            a0: QParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            a_scale: QParam::Static(rctensor0(1f32)),
+            b0: QParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            b_scale: QParam::Static(rctensor0(1f32)),
+            c0: QParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            c_scale: QParam::Static(rctensor0(1f32)),
         }
     }
 
-    pub fn all_dynamic(offset: usize) -> QuantizedParams {
-        QuantizedParams {
-            a0: QuantizedParam::Dynamic(offset),
-            a_scale: QuantizedParam::Dynamic(offset + 1),
-            b0: QuantizedParam::Dynamic(offset + 2),
-            b_scale: QuantizedParam::Dynamic(offset + 3),
-            c0: QuantizedParam::Dynamic(offset + 4),
-            c_scale: QuantizedParam::Dynamic(offset + 5),
+    pub fn all_dynamic(offset: usize) -> QParams {
+        QParams {
+            a0: QParam::Dynamic(offset),
+            a_scale: QParam::Dynamic(offset + 1),
+            b0: QParam::Dynamic(offset + 2),
+            b_scale: QParam::Dynamic(offset + 3),
+            c0: QParam::Dynamic(offset + 4),
+            c_scale: QParam::Dynamic(offset + 5),
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &QuantizedParam)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &QParam)> {
         vec![
             ("a0", &self.a0),
             ("a_scale", &self.a_scale),
@@ -70,7 +70,7 @@ impl QuantizedParams {
         .into_iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&str, &mut QuantizedParam)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&str, &mut QParam)> {
         vec![
             ("a0", &mut self.a0),
             ("a_scale", &mut self.a_scale),
@@ -86,15 +86,15 @@ impl QuantizedParams {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Option<(Vec<OutletId>, QuantizedParams)>> {
+    ) -> TractResult<Option<(Vec<OutletId>, QParams)>> {
         let mut new = self.clone();
         let mut inputs = vec![];
         for (ix, input) in node.inputs.iter().enumerate() {
             if let (Some(position), Some(k)) = (
-                self.iter().position(|qp| &QuantizedParam::Dynamic(ix) == qp.1),
+                self.iter().position(|qp| &QParam::Dynamic(ix) == qp.1),
                 model.outlet_fact(*input)?.konst.as_ref(),
             ) {
-                *new.iter_mut().nth(position).unwrap().1 = QuantizedParam::Static(k.clone());
+                *new.iter_mut().nth(position).unwrap().1 = QParam::Static(k.clone());
                 for qp in new.iter_mut() {
                     qp.1.remove_input(ix);
                 }
@@ -107,14 +107,14 @@ impl QuantizedParams {
 
     pub fn remove_input(&mut self, ix: usize) {
         for qp in self.iter_mut() {
-            if let QuantizedParam::Dynamic(slot) = qp.1 {
+            if let QParam::Dynamic(slot) = qp.1 {
                 *slot = *slot - (*slot > ix) as usize;
             }
         }
     }
 
     pub fn input_count(&self) -> usize {
-        self.iter().filter(|qp| matches!(qp.1, QuantizedParam::Dynamic(_))).count()
+        self.iter().filter(|qp| matches!(qp.1, QParam::Dynamic(_))).count()
     }
 }
 
@@ -124,7 +124,7 @@ pub struct QMatMul {
     pub b_trans: bool,
     pub c_trans: bool,
     pub output_type: DatumType,
-    pub params: QuantizedParams,
+    pub params: QParams,
 }
 
 impl_dyn_hash!(QMatMul);
@@ -188,8 +188,8 @@ impl TypedOp for QMatMul {
             );
         }
         let dt = match &self.params.c0 {
-            QuantizedParam::Static(t) => t.datum_type(),
-            QuantizedParam::Dynamic(i) => inputs[*i].datum_type,
+            QParam::Static(t) => t.datum_type(),
+            QParam::Dynamic(i) => inputs[*i].datum_type,
         };
         let (_m, _k, _n, c_shape) = compute_shape(
             &inputs[0].shape,
@@ -224,8 +224,8 @@ impl TypedOp for QMatMul {
             .params
             .iter()
             .map(|(name, qp)| match qp {
-                QuantizedParam::Dynamic(o) => patch.tap_model(model, node.inputs[*o]),
-                QuantizedParam::Static(t) => patch.add_const(format!("source_{}", name), t.clone()),
+                QParam::Dynamic(o) => patch.tap_model(model, node.inputs[*o]),
+                QParam::Static(t) => patch.add_const(format!("source_{}", name), t.clone()),
             })
             .collect::<TractResult<Vec<OutletId>>>()?;
 
@@ -656,13 +656,7 @@ mod test {
             let result = model
                 .wire_node(
                     "qmm",
-                    QMatMul::new(
-                        false,
-                        false,
-                        false,
-                        i8::datum_type(),
-                        QuantizedParams::all_dynamic(2),
-                    ),
+                    QMatMul::new(false, false, false, i8::datum_type(), QParams::all_dynamic(2)),
                     &inputs,
                 )
                 .unwrap();

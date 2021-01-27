@@ -296,31 +296,3 @@ where
         Ok(())
     }
 }
-
-/*
-fn prune<F, O>(target: &mut Graph<F, O>) -> TractResult<()>
-where
-    F: Fact + Clone + 'static + Hash,
-    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static + Hash,
-    Graph<F, O>: SpecialOps<F, O>,
-{
-    let active = target.eval_order()?.into_iter().collect::<bit_set::BitSet>();
-    for node in 0..target.nodes().len() {
-        if target.node(node).op_is::<crate::ops::dummy::Dummy>() {
-            continue;
-        }
-        if active.contains(node) {
-            continue;
-        }
-        target.node_mut(node).op = target.create_dummy();
-        target.node_mut(node).name = target.node(node).name.to_string() + "_pruned";
-        for input in target.node(node).inputs.clone().into_iter() {
-            target.nodes_mut()[input.node].outputs[input.slot]
-                .successors
-                .retain(|o| o.node != node);
-        }
-        target.node_mut(node).inputs.clear();
-    }
-    Ok(())
-}
-*/

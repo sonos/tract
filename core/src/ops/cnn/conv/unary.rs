@@ -9,7 +9,7 @@ use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
 use crate::ops::cnn::PoolSpec;
 use crate::ops::matmul;
-use crate::ops::matmul::{QuantizedParam, QuantizedParams};
+use crate::ops::matmul::{QParam, QParams};
 use crate::ops::nn::{DataFormat, DataShape};
 
 use tract_linalg::mmm::FusedSpec;
@@ -28,7 +28,7 @@ pub struct ConvUnary {
 
     pub bias: Option<Arc<Tensor>>,
 
-    pub quantized: Option<(DatumType, QuantizedParams)>,
+    pub q_params: Option<(DatumType, QParams)>,
 }
 
 impl_dyn_hash!(ConvUnary);
@@ -144,20 +144,20 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         use crate::ops::matmul::mir_quant as qmm;
         let b_fact = model.outlet_fact(wires[0])?.clone();
-        let c_dt = self.quantized.as_ref().unwrap().0;
+        let c_dt = self.q_params.as_ref().unwrap().0;
 
         let (input_shape, geo, output_shape, m, k, n, mmm) =
             self.compute_geo(model.outlet_fact(wires[0])?)?;
 
         let params = self
-            .quantized
+            .q_params
             .as_ref()
             .unwrap()
             .1
             .iter()
             .map(|(par_name, qp)| match qp {
-                QuantizedParam::Dynamic(o) => Ok(wires[*o]),
-                QuantizedParam::Static(t) => {
+                QParam::Dynamic(o) => Ok(wires[*o]),
+                QParam::Static(t) => {
                     model.add_const(format!("{}_{}", name, par_name), t.clone())
                 }
             })
@@ -505,7 +505,7 @@ impl ConvUnary {
             && self.pool_spec.stride(0) == 1
             && self.pool_spec.dilation(0) == 1
             && self.kernel.len() == self.input_channels() * self.output_channels()
-            && self.quantized.is_none()
+            && self.q_params.is_none()
         {
             let ci = self.input_channels();
             let co = self.output_channels();
@@ -588,7 +588,7 @@ impl EvalOp for ConvUnary {
             })
             .collect::<TractResult<_>>()?;
         let wire = unsafe {
-            if self.quantized.is_some() {
+            if self.q_params.is_some() {
                 self.wire_as_quant_im2col(&mut model, "im2col-adhoc", &*wires)?
             } else {
                 self.wire_as_im2col_pair(&mut model, "im2col-adhoc", wires[0])?
@@ -602,7 +602,7 @@ impl EvalOp for ConvUnary {
 
 impl TypedOp for ConvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let q_inputs = self.quantized.as_ref().map(|(_, qp)| qp.input_count()).unwrap_or(0);
+        let q_inputs = self.q_params.as_ref().map(|(_, qp)| qp.input_count()).unwrap_or(0);
         if inputs.len() != 1 + q_inputs {
             bail!("Wrong number of inputs: expected {} got {}", 1 + q_inputs, inputs.len());
         }
@@ -631,7 +631,7 @@ impl TypedOp for ConvUnary {
         }
 
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
-        if let Some((dt, _qp)) = self.quantized.as_ref() {
+        if let Some((dt, _qp)) = self.q_params.as_ref() {
             fact.datum_type = *dt;
         }
         Ok(tvec!(fact))
@@ -664,10 +664,10 @@ impl TypedOp for ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some((_, qp)) = self.quantized.as_ref() {
+        if let Some((_, qp)) = self.q_params.as_ref() {
             if let Some((inputs, qp)) = qp.inline_static(model, node)? {
                 let mut op = self.clone();
-                op.quantized.as_mut().unwrap().1 = qp;
+                op.q_params.as_mut().unwrap().1 = qp;
                 let patch = TypedModelPatch::replace_single_op(model, node, &inputs, op)?
                     .with_context("inlining quantiazed conv params");
                 return Ok(Some(patch));
@@ -802,7 +802,7 @@ impl TypedOp for ConvUnary {
             kernel: kernel.into_arc_tensor(),
             group: self.group,
             bias: self.bias.clone(),
-            quantized: self.quantized.clone(),
+            q_params: self.q_params.clone(),
         };
         return Ok(Some(AxisChangeConsequence {
             substitute_op: Some(Box::new(new_op)),
@@ -823,7 +823,7 @@ impl TypedOp for ConvUnary {
         if let Some(shape) = input_fact.shape.as_concrete() {
             unsafe {
                 let dt = input_fact.datum_type;
-                if self.quantized.is_some() {
+                if self.q_params.is_some() {
                     let mut patch = TypedModelPatch::default();
                     let inputs = node
                         .inputs
@@ -972,7 +972,7 @@ mod test {
             kernel: rctensor4(&[[[[1u8, 1], [1, 1]]]]),
             group: 1,
             bias: None,
-            quantized: Some((i32::datum_type(), QuantizedParams::all_dynamic(1))),
+            q_params: Some((i32::datum_type(), QParams::all_dynamic(1))),
         };
         let input = tvec!(
             rctensor4(&[[[[1u8, 2, 3], [4, 5, 6], [7, 8, 9]]]]),

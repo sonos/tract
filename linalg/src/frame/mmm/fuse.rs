@@ -22,62 +22,6 @@ pub enum FusedSpec {
     QAway(Tensor, usize),
 }
 
-/*
-   impl Debug for FusedSpec {
-   fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-   match self {
-   FusedSpec::Min(t) => write!(fmt, "Min({:?})", t),
-   FusedSpec::Max(t) => write!(fmt, "Max({:?})", t),
-   FusedSpec::AddC => write!(fmt, "AddC"),
-   FusedSpec::PerRowMul(_) => write!(fmt, "PerRowMul"),
-   FusedSpec::PerRowAdd(_) => write!(fmt, "PerRowAdd"),
-   FusedSpec::PerColMul(_) => write!(fmt, "PerColMul"),
-   FusedSpec::PerColAdd(_) => write!(fmt, "PerColAdd"),
-   FusedSpec::AddRowColProducts(_, _) => write!(fmt, "AddRowColProducts"),
-   FusedSpec::ScalarMul(_) => write!(fmt, "ScalarMul"),
-   FusedSpec::ScalarAdd(_) => write!(fmt, "ScalarAdd"),
-   FusedSpec::QTowardsEven(_, _) => write!(fmt, "QTowardsEven"),
-   FusedSpec::QTowardsPlusInf(_, _) => write!(fmt, "QTowardsPlusInf"),
-   }
-   }
-   }
-
-   impl std::hash::Hash for FusedSpec {
-   fn hash<H>(&self, state: &mut H)
-   where
-   H: std::hash::Hasher,
-   {
-/*
-use FusedSpec::*;
-fn h<TI: Copy, H: std::hash::Hasher>(it: &[TI], state: &mut H) {
-unsafe {
-it.len().hash(state);
-let bytes: &[u8] = std::slice::from_raw_parts(
-it.as_ptr() as _,
-it.len() * std::mem::size_of::<TI>(),
-);
-bytes.hash(state)
-}
-}
-*/
-std::mem::discriminant(self).hash(state);
-match self {
-    AddC => (),
-    Min(a) | Max(a) | ScalarMul(a) | ScalarAdd(a) => h(&[*a], state),
-    PerRowMul(a) | PerRowAdd(a) | PerColMul(a) | PerColAdd(a) => h(&*a, state),
-    AddRowColProducts(a, b) => {
-        h(&*a, state);
-        h(&*b, state);
-    }
-    QTowardsEven(a, b) | QTowardsPlusInf(a, b) => {
-        h(&[*a], state);
-        h(&[*b], state);
-    }
-}
-}
-}
-*/
-
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum FusedKerSpec<TI: Copy> {

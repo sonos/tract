@@ -589,7 +589,6 @@ impl Parameters {
                     (true, None)
                 }
             }
-            ("optimize-check", _) => (false, Some("declutter")),
             _ => (false, None),
         };
 

@@ -9,7 +9,7 @@ use tract_itertools::Itertools;
 use tract_ndarray::prelude::*;
 
 pub use self::mir::MatMul;
-pub use self::mir_quant::{QMatMul, QuantizedParam, QuantizedParams};
+pub use self::mir_quant::{QMatMul, QParam, QParams};
 pub use self::mir_unary::MatMulUnary;
 use self::pack::MatMatMulPack;
 

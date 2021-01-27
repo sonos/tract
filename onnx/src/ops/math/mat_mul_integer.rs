@@ -60,7 +60,7 @@ impl Expansion for MatMulInteger {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use QuantizedParam::*;
+        use QParam::*;
         let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
         let a0 = if let Some(o) = self.optional_a_zero_point_input {
@@ -75,7 +75,7 @@ impl Expansion for MatMulInteger {
             let b_dt = target.outlet_fact(inputs[1])?.datum_type;
             Static(tensor0(0).cast_to_dt(b_dt)?.into_owned().into_arc_tensor())
         };
-        let params = QuantizedParams {
+        let params = QParams {
             a0,
             b0,
             c0: Static(rctensor0(0i32)),
@@ -146,7 +146,7 @@ impl Expansion for QLinearMatMul {
             false,
             false,
             target.outlet_fact(inputs[7])?.datum_type,
-            tract_core::ops::matmul::QuantizedParams::all_dynamic(2),
+            tract_core::ops::matmul::QParams::all_dynamic(2),
         );
         let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;
