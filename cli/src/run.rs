@@ -78,12 +78,6 @@ fn run_regular(
                     );
                 }
             }
-            if r[0].datum_type() == i32::datum_type() {
-                eprintln!("I32: {:?}", &r[0].as_slice::<i32>().unwrap()[110..120]);
-            }
-            if r[0].datum_type() == i8::datum_type() {
-                eprintln!("I32: {:?}", &r[0].as_slice::<i8>().unwrap()[110..120]);
-            }
             if assert_sane_floats {
                 for (ix, o) in r.iter().enumerate() {
                     if let Ok(floats) = o.as_slice::<f32>() {

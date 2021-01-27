@@ -19,6 +19,7 @@ pub enum FusedSpec {
     ScalarAdd(Tensor),
     QTowardsEven(Tensor, usize),
     QTowardsPlusInf(Tensor, usize),
+    QAway(Tensor, usize),
 }
 
 /*
@@ -93,6 +94,7 @@ pub enum FusedKerSpec<TI: Copy> {
     ScalarAdd(TI),
     QTowardsEven(TI, usize),
     QTowardsPlusInf(TI, usize),
+    QAway(TI, usize),
 }
 
 pub struct ScratchSpaceFusedNonLinear<TI: Copy> {
@@ -186,6 +188,9 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     FusedKerSpec::QTowardsEven(*m.to_scalar_unchecked(), *s)
                 }
                 FusedSpec::QTowardsPlusInf(m, s) => {
+                    FusedKerSpec::QTowardsPlusInf(*m.to_scalar_unchecked(), *s)
+                }
+                FusedSpec::QAway(m, s) => {
                     FusedKerSpec::QTowardsPlusInf(*m.to_scalar_unchecked(), *s)
                 }
             };
@@ -320,7 +325,7 @@ pub mod test {
             mod fuseq {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::fuse::test;
-                use crate::frame::mmm::fuse::test::QTowardsPlusInfProblem;
+                use crate::frame::mmm::fuse::test::{QAwayProblem, QTowardsPlusInfProblem};
                 use crate::frame::mmm::kernel::MatMatMulKer;
                 use num_traits::AsPrimitive;
                 use proptest::prelude::*;
@@ -352,6 +357,24 @@ pub mod test {
                 }
 
                 #[test]
+                fn return_q_away() {
+                    if $cond {
+                        let len = <$ker>::mr() * <$ker>::nr();
+                        let half_len: $ti = (len / 2).as_();
+                        let v: Vec<$tc> = (0..len)
+                            .map(|f| {
+                                (<usize as AsPrimitive<$ti>>::as_(f) - half_len)
+                                    .min(<$tc>::max_value().as_())
+                                    .max(<$tc>::min_value().as_())
+                                    .as_()
+                            })
+                        .collect();
+                        let pb = QAwayProblem::<$ker, $ta, $tb, $tc, $ti>::new(v);
+                        assert_eq!(pb.run(), pb.reference())
+                    }
+                }
+
+                #[test]
                 fn return_q_towards_plusinf_1() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
@@ -365,6 +388,13 @@ pub mod test {
                 proptest::proptest! {
                     #[test]
                     fn return_q_towards_plusinf_prop(pb in any::<QTowardsPlusInfProblem<$ker, $ta, $tb, $tc, $ti>>()) {
+                        if $cond {
+                            prop_assert_eq!(pb.run(), pb.reference())
+                        }
+                    }
+
+                    #[test]
+                    fn return_q_away_prop(pb in any::<QAwayProblem<$ker, $ta, $tb, $tc, $ti>>()) {
                         if $cond {
                             prop_assert_eq!(pb.run(), pb.reference())
                         }
@@ -803,6 +833,68 @@ pub mod test {
                     FusedKerSpec::ScalarMul(2.as_()),
                     FusedKerSpec::QTowardsPlusInf((1 << 30).as_(), 2),
                 ],
+            )
+        }
+    }
+
+    #[derive(Debug, new)]
+    pub struct QAwayProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static,
+        TI: Copy + Debug,
+        i64: AsPrimitive<TC>,
+    {
+        pub c: Vec<TC>,
+        pub boo: std::marker::PhantomData<(K, TA, TB, TC, TI)>,
+    }
+
+    impl<K, TA, TB, TC, TI> Arbitrary for QAwayProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static,
+        TI: Copy + Debug,
+        i64: AsPrimitive<TC>,
+    {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+        fn arbitrary_with(_p: ()) -> Self::Strategy {
+            let len = K::mr() * K::nr();
+            proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len)
+                .prop_map(|c| QAwayProblem { c, boo: std::marker::PhantomData })
+                .boxed()
+        }
+    }
+
+    impl<K, TA, TB, TC, TI> QAwayProblem<K, TA, TB, TC, TI>
+    where
+        K: MatMatMulKer<TI>,
+        TA: Copy + Debug,
+        TB: Copy + Debug,
+        TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
+        TI: Copy + Debug + 'static + AsPrimitive<i64>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        i64: AsPrimitive<TC>,
+    {
+        pub fn reference(&self) -> Vec<TC> {
+            self.c
+                .iter()
+                .map(|input| {
+                    let input: TI = input.as_();
+                    let input: i64 = input.as_();
+                    ((((input.abs() >> 1) + 1) >> 1) * input.signum()).as_()
+                })
+                .collect()
+        }
+
+        pub fn run(&self) -> Vec<TC> {
+            fused_ops::<K, TA, TB, TC, TI>(
+                &*self.c,
+                &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QAway((1 << 30).as_(), 2)],
             )
         }
     }

@@ -254,7 +254,7 @@ impl TypedOp for LirMatMulUnary {
                         let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
                         let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as u32;
                         let shift = 126usize - current_exponent as usize;
-                        Some(tvec!(FusedSpec::QTowardsPlusInf(tensor0(int_multi), shift)))
+                        Some(tvec!(FusedSpec::QAway(tensor0(int_multi), shift)))
                     } else if op.mini_op.is::<ops::math::Max>() {
                         Some(tvec!(FusedSpec::Max(op.a.clone().into_tensor())))
                     } else if op.mini_op.is::<ops::math::Min>() {
