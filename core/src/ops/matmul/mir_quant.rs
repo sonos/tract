@@ -113,6 +113,14 @@ impl QParams {
         }
     }
 
+    pub fn insert_input(&mut self, ix: usize) {
+        for qp in self.iter_mut() {
+            if let QParam::Dynamic(slot) = qp.1 {
+                *slot = *slot + (*slot >= ix) as usize;
+            }
+        }
+    }
+
     pub fn input_count(&self) -> usize {
         self.iter().filter(|qp| matches!(qp.1, QParam::Dynamic(_))).count()
     }
@@ -165,6 +173,7 @@ impl EvalOp for QMatMul {
         let mut model = TypedModel::default();
         let a = model.add_const("source_a", inputs[0].clone())?;
         let b = model.add_const("source_b", inputs[1].clone())?;
+        let c = model.add_const("source_c", inputs[2].clone())?;
 
         let params = self
             .params
@@ -172,7 +181,7 @@ impl EvalOp for QMatMul {
             .map(|(name, qp)| model.add_const(format!("source_{}", name), qp.tensor(&inputs)))
             .collect::<TractResult<Vec<_>>>()?;
 
-        let result = self.wire(&mut model, "adhoc", a, b, &params)?;
+        let result = self.wire(&mut model, "adhoc", a, b, c, &params)?;
         model.set_output_outlets(&[result])?;
         model.into_runnable()?.run(tvec![])
     }
@@ -180,6 +189,13 @@ impl EvalOp for QMatMul {
 
 impl TypedOp for QMatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if inputs.len() != 3 + self.params.input_count() {
+            bail!(
+                "Inconsistent q matmul. expects {} inputs, got {}",
+                3 + self.params.input_count(),
+                inputs.len()
+            );
+        }
         if inputs[0].rank() != inputs[1].rank() {
             bail!(
                 "Inconsistent matmul between {:?} and {:?} (rank mismatch)",
@@ -187,10 +203,6 @@ impl TypedOp for QMatMul {
                 inputs[1]
             );
         }
-        let dt = match &self.params.c0 {
-            QParam::Static(t) => t.datum_type(),
-            QParam::Dynamic(i) => inputs[*i].datum_type,
-        };
         let (_m, _k, _n, c_shape) = compute_shape(
             &inputs[0].shape,
             &inputs[1].shape,
@@ -198,7 +210,7 @@ impl TypedOp for QMatMul {
             self.b_trans,
             self.c_trans,
         )?;
-        Ok(tvec!(TypedFact::dt_shape(dt, c_shape)))
+        Ok(tvec!(TypedFact::dt_shape(self.output_type, c_shape)))
     }
 
     fn declutter(
@@ -219,17 +231,18 @@ impl TypedOp for QMatMul {
 
         let a = patch.tap_model(model, node.inputs[0])?;
         let b = patch.tap_model(model, node.inputs[1])?;
+        let bias = patch.tap_model(model, node.inputs[2])?;
 
         let params = self
             .params
             .iter()
             .map(|(name, qp)| match qp {
                 QParam::Dynamic(o) => patch.tap_model(model, node.inputs[*o]),
-                QParam::Static(t) => patch.add_const(format!("source_{}", name), t.clone()),
+                QParam::Static(t) => patch.add_const(format!("{}_{}", node.name, name), t.clone()),
             })
             .collect::<TractResult<Vec<OutletId>>>()?;
 
-        let result = self.wire(&mut patch, &node.name, a, b, &params)?;
+        let result = self.wire(&mut patch, &node.name, a, b, bias, &params)?;
         patch.shunt_outside(model, node.id.into(), result)?;
         Ok(Some(patch))
     }
@@ -254,6 +267,7 @@ impl QMatMul {
         name: &str,
         a: OutletId,
         b: OutletId,
+        c: OutletId,
         params: &[OutletId],
     ) -> TractResult<OutletId> {
         let a_fact = model.outlet_fact(a)?.clone();
@@ -291,6 +305,12 @@ impl QMatMul {
 
         let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
         let result = model.wire_node(format!("{}.matmul", &name), new_op, &[a, b])?[0];
+        let result = wire_with_rank_broadcast(
+            &format!("{}.c", &name),
+            model,
+            ops::math::add::bin_typed(),
+            &[result, c],
+        )?[0];
         let result = compensate_zero_points(
             model,
             name,
@@ -481,6 +501,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
+            bias: arr2(&[[0]]),
             a0: 0,
             b0: 0,
             c0: 1,
@@ -496,6 +517,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
+            bias: arr2(&[[0]]),
             a0: 0,
             b0: 0,
             c0: 1,
@@ -511,6 +533,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[34]]),
+            bias: arr2(&[[0]]),
             a0: -17,
             b0: 1,
             c0: 0,
@@ -526,6 +549,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[26]]),
             b: arr2(&[[0]]),
+            bias: arr2(&[[0]]),
             a0: 27,
             b0: -1,
             c0: 1,
@@ -541,6 +565,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[-23]]),
             b: arr2(&[[-2]]),
+            bias: arr2(&[[0]]),
             a0: -11,
             b0: -45,
             c0: 0,
@@ -556,6 +581,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[47], [0]]),
             b: arr2(&[[1, 0, 30]]),
+            bias: arr2(&[[0]]),
             a0: 86,
             b0: 19,
             c0: 0,
@@ -571,6 +597,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[-30]]),
             b: arr2(&[[0, 107, 0]]),
+            bias: arr2(&[[0]]),
             a0: -59,
             b0: 117,
             c0: 0,
@@ -585,6 +612,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[11, 7, 3], [10, 6, 2], [9, 5, 1], [8, 4, 0]]),
             b: arr2(&[[1, 4], [2, 5], [3, 6]]),
+            bias: arr2(&[[0]]),
             a0: 12,
             b0: 0,
             c0: 0,
@@ -599,6 +627,7 @@ mod test {
     struct QMatMulProblem {
         a: Array2<i8>,
         b: Array2<i8>,
+        bias: Array2<i32>,
         a0: i8,
         b0: i8,
         c0: i8,
@@ -647,6 +676,17 @@ mod test {
                     )
                     .unwrap(),
             );
+            inputs.push(
+                model
+                    .add_source(
+                        "bias",
+                        TypedFact::dt_shape(
+                            i32::datum_type(),
+                            &[self.bias.nrows(), self.bias.ncols()],
+                        ),
+                    )
+                    .unwrap(),
+            );
             inputs.push(model.add_source("a0", TypedFact::scalar::<i8>()).unwrap());
             inputs.push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
             inputs.push(model.add_source("b0", TypedFact::scalar::<i8>()).unwrap());
@@ -656,7 +696,7 @@ mod test {
             let result = model
                 .wire_node(
                     "qmm",
-                    QMatMul::new(false, false, false, i8::datum_type(), QParams::all_dynamic(2)),
+                    QMatMul::new(false, false, false, i8::datum_type(), QParams::all_dynamic(3)),
                     &inputs,
                 )
                 .unwrap();
@@ -667,6 +707,7 @@ mod test {
                 .run(tvec!(
                     self.a.clone().into_tensor(),
                     self.b.clone().into_tensor(),
+                    self.bias.clone().into_tensor(),
                     self.a0.into(),
                     self.a_scale.into(),
                     self.b0.into(),
@@ -711,6 +752,7 @@ mod test {
                     QMatMulProblem {
                         a: Array2::from_shape_vec((m, k), a).unwrap(),
                         b: Array2::from_shape_vec((k, n), b).unwrap(),
+                        bias: arr2(&[[0i32]]),
                         a0,
                         b0,
                         c0,
