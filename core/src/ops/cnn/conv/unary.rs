@@ -157,9 +157,7 @@ impl ConvUnary {
             .iter()
             .map(|(par_name, qp)| match qp {
                 QParam::Dynamic(o) => Ok(wires[*o]),
-                QParam::Static(t) => {
-                    model.add_const(format!("{}_{}", name, par_name), t.clone())
-                }
+                QParam::Static(t) => model.add_const(format!("{}_{}", name, par_name), t.clone()),
             })
             .collect::<TractResult<Vec<OutletId>>>()?;
 
@@ -496,7 +494,7 @@ impl ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::matmul::MatMul;
+        use crate::ops::matmul::*;
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let full_input_shape = input_fact.shape.to_tvec();
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
@@ -505,7 +503,7 @@ impl ConvUnary {
             && self.pool_spec.stride(0) == 1
             && self.pool_spec.dilation(0) == 1
             && self.kernel.len() == self.input_channels() * self.output_channels()
-            && self.q_params.is_none()
+//            && self.q_params.is_none()
         {
             let ci = self.input_channels();
             let co = self.output_channels();
@@ -521,18 +519,52 @@ impl ConvUnary {
                 .into_arc_tensor();
             let trans_data = self.pool_spec.data_format == DataFormat::HWC
                 || self.pool_spec.data_format == DataFormat::NHWC;
-            let mut patch = TypedModelPatch::default();
+            let mut patch = TypedModelPatch::new("declutter_as_matmul");
             let a = patch.add_const(format!("{}.filters", &node.name), a)?;
-            let mut wire = patch.tap_model(model, node.inputs[0])?;
-            let op = MatMul { a_trans, b_trans: trans_data, c_trans: trans_data };
-            wire = patch.wire_node(&*node.name, op, &[a, wire])?[0];
-            if let Some(b) = &self.bias {
+            let mut inputs = node
+                .inputs
+                .iter()
+                .map(|i| patch.tap_model(model, *i))
+                .collect::<TractResult<TVec<_>>>()?;
+            inputs.insert(0, a);
+            let op: Box<dyn TypedOp> = if let Some(q_params) = &self.q_params {
+                let mut params = q_params.1.clone();
+                params.insert_input(0); // kernel as input
+                params.insert_input(2); // bias as input
+                let mut bias = self.bias.clone().unwrap_or(rctensor0(0i32));
+                if bias.len() > 1 {
+                    let shape = if trans_data { [1, bias.len()] } else { [bias.len(), 1] };
+                    bias = bias.into_tensor().into_shape(&shape)?.into_arc_tensor();
+                }
+                let bias = patch.add_const(format!("{}.bias", &node.name), bias)?;
+                inputs.insert(2, bias);
+                Box::new(QMatMul {
+                    a_trans,
+                    b_trans: trans_data,
+                    c_trans: trans_data,
+                    output_type: i32::datum_type(),
+                    params: q_params.1.clone(),
+                })
+            } else {
+                Box::new(MatMul { a_trans, b_trans: trans_data, c_trans: trans_data })
+            };
+            let mut wire = patch.wire_node(&*node.name, op, &inputs)?[0];
+            // only add bias in non Q form: passed it QMatMul in the quantized
+            // case
+            if let Some(b) = self.bias.as_ref().filter(|_| self.q_params.is_none()) {
                 let mut bias_shape = tvec!(1; input_shape.rank());
                 bias_shape[input_shape.c_axis()] = co;
                 let b = b.clone().into_tensor().into_shape(&bias_shape)?;
                 wire = patch.wire_node(
                     format!("{}.bias", node.name),
                     crate::ops::math::add::unary(b.into_arc_tensor()),
+                    &[wire],
+                )?[0];
+            }
+            if let Some(dt) = self.q_params.as_ref().map(|pair| pair.0) {
+                wire = patch.wire_node(
+                    format!("{}.cast_to", node.name),
+                    crate::ops::cast::cast(dt),
                     &[wire],
                 )?[0];
             }
@@ -669,7 +701,7 @@ impl TypedOp for ConvUnary {
                 let mut op = self.clone();
                 op.q_params.as_mut().unwrap().1 = qp;
                 let patch = TypedModelPatch::replace_single_op(model, node, &inputs, op)?
-                    .with_context("inlining quantiazed conv params");
+                    .with_context("inlining quantized conv params");
                 return Ok(Some(patch));
             }
         }

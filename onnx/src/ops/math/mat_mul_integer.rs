@@ -64,16 +64,16 @@ impl Expansion for MatMulInteger {
         let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
         let a0 = if let Some(o) = self.optional_a_zero_point_input {
-            Dynamic(o)
+            Dynamic(o + 1)
         } else {
             let a_dt = target.outlet_fact(inputs[0])?.datum_type;
-            Static(tensor0(0).cast_to_dt(a_dt)?.into_owned().into_arc_tensor())
+            Static(Tensor::zero_scalar_dt(a_dt)?.into_arc_tensor())
         };
         let b0 = if let Some(o) = self.optional_b_zero_point_input {
-            Dynamic(o)
+            Dynamic(o + 1)
         } else {
             let b_dt = target.outlet_fact(inputs[1])?.datum_type;
-            Static(tensor0(0).cast_to_dt(b_dt)?.into_owned().into_arc_tensor())
+            Static(Tensor::zero_scalar_dt(b_dt)?.into_arc_tensor())
         };
         let params = QParams {
             a0,
@@ -87,6 +87,7 @@ impl Expansion for MatMulInteger {
         let mut inputs: TVec<OutletId> = inputs.into();
         inputs[0] = a_and_b[0];
         inputs[1] = a_and_b[1];
+        inputs.insert(2, target.add_const(format!("{}.bias", prefix), tensor0(0i32))?);
         target.wire_node(prefix, op, &inputs)
     }
 }
@@ -146,15 +147,16 @@ impl Expansion for QLinearMatMul {
             false,
             false,
             target.outlet_fact(inputs[7])?.datum_type,
-            tract_core::ops::matmul::QParams::all_dynamic(2),
+            tract_core::ops::matmul::QParams::all_dynamic(3),
         );
         let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;
+        let bias = target.add_const(format!("{}.bias", prefix), tensor0(0i32))?;
         target.wire_node(
             prefix,
             op,
             &[
-                a_and_b[0], a_and_b[1], inputs[2], inputs[1], inputs[5], inputs[4], inputs[7],
+                a_and_b[0], a_and_b[1], bias, inputs[2], inputs[1], inputs[5], inputs[4], inputs[7],
                 inputs[6],
             ],
         )

@@ -370,10 +370,11 @@ mod test {
             let mut model = TypedModel::default();
             let a = model.add_const("a", tensor2(&[[a]])).unwrap();
             let b = model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
+            let bias = model.add_const("bias", tensor0(0i32)).unwrap();
             let mut qp = ops::matmul::QParams::noop_static(i8::datum_type());
             qp.c_scale = ops::matmul::QParam::Static(rctensor0(scale));
             let op = ops::matmul::QMatMul::new(false, false, false, i8::datum_type(), qp);
-            let output = model.wire_node("mmm", op, &[a, b]).unwrap();
+            let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
             model.set_output_outlets(&*output).unwrap();
             let plain = model.clone().into_runnable().unwrap();
             let optim = model.into_optimized().unwrap().into_runnable().unwrap();
