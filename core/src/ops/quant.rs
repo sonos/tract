@@ -363,22 +363,26 @@ mod test {
     use crate::ops;
     use proptest::prelude::*;
 
+    fn test_scale(a: i8, b: i8, scale: f32) {
+        let input = tvec!(tensor2(&[[b]]));
+        let mut model = TypedModel::default();
+        let a = model.add_const("a", tensor2(&[[a]])).unwrap();
+        let b = model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
+        let bias = model.add_const("bias", tensor0(0i32)).unwrap();
+        let mut qp = ops::matmul::QParams::noop_static(i8::datum_type());
+        qp.c_scale = ops::matmul::QParam::Static(rctensor0(scale));
+        let op = ops::matmul::QMatMul::new(false, false, false, i8::datum_type(), qp);
+        let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
+        model.set_output_outlets(&*output).unwrap();
+        let plain = model.clone().into_runnable().unwrap();
+        let optim = model.into_optimized().unwrap().into_runnable().unwrap();
+        assert_eq!(optim.run(input.clone()).unwrap(), plain.run(input).unwrap());
+    }
+
     proptest! {
         #[test]
-        fn test_scale(a in any::<i8>(), b in any::<i8>(), scale in 0f32..1000.) {
-            let input = tvec!(tensor2(&[[b]]));
-            let mut model = TypedModel::default();
-            let a = model.add_const("a", tensor2(&[[a]])).unwrap();
-            let b = model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
-            let bias = model.add_const("bias", tensor0(0i32)).unwrap();
-            let mut qp = ops::matmul::QParams::noop_static(i8::datum_type());
-            qp.c_scale = ops::matmul::QParam::Static(rctensor0(scale));
-            let op = ops::matmul::QMatMul::new(false, false, false, i8::datum_type(), qp);
-            let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
-            model.set_output_outlets(&*output).unwrap();
-            let plain = model.clone().into_runnable().unwrap();
-            let optim = model.into_optimized().unwrap().into_runnable().unwrap();
-            assert_eq!(optim.run(input.clone()).unwrap(), plain.run(input).unwrap());
+        fn prop(a in any::<i8>(), b in any::<i8>(), scale in 0f32..1000.) {
+            test_scale(a, b, scale);
         }
     }
 }

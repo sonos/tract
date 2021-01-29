@@ -137,10 +137,10 @@ graph network( input ) -> ( output_affine_output ) {
   lda_output_weigths = variable<scalar>(label = "lda.output_weigths", shape = [200, 40, 5]);
   lda_output_bias = variable<scalar>(label = "lda.output_bias", shape = [200]);
   lda_output = tract_conv_hwc_1d(lda_output_delay, lda_output_weigths, lda_output_bias, dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
-  tdnn1_affine_output_a = variable<scalar>(label = "tdnn1.affine.output_a", shape = [256, 200]);
-  tdnn1_affine_output = matmul(lda_output, tdnn1_affine_output_a, transposeA = false, transposeB = true);
+  tdnn1_affine_output_matmul_a = variable<scalar>(label = "tdnn1.affine.output.matmul_a", shape = [256, 200]);
+  tdnn1_affine_output_matmul = matmul(lda_output, tdnn1_affine_output_matmul_a, transposeA = false, transposeB = true);
   tdnn1_affine_output_bias_a = variable<scalar>(label = "tdnn1.affine.output.bias-a", shape = [1, 256]);
-  tdnn1_affine_output_bias = add(tdnn1_affine_output_bias_a, tdnn1_affine_output);
+  tdnn1_affine_output_bias = add(tdnn1_affine_output_bias_a, tdnn1_affine_output_matmul);
   tdnn1_relu_output_low = max(0.0, tdnn1_affine_output_bias);
   tdnn1_renorm_reduced_sq = square(tdnn1_relu_output_low);
   tdnn1_renorm_reduced_sum = sum_reduce(tdnn1_renorm_reduced_sq, axes = [1]);
