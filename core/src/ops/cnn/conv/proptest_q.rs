@@ -105,7 +105,7 @@ impl QConvProblem {
             temp += &bias.clone().into_shape(shape).unwrap();
         }
         temp.mapv(|i| {
-            (round_away(dbg!(i as f32 / scale as f32)) as i32 + c0)
+            (round_away(i as f32 / scale as f32) as i32 + c0)
                 .max(std::i8::MIN as i32)
                 .min(std::i8::MAX as i32) as i8
         })
@@ -359,7 +359,6 @@ fn test_conv_q_and_bias(a0: i32, b0: i32, c0: i32, c_scale: f32, k: i8, i: i8, b
     let input = tvec!(tensor2(&[[i]]));
     let expected =
         round_away((((k as i32) - a0) * ((i as i32) - b0) + bias) as f32 / c_scale) as i32 + c0;
-    dbg!(&expected);
 
     let expected = tensor2(&[[expected]]);
 
