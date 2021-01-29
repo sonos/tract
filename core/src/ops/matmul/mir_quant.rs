@@ -23,6 +23,13 @@ impl QParam {
             *slot = *slot - (*slot > ix) as usize;
         }
     }
+
+    pub fn as_static(&self) -> Option<&Arc<Tensor>> {
+        match self {
+            QParam::Static(t) => Some(t),
+            QParam::Dynamic(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq)]
@@ -359,23 +366,24 @@ pub(crate) fn compensate_zero_points(
     sum_a: OutletId,
     sum_b: OutletId,
 ) -> TractResult<OutletId> {
+    let input_shape = model.outlet_fact(result)?.shape.clone();
     let rank = model.outlet_fact(result)?.rank();
-    assert_eq!(model.outlet_fact(sum_a)?.rank(), rank - 1);
-    assert_eq!(model.outlet_fact(sum_b)?.rank(), rank - 1);
+    let m_axis = rank - 2 + c_trans as usize;
+    let n_axis = rank - 1 - c_trans as usize;
+
+    debug_assert_eq!(model.outlet_fact(sum_a)?.rank(), rank - 1);
+    debug_assert_eq!(model.outlet_fact(sum_b)?.rank(), rank - 1);
 
     // make sum_a into from a 1D vector to a vertical matrix, sum_b horizontal
     // switch shapes if c_trans
-    let sum_a = model.wire_node(
-        format!("{}.reshape_sum_a", name),
-        AxisOp::Add(rank - 1 - c_trans as usize),
-        &[sum_a],
-    )?[0];
+    let sum_a =
+        model.wire_node(format!("{}.reshape_sum_a", name), AxisOp::Add(n_axis), &[sum_a])?[0];
 
-    let sum_b = model.wire_node(
-        format!("{}.reshape_sum_b", name),
-        AxisOp::Add(rank - 1 - !c_trans as usize),
-        &[sum_b],
-    )?[0];
+    let sum_b =
+        model.wire_node(format!("{}.reshape_sum_b", name), AxisOp::Add(m_axis), &[sum_b])?[0];
+
+    debug_assert_eq!(model.outlet_fact(sum_a)?.shape[m_axis], model.outlet_fact(result)?.shape[m_axis]);
+    debug_assert_eq!(model.outlet_fact(sum_b)?.shape[n_axis], model.outlet_fact(result)?.shape[n_axis]);
 
     let a0 =
         model.wire_node(format!("{}.cast_a0", name), ops::cast::cast(i32::datum_type()), &[a0])?[0];
@@ -434,6 +442,8 @@ pub(crate) fn compensate_zero_points(
         ops::math::add::bin_typed(),
         &[result, a0_k_b0],
     )?[0];
+
+    debug_assert_eq!(model.outlet_fact(result)?.shape, input_shape);
     Ok(result)
 }
 
@@ -465,10 +475,18 @@ pub(crate) fn requant(
         &[wire, zero_point],
     )?[0];
 
+    clamp_and_cast_to(model, name, dt, wire)
+}
+
+pub(crate) fn clamp_and_cast_to(
+    model: &mut TypedModel,
+    name: &str,
+    dt: DatumType,
+    wire: OutletId,
+) -> TractResult<OutletId> {
     if dt == i32::datum_type() {
         return Ok(wire);
     }
-
     let rank = model.outlet_fact(wire)?.rank();
     let inf = tensor0(if dt == DatumType::I8 { -128i32 } else { 0 })
         .broadcast_into_rank(rank)?
