@@ -64,18 +64,18 @@ impl QSumB {
             for (ix, d) in prefix.slice().iter().enumerate() {
                 panel.index_axis_inplace(Axis(ix), *d);
                 output.index_axis_inplace(Axis(ix), *d);
-                let panel = panel.as_slice().unwrap();
-                for p in 0..(self.n.div_ceil(self.r)) {
-                    let mut vec = vec![0i32; self.r];
-                    for k in 0..self.k {
-                        for r in 0..self.r {
-                            vec[r] += panel[(p * self.k + k) * self.r + r].as_();
-                        }
+            }
+            let panel = panel.as_slice().unwrap();
+            for p in 0..(self.n.div_ceil(self.r)) {
+                let mut vec = vec![0i32; self.r];
+                for k in 0..self.k {
+                    for r in 0..self.r {
+                        vec[r] += panel[(p * self.k + k) * self.r + r].as_();
                     }
-                    let r_slice = &mut output.as_slice_mut().unwrap()[p * self.r..];
-                    let len = r_slice.len().min(self.r);
-                    r_slice[..len].copy_from_slice(&vec[..len]);
                 }
+                let r_slice = &mut output.as_slice_mut().unwrap()[p * self.r..];
+                let len = r_slice.len().min(self.r);
+                r_slice[..len].copy_from_slice(&vec[..len]);
             }
         }
         Ok(())
