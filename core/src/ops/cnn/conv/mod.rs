@@ -1,7 +1,7 @@
 mod depth_wise;
 mod im2col;
 #[cfg(test)]
-mod proptest;
+pub mod proptest;
 #[cfg(test)]
 mod proptest_q;
 mod q_sum_b;

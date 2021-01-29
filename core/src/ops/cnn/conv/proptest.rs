@@ -172,14 +172,14 @@ impl Arbitrary for DataFormat {
     }
 }
 
-fn tensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<f32>> {
+pub fn tensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<f32>> {
     let len = shape.iter().product::<usize>();
     vec(any::<i8>().prop_map(|i| i as f32), len..=len)
         .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap())
         .boxed()
 }
 
-fn shapes(rank: usize) -> BoxedStrategy<(Vec<usize>, Vec<usize>)> {
+pub fn shapes(rank: usize) -> BoxedStrategy<(Vec<usize>, Vec<usize>)> {
     vec((1usize..3, 0usize..3).prop_map(|(k, exceed)| (k, k + exceed)), rank..=rank)
         .prop_map(|v| v.into_iter().unzip())
         .boxed()

@@ -143,7 +143,6 @@ impl ConvUnary {
         wires: &[OutletId],
     ) -> TractResult<OutletId> {
         use crate::ops::matmul::mir_quant as qmm;
-        let b_fact = model.outlet_fact(wires[0])?.clone();
         let c_dt = self.q_params.as_ref().unwrap().0;
 
         let (input_shape, geo, output_shape, m, k, n, mmm) =
@@ -222,7 +221,7 @@ impl ConvUnary {
             model,
             name,
             res,
-            c_axis == b_fact.rank() - 1,
+            self.pool_spec.data_format.c_is_last(),
             k.to_dim(),
             a0,
             b0,
@@ -527,7 +526,9 @@ impl ConvUnary {
                 .map(|i| patch.tap_model(model, *i))
                 .collect::<TractResult<TVec<_>>>()?;
             inputs.insert(0, a);
-            let op: Box<dyn TypedOp> = if let Some(q_params) = &self.q_params {
+            // in Q case, the bias has to be injected inside the QMatMul (as it
+            // must be added before requantization)
+            let wire = if let Some(q_params) = &self.q_params {
                 let mut params = q_params.1.clone();
                 params.insert_input(0); // kernel as input
                 params.insert_input(2); // bias as input
@@ -538,36 +539,29 @@ impl ConvUnary {
                 }
                 let bias = patch.add_const(format!("{}.bias", &node.name), bias)?;
                 inputs.insert(2, bias);
-                Box::new(QMatMul {
+                let op = QMatMul {
                     a_trans,
                     b_trans: trans_data,
                     c_trans: trans_data,
-                    output_type: i32::datum_type(),
+                    output_type: q_params.0,
                     params: q_params.1.clone(),
-                })
+                };
+                patch.wire_node(&*node.name, op, &inputs)?[0]
             } else {
-                Box::new(MatMul { a_trans, b_trans: trans_data, c_trans: trans_data })
+                let op = MatMul { a_trans, b_trans: trans_data, c_trans: trans_data };
+                let mut wire = patch.wire_node(format!("{}.matmul", node.name), op, &inputs)?[0];
+                if let Some(b) = self.bias.as_ref().filter(|_| self.q_params.is_none()) {
+                    let mut bias_shape = tvec!(1; input_shape.rank());
+                    bias_shape[input_shape.c_axis()] = co;
+                    let b = b.clone().into_tensor().into_shape(&bias_shape)?;
+                    wire = patch.wire_node(
+                        format!("{}.bias", node.name),
+                        crate::ops::math::add::unary(b.into_arc_tensor()),
+                        &[wire],
+                    )?[0];
+                }
+                wire
             };
-            let mut wire = patch.wire_node(&*node.name, op, &inputs)?[0];
-            // only add bias in non Q form: passed it QMatMul in the quantized
-            // case
-            if let Some(b) = self.bias.as_ref().filter(|_| self.q_params.is_none()) {
-                let mut bias_shape = tvec!(1; input_shape.rank());
-                bias_shape[input_shape.c_axis()] = co;
-                let b = b.clone().into_tensor().into_shape(&bias_shape)?;
-                wire = patch.wire_node(
-                    format!("{}.bias", node.name),
-                    crate::ops::math::add::unary(b.into_arc_tensor()),
-                    &[wire],
-                )?[0];
-            }
-            if let Some(dt) = self.q_params.as_ref().map(|pair| pair.0) {
-                wire = patch.wire_node(
-                    format!("{}.cast_to", node.name),
-                    crate::ops::cast::cast(dt),
-                    &[wire],
-                )?[0];
-            }
             patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
             return Ok(Some(patch));
         }
@@ -650,11 +644,11 @@ impl TypedOp for ConvUnary {
         }
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
             bail!(
-                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
-                self.pool_spec.output_channel_override,
-                self.output_channels(),
-                self
-                );
+                    "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
+                    self.pool_spec.output_channel_override,
+                    self.output_channels(),
+                    self
+                    );
         }
         if let Some(bias) = &self.bias {
             if bias.len() != self.output_channels() {
@@ -973,12 +967,12 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
         return false;
     }
     let direct =
-        // no real rationale here, pure heuristic to force "right" pick in
-        // both hey_snips v3 and v4. just hope this will generalize ok
-        (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
-        // that one kind of make sense, better use direct that generate a huge
-        // im2col matrix (when both kernel and input are big)
-        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
+            // no real rationale here, pure heuristic to force "right" pick in
+            // both hey_snips v3 and v4. just hope this will generalize ok
+            (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
+            // that one kind of make sense, better use direct that generate a huge
+            // im2col matrix (when both kernel and input are big)
+            pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
     direct
 }
 

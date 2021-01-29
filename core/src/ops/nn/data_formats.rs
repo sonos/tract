@@ -63,6 +63,10 @@ impl DataFormat {
     pub fn has_n(&self) -> bool {
         *self == DataFormat::NHWC || *self == DataFormat::NCHW
     }
+
+    pub fn c_is_last(&self) -> bool {
+        *self == DataFormat::NHWC || *self == DataFormat::HWC
+    }
 }
 
 pub type DataShape = BaseDataShape<usize, TVec<usize>>;
