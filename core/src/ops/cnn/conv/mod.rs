@@ -2,6 +2,8 @@ mod depth_wise;
 mod im2col;
 #[cfg(test)]
 mod proptest;
+#[cfg(test)]
+mod proptest_q;
 mod q_sum_b;
 mod unary;
 

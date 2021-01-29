@@ -217,6 +217,7 @@ impl ConvUnary {
             c_axis,
             h_axis,
         )?;
+
         let res = qmm::compensate_zero_points(
             model,
             name,
@@ -503,7 +504,6 @@ impl ConvUnary {
             && self.pool_spec.stride(0) == 1
             && self.pool_spec.dilation(0) == 1
             && self.kernel.len() == self.input_channels() * self.output_channels()
-//            && self.q_params.is_none()
         {
             let ci = self.input_channels();
             let co = self.output_channels();
