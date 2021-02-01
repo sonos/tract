@@ -128,6 +128,8 @@ case "$PLATFORM" in
         echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu
         chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu
 
+        DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
+
         $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
         cargo dinghy --platform $PLATFORM test --release -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
