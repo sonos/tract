@@ -8,6 +8,7 @@ use crate::ops::nn::*;
 use crate::setup_test_logger;
 use proptest::collection::vec;
 use proptest::prelude::*;
+use proptest::test_runner::TestCaseResult;
 use tract_ndarray::prelude::*;
 use tract_ndarray::*;
 
@@ -143,11 +144,10 @@ impl QConvProblem {
         Ok(output.remove(0).into_tensor().into_array::<i8>()?)
     }
 
-    fn check(&self) {
-        eprintln!("##### DECLUTTERED ########");
-        assert_eq!(self.tract(false).unwrap(), self.reference());
-        eprintln!("#####  OPTIMIZED  ########");
-        assert_eq!(self.tract(true).unwrap(), self.reference());
+    fn check(&self) -> TestCaseResult {
+        prop_assert_eq!(self.tract(false).unwrap(), self.reference());
+        prop_assert_eq!(self.tract(true).unwrap(), self.reference());
+        Ok(())
     }
 }
 
@@ -202,7 +202,7 @@ impl Arbitrary for QConvProblem {
 proptest::proptest! {
     #[test]
     fn prop(pb in any::<QConvProblem>()) {
-        pb.check()
+        pb.check().unwrap()
     }
 }
 
@@ -218,7 +218,7 @@ fn trivial_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check();
+    .check().unwrap();
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn trivial_1() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check();
+    .check().unwrap();
 }
 
 #[test]
@@ -248,7 +248,7 @@ fn trivial_2() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check();
+    .check().unwrap();
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn shape_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check();
+    .check().unwrap();
 }
 
 #[test]
@@ -278,7 +278,7 @@ fn batch_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check();
+    .check().unwrap();
 }
 
 #[test]
@@ -293,7 +293,7 @@ fn a0_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check();
+    .check().unwrap();
 }
 
 #[test]
@@ -310,7 +310,7 @@ fn scale_0() {
         bias: None,
         qp,
     }
-    .check();
+    .check().unwrap();
 }
 
 #[test]
@@ -326,7 +326,7 @@ fn group_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check();
+    .check().unwrap();
 }
 
 fn test_conv_q_and_bias(a0: i32, b0: i32, c0: i32, c_scale: f32, k: i8, i: i8, bias: i32) {
