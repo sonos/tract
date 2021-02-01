@@ -366,6 +366,7 @@ pub mod scale {
         fn test_scale(a: i8, b: i8, scale: f32) {
             let expected = (((a as i32) * (b as i32)) as f32) / scale;
             let expected = expected.abs().round() * expected.signum();
+            let expected = (expected as i32).max(-127).min(128);
             let expected = rctensor2(&[[expected as i8]]);
 
             let input = tvec!(tensor2(&[[b]]));
