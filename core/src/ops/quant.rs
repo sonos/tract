@@ -394,7 +394,7 @@ pub mod scale {
 
         proptest! {
             #[test]
-            fn prop(a in any::<i8>(), b in any::<i8>(), scale in 0f32..1000.) {
+            fn prop(a in any::<i8>(), b in any::<i8>(), scale in 0.00001f32..1000.) {
                 test_scale(a, b, scale);
             }
         }
