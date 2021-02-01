@@ -279,11 +279,23 @@ store_strides_i32:
     cmp         x7, #4
     beq         .store_vec_strides_i32
 
+    cmp         x6, #1
+    beq         .store_vec_strides_contig
+
     {% for reg in (0..1) %}
         {% for lane in (0..3) %}
             st1 { v{{reg| plus:16}}.b }[{{lane|times:4}}], [ x5 ], x6
         {% endfor %}
     {% endfor %}
+
+    mov         x0, #0
+    b           .return
+
+.store_vec_strides_contig:
+    xtn         v16.4h, v16.4s
+    xtn2        v16.8h, v17.4s
+    xtn         v16.8b, v16.8h
+    st1         {v16.8b}, [ x5 ]
 
     mov         x0, #0
     b           .return
