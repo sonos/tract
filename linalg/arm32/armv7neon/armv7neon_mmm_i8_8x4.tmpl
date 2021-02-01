@@ -803,7 +803,7 @@ armv7neon_mmm_i8_8x4:
             {% capture reg %}{{chunk | times: 4 | plus: 8 | plus: q }}{% endcapture %}
             vclt.s32        q{{sign}}, q{{reg}}, #0
             vabs.s32        q{{reg}}, q{{reg}}
-            vqrdmulh.s32    q{{reg}}, q{{reg}}, d0[0]
+            vqdmulh.s32     q{{reg}}, q{{reg}}, d0[0]
         {% endfor %}
         {% for q in (0..3) %}
             {% capture sign %}{{ q | plus:4 }}{% endcapture %}

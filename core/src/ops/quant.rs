@@ -342,7 +342,8 @@ fn scale_by<T: Datum + AsPrimitive<f32>>(b: T, a: f32) -> T
 where
     f32: AsPrimitive<T>,
 {
-    (b.as_() * a).round().as_()
+    let b = b.as_();
+    ((b.abs() * a).round() * b.signum()).as_()
 }
 
 pub mod scale {
@@ -355,34 +356,57 @@ pub mod scale {
     pub fn unary(t: Arc<Tensor>) -> UnaryOp {
         UnaryOp::new(Box::new(super::Scale), t)
     }
-}
 
-#[cfg(test)]
-mod test {
-    use crate::internal::*;
-    use crate::ops;
-    use proptest::prelude::*;
+    #[cfg(test)]
+    mod test {
+        use crate::internal::*;
+        use crate::ops;
+        use proptest::prelude::*;
 
-    fn test_scale(a: i8, b: i8, scale: f32) {
-        let input = tvec!(tensor2(&[[b]]));
-        let mut model = TypedModel::default();
-        let a = model.add_const("a", tensor2(&[[a]])).unwrap();
-        let b = model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
-        let bias = model.add_const("bias", tensor0(0i32)).unwrap();
-        let mut qp = ops::matmul::QParams::noop_static(i8::datum_type());
-        qp.c_scale = ops::matmul::QParam::Static(rctensor0(scale));
-        let op = ops::matmul::QMatMul::new(false, false, false, i8::datum_type(), qp);
-        let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
-        model.set_output_outlets(&*output).unwrap();
-        let plain = model.clone().into_runnable().unwrap();
-        let optim = model.into_optimized().unwrap().into_runnable().unwrap();
-        assert_eq!(optim.run(input.clone()).unwrap(), plain.run(input).unwrap());
-    }
+        fn test_scale(a: i8, b: i8, scale: f32) {
+            let expected = (((a as i32) * (b as i32)) as f32) / scale;
+            let expected = expected.abs().round() * expected.signum();
+            let expected = rctensor2(&[[expected as i8]]);
 
-    proptest! {
+            let input = tvec!(tensor2(&[[b]]));
+            let mut model = TypedModel::default();
+            let a = model.add_const("a", tensor2(&[[a]])).unwrap();
+            let b = model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
+            let bias = model.add_const("bias", tensor0(0i32)).unwrap();
+            let mut qp = ops::matmul::QParams::noop_static(i8::datum_type());
+            qp.c_scale = ops::matmul::QParam::Static(rctensor0(scale));
+            let op = ops::matmul::QMatMul::new(false, false, false, i8::datum_type(), qp);
+            let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();
+            model.set_output_outlets(&*output).unwrap();
+
+            let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
+            assert_eq!(&plain[0], &expected);
+
+            let optim = model
+                .into_optimized()
+                .unwrap()
+                .into_runnable()
+                .unwrap()
+                .run(input.clone())
+                .unwrap();
+            assert_eq!(&optim[0], &expected);
+        }
+
+        proptest! {
+            #[test]
+            fn prop(a in any::<i8>(), b in any::<i8>(), scale in 0f32..1000.) {
+                test_scale(a, b, scale);
+            }
+        }
+
         #[test]
-        fn prop(a in any::<i8>(), b in any::<i8>(), scale in 0f32..1000.) {
-            test_scale(a, b, scale);
+        fn t1() {
+            test_scale(-117, 15, 37.753822);
+        }
+
+        #[test]
+        fn t2() {
+            test_scale(-4, -60, 475.21674);
         }
     }
 }
