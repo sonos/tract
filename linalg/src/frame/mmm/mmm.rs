@@ -221,7 +221,6 @@ where
         let tmpc = tmp_c_storage.wrap(&tmpc_view);
 
         let ref linear = LinearSpec::k(self.k);
-        let non_linear = non_linear.to_vec();
         // FIXME prefetch a are a bit weird
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
