@@ -52,7 +52,6 @@ impl DeconvUnary {
                 false,
                 false,
                 false,
-                None,
             ),
             &reshaped,
         )?;
