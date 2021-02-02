@@ -162,27 +162,26 @@ impl<'s, 't> MatrixStore<'s, 't> {
         nr: usize,
     ) {
         let (row_byte_stride, col_byte_stride) = self.strides();
-        let mut dst = self.tensor.as_ptr_unchecked::<u8>().offset(
+        let dst = self.tensor.as_ptr_unchecked::<u8>().offset(
             (row_byte_stride as usize * (down * mr) + col_byte_stride as usize * (right * nr))
                 as isize,
         );
+        let tile = tile.as_ptr_unchecked::<T>();
         match self.spec {
             MatrixStoreSpec::Strides { .. } | MatrixStoreSpec::View { .. } => {
-                for y in 0..height {
-                    let mut row_dst = dst;
-                    for x in 0..width {
-                        let value = *tile.as_ptr_unchecked::<T>().offset((y + x * mr) as isize);
-                        *(row_dst as *mut T) = value;
-                        row_dst = row_dst.offset(col_byte_stride);
+                for y in 0..height as isize {
+                    for x in 0..width as isize {
+                        let value = tile.offset(y + x * mr as isize);
+                        let dst = dst.offset((y * row_byte_stride + x * col_byte_stride) as isize);
+                        *(dst as *mut T) = *value;
                     }
-                    dst = dst.offset(row_byte_stride);
                 }
             }
             MatrixStoreSpec::VecStride { .. } => {
-                for y in 0..height {
-                    let value = *tile.as_ptr_unchecked::<T>().offset(y as isize);
+                for y in 0..height as isize {
+                    let value = *tile.offset(y as isize);
+                    let dst = dst.offset((y * row_byte_stride) as isize);
                     *(dst as *mut T) = value;
-                    dst = dst.offset(row_byte_stride);
                 }
             }
             _ => unimplemented!(),
