@@ -18,10 +18,7 @@ pub fn output_shape<D: DimLike>(
 ) -> TractResult<TVec<D>> {
     let x_shape = data_format.shape(x_shape)?;
     let spatial_input_shape = x_shape.hw_dims();
-    let spatial_kernel_shape = match kernel_format {
-        KernelFormat::OIHW => &kernel_shape[2..],
-        KernelFormat::HWIO => &kernel_shape[..kernel_shape.len() - 2],
-    };
+    let spatial_kernel_shape = kernel_format.spatial_shape(kernel_shape);
     let ones = tvec!(1; spatial_input_shape.len());
     let spatial_output_shape =
         padding.compute_for_deconv(&spatial_input_shape, &spatial_kernel_shape, &ones, &ones);

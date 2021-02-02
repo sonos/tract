@@ -87,6 +87,8 @@ test_conv_with_strides_and_asymmetric_padding input:x
 test_conv_with_strides_no_padding input:x
 test_conv_with_strides_padding input:x
 test_convtranspose not-nnef input:X
+test_convtranspose_1d not-nnef input:X
+test_convtranspose_3d not-nnef input:X
 test_cos
 test_cos_example
 test_cosh

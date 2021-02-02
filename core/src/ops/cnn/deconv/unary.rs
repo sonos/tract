@@ -29,9 +29,8 @@ impl DeconvUnary {
         target: &mut TypedModel,
         input: OutletId,
     ) -> TractResult<TVec<OutletId>> {
+        use std::iter::once;
         let input_shape = target.outlet_fact(input)?.shape.clone();
-        assert_eq!(input_shape.rank(), 4);
-        assert_eq!(self.kernel.rank(), 4);
         assert_eq!(self.kernel_format, KernelFormat::OIHW);
         assert_eq!(self.data_format, DataFormat::NCHW);
         let shape = self.data_format.shape(input_shape.to_tvec())?;
@@ -41,18 +40,28 @@ impl DeconvUnary {
             AxisOp::Reshape(shape.h_axis(), shape.hw_dims().into(), tvec!(geo_dim)),
             &[input],
         )?;
-        let kernel_t = self.kernel.clone().into_tensor().permute_axes(&[1, 2, 3, 0])?;
-        let kernel_shape =
-            &[1, kernel_t.shape()[0] * kernel_t.shape()[1] * kernel_t.shape()[2], kernel_t.shape()[3]];
+
+        // kernel from OIHW to [1, IHW, O]
+        let kernel_spatial_shape = self.kernel_format.spatial_shape(self.kernel.shape());
+        let kernel_spatial_len: usize = kernel_spatial_shape.iter().product();
+
+        let permutation_to_ihw_o: TVec<usize> = match self.kernel_format {
+            KernelFormat::OIHW => (1..self.kernel.rank()).chain(once(0)).collect(),
+            KernelFormat::HWIO => once(self.kernel.rank() - 2)
+                .chain(0..self.kernel.rank() - 2)
+                .chain(once(self.kernel.rank() - 1))
+                .collect(),
+        };
+        let kernel_t = self.kernel.clone().into_tensor().permute_axes(&permutation_to_ihw_o)?;
+        let kernel_shape = &[
+            1,
+            self.kernel_format.i(self.kernel.shape()) * kernel_spatial_len,
+            kernel_t.shape()[kernel_t.rank() - 1],
+        ];
         let kernel_t = kernel_t.into_shape(kernel_shape)?;
         let gemm = target.wire_node(
             format!("{}.gemm", name),
-            crate::ops::matmul::MatMulUnary::new(
-                kernel_t.into_arc_tensor(),
-                false,
-                false,
-                false,
-            ),
+            crate::ops::matmul::MatMulUnary::new(kernel_t.into_arc_tensor(), false, false, false),
             &reshaped,
         )?;
         let deconv_sum = target.wire_node(
@@ -92,7 +101,11 @@ impl EvalOp for DeconvUnary {
             model.add_source("source", TypedFact::dt_shape(input.datum_type(), input.shape()))?;
         let output = self.wire_with_deconv_sum("adhoc", &mut model, source)?;
         model.set_output_outlets(&*output)?;
-        Ok(tvec!(model.into_runnable()?.run(tvec!(input.into_tensor()))?.remove(0).into_arc_tensor()))
+        Ok(tvec!(model
+            .into_runnable()?
+            .run(tvec!(input.into_tensor()))?
+            .remove(0)
+            .into_arc_tensor()))
     }
 }
 
@@ -103,7 +116,11 @@ impl TypedOp for DeconvUnary {
         Ok(tvec!(TypedFact::dt_shape(x_fact.datum_type, &output_shape)))
     }
 
-    fn codegen(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
         let input = patch.tap_model(model, node.inputs[0])?;
         let output = self.wire_with_deconv_sum(&node.name, &mut patch, input)?;

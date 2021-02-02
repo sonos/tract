@@ -101,6 +101,8 @@ test_conv_with_strides_no_padding input:x
 test_conv_with_strides_padding input:x
 test_convinteger_with_padding                                                       input:x not-nnef
 test_convtranspose not-nnef input:X
+test_convtranspose_1d not-nnef input:X
+test_convtranspose_3d not-nnef input:X
 test_cos
 test_cos_example
 test_cosh
@@ -198,7 +200,7 @@ test_lstm_with_peepholes
 test_matmul_2d
 test_matmul_3d
 test_matmul_4d
-test_matmulinteger                                                                   not-nnef
+test_matmulinteger
 test_max_example
 test_max_one_input
 test_max_two_inputs
