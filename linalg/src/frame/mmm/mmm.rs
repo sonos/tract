@@ -27,7 +27,7 @@ pub trait MatMatMul:
         cols_offsets: &[isize],
     ) -> MatrixStoreSpec;
     unsafe fn b_vec_from_data_and_stride(&self, dt: DatumType, stride: isize) -> MatrixStoreSpec;
-    unsafe fn b_vec_from_data(&self, dt:DatumType) -> MatrixStoreSpec;
+    unsafe fn b_vec_from_data(&self, dt: DatumType) -> MatrixStoreSpec;
 
     unsafe fn c_view(&self) -> MatrixStoreSpec;
     unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> MatrixStoreSpec;
@@ -50,7 +50,7 @@ pub trait MatMatMul:
 
 dyn_clone::clone_trait_object!(MatMatMul);
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MatMatMulImpl<K, TC, TI>
 where
     TC: Copy + Debug + 'static,
@@ -61,6 +61,7 @@ where
     pub k: usize,
     pub n: usize,
 
+    prefetch: Option<&'static (dyn Fn(*const u8, usize) + Send + Sync)>,
     phantom: PhantomData<(K, TC, TI)>,
 }
 
@@ -80,6 +81,17 @@ where
 {
 }
 
+impl<K, TC, TI> fmt::Debug for MatMatMulImpl<K, TC, TI>
+where
+    TC: Copy + Debug + 'static,
+    TI: Copy + Add + Mul + Zero + Debug + 'static,
+    K: MatMatMulKer<TI> + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MMM ({})", K::name())
+    }
+}
+
 impl<K, TC, TI> MatMatMulImpl<K, TC, TI>
 where
     TC: Copy + Debug + 'static,
@@ -87,7 +99,21 @@ where
     K: MatMatMulKer<TI> + 'static,
 {
     pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TC, TI> {
-        MatMatMulImpl { m, k, n, phantom: PhantomData }
+        MatMatMulImpl { m, k, n, prefetch: crate::ops().prefetch, phantom: PhantomData }
+    }
+
+    #[inline]
+    fn prefetch(&self, a: &PanelStore, b: &PanelStore) {
+        if let Some(prefetch) = self.prefetch {
+            if let PanelStore::Packed { ptr } = a {
+                prefetch(*ptr as *const u8, 512);
+            }
+            match b {
+                PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
+                PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
+                _ => (),
+            }
+        }
     }
 }
 
@@ -201,7 +227,6 @@ where
         let mr = K::mr();
         let nr = K::nr();
         anyhow::ensure!(c.tensor.datum_type() == TC::datum_type());
-        let prefetch = crate::ops().prefetch.as_ref();
         let m = self.m;
         let n = self.n;
         let mut scratch = ScratchSpaceFusedNonLinear::default();
@@ -211,19 +236,11 @@ where
         let tmpc = tmp_c_storage.wrap(&tmpc_view);
 
         let ref linear = LinearSpec::k(self.k);
-        // FIXME prefetch a are a bit weird
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
-                if let PanelStore::Packed { ptr } = a {
-                    prefetch(*ptr as *const u8, 512);
-                }
                 let ref b = b.panel_b(nr, ib, nr);
-                match b {
-                    PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
-                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
-                    _ => (),
-                }
+                self.prefetch(a, b);
                 let ref direct_c = c.tile_c(ia, ib, mr, nr);
                 let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -236,14 +253,8 @@ where
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
             if let MatrixStoreSpec::VecStride { .. } = c.spec {
-                if let PanelStore::Packed { ptr } = a {
-                    prefetch(*ptr as *const u8, 512);
-                }
                 let ref b = b.panel_b(nr, n / nr, n % nr);
-                match b {
-                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
-                    _ => (),
-                }
+                self.prefetch(a, b);
                 let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr);
                 let ref direct_c = c.tile_c(ia, 0, mr, nr);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -255,15 +266,8 @@ where
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             } else if n % nr != 0 {
-                if let PanelStore::Packed { ptr } = a {
-                    prefetch(*ptr as *const u8, 512);
-                }
                 let ref b = b.panel_b(nr, n / nr, n % nr);
-                match b {
-                    PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
-                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
-                    _ => (),
-                }
+                self.prefetch(a, b);
                 let ref tmp_tile_c = tmpc.tile_c(0, 0, mr, nr);
                 let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
@@ -281,15 +285,8 @@ where
             let ref panel_a = a.panel_a(m / mr);
             let ref tmp_tile_c = tmpc.tile_c(0, 0, mr, nr);
             for ib in 0..n / nr {
-                if let PanelStore::Packed { ptr } = panel_a {
-                    prefetch(*ptr as *const u8, 512);
-                }
                 let ref b = b.panel_b(nr, ib, nr);
-                match b {
-                    PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
-                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
-                    _ => (),
-                }
+                self.prefetch(panel_a, b);
                 let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
@@ -302,16 +299,9 @@ where
                 c.set_from_tile::<TC>(m / mr, ib, m % mr, nr, tmpc.tensor, mr, nr);
             }
             if n % nr != 0 {
-                // FIXME: can we write straight to C if n == 1 ?
-                if let PanelStore::Packed { ptr } = panel_a {
-                    prefetch(*ptr as *const u8, 512);
-                }
                 let ref b = b.panel_b(nr, n / nr, n % nr);
-                match b {
-                    PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
-                    PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
-                    _ => (),
-                }
+                self.prefetch(panel_a, b);
+                // FIXME: can we write straight to C if n == 1 ?
                 let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,

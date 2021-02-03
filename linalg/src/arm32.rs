@@ -26,24 +26,22 @@ pub fn plug(ops: &mut Ops) {
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
         ops.mmm_f32 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4, f32, f32, f32, f32>::new(m, k, n))
+            Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4, f32, f32>::new(m, k, n))
         });
         ops.qmmm_i8_i8 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x8x4, i8, i8, i8, i32>::new(m, k, n))
+            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x8x4, i8, i32>::new(m, k, n))
         });
         ops.qmmm_i8_i32 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8xI32x8x4, i8, i8, i32, i32>::new(
-                m, k, n,
-            ))
+            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8xI32x8x4, i32, i32>::new(m, k, n))
         });
         ops.sigmoid_f32 =
             Box::new(|| Box::new(SigmoidImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(TanhImpl::<armv7neon::TanhF32x4n, f32>::new()));
-        ops.prefetch = Box::new(armv7neon::prefetch);
+        ops.prefetch = Some(&armv7neon::prefetch);
     } else {
         log::info!("armvfpv2 activated for smmm");
         ops.mmm_f32 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armvfpv2::MatMatMulF32x4x4, f32, f32, f32, f32>::new(m, k, n))
+            Box::new(MatMatMulImpl::<armvfpv2::MatMatMulF32x4x4, f32, f32>::new(m, k, n))
         });
     }
 }
