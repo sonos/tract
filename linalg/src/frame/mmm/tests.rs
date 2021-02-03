@@ -274,7 +274,7 @@ where
     usize: AsPrimitive<TI>,
 {
     assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
+    let op = MatMatMulImpl::<K, TC, TI>::new(m, k, n);
     unsafe {
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
@@ -328,8 +328,8 @@ where
     usize: AsPrimitive<TI>,
 {
     unsafe {
-        let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, 1);
-        op.b_vec_from_data_and_stride(1);
+        let op = MatMatMulImpl::<K, TC, TI>::new(m, k, 1);
+        op.b_vec_from_data_and_stride(b.datum_type(), 1);
         op.c_vec_from_data_and_stride(1);
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
@@ -340,7 +340,7 @@ where
 
         op.run(
             &op.a_packed().wrap(&packed_a.view()),
-            &op.b_vec_from_data().wrap(&b.view()),
+            &op.b_vec_from_data(b.datum_type()).wrap(&b.view()),
             &mut op.c_vec_from_data().wrap(&found.view_mut()),
             &[],
         )
@@ -379,7 +379,7 @@ where
 {
     let a = tensor1(&*vec![TA::one(); m * k]).into_shape(&[m, k]).unwrap();
     let b = tensor1(&*vec![TB::one(); k * n]).into_shape(&[k, n]).unwrap();
-    let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(m, k, n);
+    let op = MatMatMulImpl::<K, TC, TI>::new(m, k, n);
 
     let mut packed_a =
         Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
@@ -630,7 +630,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
         usize: AsPrimitive<TI>,
     {
         unsafe {
-            let op = MatMatMulImpl::<K, TA, TB, TC, TI>::new(self.m(), self.k(), self.n());
+            let op = MatMatMulImpl::<K, TC, TI>::new(self.m(), self.k(), self.n());
             let mut packed_a = Tensor::uninitialized_aligned::<TA>(
                 &[op.a_pack().len(self.m())],
                 op.a_pack().alignment(),
@@ -643,8 +643,12 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                 .unwrap();
             op.run(
                 &op.a_packed().wrap(&packed_a.view()),
-                &op.b_from_data_and_offsets(&self.data_rows_offsets(), &self.data_cols_offsets())
-                    .wrap(&self.data.view()),
+                &op.b_from_data_and_offsets(
+                    TB::datum_type(),
+                    &self.data_rows_offsets(),
+                    &self.data_cols_offsets(),
+                )
+                .wrap(&self.data.view()),
                 &mut op.c_from_data_and_strides(self.n() as isize, 1).wrap(&found.view_mut()),
                 &[],
             )

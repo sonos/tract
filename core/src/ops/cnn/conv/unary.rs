@@ -357,7 +357,8 @@ impl ConvUnary {
                     .map(move |x| x + (ici * channel_stride) as isize)
             })
             .collect();
-        let b_storage = mmm.b_from_data_and_offsets(&kernel_offsets, &data_offsets);
+        let b_storage =
+            mmm.b_from_data_and_offsets(b_fact.datum_type, &kernel_offsets, &data_offsets);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
 
         let wire = self.wire_lir_matmatmul(
