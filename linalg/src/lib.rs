@@ -39,7 +39,7 @@ pub struct Ops {
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn sigmoid::Sigmoid<f32>> + Send + Sync>,
     pub tanh_f32: Box<dyn Fn() -> Box<dyn tanh::Tanh<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
-    pub(crate) prefetch: Box<dyn Fn(*const u8, usize) + Send + Sync>,
+    pub(crate) prefetch: Option<&'static (dyn Fn(*const u8, usize) + Sync + Send)>,
 }
 
 impl Ops {
@@ -102,7 +102,7 @@ pub fn generic() -> Ops {
         sigmoid_f32: Box::new(|| Box::new(sigmoid::SigmoidImpl::<generic::SSigmoid4, f32>::new())),
         tanh_f32: Box::new(|| Box::new(tanh::TanhImpl::<generic::STanh4, f32>::new())),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
-        prefetch: Box::new(|_, _| {}),
+        prefetch: None,
     }
 }
 
