@@ -294,11 +294,10 @@ impl MatMulUnary {
             });
         unsafe {
             let b_storage = if n == 1 {
-                mm.b_vec_from_data_and_stride(if self.b_trans {
-                    1
-                } else {
-                    *b_shape.last().unwrap() as isize
-                })
+                mm.b_vec_from_data_and_stride(
+                    b_dt,
+                    if self.b_trans { 1 } else { *b_shape.last().unwrap() as isize },
+                )
             } else {
                 let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
                 packed_b_shape.push(mm.b_pack().len(n));

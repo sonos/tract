@@ -53,15 +53,13 @@ impl<TI: Copy> Default for ScratchSpaceFusedNonLinear<TI> {
 }
 
 impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
-    pub unsafe fn for_tile<TA, TB, TC, K: MatMatMulKer<TI>>(
+    pub unsafe fn for_tile<TC, K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
         down: usize,
         right: usize,
     ) -> *const FusedKerSpec<TI>
     where
-        TA: Datum + Copy,
-        TB: Datum + Copy,
         TC: Datum + Copy,
         TI: Datum + Copy + Debug + Zero,
     {

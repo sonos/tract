@@ -59,7 +59,7 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
             be,
             &*mm,
             &mm.a_packed().wrap(&pa.view()),
-            &mm.b_vec_from_data().wrap(&pb.view()),
+            &mm.b_vec_from_data(dt).wrap(&pb.view()),
             &mut mm.c_view().wrap(&mut c.view_mut()),
             cold,
         );
@@ -106,11 +106,12 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
             Tensor::zero_aligned::<f32>(&[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
         let pb = Tensor::zero_aligned::<f32>(&[b_len], mm.b_pack().alignment()).unwrap();
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
-        mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
+        mm.b_from_data_and_offsets(pb.datum_type(), &rows_offsets, &cols_offsets);
         be.iter(move || {
             mm.run(
                 &mm.a_packed().wrap(&pa.view()),
-                &mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets).wrap(&pb.view()),
+                &mm.b_from_data_and_offsets(c.datum_type(), &rows_offsets, &cols_offsets)
+                    .wrap(&pb.view()),
                 &mut mm.c_view().wrap(&c.view_mut()),
                 &[],
             )
@@ -126,11 +127,12 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
             Tensor::zero_aligned::<i8>(&[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
         let pb = Tensor::zero_aligned::<i8>(&[b_len], mm.b_pack().alignment()).unwrap();
         let mut c = Tensor::zero::<i8>(&[m, n]).unwrap();
-        mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets);
+        mm.b_from_data_and_offsets(pb.datum_type(), &rows_offsets, &cols_offsets);
         be.iter(move || {
             mm.run(
                 &mm.a_packed().wrap(&pa.view()),
-                &mm.b_from_data_and_offsets(&rows_offsets, &cols_offsets).wrap(&pb.view()),
+                &mm.b_from_data_and_offsets(pb.datum_type(), &rows_offsets, &cols_offsets)
+                    .wrap(&pb.view()),
                 &mut mm.c_view().wrap(&c.view_mut()),
                 &[],
             )

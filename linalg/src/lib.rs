@@ -68,54 +68,36 @@ impl Ops {
 pub fn generic() -> Ops {
     Ops {
         mmm_f32: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<
-                generic::GenericMmm4x4<f32, f32, f32, f32>,
-                f32,
-                f32,
-                f32,
-                f32,
-            >::new(m, k, n))
+            Box::new(
+                mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32>::new(
+                    m, k, n,
+                ),
+            )
         }),
         qmmm_i8_i32: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<
-                     generic::GenericMmm4x4<i8, i8, i32, i32>,
-                     i8,
-                     i8,
-                     i32,
-                     i32,
-                     >::new(m, k, n))
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, i8, i32, i32>, i32, i32>::new(
+                m, k, n,
+            ))
         }),
         qmmm_i8_u8_i32: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<
-                generic::GenericMmm4x4<i8, u8, i32, i32>,
-                i8,
-                u8,
-                i32,
-                i32,
-            >::new(m, k, n))
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, u8, i32, i32>, i32, i32>::new(
+                m, k, n,
+            ))
         }),
         qmmm_u8_i32: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<
-                     generic::GenericMmm4x4<u8, u8, i32, i32>,
-                     u8,
-                     u8,
-                     i32,
-                     i32,
-                     >::new(m, k, n))
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<u8, u8, i32, i32>, i32, i32>::new(
+                m, k, n,
+            ))
         }),
         qmmm_u8_u8: Box::new(|m, k, n| {
-            Box::new(
-                mmm::MatMatMulImpl::<generic::GenericMmm4x4<u8, u8, u8, i32>, u8, u8, u8, i32>::new(
-                    m, k, n,
-                ),
-            )
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<u8, u8, u8, i32>, u8, i32>::new(
+                m, k, n,
+            ))
         }),
         qmmm_i8_i8: Box::new(|m, k, n| {
-            Box::new(
-                mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, i8, i8, i32>, i8, i8, i8, i32>::new(
-                    m, k, n,
-                ),
-            )
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, i8, i8, i32>, i8, i32>::new(
+                m, k, n,
+            ))
         }),
         sigmoid_f32: Box::new(|| Box::new(sigmoid::SigmoidImpl::<generic::SSigmoid4, f32>::new())),
         tanh_f32: Box::new(|| Box::new(tanh::TanhImpl::<generic::STanh4, f32>::new())),
@@ -131,30 +113,22 @@ pub fn best() -> Ops {
     {
         if is_x86_feature_detected!("fma") {
             ops.mmm_f32 = Box::new(|m, k, n| {
-                Box::new(
-                    mmm::MatMatMulImpl::<x86_64_fma::mmm::MatMatMulF32x16x6, f32, f32, f32, f32>::new(
-                        m, k, n,
-                        ),
-                        )
+                Box::new(mmm::MatMatMulImpl::<x86_64_fma::mmm::MatMatMulF32x16x6, f32, f32>::new(
+                    m, k, n,
+                ))
             });
             log::info!("mmm_f32 x86_64/fma activated");
         }
         if is_x86_feature_detected!("avx2") {
             ops.qmmm_i8_i8 = Box::new(|m, k, n| {
-                Box::new(
-                    mmm::MatMatMulImpl::<x86_64_fma::mmm::MatMatMulI8x8x8, i8, i8, i8, i32>::new(
-                        m, k, n,
-                    ),
-                )
+                Box::new(mmm::MatMatMulImpl::<x86_64_fma::mmm::MatMatMulI8x8x8, i8, i32>::new(
+                    m, k, n,
+                ))
             });
             ops.qmmm_i8_i32 = Box::new(|m, k, n| {
-                Box::new(mmm::MatMatMulImpl::<
-                    x86_64_fma::mmm::MatMatMulI8xI32x8x8,
-                    i8,
-                    i8,
-                    i32,
-                    i32,
-                >::new(m, k, n))
+                Box::new(mmm::MatMatMulImpl::<x86_64_fma::mmm::MatMatMulI8xI32x8x8, i32, i32>::new(
+                    m, k, n,
+                ))
             });
             log::info!("mmm_i8_i8 and mmm_i8_i32 x86_64/fma activated");
         }

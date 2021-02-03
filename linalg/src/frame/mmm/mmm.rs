@@ -22,11 +22,12 @@ pub trait MatMatMul:
     unsafe fn b_packed(&self) -> MatrixStoreSpec;
     unsafe fn b_from_data_and_offsets(
         &self,
+        dt: DatumType,
         rows_offsets: &[isize],
         cols_offsets: &[isize],
     ) -> MatrixStoreSpec;
-    unsafe fn b_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec;
-    unsafe fn b_vec_from_data(&self) -> MatrixStoreSpec;
+    unsafe fn b_vec_from_data_and_stride(&self, dt: DatumType, stride: isize) -> MatrixStoreSpec;
+    unsafe fn b_vec_from_data(&self, dt:DatumType) -> MatrixStoreSpec;
 
     unsafe fn c_view(&self) -> MatrixStoreSpec;
     unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> MatrixStoreSpec;
@@ -50,10 +51,8 @@ pub trait MatMatMul:
 dyn_clone::clone_trait_object!(MatMatMul);
 
 #[derive(Debug, Clone)]
-pub struct MatMatMulImpl<K, TA, TB, TC, TI>
+pub struct MatMatMulImpl<K, TC, TI>
 where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
@@ -62,46 +61,38 @@ where
     pub k: usize,
     pub n: usize,
 
-    phantom: PhantomData<(K, TA, TB, TC, TI)>,
+    phantom: PhantomData<(K, TC, TI)>,
 }
 
-unsafe impl<K, TA, TB, TC, TI> Send for MatMatMulImpl<K, TA, TB, TC, TI>
+unsafe impl<K, TC, TI> Send for MatMatMulImpl<K, TC, TI>
 where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
 }
 
-unsafe impl<K, TA, TB, TC, TI> Sync for MatMatMulImpl<K, TA, TB, TC, TI>
+unsafe impl<K, TC, TI> Sync for MatMatMulImpl<K, TC, TI>
 where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
 }
 
-impl<K, TA, TB, TC, TI> MatMatMulImpl<K, TA, TB, TC, TI>
+impl<K, TC, TI> MatMatMulImpl<K, TC, TI>
 where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
-    pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TA, TB, TC, TI> {
+    pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TC, TI> {
         MatMatMulImpl { m, k, n, phantom: PhantomData }
     }
 }
 
-impl<K, TA, TB, TC, TI> MatMatMul for MatMatMulImpl<K, TA, TB, TC, TI>
+impl<K, TC, TI> MatMatMul for MatMatMulImpl<K, TC, TI>
 where
-    TA: Datum + Copy + Zero + Debug + 'static + AsPrimitive<TI>,
-    TB: Datum + Copy + Zero + Debug + 'static + AsPrimitive<TI>,
     TC: Datum + Copy + Debug + 'static + Bounded + AsPrimitive<TI>,
     TI: Datum + Copy + Add + Mul<Output = TI> + Zero + Debug + 'static + Neg<Output = TI>,
     K: MatMatMulKer<TI> + 'static,
@@ -130,6 +121,7 @@ where
 
     unsafe fn b_from_data_and_offsets(
         &self,
+        dt: DatumType,
         rows_offsets: &[isize],
         cols_offsets: &[isize],
     ) -> MatrixStoreSpec {
@@ -138,7 +130,7 @@ where
         // repeat the last offset to get to the panel boundary (pad to next multiple of nr)
         let wanted = (cols_offsets.len() + K::nr() - 1) / K::nr() * K::nr();
         let mut col_byte_offsets: Vec<_> =
-            cols_offsets.iter().map(|o| o * std::mem::size_of::<TB>() as isize).collect();
+            cols_offsets.iter().map(|o| o * dt.size_of() as isize).collect();
         while col_byte_offsets.len() < wanted {
             col_byte_offsets.push(*col_byte_offsets.last().unwrap());
         }
@@ -147,7 +139,7 @@ where
         row_byte_offsets.set_len(rows_offsets.len() + 4);
         for i in 0..rows_offsets.len() {
             *row_byte_offsets.get_unchecked_mut(i) =
-                *rows_offsets.get_unchecked(i) * std::mem::size_of::<TB>() as isize;
+                *rows_offsets.get_unchecked(i) * dt.size_of() as isize;
         }
         let pad = *row_byte_offsets.get_unchecked(rows_offsets.len() - 1);
         for i in 0..4 {
@@ -156,16 +148,16 @@ where
         MatrixStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() }
     }
 
-    unsafe fn b_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec {
+    unsafe fn b_vec_from_data_and_stride(&self, dt: DatumType, stride: isize) -> MatrixStoreSpec {
         MatrixStoreSpec::VecStride {
-            byte_stride: stride * std::mem::size_of::<TB>() as isize,
+            byte_stride: stride * dt.size_of() as isize,
             mr: K::mr(),
             nr: K::nr(),
         }
     }
 
-    unsafe fn b_vec_from_data(&self) -> MatrixStoreSpec {
-        self.b_vec_from_data_and_stride(1)
+    unsafe fn b_vec_from_data(&self, dt: DatumType) -> MatrixStoreSpec {
+        self.b_vec_from_data_and_stride(dt, 1)
     }
 
     unsafe fn c_view(&self) -> MatrixStoreSpec {
@@ -208,8 +200,6 @@ where
     ) -> anyhow::Result<()> {
         let mr = K::mr();
         let nr = K::nr();
-        anyhow::ensure!(a.tensor.datum_type() == TA::datum_type());
-        anyhow::ensure!(b.tensor.datum_type() == TB::datum_type());
         anyhow::ensure!(c.tensor.datum_type() == TC::datum_type());
         let prefetch = crate::ops().prefetch.as_ref();
         let m = self.m;
@@ -235,7 +225,7 @@ where
                     _ => (),
                 }
                 let ref direct_c = c.tile_c(ia, ib, mr, nr);
-                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, ib);
+                let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -254,7 +244,7 @@ where
                     PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
                     _ => (),
                 }
-                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, n / nr);
+                let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr);
                 let ref direct_c = c.tile_c(ia, 0, mr, nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
@@ -275,7 +265,7 @@ where
                     _ => (),
                 }
                 let ref tmp_tile_c = tmpc.tile_c(0, 0, mr, nr);
-                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, ia, n / nr);
+                let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -300,7 +290,7 @@ where
                     PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
                     _ => (),
                 }
-                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, m / mr, ib);
+                let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -322,7 +312,7 @@ where
                     PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
                     _ => (),
                 }
-                let non_linear = scratch.for_tile::<TA, TB, TC, K>(&non_linear, m / mr, n / nr);
+                let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -338,10 +328,8 @@ where
     }
 }
 
-impl<K, TA, TB, TC, TI> fmt::Display for MatMatMulImpl<K, TA, TB, TC, TI>
+impl<K, TC, TI> fmt::Display for MatMatMulImpl<K, TC, TI>
 where
-    TA: Copy + Zero + 'static,
-    TB: Copy + Zero + 'static,
     TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI>,
