@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::mmm::{FusedSpec, MatMatMul, MatrixStoreSpec};
+use tract_linalg::mmm::{FusedSpec, MatMatMul, MatrixStoreSpec, ScratchSpace};
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
@@ -80,7 +80,17 @@ impl OpState for State {
         let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
         let shape = op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
         let final_shape = op.c_final_shape.eval_to_usize(&session.resolved_symbols)?;
-        eval(op, &inputs[0], &shape, op.c_m_axis, op.c_n_axis, &final_shape)
+        unsafe {
+            if session.cached_mmm_scratch_space.as_deref().map(|scratch| op.mmm.can_use_scratch_space(scratch))
+                == Some(false)
+            {
+                session.cached_mmm_scratch_space = None
+            }
+            let scratch = session
+                .cached_mmm_scratch_space
+                .get_or_insert_with(|| op.mmm.allocate_scratch_space());
+            eval(op, scratch.as_mut(), &inputs[0], &shape, op.c_m_axis, op.c_n_axis, &final_shape)
+        }
     }
 }
 
@@ -94,12 +104,14 @@ impl EvalOp for LirMatMulUnary {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(if self.is_stateless() { None } else { Some(Box::new(State)) })
+        Ok(Some(Box::new(State)))
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let mut scratch = unsafe { self.mmm.allocate_scratch_space() };
         eval(
             self,
+            scratch.as_mut(),
             &inputs[0],
             self.c_fact.shape.as_concrete().unwrap(),
             self.c_m_axis,
@@ -111,6 +123,7 @@ impl EvalOp for LirMatMulUnary {
 
 fn eval(
     op: &LirMatMulUnary,
+    scratch: &mut dyn ScratchSpace,
     input: &Tensor,
     c_shape: &[usize],
     c_m_axis: usize,
@@ -152,14 +165,16 @@ fn eval(
                 }
                 let pa: &Tensor = a.iter().next().unwrap();
                 if let Some(fused) = fused {
-                    op.mmm.run(
+                    op.mmm.run_with_scratch_space(
+                        scratch,
                         &op.mmm.a_packed().wrap(&pa.view()),
                         &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&input, &*b_prefix)),
                         &mut c_storage.wrap(&c_view),
                         &fused.as_slice().unwrap()[0],
                     )?;
                 } else {
-                    op.mmm.run(
+                    op.mmm.run_with_scratch_space(
+                        scratch,
                         &op.mmm.a_packed().wrap(&pa.view()),
                         &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&input, &*b_prefix)),
                         &mut c_storage.wrap(&c_view),
@@ -169,14 +184,16 @@ fn eval(
             }
         } else {
             if let Some(fused) = &op.fused_ops {
-                op.mmm.run(
+                op.mmm.run_with_scratch_space(
+                    scratch,
                     &op.mmm.a_packed().wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
                     &op.b_storage.wrap(&input.view()),
                     &mut c_storage.wrap(&c.view_mut()),
                     &fused.as_ptr().as_ref().unwrap(),
                 )?;
             } else {
-                op.mmm.run(
+                op.mmm.run_with_scratch_space(
+                    scratch,
                     &op.mmm.a_packed().wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
                     &op.b_storage.wrap(&input.view()),
                     &mut c_storage.wrap(&c.view_mut()),
@@ -202,10 +219,10 @@ impl TypedOp for LirMatMulUnary {
         if let Some(f) = &self.fused_ops {
             if f.ndim() != self.c_fact.rank() - 2 {
                 bail!(
-                    "Fused op prefix and c_prefix should be of rank two less than output. fused: {:?} output: {:?}",
-                    self.fused_ops,
-                    self.c_fact
-                    );
+                        "Fused op prefix and c_prefix should be of rank two less than output. fused: {:?} output: {:?}",
+                        self.fused_ops,
+                        self.c_fact
+                        );
             }
         }
         let mut fact = self.c_fact.clone();

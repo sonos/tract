@@ -2,7 +2,9 @@ use std::fmt::Debug;
 
 use num_traits::Zero;
 
-use super::MatMatMulKer;
+use super::{MatMatMulKer, PanelStore};
+use downcast_rs::{impl_downcast, Downcast};
+use tract_data::anyhow;
 use tract_data::prelude::*;
 
 #[derive(PartialEq, Clone, Hash, Debug)]
@@ -41,16 +43,24 @@ pub enum FusedKerSpec<TI: Copy> {
     QAway(TI, usize),
 }
 
+pub trait ScratchSpace: Downcast + Send {}
+impl_downcast!(ScratchSpace);
+
 pub struct ScratchSpaceFusedNonLinear<TI: Copy> {
+    tmp_tile: Option<(Tensor, PanelStore)>,
     uspecs: Vec<FusedKerSpec<TI>>,
     non_linear_buffers: Vec<Vec<TI>>,
 }
 
 impl<TI: Copy> Default for ScratchSpaceFusedNonLinear<TI> {
     fn default() -> ScratchSpaceFusedNonLinear<TI> {
-        ScratchSpaceFusedNonLinear { uspecs: vec![], non_linear_buffers: vec![] }
+        ScratchSpaceFusedNonLinear { tmp_tile: None, uspecs: vec![], non_linear_buffers: vec![] }
     }
 }
+
+
+impl<TI: Copy + 'static> ScratchSpace for ScratchSpaceFusedNonLinear<TI> {}
+unsafe impl<TI: Copy + 'static> Send for ScratchSpaceFusedNonLinear<TI> {}
 
 impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     pub unsafe fn for_tile<TC, K: MatMatMulKer<TI>>(
@@ -138,6 +148,25 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         }
         self.uspecs.push(FusedKerSpec::Done);
         self.uspecs.as_ptr()
+    }
+
+    pub unsafe fn tmp_tile_c(
+        &mut self,
+        c: DatumType,
+        mr: usize,
+        nr: usize,
+    ) -> anyhow::Result<PanelStore> {
+        if let Some((t, p)) = &self.tmp_tile {
+            if t.shape() == &[mr, nr] && t.datum_type() == c {
+                return Ok(*p);
+            }
+        }
+        let mut tmpc_buffer = Tensor::uninitialized_dt(c, &[nr, mr])?;
+        let tmp_c_storage = super::storage::MatrixStoreSpec::View { axes: Some((1, 0)) };
+        let tmpc_view = tmpc_buffer.view_mut();
+        let tmpc = tmp_c_storage.wrap(&tmpc_view).tile_c(0, 0, nr, mr);
+        self.tmp_tile = Some((tmpc_buffer, tmpc));
+        Ok(tmpc)
     }
 }
 

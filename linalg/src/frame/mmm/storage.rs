@@ -157,16 +157,20 @@ impl<'s, 't> MatrixStore<'s, 't> {
         right: usize,
         height: usize,
         width: usize,
-        tile: &TensorView,
+        tile: &PanelStore,
         mr: usize,
         nr: usize,
     ) {
+        let tile = if let PanelStore::Strides { ptr, .. } = tile {
+            *ptr as *mut T
+        } else {
+            panic!("tile is expected to be in PanelStrides form")
+        };
         let (row_byte_stride, col_byte_stride) = self.strides();
         let dst = self.tensor.as_ptr_unchecked::<u8>().offset(
             (row_byte_stride as usize * (down * mr) + col_byte_stride as usize * (right * nr))
                 as isize,
         );
-        let tile = tile.as_ptr_unchecked::<T>();
         match self.spec {
             MatrixStoreSpec::Strides { .. } | MatrixStoreSpec::View { .. } => {
                 for y in 0..height as isize {

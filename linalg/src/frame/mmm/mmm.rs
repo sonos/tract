@@ -45,6 +45,20 @@ pub trait MatMatMul:
         b: &MatrixStore,
         c: &mut MatrixStore,
         non_linear: &[FusedSpec],
+    ) -> anyhow::Result<()> {
+        let mut scratch = self.allocate_scratch_space();
+        self.run_with_scratch_space(&mut *scratch, a, b, c, non_linear)
+    }
+
+    unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace>;
+    unsafe fn can_use_scratch_space(&self, scratch: &dyn ScratchSpace) -> bool;
+    unsafe fn run_with_scratch_space(
+        &self,
+        scratch: &mut dyn ScratchSpace,
+        a: &MatrixStore,
+        b: &MatrixStore,
+        c: &mut MatrixStore,
+        non_linear: &[FusedSpec],
     ) -> anyhow::Result<()>;
 }
 
@@ -217,23 +231,31 @@ where
         self.c_vec_from_data_and_stride(1)
     }
 
-    unsafe fn run(
+    unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace> {
+        Box::new(ScratchSpaceFusedNonLinear::<TI>::default())
+    }
+
+    unsafe fn can_use_scratch_space(&self, scratch: &dyn ScratchSpace) -> bool {
+        scratch.downcast_ref::<ScratchSpaceFusedNonLinear<TI>>().is_some()
+    }
+
+    unsafe fn run_with_scratch_space(
         &self,
+        scratch: &mut dyn ScratchSpace,
         a: &MatrixStore,
         b: &MatrixStore,
         c: &mut MatrixStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
+        use anyhow::Context;
         let mr = K::mr();
         let nr = K::nr();
         anyhow::ensure!(c.tensor.datum_type() == TC::datum_type());
         let m = self.m;
         let n = self.n;
-        let mut scratch = ScratchSpaceFusedNonLinear::default();
-        let mut tmpc_buffer = Tensor::uninitialized::<TC>(&[nr, mr])?;
-        let tmp_c_storage = self.c_view_with_axis(1, 0);
-        let tmpc_view = tmpc_buffer.view_mut();
-        let tmpc = tmp_c_storage.wrap(&tmpc_view);
+        let scratch = scratch
+            .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
+            .context("Wrong scratch space type")?;
 
         let ref linear = LinearSpec::k(self.k);
         for ia in 0..m / mr {
@@ -268,22 +290,22 @@ where
             } else if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 self.prefetch(a, b);
-                let ref tmp_tile_c = tmpc.tile_c(0, 0, mr, nr);
+                let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr)?;
                 let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
-                    c: tmp_tile_c as _,
+                    c: &tmpc,
                     linear,
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile::<TC>(ia, n / nr, mr, n % nr, tmpc.tensor, mr, nr);
+                c.set_from_tile::<TC>(ia, n / nr, mr, n % nr, &tmpc, mr, nr);
             }
         }
         if m % mr != 0 {
             let ref panel_a = a.panel_a(m / mr);
-            let ref tmp_tile_c = tmpc.tile_c(0, 0, mr, nr);
+            let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr)?;
             for ib in 0..n / nr {
                 let ref b = b.panel_b(nr, ib, nr);
                 self.prefetch(panel_a, b);
@@ -291,12 +313,12 @@ where
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
-                    c: tmp_tile_c as _,
+                    c: &tmpc,
                     linear,
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile::<TC>(m / mr, ib, m % mr, nr, tmpc.tensor, mr, nr);
+                c.set_from_tile::<TC>(m / mr, ib, m % mr, nr, &tmpc, mr, nr);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
@@ -306,12 +328,12 @@ where
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
-                    c: tmp_tile_c as _,
+                    c: &tmpc,
                     linear,
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile::<TC>(m / mr, n / nr, m % mr, n % nr, tmpc.tensor, mr, nr);
+                c.set_from_tile::<TC>(m / mr, n / nr, m % mr, n % nr, &tmpc, mr, nr);
             }
         }
         Ok(())
