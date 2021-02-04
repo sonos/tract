@@ -157,7 +157,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         nr: usize,
     ) -> anyhow::Result<PanelStore> {
         if let Some((t, p)) = &self.tmp_tile {
-            if t.shape() == &[mr, nr] && t.datum_type() == c {
+            if t.shape() == &[nr, mr] && t.datum_type() == c {
                 return Ok(*p);
             }
         }
