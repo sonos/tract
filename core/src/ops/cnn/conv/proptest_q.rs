@@ -355,7 +355,7 @@ fn group_0() {
 }
 
 #[test]
-fn foo() {
+fn rounding_on_arm() {
     let mut qp = QParams::noop_static(i8::datum_type());
     qp.c_scale = QParam::Static(rctensor0(1.3759452f32));
     QConvProblem {
