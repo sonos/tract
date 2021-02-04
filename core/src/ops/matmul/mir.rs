@@ -168,16 +168,20 @@ mod test {
         let input_shape = tvec!(batch, len, ci);
         let mut wire =
             tvec!(model.add_source("s", TypedFact::dt_shape(f32::datum_type(), &*input_shape))?);
-        let a = unsafe { Tensor::uninitialized::<f32>(&[1, ci, co])?.into_arc_tensor() };
+        let mut a = Tensor::zero::<f32>(&[1, ci, co])?;
+        a.as_slice_mut::<f32>().unwrap()[0] = 1.0;
+        let a = a.into_arc_tensor();
         wire = model.wire_node(
             "m",
             MatMulUnary { a, a_trans: true, b_trans: true, c_trans: true },
             &wire,
         )?;
-        let b = unsafe { Tensor::uninitialized::<f32>(&[1, 1, co])?.into_arc_tensor() };
+        let mut b = Tensor::zero::<f32>(&[1, 1, co])?;
+        b.as_slice_mut::<f32>().unwrap()[0] = 1.0;
+        let b = b.into_arc_tensor();
         wire = model.wire_node("a", crate::ops::math::add::unary(b), &wire)?;
         model.set_output_outlets(&wire)?;
-        let input = unsafe { Tensor::uninitialized::<f32>(&input_shape)? };
+        let input = Tensor::zero::<f32>(&input_shape)?;
         trace!("running mir");
         model.clone().into_runnable()?.run(tvec!(input.clone()))?;
         trace!("running optimized");
