@@ -436,3 +436,8 @@ fn conv_q_and_bias_0() {
 fn conv_q_and_bias_1() {
     test_conv_q_and_bias(1, 0, 0, 0.4447719, 0, 1, 0)
 }
+
+#[test]
+fn conv_q_and_bias_2() {
+    test_conv_q_and_bias(4, 1, 0, 0.00029599667, 3, 0, 2)
+}
