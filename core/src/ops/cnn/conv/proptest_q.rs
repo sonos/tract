@@ -218,7 +218,8 @@ fn trivial_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check().unwrap();
+    .check()
+    .unwrap();
 }
 
 #[test]
@@ -233,7 +234,8 @@ fn trivial_1() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check().unwrap();
+    .check()
+    .unwrap();
 }
 
 #[test]
@@ -248,7 +250,8 @@ fn trivial_2() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check().unwrap();
+    .check()
+    .unwrap();
 }
 
 #[test]
@@ -263,7 +266,8 @@ fn shape_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check().unwrap();
+    .check()
+    .unwrap();
 }
 
 #[test]
@@ -278,7 +282,8 @@ fn batch_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check().unwrap();
+    .check()
+    .unwrap();
 }
 
 #[test]
@@ -293,7 +298,8 @@ fn a0_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check().unwrap();
+    .check()
+    .unwrap();
 }
 
 #[test]
@@ -310,7 +316,8 @@ fn scale_0() {
         bias: None,
         qp,
     }
-    .check().unwrap();
+    .check()
+    .unwrap();
 }
 
 #[test]
@@ -343,7 +350,26 @@ fn group_0() {
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
     }
-    .check().unwrap();
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn foo() {
+    let mut qp = QParams::noop_static(i8::datum_type());
+    qp.c_scale = QParam::Static(rctensor0(1.3759452f32));
+    QConvProblem {
+        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_out: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
+        kernel_format: OIHW,
+        group: 1,
+        data: arr2(&[[1i8]]).into_dyn(),
+        kernel: arr3(&[[[0i8]], [[-15]]]).into_dyn(),
+        bias: None,
+        qp,
+    }
+    .check()
+    .unwrap();
 }
 
 fn test_conv_q_and_bias(a0: i32, b0: i32, c0: i32, c_scale: f32, k: i8, i: i8, bias: i32) {
