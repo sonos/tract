@@ -4,8 +4,9 @@ use num_traits::Zero;
 
 use super::{MatMatMulKer, PanelStore};
 use downcast_rs::{impl_downcast, Downcast};
-use tract_data::anyhow;
 use tract_data::prelude::*;
+
+use std::alloc::Layout;
 
 #[derive(PartialEq, Clone, Hash, Debug)]
 pub enum FusedSpec {
@@ -47,22 +48,49 @@ pub trait ScratchSpace: Downcast + Send {}
 impl_downcast!(ScratchSpace);
 
 pub struct ScratchSpaceFusedNonLinear<TI: Copy> {
-    tmp_tile: Option<(Tensor, PanelStore)>,
     uspecs: Vec<FusedKerSpec<TI>>,
-    non_linear_buffers: Vec<Vec<TI>>,
+    buffers: Vec<(bool, Layout, *mut u8)>,
 }
 
 impl<TI: Copy> Default for ScratchSpaceFusedNonLinear<TI> {
     fn default() -> ScratchSpaceFusedNonLinear<TI> {
-        ScratchSpaceFusedNonLinear { tmp_tile: None, uspecs: vec![], non_linear_buffers: vec![] }
+        ScratchSpaceFusedNonLinear { uspecs: vec![], buffers: vec![] }
     }
 }
-
 
 impl<TI: Copy + 'static> ScratchSpace for ScratchSpaceFusedNonLinear<TI> {}
 unsafe impl<TI: Copy + 'static> Send for ScratchSpaceFusedNonLinear<TI> {}
 
+impl<TI: Copy> Drop for ScratchSpaceFusedNonLinear<TI> {
+    fn drop(&mut self) {
+        unsafe { self.buffers.drain(..).for_each(|(_, lo, buf)| std::alloc::dealloc(buf, lo)) }
+    }
+}
+
 impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
+    pub fn clear(&mut self) {
+        self.buffers.iter_mut().for_each(|(used, _, _)| *used = false);
+    }
+
+    fn get_raw_buffer(&mut self, bytes: usize) -> *mut u8 {
+        if let Some(buf) =
+            self.buffers.iter_mut().find(|(used, layout, _)| !used && layout.size() == bytes)
+        {
+            buf.0 = true;
+            buf.2
+        } else {
+            let layout = Layout::from_size_align(bytes, 4).unwrap();
+            let buf = unsafe { std::alloc::alloc(layout) };
+            self.buffers.push((true, layout, buf));
+            buf
+        }
+    }
+
+    fn get_temp_slice<'a, T: Datum>(&mut self, len: usize) -> &'a mut [T] {
+        let buf = self.get_raw_buffer(std::mem::size_of::<T>() * len) as *mut T;
+        unsafe { std::slice::from_raw_parts_mut(buf, len) }
+    }
+
     pub unsafe fn for_tile<TC, K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
@@ -91,13 +119,12 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     };
                     let have = v.len().saturating_sub(dir * r);
                     let ptr = if have < K::mr() {
-                        let mut buf = vec![TI::zero(); r];
+                        let buf = self.get_temp_slice(r);
+                        buf[have..].iter_mut().for_each(|x| *x = TI::zero());
                         if have > 0 {
                             buf[..have].copy_from_slice(&v.as_slice_unchecked()[dir * r..][..have]);
                         }
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
+                        buf.as_ptr()
                     } else {
                         v.as_ptr_unchecked::<TI>().add(dir * r)
                     };
@@ -112,23 +139,19 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 FusedSpec::AddRowColProducts(rows, cols) => {
                     let have = rows.len() - down * K::mr();
                     let row_ptr = if have < K::mr() {
-                        let mut buf = vec![TI::zero(); K::mr()];
+                        let buf = self.get_temp_slice(K::mr());
                         buf[..have]
                             .copy_from_slice(&rows.as_slice_unchecked()[down * K::mr()..][..have]);
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
+                        buf.as_ptr()
                     } else {
                         rows.as_ptr_unchecked::<TI>().add(down * K::mr())
                     };
                     let have = cols.len() - right * K::nr();
                     let col_ptr = if have < K::nr() {
-                        let mut buf = vec![TI::zero(); K::nr()];
+                        let buf = self.get_temp_slice(K::nr());
                         buf[..have]
                             .copy_from_slice(&cols.as_slice_unchecked()[right * K::nr()..][..have]);
-                        let ptr = buf.as_ptr();
-                        self.non_linear_buffers.push(buf);
-                        ptr
+                        buf.as_ptr()
                     } else {
                         cols.as_ptr_unchecked::<TI>().add(right * K::nr())
                     };
@@ -150,23 +173,14 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         self.uspecs.as_ptr()
     }
 
-    pub unsafe fn tmp_tile_c(
-        &mut self,
-        c: DatumType,
-        mr: usize,
-        nr: usize,
-    ) -> anyhow::Result<PanelStore> {
-        if let Some((t, p)) = &self.tmp_tile {
-            if t.shape() == &[nr, mr] && t.datum_type() == c {
-                return Ok(*p);
-            }
+    pub unsafe fn tmp_tile_c(&mut self, c: DatumType, mr: usize, nr: usize) -> PanelStore {
+        let ptr = self.get_raw_buffer(mr * nr * c.size_of());
+        PanelStore::Strides {
+            ptr: ptr as _,
+            item_size: c.size_of(),
+            row_byte_stride: c.size_of() as isize,
+            col_byte_stride: (c.size_of() * mr) as isize,
         }
-        let mut tmpc_buffer = Tensor::uninitialized_dt(c, &[nr, mr])?;
-        let tmp_c_storage = super::storage::MatrixStoreSpec::View { axes: Some((1, 0)) };
-        let tmpc_view = tmpc_buffer.view_mut();
-        let tmpc = tmp_c_storage.wrap(&tmpc_view).tile_c(0, 0, nr, mr);
-        self.tmp_tile = Some((tmpc_buffer, tmpc));
-        Ok(tmpc)
     }
 }
 
