@@ -84,18 +84,46 @@ fma_sigmoid_f32 proc
     cmp     rdi, 0
     je      {{L}}done
 
-{% if msvc %}
-    vmovups  ymm0, [offset coeffs_num_0]
-    vmovups  ymm1, [offset coeffs_num_1]
-{% else %}
-    vmovups  ymm0, [rip + {{L}}coeffs_num_0]
-    vmovups  ymm1, [rip + {{L}}coeffs_num_1]
-{% endif %}
-
 {{L}}loop_1:
-    vmovaps ymm4, [rdi]
+    vmovaps         ymm4, [rdi]
 
-    
+    vbroadcastss    ymm0, [rip + {{L}}coeffs_num_low]
+    vbroadcastss    ymm1, [rip + {{L}}coeffs_num_high]
+    vbroadcastss    ymm2, [rip + {{L}}coeffs_num_alpha_9]
+    vbroadcastss    ymm3, [rip + {{L}}coeffs_num_alpha_7]
+
+    vmaxps          ymm4, ymm4, ymm0
+    vbroadcastss    ymm0, [rip + {{L}}coeffs_num_alpha_5]
+
+    vminps          ymm4, ymm4, ymm1        // ymm4 <- x
+    vbroadcastss    ymm1, [rip + {{L}}coeffs_num_alpha_3]
+
+    vmulps          ymm8, ymm4, ymm4        // ymm8 <- x^2
+
+    vmovaps         ymm12, ymm2
+    vbroadcastss    ymm2, [rip + {{L}}coeffs_num_alpha_1]
+    vfmadd132ps     ymm12, ymm3, ymm8
+    vbroadcastss    ymm3, [rip + {{L}}coeffs_num_beta_10]
+    vfmadd132ps     ymm12, ymm0, ymm8
+    vbroadcastss    ymm0, [rip + {{L}}coeffs_num_beta_8]
+    vfmadd132ps     ymm12, ymm1, ymm8
+    vbroadcastss    ymm1, [rip + {{L}}coeffs_num_beta_6]
+    vfmadd132ps     ymm12, ymm2, ymm8
+    vbroadcastss    ymm2, [rip + {{L}}coeffs_num_beta_4]
+    vmulps          ymm4, ymm4, ymm12
+
+    vmovaps         ymm12, ymm3
+    vbroadcastss    ymm3, [rip + {{L}}coeffs_num_beta_2]
+    vfmadd132ps     ymm12, ymm0, ymm8
+    vbroadcastss    ymm0, [rip + {{L}}coeffs_num_beta_0]
+    vfmadd132ps     ymm12, ymm1, ymm8
+    vbroadcastss    ymm1, [rip + {{L}}coeffs_num_half]
+    vfmadd132ps     ymm12, ymm2, ymm8
+    vfmadd132ps     ymm12, ymm3, ymm8
+    vfmadd132ps     ymm12, ymm0, ymm8
+
+    vdivps          ymm4, ymm4, ymm12
+    vaddps          ymm4, ymm4, ymm1
 
     vmovaps [rdi], ymm4
     add     rdi, 32
@@ -136,24 +164,37 @@ fma_sigmoid_f32 proc
     pop rbp
     ret
 
-{{L}}coeffs_num_0
-    .float -18.0                    // low          ymm0
+{{L}}coeffs_num_low:
+    .float -18.0                    // low
+{{L}}coeffs_num_high:
     .float 18.0                     // high         
+
+{{L}}coeffs_num_alpha_9:
     .float 4.37031012579801e-11     // alpha_9      
+{{L}}coeffs_num_alpha_7:
     .float 1.15627324459942e-07     // alpha_7      
+{{L}}coeffs_num_alpha_5:
     .float 6.08574864600143e-05     // alpha_5      
+{{L}}coeffs_num_alpha_3:
     .float 8.51377133304701e-03     // alpha_3      
+{{L}}coeffs_num_alpha_1:
     .float 2.48287947061529e-01     // alpha_1      
-    .float 6.10247389755681e-13     // beta_10      
-{{L}}coeffs_num_1:
-    .float 5.76102136993427e-09     // beta_8       ymm1
+
+{{L}}coeffs_num_beta_10:
+    .float 6.10247389755681e-13
+{{L}}coeffs_num_beta_8:
+    .float 5.76102136993427e-09
+{{L}}coeffs_num_beta_6:
     .float 6.29106785017040e-06     // beta_6       
+{{L}}coeffs_num_beta_4:
     .float 1.70198817374094e-03     // beta_4       
+{{L}}coeffs_num_beta_2:
     .float 1.16817656904453e-01     // beta_2       
+{{L}}coeffs_num_beta_0:
     .float 9.93151921023180e-01     // beta_0       
-    .float 0.5                      //              
-    .float 0.0                      // padding
-    .float 0.0
+
+{{L}}coeffs_num_half:
+    .float 0.5
 
 {% if msvc %}
 fma_sigmoid_f32 endp
