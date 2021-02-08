@@ -1,0 +1,164 @@
+{% comment %}
+/* vim: set syntax=asm : */
+
+System V ABI:
+    args: rdi, rsi, rdx, rcx, r8, r9
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15
+    scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+    return: rax (+rdx)
+
+Windows ABI:
+    args: RCX, RDX, R8, R9
+    preserve: RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-15
+    scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
+    return: rax (+rdx)
+
+{% endcomment %}
+
+{% if msvc %}
+
+_text segment
+fma_sigmoid_f32 proc
+
+{% else %}
+
+.intel_syntax noprefix
+.text
+.p2align 5
+.globl {{G}}fma_sigmoid_f32
+{{G}}fma_sigmoid_f32:
+.cfi_startproc
+{% endif %}
+
+    push        rbp
+    mov         rbp, rsp
+
+
+{% if family == "windows" %}
+// https://www.agner.org/optimize/calling_conventions.pdf xmm6-15 are not scratch
+// https://stackoverflow.com/questions/43358429/save-value-of-xmm-registers
+    and rsp,-16
+    lea rsp,[rsp-160]
+    vmovaps [rsp], xmm6
+    vmovaps [rsp+16*1],xmm7
+    vmovaps [rsp+16*2],xmm8
+    vmovaps [rsp+16*3],xmm9
+    vmovaps [rsp+16*4],xmm10
+    vmovaps [rsp+16*5],xmm11
+    vmovaps [rsp+16*6],xmm12
+    vmovaps [rsp+16*7],xmm13
+    vmovaps [rsp+16*8],xmm14
+    vmovaps [rsp+16*9],xmm15
+
+    // move around arguments to mimick SysV rdi,rsi passing
+    push        rdi
+    push        rsi
+    mov         rdi, rcx
+    mov         rsi, rdx
+
+{% endif %}
+
+    push        rbx
+    push        r12
+    push        r13
+    push        r14
+    push        r15
+
+    sub         rsp, 8
+
+{% if family == "unix" %}
+// FIXME
+// .cfi_def_cfa_offset 64 
+{% endif %}
+
+    stmxcsr     [rsp + 4]
+{% if msvc %}
+    mov         rax, 1FC0h
+{% else %}
+    mov         rax, 0x1FC0
+{% endif %}
+    mov         [rsp], eax
+    ldmxcsr     [rsp]
+// ----------------------------------------------------------------------
+
+    cmp     rdi, 0
+    je      {{L}}done
+
+{% if msvc %}
+    vmovups  ymm0, [offset coeffs_num_0]
+    vmovups  ymm1, [offset coeffs_num_1]
+{% else %}
+    vmovups  ymm0, [rip + {{L}}coeffs_num_0]
+    vmovups  ymm1, [rip + {{L}}coeffs_num_1]
+{% endif %}
+
+{{L}}loop_1:
+    vmovaps ymm4, [rdi]
+
+    
+
+    vmovaps [rdi], ymm4
+    add     rdi, 32
+    sub     rsi, 8
+    jnz     {{L}}loop_1
+
+{{L}}done:
+
+// ----------------------------------------------------------------------
+
+    ldmxcsr     [rsp + 4]
+
+    add         rsp, 8
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+{% if family == "windows" %}
+    pop rsi
+    pop rdi
+
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
+{% endif %}
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
+{{L}}coeffs_num_0
+    .float -18.0                    // low          ymm0
+    .float 18.0                     // high         
+    .float 4.37031012579801e-11     // alpha_9      
+    .float 1.15627324459942e-07     // alpha_7      
+    .float 6.08574864600143e-05     // alpha_5      
+    .float 8.51377133304701e-03     // alpha_3      
+    .float 2.48287947061529e-01     // alpha_1      
+    .float 6.10247389755681e-13     // beta_10      
+{{L}}coeffs_num_1:
+    .float 5.76102136993427e-09     // beta_8       ymm1
+    .float 6.29106785017040e-06     // beta_6       
+    .float 1.70198817374094e-03     // beta_4       
+    .float 1.16817656904453e-01     // beta_2       
+    .float 9.93151921023180e-01     // beta_0       
+    .float 0.5                      //              
+    .float 0.0                      // padding
+    .float 0.0
+
+{% if msvc %}
+fma_sigmoid_f32 endp
+_text ends
+end
+{% else %}
+.cfi_endproc
+{% endif %}
