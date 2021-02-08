@@ -117,8 +117,11 @@ pub mod test {
         use crate::frame::sigmoid::Sigmoid;
         let op = crate::frame::sigmoid::SigmoidImpl::<K, f32>::new();
         let mut found = values.to_vec();
+        while found.len() < K::nr() {
+            found.push(0f32);
+        }
         op.run(&mut found);
         let expected = values.iter().map(|x| 1.0 / (1.0 + (-x).exp())).collect::<Vec<_>>();
-        crate::test::check_close(&*found, &*expected)
+        crate::test::check_close(&found[..values.len()], &*expected)
     }
 }
