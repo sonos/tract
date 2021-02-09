@@ -4,18 +4,23 @@ use crate::ops::cnn::*;
 use crate::ops::nn::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use tract_ndarray::prelude::*;
+use tract_ndarray::{prelude::*, *};
+use DataFormat::*;
+use KernelFormat::*;
 
 #[derive(Debug)]
 struct DeconvProblem {
-    input: Array4<f32>,
-    kernel: Array4<f32>,
+    data_format: DataFormat,
+    kernel_format: KernelFormat,
+    input: ArrayD<f32>,
+    kernel: ArrayD<f32>,
 }
 
-fn tensor(shape: [usize; 4]) -> BoxedStrategy<Array4<f32>> {
+fn tensor(shape: &[usize]) -> BoxedStrategy<ArrayD<f32>> {
+    let shape = shape.to_vec();
     let len = shape.iter().product::<usize>();
     vec(any::<i8>().prop_map(|i| i as f32), len..=len)
-        .prop_map(move |vec| Array4::from_shape_vec(shape.clone(), vec).unwrap())
+        .prop_map(move |vec| ArrayD::from_shape_vec(&*shape, vec).unwrap())
         .boxed()
 }
 
@@ -23,45 +28,87 @@ impl Arbitrary for DeconvProblem {
     type Strategy = BoxedStrategy<DeconvProblem>;
     type Parameters = ();
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (1usize..3, 1usize..4, 1usize..4, 1usize..4, 1usize..4, 1usize..8, 1usize..8)
-            .prop_flat_map(|(n, ci, co, hk, wk, hi, wi)| {
-                (tensor([n, ci, hi, wi]), tensor([ci, co, hk, wk]))
+        (
+            any::<DataFormat>(),
+            any::<KernelFormat>(),
+            1usize..3,
+            1usize..4,
+            1usize..4,
+            1usize..4,
+            1usize..4,
+            1usize..8,
+            1usize..8,
+        )
+            .prop_flat_map(|(df, kf, n, ci, co, hk, wk, hi, wi)| {
+                let kernel_shape = match kf {
+                    OIHW => [ci, co, hk, wk],
+                    HWIO => [hk, wk, co, ci],
+                };
+                let data_shape = df.from_n_c_hw(n, ci, &[hi, wi]).unwrap();
+                (Just(df), Just(kf), tensor(&data_shape.shape), tensor(&kernel_shape))
             })
-            .prop_map(|(input, kernel)| DeconvProblem { input, kernel })
+            .prop_map(|(data_format, kernel_format, input, kernel)| DeconvProblem {
+                data_format,
+                kernel_format,
+                input,
+                kernel,
+            })
             .boxed()
     }
 }
 
 impl DeconvProblem {
-    fn tract(&self) -> Array4<f32> {
+    fn tract(&self) -> ArrayD<f32> {
         let op = DeconvUnary::new(
-            DataFormat::NCHW,
-            KernelFormat::OIHW,
+            self.data_format,
+            self.kernel_format,
             PaddingSpec::Valid,
             self.kernel.clone().into_arc_tensor(),
         );
         let mut outputs = op.eval(tvec!(self.input.clone().into_arc_tensor())).unwrap();
         outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
     }
-    fn reference(&self) -> Array4<f32> {
-        let output_shape = [
-            self.input.shape()[0],
-            self.kernel.shape()[1],
-            self.input.shape()[2] + self.kernel.shape()[2] - 1,
-            self.input.shape()[3] + self.kernel.shape()[3] - 1,
-        ];
-        let mut output = Array4::zeros(output_shape);
-        for n in 0..self.input.shape()[0] {
-            for co in 0..output.shape()[1] {
-                for ci in 0..self.input.shape()[1] {
-                    for hi in 0..self.input.shape()[2] {
-                        for wi in 0..self.input.shape()[3] {
-                            for hk in 0..self.kernel.shape()[2] {
-                                for wk in 0..self.kernel.shape()[3] {
-                                    output[(n, co, hi + hk, wi + wk)] +=
-                                        self.input[(n, ci, hi, wi)] * self.kernel[(ci, co, hk, wk)];
-                                }
-                            }
+
+    fn reference(&self) -> ArrayD<f32> {
+        use std::iter::once;
+        let co = match self.kernel_format {
+            KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 2],
+            KernelFormat::OIHW => self.kernel.shape()[1],
+        };
+        let input_shape = self.data_format.shape(self.input.shape()).unwrap();
+        let n = if self.data_format.has_n() { self.input.shape()[0] } else { 1 };
+        let kernel_hwdims = self.kernel_format.spatial_shape(self.kernel.shape());
+        let output_shape_geo: TVec<usize> =
+            tract_itertools::izip!(input_shape.hw_dims(), kernel_hwdims)
+                .map(|(i, k)| i + k - 1)
+                .collect();
+        let output_shape = self.data_format.from_n_c_hw(n, co, output_shape_geo).unwrap();
+        let mut output = ArrayD::zeros(&*output_shape.shape);
+        for n in 0..n {
+            for co in 0..co {
+                for ci in 0..*input_shape.c() {
+                    for hwi in indices(input_shape.hw_dims()) {
+                        for hwk in indices(kernel_hwdims) {
+                            let hwo: TVec<usize> =
+                                tract_itertools::izip!(hwi.slice().iter(), hwk.slice().iter())
+                                    .map(|(i, k)| i + k)
+                                    .collect();
+                            let i = self.data_format.from_n_c_hw(n, ci, hwi.slice()).unwrap();
+                            let o = self.data_format.from_n_c_hw(n, co, hwo).unwrap();
+                            let k: TVec<usize> = match self.kernel_format {
+                                OIHW => once(ci)
+                                    .chain(once(co))
+                                    .chain(hwk.slice().iter().cloned())
+                                    .collect(),
+                                HWIO => hwk
+                                    .slice()
+                                    .iter()
+                                    .cloned()
+                                    .chain(once(co))
+                                    .chain(once(ci))
+                                    .collect(),
+                            };
+                            output[&*o.shape] += self.input[&*i.shape] * self.kernel[&*k];
                         }
                     }
                 }
@@ -80,6 +127,44 @@ proptest::proptest! {
 
 #[test]
 fn test_trivial_0() {
-    let pb = DeconvProblem { input: arr4(&[[[[0.0]]]]), kernel: arr4(&[[[[0.0]]]]) };
+    let pb = DeconvProblem {
+        data_format: NCHW,
+        kernel_format: OIHW,
+        input: arr4(&[[[[0.0]]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_hwc_0() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: OIHW,
+        input: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_geo_0() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: OIHW,
+        input: arr3(&[[[0.0]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_hwio_0() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: HWIO,
+        input: arr3(&[[[0.0]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
+    };
     assert_eq!(pb.tract(), pb.reference());
 }

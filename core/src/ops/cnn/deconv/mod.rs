@@ -24,9 +24,13 @@ pub fn output_shape<D: DimLike>(
         padding.compute_for_deconv(&spatial_input_shape, &spatial_kernel_shape, &ones, &ones);
     let deconv_shape: TVec<D> =
         spatial_output_shape.iter().map(|comp| comp.deconvoluted.clone()).collect();
+    let co = match kernel_format {
+        KernelFormat::HWIO => kernel_shape[kernel_shape.len() - 2 ],
+        KernelFormat::OIHW => kernel_shape[1],
+    };
     let output_shape = data_format.from_n_c_hw(
         x_shape.n().cloned().unwrap_or(1.into()),
-        kernel_shape[1].into(), // FIXME Kernel format
+        co.into(),
         deconv_shape,
     )?;
     Ok(output_shape.shape.into())

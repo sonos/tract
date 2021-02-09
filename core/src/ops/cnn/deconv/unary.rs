@@ -2,7 +2,7 @@ use crate::internal::*;
 use crate::ops::cnn::{KernelFormat, PaddingSpec};
 use crate::ops::nn::DataFormat;
 
-// NCHW OIHW rank=4 valid, no-stride, no-dil, no-bias, no-group, f32
+// valid, no-stride, no-dil, no-bias, no-group, f32
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct DeconvUnary {
@@ -31,8 +31,6 @@ impl DeconvUnary {
     ) -> TractResult<TVec<OutletId>> {
         use std::iter::once;
         let input_shape = target.outlet_fact(input)?.shape.clone();
-        assert_eq!(self.kernel_format, KernelFormat::OIHW);
-        assert_eq!(self.data_format, DataFormat::NCHW);
         let shape = self.data_format.shape(input_shape.to_tvec())?;
         let geo_dim = shape.hw_dims().iter().maybe_product()?;
         let reshaped = target.wire_node(
@@ -41,7 +39,8 @@ impl DeconvUnary {
             &[input],
         )?;
 
-        // kernel from OIHW to [1, IHW, O]
+        // gemm: m=IHkWk, k=O, n=HW
+        // kernel from OIHW to [(1), IHW, O]
         let kernel_spatial_shape = self.kernel_format.spatial_shape(self.kernel.shape());
         let kernel_spatial_len: usize = kernel_spatial_shape.iter().product();
 
@@ -53,17 +52,21 @@ impl DeconvUnary {
                 .collect(),
         };
         let kernel_t = self.kernel.clone().into_tensor().permute_axes(&permutation_to_ihw_o)?;
-        let kernel_shape = &[
-            1,
+        let mut kernel_shape = tvec!(
             self.kernel_format.i(self.kernel.shape()) * kernel_spatial_len,
             kernel_t.shape()[kernel_t.rank() - 1],
-        ];
-        let kernel_t = kernel_t.into_shape(kernel_shape)?;
+        );
+        if self.data_format.has_n() {
+            kernel_shape.insert(0, 1);
+        }
+        let kernel_t = kernel_t.into_shape(&*kernel_shape)?;
+        let trans_data = self.data_format.c_is_last();
         let gemm = target.wire_node(
             format!("{}.gemm", name),
-            crate::ops::matmul::MatMulUnary::new(kernel_t.into_arc_tensor(), false, false, false),
+            crate::ops::matmul::MatMulUnary::new(kernel_t.into_arc_tensor(), false, trans_data, false),
             &reshaped,
         )?;
+        // gemm must be (N_)CHkWk_HW
         let deconv_sum = target.wire_node(
             format!("{}.deconv_sum", name),
             super::deconv_sum::DeconvSum::new(
