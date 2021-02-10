@@ -35,10 +35,10 @@ do
     : ${MODEL:=$tc/model.onnx}
     for pass in plain decl opti nnef
     do
-        echo -n "$tc ($pass) "
+        printf "$tc ($pass) "
         if [[ $IGNORE == *$pass* ]]
         then
-            echo -e "\e[93mignored\e[39m"
+            printf "\e[93mignored\e[39m\n"
             continue
         fi
         case $pass in
@@ -70,9 +70,9 @@ do
 
         if $($cmd 2> /dev/null > /dev/null)
         then
-            echo -e "\e[92mOK\e[39m"
+            printf "\e[92mOK\e[39m\n"
         else
-            echo -e "\e[91mFAIL\e[39m"
+            printf "\e[91mFAIL\e[39m\n"
             FAILED+=("$cmd")
             FAILURES="$FAILURES $tc"
         fi
@@ -82,7 +82,7 @@ done
 if [ -n "$FAILURES" ]
 then
     echo 
-    echo -e "    \e[91m$(echo $FAILURES | wc -w) FAILURES\e[39m"
+    printf "    \e[91m$(echo $FAILURES | wc -w) FAILURES\e[39m\n"
     echo
 fi
 

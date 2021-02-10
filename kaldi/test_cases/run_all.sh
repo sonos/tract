@@ -26,7 +26,7 @@ do
     do
         [[ "$pass" = "txt" ]] && suffix=.txt || suffix=""
         [[ "$pass" = "bin-opti" ]] && opti="-O" || opti=""
-        echo -n "$tc ($pass) "
+        printf "$tc ($pass) "
         cmd="$TRACT_RUN \
             -f kaldi $tc/model.raw$suffix \
             --output-node output \
@@ -43,9 +43,9 @@ do
         # if $($cmd)
         if $($cmd 2> /dev/null > /dev/null)
         then
-            echo -e "\e[92mOK\e[39m"
+            printf "\e[92mOK\e[39m\n"
         else
-            echo -e "\e[91mFAIL\e[39m"
+            printf "\e[91mFAIL\e[39m\n"
             FAILED+=("$cmd")
             FAILURES="$FAILURES $tc"
         fi
@@ -55,7 +55,7 @@ done
 if [ -n "$FAILURES" ]
 then
     echo
-    echo -e "    \e[91m$(echo $FAILURES | wc -w) FAILURES\e[39m"
+    printf "    \e[91m$(echo $FAILURES | wc -w) FAILURES\e[39m\n"
     echo
 fi
 
