@@ -53,6 +53,12 @@ fn run_regular(
     let steps = options.is_present("steps");
     let assert_sane_floats = options.is_present("assert-sane-floats");
     let inputs = crate::tensor::retrieve_or_make_inputs(tract, params)?;
+    let mut npz = if let Some(npz) = options.value_of("save-steps") {
+        let npz = std::fs::File::create(npz).with_context(|| format!("Creating {}", npz))?;
+        Some(ndarray_npy::NpzWriter::new_compressed(npz))
+    } else {
+        None
+    };
     dispatch_model!(tract, |m| {
         let plan = SimplePlan::new(m)?;
         let mut state = SimpleState::new(plan)?;
@@ -68,14 +74,21 @@ fn run_regular(
                 }
             }
             let r = tract_core::plan::eval(session_state, state, node, input)?;
-            if steps {
-                for o in &r {
-                    eprintln!(
-                        "{}{}{:?}",
-                        White.bold().paint(node.to_string()),
-                        Blue.bold().paint(" >> "),
-                        o
-                    );
+            if let Some(npz) = npz.as_mut() {
+                for (ix, t) in r.iter().enumerate() {
+                    let name = if ix == 0 {
+                        node.name.to_string()
+                    } else {
+                        format!("{}:{}", node.name, ix)
+                    };
+                    match t.datum_type() {
+                        DatumType::F32 => npz.add_array(name, &t.to_array_view::<f32>()?)?,
+                        DatumType::F64 => npz.add_array(name, &t.to_array_view::<f64>()?)?,
+                        DatumType::I32 => npz.add_array(name, &t.to_array_view::<i32>()?)?,
+                        DatumType::I8 => npz.add_array(name, &t.to_array_view::<i8>()?)?,
+                        DatumType::U8 => npz.add_array(name, &t.to_array_view::<u8>()?)?,
+                        _ => warn!("Not writing {}, {:?}, unsupported type", name, t),
+                    }
                 }
             }
             if assert_sane_floats {

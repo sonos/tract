@@ -283,6 +283,12 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(Arg::with_name("dump").long("dump").help("Show output"))
         .arg(Arg::with_name("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
+            Arg::with_name("save-steps")
+                .long("save-steps")
+                .takes_value(true)
+                .help("Save intermediary values"),
+        )
+        .arg(
             Arg::with_name("assert-sane-floats")
                 .long("assert-sane-floats")
                 .help("Check float for NaN and infinites at each step"),
