@@ -29,6 +29,7 @@ jobs:
         PLATFORM: ${{matrix.platform}}
         AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
         AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
+        AWS_EC2_METADATA_DISABLED: true
       run: .travis/cross.sh
 
   ios:
