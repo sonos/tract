@@ -22,6 +22,9 @@ else
     brew install coreutils
 fi
 
+aws s3 ls
+aws s3 cp README.md s3://tract-ci-builds/testing
+
 ROOT=$(dirname $(dirname $(realpath $0)))
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y

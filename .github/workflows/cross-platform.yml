@@ -21,7 +21,7 @@ jobs:
           - x86_64-linux-android
           - wasm32-unknown-unknown
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v1
     - name: Cross script
