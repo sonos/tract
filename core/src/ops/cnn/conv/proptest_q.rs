@@ -319,12 +319,12 @@ fn scale_1() {
     qp.c_scale = QParam::Static(rctensor0(1.1400417f32));
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
-        shape_out: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
+        shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
         kernel_format: OIHW,
         group: 1,
-        data: arr2(&[[-49]]).into_dyn(),
-        kernel: arr3(&[[[0]], [[0]]]).into_dyn(),
-        bias: Some(arr1(&[0, 41]).into_dyn()),
+        data: arr2(&[[41]]).into_dyn(),
+        kernel: arr3(&[[[1]]]).into_dyn(),
+        bias: None,
         qp,
     }
     .check().unwrap();
