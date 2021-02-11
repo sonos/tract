@@ -9,9 +9,6 @@ then
     SUDO=sudo
 fi
 
-aws s3 ls
-aws s3 cp README.md s3://tract-ci-builds/testing
-
 if [ `uname` = "Linux" ]
 then
     $SUDO rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
