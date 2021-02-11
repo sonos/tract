@@ -314,6 +314,23 @@ fn scale_0() {
 }
 
 #[test]
+fn scale_1() {
+    let mut qp = QParams::noop_static(i8::datum_type());
+    qp.c_scale = QParam::Static(rctensor0(1.1400417f32));
+    QConvProblem {
+        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        kernel_format: OIHW,
+        group: 1,
+        data: arr2(&[[41]]).into_dyn(),
+        kernel: arr3(&[[[1]]]).into_dyn(),
+        bias: None,
+        qp,
+    }
+    .check().unwrap();
+}
+
+#[test]
 #[ignore]
 fn group_0() {
     QConvProblem {
