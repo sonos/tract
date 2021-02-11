@@ -1,9 +1,11 @@
 use crate::frame::MatMatMulImpl;
 use crate::frame::SigmoidImpl;
+use crate::frame::TanhImpl;
 use crate::Ops;
 
 pub mod mmm;
 pub mod sigmoid;
+pub mod tanh;
 
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("fma") {
@@ -11,6 +13,7 @@ pub fn plug(ops: &mut Ops) {
             Box::new(MatMatMulImpl::<mmm::MatMatMulF32x16x6, f32, f32, f32, f32>::new(m, k, n))
         });
         ops.sigmoid_f32 = Box::new(|| Box::new(SigmoidImpl::<sigmoid::SigmoidF32, f32>::new()));
+        ops.tanh_f32 = Box::new(|| Box::new(TanhImpl::<tanh::TanhF32, f32>::new()));
         log::info!("mmm_f32, sigmoid_f32 x86_64/fma activated");
     }
     if is_x86_feature_detected!("avx2") {

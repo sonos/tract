@@ -61,6 +61,7 @@ fn main() {
                         let _ = fs::remove_file("fma_mmm_f32_16x6.asm");
                         let _ = fs::remove_file("fma_mmm_i8_8x8.asm");
                         let _ = fs::remove_file("fma_sigmoid_f32.asm");
+                        let _ = fs::remove_file("fma_tanh_f32.asm");
                     }
                 }
                 "macos" => {
