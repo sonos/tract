@@ -135,7 +135,7 @@ impl DatumType {
             (true, 16) => U16,
             (true, 32) => U32,
             (true, 64) => U64,
-            _ => panic!("No integer for signed:{} size:{}"),
+            _ => panic!("No integer for signed:{} size:{}", signed, size),
         }
     }
 
