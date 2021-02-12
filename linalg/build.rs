@@ -29,20 +29,22 @@ fn main() {
                         ));
                         for f in files {
                             let mut obj = f.clone();
-                            for (i, l) in std::fs::read_to_string(&f).unwrap().lines().enumerate() {
-                                println!("{:8} {}", i, l);
-                            }
                             obj.set_extension("o");
                             let mut ml_exe = cc::windows_registry::find(&*target, "ml64.exe")
                                 .expect("Could not find ml64.exe");
-                            assert!(ml_exe
+                            if !ml_exe
                                 .arg("/Fo")
                                 .arg(&obj)
                                 .arg("/c")
-                                .arg(f)
+                                .arg(&f)
                                 .status()
                                 .unwrap()
-                                .success());
+                                .success() {
+                                for (i, l) in std::fs::read_to_string(&f).unwrap().lines().enumerate() {
+                                    println!("{:8} {}", i, l);
+                                }
+                                panic!();
+                            }
                             lib_exe.arg(obj);
                         }
                         assert!(lib_exe.status().unwrap().success());
