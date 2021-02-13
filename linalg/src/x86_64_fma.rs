@@ -14,7 +14,7 @@ pub fn plug(ops: &mut Ops) {
         });
         ops.sigmoid_f32 = Box::new(|| Box::new(SigmoidImpl::<sigmoid::SigmoidF32, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(TanhImpl::<tanh::TanhF32, f32>::new()));
-        log::info!("mmm_f32, sigmoid_f32 x86_64/fma activated");
+        log::info!("mmm_f32, sigmoid_f32, tang32: x86_64/fma activated");
     }
     if is_x86_feature_detected!("avx2") {
         ops.qmmm_i8_i8 = Box::new(|m, k, n| {
@@ -25,6 +25,6 @@ pub fn plug(ops: &mut Ops) {
                 m, k, n,
             ))
         });
-        log::info!("mmm_i8_i8 and mmm_i8_i32 x86_64/fma activated");
+        log::info!("mmm_i8_i8 and mmm_i8_i32: x86_64/fma activated");
     }
 }
