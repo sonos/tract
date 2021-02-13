@@ -28,5 +28,5 @@ impl TanhKer<f32> for TanhF32 {
 
 #[cfg(test)]
 mod test_simd {
-    tanh_frame_tests!(true, crate::x86_64_fma::tanh::TanhF32);
+    tanh_frame_tests!(is_x86_feature_detected!("fma"), crate::x86_64_fma::tanh::TanhF32);
 }
