@@ -100,7 +100,9 @@ pub mod test {
 
             #[test]
             fn tanh_20_ones() {
-                crate::frame::tanh::test::test_tanh::<$ker>(&[1.0; 20]).unwrap();
+                if $cond {
+                    crate::frame::tanh::test::test_tanh::<$ker>(&[1.0; 20]).unwrap();
+                }
             }
 
             #[test]
