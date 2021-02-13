@@ -30,6 +30,6 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Install cargo-deny
-      run: cargo install cargo-deny
+      run: cargo install cargo-deny --locked
     - name: Run cargo-deny
       run: cargo deny check
