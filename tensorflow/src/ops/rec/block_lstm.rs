@@ -97,7 +97,7 @@ impl Expansion for BlockLSTM {
                     format!("{}-{}", prefix, stringify!($name)),
                     $op, [$($param),*].as_ref())?[0];
             }
-        };
+        }
 
         let seq_len = inputs[0];
         outer_inputs.push(seq_len);

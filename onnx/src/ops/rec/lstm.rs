@@ -224,7 +224,7 @@ impl LSTM {
                     format!("{}.{}", prefix, stringify!($name)),
                     $op, [$($param),*].as_ref())?[0];
             }
-        };
+        }
 
         macro_rules! wire {
             ($name: ident = $op: expr, $($param: expr),*) => {
@@ -232,7 +232,7 @@ impl LSTM {
                     format!("{}.{}", prefix, stringify!($name)),
                     $op, [$($param),*].as_ref())?[0];
             }
-        };
+        }
 
         let chunk = if dir == 0 { 1 } else { -1 };
 

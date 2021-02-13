@@ -97,7 +97,7 @@ impl Expansion for LstmNonlin {
                     format!("{}.{}", prefix, stringify!($name)),
                     $op, [$($param),*].as_ref())?[0];
             }
-        };
+        }
 
         // let i_t = sigmoid_f32(i_part + w_ic * c_prev);
         wire!(w_ic_c_prev = mul(), w_ic, c_prev);

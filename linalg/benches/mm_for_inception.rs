@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate criterion;
-use criterion::Criterion;
+use criterion::*;
 use tract_data::internal::*;
 
 use DatumType::F32;
@@ -27,11 +27,8 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
 }
 
 fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {
-    c.bench_functions(
-        &format!("mat_mul_prepacked"),
-        vec![criterion::Fun::new("smmm", mat_mul_smmm)],
-        (m, k, n),
-    );
+    let mut group = c.benchmark_group("mat_mul_prepacked");
+    group.bench_function("smmm", |be| mat_mul_smmm(be, &(m, k, n)));
 }
 
 fn s64x288x21609(c: &mut Criterion) {

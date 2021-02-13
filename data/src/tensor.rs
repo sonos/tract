@@ -829,7 +829,7 @@ impl Tensor {
                         return Ok(Cow::Owned(result));
                     };
                 };
-            };
+            }
             n!(u8);
             n!(u16);
             n!(u32);

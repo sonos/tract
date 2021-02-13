@@ -12,7 +12,7 @@ pub fn tract_nnef() -> Registry {
                 $path(ast, node, node.op().downcast_ref::<$op>().unwrap())
             })
         };
-    };
+    }
     let mut stdlib = crate::framework::stdlib();
 
     let mut primitive = |registry: &mut Registry, id: &str, func: ToTract| {

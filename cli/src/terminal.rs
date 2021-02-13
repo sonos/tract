@@ -188,7 +188,7 @@ fn render_node_prefixed(
                 .unwrap_or("".to_string());
             print!("{}{}{}{}{} ", profile, cost, flops, prefix, drawing_lines.next().unwrap(),)
         };
-    };
+    }
 
     prefix!();
     println!(

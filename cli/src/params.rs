@@ -525,7 +525,7 @@ impl Parameters {
                     }
                 }
             };
-        };
+        }
 
         stage!("analyse", inference_model -> inference_model,
         |mut m:InferenceModel| -> TractResult<_> {

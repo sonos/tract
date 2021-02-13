@@ -183,7 +183,7 @@ impl RNN {
                     format!("{}.{}", prefix, stringify!($name)),
                     $op, [$($param),*].as_ref())?[0];
             }
-        };
+        }
 
         macro_rules! wire {
             ($name: ident = $op: expr, $($param: expr),*) => {
@@ -191,7 +191,7 @@ impl RNN {
                     format!("{}.{}", prefix, stringify!($name)),
                     $op, [$($param),*].as_ref())?[0];
             }
-        };
+        }
 
         // X: onnx interface: [seq_length, batch_size, input_size]
         // scan outer interface: idem

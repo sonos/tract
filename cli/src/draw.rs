@@ -88,7 +88,7 @@ impl DrawingState {
             () => {
                 lines.push(String::new())
             };
-        };
+        }
         let passthrough_count = self.passthrough_count(node);
         /*
         println!("\n{}", model.node_format(node));
@@ -154,11 +154,6 @@ impl DrawingState {
                     }
                     ln!();
                 }
-                /*
-                for (ix, w) in self.wires.iter().enumerate() {
-                    println!(" * {} {:?}", ix, w);
-                }
-                */
             }
         }
         while lines.last().map(|s| s.trim()) == Some("") {
@@ -179,7 +174,7 @@ impl DrawingState {
             () => {
                 lines.push(String::new())
             };
-        };
+        }
         let inputs = self.inputs_to_draw(model, node);
         let passthrough_count = self.passthrough_count(node);
         let display = opts.konst || !(model.node_op(node).is::<Const>());
