@@ -101,7 +101,9 @@ pub mod test {
 
             #[test]
             fn sigmoid_20_ones() {
-                crate::frame::sigmoid::test::test_sigmoid::<$ker>(&[1.0; 20]).unwrap();
+                if $cond {
+                    crate::frame::sigmoid::test::test_sigmoid::<$ker>(&[1.0; 20]).unwrap();
+                }
             }
 
             #[test]
