@@ -12,6 +12,7 @@ jobs:
       matrix:
         platform:
           - raspbian
+            # these three arch are called gnu, but they are actually musl
           - aarch64-unknown-linux-gnu
           - armv6vfp-unknown-linux-gnueabihf
           - armv7-unknown-linux-gnueabihf
