@@ -17,12 +17,20 @@ pub fn plug(ops: &mut Ops) {
     if is_cortex_a53().unwrap_or(false) {
         log::info!("arm64simd activated for smmm (cortex A53)");
         ops.mmm_f32 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32, f32>::new(m, k, n))
+            if n == 1 {
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1A53, f32, f32>::new(m, k, 1))
+            } else {
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32, f32>::new(m, k, n))
+            }
         });
     } else {
         log::info!("arm64simd activated for smmm (generic)");
         ops.mmm_f32 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32, f32>::new(m, k, n))
+            if n == 1 {
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32, f32>::new(m, k, 1))
+            } else {
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32, f32>::new(m, k, n))
+            }
         })
     }
     ops.qmmm_i8_i8 = Box::new(|m, k, n| {
