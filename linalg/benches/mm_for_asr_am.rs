@@ -50,6 +50,7 @@ fn mat_mat(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
 }
 
 fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool)) {
+    assert_eq!(n, 1);
     let mm = tract_linalg::ops().mmm(dt, dt, dt, m, k, n).unwrap();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
     let pb = Tensor::zero_dt(dt, &[k, 1]).unwrap();
@@ -60,7 +61,7 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
             &*mm,
             &mm.a_packed().wrap(&pa.view()),
             &mm.b_vec_from_data(dt).wrap(&pb.view()),
-            &mut mm.c_view().wrap(&mut c.view_mut()),
+            &mut mm.c_vec_from_data().wrap(&mut c.view_mut()),
             cold,
         );
     }
