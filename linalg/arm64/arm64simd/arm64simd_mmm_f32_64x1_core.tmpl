@@ -28,16 +28,7 @@
     prfm        pldl1keep, [x1]
     prfm        pldl1keep, [x2]
 */
-
-    stp         x19, x20, [sp, #-16]!
-    stp         x21, x22, [sp, #-16]!
-    stp         x23, x24, [sp, #-16]!
-    stp         x25, x26, [sp, #-16]!
-
-    stp         d8, d9, [sp, #-16]!
-    stp         d10, d11, [sp, #-16]!
-    stp         d12, d13, [sp, #-16]!
-    stp         d14, d15, [sp, #-16]!
+    str         q8, [sp, #-16]!
 
 {% for r in (16..31) %}
     eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
@@ -70,7 +61,7 @@
     ldr         x8, [x8, #16]       // cols ptr ptr (x2 = row offsets ptr)
     ldr         x4, [ x2 ], #8      // fist row offset
 
-    ldr         x19, [x8]           // heads of cols ptr
+    ldr         x5, [x8]            // heads of cols ptr
 
     cmp         x3, #4
     blt         .packed_tops_and_offsets_loop_1
@@ -80,33 +71,33 @@
 
 .p2align 4
 .packed_tops_and_offsets_loop_1:
-    add         x8, x4, x19
-    ld1         {v9.s}[0], [ x8 ]
+    add         x8, x4, x5
+    ld1         {v8.s}[0], [ x8 ]
 
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x1 ], #64
     ld1         { v4.4s, v5.4s, v6.4s, v7.4s }, [ x1 ], #64
 
-    fmla        v16.4s, v0.4s, v9.s[0]
-    fmla        v17.4s, v1.4s, v9.s[0]
-    fmla        v18.4s, v2.4s, v9.s[0]
-    fmla        v19.4s, v3.4s, v9.s[0]
+    fmla        v16.4s, v0.4s, v8.s[0]
+    fmla        v17.4s, v1.4s, v8.s[0]
+    fmla        v18.4s, v2.4s, v8.s[0]
+    fmla        v19.4s, v3.4s, v8.s[0]
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x1 ], #64
 
-    fmla        v20.4s, v4.4s, v9.s[0]
-    fmla        v21.4s, v5.4s, v9.s[0]
-    fmla        v22.4s, v6.4s, v9.s[0]
-    fmla        v23.4s, v7.4s, v9.s[0]
+    fmla        v20.4s, v4.4s, v8.s[0]
+    fmla        v21.4s, v5.4s, v8.s[0]
+    fmla        v22.4s, v6.4s, v8.s[0]
+    fmla        v23.4s, v7.4s, v8.s[0]
 
     ld1         { v4.4s, v5.4s, v6.4s, v7.4s }, [ x1 ], #64
-    fmla        v24.4s, v0.4s, v9.s[0]
-    fmla        v25.4s, v1.4s, v9.s[0]
-    fmla        v26.4s, v2.4s, v9.s[0]
-    fmla        v27.4s, v3.4s, v9.s[0]
+    fmla        v24.4s, v0.4s, v8.s[0]
+    fmla        v25.4s, v1.4s, v8.s[0]
+    fmla        v26.4s, v2.4s, v8.s[0]
+    fmla        v27.4s, v3.4s, v8.s[0]
     ldr         x4, [ x2 ], #8
-    fmla        v28.4s, v4.4s, v9.s[0]
-    fmla        v29.4s, v5.4s, v9.s[0]
-    fmla        v30.4s, v6.4s, v9.s[0]
-    fmla        v31.4s, v7.4s, v9.s[0]
+    fmla        v28.4s, v4.4s, v8.s[0]
+    fmla        v29.4s, v5.4s, v8.s[0]
+    fmla        v30.4s, v6.4s, v8.s[0]
+    fmla        v31.4s, v7.4s, v8.s[0]
 
     subs        x3, x3, #1
     bne         .packed_tops_and_offsets_loop_1
@@ -135,7 +126,7 @@
     ld1         { v8.s }[0], [ x2 ], x4
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x1 ], #64
     ld1         { v4.4s, v5.4s, v6.4s, v7.4s }, [ x1 ], #64
-    ld1         { v9.s }[0], [ x2 ], x4
+    ld1         { v8.s }[0], [ x2 ], x4
     ld1         { v10.s }[0], [ x2 ], x4
     ld1         { v11.s }[0], [ x2 ], x4
 
@@ -163,28 +154,28 @@
     fmla        v31.4s, v7.4s, v8.s[0]
     ld1         { v4.4s, v5.4s, v6.4s, v7.4s }, [ x1 ], #64
 
-    fmla        v16.4s, v0.4s, v9.s[0]
-    fmla        v17.4s, v1.4s, v9.s[0]
-    fmla        v18.4s, v2.4s, v9.s[0]
-    fmla        v19.4s, v3.4s, v9.s[0]
+    fmla        v16.4s, v0.4s, v8.s[0]
+    fmla        v17.4s, v1.4s, v8.s[0]
+    fmla        v18.4s, v2.4s, v8.s[0]
+    fmla        v19.4s, v3.4s, v8.s[0]
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x1 ], #64
 
-    fmla        v20.4s, v4.4s, v9.s[0]
-    fmla        v21.4s, v5.4s, v9.s[0]
-    fmla        v22.4s, v6.4s, v9.s[0]
-    fmla        v23.4s, v7.4s, v9.s[0]
+    fmla        v20.4s, v4.4s, v8.s[0]
+    fmla        v21.4s, v5.4s, v8.s[0]
+    fmla        v22.4s, v6.4s, v8.s[0]
+    fmla        v23.4s, v7.4s, v8.s[0]
     ld1         { v4.4s, v5.4s, v6.4s, v7.4s }, [ x1 ], #64
 
-    fmla        v24.4s, v0.4s, v9.s[0]
-    fmla        v25.4s, v1.4s, v9.s[0]
-    fmla        v26.4s, v2.4s, v9.s[0]
-    fmla        v27.4s, v3.4s, v9.s[0]
+    fmla        v24.4s, v0.4s, v8.s[0]
+    fmla        v25.4s, v1.4s, v8.s[0]
+    fmla        v26.4s, v2.4s, v8.s[0]
+    fmla        v27.4s, v3.4s, v8.s[0]
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x1 ], #64
 
-    fmla        v28.4s, v4.4s, v9.s[0]
-    fmla        v29.4s, v5.4s, v9.s[0]
-    fmla        v30.4s, v6.4s, v9.s[0]
-    fmla        v31.4s, v7.4s, v9.s[0]
+    fmla        v28.4s, v4.4s, v8.s[0]
+    fmla        v29.4s, v5.4s, v8.s[0]
+    fmla        v30.4s, v6.4s, v8.s[0]
+    fmla        v31.4s, v7.4s, v8.s[0]
     ld1         { v4.4s, v5.4s, v6.4s, v7.4s }, [ x1 ], #64
 
     fmla        v16.4s, v0.4s, v10.s[0]
@@ -283,45 +274,32 @@
     cmp         x4, #0
     beq         .store_strides
     cmp         x4, #3
-    beq         .store_vec_strides
+    beq         .store_strides
+    b           .unsupported
 
 .store_strides:
-    ldr         x5, [x3, #8]                // c base ptr
-    ldr         x6, [x3, #16]               // rsc
+    ldp         x5, x6, [x3, #8]                // c base ptr
+    mov         x0, #0
+
+    cmp         x6, #4
+    beq         .store_strides_contig
 
     {% for reg in (16..31) %}
         {% for lane in (0..3) %}
             st1 { v{{reg}}.s }[{{lane}}], [ x5 ], x6
         {% endfor %}
     {% endfor %}
-
-    mov         x0, #0
     b           .return
 
-.store_vec_strides:
-    ldr         x5, [x3, #8]                // c base ptr
-    ldr         x6, [x3, #16]               // c stride
+.store_strides_contig:
 
     {% for reg in (16..31) %}
-        {% for lane in (0..3) %}
-            st1 { v{{reg}}.s }[{{lane}}], [ x5 ], x6
-        {% endfor %}
+        st1 { v{{reg}}.4s }, [ x5 ], #16
     {% endfor %}
-
-    mov         x0, #0
 
 .return:
 
-    ldp         d14, d15, [sp], #16
-    ldp         d12, d13, [sp], #16
-    ldp         d10, d11, [sp], #16
-    ldp         d8, d9, [sp], #16
-
-    ldp         x25, x26, [sp], #16
-    ldp         x23, x24, [sp], #16
-    ldp         x21, x22, [sp], #16
-    ldp         x19, x20, [sp], #16
-
+    ldr         q8, [sp], #16
     ret
 
 .non_linear_loop_entry:
