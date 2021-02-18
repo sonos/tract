@@ -21,6 +21,7 @@
     cmp         x1, #16
     blt         .loop
 
+.p2align 4
 .loop4:
     ld1         { v16.4s, v17.4s, v18.4s, v19.4s }, [x0]
 
@@ -144,6 +145,7 @@
     cmp         x1, #0
     beq         .return
 
+.p2align 4
 .loop:
     ld1         { v16.4s }, [x0]
 
