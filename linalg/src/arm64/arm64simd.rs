@@ -5,6 +5,8 @@ use crate::frame::tanh::*;
 extern "C" {
     fn arm64simd_mmm_f32_8x8_a53(op: *const MatMatMulKerSpec<f32>) -> isize;
     fn arm64simd_mmm_f32_8x8_gen(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn arm64simd_mmm_f32_12x8_a5x(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn arm64simd_mmm_f32_12x8_gen(op: *const MatMatMulKerSpec<f32>) -> isize;
     fn arm64simd_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize;
     fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize);
     fn arm64simd_tanh_f32_4n(ptr: *mut f32, count: usize);
@@ -45,6 +47,40 @@ impl MatMatMulKer<f32> for MatMatMulF32x8x8A53 {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub struct MatMatMulF32x12x8A5x;
+
+impl MatMatMulKer<f32> for MatMatMulF32x12x8A5x {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "arm64simd"
+    }
+    #[inline(always)]
+    fn mr() -> usize {
+        12
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        8
+    }
+    fn alignment_bytes_packed_a() -> usize {
+        16
+    }
+    fn alignment_bytes_packed_b() -> usize {
+        16
+    }
+    fn end_padding_packed_a() -> usize {
+        1
+    }
+    fn end_padding_packed_b() -> usize {
+        1
+    }
+    #[inline(never)]
+    fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
+        unsafe { arm64simd_mmm_f32_12x8_a5x(op) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct MatMatMulF32x8x8;
 
 impl MatMatMulKer<f32> for MatMatMulF32x8x8 {
@@ -75,6 +111,40 @@ impl MatMatMulKer<f32> for MatMatMulF32x8x8 {
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
         unsafe { arm64simd_mmm_f32_8x8_gen(op) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MatMatMulF32x12x8;
+
+impl MatMatMulKer<f32> for MatMatMulF32x12x8 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "arm64simd"
+    }
+    #[inline(always)]
+    fn mr() -> usize {
+        12
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        8
+    }
+    fn alignment_bytes_packed_a() -> usize {
+        16
+    }
+    fn alignment_bytes_packed_b() -> usize {
+        16
+    }
+    fn end_padding_packed_a() -> usize {
+        1
+    }
+    fn end_padding_packed_b() -> usize {
+        1
+    }
+    #[inline(never)]
+    fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
+        unsafe { arm64simd_mmm_f32_12x8_gen(op) }
     }
 }
 
@@ -192,6 +262,8 @@ impl TanhKer<f32> for TanhF32x4n {
 
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8A53, test_MatMatMulF32x8x8a53, true);
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8, test_MatMatMulF32x8x8, true);
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x12x8A5x, test_MatMatMulF32x12x8a5x, true);
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x12x8, test_MatMatMulF32x12x8, true);
 test_mmm_kernel_i8!(crate::arm64::arm64simd::MatMatMulI8x8x8, test_MatMatMulI8x8x8, true);
 test_mmm_kernel_i8_i32!(
     crate::arm64::arm64simd::MatMatMulI8xI32x8x8,
