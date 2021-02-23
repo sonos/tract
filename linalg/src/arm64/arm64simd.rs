@@ -49,9 +49,9 @@ impl MatMatMulKer<f32> for MatMatMulF32x8x8A53 {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct MatMatMulF32x12x8A5x;
+pub struct MatMatMulF32x12x8A53;
 
-impl MatMatMulKer<f32> for MatMatMulF32x12x8A5x {
+impl MatMatMulKer<f32> for MatMatMulF32x12x8A53 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -83,9 +83,9 @@ impl MatMatMulKer<f32> for MatMatMulF32x12x8A5x {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct MatMatMulF32x64x1A5x;
+pub struct MatMatMulF32x64x1A53;
 
-impl MatMatMulKer<f32> for MatMatMulF32x64x1A5x {
+impl MatMatMulKer<f32> for MatMatMulF32x64x1A53 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"

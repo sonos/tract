@@ -20,7 +20,7 @@ pub fn plug(ops: &mut Ops) {
             if n == 1 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1A53, f32, f32>::new(m, k, 1))
             } else {
-                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8A53, f32, f32>::new(m, k, n))
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32, f32>::new(m, k, n))
             }
         });
     } else {
@@ -29,7 +29,7 @@ pub fn plug(ops: &mut Ops) {
             if n == 1 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32, f32>::new(m, k, 1))
             } else {
-                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8, f32, f32>::new(m, k, n))
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32, f32>::new(m, k, n))
             }
         })
     }
