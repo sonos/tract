@@ -28,7 +28,12 @@
     prfm        pldl1keep, [x1]
     prfm        pldl1keep, [x2]
 */
-    str         q8, [sp, #-16]!
+
+    sub	        sp, sp, 64
+    stp         d8, d9, [sp, #0]
+    stp         d10, d11, [sp, #16]
+    stp         d12, d13, [sp, #32]
+    stp         d14, d15, [sp, #48]
 
 {% for r in (16..31) %}
     eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
@@ -299,7 +304,12 @@
 
 .return:
 
-    ldr         q8, [sp], #16
+    ldp         d8, d9, [sp, #0]
+    ldp         d10, d11, [sp, #16]
+    ldp         d12, d13, [sp, #32]
+    ldp         d14, d15, [sp, #48]
+    add         sp, sp, 64
+
     ret
 
 .non_linear_loop_entry:
