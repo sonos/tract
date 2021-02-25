@@ -154,6 +154,13 @@ pub mod test {
                         test::return_c_scalar_add::<$ker, $tc, $ti>()
                     }
                 }
+
+                #[test]
+                fn return_c_plus_d() {
+                    if $cond {
+                        test::return_c_plus_d::<$ker, $tc, $ti>()
+                    }
+                }
             }
         };
     }
@@ -311,6 +318,29 @@ pub mod test {
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let found = fused_ops::<K, TC, TI>(&*v, &[]);
         assert_eq!(found, v);
+    }
+
+    pub fn return_c_plus_d<K, TC, TI>()
+    where
+        K: MatMatMulKer<TI>,
+        TC: Copy + Debug + 'static + PartialEq,
+        TI: Copy + Datum + Debug + 'static + Add<Output = TI> + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+    {
+        let len = K::mr() * K::nr();
+        let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
+        let d: Vec<TI> = (0..len).map(|f| ((3 * f) % 7).as_()).collect();
+        let expected =
+            (0..len).map(|ix| (AsPrimitive::<TI>::as_(ix) + d[ix]).as_()).collect::<Vec<TC>>();
+        let found = fused_ops::<K, TC, TI>(
+            &*v,
+            &[FusedKerSpec::AddUnicast(
+                d.as_ptr(),
+                K::nr() * std::mem::size_of::<TI>(),
+                std::mem::size_of::<TI>(),
+            )],
+        );
+        assert_eq!(found, expected);
     }
 
     pub fn return_c_mul_row<K, TC, TI>()
