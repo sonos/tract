@@ -22,12 +22,12 @@ pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
 pub fn q_params() -> BoxedStrategy<QParams> {
     (-10i32..10, -10i32..10, -10i32..10, 0.001..10f32)
         .prop_map(|(a0, b0, c0, scale)| QParams {
-            a0: QParam::Static(rctensor0(a0)),
-            b0: QParam::Static(rctensor0(b0)),
-            c0: QParam::Static(rctensor0(c0)),
-            a_scale: QParam::Static(rctensor0(1f32)),
-            b_scale: QParam::Static(rctensor0(1f32)),
-            c_scale: QParam::Static(rctensor0(scale)),
+            a0: AttrOrInput::Attr(rctensor0(a0)),
+            b0: AttrOrInput::Attr(rctensor0(b0)),
+            c0: AttrOrInput::Attr(rctensor0(c0)),
+            a_scale: AttrOrInput::Attr(rctensor0(1f32)),
+            b_scale: AttrOrInput::Attr(rctensor0(1f32)),
+            c_scale: AttrOrInput::Attr(rctensor0(scale)),
         })
         .boxed()
 }
@@ -305,7 +305,7 @@ fn a0_0() {
 #[test]
 fn scale_0() {
     let mut qp = QParams::noop_static(i8::datum_type());
-    qp.c_scale = QParam::Static(rctensor0(9.274534f32));
+    qp.c_scale = AttrOrInput::Attr(rctensor0(9.274534f32));
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
         shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
@@ -323,7 +323,7 @@ fn scale_0() {
 #[test]
 fn scale_1() {
     let mut qp = QParams::noop_static(i8::datum_type());
-    qp.c_scale = QParam::Static(rctensor0(1.1400417f32));
+    qp.c_scale = AttrOrInput::Attr(rctensor0(1.1400417f32));
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
         shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
@@ -357,7 +357,7 @@ fn group_0() {
 #[test]
 fn rounding_on_arm() {
     let mut qp = QParams::noop_static(i8::datum_type());
-    qp.c_scale = QParam::Static(rctensor0(1.3759452f32));
+    qp.c_scale = AttrOrInput::Attr(rctensor0(1.3759452f32));
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
         shape_out: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
@@ -377,10 +377,10 @@ fn test_conv_q_and_bias(a0: i32, b0: i32, c0: i32, c_scale: f32, k: i8, i: i8, b
     let mut model = TypedModel::default();
     let source = model.add_source("input", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
     let mut q_params = QParams::noop_static(i32::datum_type());
-    q_params.a0 = QParam::Static(rctensor0(a0));
-    q_params.b0 = QParam::Static(rctensor0(b0));
-    q_params.c_scale = QParam::Static(rctensor0(c_scale));
-    q_params.c0 = QParam::Static(rctensor0(c0));
+    q_params.a0 = AttrOrInput::Attr(rctensor0(a0));
+    q_params.b0 = AttrOrInput::Attr(rctensor0(b0));
+    q_params.c_scale = AttrOrInput::Attr(rctensor0(c_scale));
+    q_params.c0 = AttrOrInput::Attr(rctensor0(c0));
     let conv = ConvUnary {
         pool_spec: PoolSpec {
             data_format: CHW,

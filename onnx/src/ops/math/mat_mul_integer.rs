@@ -60,28 +60,27 @@ impl Expansion for MatMulInteger {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use QParam::*;
         let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[1]])?;
         let a0 = if let Some(o) = self.optional_a_zero_point_input {
-            Dynamic(o + 1)
+            (o + 1).into()
         } else {
             let a_dt = target.outlet_fact(inputs[0])?.datum_type;
-            Static(Tensor::zero_scalar_dt(a_dt)?.into_arc_tensor())
+            Tensor::zero_scalar_dt(a_dt)?.into()
         };
         let b0 = if let Some(o) = self.optional_b_zero_point_input {
-            Dynamic(o + 1)
+            (o + 1).into()
         } else {
             let b_dt = target.outlet_fact(inputs[1])?.datum_type;
-            Static(Tensor::zero_scalar_dt(b_dt)?.into_arc_tensor())
+            Tensor::zero_scalar_dt(b_dt)?.into()
         };
         let params = QParams {
             a0,
             b0,
-            c0: Static(rctensor0(0i32)),
-            c_scale: Static(rctensor0(1f32)),
-            a_scale: Static(rctensor0(1f32)),
-            b_scale: Static(rctensor0(1f32)),
+            c0: tensor0(0i32).into(),
+            a_scale: tensor0(1f32).into(),
+            b_scale: tensor0(1f32).into(),
+            c_scale: tensor0(1f32).into(),
         };
         let op = QMatMul::new(false, false, false, i32::datum_type(), params);
         let mut inputs: TVec<OutletId> = inputs.into();
@@ -156,8 +155,8 @@ impl Expansion for QLinearMatMul {
             prefix,
             op,
             &[
-                a_and_b[0], a_and_b[1], bias, inputs[2], inputs[1], inputs[5], inputs[4], inputs[7],
-                inputs[6],
+                a_and_b[0], a_and_b[1], bias, inputs[2], inputs[1], inputs[5], inputs[4],
+                inputs[7], inputs[6],
             ],
         )
     }

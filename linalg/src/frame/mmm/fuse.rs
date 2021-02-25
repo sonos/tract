@@ -3,20 +3,20 @@ use std::fmt::Debug;
 use tract_data::prelude::*;
 
 #[derive(PartialEq, Clone, Hash, Debug)]
-pub enum FusedSpec {
-    Min(Tensor),
-    Max(Tensor),
+pub enum FusedSpec<'t> {
+    Min(&'t Tensor),
+    Max(&'t Tensor),
     AddC,
-    PerRowMul(Tensor),
-    PerRowAdd(Tensor),
-    PerColMul(Tensor),
-    PerColAdd(Tensor),
-    AddRowColProducts(Tensor, Tensor),
-    ScalarMul(Tensor),
-    ScalarAdd(Tensor),
-    QTowardsEven(Tensor, usize),
-    QTowardsPlusInf(Tensor, usize),
-    QAway(Tensor, usize),
+    PerRowMul(&'t Tensor),
+    PerRowAdd(&'t Tensor),
+    PerColMul(&'t Tensor),
+    PerColAdd(&'t Tensor),
+    AddRowColProducts(&'t Tensor, &'t Tensor),
+    ScalarMul(&'t Tensor),
+    ScalarAdd(&'t Tensor),
+    QTowardsEven(&'t Tensor, usize),
+    QTowardsPlusInf(&'t Tensor, usize),
+    QAway(&'t Tensor, usize),
 }
 
 #[repr(C, usize)]
