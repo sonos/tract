@@ -365,6 +365,9 @@ fma_mmm_f32_16x6 proc
     cmp     rax,    10
     je      {{L}}scalar_add
 
+    cmp     rax,    14
+    je      {{L}}add_unicast
+
     jmp     {{L}}unimplemented
 
 // NON LINEAR / ADDC
@@ -373,10 +376,12 @@ fma_mmm_f32_16x6 proc
     mov     rax,    [rdi + 16]
 
     // FIXME: assume Strides storage
+    // keep r10, rsi and rbx in sync with add_unicast
     mov     r10,    [rax + 8]           // c ptr
     mov     rsi,    [rax + 16]          // row stride
     mov     rbx,    [rax + 24]          // col stride
 
+{{L}}add_with_strides:
     mov     eax,    0
 {% for i in (0..3) %}
     pinsrd  xmm14, eax, {{i}}
@@ -511,6 +516,14 @@ fma_mmm_f32_16x6 proc
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
+
+{{L}}add_unicast:
+
+    mov     r10,    [rcx + 8]           // c ptr
+    mov     rsi,    [rcx + 16]          // row stride
+    mov     rbx,    [rcx + 24]          // col stride
+
+    jmp    {{L}}add_with_strides
 
 {% if msvc %}
 fma_mmm_f32_16x6 endp
