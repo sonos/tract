@@ -492,6 +492,8 @@
     beq         .scalar_mul
     cmp         x2, #10
     beq         .scalar_add
+    cmp         x2, #14
+    beq         .add_unicast
 
     add         x0, x2, #4000
     b           .return
@@ -526,6 +528,7 @@
     ldr         x6, [x3, #16]               // rsc
     ldr         x7, [x3, #24]               // csc
 
+.add_with_strides:
     {% for col in (8..15) %}
         mov x4, x5
         {% for reg in (0..1) %}
@@ -638,6 +641,11 @@
     {% endfor %}
 
     b           .non_linear_loop
+
+.add_unicast:
+    ldr         x5, [x1, #8]
+    ldp         x6, x7, [x1, #16]
+    b .add_with_strides
 
 .unsupported:
     mov         x0, #1

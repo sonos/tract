@@ -170,6 +170,7 @@ fn preprocess_file(
     // We also check to see if we're on a windows host, if we aren't, we won't be
     // able to use the Microsoft assemblers,
     let msvc = use_masm();
+    println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let mut input = fs::read_to_string(&template).unwrap();
     if msvc {
         input =

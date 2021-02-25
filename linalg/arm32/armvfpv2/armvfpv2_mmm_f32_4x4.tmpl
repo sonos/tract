@@ -486,6 +486,8 @@ armvfpv2_mmm_f32_4x4:
     ldr     r5, [r3, #8]   // rsc
     ldr     r6, [r3, #12]  // csc
 
+.add_with_strides:
+
     {% for col in (0..3) %}
         mov         r7, r4
         {% for reg in (0..3) %}
@@ -614,6 +616,10 @@ armvfpv2_mmm_f32_4x4:
     {% endfor %}
 
     b .non_linear_loop
+
+.add_unicast:
+    ldm         r1, { r3, r4, r5, r6 } // r3 unsused, already used enum discriminant, just here to make ldm "work"
+    b .add_with_strides
 
 .unsupported:
     mov         r0,     #1
