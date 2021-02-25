@@ -472,6 +472,8 @@ armvfpv2_mmm_f32_4x4:
     beq     .scalar_mul
     cmp     r2, #10
     beq     .scalar_add
+    cmp     r2, #14
+    beq     .add_unicast
 
     b .unsupported
 
