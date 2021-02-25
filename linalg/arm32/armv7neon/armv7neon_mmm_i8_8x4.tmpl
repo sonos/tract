@@ -586,6 +586,8 @@ armv7neon_mmm_i8_8x4:
     beq     .q_towards_plusinf
     cmp     r2, #13
     beq     .q_away
+    cmp     r2, #14
+    beq     .add_unicast
 
     b .unsupported
 
@@ -601,6 +603,7 @@ armv7neon_mmm_i8_8x4:
     ldr     r6, [r3, #12]  // csc
     ldr     r7, [r3, #16]  // item size
 
+.add_with_strides:
     cmp     r7, #4
     beq     .non_linear_addc_i32
 
@@ -815,6 +818,11 @@ armv7neon_mmm_i8_8x4:
     {% endfor %}
 
     b .non_linear_loop
+
+.add_unicast:
+    ldm         r1, { r3, r4, r5, r6 } // r3 unsused, already used enum discriminant, just here to make ldm "work"
+    mov r8, #4
+    b .add_with_strides
 
 .unsupported:
     mov         r0,     #1
