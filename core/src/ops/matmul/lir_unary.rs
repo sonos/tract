@@ -15,6 +15,7 @@ pub enum ProtoFusedSpec {
     ScalarMul(AttrOrInput),
     ScalarAdd(AttrOrInput),
     QAway(AttrOrInput, usize),
+    AddUnicast(AttrOrInput),
 }
 
 impl ProtoFusedSpec {
@@ -32,6 +33,7 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
+            ProtoFusedSpec::AddUnicast(v) => FusedSpec::AddUnicast(v.tensor(inputs).view()),
         }
     }
 }
@@ -242,10 +244,10 @@ impl TypedOp for LirMatMulUnary {
         if let Some(f) = &self.fused_ops {
             if f.ndim() != self.c_fact.rank() - 2 {
                 bail!(
-                        "Fused op prefix and c_prefix should be of rank two less than output. fused: {:?} output: {:?}",
-                        self.fused_ops,
-                        self.c_fact
-                        );
+                    "Fused op prefix and c_prefix should be of rank two less than output. fused: {:?} output: {:?}",
+                    self.fused_ops,
+                    self.c_fact
+                    );
             }
         }
         let mut fact = self.c_fact.clone();
@@ -266,112 +268,119 @@ impl TypedOp for LirMatMulUnary {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
-        if let Some(succ) = model.single_succ(node.id)? {
-            if let Some(op) = succ.op_as::<ops::AxisOp>() {
-                if op.only_shape() {
+        if node.outputs.len() != 1 || node.outputs[0].successors.len() != 1 {
+            return Ok(None);
+        }
+        let succ = model.node(node.outputs[0].successors[0].node);
+        if let Some(op) = succ.op_as::<ops::AxisOp>() {
+            if op.only_shape() {
+                let mut patch = TypedModelPatch::fuse_with_next(
+                    model,
+                    &node,
+                    Self { c_final_shape: succ.outputs[0].fact.shape.clone(), ..self.clone() },
+                )?;
+                patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
+                return Ok(Some(patch));
+            }
+        }
+        let merge = |fused_micro_op: &[ProtoFusedSpec],
+                     additional_inputs: &[OutletId]|
+         -> TractResult<Option<TypedModelPatch>> {
+            let mut new_op = self.clone();
+            new_op
+                .fused_ops
+                .get_or_insert_with(|| {
+                    let shape = vec![1; self.c_fact.rank() - 2];
+                    ArrayD::from_shape_fn(shape, |_| vec![])
+                })
+                .map_inplace(|v| v.extend(fused_micro_op.iter().cloned()));
+            let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
+            patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
+            let inputs = node
+                .inputs
+                .iter()
+                .chain(additional_inputs.iter())
+                .map(|i| patch.tap_model(model, *i))
+                .collect::<TractResult<TVec<OutletId>>>()?;
+            let output = patch.wire_node(&node.name, new_op, &inputs)?;
+            patch.shunt_outside(model, succ.id.into(), output[0])?;
+            Ok(Some(patch))
+        };
+        if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
+            if let Some(cast) = op.downcast_ref::<ops::cast::Cast>().map(|cast| cast.to) {
+                if cast == i8::datum_type() && self.c_fact.datum_type == i32::datum_type() {
+                    let mmm = tract_linalg::ops()
+                        .mmm(
+                            self.packed_as.iter().next().unwrap().datum_type(),
+                            model.outlet_fact(node.inputs[0])?.datum_type,
+                            i8::datum_type(),
+                            self.m(),
+                            self.k(),
+                            self.n().to_usize()?,
+                        )
+                        .context("MMM instantiation")?;
+                    let c_fact = TypedFact::dt_shape(i8::datum_type(), self.c_fact.shape.clone());
                     let mut patch = TypedModelPatch::fuse_with_next(
                         model,
                         &node,
-                        Self { c_final_shape: succ.outputs[0].fact.shape.clone(), ..self.clone() },
+                        Self { mmm, c_fact, ..self.clone() },
                     )?;
                     patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
                     return Ok(Some(patch));
                 }
             }
-            let fused_micro_op = if let Some(op) =
-                succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref())
+        } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
+            if op.a.len() == 1 {
+                if op.mini_op.is::<ops::quant::Scale>()
+                    && self.c_fact.datum_type == i32::datum_type()
+                {
+                    // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
+                    let factor = op.a.cast_to_scalar::<f32>()?;
+                    if factor <= 0.0 || factor >= 0.5 {
+                        return Ok(None);
+                    }
+                    let factor_bits = factor.to_bits();
+                    let current_exponent = factor_bits >> 23;
+                    let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
+                    let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as u32;
+                    let shift = 126usize - current_exponent as usize;
+                    return merge(&[ProtoFusedSpec::QAway(tensor0(int_multi).into(), shift)], &[]);
+                } else if op.mini_op.is::<ops::math::Max>() {
+                    return merge(&[ProtoFusedSpec::Max((&op.a).into())], &[]);
+                } else if op.mini_op.is::<ops::math::Min>() {
+                    return merge(&[ProtoFusedSpec::Min((&op.a).into())], &[]);
+                } else if op.mini_op.is::<ops::math::Mul>() {
+                    return merge(&[ProtoFusedSpec::ScalarMul((&op.a).into())], &[]);
+                }
+            } else if op.a.shape()[op.a.rank() - 2] == 1
+                && op.a.shape()[op.a.rank() - 1].to_dim() == self.c_fact.shape[self.c_m_axis]
             {
-                if let Some(cast) = op.downcast_ref::<ops::cast::Cast>().map(|cast| cast.to) {
-                    if cast == i8::datum_type() && self.c_fact.datum_type == i32::datum_type() {
-                        let mmm = tract_linalg::ops()
-                            .mmm(
-                                self.packed_as.iter().next().unwrap().datum_type(),
-                                model.outlet_fact(node.inputs[0])?.datum_type,
-                                i8::datum_type(),
-                                self.m(),
-                                self.k(),
-                                self.n().to_usize()?,
-                            )
-                            .context("MMM instantiation")?;
-                        let c_fact =
-                            TypedFact::dt_shape(i8::datum_type(), self.c_fact.shape.clone());
-                        let mut patch = TypedModelPatch::fuse_with_next(
-                            model,
-                            &node,
-                            Self { mmm, c_fact, ..self.clone() },
-                        )?;
-                        patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
-                        return Ok(Some(patch));
-                    }
+                if op.mini_op.is::<ops::math::Mul>() {
+                    return merge(&[ProtoFusedSpec::PerRowMul((&op.a).into())], &[]);
+                } else if op.mini_op.is::<ops::math::Add>() {
+                    return merge(&[ProtoFusedSpec::PerRowAdd((&op.a).into())], &[]);
                 }
-                None
-            } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
-                if op.a.len() == 1 {
-                    if op.mini_op.is::<ops::quant::Scale>()
-                        && self.c_fact.datum_type == i32::datum_type()
-                    {
-                        // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
-                        let factor = op.a.cast_to_scalar::<f32>()?;
-                        if factor <= 0.0 || factor >= 0.5 {
-                            return Ok(None);
-                        }
-                        let factor_bits = factor.to_bits();
-                        let current_exponent = factor_bits >> 23;
-                        let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
-                        let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as u32;
-                        let shift = 126usize - current_exponent as usize;
-                        Some(tvec!(ProtoFusedSpec::QAway(tensor0(int_multi).into(), shift)))
-                    } else if op.mini_op.is::<ops::math::Max>() {
-                        Some(tvec!(ProtoFusedSpec::Max((&op.a).into())))
-                    } else if op.mini_op.is::<ops::math::Min>() {
-                        Some(tvec!(ProtoFusedSpec::Min((&op.a).into())))
-                    } else if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(ProtoFusedSpec::ScalarMul((&op.a).into())))
-                    } else {
-                        None
-                    }
-                } else if op.a.shape()[op.a.rank() - 2] == 1
-                    && op.a.shape()[op.a.rank() - 1].to_dim() == self.c_fact.shape[self.c_m_axis]
-                {
-                    if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(ProtoFusedSpec::PerRowMul((&op.a).into())))
-                    } else if op.mini_op.is::<ops::math::Add>() {
-                        Some(tvec!(ProtoFusedSpec::PerRowAdd((&op.a).into())))
-                    } else {
-                        None
-                    }
-                } else if op.a.shape()[op.a.rank() - 1] == 1
-                    && op.a.shape()[op.a.rank() - 2].to_dim()
-                        == self.c_fact.shape[self.c_fact.rank() - 2]
-                {
-                    let arg = &op.a;
-                    if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(ProtoFusedSpec::PerRowMul(arg.into())))
-                    } else if op.mini_op.is::<ops::math::Add>() {
-                        Some(tvec!(ProtoFusedSpec::PerRowAdd(arg.into())))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
+            } else if op.a.shape()[op.a.rank() - 1] == 1
+                && op.a.shape()[op.a.rank() - 2].to_dim()
+                    == self.c_fact.shape[self.c_fact.rank() - 2]
+            {
+                let arg = &op.a;
+                if op.mini_op.is::<ops::math::Mul>() {
+                    return merge(&[ProtoFusedSpec::PerRowMul(arg.into())], &[]);
+                } else if op.mini_op.is::<ops::math::Add>() {
+                    return merge(&[ProtoFusedSpec::PerRowAdd(arg.into())], &[]);
                 }
-            } else {
-                None
-            };
-            if let Some(op) = fused_micro_op {
-                let mut new_op = self.clone();
-                new_op
-                    .fused_ops
-                    .get_or_insert_with(|| {
-                        let shape = vec![1; self.c_fact.rank() - 2];
-                        ArrayD::from_shape_fn(shape, |_| vec![])
-                    })
-                    .map_inplace(|v| v.extend(op.iter().cloned()));
-                let mut patch = TypedModelPatch::fuse_with_next(model, &node, new_op)?;
-                patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
-                return Ok(Some(patch));
             }
-        }
+        } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
+            let other_slot = 1 - node.outputs[0].successors[0].slot;
+            let other_input = succ.inputs[other_slot];
+            if op.0.is::<ops::math::Add>() {
+                return merge(
+                    &[ProtoFusedSpec::AddUnicast(node.inputs.len().into())],
+                    &[other_input],
+                );
+            }
+        };
         Ok(None)
     }
 
