@@ -346,6 +346,15 @@ where
                             }
                         }
                     }
+                    FusedKerSpec::AddUnicast(ptr, rsc, csc) => {
+                        let rsc = rsc / std::mem::size_of::<TI>();
+                        let csc = csc / std::mem::size_of::<TI>();
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] += *ptr.offset((rsc * i + csc * j) as isize)
+                            }
+                        }
+                    }
                 }
                 pnl = pnl.add(1);
             }
@@ -642,6 +651,15 @@ where
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] = ab[i][j].q_away(mult, shift);
+                            }
+                        }
+                    }
+                    FusedKerSpec::AddUnicast(ptr, rsc, csc) => {
+                        let rsc = rsc / std::mem::size_of::<TI>();
+                        let csc = csc / std::mem::size_of::<TI>();
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                ab[i][j] += *ptr.offset((rsc * i + csc * j) as isize)
                             }
                         }
                     }

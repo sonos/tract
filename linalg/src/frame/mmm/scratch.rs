@@ -147,6 +147,19 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                     FusedKerSpec::QTowardsPlusInf(*m.to_scalar_unchecked(), *s)
                 }
                 FusedSpec::QAway(m, s) => FusedKerSpec::QAway(*m.to_scalar_unchecked(), *s),
+                FusedSpec::AddUnicast(tensor) => {
+                    assert!(tensor.rank() == 2);
+                    let rsc = tensor.strides()[0];
+                    let csc = tensor.strides()[1];
+                    let ptr = tensor.as_ptr_unchecked::<TI>().offset(
+                        (rsc * down as isize + csc * right as isize) * std::mem::size_of::<TI>() as isize,
+                    );
+                    FusedKerSpec::AddUnicast(
+                        ptr,
+                        rsc as usize * std::mem::size_of::<TI>(),
+                        csc as usize * std::mem::size_of::<TI>(),
+                    )
+                }
             };
             self.uspecs.push(s);
         }

@@ -481,10 +481,10 @@ armv7neon_mmm_f32_8x4:
     bx          lr
 
 .non_linear_loop_entry:
-    sub     r1, #12
+    sub     r1, #16
 
 .non_linear_loop:
-    add     r1, #12
+    add     r1, #16
     ldr     r2, [r1]
     cmp     r2, #0
     beq     .store
