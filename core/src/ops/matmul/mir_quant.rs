@@ -5,67 +5,39 @@ use crate::ops;
 use crate::ops::matmul::*;
 
 #[derive(Debug, Clone, Hash, PartialEq)]
-pub enum QParam {
-    Static(Arc<Tensor>),
-    Dynamic(usize),
-}
-
-impl QParam {
-    fn tensor(&self, inputs: &[Arc<Tensor>]) -> Arc<Tensor> {
-        match self {
-            QParam::Static(t) => t.clone(),
-            QParam::Dynamic(slot) => inputs[*slot].clone(),
-        }
-    }
-
-    fn remove_input(&mut self, ix: usize) {
-        if let QParam::Dynamic(slot) = self {
-            *slot = *slot - (*slot > ix) as usize;
-        }
-    }
-
-    pub fn as_static(&self) -> Option<&Arc<Tensor>> {
-        match self {
-            QParam::Static(t) => Some(t),
-            QParam::Dynamic(_) => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct QParams {
-    pub a0: QParam,
-    pub a_scale: QParam,
-    pub b0: QParam,
-    pub b_scale: QParam,
-    pub c0: QParam,
-    pub c_scale: QParam,
+    pub a0: AttrOrInput,
+    pub a_scale: AttrOrInput,
+    pub b0: AttrOrInput,
+    pub b_scale: AttrOrInput,
+    pub c0: AttrOrInput,
+    pub c_scale: AttrOrInput,
 }
 
 impl QParams {
     pub fn noop_static(dt: DatumType) -> QParams {
         QParams {
-            a0: QParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
-            a_scale: QParam::Static(rctensor0(1f32)),
-            b0: QParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
-            b_scale: QParam::Static(rctensor0(1f32)),
-            c0: QParam::Static(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
-            c_scale: QParam::Static(rctensor0(1f32)),
+            a0: AttrOrInput::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            a_scale: AttrOrInput::Attr(rctensor0(1f32)),
+            b0: AttrOrInput::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            b_scale: AttrOrInput::Attr(rctensor0(1f32)),
+            c0: AttrOrInput::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            c_scale: AttrOrInput::Attr(rctensor0(1f32)),
         }
     }
 
     pub fn all_dynamic(offset: usize) -> QParams {
         QParams {
-            a0: QParam::Dynamic(offset),
-            a_scale: QParam::Dynamic(offset + 1),
-            b0: QParam::Dynamic(offset + 2),
-            b_scale: QParam::Dynamic(offset + 3),
-            c0: QParam::Dynamic(offset + 4),
-            c_scale: QParam::Dynamic(offset + 5),
+            a0: AttrOrInput::Input(offset),
+            a_scale: AttrOrInput::Input(offset + 1),
+            b0: AttrOrInput::Input(offset + 2),
+            b_scale: AttrOrInput::Input(offset + 3),
+            c0: AttrOrInput::Input(offset + 4),
+            c_scale: AttrOrInput::Input(offset + 5),
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &QParam)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &AttrOrInput)> {
         vec![
             ("a0", &self.a0),
             ("a_scale", &self.a_scale),
@@ -77,7 +49,7 @@ impl QParams {
         .into_iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&str, &mut QParam)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&str, &mut AttrOrInput)> {
         vec![
             ("a0", &mut self.a0),
             ("a_scale", &mut self.a_scale),
@@ -98,10 +70,10 @@ impl QParams {
         let mut inputs = vec![];
         for (ix, input) in node.inputs.iter().enumerate() {
             if let (Some(position), Some(k)) = (
-                self.iter().position(|qp| &QParam::Dynamic(ix) == qp.1),
+                self.iter().position(|qp| &AttrOrInput::Input(ix) == qp.1),
                 model.outlet_fact(*input)?.konst.as_ref(),
             ) {
-                *new.iter_mut().nth(position).unwrap().1 = QParam::Static(k.clone());
+                *new.iter_mut().nth(position).unwrap().1 = AttrOrInput::Attr(k.clone());
                 for qp in new.iter_mut() {
                     qp.1.remove_input(ix);
                 }
@@ -114,7 +86,7 @@ impl QParams {
 
     pub fn remove_input(&mut self, ix: usize) {
         for qp in self.iter_mut() {
-            if let QParam::Dynamic(slot) = qp.1 {
+            if let AttrOrInput::Input(slot) = qp.1 {
                 *slot = *slot - (*slot > ix) as usize;
             }
         }
@@ -122,14 +94,14 @@ impl QParams {
 
     pub fn insert_input(&mut self, ix: usize) {
         for qp in self.iter_mut() {
-            if let QParam::Dynamic(slot) = qp.1 {
+            if let AttrOrInput::Input(slot) = qp.1 {
                 *slot = *slot + (*slot >= ix) as usize;
             }
         }
     }
 
     pub fn input_count(&self) -> usize {
-        self.iter().filter(|qp| matches!(qp.1, QParam::Dynamic(_))).count()
+        self.iter().filter(|qp| matches!(qp.1, AttrOrInput::Input(_))).count()
     }
 }
 
@@ -185,7 +157,7 @@ impl EvalOp for QMatMul {
         let params = self
             .params
             .iter()
-            .map(|(name, qp)| model.add_const(format!("source_{}", name), qp.tensor(&inputs)))
+            .map(|(name, qp)| model.add_const(format!("source_{}", name), qp.tensor(&inputs).clone()))
             .collect::<TractResult<Vec<_>>>()?;
 
         let result = self.wire(&mut model, "adhoc", a, b, c, &params)?;
@@ -244,8 +216,8 @@ impl TypedOp for QMatMul {
             .params
             .iter()
             .map(|(name, qp)| match qp {
-                QParam::Dynamic(o) => patch.tap_model(model, node.inputs[*o]),
-                QParam::Static(t) => patch.add_const(format!("{}_{}", node.name, name), t.clone()),
+                AttrOrInput::Input(o) => patch.tap_model(model, node.inputs[*o]),
+                AttrOrInput::Attr(t) => patch.add_const(format!("{}_{}", node.name, name), t.clone()),
             })
             .collect::<TractResult<Vec<OutletId>>>()?;
 

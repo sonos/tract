@@ -8,11 +8,10 @@ use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
 use crate::ops::cnn::PoolSpec;
-use crate::ops::matmul;
-use crate::ops::matmul::{QParam, QParams};
+use crate::ops::matmul::QParams;
+use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
 use crate::ops::nn::{DataFormat, DataShape};
 
-use tract_linalg::mmm::FusedSpec;
 use tract_linalg::mmm::MatMatMul;
 use tract_linalg::{frame::Packer, mmm::MatrixStoreSpec};
 
@@ -108,7 +107,7 @@ impl ConvUnary {
         }
     }
 
-    fn bias_as_non_linear<T>(&self) -> TractResult<Option<ArrayD<Vec<FusedSpec>>>>
+    fn bias_as_non_linear<T>(&self) -> TractResult<Option<ArrayD<Vec<ProtoFusedSpec>>>>
     where
         T: Datum + Copy,
     {
@@ -120,7 +119,7 @@ impl ConvUnary {
                 bias.iter()
                     .chunks(self.output_channels() / self.group)
                     .into_iter()
-                    .map(|c| vec![FusedSpec::PerRowAdd(tensor1(&*c.cloned().collect::<Vec<_>>()))])
+                    .map(|c| vec![ProtoFusedSpec::PerRowAdd(tensor1(&*c.cloned().collect::<Vec<_>>()).into())])
                     .collect::<Vec<_>>(),
             )
             .into_dyn();
@@ -155,8 +154,8 @@ impl ConvUnary {
             .1
             .iter()
             .map(|(par_name, qp)| match qp {
-                QParam::Dynamic(o) => Ok(wires[*o]),
-                QParam::Static(t) => model.add_const(format!("{}_{}", name, par_name), t.clone()),
+                AttrOrInput::Input(o) => Ok(wires[*o]),
+                AttrOrInput::Attr(t) => model.add_const(format!("{}_{}", name, par_name), t.clone()),
             })
             .collect::<TractResult<Vec<OutletId>>>()?;
 
@@ -423,7 +422,7 @@ impl ConvUnary {
 
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
-            matmul::lir_unary::LirMatMulUnary {
+            LirMatMulUnary {
                 b_storage: input_storage,
                 c_fact: TypedFact::dt_shape(c_datum_type, mmm_output_shape.clone()),
                 packed_as: kernels,

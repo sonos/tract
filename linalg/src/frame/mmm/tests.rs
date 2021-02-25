@@ -433,7 +433,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerRowAdd(tensor1(&*bias))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerRowAdd(&tensor1(&*bias))], |exp| {
         for x in 0..n {
             for y in 0..m {
                 exp[x + y * n] += bias[y]
@@ -456,7 +456,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerRowMul(tensor1(&*bias))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerRowMul(&tensor1(&*bias))], |exp| {
         for x in 0..n {
             for y in 0..m {
                 exp[x + y * n] *= bias[y]
@@ -479,7 +479,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColAdd(tensor1(&*bias))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColAdd(&tensor1(&*bias))], |exp| {
         for x in 0..n {
             for y in 0..m {
                 exp[x + y * n] += bias[x]
@@ -502,7 +502,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColMul(tensor1(&*bias))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::PerColMul(&tensor1(&*bias))], |exp| {
         for x in 0..n {
             for y in 0..m {
                 exp[x + y * n] *= bias[x]
@@ -525,7 +525,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let five: TI = 5.as_();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::Max(tensor0(five))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::Max(&tensor0(five))], |exp| {
         exp.iter_mut().for_each(|x| *x = if *x < five { five } else { *x })
     })
 }
@@ -544,7 +544,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let five: TI = 5.as_();
-    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::Min(tensor0(five))], |exp| {
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::Min(&tensor0(five))], |exp| {
         exp.iter_mut().for_each(|x| *x = if *x > five { five } else { *x })
     })
 }

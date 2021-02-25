@@ -312,3 +312,56 @@ impl std::fmt::Display for Box<dyn TypedOp> {
         write!(fmt, "{}", self.name())
     }
 }
+
+
+#[derive(Debug, Clone, Hash, PartialEq)]
+pub enum AttrOrInput {
+    Attr(Arc<Tensor>),
+    Input(usize),
+}
+
+impl AttrOrInput {
+    fn tensor<'t>(&'t self, inputs: &'t [Arc<Tensor>]) -> &'t Arc<Tensor> {
+        match self {
+            AttrOrInput::Attr(t) => t,
+            AttrOrInput::Input(slot) => &inputs[*slot],
+        }
+    }
+
+    fn remove_input(&mut self, ix: usize) {
+        if let AttrOrInput::Input(slot) = self {
+            *slot = *slot - (*slot > ix) as usize;
+        }
+    }
+
+    pub fn as_static(&self) -> Option<&Arc<Tensor>> {
+        match self {
+            AttrOrInput::Attr(t) => Some(t),
+            AttrOrInput::Input(_) => None,
+        }
+    }
+}
+
+impl From<usize> for AttrOrInput {
+    fn from(input: usize) -> Self {
+        AttrOrInput::Input(input)
+    }
+}
+
+impl From<Tensor> for AttrOrInput {
+    fn from(t: Tensor) -> Self {
+        Arc::new(t).into()
+    }
+}
+
+impl From<Arc<Tensor>> for AttrOrInput {
+    fn from(t: Arc<Tensor>) -> Self {
+        AttrOrInput::Attr(t)
+    }
+}
+
+impl<'a> From<&'a Arc<Tensor>> for AttrOrInput {
+    fn from(t: &'a Arc<Tensor>) -> Self {
+        AttrOrInput::Attr(t.clone())
+    }
+}

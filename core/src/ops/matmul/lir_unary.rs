@@ -3,6 +3,39 @@ use ndarray::*;
 
 use tract_linalg::mmm::{FusedSpec, MatMatMul, MatrixStoreSpec, ScratchSpace};
 
+#[derive(PartialEq, Clone, Hash, Debug)]
+pub enum ProtoFusedSpec {
+    Min(AttrOrInput),
+    Max(AttrOrInput),
+    PerRowMul(AttrOrInput),
+    PerRowAdd(AttrOrInput),
+    PerColMul(AttrOrInput),
+    PerColAdd(AttrOrInput),
+    AddRowColProducts(AttrOrInput, AttrOrInput),
+    ScalarMul(AttrOrInput),
+    ScalarAdd(AttrOrInput),
+    QAway(AttrOrInput, usize),
+}
+
+impl ProtoFusedSpec {
+    pub fn resolve<'t>(&'t self, inputs: &'t [Arc<Tensor>]) -> FusedSpec<'t> {
+        match self {
+            ProtoFusedSpec::Min(v) => FusedSpec::Min(v.tensor(inputs)),
+            ProtoFusedSpec::Max(v) => FusedSpec::Max(v.tensor(inputs)),
+            ProtoFusedSpec::PerColAdd(v) => FusedSpec::PerColAdd(v.tensor(inputs)),
+            ProtoFusedSpec::PerRowAdd(v) => FusedSpec::PerRowAdd(v.tensor(inputs)),
+            ProtoFusedSpec::PerColMul(v) => FusedSpec::PerColMul(v.tensor(inputs)),
+            ProtoFusedSpec::PerRowMul(v) => FusedSpec::PerRowMul(v.tensor(inputs)),
+            ProtoFusedSpec::ScalarMul(v) => FusedSpec::ScalarMul(v.tensor(inputs)),
+            ProtoFusedSpec::ScalarAdd(v) => FusedSpec::ScalarAdd(v.tensor(inputs)),
+            ProtoFusedSpec::QAway(v, n) => FusedSpec::QAway(v.tensor(inputs), *n),
+            ProtoFusedSpec::AddRowColProducts(row, col) => {
+                FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
 pub struct LirMatMulUnary {
@@ -11,7 +44,7 @@ pub struct LirMatMulUnary {
     pub c_m_axis: usize,
     pub c_n_axis: usize,
     pub packed_as: ArrayD<Arc<Tensor>>,
-    pub fused_ops: Option<ArrayD<Vec<FusedSpec>>>,
+    pub fused_ops: Option<ArrayD<Vec<ProtoFusedSpec>>>,
     #[educe(Hash(method = "hash_mmm"))]
     pub mmm: Box<dyn MatMatMul>,
     pub m: usize,
@@ -81,7 +114,10 @@ impl OpState for State {
         let shape = op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
         let final_shape = op.c_final_shape.eval_to_usize(&session.resolved_symbols)?;
         unsafe {
-            if session.cached_mmm_scratch_space.as_deref().map(|scratch| op.mmm.can_use_scratch_space(scratch))
+            if session
+                .cached_mmm_scratch_space
+                .as_deref()
+                .map(|scratch| op.mmm.can_use_scratch_space(scratch))
                 == Some(false)
             {
                 session.cached_mmm_scratch_space = None
@@ -89,7 +125,7 @@ impl OpState for State {
             let scratch = session
                 .cached_mmm_scratch_space
                 .get_or_insert_with(|| op.mmm.allocate_scratch_space());
-            eval(op, scratch.as_mut(), &inputs[0], &shape, op.c_m_axis, op.c_n_axis, &final_shape)
+            eval(op, scratch.as_mut(), &inputs, &shape, op.c_m_axis, op.c_n_axis, &final_shape)
         }
     }
 }
@@ -112,7 +148,7 @@ impl EvalOp for LirMatMulUnary {
         eval(
             self,
             scratch.as_mut(),
-            &inputs[0],
+            &*inputs,
             self.c_fact.shape.as_concrete().unwrap(),
             self.c_m_axis,
             self.c_n_axis,
@@ -124,7 +160,7 @@ impl EvalOp for LirMatMulUnary {
 fn eval(
     op: &LirMatMulUnary,
     scratch: &mut dyn ScratchSpace,
-    input: &Tensor,
+    inputs: &[Arc<Tensor>],
     c_shape: &[usize],
     c_m_axis: usize,
     c_n_axis: usize,
@@ -165,42 +201,28 @@ fn eval(
                     c_view.offset_axis_unchecked(ix, dim as isize);
                 }
                 let pa: &Tensor = a.iter().next().unwrap();
-                if let Some(fused) = fused {
-                    op.mmm.run_with_scratch_space(
-                        scratch,
-                        &op.mmm.a_packed(a_dt).wrap(&pa.view()),
-                        &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&input, &*b_prefix)),
-                        &mut c_storage.wrap(&c_view),
-                        &fused.as_slice().unwrap()[0],
-                    )?;
-                } else {
-                    op.mmm.run_with_scratch_space(
-                        scratch,
-                        &op.mmm.a_packed(a_dt).wrap(&pa.view()),
-                        &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&input, &*b_prefix)),
-                        &mut c_storage.wrap(&c_view),
-                        &[],
-                    )?;
-                }
+                let f: Option<Vec<FusedSpec>> = fused.as_ref().map(|f| {
+                    f.iter().next().unwrap().iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>()
+                });
+                op.mmm.run_with_scratch_space(
+                    scratch,
+                    &op.mmm.a_packed(a_dt).wrap(&pa.view()),
+                    &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
+                    &mut c_storage.wrap(&c_view),
+                    f.as_deref().unwrap_or(&[]),
+                )?;
             }
         } else {
-            if let Some(fused) = &op.fused_ops {
-                op.mmm.run_with_scratch_space(
-                    scratch,
-                    &op.mmm.a_packed(a_dt).wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
-                    &op.b_storage.wrap(&input.view()),
-                    &mut c_storage.wrap(&c.view_mut()),
-                    &fused.as_ptr().as_ref().unwrap(),
-                )?;
-            } else {
-                op.mmm.run_with_scratch_space(
-                    scratch,
-                    &op.mmm.a_packed(a_dt).wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
-                    &op.b_storage.wrap(&input.view()),
-                    &mut c_storage.wrap(&c.view_mut()),
-                    &[],
-                )?;
-            }
+            let f: Option<Vec<FusedSpec>> = op.fused_ops.as_ref().map(|f| {
+                f.iter().next().unwrap().iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>()
+            });
+            op.mmm.run_with_scratch_space(
+                scratch,
+                &op.mmm.a_packed(a_dt).wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
+                &op.b_storage.wrap(&inputs[0].view()),
+                &mut c_storage.wrap(&c.view_mut()),
+                f.as_deref().unwrap_or(&[]),
+            )?;
         }
         c.set_shape_unchecked(c_final_shape);
         Ok(tvec!(c.into_arc_tensor()))
@@ -298,13 +320,13 @@ impl TypedOp for LirMatMulUnary {
                         let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
                         let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as u32;
                         let shift = 126usize - current_exponent as usize;
-                        Some(tvec!(FusedSpec::QAway(tensor0(int_multi), shift)))
+                        Some(tvec!(ProtoFusedSpec::QAway(tensor0(int_multi).into(), shift)))
                     } else if op.mini_op.is::<ops::math::Max>() {
-                        Some(tvec!(FusedSpec::Max(op.a.clone().into_tensor())))
+                        Some(tvec!(ProtoFusedSpec::Max((&op.a).into())))
                     } else if op.mini_op.is::<ops::math::Min>() {
-                        Some(tvec!(FusedSpec::Min(op.a.clone().into_tensor())))
+                        Some(tvec!(ProtoFusedSpec::Min((&op.a).into())))
                     } else if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(FusedSpec::ScalarMul(op.a.clone().into_tensor())))
+                        Some(tvec!(ProtoFusedSpec::ScalarMul((&op.a).into())))
                     } else {
                         None
                     }
@@ -312,9 +334,9 @@ impl TypedOp for LirMatMulUnary {
                     && op.a.shape()[op.a.rank() - 1].to_dim() == self.c_fact.shape[self.c_m_axis]
                 {
                     if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(FusedSpec::PerRowMul(op.a.clone().into_tensor())))
+                        Some(tvec!(ProtoFusedSpec::PerRowMul((&op.a).into())))
                     } else if op.mini_op.is::<ops::math::Add>() {
-                        Some(tvec!(FusedSpec::PerRowAdd(op.a.clone().into_tensor())))
+                        Some(tvec!(ProtoFusedSpec::PerRowAdd((&op.a).into())))
                     } else {
                         None
                     }
@@ -322,11 +344,11 @@ impl TypedOp for LirMatMulUnary {
                     && op.a.shape()[op.a.rank() - 2].to_dim()
                         == self.c_fact.shape[self.c_fact.rank() - 2]
                 {
-                    let arg = op.a.clone().into_tensor();
+                    let arg = &op.a;
                     if op.mini_op.is::<ops::math::Mul>() {
-                        Some(tvec!(FusedSpec::PerRowMul(arg)))
+                        Some(tvec!(ProtoFusedSpec::PerRowMul(arg.into())))
                     } else if op.mini_op.is::<ops::math::Add>() {
-                        Some(tvec!(FusedSpec::PerRowAdd(arg)))
+                        Some(tvec!(ProtoFusedSpec::PerRowAdd(arg.into())))
                     } else {
                         None
                     }
