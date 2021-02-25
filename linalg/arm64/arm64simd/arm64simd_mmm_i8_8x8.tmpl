@@ -349,6 +349,8 @@ store_strides_i32:
     beq         .q_towards_plusinf
     cmp         x2, #13
     beq         .q_away
+    cmp         x2, #14
+    beq         .add_unicast
 
     b           .unsupported
 
@@ -381,6 +383,7 @@ store_strides_i32:
     ldr         x7, [x3, #24]               // csc
     ldr         x8, [x3, #32]               // item size
 
+.add_with_strides:
     cmp         x8, #4
     beq         non_linear_addc_i32
 
@@ -555,6 +558,12 @@ non_linear_addc_i32:
 
 
     b .non_linear_loop
+
+.add_unicast:
+    ldr         x5, [x1, #8]
+    ldp         x6, x7, [x1, #16]
+    mov         x8, #4
+    b .add_with_strides
 
 .unsupported:
     mov         x0, #1
