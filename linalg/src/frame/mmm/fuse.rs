@@ -781,3 +781,13 @@ pub mod test {
         }
     }
 }
+
+#[test]
+fn test_ker_fuse_spec_size_f32() {
+    assert_eq!(std::mem::size_of::<FusedKerSpec<f32>>(), 3 * std::mem::size_of::<usize>());
+}
+
+#[test]
+fn test_ker_fuse_spec_size_i32() {
+    assert_eq!(std::mem::size_of::<FusedKerSpec<i32>>(), 3 * std::mem::size_of::<usize>());
+}
