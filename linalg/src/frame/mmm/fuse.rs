@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
-use tract_data::prelude::*;
+use tract_data::internal::*;
 
-#[derive(PartialEq, Clone, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub enum FusedSpec<'t> {
     Min(&'t Tensor),
     Max(&'t Tensor),
@@ -17,6 +17,7 @@ pub enum FusedSpec<'t> {
     QTowardsEven(&'t Tensor, usize),
     QTowardsPlusInf(&'t Tensor, usize),
     QAway(&'t Tensor, usize),
+    AddUnicast(TensorView<'t>),
 }
 
 #[repr(C, usize)]
@@ -36,6 +37,7 @@ pub enum FusedKerSpec<TI: Copy> {
     QTowardsEven(TI, usize),
     QTowardsPlusInf(TI, usize),
     QAway(TI, usize),
+    AddUnicast(*const TI, usize, usize),
 }
 
 #[cfg(test)]
@@ -53,7 +55,7 @@ pub mod test {
     fn check_non_linear_enum_size() {
         assert_eq!(
             std::mem::size_of::<super::FusedKerSpec<f32>>(),
-            3 * std::mem::size_of::<usize>()
+            4 * std::mem::size_of::<usize>()
         )
     }
 
@@ -780,14 +782,4 @@ pub mod test {
             fused_ops::<K, TA, TB, TC, TI>(&*self.c, &[])
         }
     }
-}
-
-#[test]
-fn test_ker_fuse_spec_size_f32() {
-    assert_eq!(std::mem::size_of::<FusedKerSpec<f32>>(), 3 * std::mem::size_of::<usize>());
-}
-
-#[test]
-fn test_ker_fuse_spec_size_i32() {
-    assert_eq!(std::mem::size_of::<FusedKerSpec<i32>>(), 3 * std::mem::size_of::<usize>());
 }

@@ -135,7 +135,7 @@ pub mod test {
     fn check_non_linear_enum_size() {
         assert_eq!(
             std::mem::size_of::<super::FusedKerSpec<f32>>(),
-            3 * std::mem::size_of::<usize>()
+            4 * std::mem::size_of::<usize>()
         )
     }
 

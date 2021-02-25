@@ -399,9 +399,9 @@ fma_mmm_i8_8x8 proc
 // NON LINEAR LOOP
 
 {{L}}non_linear_loop_enter:
-    sub     rcx,    24
+    sub     rcx,    32
 {{L}}non_linear_loop:
-    add     rcx,    24
+    add     rcx,    32
     mov     rax,    [rcx]
 
     cmp     rax,    0
