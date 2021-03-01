@@ -8,8 +8,8 @@ use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
 use crate::ops::cnn::PoolSpec;
-use crate::ops::matmul::QParams;
 use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
+use crate::ops::matmul::QParams;
 use crate::ops::nn::{DataFormat, DataShape};
 
 use tract_linalg::mmm::MatMatMul;
@@ -107,32 +107,28 @@ impl ConvUnary {
         }
     }
 
-    fn bias_as_non_linear<T>(&self) -> TractResult<Option<ArrayD<Vec<ProtoFusedSpec>>>>
+    fn bias_as_non_linear<T>(&self) -> TractResult<ArrayD<Vec<ProtoFusedSpec>>>
     where
         T: Datum + Copy,
     {
-        use crate::itertools::Itertools;
+        let mut ops = Array1::from_elem(self.group, vec!());
+
         if let Some(bias) = &self.bias {
             let bias = bias.cast_to::<T>()?;
             let bias = bias.as_slice::<T>()?;
-            let mut bias = Array1::from(
-                bias.iter()
-                    .chunks(self.output_channels() / self.group)
-                    .into_iter()
-                    .map(|c| vec![ProtoFusedSpec::PerRowAdd(tensor1(&*c.cloned().collect::<Vec<_>>()).into())])
-                    .collect::<Vec<_>>(),
-            )
-            .into_dyn();
-            if self.group == 1 {
-                bias.index_axis_inplace(Axis(0), 0);
-            }
-            if self.pool_spec.data_format.has_n() {
-                bias.insert_axis_inplace(Axis(0));
-            }
-            Ok(Some(bias))
-        } else {
-            Ok(None)
+            ops.iter_mut().zip(bias.chunks(self.output_channels() / self.group)).for_each(|(ops, bias)| {
+                ops.push(ProtoFusedSpec::PerRowAdd(rctensor1(bias).into()));
+            })
         }
+        let mut ops = ops.into_dyn();
+
+        if self.group == 1 {
+            ops.index_axis_inplace(Axis(0), 0);
+        }
+        if self.pool_spec.data_format.has_n() {
+            ops.insert_axis_inplace(Axis(0));
+        }
+        Ok(ops)
     }
 
     pub unsafe fn wire_as_quant_im2col(
@@ -155,7 +151,9 @@ impl ConvUnary {
             .iter()
             .map(|(par_name, qp)| match qp {
                 AttrOrInput::Input(o) => Ok(wires[*o]),
-                AttrOrInput::Attr(t) => model.add_const(format!("{}_{}", name, par_name), t.clone()),
+                AttrOrInput::Attr(t) => {
+                    model.add_const(format!("{}_{}", name, par_name), t.clone())
+                }
             })
             .collect::<TractResult<Vec<OutletId>>>()?;
 
@@ -418,15 +416,17 @@ impl ConvUnary {
         c_n_axis: usize,
     ) -> TractResult<OutletId> {
         let kernels = self.kernel_as_packed_as(&mmm.a_pack(), m)?;
+        let shape = kernels.shape();
         let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
+        let mut iter = kernels.into_iter().cloned().zip(fused_ops.into_iter().cloned());
+        let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
             LirMatMulUnary {
                 b_storage: input_storage,
                 c_fact: TypedFact::dt_shape(c_datum_type, mmm_output_shape.clone()),
-                packed_as: kernels,
-                fused_ops,
+                micro_ops,
                 mmm,
                 k,
                 m,
@@ -645,11 +645,11 @@ impl TypedOp for ConvUnary {
         }
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
             bail!(
-                    "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
-                    self.pool_spec.output_channel_override,
-                    self.output_channels(),
-                    self
-                    );
+                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
+                self.pool_spec.output_channel_override,
+                self.output_channels(),
+                self
+                );
         }
         if let Some(bias) = &self.bias {
             if bias.len() != self.output_channels() {
@@ -968,12 +968,12 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
         return false;
     }
     let direct =
-            // no real rationale here, pure heuristic to force "right" pick in
-            // both hey_snips v3 and v4. just hope this will generalize ok
-            (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
-            // that one kind of make sense, better use direct that generate a huge
-            // im2col matrix (when both kernel and input are big)
-            pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
+        // no real rationale here, pure heuristic to force "right" pick in
+        // both hey_snips v3 and v4. just hope this will generalize ok
+        (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
+        // that one kind of make sense, better use direct that generate a huge
+        // im2col matrix (when both kernel and input are big)
+        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
     direct
 }
 

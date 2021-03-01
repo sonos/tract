@@ -290,7 +290,7 @@ impl MatMulUnary {
                     !self.a_trans as usize,
                     self.a_trans as usize,
                 );
-                pa.into_arc_tensor()
+                (pa.into_arc_tensor(), vec!())
             });
         unsafe {
             let b_storage = if n == 1 {
@@ -324,8 +324,7 @@ impl MatMulUnary {
                 LirMatMulUnary {
                     b_storage,
                     c_fact: TypedFact::dt_shape(c_dt, &c_shape),
-                    packed_as,
-                    fused_ops: None,
+                    micro_ops: packed_as,
                     mmm: mm,
                     k,
                     m,
