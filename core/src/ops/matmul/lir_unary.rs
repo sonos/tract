@@ -45,8 +45,7 @@ pub struct LirMatMulUnary {
     pub c_fact: TypedFact,
     pub c_m_axis: usize,
     pub c_n_axis: usize,
-    pub packed_as: ArrayD<Arc<Tensor>>,
-    pub fused_ops: Option<ArrayD<Vec<ProtoFusedSpec>>>,
+    pub micro_ops: ArrayD<(Arc<Tensor>, Vec<ProtoFusedSpec>)>,
     #[educe(Hash(method = "hash_mmm"))]
     pub mmm: Box<dyn MatMatMul>,
     pub m: usize,
@@ -93,9 +92,7 @@ impl Op for LirMatMulUnary {
             self.n(),
         )];
         infos.push(format!("Mult: {}", self.mmm));
-        if let Some(f) = &self.fused_ops {
-            infos.push(format!("{:?}", f));
-        }
+        infos.push(format!("Ops: {:?}", self.micro_ops));
         Ok(infos)
     }
 
@@ -187,43 +184,35 @@ fn eval(
             looping_shape[c_m_axis] = 1;
             looping_shape[c_n_axis] = 1;
             for prefix in indices(&*looping_shape) {
-                let mut a = op.packed_as.view();
+                let mut ops = op.micro_ops.view();
                 let mut b_prefix = tvec!();
                 let mut c_view = c.view();
-                let mut fused = op.fused_ops.as_ref().map(|f| f.view());
                 for (ix, &dim) in prefix.slice().iter().enumerate() {
                     if ix != c_m_axis && ix != c_n_axis {
-                        a.index_axis_inplace(Axis(0), dim.min(a.shape()[0] - 1));
+                        ops.index_axis_inplace(Axis(0), dim.min(ops.shape()[0] - 1));
                         b_prefix.push(dim);
-                        if let Some(f) = fused.as_mut() {
-                            let d = dim.min(f.shape()[0] - 1);
-                            f.index_axis_inplace(Axis(0), d);
-                        }
                     }
                     c_view.offset_axis_unchecked(ix, dim as isize);
                 }
-                let pa: &Tensor = a.iter().next().unwrap();
-                let f: Option<Vec<FusedSpec>> = fused.as_ref().map(|f| {
-                    f.iter().next().unwrap().iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>()
-                });
+                let (pa, fused) = ops.iter().next().unwrap();
+                let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
                 op.mmm.run_with_scratch_space(
                     scratch,
                     &op.mmm.a_packed(a_dt).wrap(&pa.view()),
                     &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
                     &mut c_storage.wrap(&c_view),
-                    f.as_deref().unwrap_or(&[]),
+                    &f,
                 )?;
             }
         } else {
-            let f: Option<Vec<FusedSpec>> = op.fused_ops.as_ref().map(|f| {
-                f.iter().next().unwrap().iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>()
-            });
+            let (pa, fused) = op.micro_ops.iter().next().unwrap();
+            let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
             op.mmm.run_with_scratch_space(
                 scratch,
-                &op.mmm.a_packed(a_dt).wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
+                &op.mmm.a_packed(a_dt).wrap(&pa.view()),
                 &op.b_storage.wrap(&inputs[0].view()),
                 &mut c_storage.wrap(&c.view_mut()),
-                f.as_deref().unwrap_or(&[]),
+                &f,
             )?;
         }
         c.set_shape_unchecked(c_final_shape);
@@ -234,21 +223,12 @@ fn eval(
 impl TypedOp for LirMatMulUnary {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let c_prefix_len = self.c_fact.rank() - 2;
-        if self.packed_as.ndim() != c_prefix_len {
+        if self.micro_ops.ndim() != c_prefix_len {
             bail!(
                 "Constant A table and c_prefix should have the same len. (resp {} and {})",
-                self.packed_as.ndim(),
+                self.micro_ops.ndim(),
                 c_prefix_len
             );
-        }
-        if let Some(f) = &self.fused_ops {
-            if f.ndim() != self.c_fact.rank() - 2 {
-                bail!(
-                    "Fused op prefix and c_prefix should be of rank two less than output. fused: {:?} output: {:?}",
-                    self.fused_ops,
-                    self.c_fact
-                    );
-            }
         }
         let mut fact = self.c_fact.clone();
         fact.shape = self.c_final_shape.clone();
@@ -260,8 +240,8 @@ impl TypedOp for LirMatMulUnary {
         Ok(tvec!(
             (Cost::FMA(self.mmm.internal_type()), sums.maybe_mul(&self.k().to_dim())?),
             (
-                Cost::Params(self.packed_as.as_slice().unwrap()[0].datum_type()),
-                self.packed_as.iter().fold(0.to_dim(), |sum, a| sum + a.len())
+                Cost::Params(self.micro_ops.as_slice().unwrap()[0].0.datum_type()),
+                self.micro_ops.iter().fold(0.to_dim(), |sum, a| sum + a.0.len())
             )
         ))
     }
@@ -283,17 +263,12 @@ impl TypedOp for LirMatMulUnary {
                 return Ok(Some(patch));
             }
         }
+
         let merge = |fused_micro_op: &[ProtoFusedSpec],
                      additional_inputs: &[OutletId]|
          -> TractResult<Option<TypedModelPatch>> {
             let mut new_op = self.clone();
-            new_op
-                .fused_ops
-                .get_or_insert_with(|| {
-                    let shape = vec![1; self.c_fact.rank() - 2];
-                    ArrayD::from_shape_fn(shape, |_| vec![])
-                })
-                .map_inplace(|v| v.extend(fused_micro_op.iter().cloned()));
+            new_op.micro_ops.iter_mut().for_each(|ops| ops.1.extend(fused_micro_op.iter().cloned()));
             let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
             patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
             let inputs = node
@@ -306,12 +281,13 @@ impl TypedOp for LirMatMulUnary {
             patch.shunt_outside(model, succ.id.into(), output[0])?;
             Ok(Some(patch))
         };
+
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(cast) = op.downcast_ref::<ops::cast::Cast>().map(|cast| cast.to) {
                 if cast == i8::datum_type() && self.c_fact.datum_type == i32::datum_type() {
                     let mmm = tract_linalg::ops()
                         .mmm(
-                            self.packed_as.iter().next().unwrap().datum_type(),
+                            self.micro_ops.iter().next().unwrap().0.datum_type(),
                             model.outlet_fact(node.inputs[0])?.datum_type,
                             i8::datum_type(),
                             self.m(),
