@@ -274,10 +274,11 @@
     ld1         { v0.4s, v1.4s, v2.4s }, [ x1 ], #48
     ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
-{% if core == "a5x" %}
+{% if core == "a53" %}
     cmp         x3, #4
     blt         .packed_packed_loop_1
 
+.p2align 4
 .packed_packed_loop_4:
 {% for i in (0..3) %}
                     fmla        v8.4s, v0.4s, v4.s[0]
@@ -375,6 +376,7 @@
 // regs: A/x1: 12 regs: w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15
 // regs: B/x2: 8 regs: w19, w20, w21, w22, w23, w24, w25, w26
 .packed_packed_loop_1:
+{% if core == "a53" %}
                     fmla        v8.4s, v0.4s, v4.s[0]
                         ldr         w4, [x1]
                     fmla        v9.4s, v1.4s, v4.s[0]
@@ -456,7 +458,43 @@
                         ins         v2.s[3], w15
                             ins         v4.s[3], w22
                             ins         v5.s[3], w26
+{% else %}
+                    fmla        v8.4s, v0.4s, v4.s[0]
+                    fmla        v9.4s, v1.4s, v4.s[0]
+                    fmla        v10.4s, v2.4s, v4.s[0]
 
+                    fmla        v11.4s, v0.4s, v4.s[1]
+                    fmla        v12.4s, v1.4s, v4.s[1]
+                    fmla        v13.4s, v2.4s, v4.s[1]
+
+                    fmla        v14.4s, v0.4s, v4.s[2]
+                    fmla        v15.4s, v1.4s, v4.s[2]
+                    fmla        v16.4s, v2.4s, v4.s[2]
+
+                    fmla        v17.4s, v0.4s, v4.s[3]
+                    fmla        v18.4s, v1.4s, v4.s[3]
+                    fmla        v19.4s, v2.4s, v4.s[3]
+
+                    fmla        v20.4s, v0.4s, v5.s[0]
+                    fmla        v21.4s, v1.4s, v5.s[0]
+                    fmla        v22.4s, v2.4s, v5.s[0]
+
+                    fmla        v23.4s, v0.4s, v5.s[1]
+                    fmla        v24.4s, v1.4s, v5.s[1]
+                    fmla        v25.4s, v2.4s, v5.s[1]
+
+                    fmla        v26.4s, v0.4s, v5.s[2]
+                    fmla        v27.4s, v1.4s, v5.s[2]
+                    fmla        v28.4s, v2.4s, v5.s[2]
+
+                    fmla        v29.4s, v0.4s, v5.s[3]
+                    fmla        v30.4s, v1.4s, v5.s[3]
+                    fmla        v31.4s, v2.4s, v5.s[3]
+
+                    ld1         { v0.4s, v1.4s, v2.4s }, [x1], #48
+                    ld1         { v4.4s, v5.4s }, [x2], #32
+
+{% endif %}
     subs        x3, x3, #1
     bne .packed_packed_loop_1
 

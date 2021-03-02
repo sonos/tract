@@ -5,9 +5,9 @@ use crate::frame::tanh::*;
 extern "C" {
     fn arm64simd_mmm_f32_8x8_a53(op: *const MatMatMulKerSpec<f32>) -> isize;
     fn arm64simd_mmm_f32_8x8_gen(op: *const MatMatMulKerSpec<f32>) -> isize;
-    fn arm64simd_mmm_f32_12x8_a5x(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn arm64simd_mmm_f32_12x8_a53(op: *const MatMatMulKerSpec<f32>) -> isize;
     fn arm64simd_mmm_f32_12x8_gen(op: *const MatMatMulKerSpec<f32>) -> isize;
-    fn arm64simd_mmm_f32_64x1_a5x(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn arm64simd_mmm_f32_64x1_a53(op: *const MatMatMulKerSpec<f32>) -> isize;
     fn arm64simd_mmm_f32_64x1_gen(op: *const MatMatMulKerSpec<f32>) -> isize;
     fn arm64simd_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize;
     fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize);
@@ -20,7 +20,7 @@ pub struct MatMatMulF32x8x8A53;
 impl MatMatMulKer<f32> for MatMatMulF32x8x8A53 {
     #[inline(always)]
     fn name() -> &'static str {
-        "arm64simd"
+        "arm64simd (cortex A53)"
     }
     #[inline(always)]
     fn mr() -> usize {
@@ -54,7 +54,7 @@ pub struct MatMatMulF32x12x8A53;
 impl MatMatMulKer<f32> for MatMatMulF32x12x8A53 {
     #[inline(always)]
     fn name() -> &'static str {
-        "arm64simd"
+        "arm64simd (cortex A53)"
     }
     #[inline(always)]
     fn mr() -> usize {
@@ -78,7 +78,7 @@ impl MatMatMulKer<f32> for MatMatMulF32x12x8A53 {
     }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
-        unsafe { arm64simd_mmm_f32_12x8_a5x(op) }
+        unsafe { arm64simd_mmm_f32_12x8_a53(op) }
     }
 }
 
@@ -88,7 +88,7 @@ pub struct MatMatMulF32x64x1A53;
 impl MatMatMulKer<f32> for MatMatMulF32x64x1A53 {
     #[inline(always)]
     fn name() -> &'static str {
-        "arm64simd"
+        "arm64simd (cortex A53)"
     }
     #[inline(always)]
     fn mr() -> usize {
@@ -112,7 +112,7 @@ impl MatMatMulKer<f32> for MatMatMulF32x64x1A53 {
     }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
-        unsafe { arm64simd_mmm_f32_64x1_a5x(op) }
+        unsafe { arm64simd_mmm_f32_64x1_a53(op) }
     }
 }
 
@@ -333,9 +333,9 @@ impl TanhKer<f32> for TanhF32x4n {
 
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8A53, test_MatMatMulF32x8x8a53, true);
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8, test_MatMatMulF32x8x8, true);
-test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x12x8A5x, test_MatMatMulF32x12x8a5x, true);
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x12x8A53, test_MatMatMulF32x12x8a53, true);
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x12x8, test_MatMatMulF32x12x8, true);
-test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x64x1A5x, test_MatMatMulF32x64x1a5x, true);
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x64x1A53, test_MatMatMulF32x64x1a53, true);
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x64x1, test_MatMatMulF32x64x1, true);
 test_mmm_kernel_i8!(crate::arm64::arm64simd::MatMatMulI8x8x8, test_MatMatMulI8x8x8, true);
 test_mmm_kernel_i8_i32!(

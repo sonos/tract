@@ -6,6 +6,8 @@ use crate::frame::MatMatMulImpl;
 use crate::frame::SigmoidImpl;
 use crate::frame::TanhImpl;
 
+use tract_data::internal::DimLike;
+
 fn is_cortex_a53() -> std::io::Result<bool> {
     let cpu_info = std::fs::read_to_string("/proc/cpuinfo")?;
     let a53 =
@@ -19,8 +21,10 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_f32 = Box::new(|m, k, n| {
             if n == 1 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1A53, f32, f32>::new(m, k, 1))
-            } else {
+            } else if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8A53, f32, f32>::new(m, k, n))
+            } else {
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32, f32>::new(m, k, n))
             }
         });
     } else {
@@ -28,8 +32,10 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_f32 = Box::new(|m, k, n| {
             if n == 1 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32, f32>::new(m, k, 1))
-            } else {
+            } else if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8, f32, f32>::new(m, k, n))
+            } else {
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32, f32>::new(m, k, n))
             }
         })
     }
