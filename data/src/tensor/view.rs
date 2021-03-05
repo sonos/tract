@@ -53,6 +53,7 @@ impl<'a> TensorView<'a> {
         }
     }
 
+    #[inline]
     pub fn datum_type(&self) -> DatumType {
         self.tensor.datum_type()
     }
@@ -109,7 +110,7 @@ impl<'a> TensorView<'a> {
 
     /// Access the data as a pointer.
     pub unsafe fn as_ptr_unchecked<D: Datum>(&self) -> *const D {
-        self.tensor.as_bytes().as_ptr().offset(self.offset_bytes) as *const D
+        self.tensor.as_ptr_unchecked::<u8>().offset(self.offset_bytes) as *const D
     }
 
     /// Access the data as a pointer.
