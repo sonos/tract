@@ -48,13 +48,13 @@ pub trait ScratchSpace: Downcast + Send {}
 impl_downcast!(ScratchSpace);
 
 pub struct ScratchSpaceFusedNonLinear<TI: Copy> {
-    uspecs: Vec<FusedKerSpec<TI>>,
-    buffers: Vec<(bool, Layout, *mut u8)>,
+    uspecs: TVec<FusedKerSpec<TI>>,
+    buffers: TVec<(bool, Layout, *mut u8)>,
 }
 
 impl<TI: Copy> Default for ScratchSpaceFusedNonLinear<TI> {
     fn default() -> ScratchSpaceFusedNonLinear<TI> {
-        ScratchSpaceFusedNonLinear { uspecs: vec![], buffers: vec![] }
+        ScratchSpaceFusedNonLinear { uspecs: tvec![], buffers: tvec![] }
     }
 }
 
