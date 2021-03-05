@@ -35,17 +35,19 @@ pub struct MatrixStore<'s, 't> {
     pub(crate) spec: &'s MatrixStoreSpec,
     pub(crate) tensor: &'t TensorView<'t>,
     pub(crate) col_ptrs: Option<Vec<*const u8>>,
+    pub(crate) strides: Option<(isize, isize)>,
 }
 
 impl<'s, 't> MatrixStore<'s, 't> {
     unsafe fn new(spec: &'s MatrixStoreSpec, tensor: &'t TensorView) -> MatrixStore<'s, 't> {
-        let mut store = MatrixStore { spec, tensor, col_ptrs: None };
+        let mut store = MatrixStore { spec, tensor, col_ptrs: None, strides: None };
         if let MatrixStoreSpec::OffsetsAndPtrs { col_byte_offsets, .. } = spec {
             let ptr = tensor.as_ptr_unchecked::<u8>();
             let col_ptrs: Vec<_> =
                 col_byte_offsets.iter().map(|&i| (ptr as *const u8).offset(i) as _).collect();
             store.col_ptrs = Some(col_ptrs);
         }
+        store.strides = Self::compute_strides(spec, tensor);
         store
     }
 
@@ -93,28 +95,30 @@ impl<'s, 't> MatrixStore<'s, 't> {
         }
     }
 
-    #[inline]
-    unsafe fn strides(&self) -> (isize, isize) {
-        match self.spec {
+    unsafe fn compute_strides(
+        spec: &MatrixStoreSpec,
+        tensor: &TensorView,
+    ) -> Option<(isize, isize)> {
+        match spec {
             MatrixStoreSpec::View { axes } => {
                 let (m_axis, n_axis) = if let Some(axes) = axes {
                     axes.clone()
                 } else {
-                    let rank = self.tensor.rank();
+                    let rank = tensor.rank();
                     (rank - 2, rank - 1)
                 };
-                let tensor_strides = self.tensor.strides();
-                let row_byte_stride = tensor_strides.get_unchecked(m_axis)
-                    * self.tensor.datum_type().size_of() as isize;
-                let col_byte_stride = tensor_strides.get_unchecked(n_axis)
-                    * self.tensor.datum_type().size_of() as isize;
-                (row_byte_stride, col_byte_stride)
+                let tensor_strides = tensor.strides();
+                let row_byte_stride =
+                    tensor_strides.get_unchecked(m_axis) * tensor.datum_type().size_of() as isize;
+                let col_byte_stride =
+                    tensor_strides.get_unchecked(n_axis) * tensor.datum_type().size_of() as isize;
+                Some((row_byte_stride, col_byte_stride))
             }
             MatrixStoreSpec::Strides { row_byte_stride, col_byte_stride } => {
-                (*row_byte_stride, *col_byte_stride)
+                Some((*row_byte_stride, *col_byte_stride))
             }
-            MatrixStoreSpec::VecStride { byte_stride, .. } => (*byte_stride, 0),
-            _ => panic!(),
+            MatrixStoreSpec::VecStride { byte_stride, .. } => Some((*byte_stride, 0)),
+            _ => None,
         }
     }
 
@@ -129,7 +133,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
         match self.spec {
             MatrixStoreSpec::Strides { .. } | MatrixStoreSpec::View { .. } => {
                 let ptr = self.tensor.as_ptr_unchecked::<u8>();
-                let (row_byte_stride, col_byte_stride) = self.strides();
+                let (row_byte_stride, col_byte_stride) = self.strides.unwrap();
                 PanelStore::Strides {
                     ptr: ptr.offset(row_byte_stride * down * mr + col_byte_stride * right * nr)
                         as *mut _,
@@ -140,7 +144,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
             }
             MatrixStoreSpec::VecStride { .. } => {
                 let ptr = self.tensor.as_ptr_unchecked::<u8>();
-                let (row_byte_stride, _col_byte_stride) = self.strides();
+                let (row_byte_stride, _col_byte_stride) = self.strides.unwrap();
                 PanelStore::VecStride {
                     ptr: ptr.offset(row_byte_stride * down * mr) as *mut _,
                     byte_stride: row_byte_stride,
@@ -166,7 +170,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
         } else {
             panic!("tile is expected to be in PanelStrides form")
         };
-        let (row_byte_stride, col_byte_stride) = self.strides();
+        let (row_byte_stride, col_byte_stride) = self.strides.unwrap();
         let dst = self.tensor.as_ptr_unchecked::<u8>().offset(
             (row_byte_stride as usize * (down * mr) + col_byte_stride as usize * (right * nr))
                 as isize,
