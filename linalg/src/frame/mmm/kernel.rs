@@ -352,8 +352,20 @@ pub mod test {
 
         pub fn run(&self) -> Vec<TC> {
             unsafe {
-                let pa = Tensor::from_slice_align(&*self.a, K::alignment_bytes_packed_a()).unwrap();
-                let pb = Tensor::from_slice_align(&*self.b, K::alignment_bytes_packed_b()).unwrap();
+                let a = self
+                    .a
+                    .iter()
+                    .cloned()
+                    .chain(vec![0.as_(); K::end_padding_packed_a() * K::mr()])
+                    .collect::<Vec<_>>();
+                let pa = Tensor::from_slice_align(&a, K::alignment_bytes_packed_a()).unwrap();
+                let b = self
+                    .b
+                    .iter()
+                    .cloned()
+                    .chain(vec![0.as_(); K::end_padding_packed_b() * K::nr()])
+                    .collect::<Vec<_>>();
+                let pb = Tensor::from_slice_align(&b, K::alignment_bytes_packed_b()).unwrap();
                 let mut v = vec![TC::zero(); K::mr() * K::nr()];
                 let mut c = if self.trans_c {
                     mmm_stride_storage(&mut v, 1, K::mr())
@@ -463,9 +475,14 @@ pub mod test {
         }
 
         pub fn run(&self) -> Vec<TC> {
-            let pa = unsafe {
-                Tensor::from_slice_align(&self.a, K::alignment_bytes_packed_a()).unwrap()
-            };
+            let a = self
+                .a
+                .iter()
+                .cloned()
+                .chain(vec![0.as_(); K::end_padding_packed_a() * K::mr()])
+                .collect::<Vec<_>>();
+            let pa =
+                unsafe { Tensor::from_slice_align(&a, K::alignment_bytes_packed_a()).unwrap() };
             let rows_offset: Vec<isize> = self
                 .rows_offsets
                 .iter()
@@ -496,33 +513,24 @@ pub mod test {
     pub fn packed_packed<K, TA, TB, TC, TI>(k: usize)
     where
         K: MatMatMulKer<TI>,
-        TA: Copy + One + Datum,
-        TB: Copy + One + Datum,
+        TA: Copy + One + Datum + AsPrimitive<TI>,
+        TB: Copy + One + Datum + AsPrimitive<TI>,
         TC: Copy + PartialEq + Zero + 'static + Debug,
-        TI: Copy + Add + Mul + Zero + Debug + fmt::Display,
-        usize: AsPrimitive<TC>,
+        TI: Copy
+            + Add
+            + Mul<Output = TI>
+            + Zero
+            + One
+            + Debug
+            + fmt::Display
+            + 'static
+            + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TA> + AsPrimitive<TB>,
     {
-        let len = K::mr() * K::nr();
-        let pa = unsafe {
-            Tensor::from_slice_align(&vec![TA::one(); K::mr() * k], K::alignment_bytes_packed_a())
-                .unwrap()
-        };
-        let pb = unsafe {
-            Tensor::from_slice_align(&vec![TB::one(); K::nr() * k], K::alignment_bytes_packed_b())
-                .unwrap()
-        };
-        let mut v: Vec<TC> = vec![TC::zero(); len];
-        let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
-        let err = K::kernel(&MatMatMulKerSpec {
-            a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
-            b: &PanelStore::Packed { ptr: unsafe { pb.as_ptr_unchecked::<TB>() as _ } },
-            c: &mut c,
-            linear: &LinearSpec::k(k),
-            non_linear: std::ptr::null(),
-        });
-        assert_eq!(err, 0);
-        let expected = vec![k.as_(); len];
-        assert_eq!(v, expected);
+        let a = vec![TA::one(); K::mr() * k];
+        let b = vec![TB::one(); K::nr() * k];
+        let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(k, a, b, false, false);
+        assert_eq!(pb.run(), pb.reference())
     }
 
     pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> PanelStore {
@@ -588,8 +596,11 @@ pub mod test {
         usize: AsPrimitive<TC>,
     {
         let pa = unsafe {
-            Tensor::from_slice_align(&vec![TA::one(); K::mr() * k], K::alignment_bytes_packed_a())
-                .unwrap()
+            Tensor::from_slice_align(
+                &vec![TA::one(); K::mr() * (k + K::end_padding_packed_a())],
+                K::alignment_bytes_packed_a(),
+            )
+            .unwrap()
         };
         let b = vec![TB::one(); k];
         let c: Vec<TC> = vec![TC::zero(); K::mr()];

@@ -25,7 +25,7 @@ impl Packer {
     }
 
     pub fn len(&self, n: usize) -> usize {
-        (n + self.r - 1) / self.r * self.r * self.k + self.end_padding_record * self.r
+        (n.div_ceil(self.r) * (self.k + self.end_padding_record)) * self.r
     }
 
     unsafe fn pack_t<'p, 'i, T: Datum + Copy>(
