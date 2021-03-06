@@ -201,7 +201,8 @@ impl ConvUnary {
             &[im2col],
         )?[0];
 
-        let b_storage = mmm.b_packed();
+        let b_dt = model.outlet_fact(wires[0])?.datum_type;
+        let b_storage = mmm.b_packed(b_dt);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
         let res = self.wire_lir_matmatmul(
             model,
@@ -262,7 +263,7 @@ impl ConvUnary {
             &[wire, padding],
         )?[0];
 
-        let b_storage = mmm.b_packed();
+        let b_storage = mmm.b_packed(b_dt);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
         let mut wire = self.wire_lir_matmatmul(
             model,

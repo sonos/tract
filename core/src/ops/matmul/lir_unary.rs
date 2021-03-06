@@ -131,6 +131,7 @@ fn eval(
     c_final_shape: &[usize],
 ) -> TractResult<TVec<Arc<Tensor>>> {
     unsafe {
+        let a_dt = op.packed_as.iter().next().unwrap().datum_type();
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
         let c_storage = if c_shape[c_n_axis] == 1 {
             op.mmm.c_vec_from_data()
@@ -167,7 +168,7 @@ fn eval(
                 if let Some(fused) = fused {
                     op.mmm.run_with_scratch_space(
                         scratch,
-                        &op.mmm.a_packed().wrap(&pa.view()),
+                        &op.mmm.a_packed(a_dt).wrap(&pa.view()),
                         &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&input, &*b_prefix)),
                         &mut c_storage.wrap(&c_view),
                         &fused.as_slice().unwrap()[0],
@@ -175,7 +176,7 @@ fn eval(
                 } else {
                     op.mmm.run_with_scratch_space(
                         scratch,
-                        &op.mmm.a_packed().wrap(&pa.view()),
+                        &op.mmm.a_packed(a_dt).wrap(&pa.view()),
                         &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&input, &*b_prefix)),
                         &mut c_storage.wrap(&c_view),
                         &[],
@@ -186,7 +187,7 @@ fn eval(
             if let Some(fused) = &op.fused_ops {
                 op.mmm.run_with_scratch_space(
                     scratch,
-                    &op.mmm.a_packed().wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
+                    &op.mmm.a_packed(a_dt).wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
                     &op.b_storage.wrap(&input.view()),
                     &mut c_storage.wrap(&c.view_mut()),
                     &fused.as_ptr().as_ref().unwrap(),
@@ -194,7 +195,7 @@ fn eval(
             } else {
                 op.mmm.run_with_scratch_space(
                     scratch,
-                    &op.mmm.a_packed().wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
+                    &op.mmm.a_packed(a_dt).wrap(&op.packed_as.as_ptr().as_ref().unwrap().view()),
                     &op.b_storage.wrap(&input.view()),
                     &mut c_storage.wrap(&c.view_mut()),
                     &[],
