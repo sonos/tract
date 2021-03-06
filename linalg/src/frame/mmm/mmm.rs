@@ -1,4 +1,4 @@
-use super::fuse::ScratchSpaceFusedNonLinear;
+use super::ScratchSpaceFusedNonLinear;
 use super::*;
 use crate::frame::Packer;
 use num_traits::{AsPrimitive, Bounded, Zero};
@@ -17,9 +17,9 @@ pub trait MatMatMul:
 
     fn internal_type(&self) -> DatumType;
 
-    unsafe fn a_packed(&self) -> MatrixStoreSpec;
+    unsafe fn a_packed(&self, dt: DatumType) -> MatrixStoreSpec;
 
-    unsafe fn b_packed(&self) -> MatrixStoreSpec;
+    unsafe fn b_packed(&self, dt: DatumType) -> MatrixStoreSpec;
     unsafe fn b_from_data_and_offsets(
         &self,
         dt: DatumType,
@@ -151,12 +151,12 @@ where
         TI::datum_type()
     }
 
-    unsafe fn a_packed(&self) -> MatrixStoreSpec {
-        MatrixStoreSpec::Packed { panel_len: (self.k * K::mr()) }
+    unsafe fn a_packed(&self, dt: DatumType) -> MatrixStoreSpec {
+        MatrixStoreSpec::Packed { panel_bytes: (self.k * K::mr() * dt.size_of()) }
     }
 
-    unsafe fn b_packed(&self) -> MatrixStoreSpec {
-        MatrixStoreSpec::Packed { panel_len: (self.k * K::nr()) }
+    unsafe fn b_packed(&self, dt: DatumType) -> MatrixStoreSpec {
+        MatrixStoreSpec::Packed { panel_bytes: (self.k * K::nr() * dt.size_of()) }
     }
 
     unsafe fn b_from_data_and_offsets(
@@ -250,7 +250,6 @@ where
         use anyhow::Context;
         let mr = K::mr();
         let nr = K::nr();
-        anyhow::ensure!(c.tensor.datum_type() == TC::datum_type());
         let m = self.m;
         let n = self.n;
         let scratch = scratch
@@ -275,7 +274,7 @@ where
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
-            if let MatrixStoreSpec::VecStride { .. } = c.spec {
+            if let MatrixStore::VecStride { .. } = c {
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 self.prefetch(a, b);
                 scratch.clear();

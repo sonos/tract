@@ -58,7 +58,7 @@ fn mmm(c: &mut Criterion) {
                     .unwrap()
                     .into_arc_tensor());
                 let op = tract_core::ops::matmul::lir_unary::LirMatMulUnary {
-                    b_storage: unsafe { mmm.b_packed() },
+                    b_storage: unsafe { mmm.b_packed(F32) },
                     c_fact: TypedFact::dt_shape(f32::datum_type(), &[8, 64]),
                     packed_as: tract_ndarray::arr0(packed_a.into_arc_tensor()).into_dyn(),
                     fused_ops: None,

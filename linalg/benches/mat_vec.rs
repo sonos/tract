@@ -23,7 +23,7 @@ fn mat_vec_mul(c: &mut Criterion) {
                     mm.b_vec_from_data(b.datum_type());
                     be.iter(move || {
                         mm.run(
-                            &mm.a_packed().wrap(&pa.view()),
+                            &mm.a_packed(F32).wrap(&pa.view()),
                             &mm.b_vec_from_data(b.datum_type()).wrap(&b.view()),
                             &mut mm.c_view().wrap(&c.view_mut()),
                             &[],

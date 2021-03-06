@@ -23,8 +23,8 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
         let mut output = Tensor::zero::<f32>(&[co, t]).unwrap();
         be.iter(move || {
             mm.run(
-                &mm.a_packed().wrap(&mut a.view()),
-                &mm.b_packed().wrap(&input.view()),
+                &mm.a_packed(F32).wrap(&mut a.view()),
+                &mm.b_packed(F32).wrap(&input.view()),
                 &mut mm.c_view().wrap(&output.view_mut()),
                 &[],
             )

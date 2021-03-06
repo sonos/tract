@@ -289,8 +289,8 @@ where
         let mut found = tensor0(TC::max_value()).broadcast_scalar_to_shape(&[m, n]).unwrap();
 
         op.run(
-            &op.a_packed().wrap(&packed_a.view()),
-            &op.b_packed().wrap(&packed_b.view()),
+            &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
+            &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
             &mut op.c_from_data_and_strides(n as isize, 1).wrap(&found.view_mut()),
             &[],
         )
@@ -339,7 +339,7 @@ where
         let mut found = Tensor::uninitialized::<TC>(&[m]).unwrap();
 
         op.run(
-            &op.a_packed().wrap(&packed_a.view()),
+            &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
             &op.b_vec_from_data(b.datum_type()).wrap(&b.view()),
             &mut op.c_vec_from_data().wrap(&found.view_mut()),
             &[],
@@ -394,8 +394,8 @@ where
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
 
     op.run(
-        &op.a_packed().wrap(&packed_a.view()),
-        &op.b_packed().wrap(&packed_b.view()),
+        &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
+        &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
         &mut op.c_from_data_and_strides(n as isize, 1).wrap(&found.view_mut()),
         spec,
     )
@@ -642,7 +642,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                 .broadcast_scalar_to_shape(&[self.co, self.output_width()])
                 .unwrap();
             op.run(
-                &op.a_packed().wrap(&packed_a.view()),
+                &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
                 &op.b_from_data_and_offsets(
                     TB::datum_type(),
                     &self.data_rows_offsets(),

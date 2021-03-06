@@ -72,8 +72,8 @@ fn mat_mat(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
         run(
             be,
             &*mm,
-            &mm.a_packed().wrap(&pa.view()),
-            &mm.b_packed().wrap(&pb.view()),
+            &mm.a_packed(dt).wrap(&pa.view()),
+            &mm.b_packed(dt).wrap(&pb.view()),
             &mut mm.c_view().wrap(&mut c.view_mut()),
             cold,
         );
@@ -90,7 +90,7 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
         run(
             be,
             &*mm,
-            &mm.a_packed().wrap(&pa.view()),
+            &mm.a_packed(dt).wrap(&pa.view()),
             &mm.b_vec_from_data(dt).wrap(&pb.view()),
             &mut mm.c_vec_from_data().wrap(&mut c.view_mut()),
             cold,
@@ -122,7 +122,7 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
         mm.b_from_data_and_offsets(pb.datum_type(), &rows_offsets, &cols_offsets);
         be.iter(move || {
             mm.run(
-                &mm.a_packed().wrap(&pa.view()),
+                &mm.a_packed(f32::datum_type()).wrap(&pa.view()),
                 &mm.b_from_data_and_offsets(c.datum_type(), &rows_offsets, &cols_offsets)
                     .wrap(&pb.view()),
                 &mut mm.c_view().wrap(&c.view_mut()),
@@ -143,7 +143,7 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
         mm.b_from_data_and_offsets(pb.datum_type(), &rows_offsets, &cols_offsets);
         be.iter(move || {
             mm.run(
-                &mm.a_packed().wrap(&pa.view()),
+                &mm.a_packed(i8::datum_type()).wrap(&pa.view()),
                 &mm.b_from_data_and_offsets(pb.datum_type(), &rows_offsets, &cols_offsets)
                     .wrap(&pb.view()),
                 &mut mm.c_view().wrap(&c.view_mut()),
