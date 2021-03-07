@@ -118,7 +118,7 @@ pub(super) fn eval(
             );
             mm.run(
                 &mm.a_packed(a.datum_type()).wrap(&packed_a.view()),
-                &mm.b_packed(a.datum_type()).wrap(&packed_b.view()),
+                &mm.b_packed(b.datum_type()).wrap(&packed_b.view()),
                 &mut c_storage.wrap(&c.view_at_prefix_mut(prefix.slice())?),
                 &[],
             )?;
