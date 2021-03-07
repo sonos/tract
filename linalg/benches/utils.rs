@@ -25,7 +25,15 @@ pub fn packed_vec(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
     group.bench_with_input(BenchmarkId::new("i8/hot", &id), &(I8, m, k, n, false), mat_vec);
 }
 
-pub fn direct_conv(c: &mut Criterion, name: &str, p: usize, kl: usize, ci: usize, co: usize, stride: usize) {
+pub fn direct_conv(
+    c: &mut Criterion,
+    name: &str,
+    p: usize,
+    kl: usize,
+    ci: usize,
+    co: usize,
+    stride: usize,
+) {
     let mut group = c.benchmark_group(format!("{}/conv", name));
     let id = format!("{}x{}x{}x{}", p, kl, ci, co);
     group.bench_with_input(
@@ -48,6 +56,7 @@ unsafe fn run(
     c: &mut MatrixStore,
     cold: bool,
 ) {
+    let mut scratch = mm.allocate_scratch_space();
     be.iter_custom(move |iters| {
         let mut dur = std::time::Duration::default();
         for _ in 0..iters {
@@ -55,7 +64,7 @@ unsafe fn run(
                 ruin_cache();
             }
             let instant = std::time::Instant::now();
-            mm.run(&pa, &pb, c, &[]).unwrap();
+            mm.run_with_scratch_space(scratch.as_mut(), &pa, &pb, c, &[]).unwrap();
             let time = instant.elapsed();
             dur += time;
         }
