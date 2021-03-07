@@ -6,13 +6,13 @@ use tract_linalg::frame::MatMatMul;
 
 use DatumType::*;
 
-pub fn packed_packed(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
+pub fn packed_packed(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize, tr: bool) {
     let mut group = c.benchmark_group(format!("{}/packed_packed", name));
     let id = format!("{}x{}x{}", m, k, n);
-    group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true), mat_mat);
-    group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false), mat_mat);
-    group.bench_with_input(BenchmarkId::new("i8/cold", &id), &(I8, m, k, n, true), mat_mat);
-    group.bench_with_input(BenchmarkId::new("i8/hot", &id), &(I8, m, k, n, false), mat_mat);
+    group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true, tr), mat_mat);
+    group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false, tr), mat_mat);
+    group.bench_with_input(BenchmarkId::new("i8/cold", &id), &(I8, m, k, n, true, tr), mat_mat);
+    group.bench_with_input(BenchmarkId::new("i8/hot", &id), &(I8, m, k, n, false, tr), mat_mat);
 }
 
 pub fn packed_vec(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
@@ -72,18 +72,22 @@ unsafe fn run(
     });
 }
 
-fn mat_mat(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool)) {
+fn mat_mat(
+    be: &mut Bencher,
+    &(dt, m, k, n, cold, c_trans): &(DatumType, usize, usize, usize, bool, bool),
+) {
     let mm = tract_linalg::ops().mmm(dt, dt, dt, m, k, n).unwrap();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
     let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(n)], mm.b_pack().alignment()).unwrap();
-    let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
+    let mut c = Tensor::zero_dt(dt, &if c_trans { [n, m] } else { [m, n] }).unwrap();
     unsafe {
+        let c_sto = if c_trans { mm.c_view_with_axis(1, 0) } else { mm.c_view() };
         run(
             be,
             &*mm,
             &mm.a_packed(dt).wrap(&pa.view()),
             &mm.b_packed(dt).wrap(&pb.view()),
-            &mut mm.c_view().wrap(&mut c.view_mut()),
+            &mut c_sto.wrap(&mut c.view_mut()),
             cold,
         );
     }
