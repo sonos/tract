@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use num_traits::Zero;
+use std::fmt::Debug;
 
 use super::{FusedKerSpec, FusedSpec, MatMatMulKer, PanelStore};
 use downcast_rs::{impl_downcast, Downcast};
@@ -54,7 +54,25 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         unsafe { std::slice::from_raw_parts_mut(buf, len) }
     }
 
+    #[inline]
     pub unsafe fn for_tile<TC, K: MatMatMulKer<TI>>(
+        &mut self,
+        specs: &[FusedSpec],
+        down: usize,
+        right: usize,
+    ) -> *const FusedKerSpec<TI>
+    where
+        TC: Datum + Copy,
+        TI: Datum + Copy + Debug + Zero,
+    {
+        if specs.is_empty() {
+            std::ptr::null()
+        } else {
+            self.fused_for_tile::<TC, K>(specs, down, right)
+        }
+    }
+
+    unsafe fn fused_for_tile<TC, K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
         down: usize,
@@ -74,12 +92,12 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 | FusedSpec::PerRowMul(v)
                 | FusedSpec::PerColMul(v)
                 | FusedSpec::PerColAdd(v) => {
-                    let (dir, r) = if matches!(spec, FusedSpec::PerColAdd(_) | FusedSpec::PerColMul(_))
-                    {
-                        (right, K::nr())
-                    } else {
-                        (down, K::mr())
-                    };
+                    let (dir, r) =
+                        if matches!(spec, FusedSpec::PerColAdd(_) | FusedSpec::PerColMul(_)) {
+                            (right, K::nr())
+                        } else {
+                            (down, K::mr())
+                        };
                     let have = v.len().saturating_sub(dir * r).min(r);
                     let ptr = if have < K::mr() {
                         let buf = self.get_temp_slice(r);
@@ -146,4 +164,3 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         }
     }
 }
-
