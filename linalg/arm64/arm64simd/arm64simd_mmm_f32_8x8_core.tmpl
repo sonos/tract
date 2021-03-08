@@ -285,7 +285,7 @@
     ld1         { v0.4s, v1.4s }, [ x1 ], #32
     ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
-{% if core == "a5x" %}
+{% if core == "a53" %}
     cmp         x3, #4
     blt         .packed_packed_loop_1
 
