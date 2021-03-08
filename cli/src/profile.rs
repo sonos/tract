@@ -6,16 +6,6 @@ use crate::BenchLimits;
 use crate::CliResult;
 use std::time::{Duration, Instant};
 
-trait Scalable {
-    fn scale(self, scale: f32) -> Self;
-}
-
-impl Scalable for std::time::Duration {
-    fn scale(self, scale: f32) -> Duration {
-        Duration::from_secs_f32(scale * self.as_secs_f32())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ProfileSummary {
     pub max: Duration,
@@ -80,7 +70,7 @@ pub fn profile(
                             |session_state, state, node, input| {
                                 let start = Instant::now();
                                 let r = tract_core::plan::eval(session_state, state, node, input);
-                                let elapsed = start.elapsed().scale(multi as _);
+                                let elapsed = start.elapsed().mul_f32(multi as _);
                                 *dg.node_mut(NodeQId(prefix.clone(), node.id))
                                     .profile
                                     .get_or_insert(Duration::default()) += elapsed;
@@ -98,10 +88,10 @@ pub fn profile(
         }
     }
     let denum = (iters as f32).recip();
-    let entire = entire.scale(denum);
+    let entire = entire.mul_f32(denum);
     for d in dg.tags.values_mut() {
         if let Some(d) = d.profile.as_mut() {
-            *d = d.scale(denum);
+            *d = d.mul_f32(denum);
         }
     }
     let max = dg.tags.values().filter_map(|t| t.profile).max().unwrap();

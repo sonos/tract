@@ -58,3 +58,8 @@ harness = false
 [[bench]]
 name = "sigmoid"
 harness = false
+
+[[bench]]
+bench = false
+name = "arm64simd"
+harness = false
