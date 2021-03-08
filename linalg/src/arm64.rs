@@ -6,7 +6,7 @@ use crate::frame::MatMatMulImpl;
 use crate::frame::SigmoidImpl;
 use crate::frame::TanhImpl;
 
-fn is_cortex_a5x() -> std::io::Result<bool> {
+fn is_cortex_a53() -> std::io::Result<bool> {
     let cpu_info = std::fs::read_to_string("/proc/cpuinfo")?;
     let a53 =
         cpu_info.split("\n").any(|line| line.starts_with("CPU part") && line.contains("0xd03"));
@@ -14,7 +14,7 @@ fn is_cortex_a5x() -> std::io::Result<bool> {
 }
 
 pub fn plug(ops: &mut Ops) {
-    if is_cortex_a5x().unwrap_or(false) {
+    if is_cortex_a53().unwrap_or(false) {
         log::info!("arm64simd activated for smmm (cortex A53)");
         ops.mmm_f32 = Box::new(|m, k, n| {
             Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32, f32>::new(m, k, n))
