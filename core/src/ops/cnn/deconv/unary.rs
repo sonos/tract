@@ -2,7 +2,7 @@ use crate::internal::*;
 use crate::ops::cnn::{KernelFormat, PaddingSpec};
 use crate::ops::nn::DataFormat;
 
-// valid, no-stride, no-dil, no-bias, no-group, f32
+// no-bias, no-group, f32
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct DeconvUnary {

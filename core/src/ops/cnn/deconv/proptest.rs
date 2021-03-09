@@ -12,6 +12,7 @@ use KernelFormat::*;
 struct DeconvProblem {
     data_format: DataFormat,
     kernel_format: KernelFormat,
+    padding: PaddingSpec,
     input: ArrayD<f32>,
     kernel: ArrayD<f32>,
     strides: TVec<usize>,
@@ -35,6 +36,7 @@ impl Arbitrary for DeconvProblem {
                 (
                     any::<DataFormat>(),
                     any::<KernelFormat>(),
+                    prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
                     1usize..3,
                     1usize..4,
                     1usize..4,
@@ -44,7 +46,15 @@ impl Arbitrary for DeconvProblem {
                     vec(1usize..4, georank..=georank), // dilations
                 )
             })
-            .prop_flat_map(|(df, kf, n, ci, co, hwk, hwi, strides, dilations)| {
+            .prop_filter(
+                "dilation, strides and shapes in SAME",
+                |(_, _, pad, _, _, _, hwk, _, strides, dilations)| {
+                    pad == &PaddingSpec::Valid
+                        || tract_itertools::izip!(hwk, dilations, strides)
+                            .all(|(k, d, s)| (k - 1) * d > s - 1)
+                },
+            )
+            .prop_flat_map(|(df, kf, pad, n, ci, co, hwk, hwi, strides, dilations)| {
                 let mut kernel_shape = hwk;
                 match kf {
                     OIHW => {
@@ -60,19 +70,23 @@ impl Arbitrary for DeconvProblem {
                 (
                     Just(df),
                     Just(kf),
+                    Just(pad),
                     tensor(&data_shape.shape),
                     tensor(&kernel_shape),
                     Just(strides),
                     Just(dilations),
                 )
             })
-            .prop_map(|(data_format, kernel_format, input, kernel, strides, dilations)| DeconvProblem {
-                data_format,
-                kernel_format,
-                input,
-                kernel,
-                strides: strides.into(),
-                dilations: dilations.into(),
+            .prop_map(|(data_format, kernel_format, padding, input, kernel, strides, dilations)| {
+                DeconvProblem {
+                    data_format,
+                    kernel_format,
+                    padding,
+                    input,
+                    kernel,
+                    strides: strides.into(),
+                    dilations: dilations.into(),
+                }
             })
             .boxed()
     }
@@ -83,7 +97,7 @@ impl DeconvProblem {
         let op = DeconvUnary::new(
             self.data_format,
             self.kernel_format,
-            PaddingSpec::Valid,
+            self.padding.clone(),
             self.kernel.clone().into_arc_tensor(),
             self.strides.clone(),
             self.dilations.clone(),
@@ -101,10 +115,29 @@ impl DeconvProblem {
         let input_shape = self.data_format.shape(self.input.shape()).unwrap();
         let n = if self.data_format.has_n() { self.input.shape()[0] } else { 1 };
         let kernel_hwdims = self.kernel_format.spatial_shape(self.kernel.shape());
-        let output_shape_geo: TVec<usize> =
-            tract_itertools::izip!(input_shape.hw_dims(), kernel_hwdims, self.strides.iter(), self.dilations.iter())
-                .map(|(i, k, s, d)| (i - 1) * s + (k - 1) * d + 1)
-                .collect();
+        let valid_output_shape_geo: TVec<usize> = tract_itertools::izip!(
+            input_shape.hw_dims(),
+            kernel_hwdims,
+            self.strides.iter(),
+            self.dilations.iter()
+        )
+        .map(|(i, k, s, d)| (i - 1) * s + (k - 1) * d + 1)
+        .collect();
+        let paddings: TVec<(usize, usize)> = if self.padding == PaddingSpec::Valid {
+            tvec![(0, 0); valid_output_shape_geo.len()]
+        } else {
+            tract_itertools::izip!(input_shape.hw_dims(), &valid_output_shape_geo, &self.strides)
+                .map(|(i, o, s)| o - i * s)
+                .map(|total| (total / 2, total - total / 2))
+                .collect()
+        };
+        let output_shape_geo = if self.padding == PaddingSpec::Valid {
+            valid_output_shape_geo.clone()
+        } else {
+            tract_itertools::izip!(input_shape.hw_dims(), &self.strides)
+                .map(|(i, s)| i * s)
+                .collect()
+        };
         let output_shape = self.data_format.from_n_c_hw(n, co, output_shape_geo).unwrap();
         let mut output = ArrayD::zeros(&*output_shape.shape);
         for n in 0..n {
@@ -117,8 +150,9 @@ impl DeconvProblem {
                                 hwk.slice().iter(),
                                 self.strides.iter(),
                                 self.dilations.iter(),
+                                paddings.iter(),
                             )
-                            .map(|(i, k, s, d)| i * s + k * d)
+                            .map(|(i, k, s, d, p)| i * s + k * d - p.0)
                             .collect();
                             let i = self.data_format.from_n_c_hw(n, ci, hwi.slice()).unwrap();
                             let o = self.data_format.from_n_c_hw(n, co, hwo).unwrap();
@@ -157,6 +191,7 @@ fn test_trivial_0() {
     let pb = DeconvProblem {
         data_format: NCHW,
         kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
         input: arr4(&[[[[0.0]]]]).into_dyn(),
         kernel: arr4(&[[[[0.0]]]]).into_dyn(),
         strides: tvec!(1, 1),
@@ -170,6 +205,7 @@ fn test_hwc_0() {
     let pb = DeconvProblem {
         data_format: HWC,
         kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
         input: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
         kernel: arr4(&[[[[0.0]]]]).into_dyn(),
         strides: tvec!(1, 1),
@@ -183,6 +219,7 @@ fn test_geo_0() {
     let pb = DeconvProblem {
         data_format: HWC,
         kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
         input: arr3(&[[[0.0]]]).into_dyn(),
         kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
         strides: tvec!(1, 1),
@@ -196,6 +233,7 @@ fn test_hwio_0() {
     let pb = DeconvProblem {
         data_format: HWC,
         kernel_format: HWIO,
+        padding: PaddingSpec::Valid,
         input: arr3(&[[[0.0]]]).into_dyn(),
         kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
         strides: tvec!(1, 1),
@@ -209,6 +247,7 @@ fn test_strides_1() {
     let pb = DeconvProblem {
         data_format: HWC,
         kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
         input: arr2(&[[0.0], [1.0]]).into_dyn(),
         kernel: arr3(&[[[1.0]]]).into_dyn(),
         strides: tvec!(2),
