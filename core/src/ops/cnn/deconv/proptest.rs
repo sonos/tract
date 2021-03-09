@@ -28,23 +28,31 @@ impl Arbitrary for DeconvProblem {
     type Strategy = BoxedStrategy<DeconvProblem>;
     type Parameters = ();
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (
-            any::<DataFormat>(),
-            any::<KernelFormat>(),
-            1usize..3,
-            1usize..4,
-            1usize..4,
-            1usize..4,
-            1usize..4,
-            1usize..8,
-            1usize..8,
-        )
-            .prop_flat_map(|(df, kf, n, ci, co, hk, wk, hi, wi)| {
-                let kernel_shape = match kf {
-                    OIHW => [ci, co, hk, wk],
-                    HWIO => [hk, wk, co, ci],
+        (1usize..4)
+            .prop_flat_map(|georank| {
+                (
+                    any::<DataFormat>(),
+                    any::<KernelFormat>(),
+                    1usize..3,
+                    1usize..4,
+                    1usize..4,
+                    vec(1usize..4, georank..=georank),
+                    vec(1usize..8, georank..=georank),
+                )
+            })
+            .prop_flat_map(|(df, kf, n, ci, co, hwk, hwi)| {
+                let mut kernel_shape = hwk;
+                match kf {
+                    OIHW => {
+                        kernel_shape.insert(0, ci);
+                        kernel_shape.insert(1, co);
+                    }
+                    HWIO => {
+                        kernel_shape.push(co);
+                        kernel_shape.push(ci);
+                    }
                 };
-                let data_shape = df.from_n_c_hw(n, ci, &[hi, wi]).unwrap();
+                let data_shape = df.from_n_c_hw(n, ci, &hwi).unwrap();
                 (Just(df), Just(kf), tensor(&data_shape.shape), tensor(&kernel_shape))
             })
             .prop_map(|(data_format, kernel_format, input, kernel)| DeconvProblem {
