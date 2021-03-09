@@ -31,6 +31,7 @@ impl<TI: Copy> Drop for ScratchSpaceFusedNonLinear<TI> {
 }
 
 impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
+    #[inline]
     pub fn clear(&mut self) {
         self.buffers.iter_mut().for_each(|(used, _, _)| *used = false);
     }
@@ -199,6 +200,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         self.uspecs.as_ptr()
     }
 
+    #[inline]
     pub unsafe fn tmp_tile_c(&mut self, c: DatumType, mr: usize, nr: usize) -> PanelStore {
         let ptr = self.get_raw_buffer(mr * nr * c.size_of());
         PanelStore::Strides {

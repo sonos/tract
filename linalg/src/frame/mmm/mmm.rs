@@ -189,7 +189,12 @@ where
     }
 
     unsafe fn b_vec_from_data_and_stride(&self, dt: DatumType, stride: isize) -> MatrixStoreSpec {
-        MatrixStoreSpec::VecStride { item_stride: stride, mr: K::mr(), nr: K::nr() }
+        MatrixStoreSpec::VecStride {
+            item_stride: stride,
+            byte_stride: stride * dt.size_of() as isize,
+            mr: K::mr(),
+            nr: K::nr(),
+        }
     }
 
     unsafe fn b_vec_from_data(&self, dt: DatumType) -> MatrixStoreSpec {
@@ -197,11 +202,11 @@ where
     }
 
     unsafe fn c_view(&self) -> MatrixStoreSpec {
-        MatrixStoreSpec::View { axes: None }
+        MatrixStoreSpec::View { axes: None, mr: K::mr(), nr: K::nr() }
     }
 
     unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> MatrixStoreSpec {
-        MatrixStoreSpec::View { axes: Some((m_axis, n_axis)) }
+        MatrixStoreSpec::View { axes: Some((m_axis, n_axis)), mr: K::mr(), nr: K::nr() }
     }
 
     unsafe fn c_from_data_and_strides(
@@ -209,11 +214,23 @@ where
         row_stride: isize,
         col_stride: isize,
     ) -> MatrixStoreSpec {
-        MatrixStoreSpec::Strides { row_item_stride: row_stride, col_item_stride: col_stride }
+        MatrixStoreSpec::Strides {
+            row_byte_stride: row_stride * TC::datum_type().size_of() as isize,
+            col_byte_stride: col_stride * TC::datum_type().size_of() as isize,
+            row_item_stride: row_stride,
+            col_item_stride: col_stride,
+            mr: K::mr(),
+            nr: K::nr(),
+        }
     }
 
     unsafe fn c_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec {
-        MatrixStoreSpec::VecStride { item_stride: stride, mr: K::mr(), nr: K::nr() }
+        MatrixStoreSpec::VecStride {
+            item_stride: stride,
+            byte_stride: stride * TC::datum_type().size_of() as isize,
+            mr: K::mr(),
+            nr: K::nr(),
+        }
     }
 
     unsafe fn c_vec_from_data(&self) -> MatrixStoreSpec {
@@ -253,7 +270,7 @@ where
                 self.prefetch(a, b);
                 scratch.clear();
                 let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, 0, c);
-                let ref direct_c = c.tile_c(ia, 0, mr, nr);
+                let ref direct_c = c.tile_c(ia, 0);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
@@ -267,7 +284,7 @@ where
                     let ref b = b.panel_b(nr, ib, nr);
                     self.prefetch(a, b);
                     scratch.clear();
-                    let ref direct_c = c.tile_c(ia, ib, mr, nr);
+                    let ref direct_c = c.tile_c(ia, ib);
                     let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, ib, c);
                     let err = K::kernel(&MatMatMulKerSpec {
                         a: a as _,
@@ -292,7 +309,7 @@ where
                         non_linear,
                     });
                     debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                    c.set_from_tile::<TC>(ia, n / nr, mr, n % nr, &tmpc, mr, nr);
+                    c.set_from_tile::<TC>(ia, n / nr, mr, n % nr, &tmpc);
                 }
             }
         }
@@ -312,7 +329,7 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile::<TC>(m / mr, 0, m % mr, nr, &tmpc, mr, nr);
+                c.set_from_tile::<TC>(m / mr, 0, m % mr, nr, &tmpc);
             } else {
                 for ib in 0..n / nr {
                     let ref b = b.panel_b(nr, ib, nr);
@@ -328,7 +345,7 @@ where
                         non_linear,
                     });
                     debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                    c.set_from_tile::<TC>(m / mr, ib, m % mr, nr, &tmpc, mr, nr);
+                    c.set_from_tile::<TC>(m / mr, ib, m % mr, nr, &tmpc);
                 }
                 if n % nr != 0 {
                     let ref b = b.panel_b(nr, n / nr, n % nr);
@@ -344,7 +361,7 @@ where
                         non_linear,
                     });
                     debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                    c.set_from_tile::<TC>(m / mr, n / nr, m % mr, n % nr, &tmpc, mr, nr);
+                    c.set_from_tile::<TC>(m / mr, n / nr, m % mr, n % nr, &tmpc);
                 }
             }
         }
