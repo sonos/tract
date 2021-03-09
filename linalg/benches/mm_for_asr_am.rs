@@ -4,6 +4,7 @@ mod utils;
 use utils::*;
 
 fn all(c: &mut Criterion) {
+    // packed_packed: co, ci, n
     direct_conv(c, "asr_2M", 24, 5, 40, 200, 1); // lda
     packed_packed(c, "asr_2M", 256, 200, 24, false); // tdnn1
     direct_conv(c, "asr_2M", 24, 3, 256, 256, 1); // tdnn2
@@ -19,6 +20,14 @@ fn all(c: &mut Criterion) {
     packed_packed(c, "asr_8M", 512, 512, 24, false); // tdnn2
     packed_packed(c, "asr_8M", 512, 256, 1, false); // fastlstm1 and 2 (four parts, rec mat*vec)
     packed_vec(c, "asr_8M", 512, 256, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
+
+    // 15M
+    packed_packed(c, "asr_15M", 768, 200, 24, false); // tdnn1
+    packed_packed(c, "asr_15M", 768, 2304, 24, false); // tdnn2
+    packed_packed(c, "asr_15M", 768, 2304, 8, false); // tdnn3,4,5
+    packed_packed(c, "asr_15M", 768, 768, 8, false); // fastlstm1 and 2 (four parts, rec mat*mat)
+    packed_packed(c, "asr_15M", 768, 384, 1, false); // fastlstm1 and 2 (four parts, rec mat*vec)
+    packed_vec(c, "asr_15M", 768, 384, 1); // fastlstm1 and 2 (four parts, rec mat*vec)
 }
 
 criterion_group!(benches, all);
