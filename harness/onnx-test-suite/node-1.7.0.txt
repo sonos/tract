@@ -124,6 +124,7 @@ test_convinteger_with_padding                                                   
 test_convtranspose not-nnef input:X
 test_convtranspose_1d not-nnef input:X
 test_convtranspose_3d not-nnef input:X
+test_convtranspose_dilations not-nnef input:X
 test_cos
 test_cos_example
 test_cosh

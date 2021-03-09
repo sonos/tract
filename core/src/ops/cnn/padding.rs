@@ -144,9 +144,8 @@ impl PaddingSpec {
         dilation: usize,
         stride: usize,
     ) -> ComputedPaddedDim<D> {
-        assert_eq!(stride, 1);
         let kernel_field = (kernel - 1) * dilation + 1;
-        let deconvoluted = convoluted.clone() + kernel_field - 1;
+        let deconvoluted = (convoluted.clone() - 1) * stride + kernel_field;
         ComputedPaddedDim::new(deconvoluted, convoluted.clone(), 0.into(), 0.into())
     }
 

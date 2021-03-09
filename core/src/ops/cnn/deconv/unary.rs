@@ -10,6 +10,8 @@ pub struct DeconvUnary {
     pub kernel_format: KernelFormat,
     pub padding: PaddingSpec,
     pub kernel: Arc<Tensor>,
+    pub strides: TVec<usize>,
+    pub dilations: TVec<usize>,
 }
 
 impl DeconvUnary {
@@ -20,6 +22,8 @@ impl DeconvUnary {
             &self.padding,
             &self.kernel.shape(),
             x_shape,
+            &self.strides,
+            &self.dilations,
         )
     }
 
@@ -75,6 +79,8 @@ impl DeconvUnary {
                 self.padding.clone(),
                 self.kernel.shape().into(),
                 input_shape.to_tvec(),
+                self.strides.clone(),
+                self.dilations.clone(),
             ),
             &gemm,
         )?;
