@@ -114,12 +114,9 @@ impl PaddingSpec {
             PaddingSpec::Valid => Self::valid_for_deconv(input, kernel, dilation, stride),
             PaddingSpec::SameUpper => Self::same_for_deconv(input, kernel, dilation, stride, true),
             PaddingSpec::SameLower => Self::same_for_deconv(input, kernel, dilation, stride, false),
-            _ => panic!(),
-            /*
             PaddingSpec::Explicit(ref bef, ref aft, ceil_mode) => {
-                Self::explicit(input, kernel, dilation, stride, bef[axis], aft[axis], *ceil_mode)
+                Self::explicit_for_deconv(input, kernel, dilation, stride, bef[axis], aft[axis])
             }
-            */
         }
     }
 
@@ -168,6 +165,19 @@ impl PaddingSpec {
         ComputedPaddedDim::new(input.clone(), output, bef.into(), aft.into())
     }
 
+    fn explicit_for_deconv<D: DimLike>(
+        convoluted: &D,
+        kernel: usize,
+        dilation: usize,
+        stride: usize,
+        bef: usize,
+        aft: usize,
+    ) -> ComputedPaddedDim<D> {
+        let kernel_field = (kernel - 1) * dilation + 1;
+        let deconvoluted = (convoluted.clone() - 1) * stride + kernel_field - bef - aft;
+        ComputedPaddedDim::new(deconvoluted.clone(), convoluted.clone(), bef.into(), aft.into())
+    }
+
     fn same<D: DimLike>(
         input: &D,
         kernel: usize,
@@ -196,14 +206,14 @@ impl PaddingSpec {
         dilation: usize,
         stride: usize,
         upper: bool,
-    ) -> ComputedPaddedDim<D> {
-        assert_eq!(stride, 1);
+    ) -> ComputedPaddedDim<D> { 
         let kernel_field = (kernel - 1) * dilation + 1;
         let crop = kernel_field - 1;
         let lower_crop = crop.clone() / 2;
         let higher_crop = crop - &lower_crop;
         let (before, after) = if upper { (lower_crop, higher_crop) } else { (higher_crop, lower_crop) };
-        ComputedPaddedDim::new(convoluted.clone(), convoluted.clone(), before.into(), after.into())
+        let deconvoluted = (convoluted.clone() - 1) * stride + kernel_field - before - after;
+        ComputedPaddedDim::new(deconvoluted.clone(), convoluted.clone(), before.into(), after.into())
     }
 }
 

@@ -21,10 +21,10 @@ pub fn output_shape<D: DimLike>(
     let x_shape = data_format.shape(x_shape)?;
     let spatial_input_shape = x_shape.hw_dims();
     let spatial_kernel_shape = kernel_format.spatial_shape(kernel_shape);
-    let spatial_output_shape =
+    let spatial_output_details =
         padding.compute_for_deconv(&spatial_input_shape, &spatial_kernel_shape, &dilations, &strides);
     let deconv_shape: TVec<D> =
-        spatial_output_shape.iter().map(|comp| comp.deconvoluted.clone()).collect();
+        spatial_output_details.iter().map(|comp| comp.deconvoluted.clone()).collect();
     let co = match kernel_format {
         KernelFormat::HWIO => kernel_shape[kernel_shape.len() - 2 ],
         KernelFormat::OIHW => kernel_shape[1],
