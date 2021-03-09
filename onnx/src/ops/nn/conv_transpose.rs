@@ -1,3 +1,5 @@
+use std::str;
+
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
 use tract_core::ops::cnn::KernelFormat;
@@ -10,12 +12,16 @@ pub fn conv_transpose(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let padding_spec = super::pad(node)?;
-    Ok((expand(ConvTranspose::new(padding_spec)), vec![]))
+    let strides = super::strides(node)?;
+    let dilations = super::dilations(node)?;
+    Ok((expand(ConvTranspose::new(padding_spec, strides, dilations)), vec![]))
 }
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct ConvTranspose {
     padding_spec: PaddingSpec,
+    strides: Option<TVec<usize>>,
+    dilations: Option<TVec<usize>>,
 }
 
 impl_dyn_hash!(ConvTranspose);
@@ -47,12 +53,15 @@ impl Expansion for ConvTranspose {
             if let Ok(w_shape) =
                 w_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>()
             {
+                let ones = tvec!(1; x_shape.len() - 2);
                 let y_shape = tract_core::ops::cnn::deconv::output_shape(
                     &DataFormat::NCHW,
                     &KernelFormat::OIHW,
                     &self.padding_spec,
                     &*w_shape,
                     &x_shape,
+                    &self.strides.clone().unwrap_or(ones.clone()),
+                    &self.dilations.clone().unwrap_or(ones.clone()),
                 )?;
                 s.equals(&outputs[0].shape, y_shape)?;
             }
@@ -67,7 +76,8 @@ impl Expansion for ConvTranspose {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(k) = &target.outlet_fact(inputs[1])?.konst {
+        if let Some(k) = target.outlet_fact(inputs[1])?.konst.clone() {
+            let ones = tvec!(1; k.rank() - 2);
             target.wire_node(
                 prefix,
                 tract_core::ops::cnn::DeconvUnary::new(
@@ -75,6 +85,8 @@ impl Expansion for ConvTranspose {
                     KernelFormat::OIHW,
                     self.padding_spec.clone(),
                     k.clone(),
+                    self.strides.clone().unwrap_or(ones.clone()),
+                    self.dilations.clone().unwrap_or(ones.clone()),
                 ),
                 &[inputs[0]],
             )
