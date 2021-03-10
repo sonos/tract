@@ -918,23 +918,23 @@ fn packed_packed_8x8_loop1(c: &mut Criterion) {
             let mut p = F32;
             let mut q = F32;
             r4!(asm!("
-                    fmla        v16.4s, v2.4s, v4.s[2]
-                    fmla        v17.4s, v0.4s, v4.s[3]
-                    fmla        v18.4s, v1.4s, v4.s[3]
-                    fmla        v19.4s, v2.4s, v4.s[3]
+                    fmla        v16.4s, v0.4s, v4.s[2]
+                    fmla        v17.4s, v1.4s, v4.s[3]
+                    fmla        v18.4s, v0.4s, v4.s[3]
+                    fmla        v19.4s, v1.4s, v4.s[3]
                     fmla        v20.4s, v0.4s, v5.s[0]
                     fmla        v21.4s, v1.4s, v5.s[0]
-                    fmla        v22.4s, v2.4s, v5.s[0]
-                    fmla        v23.4s, v0.4s, v5.s[1]
+                    fmla        v22.4s, v0.4s, v5.s[0]
+                    fmla        v23.4s, v1.4s, v5.s[1]
 
-                    fmla        v24.4s, v1.4s, v5.s[1]
-                    fmla        v25.4s, v2.4s, v5.s[1]
+                    fmla        v24.4s, v0.4s, v5.s[1]
+                    fmla        v25.4s, v1.4s, v5.s[1]
                     fmla        v26.4s, v0.4s, v5.s[2]
                     fmla        v27.4s, v1.4s, v5.s[2]
-                    fmla        v28.4s, v2.4s, v5.s[2]
-                    fmla        v29.4s, v0.4s, v5.s[3]
-                    fmla        v30.4s, v1.4s, v5.s[3]
-                    fmla        v31.4s, v2.4s, v5.s[3]
+                    fmla        v28.4s, v0.4s, v5.s[2]
+                    fmla        v29.4s, v1.4s, v5.s[3]
+                    fmla        v30.4s, v0.4s, v5.s[3]
+                    fmla        v31.4s, v1.4s, v5.s[3]
 
                     ld1         {{ v0.4s, v1.4s }}, [{0}]
                     ld1         {{ v4.4s, v5.4s }}, [{1}] ",
