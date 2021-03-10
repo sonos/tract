@@ -71,10 +71,10 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ldr w25, [{0}]
                         ldr w26, [{0}]
                       ",
-                inout(reg) p,
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                      ));
+            inout(reg) p,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+                  ));
         })
     });
     group.bench_function("x_load", |b| {
@@ -90,10 +90,10 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ldr x25, [{0}]
                         ldr x26, [{0}]
                       ",
-                inout(reg) p,
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                      ));
+            inout(reg) p,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+                  ));
         })
     });
     group.bench_function("d_load", |b| {
@@ -109,10 +109,10 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ldr d6, [{0}]
                         ldr d7, [{0}]
                       ",
-                inout(reg) p,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                      ));
+            inout(reg) p,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+                  ));
         })
     });
     group.bench_function("s_load", |b| {
@@ -128,10 +128,10 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ld1 {{v6.s}}[0], [{0}]
                         ld1 {{v7.s}}[0], [{0}]
                       ",
-                inout(reg) p,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                      ));
+            inout(reg) p,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+                  ));
         })
     });
     group.bench_function("v_load", |b| {
@@ -147,10 +147,10 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ld1 {{v6.4s}}, [{0}]
                         ld1 {{v7.4s}}, [{0}]
                       ",
-                inout(reg) p,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                      ));
+            inout(reg) p,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+                  ));
         })
     });
     group.bench_function("v2_load", |b| {
@@ -166,12 +166,12 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ld1 {{v12.4s, v13.4s}}, [{0}]
                         ld1 {{v14.4s, v15.4s}}, [{0}]
                       ",
-                inout(reg) p,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("v3_load", |b| {
@@ -183,12 +183,12 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ld1 {{v6.4s, v7.4s, v8.4s}}, [{0}]
                         ld1 {{v9.4s, v10.4s, v11.4s}}, [{0}]
                       ",
-                inout(reg) p,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("v4_load", |b| {
@@ -200,12 +200,12 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ld1 {{v8.4s, v9.4s, v10.4s, v11.4s}}, [{0}]
                         ld1 {{v12.4s, v13.4s, v14.4s, v15.4s}}, [{0}]
                       ",
-                inout(reg) p,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("ins_32b", |b| {
@@ -220,13 +220,13 @@ pub fn ld_64F32(c: &mut Criterion) {
                 ins v14.s[0], w19
                 ins v15.s[0], w19
                 ",
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("ins_32b_same", |b| {
@@ -249,9 +249,9 @@ pub fn ld_64F32(c: &mut Criterion) {
             ins         v4.s[3], w22
             ins         v5.s[3], w26
                 ",
-                out("v0") _, out("v1") _,
-                out("v4") _, out("v5") _,
-                      ));
+            out("v0") _, out("v1") _,
+            out("v4") _, out("v5") _,
+                  ));
         })
     });
     group.bench_function("ins_64b", |b| {
@@ -266,13 +266,13 @@ pub fn ld_64F32(c: &mut Criterion) {
                 ins v14.d[0], x19
                 ins v15.d[0], x19
                 ",
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_w_load", |b| {
@@ -296,14 +296,14 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ldr w26, [{0}]
                         fmla v7.4s, v7.4s, v7.4s
                       ",
-                inout(reg) p,
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_w_load_inc", |b| {
@@ -327,14 +327,14 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ldr w26, [{0}], #4
                         fmla v7.4s, v7.4s, v7.4s
                       ",
-                inout(reg) p,
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_w_load_inc_alt", |b| {
@@ -359,14 +359,14 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ldr w26, [{1}], #4
                         fmla v7.4s, v7.4s, v7.4s
                       ",
-                inout(reg) p, inout(reg) q,
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p, inout(reg) q,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_w_load_offset", |b| {
@@ -390,14 +390,14 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ldr w26, [{0}, #28]
                         fmla v7.4s, v7.4s, v7.4s
                       ",
-                inout(reg) p,
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_x_load", |b| {
@@ -421,14 +421,14 @@ pub fn ld_64F32(c: &mut Criterion) {
                 fmla v7.4s, v7.4s, v7.4s
                 ldr x26, [{0}]
                 ",
-                inout(reg) p, 
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_s_load", |b| {
@@ -452,14 +452,14 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ldr s23, [{0}]
                         fmla v7.4s, v7.4s, v7.4s
                       ",
-                inout(reg) p,
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_d_load", |b| {
@@ -483,14 +483,14 @@ pub fn ld_64F32(c: &mut Criterion) {
                         ldr d23, [{0}]
                         fmla v7.4s, v7.4s, v7.4s
                       ",
-                inout(reg) p,
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_v_load", |b| {
@@ -514,14 +514,14 @@ pub fn ld_64F32(c: &mut Criterion) {
                 fmla v7.4s, v7.4s, v7.4s
                 ld1 {{ v16.4s }}, [{0}]
                       ",
-                inout(reg) p,
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_ins_32b", |b| {
@@ -544,13 +544,13 @@ pub fn ld_64F32(c: &mut Criterion) {
                 fmla v7.4s, v7.4s, v7.4s
                 ins v15.s[0], w19
                 ",
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_ins_64b", |b| {
@@ -573,13 +573,13 @@ pub fn ld_64F32(c: &mut Criterion) {
                 fmla v7.4s, v7.4s, v7.4s
                 ins v15.d[0], x19
                 ",
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("fmla_with_ins_64b_cross_parity", |b| {
@@ -602,13 +602,13 @@ pub fn ld_64F32(c: &mut Criterion) {
                 fmla v7.4s, v7.4s, v7.4s
                 ins v8.d[0], x19
                 ",
-                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
-                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+            out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("ins_32b_with_load_s", |b| {
@@ -632,12 +632,12 @@ pub fn ld_64F32(c: &mut Criterion) {
                 ldr s7, [{0}]
                 ins v15.d[0], x19
                 ",
-                inout(reg) p, 
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
     group.bench_function("ins_32b_with_load_s_cross_parity", |b| {
@@ -661,18 +661,18 @@ pub fn ld_64F32(c: &mut Criterion) {
                 ldr s7, [{0}]
                 ins v8.d[0], x19
                 ",
-                inout(reg) p, 
-                out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-                out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-                out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-                out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-                      ));
+            inout(reg) p,
+            out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+            out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+                  ));
         })
     });
 }
 
-fn packed_packed_loop(c: &mut Criterion) {
-    let mut group = c.benchmark_group("packed_packed_loop");
+fn packed_packed_12x8_loop1(c: &mut Criterion) {
+    let mut group = c.benchmark_group("packed_packed_12x8_loop1");
     group.bench_function("ldr_w_no_preload", |b| {
         b.iter(|| unsafe {
             let mut p = F32;
@@ -909,5 +909,169 @@ fn packed_packed_loop(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, ld_64F32, packed_packed_loop);
+fn packed_packed_8x8_loop1(c: &mut Criterion) {
+    let mut group = c.benchmark_group("packed_packed_8x8_loop1");
+    group.throughput(criterion::Throughput::Elements(8*8*4));
+    group.bench_function("naive", |b| {
+        b.iter(|| unsafe {
+            let mut p = F32;
+            let mut q = F32;
+            r4!(asm!("
+                    fmla        v16.4s, v2.4s, v4.s[2]
+                    fmla        v17.4s, v0.4s, v4.s[3]
+                    fmla        v18.4s, v1.4s, v4.s[3]
+                    fmla        v19.4s, v2.4s, v4.s[3]
+                    fmla        v20.4s, v0.4s, v5.s[0]
+                    fmla        v21.4s, v1.4s, v5.s[0]
+                    fmla        v22.4s, v2.4s, v5.s[0]
+                    fmla        v23.4s, v0.4s, v5.s[1]
+
+                    fmla        v24.4s, v1.4s, v5.s[1]
+                    fmla        v25.4s, v2.4s, v5.s[1]
+                    fmla        v26.4s, v0.4s, v5.s[2]
+                    fmla        v27.4s, v1.4s, v5.s[2]
+                    fmla        v28.4s, v2.4s, v5.s[2]
+                    fmla        v29.4s, v0.4s, v5.s[3]
+                    fmla        v30.4s, v1.4s, v5.s[3]
+                    fmla        v31.4s, v2.4s, v5.s[3]
+
+                    ld1         {{ v0.4s, v1.4s }}, [{0}]
+                    ld1         {{ v4.4s, v5.4s }}, [{1}] ",
+                inout(reg) p, inout(reg) q,
+                out("v0") _, out("v1") _, out("v2") _,
+                out("v4") _, out("v5") _,
+                out("v16") _, out("v17") _, out("v18") _, out("v19") _,
+                out("v20") _, out("v21") _, out("v22") _, out("v23") _,
+                out("v24") _, out("v25") _, out("v26") _, out("v27") _,
+                out("v28") _, out("v29") _, out("v30") _, out("v31") _,
+            ));
+        })
+    });
+    group.bench_function("ldr_x_no_preload", |b| {
+        b.iter(|| unsafe {
+            let mut p = F32;
+            let mut q = F32;
+            r4!(asm!("
+                fmla        v16.4s, v0.4s, v4.s[0]
+                ldr         x5, [{0}], #8
+                fmla        v17.4s, v1.4s, v4.s[0]
+                ldr         x9, [{1}], #8
+                fmla        v18.4s, v0.4s, v4.s[1]
+                ldr         x6, [{0}], #8
+                fmla        v19.4s, v1.4s, v4.s[1]
+                ldr         x10, [{1}], #8
+                fmla        v20.4s, v0.4s, v4.s[2]
+                ldr         x7, [{0}], #8
+                fmla        v21.4s, v1.4s, v4.s[2]
+                ldr         x11, [{1}], #8
+                fmla        v22.4s, v0.4s, v4.s[3]
+                ldr         x8, [{0}], #8
+                fmla        v23.4s, v1.4s, v4.s[3]
+                ldr         x12, [{1}], #8
+
+                fmla        v24.4s, v0.4s, v5.s[0]
+                fmla        v25.4s, v1.4s, v5.s[0]
+                fmla        v26.4s, v0.4s, v5.s[1]
+                fmla        v27.4s, v1.4s, v5.s[1]
+                fmla        v28.4s, v0.4s, v5.s[2]
+                fmla        v29.4s, v1.4s, v5.s[2]
+                fmla        v30.4s, v0.4s, v5.s[3]
+                fmla        v31.4s, v1.4s, v5.s[3]
+
+                ins         v2.d[0], x5
+                ins         v6.d[0], x9
+                ins         v3.d[0], x7
+                ins         v7.d[0], x11
+                ins         v2.d[1], x6
+                ins         v6.d[1], x10
+                ins         v3.d[1], x8
+                ins         v7.d[1], x12
+            ",
+                inout(reg) p, inout(reg) q,
+                out("x4") _, out("x5") _, out("x6") _, out("x7") _,
+                out("x8") _, out("x9") _, out("x10") _, out("x11") _,
+                out("x12") _, out("x13") _, out("x14") _, out("x15") _,
+                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+                out("v0") _, out("v1") _, out("v2") _, out("v4") _, out("v5") _,
+                out("v16") _, out("v17") _, out("v18") _, out("v19") _,
+                out("v20") _, out("v21") _, out("v22") _, out("v23") _,
+                out("v24") _, out("v25") _, out("v26") _, out("v27") _,
+                out("v28") _, out("v29") _, out("v30") _, out("v31") _,
+            ));
+        })
+    });
+    group.bench_function("ldr_w_no_preload", |b| {
+        b.iter(|| unsafe {
+            let mut p = F32;
+            let mut q = F32;
+            r4!(asm!("
+                fmla        v16.4s, v0.4s, v4.s[0]
+                ldr         w5, [{0}], #4
+                fmla        v17.4s, v1.4s, v4.s[0]
+                ldr         w19, [{1}], #4
+                fmla        v18.4s, v0.4s, v4.s[1]
+                ldr         w6, [{0}], #4
+                fmla        v20.4s, v1.4s, v4.s[1]
+                ldr         w20, [{1}], #4
+                fmla        v20.4s, v0.4s, v4.s[2]
+                ldr         w7, [{0}], #4
+                fmla        v21.4s, v1.4s, v4.s[2]
+                ldr         w21, [{1}], #4
+                fmla        v22.4s, v0.4s, v4.s[3]
+                ldr         w8, [{0}], #4
+                fmla        v23.4s, v1.4s, v4.s[3]
+                ldr         w22, [{1}], #4
+
+                fmla        v24.4s, v0.4s, v5.s[0]
+                ldr         w9, [{0}], #4
+                fmla        v25.4s, v1.4s, v5.s[0]
+                ldr         w23, [{1}], #4
+                fmla        v26.4s, v0.4s, v5.s[1]
+                ldr         w10, [{0}], #4
+                fmla        v27.4s, v1.4s, v5.s[1]
+                ldr         w24, [{1}], #4
+                fmla        v28.4s, v0.4s, v5.s[2]
+                ldr         w11, [{0}], #4
+                fmla        v29.4s, v1.4s, v5.s[2]
+                ldr         w25, [{1}], #4
+                fmla        v30.4s, v0.4s, v5.s[3]
+                ldr         w12, [{0}], #4
+                fmla        v31.4s, v1.4s, v5.s[3]
+                ldr         w26, [{1}], #4
+
+                ins         v0.s[0], w5
+                ins         v4.s[0], w19
+                ins         v1.s[0], w9
+                ins         v5.s[0], w23
+                ins         v0.s[2], w7
+                ins         v4.s[2], w21
+                ins         v1.s[2], w11
+                ins         v5.s[2], w25
+                ins         v0.s[1], w6
+                ins         v4.s[1], w20
+                ins         v1.s[1], w10
+                ins         v5.s[1], w24
+                ins         v0.s[3], w8
+                ins         v4.s[3], w22
+                ins         v1.s[3], w8
+                ins         v5.s[3], w26
+            ",
+                inout(reg) p, inout(reg) q,
+                out("x4") _, out("x5") _, out("x6") _, out("x7") _,
+                out("x8") _, out("x9") _, out("x10") _, out("x11") _,
+                out("x12") _, out("x13") _, out("x14") _, out("x15") _,
+                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+                out("v0") _, out("v1") _, out("v2") _, out("v4") _, out("v5") _,
+                out("v16") _, out("v17") _, out("v18") _, out("v19") _,
+                out("v20") _, out("v21") _, out("v22") _, out("v23") _,
+                out("v24") _, out("v25") _, out("v26") _, out("v27") _,
+                out("v28") _, out("v29") _, out("v30") _, out("v31") _,
+            ));
+        })
+    });
+}
+
+criterion_group!(benches, ld_64F32, packed_packed_12x8_loop1, packed_packed_8x8_loop1);
 criterion_main!(benches);
