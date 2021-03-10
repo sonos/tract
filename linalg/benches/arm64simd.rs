@@ -865,7 +865,8 @@ fn packed_packed_12x8_loop1(c: &mut Criterion) {
         b.iter(|| unsafe {
             let mut p = F32;
             let mut q = F32;
-            asm!("  fmla        v8.4s, v0.4s, v4.s[0]
+            asm!("
+                    fmla        v8.4s, v0.4s, v4.s[0]
                     fmla        v9.4s, v1.4s, v4.s[0]
                     fmla        v10.4s, v2.4s, v4.s[0]
                     fmla        v11.4s, v0.4s, v4.s[1]
@@ -1039,6 +1040,79 @@ fn packed_packed_8x8_loop1(c: &mut Criterion) {
                 ldr         w12, [{0}], #4
                 fmla        v31.4s, v1.4s, v5.s[3]
                 ldr         w26, [{1}], #4
+
+                ins         v0.s[0], w5
+                ins         v4.s[0], w19
+                ins         v1.s[0], w9
+                ins         v5.s[0], w23
+                ins         v0.s[2], w7
+                ins         v4.s[2], w21
+                ins         v1.s[2], w11
+                ins         v5.s[2], w25
+                ins         v0.s[1], w6
+                ins         v4.s[1], w20
+                ins         v1.s[1], w10
+                ins         v5.s[1], w24
+                ins         v0.s[3], w8
+                ins         v4.s[3], w22
+                ins         v1.s[3], w8
+                ins         v5.s[3], w26
+            ",
+                inout(reg) p, inout(reg) q,
+                out("x4") _, out("x5") _, out("x6") _, out("x7") _,
+                out("x8") _, out("x9") _, out("x10") _, out("x11") _,
+                out("x12") _, out("x13") _, out("x14") _, out("x15") _,
+                out("x19") _, out("x20") _, out("x21") _, out("x22") _,
+                out("x23") _, out("x24") _, out("x25") _, out("x26") _,
+                out("v0") _, out("v1") _, out("v2") _, out("v4") _, out("v5") _,
+                out("v16") _, out("v17") _, out("v18") _, out("v19") _,
+                out("v20") _, out("v21") _, out("v22") _, out("v23") _,
+                out("v24") _, out("v25") _, out("v26") _, out("v27") _,
+                out("v28") _, out("v29") _, out("v30") _, out("v31") _,
+            ));
+        })
+    });
+    group.bench_function("ldr_w_preload", |b| {
+        b.iter(|| unsafe {
+            let mut p = F32;
+            let mut q = F32;
+            r4!(asm!("
+                fmla        v16.4s, v0.4s, v4.s[0]
+                ldr         w5, [{0}], #4
+                fmla        v17.4s, v1.4s, v4.s[0]
+                ldr         w19, [{1}], #4
+                fmla        v18.4s, v0.4s, v4.s[1]
+                ldr         w6, [{0}], #4
+                fmla        v20.4s, v1.4s, v4.s[1]
+                ldr         w20, [{1}], #4
+                fmla        v20.4s, v0.4s, v4.s[2]
+                ldr         w7, [{0}], #4
+                fmla        v21.4s, v1.4s, v4.s[2]
+                ldr         w21, [{1}], #4
+                fmla        v22.4s, v0.4s, v4.s[3]
+                ldr         w8, [{0}], #4
+                fmla        v23.4s, v1.4s, v4.s[3]
+                ldr         w22, [{1}], #4
+
+                fmla        v24.4s, v0.4s, v5.s[0]
+                ldr         w9, [{0}], #4
+                fmla        v25.4s, v1.4s, v5.s[0]
+                ldr         w23, [{1}], #4
+                fmla        v26.4s, v0.4s, v5.s[1]
+                ldr         w10, [{0}], #4
+                fmla        v27.4s, v1.4s, v5.s[1]
+                ldr         w24, [{1}], #4
+                fmla        v28.4s, v0.4s, v5.s[2]
+                ldr         w11, [{0}], #4
+                fmla        v29.4s, v1.4s, v5.s[2]
+                ldr         w25, [{1}], #4
+                fmla        v30.4s, v0.4s, v5.s[3]
+                ldr         w12, [{0}], #4
+                fmla        v31.4s, v1.4s, v5.s[3]
+                ldr         w26, [{1}], #4
+
+                        prfm        pldl1keep, [{0}, #512]
+                        prfm        pldl1keep, [{1}, #512]
 
                 ins         v0.s[0], w5
                 ins         v4.s[0], w19
