@@ -30,6 +30,7 @@ cc = "1.0"
 liquid = "0.21"
 unicode-normalization = "0.1"
 smallvec = "1"
+walkdir = "2"
 
 [dev-dependencies]
 criterion = "0.3"
