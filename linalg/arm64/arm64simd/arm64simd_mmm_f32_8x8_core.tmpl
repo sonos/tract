@@ -286,10 +286,13 @@
     ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
 {% capture packed_packed_loop1 %}
-    {% include "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_preload.tmpli" %}
+    {% if core == "a53" %}
+        {% include "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_preload.tmpli" %}
+    {% else %}
+        {% include "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli" %}
+    {% endif %}
 {% endcapture %}
 
-{% if core == "a53" %}
     cmp         x3, #4
     blt         .packed_packed_loop_1
 
@@ -306,7 +309,6 @@
     cmp x3, #0
     beq .non_linear
 
-{% endif %}
 
 .packed_packed_loop_1:
     {{ packed_packed_loop1 }}
