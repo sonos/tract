@@ -4,7 +4,7 @@ fmla        v17.4s, v1.4s, v4.s[0]
 ldr         w19, [x2], #4
 fmla        v18.4s, v0.4s, v4.s[1]
 ldr         w6, [x1], #4
-fmla        v20.4s, v1.4s, v4.s[1]
+fmla        v19.4s, v1.4s, v4.s[1]
 ldr         w20, [x2], #4
 fmla        v20.4s, v0.4s, v4.s[2]
 ldr         w7, [x1], #4
@@ -49,6 +49,6 @@ ins         v1.s[1], w10
 ins         v5.s[1], w24
 ins         v0.s[3], w8
 ins         v4.s[3], w22
-ins         v1.s[3], w8
+ins         v1.s[3], w12
 ins         v5.s[3], w26
 

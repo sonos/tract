@@ -211,7 +211,7 @@ fn load_partials(p: &path::Path) -> liquid::partials::InMemorySource {
         let f = f.unwrap();
         if f.path().extension().map(|ext| ext == "tmpli").unwrap_or(false) {
             println!("cargo:rerun-if-changed={}", f.path().to_string_lossy());
-            let key = f.path().strip_prefix(p).unwrap().with_extension("").to_str().unwrap().to_owned();
+            let key = f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned();
             let text = std::fs::read_to_string(f.path()).unwrap().replace("{{", "{").replace("}}", "}");
             mem.add(key, text);
         }
