@@ -32,8 +32,8 @@ ldr         w12, [x1], #4
 fmla        v31.4s, v1.4s, v5.s[3]
 ldr         w26, [x2], #4
 
-prfm        pldl1keep, [x1, #512]
-prfm        pldl1keep, [x2, #512]
+prfm        pldl1keep, [x1, #256]
+prfm        pldl1keep, [x2, #256]
 
 ins         v0.s[0], w5
 ins         v4.s[0], w19
