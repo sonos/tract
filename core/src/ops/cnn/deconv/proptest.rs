@@ -17,6 +17,7 @@ struct DeconvProblem {
     kernel: ArrayD<f32>,
     strides: TVec<usize>,
     dilations: TVec<usize>,
+    adjustments: TVec<usize>,
 }
 
 fn tensor(shape: &[usize]) -> BoxedStrategy<ArrayD<f32>> {
@@ -78,6 +79,7 @@ impl Arbitrary for DeconvProblem {
                 )
             })
             .prop_map(|(data_format, kernel_format, padding, input, kernel, strides, dilations)| {
+                let adjustments = tvec!(0; kernel.ndim() - 2); // FIXME maybe
                 DeconvProblem {
                     data_format,
                     kernel_format,
@@ -86,6 +88,7 @@ impl Arbitrary for DeconvProblem {
                     kernel,
                     strides: strides.into(),
                     dilations: dilations.into(),
+                    adjustments
                 }
             })
             .boxed()
@@ -101,6 +104,7 @@ impl DeconvProblem {
             self.kernel.clone().into_arc_tensor(),
             self.strides.clone(),
             self.dilations.clone(),
+            self.adjustments.clone(),
         );
         let mut outputs = op.eval(tvec!(self.input.clone().into_arc_tensor())).unwrap();
         outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
@@ -207,6 +211,7 @@ fn test_trivial_0() {
         kernel: arr4(&[[[[0.0]]]]).into_dyn(),
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
+        adjustments: tvec!(0, 0),
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -221,6 +226,7 @@ fn test_hwc_0() {
         kernel: arr4(&[[[[0.0]]]]).into_dyn(),
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
+        adjustments: tvec!(0, 0),
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -235,6 +241,7 @@ fn test_geo_0() {
         kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
+        adjustments: tvec!(0, 0),
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -249,6 +256,7 @@ fn test_hwio_0() {
         kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
+        adjustments: tvec!(0, 0),
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -263,6 +271,7 @@ fn test_strides_1() {
         kernel: arr3(&[[[1.0]]]).into_dyn(),
         strides: tvec!(2),
         dilations: tvec!(1),
+        adjustments: tvec!(0, 0),
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -277,6 +286,7 @@ fn test_same_upper_1() {
         kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
         strides: tvec!(1),
         dilations: tvec!(1),
+        adjustments: tvec!(0, 0),
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -291,6 +301,7 @@ fn test_same_upper_dil() {
         kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
         strides: tvec!(1),
         dilations: tvec!(2),
+        adjustments: tvec!(0, 0),
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -305,6 +316,7 @@ fn test_same_upper_strides() {
         kernel: arr3(&[[[0.0, 0.0, 0.0]]]).into_dyn(),
         strides: tvec!(2),
         dilations: tvec!(1),
+        adjustments: tvec!(0, 0),
     };
     assert_eq!(pb.tract(), pb.reference());
 }
