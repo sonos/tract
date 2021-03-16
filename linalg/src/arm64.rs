@@ -5,6 +5,7 @@ use crate::Ops;
 use crate::frame::MatMatMulImpl;
 use crate::frame::SigmoidImpl;
 use crate::frame::TanhImpl;
+
 use tract_data::internal::DimLike;
 
 fn is_cortex_a53() -> std::io::Result<bool> {
@@ -18,7 +19,9 @@ pub fn plug(ops: &mut Ops) {
     if is_cortex_a53().unwrap_or(false) {
         log::info!("arm64simd activated for smmm (cortex A53)");
         ops.mmm_f32 = Box::new(|m, k, n| {
-            if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
+            if n == 1 {
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1A53, f32, f32>::new(m, k, 1))
+            } else if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8A53, f32, f32>::new(m, k, n))
             } else {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32, f32>::new(m, k, n))
@@ -27,7 +30,9 @@ pub fn plug(ops: &mut Ops) {
     } else {
         log::info!("arm64simd activated for smmm (generic)");
         ops.mmm_f32 = Box::new(|m, k, n| {
-            if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
+            if n == 1 {
+                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32, f32>::new(m, k, 1))
+            } else if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8, f32, f32>::new(m, k, n))
             } else {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32, f32>::new(m, k, n))
