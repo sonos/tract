@@ -17,12 +17,13 @@ pub fn output_shape<D: DimLike>(
     x_shape: &[D],
     strides: &[usize],
     dilations: &[usize],
+    adjustments: &[usize],
 ) -> TractResult<TVec<D>> {
     let x_shape = data_format.shape(x_shape)?;
     let spatial_input_shape = x_shape.hw_dims();
     let spatial_kernel_shape = kernel_format.spatial_shape(kernel_shape);
     let spatial_output_details =
-        padding.compute_for_deconv(&spatial_input_shape, &spatial_kernel_shape, &dilations, &strides);
+        padding.compute_for_deconv(&spatial_input_shape, &spatial_kernel_shape, &dilations, &strides, &adjustments);
     let deconv_shape: TVec<D> =
         spatial_output_details.iter().map(|comp| comp.deconvoluted.clone()).collect();
     let co = match kernel_format {

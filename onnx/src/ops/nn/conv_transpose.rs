@@ -14,7 +14,8 @@ pub fn conv_transpose(
     let padding_spec = super::pad(node)?;
     let strides = super::strides(node)?;
     let dilations = super::dilations(node)?;
-    Ok((expand(ConvTranspose::new(padding_spec, strides, dilations)), vec![]))
+    let adjustments = node.get_attr_opt_tvec::<usize>("output_padding")?;
+    Ok((expand(ConvTranspose::new(padding_spec, strides, dilations, adjustments)), vec![]))
 }
 
 #[derive(Debug, Clone, new, Default, Hash)]
@@ -22,6 +23,7 @@ pub struct ConvTranspose {
     padding_spec: PaddingSpec,
     strides: Option<TVec<usize>>,
     dilations: Option<TVec<usize>>,
+    adjustments: Option<TVec<usize>>,
 }
 
 impl_dyn_hash!(ConvTranspose);
@@ -54,6 +56,7 @@ impl Expansion for ConvTranspose {
                 w_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>()
             {
                 let ones = tvec!(1; x_shape.len() - 2);
+                let zeros = tvec!(0; x_shape.len() - 2);
                 let y_shape = tract_core::ops::cnn::deconv::output_shape(
                     &DataFormat::NCHW,
                     &KernelFormat::OIHW,
@@ -62,6 +65,7 @@ impl Expansion for ConvTranspose {
                     &x_shape,
                     &self.strides.clone().unwrap_or(ones.clone()),
                     &self.dilations.clone().unwrap_or(ones.clone()),
+                    &self.adjustments.clone().unwrap_or(zeros.clone()),
                 )?;
                 s.equals(&outputs[0].shape, y_shape)?;
             }
@@ -78,6 +82,7 @@ impl Expansion for ConvTranspose {
     ) -> TractResult<TVec<OutletId>> {
         if let Some(k) = target.outlet_fact(inputs[1])?.konst.clone() {
             let ones = tvec!(1; k.rank() - 2);
+            let zeros = tvec!(0; k.rank() - 2);
             target.wire_node(
                 prefix,
                 tract_core::ops::cnn::DeconvUnary::new(
@@ -87,6 +92,7 @@ impl Expansion for ConvTranspose {
                     k.clone(),
                     self.strides.clone().unwrap_or(ones.clone()),
                     self.dilations.clone().unwrap_or(ones.clone()),
+                    self.adjustments.clone().unwrap_or(zeros.clone()),
                 ),
                 &[inputs[0]],
             )

@@ -9,6 +9,7 @@ test_operator_chunk
 test_operator_clip
 test_operator_concat2
 test_operator_conv
+test_operator_convtranspose not-nnef
 test_operator_exp
 test_operator_flatten
 test_operator_index
