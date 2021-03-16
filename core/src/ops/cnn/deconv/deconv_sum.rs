@@ -23,6 +23,7 @@ pub struct DeconvSum {
     pub input_shape: TVec<TDim>,
     pub strides: TVec<usize>,
     pub dilations: TVec<usize>,
+    pub adjustments: TVec<usize>,
 }
 
 impl_dyn_hash!(DeconvSum);
@@ -55,6 +56,7 @@ impl EvalOp for DeconvSum {
             input_shape.shape,
             &self.strides,
             &self.dilations,
+            &self.adjustments,
         )?;
         dbg!(&self);
         let output_shape = self.data_format.shape(output_shape)?;
@@ -65,6 +67,7 @@ impl EvalOp for DeconvSum {
             &kernel_spatial_shape,
             &self.dilations,
             &self.strides,
+            &self.adjustments,
         );
 
         let mut tensor = Tensor::zero::<f32>(&*output_shape.shape)?;
@@ -124,6 +127,7 @@ impl TypedOp for DeconvSum {
             &*self.input_shape,
             &*self.strides,
             &*self.dilations,
+            &*self.adjustments,
         )?;
 
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)))

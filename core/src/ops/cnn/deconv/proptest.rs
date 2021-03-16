@@ -139,21 +139,28 @@ impl DeconvProblem {
                 .collect()
         };
         let output_shape = self.data_format.from_n_c_hw(n, co, output_shape_geo).unwrap();
+        dbg!(&output_shape);
+        dbg!(&paddings);
         let mut output = ArrayD::zeros(&*output_shape.shape);
         for n in 0..n {
             for co in 0..co {
                 for ci in 0..*input_shape.c() {
                     for hwi in indices(input_shape.hw_dims()) {
                         for hwk in indices(kernel_hwdims) {
-                            let hwo: TVec<usize> = tract_itertools::izip!(
+                            let hwo: TVec<isize> = tract_itertools::izip!(
                                 hwi.slice().iter(),
                                 hwk.slice().iter(),
                                 self.strides.iter(),
                                 self.dilations.iter(),
                                 paddings.iter(),
                             )
-                            .map(|(i, k, s, d, p)| i * s + k * d - p.0)
+                            .map(|(i, k, s, d, p)| (i * s + k * d) as isize - p.0 as isize)
                             .collect();
+                            let hwo:TVec<usize> = if hwo.iter().all(|x| *x >= 0) {
+                                hwo.iter().map(|x| *x as usize).collect()
+                            } else {
+                                continue
+                            };
                             let i = self.data_format.from_n_c_hw(n, ci, hwi.slice()).unwrap();
                             let o = self.data_format.from_n_c_hw(n, co, hwo).unwrap();
                             let k: TVec<usize> = match self.kernel_format {
@@ -169,7 +176,11 @@ impl DeconvProblem {
                                     .chain(once(ci))
                                     .collect(),
                             };
-                            output[&*o.shape] += self.input[&*i.shape] * self.kernel[&*k];
+                            dbg!(&o.shape);
+                            dbg!(&i.shape);
+                            if let Some(ceil) = output.get_mut(&*o.shape) {
+                                *ceil += self.input[&*i.shape] * self.kernel[&*k]
+                            }
                         }
                     }
                 }
@@ -250,6 +261,48 @@ fn test_strides_1() {
         padding: PaddingSpec::Valid,
         input: arr2(&[[0.0], [1.0]]).into_dyn(),
         kernel: arr3(&[[[1.0]]]).into_dyn(),
+        strides: tvec!(2),
+        dilations: tvec!(1),
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_same_upper_1() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::SameUpper,
+        input: arr2(&[[0.0]]).into_dyn(),
+        kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+        strides: tvec!(1),
+        dilations: tvec!(1),
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_same_upper_dil() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::SameUpper,
+        input: arr2(&[[0.0]]).into_dyn(),
+        kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+        strides: tvec!(1),
+        dilations: tvec!(2),
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_same_upper_strides() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::SameUpper,
+        input: arr2(&[[0.0]]).into_dyn(),
+        kernel: arr3(&[[[0.0, 0.0, 0.0]]]).into_dyn(),
         strides: tvec!(2),
         dilations: tvec!(1),
     };

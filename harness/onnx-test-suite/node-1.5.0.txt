@@ -94,6 +94,10 @@ test_convtranspose not-nnef input:X
 test_convtranspose_1d not-nnef input:X
 test_convtranspose_3d not-nnef input:X
 test_convtranspose_dilations not-nnef input:X
+test_convtranspose_kernel_shape not-nnef input:X
+test_convtranspose_pad not-nnef input:X
+test_convtranspose_pads not-nnef input:X
+test_convtranspose_with_kernel not-nnef input:X
 test_cos
 test_cos_example
 test_cosh
