@@ -6,6 +6,7 @@ use tract_core::ops::cnn::KernelFormat;
 use tract_hir::internal::*;
 use tract_hir::ops::cnn::PaddingSpec;
 use tract_hir::ops::nn::DataFormat;
+use tract_itertools::izip;
 
 pub fn conv_transpose(
     _ctx: &ParsingContext,
@@ -15,7 +16,11 @@ pub fn conv_transpose(
     let strides = super::strides(node)?;
     let dilations = super::dilations(node)?;
     let adjustments = node.get_attr_opt_tvec::<usize>("output_padding")?;
-    Ok((expand(ConvTranspose::new(padding_spec, strides, dilations, adjustments)), vec![]))
+    let output_shape = node.get_attr_opt_tvec::<usize>("output_shape")?;
+    Ok((
+        expand(ConvTranspose::new(padding_spec, strides, dilations, adjustments, output_shape)),
+        vec![],
+    ))
 }
 
 #[derive(Debug, Clone, new, Default, Hash)]
@@ -24,6 +29,7 @@ pub struct ConvTranspose {
     strides: Option<TVec<usize>>,
     dilations: Option<TVec<usize>>,
     adjustments: Option<TVec<usize>>,
+    output_shape: Option<TVec<usize>>,
 }
 
 impl_dyn_hash!(ConvTranspose);
@@ -52,21 +58,32 @@ impl Expansion for ConvTranspose {
         s.equals(&outputs[0].shape[1], &inputs[1].shape[1])?; // I
 
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, x_shape, w_shape| {
-            if let Ok(w_shape) =
-                w_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>()
-            {
+            if let (Ok(x_shape), Ok(w_shape)) = (
+                x_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>(),
+                w_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>(),
+            ) {
                 let ones = tvec!(1; x_shape.len() - 2);
                 let zeros = tvec!(0; x_shape.len() - 2);
-                let y_shape = tract_core::ops::cnn::deconv::output_shape(
-                    &DataFormat::NCHW,
-                    &KernelFormat::OIHW,
-                    &self.padding_spec,
-                    &*w_shape,
-                    &x_shape,
-                    &self.strides.clone().unwrap_or(ones.clone()),
-                    &self.dilations.clone().unwrap_or(ones.clone()),
-                    &self.adjustments.clone().unwrap_or(zeros.clone()),
-                )?;
+                let y_shape = if let Some(output_shape) = &self.output_shape {
+                    let mut y_shape = x_shape.clone();
+                    y_shape[1] = w_shape[1];
+                    for (ix, d) in output_shape.iter().enumerate() {
+                        y_shape[ix + 2] = *d;
+                    }
+                    y_shape
+                } else {
+                    tract_core::ops::cnn::deconv::output_shape(
+                        &DataFormat::NCHW,
+                        &KernelFormat::OIHW,
+                        &self.padding_spec,
+                        &*w_shape,
+                        &x_shape,
+                        &self.strides.clone().unwrap_or(ones.clone()),
+                        &self.dilations.clone().unwrap_or(ones.clone()),
+                        &self.adjustments.clone().unwrap_or(zeros.clone()),
+                    )?
+                };
+                let y_shape = y_shape.iter().map(|x| x.to_dim()).collect::<TVec<TDim>>();
                 s.equals(&outputs[0].shape, y_shape)?;
             }
             Ok(())
@@ -83,19 +100,49 @@ impl Expansion for ConvTranspose {
         if let Some(k) = target.outlet_fact(inputs[1])?.konst.clone() {
             let ones = tvec!(1; k.rank() - 2);
             let zeros = tvec!(0; k.rank() - 2);
-            target.wire_node(
-                prefix,
-                tract_core::ops::cnn::DeconvUnary::new(
-                    DataFormat::NCHW,
-                    KernelFormat::OIHW,
-                    self.padding_spec.clone(),
-                    k.clone(),
-                    self.strides.clone().unwrap_or(ones.clone()),
-                    self.dilations.clone().unwrap_or(ones.clone()),
-                    self.adjustments.clone().unwrap_or(zeros.clone()),
-                ),
-                &[inputs[0]],
-            )
+            if let Some(output_shape) = &self.output_shape {
+                let x_shape = &target.outlet_fact(inputs[0])?.shape;
+                let w_shape = &target.outlet_fact(inputs[1])?.shape;
+                let adjustments = izip!(
+                    &x_shape[2..],
+                    &w_shape[2..],
+                    &*output_shape,
+                    &*self.strides.as_deref().unwrap_or(&ones),
+                    &*self.dilations.as_deref().unwrap_or(&ones),
+                    &*self.adjustments.as_deref().unwrap_or(&zeros),
+                )
+                .map(|(x, k, y, s, d, a)| {
+                    let pad = y - s * (x.to_usize()? - 1) - (k.to_usize()? - 1) * d - a - 1;
+                    Ok(pad) }
+                ).collect::<TractResult<TVec<usize>>>()?;
+                target.wire_node(
+                    prefix,
+                    tract_core::ops::cnn::DeconvUnary::new(
+                        DataFormat::NCHW,
+                        KernelFormat::OIHW,
+                        self.padding_spec.clone(),
+                        k.clone(),
+                        self.strides.clone().unwrap_or(ones.clone()),
+                        self.dilations.clone().unwrap_or(ones.clone()),
+                        adjustments
+                    ),
+                    &[inputs[0]],
+                )
+            } else {
+                target.wire_node(
+                    prefix,
+                    tract_core::ops::cnn::DeconvUnary::new(
+                        DataFormat::NCHW,
+                        KernelFormat::OIHW,
+                        self.padding_spec.clone(),
+                        k.clone(),
+                        self.strides.clone().unwrap_or(ones.clone()),
+                        self.dilations.clone().unwrap_or(ones.clone()),
+                        self.adjustments.clone().unwrap_or(zeros.clone()),
+                    ),
+                    &[inputs[0]],
+                )
+            }
         } else {
             bail!("Kernel values are expected to be constant.")
         }
