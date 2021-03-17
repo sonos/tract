@@ -248,7 +248,10 @@ impl TypedOp for LirMatMulUnary {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
-        if node.outputs.len() != 1 || node.outputs[0].successors.len() != 1 {
+        if node.outputs.len() != 1
+            || node.outputs[0].successors.len() != 1
+            || model.output_outlets()?.iter().any(|outlet| outlet.node == node.id)
+        {
             return Ok(None);
         }
         let succ = model.node(node.outputs[0].successors[0].node);
@@ -267,9 +270,11 @@ impl TypedOp for LirMatMulUnary {
         let merge = |fused_micro_op: &[ProtoFusedSpec],
                      additional_inputs: &[OutletId]|
          -> TractResult<Option<TypedModelPatch>> {
-            eprintln!("{}", model);
             let mut new_op = self.clone();
-            new_op.micro_ops.iter_mut().for_each(|ops| ops.1.extend(fused_micro_op.iter().cloned()));
+            new_op
+                .micro_ops
+                .iter_mut()
+                .for_each(|ops| ops.1.extend(fused_micro_op.iter().cloned()));
             let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
             patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
             let inputs = node
@@ -280,7 +285,6 @@ impl TypedOp for LirMatMulUnary {
                 .collect::<TractResult<TVec<OutletId>>>()?;
             let output = patch.wire_node(&node.name, new_op, &inputs)?;
             patch.shunt_outside(model, succ.id.into(), output[0])?;
-            eprintln!("{:?}", patch);
             Ok(Some(patch))
         };
 
