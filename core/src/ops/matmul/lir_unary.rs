@@ -166,7 +166,7 @@ fn eval(
     c_final_shape: &[usize],
 ) -> TractResult<TVec<Arc<Tensor>>> {
     unsafe {
-        let a_dt = op.packed_as.iter().next().unwrap().datum_type();
+        let a_dt = op.micro_ops.iter().next().unwrap().0.datum_type();
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
         let c_storage = if c_shape[c_n_axis] == 1 {
             op.mmm.c_vec_from_data()
