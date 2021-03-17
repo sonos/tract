@@ -540,7 +540,8 @@ impl Parameters {
         }
         stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| { Ok(m.incorporate()?)});
         stage!("type", inference_model -> typed_model, |m:InferenceModel| Ok(m.into_typed()?));
-        stage!("declutter", typed_model -> typed_model, |m:TypedModel| { let mut dec = tract_core::optim::Optimizer::declutter();
+        stage!("declutter", typed_model -> typed_model, |m:TypedModel| {
+            let mut dec = tract_core::optim::Optimizer::declutter();
             if let Some(steps) = matches.value_of("declutter_step") {
                 dec = dec.stopping_at(steps.parse()?);
             }
@@ -566,8 +567,20 @@ impl Parameters {
             });
             stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));
         }
+        if let Some(sub) = matches.value_of("extract_decluttered_sub") {
+            stage!("extract", typed_model -> typed_model, |m:TypedModel| {
+                let node = m.node_id_by_name(sub)?;
+                Ok(m.nested_models(node)[0].1.downcast_ref::<TypedModel>().unwrap().clone())
+            });
+        }
         stage!("before-optimize", typed_model -> typed_model, |m:TypedModel| Ok(m));
-        stage!("optimize", typed_model -> typed_model, |m:TypedModel| Ok(m.optimize()?));
+        stage!("optimize", typed_model -> typed_model, |m:TypedModel| {
+            let mut opt = tract_core::optim::Optimizer::codegen();
+            if let Some(steps) = matches.value_of("optimize_step") {
+                opt = opt.stopping_at(steps.parse()?);
+            }
+            opt.optimize(&m)
+        });
         Ok((typed_model.clone().unwrap(), pulsed_model, reference_model))
     }
 
