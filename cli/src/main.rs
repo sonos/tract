@@ -138,6 +138,8 @@ fn main() -> tract_core::anyhow::Result<()> {
 
     (@arg pass: --pass +takes_value possible_values(STAGES) "Pass to stop preprocessing after.")
     (@arg declutter_step: --("declutter-step") +takes_value "Stop decluttering process after application of patch number N")
+    (@arg optimize_step: --("optimize-step") +takes_value "Stop optimizing process after application of patch number N")
+    (@arg extract_decluttered_sub: --("extract-decluttered-sub") +takes_value "Zoom on a subgraph after decluttering by parent node name")
 
     (@arg nnef_cycle: --("nnef-cycle") "Perform NNEF dump and reload before optimizing")
     (@arg nnef_tract_core: --("nnef-tract-core") "Allow usage of tract-core extension in NNEF dump and load")
