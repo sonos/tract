@@ -1,7 +1,7 @@
 use num_traits::Zero;
 use std::fmt::Debug;
 
-use super::{FusedKerSpec, FusedSpec, MatMatMulKer, PanelStore};
+use super::{FusedKerSpec, FusedSpec, MatMatMulKer, MatrixStore, PanelStore};
 use downcast_rs::{impl_downcast, Downcast};
 use tract_data::prelude::*;
 
@@ -60,6 +60,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         specs: &[FusedSpec],
         down: usize,
         right: usize,
+        c_store: &MatrixStore,
     ) -> *const FusedKerSpec<TI>
     where
         TC: Datum + Copy,
@@ -68,7 +69,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         if specs.is_empty() {
             std::ptr::null()
         } else {
-            self.fused_for_tile::<TC, K>(specs, down, right)
+            self.fused_for_tile::<TC, K>(specs, down, right, c_store)
         }
     }
 
@@ -77,6 +78,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         specs: &[FusedSpec],
         down: usize,
         right: usize,
+        c_store: &MatrixStore,
     ) -> *const FusedKerSpec<TI>
     where
         TC: Datum + Copy,
@@ -148,11 +150,18 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 }
                 FusedSpec::QAway(m, s) => FusedKerSpec::QAway(*m.to_scalar_unchecked(), *s),
                 FusedSpec::AddUnicast(tensor) => {
-                    assert!(tensor.rank() == 2);
-                    let rsc = tensor.strides()[0];
-                    let csc = tensor.strides()[1];
+                    let (rsc, csc) = match c_store {
+                        MatrixStore::Strides { row_byte_stride, col_byte_stride, item_size, .. } => {
+                            (row_byte_stride / *item_size as isize, col_byte_stride / *item_size as isize)
+                        }
+                        MatrixStore::VecStride { byte_stride, item_size, .. } => {
+                            (byte_stride / *item_size as isize, 1)
+                        }
+                        _ => panic!(),
+                    };
                     let ptr = tensor.as_ptr_unchecked::<TI>().offset(
-                        (rsc * down as isize + csc * right as isize) * std::mem::size_of::<TI>() as isize,
+                        rsc * down as isize * K::mr() as isize
+                            + csc * right as isize * K::nr() as isize,
                     );
                     FusedKerSpec::AddUnicast(
                         ptr,

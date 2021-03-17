@@ -263,7 +263,7 @@ where
                 let ref b = b.panel_b(nr, n / nr, n % nr);
                 self.prefetch(a, b);
                 scratch.clear();
-                let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr);
+                let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr, c);
                 let ref direct_c = c.tile_c(ia, 0, mr, nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
@@ -279,7 +279,7 @@ where
                     self.prefetch(a, b);
                     scratch.clear();
                     let ref direct_c = c.tile_c(ia, ib, mr, nr);
-                    let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, ib);
+                    let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, ib, c);
                     let err = K::kernel(&MatMatMulKerSpec {
                         a: a as _,
                         b: b as _,
@@ -294,7 +294,7 @@ where
                     self.prefetch(a, b);
                     scratch.clear();
                     let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
-                    let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr);
+                    let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr, c);
                     let err = K::kernel(&MatMatMulKerSpec {
                         a: a as _,
                         b: b as _,
@@ -314,7 +314,7 @@ where
                 self.prefetch(panel_a, b);
                 scratch.clear();
                 let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
-                let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, ib);
+                let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, ib, c);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -331,7 +331,7 @@ where
                 scratch.clear();
                 // FIXME: can we write straight to C if n == 1 ?
                 let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
-                let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, n / nr);
+                let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, n / nr, c);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
