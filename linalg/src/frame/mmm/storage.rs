@@ -7,9 +7,9 @@ use tract_data::internal::*;
 pub enum MatrixStoreSpec {
     View { axes: Option<(usize, usize)> },
     Packed { panel_bytes: usize },
-    Strides { row_byte_stride: isize, col_byte_stride: isize },
+    Strides { row_item_stride: isize, col_item_stride: isize },
     OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_byte_offsets: Vec<isize>, nr: usize },
-    VecStride { byte_stride: isize, mr: usize, nr: usize },
+    VecStride { item_stride: isize, mr: usize, nr: usize },
 }
 
 impl MatrixStoreSpec {
@@ -32,10 +32,30 @@ impl fmt::Display for MatrixStoreSpec {
 
 #[derive(Clone, Debug)]
 pub enum MatrixStore<'s, 't> {
-    Strides { ptr: *mut c_void, row_byte_stride: isize, col_byte_stride: isize, item_size: usize },
-    Packed { ptr: *const c_void, item_size: usize, panel_bytes: isize },
-    OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: Vec<*const c_void>, nr: usize },
-    VecStride { ptr: *const c_void, byte_stride: isize, item_size: usize },
+    Strides {
+        ptr: *mut c_void,
+        row_item_stride: isize,
+        col_item_stride: isize,
+        row_byte_stride: isize,
+        col_byte_stride: isize,
+        item_size: usize,
+    },
+    Packed {
+        ptr: *const c_void,
+        item_size: usize,
+        panel_bytes: isize,
+    },
+    OffsetsAndPtrs {
+        row_byte_offsets: *const isize,
+        col_ptrs: Vec<*const c_void>,
+        nr: usize,
+    },
+    VecStride {
+        ptr: *const c_void,
+        item_stride: isize,
+        byte_stride: isize,
+        item_size: usize,
+    },
     _Phantom(&'s (), &'t ()),
 }
 
@@ -43,22 +63,27 @@ impl<'s, 't> MatrixStore<'s, 't> {
     unsafe fn new(spec: &'s MatrixStoreSpec, tensor: &'t TensorView) -> MatrixStore<'s, 't> {
         use MatrixStore::*;
         use MatrixStoreSpec as S;
+        let item_size = tensor.datum_type().size_of();
         match spec {
             S::View { .. } | S::Strides { .. } => {
-                let (row_byte_stride, col_byte_stride) = Self::compute_strides(spec, tensor);
+                let (row_item_stride, col_item_stride, row_byte_stride, col_byte_stride) =
+                    Self::compute_strides(spec, tensor);
                 Strides {
                     ptr: tensor.as_ptr_unchecked::<u8>() as _,
+                    row_item_stride,
+                    col_item_stride,
                     row_byte_stride,
                     col_byte_stride,
-                    item_size: tensor.datum_type().size_of(),
+                    item_size,
                 }
             }
             S::VecStride { .. } => {
-                let (byte_stride, _) = Self::compute_strides(spec, tensor);
+                let (item_stride, _, byte_stride, _) = Self::compute_strides(spec, tensor);
                 VecStride {
                     ptr: tensor.as_ptr_unchecked::<u8>() as _,
+                    item_stride,
                     byte_stride,
-                    item_size: tensor.datum_type().size_of(),
+                    item_size,
                 }
             }
             S::Packed { panel_bytes } => Packed {
@@ -105,7 +130,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
                     col_ptrs: col_ptrs.as_ptr().offset((nr * i) as isize),
                 }
             }
-            MatrixStore::VecStride { ptr, byte_stride, item_size } => PanelStore::VecStride {
+            MatrixStore::VecStride { ptr, byte_stride, item_size, .. } => PanelStore::VecStride {
                 ptr: *ptr,
                 byte_stride: *byte_stride,
                 item_size: *item_size,
@@ -114,7 +139,11 @@ impl<'s, 't> MatrixStore<'s, 't> {
         }
     }
 
-    unsafe fn compute_strides(spec: &MatrixStoreSpec, tensor: &TensorView) -> (isize, isize) {
+    unsafe fn compute_strides(
+        spec: &MatrixStoreSpec,
+        tensor: &TensorView,
+    ) -> (isize, isize, isize, isize) {
+        let size_of = tensor.datum_type().size_of() as isize;
         match spec {
             MatrixStoreSpec::View { axes } => {
                 let (m_axis, n_axis) = if let Some(axes) = axes {
@@ -124,16 +153,20 @@ impl<'s, 't> MatrixStore<'s, 't> {
                     (rank - 2, rank - 1)
                 };
                 let tensor_strides = tensor.strides();
-                let row_byte_stride =
-                    tensor_strides.get_unchecked(m_axis) * tensor.datum_type().size_of() as isize;
-                let col_byte_stride =
-                    tensor_strides.get_unchecked(n_axis) * tensor.datum_type().size_of() as isize;
-                (row_byte_stride, col_byte_stride)
+                let row_item_stride = *tensor_strides.get_unchecked(m_axis);
+                let col_item_stride = *tensor_strides.get_unchecked(n_axis);
+                let row_byte_stride = row_item_stride * size_of;
+                let col_byte_stride = col_item_stride * size_of;
+                (row_item_stride, col_item_stride, row_byte_stride, col_byte_stride)
             }
-            MatrixStoreSpec::Strides { row_byte_stride, col_byte_stride } => {
-                (*row_byte_stride, *col_byte_stride)
+            MatrixStoreSpec::Strides { row_item_stride, col_item_stride } => {
+                let row_byte_stride = row_item_stride * size_of;
+                let col_byte_stride = col_item_stride * size_of;
+                (*row_item_stride, *col_item_stride, row_byte_stride, col_byte_stride)
             }
-            MatrixStoreSpec::VecStride { byte_stride, .. } => (*byte_stride, 0),
+            MatrixStoreSpec::VecStride { item_stride, .. } => {
+                (*item_stride, 0, *item_stride * size_of, 0)
+            }
             _ => panic!(),
         }
     }
