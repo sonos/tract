@@ -189,11 +189,7 @@ where
     }
 
     unsafe fn b_vec_from_data_and_stride(&self, dt: DatumType, stride: isize) -> MatrixStoreSpec {
-        MatrixStoreSpec::VecStride {
-            byte_stride: stride * dt.size_of() as isize,
-            mr: K::mr(),
-            nr: K::nr(),
-        }
+        MatrixStoreSpec::VecStride { item_stride: stride, mr: K::mr(), nr: K::nr() }
     }
 
     unsafe fn b_vec_from_data(&self, dt: DatumType) -> MatrixStoreSpec {
@@ -213,18 +209,11 @@ where
         row_stride: isize,
         col_stride: isize,
     ) -> MatrixStoreSpec {
-        MatrixStoreSpec::Strides {
-            row_byte_stride: row_stride * std::mem::size_of::<TC>() as isize,
-            col_byte_stride: col_stride * std::mem::size_of::<TC>() as isize,
-        }
+        MatrixStoreSpec::Strides { row_item_stride: row_stride, col_item_stride: col_stride }
     }
 
     unsafe fn c_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec {
-        MatrixStoreSpec::VecStride {
-            byte_stride: stride * std::mem::size_of::<TC>() as isize,
-            mr: K::mr(),
-            nr: K::nr(),
-        }
+        MatrixStoreSpec::VecStride { item_stride: stride, mr: K::mr(), nr: K::nr() }
     }
 
     unsafe fn c_vec_from_data(&self) -> MatrixStoreSpec {

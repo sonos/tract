@@ -151,12 +151,10 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 FusedSpec::QAway(m, s) => FusedKerSpec::QAway(*m.to_scalar_unchecked(), *s),
                 FusedSpec::AddUnicast(tensor) => {
                     let (rsc, csc) = match c_store {
-                        MatrixStore::Strides { row_byte_stride, col_byte_stride, item_size, .. } => {
-                            (row_byte_stride / *item_size as isize, col_byte_stride / *item_size as isize)
+                        MatrixStore::Strides { row_item_stride, col_item_stride, .. } => {
+                            (*row_item_stride, *col_item_stride)
                         }
-                        MatrixStore::VecStride { byte_stride, item_size, .. } => {
-                            (byte_stride / *item_size as isize, 1)
-                        }
+                        MatrixStore::VecStride { item_stride, .. } => (*item_stride, 1),
                         _ => panic!(),
                     };
                     let ptr = tensor.as_ptr_unchecked::<TI>().offset(

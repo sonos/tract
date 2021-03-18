@@ -376,6 +376,9 @@
     ldr         x6, [x3, #16]               // rsc
 
 .add_with_strides:
+    cmp         x6, #4
+    beq         .do_per_row_add
+
     {% for reg in (16..31) %}
         {% for lane in (0..3) %}
             ld1 {v0.s}[{{lane}}], [ x5 ], x6
@@ -399,11 +402,13 @@
     b           .non_linear_loop
 
 .per_row_add:
-    ldr         x2, [x1, #8]
+    ldr         x5, [x1, #8]
 
-    {% for r in (0..15) %}
-        ldr     q{{r}}, [x2], #16
-    {% endfor %}
+.do_per_row_add:
+    ld1     {v0.4s-v3.4s}, [x5], #64
+    ld1     {v4.4s-v7.4s}, [x5], #64
+    ld1     {v8.4s-v11.4s}, [x5], #64
+    ld1     {v12.4s-v15.4s}, [x5], #64
 
     {% for r in (0..15) %}
         fadd v{{r| plus: 16}}.4s, v{{r | plus: 16}}.4s, v{{r}}.4s
