@@ -1,4 +1,7 @@
-## Unreleased
+## 0.13.0
+
+* Release are now "in sync": all tract crate versions on a build *must* be aligned
+* optimisations, with a focus on aarch64
 
 ## 0.12.5 - 2021-01-12
 

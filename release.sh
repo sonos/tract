@@ -71,7 +71,7 @@ set_version() {
     $SED -i.back "0,/^version/s/^version *= *\".*\"/version = \"$2\"/" $FILE
     for dep in `grep "^tract-" $FILE | cut -d " " -f 1`
     do
-        cargo add --manifest-path $FILE $dep@$VERSION
+        cargo add --manifest-path $FILE $dep@=$VERSION
     done
 }
 
