@@ -1,6 +1,5 @@
 use crate::internal::*;
-use crate::ops::cnn::{KernelFormat, PaddingSpec};
-use crate::ops::nn::DataFormat;
+use crate::ops::cnn::{KernelFormat, PoolSpec};
 use tract_ndarray::prelude::*;
 
 /*
@@ -15,14 +14,10 @@ DeconvSum      (N) O   H'  W'
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct DeconvSum {
-    pub data_format: DataFormat,
+    pub pool_spec: PoolSpec,
     pub kernel_format: KernelFormat,
-    pub padding: PaddingSpec,
-    pub kernel_shape: TVec<usize>,
     /// shape of the deconvolution input
     pub input_shape: TVec<TDim>,
-    pub strides: TVec<usize>,
-    pub dilations: TVec<usize>,
     pub adjustments: TVec<usize>,
 }
 
@@ -47,26 +42,20 @@ impl EvalOp for DeconvSum {
         debug_assert_eq!(gemm.datum_type(), f32::datum_type());
         let input_shape =
             self.input_shape.iter().map(|i| i.to_usize().unwrap()).collect::<TVec<usize>>();
-        let input_shape = self.data_format.shape(&input_shape)?;
+        let input_shape = self.pool_spec.data_format.shape(&input_shape)?;
         let output_shape = super::output_shape(
-            &self.data_format,
+            &self.pool_spec,
             &self.kernel_format,
-            &self.padding,
-            &*self.kernel_shape,
             input_shape.shape,
-            &self.strides,
-            &self.dilations,
             &self.adjustments,
         )?;
-        dbg!(&self);
-        let output_shape = self.data_format.shape(output_shape)?;
-        dbg!(&output_shape);
-        let kernel_spatial_shape = self.kernel_format.spatial_shape(&self.kernel_shape);
-        let spatial_output_details = self.padding.compute_for_deconv(
+        let output_shape = self.pool_spec.data_format.shape(output_shape)?;
+        let kernel_spatial_shape = self.kernel_format.spatial_shape(&self.pool_spec.kernel_shape);
+        let spatial_output_details = self.pool_spec.padding.compute_for_deconv(
             &input_shape.hw_dims(),
             &kernel_spatial_shape,
-            &self.dilations,
-            &self.strides,
+            &self.pool_spec.dilations(),
+            &self.pool_spec.strides(),
             &self.adjustments,
         );
 
@@ -94,11 +83,13 @@ impl EvalOp for DeconvSum {
                         let ocoord: TVec<isize> = tract_itertools::izip!(
                             kcoords.slice(),
                             gcoords.slice(),
-                            &self.strides,
-                            &self.dilations,
+                            self.pool_spec.strides().as_ref(),
+                            self.pool_spec.dilations().as_ref(),
                             &spatial_output_details
                         )
-                        .map(|(k, g, s, d, details)| (k * d + g * s) as isize - details.pad_before as isize)
+                        .map(|(k, g, s, d, details)| {
+                            (k * d + g * s) as isize - details.pad_before as isize
+                        })
                         .collect();
                         if ocoord
                             .iter()
@@ -106,7 +97,7 @@ impl EvalOp for DeconvSum {
                             .all(|(x, dim)| *x >= 0 && (*x as usize) < *dim)
                         {
                             let ocoord = ocoord.iter().map(|x| *x as usize).collect::<TVec<_>>();
-                            let ocoord = self.data_format.from_n_c_hw(n, o, ocoord)?;
+                            let ocoord = self.pool_spec.data_format.from_n_c_hw(n, o, ocoord)?;
                             output[&*ocoord.shape] += n_o_hkwk_hw[(n, o, kix, gix)];
                         }
                     }
@@ -120,13 +111,9 @@ impl EvalOp for DeconvSum {
 impl TypedOp for DeconvSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = super::output_shape(
-            &self.data_format,
+            &self.pool_spec,
             &self.kernel_format,
-            &self.padding,
-            &*self.kernel_shape,
             &*self.input_shape,
-            &*self.strides,
-            &*self.dilations,
             &*self.adjustments,
         )?;
 

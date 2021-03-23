@@ -3,9 +3,9 @@ use std::str;
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
 use tract_core::ops::cnn::KernelFormat;
-use tract_hir::internal::*;
 use tract_hir::ops::cnn::PaddingSpec;
 use tract_hir::ops::nn::DataFormat;
+use tract_hir::{internal::*, ops::cnn::PoolSpec};
 use tract_itertools::izip;
 
 pub fn conv_transpose(
@@ -62,7 +62,6 @@ impl Expansion for ConvTranspose {
                 x_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>(),
                 w_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>(),
             ) {
-                let ones = tvec!(1; x_shape.len() - 2);
                 let zeros = tvec!(0; x_shape.len() - 2);
                 let y_shape = if let Some(output_shape) = &self.output_shape {
                     let mut y_shape = x_shape.clone();
@@ -72,14 +71,18 @@ impl Expansion for ConvTranspose {
                     }
                     y_shape
                 } else {
+                    let pool_spec = PoolSpec::new(
+                        DataFormat::NCHW,
+                        w_shape.clone(),
+                        self.padding_spec.clone(),
+                        self.dilations.clone(),
+                        self.strides.clone(),
+                        Some(w_shape[1]),
+                    );
                     tract_core::ops::cnn::deconv::output_shape(
-                        &DataFormat::NCHW,
+                        &pool_spec,
                         &KernelFormat::OIHW,
-                        &self.padding_spec,
-                        &*w_shape,
                         &x_shape,
-                        &self.strides.clone().unwrap_or(ones.clone()),
-                        &self.dilations.clone().unwrap_or(ones.clone()),
                         &self.adjustments.clone().unwrap_or(zeros.clone()),
                     )?
                 };
@@ -112,31 +115,42 @@ impl Expansion for ConvTranspose {
                 )
                 .map(|(x, k, y, s, d)| {
                     let pad = y - s * (x.to_usize()? - 1) - (k.to_usize()? - 1) * d - 1;
-                    Ok(pad) }
-                ).collect::<TractResult<TVec<usize>>>()?;
+                    Ok(pad)
+                })
+                .collect::<TractResult<TVec<usize>>>()?;
+                let pool_spec = PoolSpec::new(
+                    DataFormat::NCHW,
+                    k.shape().into(),
+                    self.padding_spec.clone(),
+                    self.dilations.clone(),
+                    self.strides.clone(),
+                    Some(k.shape()[1])
+                );
                 target.wire_node(
                     prefix,
                     tract_core::ops::cnn::DeconvUnary::new(
-                        DataFormat::NCHW,
+                        pool_spec,
                         KernelFormat::OIHW,
-                        self.padding_spec.clone(),
                         k.clone(),
-                        self.strides.clone().unwrap_or(ones.clone()),
-                        self.dilations.clone().unwrap_or(ones.clone()),
-                        adjustments
+                        adjustments,
                     ),
                     &[inputs[0]],
                 )
             } else {
+                let pool_spec = PoolSpec::new(
+                    DataFormat::NCHW,
+                    k.shape().into(),
+                    self.padding_spec.clone(),
+                    self.dilations.clone(),
+                    self.strides.clone(),
+                    Some(k.shape()[1].to_usize().unwrap()),
+                );
                 target.wire_node(
                     prefix,
                     tract_core::ops::cnn::DeconvUnary::new(
-                        DataFormat::NCHW,
+                        pool_spec,
                         KernelFormat::OIHW,
-                        self.padding_spec.clone(),
                         k.clone(),
-                        self.strides.clone().unwrap_or(ones.clone()),
-                        self.dilations.clone().unwrap_or(ones.clone()),
                         self.adjustments.clone().unwrap_or(zeros.clone()),
                     ),
                     &[inputs[0]],
