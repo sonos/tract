@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ser::*;
 use tract_core::ops;
+use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::nn::DataFormat;
 
 pub fn source(
@@ -126,17 +127,23 @@ fn data_from_ncwh(data_format: DataFormat, geo_rank: usize, mut wire: Arc<RValue
     wire
 }
 
-fn conv_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: usize) -> String {
+fn conv_or_deconv_fragment<'a>(
+    ast: &'a mut IntoAst,
+    data_format: DataFormat,
+    geo_rank: usize,
+    deconv: bool,
+) -> String {
+    let name = if deconv { "deconv" } else { "conv" };
     if data_format == DataFormat::NCHW {
-        return "conv".into();
+        return name.into();
     }
-    let fragment_name = format!("tract_conv_{:?}_{}D", data_format, geo_rank).to_lowercase();
+    let fragment_name = format!("tract_{}_{:?}_{}D", name, data_format, geo_rank).to_lowercase();
     if ast.fragments.contains_key(&fragment_name) {
         return fragment_name;
     }
 
     let mut body = vec![];
-    let mut fragment = ast.framework.stdlib.iter().find(|f| f.decl.id == "conv").unwrap().clone();
+    let mut fragment = ast.framework.stdlib.iter().find(|f| f.decl.id == name).unwrap().clone();
     fragment.decl.id = fragment_name.clone();
 
     let mut wire = ident("input").into();
@@ -144,7 +151,7 @@ fn conv_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: us
 
     body.push(assignment("nchw", wire));
     wire = invocation(
-        "conv",
+        name,
         &[ident("nchw").into(), ident("filter").into(), ident("bias").into()],
         &*fragment
             .decl
@@ -154,9 +161,9 @@ fn conv_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: us
             .map(|f| (&*f.id, ident(&f.id)))
             .collect::<Vec<_>>(),
     );
-    body.push(assignment("conv", wire));
+    body.push(assignment(name, wire));
 
-    wire = data_from_ncwh(data_format, geo_rank, ident("conv").into());
+    wire = data_from_ncwh(data_format, geo_rank, ident(name).into());
 
     body.push(assignment("output", wire));
     fragment.body = Some(body);
@@ -164,29 +171,30 @@ fn conv_fragment<'a>(ast: &'a mut IntoAst, data_format: DataFormat, geo_rank: us
     fragment_name
 }
 
-pub fn conv(
+pub fn conv_or_deconv(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &ops::cnn::conv::ConvUnary,
+    pool_spec: &PoolSpec,
+    mut weights: Tensor,
+    bias: &Option<Arc<Tensor>>,
+    group: usize,
+    deconv: bool,
 ) -> TractResult<Option<Arc<RValue>>> {
     use tract_core::ops::cnn::PaddingSpec;
-    let ci = op
-        .pool_spec
+    let ci = pool_spec
         .data_format
         .shape(&ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec())?
         .c()
         .to_usize()?;
-    let co =
-        op.pool_spec.data_format.shape(&node.outputs[0].fact.shape.to_tvec())?.c().to_usize()?;
+    let co = pool_spec.data_format.shape(&node.outputs[0].fact.shape.to_tvec())?.c().to_usize()?;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
-    let mut kernel_shape = tvec!(co, ci / op.group);
-    kernel_shape.extend(op.pool_spec.kernel_shape.iter().copied());
-    let mut weights = op.kernel_as_group_o_ihw()?.into_tensor();
+    let mut kernel_shape = tvec!(co, ci / group);
+    kernel_shape.extend(pool_spec.kernel_shape.iter().copied());
     weights.set_shape(&*kernel_shape)?;
     let weigths = ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor());
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
-    let conv_fragment = conv_fragment(ast, op.pool_spec.data_format, op.pool_spec.rank());
-    let padding = match &op.pool_spec.padding {
+    let conv_fragment = conv_or_deconv_fragment(ast, pool_spec.data_format, pool_spec.rank(), deconv);
+    let padding = match &pool_spec.padding {
         PaddingSpec::Explicit(bef, after, _) => array(
             &bef.iter()
                 .zip(after.iter())
@@ -196,27 +204,47 @@ pub fn conv(
         PaddingSpec::SameUpper => array(&[]),
         PaddingSpec::SameLower => bail!("Unsupported padding scheme"),
         PaddingSpec::Valid => array(
-            (0..op.pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
+            (0..pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
         ),
     };
     let mut inputs = tvec![wire, weigths];
-    if let Some(bias) = op.bias.as_ref() {
+    if let Some(bias) = bias.as_ref() {
         let bias = ast.konst(format!("{}_bias", node.name), bias);
         inputs.push(bias)
     }
-    wire = invocation(
-        &conv_fragment,
-        &inputs,
-        &[
-            ("dilation", ints(&op.pool_spec.dilations())),
-            ("stride", ints(&op.pool_spec.strides())),
-            ("border", string("constant")),
-            ("groups", numeric(op.group)),
-            ("padding", padding),
-        ],
-    );
+    let mut named_args = tvec![
+        ("dilation", ints(&pool_spec.dilations())),
+        ("stride", ints(&pool_spec.strides())),
+        ("border", string("constant")),
+        ("groups", numeric(group)),
+        ("padding", padding),
+    ];
+    wire = invocation(&conv_fragment, &inputs, &&named_args);
     wire = ast.force_assign(&node.name, &wire);
     Ok(Some(wire))
+}
+
+pub fn conv(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::cnn::conv::ConvUnary,
+) -> TractResult<Option<Arc<RValue>>> {
+    let weights = op.kernel_as_group_o_ihw()?.into_tensor();
+    conv_or_deconv(ast, node, &op.pool_spec, weights, &op.bias, op.group, false)
+}
+
+pub fn deconv(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::cnn::deconv::DeconvUnary,
+) -> TractResult<Option<Arc<RValue>>> {
+    let weights = op.kernel_format.kernel_as_group_o_ihw(
+        &*op.kernel,
+        1,
+        *op.kernel_format.i(op.kernel.shape()),
+        *op.kernel_format.o(op.kernel.shape()),
+    )?;
+    conv_or_deconv(ast, node, &op.pool_spec, weights.into_tensor(), &None, 1, true)
 }
 
 fn cnn_pool_fragment<'a>(

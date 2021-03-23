@@ -97,6 +97,7 @@ pub fn tract_nnef() -> Registry {
 
     primitive(&mut registry, "conv", deser::conv);
     dumper!(ops::cnn::ConvUnary, ser::conv);
+    dumper!(ops::cnn::DeconvUnary, ser::deconv);
 
     primitive(&mut registry, "sum_reduce", deser::reduce);
     primitive(&mut registry, "max_reduce", deser::reduce);
