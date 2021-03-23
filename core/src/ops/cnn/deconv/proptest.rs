@@ -88,7 +88,7 @@ impl Arbitrary for DeconvProblem {
                     kernel,
                     strides: strides.into(),
                     dilations: dilations.into(),
-                    adjustments
+                    adjustments,
                 }
             })
             .boxed()
@@ -97,13 +97,21 @@ impl Arbitrary for DeconvProblem {
 
 impl DeconvProblem {
     fn tract(&self) -> ArrayD<f32> {
-        let op = DeconvUnary::new(
+        let pool_spec = PoolSpec::new(
             self.data_format,
-            self.kernel_format,
+            self.kernel.shape().into(),
             self.padding.clone(),
+            Some(self.dilations.clone()),
+            Some(self.strides.clone()),
+            Some(match self.kernel_format {
+                KernelFormat::OIHW => self.kernel.shape()[1],
+                KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 2],
+            }),
+        );
+        let op = DeconvUnary::new(
+            pool_spec,
+            self.kernel_format,
             self.kernel.clone().into_arc_tensor(),
-            self.strides.clone(),
-            self.dilations.clone(),
             self.adjustments.clone(),
         );
         let mut outputs = op.eval(tvec!(self.input.clone().into_arc_tensor())).unwrap();
@@ -160,10 +168,10 @@ impl DeconvProblem {
                             )
                             .map(|(i, k, s, d, p)| (i * s + k * d) as isize - p.0 as isize)
                             .collect();
-                            let hwo:TVec<usize> = if hwo.iter().all(|x| *x >= 0) {
+                            let hwo: TVec<usize> = if hwo.iter().all(|x| *x >= 0) {
                                 hwo.iter().map(|x| *x as usize).collect()
                             } else {
-                                continue
+                                continue;
                             };
                             let i = self.data_format.from_n_c_hw(n, ci, hwi.slice()).unwrap();
                             let o = self.data_format.from_n_c_hw(n, co, hwo).unwrap();

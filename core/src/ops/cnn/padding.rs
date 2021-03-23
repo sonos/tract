@@ -123,7 +123,7 @@ impl PaddingSpec {
             PaddingSpec::SameLower => {
                 Self::same_for_deconv(input, kernel, dilation, stride, adjustment, false)
             }
-            PaddingSpec::Explicit(ref bef, ref aft, ceil_mode) => Self::explicit_for_deconv(
+            PaddingSpec::Explicit(ref bef, ref aft, _ceil_mode) => Self::explicit_for_deconv(
                 input, kernel, dilation, stride, bef[axis], aft[axis], adjustment,
             ),
         }
