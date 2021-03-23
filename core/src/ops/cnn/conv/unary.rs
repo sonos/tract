@@ -49,30 +49,12 @@ impl ConvUnary {
     }
 
     pub fn kernel_as_group_o_ihw(&self) -> TractResult<Arc<Tensor>> {
-        let final_shape = [
+        self.kernel_fmt.kernel_as_group_o_ihw(
+            &self.kernel,
             self.group,
-            self.output_channels() / self.group,
-            self.kernel.len() / self.output_channels(),
-        ];
-        trace!("kernel shape (group, output, rest) = {:?}", final_shape);
-        let hw_rank = self.kernel.rank() - 2;
-        match self.kernel_fmt {
-            KernelFormat::HWIO => {
-                let mut shape = self.kernel.shape().to_vec();
-                shape.insert(hw_rank + 1, self.group); // HWIGO
-                shape[self.pool_spec.rank()] = self.input_channels() / self.group;
-                let mut kernel = self.kernel.as_ref().clone();
-                kernel.set_shape(&shape)?;
-                let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
-                permutation.extend(0..hw_rank);
-                let mut kernel = kernel.permute_axes(&permutation)?;
-                kernel.set_shape(&final_shape)?;
-                Ok(kernel.into_arc_tensor())
-            }
-            KernelFormat::OIHW => {
-                Ok(self.kernel.clone().into_tensor().into_shape(&final_shape)?.into_arc_tensor())
-            }
-        }
+            self.input_channels(),
+            self.output_channels(),
+        )
     }
 
     fn kernel_as_packed_as(&self, packer: &Packer, m: usize) -> TractResult<ArrayD<Arc<Tensor>>> {
@@ -111,14 +93,16 @@ impl ConvUnary {
     where
         T: Datum + Copy,
     {
-        let mut ops = Array1::from_elem(self.group, vec!());
+        let mut ops = Array1::from_elem(self.group, vec![]);
 
         if let Some(bias) = &self.bias {
             let bias = bias.cast_to::<T>()?;
             let bias = bias.as_slice::<T>()?;
-            ops.iter_mut().zip(bias.chunks(self.output_channels() / self.group)).for_each(|(ops, bias)| {
-                ops.push(ProtoFusedSpec::PerRowAdd(rctensor1(bias).into()));
-            })
+            ops.iter_mut().zip(bias.chunks(self.output_channels() / self.group)).for_each(
+                |(ops, bias)| {
+                    ops.push(ProtoFusedSpec::PerRowAdd(rctensor1(bias).into()));
+                },
+            )
         }
         let mut ops = ops.into_dyn();
 
@@ -718,7 +702,8 @@ impl TypedOp for ConvUnary {
             &*self.pool_spec.dilations.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
             &*self.pool_spec.strides.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
         );
-        let n_output_points: TDim = output_dims.iter().map(|d| d.convoluted.clone()).maybe_product()?;
+        let n_output_points: TDim =
+            output_dims.iter().map(|d| d.convoluted.clone()).maybe_product()?;
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         let one = 1.to_dim();

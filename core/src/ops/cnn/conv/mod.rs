@@ -50,4 +50,33 @@ impl KernelFormat {
             KernelFormat::HWIO => &full_shape[full_shape.len() - 1],
         }
     }
+
+    pub fn kernel_as_group_o_ihw(
+        &self,
+        kernel: &Tensor,
+        group: usize,
+        input_channels: usize,
+        output_channels: usize,
+    ) -> TractResult<Arc<Tensor>> {
+        let final_shape = [group, output_channels / group, kernel.len() / output_channels];
+        trace!("kernel shape (group, output, rest) = {:?}", final_shape);
+        let hw_rank = kernel.rank() - 2;
+        match self {
+            KernelFormat::HWIO => {
+                let mut shape = kernel.shape().to_vec();
+                shape.insert(hw_rank + 1, group); // HWIGO
+                shape[kernel.rank() - 2] = input_channels / group;
+                let mut kernel = kernel.clone();
+                kernel.set_shape(&shape)?;
+                let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
+                permutation.extend(0..hw_rank);
+                let mut kernel = kernel.permute_axes(&permutation)?;
+                kernel.set_shape(&final_shape)?;
+                Ok(kernel.into_arc_tensor())
+            }
+            KernelFormat::OIHW => {
+                Ok(kernel.clone().into_shape(&final_shape)?.into_arc_tensor())
+            }
+        }
+    }
 }
