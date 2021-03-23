@@ -109,10 +109,9 @@ impl Expansion for ConvTranspose {
                     &*output_shape,
                     &*self.strides.as_deref().unwrap_or(&ones),
                     &*self.dilations.as_deref().unwrap_or(&ones),
-                    &*self.adjustments.as_deref().unwrap_or(&zeros),
                 )
-                .map(|(x, k, y, s, d, a)| {
-                    let pad = y - s * (x.to_usize()? - 1) - (k.to_usize()? - 1) * d - a - 1;
+                .map(|(x, k, y, s, d)| {
+                    let pad = y - s * (x.to_usize()? - 1) - (k.to_usize()? - 1) * d - 1;
                     Ok(pad) }
                 ).collect::<TractResult<TVec<usize>>>()?;
                 target.wire_node(
