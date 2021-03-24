@@ -30,7 +30,7 @@ impl Op for NonZero {
     }
 
     op_onnx!();
-    not_a_typed_op!();
+    op_as_typed_op!();
 }
 
 impl EvalOp for NonZero {
@@ -64,6 +64,18 @@ impl InferenceRulesOp for NonZero {
         s.equals(&outputs[0].rank, 2)?;
         s.equals(&outputs[0].shape[0], inputs[0].rank.bex().to_dim())?;
         Ok(())
+    }
+
+    as_op!();
+    to_typed!();
+}
+
+impl TypedOp for NonZero {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(TypedFact::dt_shape(
+            i64::datum_type(),
+            &[inputs[0].rank().to_dim(), Symbol::new('x').to_dim()]
+        )))
     }
 
     as_op!();
