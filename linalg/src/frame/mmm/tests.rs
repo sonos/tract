@@ -200,6 +200,20 @@ macro_rules! mmm_frame_tests {
                     unsafe { min::<$ker, $ta, $tb, $tc, $ti>(2, 3, 3).unwrap() }
                 }
             }
+
+            #[test]
+            fn add_d_2_1_3() {
+                if $cond {
+                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(2, 1, 3).unwrap() }
+                }
+            }
+
+            #[test]
+            fn add_d_big() {
+                if $cond {
+                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(197, 1, 2).unwrap() }
+                }
+            }
         }
     };
 }
@@ -506,6 +520,30 @@ where
         for x in 0..n {
             for y in 0..m {
                 exp[x + y * n] *= bias[x]
+            }
+        }
+    })
+}
+
+pub unsafe fn add_d<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
+    m: usize,
+    k: usize,
+    n: usize,
+) -> proptest::test_runner::TestCaseResult
+where
+    TA: LADatum + AsPrimitive<TI> + 'static,
+    TB: LADatum + AsPrimitive<TI> + 'static,
+    TC: LADatum + AsPrimitive<TI> + 'static,
+    TI: LADatum + AsPrimitive<TC> + 'static + Neg<Output = TI>,
+    i32: AsPrimitive<TI>,
+    usize: AsPrimitive<TI>,
+{
+    let d = (0..m * n).map(|i| i.as_()).collect::<Vec<TI>>();
+    let d = tensor1(&*d).into_shape(&[m, n]).unwrap();
+    fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::AddUnicast(d.view())], |exp| {
+        for x in 0..n {
+            for y in 0..m {
+                exp[x + y * n] += d.as_slice::<TI>().unwrap()[x + n * y];
             }
         }
     })
