@@ -39,6 +39,7 @@ pub enum MatrixStore<'s, 't> {
         row_byte_stride: isize,
         col_byte_stride: isize,
         item_size: usize,
+        item_count: usize,
     },
     Packed {
         ptr: *const c_void,
@@ -55,6 +56,7 @@ pub enum MatrixStore<'s, 't> {
         item_stride: isize,
         byte_stride: isize,
         item_size: usize,
+        item_count: usize,
     },
     _Phantom(&'s (), &'t ()),
 }
@@ -75,6 +77,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
                     row_byte_stride,
                     col_byte_stride,
                     item_size,
+                    item_count: tensor.len(),
                 }
             }
             S::VecStride { .. } => {
@@ -84,6 +87,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
                     item_stride,
                     byte_stride,
                     item_size,
+                    item_count: tensor.len(),
                 }
             }
             S::Packed { panel_bytes } => Packed {
