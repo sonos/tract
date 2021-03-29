@@ -1,3 +1,7 @@
+## 0.13.01
+
+* temporary disable binary uncicast add fusing (too many bugs)
+
 ## 0.13.0
 
 * Release are now "in sync": all tract crate versions on a build *must* be aligned
