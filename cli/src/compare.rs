@@ -23,6 +23,8 @@ pub fn handle(
         return handle_reference_stage(cumulative, params, &output_params);
     } else if let Some(npz) = options.value_of("npz") {
         return handle_npz(cumulative, npz, params, &output_params);
+    } else if options.is_present("twice") {
+        return handle_twice(cumulative, params, &output_params);
     }
     if let Some(pbdir) = options.value_of("pbdir") {
         return handle_pbdir(cumulative, pbdir, params, &output_params);
@@ -172,6 +174,18 @@ pub fn handle_pbdir(
     ))
 }
 
+pub fn handle_twice(
+    cumulative: bool,
+    params: &Parameters,
+    output_params: &DisplayParams,
+) -> CliResult<()> {
+    let reference_model = params
+        .tract_model
+        .downcast_ref::<TypedModel>()
+        .context("Only work with a typed model")?;
+    handle_with_model(cumulative, params, output_params, &reference_model)
+}
+
 pub fn handle_reference_stage(
     cumulative: bool,
     params: &Parameters,
@@ -182,6 +196,15 @@ pub fn handle_reference_stage(
     let reference_model = reference_model
         .downcast_ref::<TypedModel>()
         .context("Only work with a typed reference model")?;
+    handle_with_model(cumulative, params, output_params, &reference_model)
+}
+
+pub fn handle_with_model(
+    cumulative: bool,
+    params: &Parameters,
+    output_params: &DisplayParams,
+    reference_model: &TypedModel,
+) -> CliResult<()> {
     let mut values: HashMap<String, CliResult<Arc<Tensor>>> = HashMap::new();
 
     let plan = SimplePlan::new(reference_model)?;
