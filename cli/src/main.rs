@@ -165,7 +165,20 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .long("with")
                 .takes_value(true)
                 .possible_values(STAGES)
-                .help("Do not reset with reference values at each node"),
+                .help("Loading pipeline stage to compare with"),
+        )
+        .arg(Arg::with_name("tf").long("tf").takes_value(false).help("Compare against tensorflow"))
+        .arg(
+            Arg::with_name("npz").long("npz").takes_value(true).help("NPZ file to compare against"),
+        )
+        .arg(
+            Arg::with_name("pbdir")
+                .long("pbdir")
+                .takes_value(true)
+                .help("protobuf directory file to compare against (like ONNX tests)"),
+        )
+        .group(
+            ArgGroup::with_name("reference").args(&["npz", "with", "pbdir", "tf"]).required(true),
         )
         .arg(
             Arg::with_name("cumulative")
@@ -180,30 +193,6 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .help("Try nodes one per one to mitigate crashes"),
         );
     app = app.subcommand(output_options(compare));
-
-    let compare_npz = clap::SubCommand::with_name("compare-npz")
-        .long_about("Compares the output of tract to a refrence npz file.")
-        .arg(
-            Arg::with_name("cumulative")
-                .long("cumulative")
-                .takes_value(false)
-                .help("Do not reset with reference values at each node"),
-        )
-        .arg(Arg::with_name("npz").takes_value(true).required(true).help("Npz filename"));
-    app = app.subcommand(output_options(compare_npz));
-
-    let compare_pbdir = clap::SubCommand::with_name("compare-pbdir")
-        .long_about(
-            "Compares the output of tract to a refrence directory of onnx protobufs tensors files.",
-        )
-        .arg(
-            Arg::with_name("cumulative")
-                .long("cumulative")
-                .takes_value(false)
-                .help("Do not reset with reference values at each node"),
-        )
-        .arg(Arg::with_name("pbdir").takes_value(true).required(true).help("protobuf dir"));
-    app = app.subcommand(output_options(compare_pbdir));
 
     let bench = clap::SubCommand::with_name("bench")
         .long_about("Benchmarks tract on randomly generated input.");
@@ -491,35 +480,9 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> CliResult<()> {
             bench::criterion(&params)
         }
 
-        #[cfg(feature = "conform")]
-        ("compare", Some(m)) => compare::handle_tensorflow(
-            m.is_present("cumulative"),
-            m.is_present("resilient"),
-            &mut params,
-            display_params_from_clap(&matches, m)?,
-        ),
-
-        #[cfg(not(feature = "conform"))]
-        ("compare", Some(m)) => compare::handle_reference_stage(
-            m.is_present("cumulative"),
-            &params,
-            &display_params_from_clap(&matches, m)?,
-        ),
-
-        ("compare-npz", Some(m)) => compare::handle_npz(
-            m.is_present("cumulative"),
-            m.value_of("npz").unwrap(),
-            &params,
-            &display_params_from_clap(&matches, m)?,
-        ),
-
-        #[cfg(feature = "onnx")]
-        ("compare-pbdir", Some(m)) => compare::handle_pbdir(
-            m.is_present("cumulative"),
-            m.value_of("pbdir").unwrap(),
-            &params,
-            &display_params_from_clap(&matches, m)?,
-        ),
+        ("compare", Some(m)) => {
+            compare::handle(&mut params, &m, display_params_from_clap(&matches, m)?)
+        }
 
         ("run", Some(m)) => run::handle(&params, m),
 

@@ -11,12 +11,44 @@ use tract_core::internal::*;
 use crate::display_params::DisplayParams;
 use crate::*;
 
+pub fn handle(
+    params: &mut Parameters,
+    options: &clap::ArgMatches,
+    output_params: DisplayParams,
+) -> CliResult<()> {
+    let cumulative = options.is_present("cumulative");
+    let resilent = options.is_present("resilient");
+    if options.value_of("with").is_some() {
+        // --with is by pipeline and put in params
+        return handle_reference_stage(cumulative, params, &output_params);
+    } else if let Some(npz) = options.value_of("npz") {
+        return handle_npz(cumulative, npz, params, &output_params);
+    }
+    if let Some(pbdir) = options.value_of("pbdir") {
+        return handle_pbdir(cumulative, pbdir, params, &output_params);
+    }
+    if options.is_present("tf") {
+        return handle_tensorflow(cumulative, resilent, params, &output_params);
+    }
+    bail!("No comparison target found")
+}
+
+#[cfg(not(feature = "conform"))]
+pub fn handle_tensorflow(
+    _cumulative: bool,
+    _resilient: bool,
+    _params: &mut Parameters,
+    _output_params: &DisplayParams,
+) -> CliResult<()> {
+    bail!("`tf` feature is required for this to work");
+}
+
 #[cfg(feature = "conform")]
 pub fn handle_tensorflow(
     cumulative: bool,
     resilient: bool,
     params: &mut Parameters,
-    output_params: DisplayParams,
+    output_params: &DisplayParams,
 ) -> CliResult<()> {
     let tract = &params.tract_model;
     let mut tf = params.tf_model.take().unwrap();
@@ -72,7 +104,7 @@ pub fn handle_tensorflow(
 
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let name = tract.node_name(input.node);
-        all_values.insert(name.to_string(), Ok(generated[ix].clone()));
+        all_values.insert(name.to_string(), Ok(generated[ix].clone().into_arc_tensor()));
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
@@ -104,6 +136,16 @@ pub fn handle_npz(
         &params,
         output_params
     ))
+}
+
+#[cfg(not(feature = "onnx"))]
+pub fn handle_pbdir(
+    cumulative: bool,
+    pbdir: &str,
+    params: &Parameters,
+    output_params: &DisplayParams,
+) -> CliResult<()> {
+    bail!("`onnx` feature is required for this to work");
 }
 
 #[cfg(feature = "onnx")]
