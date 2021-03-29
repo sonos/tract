@@ -160,14 +160,14 @@ fn main() -> tract_core::anyhow::Result<()> {
     let compare = clap::SubCommand::with_name("compare")
         .long_about("Compares the output of tract and tensorflow on randomly generated input.")
         .arg(
-            Arg::with_name("with")
-                .short("w")
-                .long("with")
+            Arg::with_name("stage")
+                .long("stage")
                 .takes_value(true)
                 .possible_values(STAGES)
                 .help("Loading pipeline stage to compare with"),
         )
         .arg(Arg::with_name("tf").long("tf").takes_value(false).help("Compare against tensorflow"))
+        .arg(Arg::with_name("twice").long("twice").takes_value(false).help("Run twice and compare"))
         .arg(
             Arg::with_name("npz").long("npz").takes_value(true).help("NPZ file to compare against"),
         )
@@ -178,7 +178,9 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .help("protobuf directory file to compare against (like ONNX tests)"),
         )
         .group(
-            ArgGroup::with_name("reference").args(&["npz", "with", "pbdir", "tf"]).required(true),
+            ArgGroup::with_name("reference")
+                .args(&["npz", "pbdir", "stage", "tf", "twice"])
+                .required(true),
         )
         .arg(
             Arg::with_name("cumulative")
