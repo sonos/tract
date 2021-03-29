@@ -353,6 +353,7 @@ impl TypedOp for LirMatMulUnary {
                     return merge(&[ProtoFusedSpec::PerRowAdd(arg.into())], &[]);
                 }
             }
+            /*
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
             let other_slot = 1 - node.outputs[0].successors[0].slot;
             let other_input = succ.inputs[other_slot];
@@ -362,6 +363,7 @@ impl TypedOp for LirMatMulUnary {
                     &[other_input],
                 );
             }
+            */
         };
         Ok(None)
     }
