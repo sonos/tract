@@ -59,7 +59,7 @@ if [ "$CRATE" = "all" ]
 then
     for c in $CRATES
     do
-        retry 5 $0 $c $VERSION
+        retry 10 $0 $c $VERSION
     done
     exit 0
 fi
