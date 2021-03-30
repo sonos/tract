@@ -22,10 +22,7 @@ pub mod arm64;
 #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
 pub mod arm32;
 
-pub use self::frame::lut;
-pub use self::frame::mmm;
-pub use self::frame::sigmoid;
-pub use self::frame::tanh;
+pub use self::frame::{lut,mmm,element_wise};
 
 use tract_data::prelude::*;
 
@@ -36,8 +33,8 @@ pub struct Ops {
     qmmm_u8_u8: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_i8_i8: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_i8_u8_i32: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
-    pub sigmoid_f32: Box<dyn Fn() -> Box<dyn sigmoid::Sigmoid<f32>> + Send + Sync>,
-    pub tanh_f32: Box<dyn Fn() -> Box<dyn tanh::Tanh<f32>> + Send + Sync>,
+    pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
+    pub tanh_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
     pub(crate) prefetch: Option<&'static (dyn Fn(*const u8, usize) + Sync + Send)>,
 }
@@ -99,8 +96,8 @@ pub fn generic() -> Ops {
                 m, k, n,
             ))
         }),
-        sigmoid_f32: Box::new(|| Box::new(sigmoid::SigmoidImpl::<generic::SSigmoid4, f32>::new())),
-        tanh_f32: Box::new(|| Box::new(tanh::TanhImpl::<generic::STanh4, f32>::new())),
+        sigmoid_f32: Box::new(|| Box::new(element_wise::ElementWiseImpl::<generic::SSigmoid4, f32>::new())),
+        tanh_f32: Box::new(|| Box::new(element_wise::ElementWiseImpl::<generic::STanh4, f32>::new())),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
         prefetch: None,
     }

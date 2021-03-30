@@ -1,4 +1,4 @@
-use crate::frame::sigmoid::SigmoidKer;
+use crate::frame::element_wise::ElementWiseKer;
 
 const LOW: f32 = -18.0;
 const HIGH: f32 = 18.0;
@@ -39,13 +39,17 @@ pub fn ssigmoid(x: f32) -> f32 {
 #[derive(Clone, Debug)]
 pub struct SSigmoid4;
 
-impl SigmoidKer<f32> for SSigmoid4 {
+impl ElementWiseKer<f32> for SSigmoid4 {
     fn name() -> &'static str {
         "generic"
     }
 
     fn alignment_bytes() -> usize {
         16
+    }
+
+    fn alignment_items() -> usize {
+        4
     }
 
     fn nr() -> usize {

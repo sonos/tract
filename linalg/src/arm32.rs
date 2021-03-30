@@ -2,8 +2,7 @@ use std::{env, fs};
 mod armv7neon;
 mod armvfpv2;
 use crate::frame::MatMatMulImpl;
-use crate::frame::SigmoidImpl;
-use crate::frame::TanhImpl;
+use crate::frame::ElementWiseImpl;
 
 use crate::Ops;
 
@@ -35,8 +34,8 @@ pub fn plug(ops: &mut Ops) {
             Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8xI32x8x4, i32, i32>::new(m, k, n))
         });
         ops.sigmoid_f32 =
-            Box::new(|| Box::new(SigmoidImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
-        ops.tanh_f32 = Box::new(|| Box::new(TanhImpl::<armv7neon::TanhF32x4n, f32>::new()));
+            Box::new(|| Box::new(ElementWiseImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
+        ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<armv7neon::TanhF32x4n, f32>::new()));
         ops.prefetch = Some(&armv7neon::prefetch);
     } else {
         log::info!("armvfpv2 activated for smmm");
