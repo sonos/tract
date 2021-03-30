@@ -1,5 +1,6 @@
 use crate::ast::*;
 use tract_core::internal::*;
+use tract_core::ops::cnn::deconv::adjustments;
 use tract_itertools::{izip, Itertools};
 
 use tract_core::ops;
@@ -278,8 +279,18 @@ pub fn conv_or_deconv(
 
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
-    let op:Box<dyn TypedOp> = if deconv {
-        Box::new(DeconvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), tvec!(0; kernel.len() - 2)))
+    let op: Box<dyn TypedOp> = if deconv {
+        let adjustments = if let Some(output_shape) = invocation.get_named_arg("output_shape") {
+            let input_shape = input_fact
+                .shape
+                .as_concrete()
+                .context("symbolic dimension not supported in deconv")?;
+            let output_shape: TVec<usize> = output_shape.resolve(builder)?.to(builder)?;
+            adjustments(&pool_spec, &input_shape, &output_shape)?
+        } else {
+            tvec!(0; pool_spec.rank())
+        };
+        Box::new(DeconvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), adjustments))
     } else {
         Box::new(ConvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), group, bias, None))
     };

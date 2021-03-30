@@ -2,11 +2,11 @@ use std::str;
 
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
+use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::KernelFormat;
 use tract_hir::ops::cnn::PaddingSpec;
 use tract_hir::ops::nn::DataFormat;
 use tract_hir::{internal::*, ops::cnn::PoolSpec};
-use tract_itertools::izip;
 
 pub fn conv_transpose(
     _ctx: &ParsingContext,
@@ -81,7 +81,6 @@ impl Expansion for ConvTranspose {
                     );
                     tract_core::ops::cnn::deconv::output_shape(
                         &pool_spec,
-                        &KernelFormat::OIHW,
                         &x_shape,
                         &self.adjustments.clone().unwrap_or(zeros.clone()),
                     )?
@@ -101,31 +100,22 @@ impl Expansion for ConvTranspose {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         if let Some(k) = target.outlet_fact(inputs[1])?.konst.clone() {
-            let ones = tvec!(1; k.rank() - 2);
             let zeros = tvec!(0; k.rank() - 2);
             if let Some(output_shape) = &self.output_shape {
                 let x_shape = &target.outlet_fact(inputs[0])?.shape;
-                let w_shape = &target.outlet_fact(inputs[1])?.shape;
-                let adjustments = izip!(
-                    &x_shape[2..],
-                    &w_shape[2..],
-                    &*output_shape,
-                    &*self.strides.as_deref().unwrap_or(&ones),
-                    &*self.dilations.as_deref().unwrap_or(&ones),
-                )
-                .map(|(x, k, y, s, d)| {
-                    let pad = y - s * (x.to_usize()? - 1) - (k.to_usize()? - 1) * d - 1;
-                    Ok(pad)
-                })
-                .collect::<TractResult<TVec<usize>>>()?;
                 let pool_spec = PoolSpec::new(
                     DataFormat::NCHW,
                     k.shape()[2..].into(),
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),
-                    Some(k.shape()[1])
+                    Some(k.shape()[1]),
                 );
+                let adjustments = adjustments(
+                    &pool_spec,
+                    &x_shape.as_concrete().context("expects concrete dim for deconv")?,
+                    &**output_shape,
+                )?;
                 target.wire_node(
                     prefix,
                     tract_core::ops::cnn::DeconvUnary::new(

@@ -99,7 +99,7 @@ impl DeconvProblem {
     fn tract(&self) -> ArrayD<f32> {
         let pool_spec = PoolSpec::new(
             self.data_format,
-            self.kernel.shape().into(),
+            self.kernel_format.spatial_shape(self.kernel.shape()).into(),
             self.padding.clone(),
             Some(self.dilations.clone()),
             Some(self.strides.clone()),
@@ -188,8 +188,6 @@ impl DeconvProblem {
                                     .chain(once(ci))
                                     .collect(),
                             };
-                            dbg!(&o.shape);
-                            dbg!(&i.shape);
                             if let Some(ceil) = output.get_mut(&*o.shape) {
                                 *ceil += self.input[&*i.shape] * self.kernel[&*k]
                             }

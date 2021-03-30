@@ -14,15 +14,6 @@ pub struct DeconvUnary {
 }
 
 impl DeconvUnary {
-    fn output_shape<D: DimLike>(&self, x_shape: &[D]) -> TractResult<TVec<D>> {
-        super::output_shape(
-            &self.pool_spec,
-            &self.kernel_format,
-            x_shape,
-            &self.adjustments,
-        )
-    }
-
     fn wire_with_deconv_sum(
         &self,
         name: &str,
@@ -119,7 +110,7 @@ impl EvalOp for DeconvUnary {
 impl TypedOp for DeconvUnary {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let x_fact = inputs[0];
-        let output_shape = self.output_shape(&*x_fact.shape)?;
+        let output_shape = super::output_shape(&self.pool_spec, &*x_fact.shape, &self.adjustments)?;
         Ok(tvec!(TypedFact::dt_shape(x_fact.datum_type, &output_shape)))
     }
 
