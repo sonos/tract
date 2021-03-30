@@ -1,6 +1,5 @@
 use crate::frame::mmm::*;
-use crate::frame::sigmoid::*;
-use crate::frame::tanh::*;
+use crate::frame::element_wise::ElementWiseKer;
 
 extern "C" {
     fn arm64simd_mmm_f32_8x8_a53(op: *const MatMatMulKerSpec<f32>) -> isize;
@@ -290,13 +289,17 @@ impl MatMatMulKer<i32> for MatMatMulI8xI32x8x8 {
 #[derive(Copy, Clone, Debug)]
 pub struct SigmoidF32x4n;
 
-impl SigmoidKer<f32> for SigmoidF32x4n {
+impl ElementWiseKer<f32> for SigmoidF32x4n {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
     }
     #[inline(always)]
     fn nr() -> usize {
+        4
+    }
+    #[inline(always)]
+    fn alignment_items() -> usize {
         4
     }
     #[inline(always)]
@@ -312,13 +315,17 @@ impl SigmoidKer<f32> for SigmoidF32x4n {
 #[derive(Copy, Clone, Debug)]
 pub struct TanhF32x4n;
 
-impl TanhKer<f32> for TanhF32x4n {
+impl ElementWiseKer<f32> for TanhF32x4n {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
     }
     #[inline(always)]
     fn nr() -> usize {
+        4
+    }
+    #[inline(always)]
+    fn alignment_items() -> usize {
         4
     }
     #[inline(always)]

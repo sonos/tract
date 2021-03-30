@@ -1,4 +1,4 @@
-use crate::frame::sigmoid::*;
+use crate::element_wise::ElementWiseKer;
 
 extern "C" {
     fn fma_sigmoid_f32(ptr: *mut f32, count: usize);
@@ -7,13 +7,17 @@ extern "C" {
 #[derive(Copy, Clone, Debug)]
 pub struct SigmoidF32;
 
-impl SigmoidKer<f32> for SigmoidF32 {
+impl ElementWiseKer<f32> for SigmoidF32 {
     #[inline(always)]
     fn name() -> &'static str {
         "fma"
     }
     #[inline(always)]
     fn nr() -> usize {
+        8
+    }
+    #[inline(always)]
+    fn alignment_items() -> usize {
         8
     }
     #[inline(always)]

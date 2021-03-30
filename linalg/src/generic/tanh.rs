@@ -1,4 +1,4 @@
-use crate::frame::tanh::TanhKer;
+use crate::frame::element_wise::ElementWiseKer;
 
 const LOW: f32 = -9.0;
 const HIGH: f32 = 9.0;
@@ -37,9 +37,13 @@ pub fn stanh(x: f32) -> f32 {
 #[derive(Clone, Debug)]
 pub struct STanh4;
 
-impl TanhKer<f32> for STanh4 {
+impl ElementWiseKer<f32> for STanh4 {
     fn name() -> &'static str {
         "generic"
+    }
+
+    fn alignment_items() -> usize {
+        16
     }
 
     fn alignment_bytes() -> usize {
