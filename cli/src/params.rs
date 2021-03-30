@@ -596,7 +596,7 @@ impl Parameters {
 
         let (need_tensorflow_model, need_reference_model) = match matches.subcommand() {
             ("compare", Some(sm)) => {
-                if let Some(with) = sm.value_of("with") {
+                if let Some(with) = sm.value_of("stage") {
                     (false, Some(with))
                 } else {
                     (true, None)
@@ -624,7 +624,11 @@ impl Parameters {
             None
         };
 
-        if !matches.is_present("proto") && matches.subcommand_name() != Some("compare-pbdir") {
+        let need_proto = matches.is_present("proto")
+            || (matches.subcommand_matches("compare").map(|sc| sc.is_present("pbdir")))
+                .unwrap_or(false);
+
+        if !need_proto {
             graph = SomeGraphDef::NoGraphDef;
         }
 
