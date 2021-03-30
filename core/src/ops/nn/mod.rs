@@ -7,8 +7,7 @@ pub use self::reduce::{Reduce, Reducer};
 pub use crate::internal::*;
 
 element_wise!(sigmoid, Sigmoid, [f32] => |_, xs| {
-    (tract_linalg::ops().sigmoid_f32)().run(xs);
-    Ok(())
+    (tract_linalg::ops().sigmoid_f32)().run(xs)
 };
     cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
