@@ -180,17 +180,23 @@ pub fn conv_or_deconv(
     group: usize,
     deconv: bool,
 ) -> TractResult<Option<Arc<RValue>>> {
+    dbg!("foo");
     use tract_core::ops::cnn::PaddingSpec;
     let ci = pool_spec
         .data_format
         .shape(&ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec())?
         .c()
         .to_usize()?;
-    let co = pool_spec.data_format.shape(&node.outputs[0].fact.shape.to_tvec())?.c().to_usize()?;
+    let output_shape = pool_spec.data_format.shape(node.outputs[0].fact.shape.to_tvec())?;
+    let co = output_shape.c().to_usize()?;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
     let mut kernel_shape = tvec!(co, ci / group);
+    dbg!(&weights);
+    dbg!(&pool_spec);
     kernel_shape.extend(pool_spec.kernel_shape.iter().copied());
+    dbg!("bar", &kernel_shape);
     weights.set_shape(&*kernel_shape)?;
+    dbg!("baz");
     let weigths = ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor());
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
     let conv_fragment = conv_or_deconv_fragment(ast, pool_spec.data_format, pool_spec.rank(), deconv);
@@ -219,6 +225,10 @@ pub fn conv_or_deconv(
         ("groups", numeric(group)),
         ("padding", padding),
     ];
+    if deconv {
+        let output_shape = output_shape.hw_dims().iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
+        named_args.push(("output_shape", ints(&*output_shape)));
+    };
     wire = invocation(&conv_fragment, &inputs, &&named_args);
     wire = ast.force_assign(&node.name, &wire);
     Ok(Some(wire))
@@ -238,6 +248,8 @@ pub fn deconv(
     node: &TypedNode,
     op: &ops::cnn::deconv::DeconvUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
+    dbg!(&op.kernel);
+    dbg!(&op.kernel_format);
     let weights = op.kernel_format.kernel_as_group_o_ihw(
         &*op.kernel,
         1,
