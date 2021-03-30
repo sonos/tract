@@ -821,7 +821,7 @@ armv7neon_mmm_i8_8x4:
 
 .add_unicast:
     ldm         r1, { r3, r4, r5, r6 } // r3 unsused, already used enum discriminant, just here to make ldm "work"
-    mov r8, #4
+    mov r7, #4
     b .add_with_strides
 
 .unsupported:
