@@ -73,7 +73,7 @@ impl Expansion for ConvTranspose {
                 } else {
                     let pool_spec = PoolSpec::new(
                         DataFormat::NCHW,
-                        w_shape.clone(),
+                        w_shape[2..].into(),
                         self.padding_spec.clone(),
                         self.dilations.clone(),
                         self.strides.clone(),
@@ -120,7 +120,7 @@ impl Expansion for ConvTranspose {
                 .collect::<TractResult<TVec<usize>>>()?;
                 let pool_spec = PoolSpec::new(
                     DataFormat::NCHW,
-                    k.shape().into(),
+                    k.shape()[2..].into(),
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),
@@ -139,7 +139,7 @@ impl Expansion for ConvTranspose {
             } else {
                 let pool_spec = PoolSpec::new(
                     DataFormat::NCHW,
-                    k.shape().into(),
+                    k.shape()[2..].into(),
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),

@@ -191,10 +191,39 @@ dilation: integer[] = [], groups: integer = 1 )
 -> ( output: tensor<scalar> );
 */
 
+/*  fragment deconv(
+      input: tensor<scalar>,
+      filter: tensor<scalar>,
+      bias: tensor<scalar> = 0.0,
+      border: string = 'constant',
+      padding: (integer,integer)[] = [],
+      stride: integer[] = [],
+      dilation: integer[] = [],
+      output_shape: integer[] = [],
+      groups: integer = 1 )
+  -> ( output: tensor<scalar> );
+*/
+
 pub fn conv(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
+    conv_or_deconv(builder, invocation, false)
+}
+
+pub fn deconv(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<TVec<OutletId>> {
+    conv_or_deconv(builder, invocation, true)
+}
+
+pub fn conv_or_deconv(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+    deconv: bool,
+) -> TractResult<TVec<OutletId>> {
+    use ops::cnn::deconv::DeconvUnary;
     use ops::cnn::{ConvUnary, KernelFormat};
     use ops::cnn::{PaddingSpec, PoolSpec};
     use ops::nn::DataFormat;
@@ -249,7 +278,11 @@ pub fn conv(
 
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
-    let op = ConvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), group, bias, None);
+    let op:Box<dyn TypedOp> = if deconv {
+        Box::new(DeconvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), tvec!(0; kernel.len() - 2)))
+    } else {
+        Box::new(ConvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), group, bias, None))
+    };
     builder.wire(op, &[input])
 }
 
