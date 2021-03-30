@@ -42,23 +42,20 @@ impl EvalOp for DeconvSum {
         debug_assert_eq!(gemm.datum_type(), f32::datum_type());
         let input_shape =
             self.input_shape.iter().map(|i| i.to_usize().unwrap()).collect::<TVec<usize>>();
+        dbg!(&input_shape);
+        dbg!(&self.pool_spec);
         let input_shape = self.pool_spec.data_format.shape(&input_shape)?;
-        let output_shape = super::output_shape(
-            &self.pool_spec,
-            &self.kernel_format,
-            input_shape.shape,
-            &self.adjustments,
-        )?;
+        let output_shape =
+            super::output_shape(&self.pool_spec, &input_shape.shape, &self.adjustments)?;
         let output_shape = self.pool_spec.data_format.shape(output_shape)?;
-        let kernel_spatial_shape = self.kernel_format.spatial_shape(&self.pool_spec.kernel_shape);
         let spatial_output_details = self.pool_spec.padding.compute_for_deconv(
             &input_shape.hw_dims(),
-            &kernel_spatial_shape,
+            &self.pool_spec.kernel_shape,
             &self.pool_spec.dilations(),
             &self.pool_spec.strides(),
             &self.adjustments,
         );
-
+        dbg!(&output_shape);
         let mut tensor = Tensor::zero::<f32>(&*output_shape.shape)?;
         let mut output = tensor.to_array_view_mut::<f32>()?;
         let hw = *gemm.shape().last().unwrap();
@@ -66,7 +63,7 @@ impl EvalOp for DeconvSum {
         let n_o_hkwk_hw = gemm.into_shape(dbg!(&[
             n,
             *output_shape.c(),
-            kernel_spatial_shape.iter().product(),
+            self.pool_spec.kernel_shape.iter().product(),
             hw
         ]))?;
         let n_o_hkwk_hw: ArrayView4<f32> =
@@ -74,7 +71,7 @@ impl EvalOp for DeconvSum {
         for n in 0..n {
             for o in 0..*output_shape.c() {
                 for (kix, kcoords) in
-                    tract_ndarray::indices(kernel_spatial_shape).into_iter().enumerate()
+                    tract_ndarray::indices(&*self.pool_spec.kernel_shape).into_iter().enumerate()
                 {
                     for (gix, gcoords) in
                         tract_ndarray::indices(input_shape.hw_dims()).into_iter().enumerate()
@@ -110,12 +107,7 @@ impl EvalOp for DeconvSum {
 
 impl TypedOp for DeconvSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let shape = super::output_shape(
-            &self.pool_spec,
-            &self.kernel_format,
-            &*self.input_shape,
-            &*self.adjustments,
-        )?;
+        let shape = super::output_shape(&self.pool_spec, &*self.input_shape, &*self.adjustments)?;
 
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*shape)))
     }

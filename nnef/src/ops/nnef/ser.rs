@@ -191,12 +191,8 @@ pub fn conv_or_deconv(
     let co = output_shape.c().to_usize()?;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
     let mut kernel_shape = tvec!(co, ci / group);
-    dbg!(&weights);
-    dbg!(&pool_spec);
     kernel_shape.extend(pool_spec.kernel_shape.iter().copied());
-    dbg!("bar", &kernel_shape);
     weights.set_shape(&*kernel_shape)?;
-    dbg!("baz");
     let weigths = ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor());
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
     let conv_fragment = conv_or_deconv_fragment(ast, pool_spec.data_format, pool_spec.rank(), deconv);

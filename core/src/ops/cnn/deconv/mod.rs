@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
 
 mod deconv_sum;
@@ -11,7 +10,6 @@ pub use unary::DeconvUnary;
 
 pub fn output_shape<D: DimLike>(
     pool_spec: &PoolSpec,
-    kernel_format: &KernelFormat,
     x_shape: &[D],
     adjustments: &[usize],
 ) -> TractResult<TVec<D>> {
@@ -33,4 +31,23 @@ pub fn output_shape<D: DimLike>(
         deconv_shape,
     )?;
     Ok(output_shape.shape.into())
+}
+
+pub fn adjustments(
+    pool_spec: &PoolSpec,
+    input_geo: &[usize],
+    output_geo: &[usize],
+) -> TractResult<TVec<usize>> {
+    tract_itertools::izip!(
+        input_geo,
+        &pool_spec.kernel_shape,
+        output_geo,
+        pool_spec.strides().as_ref(),
+        pool_spec.dilations().as_ref(),
+    )
+    .map(|(x, k, y, s, d)| {
+        let pad = y.to_usize()? - s * (x.to_usize()? - 1) - (k.to_usize()? - 1) * d - 1;
+        Ok(pad)
+    })
+    .collect::<TractResult<TVec<usize>>>()
 }
