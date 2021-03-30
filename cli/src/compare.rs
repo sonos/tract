@@ -18,7 +18,7 @@ pub fn handle(
 ) -> CliResult<()> {
     let cumulative = options.is_present("cumulative");
     let resilent = options.is_present("resilient");
-    if options.value_of("with").is_some() {
+    if options.value_of("stage").is_some() {
         // --with is by pipeline and put in params
         return handle_reference_stage(cumulative, params, &output_params);
     } else if let Some(npz) = options.value_of("npz") {
