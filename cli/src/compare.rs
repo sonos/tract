@@ -213,7 +213,9 @@ pub fn handle_with_model(
             values.entry(node.name.clone()).or_default().push(Ok(result[0].clone()));
             for (output_slot, v) in result.iter().enumerate() {
                 if let Some(tag) = reference_model.outlet_label((node.id, output_slot).into()) {
-                    values.entry(tag.to_string()).or_default().push(Ok(v.clone()));
+                    if tag != node.name {
+                        values.entry(tag.to_string()).or_default().push(Ok(v.clone()));
+                    }
                 }
             }
             Ok(result)
@@ -286,9 +288,9 @@ where
                         if let Some(tensor) =
                             &state.values[o.node].as_ref().and_then(|v| v.get(o.slot))
                         {
-                            format!("input value #{}: {:?}", ix, tensor)
+                            format!("At turn {}, input value #{}: {:?}", turn, ix, tensor)
                         } else {
-                            format!("input value #{}: <not found>", ix)
+                            format!("At turn {}, input value #{}: <not found>", turn, ix)
                         }
                     })
                     .collect::<Vec<_>>();
@@ -309,7 +311,7 @@ where
                                         tags.style = Some(Red.bold());
                                         let mut msg = vec![Red
                                             .bold()
-                                            .paint(format!("Wrong value for output {}, {}", ix, e))
+                                            .paint(format!("At turn {}, wrong value for output {}, {}", turn, ix, e))
                                             .to_string()];
                                         msg.push(format!("got     : {:?}", found));
                                         msg.push(format!("ref     : {:?}", t));

@@ -135,7 +135,6 @@ fn main() -> tract_core::anyhow::Result<()> {
     (@arg determinize: --determinize "Enforce a seed in random operator")
     (@arg multiturn: --multiturn "Switch run and compare to multiturn, session state preserving")
 
-
     (@arg partial: --partial "Before analyse, eliminate dead branches")
 
     (@arg pass: --pass +takes_value possible_values(STAGES) "Pass to stop preprocessing after.")
