@@ -52,7 +52,6 @@ fn run_regular(
 ) -> CliResult<TVec<Arc<Tensor>>> {
     let steps = options.is_present("steps");
     let assert_sane_floats = options.is_present("assert-sane-floats");
-    let inputs = crate::tensor::retrieve_or_make_inputs(tract, params)?;
     let mut npz = if let Some(npz) = options.value_of("save-steps") {
         let npz = std::fs::File::create(npz).with_context(|| format!("Creating {}", npz))?;
         Some(ndarray_npy::NpzWriter::new_compressed(npz))
@@ -62,52 +61,61 @@ fn run_regular(
     dispatch_model!(tract, |m| {
         let plan = SimplePlan::new(m)?;
         let mut state = SimpleState::new(plan)?;
-        Ok(state.run_plan_with_eval(inputs, |session_state, state, node, input| {
-            if steps {
-                for i in &input {
-                    eprintln!(
-                        "{}{}{:?}",
-                        White.bold().paint(node.to_string()),
-                        Blue.bold().paint(" << "),
-                        i
-                    );
-                }
-            }
-            let r = tract_core::plan::eval(session_state, state, node, input)?;
-            if let Some(npz) = npz.as_mut() {
-                for (ix, t) in r.iter().enumerate() {
-                    let name = if ix == 0 {
-                        node.name.to_string()
-                    } else {
-                        format!("{}:{}", node.name, ix)
-                    };
-                    match t.datum_type() {
-                        DatumType::F32 => npz.add_array(name, &t.to_array_view::<f32>()?)?,
-                        DatumType::F64 => npz.add_array(name, &t.to_array_view::<f64>()?)?,
-                        DatumType::I32 => npz.add_array(name, &t.to_array_view::<i32>()?)?,
-                        DatumType::I8 => npz.add_array(name, &t.to_array_view::<i8>()?)?,
-                        DatumType::U8 => npz.add_array(name, &t.to_array_view::<u8>()?)?,
-                        _ => warn!("Not writing {}, {:?}, unsupported type", name, t),
+        let mut results = tvec!();
+        for (turn, inputs) in
+            crate::tensor::retrieve_or_make_inputs(tract, params)?.into_iter().enumerate()
+        {
+            results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {
+                if steps {
+                    for i in &input {
+                        eprintln!(
+                            "{}{}{:?}",
+                            White.bold().paint(node.to_string()),
+                            Blue.bold().paint(" << "),
+                            i
+                        );
                     }
                 }
-            }
-            if assert_sane_floats {
-                for (ix, o) in r.iter().enumerate() {
-                    if let Ok(floats) = o.as_slice::<f32>() {
-                        if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                            eprintln!("{:?}", floats);
-                            tract_core::anyhow::bail!(
-                                "Found {} in output {} of {}",
-                                floats[pos],
-                                ix,
-                                node
-                            );
+                let r = tract_core::plan::eval(session_state, state, node, input)?;
+                if let Some(npz) = npz.as_mut() {
+                    for (ix, t) in r.iter().enumerate() {
+                        let mut name = if ix == 0 {
+                            node.name.to_string()
+                        } else {
+                            format!("{}:{}", node.name, ix)
+                        };
+                        if params.multiturn {
+                            name = format!("turn_{}/{}", turn, name);
+                        }
+                        match t.datum_type() {
+                            DatumType::F32 => npz.add_array(name, &t.to_array_view::<f32>()?)?,
+                            DatumType::F64 => npz.add_array(name, &t.to_array_view::<f64>()?)?,
+                            DatumType::I32 => npz.add_array(name, &t.to_array_view::<i32>()?)?,
+                            DatumType::I8 => npz.add_array(name, &t.to_array_view::<i8>()?)?,
+                            DatumType::U8 => npz.add_array(name, &t.to_array_view::<u8>()?)?,
+                            _ => warn!("Not writing {}, {:?}, unsupported type", name, t),
                         }
                     }
                 }
-            }
-            Ok(r)
-        })?)
+                if assert_sane_floats {
+                    for (ix, o) in r.iter().enumerate() {
+                        if let Ok(floats) = o.as_slice::<f32>() {
+                            if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+                                eprintln!("{:?}", floats);
+                                tract_core::anyhow::bail!(
+                                    "Found {} in output {} of {}",
+                                    floats[pos],
+                                    ix,
+                                    node
+                                );
+                            }
+                        }
+                    }
+                }
+                Ok(r)
+            })?;
+        }
+        Ok(results)
     })
 }
 
@@ -120,7 +128,7 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
     let name = model.node_name(model.input_outlets()?[0].node);
-    let input: &Tensor = &params.input_values.get(name).unwrap();
+    let input: &Tensor = &params.input_values.get(name).unwrap()[0];
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);

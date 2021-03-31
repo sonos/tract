@@ -133,6 +133,8 @@ fn main() -> tract_core::anyhow::Result<()> {
 
     (@arg proto: --proto "Keep proto model around after parse")
     (@arg determinize: --determinize "Enforce a seed in random operator")
+    (@arg multiturn: --multiturn "Switch run and compare to multiturn, session state preserving")
+
 
     (@arg partial: --partial "Before analyse, eliminate dead branches")
 
