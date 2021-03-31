@@ -428,7 +428,6 @@ where
     }
     expect(inter.as_slice_mut::<TI>().unwrap());
     let expected = inter.cast_to::<TC>().unwrap().into_owned();
-
     found.close_enough(&expected, true).unwrap();
     Ok(())
 }
@@ -543,7 +542,8 @@ where
     fused_op::<K, TA, TB, TC, TI, _>(m, k, n, &[FusedSpec::AddUnicast(d.view())], |exp| {
         for x in 0..n {
             for y in 0..m {
-                exp[x + y * n] += d.as_slice::<TI>().unwrap()[x + n * y];
+                exp[x + y * n] =
+                    (exp[x + y * n] + d.as_slice::<TI>().unwrap()[x + n * y]).as_().as_();
             }
         }
     })
