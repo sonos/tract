@@ -128,7 +128,7 @@ pub fn handle_npz(
     for name in npz.names()? {
         if let Ok(value) = tensor::for_npz(&mut npz, &name) {
             let name = name.trim_end_matches(".npy");
-            values.insert(name.to_string(), Ok(value.into()));
+            values.insert(name.to_string(), vec![Ok(value.into())]);
         }
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
@@ -157,13 +157,13 @@ pub fn handle_pbdir(
     params: &Parameters,
     output_params: &DisplayParams,
 ) -> CliResult<()> {
-    let mut values: HashMap<String, CliResult<Arc<Tensor>>> = HashMap::new();
+    let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
     for entry in fs::read_dir(pbdir)? {
         use std::convert::TryInto;
         let entry = entry?;
         let file = fs::File::open(entry.path())?;
         let tensor = tract_onnx::tensor::proto_from_reader(file)?;
-        values.insert(tensor.name.to_string(), Ok(Arc::new(tensor.try_into()?)));
+        values.insert(tensor.name.to_string(), vec![Ok(Arc::new(tensor.try_into()?))]);
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
@@ -179,10 +179,8 @@ pub fn handle_twice(
     params: &Parameters,
     output_params: &DisplayParams,
 ) -> CliResult<()> {
-    let reference_model = params
-        .tract_model
-        .downcast_ref::<TypedModel>()
-        .context("Only work with a typed model")?;
+    let reference_model =
+        params.tract_model.downcast_ref::<TypedModel>().context("Only work with a typed model")?;
     handle_with_model(cumulative, params, output_params, &reference_model)
 }
 
@@ -205,23 +203,22 @@ pub fn handle_with_model(
     output_params: &DisplayParams,
     reference_model: &TypedModel,
 ) -> CliResult<()> {
-    let mut values: HashMap<String, CliResult<Arc<Tensor>>> = HashMap::new();
+    let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    state.run_plan_with_eval(
-        crate::tensor::retrieve_or_make_inputs(reference_model, params)?,
-        |session, state, node, input| -> TractResult<_> {
+    for inputs in crate::tensor::retrieve_or_make_inputs(reference_model, params)? {
+        state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result: TVec<Arc<Tensor>> = tract_core::plan::eval(session, state, node, input)?;
-            values.insert(node.name.clone(), Ok(result[0].clone()));
+            values.entry(node.name.clone()).or_default().push(Ok(result[0].clone()));
             for (output_slot, v) in result.iter().enumerate() {
                 if let Some(tag) = reference_model.outlet_label((node.id, output_slot).into()) {
-                    values.insert(tag.to_string(), Ok(v.clone()));
+                    values.entry(tag.to_string()).or_default().push(Ok(v.clone()));
                 }
             }
             Ok(result)
-        },
-    )?;
+        })?;
+    }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
         m,
@@ -234,7 +231,7 @@ pub fn handle_with_model(
 pub fn compare<F, O>(
     cumulative: bool,
     tract: &Graph<F, O>,
-    all_values: &HashMap<String, CliResult<Arc<Tensor>>>,
+    all_values: &HashMap<String, Vec<CliResult<Arc<Tensor>>>>,
     params: &Parameters,
     output_params: &DisplayParams,
 ) -> CliResult<()>
@@ -249,95 +246,104 @@ where
     let plan = SimplePlan::new(tract)?;
     let mut state = SimpleState::new(plan)?;
 
-    for (ix, input) in tract.input_outlets()?.iter().enumerate() {
-        let name = &tract.node(input.node).name;
-        let value = all_values[name].as_ref().unwrap();
-        state.set_input(ix, value.clone().into_tensor())?;
-    }
-
     let mut annotations = crate::annotations::Annotations::from_model(tract as &dyn Model)?
         .with_graph_def(tract, &params.graph)?;
 
+    let turns = all_values.values().nth(0).unwrap().len();
     let mut failing = vec![];
     let mut ok = 0;
 
-    for n in eval_order {
-        let node = &tract.nodes()[n];
-        let mut ok_node = true;
+    for turn in 0..turns {
+        for (ix, input) in tract.input_outlets()?.iter().enumerate() {
+            let name = &tract.node(input.node).name;
+            let value = all_values[name][turn].as_ref().unwrap();
+            state.set_input(ix, value.clone().into_tensor())?;
+        }
 
-        let mut tags = annotations.node_mut(n.into());
+        for &n in &eval_order {
+            let node = &tract.nodes()[n];
+            let mut ok_node = true;
 
-        if tract.input_outlets()?.iter().any(|o| o.node == n) {
-            tags.style = Some(Blue.into());
-        } else if node.op().validation() == Validation::Random {
-            tags.style = Some(Blue.into());
-            tags.labels.push(Blue.paint("Random").to_string());
-        } else if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
-            tags.style = Some(Red.into());
-            tags.labels.push(Red.paint("Unimplemented").to_string());
-            failing.push(n);
-        } else {
-            debug!("Computing {} in tract", node);
-            let error = state.compute_recursively(n).err();
-            let inputs = tract.nodes()[n]
-                .inputs
-                .iter()
-                .enumerate()
-                .map(|(ix, o)| {
-                    if let Some(tensor) = &state.values[o.node].as_ref().and_then(|v| v.get(o.slot))
-                    {
-                        format!("input value #{}: {:?}", ix, tensor)
-                    } else {
-                        format!("input value #{}: <not found>", ix)
-                    }
-                })
-                .collect::<Vec<_>>();
-            if let Some(e) = error {
-                failing.push(n);
+            let mut tags = annotations.node_mut(n.into());
+
+            if tract.input_outlets()?.iter().any(|o| o.node == n) {
+                tags.style = Some(Blue.into());
+            } else if node.op().validation() == Validation::Random {
+                tags.style = Some(Blue.into());
+                tags.labels.push(Blue.paint("Random").to_string());
+            } else if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
                 tags.style = Some(Red.into());
-                tags.labels.push(format!("{}: {}", Red.bold().paint("ERROR"), e));
+                tags.labels.push(Red.paint("Unimplemented").to_string());
+                failing.push(n);
             } else {
-                for ix in 0..node.outputs.len() {
-                    let label = tract.outlet_label((n, ix).into()).unwrap_or(&node.name);
-                    if let Some(ref_value) = all_values.get(label) {
-                        match ref_value {
-                            Ok(t) => {
-                                let found = &state.values[n].as_ref().unwrap()[ix];
-                                if let Err(e) = found.close_enough(t, true) {
+                debug!("Computing {} in tract", node);
+                let error = state.compute_recursively(n).err();
+                let inputs = tract.nodes()[n]
+                    .inputs
+                    .iter()
+                    .enumerate()
+                    .map(|(ix, o)| {
+                        if let Some(tensor) =
+                            &state.values[o.node].as_ref().and_then(|v| v.get(o.slot))
+                        {
+                            format!("input value #{}: {:?}", ix, tensor)
+                        } else {
+                            format!("input value #{}: <not found>", ix)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                if let Some(e) = error {
+                    failing.push(n);
+                    tags.style = Some(Red.into());
+                    tags.labels.push(format!("{}: {}", Red.bold().paint("ERROR"), e));
+                } else {
+                    for ix in 0..node.outputs.len() {
+                        let label = tract.outlet_label((n, ix).into()).unwrap_or(&node.name);
+                        if let Some(ref_value) = all_values.get(label) {
+                            match &ref_value[turn] {
+                                Ok(t) => {
+                                    let found = &state.values[n].as_ref().unwrap()[ix];
+                                    if let Err(e) = found.close_enough(&t, true) {
+                                        failing.push(n);
+                                        ok_node = false;
+                                        tags.style = Some(Red.bold());
+                                        let mut msg = vec![Red
+                                            .bold()
+                                            .paint(format!("Wrong value for output {}, {}", ix, e))
+                                            .to_string()];
+                                        msg.push(format!("got     : {:?}", found));
+                                        msg.push(format!("ref     : {:?}", t));
+                                        tags.sections.push(msg);
+                                    }
+                                    if !cumulative {
+                                        // Use the output from reference to keep tract from drifting.
+                                        state.values[node.id].as_mut().unwrap()[ix] =
+                                            t.to_owned().into_arc_tensor();
+                                    }
+                                }
+                                Err(e) => {
                                     failing.push(n);
                                     ok_node = false;
                                     tags.style = Some(Red.bold());
-                                    let mut msg = vec![Red
-                                        .bold()
-                                        .paint(format!("Wrong value for output {}, {}", ix, e))
-                                        .to_string()];
-                                    msg.push(format!("got     : {:?}", found));
-                                    msg.push(format!("ref     : {:?}", t));
-                                    tags.sections.push(msg);
-                                }
-                                if !cumulative {
-                                    // Use the output from reference to keep tract from drifting.
-                                    state.values[node.id].as_mut().unwrap()[ix] =
-                                        t.to_owned().into_arc_tensor();
+                                    tags.labels.push(format!(
+                                        "{}: {}",
+                                        Red.bold().paint("ERROR"),
+                                        e
+                                    ));
                                 }
                             }
-                            Err(e) => {
-                                failing.push(n);
-                                ok_node = false;
-                                tags.style = Some(Red.bold());
-                                tags.labels.push(format!("{}: {}", Red.bold().paint("ERROR"), e));
-                            }
+                        } else {
+                            ok_node = false;
+                            tags.style = Some(White.bold().into());
+                            tags.labels
+                                .push(White.paint("No matching wire in reference").to_string());
                         }
-                    } else {
-                        ok_node = false;
-                        tags.style = Some(White.bold().into());
-                        tags.labels.push(White.paint("No matching wire in reference").to_string());
                     }
-                }
-                tags.sections.push(inputs);
-                if ok_node {
-                    tags.style = Some(Green.bold());
-                    ok += 1;
+                    tags.sections.push(inputs);
+                    if ok_node {
+                        tags.style = Some(Green.bold());
+                        ok += 1;
+                    }
                 }
             }
         }

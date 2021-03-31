@@ -68,11 +68,12 @@ pub struct Parameters {
     #[allow(dead_code)]
     pub tf_model: (),
 
-    pub input_values: HashMap<String, Arc<Tensor>>,
+    pub input_values: HashMap<String, Vec<Arc<Tensor>>>,
 
     pub assertions: Assertions,
 
     pub machine_friendly: bool,
+    pub multiturn: bool,
 }
 
 #[cfg(feature = "tf")]
@@ -264,7 +265,7 @@ impl Parameters {
 
     fn use_onnx_test_case_data_set<F, O, E>(
         raw_model: &mut Graph<F, O>,
-        input_values: &mut HashMap<String, Arc<Tensor>>,
+        input_values: &mut HashMap<String, Vec<Arc<Tensor>>>,
         assertions: &mut Assertions,
         inputs_dir: &std::path::Path,
     ) -> CliResult<()>
@@ -315,7 +316,7 @@ impl Parameters {
         for (ix, _, filename, name, tensor) in inputs.into_iter() {
             debug!("Using {} as input {} ({}): {:?}", filename, ix, name, tensor);
             if let Some(v) = tensor.value.concretize() {
-                input_values.insert(name.to_string(), v);
+                input_values.insert(name.to_string(), vec![v]);
             }
             raw_model.set_input_fact(*ix, (&tensor.clone().without_value()).try_into().unwrap())?;
         }
@@ -336,7 +337,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         filename: &std::path::Path,
         onnx_tc: bool,
-    ) -> CliResult<HashMap<String, Arc<Tensor>>>
+    ) -> CliResult<HashMap<String, Vec<Arc<Tensor>>>>
     where
         F: std::fmt::Debug + Clone + Hash + Fact + for<'a> TryFrom<&'a InferenceFact, Error = E>,
         O: std::fmt::Debug
@@ -365,8 +366,10 @@ impl Parameters {
                     raw_model.input_outlets()?[ix]
                 };
                 if let Some(v) = t.value.concretize() {
-                    input_values
-                        .insert(raw_model.node(raw_model.inputs[ix].node).name.to_string(), v);
+                    input_values.insert(
+                        raw_model.node(raw_model.inputs[ix].node).name.to_string(),
+                        vec![v],
+                    );
                 }
                 if !raw_model.inputs.contains(&outlet) {
                     // shed edges from parents to us
@@ -396,14 +399,45 @@ impl Parameters {
                     }
                 }
                 let input_outlets = raw_model.input_outlets()?.to_vec();
+                let last_turn = if matches.is_present("multiturn") {
+                    npz.names()?
+                        .iter()
+                        .map(|name| {
+                            name.split('/')
+                                .nth(0)
+                                .unwrap()
+                                .split('_')
+                                .nth(1)
+                                .unwrap()
+                                .parse::<usize>()
+                                .unwrap()
+                        })
+                        .max()
+                        .unwrap()
+                } else {
+                    0
+                };
                 for (ix, input) in input_outlets.iter().enumerate() {
+                    let mut values = vec![];
                     let name = raw_model.node(input.node).name.clone();
-                    let npy_name = format!("{}.npy", name);
-                    if let Ok(t) = tensor::for_npz(&mut npz, &npy_name) {
-                        let shape = t.shape().to_vec();
-                        let fact = InferenceFact::dt_shape(t.datum_type(), shape);
-                        raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
-                        input_values.insert(name, t.into_arc_tensor());
+                    for turn in 0..=last_turn {
+                        let filename = if matches.is_present("multiturn") {
+                            format!("turn_{}/{}", turn, name)
+                        } else {
+                            name.to_string()
+                        };
+                        let npy_name = format!("{}.npy", filename);
+                        if let Ok(t) = tensor::for_npz(&mut npz, &filename)
+                            .or_else(|_| tensor::for_npz(&mut npz, &npy_name))
+                        {
+                            let shape = t.shape().to_vec();
+                            let fact = InferenceFact::dt_shape(t.datum_type(), shape);
+                            raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
+                            values.push(t.into_arc_tensor());
+                        }
+                    }
+                    if values.len() > 0 {
+                        input_values.insert(name, values);
                     }
                 }
             }
@@ -434,9 +468,9 @@ impl Parameters {
             if const_inputs.contains(&raw_model.node_name(input.node)) {
                 if let Some(v) = input_values.remove(name) {
                     raw_model.node_mut(input.node).op =
-                        tract_core::ops::konst::Const::new(v.clone()).into();
+                        tract_core::ops::konst::Const::new(v[0].clone()).into();
                     raw_model.node_mut(input.node).outputs[0].fact =
-                        F::try_from(&InferenceFact::from(v.into_tensor())).unwrap();
+                        F::try_from(&InferenceFact::from(v[0].clone().into_tensor())).unwrap();
                 } else {
                     bail!(
                         "Don't have value for input {}, can't make it const",
@@ -728,6 +762,7 @@ impl Parameters {
                 input_values,
                 assertions,
                 machine_friendly: matches.is_present("machine_friendly"),
+                multiturn: matches.is_present("multiturn"),
             }
         })
     }

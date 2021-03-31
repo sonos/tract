@@ -271,20 +271,23 @@ fn parse_dim_stream(s: &str) -> CliResult<TDim> {
     Ok(s.parse::<i64>().map(|i| i.into())?)
 }
 
-pub fn retrieve_or_make_inputs(tract: &dyn Model, params: &Parameters) -> CliResult<TVec<Tensor>> {
-    let mut inputs: TVec<Tensor> = tvec!();
+pub fn retrieve_or_make_inputs(
+    tract: &dyn Model,
+    params: &Parameters,
+) -> CliResult<Vec<TVec<Tensor>>> {
+    let mut tmp: TVec<Vec<Tensor>> = tvec![];
     for input in tract.input_outlets() {
         let name = tract.node_name(input.node);
         if let Some(input) = params.input_values.get(name) {
-            info!("Using fixed input for input called {:?}: {:?}", name, input);
-            inputs.push(input.clone().into_tensor())
+            info!("Using fixed input for input called {} ({} turn(s))", name, input.len());
+            tmp.push(input.iter().map(|t| t.clone().into_tensor()).collect())
         } else {
             let fact = tract.outlet_typedfact(*input)?;
             info!("Using random input for input called {:?}: {:?}", name, fact);
-            inputs.push(crate::tensor::tensor_for_fact(&fact, None)?);
+            tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None)?]);
         }
     }
-    Ok(inputs)
+    Ok((0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect())
 }
 
 pub fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> CliResult<TVec<Tensor>> {
