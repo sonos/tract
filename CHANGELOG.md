@@ -1,6 +1,10 @@
-## 0.13.01
+## 0.13.2
 
-* temporary disable binary uncicast add fusing (too many bugs)
+* fix sigmoid and tanh variability on intel
+
+## 0.13.1
+
+* temporary disable binary unicast add fusing (too many bugs)
 
 ## 0.13.0
 
