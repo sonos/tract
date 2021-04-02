@@ -123,12 +123,25 @@ pub fn handle_npz(
     params: &Parameters,
     output_params: &DisplayParams,
 ) -> CliResult<()> {
+    use tensor::for_npz;
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
-    let mut values = HashMap::new();
+    let mut values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
     for name in npz.names()? {
-        if let Ok(value) = tensor::for_npz(&mut npz, &name) {
-            let name = name.trim_end_matches(".npy");
-            values.insert(name.to_string(), vec![Ok(value.into())]);
+        if let Ok(value) = for_npz(&mut npz, &name) {
+            if params.multiturn {
+                let name = name
+                    .split("/")
+                    .nth(1)
+                    .with_context(|| format!(
+                        "npy filenames should be turn_XX/... in multiturn mode, got `{}'",
+                        name
+                    ))?
+                    .trim_end_matches(".npy");
+                values.entry(name.to_string()).or_default().push(Ok(value.into_arc_tensor()));
+            } else {
+                let name = name.trim_end_matches(".npy");
+                values.insert(name.to_string(), vec![Ok(value.into())]);
+            }
         }
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
@@ -242,8 +255,6 @@ where
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + Hash,
     Graph<F, O>: Model,
 {
-    let eval_order = ::tract_core::model::eval_order(&tract)?;
-
     // Execute the model step-by-step on tract.
     let plan = SimplePlan::new(tract)?;
     let mut state = SimpleState::new(plan)?;
@@ -251,104 +262,101 @@ where
     let mut annotations = crate::annotations::Annotations::from_model(tract as &dyn Model)?
         .with_graph_def(tract, &params.graph)?;
 
-    let turns = all_values.values().nth(0).unwrap().len();
-    let mut failing = vec![];
+    let mut failing = std::collections::HashSet::new();
+    let mut unchecked = std::collections::HashSet::new();
     let mut ok = 0;
 
-    for turn in 0..turns {
-        for (ix, input) in tract.input_outlets()?.iter().enumerate() {
-            let name = &tract.node(input.node).name;
-            let value = all_values[name][turn].as_ref().unwrap();
-            state.set_input(ix, value.clone().into_tensor())?;
-        }
-
-        for &n in &eval_order {
-            let node = &tract.nodes()[n];
-            let mut ok_node = true;
-
-            let mut tags = annotations.node_mut(n.into());
-
-            if tract.input_outlets()?.iter().any(|o| o.node == n) {
-                tags.style = Some(Blue.into());
-            } else if node.op().validation() == Validation::Random {
-                tags.style = Some(Blue.into());
-                tags.labels.push(Blue.paint("Random").to_string());
-            } else if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
-                tags.style = Some(Red.into());
-                tags.labels.push(Red.paint("Unimplemented").to_string());
-                failing.push(n);
-            } else {
-                debug!("Computing {} in tract", node);
-                let error = state.compute_recursively(n).err();
-                let inputs = tract.nodes()[n]
-                    .inputs
-                    .iter()
-                    .enumerate()
-                    .map(|(ix, o)| {
-                        if let Some(tensor) =
-                            &state.values[o.node].as_ref().and_then(|v| v.get(o.slot))
-                        {
-                            format!("At turn {}, input value #{}: {:?}", turn, ix, tensor)
-                        } else {
-                            format!("At turn {}, input value #{}: <not found>", turn, ix)
-                        }
+    for (turn, inputs) in tensor::retrieve_or_make_inputs(tract, params)?.into_iter().enumerate() {
+        state.run_plan_with_eval(
+            inputs,
+            |session_state, state, node, input| -> TractResult<TVec<Arc<Tensor>>> {
+                let mut tags = annotations.node_mut(node.id.into());
+                let reference: Option<TVec<Arc<Tensor>>> = (0..node.outputs.len())
+                    .map(|ix| {
+                        let label = tract.outlet_label((node.id, ix).into()).unwrap_or(&node.name);
+                        all_values
+                            .get(label)
+                            .and_then(|v| v.get(turn))
+                            .and_then(|r| r.as_ref().ok())
+                            .cloned()
                     })
-                    .collect::<Vec<_>>();
-                if let Some(e) = error {
-                    failing.push(n);
+                    .collect();
+                let mut tested = None;
+                let mut error = None;
+                if tract.input_outlets()?.iter().any(|o| o.node == node.id) {
+                    tags.style = Some(Blue.into());
+                } else if node.op().validation() == Validation::Random {
+                    tags.style = Some(Blue.into());
+                    tags.labels.push(Blue.paint("Random").to_string());
+                } else if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
                     tags.style = Some(Red.into());
-                    tags.labels.push(format!("{}: {}", Red.bold().paint("ERROR"), e));
+                    tags.labels.push(Red.paint("Unimplemented").to_string());
+                    failing.insert(node.id);
                 } else {
-                    for ix in 0..node.outputs.len() {
-                        let label = tract.outlet_label((n, ix).into()).unwrap_or(&node.name);
-                        if let Some(ref_value) = all_values.get(label) {
-                            match &ref_value[turn] {
-                                Ok(t) => {
-                                    let found = &state.values[n].as_ref().unwrap()[ix];
-                                    if let Err(e) = found.close_enough(&t, true) {
-                                        failing.push(n);
-                                        ok_node = false;
-                                        tags.style = Some(Red.bold());
-                                        let mut msg = vec![Red
-                                            .bold()
-                                            .paint(format!("At turn {}, wrong value for output {}, {}", turn, ix, e))
-                                            .to_string()];
-                                        msg.push(format!("got     : {:?}", found));
-                                        msg.push(format!("ref     : {:?}", t));
-                                        tags.sections.push(msg);
-                                    }
-                                    if !cumulative {
-                                        // Use the output from reference to keep tract from drifting.
-                                        state.values[node.id].as_mut().unwrap()[ix] =
-                                            t.to_owned().into_arc_tensor();
-                                    }
-                                }
-                                Err(e) => {
-                                    failing.push(n);
-                                    ok_node = false;
-                                    tags.style = Some(Red.bold());
-                                    tags.labels.push(format!(
-                                        "{}: {}",
-                                        Red.bold().paint("ERROR"),
-                                        e
-                                    ));
-                                }
-                            }
-                        } else {
-                            ok_node = false;
-                            tags.style = Some(White.bold().into());
-                            tags.labels
-                                .push(White.paint("No matching wire in reference").to_string());
+                    let obtained = tract_core::plan::eval(session_state, state, node, input);
+
+                    match obtained {
+                        Err(e) => {
+                            error = Some(format!("{}: {}", Red.bold().paint("ERROR"), e));
                         }
-                    }
-                    tags.sections.push(inputs);
-                    if ok_node {
-                        tags.style = Some(Green.bold());
-                        ok += 1;
+                        Ok(obtained) => {
+                            tested = Some(obtained.clone());
+                            if let Some(reference) = &reference {
+                                if reference.len() != obtained.len() {
+                                    error = Some("Output number mismatch".to_string());
+                                } else {
+                                    for ix in 0..node.outputs.len() {
+                                        if let Err(e) =
+                                            obtained[ix].close_enough(&reference[ix], true)
+                                        {
+                                            error = Some("Mismatch value".to_string());
+                                            let mut msg = vec![Red
+                                                .bold()
+                                                .paint(format!(
+                                                    "At turn {}, wrong value for output {}, {}",
+                                                    turn, ix, e
+                                                ))
+                                                .to_string()];
+                                            msg.push(format!("got     : {:?}", obtained[ix]));
+                                            msg.push(format!("ref     : {:?}", reference[ix]));
+                                            tags.sections.push(msg);
+                                        } else {
+                                            debug!(
+                                                "At turn {}, matching value for {:?}",
+                                                turn,
+                                                OutletId::new(node.id, ix)
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                unchecked.insert(node.id);
+                            }
+                        }
                     }
                 }
-            }
-        }
+                if let Some(e) = error {
+                    annotations.node_mut(node.id.into()).style = Some(Red.into());
+                    annotations.node_mut(node.id.into()).labels.push(e);
+                    failing.insert(node.id);
+                } else {
+                    ok += 1;
+                }
+                let result = if cumulative { tested.or(reference) } else { reference.or(tested) };
+                Ok(result.context("Failure to compute and no reference")?)
+            },
+        )?;
+    }
+
+    for node in tract.nodes() {
+        let color: ansi_term::Style = if failing.contains(&node.id) {
+            Red.into()
+        } else if unchecked.contains(&node.id) {
+            White.into()
+        } else {
+            Green.bold()
+        };
+        annotations.node_mut(node.id.into()).style = Some(color);
     }
 
     if log_enabled!(Info) {
