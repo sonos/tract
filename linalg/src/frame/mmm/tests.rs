@@ -211,7 +211,7 @@ macro_rules! mmm_frame_tests {
             #[test]
             fn add_d_big() {
                 if $cond {
-                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(197, 1, 2).unwrap() }
+                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(197, 1, 1).unwrap() }
                 }
             }
         }
@@ -391,6 +391,8 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
+    let use_vector = n == 1;
+
     let a = tensor1(&*vec![TA::one(); m * k]).into_shape(&[m, k]).unwrap();
     let b = tensor1(&*vec![TB::one(); k * n]).into_shape(&[k, n]).unwrap();
     let op = MatMatMulImpl::<K, TC, TI>::new(m, k, n);
@@ -407,13 +409,23 @@ where
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
 
-    op.run(
-        &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
-        &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
-        &mut op.c_from_data_and_strides(n as isize, 1).wrap(&found.view_mut()),
-        spec,
-    )
-    .unwrap();
+    if use_vector {
+        op.run(
+            &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
+            &op.b_vec_from_data(TB::datum_type()).wrap(&b.view()),
+            &mut op.c_vec_from_data().wrap(&mut found.view_mut()),
+            spec,
+        )
+        .unwrap();
+    } else {
+        op.run(
+            &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
+            &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
+            &mut op.c_from_data_and_strides(n as isize, 1).wrap(&mut found.view_mut()),
+            spec,
+        )
+        .unwrap();
+    }
 
     let mut inter = Tensor::zero::<TI>(&[m, n]).unwrap();
     for x in 0..n {
