@@ -151,23 +151,31 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 FusedSpec::QAway(m, s) => FusedKerSpec::QAway(*m.to_scalar_unchecked(), *s),
                 FusedSpec::AddUnicast(tensor) => {
                     let (rsc, csc, item_count) = match c_store {
-                        MatrixStore::Strides { row_item_stride, col_item_stride, item_count, .. } => {
-                            (*row_item_stride, *col_item_stride, *item_count)
+                        MatrixStore::Strides {
+                            row_item_stride,
+                            col_item_stride,
+                            item_count,
+                            ..
+                        } => (*row_item_stride, *col_item_stride, *item_count),
+                        MatrixStore::VecStride { item_stride, item_count, .. } => {
+                            (*item_stride, 1, *item_count)
                         }
-                        MatrixStore::VecStride { item_stride, item_count, .. } => (*item_stride, 1, *item_count),
                         _ => panic!(),
                     };
-                    let tile_offset = rsc * down as isize * K::mr() as isize + csc * right as isize * K::nr() as isize;
+                    let tile_offset = rsc * down as isize * K::mr() as isize
+                        + csc * right as isize * K::nr() as isize;
                     let tile_ptr: *const TI = tensor.as_ptr_unchecked::<TI>().offset(tile_offset);
 
-                    let last_tile_value = tile_ptr.offset((K::mr() - 1) as isize * rsc + (K::nr() - 1) as isize * csc);
-                    if last_tile_value >= tensor.as_ptr_unchecked::<TI>().offset(item_count as isize) {
+                    let max_inner_offset =
+                        (K::mr() - 1) as isize * rsc + (K::nr() - 1) as isize * csc;
+                    if max_inner_offset + tile_offset > item_count as isize {
                         let tmp_d_tile = self.get_temp_slice::<TI>(K::mr() * K::nr());
                         for r in 0..K::mr() as isize {
                             for c in 0..K::nr() as isize {
                                 let inner_offset = c * csc + r * rsc;
                                 if inner_offset + tile_offset < item_count as isize {
-                                    tmp_d_tile[r as usize + c as usize * K::mr()] = *tile_ptr.offset(inner_offset);
+                                    tmp_d_tile[r as usize + c as usize * K::mr()] =
+                                        *tile_ptr.offset(inner_offset);
                                 }
                             }
                         }
