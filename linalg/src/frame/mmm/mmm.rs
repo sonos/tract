@@ -102,7 +102,7 @@ where
     K: MatMatMulKer<TI> + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "MMM ({})", K::name())
+        write!(f, "MMM ({} {}x{})", K::name(), K::mr(), K::nr())
     }
 }
 
@@ -249,7 +249,7 @@ where
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             if let MatrixStore::VecStride { .. } = c {
-                let ref b = b.panel_b(nr, n / nr, n % nr);
+                let ref b = b.panel_b(nr, 0, n % nr);
                 self.prefetch(a, b);
                 scratch.clear();
                 let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, 0, c);
@@ -299,7 +299,7 @@ where
         if m % mr != 0 {
             let ref panel_a = a.panel_a(m / mr);
             if let MatrixStore::VecStride { .. } = c {
-                let ref b = b.panel_b(nr, 0, 1);
+                let ref b = b.panel_b(nr, 0, nr);
                 self.prefetch(panel_a, b);
                 scratch.clear();
                 let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);

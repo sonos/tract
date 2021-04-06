@@ -435,6 +435,31 @@ fn group_10() -> anyhow::Result<()> {
 }
 
 #[test]
+fn group_11() -> anyhow::Result<()> {
+    let pb = ConvProblem {
+        shape_in: DataFormat::HWC.from_n_c_hw(1, 2, &[1])?,
+        shape_out: DataFormat::HWC.from_n_c_hw(1, 8, &[1])?,
+        kernel_format: KernelFormat::OIHW,
+        group: 2,
+        data: tract_ndarray::arr2(&[[0.0, 1.0]]).into_dyn(),
+        kernel: tract_ndarray::arr3(&[
+            [[0.0]],
+            [[0.0]],
+            [[0.0]],
+            [[0.0]],
+            [[0.0]],
+            [[0.0]],
+            [[0.0]],
+            [[1.0]],
+        ])
+        .into_dyn(),
+        bias: None,
+    };
+    assert_eq!(pb.tract().unwrap(), pb.reference());
+    Ok(())
+}
+
+#[test]
 fn group_bias_0() -> anyhow::Result<()> {
     let pb = ConvProblem {
         shape_in: DataFormat::NHWC.from_n_c_hw(1, 2, &[1])?,
