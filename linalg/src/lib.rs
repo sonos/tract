@@ -22,12 +22,13 @@ pub mod arm64;
 #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
 pub mod arm32;
 
-pub use self::frame::{lut,mmm,element_wise};
+pub use self::frame::{element_wise, lut, mmm};
 
 use tract_data::prelude::*;
 
 pub struct Ops {
     mmm_f32: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
+    mmv_f32: Box<dyn Fn(usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_i8_i32: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_u8_i32: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
     qmmm_u8_u8: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
@@ -51,7 +52,9 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
         match (a, b, c) {
-            (F32, F32, F32) => Some((self.mmm_f32)(m, k, n)),
+            (F32, F32, F32) => {
+                Some(if n == 1 { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) })
+            }
             (I8, I8, I32) => Some((self.qmmm_i8_i32)(m, k, n)),
             (U8, U8, I32) => Some((self.qmmm_u8_i32)(m, k, n)),
             (I8, I8, I8) => Some((self.qmmm_i8_i8)(m, k, n)),
@@ -68,6 +71,13 @@ pub fn generic() -> Ops {
             Box::new(
                 mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32>::new(
                     m, k, n,
+                ),
+            )
+        }),
+        mmv_f32: Box::new(|m, k| {
+            Box::new(
+                mmm::MatMatMulImpl::<generic::GenericMmm4x1<f32, f32, f32, f32>, f32, f32>::new(
+                    m, k, 1,
                 ),
             )
         }),
@@ -96,8 +106,12 @@ pub fn generic() -> Ops {
                 m, k, n,
             ))
         }),
-        sigmoid_f32: Box::new(|| Box::new(element_wise::ElementWiseImpl::<generic::SSigmoid4, f32>::new())),
-        tanh_f32: Box::new(|| Box::new(element_wise::ElementWiseImpl::<generic::STanh4, f32>::new())),
+        sigmoid_f32: Box::new(|| {
+            Box::new(element_wise::ElementWiseImpl::<generic::SSigmoid4, f32>::new())
+        }),
+        tanh_f32: Box::new(|| {
+            Box::new(element_wise::ElementWiseImpl::<generic::STanh4, f32>::new())
+        }),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
         prefetch: None,
     }
