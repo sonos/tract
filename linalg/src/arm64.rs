@@ -2,8 +2,8 @@ mod arm64simd;
 
 use crate::Ops;
 
-use crate::frame::MatMatMulImpl;
 use crate::frame::ElementWiseImpl;
+use crate::frame::MatMatMulImpl;
 
 use tract_data::internal::DimLike;
 
@@ -17,10 +17,11 @@ fn is_cortex_a53() -> std::io::Result<bool> {
 pub fn plug(ops: &mut Ops) {
     if is_cortex_a53().unwrap_or(false) {
         log::info!("arm64simd activated for smmm (cortex A53)");
+        ops.mmv_f32 = Box::new(|m, k| {
+            Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1A53, f32, f32>::new(m, k, 1))
+        });
         ops.mmm_f32 = Box::new(|m, k, n| {
-            if n == 1 {
-                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1A53, f32, f32>::new(m, k, 1))
-            } else if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
+            if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8A53, f32, f32>::new(m, k, n))
             } else {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32, f32>::new(m, k, n))
@@ -28,10 +29,11 @@ pub fn plug(ops: &mut Ops) {
         })
     } else {
         log::info!("arm64simd activated for smmm (generic)");
+        ops.mmv_f32 = Box::new(|m, k| {
+            Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32, f32>::new(m, k, 1))
+        });
         ops.mmm_f32 = Box::new(|m, k, n| {
-            if n == 1 {
-                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32, f32>::new(m, k, 1))
-            } else if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
+            if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8, f32, f32>::new(m, k, n))
             } else {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32, f32>::new(m, k, n))
@@ -44,6 +46,7 @@ pub fn plug(ops: &mut Ops) {
     ops.qmmm_i8_i32 = Box::new(|m, k, n| {
         Box::new(MatMatMulImpl::<arm64simd::MatMatMulI8xI32x8x8, i32, i32>::new(m, k, n))
     });
-    ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<arm64simd::SigmoidF32x4n, f32>::new()));
+    ops.sigmoid_f32 =
+        Box::new(|| Box::new(ElementWiseImpl::<arm64simd::SigmoidF32x4n, f32>::new()));
     ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<arm64simd::TanhF32x4n, f32>::new()));
 }
