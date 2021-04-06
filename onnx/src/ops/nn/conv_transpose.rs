@@ -99,10 +99,14 @@ impl Expansion for ConvTranspose {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
+        dbg!(&self);
         if let Some(k) = target.outlet_fact(inputs[1])?.konst.clone() {
+            dbg!(&k);
+            dbg!(&target.outlet_fact(inputs[0]));
             let zeros = tvec!(0; k.rank() - 2);
             if let Some(output_shape) = &self.output_shape {
                 let x_shape = &target.outlet_fact(inputs[0])?.shape;
+                dbg!(x_shape);
                 let pool_spec = PoolSpec::new(
                     DataFormat::NCHW,
                     k.shape()[2..].into(),
@@ -113,9 +117,10 @@ impl Expansion for ConvTranspose {
                 );
                 let adjustments = adjustments(
                     &pool_spec,
-                    &x_shape.as_concrete().context("expects concrete dim for deconv")?,
+                    &x_shape.as_concrete().context("expects concrete dim for deconv")?[2..],
                     &**output_shape,
                 )?;
+                dbg!(&adjustments);
                 target.wire_node(
                     prefix,
                     tract_core::ops::cnn::DeconvUnary::new(
