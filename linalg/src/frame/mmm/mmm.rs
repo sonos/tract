@@ -299,7 +299,7 @@ where
         if m % mr != 0 {
             let ref panel_a = a.panel_a(m / mr);
             if let MatrixStore::VecStride { .. } = c {
-                let ref b = b.panel_b(nr, n / nr, n % nr);
+                let ref b = b.panel_b(nr, 0, 1);
                 self.prefetch(panel_a, b);
                 scratch.clear();
                 let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
