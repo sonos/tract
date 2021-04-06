@@ -59,12 +59,12 @@ impl Arbitrary for DeconvProblem {
                 let mut kernel_shape = hwk;
                 match kf {
                     OIHW => {
-                        kernel_shape.insert(0, ci);
-                        kernel_shape.insert(1, co);
+                        kernel_shape.insert(0, co);
+                        kernel_shape.insert(1, ci);
                     }
                     HWIO => {
-                        kernel_shape.push(co);
                         kernel_shape.push(ci);
+                        kernel_shape.push(co);
                     }
                 };
                 let data_shape = df.from_n_c_hw(n, ci, &hwi).unwrap();
@@ -104,8 +104,8 @@ impl DeconvProblem {
             Some(self.dilations.clone()),
             Some(self.strides.clone()),
             Some(match self.kernel_format {
-                KernelFormat::OIHW => self.kernel.shape()[1],
-                KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 2],
+                KernelFormat::OIHW => self.kernel.shape()[0],
+                KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
             }),
         );
         let op = DeconvUnary::new(
@@ -121,8 +121,8 @@ impl DeconvProblem {
     fn reference(&self) -> ArrayD<f32> {
         use std::iter::once;
         let co = match self.kernel_format {
-            KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 2],
-            KernelFormat::OIHW => self.kernel.shape()[1],
+            KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
+            KernelFormat::OIHW => self.kernel.shape()[0],
         };
         let input_shape = self.data_format.shape(self.input.shape()).unwrap();
         let n = if self.data_format.has_n() { self.input.shape()[0] } else { 1 };
@@ -176,16 +176,16 @@ impl DeconvProblem {
                             let i = self.data_format.from_n_c_hw(n, ci, hwi.slice()).unwrap();
                             let o = self.data_format.from_n_c_hw(n, co, hwo).unwrap();
                             let k: TVec<usize> = match self.kernel_format {
-                                OIHW => once(ci)
-                                    .chain(once(co))
+                                OIHW => once(co)
+                                    .chain(once(ci))
                                     .chain(hwk.slice().iter().cloned())
                                     .collect(),
                                 HWIO => hwk
                                     .slice()
                                     .iter()
                                     .cloned()
-                                    .chain(once(co))
                                     .chain(once(ci))
+                                    .chain(once(co))
                                     .collect(),
                             };
                             if let Some(ceil) = output.get_mut(&*o.shape) {
@@ -259,7 +259,7 @@ fn test_hwio_0() {
         kernel_format: HWIO,
         padding: PaddingSpec::Valid,
         input: arr3(&[[[0.0]]]).into_dyn(),
-        kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
+        kernel: arr4(&[[[[0.0, 0.0]]]]).into_dyn(),
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
@@ -323,6 +323,21 @@ fn test_same_upper_strides() {
         strides: tvec!(2),
         dilations: tvec!(1),
         adjustments: tvec!(0, 0),
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_channel_0() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: arr2(&[[0.0]]).into_dyn(),
+        kernel: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
+        strides: tvec!(1),
+        dilations: tvec!(1),
+        adjustments: tvec!(0),
     };
     assert_eq!(pb.tract(), pb.reference());
 }

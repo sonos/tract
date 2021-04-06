@@ -30,32 +30,32 @@ impl DeconvUnary {
             &[input],
         )?;
 
-        // gemm: m=IHkWk, k=O, n=HW
-        // kernel from OIHW to [(1), IHW, O]
+        // gemm: m=OHkWk, k=I, n=HW
+        // kernel from OIHW to [(batch=1), OHW, I]
         let kernel_spatial_shape = self.kernel_format.spatial_shape(self.kernel.shape());
         let kernel_spatial_len: usize = kernel_spatial_shape.iter().product();
 
-        let permutation_to_ihw_o: TVec<usize> = match self.kernel_format {
-            KernelFormat::OIHW => (1..self.kernel.rank()).chain(once(0)).collect(),
-            KernelFormat::HWIO => once(self.kernel.rank() - 2)
+        let permutation_to_ohw_i: TVec<usize> = match self.kernel_format {
+            KernelFormat::OIHW => once(0).chain(2..self.kernel.rank()).chain(once(1)).collect(),
+            KernelFormat::HWIO => once(self.kernel.rank() - 1)
                 .chain(0..self.kernel.rank() - 2)
-                .chain(once(self.kernel.rank() - 1))
+                .chain(once(self.kernel.rank() - 2))
                 .collect(),
         };
-        let kernel_t = self.kernel.clone().into_tensor().permute_axes(&permutation_to_ihw_o)?;
+        let kernel_as_o_h_w_i = self.kernel.clone().into_tensor().permute_axes(&permutation_to_ohw_i)?;
         let mut kernel_shape = tvec!(
-            self.kernel_format.i(self.kernel.shape()) * kernel_spatial_len,
-            kernel_t.shape()[kernel_t.rank() - 1],
+            self.kernel_format.o(self.kernel.shape()) * kernel_spatial_len,
+            kernel_as_o_h_w_i.shape()[kernel_as_o_h_w_i.rank() - 1],
         );
         if self.pool_spec.data_format.has_n() {
             kernel_shape.insert(0, 1);
         }
-        let kernel_t = kernel_t.into_shape(&*kernel_shape)?;
+        let kernel_as_ohw_i = kernel_as_o_h_w_i.into_shape(&*kernel_shape)?;
         let trans_data = self.pool_spec.data_format.c_is_last();
         let gemm = target.wire_node(
             format!("{}.gemm", name),
             crate::ops::matmul::MatMulUnary::new(
-                kernel_t.into_arc_tensor(),
+                kernel_as_ohw_i.into_arc_tensor(),
                 false,
                 trans_data,
                 false,
