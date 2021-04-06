@@ -1,7 +1,8 @@
 use crate::ast::*;
 use tract_core::internal::*;
 use tract_core::ops::cnn::deconv::adjustments;
-use tract_itertools::{izip, Itertools};
+use tract_itertools::izip;
+use tract_itertools::Itertools;
 
 use tract_core::ops;
 
@@ -193,16 +194,16 @@ dilation: integer[] = [], groups: integer = 1 )
 */
 
 /*  fragment deconv(
-      input: tensor<scalar>,
-      filter: tensor<scalar>,
-      bias: tensor<scalar> = 0.0,
-      border: string = 'constant',
-      padding: (integer,integer)[] = [],
-      stride: integer[] = [],
-      dilation: integer[] = [],
-      output_shape: integer[] = [],
-      groups: integer = 1 )
-  -> ( output: tensor<scalar> );
+input: tensor<scalar>,
+filter: tensor<scalar>,
+bias: tensor<scalar> = 0.0,
+border: string = 'constant',
+padding: (integer,integer)[] = [],
+stride: integer[] = [],
+dilation: integer[] = [],
+output_shape: integer[] = [],
+groups: integer = 1 )
+-> ( output: tensor<scalar> );
 */
 
 pub fn conv(
@@ -280,12 +281,13 @@ pub fn conv_or_deconv(
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
     let op: Box<dyn TypedOp> = if deconv {
-        let adjustments = if let Some(output_shape) = invocation.get_named_arg("output_shape") {
-            let input_shape = input_fact
+        let output_shape = invocation.named_arg_as::<TVec<usize>>(builder, "output_shape")?;
+        let output_shape = Some(output_shape).filter(|os| os.len() == pool_spec.rank());
+        let adjustments = if let Some(output_shape) = output_shape {
+            let input_shape = &input_fact
                 .shape
                 .as_concrete()
-                .context("symbolic dimension not supported in deconv")?;
-            let output_shape: TVec<usize> = output_shape.resolve(builder)?.to(builder)?;
+                .context("symbolic dimension not supported in deconv")?[2..];
             adjustments(&pool_spec, &input_shape, &output_shape)?
         } else {
             tvec!(0; pool_spec.rank())
@@ -350,10 +352,10 @@ pub fn max_pool_with_index(
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != size.len() {
         bail!(
-            "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
-            input_fact,
-            size
-            );
+                "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
+                input_fact,
+                size
+                );
     }
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "ignore");
@@ -377,10 +379,10 @@ pub fn sum_pool(
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != size.len() {
         bail!(
-            "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
-            input_fact,
-            size
-            );
+                "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
+                input_fact,
+                size
+                );
     }
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "ignore");

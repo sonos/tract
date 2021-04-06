@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::ops::cnn::PoolSpec;
+use crate::ops::cnn::{PaddingSpec, PoolSpec};
 
 mod deconv_sum;
 #[cfg(test)]
@@ -38,16 +38,28 @@ pub fn adjustments(
     input_geo: &[usize],
     output_geo: &[usize],
 ) -> TractResult<TVec<usize>> {
+    debug_assert_eq!(pool_spec.rank(), pool_spec.strides().len());
+    debug_assert_eq!(pool_spec.rank(), pool_spec.dilations().len());
+    debug_assert_eq!(pool_spec.rank(), pool_spec.kernel_shape.len());
+    debug_assert_eq!(pool_spec.rank(), input_geo.len());
+    debug_assert_eq!(pool_spec.rank(), output_geo.len());
+    let rank = pool_spec.rank();
+    let pad: TVec<usize> = match &pool_spec.padding {
+        PaddingSpec::Explicit(beg, end, _) => (0..rank).map(|r| beg[r] + end[r]).collect(),
+        PaddingSpec::Valid => tvec!(0; rank),
+        _ => todo!("Unsupported combination of deconvolution arguments"),
+    };
     tract_itertools::izip!(
         input_geo,
         &pool_spec.kernel_shape,
         output_geo,
         pool_spec.strides().as_ref(),
         pool_spec.dilations().as_ref(),
+        pad,
     )
-    .map(|(x, k, y, s, d)| {
-        let pad = y.to_usize()? - s * (x.to_usize()? - 1) - (k.to_usize()? - 1) * d - 1;
-        Ok(pad)
+    .map(|(x, k, y, s, d, p)| {
+        let adj = y.to_usize()? + p - s * (x.to_usize()? - 1) - (k.to_usize()? - 1) * d - 1;
+        Ok(adj)
     })
     .collect::<TractResult<TVec<usize>>>()
 }

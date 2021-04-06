@@ -179,6 +179,7 @@ pub fn conv_or_deconv(
     bias: &Option<Arc<Tensor>>,
     group: usize,
     deconv: bool,
+    adjustments: Option<&[usize]>
 ) -> TractResult<Option<Arc<RValue>>> {
     dbg!("foo");
     use tract_core::ops::cnn::PaddingSpec;
@@ -221,7 +222,7 @@ pub fn conv_or_deconv(
         ("groups", numeric(group)),
         ("padding", padding),
     ];
-    if deconv {
+    if deconv && adjustments.unwrap().iter().any(|a| *a != 0) {
         let output_shape = output_shape.hw_dims().iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
         named_args.push(("output_shape", ints(&*output_shape)));
     };
@@ -236,7 +237,7 @@ pub fn conv(
     op: &ops::cnn::conv::ConvUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
     let weights = op.kernel_as_group_o_ihw()?.into_tensor();
-    conv_or_deconv(ast, node, &op.pool_spec, weights, &op.bias, op.group, false)
+    conv_or_deconv(ast, node, &op.pool_spec, weights, &op.bias, op.group, false, None)
 }
 
 pub fn deconv(
@@ -252,7 +253,7 @@ pub fn deconv(
         *op.kernel_format.i(op.kernel.shape()),
         *op.kernel_format.o(op.kernel.shape()),
     )?;
-    conv_or_deconv(ast, node, &op.pool_spec, weights.into_tensor(), &None, 1, true)
+    conv_or_deconv(ast, node, &op.pool_spec, weights.into_tensor(), &None, 1, true, Some(&op.adjustments))
 }
 
 fn cnn_pool_fragment<'a>(
