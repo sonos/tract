@@ -99,58 +99,52 @@ impl Expansion for ConvTranspose {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        dbg!(&self);
         if let Some(k) = target.outlet_fact(inputs[1])?.konst.clone() {
-            dbg!(&k);
-            dbg!(&target.outlet_fact(inputs[0]));
             let zeros = tvec!(0; k.rank() - 2);
-            if let Some(output_shape) = &self.output_shape {
+            // ONNX and tract conventions are backwards: in ONNX OIHW, I is the number of
+            // channels post deconv
+            let mut axes: TVec<usize> = (0..k.rank()).collect();
+            axes.swap(0, 1);
+            let kernel = k.clone().into_tensor().permute_axes(&axes)?;
+
+            let op = if let Some(output_shape) = &self.output_shape {
                 let x_shape = &target.outlet_fact(inputs[0])?.shape;
-                dbg!(x_shape);
                 let pool_spec = PoolSpec::new(
                     DataFormat::NCHW,
-                    k.shape()[2..].into(),
+                    kernel.shape()[2..].into(),
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),
-                    Some(k.shape()[1]),
+                    Some(kernel.shape()[0]),
                 );
                 let adjustments = adjustments(
                     &pool_spec,
                     &x_shape.as_concrete().context("expects concrete dim for deconv")?[2..],
                     &**output_shape,
                 )?;
-                dbg!(&adjustments);
-                target.wire_node(
-                    prefix,
-                    tract_core::ops::cnn::DeconvUnary::new(
-                        pool_spec,
-                        KernelFormat::OIHW,
-                        k.clone(),
-                        adjustments,
-                    ),
-                    &[inputs[0]],
+                tract_core::ops::cnn::DeconvUnary::new(
+                    pool_spec,
+                    KernelFormat::OIHW,
+                    kernel.into_arc_tensor(),
+                    adjustments,
                 )
             } else {
                 let pool_spec = PoolSpec::new(
                     DataFormat::NCHW,
-                    k.shape()[2..].into(),
+                    kernel.shape()[2..].into(),
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),
-                    Some(k.shape()[1].to_usize().unwrap()),
+                    Some(kernel.shape()[0])
                 );
-                target.wire_node(
-                    prefix,
-                    tract_core::ops::cnn::DeconvUnary::new(
-                        pool_spec,
-                        KernelFormat::OIHW,
-                        k.clone(),
-                        self.adjustments.clone().unwrap_or(zeros.clone()),
-                    ),
-                    &[inputs[0]],
+                tract_core::ops::cnn::DeconvUnary::new(
+                    pool_spec,
+                    KernelFormat::OIHW,
+                    kernel.into_arc_tensor(),
+                    self.adjustments.clone().unwrap_or(zeros.clone()),
                 )
-            }
+            };
+            target.wire_node(prefix, op, &[inputs[0]])
         } else {
             bail!("Kernel values are expected to be constant.")
         }
