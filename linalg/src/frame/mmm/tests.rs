@@ -440,6 +440,8 @@ where
     }
     expect(inter.as_slice_mut::<TI>().unwrap());
     let expected = inter.cast_to::<TC>().unwrap().into_owned();
+    eprintln!("{:?}", expected.to_array_view::<TC>());
+    eprintln!("{:?}", found.to_array_view::<TC>());
     found.close_enough(&expected, true).unwrap();
     Ok(())
 }
