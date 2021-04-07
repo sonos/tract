@@ -414,7 +414,6 @@ where
     }
     expect(inter.as_slice_mut::<TI>().unwrap());
     let expected = inter.cast_to::<TC>().unwrap().into_owned();
-
     found.close_enough(&expected, true).unwrap();
     Ok(())
 }

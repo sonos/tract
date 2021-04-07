@@ -1,9 +1,10 @@
-use crate::frame::mmm::*;
 use crate::frame::element_wise::*;
+use crate::frame::mmm::*;
 
 extern "C" {
     fn armv7neon_mmm_i8_8x4(op: *const MatMatMulKerSpec<i32>) -> isize;
     fn armv7neon_mmm_f32_8x4(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn armv7neon_mmm_f32_32x1(op: *const MatMatMulKerSpec<f32>) -> isize;
     fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize);
     fn armv7neon_tanh_f32_4n(ptr: *mut f32, count: usize);
     fn armv7neon_prefetch(start: *const u8, end: *const u8);
@@ -116,6 +117,40 @@ impl MatMatMulKer<f32> for MatMatMulF32x8x4 {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub struct MatMatMulF32x32x1;
+
+impl MatMatMulKer<f32> for MatMatMulF32x32x1 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "neon"
+    }
+    #[inline(always)]
+    fn mr() -> usize {
+        32
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        1
+    }
+    fn alignment_bytes_packed_a() -> usize {
+        4
+    }
+    fn alignment_bytes_packed_b() -> usize {
+        4
+    }
+    fn end_padding_packed_a() -> usize {
+        0
+    }
+    fn end_padding_packed_b() -> usize {
+        0
+    }
+    #[inline(never)]
+    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
+        unsafe { armv7neon_mmm_f32_32x1(spec) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct SigmoidF32x4n;
 
 impl ElementWiseKer<f32> for SigmoidF32x4n {
@@ -172,6 +207,13 @@ test_mmm_kernel_f32!(
     test_MatMatMulF32x8x4,
     crate::arm32::has_neon()
 );
+
+test_mmm_kernel_f32!(
+    crate::arm32::armv7neon::MatMatMulF32x32x1,
+    test_MatMatMulF32x32x1,
+    crate::arm32::has_neon()
+);
+
 test_mmm_kernel_i8!(
     crate::arm32::armv7neon::MatMatMulI8x8x4,
     test_MatMatMulI8x8x4,
