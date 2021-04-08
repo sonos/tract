@@ -1,8 +1,6 @@
 use crate::frame::element_wise::ElementWiseKer;
 
-extern "C" {
-    fn fma_tanh_f32(ptr: *mut f32, count: usize);
-}
+extern_kernel!(fn fma_tanh_f32(ptr: *mut f32, count: usize) -> ());
 
 #[derive(Copy, Clone, Debug)]
 pub struct TanhF32;

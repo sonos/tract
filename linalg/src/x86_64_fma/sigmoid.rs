@@ -1,8 +1,6 @@
 use crate::element_wise::ElementWiseKer;
 
-extern "C" {
-    fn fma_sigmoid_f32(ptr: *mut f32, count: usize);
-}
+extern_kernel!(fn fma_sigmoid_f32(ptr: *mut f32, count: usize) -> ());
 
 #[derive(Copy, Clone, Debug)]
 pub struct SigmoidF32;

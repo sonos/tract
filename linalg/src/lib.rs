@@ -6,8 +6,12 @@ extern crate lazy_static;
 extern crate libc;
 extern crate log;
 extern crate num_traits;
+#[macro_use]
+extern crate paste;
 #[cfg(test)]
 extern crate proptest;
+
+include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 
 #[macro_use]
 pub mod frame;
