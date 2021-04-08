@@ -313,7 +313,7 @@ fma_sigmoid_f32_{{suffix}} proc
     {{float}} 0.5
 
 {% if msvc %}
-fma_sigmoid_f32 endp
+fma_sigmoid_f32_{{suffix}} endp
 _text ends
 end
 {% else %}

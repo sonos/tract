@@ -303,7 +303,7 @@ fma_tanh_f32_{{suffix}} proc
     {{float}} 4.89352518554385e-03     // beta_0
 
 {% if msvc %}
-fma_tanh_f32 endp
+fma_tanh_f32_{{suffix}} endp
 _text ends
 end
 {% else %}
