@@ -24,6 +24,7 @@ libc = "0.2"
 log = "0.4"
 num-traits = "0.2"
 tract-data = { path = "../data" }
+paste = "1.0.5"
 
 [build-dependencies]
 cc = "1.0"

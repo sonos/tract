@@ -2,15 +2,15 @@
 
     .arm
     .text
-    .global armv7neon_tanh_f32_4n
-    .type armv7neon_tanh_f32_4n, %function
+    .global armv7neon_tanh_f32_4n_{{suffix}}
+    .type armv7neon_tanh_f32_4n_{{suffix}}, %function
 
 /*
     s16–s31 (d8–d15, q4–q7) must be preserved
     s0–s15 (d0–d7, q0–q3) and d16–d31 (q8–q15) do not need to be preserved
 */
 
-armv7neon_tanh_f32_4n:
+armv7neon_tanh_f32_4n_{{suffix}}:
     cmp         r1, #0
     blxeq       lr
 

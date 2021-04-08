@@ -20,8 +20,8 @@
 .align 4
 
 .cpu generic+fp+simd
-.global {{G}}arm64simd_mmm_i8_8x8
-{{G}}arm64simd_mmm_i8_8x8:
+.global {{G}}arm64simd_mmm_i8_8x8_{{suffix}}
+{{G}}arm64simd_mmm_i8_8x8_{{suffix}}:
 
 /*
     prfm        pldl1keep, [x1]

@@ -2,10 +2,10 @@
 
 .arm
 .text
-.global armv7neon_prefetch
-.type armv7neon_prefetch, %function
+.global armv7neon_prefetch_{{suffix}}
+.type armv7neon_prefetch_{{suffix}}, %function
 
-armv7neon_prefetch:
+armv7neon_prefetch_{{suffix}}:
 loop:
     pld     [r0]
     pld     [r0, #32]

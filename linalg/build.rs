@@ -14,9 +14,12 @@ fn main() {
     let os = var("CARGO_CFG_TARGET_OS");
     let out_dir = path::PathBuf::from(var("OUT_DIR"));
 
+    let suffix = env!("CARGO_PKG_VERSION").replace("-", "_").replace(".", "_");
+    make_extern_kernel_decl_macro(&out_dir, &suffix);
+
     match arch.as_ref() {
         "x86_64" => {
-            let files = preprocess_files("x86_64/fma", &[]);
+            let files = preprocess_files("x86_64/fma", &[], &suffix);
 
             match os.as_ref() {
                 "windows" => {
@@ -24,9 +27,9 @@ fn main() {
                         let mut lib_exe = cc::windows_registry::find(&*target, "lib.exe")
                             .expect("Could not find lib.exe");
                         lib_exe.arg(format!(
-                                "/out:{}",
-                                out_dir.join("x86_64_fma.lib").to_str().unwrap()
-                                ));
+                            "/out:{}",
+                            out_dir.join("x86_64_fma.lib").to_str().unwrap()
+                        ));
                         for f in files {
                             let mut obj = f.clone();
                             obj.set_extension("o");
@@ -34,20 +37,20 @@ fn main() {
                                 .expect("Could not find ml64.exe");
                             if !ml_exe
                                 .arg("/Fo")
-                                    .arg(&obj)
-                                    .arg("/c")
-                                    .arg(&f)
-                                    .status()
-                                    .unwrap()
-                                    .success()
-                                    {
-                                        for (i, l) in
-                                            std::fs::read_to_string(&f).unwrap().lines().enumerate()
-                                            {
-                                                println!("{:8} {}", i, l);
-                                            }
-                                        panic!();
-                                    }
+                                .arg(&obj)
+                                .arg("/c")
+                                .arg(&f)
+                                .status()
+                                .unwrap()
+                                .success()
+                            {
+                                for (i, l) in
+                                    std::fs::read_to_string(&f).unwrap().lines().enumerate()
+                                {
+                                    println!("{:8} {}", i, l);
+                                }
+                                panic!();
+                            }
                             lib_exe.arg(obj);
                         }
                         assert!(lib_exe.status().unwrap().success());
@@ -80,13 +83,13 @@ fn main() {
                         let mut obj = f.clone();
                         obj.set_extension("o");
                         assert!(std::process::Command::new("cc")
-                                .args(&["-arch", "x86_64"])
-                                .args(&["-c", "-o"])
-                                .arg(&obj)
-                                .arg(&f)
-                                .status()
-                                .unwrap()
-                                .success());
+                            .args(&["-arch", "x86_64"])
+                            .args(&["-c", "-o"])
+                            .arg(&obj)
+                            .arg(&f)
+                            .status()
+                            .unwrap()
+                            .success());
                         lib.arg(obj);
                     }
                     assert!(lib.status().unwrap().success());
@@ -103,14 +106,14 @@ fn main() {
             }
         }
         "arm" | "armv7" => {
-            let files = preprocess_files("arm32/armvfpv2", &[]);
+            let files = preprocess_files("arm32/armvfpv2", &[], &suffix);
             cc::Build::new()
                 .files(files)
                 .flag("-marm")
                 .flag("-mfpu=vfp")
                 .static_flag(true)
                 .compile("armvfpv2");
-            let files = preprocess_files("arm32/armv7neon", &[]);
+            let files = preprocess_files("arm32/armv7neon", &[], &suffix);
             cc::Build::new()
                 .files(files)
                 .flag("-marm")
@@ -119,7 +122,8 @@ fn main() {
                 .compile("armv7neon");
         }
         "aarch64" => {
-            let files = preprocess_files("arm64/arm64simd", &[("core", vec!["a53", "gen"])]);
+            let files =
+                preprocess_files("arm64/arm64simd", &[("core", vec!["a53", "gen"])], &suffix);
             cc::Build::new().files(files).static_flag(true).compile("arm64");
         }
         _ => {}
@@ -128,7 +132,11 @@ fn main() {
 
 type Variant = (&'static str, Vec<&'static str>);
 
-fn preprocess_files(input: impl AsRef<path::Path>, variants: &[Variant]) -> Vec<path::PathBuf> {
+fn preprocess_files(
+    input: impl AsRef<path::Path>,
+    variants: &[Variant],
+    suffix: &str,
+) -> Vec<path::PathBuf> {
     let out_dir = path::PathBuf::from(var("OUT_DIR"));
     let mut files = vec![];
     for f in input.as_ref().read_dir().unwrap() {
@@ -151,7 +159,7 @@ fn preprocess_files(input: impl AsRef<path::Path>, variants: &[Variant]) -> Vec<
                 }
                 let mut file = out_dir.join(tmpl_file);
                 file.set_extension("S");
-                preprocess_file(f.path(), &file, &globals);
+                preprocess_file(f.path(), &file, &globals, suffix);
                 files.push(file);
             }
         }
@@ -163,7 +171,8 @@ fn preprocess_file(
     template: impl AsRef<path::Path>,
     output: impl AsRef<path::Path>,
     variants: &[(&'static str, &'static str)],
-    ) {
+    suffix: &str,
+) {
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let family = var("CARGO_CFG_TARGET_FAMILY");
     let os = var("CARGO_CFG_TARGET_OS");
@@ -191,6 +200,7 @@ fn preprocess_file(
         "os": os,
         "L": l,
         "G": g,
+        "suffix": suffix,
     });
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
@@ -213,9 +223,24 @@ fn load_partials(p: &path::Path) -> liquid::partials::InMemorySource {
         if f.path().extension().map(|ext| ext == "tmpli").unwrap_or(false) {
             println!("cargo:rerun-if-changed={}", f.path().to_string_lossy());
             let key = f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned();
-            let text = std::fs::read_to_string(f.path()).unwrap().replace("{{", "{").replace("}}", "}");
+            let text =
+                std::fs::read_to_string(f.path()).unwrap().replace("{{", "{").replace("}}", "}");
             mem.add(key, text);
         }
     }
     mem
+}
+
+fn make_extern_kernel_decl_macro(out_dir: &path::Path, suffix: &str) {
+    let macro_decl = r#"
+    macro_rules! extern_kernel {
+        (fn $name: ident($($par_name:ident : $par_type: ty ),*) -> $rv: ty) => {
+            paste! {
+                extern "C" { fn [<$name _ _suffix>]($(par_name: $par_type),*) -> $rv; }
+                use [<$name _ _suffix>] as $name;
+            }
+        }
+    }"#
+    .replace("_suffix", suffix);
+    std::fs::write(out_dir.join("extern_kernel_macro.rs"), macro_decl).unwrap();
 }

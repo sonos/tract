@@ -2,8 +2,8 @@
 
     .arm
     .text
-    .global armvfpv2_mmm_f32_4x4
-    .type armvfpv2_mmm_f32_4x4, %function
+    .global armvfpv2_mmm_f32_4x4_{{suffix}}
+    .type armvfpv2_mmm_f32_4x4_{{suffix}}, %function
 
 // C tile:
 
@@ -17,7 +17,7 @@
 
 // all vfp registers in use.
 
-armvfpv2_mmm_f32_4x4:
+armvfpv2_mmm_f32_4x4_{{suffix}}:
 
 /*
     pld [r1]

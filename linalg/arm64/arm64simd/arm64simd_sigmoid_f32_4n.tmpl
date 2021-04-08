@@ -6,8 +6,8 @@
 .align 4
 
 .cpu generic+fp+simd
-.global {{G}}arm64simd_sigmoid_f32_4n
-{{G}}arm64simd_sigmoid_f32_4n:
+.global {{G}}arm64simd_sigmoid_f32_4n_{{suffix}}
+{{G}}arm64simd_sigmoid_f32_4n_{{suffix}}:
 
     cmp         x1, #0
     beq         .return

@@ -1,14 +1,12 @@
 use crate::frame::element_wise::*;
 use crate::frame::mmm::*;
 
-extern "C" {
-    fn armv7neon_mmm_i8_8x4(op: *const MatMatMulKerSpec<i32>) -> isize;
-    fn armv7neon_mmm_f32_8x4(op: *const MatMatMulKerSpec<f32>) -> isize;
-    fn armv7neon_mmm_f32_32x1(op: *const MatMatMulKerSpec<f32>) -> isize;
-    fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize);
-    fn armv7neon_tanh_f32_4n(ptr: *mut f32, count: usize);
-    fn armv7neon_prefetch(start: *const u8, end: *const u8);
-}
+extern_kernel!(fn armv7neon_mmm_i8_8x4(op: *const MatMatMulKerSpec<i32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_8x4(op: *const MatMatMulKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_f32_32x1(op: *const MatMatMulKerSpec<f32>) -> isize);
+extern_kernel!(fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
+extern_kernel!(fn armv7neon_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
+extern_kernel!(fn armv7neon_prefetch(start: *const u8, end: *const u8) -> ());
 
 pub fn prefetch(start: *const u8, len: usize) {
     unsafe { armv7neon_prefetch(start, start.offset(len as isize)) }

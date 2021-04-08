@@ -23,15 +23,15 @@ Windows ABI:
 {% if msvc %}
 
 _text segment
-fma_mmm_f32_16x6 proc
+fma_mmm_f32_16x6_{{suffix}} proc
 
 {% else %}
 
 .intel_syntax noprefix
 .text
 .p2align 5
-.globl {{G}}fma_mmm_f32_16x6
-{{G}}fma_mmm_f32_16x6:
+.globl {{G}}fma_mmm_f32_16x6_{{suffix}}
+{{G}}fma_mmm_f32_16x6_{{suffix}}:
 .cfi_startproc
 
 {% endif %}

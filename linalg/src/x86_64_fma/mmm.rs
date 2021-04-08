@@ -1,9 +1,7 @@
 use crate::frame::mmm::*;
 
-extern "C" {
-    fn fma_mmm_f32_16x6(op: *const MatMatMulKerSpec<f32>) -> isize;
-    fn fma_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize;
-}
+extern_kernel!(fn fma_mmm_f32_16x6(op: *const MatMatMulKerSpec<f32>) -> isize);
+extern_kernel!(fn fma_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize);
 
 #[derive(Copy, Clone, Debug)]
 pub struct MatMatMulF32x16x6;
