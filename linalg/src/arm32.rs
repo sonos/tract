@@ -24,6 +24,9 @@ fn has_neon() -> bool {
 pub fn plug(ops: &mut Ops) {
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
+        ops.mmv_f32 = Box::new(|m, k| {
+            Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1, f32, f32>::new(m, k, 1))
+        });
         ops.mmm_f32 = Box::new(|m, k, n| {
             Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4, f32, f32>::new(m, k, n))
         });
