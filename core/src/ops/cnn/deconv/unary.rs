@@ -11,6 +11,7 @@ pub struct DeconvUnary {
     pub kernel: Arc<Tensor>,
 
     pub adjustments: TVec<usize>,
+    pub group: usize,
 }
 
 impl DeconvUnary {
@@ -24,43 +25,97 @@ impl DeconvUnary {
         let input_shape = target.outlet_fact(input)?.shape.clone();
         let shape = self.pool_spec.data_format.shape(input_shape.to_tvec())?;
         let geo_dim = shape.hw_dims().iter().maybe_product()?;
-        let reshaped = target.wire_node(
+
+        // collapse input as (N) I HW or (N) HW I
+        let mut input = target.wire_node(
             format!("{}.reshaped_input", name),
             AxisOp::Reshape(shape.h_axis(), shape.hw_dims().into(), tvec!(geo_dim)),
             &[input],
         )?;
 
-        // gemm: m=OHkWk, k=I, n=HW
-        // kernel from OIHW to [(batch=1), OHW, I]
-        let kernel_spatial_shape = self.kernel_format.spatial_shape(self.kernel.shape());
-        let kernel_spatial_len: usize = kernel_spatial_shape.iter().product();
+        // rework input to (N) (G) I/G HW or (N) (G) HW I/G
+        if self.group != 1 {
+            // input is (N) HW I or (N) I HW
+            let i_axis = self.pool_spec.data_format.has_n() as usize
+                + self.pool_spec.data_format.c_is_last() as usize;
+            let i_dim = target.outlet_fact(input[0])?.shape[i_axis].clone();
+            input = target.wire_node(
+                format!("{}.reshaped_input_for_group", name),
+                AxisOp::Reshape(
+                    i_axis,
+                    tvec![i_dim.clone()],
+                    tvec!(self.group.to_dim(), i_dim / self.group),
+                ),
+                &input,
+            )?;
+            if self.pool_spec.data_format.c_is_last() {
+                input = target.wire_node(
+                    format!("{}.group_axis_left", name),
+                    AxisOp::Move(
+                        self.pool_spec.data_format.has_n() as usize + 1,
+                        self.pool_spec.data_format.has_n() as usize,
+                    ),
+                    &input,
+                )?;
+            }
+        }
 
-        let permutation_to_ohw_i: TVec<usize> = match self.kernel_format {
-            KernelFormat::OIHW => once(0).chain(2..self.kernel.rank()).chain(once(1)).collect(),
-            KernelFormat::HWIO => once(self.kernel.rank() - 1)
-                .chain(0..self.kernel.rank() - 2)
-                .chain(once(self.kernel.rank() - 2))
+        let kernel_spatial_shape = self.kernel_format.spatial_shape(self.kernel.shape());
+
+        // kernel: insert G: before O in OIHW, before I in HWIO
+        let kernel_shape_with_g: TVec<usize> = match self.kernel_format {
+            KernelFormat::OIHW => once(self.group)
+                .chain(once(self.kernel.shape()[0] / self.group))
+                .chain(self.kernel.shape()[1..].iter().cloned())
+                .collect(),
+            KernelFormat::HWIO => kernel_spatial_shape
+                .iter()
+                .cloned()
+                .chain(once(self.group))
+                .chain(once(self.kernel.shape()[self.kernel.rank() - 2] / self.group))
+                .chain(once(self.kernel.shape()[self.kernel.rank() - 1]))
                 .collect(),
         };
-        let kernel_as_o_h_w_i = self.kernel.clone().into_tensor().permute_axes(&permutation_to_ohw_i)?;
-        let mut kernel_shape = tvec!(
-            self.kernel_format.o(self.kernel.shape()) * kernel_spatial_len,
-            kernel_as_o_h_w_i.shape()[kernel_as_o_h_w_i.rank() - 1],
+        let kernel_with_group =
+            self.kernel.clone().into_tensor().into_shape(&kernel_shape_with_g)?;
+
+        // gemm: m=OHkWk, k=I, n=HW
+        // kernel from OIHW to [(batch=1), (group maybe), OHW, I]
+
+        let permutation_to_g_o_h_w_i: TVec<usize> = match self.kernel_format {
+            // kernel_with_group is in G O I H W
+            KernelFormat::OIHW => {
+                once(0).chain(once(1)).chain(3..kernel_with_group.rank()).chain(once(2)).collect()
+            }
+            // kernel_with_group is in H W G I O
+            KernelFormat::HWIO => once(kernel_with_group.rank() - 3)
+                .chain(once(kernel_with_group.rank() - 1))
+                .chain(0..kernel_with_group.rank() - 3)
+                .chain(once(kernel_with_group.rank() - 2))
+                .collect(),
+        };
+        let kernel_as_g_o_h_w_i = kernel_with_group.permute_axes(&permutation_to_g_o_h_w_i)?;
+        let mut shape_g_ohw_i = tvec!(
+            kernel_as_g_o_h_w_i.shape()[1..kernel_as_g_o_h_w_i.rank() - 1].iter().product(),
+            kernel_as_g_o_h_w_i.shape()[kernel_as_g_o_h_w_i.rank() - 1],
         );
-        if self.pool_spec.data_format.has_n() {
-            kernel_shape.insert(0, 1);
+        if self.group != 1 {
+            shape_g_ohw_i.insert(0, self.group);
         }
-        let kernel_as_ohw_i = kernel_as_o_h_w_i.into_shape(&*kernel_shape)?;
+        if self.pool_spec.data_format.has_n() {
+            shape_g_ohw_i.insert(0, 1);
+        }
+        let kernel_as_g_ohw_i = kernel_as_g_o_h_w_i.into_shape(&*&shape_g_ohw_i)?;
         let trans_data = self.pool_spec.data_format.c_is_last();
         let gemm = target.wire_node(
             format!("{}.gemm", name),
             crate::ops::matmul::MatMulUnary::new(
-                kernel_as_ohw_i.into_arc_tensor(),
+                kernel_as_g_ohw_i.into_arc_tensor(),
                 false,
                 trans_data,
                 false,
             ),
-            &reshaped,
+            &input,
         )?;
         // gemm must be (N_)CHkWk_HW
         let deconv_sum = target.wire_node(

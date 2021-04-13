@@ -18,6 +18,7 @@ struct DeconvProblem {
     strides: TVec<usize>,
     dilations: TVec<usize>,
     adjustments: TVec<usize>,
+    group: usize,
 }
 
 fn tensor(shape: &[usize]) -> BoxedStrategy<ArrayD<f32>> {
@@ -38,36 +39,37 @@ impl Arbitrary for DeconvProblem {
                     any::<DataFormat>(),
                     any::<KernelFormat>(),
                     prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
-                    1usize..3,
-                    1usize..4,
-                    1usize..4,
+                    1usize..3, // n
+                    1usize..4, // ci / group
+                    1usize..4, // co / group
                     vec(1usize..4, georank..=georank), // kernel shape
                     vec(1usize..8, georank..=georank), // image shape
                     vec(1usize..4, georank..=georank), // strides
                     vec(1usize..4, georank..=georank), // dilations
+                    1usize..4, // group
                 )
             })
             .prop_filter(
                 "dilation, strides and shapes in SAME",
-                |(_, _, pad, _, _, _, hwk, _, strides, dilations)| {
+                |(_, _, pad, _, _, _, hwk, _, strides, dilations, _)| {
                     pad == &PaddingSpec::Valid
                         || tract_itertools::izip!(hwk, dilations, strides)
                             .all(|(k, d, s)| (k - 1) * d > s - 1)
                 },
             )
-            .prop_flat_map(|(df, kf, pad, n, ci, co, hwk, hwi, strides, dilations)| {
+            .prop_flat_map(|(df, kf, pad, n, ci_over_group, co_over_group, hwk, hwi, strides, dilations, group)| {
                 let mut kernel_shape = hwk;
                 match kf {
                     OIHW => {
-                        kernel_shape.insert(0, co);
-                        kernel_shape.insert(1, ci);
+                        kernel_shape.insert(0, co_over_group * group);
+                        kernel_shape.insert(1, ci_over_group);
                     }
                     HWIO => {
-                        kernel_shape.push(ci);
-                        kernel_shape.push(co);
+                        kernel_shape.push(ci_over_group * group);
+                        kernel_shape.push(co_over_group);
                     }
                 };
-                let data_shape = df.from_n_c_hw(n, ci, &hwi).unwrap();
+                let data_shape = df.from_n_c_hw(n, ci_over_group * group, &hwi).unwrap();
                 (
                     Just(df),
                     Just(kf),
@@ -76,9 +78,10 @@ impl Arbitrary for DeconvProblem {
                     tensor(&kernel_shape),
                     Just(strides),
                     Just(dilations),
+                    Just(group),
                 )
             })
-            .prop_map(|(data_format, kernel_format, padding, input, kernel, strides, dilations)| {
+            .prop_map(|(data_format, kernel_format, padding, input, kernel, strides, dilations, group)| {
                 let adjustments = tvec!(0; kernel.ndim() - 2); // FIXME maybe
                 DeconvProblem {
                     data_format,
@@ -89,6 +92,7 @@ impl Arbitrary for DeconvProblem {
                     strides: strides.into(),
                     dilations: dilations.into(),
                     adjustments,
+                    group,
                 }
             })
             .boxed()
@@ -105,7 +109,7 @@ impl DeconvProblem {
             Some(self.strides.clone()),
             Some(match self.kernel_format {
                 KernelFormat::OIHW => self.kernel.shape()[0],
-                KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
+                KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
             }),
         );
         let op = DeconvUnary::new(
@@ -113,6 +117,7 @@ impl DeconvProblem {
             self.kernel_format,
             self.kernel.clone().into_arc_tensor(),
             self.adjustments.clone(),
+            self.group,
         );
         let mut outputs = op.eval(tvec!(self.input.clone().into_arc_tensor())).unwrap();
         outputs.remove(0).into_tensor().into_array().unwrap().into_dimensionality().unwrap()
@@ -121,7 +126,7 @@ impl DeconvProblem {
     fn reference(&self) -> ArrayD<f32> {
         use std::iter::once;
         let co = match self.kernel_format {
-            KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1],
+            KernelFormat::HWIO => self.kernel.shape()[self.kernel.ndim() - 1] * self.group,
             KernelFormat::OIHW => self.kernel.shape()[0],
         };
         let input_shape = self.data_format.shape(self.input.shape()).unwrap();
@@ -154,42 +159,46 @@ impl DeconvProblem {
         dbg!(&output_shape);
         dbg!(&paddings);
         let mut output = ArrayD::zeros(&*output_shape.shape);
+        let co_per_group = co / self.group;
+        let ci_per_group = input_shape.c() / self.group;
         for n in 0..n {
-            for co in 0..co {
-                for ci in 0..*input_shape.c() {
-                    for hwi in indices(input_shape.hw_dims()) {
-                        for hwk in indices(kernel_hwdims) {
-                            let hwo: TVec<isize> = tract_itertools::izip!(
-                                hwi.slice().iter(),
-                                hwk.slice().iter(),
-                                self.strides.iter(),
-                                self.dilations.iter(),
-                                paddings.iter(),
-                            )
-                            .map(|(i, k, s, d, p)| (i * s + k * d) as isize - p.0 as isize)
-                            .collect();
-                            let hwo: TVec<usize> = if hwo.iter().all(|x| *x >= 0) {
-                                hwo.iter().map(|x| *x as usize).collect()
-                            } else {
-                                continue;
-                            };
-                            let i = self.data_format.from_n_c_hw(n, ci, hwi.slice()).unwrap();
-                            let o = self.data_format.from_n_c_hw(n, co, hwo).unwrap();
-                            let k: TVec<usize> = match self.kernel_format {
-                                OIHW => once(co)
-                                    .chain(once(ci))
-                                    .chain(hwk.slice().iter().cloned())
-                                    .collect(),
-                                HWIO => hwk
-                                    .slice()
-                                    .iter()
-                                    .cloned()
-                                    .chain(once(ci))
-                                    .chain(once(co))
-                                    .collect(),
-                            };
-                            if let Some(ceil) = output.get_mut(&*o.shape) {
-                                *ceil += self.input[&*i.shape] * self.kernel[&*k]
+            for g in 0..self.group {
+                for co in 0..co_per_group {
+                    for ci in 0.. ci_per_group{
+                        for hwi in indices(input_shape.hw_dims()) {
+                            for hwk in indices(kernel_hwdims) {
+                                let hwo: TVec<isize> = tract_itertools::izip!(
+                                    hwi.slice().iter(),
+                                    hwk.slice().iter(),
+                                    self.strides.iter(),
+                                    self.dilations.iter(),
+                                    paddings.iter(),
+                                )
+                                .map(|(i, k, s, d, p)| (i * s + k * d) as isize - p.0 as isize)
+                                .collect();
+                                let hwo: TVec<usize> = if hwo.iter().all(|x| *x >= 0) {
+                                    hwo.iter().map(|x| *x as usize).collect()
+                                } else {
+                                    continue;
+                                };
+                                let i = self.data_format.from_n_c_hw(n, ci + g * ci_per_group, hwi.slice()).unwrap();
+                                let o = self.data_format.from_n_c_hw(n, co + g * co_per_group, hwo).unwrap();
+                                let k: TVec<usize> = match self.kernel_format {
+                                    OIHW => once(co + co_per_group * g)
+                                        .chain(once(ci))
+                                        .chain(hwk.slice().iter().cloned())
+                                        .collect(),
+                                    HWIO => hwk
+                                        .slice()
+                                        .iter()
+                                        .cloned()
+                                        .chain(once(ci + ci_per_group * g))
+                                        .chain(once(co))
+                                        .collect(),
+                                };
+                                if let Some(ceil) = output.get_mut(&*o.shape) {
+                                    *ceil += self.input[&*i.shape] * self.kernel[&*k]
+                                }
                             }
                         }
                     }
@@ -218,6 +227,7 @@ fn test_trivial_0() {
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
+        group: 1,
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -233,6 +243,7 @@ fn test_hwc_0() {
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
+        group: 1,
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -248,6 +259,7 @@ fn test_geo_0() {
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
+        group: 1,
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -263,6 +275,7 @@ fn test_hwio_0() {
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
+        group: 1,
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -278,6 +291,7 @@ fn test_strides_1() {
         strides: tvec!(2),
         dilations: tvec!(1),
         adjustments: tvec!(0, 0),
+        group: 1,
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -293,6 +307,7 @@ fn test_same_upper_1() {
         strides: tvec!(1),
         dilations: tvec!(1),
         adjustments: tvec!(0, 0),
+        group: 1,
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -308,6 +323,7 @@ fn test_same_upper_dil() {
         strides: tvec!(1),
         dilations: tvec!(2),
         adjustments: tvec!(0, 0),
+        group: 1,
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -323,6 +339,7 @@ fn test_same_upper_strides() {
         strides: tvec!(2),
         dilations: tvec!(1),
         adjustments: tvec!(0, 0),
+        group: 1,
     };
     assert_eq!(pb.tract(), pb.reference());
 }
@@ -338,6 +355,39 @@ fn test_channel_0() {
         strides: tvec!(1),
         dilations: tvec!(1),
         adjustments: tvec!(0),
+        group: 1,
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_group_0() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: arr2(&[[0.0, 0.0]]).into_dyn(),
+        kernel: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
+        strides: tvec!(1),
+        dilations: tvec!(1),
+        adjustments: tvec!(0),
+        group: 2,
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_group_1() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: HWIO,
+        padding: PaddingSpec::Valid,
+        input: arr2(&[[0.0, 0.0]]).into_dyn(),
+        kernel: arr3(&[[[0.0], [0.0]]]).into_dyn(),
+        strides: tvec!(1),
+        dilations: tvec!(1),
+        adjustments: tvec!(0),
+        group: 2,
     };
     assert_eq!(pb.tract(), pb.reference());
 }

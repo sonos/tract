@@ -3,14 +3,14 @@ use crate::ops::cnn::{KernelFormat, PoolSpec};
 use tract_ndarray::prelude::*;
 
 /*
-(N) C   H   W
-Reshaped Input (N) C   HW
-Kernel         (N) OHkWk   C
-Gemm           (N) OHkWk   HW              (Gemm: m: OHkWk k:C n:HW)
-DeconvSum      (N) O   H'  W'
+(N) (G) C   H   W
+Reshaped Input (N) (G) C   HW
+Kernel         (N) (G) OHkWk   C
+Gemm           (N) (G) OHkWk   HW              (Gemm: m: OHkWk k:C n:HW)
+DeconvSum      (N) (G) O   H'  W'
 */
 
-// f32, ndarray::indices in order, tride == 1, dilation == 1
+// f32, ndarray::indices in order
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct DeconvSum {
@@ -42,8 +42,6 @@ impl EvalOp for DeconvSum {
         debug_assert_eq!(gemm.datum_type(), f32::datum_type());
         let input_shape =
             self.input_shape.iter().map(|i| i.to_usize().unwrap()).collect::<TVec<usize>>();
-        dbg!(&input_shape);
-        dbg!(&self.pool_spec);
         let input_shape = self.pool_spec.data_format.shape(&input_shape)?;
         let output_shape =
             super::output_shape(&self.pool_spec, &input_shape.shape, &self.adjustments)?;
@@ -55,17 +53,16 @@ impl EvalOp for DeconvSum {
             &self.pool_spec.strides(),
             &self.adjustments,
         );
-        dbg!(&output_shape);
         let mut tensor = Tensor::zero::<f32>(&*output_shape.shape)?;
         let mut output = tensor.to_array_view_mut::<f32>()?;
         let hw = *gemm.shape().last().unwrap();
         let n = *output_shape.n().unwrap_or(&1);
-        let n_o_hkwk_hw = gemm.into_shape(dbg!(&[
+        let n_o_hkwk_hw = gemm.into_shape(&[
             n,
             *output_shape.c(),
             self.pool_spec.kernel_shape.iter().product(),
-            hw
-        ]))?;
+            hw,
+        ])?;
         let n_o_hkwk_hw: ArrayView4<f32> =
             n_o_hkwk_hw.to_array_view::<f32>()?.into_dimensionality()?;
         for n in 0..n {

@@ -292,7 +292,7 @@ pub fn conv_or_deconv(
         } else {
             tvec!(0; pool_spec.rank())
         };
-        Box::new(DeconvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), adjustments))
+        Box::new(DeconvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), adjustments, group))
     } else {
         Box::new(ConvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), group, bias, None))
     };

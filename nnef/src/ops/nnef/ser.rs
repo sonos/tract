@@ -181,7 +181,6 @@ pub fn conv_or_deconv(
     deconv: bool,
     adjustments: Option<&[usize]>
 ) -> TractResult<Option<Arc<RValue>>> {
-    dbg!("foo");
     use tract_core::ops::cnn::PaddingSpec;
     let ci = pool_spec
         .data_format
@@ -245,15 +244,13 @@ pub fn deconv(
     node: &TypedNode,
     op: &ops::cnn::deconv::DeconvUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
-    dbg!(&op.kernel);
-    dbg!(&op.kernel_format);
     let weights = op.kernel_format.kernel_as_group_o_ihw(
         &*op.kernel,
-        1,
+        op.group,
         *op.kernel_format.i(op.kernel.shape()),
         *op.kernel_format.o(op.kernel.shape()),
     )?;
-    conv_or_deconv(ast, node, &op.pool_spec, weights.into_tensor(), &None, 1, true, Some(&op.adjustments))
+    conv_or_deconv(ast, node, &op.pool_spec, weights.into_tensor(), &None, op.group, true, Some(&op.adjustments))
 }
 
 fn cnn_pool_fragment<'a>(
