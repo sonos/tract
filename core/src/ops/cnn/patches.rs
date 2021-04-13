@@ -91,7 +91,7 @@ impl PatchSpec {
         )
         .unwrap();
         let data_field_min_max: TVec<_> = data_field
-            .gencolumns()
+            .columns()
             .into_iter()
             .map(|col| (col.iter().min().cloned().unwrap(), col.iter().max().cloned().unwrap()))
             .collect();

@@ -37,7 +37,7 @@ impl EvalOp for SpaceToBatchUnary {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
+        let mut paddings = Array2::zeros((self.block_shape.len(), 2));
         for (ax, &strat) in self.pad.iter().enumerate() {
             let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
                 - &self.space_shape[2 + ax])
@@ -130,7 +130,7 @@ impl EvalOp for BatchToSpaceUnary {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
+        let mut paddings = Array2::zeros((self.block_shape.len(), 2));
         for (ax, &strat) in self.pad.iter().enumerate() {
             let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
                 - &self.space_shape[2 + ax])

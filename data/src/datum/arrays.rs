@@ -22,17 +22,18 @@ macro_rules! impl_stack_views_by_copy(
         impl ArrayDatum for $t {
             unsafe fn stack_tensors(axis: usize, tensors:&[impl std::borrow::Borrow<Tensor>]) -> anyhow::Result<Tensor> {
                 let arrays = tensors.iter().map(|t| t.borrow().to_array_view_unchecked::<$t>()).collect::<TVec<_>>();
-                Self::stack_views(axis, &arrays).map(|a| a.into_tensor())
+                dbg!(&arrays);
+                dbg!(Self::stack_views(axis, &arrays).map(|a| a.into_tensor()))
             }
 
             unsafe fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> anyhow::Result<ArrayD<$t>> {
-                Ok(ndarray::stack(ndarray::Axis(axis), views)?)
+                Ok(ndarray::concatenate(ndarray::Axis(axis), views)?)
             }
             unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
                 Sh: ShapeBuilder<Dim = D>,
                 S: DataOwned<Elem=Self>,
                 D: Dimension {
-                    ArrayBase::<S,D>::uninitialized(shape)
+                    ArrayBase::<S,D>::uninit(shape).assume_init()
                 }
         }
     };

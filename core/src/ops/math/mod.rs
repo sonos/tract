@@ -56,7 +56,7 @@ bin_to_super_type!(mul, Mul,
              let b = b.cast_to::<i32>()?;
              let b = b.to_array_view::<i32>()?;
              let c = c.to_array_view_mut::<TDim>()?;
-             crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).apply(|c,a,b| *c = a.clone() * *b);
+             crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() * *b);
              Ok(true)
          } else {
              Ok(false)
@@ -76,7 +76,7 @@ bin_to_super_type!(div, Div,
              let b = b.cast_to::<i32>()?;
              let b = b.to_array_view::<i32>()?;
              let c = c.to_array_view_mut::<TDim>()?;
-             crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).apply(|c,a,b| *c = a.clone() / *b);
+             crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
              Ok(true)
          } else {
              Ok(false)
@@ -110,7 +110,7 @@ bin_to_super_type!(rem, Rem,
                                let b = b.cast_to::<i32>()?;
                                let b = b.to_array_view::<i32>()?;
                                let c = c.to_array_view_mut::<TDim>()?;
-                               crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).apply(|c,a,b| *c = a.clone() % *b);
+                               crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
                                Ok(true)
                            } else {
                                Ok(false)

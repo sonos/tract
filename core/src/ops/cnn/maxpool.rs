@@ -122,9 +122,9 @@ impl MaxPoolFixed {
         let input: ArrayViewD<T> = input.to_array_view()?;
         let input_ptr = input.as_ptr();
 
-        let mut values = unsafe { ArrayD::<T>::uninitialized(&*self.output_shape.shape) };
+        let mut values = unsafe { ArrayD::<T>::uninit(&*self.output_shape.shape).assume_init() };
         let mut indices = if self.with_index_outputs.is_some() {
-            Some(unsafe { ArrayD::<i32>::uninitialized(&*self.output_shape.shape) })
+            Some(unsafe { ArrayD::<i32>::uninit(&*self.output_shape.shape).assume_init() })
         } else {
             None
         };

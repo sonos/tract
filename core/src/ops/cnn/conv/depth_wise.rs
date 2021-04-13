@@ -45,7 +45,7 @@ impl DepthWise {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
         let iptr = img.as_ptr();
-        let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.output_shape.shape) };
+        let mut output = unsafe { ArrayD::<T>::uninit(&*self.output_shape.shape).assume_init() };
         let optr = output.as_mut_ptr();
         let kernel_chw = self.kernel_chw.to_array_view::<T>()?;
         let k_stride_o = kernel_chw.strides()[0];

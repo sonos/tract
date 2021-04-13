@@ -1,5 +1,6 @@
 use crate::internal::*;
 use ndarray::prelude::*;
+use std::convert::TryFrom;
 
 macro_rules! r {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
@@ -69,14 +70,14 @@ impl Reducer {
         use ndarray::*;
         let input = input.to_array_view_unchecked::<T>();
         let result = Array::from_shape_fn(output_shape, |coords| {
-            let slice_spec: Vec<SliceOrIndex> = coords
+            let slice_spec: Vec<SliceInfoElem> = coords
                 .slice()
                 .iter()
                 .enumerate()
                 .map(|(ax, &d)| if axes.contains(&ax) { (..).into() } else { d.into() })
                 .collect();
-            let slice_info = SliceInfo::new(&slice_spec).unwrap();
-            let slice = input.slice(slice_info.as_ref());
+            let slice_info = SliceInfo::<_, IxDyn, IxDyn>::try_from(slice_spec).unwrap();
+            let slice = input.slice(&slice_info);
             f(slice, last)
         });
         result.into_tensor()
