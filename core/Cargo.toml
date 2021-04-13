@@ -40,7 +40,7 @@ paranoid_assertions = []
 criterion = "0.3"
 env_logger = "0.7"
 lazy_static = "1"
-proptest = "0.10"
+proptest = "1.0"
 
 [[bench]]
 name = "conv_direct_vs_im2col"
