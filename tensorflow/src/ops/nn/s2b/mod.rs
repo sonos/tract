@@ -29,7 +29,7 @@ fn space_to_batch<T: Copy + Datum + Zero>(
         if pad[0] != 0 {
             let mut pad_shape = data.shape().to_vec();
             pad_shape[ix + 1] = pad[0] as usize;
-            let tmp = tract_ndarray::stack(
+            let tmp = tract_ndarray::concatenate(
                 tract_ndarray::Axis(ix + 1),
                 &[tract_ndarray::ArrayD::zeros(pad_shape).view(), data.view()],
             )?;
@@ -38,7 +38,7 @@ fn space_to_batch<T: Copy + Datum + Zero>(
         if pad[1] != 0 {
             let mut pad_shape = data.shape().to_vec();
             pad_shape[ix + 1] = pad[1] as usize;
-            let tmp = tract_ndarray::stack(
+            let tmp = tract_ndarray::concatenate(
                 tract_ndarray::Axis(ix + 1),
                 &[data.view(), tract_ndarray::ArrayD::zeros(pad_shape).view()],
             )?;

@@ -43,7 +43,7 @@ impl Iff {
             .and_broadcast(cond)
             .and_broadcast(t.to_array_view_unchecked::<T>())
             .and_broadcast(f.to_array_view_unchecked::<T>())
-            .apply(|r, c, t, f| *r = if *c { t.clone() } else { f.clone() })
+            .for_each(|r, c, t, f| *r = if *c { t.clone() } else { f.clone() })
     }
 }
 

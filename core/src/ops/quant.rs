@@ -311,7 +311,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
             f32: AsPrimitive<T>,
         {
             let mut b = b.to_array_view_mut_unchecked::<T>();
-            ndarray::Zip::from(&mut b).and_broadcast(a).apply(|b, a| *b = scale_by(*b, *a))
+            ndarray::Zip::from(&mut b).and_broadcast(a).for_each(|b, a| *b = scale_by(*b, *a))
         }
         unsafe { dispatch_numbers!(eval_in_place_t(b.datum_type())(&a, b)) }
         Ok(())
@@ -331,7 +331,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
             ndarray::Zip::from(&mut c)
                 .and_broadcast(a)
                 .and_broadcast(b)
-                .apply(|c, a, b| *c = scale_by(*b, *a))
+                .for_each(|c, a, b| *c = scale_by(*b, *a))
         }
         unsafe { dispatch_numbers!(eval_out_of_place_t(b.datum_type())(c, &a, b)) }
         Ok(())

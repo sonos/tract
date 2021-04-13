@@ -68,7 +68,7 @@ fn proptest_regular_against_pulse(
         if to_write_in_chunk < pulse {
             let mut filler_shape = input_array.shape().to_vec();
             filler_shape[axis] = pulse - to_write_in_chunk;
-            chunk = stack(
+            chunk = concatenate(
                 Axis(axis),
                 &[chunk.view(), ArrayD::from_elem(filler_shape, std::f32::NAN).view()],
             )
@@ -82,7 +82,7 @@ fn proptest_regular_against_pulse(
                 .map(|n| n.max(0) as usize);
         }
         let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()).into())).unwrap();
-        got = stack(
+        got = concatenate(
             Axis(output_stream_axis),
             &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],
         )

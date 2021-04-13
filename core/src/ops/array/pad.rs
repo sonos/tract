@@ -1,5 +1,6 @@
 use crate::internal::*;
 use ndarray::*;
+use std::convert::TryFrom;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub enum PadMode {
@@ -34,16 +35,16 @@ impl Pad {
             _ => T::default(),
         };
         let mut output = ArrayD::<T>::from_elem(output_shape, element);
-        let slice_spec: Vec<SliceOrIndex> = self
+        let slice_spec: Vec<SliceInfoElem> = self
             .pads
             .iter()
-            .map(|&(a, b)| SliceOrIndex::Slice {
+            .map(|&(a, b)| SliceInfoElem::Slice {
                 start: a as isize,
                 end: if b != 0 { Some(-(b as isize)) } else { None },
                 step: 1,
             })
             .collect();
-        let slice_info = SliceInfo::<_, IxDyn>::new(slice_spec).unwrap();
+        let slice_info = SliceInfo::<_, IxDyn, IxDyn>::try_from(slice_spec).unwrap();
         output.slice_mut(slice_info.as_ref()).assign(&input);
         if self.mode == PadMode::Reflect || self.mode == PadMode::Edge {
             for (ax, &(bef, aft)) in self.pads.iter().enumerate() {

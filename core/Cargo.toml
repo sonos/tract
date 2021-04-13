@@ -24,7 +24,7 @@ itertools = "0.9"
 lazy_static = "1"
 log = "0.4"
 maplit = "1"
-ndarray = { version = "=0.13.0" }
+ndarray = "0.15"
 num-integer = "0.1"
 num-traits = "0.2"
 dyn-clone = "1"
