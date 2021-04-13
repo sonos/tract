@@ -17,8 +17,9 @@ pub fn conv_transpose(
     let dilations = super::dilations(node)?;
     let adjustments = node.get_attr_opt_tvec::<usize>("output_padding")?;
     let output_shape = node.get_attr_opt_tvec::<usize>("output_shape")?;
+    let group = node.get_attr_opt::<usize>("group")?.unwrap_or(1);
     Ok((
-        expand(ConvTranspose::new(padding_spec, strides, dilations, adjustments, output_shape)),
+        expand(ConvTranspose::new(padding_spec, strides, dilations, adjustments, output_shape, group)),
         vec![],
     ))
 }
@@ -30,6 +31,7 @@ pub struct ConvTranspose {
     dilations: Option<TVec<usize>>,
     adjustments: Option<TVec<usize>>,
     output_shape: Option<TVec<usize>>,
+    group: usize,
 }
 
 impl_dyn_hash!(ConvTranspose);
@@ -55,7 +57,7 @@ impl Expansion for ConvTranspose {
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?; // N
         s.equals(&inputs[0].shape[1], &inputs[1].shape[0])?; // O
-        s.equals(&outputs[0].shape[1], &inputs[1].shape[1])?; // I
+        s.equals(&outputs[0].shape[1], (self.group as i64) * inputs[1].shape[1].bex())?; // I
 
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, x_shape, w_shape| {
             if let (Ok(x_shape), Ok(w_shape)) = (
@@ -65,7 +67,7 @@ impl Expansion for ConvTranspose {
                 let zeros = tvec!(0; x_shape.len() - 2);
                 let y_shape = if let Some(output_shape) = &self.output_shape {
                     let mut y_shape = x_shape.clone();
-                    y_shape[1] = w_shape[1];
+                    y_shape[1] = w_shape[1] * self.group;
                     for (ix, d) in output_shape.iter().enumerate() {
                         y_shape[ix + 2] = *d;
                     }
@@ -77,7 +79,7 @@ impl Expansion for ConvTranspose {
                         self.padding_spec.clone(),
                         self.dilations.clone(),
                         self.strides.clone(),
-                        Some(w_shape[1]),
+                        Some(w_shape[1] * self.group),
                     );
                     tract_core::ops::cnn::deconv::output_shape(
                         &pool_spec,
@@ -127,6 +129,7 @@ impl Expansion for ConvTranspose {
                     KernelFormat::OIHW,
                     kernel.into_arc_tensor(),
                     adjustments,
+                    self.group,
                 )
             } else {
                 let pool_spec = PoolSpec::new(
@@ -142,6 +145,7 @@ impl Expansion for ConvTranspose {
                     KernelFormat::OIHW,
                     kernel.into_arc_tensor(),
                     self.adjustments.clone().unwrap_or(zeros.clone()),
+                    self.group,
                 )
             };
             target.wire_node(prefix, op, &[inputs[0]])
