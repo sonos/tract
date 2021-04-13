@@ -6,6 +6,6 @@ license = "MIT/Apache-2.0"
 edition = "2018"
 
 [dependencies]
-proptest = "0.10"
+proptest = "1"
 tract-tensorflow = { path = "../../tensorflow" }
 tract-onnx = { path = "../../onnx" }
