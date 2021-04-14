@@ -35,6 +35,9 @@ skip = [
     { name = "miniz_oxide", version="<0.4" }, # ndarray-npy pulls in an old version of flate
     { name = "cfg-if", version="<1.0" }, # cascading from flate too
     { name = "quick-error", version="<2" }, # cascading from flate too
+    { name = "py_literal", version="<0.4" }, # cascading from flate too
+    { name = "num-complex", version="<0.4" }, # cascading from flate too
+    { name = "num-bigint", version="<0.4" }, # cascading from flate too
 ]
 
 [sources]
