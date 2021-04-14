@@ -16,7 +16,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 bytes = "1"
 derive-new = "0.5"
-educe = "=0.4.11" # locked for rust 1.41.0
+educe = "0.4"
 log = "0.4"
 prost = "0.7"
 prost-types = "0.7"

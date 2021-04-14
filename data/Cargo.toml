@@ -15,7 +15,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow = "1.0.33"
-educe = "=0.4.11"
+educe = "0.4"
 half = "1.6.0"
 itertools = "0.10.0"
 maplit = "1.0.2"
