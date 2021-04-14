@@ -1,7 +1,7 @@
 use super::*;
 use crate::internal::*;
 use crate::ops::Op;
-use itertools::Itertools;
+use tract_itertools::Itertools;
 use std::fmt;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;

@@ -10,7 +10,7 @@ use ansi_term::Color::*;
 #[allow(unused_imports)]
 use std::convert::TryFrom;
 use tract_core::internal::*;
-use tract_core::itertools::Itertools;
+use tract_itertools::Itertools;
 
 pub fn render(
     model: &dyn Model,

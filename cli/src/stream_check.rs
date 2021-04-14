@@ -1,4 +1,4 @@
-use tract_core::itertools::Itertools;
+use tract_itertools::Itertools;
 use tract_core::ndarray::{ArrayD, Axis};
 
 use tract_core::model::OutletId;

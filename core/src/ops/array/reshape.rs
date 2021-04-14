@@ -1,5 +1,5 @@
 use crate::internal::*;
-use itertools::Itertools;
+use tract_itertools::Itertools;
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct FiniteReshape {

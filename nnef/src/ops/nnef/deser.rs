@@ -1,7 +1,6 @@
 use crate::ast::*;
 use tract_core::internal::*;
-use tract_core::itertools::izip;
-use tract_core::itertools::Itertools;
+use tract_itertools::{izip, Itertools};
 
 use tract_core::ops;
 

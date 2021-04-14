@@ -52,9 +52,6 @@ pub extern crate downcast_rs;
 extern crate educe;
 #[allow(unused_imports)]
 #[macro_use]
-pub extern crate itertools;
-#[allow(unused_imports)]
-#[macro_use]
 extern crate log;
 #[allow(unused_imports)]
 #[macro_use]
@@ -92,7 +89,6 @@ pub mod prelude {
     pub use std::sync::Arc;
     pub use tract_data::prelude::*;
 
-    pub use itertools as tract_itertools;
     pub use ndarray as tract_ndarray;
     pub use num_traits as tract_num_traits;
     pub use tract_data;

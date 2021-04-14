@@ -5,6 +5,7 @@ use crate::ops::nn::*;
 use crate::setup_test_logger;
 use proptest::collection::vec;
 use proptest::prelude::*;
+use tract_itertools::izip;
 use tract_ndarray::prelude::*;
 
 #[derive(Debug)]

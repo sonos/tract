@@ -1,5 +1,5 @@
 use crate::internal::*;
-use itertools::Itertools;
+use tract_itertools::Itertools;
 use std::fmt;
 
 #[derive(Clone, Default)]

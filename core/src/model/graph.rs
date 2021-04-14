@@ -5,6 +5,7 @@ use crate::prelude::*;
 use std::fmt;
 use std::hash::Hash;
 use tract_data::internal::*;
+use tract_itertools::Itertools;
 
 pub trait SpecialOps<F, O> {
     fn create_dummy(&self) -> O;

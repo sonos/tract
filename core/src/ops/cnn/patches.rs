@@ -7,8 +7,7 @@ use super::PatchAxis;
 
 use std::ops::Range;
 
-use itertools::zip;
-use itertools::Itertools;
+use tract_itertools::{izip, zip, Itertools};
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct PatchSpec {
@@ -145,7 +144,7 @@ impl PatchSpec {
                     .map(|(reg, &stride)| reg.range.start as isize * stride)
                     .sum::<isize>(),
                 valid: regions.iter().all(|reg| reg.mask.is_none()),
-                values_offsets: itertools::izip!(
+                values_offsets: izip!(
                     0..,
                     ndarray::indices(&*self.kernel_shape),
                     &standard_layout_data_field

@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-use itertools::Itertools;
+use tract_itertools::Itertools;
 use std::ops::Range;
 
 #[derive(Clone, Debug, new, PartialEq)]
