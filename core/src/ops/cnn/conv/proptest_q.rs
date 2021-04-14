@@ -9,6 +9,7 @@ use crate::setup_test_logger;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseResult;
+use tract_itertools::izip;
 use tract_ndarray::prelude::*;
 use tract_ndarray::*;
 
@@ -334,7 +335,8 @@ fn scale_1() {
         bias: None,
         qp,
     }
-    .check().unwrap();
+    .check()
+    .unwrap();
 }
 
 #[test]

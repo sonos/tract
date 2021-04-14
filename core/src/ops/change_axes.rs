@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
-use itertools::Itertools;
+use tract_itertools::Itertools;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum InOut {

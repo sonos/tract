@@ -143,7 +143,7 @@ impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
 
 impl fmt::Debug for Dims {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use itertools::Itertools;
+        use tract_itertools::Itertools;
         write!(fmt, "{}", self.iter().join(","))
     }
 }

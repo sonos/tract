@@ -17,7 +17,7 @@ maintenance = { status = "actively-developed" }
 anyhow = "1.0.33"
 educe = "=0.4.11"
 half = "1.6.0"
-itertools = "0.9.0"
+itertools = "0.10.0"
 maplit = "1.0.2"
 ndarray = "0.15"
 num-integer = "0.1.43"

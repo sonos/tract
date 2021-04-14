@@ -1,6 +1,6 @@
 use std::hash::*;
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::itertools::Itertools;
+use tract_itertools::Itertools;
 use tract_smallvec::SmallVec;
 
 pub fn register(registry: &mut Registry) {

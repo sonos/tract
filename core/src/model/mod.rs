@@ -36,8 +36,6 @@
 use std::collections::HashMap;
 use std::str;
 
-use itertools::Itertools;
-
 mod fact;
 mod graph;
 mod node;

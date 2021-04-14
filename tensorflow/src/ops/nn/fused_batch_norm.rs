@@ -1,5 +1,5 @@
 use tract_hir::internal::*;
-use tract_hir::tract_core::itertools::izip;
+use tract_itertools::izip;
 
 use crate::model::ParsingContext;
 use crate::tfpb::tensorflow::NodeDef;

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::time::Duration;
 use tract_core::internal::*;
-use tract_hir::tract_core::itertools::izip;
+use tract_itertools::izip;
 use tract_itertools::Itertools;
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;

@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-use itertools::Itertools;
+use tract_itertools::Itertools;
 
 #[derive(Clone, Debug)]
 pub struct PushSplitDown;

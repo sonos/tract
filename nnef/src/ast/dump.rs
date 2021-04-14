@@ -1,6 +1,6 @@
 use crate::ast::*;
 use tract_core::internal::*;
-use tract_core::itertools::Itertools;
+use tract_itertools::Itertools;
 
 macro_rules! comma_loop {
     ($self:ident, $rec: ident, $items: expr) => {
