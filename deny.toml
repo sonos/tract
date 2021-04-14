@@ -30,15 +30,11 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "num-bigint", version="<0.3.1" },  # ndarray-npy brings in a different version.
     { name = "itertools", version="<0.10.0" },  # ndarray/criterion brings in an older version.
     { name = "ansi_term", version="<0.12.1" },  # clap brings in an old one.
     { name = "miniz_oxide", version="<0.4" }, # ndarray-npy pulls in an old version of flate
     { name = "cfg-if", version="<1.0" }, # cascading from flate too
-    { name = "rand", version="<0.8" }, # locked by proptest 0.7
-    { name = "rand_core", version="<0.6" }, # and cascading
-    { name = "rand_chacha", version="<0.3" }, # and cascading
-    { name = "getrandom", version="<0.2" }, # and cascading
+    { name = "quick-error", version="<2" }, # cascading from flate too
 ]
 
 [sources]
