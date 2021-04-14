@@ -22,6 +22,6 @@ educe = "0.4"
 lazy_static = "1"
 log = "0.4"
 maplit = "1"
-nom = "5"
+nom = "6"
 tract-hir = { path = "../hir" }
 tract-pulse = { path = "../pulse" }
