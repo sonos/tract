@@ -2,7 +2,7 @@ use tract_hir::internal::*;
 
 use nom::IResult;
 use nom::{
-    bytes::complete::*, character::complete::*, combinator::*, multi::separated_list,
+    bytes::complete::*, character::complete::*, combinator::*, multi::separated_list0,
     number::complete::float, sequence::*,
 };
 
@@ -29,7 +29,7 @@ pub fn scalar(i: &[u8]) -> IResult<&[u8], Tensor> {
 }
 
 pub fn vector(i: &[u8]) -> IResult<&[u8], Tensor> {
-    map(delimited(spaced(tag("[")), separated_list(space1, float), spaced(tag("]"))), |t| {
+    map(delimited(spaced(tag("[")), separated_list0(space1, float), spaced(tag("]"))), |t| {
         tensor1(&*t)
     })(i)
 }
@@ -37,7 +37,7 @@ pub fn vector(i: &[u8]) -> IResult<&[u8], Tensor> {
 pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
     let (i, v) = delimited(
         multispaced(tag("[")),
-        separated_list(spaced(tag("\n")), separated_list(space1, float)),
+        separated_list0(spaced(tag("\n")), separated_list0(space1, float)),
         multispaced(tag("]")),
     )(i)?;
     let lines = v.len();

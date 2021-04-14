@@ -1,6 +1,6 @@
 use nom::IResult;
 use nom::{
-    bytes::complete::*, character::complete::*, combinator::*, multi::separated_list, sequence::*,
+    bytes::complete::*, character::complete::*, combinator::*, multi::separated_list0, sequence::*,
 };
 
 use crate::model::GeneralDescriptor;
@@ -13,7 +13,7 @@ pub fn parse_general(i: &str) -> IResult<&str, GeneralDescriptor> {
                 tag("Append"),
                 cut(delimited(
                     spaced(tag("(")),
-                    separated_list(spaced(tag(",")), parse_general),
+                    separated_list0(spaced(tag(",")), parse_general),
                     spaced(tag(")")),
                 )),
             ),

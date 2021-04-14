@@ -26,7 +26,7 @@ pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
     let (_, (config, components)) = parse_top_level(slice).map_err(|e| match e {
         nom::Err::Error(err) => format_err!(
             "Parsing kaldi enveloppe at: {:?}",
-            err.0.iter().take(120).map(|b| format!("{}", *b as char)).join("")
+            err.input.iter().take(120).map(|b| format!("{}", *b as char)).join("")
         ),
         e => format_err!("{:?}", e),
     })?;
@@ -36,9 +36,9 @@ pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
 
 pub fn if_then_else<'a, T>(
     condition: bool,
-    then: impl Fn(&'a [u8]) -> IResult<&'a [u8], T>,
-    otherwise: impl Fn(&'a [u8]) -> IResult<&'a [u8], T>,
-) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], T> {
+    then: impl FnMut(&'a [u8]) -> IResult<&'a [u8], T>,
+    otherwise: impl FnMut(&'a [u8]) -> IResult<&'a [u8], T>,
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], T> {
     map(pair(cond(condition, then), cond(!condition, otherwise)), |(a, b)| a.or(b).unwrap())
 }
 
@@ -101,7 +101,7 @@ pub fn name(i: &[u8]) -> IResult<&[u8], &str> {
     )(i)
 }
 
-pub fn integer<'a>(bin: bool) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], i32> {
+pub fn integer<'a>(bin: bool) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], i32> {
     if_then_else(
         bin,
         alt((preceded(tag([4]), le_i32), preceded(tag([8]), map(le_i64, |i| i as i32)))),
@@ -115,22 +115,22 @@ pub fn integer<'a>(bin: bool) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], i32> {
     )
 }
 
-pub fn spaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> nom::IResult<I, O, E>
+pub fn spaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl FnMut(I) -> nom::IResult<I, O, E>
 where
     I: nom::InputTakeAtPosition,
     <I as nom::InputTakeAtPosition>::Item: nom::AsChar + Clone,
-    F: Fn(I) -> nom::IResult<I, O, E>,
+    F: FnMut(I) -> nom::IResult<I, O, E>,
 {
     delimited(space0, it, space0)
 }
 
 pub fn multispaced<I, O, E: nom::error::ParseError<I>, F>(
     it: F,
-) -> impl Fn(I) -> nom::IResult<I, O, E>
+) -> impl FnMut(I) -> nom::IResult<I, O, E>
 where
     I: nom::InputTakeAtPosition,
     <I as nom::InputTakeAtPosition>::Item: nom::AsChar + Clone,
-    F: Fn(I) -> nom::IResult<I, O, E>,
+    F: FnMut(I) -> nom::IResult<I, O, E>,
 {
     delimited(multispace0, it, multispace0)
 }
