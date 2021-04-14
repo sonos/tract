@@ -16,7 +16,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 byteorder = "1"
 log = "0.4"
-nom = "5"
+nom = "6"
 tar = "0.4"
 flate2 = { version = "1", optional = true }
 tract-core = { path = "../core" }
