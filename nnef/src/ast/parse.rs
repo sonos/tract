@@ -95,12 +95,12 @@ fn generic_decl(i: &str) -> IResult<&str, Option<TypeName>> {
 
 // <parameter-list> ::= <parameter> ("," <parameter>)*
 fn parameter_list(i: &str) -> IResult<&str, Vec<Parameter>> {
-    separated_list(stag(","), parameter)(i)
+    separated_list0(stag(","), parameter)(i)
 }
 
 // <result-list> ::= <result> ("," <result>)*
 fn result_list(i: &str) -> IResult<&str, Vec<Result_>> {
-    separated_list(stag(","), result)(i)
+    separated_list0(stag(","), result)(i)
 }
 
 // <parameter> ::= <identifier> ":" <type-spec> ["=" <literal-expr>]
@@ -122,8 +122,8 @@ fn result(i: &str) -> IResult<&str, Result_> {
 fn literal_expr(i: &str) -> IResult<&str, Literal> {
     spaced(alt((
         literal,
-        map(delimited(stag("["), separated_list(stag(","), literal), stag("]")), Literal::Array),
-        map(delimited(stag("("), separated_list(stag(","), literal), stag(")")), Literal::Tuple),
+        map(delimited(stag("["), separated_list0(stag(","), literal), stag("]")), Literal::Array),
+        map(delimited(stag("("), separated_list0(stag(","), literal), stag(")")), Literal::Tuple),
     )))(i)
 }
 
@@ -158,7 +158,7 @@ fn tensor_type_spec(i: &str) -> IResult<&str, TypeSpec> {
 
 // <tuple-type-spec> ::= "(" <type-spec> ("," <type-spec>)+ ")"
 fn tuple_type_spec(i: &str) -> IResult<&str, TypeSpec> {
-    map(delimited(stag("("), separated_list(stag(","), type_spec), stag(")")), TypeSpec::Tuple)(i)
+    map(delimited(stag("("), separated_list0(stag(","), type_spec), stag(")")), TypeSpec::Tuple)(i)
 }
 
 // GRAPH
@@ -170,11 +170,11 @@ fn graph_def(i: &str) -> IResult<&str, GraphDef> {
     let (i, _) = stag("graph")(i)?;
     let (i, id) = identifier(i)?;
     let (i, _) = stag("(")(i)?;
-    let (i, parameters) = separated_list(stag(","), identifier)(i)?;
+    let (i, parameters) = separated_list0(stag(","), identifier)(i)?;
     let (i, _) = stag(")")(i)?;
     let (i, _) = stag("->")(i)?;
     let (i, _) = stag("(")(i)?;
-    let (i, results) = separated_list(stag(","), identifier)(i)?;
+    let (i, results) = separated_list0(stag(","), identifier)(i)?;
     let (i, _) = stag(")")(i)?;
     let (i, body) = spaced(body)(i)?;
     Ok((i, GraphDef { id, parameters, results, body }))
@@ -202,18 +202,18 @@ fn lvalue(i: &str) -> IResult<&str, LValue> {
     fn inner_lvalue(i: &str) -> IResult<&str, LValue> {
         alt((
             map(
-                delimited(stag("["), separated_list(stag(","), inner_lvalue), stag("]")),
+                delimited(stag("["), separated_list0(stag(","), inner_lvalue), stag("]")),
                 LValue::Array,
             ),
             map(
-                delimited(stag("("), separated_list(stag(","), inner_lvalue), stag(")")),
+                delimited(stag("("), separated_list0(stag(","), inner_lvalue), stag(")")),
                 LValue::Tuple,
             ),
             map(spaced(identifier), LValue::Identifier),
         ))(i)
     }
 
-    map(separated_list(stag(","), inner_lvalue), |mut iv| {
+    map(separated_list0(stag(","), inner_lvalue), |mut iv| {
         if iv.len() == 1 {
             iv.remove(0)
         } else {
@@ -234,7 +234,7 @@ fn invocation(i: &str) -> IResult<&str, Invocation> {
 
 // <argument-list> ::= <argument> ("," <argument>)*
 fn argument_list(i: &str) -> IResult<&str, Vec<Argument>> {
-    separated_list(stag(","), argument)(i)
+    separated_list0(stag(","), argument)(i)
 }
 
 // <argument> ::= <rvalue-expr> | <identifier> "=" <rvalue-expr>
@@ -257,7 +257,7 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
             map(pair(spaced(recognize(one_of("+-!"))), rvalue), |(op, rv)| {
                 RValue::Unary(op.into(), Box::new(rv))
             }),
-            map(delimited(tag("("), separated_list(stag(","), rvalue), tag(")")), |mut rvs| {
+            map(delimited(tag("("), separated_list0(stag(","), rvalue), tag(")")), |mut rvs| {
                 if rvs.len() == 1 {
                     rvs.remove(0)
                 } else {
@@ -265,7 +265,7 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
                 }
             }),
             map(comprehension_expr, |c| RValue::Comprehension(Box::new(c))),
-            map(delimited(tag("["), separated_list(stag(","), rvalue), tag("]")), |rvs| {
+            map(delimited(tag("["), separated_list0(stag(","), rvalue), tag("]")), |rvs| {
                 RValue::Array(rvs)
             }),
         )))(i)
@@ -341,7 +341,7 @@ fn comprehension_expr(i: &str) -> IResult<&str, Comprehension> {
 // <loop-iter> ::= <identifier> "in" <rvalue-expr>
 // <loop-iter-list> ::= <loop-iter> ("," <loop-iter>)*
 fn loop_iters(i: &str) -> IResult<&str, Vec<(String, RValue)>> {
-    separated_list(stag(","), separated_pair(identifier, stag("in"), rvalue))(i)
+    separated_list0(stag(","), separated_pair(identifier, stag("in"), rvalue))(i)
 }
 
 // TERMINALS
@@ -408,14 +408,14 @@ fn space_and_comments(i: &str) -> IResult<&str, ()> {
     )(i)
 }
 
-fn spaced<'s, O, F>(it: F) -> impl Fn(&'s str) -> IResult<&'s str, O>
+fn spaced<'s, O, F>(it: F) -> impl FnMut(&'s str) -> IResult<&'s str, O>
 where
-    F: Fn(&'s str) -> IResult<&'s str, O>,
+    F: FnMut(&'s str) -> IResult<&'s str, O>,
 {
     delimited(space_and_comments, it, space_and_comments)
 }
 
-fn stag<'s>(t: &'static str) -> impl Fn(&'s str) -> IResult<&'s str, &'s str> {
+fn stag<'s>(t: &'static str) -> impl FnMut(&'s str) -> IResult<&'s str, &'s str> {
     spaced(tag(t))
 }
 
