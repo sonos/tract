@@ -75,7 +75,7 @@ impl QParams {
             ) {
                 *new.iter_mut().nth(position).unwrap().1 = AttrOrInput::Attr(k.clone());
                 for qp in new.iter_mut() {
-                    qp.1.remove_input(ix);
+                    qp.1.remove_input(position);
                 }
             } else {
                 inputs.push(*input)
@@ -204,7 +204,8 @@ impl TypedOp for QMatMul {
             let inputs: Vec<OutletId> =
                 inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<_>>()?;
             let op = Self { params: qp, ..self.clone() };
-            patch.wire_node(&node.name, op, &inputs)?;
+            let wire = patch.wire_node(&node.name, op, &inputs)?;
+            patch.shunt_outside(model, node.id.into(), wire[0])?;
             return Ok(Some(patch));
         }
 
