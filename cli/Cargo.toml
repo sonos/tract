@@ -22,7 +22,7 @@ cast = "=0.2.3" # held, 0.2.4 looks broken
 clap = "2.31"
 criterion = "0.3"
 colorous = "1.0.2"
-env_logger = "0.7"
+env_logger = "0.8"
 flate2 = "1"
 lazy_static = "1.0"
 log = "0.4"

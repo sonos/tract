@@ -37,7 +37,7 @@ paranoid_assertions = []
 
 [dev-dependencies]
 criterion = "0.3"
-env_logger = "0.7"
+env_logger = "0.8"
 lazy_static = "1"
 proptest = "1.0"
 

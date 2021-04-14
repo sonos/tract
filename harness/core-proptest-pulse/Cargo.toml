@@ -12,4 +12,4 @@ tract-hir = { path = "../../hir" }
 [dev-dependencies]
 log = "0.4"
 proptest = "1"
-env_logger = "0.7"
+env_logger = "0.8"
