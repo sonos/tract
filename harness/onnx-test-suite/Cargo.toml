@@ -22,7 +22,7 @@ onnx_1_7_0 = []
 default = [ "onnx_1_7_0" ]
 
 [dev-dependencies]
-env_logger = "0.7"
+env_logger = "0.8"
 
 [build-dependencies]
 fs2 = "0.4"
