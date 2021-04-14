@@ -37,7 +37,7 @@ conform = [ "tensorflow" ]
 criterion = "0.3"
 env_logger = "0.8"
 proptest = "1"
-rand = "0.7"
+rand = "0.8"
 
 # [[bench]]
 # name = "conv"

@@ -28,7 +28,7 @@ paste = "1.0.5"
 
 [build-dependencies]
 cc = "1.0"
-liquid = "0.21"
+liquid = "0.22"
 unicode-normalization = "0.1"
 smallvec = "1"
 walkdir = "2"
