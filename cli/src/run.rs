@@ -77,6 +77,16 @@ fn run_regular(
                     }
                 }
                 let r = tract_core::plan::eval(session_state, state, node, input)?;
+                if steps {
+                    for o in &r {
+                        eprintln!(
+                            "{}{}{:?}",
+                            White.bold().paint(node.to_string()),
+                            Yellow.bold().paint(" >> "),
+                            o
+                        );
+                    }
+                }
                 if let Some(npz) = npz.as_mut() {
                     for (ix, t) in r.iter().enumerate() {
                         let mut name = if ix == 0 {
