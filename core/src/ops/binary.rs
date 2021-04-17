@@ -62,7 +62,7 @@ pub trait BinMiniOp:
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
     fn generic_eval(&self, a: Arc<Tensor>, b: Arc<Tensor>) -> TractResult<Tensor> {
         let c_dt = self.result_datum_type(a.datum_type(), b.datum_type())?;
-        if c_dt == b.datum_type() && c_dt == a.datum_type() && a.len() == 1 {
+        if c_dt == b.datum_type() && a.len() == 1 {
             let mut b = b.into_tensor();
             self.eval_uniform_in_place(&a, &mut b)?;
             Ok(b)

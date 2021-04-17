@@ -96,7 +96,7 @@ bin_to_super_type!(rem, Rem,
                                unsafe {
                                    let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
                                    let view = c.to_array_view_mut::<TDim>()?;
-                                   crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).apply(|c,a,b| *c = a.clone() % *b);
+                                   crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
                                    Ok(c)
                                }
                            } else {
