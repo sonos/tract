@@ -1,4 +1,4 @@
-## 0.14.0
+## 0.14.0 - 2021-04-19
 
 * low-level functions in linalg are now version tagged: two versions of tract can now co-exist in the same binary
 * rustc minimal version is now 1.50
