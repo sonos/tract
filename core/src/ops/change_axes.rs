@@ -231,6 +231,11 @@ impl AxisOp {
                 shape.insert(*to, axis);
             }
             Reshape(at, from, to) => {
+                if shape.len() < from.len() + *at
+                    || shape.iter().skip(*at).zip(from.iter()).any(|(s, f)| &s.to_dim() != f)
+                {
+                    bail!("Incompatible reshape for shape {:?} and {:?}", shape, self);
+                }
                 for _ in from {
                     shape.remove(*at);
                 }
