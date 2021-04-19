@@ -1,3 +1,9 @@
+## 0.14.0
+
+* low-level functions in linalg are now version tagged: two versions of tract can now co-exist in the same binary
+* rustc minimal version is now 1.50
+* dependencies version bumps (ndarray, itertools, and others)
+
 ## 0.13.2
 
 * fix sigmoid and tanh variability on intel
