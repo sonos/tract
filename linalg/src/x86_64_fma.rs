@@ -11,6 +11,9 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_f32 = Box::new(|m, k, n| {
             Box::new(MatMatMulImpl::<mmm::MatMatMulF32x16x6, f32, f32>::new(m, k, n))
         });
+        ops.mmv_f32 = Box::new(|m, k| {
+            Box::new(MatMatMulImpl::<mmm::MatMatMulF32x64x1, f32, f32>::new(m, k, 1))
+        });
         ops.sigmoid_f32 = Box::new(|| Box::new(ElementWiseImpl::<sigmoid::SigmoidF32, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<tanh::TanhF32, f32>::new()));
         log::info!("mmm_f32, sigmoid_f32, tang32: x86_64/fma activated");
@@ -22,6 +25,6 @@ pub fn plug(ops: &mut Ops) {
         ops.qmmm_i8_i32 = Box::new(|m, k, n| {
             Box::new(MatMatMulImpl::<mmm::MatMatMulI8xI32x8x8, i32, i32>::new(m, k, n))
         });
-        log::info!("mmm_i8_i8 and mmm_i8_i32: x86_64/fma activated");
+        log::info!("mmm_i8_i8 and mmm_i8_i32: x86_64/avx2 activated");
     }
 }

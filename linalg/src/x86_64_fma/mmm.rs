@@ -1,6 +1,7 @@
 use crate::frame::mmm::*;
 
 extern_kernel!(fn fma_mmm_f32_16x6(op: *const MatMatMulKerSpec<f32>) -> isize);
+extern_kernel!(fn fma_mmm_f32_64x1(op: *const MatMatMulKerSpec<f32>) -> isize);
 extern_kernel!(fn fma_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize);
 
 #[derive(Copy, Clone, Debug)]
@@ -34,6 +35,40 @@ impl MatMatMulKer<f32> for MatMatMulF32x16x6 {
     #[inline(never)]
     fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
         unsafe { fma_mmm_f32_16x6(spec) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MatMatMulF32x64x1;
+
+impl MatMatMulKer<f32> for MatMatMulF32x64x1 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "fma"
+    }
+    #[inline(always)]
+    fn mr() -> usize {
+        64
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        1
+    }
+    fn alignment_bytes_packed_a() -> usize {
+        32
+    }
+    fn alignment_bytes_packed_b() -> usize {
+        4
+    }
+    fn end_padding_packed_a() -> usize {
+        0
+    }
+    fn end_padding_packed_b() -> usize {
+        0
+    }
+    #[inline(never)]
+    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
+        unsafe { fma_mmm_f32_64x1(spec) }
     }
 }
 
@@ -108,6 +143,12 @@ impl MatMatMulKer<i32> for MatMatMulI8xI32x8x8 {
 test_mmm_kernel_f32!(
     crate::x86_64_fma::mmm::MatMatMulF32x16x6,
     test_MatMatMulF32x16x6,
+    is_x86_feature_detected!("fma")
+);
+
+test_mmm_kernel_f32!(
+    crate::x86_64_fma::mmm::MatMatMulF32x64x1,
+    test_MatMatMulF32x64x1,
     is_x86_feature_detected!("fma")
 );
 
