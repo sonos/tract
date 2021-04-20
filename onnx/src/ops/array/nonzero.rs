@@ -1,10 +1,16 @@
 use tract_hir::internal::*;
 use tract_ndarray::Dimension;
 
-#[derive(Debug, Clone, new, Default, Hash)]
-pub struct NonZero;
+#[derive(Debug, Clone, Hash)]
+pub struct NonZero(Symbol);
 
 impl_dyn_hash!(NonZero);
+
+impl NonZero {
+    pub fn non_zero() -> NonZero {
+        NonZero(Symbol::new('x'))
+    }
+}
 
 impl NonZero {
     unsafe fn eval_t<T: Datum + tract_num_traits::Zero>(input: &Tensor) -> TractResult<Tensor> {
@@ -74,7 +80,7 @@ impl TypedOp for NonZero {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(TypedFact::dt_shape(
             i64::datum_type(),
-            &[inputs[0].rank().to_dim(), Symbol::new('x').to_dim()]
+            &[inputs[0].rank().to_dim(), self.0.to_dim()]
         )))
     }
 
