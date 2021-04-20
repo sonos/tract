@@ -19,6 +19,7 @@ pub struct DeconvSum {
     /// shape of the deconvolution input
     pub input_shape: TVec<TDim>,
     pub adjustments: TVec<usize>,
+    pub bias: Option<Arc<Tensor>>,
 }
 
 impl_dyn_hash!(DeconvSum);
@@ -55,6 +56,12 @@ impl EvalOp for DeconvSum {
         );
         let mut tensor = Tensor::zero::<f32>(&*output_shape.shape)?;
         let mut output = tensor.to_array_view_mut::<f32>()?;
+        if let Some(b) = &self.bias {
+            let mut bias_shape = tvec!(1; output_shape.rank());
+            bias_shape[output_shape.c_axis()] = b.len();
+            let b = b.clone().into_tensor().into_shape(&bias_shape)?;
+            output += &b.to_array_view::<f32>()?;
+        }
         let hw = *gemm.shape().last().unwrap();
         let n = *output_shape.n().unwrap_or(&1);
         let n_o_hkwk_hw = gemm.into_shape(&[

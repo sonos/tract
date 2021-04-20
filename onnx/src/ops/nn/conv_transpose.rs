@@ -19,7 +19,15 @@ pub fn conv_transpose(
     let output_shape = node.get_attr_opt_tvec::<usize>("output_shape")?;
     let group = node.get_attr_opt::<usize>("group")?.unwrap_or(1);
     Ok((
-        expand(ConvTranspose::new(padding_spec, strides, dilations, adjustments, output_shape, group)),
+        expand(ConvTranspose::new(
+            padding_spec,
+            strides,
+            dilations,
+            adjustments,
+            output_shape,
+            group,
+            node.input.len() == 3,
+        )),
         vec![],
     ))
 }
@@ -32,6 +40,7 @@ pub struct ConvTranspose {
     adjustments: Option<TVec<usize>>,
     output_shape: Option<TVec<usize>>,
     group: usize,
+    have_bias: bool,
 }
 
 impl_dyn_hash!(ConvTranspose);
@@ -49,7 +58,7 @@ impl Expansion for ConvTranspose {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(inputs, 2)?;
+        check_input_arity(inputs, 2 + self.have_bias as usize)?;
         check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
@@ -92,6 +101,11 @@ impl Expansion for ConvTranspose {
             }
             Ok(())
         })?;
+        if self.have_bias {
+            s.equals(&inputs[2].datum_type, &inputs[0].datum_type)?;
+            s.equals(&inputs[2].rank, 1)?;
+            s.equals(&inputs[2].shape[0], &outputs[0].shape[1])?;
+        }
         Ok(())
     }
 
@@ -108,6 +122,12 @@ impl Expansion for ConvTranspose {
             let mut axes: TVec<usize> = (0..k.rank()).collect();
             axes.swap(0, 1);
             let kernel = k.clone().into_tensor().permute_axes(&axes)?;
+
+            let bias = if self.have_bias {
+                Some(target.outlet_fact(inputs[2])?.konst.clone().context("bias must be a constant")?)
+            } else {
+                None
+            };
 
             let op = if let Some(output_shape) = &self.output_shape {
                 let x_shape = &target.outlet_fact(inputs[0])?.shape;
@@ -128,6 +148,7 @@ impl Expansion for ConvTranspose {
                     pool_spec,
                     KernelFormat::OIHW,
                     kernel.into_arc_tensor(),
+                    bias,
                     adjustments,
                     self.group,
                 )
@@ -138,12 +159,13 @@ impl Expansion for ConvTranspose {
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),
-                    Some(kernel.shape()[0])
+                    Some(kernel.shape()[0]),
                 );
                 tract_core::ops::cnn::DeconvUnary::new(
                     pool_spec,
                     KernelFormat::OIHW,
                     kernel.into_arc_tensor(),
+                    bias,
                     self.adjustments.clone().unwrap_or(zeros.clone()),
                     self.group,
                 )

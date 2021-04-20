@@ -15,6 +15,7 @@ struct DeconvProblem {
     padding: PaddingSpec,
     input: ArrayD<f32>,
     kernel: ArrayD<f32>,
+    bias: Option<ArrayD<f32>>,
     strides: TVec<usize>,
     dilations: TVec<usize>,
     adjustments: TVec<usize>,
@@ -39,14 +40,14 @@ impl Arbitrary for DeconvProblem {
                     any::<DataFormat>(),
                     any::<KernelFormat>(),
                     prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
-                    1usize..3, // n
-                    1usize..4, // ci / group
-                    1usize..4, // co / group
+                    1usize..3,                         // n
+                    1usize..4,                         // ci / group
+                    1usize..4,                         // co / group
                     vec(1usize..4, georank..=georank), // kernel shape
                     vec(1usize..8, georank..=georank), // image shape
                     vec(1usize..4, georank..=georank), // strides
                     vec(1usize..4, georank..=georank), // dilations
-                    1usize..4, // group
+                    1usize..4,                         // group
                 )
             })
             .prop_filter(
@@ -57,44 +58,72 @@ impl Arbitrary for DeconvProblem {
                             .all(|(k, d, s)| (k - 1) * d > s - 1)
                 },
             )
-            .prop_flat_map(|(df, kf, pad, n, ci_over_group, co_over_group, hwk, hwi, strides, dilations, group)| {
-                let mut kernel_shape = hwk;
-                match kf {
-                    OIHW => {
-                        kernel_shape.insert(0, co_over_group * group);
-                        kernel_shape.insert(1, ci_over_group);
-                    }
-                    HWIO => {
-                        kernel_shape.push(ci_over_group * group);
-                        kernel_shape.push(co_over_group);
-                    }
-                };
-                let data_shape = df.from_n_c_hw(n, ci_over_group * group, &hwi).unwrap();
-                (
-                    Just(df),
-                    Just(kf),
-                    Just(pad),
-                    tensor(&data_shape.shape),
-                    tensor(&kernel_shape),
-                    Just(strides),
-                    Just(dilations),
-                    Just(group),
-                )
-            })
-            .prop_map(|(data_format, kernel_format, padding, input, kernel, strides, dilations, group)| {
-                let adjustments = tvec!(0; kernel.ndim() - 2); // FIXME maybe
-                DeconvProblem {
+            .prop_flat_map(
+                |(
+                    df,
+                    kf,
+                    pad,
+                    n,
+                    ci_over_group,
+                    co_over_group,
+                    hwk,
+                    hwi,
+                    strides,
+                    dilations,
+                    group,
+                )| {
+                    let mut kernel_shape = hwk;
+                    match kf {
+                        OIHW => {
+                            kernel_shape.insert(0, co_over_group * group);
+                            kernel_shape.insert(1, ci_over_group);
+                        }
+                        HWIO => {
+                            kernel_shape.push(ci_over_group * group);
+                            kernel_shape.push(co_over_group);
+                        }
+                    };
+                    let data_shape = df.from_n_c_hw(n, ci_over_group * group, &hwi).unwrap();
+                    (
+                        Just(df),
+                        Just(kf),
+                        Just(pad),
+                        tensor(&data_shape.shape),
+                        tensor(&kernel_shape),
+                        proptest::option::of(tensor(&[co_over_group * group])),
+                        Just(strides),
+                        Just(dilations),
+                        Just(group),
+                    )
+                },
+            )
+            .prop_map(
+                |(
                     data_format,
                     kernel_format,
                     padding,
                     input,
                     kernel,
-                    strides: strides.into(),
-                    dilations: dilations.into(),
-                    adjustments,
+                    bias,
+                    strides,
+                    dilations,
                     group,
-                }
-            })
+                )| {
+                    let adjustments = tvec!(0; kernel.ndim() - 2); // FIXME maybe
+                    DeconvProblem {
+                        data_format,
+                        kernel_format,
+                        padding,
+                        input,
+                        kernel,
+                        bias,
+                        strides: strides.into(),
+                        dilations: dilations.into(),
+                        adjustments,
+                        group,
+                    }
+                },
+            )
             .boxed()
     }
 }
@@ -116,6 +145,7 @@ impl DeconvProblem {
             pool_spec,
             self.kernel_format,
             self.kernel.clone().into_arc_tensor(),
+            self.bias.as_ref().map(|b| b.clone().into_arc_tensor()),
             self.adjustments.clone(),
             self.group,
         );
@@ -156,15 +186,19 @@ impl DeconvProblem {
                 .collect()
         };
         let output_shape = self.data_format.from_n_c_hw(n, co, output_shape_geo).unwrap();
-        dbg!(&output_shape);
-        dbg!(&paddings);
         let mut output = ArrayD::zeros(&*output_shape.shape);
+        if let Some(b) = &self.bias {
+            let mut bias_shape = tvec!(1; output_shape.rank());
+            bias_shape[output_shape.c_axis()] = co;
+            let b = b.clone().into_shape(&*bias_shape).unwrap();
+            output += &b;
+        }
         let co_per_group = co / self.group;
         let ci_per_group = input_shape.c() / self.group;
         for n in 0..n {
             for g in 0..self.group {
                 for co in 0..co_per_group {
-                    for ci in 0.. ci_per_group{
+                    for ci in 0..ci_per_group {
                         for hwi in indices(input_shape.hw_dims()) {
                             for hwk in indices(kernel_hwdims) {
                                 let hwo: TVec<isize> = tract_itertools::izip!(
@@ -181,8 +215,14 @@ impl DeconvProblem {
                                 } else {
                                     continue;
                                 };
-                                let i = self.data_format.from_n_c_hw(n, ci + g * ci_per_group, hwi.slice()).unwrap();
-                                let o = self.data_format.from_n_c_hw(n, co + g * co_per_group, hwo).unwrap();
+                                let i = self
+                                    .data_format
+                                    .from_n_c_hw(n, ci + g * ci_per_group, hwi.slice())
+                                    .unwrap();
+                                let o = self
+                                    .data_format
+                                    .from_n_c_hw(n, co + g * co_per_group, hwo)
+                                    .unwrap();
                                 let k: TVec<usize> = match self.kernel_format {
                                     OIHW => once(co + co_per_group * g)
                                         .chain(once(ci))
@@ -196,8 +236,8 @@ impl DeconvProblem {
                                         .chain(once(co))
                                         .collect(),
                                 };
-                                if let Some(ceil) = output.get_mut(&*o.shape) {
-                                    *ceil += self.input[&*i.shape] * self.kernel[&*k]
+                                if let Some(cell) = output.get_mut(&*o.shape) {
+                                    *cell += self.input[&*i.shape] * self.kernel[&*k]
                                 }
                             }
                         }
@@ -224,6 +264,7 @@ fn test_trivial_0() {
         padding: PaddingSpec::Valid,
         input: arr4(&[[[[0.0]]]]).into_dyn(),
         kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+        bias: None,
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
@@ -240,6 +281,7 @@ fn test_hwc_0() {
         padding: PaddingSpec::Valid,
         input: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
         kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+        bias: None,
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
@@ -256,6 +298,7 @@ fn test_geo_0() {
         padding: PaddingSpec::Valid,
         input: arr3(&[[[0.0]]]).into_dyn(),
         kernel: arr4(&[[[[0.0], [0.0]]]]).into_dyn(),
+        bias: None,
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
@@ -272,6 +315,7 @@ fn test_hwio_0() {
         padding: PaddingSpec::Valid,
         input: arr3(&[[[0.0]]]).into_dyn(),
         kernel: arr4(&[[[[0.0, 0.0]]]]).into_dyn(),
+        bias: None,
         strides: tvec!(1, 1),
         dilations: tvec!(1, 1),
         adjustments: tvec!(0, 0),
@@ -288,6 +332,7 @@ fn test_strides_1() {
         padding: PaddingSpec::Valid,
         input: arr2(&[[0.0], [1.0]]).into_dyn(),
         kernel: arr3(&[[[1.0]]]).into_dyn(),
+        bias: None,
         strides: tvec!(2),
         dilations: tvec!(1),
         adjustments: tvec!(0, 0),
@@ -304,6 +349,7 @@ fn test_same_upper_1() {
         padding: PaddingSpec::SameUpper,
         input: arr2(&[[0.0]]).into_dyn(),
         kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+        bias: None,
         strides: tvec!(1),
         dilations: tvec!(1),
         adjustments: tvec!(0, 0),
@@ -320,6 +366,7 @@ fn test_same_upper_dil() {
         padding: PaddingSpec::SameUpper,
         input: arr2(&[[0.0]]).into_dyn(),
         kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+        bias: None,
         strides: tvec!(1),
         dilations: tvec!(2),
         adjustments: tvec!(0, 0),
@@ -336,6 +383,7 @@ fn test_same_upper_strides() {
         padding: PaddingSpec::SameUpper,
         input: arr2(&[[0.0]]).into_dyn(),
         kernel: arr3(&[[[0.0, 0.0, 0.0]]]).into_dyn(),
+        bias: None,
         strides: tvec!(2),
         dilations: tvec!(1),
         adjustments: tvec!(0, 0),
@@ -352,6 +400,7 @@ fn test_channel_0() {
         padding: PaddingSpec::Valid,
         input: arr2(&[[0.0]]).into_dyn(),
         kernel: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
+        bias: None,
         strides: tvec!(1),
         dilations: tvec!(1),
         adjustments: tvec!(0),
@@ -368,6 +417,7 @@ fn test_group_0() {
         padding: PaddingSpec::Valid,
         input: arr2(&[[0.0, 0.0]]).into_dyn(),
         kernel: arr3(&[[[0.0]], [[0.0]]]).into_dyn(),
+        bias: None,
         strides: tvec!(1),
         dilations: tvec!(1),
         adjustments: tvec!(0),
@@ -384,10 +434,28 @@ fn test_group_1() {
         padding: PaddingSpec::Valid,
         input: arr2(&[[0.0, 0.0]]).into_dyn(),
         kernel: arr3(&[[[0.0], [0.0]]]).into_dyn(),
+        bias: None,
         strides: tvec!(1),
         dilations: tvec!(1),
         adjustments: tvec!(0),
         group: 2,
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}
+
+#[test]
+fn test_bias_0() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: arr2(&[[0.0]]).into_dyn(),
+        kernel: arr3(&[[[0.0]]]).into_dyn(),
+        bias: Some(arr1(&[1.0f32]).into_dyn()),
+        strides: tvec!(1),
+        dilations: tvec!(1),
+        adjustments: tvec!(0),
+        group: 1,
     };
     assert_eq!(pb.tract(), pb.reference());
 }
