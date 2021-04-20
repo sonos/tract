@@ -77,6 +77,7 @@ test_clip_splitbounds
 test_compress_0                                                                      not-typable not-nnef
 test_compress_1                                                                      not-typable not-nnef
 test_compress_default_axis                                                           not-typable not-nnef
+test_compress_negative_axis not-nnef not-typable
 test_concat_1d_axis_0
 test_concat_1d_axis_negative_1
 test_concat_2d_axis_0
