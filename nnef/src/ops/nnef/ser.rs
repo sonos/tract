@@ -250,7 +250,7 @@ pub fn deconv(
         *op.kernel_format.i(op.kernel.shape()),
         *op.kernel_format.o(op.kernel.shape()),
     )?;
-    conv_or_deconv(ast, node, &op.pool_spec, weights.into_tensor(), &None, op.group, true, Some(&op.adjustments))
+    conv_or_deconv(ast, node, &op.pool_spec, weights.into_tensor(), &op.bias, op.group, true, Some(&op.adjustments))
 }
 
 fn cnn_pool_fragment<'a>(

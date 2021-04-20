@@ -9,6 +9,7 @@ pub struct DeconvUnary {
     pub pool_spec: PoolSpec,
     pub kernel_format: KernelFormat,
     pub kernel: Arc<Tensor>,
+    pub bias: Option<Arc<Tensor>>,
 
     pub adjustments: TVec<usize>,
     pub group: usize,
@@ -125,6 +126,7 @@ impl DeconvUnary {
                 self.kernel_format.clone(),
                 input_shape.to_tvec(),
                 self.adjustments.clone(),
+                self.bias.clone(),
             ),
             &gemm,
         )?;
