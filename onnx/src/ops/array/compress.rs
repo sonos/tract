@@ -11,16 +11,21 @@ pub fn compress(
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Compress {
-    axis: Option<usize>,
+    axis: Option<isize>,
 }
 
 impl_dyn_hash!(Compress);
 
 impl Compress {
-    unsafe fn eval_t<T: Datum>(&self, input: &Tensor, conds: &[bool], output: &mut Tensor) {
+    unsafe fn eval_t<T: Datum>(
+        axis: Option<usize>,
+        input: &Tensor,
+        conds: &[bool],
+        output: &mut Tensor,
+    ) {
         use tract_ndarray::*;
         let input = input.to_array_view_unchecked::<T>();
-        if let Some(ax) = self.axis {
+        if let Some(ax) = axis {
             for (ixo, ixi) in
                 conds.iter().enumerate().filter(|(_, c)| **c).map(|(ix, _)| ix).enumerate()
             {
@@ -60,17 +65,18 @@ impl EvalOp for Compress {
         let (input, conds) = args_2!(inputs);
         let conds = conds.as_slice()?;
         let compressed_dim = conds.iter().filter(|c| **c).count();
-        let shape = if let Some(axis) = self.axis {
+        let (shape, axis) = if let Some(axis) = self.axis {
+            let axis = if axis < 0 { axis + input.rank() as isize } else { axis } as usize;
             let mut shape: TVec<usize> = input.shape().into();
             shape[axis] = compressed_dim;
-            shape
+            (shape, Some(axis))
         } else {
-            tvec!(compressed_dim)
+            (tvec!(compressed_dim), None)
         };
         unsafe {
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &*shape)?;
             dispatch_datum_by_size!(Self::eval_t(input.datum_type())(
-                self,
+                axis,
                 &input,
                 conds,
                 &mut output
@@ -96,6 +102,7 @@ impl InferenceRulesOp for Compress {
             s.equals(&inputs[0].rank, &outputs[0].rank)?;
             s.given(&inputs[0].rank, move |s, rank| {
                 let rank = rank as usize;
+                let op_axis = if op_axis < 0 { op_axis + rank as isize } else { op_axis } as usize;
                 for axis in 0..rank {
                     if axis != op_axis {
                         s.equals(&inputs[0].shape[axis], &outputs[0].shape[axis])?;
