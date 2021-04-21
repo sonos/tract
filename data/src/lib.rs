@@ -14,7 +14,7 @@ pub type TVec<T> = smallvec::SmallVec<[T; 4]>;
 
 pub mod prelude {
     pub use crate::datum::{Blob, Datum, DatumType};
-    pub use crate::dim::{Symbol, SymbolValues, TDim};
+    pub use crate::dim::{Symbol, SymbolValues, TDim, ToDim};
     pub use crate::f16::*;
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::{natural_strides, IntoArcTensor, IntoTensor, Tensor};

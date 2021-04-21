@@ -222,7 +222,7 @@ where
                         );
                     }
                     for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
-                        if !f.matches(v)? {
+                        if !f.matches(v, Some(&session_state.resolved_symbols))? {
                             bail!(
                                 "Evaluating {}: input {:?}, expected {:?}, got {:?}",
                                 node,
@@ -252,7 +252,7 @@ where
                         if node.outputs[ix].successors.len() == 0 {
                             continue;
                         }
-                        if !f.matches(v)? {
+                        if !f.matches(v, Some(&session_state.resolved_symbols))? {
                             bail!(
                                 "Evaluating {}: output {:?}, expected {:?}, got {:?}",
                                 node,
@@ -288,11 +288,18 @@ where
             .input_outlets()?
             .get(input)
             .ok_or_else(|| format_err!("Invalid input id for model ({}).", input))?;
+        if let Ok(fact) = self.model().outlet_fact(outlet)?.to_typed_fact() {
+            for (expected, provided) in fact.shape.iter().zip(t.shape()) {
+                if let TDim::Sym(s) = expected {
+                    self.session_state.resolved_symbols[s] = Some(*provided as i64);
+                }
+            }
+        }
         self.plan
             .borrow()
             .model()
             .outlet_fact(outlet)?
-            .matches(&t)
+            .matches(&t, Some(&self.session_state.resolved_symbols))
             .with_context(|| format!("Setting input {}", input))?;
         self.session_state.inputs.insert(outlet.node, t.into());
         Ok(())
