@@ -861,116 +861,122 @@ impl TypedOp for ConvUnary {
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
         let spatial_rank = input_shape.hw_rank();
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
-        if let Some(shape) = input_fact.shape.as_concrete() {
-            unsafe {
-                let dt = input_fact.datum_type;
-                if self.q_params.is_some() {
-                    let mut patch = TypedModelPatch::default();
-                    let inputs = node
-                        .inputs
-                        .iter()
-                        .map(|w| patch.tap_model(model, *w))
-                        .collect::<TractResult<TVec<_>>>()?;
-                    let wire = self.wire_as_quant_im2col(&mut patch, &node.name, &inputs)?;
-                    patch.shunt_outside(model, node.id.into(), wire)?;
-                    return Ok(Some(patch));
-                } else if kernel_spatial_shape.iter().product::<usize>() == 1
-                    && (0..spatial_rank)
-                        .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
-                    && self.group == 1
-                {
-                    use crate::ops::matmul::MatMulUnary;
-                    let mut patch = TypedModelPatch::default();
-                    let mut wire = patch.tap_model(model, node.inputs[0])?;
-                    let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
-                    let geo_dim: TDim = input_shape.hw_dims().iter().maybe_product()?;
-                    wire = patch.wire_node(
-                        format!("{}.reshape_input", &*node.name),
-                        AxisOp::Reshape(
-                            input_shape.h_axis(),
-                            input_shape.hw_dims().into(),
-                            tvec!(geo_dim.clone()),
-                        ),
-                        &[wire],
-                    )?[0];
-                    let kernel_shape = match self.kernel_fmt {
-                        KernelFormat::HWIO => &self.kernel.shape()[spatial_rank..],
-                        KernelFormat::OIHW => &self.kernel.shape()[..2],
-                    };
-                    let operating_rank = input_fact.rank() + 1 - kernel_spatial_shape.len();
-                    let kernel = self
-                        .kernel
-                        .as_ref()
+        unsafe {
+            let dt = input_fact.datum_type;
+            if self.q_params.is_some() {
+                let mut patch = TypedModelPatch::default();
+                let inputs = node
+                    .inputs
+                    .iter()
+                    .map(|w| patch.tap_model(model, *w))
+                    .collect::<TractResult<TVec<_>>>()?;
+                let wire = self.wire_as_quant_im2col(&mut patch, &node.name, &inputs)?;
+                patch.shunt_outside(model, node.id.into(), wire)?;
+                return Ok(Some(patch));
+            } else if kernel_spatial_shape.iter().product::<usize>() == 1
+                && (0..spatial_rank)
+                    .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
+                && self.group == 1
+            {
+                use crate::ops::matmul::MatMulUnary;
+                let mut patch = TypedModelPatch::default();
+                let mut wire = patch.tap_model(model, node.inputs[0])?;
+                let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
+                let geo_dim: TDim = input_shape.hw_dims().iter().maybe_product()?;
+                wire = patch.wire_node(
+                    format!("{}.reshape_input", &*node.name),
+                    AxisOp::Reshape(
+                        input_shape.h_axis(),
+                        input_shape.hw_dims().into(),
+                        tvec!(geo_dim.clone()),
+                    ),
+                    &[wire],
+                )?[0];
+                let kernel_shape = match self.kernel_fmt {
+                    KernelFormat::HWIO => &self.kernel.shape()[spatial_rank..],
+                    KernelFormat::OIHW => &self.kernel.shape()[..2],
+                };
+                let operating_rank = input_fact.rank() + 1 - kernel_spatial_shape.len();
+                let kernel = self
+                    .kernel
+                    .as_ref()
+                    .clone()
+                    .into_shape(&kernel_shape)?
+                    .broadcast_into_rank(operating_rank)?;
+                wire = patch.wire_node(
+                    &format!("{}.matmul", &node.name),
+                    MatMulUnary::new(
+                        kernel.into_arc_tensor(),
+                        self.kernel_fmt == KernelFormat::HWIO,
+                        input_c_is_last,
+                        input_c_is_last,
+                    ),
+                    &[wire],
+                )?[0];
+                if let Some(ref bias) = self.bias {
+                    let bias_shape =
+                        if input_c_is_last { [1, bias.len()] } else { [bias.len(), 1] };
+                    let bias = bias
                         .clone()
-                        .into_shape(&kernel_shape)?
-                        .broadcast_into_rank(operating_rank)?;
+                        .into_tensor()
+                        .into_shape(&bias_shape)?
+                        .broadcast_into_rank(operating_rank)?
+                        .into_arc_tensor();
                     wire = patch.wire_node(
-                        &format!("{}.matmul", &node.name),
-                        MatMulUnary::new(
-                            kernel.into_arc_tensor(),
-                            self.kernel_fmt == KernelFormat::HWIO,
-                            input_c_is_last,
-                            input_c_is_last,
-                        ),
+                        format!("{}.bias", node.name),
+                        crate::ops::math::add::unary(bias),
                         &[wire],
                     )?[0];
-                    if let Some(ref bias) = self.bias {
-                        let bias_shape =
-                            if input_c_is_last { [1, bias.len()] } else { [bias.len(), 1] };
-                        let bias = bias
-                            .clone()
-                            .into_tensor()
-                            .into_shape(&bias_shape)?
-                            .broadcast_into_rank(operating_rank)?
-                            .into_arc_tensor();
-                        wire = patch.wire_node(
-                            format!("{}.bias", node.name),
-                            crate::ops::math::add::unary(bias),
-                            &[wire],
-                        )?[0];
-                    }
-                    wire = patch.wire_node(
-                        &*node.name,
-                        AxisOp::Reshape(
-                            input_shape.h_axis(),
-                            tvec!(geo_dim),
-                            input_shape.hw_dims().into(),
-                        ),
-                        &[wire],
-                    )?[0];
-                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                    return Ok(Some(patch));
-                } else if should_use_direct(
-                    &self.pool_spec.data_format.shape(shape.into())?,
-                    &self.pool_spec,
-                    self.group,
-                ) {
-                    let mut patch = TypedModelPatch::default();
-                    let wire = patch.tap_model(model, node.inputs[0])?;
-                    let wire = self
-                        .wire_as_direct(&mut patch, &*node.name, wire)
-                        .context("in wire_as_direct")?;
-                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                    return Ok(Some(patch));
-                } else if self.group != 1
-                    && self.group == self.output_channels()
-                    && self.group == self.input_channels()
-                {
-                    let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))
-                        .context("in to_depth_wise")?;
-                    return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-                } else {
-                    let mut patch = TypedModelPatch::default();
-                    let wire = patch.tap_model(model, node.inputs[0])?;
-                    let wire = self
-                        .wire_as_im2col_pair(&mut patch, &*node.name, wire)
-                        .context("in wire_as_im2col_pair")?;
-                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                    return Ok(Some(patch));
                 }
+                wire = patch.wire_node(
+                    &*node.name,
+                    AxisOp::Reshape(
+                        input_shape.h_axis(),
+                        tvec!(geo_dim),
+                        input_shape.hw_dims().into(),
+                    ),
+                    &[wire],
+                )?[0];
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
+            } else if input_fact
+                .shape
+                .as_concrete()
+                .map(|s| {
+                    should_use_direct(
+                        &self.pool_spec.data_format.shape(s.into()).unwrap(),
+                        &self.pool_spec,
+                        self.group,
+                    )
+                })
+                .unwrap_or(false)
+            {
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.tap_model(model, node.inputs[0])?;
+                let wire = self
+                    .wire_as_direct(&mut patch, &*node.name, wire)
+                    .context("in wire_as_direct")?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
+            } else if self.group != 1
+                && self.group == self.output_channels()
+                && self.group == self.input_channels()
+                && input_fact.shape.as_concrete().is_some()
+            {
+                let shape = input_fact.shape.as_concrete().unwrap();
+                let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))
+                    .context("in to_depth_wise")?;
+                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+            } else {
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.tap_model(model, node.inputs[0])?;
+                let wire = self
+                    .wire_as_im2col_pair(&mut patch, &*node.name, wire)
+                    .context("in wire_as_im2col_pair")?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
             }
         }
-        Ok(None)
     }
 
     as_op!();
