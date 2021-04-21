@@ -8,7 +8,7 @@ use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
 use crate::ops::cnn::PoolSpec;
-use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
+use crate::ops::matmul::lir_unary::{LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
 use crate::ops::matmul::QParams;
 use crate::ops::nn::{DataFormat, DataShape};
 
@@ -433,19 +433,18 @@ impl ConvUnary {
         let mut iter = kernels.iter().cloned().zip(fused_ops.iter().cloned());
         let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 
+        let geometry = MatMulGeometry { mmm, k, m };
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
             LirMatMulUnary {
                 b_storage: input_storage,
                 c_fact: TypedFact::dt_shape(c_datum_type, mmm_output_shape.clone()),
                 micro_ops,
-                mmm,
-                k,
-                m,
                 c_m_axis,
                 c_n_axis,
                 c_final_shape: mmm_output_shape.into(),
                 reshape_post: vec![],
+                geometry,
             },
             &[wire],
         )?[0];

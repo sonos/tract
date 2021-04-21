@@ -40,27 +40,32 @@ impl ProtoFusedSpec {
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Hash)]
+pub struct MatMulGeometry {
+    #[educe(Hash(method = "hash_mmm"))]
+    pub mmm: Box<dyn MatMatMul>,
+    pub m: usize,
+    pub k: usize,
+}
+
+#[derive(Debug, Clone, Hash)]
 pub struct LirMatMulUnary {
     pub b_storage: MatrixStoreSpec,
     pub c_fact: TypedFact,
     pub c_m_axis: usize,
     pub c_n_axis: usize,
     pub micro_ops: ArrayD<(Arc<Tensor>, Vec<ProtoFusedSpec>)>,
-    #[educe(Hash(method = "hash_mmm"))]
-    pub mmm: Box<dyn MatMatMul>,
-    pub m: usize,
-    pub k: usize,
     pub c_final_shape: ShapeFact,
     pub reshape_post: Vec<AxisOp>,
+    pub geometry: MatMulGeometry,
 }
 
 impl LirMatMulUnary {
     pub fn m(&self) -> usize {
-        self.m
+        self.geometry.m
     }
 
     pub fn k(&self) -> usize {
-        self.k
+        self.geometry.k
     }
 
     pub fn n(&self) -> &TDim {
@@ -92,7 +97,7 @@ impl Op for LirMatMulUnary {
             self.k(),
             self.n(),
         )];
-        infos.push(format!("Mult: {}", self.mmm));
+        infos.push(format!("Mult: {}", self.geometry.mmm));
         infos.push(format!("Ops: {:?}", self.micro_ops));
         Ok(infos)
     }
@@ -117,14 +122,14 @@ impl OpState for State {
             if session
                 .cached_mmm_scratch_space
                 .as_deref()
-                .map(|scratch| op.mmm.can_use_scratch_space(scratch))
+                .map(|scratch| op.geometry.mmm.can_use_scratch_space(scratch))
                 == Some(false)
             {
                 session.cached_mmm_scratch_space = None
             }
             let scratch = session
                 .cached_mmm_scratch_space
-                .get_or_insert_with(|| op.mmm.allocate_scratch_space());
+                .get_or_insert_with(|| op.geometry.mmm.allocate_scratch_space());
             eval(op, scratch.as_mut(), &inputs, &shape, op.c_m_axis, op.c_n_axis, &final_shape)
         }
     }
@@ -144,7 +149,7 @@ impl EvalOp for LirMatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let mut scratch = unsafe { self.mmm.allocate_scratch_space() };
+        let mut scratch = unsafe { self.geometry.mmm.allocate_scratch_space() };
         eval(
             self,
             scratch.as_mut(),
@@ -169,7 +174,7 @@ fn eval(
     unsafe {
         let a_dt = op.micro_ops.iter().next().unwrap().0.datum_type();
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-        let c_storage = op.mmm.c_view_with_axis(c_m_axis, c_n_axis);
+        let c_storage = op.geometry.mmm.c_view_with_axis(c_m_axis, c_n_axis);
         if op
             .c_fact
             .shape
@@ -193,9 +198,9 @@ fn eval(
                 }
                 let (pa, fused) = ops.iter().next().unwrap();
                 let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
-                op.mmm.run_with_scratch_space(
+                op.geometry.mmm.run_with_scratch_space(
                     scratch,
-                    &op.mmm.a_packed(a_dt).wrap(&pa.view()),
+                    &op.geometry.mmm.a_packed(a_dt).wrap(&pa.view()),
                     &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
                     &mut c_storage.wrap(&c_view),
                     &f,
@@ -204,9 +209,9 @@ fn eval(
         } else {
             let (pa, fused) = op.micro_ops.iter().next().unwrap();
             let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
-            op.mmm.run_with_scratch_space(
+            op.geometry.mmm.run_with_scratch_space(
                 scratch,
-                &op.mmm.a_packed(a_dt).wrap(&pa.view()),
+                &op.geometry.mmm.a_packed(a_dt).wrap(&pa.view()),
                 &op.b_storage.wrap(&inputs[0].view()),
                 &mut c_storage.wrap(&c.view_mut()),
                 &f,
@@ -235,7 +240,7 @@ impl TypedOp for LirMatMulUnary {
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let sums = self.c_fact.shape.iter().maybe_product()?;
         Ok(tvec!(
-            (Cost::FMA(self.mmm.internal_type()), sums.maybe_mul(&self.k().to_dim())?),
+            (Cost::FMA(self.geometry.mmm.internal_type()), sums.maybe_mul(&self.k().to_dim())?),
             (
                 Cost::Params(self.micro_ops.as_slice().unwrap()[0].0.datum_type()),
                 self.micro_ops.iter().fold(0.to_dim(), |sum, a| sum + a.0.len())
@@ -309,10 +314,11 @@ impl TypedOp for LirMatMulUnary {
                         )
                         .context("MMM instantiation")?;
                     let c_fact = TypedFact::dt_shape(i8::datum_type(), self.c_fact.shape.clone());
+                    let geometry = MatMulGeometry { mmm, ..self.geometry.clone() };
                     let mut patch = TypedModelPatch::fuse_with_next(
                         model,
                         &node,
-                        Self { mmm, c_fact, ..self.clone() },
+                        Self { geometry, c_fact, ..self.clone() },
                     )?;
                     patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
                     return Ok(Some(patch));
@@ -368,13 +374,13 @@ impl TypedOp for LirMatMulUnary {
                     })
                     .collect::<TVec<_>>();
 
-                assert_eq!(&prefix.iter().cloned().product::<usize>() * self.m, arg.len());
+                assert_eq!(&prefix.iter().cloned().product::<usize>() * self.m(), arg.len());
 
                 let arg_len = arg.len();
                 let arg = arg.into_shape(&[arg_len])?;
                 let mut i = 0;
                 let arg = ArrayD::from_shape_simple_fn(&*prefix, || {
-                    let t = arg.slice(0, i * self.m, (i + 1) * self.m).unwrap();
+                    let t = arg.slice(0, i * self.m(), (i + 1) * self.m).unwrap();
                     i += 1;
                     if op.mini_op.is::<ops::math::Mul>() {
                         vec![ProtoFusedSpec::PerRowMul(t.into())]
