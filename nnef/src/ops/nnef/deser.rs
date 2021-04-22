@@ -367,7 +367,11 @@ pub fn max_pool_with_index(
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "ignore");
     let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
-    let op = ops::cnn::MaxPool { pool_spec, with_index_outputs: Some(i64::datum_type()) };
+    let op = ops::cnn::MaxPool {
+        pool_spec,
+        with_index_outputs: Some(i64::datum_type()),
+        concrete_geometry: None,
+    };
     builder.wire(op, &[input])
 }
 
@@ -398,6 +402,7 @@ pub fn sum_pool(
         pool_spec,
         count_include_pad: false,
         normalize: invocation.named_arg_as(builder, "normalize")?,
+        concrete_geometry: None,
     };
     builder.wire(op, &[input])
 }

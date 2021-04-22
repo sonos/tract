@@ -1,26 +1,16 @@
 use crate::internal::*;
 use ndarray::prelude::*;
-use num_traits::Float;
 
-use crate::ops::cnn::pools::PoolSpec;
-use crate::ops::cnn::Patch;
-use crate::ops::nn::DataShape;
+use crate::ops::cnn::pools::{ConcreteGeometry, PoolSpec};
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct MaxPool {
     pub pool_spec: PoolSpec,
     pub with_index_outputs: Option<DatumType>,
+    pub concrete_geometry: Option<ConcreteGeometry>,
 }
 
 impl_dyn_hash!(MaxPool);
-
-impl MaxPool {
-    fn to_fixed<T: Datum + Float>(&self, input_shape: &[usize]) -> TractResult<Box<dyn TypedOp>> {
-        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_shape)?;
-        let op = MaxPoolFixed::new(patch, input_shape, output_shape, self.with_index_outputs);
-        Ok(Box::new(op))
-    }
-}
 
 impl Op for MaxPool {
     fn name(&self) -> Cow<str> {
@@ -40,12 +30,14 @@ impl EvalOp for MaxPool {
         true
     }
 
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let op = dispatch_floatlike!(MaxPool::to_fixed(inputs[0].datum_type())(
-            self,
-            inputs[0].shape()
-        ))?;
-        op.eval(inputs)
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let input = args_1!(inputs);
+        let geo = if let Some(geo) = &self.concrete_geometry {
+            Cow::Borrowed(geo)
+        } else {
+            Cow::Owned(self.pool_spec.compute_geo(&input.shape())?)
+        };
+        dispatch_floatlike!(Self::eval_t(input.datum_type())(self, &*input, geo.as_ref()))
     }
 }
 
@@ -68,25 +60,19 @@ impl TypedOp for MaxPool {
             && node.outputs[1].successors.len() == 0
             && !model.output_outlets()?.contains(&OutletId::new(node.id, 1))
         {
-            let op = MaxPool { pool_spec: self.pool_spec.clone(), with_index_outputs: None };
+            let op = Self { with_index_outputs: None, ..self.clone() };
             let mut patch = TypedModelPatch::default();
             let mut wire = patch.tap_model(model, node.inputs[0])?;
             wire = patch.wire_node(&node.name, op, &[wire])?[0];
             patch.shunt_outside(model, node.id.into(), wire)?;
             return Ok(Some(patch));
         }
-        Ok(None)
-    }
-
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
-        if let Some(shape) = inputs[0].shape.as_concrete() {
-            let dt = inputs[0].datum_type;
-            let op = dispatch_floatlike!(MaxPool::to_fixed(dt)(self, &*shape))?;
+        if let (Some(shape), None) = (inputs[0].shape.as_concrete(), &self.concrete_geometry) {
+            let op = Self {
+                concrete_geometry: Some(self.pool_spec.compute_geo(shape)?),
+                ..self.clone()
+            };
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
@@ -95,50 +81,32 @@ impl TypedOp for MaxPool {
     as_op!();
 }
 
-impl_dyn_hash!(MaxPoolFixed);
-
-#[derive(Debug, Clone, new, Hash)]
-pub struct MaxPoolFixed {
-    patch: Patch,
-    input_shape: DataShape,
-    output_shape: DataShape,
-    with_index_outputs: Option<DatumType>,
-}
-
-impl Op for MaxPoolFixed {
-    fn name(&self) -> Cow<str> {
-        "MaxPool".into()
-    }
-
-    op_core_lir!();
-    op_as_typed_op!();
-}
-
-impl MaxPoolFixed {
+impl MaxPool {
     fn eval_t<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
         &self,
         input: &Tensor,
+        geo: &ConcreteGeometry,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let input: ArrayViewD<T> = input.to_array_view()?;
         let input_ptr = input.as_ptr();
 
-        let mut values = unsafe { ArrayD::<T>::uninit(&*self.output_shape.shape).assume_init() };
+        let mut values = unsafe { ArrayD::<T>::uninit(&*geo.output_shape.shape).assume_init() };
         let mut indices = if self.with_index_outputs.is_some() {
-            Some(unsafe { ArrayD::<i32>::uninit(&*self.output_shape.shape).assume_init() })
+            Some(unsafe { ArrayD::<i32>::uninit(&*geo.output_shape.shape).assume_init() })
         } else {
             None
         };
-        let n = *self.input_shape.n().unwrap_or(&1);
-        let n_stride_i = self.input_shape.n_stride().unwrap_or(&0);
-        let n_stride_o = self.output_shape.n_stride().unwrap_or(&0);
+        let n = *geo.input_shape.n().unwrap_or(&1);
+        let n_stride_i = geo.input_shape.n_stride().unwrap_or(&0);
+        let n_stride_o = geo.output_shape.n_stride().unwrap_or(&0);
         unsafe {
-            self.patch.visit_output(|visitor| {
+            geo.patch.visit_output(|visitor| {
                 for n in 0..n {
                     let input_offset = n * n_stride_i;
                     let output_offset = n * n_stride_o;
-                    for c in 0..*self.input_shape.c() {
-                        let input_offset = input_offset + self.input_shape.c_stride() * c;
-                        let output_offset = output_offset + self.output_shape.c_stride() * c;
+                    for c in 0..*geo.input_shape.c() {
+                        let input_offset = input_offset + geo.input_shape.c_stride() * c;
+                        let output_offset = output_offset + geo.output_shape.c_stride() * c;
                         let max = visitor
                             .valid_offsets()
                             .map(|v| (v, *input_ptr.offset(v + input_offset as isize)))
@@ -150,7 +118,7 @@ impl MaxPoolFixed {
                             *indices
                                 .as_mut_ptr()
                                 .offset(output_offset as isize + visitor.output_offset) =
-                                max.0 as i32 / self.patch.spec.output_inner_stride as i32;
+                                max.0 as i32 / geo.patch.spec.output_inner_stride as i32;
                         }
                     }
                 }
@@ -164,29 +132,5 @@ impl MaxPoolFixed {
         } else {
             Ok(tvec!(values.into_arc_tensor()))
         }
-    }
-}
-
-impl EvalOp for MaxPoolFixed {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        dispatch_numbers!(Self::eval_t(input.datum_type())(self, &*input))
-    }
-}
-
-impl TypedOp for MaxPoolFixed {
-    as_op!();
-
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut facts = tvec!(TypedFact::dt_shape(inputs[0].datum_type, &self.output_shape.shape));
-        if let Some(idt) = self.with_index_outputs {
-            facts.push(facts[0].clone());
-            facts[1].datum_type = idt;
-        }
-        Ok(facts)
     }
 }

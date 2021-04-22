@@ -6,8 +6,8 @@ use crate::model::*;
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
-use crate::ops::cnn::Patch;
-use crate::ops::cnn::PoolSpec;
+use crate::ops::cnn::patches::Patch;
+use crate::ops::cnn::pools::{ConcreteGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
 use crate::ops::matmul::QParams;
 use crate::ops::nn::{DataFormat, DataShape};
@@ -398,19 +398,19 @@ impl ConvUnary {
         let c_dt = crate::ops::matmul::output_type(b_dt);
 
         trace!("to_im2col_pair: {:?}", self);
-        let (input_shape, geo, output_shape) =
+        let ConcreteGeometry { input_shape, patch, output_shape } =
             self.pool_spec.compute_geo(input_fact.shape.as_concrete().unwrap())?;
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
         let k = self.kernel.len() / self.output_channels();
-        let n = geo.output_shape.iter().cloned().product::<usize>();
+        let n = patch.output_shape.iter().cloned().product::<usize>();
 
         let mmm = tract_linalg::ops()
             .mmm(a_dt, b_dt, c_dt, m, k, n)
             .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
 
-        Ok((input_shape, geo, output_shape, m, k, n, mmm))
+        Ok((input_shape, patch, output_shape, m, k, n, mmm))
     }
 
     fn wire_lir_matmatmul(
@@ -455,7 +455,8 @@ impl ConvUnary {
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + PartialEq + Sum,
     {
-        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape)?;
+        let ConcreteGeometry { input_shape, patch, output_shape } =
+            self.pool_spec.compute_geo(input_full_shape)?;
         let op = DepthWise::new(
             patch,
             input_shape,
