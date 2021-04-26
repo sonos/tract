@@ -230,7 +230,6 @@ where
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
-
         let ref linear = LinearSpec::k(self.k);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);

@@ -1,4 +1,4 @@
-use super::lir_unary::{LirMatMulUnary, MatMulGeometry};
+use super::lir_unary::{LirMatMulUnary, MatMulGeometry, MatMulGeometryConcretizer};
 use super::*;
 use crate::internal::*;
 use tract_ndarray::prelude::*;
@@ -265,7 +265,7 @@ impl MatMulUnary {
         let (m, k, n, c_shape) =
             compute_shape(&self.a.shape(), b_shape, self.a_trans, self.b_trans, self.c_trans)?;
 
-        let mm = tract_linalg::ops().mmm(self.a.datum_type(), b_dt, c_dt, m, k, n).with_context(
+        let mmm = tract_linalg::ops().mmm(self.a.datum_type(), b_dt, c_dt, m, k, n).with_context(
             || {
                 format!(
                     "No matrix multiplier for {:?}x{:?} to {:?}",
@@ -280,11 +280,11 @@ impl MatMulUnary {
             Array::from_shape_fn(&self.a.shape()[0..self.a.rank() - 2], |a_prefix| unsafe {
                 let mut pa = Tensor::uninitialized_aligned_dt(
                     self.a.datum_type(),
-                    &[mm.a_pack().len(m)],
-                    mm.a_pack().alignment(),
+                    &[mmm.a_pack().len(m)],
+                    mmm.a_pack().alignment(),
                 )
                 .unwrap();
-                mm.a_pack().pack(
+                mmm.a_pack().pack(
                     &mut pa.view_mut(),
                     &self.a.view_at_prefix(a_prefix.slice()).unwrap(),
                     !self.a_trans as usize,
@@ -294,17 +294,17 @@ impl MatMulUnary {
             });
         unsafe {
             let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
-            packed_b_shape.push(mm.b_pack().len(n));
+            packed_b_shape.push(mmm.b_pack().len(n));
             wire = patch.wire_node(
                 format!("{}.pack", &*node.name),
                 super::MatMatMulPack {
-                    packer: mm.b_pack(),
+                    packer: mmm.b_pack(),
                     trans: self.b_trans,
                     output_shape: packed_b_shape,
                 },
                 &[wire],
             )?[0];
-            let b_storage = mm.b_packed(b_dt);
+            let b_storage = mmm.b_packed(b_dt);
             let rank = c_shape.len();
             let mut strides = natural_strides(&c_shape);
             let mut overrided_shape = c_shape.clone();
@@ -312,18 +312,18 @@ impl MatMulUnary {
                 overrided_shape.swap(rank - 2, rank - 1);
                 strides.swap(rank - 2, rank - 1);
             }
-            let geometry = MatMulGeometry { mmm: mm, k, m };
+            let geometry = MatMulGeometry { m, k, n, b_storage };
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
-                    b_storage,
                     c_fact: TypedFact::dt_shape(c_dt, &c_shape),
-                    geometry,
+                    geometry: MatMulGeometryConcretizer::Concrete(geometry),
                     micro_ops: packed_as,
                     c_m_axis: rank - 2 + self.c_trans as usize,
                     c_n_axis: rank - 2 + !self.c_trans as usize,
                     c_final_shape: c_shape.into(),
                     reshape_post: vec![],
+                    mmm,
                 },
                 &[wire],
             )?[0];

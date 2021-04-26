@@ -58,9 +58,13 @@ fn mmm(c: &mut Criterion) {
                 let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack().len(8)])
                     .unwrap()
                     .into_arc_tensor());
-                let geometry = MatMulGeometry { mmm: mmm.clone(), k: 48, m: 64 };
-                let op = LirMatMulUnary {
+                let geometry = MatMulGeometryConcretizer::Concrete(MatMulGeometry {
+                    k: 48,
+                    m: 64,
+                    n: 8,
                     b_storage: unsafe { mmm.b_packed(F32) },
+                });
+                let op = LirMatMulUnary {
                     c_fact: TypedFact::dt_shape(f32::datum_type(), &[8, 64]),
                     micro_ops: tract_ndarray::arr0((packed_a.into_arc_tensor(), vec![])).into_dyn(),
                     reshape_post: vec![],
@@ -68,6 +72,7 @@ fn mmm(c: &mut Criterion) {
                     c_n_axis: 0,
                     c_final_shape: (&[0, 64]).into(),
                     geometry,
+                    mmm,
                 };
                 (input, op)
             },

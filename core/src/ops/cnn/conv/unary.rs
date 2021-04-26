@@ -204,6 +204,7 @@ impl ConvUnary {
             &mmm_output_shape,
             m,
             k,
+            n.to_dim(),
             b_storage,
             c_axis,
             h_axis,
@@ -283,6 +284,7 @@ impl ConvUnary {
             &mmm_output_shape,
             m,
             k,
+            n.to_dim(),
             b_storage,
             c_axis,
             h_axis,
@@ -356,7 +358,7 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         let b_fact = model.outlet_fact(wire)?.clone();
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
-        let (input_shape, geo, output_shape, m, k, _n, mmm) = self.compute_geo(&b_fact)?;
+        let (input_shape, geo, output_shape, m, k, n, mmm) = self.compute_geo(&b_fact)?;
 
         let channel_stride = input_shape.c_stride();
         let data_offsets: Vec<isize> = geo.centers_offsets();
@@ -380,6 +382,7 @@ impl ConvUnary {
             &mmm_output_shape,
             m,
             k,
+            n.to_dim(),
             b_storage,
             c_axis,
             h_axis,
@@ -423,6 +426,7 @@ impl ConvUnary {
         mmm_output_shape: &[usize],
         m: usize,
         k: usize,
+        n: TDim,
         input_storage: MatrixStoreSpec,
         c_m_axis: usize,
         c_n_axis: usize,
@@ -433,11 +437,11 @@ impl ConvUnary {
         let mut iter = kernels.iter().cloned().zip(fused_ops.iter().cloned());
         let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 
-        let geometry = MatMulGeometry { mmm, k, m };
+        let geometry = MatMulGeometry { b_storage: input_storage, m, k, n: n.to_usize().unwrap() };
+        let geometry = crate::ops::matmul::lir_unary::MatMulGeometryConcretizer::Concrete(geometry);
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
             LirMatMulUnary {
-                b_storage: input_storage,
                 c_fact: TypedFact::dt_shape(c_datum_type, mmm_output_shape.clone()),
                 micro_ops,
                 c_m_axis,
@@ -445,6 +449,7 @@ impl ConvUnary {
                 c_final_shape: mmm_output_shape.into(),
                 reshape_post: vec![],
                 geometry,
+                mmm,
             },
             &[wire],
         )?[0];
