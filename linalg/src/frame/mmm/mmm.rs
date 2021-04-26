@@ -1,7 +1,7 @@
 use super::ScratchSpaceFusedNonLinear;
 use super::*;
 use crate::frame::Packer;
-use num_traits::{AsPrimitive, Bounded, Zero};
+use num_traits::{AsPrimitive, Zero};
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -31,6 +31,7 @@ pub trait MatMatMul:
     unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> MatrixStoreSpec;
     unsafe fn c_from_data_and_strides(
         &self,
+        item_size: usize,
         row_stride: isize,
         col_stride: isize,
     ) -> MatrixStoreSpec;
@@ -61,9 +62,8 @@ pub trait MatMatMul:
 dyn_clone::clone_trait_object!(MatMatMul);
 
 #[derive(Clone)]
-pub struct MatMatMulImpl<K, TC, TI>
+pub struct MatMatMulImpl<K, TI>
 where
-    TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
@@ -72,28 +72,25 @@ where
     pub n: usize,
 
     prefetch: Option<&'static (dyn Fn(*const u8, usize) + Send + Sync)>,
-    phantom: PhantomData<(K, TC, TI)>,
+    phantom: PhantomData<(K, TI)>,
 }
 
-unsafe impl<K, TC, TI> Send for MatMatMulImpl<K, TC, TI>
+unsafe impl<K, TI> Send for MatMatMulImpl<K, TI>
 where
-    TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
 }
 
-unsafe impl<K, TC, TI> Sync for MatMatMulImpl<K, TC, TI>
+unsafe impl<K, TI> Sync for MatMatMulImpl<K, TI>
 where
-    TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
 }
 
-impl<K, TC, TI> fmt::Debug for MatMatMulImpl<K, TC, TI>
+impl<K, TI> fmt::Debug for MatMatMulImpl<K, TI>
 where
-    TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
@@ -102,13 +99,12 @@ where
     }
 }
 
-impl<K, TC, TI> MatMatMulImpl<K, TC, TI>
+impl<K, TI> MatMatMulImpl<K, TI>
 where
-    TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
-    pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TC, TI> {
+    pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TI> {
         MatMatMulImpl { m, k, n, prefetch: crate::ops().prefetch, phantom: PhantomData }
     }
 
@@ -126,9 +122,8 @@ where
     }
 }
 
-impl<K, TC, TI> MatMatMul for MatMatMulImpl<K, TC, TI>
+impl<K, TI> MatMatMul for MatMatMulImpl<K, TI>
 where
-    TC: Datum + Copy + Debug + 'static + Bounded + AsPrimitive<TI>,
     TI: Datum + Copy + Add + Mul<Output = TI> + Zero + Debug + 'static + Neg<Output = TI>,
     K: MatMatMulKer<TI> + 'static,
     i32: AsPrimitive<TI>,
@@ -193,12 +188,13 @@ where
 
     unsafe fn c_from_data_and_strides(
         &self,
+        item_size: usize,
         row_stride: isize,
         col_stride: isize,
     ) -> MatrixStoreSpec {
         MatrixStoreSpec::Strides {
-            row_byte_stride: row_stride * TC::datum_type().size_of() as isize,
-            col_byte_stride: col_stride * TC::datum_type().size_of() as isize,
+            row_byte_stride: row_stride * item_size as isize,
+            col_byte_stride: col_stride * item_size as isize,
             row_item_stride: row_stride,
             col_item_stride: col_stride,
             mr: K::mr(),
@@ -237,7 +233,7 @@ where
                 let ref b = b.panel_b(0);
                 self.prefetch(a, b);
                 scratch.clear();
-                let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, 0, c);
+                let non_linear = scratch.for_tile::<K>(&non_linear, ia, 0, c);
                 let ref direct_c = c.tile_c(ia, 0);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
@@ -253,7 +249,7 @@ where
                     self.prefetch(a, b);
                     scratch.clear();
                     let ref direct_c = c.tile_c(ia, ib);
-                    let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, ib, c);
+                    let non_linear = scratch.for_tile::<K>(&non_linear, ia, ib, c);
                     let err = K::kernel(&MatMatMulKerSpec {
                         a: a as _,
                         b: b as _,
@@ -267,8 +263,8 @@ where
                     let ref b = b.panel_b(n / nr);
                     self.prefetch(a, b);
                     scratch.clear();
-                    let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
-                    let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, n / nr, c);
+                    let tmpc = scratch.tmp_tile_c(c.item_size(), mr, nr);
+                    let non_linear = scratch.for_tile::<K>(&non_linear, ia, n / nr, c);
                     let err = K::kernel(&MatMatMulKerSpec {
                         a: a as _,
                         b: b as _,
@@ -277,7 +273,7 @@ where
                         non_linear,
                     });
                     debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                    c.set_from_tile::<TC>(ia, n / nr, mr, n % nr, &tmpc);
+                    c.set_from_tile(ia, n / nr, mr, n % nr, &tmpc);
                 }
             }
         }
@@ -287,8 +283,8 @@ where
                 let ref b = b.panel_b(0);
                 self.prefetch(panel_a, b);
                 scratch.clear();
-                let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
-                let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, 0, c);
+                let tmpc = scratch.tmp_tile_c(c.item_size(), mr, nr);
+                let non_linear = scratch.for_tile::<K>(&non_linear, m / mr, 0, c);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
@@ -297,14 +293,14 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile::<TC>(m / mr, 0, m % mr, nr, &tmpc);
+                c.set_from_tile(m / mr, 0, m % mr, nr, &tmpc);
             } else {
                 for ib in 0..n / nr {
                     let ref b = b.panel_b(ib);
                     self.prefetch(panel_a, b);
                     scratch.clear();
-                    let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
-                    let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, ib, c);
+                    let tmpc = scratch.tmp_tile_c(c.item_size(), mr, nr);
+                    let non_linear = scratch.for_tile::<K>(&non_linear, m / mr, ib, c);
                     let err = K::kernel(&MatMatMulKerSpec {
                         a: panel_a as _,
                         b: b as _,
@@ -313,14 +309,14 @@ where
                         non_linear,
                     });
                     debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                    c.set_from_tile::<TC>(m / mr, ib, m % mr, nr, &tmpc);
+                    c.set_from_tile(m / mr, ib, m % mr, nr, &tmpc);
                 }
                 if n % nr != 0 {
                     let ref b = b.panel_b(n / nr);
                     self.prefetch(panel_a, b);
                     scratch.clear();
-                    let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
-                    let non_linear = scratch.for_tile::<TC, K>(&non_linear, m / mr, n / nr, c);
+                    let tmpc = scratch.tmp_tile_c(c.item_size(), mr, nr);
+                    let non_linear = scratch.for_tile::<K>(&non_linear, m / mr, n / nr, c);
                     let err = K::kernel(&MatMatMulKerSpec {
                         a: panel_a as _,
                         b: b as _,
@@ -329,7 +325,7 @@ where
                         non_linear,
                     });
                     debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                    c.set_from_tile::<TC>(m / mr, n / nr, m % mr, n % nr, &tmpc);
+                    c.set_from_tile(m / mr, n / nr, m % mr, n % nr, &tmpc);
                 }
             }
         }
@@ -337,9 +333,8 @@ where
     }
 }
 
-impl<K, TC, TI> fmt::Display for MatMatMulImpl<K, TC, TI>
+impl<K, TI> fmt::Display for MatMatMulImpl<K, TI>
 where
-    TC: Copy + Debug + 'static,
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI>,
 {

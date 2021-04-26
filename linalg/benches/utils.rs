@@ -8,7 +8,7 @@ use DatumType::*;
 
 pub fn packed_packed(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize, tr: bool) {
     let mut group = c.benchmark_group(format!("{}/packed_packed", name));
-    group.throughput(Throughput::Elements((m*k*n) as u64));
+    group.throughput(Throughput::Elements((m * k * n) as u64));
     let id = format!("{}x{}x{}", m, k, n);
     group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true, tr), mat_mat);
     group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false, tr), mat_mat);
@@ -19,7 +19,7 @@ pub fn packed_packed(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize
 pub fn packed_vec(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
     assert_eq!(n, 1);
     let mut group = c.benchmark_group(format!("{}/packed_vec", name));
-    group.throughput(Throughput::Elements((m*k*n) as u64));
+    group.throughput(Throughput::Elements((m * k * n) as u64));
     let id = format!("{}x{}x{}", m, k, n);
     group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true), mat_vec);
     group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false), mat_vec);
@@ -37,7 +37,7 @@ pub fn direct_conv(
     stride: usize,
 ) {
     let mut group = c.benchmark_group(format!("{}/conv", name));
-    group.throughput(Throughput::Elements((kl*p*ci*co/stride) as u64));
+    group.throughput(Throughput::Elements((kl * p * ci * co / stride) as u64));
     let id = format!("{}x{}x{}x{}", p, kl, ci, co);
     group.bench_with_input(
         BenchmarkId::new("f32", &id),

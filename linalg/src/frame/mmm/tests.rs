@@ -283,7 +283,7 @@ where
     usize: AsPrimitive<TI>,
 {
     assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl::<K, TC, TI>::new(m, k, n);
+    let op = MatMatMulImpl::<K, TI>::new(m, k, n);
     unsafe {
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
@@ -300,7 +300,9 @@ where
         op.run(
             &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
             &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
-            &mut op.c_from_data_and_strides(n as isize, 1).wrap(&found.view_mut()),
+            &mut op
+                .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
+                .wrap(&found.view_mut()),
             &[],
         )
         .unwrap();
@@ -337,7 +339,7 @@ where
     usize: AsPrimitive<TI>,
 {
     unsafe {
-        let op = MatMatMulImpl::<K, TC, TI>::new(m, k, 1);
+        let op = MatMatMulImpl::<K, TI>::new(m, k, 1);
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
                 .unwrap();
@@ -391,7 +393,7 @@ where
 {
     let a = tensor1(&*vec![TA::one(); m * k]).into_shape(&[m, k]).unwrap();
     let b = tensor1(&*vec![TB::one(); k * n]).into_shape(&[k, n]).unwrap();
-    let op = MatMatMulImpl::<K, TC, TI>::new(m, k, n);
+    let op = MatMatMulImpl::<K, TI>::new(m, k, n);
 
     let mut packed_a =
         Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
@@ -408,7 +410,7 @@ where
     op.run(
         &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
         &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
-        &mut op.c_from_data_and_strides(n as isize, 1).wrap(&mut found.view_mut()),
+        &mut op.c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1).wrap(&mut found.view_mut()),
         spec,
     )
     .unwrap();
@@ -666,7 +668,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
         usize: AsPrimitive<TI>,
     {
         unsafe {
-            let op = MatMatMulImpl::<K, TC, TI>::new(self.m(), self.k(), self.n());
+            let op = MatMatMulImpl::<K, TI>::new(self.m(), self.k(), self.n());
             let mut packed_a = Tensor::uninitialized_aligned::<TA>(
                 &[op.a_pack().len(self.m())],
                 op.a_pack().alignment(),
@@ -685,7 +687,9 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                     &self.data_cols_offsets(),
                 )
                 .wrap(&self.data.view()),
-                &mut op.c_from_data_and_strides(self.n() as isize, 1).wrap(&found.view_mut()),
+                &mut op
+                    .c_from_data_and_strides(TC::datum_type().size_of(), self.n() as isize, 1)
+                    .wrap(&found.view_mut()),
                 &[],
             )
             .unwrap();

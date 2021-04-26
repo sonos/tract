@@ -83,6 +83,7 @@ pub(super) fn eval(
                 )
             })?;
         let c_storage = mm.c_from_data_and_strides(
+            dt.size_of(),
             if c_trans { 1 } else { c_shape[rank - 1] as isize },
             if !c_trans { 1 } else { c_shape[rank - 1] as isize },
         );

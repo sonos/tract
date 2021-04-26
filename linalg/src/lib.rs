@@ -78,51 +78,47 @@ impl Ops {
 pub fn generic() -> Ops {
     Ops {
         mmm_f32: Box::new(|m, k, n| {
-            Box::new(
-                mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32, f32>, f32, f32>::new(
-                    m, k, n,
-                ),
-            )
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<f32, f32, f32, f32>, f32>::new(
+                m, k, n,
+            ))
         }),
         mmv_f32: Box::new(|m, k| {
-            Box::new(
-                mmm::MatMatMulImpl::<generic::GenericMmm4x1<f32, f32, f32, f32>, f32, f32>::new(
-                    m, k, 1,
-                ),
-            )
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x1<f32, f32, f32, f32>, f32>::new(
+                m, k, 1,
+            ))
         }),
         qmmm_i8_i32: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, i8, i32, i32>, i32, i32>::new(
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, i8, i32, i32>, i32>::new(
                 m, k, n,
             ))
         }),
         qmmv_i8_i32: Box::new(|m, k| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x1<i8, i8, i32, i32>, i32, i32>::new(
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x1<i8, i8, i32, i32>, i32>::new(
                 m, k, 1
             ))
         }),
         qmmm_i8_u8_i32: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, u8, i32, i32>, i32, i32>::new(
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, u8, i32, i32>, i32>::new(
                 m, k, n,
             ))
         }),
         qmmm_u8_i32: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<u8, u8, i32, i32>, i32, i32>::new(
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<u8, u8, i32, i32>, i32>::new(
                 m, k, n,
             ))
         }),
         qmmm_u8_u8: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<u8, u8, u8, i32>, u8, i32>::new(
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<u8, u8, u8, i32>, i32>::new(
                 m, k, n,
             ))
         }),
         qmmm_i8_i8: Box::new(|m, k, n| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, i8, i8, i32>, i8, i32>::new(
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, i8, i8, i32>, i32>::new(
                 m, k, n,
             ))
         }),
         qmmv_i8_i8: Box::new(|m, k| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x1<i8, i8, i8, i32>, i8, i32>::new(
+            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x1<i8, i8, i8, i32>, i32>::new(
                 m, k, 1,
             ))
         }),
