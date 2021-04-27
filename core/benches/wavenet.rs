@@ -31,7 +31,7 @@ fn im2col(c: &mut Criterion) {
                         8,
                         1,
                         16,
-                        tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap().b_pack(),
+                        tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap().b_pack(48),
                     )
                     .unwrap();
                     (input, op)
@@ -51,18 +51,18 @@ fn mmm(c: &mut Criterion) {
                 let mmm = tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap();
                 let packed_a = Tensor::zero_aligned_dt(
                     f32::datum_type(),
-                    &[mmm.a_pack().len(64)],
-                    mmm.a_pack().alignment(),
+                    &[mmm.a_pack(48).len(64)],
+                    mmm.a_pack(48).alignment(),
                 )
                 .unwrap();
-                let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack().len(8)])
+                let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack(48).len(8)])
                     .unwrap()
                     .into_arc_tensor());
                 let geometry = MatMulGeometryConcretizer::Concrete(MatMulGeometry {
                     k: 48,
                     m: 64,
                     n: 8,
-                    b_storage: unsafe { mmm.b_packed(F32.size_of()) },
+                    b_storage: unsafe { mmm.b_packed(F32.size_of(), 48) },
                 });
                 let op = LirMatMulUnary {
                     c_fact: TypedFact::dt_shape(f32::datum_type(), &[8, 64]),

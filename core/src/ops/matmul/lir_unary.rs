@@ -77,7 +77,7 @@ impl MatMulGeometryConcretizer {
                 let m = m.eval(symbols).to_usize()?;
                 let k = k.eval(symbols).to_usize()?;
                 let n = n.eval(symbols).to_usize()?;
-                let b_storage = unsafe { mmm.b_packed(b_datum_type.size_of()) };
+                let b_storage = unsafe { mmm.b_packed(b_datum_type.size_of(), k) };
                 Ok(Cow::Owned(MatMulGeometry { m, k, n, b_storage }))
             }
             Self::Concrete(it) => Ok(Cow::Borrowed(it)),
@@ -258,8 +258,11 @@ fn eval(
                 let (pa, fused) = ops.iter().next().unwrap();
                 let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
                 op.mmm.run_with_scratch_space(
+                    geometry.m,
+                    geometry.k,
+                    geometry.n,
                     scratch,
-                    &op.mmm.a_packed(a_dt.size_of()).wrap(&pa.view()),
+                    &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
                     &geometry
                         .b_storage
                         .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
@@ -271,8 +274,11 @@ fn eval(
             let (pa, fused) = op.micro_ops.iter().next().unwrap();
             let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
             op.mmm.run_with_scratch_space(
+                geometry.m,
+                geometry.k,
+                geometry.n,
                 scratch,
-                &op.mmm.a_packed(a_dt.size_of()).wrap(&pa.view()),
+                &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
                 &geometry.b_storage.wrap(&inputs[0].view()),
                 &mut c_storage.wrap(&c.view_mut()),
                 &f,

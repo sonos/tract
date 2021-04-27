@@ -12,14 +12,14 @@ use tract_data::internal::*;
 pub trait MatMatMul:
     Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
 {
-    fn a_pack(&self) -> Packer;
-    fn b_pack(&self) -> Packer;
+    fn a_pack(&self, k: usize) -> Packer;
+    fn b_pack(&self, k: usize) -> Packer;
 
     fn internal_type(&self) -> DatumType;
 
-    unsafe fn a_packed(&self, item_size: usize) -> MatrixStoreSpec;
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> MatrixStoreSpec;
 
-    unsafe fn b_packed(&self, item_size: usize) -> MatrixStoreSpec;
+    unsafe fn b_packed(&self, item_size: usize, k: usize) -> MatrixStoreSpec;
     unsafe fn b_from_data_and_offsets(
         &self,
         item_size: usize,
@@ -38,19 +38,25 @@ pub trait MatMatMul:
 
     unsafe fn run(
         &self,
+        m: usize,
+        k: usize,
+        n: usize,
         a: &MatrixStore,
         b: &MatrixStore,
         c: &mut MatrixStore,
         non_linear: &[FusedSpec],
     ) -> anyhow::Result<()> {
         let mut scratch = self.allocate_scratch_space();
-        self.run_with_scratch_space(&mut *scratch, a, b, c, non_linear)
+        self.run_with_scratch_space(m, k, n, &mut *scratch, a, b, c, non_linear)
     }
 
     unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace>;
     unsafe fn can_use_scratch_space(&self, scratch: &dyn ScratchSpace) -> bool;
     unsafe fn run_with_scratch_space(
         &self,
+        m: usize,
+        k: usize,
+        n: usize,
         scratch: &mut dyn ScratchSpace,
         a: &MatrixStore,
         b: &MatrixStore,
@@ -67,10 +73,6 @@ where
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
-    pub m: usize,
-    pub k: usize,
-    pub n: usize,
-
     prefetch: Option<&'static (dyn Fn(*const u8, usize) + Send + Sync)>,
     phantom: PhantomData<(K, TI)>,
 }
@@ -105,7 +107,7 @@ where
     K: MatMatMulKer<TI> + 'static,
 {
     pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TI> {
-        MatMatMulImpl { m, k, n, prefetch: crate::ops().prefetch, phantom: PhantomData }
+        MatMatMulImpl { prefetch: crate::ops().prefetch, phantom: PhantomData }
     }
 
     #[inline]
@@ -129,24 +131,24 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
-    fn a_pack(&self) -> Packer {
-        Packer::new(self.k, K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
+    fn a_pack(&self, k: usize) -> Packer {
+        Packer::new(k, K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
     }
 
-    fn b_pack(&self) -> Packer {
-        Packer::new(self.k, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
+    fn b_pack(&self, k: usize) -> Packer {
+        Packer::new(k, K::nr(), K::alignment_bytes_packed_b(), K::end_padding_packed_b())
     }
 
     fn internal_type(&self) -> DatumType {
         TI::datum_type()
     }
 
-    unsafe fn a_packed(&self, item_size: usize) -> MatrixStoreSpec {
-        MatrixStoreSpec::Packed { panel_bytes: (self.k * K::mr() * item_size) }
+    unsafe fn a_packed(&self, item_size: usize, k: usize) -> MatrixStoreSpec {
+        MatrixStoreSpec::Packed { panel_bytes: (k * K::mr() * item_size) }
     }
 
-    unsafe fn b_packed(&self, item_size: usize) -> MatrixStoreSpec {
-        MatrixStoreSpec::Packed { panel_bytes: (self.k * K::nr() * item_size) }
+    unsafe fn b_packed(&self, item_size: usize, k: usize) -> MatrixStoreSpec {
+        MatrixStoreSpec::Packed { panel_bytes: (k * K::nr() * item_size) }
     }
 
     unsafe fn b_from_data_and_offsets(
@@ -212,6 +214,9 @@ where
 
     unsafe fn run_with_scratch_space(
         &self,
+        m: usize,
+        k: usize,
+        n: usize,
         scratch: &mut dyn ScratchSpace,
         a: &MatrixStore,
         b: &MatrixStore,
@@ -221,12 +226,10 @@ where
         use anyhow::Context;
         let mr = K::mr();
         let nr = K::nr();
-        let m = self.m;
-        let n = self.n;
         let scratch = scratch
             .downcast_mut::<ScratchSpaceFusedNonLinear<TI>>()
             .context("Wrong scratch space type")?;
-        let ref linear = LinearSpec::k(self.k);
+        let ref linear = LinearSpec::k(k);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             if K::nr() == 1 && n == 1 {
@@ -339,15 +342,6 @@ where
     K: MatMatMulKer<TI>,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            fmt,
-            "(m:{}, k:{}, n:{}) ({} {}x{})",
-            self.m,
-            self.k,
-            self.n,
-            K::name(),
-            K::mr(),
-            K::nr()
-        )
+        write!(fmt, "({} {}x{})", K::name(), K::mr(), K::nr())
     }
 }

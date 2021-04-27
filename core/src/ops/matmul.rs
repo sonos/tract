@@ -90,8 +90,8 @@ pub(super) fn eval(
 
         let mut c = Tensor::uninitialized_dt(dt, &c_shape)?;
 
-        let a_pack = mm.a_pack();
-        let b_pack = mm.b_pack();
+        let a_pack = mm.a_pack(k);
+        let b_pack = mm.b_pack(k);
 
         let mut packed_a =
             Tensor::uninitialized_aligned_dt(a.datum_type(), &[a_pack.len(m)], a_pack.alignment())?;
@@ -118,8 +118,11 @@ pub(super) fn eval(
                 !b_trans as usize,
             );
             mm.run(
-                &mm.a_packed(a.datum_type().size_of()).wrap(&packed_a.view()),
-                &mm.b_packed(b.datum_type().size_of()).wrap(&packed_b.view()),
+                m,
+                k,
+                n,
+                &mm.a_packed(a.datum_type().size_of(), k).wrap(&packed_a.view()),
+                &mm.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
                 &mut c_storage.wrap(&c.view_at_prefix_mut(prefix.slice())?),
                 &[],
             )?;

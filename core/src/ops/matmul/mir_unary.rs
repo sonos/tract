@@ -280,11 +280,11 @@ impl MatMulUnary {
             Array::from_shape_fn(&self.a.shape()[0..self.a.rank() - 2], |a_prefix| unsafe {
                 let mut pa = Tensor::uninitialized_aligned_dt(
                     self.a.datum_type(),
-                    &[mmm.a_pack().len(m)],
-                    mmm.a_pack().alignment(),
+                    &[mmm.a_pack(k).len(m)],
+                    mmm.a_pack(k).alignment(),
                 )
                 .unwrap();
-                mmm.a_pack().pack(
+                mmm.a_pack(k).pack(
                     &mut pa.view_mut(),
                     &self.a.view_at_prefix(a_prefix.slice()).unwrap(),
                     !self.a_trans as usize,
@@ -294,17 +294,17 @@ impl MatMulUnary {
             });
         unsafe {
             let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
-            packed_b_shape.push(mmm.b_pack().len(n));
+            packed_b_shape.push(mmm.b_pack(k).len(n));
             wire = patch.wire_node(
                 format!("{}.pack", &*node.name),
                 super::MatMatMulPack {
-                    packer: mmm.b_pack(),
+                    packer: mmm.b_pack(k),
                     trans: self.b_trans,
                     output_shape: packed_b_shape,
                 },
                 &[wire],
             )?[0];
-            let b_storage = mmm.b_packed(b_dt.size_of());
+            let b_storage = mmm.b_packed(b_dt.size_of(), k);
             let rank = c_shape.len();
             let mut strides = natural_strides(&c_shape);
             let mut overrided_shape = c_shape.clone();

@@ -159,7 +159,7 @@ impl ConvUnary {
                 n,
                 self.group,
                 *input_shape.c_dim() / self.group,
-                mmm.b_pack(),
+                mmm.b_pack(k),
             )?,
             &[wires[0], b0],
         )?[0];
@@ -179,7 +179,7 @@ impl ConvUnary {
 
         let mut sum_b = model.wire_node(
             format!("{}.sum_b", name),
-            super::QSumB { n, r: mmm.b_pack().panel_width(), k },
+            super::QSumB { n, r: mmm.b_pack(k).panel_width(), k },
             &[im2col],
         )?[0];
 
@@ -193,7 +193,7 @@ impl ConvUnary {
         }
 
         let b_dt = model.outlet_fact(wires[0])?.datum_type;
-        let b_storage = mmm.b_packed(b_dt.size_of());
+        let b_storage = mmm.b_packed(b_dt.size_of(), k);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
         let wire = self.wire_lir_matmatmul(
             model,
@@ -268,12 +268,12 @@ impl ConvUnary {
                 n,
                 self.group,
                 *input_shape.c_dim() / self.group,
-                mmm.b_pack(),
+                mmm.b_pack(k),
             )?,
             &[wire, padding],
         )?[0];
 
-        let b_storage = mmm.b_packed(b_dt.size_of());
+        let b_storage = mmm.b_packed(b_dt.size_of(), k);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
         let mut wire = self.wire_lir_matmatmul(
             model,
@@ -431,7 +431,7 @@ impl ConvUnary {
         c_m_axis: usize,
         c_n_axis: usize,
     ) -> TractResult<OutletId> {
-        let kernels = self.kernel_as_packed_as(&mmm.a_pack(), m)?;
+        let kernels = self.kernel_as_packed_as(&mmm.a_pack(k), m)?;
         let shape = kernels.shape();
         let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
         let mut iter = kernels.iter().cloned().zip(fused_ops.iter().cloned());
