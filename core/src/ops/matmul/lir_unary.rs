@@ -273,10 +273,10 @@ impl TypedOp for LirMatMulUnary {
         let merge = |fused_micro_op: &ArrayD<Vec<ProtoFusedSpec>>,
                      additional_inputs: &[OutletId]|
          -> TractResult<Option<TypedModelPatch>> {
-            let mut new_op = self.clone();
+            let mut new_op = dbg!(self).clone();
             new_op
                 .micro_ops
-                .zip_mut_with(fused_micro_op, |lhs, rhs| lhs.1.extend(rhs.iter().cloned()));
+                .zip_mut_with(dbg!(fused_micro_op), |lhs, rhs| lhs.1.extend(rhs.iter().cloned()));
             let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
             patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
             let inputs = node
@@ -355,7 +355,6 @@ impl TypedOp for LirMatMulUnary {
                 && arg.shape()[self.c_m_axis].to_dim() == self.c_fact.shape[self.c_m_axis]
                 && (op.mini_op.is::<ops::math::Mul>() || op.mini_op.is::<ops::math::Add>())
             {
-                &arg;
                 let prefix = arg
                     .shape()
                     .iter()
@@ -368,7 +367,9 @@ impl TypedOp for LirMatMulUnary {
                         }
                     })
                     .collect::<TVec<_>>();
+
                 assert_eq!(&prefix.iter().cloned().product::<usize>() * self.m, arg.len());
+
                 let arg_len = arg.len();
                 let arg = arg.into_shape(&[arg_len])?;
                 let mut i = 0;
