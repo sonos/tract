@@ -263,14 +263,13 @@ impl TypedOp for LirMatMulUnary {
             }
         }
 
-        let merge = |fused_micro_op: &[ProtoFusedSpec],
+        let merge = |fused_micro_op: &ArrayD<Vec<ProtoFusedSpec>>,
                      additional_inputs: &[OutletId]|
          -> TractResult<Option<TypedModelPatch>> {
             let mut new_op = self.clone();
             new_op
                 .micro_ops
-                .iter_mut()
-                .for_each(|ops| ops.1.extend(fused_micro_op.iter().cloned()));
+                .zip_mut_with(fused_micro_op, |lhs, rhs| lhs.1.extend(rhs.iter().cloned()));
             let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
             patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
             let inputs = node
@@ -282,6 +281,11 @@ impl TypedOp for LirMatMulUnary {
             let output = patch.wire_node(&node.name, new_op, &inputs)?;
             patch.shunt_outside(model, succ.id.into(), output[0])?;
             Ok(Some(patch))
+        };
+
+        let merge_broadcast = |spec: &[ProtoFusedSpec], additional_inputs: &[OutletId]| {
+            let array = arr0(spec.to_vec()).into_dyn();
+            merge(&array, additional_inputs)
         };
 
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
@@ -322,38 +326,53 @@ impl TypedOp for LirMatMulUnary {
                     let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
                     let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as u32;
                     let shift = 126usize - current_exponent as usize;
-                    return merge(&[ProtoFusedSpec::QAway(tensor0(int_multi).into(), shift)], &[]);
+                    return merge_broadcast(
+                        &[ProtoFusedSpec::QAway(tensor0(int_multi).into(), shift)],
+                        &[],
+                    );
                 } else if op.mini_op.is::<ops::math::Max>() {
-                    return merge(&[ProtoFusedSpec::Max((&op.a).into())], &[]);
+                    return merge_broadcast(&[ProtoFusedSpec::Max((&op.a).into())], &[]);
                 } else if op.mini_op.is::<ops::math::Min>() {
-                    return merge(&[ProtoFusedSpec::Min((&op.a).into())], &[]);
+                    return merge_broadcast(&[ProtoFusedSpec::Min((&op.a).into())], &[]);
                 } else if op.mini_op.is::<ops::math::Mul>() {
-                    return merge(&[ProtoFusedSpec::ScalarMul((&op.a).into())], &[]);
+                    return merge_broadcast(&[ProtoFusedSpec::ScalarMul((&op.a).into())], &[]);
                 }
             } else if op.a.shape()[op.a.rank() - 2] == 1
                 && op.a.shape()[op.a.rank() - 1].to_dim() == self.c_fact.shape[self.c_m_axis]
+                && self
+                    .c_fact
+                    .shape
+                    .iter()
+                    .enumerate()
+                    .all(|(ix, d)| ix == self.c_m_axis || ix == self.c_n_axis || d == 1.to_dim())
             {
                 if op.mini_op.is::<ops::math::Mul>() {
-                    return merge(&[ProtoFusedSpec::PerRowMul((&op.a).into())], &[]);
+                    return merge_broadcast(&[ProtoFusedSpec::PerRowMul((&op.a).into())], &[]);
                 } else if op.mini_op.is::<ops::math::Add>() {
-                    return merge(&[ProtoFusedSpec::PerRowAdd((&op.a).into())], &[]);
+                    return merge_broadcast(&[ProtoFusedSpec::PerRowAdd((&op.a).into())], &[]);
                 }
             } else if op.a.shape()[op.a.rank() - 1] == 1
                 && op.a.shape()[op.a.rank() - 2].to_dim()
                     == self.c_fact.shape[self.c_fact.rank() - 2]
+                && self
+                    .c_fact
+                    .shape
+                    .iter()
+                    .enumerate()
+                    .all(|(ix, d)| ix == self.c_m_axis || ix == self.c_n_axis || d == 1.to_dim())
             {
                 let arg = &op.a;
                 if op.mini_op.is::<ops::math::Mul>() {
-                    return merge(&[ProtoFusedSpec::PerRowMul(arg.into())], &[]);
+                    return merge_broadcast(&[ProtoFusedSpec::PerRowMul(arg.into())], &[]);
                 } else if op.mini_op.is::<ops::math::Add>() {
-                    return merge(&[ProtoFusedSpec::PerRowAdd(arg.into())], &[]);
+                    return merge_broadcast(&[ProtoFusedSpec::PerRowAdd(arg.into())], &[]);
                 }
             }
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
             let other_slot = 1 - node.outputs[0].successors[0].slot;
             let other_input = succ.inputs[other_slot];
             if op.0.is::<ops::math::Add>() {
-                return merge(
+                return merge_broadcast(
                     &[ProtoFusedSpec::AddUnicast(node.inputs.len().into())],
                     &[other_input],
                 );

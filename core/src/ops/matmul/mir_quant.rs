@@ -157,7 +157,9 @@ impl EvalOp for QMatMul {
         let params = self
             .params
             .iter()
-            .map(|(name, qp)| model.add_const(format!("source_{}", name), qp.tensor(&inputs).clone()))
+            .map(|(name, qp)| {
+                model.add_const(format!("source_{}", name), qp.tensor(&inputs).clone())
+            })
             .collect::<TractResult<Vec<_>>>()?;
 
         let result = self.wire(&mut model, "adhoc", a, b, c, &params)?;
@@ -218,7 +220,9 @@ impl TypedOp for QMatMul {
             .iter()
             .map(|(name, qp)| match qp {
                 AttrOrInput::Input(o) => patch.tap_model(model, node.inputs[*o]),
-                AttrOrInput::Attr(t) => patch.add_const(format!("{}_{}", node.name, name), t.clone()),
+                AttrOrInput::Attr(t) => {
+                    patch.add_const(format!("{}_{}", node.name, name), t.clone())
+                }
             })
             .collect::<TractResult<Vec<OutletId>>>()?;
 
@@ -291,16 +295,10 @@ impl QMatMul {
             ops::math::add::bin_typed(),
             &[result, c],
         )?[0];
+        let m_axis = rank - 2 + self.c_trans as usize;
+        let n_axis = rank - 1 - self.c_trans as usize;
         let result = compensate_zero_points(
-            model,
-            name,
-            result,
-            self.c_trans,
-            k,
-            params[0],
-            params[2],
-            sum_a,
-            sum_b,
+            model, name, result, k, params[0], params[2], sum_a, sum_b, m_axis, n_axis,
         )?;
         requant(model, name, result, self.output_type, abc_scale, params[4])
     }
@@ -332,17 +330,16 @@ pub(crate) fn compensate_zero_points(
     model: &mut TypedModel,
     name: &str,
     result: OutletId,
-    c_trans: bool,
     k: TDim,
     a0: OutletId,
     b0: OutletId,
     sum_a: OutletId,
     sum_b: OutletId,
+    m_axis: usize,
+    n_axis: usize,
 ) -> TractResult<OutletId> {
     let input_shape = model.outlet_fact(result)?.shape.clone();
     let rank = model.outlet_fact(result)?.rank();
-    let m_axis = rank - 2 + c_trans as usize;
-    let n_axis = rank - 1 - c_trans as usize;
 
     debug_assert_eq!(model.outlet_fact(sum_a)?.rank(), rank - 1);
     debug_assert_eq!(model.outlet_fact(sum_b)?.rank(), rank - 1);
@@ -354,9 +351,15 @@ pub(crate) fn compensate_zero_points(
 
     let sum_b =
         model.wire_node(format!("{}.reshape_sum_b", name), AxisOp::Add(m_axis), &[sum_b])?[0];
-
-    debug_assert_eq!(model.outlet_fact(sum_a)?.shape[m_axis], model.outlet_fact(result)?.shape[m_axis]);
-    debug_assert_eq!(model.outlet_fact(sum_b)?.shape[n_axis], model.outlet_fact(result)?.shape[n_axis]);
+    eprintln!("{}", model);
+    debug_assert_eq!(
+        model.outlet_fact(sum_a)?.shape[m_axis],
+        model.outlet_fact(result)?.shape[m_axis]
+    );
+    debug_assert_eq!(
+        model.outlet_fact(sum_b)?.shape[n_axis],
+        model.outlet_fact(result)?.shape[n_axis]
+    );
 
     let a0 =
         model.wire_node(format!("{}.cast_a0", name), ops::cast::cast(i32::datum_type()), &[a0])?[0];
