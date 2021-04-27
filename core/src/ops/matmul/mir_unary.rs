@@ -304,7 +304,7 @@ impl MatMulUnary {
                 },
                 &[wire],
             )?[0];
-            let b_storage = mmm.b_packed(b_dt);
+            let b_storage = mmm.b_packed(b_dt.size_of());
             let rank = c_shape.len();
             let mut strides = natural_strides(&c_shape);
             let mut overrided_shape = c_shape.clone();

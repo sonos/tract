@@ -17,12 +17,12 @@ pub trait MatMatMul:
 
     fn internal_type(&self) -> DatumType;
 
-    unsafe fn a_packed(&self, dt: DatumType) -> MatrixStoreSpec;
+    unsafe fn a_packed(&self, item_size: usize) -> MatrixStoreSpec;
 
-    unsafe fn b_packed(&self, dt: DatumType) -> MatrixStoreSpec;
+    unsafe fn b_packed(&self, item_size: usize) -> MatrixStoreSpec;
     unsafe fn b_from_data_and_offsets(
         &self,
-        dt: DatumType,
+        item_size: usize,
         rows_offsets: &[isize],
         cols_offsets: &[isize],
     ) -> MatrixStoreSpec;
@@ -141,17 +141,17 @@ where
         TI::datum_type()
     }
 
-    unsafe fn a_packed(&self, dt: DatumType) -> MatrixStoreSpec {
-        MatrixStoreSpec::Packed { panel_bytes: (self.k * K::mr() * dt.size_of()) }
+    unsafe fn a_packed(&self, item_size: usize) -> MatrixStoreSpec {
+        MatrixStoreSpec::Packed { panel_bytes: (self.k * K::mr() * item_size) }
     }
 
-    unsafe fn b_packed(&self, dt: DatumType) -> MatrixStoreSpec {
-        MatrixStoreSpec::Packed { panel_bytes: (self.k * K::nr() * dt.size_of()) }
+    unsafe fn b_packed(&self, item_size: usize) -> MatrixStoreSpec {
+        MatrixStoreSpec::Packed { panel_bytes: (self.k * K::nr() * item_size) }
     }
 
     unsafe fn b_from_data_and_offsets(
         &self,
-        dt: DatumType,
+        item_size: usize,
         rows_offsets: &[isize],
         cols_offsets: &[isize],
     ) -> MatrixStoreSpec {
@@ -160,7 +160,7 @@ where
         // repeat the last offset to get to the panel boundary (pad to next multiple of nr)
         let wanted = (cols_offsets.len() + K::nr() - 1) / K::nr() * K::nr();
         let mut col_byte_offsets: Vec<_> =
-            cols_offsets.iter().map(|o| o * dt.size_of() as isize).collect();
+            cols_offsets.iter().map(|o| o * item_size as isize).collect();
         while col_byte_offsets.len() < wanted {
             col_byte_offsets.push(*col_byte_offsets.last().unwrap());
         }
@@ -169,7 +169,7 @@ where
         row_byte_offsets.set_len(rows_offsets.len() + 4);
         for i in 0..rows_offsets.len() {
             *row_byte_offsets.get_unchecked_mut(i) =
-                *rows_offsets.get_unchecked(i) * dt.size_of() as isize;
+                *rows_offsets.get_unchecked(i) * item_size as isize;
         }
         let pad = *row_byte_offsets.get_unchecked(rows_offsets.len() - 1);
         for i in 0..4 {

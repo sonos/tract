@@ -62,7 +62,7 @@ fn mmm(c: &mut Criterion) {
                     k: 48,
                     m: 64,
                     n: 8,
-                    b_storage: unsafe { mmm.b_packed(F32) },
+                    b_storage: unsafe { mmm.b_packed(F32.size_of()) },
                 });
                 let op = LirMatMulUnary {
                     c_fact: TypedFact::dt_shape(f32::datum_type(), &[8, 64]),

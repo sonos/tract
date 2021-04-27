@@ -88,8 +88,8 @@ fn mat_mat(
         run(
             be,
             &*mm,
-            &mm.a_packed(dt).wrap(&pa.view()),
-            &mm.b_packed(dt).wrap(&pb.view()),
+            &mm.a_packed(dt.size_of()).wrap(&pa.view()),
+            &mm.b_packed(dt.size_of()).wrap(&pb.view()),
             &mut c_sto.wrap(&mut c.view_mut()),
             cold,
         );
@@ -106,8 +106,8 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
         run(
             be,
             &*mm,
-            &mm.a_packed(dt).wrap(&pa.view()),
-            &mm.b_packed(dt).wrap(&pb.view()),
+            &mm.a_packed(dt.size_of()).wrap(&pa.view()),
+            &mm.b_packed(dt.size_of()).wrap(&pb.view()),
             &mut mm.c_view().wrap(&mut c.view_mut()),
             cold,
         );
@@ -135,11 +135,11 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
             Tensor::zero_aligned::<f32>(&[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
         let pb = Tensor::zero_aligned::<f32>(&[b_len], mm.b_pack().alignment()).unwrap();
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
-        mm.b_from_data_and_offsets(pb.datum_type(), &rows_offsets, &cols_offsets);
+        mm.b_from_data_and_offsets(pb.datum_type().size_of(), &rows_offsets, &cols_offsets);
         be.iter(move || {
             mm.run(
-                &mm.a_packed(f32::datum_type()).wrap(&pa.view()),
-                &mm.b_from_data_and_offsets(c.datum_type(), &rows_offsets, &cols_offsets)
+                &mm.a_packed(f32::datum_type().size_of()).wrap(&pa.view()),
+                &mm.b_from_data_and_offsets(c.datum_type().size_of(), &rows_offsets, &cols_offsets)
                     .wrap(&pb.view()),
                 &mut mm.c_view().wrap(&c.view_mut()),
                 &[],
@@ -156,12 +156,16 @@ fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
             Tensor::zero_aligned::<i8>(&[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
         let pb = Tensor::zero_aligned::<i8>(&[b_len], mm.b_pack().alignment()).unwrap();
         let mut c = Tensor::zero::<i8>(&[m, n]).unwrap();
-        mm.b_from_data_and_offsets(pb.datum_type(), &rows_offsets, &cols_offsets);
+        mm.b_from_data_and_offsets(pb.datum_type().size_of(), &rows_offsets, &cols_offsets);
         be.iter(move || {
             mm.run(
-                &mm.a_packed(i8::datum_type()).wrap(&pa.view()),
-                &mm.b_from_data_and_offsets(pb.datum_type(), &rows_offsets, &cols_offsets)
-                    .wrap(&pb.view()),
+                &mm.a_packed(i8::datum_type().size_of()).wrap(&pa.view()),
+                &mm.b_from_data_and_offsets(
+                    pb.datum_type().size_of(),
+                    &rows_offsets,
+                    &cols_offsets,
+                )
+                .wrap(&pb.view()),
                 &mut mm.c_view().wrap(&c.view_mut()),
                 &[],
             )

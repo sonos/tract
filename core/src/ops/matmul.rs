@@ -118,8 +118,8 @@ pub(super) fn eval(
                 !b_trans as usize,
             );
             mm.run(
-                &mm.a_packed(a.datum_type()).wrap(&packed_a.view()),
-                &mm.b_packed(b.datum_type()).wrap(&packed_b.view()),
+                &mm.a_packed(a.datum_type().size_of()).wrap(&packed_a.view()),
+                &mm.b_packed(b.datum_type().size_of()).wrap(&packed_b.view()),
                 &mut c_storage.wrap(&c.view_at_prefix_mut(prefix.slice())?),
                 &[],
             )?;

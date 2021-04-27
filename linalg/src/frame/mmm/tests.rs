@@ -298,8 +298,8 @@ where
         let mut found = tensor0(TC::max_value()).broadcast_scalar_to_shape(&[m, n]).unwrap();
 
         op.run(
-            &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
-            &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
+            &op.a_packed(TA::datum_type().size_of()).wrap(&packed_a.view()),
+            &op.b_packed(TB::datum_type().size_of()).wrap(&packed_b.view()),
             &mut op
                 .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
                 .wrap(&found.view_mut()),
@@ -353,8 +353,8 @@ where
         let mut c = Tensor::uninitialized::<TC>(&[m, 1]).unwrap();
 
         op.run(
-            &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
-            &op.b_packed(b.datum_type()).wrap(&packed_b.view()),
+            &op.a_packed(TA::datum_type().size_of()).wrap(&packed_a.view()),
+            &op.b_packed(b.datum_type().size_of()).wrap(&packed_b.view()),
             &mut op.c_view().wrap(&c.view_mut()),
             &[],
         )
@@ -408,8 +408,8 @@ where
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
 
     op.run(
-        &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
-        &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
+        &op.a_packed(TA::datum_type().size_of()).wrap(&packed_a.view()),
+        &op.b_packed(TB::datum_type().size_of()).wrap(&packed_b.view()),
         &mut op.c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1).wrap(&mut found.view_mut()),
         spec,
     )
@@ -680,9 +680,9 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
                 .broadcast_scalar_to_shape(&[self.co, self.output_width()])
                 .unwrap();
             op.run(
-                &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
+                &op.a_packed(TA::datum_type().size_of()).wrap(&packed_a.view()),
                 &op.b_from_data_and_offsets(
-                    TB::datum_type(),
+                    TB::datum_type().size_of(),
                     &self.data_rows_offsets(),
                     &self.data_cols_offsets(),
                 )
