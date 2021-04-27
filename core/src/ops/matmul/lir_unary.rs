@@ -337,36 +337,38 @@ impl TypedOp for LirMatMulUnary {
                 } else if op.mini_op.is::<ops::math::Mul>() {
                     return merge_broadcast(&[ProtoFusedSpec::ScalarMul((&op.a).into())], &[]);
                 }
-            } else if op.a.shape()[op.a.rank() - 2] == 1
-                && op.a.shape()[op.a.rank() - 1].to_dim() == self.c_fact.shape[self.c_m_axis]
-                && self
-                    .c_fact
-                    .shape
-                    .iter()
-                    .enumerate()
-                    .all(|(ix, d)| ix == self.c_m_axis || ix == self.c_n_axis || d == 1.to_dim())
-            {
-                if op.mini_op.is::<ops::math::Mul>() {
-                    return merge_broadcast(&[ProtoFusedSpec::PerRowMul((&op.a).into())], &[]);
-                } else if op.mini_op.is::<ops::math::Add>() {
-                    return merge_broadcast(&[ProtoFusedSpec::PerRowAdd((&op.a).into())], &[]);
-                }
-            } else if op.a.shape()[op.a.rank() - 1] == 1
-                && op.a.shape()[op.a.rank() - 2].to_dim()
-                    == self.c_fact.shape[self.c_fact.rank() - 2]
-                && self
-                    .c_fact
-                    .shape
-                    .iter()
-                    .enumerate()
-                    .all(|(ix, d)| ix == self.c_m_axis || ix == self.c_n_axis || d == 1.to_dim())
+            } else if op.a.shape()[self.c_n_axis] == 1
+                && op.a.shape()[self.c_m_axis].to_dim() == self.c_fact.shape[self.c_m_axis]
+                && (op.mini_op.is::<ops::math::Mul>() || op.mini_op.is::<ops::math::Add>())
             {
                 let arg = &op.a;
-                if op.mini_op.is::<ops::math::Mul>() {
-                    return merge_broadcast(&[ProtoFusedSpec::PerRowMul(arg.into())], &[]);
-                } else if op.mini_op.is::<ops::math::Add>() {
-                    return merge_broadcast(&[ProtoFusedSpec::PerRowAdd(arg.into())], &[]);
-                }
+                let prefix =
+                    op.a.shape()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(ix, d)| {
+                            if ix != self.c_n_axis && ix != self.c_m_axis {
+                                Some(*d)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<TVec<_>>();
+                assert_eq!(prefix.iter().cloned().product::<usize>() * self.m, arg.len());
+                let arg = arg.clone().into_tensor().into_shape(&[arg.len()])?;
+                let mut i = 0;
+                let arg = ArrayD::from_shape_simple_fn(&*prefix, || {
+                    let t = arg.slice(0, i * self.m, (i + 1) * self.m).unwrap();
+                    i += 1;
+                    if op.mini_op.is::<ops::math::Mul>() {
+                        vec![ProtoFusedSpec::PerRowMul(t.into())]
+                    } else if op.mini_op.is::<ops::math::Add>() {
+                        vec![ProtoFusedSpec::PerRowAdd(t.into())]
+                    } else {
+                        unreachable!()
+                    }
+                });
+                return merge(&arg, &[]);
             }
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
             let other_slot = 1 - node.outputs[0].successors[0].slot;

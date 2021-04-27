@@ -351,7 +351,6 @@ pub(crate) fn compensate_zero_points(
 
     let sum_b =
         model.wire_node(format!("{}.reshape_sum_b", name), AxisOp::Add(m_axis), &[sum_b])?[0];
-    eprintln!("{}", model);
     debug_assert_eq!(
         model.outlet_fact(sum_a)?.shape[m_axis],
         model.outlet_fact(result)?.shape[m_axis]
