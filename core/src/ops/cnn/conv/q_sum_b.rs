@@ -62,9 +62,9 @@ impl QSumB {
         for prefix in tract_ndarray::indices(&output.shape()[0..output.ndim() - 1]) {
             let mut panel = input.to_array_view::<T>()?;
             let mut output = output.view_mut();
-            for (ix, d) in prefix.slice().iter().enumerate() {
-                panel.index_axis_inplace(Axis(ix), *d);
-                output.index_axis_inplace(Axis(ix), *d);
+            for d in prefix.slice() {
+                panel.index_axis_inplace(Axis(0), *d);
+                output.index_axis_inplace(Axis(0), *d);
             }
             let panel = panel.as_slice().unwrap();
             for p in 0..(self.n.div_ceil(self.r)) {

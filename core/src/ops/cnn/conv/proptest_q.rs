@@ -21,14 +21,14 @@ pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
 }
 
 pub fn q_params() -> BoxedStrategy<QParams> {
-    (-10i32..10, -10i32..10, -10i32..10, 0.001..10f32)
+    (-10i32..10, -10i32..10, -10i32..10, -3..3i32)
         .prop_map(|(a0, b0, c0, scale)| QParams {
             a0: AttrOrInput::Attr(rctensor0(a0)),
             b0: AttrOrInput::Attr(rctensor0(b0)),
             c0: AttrOrInput::Attr(rctensor0(c0)),
             a_scale: AttrOrInput::Attr(rctensor0(1f32)),
             b_scale: AttrOrInput::Attr(rctensor0(1f32)),
-            c_scale: AttrOrInput::Attr(rctensor0(scale)),
+            c_scale: AttrOrInput::Attr(rctensor0(2f32.powi(scale))),
         })
         .boxed()
 }
@@ -162,7 +162,7 @@ impl Arbitrary for QConvProblem {
             1usize..=10,
             1usize..=8,
             1usize..=8,
-            1usize..=1, // group, FIXME
+            1usize..=3,
             (1usize..=3).prop_flat_map(|r| shapes(r)),
             q_params(),
         )
@@ -340,7 +340,6 @@ fn scale_1() {
 }
 
 #[test]
-#[ignore]
 fn group_0() {
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
@@ -351,6 +350,42 @@ fn group_0() {
         kernel: arr3(&[[[0]], [[0]]]).into_dyn(),
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn group_1() {
+    let mut qp = QParams::noop_static(i8::datum_type());
+    qp.b0 = AttrOrInput::Attr(rctensor0(1i32));
+    QConvProblem {
+        shape_in: NCHW.from_n_c_hw(1, 2, &[1]).unwrap(),
+        shape_out: NCHW.from_n_c_hw(1, 2, &[1]).unwrap(),
+        kernel_format: OIHW,
+        group: 2,
+        data: arr3(&[[[0], [0]]]).into_dyn(),
+        kernel: arr3(&[[[1]], [[0]]]).into_dyn(),
+        bias: None,
+        qp,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn group_2() {
+    let mut qp = QParams::noop_static(i8::datum_type());
+    qp.b0 = AttrOrInput::Attr(rctensor0(1i32));
+    QConvProblem {
+        shape_in: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
+        shape_out: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
+        kernel_format: OIHW,
+        group: 2,
+        data: arr2(&[[0, 0]]).into_dyn(),
+        kernel: arr3(&[[[0]], [[1]]]).into_dyn(),
+        bias: None,
+        qp,
     }
     .check()
     .unwrap();

@@ -171,21 +171,31 @@ impl ConvUnary {
         if self.group == 1 {
             sum_a.index_axis_inplace(Axis(0), 0);
         }
+
         if self.pool_spec.data_format.has_n() {
             sum_a.insert_axis_inplace(Axis(0));
         }
         let sum_a = model.add_const(format!("{}.sum_a", name), sum_a)?;
 
-        let sum_b = model.wire_node(
+        let mut sum_b = model.wire_node(
             format!("{}.sum_b", name),
             super::QSumB { n, r: mmm.b_pack().panel_width(), k },
             &[im2col],
         )?[0];
 
+        if self.group > 1 && self.pool_spec.data_format.c_is_last() {
+            let has_n = self.pool_spec.data_format.has_n() as usize;
+            sum_b = model.wire_node(
+                format!("{}.transpose_sum_b", name),
+                AxisOp::Move(has_n, 1 + has_n),
+                &[sum_b],
+            )?[0];
+        }
+
         let b_dt = model.outlet_fact(wires[0])?.datum_type;
         let b_storage = mmm.b_packed(b_dt);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
-        let res = self.wire_lir_matmatmul(
+        let wire = self.wire_lir_matmatmul(
             model,
             name,
             im2col,
@@ -198,20 +208,38 @@ impl ConvUnary {
             c_axis,
             h_axis,
         )?;
-
-        let res = qmm::compensate_zero_points(
+        let has_n = self.pool_spec.data_format.has_n() as usize;
+        let has_group = (self.group > 1) as usize;
+        let (m_axis, n_axis) = if self.pool_spec.data_format.c_is_last() {
+            (1 + has_group + has_n, has_n)
+        } else {
+            (has_group + has_n, 1 + has_n + has_group)
+        };
+        let wire = qmm::compensate_zero_points(
             model,
             name,
-            res,
-            self.pool_spec.data_format.c_is_last(),
+            wire,
             k.to_dim(),
             a0,
             b0,
             sum_a,
             sum_b,
+            m_axis,
+            n_axis,
         )?;
 
-        let wire = qmm::requant(model, name, res, c_dt, abc_scale, c0)?;
+        let mut wire = qmm::requant(model, name, wire, c_dt, abc_scale, c0)?;
+        if self.group > 1 {
+            wire = model.wire_node(
+                format!("{}.reshape_group", name),
+                AxisOp::Reshape(
+                    c_axis - 1,
+                    mmm_output_shape[c_axis - 1..][..2].iter().map(|d| d.to_dim()).collect(),
+                    tvec!((m * self.group).to_dim()),
+                ),
+                &[wire],
+            )?[0];
+        }
         let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
         Ok(wire)
     }
