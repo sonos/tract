@@ -384,39 +384,6 @@ impl TypedOp for LirMatMulUnary {
                     }
                 });
                 return merge(&arg, &[]);
-                // =======
-                //                 }
-                //             } else if op.a.shape()[op.a.rank() - 2] == 1
-                //                 && op.a.shape()[op.a.rank() - 1].to_dim() == self.c_fact.shape[self.c_m_axis]
-                //                 && self
-                //                     .c_fact
-                //                     .shape
-                //                     .iter()
-                //                     .enumerate()
-                //                     .all(|(ix, d)| ix == self.c_m_axis || ix == self.c_n_axis || d == 1.to_dim())
-                //             {
-                //                 if op.mini_op.is::<ops::math::Mul>() {
-                //                     return merge_broadcast(&[ProtoFusedSpec::PerRowMul((&op.a).into())], &[]);
-                //                 } else if op.mini_op.is::<ops::math::Add>() {
-                //                     return merge_broadcast(&[ProtoFusedSpec::PerRowAdd((&op.a).into())], &[]);
-                //                 }
-                //             } else if op.a.shape()[op.a.rank() - 1] == 1
-                //                 && op.a.shape()[op.a.rank() - 2].to_dim()
-                //                     == self.c_fact.shape[self.c_fact.rank() - 2]
-                //                 && self
-                //                     .c_fact
-                //                     .shape
-                //                     .iter()
-                //                     .enumerate()
-                //                     .all(|(ix, d)| ix == self.c_m_axis || ix == self.c_n_axis || d == 1.to_dim())
-                //             {
-                //                 let arg = &op.a;
-                //                 if op.mini_op.is::<ops::math::Mul>() {
-                //                     return merge_broadcast(&[ProtoFusedSpec::PerRowMul(arg.into())], &[]);
-                //                 } else if op.mini_op.is::<ops::math::Add>() {
-                //                     return merge_broadcast(&[ProtoFusedSpec::PerRowAdd(arg.into())], &[]);
-                //                 }
-                // >>>>>>> Fix qconv + group
             }
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
             let other_slot = 1 - node.outputs[0].successors[0].slot;
