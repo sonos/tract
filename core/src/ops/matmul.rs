@@ -73,7 +73,7 @@ pub(super) fn eval(
         let (m, k, n, c_shape) = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
         let dt = output_type(a.datum_type());
         let mm = tract_linalg::ops()
-            .mmm(a.datum_type(), b.datum_type(), dt, m, k, n)
+            .mmm(a.datum_type(), b.datum_type(), dt, Some(m), Some(k), Some(n))
             .with_context(|| {
                 format!(
                     "No matrix multiplier for {:?}x{:?} to {:?}",

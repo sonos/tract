@@ -265,16 +265,16 @@ impl MatMulUnary {
         let (m, k, n, c_shape) =
             compute_shape(&self.a.shape(), b_shape, self.a_trans, self.b_trans, self.c_trans)?;
 
-        let mmm = tract_linalg::ops().mmm(self.a.datum_type(), b_dt, c_dt, m, k, n).with_context(
-            || {
+        let mmm = tract_linalg::ops()
+            .mmm(self.a.datum_type(), b_dt, c_dt, Some(m), Some(k), Some(n))
+            .with_context(|| {
                 format!(
                     "No matrix multiplier for {:?}x{:?} to {:?}",
                     self.a.datum_type(),
                     b_dt,
                     c_dt
                 )
-            },
-        )?;
+            })?;
 
         let packed_as =
             Array::from_shape_fn(&self.a.shape()[0..self.a.rank() - 2], |a_prefix| unsafe {

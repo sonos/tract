@@ -370,21 +370,11 @@ impl TypedOp for LirMatMulUnary {
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(cast) = op.downcast_ref::<ops::cast::Cast>().map(|cast| cast.to) {
                 if cast == i8::datum_type() && self.c_fact.datum_type == i32::datum_type() {
-                    let mmm = tract_linalg::ops()
-                        .mmm(
-                            self.micro_ops.iter().next().unwrap().0.datum_type(),
-                            model.outlet_fact(node.inputs[0])?.datum_type,
-                            i8::datum_type(),
-                            self.geometry.m().to_usize().unwrap(),
-                            self.geometry.k().to_usize().unwrap(),
-                            self.geometry.n().to_usize().unwrap(),
-                        )
-                        .context("MMM instantiation")?;
                     let c_fact = TypedFact::dt_shape(i8::datum_type(), self.c_fact.shape.clone());
                     let mut patch = TypedModelPatch::fuse_with_next(
                         model,
                         &node,
-                        Self { c_fact, mmm, ..self.clone() },
+                        Self { c_fact, ..self.clone() },
                     )?;
                     patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
                     return Ok(Some(patch));

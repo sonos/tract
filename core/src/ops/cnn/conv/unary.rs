@@ -369,8 +369,11 @@ impl ConvUnary {
                     .map(move |x| x + (ici * channel_stride) as isize)
             })
             .collect();
-        let b_storage =
-            mmm.b_from_data_and_offsets(b_fact.datum_type.size_of(), &kernel_offsets, &data_offsets);
+        let b_storage = mmm.b_from_data_and_offsets(
+            b_fact.datum_type.size_of(),
+            &kernel_offsets,
+            &data_offsets,
+        );
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
 
         let wire = self.wire_lir_matmatmul(
@@ -410,7 +413,7 @@ impl ConvUnary {
         let n = patch.output_shape.iter().cloned().product::<usize>();
 
         let mmm = tract_linalg::ops()
-            .mmm(a_dt, b_dt, c_dt, m, k, n)
+            .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), Some(n))
             .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
 
         Ok((input_shape, patch, output_shape, m, k, n, mmm))

@@ -20,7 +20,9 @@ pub fn plug(ops: &mut Ops) {
         ops.mmv_f32 =
             Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1A53, f32>::new()));
         ops.mmm_f32 = Box::new(|m, _, _| {
-            if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
+            if m.is_some()
+                && (m.unwrap() >= 128 || m.unwrap().div_ceil(12) * 12 <= m.unwrap().div_ceil(8) * 8)
+            {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8A53, f32>::new())
             } else {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32>::new())
@@ -31,7 +33,9 @@ pub fn plug(ops: &mut Ops) {
         ops.mmv_f32 =
             Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32>::new()));
         ops.mmm_f32 = Box::new(|m, _, _| {
-            if m >= 128 || m.div_ceil(12) * 12 <= m.div_ceil(8) * 8 {
+            if m.is_some()
+                && (m.unwrap() >= 128 || m.unwrap().div_ceil(12) * 12 <= m.unwrap().div_ceil(8) * 8)
+            {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8, f32>::new())
             } else {
                 Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32>::new())

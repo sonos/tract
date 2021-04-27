@@ -82,7 +82,7 @@ fn mat_mat(
     be: &mut Bencher,
     &(dt, m, k, n, cold, c_trans): &(DatumType, usize, usize, usize, bool, bool),
 ) {
-    let mm = tract_linalg::ops().mmm(dt, dt, dt, m, k, n).unwrap();
+    let mm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack(k).len(m)], mm.a_pack(k).alignment()).unwrap();
     let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack(k).len(n)], mm.b_pack(k).alignment()).unwrap();
     let mut c = Tensor::zero_dt(dt, &if c_trans { [n, m] } else { [m, n] }).unwrap();
@@ -104,7 +104,7 @@ fn mat_mat(
 
 fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool)) {
     assert_eq!(n, 1);
-    let mm = tract_linalg::ops().mmm(dt, dt, dt, m, k, n).unwrap();
+    let mm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack(k).len(m)], mm.a_pack(k).alignment()).unwrap();
     let pb = Tensor::zero_dt(dt, &[k, 1]).unwrap();
     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
@@ -139,7 +139,7 @@ fn direct_conv_geo(
 fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
     unsafe {
         let (m, k, n, rows_offsets, cols_offsets, b_len) = direct_conv_geo(geo);
-        let mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, n).unwrap();
+        let mm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
         let pa =
             Tensor::zero_aligned::<f32>(&[mm.a_pack(k).len(m)], mm.a_pack(k).alignment()).unwrap();
         let pb = Tensor::zero_aligned::<f32>(&[b_len], mm.b_pack(k).alignment()).unwrap();
@@ -163,7 +163,7 @@ fn direct_conv_mmm_f32(be: &mut Bencher, geo: &ConvGeo) {
 fn direct_conv_i8(be: &mut Bencher, geo: &ConvGeo) {
     unsafe {
         let (m, k, n, rows_offsets, cols_offsets, b_len) = direct_conv_geo(geo);
-        let mm = tract_linalg::ops().mmm(I8, I8, I8, m, k, n).unwrap();
+        let mm = tract_linalg::ops().mmm(I8, I8, I8, Some(m), Some(k), Some(n)).unwrap();
         let pa =
             Tensor::zero_aligned::<i8>(&[mm.a_pack(k).len(m)], mm.a_pack(k).alignment()).unwrap();
         let pb = Tensor::zero_aligned::<i8>(&[b_len], mm.b_pack(k).alignment()).unwrap();

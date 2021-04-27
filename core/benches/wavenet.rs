@@ -31,7 +31,7 @@ fn im2col(c: &mut Criterion) {
                         8,
                         1,
                         16,
-                        tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap().b_pack(48),
+                        tract_linalg::ops().mmm(F32, F32, F32, Some(64), Some(48), Some(8)).unwrap().b_pack(48),
                     )
                     .unwrap();
                     (input, op)
@@ -48,7 +48,7 @@ fn mmm(c: &mut Criterion) {
     c.bench_function("matmatmul", |b| {
         b.iter_with_setup(
             || {
-                let mmm = tract_linalg::ops().mmm(F32, F32, F32, 64, 48, 8).unwrap();
+                let mmm = tract_linalg::ops().mmm(F32, F32, F32, Some(64), Some(48), Some(8)).unwrap();
                 let packed_a = Tensor::zero_aligned_dt(
                     f32::datum_type(),
                     &[mmm.a_pack(48).len(64)],

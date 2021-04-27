@@ -6,7 +6,7 @@ use DatumType::F32;
 
 fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     unsafe {
-        let mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, n).unwrap();
+        let mm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
         let pa =
             Tensor::uninitialized_aligned::<f32>(&[mm.a_pack(k).len(m)], mm.a_pack(k).alignment())
                 .unwrap();
