@@ -299,12 +299,12 @@ impl AxisOp {
                 {
                     if from.len() > to.len() {
                         for _ in to.len()..from.len() {
-                            tensor.insert_axis(*at)?;
+                            tensor.remove_axis(*at)?;
                         }
                     }
                     if to.len() > from.len() {
                         for _ in from.len()..to.len() {
-                            tensor.remove_axis(*at)?;
+                            tensor.insert_axis(*at)?;
                         }
                     }
                     Ok(())

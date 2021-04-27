@@ -324,6 +324,7 @@ impl MatMulUnary {
                     c_m_axis: rank - 2 + self.c_trans as usize,
                     c_n_axis: rank - 2 + !self.c_trans as usize,
                     c_final_shape: c_shape.into(),
+                    reshape_post: vec![],
                 },
                 &[wire],
             )?[0];

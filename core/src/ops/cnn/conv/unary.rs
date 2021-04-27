@@ -445,6 +445,7 @@ impl ConvUnary {
                 c_m_axis,
                 c_n_axis,
                 c_final_shape: mmm_output_shape.into(),
+                reshape_post: vec![],
             },
             &[wire],
         )?[0];

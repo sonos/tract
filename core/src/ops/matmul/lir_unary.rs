@@ -51,6 +51,7 @@ pub struct LirMatMulUnary {
     pub m: usize,
     pub k: usize,
     pub c_final_shape: ShapeFact,
+    pub reshape_post: Vec<AxisOp>,
 }
 
 impl LirMatMulUnary {
@@ -253,10 +254,16 @@ impl TypedOp for LirMatMulUnary {
         let succ = model.node(node.outputs[0].successors[0].node);
         if let Some(op) = succ.op_as::<ops::AxisOp>() {
             if op.only_shape() {
+                let mut reshape_post = self.reshape_post.clone();
+                reshape_post.push(op.clone());
                 let mut patch = TypedModelPatch::fuse_with_next(
                     model,
                     &node,
-                    Self { c_final_shape: succ.outputs[0].fact.shape.clone(), ..self.clone() },
+                    Self {
+                        c_final_shape: succ.outputs[0].fact.shape.clone(),
+                        reshape_post,
+                        ..self.clone()
+                    },
                 )?;
                 patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
                 return Ok(Some(patch));
@@ -266,10 +273,10 @@ impl TypedOp for LirMatMulUnary {
         let merge = |fused_micro_op: &ArrayD<Vec<ProtoFusedSpec>>,
                      additional_inputs: &[OutletId]|
          -> TractResult<Option<TypedModelPatch>> {
-            let mut new_op = self.clone();
+            let mut new_op = dbg!(self).clone();
             new_op
                 .micro_ops
-                .zip_mut_with(fused_micro_op, |lhs, rhs| lhs.1.extend(rhs.iter().cloned()));
+                .zip_mut_with(dbg!(fused_micro_op), |lhs, rhs| lhs.1.extend(rhs.iter().cloned()));
             let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
             patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
             let inputs = node
@@ -341,21 +348,26 @@ impl TypedOp for LirMatMulUnary {
                 && op.a.shape()[self.c_m_axis].to_dim() == self.c_fact.shape[self.c_m_axis]
                 && (op.mini_op.is::<ops::math::Mul>() || op.mini_op.is::<ops::math::Add>())
             {
-                let arg = &op.a;
-                let prefix =
-                    op.a.shape()
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(ix, d)| {
-                            if ix != self.c_n_axis && ix != self.c_m_axis {
-                                Some(*d)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<TVec<_>>();
-                assert_eq!(prefix.iter().cloned().product::<usize>() * self.m, arg.len());
-                let arg = arg.clone().into_tensor().into_shape(&[arg.len()])?;
+                let mut arg = op.a.clone().into_tensor();
+                for axis_change in self.reshape_post.iter().rev() {
+                    axis_change.recip().change_tensor_broadcast_aware(&mut arg)?;
+                }
+                dbg!(&arg);
+                let prefix = arg
+                    .shape()
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(ix, d)| {
+                        if ix != self.c_n_axis && ix != self.c_m_axis {
+                            Some(*d)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<TVec<_>>();
+                assert_eq!(dbg!(&prefix).iter().cloned().product::<usize>() * self.m, arg.len());
+                let arg_len = arg.len();
+                let arg = arg.into_shape(&[arg_len])?;
                 let mut i = 0;
                 let arg = ArrayD::from_shape_simple_fn(&*prefix, || {
                     let t = arg.slice(0, i * self.m, (i + 1) * self.m).unwrap();
