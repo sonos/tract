@@ -106,7 +106,7 @@ where
     TI: Copy + Add + Mul + Zero + Debug + 'static,
     K: MatMatMulKer<TI> + 'static,
 {
-    pub fn new(m: usize, k: usize, n: usize) -> MatMatMulImpl<K, TI> {
+    pub fn new() -> MatMatMulImpl<K, TI> {
         MatMatMulImpl { prefetch: crate::ops().prefetch, phantom: PhantomData }
     }
 

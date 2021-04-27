@@ -283,7 +283,7 @@ where
     usize: AsPrimitive<TI>,
 {
     assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl::<K, TI>::new(m, k, n);
+    let op = MatMatMulImpl::<K, TI>::new();
     unsafe {
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack(k).len(m)], op.a_pack(k).alignment())
@@ -342,7 +342,7 @@ where
     usize: AsPrimitive<TI>,
 {
     unsafe {
-        let op = MatMatMulImpl::<K, TI>::new(m, k, 1);
+        let op = MatMatMulImpl::<K, TI>::new();
         let mut packed_a =
             Tensor::uninitialized_aligned::<TA>(&[op.a_pack(k).len(m)], op.a_pack(k).alignment())
                 .unwrap();
@@ -399,7 +399,7 @@ where
 {
     let a = tensor1(&*vec![TA::one(); m * k]).into_shape(&[m, k]).unwrap();
     let b = tensor1(&*vec![TB::one(); k * n]).into_shape(&[k, n]).unwrap();
-    let op = MatMatMulImpl::<K, TI>::new(m, k, n);
+    let op = MatMatMulImpl::<K, TI>::new();
 
     let mut packed_a =
         Tensor::uninitialized_aligned::<TA>(&[op.a_pack(k).len(m)], op.a_pack(k).alignment())
@@ -679,7 +679,7 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
         usize: AsPrimitive<TI>,
     {
         unsafe {
-            let op = MatMatMulImpl::<K, TI>::new(self.m(), self.k(), self.n());
+            let op = MatMatMulImpl::<K, TI>::new();
             let mut packed_a = Tensor::uninitialized_aligned::<TA>(
                 &[op.a_pack(self.k()).len(self.m())],
                 op.a_pack(self.k()).alignment(),
