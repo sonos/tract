@@ -371,7 +371,7 @@ where
     if log_enabled!(Info) {
         terminal::render(tract, &annotations, &output_params)?;
     } else {
-        for f in &failing {
+        for f in failing.iter().sorted() {
             terminal::render_node(tract, *f, &annotations, &output_params)?;
         }
     }
