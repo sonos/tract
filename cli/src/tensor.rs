@@ -281,7 +281,7 @@ pub fn retrieve_or_make_inputs(
     let mut tmp: TVec<Vec<Tensor>> = tvec![];
     for input in tract.input_outlets() {
         let name = tract.node_name(input.node);
-        if let Some(input) = dbg!(&params.input_values).get(name) {
+        if let Some(input) = params.input_values.get(name) {
             info!("Using fixed input for input called {} ({} turn(s))", name, input.len());
             tmp.push(input.iter().map(|t| t.clone().into_tensor()).collect())
         } else {
