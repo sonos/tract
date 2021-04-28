@@ -387,13 +387,19 @@ impl TypedOp for LirMatMulUnary {
                 return merge(&arg, &[]);
             }
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
-            let other_slot = 1 - node.outputs[0].successors[0].slot;
-            let other_input = succ.inputs[other_slot];
-            if op.0.is::<ops::math::Add>() {
-                return merge_broadcast(
-                    &[ProtoFusedSpec::AddUnicast(node.inputs.len().into())],
-                    &[other_input],
-                );
+            if self.c_m_axis == self.c_final_shape.rank() - 2
+                && self.c_m_axis == self.c_final_shape.rank() - 1
+                && self.micro_ops.len() == 1
+            {
+                let other_slot = 1 - node.outputs[0].successors[0].slot;
+                let other_input = succ.inputs[other_slot];
+
+                if op.0.is::<ops::math::Add>() {
+                    return merge_broadcast(
+                        &[ProtoFusedSpec::AddUnicast(node.inputs.len().into())],
+                        &[other_input],
+                    );
+                }
             }
         };
         Ok(None)
