@@ -283,7 +283,8 @@ impl Parameters {
                     .file_name()
                     .into_string()
                     .map_err(|s| format_err!("Can't convert OSString to String ({:?})", s))?;
-                if filename.starts_with("input_") || filename.starts_with("output_") {
+                let is_input = filename.starts_with("input_");
+                if is_input || filename.starts_with("output_") {
                     let ix = filename
                         .split("_")
                         .nth(1)
@@ -293,7 +294,20 @@ impl Parameters {
                         .unwrap()
                         .parse::<usize>()?;
                     let (name, tensor) = tensor::for_data(file.path().to_str().unwrap())?;
-                    Ok(Some((ix, filename.starts_with("input_"), filename, name.unwrap(), tensor)))
+                    Ok(Some((
+                        ix,
+                        is_input,
+                        filename,
+                        name.unwrap_or_else(|| {
+                            let nodes = if is_input {
+                                raw_model.input_outlets().unwrap()
+                            } else {
+                                raw_model.output_outlets().unwrap()
+                            };
+                            raw_model.node(nodes[0].node).name.clone()
+                        }),
+                        tensor,
+                    )))
                 } else {
                     Ok(None)
                 }
