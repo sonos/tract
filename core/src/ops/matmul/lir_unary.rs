@@ -343,15 +343,18 @@ impl TypedOp for LirMatMulUnary {
                     return merge_broadcast(&[ProtoFusedSpec::Min((&op.a).into())], &[]);
                 } else if op.mini_op.is::<ops::math::Mul>() {
                     return merge_broadcast(&[ProtoFusedSpec::ScalarMul((&op.a).into())], &[]);
+                } else {
+                    return Ok(None);
                 }
-            } else if op.a.shape()[self.c_n_axis] == 1
-                && op.a.shape()[self.c_m_axis].to_dim() == self.c_fact.shape[self.c_m_axis]
+            }
+            let mut arg = op.a.clone().into_tensor();
+            for axis_change in self.reshape_post.iter().rev() {
+                axis_change.recip().change_tensor_broadcast_aware(&mut arg)?;
+            }
+            if dbg!(arg.shape())[dbg!(&self).c_n_axis] == 1
+                && arg.shape()[self.c_m_axis].to_dim() == dbg!(&self.c_fact.shape)[self.c_m_axis]
                 && (op.mini_op.is::<ops::math::Mul>() || op.mini_op.is::<ops::math::Add>())
             {
-                let mut arg = op.a.clone().into_tensor();
-                for axis_change in self.reshape_post.iter().rev() {
-                    axis_change.recip().change_tensor_broadcast_aware(&mut arg)?;
-                }
                 dbg!(&arg);
                 let prefix = arg
                     .shape()
