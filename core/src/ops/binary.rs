@@ -471,7 +471,7 @@ impl TypedOp for UnaryOp {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let mut a = self.a.clone().into_tensor();
-        if change.change_tensor_broadcast_aware(&mut a).is_ok() {
+        if change.change_tensor(&mut a, true).is_ok() {
             let op = Some(Box::new(UnaryOp::new(self.mini_op.clone(), a.into_arc_tensor())) as _);
             Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
         } else {

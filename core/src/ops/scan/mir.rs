@@ -519,7 +519,7 @@ impl Scan {
                         StateInitializer::FromInput(_) => (),
                         StateInitializer::Value(ref v) => {
                             let mut v = v.clone().into_tensor();
-                            change.change_tensor(&mut v)?;
+                            change.change_tensor(&mut v, false)?;
                             *m = InputMapping::State {
                                 initializer: StateInitializer::Value(v.into_arc_tensor()),
                             };

@@ -219,7 +219,11 @@ impl AxisOp {
         }
     }
 
-    pub fn change_shape_array<D: DimLike>(&self, shape: &mut TVec<D>) -> TractResult<()> {
+    pub fn change_shape_array<D: DimLike>(
+        &self,
+        shape: &mut TVec<D>,
+        broadcast: bool,
+    ) -> TractResult<()> {
         use std::convert::TryInto;
         match self.canonical().as_ref() {
             Add(ix) => shape.insert(*ix, D::one()),
@@ -232,7 +236,8 @@ impl AxisOp {
             }
             Reshape(at, from, to) => {
                 if shape.len() < from.len() + *at
-                    || shape.iter().skip(*at).zip(from.iter()).any(|(s, f)| &s.to_dim() != f)
+                    || (!broadcast
+                        && shape.iter().skip(*at).zip(from.iter()).any(|(s, f)| &s.to_dim() != f))
                 {
                     bail!("Incompatible reshape for shape {:?} and {:?}", shape, self);
                 }
@@ -247,7 +252,7 @@ impl AxisOp {
         Ok(())
     }
 
-    pub fn change_shape(&self, shape: &mut ShapeFact) -> TractResult<()> {
+    pub fn change_shape(&self, shape: &mut ShapeFact, broadcast: bool) -> TractResult<()> {
         match self.canonical().as_ref() {
             Add(ix) => shape.insert_axis(*ix),
             Rm(ix) => {
@@ -261,7 +266,7 @@ impl AxisOp {
             }
             _ => {
                 let mut array = shape.to_tvec();
-                self.change_shape_array(&mut array)?;
+                self.change_shape_array(&mut array, broadcast)?;
                 let mut new_shape = ShapeFact::from_dims(array);
                 std::mem::swap(shape, &mut new_shape);
                 Ok(())
@@ -269,15 +274,7 @@ impl AxisOp {
         }
     }
 
-    pub fn change_tensor(&self, tensor: &mut Tensor) -> TractResult<()> {
-        self.change_tensor_broadcast(tensor, false)
-    }
-
-    pub fn change_tensor_broadcast_aware(&self, tensor: &mut Tensor) -> TractResult<()> {
-        self.change_tensor_broadcast(tensor, true)
-    }
-
-    fn change_tensor_broadcast(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
+    pub fn change_tensor(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
         match self.canonical().as_ref() {
             Add(ix) => tensor.insert_axis(*ix),
             Rm(ix) => tensor.remove_axis(*ix),
@@ -291,7 +288,7 @@ impl AxisOp {
             }
             Reshape(at, from, to) => {
                 let mut shape: TVec<usize> = tensor.shape().into();
-                self.change_shape_array(&mut shape)?;
+                self.change_shape_array(&mut shape, broadcasting)?;
                 if tensor.set_shape(&shape).is_ok() {
                     Ok(())
                 } else if broadcasting
@@ -420,7 +417,7 @@ impl EvalOp for AxisOp {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut input = args_1!(inputs).into_tensor();
-        self.change_tensor(&mut input)?;
+        self.change_tensor(&mut input, false)?;
         Ok(tvec!(input.into_arc_tensor()))
     }
 }
@@ -430,7 +427,7 @@ impl TypedOp for AxisOp {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape = inputs[0].shape.clone();
-        self.change_shape(&mut shape)?;
+        self.change_shape(&mut shape, false)?;
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)))
     }
 
@@ -962,7 +959,7 @@ mod proptests {
                     AxisOp::arbitrary_with(shape.clone().into())
                         .prop_flat_map(move |op| {
                             let mut shape = shape.clone();
-                            op.change_shape_array(&mut shape).unwrap();
+                            op.change_shape_array(&mut shape, false).unwrap();
                             tail(len - 1, shape.clone()).prop_map(move |mut t| {
                                 t.insert(0, op.clone());
                                 t
