@@ -165,7 +165,10 @@ pub fn for_data(filename: &str) -> CliResult<(Option<String>, InferenceFact)> {
             let file =
                 fs::File::open(filename).with_context(|| format!("Can't open {:?}", filename))?;
             let proto = ::tract_onnx::tensor::proto_from_reader(file)?;
-            Ok((Some(proto.name.to_string()), Tensor::try_from(proto)?.into()))
+            Ok((
+                Some(proto.name.to_string()).filter(|s| !s.is_empty()),
+                Tensor::try_from(proto)?.into(),
+            ))
         }
         #[cfg(not(feature = "onnx"))]
         {
@@ -278,12 +281,12 @@ pub fn retrieve_or_make_inputs(
     let mut tmp: TVec<Vec<Tensor>> = tvec![];
     for input in tract.input_outlets() {
         let name = tract.node_name(input.node);
-        if let Some(input) = params.input_values.get(name) {
+        if let Some(input) = dbg!(&params.input_values).get(name) {
             info!("Using fixed input for input called {} ({} turn(s))", name, input.len());
             tmp.push(input.iter().map(|t| t.clone().into_tensor()).collect())
         } else {
             let fact = tract.outlet_typedfact(*input)?;
-            info!("Using random input for input called {:?}: {:?}", name, fact);
+            warn!("Using random input for input called {:?}: {:?}", name, fact);
             tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None)?]);
         }
     }
