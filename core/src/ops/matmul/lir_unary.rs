@@ -349,7 +349,7 @@ impl TypedOp for LirMatMulUnary {
             }
             let mut arg = op.a.clone().into_tensor();
             for axis_change in self.reshape_post.iter().rev() {
-                axis_change.recip().change_tensor_broadcast_aware(&mut arg)?;
+                axis_change.recip().change_tensor(&mut arg, true)?;
             }
             if arg.shape()[self.c_n_axis] == 1
                 && arg.shape()[self.c_m_axis].to_dim() == self.c_fact.shape[self.c_m_axis]

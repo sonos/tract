@@ -132,7 +132,7 @@ impl TypedOp for TypedConcat {
                     ConcatSlice::Var => Ok(ConcatSlice::Var),
                     ConcatSlice::Const(c) => {
                         let mut c = c.clone().into_tensor();
-                        change.change_tensor(&mut c)?;
+                        change.change_tensor(&mut c, false)?;
                         Ok(ConcatSlice::Const(c.into_arc_tensor()))
                     }
                 })
