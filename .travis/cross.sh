@@ -29,17 +29,22 @@ which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 PATH=$PATH:$HOME/.cargo/bin
 
 which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
-cd /tmp/cargo-dinghy
-if [ `uname` = "Darwin" ]
+if [ `arch` = x86_64 ]
 then
-    NAME=macos
+    cd /tmp/cargo-dinghy
+    if [ `uname` = "Darwin" ]
+    then
+        NAME=macos
+    else
+        NAME=linux
+    fi
+    VERSION=0.4.38
+    wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
+    tar vzxf cargo-dinghy.tgz --strip-components 1
+    mv cargo-dinghy $HOME/.cargo/bin
 else
-    NAME=linux
+    cargo install cargo-dinghy
 fi
-VERSION=0.4.38
-wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
-tar vzxf cargo-dinghy.tgz --strip-components 1
-mv cargo-dinghy $HOME/.cargo/bin
 )
 
 case "$PLATFORM" in
@@ -51,60 +56,60 @@ case "$PLATFORM" in
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > $HOME/.dinghy.toml
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
-    ;;
+        ;;
 
     "aarch64-linux-android"|"armv7-linux-androideabi"|"i686-linux-android"|"x86_64-linux-android")
         case "$PLATFORM" in
             "aarch64-linux-android")
                 ANDROID_CPU=aarch64
                 RUSTC_TRIPLE=aarch64-linux-android
-            ;;
+                ;;
             "armv7-linux-androideabi")
                 ANDROID_CPU=armv7
                 RUSTC_TRIPLE=armv7-linux-androideabi
-            ;;
+                ;;
             "i686-linux-android")
                 ANDROID_CPU=i686
                 RUSTC_TRIPLE=i686-linux-android
-            ;;
+                ;;
             "x86_64-linux-android")
                 ANDROID_CPU=x86_64
                 RUSTC_TRIPLE=x86_64-linux-android
-            ;;
+                ;;
         esac
 
         if [ -e /usr/local/lib/android/sdk/ndk-bundle ]
         then
             export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-        else 
+        else
             export ANDROID_SDK_HOME=$HOME/cached/android-sdk
             [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
         fi
 
         rustup target add $RUSTC_TRIPLE
         cargo dinghy --platform auto-android-$ANDROID_CPU build -p tract-linalg
-    ;;
+        ;;
 
     "aarch64-apple-ios")
         rustup target add aarch64-apple-ios
-        cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg 
-    ;;
+        cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg
+        ;;
 
     "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf")
-        case "$PLATFORM" in 
+        case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
                 export ARCH=aarch64
                 export QEMU_ARCH=aarch64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-gnu
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
-            ;;
+                ;;
             "armv6vfp-unknown-linux-gnueabihf")
                 export ARCH=armv6vfp
                 export QEMU_ARCH=arm
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
-            ;;
+                ;;
             "armv7-unknown-linux-gnueabihf")
                 export ARCH=armv7
                 export QEMU_ARCH=arm
@@ -112,11 +117,11 @@ case "$PLATFORM" in
                 export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
-            ;;
+                ;;
             *)
                 echo "unsupported platform $PLATFORM"
                 exit 1
-            ;;
+                ;;
         esac
 
         export TARGET_CC=$DEBIAN_TRIPLE-gcc
@@ -137,15 +142,15 @@ case "$PLATFORM" in
         cargo dinghy --platform $PLATFORM test --release -p tract-core $DINGHY_TEST_ARGS
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
-    ;;
+        ;;
     "wasm32-unknown-unknown")
         rustup target add wasm32-unknown-unknown
         cargo check --target wasm32-unknown-unknown -p tract-onnx -p tract-tensorflow
-    ;;
+        ;;
     *)
         echo "Don't know what to do for platform: $PLATFORM"
         exit 2
-    ;;
+        ;;
 esac
 
 if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
