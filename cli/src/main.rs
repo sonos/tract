@@ -262,11 +262,13 @@ fn main() -> tract_core::anyhow::Result<()> {
             )
         .arg(
             Arg::with_name("assert-op-count")
-            .takes_value(true)
-            .number_of_values(2)
-            .multiple(true)
-            .long("assert-op-count")
-            .help("Specified operator must appear exactly the specified number of times"),
+                .takes_value(true)
+                .empty_values(false)
+                .number_of_values(2)
+                .value_names(&["operator", "count"])
+                .multiple(true)
+                .long("assert-op-count")
+                .help("Specified operator must appear exactly the specified number of times. This argument can appear multiple times."),
             )
         .arg(
             Arg::with_name("inner")
@@ -316,10 +318,12 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(
             Arg::with_name("assert-op-count")
                 .takes_value(true)
+                .empty_values(false)
                 .number_of_values(2)
+                .value_names(&["operator", "count"])
                 .multiple(true)
                 .long("assert-op-count")
-                .help("Specified operator must appear exactly the specified number of times"),
+                .help("Specified operator must appear exactly the specified number of times. This argument can appear multiple times."),
         )
         .arg(
             Arg::with_name("assert-output-fact")
