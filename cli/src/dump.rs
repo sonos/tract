@@ -36,12 +36,7 @@ pub fn handle(
     }
     if let Some(asserts) = &params.assertions.assert_op_count {
         for (name, expected) in asserts {
-            let count = model
-                .eval_order()
-                .context("Cannot assert op count without an eval order")?
-                .into_iter()
-                .filter(|&i| &*model.node_op(i).name() == &*name)
-                .count();
+            let count = crate::utils::count_op(model, name)?;
             if count != *expected {
                 bail!("Wrong number of {} operators: expected {}, got {}", name, expected, count);
             }

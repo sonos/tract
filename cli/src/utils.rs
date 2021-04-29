@@ -1,4 +1,4 @@
-use crate::CliResult;
+use crate::{CliResult, model::Model};
 use tract_hir::internal::*;
 
 /// Compares the outputs of a node in tract and tensorflow.
@@ -35,4 +35,19 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> CliR
     }
 
     Ok(())
+}
+
+pub fn count_op(model: &dyn Model, name: &str) -> CliResult<usize> {
+    Ok(model
+        .eval_order()
+        .context("Cannot assert op count without an eval order")?
+        .into_iter()
+        .map(|i| {
+            if model.node_op(i).name() == name {
+                1
+            } else {
+                model.nested_models(i).into_iter().flat_map(|(_, m)| count_op(m, name)).sum()
+            }
+        })
+        .sum())
 }

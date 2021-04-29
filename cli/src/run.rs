@@ -42,6 +42,15 @@ pub fn handle(params: &Parameters, options: &clap::ArgMatches) -> CliResult<()> 
         crate::utils::check_inferred(&*outputs, &*facts)?;
     }
 
+    if let Some(asserts) = &params.assertions.assert_op_count {
+        for (name, expected) in asserts {
+            let count = crate::utils::count_op(&*params.tract_model, name)?;
+            if count != *expected {
+                bail!("Wrong number of {} operators: expected {}, got {}", name, expected, count);
+            }
+        }
+    }
+
     Ok(())
 }
 
