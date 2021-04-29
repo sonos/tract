@@ -261,6 +261,14 @@ fn main() -> tract_core::anyhow::Result<()> {
             .help("Infered shape and datum type must match exactly this"),
             )
         .arg(
+            Arg::with_name("assert-op-count")
+            .takes_value(true)
+            .number_of_values(2)
+            .multiple(true)
+            .long("assert-op-count")
+            .help("Specified operator must appear exactly the specified number of times"),
+            )
+        .arg(
             Arg::with_name("inner")
             .takes_value(true)
             .number_of_values(1)
@@ -304,6 +312,14 @@ fn main() -> tract_core::anyhow::Result<()> {
                 .takes_value(true)
                 .long("assert-output")
                 .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+        )
+        .arg(
+            Arg::with_name("assert-op-count")
+                .takes_value(true)
+                .number_of_values(2)
+                .multiple(true)
+                .long("assert-op-count")
+                .help("Specified operator must appear exactly the specified number of times"),
         )
         .arg(
             Arg::with_name("assert-output-fact")
