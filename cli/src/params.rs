@@ -840,6 +840,7 @@ pub fn display_params_from_clap(
 pub struct Assertions {
     pub assert_outputs: Vec<Option<Arc<Tensor>>>,
     pub assert_output_facts: Option<Vec<InferenceFact>>,
+    pub assert_op_count: Option<Vec<(String, usize)>>,
 }
 
 impl Assertions {
@@ -883,12 +884,24 @@ impl Assertions {
             let assert_output_facts: Option<Vec<InferenceFact>> = matches
                 .values_of("assert-output-fact")
                 .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
+            let assert_op_count: Option<Vec<(String, usize)>> = sub
+                .values_of("assert-op-count")
+                .map(|vs| {
+                    vs.chunks(2)
+                        .into_iter()
+                        .map(|mut args| {
+                            Some((args.next()?.to_string(), args.next()?.parse().ok()?))
+                        })
+                        .collect()
+                })
+                .flatten();
 
-            Ok(Assertions { assert_outputs, assert_output_facts })
+            Ok(Assertions { assert_outputs, assert_output_facts, assert_op_count })
         } else {
             Ok(Assertions {
                 assert_outputs: vec![None; output_names.len()],
                 assert_output_facts: None,
+                assert_op_count: None,
             })
         }
     }
