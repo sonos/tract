@@ -122,7 +122,7 @@ impl Registry {
             if let Some(o) =
                 self.binary_ops.iter().find(|bo| bo.1.as_ref().type_id() == unary.mini_op.type_id())
             {
-                let a = ast.konst(format!("{}-a", node.name), &unary.a);
+                let a = ast.konst(format!("{}-a", node.name), &unary.a)?;
                 let b = ast.mapping[&node.inputs[0]].clone();
                 return Ok(Some(invocation(&*o.0, &[a, b], &[])));
             } else if let Some(o) = self
@@ -130,7 +130,7 @@ impl Registry {
                 .iter()
                 .find(|bo| bo.2.as_ref().map(|op| op.type_id()) == Some(unary.mini_op.type_id()))
             {
-                let a = ast.konst(format!("{}-a", node.name), &unary.a);
+                let a = ast.konst(format!("{}-a", node.name), &unary.a)?;
                 let b = ast.mapping[&node.inputs[0]].clone();
                 return Ok(Some(invocation(&*o.0, &[b, a], &[])));
             }

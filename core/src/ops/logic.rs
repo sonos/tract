@@ -84,6 +84,9 @@ impl TypedOp for Iff {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if inputs[1].datum_type != inputs[2].datum_type {
+            bail!("Then and else tensors type mismatch ({:?} and {:?}).", inputs[1], inputs[2]);
+        }
         let shape = multi_broadcast(&[
             inputs[0].shape.to_tvec(),
             inputs[1].shape.to_tvec(),

@@ -611,6 +611,7 @@ impl Parameters {
                 let nnef = super::nnef(&matches);
                 let mut vec = vec!();
                 nnef.write(&m, &mut vec)?;
+                info!("Dumped, now reloading...");
                 Ok(nnef.model_for_read(&mut &*vec)?)
             });
             stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| Ok(m.declutter()?));

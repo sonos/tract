@@ -372,6 +372,9 @@ impl CoerceFrom<Value> for OutletId {
             Value::Scalar(f) => {
                 Ok(builder.wire(tract_core::ops::konst::Const::new(rctensor0(*f)), &[])?[0])
             }
+            Value::Dim(i) => {
+                Ok(builder.wire(tract_core::ops::konst::Const::new(rctensor0(i.clone())), &[])?[0])
+            }
             Value::Wire(outlet) => Ok(*outlet),
             Value::Tuple(tuple) if tuple.len() == 1 => OutletId::coerce(builder, &tuple[0]),
             _ => bail!("Can not build an outletid from {:?}", from),

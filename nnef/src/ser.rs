@@ -151,11 +151,11 @@ impl<'a> IntoAst<'a> {
             .model
             .properties
             .iter()
-            .map(|(k, v)| tuple_2(string(k), self.konst(k, v).as_ref().clone()))
-            .collect::<Vec<_>>();
+            .map(|(k, v)| Ok(tuple_2(string(k), self.konst(k, v)?.as_ref().clone())))
+            .collect::<TractResult<Vec<_>>>()?;
         properties.push(tuple_2(
             string("tract_nnef_format_version".to_string()),
-            self.konst("tract_nnef_format_version", &rctensor0("alpha1".to_string()))
+            self.konst("tract_nnef_format_version", &rctensor0("alpha1".to_string()))?
                 .as_ref()
                 .clone(),
         ));
@@ -256,11 +256,19 @@ impl<'a> IntoAst<'a> {
         }
     }
 
-    pub fn konst(&mut self, name: impl Into<String>, tensor: &Arc<Tensor>) -> Arc<RValue> {
+    pub fn konst(
+        &mut self,
+        name: impl Into<String>,
+        tensor: &Arc<Tensor>,
+    ) -> TractResult<Arc<RValue>> {
         self.do_konst(name, tensor, false)
     }
 
-    pub fn konst_variable(&mut self, name: impl Into<String>, tensor: &Arc<Tensor>) -> Arc<RValue> {
+    pub fn konst_variable(
+        &mut self,
+        name: impl Into<String>,
+        tensor: &Arc<Tensor>,
+    ) -> TractResult<Arc<RValue>> {
         self.do_konst(name, tensor, true)
     }
 
@@ -269,31 +277,35 @@ impl<'a> IntoAst<'a> {
         name: impl Into<String>,
         tensor: &Arc<Tensor>,
         force_variable: bool,
-    ) -> Arc<RValue> {
+    ) -> TractResult<Arc<RValue>> {
         if !force_variable && tensor.is_uniform() && tensor.len() > 0 {
             if tensor.datum_type() == String::datum_type() {
-                string(tensor.to_scalar::<String>().unwrap()).into()
-            } else {
-                numeric(tensor.cast_to_scalar::<f32>().unwrap()).into()
-            }
-        } else {
-            let name = name.into();
-            self.tensors.push((name.clone(), tensor.clone()));
-            let id = self.scoped_id(&name);
-            self.assignment(
-                &id,
-                RValue::Invocation(Invocation {
-                    id: "variable".to_string(),
-                    generic_type_name: Some(TypeName::Scalar),
-                    arguments: vec![
-                        named_arg("label", string(&name)),
-                        named_arg("shape", ints(tensor.shape())),
-                    ],
-                })
-                .into(),
-            );
-            ident(id).into()
+                return Ok(string(tensor.to_scalar::<String>().unwrap()).into());
+            } else if tensor.datum_type() == DatumType::F32 {
+                return Ok(numeric(tensor.cast_to_scalar::<f32>().unwrap()).into());
+            } else if self.framework.registries.iter().any(|reg| reg.id == "tract_core") {
+                self.registries.push("tract_core".into());
+                let value = numeric(tensor.cast_to_scalar::<i64>()?);
+                let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
+                return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));
+            };
         }
+        let name = name.into();
+        self.tensors.push((name.clone(), tensor.clone()));
+        let id = self.scoped_id(&name);
+        self.assignment(
+            &id,
+            RValue::Invocation(Invocation {
+                id: "variable".to_string(),
+                generic_type_name: Some(TypeName::Scalar),
+                arguments: vec![
+                    named_arg("label", string(&name)),
+                    named_arg("shape", ints(tensor.shape())),
+                ],
+            })
+            .into(),
+        );
+        Ok(ident(id).into())
     }
 
     fn assignment(&mut self, name: impl Into<String>, right: Arc<RValue>) {
