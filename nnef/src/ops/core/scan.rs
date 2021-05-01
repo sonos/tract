@@ -71,7 +71,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
             InputMapping::State { initializer } => {
                 let initializer = match &initializer {
                     &StateInitializer::Value(v) => {
-                        ast.konst_variable(format!("{}_state_init_{}", node.name, state.len()), v)
+                        ast.konst_variable(format!("{}_state_init_{}", node.name, state.len()), v)?
                     }
                     &StateInitializer::FromInput(slot) => ast.mapping[&node.inputs[*slot]].clone(),
                 }
@@ -97,7 +97,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
         }
     }
     for tensor in body_tensors.iter().sorted_by_key(|t| &t.label) {
-        let t = ast.konst_variable(&tensor.label, &tensor.value);
+        let t = ast.konst_variable(&tensor.label, &tensor.value)?;
         full.push(tuple_2(string(&tensor.parameter_id), t.as_ref().clone()));
     }
     for slot in 0..node.outputs.len() {

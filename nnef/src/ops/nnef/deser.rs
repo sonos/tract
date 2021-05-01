@@ -472,5 +472,6 @@ pub fn select(
     let true_value = invocation.named_arg_as(builder, "true_value")?;
     let false_value = invocation.named_arg_as(builder, "false_value")?;
     let inputs = crate::registry::multicast(builder, &[cond, true_value, false_value])?;
+
     builder.wire(ops::logic::Iff {}, &inputs)
 }

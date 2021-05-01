@@ -76,9 +76,9 @@ fn parameters() -> Vec<Parameter> {
 fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let op = node.op_as::<TreeEnsembleClassifier>().context("wrong op")?;
     let input = ast.mapping[&node.inputs[0]].clone();
-    let trees = ast.konst_variable(format!("{}_trees", node.name), &op.ensemble.data.trees);
-    let nodes = ast.konst_variable(format!("{}_nodes", node.name), &op.ensemble.data.nodes);
-    let leaves = ast.konst_variable(format!("{}_leaves", node.name), &op.ensemble.data.leaves);
+    let trees = ast.konst_variable(format!("{}_trees", node.name), &op.ensemble.data.trees)?;
+    let nodes = ast.konst_variable(format!("{}_nodes", node.name), &op.ensemble.data.nodes)?;
+    let leaves = ast.konst_variable(format!("{}_leaves", node.name), &op.ensemble.data.leaves)?;
     let agg = match op.ensemble.aggregate_fn {
         Aggregate::Min => "MIN",
         Aggregate::Max => "MAX",

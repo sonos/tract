@@ -25,7 +25,7 @@ pub fn konst(
     node: &TypedNode,
     op: &ops::konst::Const,
 ) -> TractResult<Option<Arc<RValue>>> {
-    Ok(Some(ast.konst(&node.name, &op.0)))
+    Ok(Some(ast.konst(&node.name, &op.0)?))
 }
 
 pub fn concat(
@@ -39,12 +39,12 @@ pub fn concat(
         .iter()
         .enumerate()
         .map(|(ix, s)| match s {
-            ops::array::ConcatSlice::Var => ast.mapping[inputs.next().unwrap()].as_ref().clone(),
+            ops::array::ConcatSlice::Var => Ok(ast.mapping[inputs.next().unwrap()].as_ref().clone()),
             ops::array::ConcatSlice::Const(t) => {
-                ast.konst(format!("{}.const-{}", node.name, ix), t).as_ref().clone()
+                Ok(ast.konst(format!("{}.const-{}", node.name, ix), t)?.as_ref().clone())
             }
         })
-        .collect::<TVec<RValue>>();
+        .collect::<TractResult<TVec<RValue>>>()?;
     Ok(Some(invocation("concat", &[array(&wires).into()], &[("axis", numeric(op.axis))])))
 }
 
@@ -193,7 +193,7 @@ pub fn conv_or_deconv(
     let mut kernel_shape = tvec!(co, ci / group);
     kernel_shape.extend(pool_spec.kernel_shape.iter().copied());
     weights.set_shape(&*kernel_shape)?;
-    let weigths = ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor());
+    let weigths = ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?;
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
     let conv_fragment = conv_or_deconv_fragment(ast, pool_spec.data_format, pool_spec.rank(), deconv);
     let padding = match &pool_spec.padding {
@@ -211,7 +211,7 @@ pub fn conv_or_deconv(
     };
     let mut inputs = tvec![wire, weigths];
     if let Some(bias) = bias.as_ref() {
-        let bias = ast.konst(format!("{}_bias", node.name), bias);
+        let bias = ast.konst(format!("{}_bias", node.name), bias)?;
         inputs.push(bias)
     }
     let mut named_args = tvec![
@@ -434,7 +434,7 @@ pub fn matmul_unary(
     node: &TypedNode,
     op: &ops::matmul::MatMulUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
-    let a = ast.konst(format!("{}_a", node.name), &op.a);
+    let a = ast.konst(format!("{}_a", node.name), &op.a)?;
     let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[0]].clone());
     let c = if op.c_trans {
         invocation(

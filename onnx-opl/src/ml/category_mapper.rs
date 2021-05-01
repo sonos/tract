@@ -221,15 +221,15 @@ fn parameters_reverse_lookup() -> Vec<Parameter> {
 fn dump_direct_lookup(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let op = node.op_as::<DirectLookup>().context("wrong op")?;
-    let keys = ast.konst_variable(format!("{}.values", node.name), &op.values);
-    let fallback = ast.konst_variable(format!("{}.fallback", node.name), &op.fallback_value);
+    let keys = ast.konst_variable(format!("{}.values", node.name), &op.values)?;
+    let fallback = ast.konst_variable(format!("{}.fallback", node.name), &op.fallback_value)?;
     Ok(Some(invocation("tract_onnx_ml_direct_lookup", &[input, keys, fallback], &[])))
 }
 
 fn dump_reverse_lookup(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let op = node.op_as::<ReverseLookup>().context("wrong op")?;
-    let values = ast.konst_variable(format!("{}.keys", node.name), &op.keys);
+    let values = ast.konst_variable(format!("{}.keys", node.name), &op.keys)?;
     Ok(Some(invocation(
         "tract_onnx_ml_reverse_lookup",
         &[input, values],
