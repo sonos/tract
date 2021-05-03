@@ -132,7 +132,10 @@ cd $CACHEDIR
     -O -i S,40,f32 --output-node output --pulse 24 \
     dump -q \
     --assert-op-count Add 2 --assert-op-count Mul 22 --assert-op-count Max 0 \
-    --assert-op-count LirMatMulUnary 22
+    --assert-op-count LirMatMulUnary 27 \
+    --assert-op-count MatMatMulPack 6
+    # LirMatMulUnary: 1 output + 1 lda + 5 tdnn + 2*(4 + 4 + 2) lstm
+    # MatMatMulPack: 2*(2) + tdnn1 + output
 
 ./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 \
     dump -q \
