@@ -43,7 +43,7 @@ impl<'a> IntoAst<'a> {
         let prefix = Self::extract_prefix(model);
         IntoAst {
             framework,
-            registries: vec![],
+            registries: vec!(),
             prefix,
             model,
             parameters: vec![],
@@ -54,6 +54,16 @@ impl<'a> IntoAst<'a> {
             body: vec![],
             parent: None,
         }
+    }
+
+    fn ensure_registry(&mut self, id: &str) -> TractResult<()> {
+        if !self.framework.registries.iter().any(|r| r.id == id) {
+            bail!("Registry {} required, consider allowing it on the NNEF framework.", id);
+        }
+        if !self.registries.iter().any(|r| r == id) {
+            self.registries.push(id.to_string());
+        }
+        Ok(())
     }
 
     fn extract_prefix(model: &TypedModel) -> Option<String> {
@@ -168,6 +178,7 @@ impl<'a> IntoAst<'a> {
             id = "_".to_string() + &id;
         }
         let mut extension = vec![];
+        self.registries.sort();
         for reg in self.registries {
             if reg != "tract_nnef" {
                 extension.push(vec!["tract_registry".to_string(), reg]);
@@ -199,9 +210,7 @@ impl<'a> IntoAst<'a> {
     fn node(&mut self, node: &TypedNode) -> TractResult<TVec<Arc<RValue>>> {
         for reg in &self.framework.registries {
             if let Some(outputs) = reg.serialize(self, node)? {
-                if !self.registries.contains(&reg.id) {
-                    self.registries.push(reg.id.clone())
-                }
+                self.ensure_registry(&reg.id)?;
                 let scoped = self.scoped_id(&node.name);
                 let names: Vec<String> = (0..node.outputs.len())
                     .map(|ix| if ix > 0 { format!("{}_{}", scoped, ix) } else { scoped.clone() })
@@ -283,8 +292,7 @@ impl<'a> IntoAst<'a> {
                 return Ok(string(tensor.to_scalar::<String>().unwrap()).into());
             } else if tensor.datum_type() == DatumType::F32 {
                 return Ok(numeric(tensor.cast_to_scalar::<f32>().unwrap()).into());
-            } else if self.framework.registries.iter().any(|reg| reg.id == "tract_core") {
-                self.registries.push("tract_core".into());
+            } else if self.ensure_registry("tract_core").is_ok() {
                 let value = numeric(tensor.cast_to_scalar::<i64>()?);
                 let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
                 return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));

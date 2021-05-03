@@ -1,3 +1,7 @@
+## Unreleased
+* ONNX ConvTranspose support (and NNEF deconv)
+* Fixes around integer serialisation in NNEF
+
 ## 0.14.0 - 2021-04-19
 
 * low-level functions in linalg are now version tagged: two versions of tract can now co-exist in the same binary
