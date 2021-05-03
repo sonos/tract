@@ -130,27 +130,13 @@ cd $CACHEDIR
 
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
     -O -i S,40,f32 --output-node output --pulse 24 \
-    dump --assert-op-count Add 2 --assert-op-count Mul 22 --assert-op-count Max 0
+    dump -q \
+    --assert-op-count Add 2 --assert-op-count Mul 22 --assert-op-count Max 0 \
+    --assert-op-count LirMatMulUnary 22
 
-# fragile test (generated names...) but kinda vital for AM perf
-./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-    -i S,40 --output-node output dump \
-    --node-name "fastlstm1.c_final.extracted.fastlstm1.four_parts" \
-    | grep -c MatMul | grep 4
-
-./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
-    -i S,40 --output-node output dump \
-    --node-name "fastlstm2.c_final.extracted.fastlstm2.four_parts" \
-    | grep -c MatMul | grep 4
-
-[ ! -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 --pass type dump --op-name AddAxis)" ]
-[ -z "$(./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 dump --op-name AddAxis)" ]
-
-#./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
-#    -f kaldi --output-node output \
-#    --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
-#    -i Sx40 --pulse 24 cost -q \
-#    --assert-cost "FMA(F32)=23201280,Div(F32)=20480,Buffer(F32)=1896"
+./target/release/tract $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 \
+    dump -q \
+    --assert-op-count AddAxis 0
 
 ./target/release/tract $CACHEDIR/en_libri_real/model.raw.txt \
     -f kaldi --output-node output \
