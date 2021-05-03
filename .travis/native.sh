@@ -128,6 +128,10 @@ cd $CACHEDIR
     -i S,20,f32 --pulse 8 dump --cost -q \
     --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
 
+./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
+    -O -i S,40,f32 --output-node output --pulse 24 \
+    dump --assert-op-count Add 2 --assert-op-count Mul 22 --assert-op-count Max 0
+
 # fragile test (generated names...) but kinda vital for AM perf
 ./target/release/tract $CACHEDIR/mdl-en-2019-Q3-librispeech.onnx \
     -i S,40 --output-node output dump \
@@ -178,6 +182,12 @@ done
 if [ -e "$HOME/.aws/credentials" ]
 then
     BENCH_OPTS="--max-iters 1" sh .travis/bundle-entrypoint.sh
+    ./target/release/tract $CACHEDIR/en_tdnn_15M.onnx \
+            -O -i S,40,f32 --output-node output --pulse 24 \
+            dump --assert-op-count Add 2 --assert-op-count Mul 22 --assert-op-count Max 0
+    ./target/release/tract .cached/en_tdnn_lstm_bn_q7/model.onnx \
+            -O -i S,40,f32 --output-node output --pulse 24 \
+            dump --assert-op-count Add 13 --assert-op-count Mul 17 --assert-op-count Max 7
     (
     cd onnx/test_cases
     [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
