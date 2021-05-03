@@ -2,7 +2,6 @@ version 1.0;
 
 extension tract_registry pulse;
 extension tract_registry tract_core;
-extension tract_registry tract_core;
 
 fragment scan_body_1(
     c: tensor<scalar>,
