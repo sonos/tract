@@ -234,7 +234,7 @@ where
         let ref linear = LinearSpec::k(self.k);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
-            if n == 1 {
+            if K::nr() == 1 && n == 1 {
                 let ref b = b.panel_b(0);
                 self.prefetch(a, b);
                 scratch.clear();
@@ -284,7 +284,7 @@ where
         }
         if m % mr != 0 {
             let ref panel_a = a.panel_a(m / mr);
-            if n == 1 {
+            if K::nr() == 1 && n == 1 {
                 let ref b = b.panel_b(0);
                 self.prefetch(panel_a, b);
                 scratch.clear();
