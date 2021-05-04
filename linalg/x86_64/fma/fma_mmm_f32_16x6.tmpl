@@ -99,8 +99,6 @@ fma_mmm_f32_16x6_{{suffix}} proc
     je      {{L}}packed_packed
     cmp     rsi,  2
     je      {{L}}packed_tops_and_offsets
-    cmp     rsi,  3
-    je      {{L}}packed_vec
 
     jmp     {{L}}unimplemented
 
@@ -202,24 +200,6 @@ fma_mmm_f32_16x6_{{suffix}} proc
     jnz             {{L}}main_loop_packed_packed
 
     jmp             {{L}}non_linear
-
-{{L}}packed_vec:
-    mov     rax,   [rax + 8]    // A
-    mov     rsi,   [rbx + 16]   // B stride
-    mov     rbx,   [rbx + 8]    // B ptr
-
-{{L}}packed_vec_loop:
-    vbroadcastss    ymm14,  dword ptr [rbx]
-    vmovaps         ymm12,  [rax]
-    vmovaps         ymm13,  [rax + 32]
-
-    vfmadd231ps     ymm0,   ymm12, ymm14
-    vfmadd231ps     ymm1,   ymm13, ymm14
-
-    add             rbx,    rsi
-    add             rax,    64
-    dec             rcx
-    jnz             {{L}}packed_vec_loop
 
 {{L}}non_linear:
 

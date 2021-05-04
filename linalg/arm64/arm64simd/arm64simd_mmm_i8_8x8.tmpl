@@ -56,8 +56,6 @@
     beq         .packed_packed
     cmp         x4, #2
     beq         .packed_tops_and_offsets
-    cmp         x4, #3
-    beq         .packed_vec_strides
     b           .unsupported
 
 .packed_tops_and_offsets:
@@ -160,64 +158,6 @@
     bne .packed_packed_loop_1
 
     b .non_linear
-
-.packed_vec_strides:
-    // x2 ->  b ptr
-    ldr         x4, [x8, #16]    // b stride
-
-    cmp         x3, #4
-    blt         .packed_vec_strides_loop_1
-
-.packed_vec_strides_loop_4:
-    ld1         { v0.16b, v1.16b }, [ x1 ], #32
-    ld1         { v4.b }[0], [ x2 ], x4
-    ld1         { v4.b }[1], [ x2 ], x4
-    ld1         { v4.b }[2], [ x2 ], x4
-    ld1         { v4.b }[3], [ x2 ], x4
-
-    sshll2      v3.8h, v1.16b, 0
-    sshll       v2.8h, v1.8b, 0
-    sshll2      v1.8h, v0.16b, 0
-    sshll       v0.8h, v0.8b, 0
-
-    sshll       v4.8h, v4.8b, 0
-
-    smlal       v16.4s, v0.4h, v4.h[0]
-    smlal2      v17.4s, v0.8h, v4.h[0]
-    smlal       v18.4s, v1.4h, v4.h[1]
-    smlal2      v19.4s, v1.8h, v4.h[1]
-    smlal       v20.4s, v2.4h, v4.h[2]
-    smlal2      v21.4s, v2.8h, v4.h[2]
-    smlal       v22.4s, v3.4h, v4.h[3]
-    smlal2      v23.4s, v3.8h, v4.h[3]
-
-    subs        x3, x3, #4
-    cmp         x3, #4
-    bge         .packed_vec_strides_loop_4
-
-    add         v16.4s, v16.4s, v18.4s
-    add         v17.4s, v17.4s, v19.4s
-    add         v20.4s, v20.4s, v22.4s
-    add         v21.4s, v21.4s, v23.4s
-
-    add         v16.4s, v16.4s, v20.4s
-    add         v17.4s, v17.4s, v21.4s
-
-    cmp         x3, #0
-    beq         .non_linear
-
-.packed_vec_strides_loop_1:
-
-    ld1         { v0.8b }, [ x1 ], #8
-    sshll       v0.8h, v0.8b, 0
-    ld1         { v4.b }[0], [ x2 ], x4
-    sshll       v4.8h, v4.8b, 0
-
-    smlal       v16.4s, v0.4h, v4.h[0]
-    smlal2      v17.4s, v0.8h, v4.h[0]
-
-    subs        x3, x3, #1
-    bne         .packed_vec_strides_loop_1
 
 .non_linear:
     ldr         x1, [x0, #32]
