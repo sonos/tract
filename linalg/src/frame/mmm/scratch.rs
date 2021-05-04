@@ -158,9 +158,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                             item_count,
                             ..
                         } => (*row_item_stride, *col_item_stride, *item_count),
-                        MatrixStore::VecStride { item_stride, item_count, .. } => {
-                            (*item_stride, 1, *item_count)
-                        }
                         _ => panic!(),
                     };
                     let tile_offset = rsc * down as isize * K::mr() as isize

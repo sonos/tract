@@ -211,19 +211,6 @@ where
                         ab[3][3] += a[3].as_() * b3.as_();
                     }
                 }
-                (Packed { ptr: a }, VecStride { ptr: b, byte_stride, .. }, Mul { k }) => {
-                    let a = a as *const TA;
-                    let b = b as *const TB;
-                    for i in 0..k {
-                        let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                        let b = *b
-                            .offset(i as isize * byte_stride / std::mem::size_of::<TB>() as isize);
-                        ab[0][0] += a[0].as_() * b.as_();
-                        ab[1][0] += a[1].as_() * b.as_();
-                        ab[2][0] += a[2].as_() * b.as_();
-                        ab[3][0] += a[3].as_() * b.as_();
-                    }
-                }
                 _ => return 1,
             }
             let mut pnl = spec.non_linear;
@@ -381,14 +368,6 @@ where
                     c[2 * csc + 3 * rsc] = ab[3][2].as_();
                     c[3 * csc + 3 * rsc] = ab[3][3].as_();
                 }
-                VecStride { ptr: c, byte_stride, .. } => {
-                    let stride = byte_stride / std::mem::size_of::<TC>() as isize;
-                    let c: *mut TC = c as _;
-                    *c.offset(0 * stride) = ab[0][0].as_();
-                    *c.offset(1 * stride) = ab[1][0].as_();
-                    *c.offset(2 * stride) = ab[2][0].as_();
-                    *c.offset(3 * stride) = ab[3][0].as_();
-                }
                 _ => return 1,
             }
         }
@@ -529,19 +508,6 @@ where
                         ab[3] += a[3].as_() * b0.as_();
                     }
                 }
-                (Packed { ptr: a }, VecStride { ptr: b, byte_stride, .. }, Mul { k }) => {
-                    let a = a as *const TA;
-                    let b = b as *const TB;
-                    for i in 0..k {
-                        let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                        let b = *b
-                            .offset(i as isize * byte_stride / std::mem::size_of::<TB>() as isize);
-                        ab[0] += a[0].as_() * b.as_();
-                        ab[1] += a[1].as_() * b.as_();
-                        ab[2] += a[2].as_() * b.as_();
-                        ab[3] += a[3].as_() * b.as_();
-                    }
-                }
                 _ => return 1,
             }
             let mut pnl = spec.non_linear;
@@ -644,14 +610,6 @@ where
                     c[1 * rsc] = ab[1].as_();
                     c[2 * rsc] = ab[2].as_();
                     c[3 * rsc] = ab[3].as_();
-                }
-                VecStride { ptr: c, byte_stride, .. } => {
-                    let stride = byte_stride / std::mem::size_of::<TC>() as isize;
-                    let c: *mut TC = c as _;
-                    *c.offset(0 * stride) = ab[0].as_();
-                    *c.offset(1 * stride) = ab[1].as_();
-                    *c.offset(2 * stride) = ab[2].as_();
-                    *c.offset(3 * stride) = ab[3].as_();
                 }
                 _ => return 1,
             }
@@ -800,18 +758,6 @@ where
                         ab[2][1] += a[2].as_() * b1.as_();
                     }
                 }
-                (Packed { ptr: a }, VecStride { ptr: b, byte_stride, .. }, Mul { k }) => {
-                    let a = a as *const TA;
-                    let b = b as *const TB;
-                    for i in 0..k {
-                        let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
-                        let b = *b
-                            .offset(i as isize * byte_stride / std::mem::size_of::<TB>() as isize);
-                        ab[0][0] += a[0].as_() * b.as_();
-                        ab[1][0] += a[1].as_() * b.as_();
-                        ab[2][0] += a[2].as_() * b.as_();
-                    }
-                }
                 _ => return 1,
             }
             let mut pnl = spec.non_linear;
@@ -942,13 +888,6 @@ where
                     c[1 * csc + 1 * rsc] = ab[1][1].as_();
                     c[0 * csc + 2 * rsc] = ab[2][0].as_();
                     c[1 * csc + 2 * rsc] = ab[2][1].as_();
-                }
-                VecStride { ptr: c, byte_stride, .. } => {
-                    let stride = byte_stride / std::mem::size_of::<TC>() as isize;
-                    let c: *mut TC = c as _;
-                    *c.offset(0 * stride) = ab[0][0].as_();
-                    *c.offset(1 * stride) = ab[1][0].as_();
-                    *c.offset(2 * stride) = ab[2][0].as_();
                 }
                 _ => return 1,
             }

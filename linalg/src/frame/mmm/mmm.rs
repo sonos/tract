@@ -26,8 +26,6 @@ pub trait MatMatMul:
         rows_offsets: &[isize],
         cols_offsets: &[isize],
     ) -> MatrixStoreSpec;
-    unsafe fn b_vec_from_data_and_stride(&self, dt: DatumType, stride: isize) -> MatrixStoreSpec;
-    unsafe fn b_vec_from_data(&self, dt: DatumType) -> MatrixStoreSpec;
 
     unsafe fn c_view(&self) -> MatrixStoreSpec;
     unsafe fn c_view_with_axis(&self, m_axis: usize, n_axis: usize) -> MatrixStoreSpec;
@@ -36,8 +34,6 @@ pub trait MatMatMul:
         row_stride: isize,
         col_stride: isize,
     ) -> MatrixStoreSpec;
-    unsafe fn c_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec;
-    unsafe fn c_vec_from_data(&self) -> MatrixStoreSpec;
 
     unsafe fn run(
         &self,
@@ -124,7 +120,6 @@ where
             }
             match b {
                 PanelStore::Packed { ptr } => prefetch(*ptr as *const u8, 512),
-                PanelStore::VecStride { ptr, .. } => prefetch(*ptr as *const u8, 128),
                 _ => (),
             }
         }
@@ -188,19 +183,6 @@ where
         MatrixStoreSpec::OffsetsAndPtrs { col_byte_offsets, row_byte_offsets, nr: K::nr() }
     }
 
-    unsafe fn b_vec_from_data_and_stride(&self, dt: DatumType, stride: isize) -> MatrixStoreSpec {
-        MatrixStoreSpec::VecStride {
-            item_stride: stride,
-            byte_stride: stride * dt.size_of() as isize,
-            mr: K::mr(),
-            nr: K::nr(),
-        }
-    }
-
-    unsafe fn b_vec_from_data(&self, dt: DatumType) -> MatrixStoreSpec {
-        self.b_vec_from_data_and_stride(dt, 1)
-    }
-
     unsafe fn c_view(&self) -> MatrixStoreSpec {
         MatrixStoreSpec::View { axes: None, mr: K::mr(), nr: K::nr() }
     }
@@ -222,19 +204,6 @@ where
             mr: K::mr(),
             nr: K::nr(),
         }
-    }
-
-    unsafe fn c_vec_from_data_and_stride(&self, stride: isize) -> MatrixStoreSpec {
-        MatrixStoreSpec::VecStride {
-            item_stride: stride,
-            byte_stride: stride * TC::datum_type().size_of() as isize,
-            mr: K::mr(),
-            nr: K::nr(),
-        }
-    }
-
-    unsafe fn c_vec_from_data(&self) -> MatrixStoreSpec {
-        self.c_vec_from_data_and_stride(1)
     }
 
     unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace> {
@@ -265,8 +234,8 @@ where
         let ref linear = LinearSpec::k(self.k);
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
-            if let MatrixStore::VecStride { .. } = c {
-                let ref b = b.panel_b(nr, 0, n % nr);
+            if n == 1 {
+                let ref b = b.panel_b(0);
                 self.prefetch(a, b);
                 scratch.clear();
                 let non_linear = scratch.for_tile::<TC, K>(&non_linear, ia, 0, c);
@@ -281,7 +250,7 @@ where
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             } else {
                 for ib in 0..n / nr {
-                    let ref b = b.panel_b(nr, ib, nr);
+                    let ref b = b.panel_b(ib);
                     self.prefetch(a, b);
                     scratch.clear();
                     let ref direct_c = c.tile_c(ia, ib);
@@ -296,7 +265,7 @@ where
                     debug_assert_eq!(err, 0, "Kernel return error {}", err);
                 }
                 if n % nr != 0 {
-                    let ref b = b.panel_b(nr, n / nr, n % nr);
+                    let ref b = b.panel_b(n / nr);
                     self.prefetch(a, b);
                     scratch.clear();
                     let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
@@ -315,8 +284,8 @@ where
         }
         if m % mr != 0 {
             let ref panel_a = a.panel_a(m / mr);
-            if let MatrixStore::VecStride { .. } = c {
-                let ref b = b.panel_b(nr, 0, nr);
+            if n == 1 {
+                let ref b = b.panel_b(0);
                 self.prefetch(panel_a, b);
                 scratch.clear();
                 let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
@@ -332,7 +301,7 @@ where
                 c.set_from_tile::<TC>(m / mr, 0, m % mr, nr, &tmpc);
             } else {
                 for ib in 0..n / nr {
-                    let ref b = b.panel_b(nr, ib, nr);
+                    let ref b = b.panel_b(ib);
                     self.prefetch(panel_a, b);
                     scratch.clear();
                     let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);
@@ -348,7 +317,7 @@ where
                     c.set_from_tile::<TC>(m / mr, ib, m % mr, nr, &tmpc);
                 }
                 if n % nr != 0 {
-                    let ref b = b.panel_b(nr, n / nr, n % nr);
+                    let ref b = b.panel_b(n / nr);
                     self.prefetch(panel_a, b);
                     scratch.clear();
                     let tmpc = scratch.tmp_tile_c(TC::datum_type(), mr, nr);

@@ -20,11 +20,10 @@ fn mat_vec_mul(c: &mut Criterion) {
                     .unwrap();
                     let b = tensor1(&vec![0.0; k]);
                     let mut c = Tensor::zero::<f32>(&[m]).unwrap();
-                    mm.b_vec_from_data(b.datum_type());
                     be.iter(move || {
                         mm.run(
                             &mm.a_packed(F32).wrap(&pa.view()),
-                            &mm.b_vec_from_data(b.datum_type()).wrap(&b.view()),
+                            &mm.b_packed(b.datum_type()).wrap(&b.view()),
                             &mut mm.c_view().wrap(&c.view_mut()),
                             &[],
                         )

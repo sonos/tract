@@ -290,28 +290,21 @@ impl MatMulUnary {
                     !self.a_trans as usize,
                     self.a_trans as usize,
                 );
-                (pa.into_arc_tensor(), vec!())
+                (pa.into_arc_tensor(), vec![])
             });
         unsafe {
-            let b_storage = if n == 1 {
-                mm.b_vec_from_data_and_stride(
-                    b_dt,
-                    if self.b_trans { 1 } else { *b_shape.last().unwrap() as isize },
-                )
-            } else {
-                let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
-                packed_b_shape.push(mm.b_pack().len(n));
-                wire = patch.wire_node(
-                    format!("{}.pack", &*node.name),
-                    super::MatMatMulPack {
-                        packer: mm.b_pack(),
-                        trans: self.b_trans,
-                        output_shape: packed_b_shape,
-                    },
-                    &[wire],
-                )?[0];
-                mm.b_packed(b_dt)
-            };
+            let mut packed_b_shape: TVec<usize> = b_shape[..b_shape.len() - 2].into();
+            packed_b_shape.push(mm.b_pack().len(n));
+            wire = patch.wire_node(
+                format!("{}.pack", &*node.name),
+                super::MatMatMulPack {
+                    packer: mm.b_pack(),
+                    trans: self.b_trans,
+                    output_shape: packed_b_shape,
+                },
+                &[wire],
+            )?[0];
+            let b_storage = mm.b_packed(b_dt);
             let rank = c_shape.len();
             let mut strides = natural_strides(&c_shape);
             let mut overrided_shape = c_shape.clone();
