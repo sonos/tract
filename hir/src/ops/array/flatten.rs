@@ -3,7 +3,7 @@ use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct Flatten {
-    axis: usize,
+    axis: i64,
 }
 impl_dyn_hash!(Flatten);
 
@@ -12,7 +12,8 @@ impl Flatten {
         if shape.iter().filter(|d| d.to_usize().is_err()).count() > 1 {
             bail!("Can not compute a shape with square of symbols")
         }
-        Ok([shape[..self.axis].iter().maybe_product()?, shape[self.axis..].iter().maybe_product()?])
+        let axis = if self.axis >= 0 { self.axis } else { self.axis + shape.len() as i64 } as usize;
+        Ok([shape[..axis].iter().maybe_product()?, shape[axis..].iter().maybe_product()?])
     }
 }
 

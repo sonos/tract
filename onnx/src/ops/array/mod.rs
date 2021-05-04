@@ -87,7 +87,7 @@ pub fn flatten(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let axis = node.get_attr_opt("axis")?.unwrap_or(1);
+    let axis:i64 = node.get_attr_opt("axis")?.unwrap_or(1);
     Ok((expand(array::Flatten::new(axis)), vec![]))
 }
 
