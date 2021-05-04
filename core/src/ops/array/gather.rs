@@ -58,13 +58,17 @@ impl Gather {
             &*self.compute_output_shape(data.shape(), indices.shape())?,
         )?;
         let mut view = output.to_array_view_mut_unchecked::<T>();
-        for (pattern, index) in indices.to_array_view::<i64>()?.indexed_iter() {
-            let mut to_update = view.index_axis_mut(Axis(self.axis), pattern[0]);
-            for idx in 1..pattern.ndim() {
-                to_update = to_update.index_axis_move(Axis(0), pattern[idx]);
+        for (indices_coords, indices_value) in indices.to_array_view::<i64>()?.indexed_iter() {
+            let mut to_update = view.index_axis_mut(Axis(self.axis), indices_coords[0]);
+            for idx in 1..indices_coords.ndim() {
+                to_update = to_update.index_axis_move(Axis(0), indices_coords[idx]);
             }
-
-            to_update.assign(&data_view.index_axis(Axis(self.axis), *index as usize));
+            let index_value = if *indices_value >= 0 {
+                *indices_value
+            } else {
+                indices_value + data_view.shape()[self.axis] as i64
+            } as usize;
+            to_update.assign(&data_view.index_axis(Axis(self.axis), index_value));
         }
         Ok(output.into_arc_tensor())
     }
