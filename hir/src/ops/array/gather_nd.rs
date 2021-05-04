@@ -1,17 +1,10 @@
-use tract_hir::internal::*;
+use crate::internal::*;
 use tract_ndarray::prelude::*;
-
-use crate::model::ParsingContext;
-use crate::tfpb::tensorflow::NodeDef;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct GatherNd {}
 
 impl_dyn_hash!(GatherNd);
-
-pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
-    Ok(Box::new(GatherNd::new()))
-}
 
 impl GatherNd {
     fn compute_shape<D: DimLike>(
@@ -53,7 +46,7 @@ impl Op for GatherNd {
         "GatherNd".into()
     }
 
-    op_tf!();
+    op_hir!();
     op_as_typed_op!();
 }
 
@@ -134,20 +127,20 @@ impl TypedOp for GatherNd {
                 for (axis, &i) in indices.cast_to::<i32>()?.as_slice::<i32>()?.iter().enumerate() {
                     wire = patch.wire_node(
                         format!("{}-slice-axis-{}", node.name, axis),
-                        tract_hir::ops::array::Slice::new(axis, i as usize, (i + 1) as usize),
+                        crate::ops::array::Slice::new(axis, i as usize, (i + 1) as usize),
                         &[wire],
                     )?[0];
                 }
                 for i in (0..indices.shape()[1]).rev() {
                     wire = patch.wire_node(
                         format!("{}-remove_axis_{}", node.name, i),
-                        tract_hir::tract_core::ops::change_axes::AxisOp::Rm(i),
+                        tract_core::ops::change_axes::AxisOp::Rm(i),
                         &[wire],
                     )?[0];
                 }
                 wire = patch.wire_node(
                     format!("{}-add_axis", node.name),
-                    tract_hir::tract_core::ops::change_axes::AxisOp::Add(0),
+                    tract_core::ops::change_axes::AxisOp::Add(0),
                     &[wire],
                 )?[0];
                 patch.shunt_outside(model, node.id.into(), wire)?;
@@ -155,59 +148,5 @@ impl TypedOp for GatherNd {
             }
         }
         Ok(None)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // https://www.tensorflow.org/api_docs/python/tf/gather_nd
-    #[test]
-    fn simple_indexing() {
-        let g = GatherNd::new();
-        assert_eq!(
-            g.eval(tvec!(rctensor2(&[[1, 2], [3, 4]]), rctensor2(&[[0, 0], [1, 1]]))).unwrap(),
-            tvec!(rctensor1(&[1, 4]))
-        );
-    }
-
-    #[test]
-    fn slice_indexing() {
-        let g = GatherNd::new();
-        assert_eq!(
-            g.eval(tvec!(rctensor2(&[[1, 2], [3, 4]]), rctensor2(&[[1], [0]]))).unwrap(),
-            tvec!(rctensor2(&[[3, 4], [1, 2]]))
-        );
-    }
-
-    #[test]
-    fn tensor_3d_1() {
-        let g = GatherNd::new();
-        let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
-        assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[1]]))).unwrap(),
-            tvec!(rctensor3(&[[[11, 21], [31, 41]]]))
-        );
-    }
-
-    #[test]
-    fn tensor_3d_2() {
-        let g = GatherNd::new();
-        let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
-        assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[0, 1], [1, 0]]))).unwrap(),
-            tvec!(rctensor2(&[[30, 40], [11, 21]]))
-        );
-    }
-
-    #[test]
-    fn tensor_3d_3() {
-        let g = GatherNd::new();
-        let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
-        assert_eq!(
-            g.eval(tvec!(t.clone(), rctensor2(&[[0, 0, 1], [1, 0, 1]]))).unwrap(),
-            tvec!(rctensor1(&[20, 21]))
-        );
     }
 }
