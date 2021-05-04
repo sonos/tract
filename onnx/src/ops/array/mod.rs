@@ -104,8 +104,8 @@ pub fn gather_nd(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let axis = node.get_attr_opt("batch_dims")?.unwrap_or(0);
-    Ok((Box::new(array::GatherNd::new()), vec![]))
+    let batch_dims = node.get_attr_opt("batch_dims")?.unwrap_or(0);
+    Ok((Box::new(array::GatherNd::new(batch_dims)), vec![]))
 }
 
 pub fn split(

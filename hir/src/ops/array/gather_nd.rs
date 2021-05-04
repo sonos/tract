@@ -2,7 +2,9 @@ use crate::internal::*;
 use tract_ndarray::prelude::*;
 
 #[derive(Debug, Clone, new, Hash)]
-pub struct GatherNd {}
+pub struct GatherNd {
+    batch_dims: i64,
+}
 
 impl_dyn_hash!(GatherNd);
 
@@ -14,7 +16,7 @@ impl GatherNd {
     ) -> TractResult<TVec<D>> {
         let mut shape: TVec<D> = indices_shape.into();
         let n = shape.pop().unwrap().to_usize()?;
-        shape.extend(data_shape[n..].iter().cloned());
+        shape.extend(data_shape[n + self.batch_dims as usize..].iter().cloned());
         Ok(shape)
     }
 
@@ -24,19 +26,48 @@ impl GatherNd {
         data: &Tensor,
         indices: &ArrayViewD<i32>,
     ) {
-        let data = data.to_array_view_unchecked::<T>();
-        for prefix in tract_ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
-            let mut dst = output.to_array_view_mut_unchecked();
-            let mut coords = indices.view();
-            for &x in prefix.slice().iter() {
-                dst.index_axis_inplace(Axis(0), x);
-                coords.index_axis_inplace(Axis(0), x);
+        let batch_dims = self.batch_dims as usize;
+        assert_eq!(output.shape()[..batch_dims], data.shape()[..batch_dims]);
+        assert_eq!(output.shape()[..batch_dims], indices.shape()[..batch_dims]);
+        let batch_size = data.shape().iter().take(batch_dims).product();
+        let n = indices.shape()[indices.ndim() - 1];
+
+        let remaining = indices.shape().iter().skip(batch_dims).rev().skip(1).product();
+        let indices_shape_op = tvec!(batch_size, remaining, n);
+        let reshaped_indices: ArrayViewD<i32> =
+            indices.view().into_shape(&*indices_shape_op).unwrap();
+
+        let mut data_shape_op: TVec<usize> =
+            data.shape().iter().skip(batch_dims).copied().collect();
+        data_shape_op.insert(0, batch_size);
+        let reshaped_data =
+            data.to_array_view_unchecked::<T>().into_shape(&*data_shape_op).unwrap();
+
+        let mut output_shape_op: TVec<usize> =
+            data.shape().iter().skip(n + batch_dims).copied().collect();
+        output_shape_op.insert(0, batch_size * remaining);
+        let mut output =
+            output.to_array_view_mut_unchecked::<T>().into_shape(&*output_shape_op).unwrap();
+
+        for b in 0..batch_size {
+            let mut i = reshaped_data.view();
+            i.index_axis_inplace(Axis(0), b);
+            let mut coords = reshaped_indices.view();
+            coords.index_axis_inplace(Axis(0), b);
+
+            for ix in 0..remaining {
+                let mut coords = coords.view();
+                coords.index_axis_inplace(Axis(0), ix);
+
+                let mut i = i.view();
+                for x in coords {
+                    i.index_axis_inplace(Axis(0), *x as usize);
+                }
+
+                let mut o = output.view_mut();
+                o.index_axis_inplace(Axis(0), b * remaining + ix);
+                o.assign(&i);
             }
-            let mut src = data.view();
-            for &x in coords.iter() {
-                src.index_axis_inplace(Axis(0), x as _);
-            }
-            dst.assign(&src);
         }
     }
 }
