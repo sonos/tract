@@ -100,15 +100,15 @@ fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, us
     assert_eq!(n, 1);
     let mm = tract_linalg::ops().mmm(dt, dt, dt, m, k, n).unwrap();
     let pa = Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(m)], mm.a_pack().alignment()).unwrap();
-    let pb = Tensor::zero_dt(dt, &[k, 1]).unwrap();
+    let pb = Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(1)], mm.b_pack().alignment()).unwrap();
     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
     unsafe {
         run(
             be,
             &*mm,
             &mm.a_packed(dt).wrap(&pa.view()),
-            &mm.b_vec_from_data(dt).wrap(&pb.view()),
-            &mut mm.c_vec_from_data().wrap(&mut c.view_mut()),
+            &mm.b_packed(dt).wrap(&pb.view()),
+            &mut mm.c_view().wrap(&mut c.view_mut()),
             cold,
         );
     }

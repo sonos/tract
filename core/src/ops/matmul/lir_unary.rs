@@ -168,11 +168,7 @@ fn eval(
     unsafe {
         let a_dt = op.micro_ops.iter().next().unwrap().0.datum_type();
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-        let c_storage = if c_shape[c_n_axis] == 1 {
-            op.mmm.c_vec_from_data()
-        } else {
-            op.mmm.c_view_with_axis(c_m_axis, c_n_axis)
-        };
+        let c_storage = op.mmm.c_view_with_axis(c_m_axis, c_n_axis);
         if op
             .c_fact
             .shape

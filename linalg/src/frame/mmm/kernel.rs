@@ -51,7 +51,6 @@ macro_rules! test_mmm_kernel_f32 {
             mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
             mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
             mmm_kernel_fuse_tests!($cond, $k, f32, f32);
-            mmm_s_frame_tests!($cond, $k, f32, f32, f32, f32);
         }
     };
 }
@@ -65,10 +64,7 @@ macro_rules! test_mmm_kernel_i8 {
             mmm_kernel_tests!($cond, $k, i8, i8, i8, i32);
             mmm_kernel_fuse_tests!($cond, $k, i8, i32);
             mmm_frame_tests!($cond, $k, i8, i8, i8, i32);
-            mmm_s_frame_tests!($cond, $k, i8, i8, i8, i32);
             qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
-            qmmm_frame_tests!($cond, $k, i8, i8, i8, i32);
-            qmmm_s_frame_tests!($cond, $k, i8, i8, i8, i32);
         }
     };
 }
@@ -82,9 +78,7 @@ macro_rules! test_mmm_kernel_i8_i32 {
             mmm_kernel_tests!($cond, $k, i8, i8, i32, i32);
             mmm_kernel_fuse_tests!($cond, $k, i32, i32);
             mmm_frame_tests!($cond, $k, i8, i8, i32, i32);
-            mmm_s_frame_tests!($cond, $k, i8, i8, i32, i32);
             qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i32, i32);
-            qmmm_frame_tests!($cond, $k, i8, i8, i32, i32);
         }
     };
 }
@@ -98,9 +92,7 @@ macro_rules! test_mmm_kernel_i8_u8_i32 {
             mmm_kernel_tests!($cond, $k, i8, u8, i32, i32);
             mmm_kernel_fuse_tests!($cond, $k, i32, i32);
             mmm_frame_tests!($cond, $k, i8, u8, i32, i32);
-            mmm_s_frame_tests!($cond, $k, i8, u8, i32, i32);
             qmmm_kernel_fuse_tests!($cond, $k, i8, u8, i32, i32);
-            qmmm_frame_tests!($cond, $k, i8, u8, i32, i32);
         }
     };
 }
@@ -114,7 +106,6 @@ macro_rules! test_mmm_kernel_u8 {
             mmm_kernel_tests!($cond, $k, u8, u8, u8, i32);
             mmm_kernel_fuse_tests!($cond, $k, u8, i32);
             qmmm_kernel_fuse_tests!($cond, $k, u8, u8, u8, i32);
-            qmmm_frame_tests!($cond, $k, u8, u8, u8, i32);
         }
     };
 }
@@ -602,18 +593,15 @@ pub mod test {
             )
             .unwrap()
         };
-        let b = vec![TB::one(); k];
-        let c: Vec<TC> = vec![TC::zero(); K::mr()];
+        let b = vec![TB::one(); (k + 1) * K::nr()];
+        let c: Vec<TC> = vec![TC::zero(); K::mr() * K::nr()];
         let err = K::kernel(&MatMatMulKerSpec {
             a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
-            b: &PanelStore::VecStride {
-                ptr: b.as_ptr() as _,
-                byte_stride: std::mem::size_of::<TB>() as isize,
-                item_size: std::mem::size_of::<TB>(),
-            },
-            c: &PanelStore::VecStride {
+            b: &PanelStore::Packed { ptr: b.as_ptr() as _ },
+            c: &PanelStore::Strides {
                 ptr: c.as_ptr() as _,
-                byte_stride: std::mem::size_of::<TC>() as isize,
+                row_byte_stride: std::mem::size_of::<TC>() as isize,
+                col_byte_stride: (std::mem::size_of::<TC>() * K::mr()) as isize,
                 item_size: std::mem::size_of::<TC>(),
             },
             linear: &LinearSpec::k(k),
@@ -621,6 +609,6 @@ pub mod test {
         });
         assert_eq!(err, 0);
         let expected = vec![k.as_(); K::mr()];
-        assert_eq!(c, expected);
+        assert_eq!(c[..K::mr()], expected);
     }
 }
