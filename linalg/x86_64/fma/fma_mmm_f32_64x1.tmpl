@@ -101,8 +101,6 @@ fma_mmm_f32_64x1_{{suffix}} proc
     je      {{L}}packed_packed
     cmp     rsi,  2
     je      {{L}}packed_tops_and_offsets
-    cmp     rsi,  3
-    je      {{L}}packed_vec
 
     jmp     {{L}}unimplemented
 
@@ -129,7 +127,6 @@ fma_mmm_f32_64x1_{{suffix}} proc
 
     jmp             {{L}}non_linear
 
-{{L}}packed_vec:
 {{L}}packed_packed:
 
     mov     rax,   [rax + 8] // A

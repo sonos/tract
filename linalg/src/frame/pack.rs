@@ -42,7 +42,7 @@ impl Packer {
         {
             pb.iter_mut().for_each(|v| *v = T::default());
         }
-        if self.r == 1 && k_stride == 1 {
+        if self.r == 1 && k_stride == 1 && mn == 1 {
             pb[..self.k].copy_from_slice(b);
         } else if mn_stride == 1 {
             let mut packer = self.write_with_k_outer(pb, mn);
