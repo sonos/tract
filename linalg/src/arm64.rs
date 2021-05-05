@@ -43,8 +43,14 @@ pub fn plug(ops: &mut Ops) {
     ops.qmmm_i8_i8 = Box::new(|m, k, n| {
         Box::new(MatMatMulImpl::<arm64simd::MatMatMulI8x8x8, i8, i32>::new(m, k, n))
     });
+    ops.qmmv_i8_i8 = Box::new(|m, k| {
+        Box::new(MatMatMulImpl::<arm64simd::MatMatMulI8x64x1, i8, i32>::new(m, k, 1))
+    });
     ops.qmmm_i8_i32 = Box::new(|m, k, n| {
         Box::new(MatMatMulImpl::<arm64simd::MatMatMulI8xI32x8x8, i32, i32>::new(m, k, n))
+    });
+    ops.qmmv_i8_i32 = Box::new(|m, k| {
+        Box::new(MatMatMulImpl::<arm64simd::MatMatMulI8xI32x64x1, i32, i32>::new(m, k, 1))
     });
     ops.sigmoid_f32 =
         Box::new(|| Box::new(ElementWiseImpl::<arm64simd::SigmoidF32x4n, f32>::new()));
