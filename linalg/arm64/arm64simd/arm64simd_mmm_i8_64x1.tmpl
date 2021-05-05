@@ -49,55 +49,24 @@
     b           .unsupported
 
 .packed_tops_and_offsets:
-    ldr         x4, [x8, #16]
-
-    ldp         x19, x20, [x4], #16 // heads of cols ptrs
-    ldp         x21, x22, [x4], #16
-    ldp         x23, x24, [x4], #16
-    ldp         x25, x26, [x4], #16
+    ldr         x8, [x8, #16]   // cols ptr ptr
+    ldr         x4, [x2], #8    // fist row offset
+    ldr         x5, [x8]        // heads of cols ptr
 
 .packed_tops_and_offsets_loop_1:
-    ld1	        { v0.8b }, [ x1 ], #8
-    sshll       v0.8h, v0.8b, 0
-
+    add         x8, x4, x5
+    ld1         {v9.b}[0], [ x8 ]
     ldr         x4, [ x2 ], #8
+    sshll       v9.8h, v9.8b, 0
 
-    add         x9, x4, x19
-    ld1         {v4.b}[0], [ x9 ]
-    add         x10, x4, x20
-    ld1         {v4.b}[1], [ x10 ]
-    add         x11, x4, x21
-    ld1         {v4.b}[2], [ x11 ]
-    add         x12, x4, x22
-    ld1         {v4.b}[3], [ x12 ]
-    add         x13, x4, x23
-    ld1         {v4.b}[4], [ x13 ]
-    add         x14, x4, x24
-    ld1         {v4.b}[5], [ x14 ]
-    add         x15, x4, x25
-    ld1         {v4.b}[6], [ x15 ]
-    add         x9, x4, x26
-    ld1         {v4.b}[7], [ x9 ]
+    ld1	        { v0.8b-v3.8b }, [ x1 ], #32
+    ld1	        { v4.8b-v7.8b }, [ x1 ], #32
 
-    sshll        v4.8h, v4.8b, 0
-
-    smlal        v16.4s, v0.4h, v4.h[0]
-    smlal2       v17.4s, v0.8h, v4.h[0]
-    smlal        v18.4s, v0.4h, v4.h[1]
-    smlal2       v19.4s, v0.8h, v4.h[1]
-    smlal        v20.4s, v0.4h, v4.h[2]
-    smlal2       v21.4s, v0.8h, v4.h[2]
-    smlal        v22.4s, v0.4h, v4.h[3]
-    smlal2       v23.4s, v0.8h, v4.h[3]
-
-    smlal        v24.4s, v0.4h, v4.h[4]
-    smlal2       v25.4s, v0.8h, v4.h[4]
-    smlal        v26.4s, v0.4h, v4.h[5]
-    smlal2       v27.4s, v0.8h, v4.h[5]
-    smlal        v28.4s, v0.4h, v4.h[6]
-    smlal2       v29.4s, v0.8h, v4.h[6]
-    smlal        v30.4s, v0.4h, v4.h[7]
-    smlal2       v31.4s, v0.8h, v4.h[7]
+    {% for reg in (0..7) %}
+        sshll       v10.8h, v{{reg}}.8b, 0
+        smlal       v{{reg | times: 2 | plus: 16 }}.4s, v10.4h, v9.h[0]
+        smlal2      v{{reg | times: 2 | plus: 17 }}.4s, v10.8h, v9.h[0]
+    {% endfor %}
 
     subs        x3, x3, #1
     bne         .packed_tops_and_offsets_loop_1
@@ -107,29 +76,17 @@
 .packed_packed:
 
 .packed_packed_loop_1:
+    ld1         {v9.b}[0], [ x2 ], 1
+    sshll       v9.8h, v9.8b, 0
 
-    ld1	        { v0.8b }, [ x1 ], #8
-    sshll       v0.8h, v0.8b, 0
-    ld1         { v4.8b }, [ x2 ], #8
-    sshll        v4.8h, v4.8b, 0
+    ld1	        { v0.8b-v3.8b }, [ x1 ], #32
+    ld1	        { v4.8b-v7.8b }, [ x1 ], #32
 
-    smlal        v16.4s, v0.4h, v4.h[0]
-    smlal2       v17.4s, v0.8h, v4.h[0]
-    smlal        v18.4s, v0.4h, v4.h[1]
-    smlal2       v19.4s, v0.8h, v4.h[1]
-    smlal        v20.4s, v0.4h, v4.h[2]
-    smlal2       v21.4s, v0.8h, v4.h[2]
-    smlal        v22.4s, v0.4h, v4.h[3]
-    smlal2       v23.4s, v0.8h, v4.h[3]
-
-    smlal        v24.4s, v0.4h, v4.h[4]
-    smlal2       v25.4s, v0.8h, v4.h[4]
-    smlal        v26.4s, v0.4h, v4.h[5]
-    smlal2       v27.4s, v0.8h, v4.h[5]
-    smlal        v28.4s, v0.4h, v4.h[6]
-    smlal2       v29.4s, v0.8h, v4.h[6]
-    smlal        v30.4s, v0.4h, v4.h[7]
-    smlal2       v31.4s, v0.8h, v4.h[7]
+    {% for reg in (0..7) %}
+        sshll       v10.8h, v{{reg}}.8b, 0
+        smlal       v{{reg | times: 2 | plus: 16 }}.4s, v10.4h, v9.h[0]
+        smlal2      v{{reg | times: 2 | plus: 17 }}.4s, v10.8h, v9.h[0]
+    {% endfor %}
 
     subs        x3, x3, #1
     bne .packed_packed_loop_1
@@ -361,6 +318,7 @@ non_linear_addc_i32:
 .scalar_add:
     add         x2, x1, #8
     ld1         {v0.s}[0], [ x2 ]
+    dup         v0.4s, v0.s[0]
     {% for reg in (16..31) %}
         add        v{{reg}}.4s, v{{reg}}.4s, v0.4s
     {% endfor %}
