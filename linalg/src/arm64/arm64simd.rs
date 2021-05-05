@@ -8,6 +8,7 @@ extern_kernel!(fn arm64simd_mmm_f32_12x8_gen(op: *const MatMatMulKerSpec<f32>) -
 extern_kernel!(fn arm64simd_mmm_f32_64x1_a53(op: *const MatMatMulKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_64x1_gen(op: *const MatMatMulKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_i8_64x1(op: *const MatMatMulKerSpec<i32>) -> isize);
 extern_kernel!(fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn arm64simd_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
 
@@ -250,6 +251,40 @@ impl MatMatMulKer<i32> for MatMatMulI8x8x8 {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub struct MatMatMulI8x64x1;
+
+impl MatMatMulKer<i32> for MatMatMulI8x64x1 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "arm64simd"
+    }
+    #[inline(always)]
+    fn mr() -> usize {
+        64
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        1
+    }
+    fn alignment_bytes_packed_a() -> usize {
+        16
+    }
+    fn alignment_bytes_packed_b() -> usize {
+        1
+    }
+    fn end_padding_packed_a() -> usize {
+        0
+    }
+    fn end_padding_packed_b() -> usize {
+        0
+    }
+    #[inline(never)]
+    fn kernel(op: &MatMatMulKerSpec<i32>) -> isize {
+        unsafe { arm64simd_mmm_i8_64x1(op) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct MatMatMulI8xI32x8x8;
 
 impl MatMatMulKer<i32> for MatMatMulI8xI32x8x8 {
@@ -350,6 +385,7 @@ test_mmm_kernel_f32!(
 );
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x64x1, test_MatMatMulF32x64x1, true);
 test_mmm_kernel_i8!(crate::arm64::arm64simd::MatMatMulI8x8x8, test_MatMatMulI8x8x8, true);
+test_mmm_kernel_i8!(crate::arm64::arm64simd::MatMatMulI8x64x1, test_MatMatMulI8x64x1, true);
 test_mmm_kernel_i8_i32!(
     crate::arm64::arm64simd::MatMatMulI8xI32x8x8,
     test_MatMatMulI8xI32x8x8,
