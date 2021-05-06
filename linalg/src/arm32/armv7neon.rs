@@ -2,6 +2,7 @@ use crate::frame::element_wise::*;
 use crate::frame::mmm::*;
 
 extern_kernel!(fn armv7neon_mmm_i8_8x4(op: *const MatMatMulKerSpec<i32>) -> isize);
+extern_kernel!(fn armv7neon_mmm_i8_32x1(op: *const MatMatMulKerSpec<i32>) -> isize);
 extern_kernel!(fn armv7neon_mmm_f32_8x4(op: *const MatMatMulKerSpec<f32>) -> isize);
 extern_kernel!(fn armv7neon_mmm_f32_32x1(op: *const MatMatMulKerSpec<f32>) -> isize);
 extern_kernel!(fn armv7neon_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
@@ -13,7 +14,9 @@ pub fn prefetch(start: *const u8, len: usize) {
 }
 
 MMMKernel!(MatMatMulI8x8x4<i32>, "neon", armv7neon_mmm_i8_8x4; 8, 4; 32, 4; 0, 0);
+MMMKernel!(MatMatMulI8x32x1<i32>, "neon", armv7neon_mmm_i8_32x1; 32,1 ; 32, 4; 0, 0);
 MMMKernel!(MatMatMulI8xI32x8x4<i32>, "neon", armv7neon_mmm_i8_8x4; 8, 4; 4, 4; 0, 0);
+MMMKernel!(MatMatMulI8xI32x32x1<i32>, "neon", armv7neon_mmm_i8_32x1; 32, 1; 4, 4; 0, 0);
 MMMKernel!(MatMatMulF32x8x4<f32>, "neon", armv7neon_mmm_f32_8x4; 8, 4; 4, 4; 0, 0);
 MMMKernel!(MatMatMulF32x32x1<f32>, "neon", armv7neon_mmm_f32_32x1; 32, 1; 4, 4; 0, 0);
 
@@ -89,6 +92,17 @@ test_mmm_kernel_i8!(
 test_mmm_kernel_i8_i32!(
     crate::arm32::armv7neon::MatMatMulI8xI32x8x4,
     test_MatMatMulI8xI32x8x4,
+    crate::arm32::has_neon()
+);
+
+test_mmm_kernel_i8!(
+    crate::arm32::armv7neon::MatMatMulI8x32x1,
+    test_MatMatMulI8x32x1,
+    crate::arm32::has_neon()
+);
+test_mmm_kernel_i8_i32!(
+    crate::arm32::armv7neon::MatMatMulI8xI32x32x1,
+    test_MatMatMulI8xI32x32x1,
     crate::arm32::has_neon()
 );
 
