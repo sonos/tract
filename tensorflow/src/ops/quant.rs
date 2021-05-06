@@ -1,5 +1,6 @@
 use tract_hir::internal::*;
 use tract_hir::ops;
+use tract_hir::ops::math::round_ties_to_even;
 
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
@@ -73,10 +74,29 @@ impl Expansion for FakeQuantWithMinMaxVars {
             let rank = target.outlet_fact(inputs[0])?.rank();
             let step = self.step(&min, &max)?;
             let min = *min.to_scalar::<f32>()?;
+            let max = *max.to_scalar::<f32>()?;
+            let min_adj = step * round_ties_to_even(min / step);
+            let max_adj = max - min + min_adj;
             let wire = &inputs[0..1];
             let wire = target.wire_node(
+                format!("{}.clamp_min", &*prefix),
+                ops::math::max::unary(
+                    tensor0(min_adj).broadcast_into_rank(rank)?.into_arc_tensor(),
+                ),
+                &wire,
+            )?;
+            let wire = target.wire_node(
+                format!("{}.clamp_max", &*prefix),
+                ops::math::min::unary(
+                    tensor0(max_adj).broadcast_into_rank(rank)?.into_arc_tensor(),
+                ),
+                &wire,
+            )?;
+            let wire = target.wire_node(
                 format!("{}.sub-min", prefix),
-                ops::math::add::unary(tensor0(-min).broadcast_into_rank(rank)?.into_arc_tensor()),
+                ops::math::add::unary(
+                    tensor0(-min_adj).broadcast_into_rank(rank)?.into_arc_tensor(),
+                ),
                 &wire,
             )?;
             let wire = target.wire_node(
@@ -86,8 +106,11 @@ impl Expansion for FakeQuantWithMinMaxVars {
                 ),
                 &wire,
             )?;
-            let wire =
-                target.wire_node(format!("{}.round", &*prefix), ops::math::round(), &wire)?;
+            let wire = target.wire_node(
+                format!("{}.round", &*prefix),
+                ops::math::round_half_to_even(),
+                &wire,
+            )?;
             let wire = target.wire_node(
                 format!("{}.mul-step", &*prefix),
                 ops::math::mul::unary(tensor0(step).broadcast_into_rank(rank)?.into_arc_tensor()),
@@ -95,7 +118,9 @@ impl Expansion for FakeQuantWithMinMaxVars {
             )?;
             target.wire_node(
                 format!("{}.add-min", &*prefix),
-                ops::math::add::unary(tensor0(min).broadcast_into_rank(rank)?.into_arc_tensor()),
+                ops::math::add::unary(
+                    tensor0(min_adj).broadcast_into_rank(rank)?.into_arc_tensor(),
+                ),
                 &wire,
             )
         } else {

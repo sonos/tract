@@ -360,7 +360,7 @@ element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
 
 const TOINT: f32 = 1.0f32 / std::f32::EPSILON;
 
-fn rintf(x: f32) -> f32 {
+pub fn round_ties_to_even(x: f32) -> f32 {
     let u = x.to_bits();
     let e = u >> 23 & 0xff;
     if e >= 0x7f + 23 {
@@ -380,7 +380,7 @@ fn rintf(x: f32) -> f32 {
 }
 
 element_wise!(round_half_to_even, RoundHalfToEven,[ f32] => |_, xs| {
-    xs.iter_mut().for_each(|x| *x = rintf(*x));
+    xs.iter_mut().for_each(|x| *x = round_ties_to_even(*x));
     Ok(())
 });
 

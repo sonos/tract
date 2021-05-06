@@ -282,3 +282,9 @@ impl From<TensorShapeProto> for AttrValue {
         AttrValue { value: Some(Value::Shape(t.into())) }
     }
 }
+
+impl From<bool> for AttrValue {
+    fn from(t: bool) -> AttrValue {
+        AttrValue { value: Some(Value::B(t)) }
+    }
+}
