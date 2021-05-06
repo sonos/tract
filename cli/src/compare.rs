@@ -88,25 +88,26 @@ pub fn handle_tensorflow(
         }
     }
 
-    let mut all_values: HashMap<String, CliResult<Arc<Tensor>>> = HashMap::new();
+    let mut all_values: HashMap<String, Vec<CliResult<Arc<Tensor>>>> = HashMap::new();
     if resilient {
         for name in wanted_outputs {
             all_values.insert(
                 name.to_string(),
-                tf.run(pairs.clone(), &name)
+                vec![tf
+                    .run(pairs.clone(), &name)
                     .map(|t| Arc::new(t[0].clone().into()))
-                    .map_err(|e| e.into()),
+                    .map_err(|e| e.into())],
             );
         }
     } else {
         tf.run_get_many(pairs, wanted_outputs)?.into_iter().for_each(|(k, v)| {
-            all_values.insert(k.to_string(), Ok(v[0].clone().into()));
+            all_values.insert(k.to_string(), vec![Ok(v[0].clone().into())]);
         });
     };
 
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let name = tract.node_name(input.node);
-        all_values.insert(name.to_string(), Ok(generated[ix].clone().into_arc_tensor()));
+        all_values.insert(name.to_string(), vec![Ok(generated[ix].clone().into_arc_tensor())]);
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
@@ -132,10 +133,12 @@ pub fn handle_npz(
                 let name = name
                     .split("/")
                     .nth(1)
-                    .with_context(|| format!(
-                        "npy filenames should be turn_XX/... in multiturn mode, got `{}'",
-                        name
-                    ))?
+                    .with_context(|| {
+                        format!(
+                            "npy filenames should be turn_XX/... in multiturn mode, got `{}'",
+                            name
+                        )
+                    })?
                     .trim_end_matches(".npy");
                 values.entry(name.to_string()).or_default().push(Ok(value.into_arc_tensor()));
             } else {

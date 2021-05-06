@@ -36,7 +36,7 @@ fn convolution_pb(stride: usize, padded: bool, k: &Tensor) -> TractResult<Vec<u8
 fn img_and_ker() -> BoxedStrategy<(Array4<f32>, Array4<f32>, usize)> {
     (1usize..=5, 1usize..=3, 1usize..=3, 1usize..=3, 1usize..=3)
         .prop_flat_map(|(ic, kh, kw, q, s)| {
-            (1usize..3, (1..2 * kh + 4 * s), (1..2 * kw + 4 * s), Just((ic, kh, kw, q, s)))
+            (1usize..3, (kh..2 * kh + 4 * s), (kw..2 * kw + 4 * s), Just((ic, kh, kw, q, s)))
         })
         .prop_flat_map(|(ib, ih, iw, (ic, kh, kw, q, s))| {
             let i_size = ib * iw * ih * ic;
@@ -67,6 +67,7 @@ proptest! {
     #[test]
     fn conv_compare((ref i, ref k, stride) in img_and_ker(),
                     padded in any::<bool>()) {
+        assert!(i.shape()[1] >= k.shape()[0] && i.shape()[2] >= k.shape()[1]);
         let k = Tensor::from(k.clone());
         let model = convolution_pb(stride, padded, &k).unwrap();
         compare(&model, vec!(("data", i.clone().into()), ), "conv")?;
