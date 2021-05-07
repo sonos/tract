@@ -10,7 +10,7 @@ where
 {
     pub a: &'a PanelStore,
     pub b: &'a PanelStore,
-    pub c: &'a PanelStore,
+    pub c: &'a Tile,
     pub linear: &'a LinearSpec,
     pub non_linear: *const FusedKerSpec<TI>,
 }
@@ -121,14 +121,6 @@ pub mod test {
     use std::marker::PhantomData;
     use std::ops::{Add, Mul};
     use tract_data::internal::*;
-
-    #[test]
-    fn check_non_linear_enum_size() {
-        assert_eq!(
-            std::mem::size_of::<super::FusedKerSpec<f32>>(),
-            4 * std::mem::size_of::<usize>()
-        )
-    }
 
     #[macro_export]
     macro_rules! mmm_kernel_tests {
@@ -524,8 +516,8 @@ pub mod test {
         assert_eq!(pb.run(), pb.reference())
     }
 
-    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> PanelStore {
-        PanelStore::Strides {
+    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> Tile {
+        Tile {
             ptr: v.as_mut_ptr() as _,
             row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
             col_byte_stride: (std::mem::size_of::<T>() * csc) as isize,
@@ -598,7 +590,7 @@ pub mod test {
         let err = K::kernel(&MatMatMulKerSpec {
             a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
             b: &PanelStore::Packed { ptr: b.as_ptr() as _ },
-            c: &PanelStore::Strides {
+            c: &Tile {
                 ptr: c.as_ptr() as _,
                 row_byte_stride: std::mem::size_of::<TC>() as isize,
                 col_byte_stride: (std::mem::size_of::<TC>() * K::mr()) as isize,

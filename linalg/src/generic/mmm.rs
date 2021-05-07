@@ -220,31 +220,29 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::AddC => match *spec.c {
-                        Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
-                            let c = c as *const TC;
-                            let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
-                            let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
-                            let c = std::slice::from_raw_parts(c, 1 + 3 * csc + 3 * rsc);
-                            ab[0][0] += c[0 * csc + 0 * rsc].as_();
-                            ab[0][1] += c[1 * csc + 0 * rsc].as_();
-                            ab[0][2] += c[2 * csc + 0 * rsc].as_();
-                            ab[0][3] += c[3 * csc + 0 * rsc].as_();
-                            ab[1][0] += c[0 * csc + 1 * rsc].as_();
-                            ab[1][1] += c[1 * csc + 1 * rsc].as_();
-                            ab[1][2] += c[2 * csc + 1 * rsc].as_();
-                            ab[1][3] += c[3 * csc + 1 * rsc].as_();
-                            ab[2][0] += c[0 * csc + 2 * rsc].as_();
-                            ab[2][1] += c[1 * csc + 2 * rsc].as_();
-                            ab[2][2] += c[2 * csc + 2 * rsc].as_();
-                            ab[2][3] += c[3 * csc + 2 * rsc].as_();
-                            ab[3][0] += c[0 * csc + 3 * rsc].as_();
-                            ab[3][1] += c[1 * csc + 3 * rsc].as_();
-                            ab[3][2] += c[2 * csc + 3 * rsc].as_();
-                            ab[3][3] += c[3 * csc + 3 * rsc].as_();
-                        }
-                        _ => return 1,
-                    },
+                    FusedKerSpec::AddC => {
+                        let Tile { ptr: c, row_byte_stride, col_byte_stride, .. } = spec.c;
+                        let c = *c as *const TC;
+                        let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
+                        let csc = *col_byte_stride as usize / std::mem::size_of::<TC>();
+                        let c = std::slice::from_raw_parts(c, 1 + 3 * csc + 3 * rsc);
+                        ab[0][0] += c[0 * csc + 0 * rsc].as_();
+                        ab[0][1] += c[1 * csc + 0 * rsc].as_();
+                        ab[0][2] += c[2 * csc + 0 * rsc].as_();
+                        ab[0][3] += c[3 * csc + 0 * rsc].as_();
+                        ab[1][0] += c[0 * csc + 1 * rsc].as_();
+                        ab[1][1] += c[1 * csc + 1 * rsc].as_();
+                        ab[1][2] += c[2 * csc + 1 * rsc].as_();
+                        ab[1][3] += c[3 * csc + 1 * rsc].as_();
+                        ab[2][0] += c[0 * csc + 2 * rsc].as_();
+                        ab[2][1] += c[1 * csc + 2 * rsc].as_();
+                        ab[2][2] += c[2 * csc + 2 * rsc].as_();
+                        ab[2][3] += c[3 * csc + 2 * rsc].as_();
+                        ab[3][0] += c[0 * csc + 3 * rsc].as_();
+                        ab[3][1] += c[1 * csc + 3 * rsc].as_();
+                        ab[3][2] += c[2 * csc + 3 * rsc].as_();
+                        ab[3][3] += c[3 * csc + 3 * rsc].as_();
+                    }
                     FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..4 {
                             ab[i][0] *= *bias.offset(i as isize);
@@ -333,43 +331,46 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::AddUnicast(ptr, rsc, csc) => {
-                        let rsc = rsc / std::mem::size_of::<TI>();
-                        let csc = csc / std::mem::size_of::<TI>();
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                ab[i][j] += *ptr.offset((rsc * i + csc * j) as isize)
+                    FusedKerSpec::AddUnicast(Tile {
+                        ptr,
+                        row_byte_stride,
+                        col_byte_stride,
+                        ..
+                    }) => {
+                        for i in 0usize..4 {
+                            for j in 0usize..4 {
+                                let value: *const TC = ptr.offset(
+                                    row_byte_stride * i as isize + col_byte_stride * j as isize,
+                                ) as _;
+                                ab[i][j] += (*value).as_();
                             }
                         }
                     }
                 }
                 pnl = pnl.add(1);
             }
-            match *spec.c {
-                Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
-                    let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
-                    let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
-                    let c = c as *mut TC;
-                    let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
-                    c[0 * csc + 0 * rsc] = ab[0][0].as_();
-                    c[1 * csc + 0 * rsc] = ab[0][1].as_();
-                    c[2 * csc + 0 * rsc] = ab[0][2].as_();
-                    c[3 * csc + 0 * rsc] = ab[0][3].as_();
-                    c[0 * csc + 1 * rsc] = ab[1][0].as_();
-                    c[1 * csc + 1 * rsc] = ab[1][1].as_();
-                    c[2 * csc + 1 * rsc] = ab[1][2].as_();
-                    c[3 * csc + 1 * rsc] = ab[1][3].as_();
-                    c[0 * csc + 2 * rsc] = ab[2][0].as_();
-                    c[1 * csc + 2 * rsc] = ab[2][1].as_();
-                    c[2 * csc + 2 * rsc] = ab[2][2].as_();
-                    c[3 * csc + 2 * rsc] = ab[2][3].as_();
-                    c[0 * csc + 3 * rsc] = ab[3][0].as_();
-                    c[1 * csc + 3 * rsc] = ab[3][1].as_();
-                    c[2 * csc + 3 * rsc] = ab[3][2].as_();
-                    c[3 * csc + 3 * rsc] = ab[3][3].as_();
-                }
-                _ => return 1,
-            }
+            let Tile { ptr: c, row_byte_stride, col_byte_stride, .. } = spec.c;
+            let c = *c as *mut TC;
+            let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
+            let csc = *col_byte_stride as usize / std::mem::size_of::<TC>();
+            let c = c as *mut TC;
+            let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
+            c[0 * csc + 0 * rsc] = ab[0][0].as_();
+            c[1 * csc + 0 * rsc] = ab[0][1].as_();
+            c[2 * csc + 0 * rsc] = ab[0][2].as_();
+            c[3 * csc + 0 * rsc] = ab[0][3].as_();
+            c[0 * csc + 1 * rsc] = ab[1][0].as_();
+            c[1 * csc + 1 * rsc] = ab[1][1].as_();
+            c[2 * csc + 1 * rsc] = ab[1][2].as_();
+            c[3 * csc + 1 * rsc] = ab[1][3].as_();
+            c[0 * csc + 2 * rsc] = ab[2][0].as_();
+            c[1 * csc + 2 * rsc] = ab[2][1].as_();
+            c[2 * csc + 2 * rsc] = ab[2][2].as_();
+            c[3 * csc + 2 * rsc] = ab[2][3].as_();
+            c[0 * csc + 3 * rsc] = ab[3][0].as_();
+            c[1 * csc + 3 * rsc] = ab[3][1].as_();
+            c[2 * csc + 3 * rsc] = ab[3][2].as_();
+            c[3 * csc + 3 * rsc] = ab[3][3].as_();
         }
         return 0;
     }
@@ -517,18 +518,16 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::AddC => match *spec.c {
-                        Strides { ptr: c, row_byte_stride, .. } => {
-                            let c = c as *const TC;
-                            let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
-                            let c = std::slice::from_raw_parts(c, 1 + 3 * rsc);
-                            ab[0] += c[0 * rsc].as_();
-                            ab[1] += c[1 * rsc].as_();
-                            ab[2] += c[2 * rsc].as_();
-                            ab[3] += c[3 * rsc].as_();
-                        }
-                        _ => return 1,
-                    },
+                    FusedKerSpec::AddC => {
+                        let Tile { ptr: c, row_byte_stride, .. } = spec.c;
+                        let c = *c as *const TC;
+                        let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
+                        let c = std::slice::from_raw_parts(c, 1 + 3 * rsc);
+                        ab[0] += c[0 * rsc].as_();
+                        ab[1] += c[1 * rsc].as_();
+                        ab[2] += c[2 * rsc].as_();
+                        ab[3] += c[3 * rsc].as_();
+                    }
                     FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..4 {
                             ab[i] *= *bias.offset(i as isize);
@@ -592,27 +591,23 @@ where
                             ab[i] = ab[i].q_away(mult, shift);
                         }
                     }
-                    FusedKerSpec::AddUnicast(ptr, rsc, _) => {
-                        let rsc = rsc / std::mem::size_of::<TI>();
-                        for i in 0..4 {
-                            ab[i] += *ptr.offset((rsc * i) as isize)
+                    FusedKerSpec::AddUnicast(Tile { ptr, row_byte_stride, .. }) => {
+                        for i in 0usize..4 {
+                            let value: *const TC = ptr.offset(row_byte_stride * i as isize) as _;
+                            ab[i] += (*value).as_();
                         }
                     }
                 }
                 pnl = pnl.add(1);
             }
-            match *spec.c {
-                Strides { ptr: c, row_byte_stride, .. } => {
-                    let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
-                    let c = c as *mut TC;
-                    let c = std::slice::from_raw_parts_mut(c, 1 + 3 * rsc);
-                    c[0 * rsc] = ab[0].as_();
-                    c[1 * rsc] = ab[1].as_();
-                    c[2 * rsc] = ab[2].as_();
-                    c[3 * rsc] = ab[3].as_();
-                }
-                _ => return 1,
-            }
+            let Tile { ptr: c, row_byte_stride, .. } = spec.c;
+            let c = *c as *mut TC;
+            let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
+            let c = std::slice::from_raw_parts_mut(c, 1 + 3 * rsc);
+            c[0 * rsc] = ab[0].as_();
+            c[1 * rsc] = ab[1].as_();
+            c[2 * rsc] = ab[2].as_();
+            c[3 * rsc] = ab[3].as_();
         }
         return 0;
     }
@@ -767,21 +762,19 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::AddC => match *spec.c {
-                        Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
-                            let c = c as *const TC;
-                            let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
-                            let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
-                            let c = std::slice::from_raw_parts(c, 1 + 1 * csc + 2 * rsc);
-                            ab[0][0] += c[0 * csc + 0 * rsc].as_();
-                            ab[0][1] += c[1 * csc + 0 * rsc].as_();
-                            ab[1][0] += c[0 * csc + 1 * rsc].as_();
-                            ab[1][1] += c[1 * csc + 1 * rsc].as_();
-                            ab[2][0] += c[0 * csc + 2 * rsc].as_();
-                            ab[2][1] += c[1 * csc + 2 * rsc].as_();
-                        }
-                        _ => return 1,
-                    },
+                    FusedKerSpec::AddC => {
+                        let Tile { ptr: c, row_byte_stride, col_byte_stride, .. } = spec.c;
+                        let c = *c as *const TC;
+                        let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
+                        let csc = *col_byte_stride as usize / std::mem::size_of::<TC>();
+                        let c = std::slice::from_raw_parts(c, 1 + 1 * csc + 2 * rsc);
+                        ab[0][0] += c[0 * csc + 0 * rsc].as_();
+                        ab[0][1] += c[1 * csc + 0 * rsc].as_();
+                        ab[1][0] += c[0 * csc + 1 * rsc].as_();
+                        ab[1][1] += c[1 * csc + 1 * rsc].as_();
+                        ab[2][0] += c[0 * csc + 2 * rsc].as_();
+                        ab[2][1] += c[1 * csc + 2 * rsc].as_();
+                    }
                     FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..3 {
                             ab[i][0] *= *bias.offset(i as isize);
@@ -864,33 +857,35 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::AddUnicast(ptr, rsc, csc) => {
-                        let rsc = rsc / std::mem::size_of::<TI>();
-                        let csc = csc / std::mem::size_of::<TI>();
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] += *ptr.offset((rsc * i + csc * j) as isize)
+                    FusedKerSpec::AddUnicast(Tile {
+                        ptr,
+                        row_byte_stride,
+                        col_byte_stride,
+                        ..
+                    }) => {
+                        for i in 0usize..3 {
+                            for j in 0usize..2 {
+                                let value: *const TC = ptr.offset(
+                                    row_byte_stride * i as isize + col_byte_stride * j as isize,
+                                ) as _;
+                                ab[i][j] += (*value).as_();
                             }
                         }
                     }
                 }
                 pnl = pnl.add(1);
             }
-            match *spec.c {
-                Strides { ptr: c, row_byte_stride, col_byte_stride, .. } => {
-                    let c = c as *mut TC;
-                    let rsc = row_byte_stride as usize / std::mem::size_of::<TC>();
-                    let csc = col_byte_stride as usize / std::mem::size_of::<TC>();
-                    let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
-                    c[0 * csc + 0 * rsc] = ab[0][0].as_();
-                    c[1 * csc + 0 * rsc] = ab[0][1].as_();
-                    c[0 * csc + 1 * rsc] = ab[1][0].as_();
-                    c[1 * csc + 1 * rsc] = ab[1][1].as_();
-                    c[0 * csc + 2 * rsc] = ab[2][0].as_();
-                    c[1 * csc + 2 * rsc] = ab[2][1].as_();
-                }
-                _ => return 1,
-            }
+            let Tile { ptr: c, row_byte_stride, col_byte_stride, .. } = spec.c;
+            let c = *c as *mut TC;
+            let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
+            let csc = *col_byte_stride as usize / std::mem::size_of::<TC>();
+            let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
+            c[0 * csc + 0 * rsc] = ab[0][0].as_();
+            c[1 * csc + 0 * rsc] = ab[0][1].as_();
+            c[0 * csc + 1 * rsc] = ab[1][0].as_();
+            c[1 * csc + 1 * rsc] = ab[1][1].as_();
+            c[0 * csc + 2 * rsc] = ab[2][0].as_();
+            c[1 * csc + 2 * rsc] = ab[2][1].as_();
         }
         return 0;
     }

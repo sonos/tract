@@ -1,7 +1,7 @@
 use num_traits::Zero;
 use std::fmt::Debug;
 
-use super::{FusedKerSpec, FusedSpec, MatMatMulKer, MatrixStore, PanelStore};
+use super::{FusedKerSpec, FusedSpec, MatMatMulKer, MatrixStore, Tile};
 use downcast_rs::{impl_downcast, Downcast};
 use tract_data::prelude::*;
 
@@ -177,17 +177,19 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                                 }
                             }
                         }
-                        FusedKerSpec::AddUnicast(
-                            tmp_d_tile.as_ptr(),
-                            std::mem::size_of::<TI>(),
-                            std::mem::size_of::<TI>() * K::mr(),
-                        )
+                        FusedKerSpec::AddUnicast(Tile {
+                            ptr: tmp_d_tile.as_ptr() as _,
+                            row_byte_stride: std::mem::size_of::<TI>() as isize,
+                            col_byte_stride: (std::mem::size_of::<TI>() * K::mr()) as isize,
+                            item_size: std::mem::size_of::<TI>(),
+                        })
                     } else {
-                        FusedKerSpec::AddUnicast(
-                            tile_ptr,
-                            rsc as usize * std::mem::size_of::<TI>(),
-                            csc as usize * std::mem::size_of::<TI>(),
-                        )
+                        FusedKerSpec::AddUnicast(Tile {
+                            ptr: tile_ptr as _,
+                            row_byte_stride: (rsc as usize * std::mem::size_of::<TI>()) as isize,
+                            col_byte_stride: (csc as usize * std::mem::size_of::<TI>()) as isize,
+                            item_size: std::mem::size_of::<TI>(),
+                        })
                     }
                 }
             };
@@ -198,9 +200,9 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     }
 
     #[inline]
-    pub unsafe fn tmp_tile_c(&mut self, c: DatumType, mr: usize, nr: usize) -> PanelStore {
+    pub unsafe fn tmp_tile_c(&mut self, c: DatumType, mr: usize, nr: usize) -> Tile {
         let ptr = self.get_raw_buffer(mr * nr * c.size_of());
-        PanelStore::Strides {
+        Tile {
             ptr: ptr as _,
             item_size: c.size_of(),
             row_byte_stride: c.size_of() as isize,

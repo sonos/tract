@@ -167,7 +167,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
     }
 
     #[inline]
-    pub(super) unsafe fn tile_c(&self, down: usize, right: usize) -> PanelStore {
+    pub(super) unsafe fn tile_c(&self, down: usize, right: usize) -> Tile {
         let (down, right) = (down as isize, right as isize);
         match self {
             MatrixStore::Strides {
@@ -178,7 +178,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
                 panel_row_byte_stride,
                 panel_col_byte_stride,
                 ..
-            } => PanelStore::Strides {
+            } => Tile {
                 ptr: ptr.offset(panel_row_byte_stride * down + panel_col_byte_stride * right)
                     as *mut _,
                 row_byte_stride: *row_byte_stride,
@@ -196,13 +196,9 @@ impl<'s, 't> MatrixStore<'s, 't> {
         right: usize,
         height: usize,
         width: usize,
-        tile: &PanelStore,
+        tile: &Tile,
     ) {
-        let tile = if let PanelStore::Strides { ptr, .. } = tile {
-            *ptr as *mut T
-        } else {
-            panic!("tile is expected to be in PanelStrides form")
-        };
+        let tile = tile.ptr as *mut T;
         match self {
             MatrixStore::Strides {
                 ptr,
@@ -234,7 +230,16 @@ impl<'s, 't> MatrixStore<'s, 't> {
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum PanelStore {
-    Strides { ptr: *mut c_void, row_byte_stride: isize, col_byte_stride: isize, item_size: usize },
+    Strides(Tile),
     Packed { ptr: *const c_void },
     OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const c_void },
+}
+
+#[repr(C)]
+#[derive(PartialEq, Copy, Clone, Debug)]
+pub struct Tile {
+    pub ptr: *mut c_void,
+    pub row_byte_stride: isize,
+    pub col_byte_stride: isize,
+    pub item_size: usize,
 }
