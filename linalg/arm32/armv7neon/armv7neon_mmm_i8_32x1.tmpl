@@ -121,15 +121,10 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
 
 .store:
     ldr     r3, [r0, #8]
-    ldm     r3, { r4, r5, r6, r7 } // discr, ptr, rsc, csc
-    cmp     r4, #0
-    beq     .store_strides
-
-    b       .unsupported
+    ldm     r3, { r4, r5, r6, r7 } // ptr, rsc, csc, item_size
 
 .store_strides:
-    ldr     r8, [ r3, #16 ]
-    cmp     r8, #4
+    cmp     r7, #4
     beq     .store_strides_i32
 
     {% for reg in (8..15) %}
@@ -138,25 +133,24 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     {% endfor %}
     {% for reg in (8..15) %}
         {%capture d%}{{reg | times: 2 }}{%endcapture%}
-        vst1.s8     d{{d}}[0], [ r5 ], r6
-        vst1.s8     d{{d}}[1], [ r5 ], r6
-        vst1.s8     d{{d}}[2], [ r5 ], r6
-        vst1.s8     d{{d}}[3], [ r5 ], r6
+        vst1.s8     d{{d}}[0], [ r4 ], r5
+        vst1.s8     d{{d}}[1], [ r4 ], r5
+        vst1.s8     d{{d}}[2], [ r4 ], r5
+        vst1.s8     d{{d}}[3], [ r4 ], r5
     {% endfor %}
 
     mov         r0,     #0
     b           .return
 
 .store_strides_i32:
-/*
     {% for reg in (8..15) %}
         {%capture d%}{{reg | times: 2}}{%endcapture%}
-        vst1.s32    d{{d}}[0], [ r8 ], r6
-        vst1.s32    d{{d}}[1], [ r8 ], r6
-        vst1.s32    d{{d|plus:1}}[0], [ r8 ], r6
-        vst1.s32    d{{d|plus:1}}[1], [ r8 ], r6
+        vst1.s32    d{{d}}[0], [ r4 ], r5
+        vst1.s32    d{{d}}[1], [ r4 ], r5
+        vst1.s32    d{{d|plus:1}}[0], [ r4 ], r5
+        vst1.s32    d{{d|plus:1}}[1], [ r4 ], r5
     {% endfor %}
-*/
+
     mov         r0,     #0
     b           .return
 
@@ -167,10 +161,10 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     bx          lr
 
 .non_linear_loop_entry:
-    sub     r1, #16
+    sub     r1, #20
 
 .non_linear_loop:
-    add     r1, #16
+    add     r1, #20
     ldr     r2, [r1]
     cmp     r2, #0
     beq     .store
@@ -208,10 +202,6 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
 .non_linear_addc:
 
     ldr     r3, [r0, #8]
-    ldr     r4, [r3], #4
-    cmp     r4, #0
-    bne     .unsupported
-
     ldm     r3, { r4, r5, r6, r7 } // ptr, rsc, csc, item
 
 .add_with_strides:
@@ -382,8 +372,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b .non_linear_loop
 
 .add_unicast:
-    ldm         r1, { r3, r4, r5, r6 } 
-    mov r7, #4
+    ldm         r1, { r3, r4, r5, r6, r7 } 
     b .add_with_strides
 
 .unsupported:

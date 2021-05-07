@@ -51,7 +51,7 @@ macro_rules! MMMKernel {
             }
             #[inline(never)]
             fn kernel(spec: &MatMatMulKerSpec<$ti>) -> isize {
-                unsafe { $func(dbg!(spec)) }
+                unsafe { $func(spec) }
             }
         }
     }

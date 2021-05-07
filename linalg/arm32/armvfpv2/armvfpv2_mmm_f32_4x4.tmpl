@@ -291,42 +291,23 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
 
 .store:
     ldr     r3, [r0, #8]
-    ldm     r3, { r4, r5, r6, r7 } // discr, ...
-    cmp     r4, #0
-    beq     .store_strides
-    cmp     r4, #3
-    beq     .store_vec_strides
-    bne     .unsupported
+    ldm     r3, { r4, r5, r6, r7 } // ptr, rsc, csc, size
 
-.store_strides:
-    // r5,r6,r7 are c,src,csc
     {% for col in (0..3) %}
-        mov         r8, r5
+        mov         r8, r4
         {% for reg in (0..3) %}
             fsts        s{{col|times:4|plus:reg|plus:16}}, [ r8 ]
             {% if reg < 3 %}
-                add         r8, r8, r6
+                add         r8, r8, r5
             {% endif %}
         {% endfor %}
         {% if col < 3 %}
-            add r5, r5, r7
+            add r4, r4, r6
         {% endif %}
     {% endfor %}
 
     mov         r0,     #0
     b   .return
-
-.store_vec_strides:
-    // r5,r6 are ptr, strides
-    fsts s16, [ r5 ]
-    add r5, r5, r6
-    fsts s17, [ r5 ]
-    add r5, r5, r6
-    fsts s18, [ r5 ]
-    add r5, r5, r6
-    fsts s19, [ r5 ]
-
-    mov r0, #0
 
 .return:
     vpop        { s16-s31 }
@@ -335,10 +316,10 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     bx          lr
 
 .non_linear_loop_entry:
-    sub     r1, #16
+    sub     r1, #20
 
 .non_linear_loop:
-    add     r1, #16
+    add     r1, #20
     ldr     r2, [r1]
     cmp     r2, #0
     beq     .store
@@ -370,23 +351,17 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
 .non_linear_addc:
 
     ldr     r3, [r0, #8]
-    ldr     r4, [r3]
-    cmp     r4, #0
-    bne     .unsupported
-
-    ldr     r4, [r3, #4]   // C ptr
-    ldr     r5, [r3, #8]   // rsc
-    ldr     r6, [r3, #12]  // csc
+    ldm     r3, { r4, r5, r6, r7 } // ptr, rsc, csc, size
 
 .add_with_strides:
 
     {% for col in (0..3) %}
-        mov         r7, r4
+        mov         r8, r4
         {% for reg in (0..3) %}
-            vldr            s0, [ r7 ]
+            vldr            s0, [ r8 ]
             vadd.f32        s{{col|times:4|plus:reg|plus:16}}, s{{col|times:4|plus:reg|plus:16}}, s0
             {% if reg < 3 %}
-                add         r7, r7, r5
+                add         r8, r8, r5
             {% endif %}
         {% endfor %}
         {% if col < 3 %}
@@ -510,7 +485,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     b .non_linear_loop
 
 .add_unicast:
-    ldm         r1, { r3, r4, r5, r6 } // r3 unsused, already used enum discriminant, just here to make ldm "work"
+    ldm         r1, { r3, r4, r5, r6, r7 } // r3 unsused, already used enum discriminant, just here to make ldm "work"
     b .add_with_strides
 
 .unsupported:
