@@ -461,29 +461,13 @@ fma_mmm_i8_8x8_{{suffix}} proc
 
 {{L}}add_with_strides:
 
-    mov     eax,    0
-{% for i in (0..3) %}
-    pinsrd  xmm14, eax, {{i}}
-    add     eax,    esi
-{% endfor %}
-    vpermq          ymm14, ymm14, 78 // 0b01001110
-{% for i in (0..3) %}
-    pinsrd  xmm14, eax, {{i}}
-    add     eax,    esi
-{% endfor %}
-    vpermq          ymm14, ymm14, 78 // 0b01001110
-
     cmp     r8,    4
     je      {{L}}non_linear_addc_i32
 
-{% if msvc %}
-    vpbroadcastd    ymm10, dword ptr [ offset byte_shuffle ]
-    vmovups         ymm11, dword ptr [ offset i128_shuffle ]
-{% else %}
-    vpbroadcastd    ymm10, [ rip + {{L}}byte_shuffle ]
-    vmovups         ymm11, [ rip + {{L}}i128_shuffle ]
-{% endif %}
-
+/*
+This is not great as vgatherdps reads 32-bits values and goes beyond our buffer. Probably harmless though.
+Commented and replaced with the "mov al" loop beyond to pacify valgrind.
+ymm14 and ymm15 are the same as in the non_linear_addc_i32 case (compute them before the test right above here.
 {% for i in (0..7) %}
     vpcmpeqd        ymm15, ymm15, ymm15
     vgatherdps      ymm12, [ r10 + ymm14 ], ymm15   // 0xxx 1xxx 2xxx 3xxx 4xxx 5xxx 6xxx 7xxx
@@ -497,10 +481,47 @@ fma_mmm_i8_8x8_{{suffix}} proc
     vpaddd          ymm{{i}},   ymm{{i}},   ymm12
     add             r10, rbx
 {% endfor %}
+*/
+
+    {% for col in (0..7) %}
+        mov r8, r10
+        {% for half in (0..1) %}
+            {% for lane in (0..3) %}
+                mov al, [ r8 ]
+                add r8, rsi
+                movsx eax, al
+                pinsrd xmm10, eax, {{lane}}
+            {% endfor %}
+            vperm2f128  ymm10,   ymm10,   ymm10,  1
+        {% endfor %}
+        vpaddd ymm{{col}}, ymm{{col}}, ymm10
+        add r10, rbx
+    {% endfor %}
 
     jmp    {{L}}non_linear_loop
 
 {{L}}non_linear_addc_i32:
+
+    mov     eax,    0
+{% for i in (0..3) %}
+    pinsrd  xmm14, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+    vpermq          ymm14, ymm14, 78 // 0b01001110
+{% for i in (0..3) %}
+    pinsrd  xmm14, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+    vpermq          ymm14, ymm14, 78 // 0b01001110
+
+
+{% if msvc %}
+    vpbroadcastd    ymm10, dword ptr [ offset byte_shuffle ]
+    vmovups         ymm11, dword ptr [ offset i128_shuffle ]
+{% else %}
+    vpbroadcastd    ymm10, [ rip + {{L}}byte_shuffle ]
+    vmovups         ymm11, [ rip + {{L}}i128_shuffle ]
+{% endif %}
 
 {% for i in (0..7) %}
     vpcmpeqd        ymm15, ymm15, ymm15
