@@ -38,7 +38,7 @@ macro_rules! MMMKernel {
                 $nr
             }
             fn alignment_bytes_packed_a() -> usize {
-                $alignment_bytes_packed_b
+                $alignment_bytes_packed_a
             }
             fn alignment_bytes_packed_b() -> usize {
                 $alignment_bytes_packed_b
