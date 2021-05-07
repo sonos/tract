@@ -412,24 +412,24 @@ fma_mmm_i8_8x8_{{suffix}} proc
     cmp     r8,    4
     je      {{L}}non_linear_addc_i32
 
-/*
-This is not great as vgatherdps reads 32-bits values and goes beyond our buffer. Probably harmless though.
-Commented and replaced with the "mov al" loop beyond to pacify valgrind.
-ymm14 and ymm15 are the same as in the non_linear_addc_i32 case (compute them before the test right above here.
-{% for i in (0..7) %}
-    vpcmpeqd        ymm15, ymm15, ymm15
-    vgatherdps      ymm12, [ r10 + ymm14 ], ymm15   // 0xxx 1xxx 2xxx 3xxx 4xxx 5xxx 6xxx 7xxx
-
-    // we need to go through vpmovsxbd, shuffling naively erases signs
-    vpshufb         ymm12, ymm12, ymm10             // 0123 0123 0123 0123 4567 4567 4567 4567
-
-    vpermd          ymm12, ymm11, ymm12             // 0123 4567
-    vpmovsxbd       ymm12, xmm12                    // sign extend
-
-    vpaddd          ymm{{i}},   ymm{{i}},   ymm12
-    add             r10, rbx
-{% endfor %}
-*/
+{% comment %}
+// This is not great as vgatherdps reads 32-bits values and goes beyond our buffer. Probably harmless though.
+// Commented and replaced with the "mov al" loop beyond to pacify valgrind.
+// ymm14 and ymm15 are the same as in the non_linear_addc_i32 case (compute them before the test right above here.
+// {% for i in (0..7) %}
+//     vpcmpeqd        ymm15, ymm15, ymm15
+//     vgatherdps      ymm12, [ r10 + ymm14 ], ymm15   // 0xxx 1xxx 2xxx 3xxx 4xxx 5xxx 6xxx 7xxx
+// 
+//     // we need to go through vpmovsxbd, shuffling naively erases signs
+//     vpshufb         ymm12, ymm12, ymm10             // 0123 0123 0123 0123 4567 4567 4567 4567
+// 
+//     vpermd          ymm12, ymm11, ymm12             // 0123 4567
+//     vpmovsxbd       ymm12, xmm12                    // sign extend
+// 
+//     vpaddd          ymm{{i}},   ymm{{i}},   ymm12
+//     add             r10, rbx
+// {% endfor %}
+{% endcomment %}
 
     {% for col in (0..7) %}
         mov r8, r10
