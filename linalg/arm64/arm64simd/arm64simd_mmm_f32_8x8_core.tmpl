@@ -324,17 +324,9 @@
     bne         .non_linear_loop_entry
 
 .store:
-    ldr         x3, [x0, #16]               // c
-    ldr         x4, [x3]                    // c disc
-    cmp         x4, #0
-    beq         .store_strides
-    cmp         x4, #3
-    beq         .store_vec_strides
-
-.store_strides:
-    ldr         x5, [x3, #8]                // c base ptr
-    ldr         x6, [x3, #16]               // rsc
-    ldr         x7, [x3, #24]               // csc
+    ldr         x3, [x0, #16]
+    ldp         x5, x6, [x3]                // c base ptr, rsc
+    ldp         x7, x8, [x3, #16]           // csc, item_size
 
     cmp         x6, #4
     bne         .store_strides_generic
@@ -363,18 +355,6 @@
     mov         x0, #0
     b           .return
 
-.store_vec_strides:
-    ldr         x5, [x3, #8]                // c base ptr
-    ldr         x6, [x3, #16]               // c stride
-
-    {% for reg in (0..1) %}
-        {% for lane in (0..3) %}
-            st1 { v{{reg| plus:16}}.s }[{{lane}}], [ x5 ], x6
-        {% endfor %}
-    {% endfor %}
-
-    mov         x0, #0
-
 .return:
     ldr         q8, [sp], #16
 
@@ -386,10 +366,10 @@
     ret
 
 .non_linear_loop_entry:
-    sub         x1, x1, 32
+    sub         x1, x1, 40
 
 .non_linear_loop:
-    add         x1, x1, 32
+    add         x1, x1, 40
     ldr         x2, [x1]
     cmp         x2, #0
     beq         .store
@@ -441,13 +421,8 @@
 
 .non_linear_addc:
     ldr         x3, [x0, #16]               // c
-    ldr         x4, [x3]                    // c disc
-    cmp         x4, #0
-    bne         .unsupported
-
-    ldr         x5, [x3, #8]                // c base ptr
-    ldr         x6, [x3, #16]               // rsc
-    ldr         x7, [x3, #24]               // csc
+    ldp         x5, x6, [x3]                // c base ptr, rsc
+    ldp         x7, x8, [x3, #16]           // csc, item_size
 
 .add_with_strides:
     {% for col in (8..15) %}
@@ -564,8 +539,8 @@
     b           .non_linear_loop
 
 .add_unicast:
-    ldr         x5, [x1, #8]
-    ldp         x6, x7, [x1, #16]
+    ldp         x5, x6, [x1, #8]
+    ldp         x7, x8, [x1, #24]
     b .add_with_strides
 
 .unsupported:

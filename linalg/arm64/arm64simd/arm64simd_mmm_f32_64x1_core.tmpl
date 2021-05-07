@@ -146,17 +146,9 @@
     bne         .non_linear_loop_entry
 
 .store:
-    ldr         x3, [x0, #16]               // c
-    ldr         x4, [x3]                    // c disc
-    cmp         x4, #0
-    beq         .store_strides
-    cmp         x4, #3
-    beq         .store_strides
-    b           .unsupported
-
-.store_strides:
-    ldp         x5, x6, [x3, #8]                // c base ptr
+    ldr         x3, [x0, #16]
     mov         x0, #0
+    ldp         x5, x6, [x3]                // c base ptr, rsc$
 
     cmp         x6, #4
     beq         .store_strides_contig
@@ -185,10 +177,10 @@
     ret
 
 .non_linear_loop_entry:
-    sub         x1, x1, 32
+    sub         x1, x1, 40
 
 .non_linear_loop:
-    add         x1, x1, 32
+    add         x1, x1, 40
     ldr         x2, [x1]
     cmp         x2, #0
     beq         .store
@@ -240,12 +232,7 @@
 
 .non_linear_addc:
     ldr         x3, [x0, #16]               // c
-    ldr         x4, [x3]                    // c disc
-    cmp         x4, #0
-    bne         .unsupported
-
-    ldr         x5, [x3, #8]                // c base ptr
-    ldr         x6, [x3, #16]               // rsc
+    ldp         x5, x6, [x3]                // c base ptr, rsc
 
 .add_with_strides:
     cmp         x6, #4
@@ -355,8 +342,7 @@
     b           .non_linear_loop
 
 .add_unicast:
-    ldr         x5, [x1, #8]
-    ldp         x6, x7, [x1, #16]
+    ldp         x5, x6, [x1, #8]           // c base ptr, rsc
     b .add_with_strides
 
 

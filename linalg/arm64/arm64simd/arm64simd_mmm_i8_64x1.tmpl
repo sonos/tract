@@ -102,17 +102,9 @@
     beq         .store
 
 .store:
-    ldr         x3, [x0, #16]               // c
-    ldr         x4, [x3]                    // c disc
-    cmp         x4, #0
-    beq         .store_strides
-    mov         x0, #1
-    b           .return
-
-.store_strides:
-    ldr         x5, [x3, #8]                // c base ptr
-    ldr         x6, [x3, #16]               // rsc
-    ldr         x8, [x3, #32]               // item size
+    ldr         x3, [x0, #16]
+    ldp         x5, x6, [x3]                // c base ptr, rsc
+    ldp         x7, x8, [x3, #16]           // csc, item_size
 
     cmp         x8, #4
     beq         .store_strides_i32
@@ -145,10 +137,10 @@
     ret
 
 .non_linear_loop_entry:
-    sub         x1, x1, 32
+    sub         x1, x1, 40
 
 .non_linear_loop:
-    add         x1, x1, 32
+    add         x1, x1, 40
     ldr         x2, [x1]
     cmp         x2, #0
     beq         .store
@@ -200,14 +192,9 @@
     b           .non_linear_loop
 
 .non_linear_addc:
-    ldr         x3, [x0, #16]               // c
-    ldr         x4, [x3]                    // c disc
-    cmp         x4, #0
-    bne         .unsupported
-
-    ldr         x5, [x3, #8]                // c base ptr
-    ldr         x6, [x3, #16]               // rsc
-    ldr         x8, [x3, #32]               // item size
+    ldr         x3, [x0, #16]     
+    ldp         x5, x6, [x3]                // c base ptr, rsc
+    ldp         x7, x8, [x3, #16]           // csc, item_size
 
 .add_with_strides:
     cmp         x8, #4
@@ -370,9 +357,8 @@ non_linear_addc_i32:
     b .non_linear_loop
 
 .add_unicast:
-    ldr         x5, [x1, #8]
-    ldp         x6, x7, [x1, #16]
-    mov         x8, #4
+    ldp         x5, x6, [x1, #8]
+    ldp         x7, x8, [x1, #24]
     b .add_with_strides
 
 .unsupported:

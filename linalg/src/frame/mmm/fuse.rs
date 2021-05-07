@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use super::Tile;
 use tract_data::internal::*;
 
 #[derive(Clone, Debug)]
@@ -37,7 +38,7 @@ pub enum FusedKerSpec<TI: Copy> {
     QTowardsEven(TI, usize),
     QTowardsPlusInf(TI, usize),
     QAway(TI, usize),
-    AddUnicast(*const TI, usize, usize),
+    AddUnicast(Tile),
 }
 
 #[cfg(test)]
@@ -55,8 +56,12 @@ pub mod test {
     fn check_non_linear_enum_size() {
         assert_eq!(
             std::mem::size_of::<super::FusedKerSpec<f32>>(),
-            4 * std::mem::size_of::<usize>()
-        )
+            std::mem::size_of::<usize>() + std::mem::size_of::<Tile>()
+        );
+        assert_eq!(
+            std::mem::size_of::<super::FusedKerSpec<f32>>(),
+            5 * std::mem::size_of::<usize>()
+        );
     }
 
     #[macro_export]
@@ -254,8 +259,8 @@ pub mod test {
         PanelStore::Packed { ptr: std::ptr::null() }
     }
 
-    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> PanelStore {
-        PanelStore::Strides {
+    pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize) -> Tile {
+        Tile {
             ptr: v.as_mut_ptr() as _,
             row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
             col_byte_stride: std::mem::size_of::<T>() as isize,
@@ -334,11 +339,12 @@ pub mod test {
             (0..len).map(|ix| (AsPrimitive::<TI>::as_(ix) + d[ix]).as_()).collect::<Vec<TC>>();
         let found = fused_ops::<K, TC, TI>(
             &*v,
-            &[FusedKerSpec::AddUnicast(
-                d.as_ptr(),
-                K::nr() * std::mem::size_of::<TI>(),
-                std::mem::size_of::<TI>(),
-            )],
+            &[FusedKerSpec::AddUnicast(Tile {
+                ptr: d.as_ptr() as _,
+                row_byte_stride: (K::nr() * std::mem::size_of::<TI>()) as isize,
+                col_byte_stride: (std::mem::size_of::<TI>()) as isize,
+                item_size: std::mem::size_of::<TI>(),
+            })],
         );
         assert_eq!(found, expected);
     }
