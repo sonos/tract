@@ -178,13 +178,13 @@ impl<'s, 't> MatrixStore<'s, 't> {
                 panel_row_byte_stride,
                 panel_col_byte_stride,
                 ..
-            } => Tile {
+            } => dbg!(Tile {
                 ptr: ptr.offset(panel_row_byte_stride * down + panel_col_byte_stride * right)
                     as *mut _,
                 row_byte_stride: *row_byte_stride,
                 col_byte_stride: *col_byte_stride,
                 item_size: *item_size,
-            },
+            }),
             _ => unimplemented!(),
         }
     }

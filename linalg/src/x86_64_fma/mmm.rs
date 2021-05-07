@@ -7,7 +7,7 @@ extern_kernel!(fn fma_mmm_i8_8x8(op: *const MatMatMulKerSpec<i32>) -> isize);
 MMMKernel!(MatMatMulF32x16x6<f32>, "fma", fma_mmm_f32_16x6; 16, 6; 32, 4; 0, 0);
 MMMKernel!(MatMatMulF32x64x1<f32>, "fma", fma_mmm_f32_64x1; 64, 1; 32, 4; 0, 0);
 MMMKernel!(MatMatMulI8x8x8<i32>, "avx2", fma_mmm_i8_8x8; 8, 8; 32, 4; 0, 0);
-MMMKernel!(MatMatMulI8xI32x8x8<i32>, "avx2", fma_mmm_i8_8x8; 64, 1; 32, 4; 0, 0);
+MMMKernel!(MatMatMulI8xI32x8x8<i32>, "avx2", fma_mmm_i8_8x8; 8, 8; 32, 4; 0, 0);
 
 test_mmm_kernel_f32!(
     crate::x86_64_fma::mmm::MatMatMulF32x16x6,

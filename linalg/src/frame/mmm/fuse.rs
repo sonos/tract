@@ -275,7 +275,9 @@ pub mod test {
         TI: Copy + Debug,
     {
         let mut v = vec![TC::max_value(); K::mr() * K::nr()];
+        dbg!(K::nr());
         let mut c = mmm_stride_storage(&mut v, K::nr());
+        dbg!(c);
         let err = K::kernel(&MatMatMulKerSpec {
             a: &null_packed_storage(),
             b: &null_packed_storage(),

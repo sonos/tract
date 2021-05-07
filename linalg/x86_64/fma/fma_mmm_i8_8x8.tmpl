@@ -262,28 +262,17 @@ fma_mmm_i8_8x8_{{suffix}} proc
 
 {{L}}store:
     mov     rcx,    [rdi + 16]
-    mov     rsi,    [rcx]
 
-    cmp     rsi,  0
-    je      {{L}}store_strides
-    cmp     rsi,  3
-    je      {{L}}store_vec_strides
-    mov     rax, 1
-    jmp     {{L}}return
-
-{{L}}store_strides:
-
-    mov     r8,     [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // row stride
-    mov     rdx,    [rcx + 24]          // col stride
-    mov     rdi,    [rcx + 32]          // item size
+    mov     r8,     [rcx]               // c ptr
+    mov     rsi,    [rcx + 8]           // row stride
+    mov     rdx,    [rcx + 16]          // col stride
+    mov     rdi,    [rcx + 24]          // item size
 
     cmp     rdi,    4
     je      {{L}}store_strides_i32
 
-    mov     r9,     r8                  // current col
     {% for col in (0..7) %}
-        mov r10,    r9
+        mov r10, r8
         {% for row in (0..3) %}
             extractps   ebx, xmm{{col}}, {{row}}
             mov         byte ptr [r10], bl
@@ -295,16 +284,15 @@ fma_mmm_i8_8x8_{{suffix}} proc
             mov         byte ptr [r10], bl
             add         r10, rsi
         {% endfor %}
-        add r9, rdx
+        add r8, rdx
     {% endfor %}
 
     mov     rax,    0
     jmp     {{L}}return
 
 {{L}}store_strides_i32:
-    mov     r9,     r8                  // current col
     {% for col in (0..7) %}
-        mov r10,    r9
+        mov r10,    r8
         {% for row in (0..3) %}
             extractps   ebx, xmm{{col}}, {{row}}
             mov         dword ptr [r10], ebx
@@ -316,51 +304,11 @@ fma_mmm_i8_8x8_{{suffix}} proc
             mov         dword ptr [r10], ebx
             add         r10, rsi
         {% endfor %}
-        add r9, rdx
+        add r8, rdx
     {% endfor %}
 
     mov     rax,    0
     jmp     {{L}}return
-
-{{L}}store_vec_strides:
-
-    mov     r8,     [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // stride
-    mov     rdi,    [rcx + 24]          // item size
-
-    cmp     rdi,    4
-    je      {{L}}store_vec_strides_i32
-
-    {% for row in (0..3) %}
-        extractps   ebx, xmm0, {{row}}
-        mov         byte ptr [r8], bl
-        add         r8, rsi
-    {% endfor %}
-    vperm2f128  ymm0,   ymm0,   ymm1,  1
-    {% for row in (0..3) %}
-        extractps   ebx, xmm0, {{row}}
-        mov         byte ptr [r8], bl
-        add         r8, rsi
-    {% endfor %}
-
-    mov     rax,    0
-    jmp     {{L}}return
-
-{{L}}store_vec_strides_i32:
-
-    {% for row in (0..3) %}
-        extractps   ebx, xmm0, {{row}}
-        mov         dword ptr [r8], ebx
-        add         r8, rsi
-    {% endfor %}
-    vperm2f128  ymm0,   ymm0,   ymm1,  1
-    {% for row in (0..3) %}
-        extractps   ebx, xmm0, {{row}}
-        mov         dword ptr [r8], ebx
-        add         r8, rsi
-    {% endfor %}
-
-    mov     rax,    0
 
 {{L}}return:
     ldmxcsr     [rsp + 4]
@@ -399,9 +347,9 @@ fma_mmm_i8_8x8_{{suffix}} proc
 // NON LINEAR LOOP
 
 {{L}}non_linear_loop_enter:
-    sub     rcx,    32
+    sub     rcx,    40
 {{L}}non_linear_loop:
-    add     rcx,    32
+    add     rcx,    40
     mov     rax,    [rcx]
 
     cmp     rax,    0
@@ -454,10 +402,10 @@ fma_mmm_i8_8x8_{{suffix}} proc
     mov     rax,    [rdi + 16]
 
     // FIXME: assume Strides storage
-    mov     r10,    [rax + 8]           // c ptr
-    mov     rsi,    [rax + 16]          // row stride
-    mov     rbx,    [rax + 24]          // col stride
-    mov     r8,     [rax + 32]          // item size
+    mov     r10,    [rax]           // c ptr
+    mov     rsi,    [rax + 8]          // row stride
+    mov     rbx,    [rax + 16]          // col stride
+    mov     r8,     [rax + 24]          // item size
 
 {{L}}add_with_strides:
 
@@ -733,7 +681,7 @@ i128_shuffle dd              0, 4
     mov     r10,    [rcx + 8]           // c ptr
     mov     rsi,    [rcx + 16]          // row stride
     mov     rbx,    [rcx + 24]          // col stride
-    mov     r8,     4                   // item isze is 4 (TI==i32)
+    mov     r8,     [rcx + 32]          // item size
 
     jmp    {{L}}add_with_strides
 

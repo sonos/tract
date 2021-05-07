@@ -155,20 +155,8 @@ fma_mmm_f32_64x1_{{suffix}} proc
 
 {{L}}store:
     mov     rcx,    [rdi + 16]
-    mov     rsi,    [rcx]
-
-    cmp     rsi,  0
-    je      {{L}}store_strides
-    cmp     rsi,  3
-    je      {{L}}store_vec_strides
-    mov     rax, 1
-    jmp     {{L}}return
-
-{{L}}store_strides:
-{{L}}store_vec_strides:
-
-    mov     r8,     [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // row stride
+    mov     r8,     [rcx]           // c ptr
+    mov     rsi,    [rcx + 8]          // row stride
 
     {% for vec in (0..7) %}
         {% for half in (0..1) %}
@@ -223,9 +211,9 @@ fma_mmm_f32_64x1_{{suffix}} proc
 // NON LINEAR LOOP
 
 {{L}}non_linear_loop_enter:
-    sub     rcx,    32
+    sub     rcx,    40
 {{L}}non_linear_loop:
-    add     rcx,    32
+    add     rcx,    40
     mov     rax,    [rcx]
 
     cmp     rax,    0
@@ -271,10 +259,9 @@ fma_mmm_f32_64x1_{{suffix}} proc
 {{L}}non_linear_addc:
     mov     rax,    [rdi + 16]
 
-    // FIXME: assume Strides storage
     // keep r10, rsi and rbx in sync with add_unicast
-    mov     r10,    [rax + 8]           // c ptr
-    mov     rsi,    [rax + 16]          // row stride
+    mov     r10,    [rax]           // c ptr
+    mov     rsi,    [rax + 8]          // row stride
 
 {{L}}add_with_strides:
     mov     eax,    0
