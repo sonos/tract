@@ -132,10 +132,12 @@ pub fn handle_npz(
                 let name = name
                     .split("/")
                     .nth(1)
-                    .with_context(|| format!(
-                        "npy filenames should be turn_XX/... in multiturn mode, got `{}'",
-                        name
-                    ))?
+                    .with_context(|| {
+                        format!(
+                            "npy filenames should be turn_XX/... in multiturn mode, got `{}'",
+                            name
+                        )
+                    })?
                     .trim_end_matches(".npy");
                 values.entry(name.to_string()).or_default().push(Ok(value.into_arc_tensor()));
             } else {
@@ -265,7 +267,6 @@ where
     let mut failing = std::collections::HashSet::new();
     let mut unchecked = std::collections::HashSet::new();
     let mut ok = 0;
-
     for (turn, inputs) in tensor::retrieve_or_make_inputs(tract, params)?.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,
@@ -273,12 +274,17 @@ where
                 let mut tags = annotations.node_mut(node.id.into());
                 let reference: Option<TVec<Arc<Tensor>>> = (0..node.outputs.len())
                     .map(|ix| {
-                        let label = tract.outlet_label((node.id, ix).into()).unwrap_or(&node.name);
-                        all_values
-                            .get(label)
-                            .and_then(|v| v.get(turn))
-                            .and_then(|r| r.as_ref().ok())
-                            .cloned()
+                        let get_value = |label: &str| {
+                            all_values
+                                .get(label)
+                                .and_then(|v| v.get(turn))
+                                .and_then(|r| r.as_ref().ok())
+                                .cloned()
+                        };
+                        tract
+                            .outlet_label((node.id, ix).into())
+                            .and_then(get_value)
+                            .or_else(|| get_value(&node.name))
                     })
                     .collect();
                 let mut tested = None;
@@ -343,7 +349,9 @@ where
                     ok += 1;
                 }
                 let result = if cumulative { tested.or(reference) } else { reference.or(tested) };
-                Ok(result.context("Failure to compute and no reference")?)
+                Ok(result.with_context(|| {
+                    format!("Failure to compute and no reference value for {}", node)
+                })?)
             },
         )?;
     }
