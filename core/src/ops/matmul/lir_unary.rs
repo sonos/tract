@@ -387,7 +387,7 @@ impl TypedOp for LirMatMulUnary {
                 return merge(&arg, &[]);
             }
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
-            if self.c_m_axis == self.c_final_shape.rank() - 2
+            if self.c_n_axis == self.c_final_shape.rank() - 2
                 && self.c_m_axis == self.c_final_shape.rank() - 1
                 && self.micro_ops.len() == 1
             {
