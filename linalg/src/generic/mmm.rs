@@ -840,8 +840,6 @@ where
     TI: Datum + ops::AddAssign<TI> + Copy,
     AB: AsMut<[TI]> + fmt::Debug,
 {
-    dbg!(&tile);
-    dbg!(&ab);
     if tile.item_size == TI::datum_type().size_of() {
         for i in 0usize..ab.len() {
             for j in 0usize..ab[0].as_mut().len() {
