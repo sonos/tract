@@ -7,7 +7,6 @@ use tract_data::internal::*;
 pub enum FusedSpec<'t> {
     Min(&'t Tensor),
     Max(&'t Tensor),
-    AddC,
     PerRowMul(&'t Tensor),
     PerRowAdd(&'t Tensor),
     PerColMul(&'t Tensor),
@@ -27,7 +26,7 @@ pub enum FusedKerSpec<TI: Copy> {
     Done,
     Min(TI),
     Max(TI),
-    AddC,
+    AddUnicast(Tile),
     PerRowMul(*const TI),
     PerRowAdd(*const TI),
     PerColMul(*const TI),
@@ -38,7 +37,6 @@ pub enum FusedKerSpec<TI: Copy> {
     QTowardsEven(TI, usize),
     QTowardsPlusInf(TI, usize),
     QAway(TI, usize),
-    AddUnicast(Tile),
 }
 
 #[cfg(test)]
@@ -299,8 +297,9 @@ pub mod test {
         let mut v = c.to_vec();
         let mut c = mmm_stride_storage(&mut v, K::nr());
         let mut ops = ops.to_vec();
-        ops.insert(0, FusedKerSpec::AddC);
+        ops.insert(0, FusedKerSpec::AddUnicast(c));
         ops.push(FusedKerSpec::Done);
+        dbg!(&c);
         let err = K::kernel(&MatMatMulKerSpec {
             a: &null_packed_storage(),
             b: &null_packed_storage(),

@@ -166,7 +166,7 @@ armv7neon_mmm_f32_32x1_{{suffix}}:
     cmp     r4, #2
     beq     .max
     cmp     r4, #3
-    beq     .non_linear_addc
+    beq     .add_unicast
     cmp     r4, #4
     beq     .per_row_mul
     cmp     r4, #5
@@ -181,19 +181,13 @@ armv7neon_mmm_f32_32x1_{{suffix}}:
     beq     .scalar_mul
     cmp     r4, #10
     beq     .scalar_add
-    cmp     r4, #14
-    beq     .add_unicast
 
     b .unsupported
 
-.non_linear_addc:
-    ldr     r3, [r0, #8]
-    ldm     r3, { r4, r5 }
-
-.add_with_strides:
+.add_unicast:
     {% for reg in (0..15) %}
-        vld1.f32    d{{reg}}[0], [ r4 ], r5
-        vld1.f32    d{{reg}}[1], [ r4 ], r5
+        vld1.f32    d{{reg}}[0], [ r5 ], r6
+        vld1.f32    d{{reg}}[1], [ r5 ], r6
     {% endfor %}
     {% for reg in (0..7) %}
         vadd.f32 q{{reg|plus:8}}, q{{reg|plus:8}}, q{{reg}}
@@ -288,11 +282,6 @@ armv7neon_mmm_f32_32x1_{{suffix}}:
     {% endfor %}
 
     b .non_linear_loop
-
-.add_unicast:
-    mov r4, r5
-    mov r5, r6
-    b .add_with_strides
 
 .unsupported:
     mov         r0,     #1

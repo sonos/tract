@@ -362,7 +362,7 @@ fma_mmm_i8_8x8_{{suffix}} proc
     je      {{L}}max
 
     cmp     rax,    3
-    je      {{L}}non_linear_addc
+    je      {{L}}add_unicast
 
     cmp     rax,    4
     je      {{L}}per_row_mul
@@ -391,23 +391,17 @@ fma_mmm_i8_8x8_{{suffix}} proc
     cmp     rax,    13
     je      {{L}}q_away
 
-    cmp     rax,    14
-    je      {{L}}add_unicast
 
     jmp     {{L}}unimplemented
 
 // NON LINEAR / ADDC
 
-{{L}}non_linear_addc:
-    mov     rax,    [rdi + 16]
+{{L}}add_unicast:
 
-    // FIXME: assume Strides storage
-    mov     r10,    [rax]           // c ptr
-    mov     rsi,    [rax + 8]          // row stride
-    mov     rbx,    [rax + 16]          // col stride
-    mov     r8,     [rax + 24]          // item size
-
-{{L}}add_with_strides:
+    mov     r10,    [rcx + 8]           // c ptr
+    mov     rsi,    [rcx + 16]          // row stride
+    mov     rbx,    [rcx + 24]          // col stride
+    mov     r8,     [rcx + 32]          // item size
 
     cmp     r8,    4
     je      {{L}}non_linear_addc_i32
@@ -675,15 +669,6 @@ i128_shuffle dd              0, 4
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
-
-{{L}}add_unicast:
-
-    mov     r10,    [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // row stride
-    mov     rbx,    [rcx + 24]          // col stride
-    mov     r8,     [rcx + 32]          // item size
-
-    jmp    {{L}}add_with_strides
 
 {{L}}one_32bit:
 {% if msvc %}
