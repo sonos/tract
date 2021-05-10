@@ -349,9 +349,9 @@ where
         let mut packed_b =
             Tensor::uninitialized_aligned::<TB>(&[op.b_pack(k).len(1)], op.b_pack(k).alignment())
                 .unwrap();
-        op.a_pack(mem::size_of::<TA>()).pack(&mut packed_a.view_mut(), &a.view(), 1, 0);
+        op.a_pack(k).pack(&mut packed_a.view_mut(), &a.view(), 1, 0);
         let b = b.clone().into_shape(&[k, 1]).unwrap();
-        op.b_pack(mem::size_of::<TB>()).pack(&mut packed_b.view_mut(), &b.view(), 0, 1);
+        op.b_pack(k).pack(&mut packed_b.view_mut(), &b.view(), 0, 1);
 
         let mut c = Tensor::uninitialized::<TC>(&[m, 1]).unwrap();
 
