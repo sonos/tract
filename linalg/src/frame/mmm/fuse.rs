@@ -299,7 +299,6 @@ pub mod test {
         let mut ops = ops.to_vec();
         ops.insert(0, FusedKerSpec::AddUnicast(c));
         ops.push(FusedKerSpec::Done);
-        dbg!(&c);
         let err = K::kernel(&MatMatMulKerSpec {
             a: &null_packed_storage(),
             b: &null_packed_storage(),
