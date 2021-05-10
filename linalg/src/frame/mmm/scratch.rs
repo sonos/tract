@@ -90,7 +90,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
             let s = match spec {
                 FusedSpec::Min(m) => FusedKerSpec::Min(*m.to_scalar_unchecked()),
                 FusedSpec::Max(m) => FusedKerSpec::Max(*m.to_scalar_unchecked()),
-                FusedSpec::AddC => FusedKerSpec::AddC,
                 FusedSpec::PerRowAdd(v)
                 | FusedSpec::PerRowMul(v)
                 | FusedSpec::PerColMul(v)

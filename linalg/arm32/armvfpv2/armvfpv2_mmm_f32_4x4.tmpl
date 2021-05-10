@@ -328,7 +328,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     cmp     r2, #2
     beq     .max
     cmp     r2, #3
-    beq     .non_linear_addc
+    beq     .add_unicast
     cmp     r2, #4
     beq     .per_row_mul
     cmp     r2, #5
@@ -343,18 +343,11 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     beq     .scalar_mul
     cmp     r2, #10
     beq     .scalar_add
-    cmp     r2, #14
-    beq     .add_unicast
 
     b .unsupported
 
-.non_linear_addc:
-
-    ldr     r3, [r0, #8]
-    ldm     r3, { r4, r5, r6, r7 } // ptr, rsc, csc, size
-
-.add_with_strides:
-
+.add_unicast:
+    ldm         r1, { r3, r4, r5, r6, r7 } // r3 unsused, already used enum discriminant, just here to make ldm "work"
     {% for col in (0..3) %}
         mov         r8, r4
         {% for reg in (0..3) %}
@@ -483,10 +476,6 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     {% endfor %}
 
     b .non_linear_loop
-
-.add_unicast:
-    ldm         r1, { r3, r4, r5, r6, r7 } // r3 unsused, already used enum discriminant, just here to make ldm "work"
-    b .add_with_strides
 
 .unsupported:
     mov         r0,     #1

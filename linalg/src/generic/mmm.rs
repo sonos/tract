@@ -226,29 +226,6 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::AddC => {
-                        let Tile { ptr: c, row_byte_stride, col_byte_stride, .. } = spec.c;
-                        let c = *c as *const TC;
-                        let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
-                        let csc = *col_byte_stride as usize / std::mem::size_of::<TC>();
-                        let c = std::slice::from_raw_parts(c, 1 + 3 * csc + 3 * rsc);
-                        ab[0][0] += c[0 * csc + 0 * rsc].as_();
-                        ab[0][1] += c[1 * csc + 0 * rsc].as_();
-                        ab[0][2] += c[2 * csc + 0 * rsc].as_();
-                        ab[0][3] += c[3 * csc + 0 * rsc].as_();
-                        ab[1][0] += c[0 * csc + 1 * rsc].as_();
-                        ab[1][1] += c[1 * csc + 1 * rsc].as_();
-                        ab[1][2] += c[2 * csc + 1 * rsc].as_();
-                        ab[1][3] += c[3 * csc + 1 * rsc].as_();
-                        ab[2][0] += c[0 * csc + 2 * rsc].as_();
-                        ab[2][1] += c[1 * csc + 2 * rsc].as_();
-                        ab[2][2] += c[2 * csc + 2 * rsc].as_();
-                        ab[2][3] += c[3 * csc + 2 * rsc].as_();
-                        ab[3][0] += c[0 * csc + 3 * rsc].as_();
-                        ab[3][1] += c[1 * csc + 3 * rsc].as_();
-                        ab[3][2] += c[2 * csc + 3 * rsc].as_();
-                        ab[3][3] += c[3 * csc + 3 * rsc].as_();
-                    }
                     FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..4 {
                             ab[i][0] *= *bias.offset(i as isize);
@@ -514,16 +491,6 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::AddC => {
-                        let Tile { ptr: c, row_byte_stride, .. } = spec.c;
-                        let c = *c as *const TC;
-                        let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
-                        let c = std::slice::from_raw_parts(c, 1 + 3 * rsc);
-                        ab[0] += c[0 * rsc].as_();
-                        ab[1] += c[1 * rsc].as_();
-                        ab[2] += c[2 * rsc].as_();
-                        ab[3] += c[3 * rsc].as_();
-                    }
                     FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..4 {
                             ab[i] *= *bias.offset(i as isize);
@@ -765,19 +732,6 @@ where
                 }
                 match *pnl {
                     FusedKerSpec::Done => break,
-                    FusedKerSpec::AddC => {
-                        let Tile { ptr: c, row_byte_stride, col_byte_stride, .. } = spec.c;
-                        let c = *c as *const TC;
-                        let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
-                        let csc = *col_byte_stride as usize / std::mem::size_of::<TC>();
-                        let c = std::slice::from_raw_parts(c, 1 + 1 * csc + 2 * rsc);
-                        ab[0][0] += c[0 * csc + 0 * rsc].as_();
-                        ab[0][1] += c[1 * csc + 0 * rsc].as_();
-                        ab[1][0] += c[0 * csc + 1 * rsc].as_();
-                        ab[1][1] += c[1 * csc + 1 * rsc].as_();
-                        ab[2][0] += c[0 * csc + 2 * rsc].as_();
-                        ab[2][1] += c[1 * csc + 2 * rsc].as_();
-                    }
                     FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..3 {
                             ab[i][0] *= *bias.offset(i as isize);
@@ -884,8 +838,10 @@ unsafe fn add_unicast<TC, TI, AB>(tile: &Tile, ab: &mut [AB])
 where
     TC: AsPrimitive<TI> + Copy,
     TI: Datum + ops::AddAssign<TI> + Copy,
-    AB: AsMut<[TI]>,
+    AB: AsMut<[TI]> + fmt::Debug,
 {
+    dbg!(&tile);
+    dbg!(&ab);
     if tile.item_size == TI::datum_type().size_of() {
         for i in 0usize..ab.len() {
             for j in 0usize..ab[0].as_mut().len() {
@@ -897,9 +853,12 @@ where
             }
         }
     } else if TI::datum_type() == i32::datum_type() && tile.item_size == 1 {
-        for i in 0usize..4 {
+        for i in 0usize..ab.len() {
             for j in 0usize..ab[0].as_mut().len() {
-                let value: *const TC = tile.ptr.offset(tile.row_byte_stride * i as isize) as _;
+                let value: *const TC = tile
+                    .ptr
+                    .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
+                    as _;
                 ab[i].as_mut()[j] += (*value).as_();
             }
         }

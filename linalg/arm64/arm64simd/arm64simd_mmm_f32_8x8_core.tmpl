@@ -378,7 +378,7 @@
     cmp         x2, #2
     beq         .max
     cmp         x2, #3
-    beq         .non_linear_addc
+    beq         .add_unicast
     cmp         x2, #4
     beq         .per_row_mul
     cmp         x2, #5
@@ -393,8 +393,6 @@
     beq         .scalar_mul
     cmp         x2, #10
     beq         .scalar_add
-    cmp         x2, #14
-    beq         .add_unicast
 
     add         x0, x2, #4000
     b           .return
@@ -419,12 +417,10 @@
 
     b           .non_linear_loop
 
-.non_linear_addc:
-    ldr         x3, [x0, #16]               // c
-    ldp         x5, x6, [x3]                // c base ptr, rsc
-    ldp         x7, x8, [x3, #16]           // csc, item_size
+.add_unicast:
+    ldp         x5, x6, [x1, #8]
+    ldp         x7, x8, [x1, #24]
 
-.add_with_strides:
     {% for col in (8..15) %}
         mov x4, x5
         {% for reg in (0..1) %}
@@ -537,11 +533,6 @@
     {% endfor %}
 
     b           .non_linear_loop
-
-.add_unicast:
-    ldp         x5, x6, [x1, #8]
-    ldp         x7, x8, [x1, #24]
-    b .add_with_strides
 
 .unsupported:
     mov         x0, #1

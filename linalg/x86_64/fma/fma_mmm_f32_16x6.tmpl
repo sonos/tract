@@ -294,7 +294,7 @@ fma_mmm_f32_16x6_{{suffix}} proc
     je      {{L}}max
 
     cmp     rax,    3
-    je      {{L}}non_linear_addc
+    je      {{L}}add_unicast
 
     cmp     rax,    4
     je      {{L}}per_row_mul
@@ -317,21 +317,16 @@ fma_mmm_f32_16x6_{{suffix}} proc
     cmp     rax,    10
     je      {{L}}scalar_add
 
-    cmp     rax,    14
-    je      {{L}}add_unicast
-
     jmp     {{L}}unimplemented
 
 // NON LINEAR / ADDC
 
-{{L}}non_linear_addc:
-    mov     rax,    [rdi + 16]
+{{L}}add_unicast:
 
-    mov     r10,    [rax]           // c ptr
-    mov     rsi,    [rax + 8]          // row stride
-    mov     rbx,    [rax + 16]          // col stride
+    mov     r10,    [rcx + 8]           // c ptr
+    mov     rsi,    [rcx + 16]          // row stride
+    mov     rbx,    [rcx + 24]          // col stride
 
-{{L}}add_with_strides:
     mov     eax,    0
 {% for i in (0..3) %}
     pinsrd  xmm14, eax, {{i}}
@@ -467,13 +462,6 @@ fma_mmm_f32_16x6_{{suffix}} proc
 
     jmp    {{L}}non_linear_loop
 
-{{L}}add_unicast:
-
-    mov     r10,    [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // row stride
-    mov     rbx,    [rcx + 24]          // col stride
-
-    jmp    {{L}}add_with_strides
 
 {% if msvc %}
 fma_mmm_f32_16x6_{{suffix}} endp
