@@ -18,54 +18,18 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: Install Rustup using win.rustup.rs
-      shell: powershell
-      run: |
-        # https://stackoverflow.com/questions/45470999/powershell-try-catch-and-retry
-                function Retry()
-                {
-                    param(
-                        [Parameter(Mandatory=$true)][Action]$action,
-                        [Parameter(Mandatory=$false)][int]$maxAttempts = 3
-                    )
-
-                    $attempts=1    
-                    $ErrorActionPreferenceToRestore = $ErrorActionPreference
-                    $ErrorActionPreference = "Stop"
-
-                    do
-                    {
-                        try
-                        {
-                            $action.Invoke();
-                            break;
-                        }
-                        catch [Exception]
-                        {
-                            Write-Host $_.Exception.Message
-                        }
-
-                        # exponential backoff delay
-                        $attempts++
-                        if ($attempts -le $maxAttempts) {
-                            $retryDelaySeconds = [math]::Pow(2, $attempts)
-                            $retryDelaySeconds = $retryDelaySeconds - 1  # Exponential Backoff Max == (2^n)-1
-                            Write-Host("Action failed. Waiting " + $retryDelaySeconds + " seconds before attempt " + $attempts + " of " + $maxAttempts + ".")
-                            Start-Sleep $retryDelaySeconds 
-                        }
-                        else {
-                            $ErrorActionPreference = $ErrorActionPreferenceToRestore
-                            Write-Error $_.Exception.Message
-                        }
-                    } while ($attempts -le $maxAttempts)
-                    $ErrorActionPreference = $ErrorActionPreferenceToRestore
-                }
-
-        # Disable the download progress bar which can cause perf issues
-        $ProgressPreference = "SilentlyContinue"
-        Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
-        Retry { .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal } -maxAttempts 10
-        del rustup-init.exe
+    - uses: nick-invision/retry@v2
+      name: Install Rustup using win.rustup.rs
+      with:
+        timeout_minutes: 10
+        max_attempts: 8
+        shell: pwsh
+        command: |
+            # Disable the download progress bar which can cause perf issues
+            $ProgressPreference = "SilentlyContinue"
+            Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
+            .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal
+            del rustup-init.exe
     - name: Install the target
       run: |
         rustup toolchain add stable-x86_64-pc-windows-${{matrix.toolchain}}
