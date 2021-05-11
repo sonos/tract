@@ -8,6 +8,7 @@ mod gather_nd;
 mod one_hot;
 mod pad;
 mod reshape;
+mod scatter_elements;
 mod slice;
 mod tile;
 
@@ -20,5 +21,6 @@ pub use self::gather_nd::GatherNd;
 pub use self::one_hot::OneHot;
 pub use self::pad::{Pad, PadMode};
 pub use self::reshape::FiniteReshape;
+pub use self::scatter_elements::ScatterElements;
 pub use self::slice::Slice;
 pub use self::tile::Tile;

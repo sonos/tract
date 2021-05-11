@@ -29,6 +29,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::I64)), vec![])));
     reg.insert("Transpose", transpose);
     reg.insert("Tile", |_, _| Ok((expand(array::Tile::default()), vec![])));
+    reg.insert("ScatterElements", scatter_elements);
     reg.insert("Slice", slice::slice);
     reg.insert("Split", split);
     reg.insert("Squeeze", squeeze);
@@ -89,7 +90,7 @@ pub fn flatten(
     _ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let axis:i64 = node.get_attr_opt("axis")?.unwrap_or(1);
+    let axis: i64 = node.get_attr_opt("axis")?.unwrap_or(1);
     Ok((expand(array::Flatten::new(axis)), vec![]))
 }
 
@@ -115,6 +116,14 @@ pub fn gather_nd(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let batch_dims = node.get_attr_opt("batch_dims")?.unwrap_or(0);
     Ok((Box::new(array::GatherNd::new(batch_dims)), vec![]))
+}
+
+pub fn scatter_elements(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let axis = node.get_attr_opt("axis")?.unwrap_or(0);
+    Ok((expand(array::ScatterElements::new(axis)), vec![]))
 }
 
 pub fn split(

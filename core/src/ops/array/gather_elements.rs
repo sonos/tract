@@ -17,26 +17,6 @@ impl Op for GatherElements {
 }
 
 impl GatherElements {
-    /*
-    pub fn compute_output_shape<D: DimLike>(
-    &self,
-    input_shape: &[D],
-    indices_shape: &[D],
-    ) -> TractResult<TVec<D>> {
-    let mut output_shape = tvec![];
-    for (idx, dim) in input_shape.iter().enumerate() {
-    if idx != self.axis {
-    output_shape.push(dim.clone());
-    } else {
-    for idx2 in indices_shape {
-    output_shape.push(idx2.clone());
-    }
-    }
-    }
-    Ok(output_shape)
-    }
-    */
-
     unsafe fn eval_t<T: Datum>(
         &self,
         data: Arc<Tensor>,

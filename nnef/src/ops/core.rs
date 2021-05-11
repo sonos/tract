@@ -8,6 +8,7 @@ mod gather;
 mod one_hot;
 mod reduce;
 mod scan;
+mod scatter;
 mod source;
 
 pub fn register(registry: &mut Registry) {
@@ -42,6 +43,7 @@ pub fn register(registry: &mut Registry) {
     gather::register(registry);
     one_hot::register(registry);
     reduce::register(registry);
+    scatter::register(registry);
     scan::register(registry);
     source::register(registry);
 }
