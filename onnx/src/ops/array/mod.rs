@@ -19,6 +19,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
+    reg.insert("GatherElements", gather_elements);
     reg.insert("GatherND", gather_nd);
     reg.insert("NonZero", |_, _| Ok((Box::new(nonzero::NonZero::non_zero()), vec![])));
     reg.insert("OneHot", one_hot::one_hot);
@@ -98,6 +99,14 @@ pub fn gather(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     Ok((Box::new(array::Gather::new(axis)), vec![]))
+}
+
+pub fn gather_elements(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let axis = node.get_attr_opt("axis")?.unwrap_or(0);
+    Ok((expand(array::GatherElements::new(axis)), vec![]))
 }
 
 pub fn gather_nd(
