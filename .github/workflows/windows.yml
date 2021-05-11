@@ -21,7 +21,7 @@ jobs:
     - name: Install Rustup using win.rustup.rs
       shell: powershell
       run: |
-          # https://stackoverflow.com/questions/45470999/powershell-try-catch-and-retry
+        # https://stackoverflow.com/questions/45470999/powershell-try-catch-and-retry
                 function Retry()
                 {
                     param(
