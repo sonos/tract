@@ -98,7 +98,7 @@ pub fn gather(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
-    Ok((Box::new(array::Gather::new(axis)), vec![]))
+    Ok((expand(array::Gather::new(axis)), vec![]))
 }
 
 pub fn gather_elements(
