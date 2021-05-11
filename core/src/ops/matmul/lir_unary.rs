@@ -117,7 +117,7 @@ pub struct LirMatMulUnary {
     pub geometry: MatMulGeometryConcretizer,
     #[educe(Hash(method = "hash_mmm"))]
     pub mmm: Box<dyn MatMatMul>,
-    pub reshape_post: vec![],
+    pub reshape_post: Vec<AxisOp>,
 }
 
 fn hash_mmm<H: std::hash::Hasher>(mmm: &Box<dyn MatMatMul>, state: &mut H) {

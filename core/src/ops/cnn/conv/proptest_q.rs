@@ -416,6 +416,7 @@ fn group_1() {
         kernel: arr3(&[[[1]], [[0]]]).into_dyn(),
         bias: None,
         qp,
+        optim: true,
     }
     .check()
     .unwrap();
@@ -434,6 +435,7 @@ fn group_2() {
         kernel: arr3(&[[[0]], [[1]]]).into_dyn(),
         bias: None,
         qp,
+        optim: true,
     }
     .check()
     .unwrap();
