@@ -32,7 +32,6 @@ jobs:
             del rustup-init.exe
     - uses: nick-invision/retry@v2
       name: Install the target
-      run: |
       with:
         timeout_minutes: 10
         max_attempts: 8
