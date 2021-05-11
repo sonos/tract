@@ -177,7 +177,7 @@ impl<'mb> ModelBuilder<'mb> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ResolvedInvocation<'a> {
     pub invocation: &'a Invocation,
     pub default_params: &'a [Parameter],
