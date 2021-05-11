@@ -30,10 +30,15 @@ jobs:
             Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
             .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal
             del rustup-init.exe
-    - name: Install the target
-      run: |
-        rustup toolchain add stable-x86_64-pc-windows-${{matrix.toolchain}}
-        rustup default stable-x86_64-pc-windows-${{matrix.toolchain}}
+    - uses: nick-invision/retry@v2
+      name: Install the target
+      with:
+        timeout_minutes: 10
+        max_attempts: 8
+        shell: pwsh
+        command: |
+            rustup toolchain add stable-x86_64-pc-windows-${{matrix.toolchain}}
+            rustup default stable-x86_64-pc-windows-${{matrix.toolchain}}
     - name: top level cargo check
       run: cargo check
     - name: linalg and core tests
