@@ -20,11 +20,11 @@ jobs:
     - uses: actions/checkout@v1
     - uses: nick-invision/retry@v2
       name: Install Rustup using win.rustup.rs
-        with:
-          timeout_minutes: 10
-          max_attempts: 8
-          shell: pwsh
-          command: |
+      with:
+        timeout_minutes: 10
+        max_attempts: 8
+        shell: pwsh
+        command: |
             # Disable the download progress bar which can cause perf issues
             $ProgressPreference = "SilentlyContinue"
             Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
