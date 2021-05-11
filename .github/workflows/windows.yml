@@ -64,7 +64,7 @@ jobs:
         # Disable the download progress bar which can cause perf issues
         $ProgressPreference = "SilentlyContinue"
         Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
-        Retry { .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal }  --maxAttempts 10
+        Retry { .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal } -maxAttempts 10
         del rustup-init.exe
     - name: Install the target
       run: |
