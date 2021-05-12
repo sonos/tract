@@ -381,6 +381,7 @@ fn scale_2() {
         kernel: arr3(&[[[2]]]).into_dyn(),
         bias: None,
         qp,
+        optim: true,
     }
     .check()
     .unwrap();
