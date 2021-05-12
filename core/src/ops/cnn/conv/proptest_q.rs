@@ -21,14 +21,14 @@ pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
 }
 
 pub fn q_params() -> BoxedStrategy<QParams> {
-    (-10i32..10, -10i32..10, -10i32..10, -3..3i32)
-        .prop_map(|(a0, b0, c0, scale)| QParams {
+    (-10i32..10, -10i32..10, -10i32..10, -3..3i32, -3..3i32, -3..3i32)
+        .prop_map(|(a0, b0, c0, a_scale, b_scale, c_scale)| QParams {
             a0: AttrOrInput::Attr(rctensor0(a0)),
             b0: AttrOrInput::Attr(rctensor0(b0)),
             c0: AttrOrInput::Attr(rctensor0(c0)),
-            a_scale: AttrOrInput::Attr(rctensor0(1f32)),
-            b_scale: AttrOrInput::Attr(rctensor0(1f32)),
-            c_scale: AttrOrInput::Attr(rctensor0(2f32.powi(scale))),
+            a_scale: AttrOrInput::Attr(rctensor0(2f32.powi(a_scale))),
+            b_scale: AttrOrInput::Attr(rctensor0(2f32.powi(b_scale))),
+            c_scale: AttrOrInput::Attr(rctensor0(2f32.powi(c_scale))),
         })
         .boxed()
 }
@@ -60,7 +60,9 @@ impl QConvProblem {
         let a0 = self.qp.a0.as_static().unwrap().cast_to_scalar::<i32>().unwrap();
         let b0 = self.qp.b0.as_static().unwrap().cast_to_scalar::<i32>().unwrap();
         let c0 = self.qp.c0.as_static().unwrap().cast_to_scalar::<i32>().unwrap();
-        let scale = self.qp.c_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap();
+        let scale = self.qp.c_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap()
+            / self.qp.a_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap()
+            / self.qp.b_scale.as_static().unwrap().cast_to_scalar::<f32>().unwrap();
         let mut temp = ArrayD::<i32>::zeros(&*self.shape_out.shape);
         for n in 0..n {
             for g in 0..self.group {
@@ -332,6 +334,24 @@ fn scale_1() {
         group: 1,
         data: arr2(&[[41]]).into_dyn(),
         kernel: arr3(&[[[1]]]).into_dyn(),
+        bias: None,
+        qp,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn scale_2() {
+    let mut qp = QParams::noop_static(i8::datum_type());
+    qp.b_scale = AttrOrInput::Attr(rctensor0(0.5f32));
+    QConvProblem {
+        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        kernel_format: OIHW,
+        group: 1,
+        data: arr2(&[[-1]]).into_dyn(),
+        kernel: arr3(&[[[2]]]).into_dyn(),
         bias: None,
         qp,
     }
