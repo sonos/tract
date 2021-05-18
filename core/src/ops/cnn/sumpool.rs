@@ -4,7 +4,7 @@ use std::iter::Sum;
 
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 
-#[derive(Debug, Clone, new,  Hash)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct SumPool {
     pub pool_spec: PoolSpec,
     pub count_include_pad: bool,
@@ -36,7 +36,7 @@ impl EvalOp for SumPool {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape:TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
+        let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
         self.to_lir(&shape)?.eval(inputs)
     }
 }
@@ -60,7 +60,7 @@ impl SumPool {
     }
 }
 
-#[derive(Debug, Clone, new,  Hash)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct LirSumPool {
     pub pool_spec: PoolSpec,
     pub count_include_pad: bool,
@@ -94,7 +94,7 @@ impl EvalOp for LirSumPool {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let geo = self.geometry.to_concrete_geometry(input.shape())?;
+        let geo = self.geometry.to_concrete(input.shape())?;
         let mut values =
             unsafe { Tensor::uninitialized_dt(input.datum_type(), &*geo.output_shape.shape)? };
         dispatch_floatlike!(Self::eval_t(input.datum_type())(

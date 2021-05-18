@@ -106,7 +106,7 @@ impl EvalOp for LirMaxPool {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let geo = self.geometry.to_concrete_geometry(input.shape())?;
+        let geo = self.geometry.to_concrete(input.shape())?;
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, &*input, geo.as_ref()))
     }
 }

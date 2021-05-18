@@ -1,5 +1,4 @@
 use super::KernelFormat;
-use crate::internal::*;
 use crate::ops::cnn::*;
 use crate::ops::nn::*;
 use crate::setup_test_logger;

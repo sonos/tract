@@ -404,11 +404,8 @@ impl ConvUnary {
         let c_dt = crate::ops::matmul::output_type(b_dt);
 
         let input_shape = input_fact.shape.as_concrete().unwrap();
-        let geo = self
-            .pool_spec
-            .compute_geo(&input_fact.shape)?
-            .to_concrete_geometry(input_shape)?
-            .into_owned();
+        let geo =
+            self.pool_spec.compute_geo(&input_fact.shape)?.to_concrete(input_shape)?.into_owned();
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
@@ -467,11 +464,8 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + PartialEq + Sum,
     {
         let input_shape = input.shape.as_concrete().unwrap();
-        let ConcretePoolGeometry { input_shape, patch, output_shape } = self
-            .pool_spec
-            .compute_geo(&input.shape)?
-            .to_concrete_geometry(input_shape)?
-            .into_owned();
+        let ConcretePoolGeometry { input_shape, patch, output_shape } =
+            self.pool_spec.compute_geo(&input.shape)?.to_concrete(input_shape)?.into_owned();
         let op = DepthWise::new(
             patch,
             input_shape,

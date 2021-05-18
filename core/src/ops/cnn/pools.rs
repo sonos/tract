@@ -77,14 +77,21 @@ impl PoolSpec {
     pub fn compute_geo(&self, input_full_shape: &[TDim]) -> TractResult<PoolGeometry> {
         let output_shape = self.output_shape(input_full_shape)?;
         let input_shape: SymDataShape = self.data_format.shape(input_full_shape.into())?;
-        Ok(PoolGeometry::Symbolic { pool_spec: self.clone(), input_shape, output_shape })
+        Ok(PoolGeometry::Symbolic(SymbolicPoolGeometry {
+            pool_spec: self.clone(),
+            input_shape,
+            output_shape,
+        }))
     }
 }
 
+pub type PoolGeometry = super::GeometryBound<SymbolicPoolGeometry, ConcretePoolGeometry>;
+
 #[derive(Debug, Clone, Hash)]
-pub enum PoolGeometry {
-    Symbolic { pool_spec: PoolSpec, input_shape: SymDataShape, output_shape: SymDataShape },
-    Concrete(ConcretePoolGeometry),
+pub struct SymbolicPoolGeometry {
+    pub pool_spec: PoolSpec,
+    pub input_shape: SymDataShape,
+    pub output_shape: SymDataShape,
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -94,65 +101,31 @@ pub struct ConcretePoolGeometry {
     pub output_shape: DataShape,
 }
 
-impl PoolGeometry {
-    pub fn is_concrete(&self) -> bool {
-        match self {
-            PoolGeometry::Concrete { .. } => true,
-            PoolGeometry::Symbolic { .. } => false,
-        }
-    }
-
-    fn to_concrete(&self, input_full_shape: &[usize]) -> TractResult<ConcretePoolGeometry> {
-        match self {
-            Self::Symbolic { pool_spec, .. } => {
-                let input_shape = pool_spec.data_format.shape(input_full_shape.into())?;
-                let output_inner_stride = match pool_spec.data_format {
-                    DataFormat::NCHW | DataFormat::CHW => 1,
-                    DataFormat::NHWC | DataFormat::HWC => {
-                        pool_spec.output_channel_override.clone().unwrap_or(*input_shape.c())
-                    }
-                };
-                let mut spec = PatchSpec::for_full_shape(pool_spec.data_format, input_full_shape)?
-                    .with_output_inner_stride(output_inner_stride)
-                    .with_kernel_shape(pool_spec.kernel_shape.clone())
-                    .with_padding(pool_spec.padding.clone());
-                if let Some(strides) = pool_spec.strides.clone() {
-                    spec = spec.with_strides(strides);
-                }
-                if let Some(dilations) = pool_spec.dilations.clone() {
-                    spec = spec.with_dilations(dilations);
-                }
-                let patch = spec.into_patch();
-                let output_shape = input_shape.fmt.from_n_c_hw(
-                    *input_shape.n().unwrap_or(&1),
-                    pool_spec.output_channel_override.unwrap_or(*input_shape.c()),
-                    &*patch.output_shape,
-                )?;
-                Ok(ConcretePoolGeometry { input_shape, patch, output_shape })
+impl super::ResolveSymbolsTo<ConcretePoolGeometry> for SymbolicPoolGeometry {
+    fn resolve(&self, input_full_shape: &[usize]) -> TractResult<ConcretePoolGeometry> {
+        let input_shape = self.pool_spec.data_format.shape(input_full_shape.into())?;
+        let output_inner_stride = match self.pool_spec.data_format {
+            DataFormat::NCHW | DataFormat::CHW => 1,
+            DataFormat::NHWC | DataFormat::HWC => {
+                self.pool_spec.output_channel_override.clone().unwrap_or(*input_shape.c())
             }
-            Self::Concrete(_) => unreachable!(),
+        };
+        let mut spec = PatchSpec::for_full_shape(self.pool_spec.data_format, input_full_shape)?
+            .with_output_inner_stride(output_inner_stride)
+            .with_kernel_shape(self.pool_spec.kernel_shape.clone())
+            .with_padding(self.pool_spec.padding.clone());
+        if let Some(strides) = self.pool_spec.strides.clone() {
+            spec = spec.with_strides(strides);
         }
-    }
-
-    pub fn into_concrete(self, input_full_shape: &[usize]) -> TractResult<PoolGeometry> {
-        match self {
-            Self::Symbolic { .. } => {
-                Ok(PoolGeometry::Concrete(self.to_concrete(input_full_shape)?))
-            }
-            Self::Concrete(conc) => Ok(Self::Concrete(conc)),
+        if let Some(dilations) = self.pool_spec.dilations.clone() {
+            spec = spec.with_dilations(dilations);
         }
-    }
-
-    pub fn to_concrete_geometry(
-        &self,
-        input_full_shape: &[usize],
-    ) -> TractResult<Cow<ConcretePoolGeometry>> {
-        match self {
-            Self::Symbolic { .. } => Ok(Cow::Owned(self.to_concrete(input_full_shape)?)),
-            Self::Concrete(conc) => {
-                anyhow::ensure!(input_full_shape == &*conc.input_shape.shape);
-                Ok(Cow::Borrowed(conc))
-            }
-        }
+        let patch = spec.into_patch();
+        let output_shape = input_shape.fmt.from_n_c_hw(
+            *input_shape.n().unwrap_or(&1),
+            self.pool_spec.output_channel_override.unwrap_or(*input_shape.c()),
+            &*patch.output_shape,
+        )?;
+        Ok(ConcretePoolGeometry { input_shape, patch, output_shape })
     }
 }
