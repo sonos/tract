@@ -1,6 +1,10 @@
 ## Unreleased
-* ONNX ConvTranspose support (and NNEF deconv)
+
+## 0.14.1 - 2021-05-18
+
+* ONNX ConvTranspose, Gather, GatherND, GatherElements, Scatter, ScatterND, ScatterElements support (and NNEF deconv)
 * Fixes around integer serialisation in NNEF
+* workaround subtle breaking changes in ndarray (between 0.15.1 and 0.15.2)
 
 ## 0.14.0 - 2021-04-19
 
