@@ -23,28 +23,26 @@ fn space_to_batch<T: Copy + Datum + Zero>(
     block_shape: &ArrayView1<i32>,
     paddings: &ArrayView2<i32>,
 ) -> TractResult<Arc<Tensor>> {
-    let mut data = input.into_tensor().into_array::<T>()?;
+    let mut data = input.into_tensor();
 
     for (ix, pad) in paddings.view().outer_iter().enumerate() {
+        if pad[0] == 0 && pad[1] == 0 {
+            continue
+        }
+        let mut stack = tvec!();
+        let mut pad_shape = data.shape().to_vec();
         if pad[0] != 0 {
-            let mut pad_shape = data.shape().to_vec();
             pad_shape[ix + 1] = pad[0] as usize;
-            let tmp = tract_ndarray::concatenate(
-                tract_ndarray::Axis(ix + 1),
-                &[tract_ndarray::ArrayD::zeros(pad_shape).view(), data.view()],
-            )?;
-            data = tmp;
+            stack.push(Tensor::zero::<T>(&pad_shape)?);
         }
+        stack.push(data);
         if pad[1] != 0 {
-            let mut pad_shape = data.shape().to_vec();
             pad_shape[ix + 1] = pad[1] as usize;
-            let tmp = tract_ndarray::concatenate(
-                tract_ndarray::Axis(ix + 1),
-                &[data.view(), tract_ndarray::ArrayD::zeros(pad_shape).view()],
-            )?;
-            data = tmp;
+            stack.push(Tensor::zero::<T>(&pad_shape)?);
         }
+        data = Tensor::stack_tensors(ix + 1, &stack)?;
     }
+
     let mut reshaped = vec![data.shape()[0]];
     let block_size = block_shape.iter().map(|a| *a as usize).product::<usize>();
     let mut final_shape = vec![block_size * data.shape()[0]];
@@ -55,15 +53,14 @@ fn space_to_batch<T: Copy + Datum + Zero>(
     }
     reshaped.extend(&data.shape()[block_shape.len() + 1..]);
     final_shape.extend(&data.shape()[block_shape.len() + 1..]);
-    let data = data.into_shape(reshaped)?;
+    let data = data.into_shape(&reshaped)?;
 
     let mut permuted_axes: Vec<_> = (0..block_shape.len()).map(|x| 2 * x + 2).collect();
     permuted_axes.push(0);
     permuted_axes.extend((0..block_shape.len()).map(|x| 2 * x + 1));
-    permuted_axes.extend((block_shape.len() * 2 + 1)..data.ndim());
-    let data = data.permuted_axes(permuted_axes);
-    let data: Vec<T> = data.into_iter().map(|x| *x).collect();
-    let data = tract_ndarray::ArrayD::from_shape_vec(final_shape, data)?;
+    permuted_axes.extend((block_shape.len() * 2 + 1)..data.rank());
+    let data = data.permute_axes(&permuted_axes)?;
+    let data = data.into_shape(&final_shape)?;
 
     Ok(data.into_arc_tensor())
 }
@@ -96,7 +93,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
     permuted_axes.extend((1 + block_shape.len() * 2)..data.ndim());
     padded_shape.extend(&input_shape[1 + block_shape.len()..]);
     let data = data.permuted_axes(permuted_axes);
-    let data: Vec<T> = data.into_iter().map(|x| *x).collect();
+    let data: Vec<T> = data.iter().map(|x| *x).collect();
     let data = tract_ndarray::ArrayD::from_shape_vec(padded_shape, data)?;
     let mut data = data;
     for (i, crop) in crops.outer_iter().enumerate() {
