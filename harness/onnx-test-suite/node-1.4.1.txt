@@ -284,6 +284,8 @@ test_reshape_reduced_dims input:data
 test_reshape_reordered_dims input:data
 test_rnn_seq_length
 test_scan9_sum
+test_scatter_with_axis
+test_scatter_without_axis
 test_selu
 test_selu_default
 test_selu_example

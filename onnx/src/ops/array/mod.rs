@@ -25,14 +25,15 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("OneHot", one_hot::one_hot);
     reg.insert("Pad", pad::pad);
     reg.insert("Reshape", |_, _| Ok((expand(array::Reshape::default()), vec![])));
+    reg.insert("Scatter", scatter_elements);
+    reg.insert("ScatterElements", scatter_elements);
     reg.insert("Shape", |_, _| Ok((expand(array::Shape::new(DatumType::I64)), vec![])));
     reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::I64)), vec![])));
-    reg.insert("Transpose", transpose);
-    reg.insert("Tile", |_, _| Ok((expand(array::Tile::default()), vec![])));
-    reg.insert("ScatterElements", scatter_elements);
     reg.insert("Slice", slice::slice);
     reg.insert("Split", split);
     reg.insert("Squeeze", squeeze);
+    reg.insert("Tile", |_, _| Ok((expand(array::Tile::default()), vec![])));
+    reg.insert("Transpose", transpose);
     reg.insert("Unsqueeze", unsqueeze);
 }
 
