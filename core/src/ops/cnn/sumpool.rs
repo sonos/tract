@@ -2,15 +2,16 @@ use crate::internal::*;
 use num_traits::AsPrimitive;
 use std::iter::Sum;
 
-use crate::ops::cnn::pools::{ConcreteGeometry, PoolSpec};
+use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new,  Hash)]
 pub struct SumPool {
     pub pool_spec: PoolSpec,
     pub count_include_pad: bool,
     pub normalize: bool,
-    pub concrete_geometry: Option<ConcreteGeometry>,
 }
+
+impl_dyn_hash!(SumPool);
 
 impl Op for SumPool {
     fn name(&self) -> Cow<str> {
@@ -29,20 +30,71 @@ impl Op for SumPool {
     op_as_typed_op!();
 }
 
-impl_dyn_hash!(SumPool);
-
 impl EvalOp for SumPool {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let shape:TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
+        self.to_lir(&shape)?.eval(inputs)
+    }
+}
+
+impl TypedOp for SumPool {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        self.pool_spec.output_facts(inputs)
+    }
+
+    as_op!();
+}
+
+impl SumPool {
+    fn to_lir(&self, input_shape: &[TDim]) -> TractResult<LirSumPool> {
+        Ok(LirSumPool {
+            pool_spec: self.pool_spec.clone(),
+            count_include_pad: self.count_include_pad,
+            normalize: self.normalize,
+            geometry: self.pool_spec.compute_geo(&input_shape)?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, new,  Hash)]
+pub struct LirSumPool {
+    pub pool_spec: PoolSpec,
+    pub count_include_pad: bool,
+    pub normalize: bool,
+    pub geometry: PoolGeometry,
+}
+
+impl_dyn_hash!(LirSumPool);
+
+impl Op for LirSumPool {
+    fn name(&self) -> Cow<str> {
+        "LirSumPool".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(self.pool_spec.info())
+    }
+
+    fn validation(&self) -> Validation {
+        Validation::Rounding
+    }
+
+    op_core_lir!();
+    op_as_typed_op!();
+}
+
+impl EvalOp for LirSumPool {
     fn is_stateless(&self) -> bool {
         true
     }
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let geo = if let Some(geo) = &self.concrete_geometry {
-            Cow::Borrowed(geo)
-        } else {
-            Cow::Owned(self.pool_spec.compute_geo(&input.shape())?)
-        };
+        let geo = self.geometry.to_concrete_geometry(input.shape())?;
         let mut values =
             unsafe { Tensor::uninitialized_dt(input.datum_type(), &*geo.output_shape.shape)? };
         dispatch_floatlike!(Self::eval_t(input.datum_type())(
@@ -55,36 +107,20 @@ impl EvalOp for SumPool {
     }
 }
 
-impl TypedOp for SumPool {
+impl TypedOp for LirSumPool {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         self.pool_spec.output_facts(inputs)
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
-        if let (Some(shape), None) = (inputs[0].shape.as_concrete(), &self.concrete_geometry) {
-            let op = Self {
-                concrete_geometry: Some(self.pool_spec.compute_geo(shape)?),
-                ..self.clone()
-            };
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-        }
-        Ok(None)
     }
 
     as_op!();
 }
 
-impl SumPool {
+impl LirSumPool {
     fn eval_t<T: Copy + Datum + num_traits::Float + Sum>(
         &self,
         input: &Tensor,
         values_ptr: *mut T,
-        geo: &ConcreteGeometry,
+        geo: &ConcretePoolGeometry,
     ) -> TractResult<()>
     where
         usize: AsPrimitive<T>,

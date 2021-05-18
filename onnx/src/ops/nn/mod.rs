@@ -208,7 +208,6 @@ pub fn average_pool(
             cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, None, strides, None),
             count_include_pad,
             true,
-            None,
         )),
         vec![],
     ))
@@ -282,7 +281,6 @@ pub fn max_pool(
         Box::new(cnn::MaxPool::new(
             cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, None, strides, None),
             if node.output.len() == 2 { Some(DatumType::I64) } else { None },
-            None,
         )),
         vec![],
     ))

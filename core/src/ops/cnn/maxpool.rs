@@ -1,13 +1,12 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-use crate::ops::cnn::pools::{ConcreteGeometry, PoolSpec};
+use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct MaxPool {
     pub pool_spec: PoolSpec,
     pub with_index_outputs: Option<DatumType>,
-    pub concrete_geometry: Option<ConcreteGeometry>,
 }
 
 impl_dyn_hash!(MaxPool);
@@ -30,14 +29,9 @@ impl EvalOp for MaxPool {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        let geo = if let Some(geo) = &self.concrete_geometry {
-            Cow::Borrowed(geo)
-        } else {
-            Cow::Owned(self.pool_spec.compute_geo(&input.shape())?)
-        };
-        dispatch_floatlike!(Self::eval_t(input.datum_type())(self, &*input, geo.as_ref()))
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let shape:TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
+        self.to_lir(&shape)?.eval(inputs)
     }
 }
 
@@ -67,14 +61,6 @@ impl TypedOp for MaxPool {
             patch.shunt_outside(model, node.id.into(), wire)?;
             return Ok(Some(patch));
         }
-        let inputs = model.node_input_facts(node.id)?;
-        if let (Some(shape), None) = (inputs[0].shape.as_concrete(), &self.concrete_geometry) {
-            let op = Self {
-                concrete_geometry: Some(self.pool_spec.compute_geo(shape)?),
-                ..self.clone()
-            };
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-        }
         Ok(None)
     }
 
@@ -82,10 +68,67 @@ impl TypedOp for MaxPool {
 }
 
 impl MaxPool {
+    fn to_lir(&self, input_shape: &[TDim]) -> TractResult<LirMaxPool> {
+        Ok(LirMaxPool {
+            pool_spec: self.pool_spec.clone(),
+            with_index_outputs: self.with_index_outputs.clone(),
+            geometry: self.pool_spec.compute_geo(&input_shape)?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, new, Hash)]
+pub struct LirMaxPool {
+    pub pool_spec: PoolSpec,
+    pub with_index_outputs: Option<DatumType>,
+    pub geometry: PoolGeometry,
+}
+
+impl_dyn_hash!(LirMaxPool);
+
+impl Op for LirMaxPool {
+    fn name(&self) -> Cow<str> {
+        "LirMaxPool".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(self.pool_spec.info())
+    }
+
+    op_core_lir!();
+    op_as_typed_op!();
+}
+
+impl EvalOp for LirMaxPool {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let input = args_1!(inputs);
+        let geo = self.geometry.to_concrete_geometry(input.shape())?;
+        dispatch_floatlike!(Self::eval_t(input.datum_type())(self, &*input, geo.as_ref()))
+    }
+}
+
+impl TypedOp for LirMaxPool {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let mut facts = self.pool_spec.output_facts(inputs)?;
+        if let Some(idt) = self.with_index_outputs {
+            facts.push(facts[0].clone());
+            facts[1].datum_type = idt;
+        }
+        Ok(facts)
+    }
+
+    as_op!();
+}
+
+impl LirMaxPool {
     fn eval_t<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
         &self,
         input: &Tensor,
-        geo: &ConcreteGeometry,
+        geo: &ConcretePoolGeometry,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let input: ArrayViewD<T> = input.to_array_view()?;
         let input_ptr = input.as_ptr();

@@ -6,8 +6,7 @@ use crate::model::*;
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
-use crate::ops::cnn::patches::Patch;
-use crate::ops::cnn::pools::{ConcreteGeometry, PoolSpec};
+use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
 use crate::ops::matmul::QParams;
 use crate::ops::nn::{DataFormat, DataShape};
@@ -124,8 +123,7 @@ impl ConvUnary {
         use crate::ops::matmul::mir_quant as qmm;
         let c_dt = self.q_params.as_ref().unwrap().0;
 
-        let (input_shape, geo, output_shape, m, k, n, mmm) =
-            self.compute_geo(model.outlet_fact(wires[0])?)?;
+        let (geo, m, k, n, mmm) = self.compute_geo(model.outlet_fact(wires[0])?)?;
 
         let params = self
             .q_params
@@ -149,16 +147,17 @@ impl ConvUnary {
         let c_scale = params[5];
 
         let abc_scale = qmm::combine_scales(model, name, a_scale, b_scale, c_scale)?;
+        let ci_per_group = geo.input_shape.c_dim() / self.group;
 
         let im2col = model.wire_node(
             format!("{}.im2col", name),
             Im2Col::new(
-                geo,
+                geo.patch,
                 self.pool_spec.data_format.clone(),
                 k,
                 n,
                 self.group,
-                *input_shape.c_dim() / self.group,
+                ci_per_group,
                 mmm.b_pack(k),
             )?,
             &[wires[0], b0],
@@ -194,7 +193,7 @@ impl ConvUnary {
 
         let b_dt = model.outlet_fact(wires[0])?.datum_type;
         let b_storage = mmm.b_packed(b_dt.size_of(), k);
-        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
         let wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -241,7 +240,7 @@ impl ConvUnary {
                 &[wire],
             )?[0];
         }
-        let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
+        let wire = Self::wire_geo_reshape(model, name, wire, &geo.output_shape)?;
         Ok(wire)
     }
 
@@ -255,26 +254,26 @@ impl ConvUnary {
         let b_dt = b_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
 
-        let (input_shape, geo, output_shape, m, k, n, mmm) =
-            self.compute_geo(model.outlet_fact(wire)?)?;
+        let (geo, m, k, n, mmm) = self.compute_geo(model.outlet_fact(wire)?)?;
         let padding = model.add_const(format!("{}.b0", name), Tensor::zero_dt(b_dt, &[])?)?;
+        let ci_per_group = geo.input_shape.c_dim() / self.group;
 
         wire = model.wire_node(
             format!("{}.im2col", name),
             Im2Col::new(
-                geo,
+                geo.patch,
                 self.pool_spec.data_format.clone(),
                 k,
                 n,
                 self.group,
-                *input_shape.c_dim() / self.group,
+                ci_per_group,
                 mmm.b_pack(k),
             )?,
             &[wire, padding],
         )?[0];
 
         let b_storage = mmm.b_packed(b_dt.size_of(), k);
-        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
         let mut wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -301,7 +300,7 @@ impl ConvUnary {
                 &[wire],
             )?[0];
         }
-        let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
+        let wire = Self::wire_geo_reshape(model, name, wire, &geo.output_shape)?;
         Ok(wire)
     }
 
@@ -358,13 +357,14 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         let b_fact = model.outlet_fact(wire)?.clone();
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
-        let (input_shape, geo, output_shape, m, k, n, mmm) = self.compute_geo(&b_fact)?;
+        let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
 
-        let channel_stride = input_shape.c_stride();
-        let data_offsets: Vec<isize> = geo.centers_offsets();
+        let channel_stride = geo.input_shape.c_stride();
+        let data_offsets: Vec<isize> = geo.patch.centers_offsets();
         let kernel_offsets: Vec<isize> = (0..self.input_channels())
             .flat_map(|ici| {
-                geo.standard_layout_data_field
+                geo.patch
+                    .standard_layout_data_field
                     .iter()
                     .map(move |x| x + (ici * channel_stride) as isize)
             })
@@ -374,7 +374,7 @@ impl ConvUnary {
             &kernel_offsets,
             &data_offsets,
         );
-        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
 
         let wire = self.wire_lir_matmatmul(
             model,
@@ -391,32 +391,35 @@ impl ConvUnary {
             h_axis,
         )?;
 
-        let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
+        let wire = Self::wire_geo_reshape(model, name, wire, &geo.output_shape)?;
         Ok(wire)
     }
 
     fn compute_geo(
         &self,
         input_fact: &TypedFact,
-    ) -> TractResult<(DataShape, Patch, DataShape, usize, usize, usize, Box<dyn MatMatMul>)> {
+    ) -> TractResult<(ConcretePoolGeometry, usize, usize, usize, Box<dyn MatMatMul>)> {
         let a_dt = self.kernel.datum_type();
         let b_dt = input_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_dt);
 
-        trace!("to_im2col_pair: {:?}", self);
-        let ConcreteGeometry { input_shape, patch, output_shape } =
-            self.pool_spec.compute_geo(input_fact.shape.as_concrete().unwrap())?;
+        let input_shape = input_fact.shape.as_concrete().unwrap();
+        let geo = self
+            .pool_spec
+            .compute_geo(&input_fact.shape)?
+            .to_concrete_geometry(input_shape)?
+            .into_owned();
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
         let k = self.kernel.len() / self.output_channels();
-        let n = patch.output_shape.iter().cloned().product::<usize>();
+        let n = geo.patch.output_shape.iter().cloned().product::<usize>();
 
         let mmm = tract_linalg::ops()
             .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), Some(n))
             .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
 
-        Ok((input_shape, patch, output_shape, m, k, n, mmm))
+        Ok((geo, m, k, n, mmm))
     }
 
     fn wire_lir_matmatmul(
@@ -459,12 +462,16 @@ impl ConvUnary {
         Ok(wire)
     }
 
-    pub fn to_depth_wise<T>(&self, input_full_shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
+    pub fn to_depth_wise<T>(&self, input: &TypedFact) -> TractResult<Box<dyn TypedOp>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + PartialEq + Sum,
     {
-        let ConcreteGeometry { input_shape, patch, output_shape } =
-            self.pool_spec.compute_geo(input_full_shape)?;
+        let input_shape = input.shape.as_concrete().unwrap();
+        let ConcretePoolGeometry { input_shape, patch, output_shape } = self
+            .pool_spec
+            .compute_geo(&input.shape)?
+            .to_concrete_geometry(input_shape)?
+            .into_owned();
         let op = DepthWise::new(
             patch,
             input_shape,
@@ -971,8 +978,7 @@ impl TypedOp for ConvUnary {
                 && self.group == self.input_channels()
                 && input_fact.shape.as_concrete().is_some()
             {
-                let shape = input_fact.shape.as_concrete().unwrap();
-                let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))
+                let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, &input_fact))
                     .context("in to_depth_wise")?;
                 return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
             } else {

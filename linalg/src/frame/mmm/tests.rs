@@ -2,9 +2,9 @@ use super::*;
 use crate::test::*;
 use num_traits::AsPrimitive;
 use proptest::prelude::*;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Neg;
-use std::{fmt::Debug, mem};
 use tract_data::prelude::*;
 
 #[macro_export]

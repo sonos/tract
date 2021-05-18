@@ -1,7 +1,7 @@
 mod data_formats;
 mod reduce;
 
-pub use self::data_formats::{BaseDataShape, DataFormat, DataShape};
+pub use self::data_formats::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 pub use self::reduce::{Reduce, Reducer};
 
 pub use crate::internal::*;

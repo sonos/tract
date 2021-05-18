@@ -356,6 +356,8 @@ pub fn max_pool_with_index(
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
     let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
+    let border: String = invocation.named_arg_as(builder, "border")?;
+    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != size.len() {
         bail!(
@@ -364,14 +366,8 @@ pub fn max_pool_with_index(
                 size
                 );
     }
-    let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "ignore");
-    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
-    let op = ops::cnn::MaxPool {
-        pool_spec,
-        with_index_outputs: Some(i64::datum_type()),
-        concrete_geometry: None,
-    };
+    let op = ops::cnn::MaxPool { pool_spec, with_index_outputs: Some(i64::datum_type()) };
     builder.wire(op, &[input])
 }
 
@@ -387,6 +383,8 @@ pub fn sum_pool(
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
     let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
+    let border: String = invocation.named_arg_as(builder, "border")?;
+    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != size.len() {
         bail!(
@@ -395,14 +393,11 @@ pub fn sum_pool(
                 size
                 );
     }
-    let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "ignore");
-    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let op = ops::cnn::SumPool {
         pool_spec,
         count_include_pad: false,
         normalize: invocation.named_arg_as(builder, "normalize")?,
-        concrete_geometry: None,
     };
     builder.wire(op, &[input])
 }

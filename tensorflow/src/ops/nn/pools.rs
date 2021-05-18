@@ -20,7 +20,6 @@ pub fn avgpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
         ),
         false,
         true,
-        None,
     )))
 }
 
@@ -39,7 +38,6 @@ pub fn maxpool(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Infer
             Some(strides[kshape.hw_axes()].into()),
             None,
         ),
-        None,
         None,
     )))
 }
