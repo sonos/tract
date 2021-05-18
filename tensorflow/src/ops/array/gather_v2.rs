@@ -35,12 +35,11 @@ impl Expansion for GatherV2 {
             &inputs[1].shape,
             &inputs[2].value,
             move |s, input_shape, indices_shape, axis| {
-                let mut axis = *axis.to_scalar::<i32>()?;
-                if axis < 0 {
-                    axis = input_shape.len() as i32 + axis;
-                }
-                let op = tract_hir::ops::array::Gather::new(axis as usize);
-                let output_shape = op.compute_output_shape(&input_shape, &indices_shape)?;
+                let axis = axis.cast_to_scalar::<i64>()?;
+                let op = tract_hir::ops::array::Gather::new(axis);
+                let output_shape = op
+                    .to_type_op(input_shape.len())
+                    .compute_output_shape(&input_shape, &indices_shape)?;
                 s.equals(&outputs[0].shape, output_shape)
             },
         )
@@ -53,11 +52,9 @@ impl Expansion for GatherV2 {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         if let Some(axis) = target.outlet_fact(inputs[2])?.konst.as_ref() {
-            let mut axis = *axis.to_scalar::<i32>()?;
-            if axis < 0 {
-                axis = target.outlet_fact(inputs[0])?.rank() as i32 + axis;
-            }
-            let op = tract_hir::ops::array::Gather::new(axis as usize);
+            let axis = axis.cast_to_scalar::<i64>()?;
+            let input_fact = target.outlet_fact(inputs[0])?;
+            let op = tract_hir::ops::array::Gather::new(axis).to_type_op(input_fact.rank());
             target.wire_node(&*prefix, op, &inputs[0..2])
         } else {
             bail!("Need to know axis to type GatherV2")

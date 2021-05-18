@@ -7,7 +7,7 @@ use crate::tfpb::tensorflow::NodeDef;
 mod concatv2;
 mod expand_dims;
 mod fill;
-mod gather;
+mod gather_nd;
 mod gather_v2;
 mod pack;
 mod pad;
@@ -19,7 +19,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", expand_dims::build);
     reg.insert("Fill", fill::fill);
-    reg.insert("GatherNd", gather::gather_nd);
+    reg.insert("GatherNd", gather_nd::gather_nd);
     reg.insert("GatherV2", gather_v2::gather_v2);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
