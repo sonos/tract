@@ -885,19 +885,26 @@ impl Tensor {
         }
     }
 
-    fn from_copy_datum<D: ::ndarray::Dimension, T: Datum>(it: Array<T, D>) -> Tensor {
-        let shape = it.shape().into();
-        let vec = if it.as_slice().is_some() {
-            it.into_raw_vec().into_boxed_slice()
+    fn from_datum<D: ::ndarray::Dimension, T: Datum>(it: Array<T, D>) -> Tensor {
+        if it.as_slice().is_some() {
+            let layout =
+                alloc::Layout::from_size_align(it.len() * size_of::<T>(), align_of::<T>()).unwrap();
+            let shape = it.shape().into();
+            let vec = it.into_raw_vec().into_boxed_slice();
+            let data = Box::into_raw(vec) as *mut u8;
+            let mut t = Tensor { dt: T::datum_type(), shape, layout, data, strides: tvec!() };
+            t.update_strides();
+            t
         } else {
-            it.into_owned().into_iter().cloned().collect::<Box<[T]>>()
-        };
-        let layout =
-            alloc::Layout::from_size_align(vec.len() * size_of::<T>(), align_of::<T>()).unwrap();
-        let data = Box::into_raw(vec) as *mut u8;
-        let mut t = Tensor { dt: T::datum_type(), shape, layout, data, strides: tvec!() };
-        t.update_strides();
-        t
+            unsafe {
+                let mut t = Self::uninitialized::<T>(it.shape()).unwrap();
+                t.as_slice_mut_unchecked::<T>()
+                    .iter_mut()
+                    .zip(it.into_iter())
+                    .for_each(|(t, a)| *t = a.clone());
+                t
+            }
+        }
     }
 
     pub fn deep_clone(&self) -> Tensor {
@@ -1045,7 +1052,7 @@ impl Serialize for Tensor {
 
 impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
     fn from(it: Array<T, D>) -> Tensor {
-        Tensor::from_copy_datum(it)
+        Tensor::from_datum(it)
     }
 }
 

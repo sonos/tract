@@ -430,7 +430,7 @@ impl ConvUnary {
         let kernels = self.kernel_as_packed_as(&mmm.a_pack(), m)?;
         let shape = kernels.shape();
         let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
-        let mut iter = kernels.into_iter().cloned().zip(fused_ops.into_iter().cloned());
+        let mut iter = kernels.iter().cloned().zip(fused_ops.iter().cloned());
         let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 
         let wire = model.wire_node(
