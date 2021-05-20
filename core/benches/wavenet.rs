@@ -15,23 +15,28 @@ fn im2col(c: &mut Criterion) {
         group.bench_function(&format!("dil_{}", dil), |b| {
             b.iter_with_setup(
                 || {
+                    let pool_spec = tract_core::ops::cnn::PoolSpec {
+                        data_format: HWC,
+                        strides: None,
+                        padding: cnn::PaddingSpec::Valid,
+                        dilations: Some(tvec!(*dil)),
+                        kernel_shape: tvec!(3),
+                        output_channel_override: Some(64),
+                    };
                     let len = 8 + 2 * *dil;
                     let input = tvec!(
                         Tensor::zero_dt(f32::datum_type(), &[len, 16]).unwrap().into_arc_tensor(),
                         pad.clone()
                     );
+                    let mmm = tract_linalg::ops()
+                        .mmm(F32, F32, F32, Some(64), Some(48), Some(8))
+                        .unwrap();
                     let op = tract_core::ops::cnn::conv::Im2Col::new(
-                        cnn::PatchSpec::for_full_shape(HWC, &[len, 16])
-                            .unwrap()
-                            .with_kernel_shape(tvec![3])
-                            .with_dilations(tvec!(*dil))
-                            .into_patch(),
-                        HWC,
-                        48,
-                        8,
+                        pool_spec,
                         1,
-                        16,
-                        tract_linalg::ops().mmm(F32, F32, F32, Some(64), Some(48), Some(8)).unwrap().b_pack(48),
+                        48,
+                        &[len.to_dim(), 16.to_dim()],
+                        mmm,
                     )
                     .unwrap();
                     (input, op)
@@ -48,7 +53,8 @@ fn mmm(c: &mut Criterion) {
     c.bench_function("matmatmul", |b| {
         b.iter_with_setup(
             || {
-                let mmm = tract_linalg::ops().mmm(F32, F32, F32, Some(64), Some(48), Some(8)).unwrap();
+                let mmm =
+                    tract_linalg::ops().mmm(F32, F32, F32, Some(64), Some(48), Some(8)).unwrap();
                 let packed_a = Tensor::zero_aligned_dt(
                     f32::datum_type(),
                     &[mmm.a_pack(48).len(64)],

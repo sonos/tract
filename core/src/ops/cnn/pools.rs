@@ -3,7 +3,7 @@ use crate::internal::*;
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq)]
 pub struct PoolSpec {
     pub data_format: DataFormat,
     pub kernel_shape: TVec<usize>,
@@ -87,14 +87,14 @@ impl PoolSpec {
 
 pub type PoolGeometry = super::GeometryBound<SymbolicPoolGeometry, ConcretePoolGeometry>;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct SymbolicPoolGeometry {
     pub pool_spec: PoolSpec,
     pub input_shape: SymDataShape,
     pub output_shape: SymDataShape,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct ConcretePoolGeometry {
     pub input_shape: DataShape,
     pub patch: Patch,
@@ -129,3 +129,4 @@ impl super::ResolveSymbolsTo<ConcretePoolGeometry> for SymbolicPoolGeometry {
         Ok(ConcretePoolGeometry { input_shape, patch, output_shape })
     }
 }
+

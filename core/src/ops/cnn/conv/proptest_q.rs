@@ -1,5 +1,4 @@
 use super::proptest::*;
-use crate::internal::*;
 use crate::ops::cnn::KernelFormat::*;
 use crate::ops::cnn::*;
 use crate::ops::matmul::*;

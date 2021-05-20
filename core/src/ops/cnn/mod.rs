@@ -22,7 +22,7 @@ pub trait ResolveSymbolsTo<Concrete> {
     fn resolve(&self, input_full_shape: &[usize]) -> TractResult<Concrete>;
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub enum GeometryBound<Symbolic, Concrete> {
     Symbolic(Symbolic),
     Concrete(Concrete),
@@ -50,3 +50,10 @@ impl<S: ResolveSymbolsTo<C>, C: Clone> GeometryBound<S, C> {
         }
     }
 }
+
+impl<S,C> From<S> for GeometryBound<S,C> {
+    fn from(s: S) -> Self {
+        GeometryBound::Symbolic(s)
+    }
+}
+

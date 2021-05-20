@@ -24,7 +24,7 @@ impl Packer {
         self.r
     }
 
-    pub fn len(&self, n: usize) -> usize {
+    pub fn len<D: DimLike>(&self, n: D) -> D {
         (n.div_ceil(self.r) * (self.k + self.end_padding_record)) * self.r
     }
 

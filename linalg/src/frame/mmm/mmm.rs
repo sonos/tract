@@ -67,6 +67,18 @@ pub trait MatMatMul:
 
 dyn_clone::clone_trait_object!(MatMatMul);
 
+impl PartialEq for Box<dyn MatMatMul> {
+    fn eq(&self, other: &Box<dyn MatMatMul>) -> bool {
+        self.as_ref().type_id() == other.as_ref().type_id()
+    }
+}
+
+impl std::hash::Hash for Box<dyn MatMatMul> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_ref().type_id().hash(state)
+    }
+}
+
 #[derive(Clone)]
 pub struct MatMatMulImpl<K, TI>
 where

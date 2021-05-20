@@ -6,10 +6,10 @@ use crate::model::*;
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
-use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolSpec};
+use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
 use crate::ops::matmul::QParams;
-use crate::ops::nn::{DataFormat, DataShape};
+use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
 use tract_linalg::mmm::MatMatMul;
 use tract_linalg::{frame::Packer, mmm::MatrixStoreSpec};
@@ -122,8 +122,9 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         use crate::ops::matmul::mir_quant as qmm;
         let c_dt = self.q_params.as_ref().unwrap().0;
+        let b_fact = model.outlet_fact(wires[0])?.clone();
 
-        let (geo, m, k, n, mmm) = self.compute_geo(model.outlet_fact(wires[0])?)?;
+        let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
 
         let params = self
             .q_params
@@ -147,19 +148,10 @@ impl ConvUnary {
         let c_scale = params[5];
 
         let abc_scale = qmm::combine_scales(model, name, a_scale, b_scale, c_scale)?;
-        let ci_per_group = geo.input_shape.c_dim() / self.group;
 
         let im2col = model.wire_node(
             format!("{}.im2col", name),
-            Im2Col::new(
-                geo.patch,
-                self.pool_spec.data_format.clone(),
-                k,
-                n,
-                self.group,
-                ci_per_group,
-                mmm.b_pack(k),
-            )?,
+            Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
             &[wires[0], b0],
         )?[0];
 
@@ -250,30 +242,24 @@ impl ConvUnary {
         name: &str,
         mut wire: OutletId,
     ) -> TractResult<OutletId> {
-        let b_fact = model.outlet_fact(wire)?;
+        let b_fact = model.outlet_fact(wire)?.clone();
         let b_dt = b_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
 
-        let (geo, m, k, n, mmm) = self.compute_geo(model.outlet_fact(wire)?)?;
+        let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
+        let (_, m, k, n, mmm) = self.compute_geo_sym(model.outlet_fact(wire)?)?;
         let padding = model.add_const(format!("{}.b0", name), Tensor::zero_dt(b_dt, &[])?)?;
-        let ci_per_group = geo.input_shape.c_dim() / self.group;
 
         wire = model.wire_node(
             format!("{}.im2col", name),
-            Im2Col::new(
-                geo.patch,
-                self.pool_spec.data_format.clone(),
-                k,
-                n,
-                self.group,
-                ci_per_group,
-                mmm.b_pack(k),
-            )?,
+            Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
             &[wire, padding],
         )?[0];
 
-        let b_storage = mmm.b_packed(b_dt.size_of(), k);
-        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
+        let b_storage = mmm.b_packed(b_dt.size_of(), k.to_usize().unwrap());
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let mmm_output_shape: TVec<usize> =
+            mmm_output_shape.iter().map(|x| x.to_usize().unwrap()).collect();
         let mut wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -281,8 +267,8 @@ impl ConvUnary {
             mmm,
             c_dt,
             &mmm_output_shape,
-            m,
-            k,
+            m.to_usize().unwrap(),
+            k.to_usize().unwrap(),
             n.to_dim(),
             b_storage,
             c_axis,
@@ -300,26 +286,27 @@ impl ConvUnary {
                 &[wire],
             )?[0];
         }
-        let wire = Self::wire_geo_reshape(model, name, wire, &geo.output_shape)?;
+        let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
         Ok(wire)
     }
 
-    fn mmm_output_shape(
+    fn mmm_output_shape<D: DimLike>(
         &self,
-        output_shape: &DataShape,
-    ) -> TractResult<(TVec<usize>, usize, usize)> {
-        let geo_collapsed_out: usize = output_shape.hw_dims().iter().maybe_product()?;
-        let shape = output_shape.fmt.from_n_c_hw(
-            *output_shape.n().clone().unwrap_or(&1),
-            *output_shape.c(),
+        output_shape: &BaseDataShape<D, TVec<D>>,
+    ) -> TractResult<(TVec<D>, usize, usize)> {
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().maybe_product()?;
+        let shape: BaseDataShape<D, TVec<D>> = output_shape.fmt.from_n_c_hw(
+            output_shape.n().cloned().unwrap_or(1.into()),
+            output_shape.c().clone(),
             tvec!(geo_collapsed_out),
         )?;
-        let mut mmm_output_shape: TVec<usize> = shape.shape.clone().into();
+        let mut mmm_output_shape: TVec<D> = shape.shape.clone();
         let mut c_axis = shape.c_axis();
         let mut h_axis = shape.h_axis();
         if self.group > 1 {
-            mmm_output_shape[shape.c_axis()] /= self.group;
-            mmm_output_shape.insert(shape.c_axis(), self.group);
+            mmm_output_shape[shape.c_axis()] =
+                mmm_output_shape[shape.c_axis()].clone() / self.group;
+            mmm_output_shape.insert(shape.c_axis(), self.group.into());
             if self.group > 1 {
                 if h_axis > c_axis {
                     h_axis += 1;
@@ -330,13 +317,13 @@ impl ConvUnary {
         Ok((mmm_output_shape, c_axis, h_axis))
     }
 
-    fn wire_geo_reshape(
+    fn wire_geo_reshape<D: DimLike>(
         model: &mut TypedModel,
         name: &str,
         wire: OutletId,
-        output_shape: &DataShape,
+        output_shape: &BaseDataShape<D, TVec<D>>,
     ) -> TractResult<OutletId> {
-        let geo_collapsed_out: usize = output_shape.hw_dims().iter().maybe_product()?;
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().maybe_product()?;
         let wire = model.wire_node(
             name,
             AxisOp::Reshape(
@@ -393,6 +380,29 @@ impl ConvUnary {
 
         let wire = Self::wire_geo_reshape(model, name, wire, &geo.output_shape)?;
         Ok(wire)
+    }
+
+    fn compute_geo_sym(
+        &self,
+        input_fact: &TypedFact,
+    ) -> TractResult<(PoolGeometry, TDim, usize, TDim, Box<dyn MatMatMul>)> {
+        let a_dt = self.kernel.datum_type();
+        let b_dt = input_fact.datum_type;
+        let c_dt = crate::ops::matmul::output_type(b_dt);
+
+        let geo = self.pool_spec.compute_geo(&input_fact.shape)?;
+
+        trace!("output channels: {:?}", self.output_channels());
+        let m = self.output_channels().to_dim() / self.group;
+        let k = self.kernel.len() / self.output_channels();
+        let n: TDim =
+            self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().maybe_product()?;
+
+        let mmm = tract_linalg::ops()
+            .mmm(a_dt, b_dt, c_dt, m.to_usize().ok(), Some(k), n.to_usize().ok())
+            .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
+
+        Ok((geo, m, k, n, mmm))
     }
 
     fn compute_geo(
