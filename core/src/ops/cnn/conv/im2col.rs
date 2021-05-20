@@ -138,7 +138,6 @@ impl EvalOp for Im2Col {
         let geometry = self.geometry.to_concrete(&inputs[0].shape())?;
         unsafe {
             let mut input = inputs.remove(0).into_tensor();
-            dbg!(&input);
             let pad_value = if inputs.len() > 0 { Some(inputs.remove(0)) } else { None };
             let output_shape = self.output_shape(input.shape())?;
             let mut output = Tensor::uninitialized_aligned_dt(
@@ -182,7 +181,6 @@ impl EvalOp for Im2Col {
             if !self.pool_spec.data_format.has_n() {
                 output.remove_axis(0)?;
             }
-            dbg!(&output);
             Ok(tvec!(output.into()))
         }
     }
