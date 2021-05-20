@@ -29,15 +29,17 @@ fn parse_stdlib() {
 #[test]
 fn parse_dump_parse_stdlib() {
     let content = std::fs::read_to_string("stdlib.nnef").unwrap();
-    let ast = parse::parse_fragments(&content).unwrap();
+    let mut ast = parse::parse_fragments(&content).unwrap();
+    ast.sort_by_key(|f| f.decl.id.clone());
     let mut dumped = vec![];
     dump::Dumper::new(&mut dumped).fragments(&ast).unwrap();
 
     let dumped = String::from_utf8(dumped).unwrap();
     println!("{}", dumped);
-    let ast2 = parse::parse_fragments(&dumped).unwrap();
+    let mut ast2 = parse::parse_fragments(&dumped).unwrap();
 
     assert_eq!(ast.len(), ast2.len());
+    ast2.sort_by_key(|f| f.decl.id.clone());
     for (a, b) in ast.iter().zip(ast2.iter()) {
         assert_eq!(a, b);
     }
