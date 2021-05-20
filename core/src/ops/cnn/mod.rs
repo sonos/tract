@@ -49,11 +49,23 @@ impl<S: ResolveSymbolsTo<C>, C: Clone> GeometryBound<S, C> {
             Self::Concrete(conc) => Ok(Cow::Borrowed(conc)),
         }
     }
+
+    pub fn optimize(self, input_full_shape: &[TDim]) -> TractResult<Self> {
+        if self.is_concrete() {
+            return Ok(self)
+        }
+        if let Ok(input_full_shape) =
+            input_full_shape.iter().map(|x| x.to_usize()).collect::<TractResult<TVec<usize>>>()
+        {
+            self.into_concrete(&input_full_shape)
+        } else {
+            Ok(self)
+        }
+    }
 }
 
-impl<S,C> From<S> for GeometryBound<S,C> {
+impl<S, C> From<S> for GeometryBound<S, C> {
     fn from(s: S) -> Self {
         GeometryBound::Symbolic(s)
     }
 }
-

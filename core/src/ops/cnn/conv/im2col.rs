@@ -95,8 +95,9 @@ impl Im2Col {
             any => any,
         };
         let b_pack = mmm.b_pack(k);
-        let geometry =
+        let geometry: GeometryBound<SymbolicGeometry, ConcreteGeometry> =
             SymbolicGeometry { group, pool_spec: pool_spec.clone(), pool_geometry, mmm }.into();
+        let geometry = geometry.optimize(input_full_shape)?;
         Ok(Im2Col { pool_spec, data_format_with_n, group, k, geometry, b_pack })
     }
 
