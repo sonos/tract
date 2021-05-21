@@ -124,7 +124,8 @@ impl ConvUnary {
         let c_dt = self.q_params.as_ref().unwrap().0;
         let b_fact = model.outlet_fact(wires[0])?.clone();
 
-        let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
+        let (_, m, k, n, mmm) = self.compute_geo(&b_fact)?;
+        let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
         let params = self
             .q_params
@@ -170,7 +171,7 @@ impl ConvUnary {
 
         let mut sum_b = model.wire_node(
             format!("{}.sum_b", name),
-            super::QSumB { n, r: mmm.b_pack(k).panel_width(), k },
+            super::QSumB { n: n.clone(), r: mmm.b_pack(k).panel_width(), k },
             &[im2col],
         )?[0];
 
@@ -185,7 +186,9 @@ impl ConvUnary {
 
         let b_dt = model.outlet_fact(wires[0])?.datum_type;
         let b_storage = mmm.b_packed(b_dt.size_of(), k);
-        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let mmm_output_shape: TVec<usize> =
+            mmm_output_shape.iter().map(|x| x.to_usize().unwrap()).collect();
         let wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -195,7 +198,7 @@ impl ConvUnary {
             &mmm_output_shape,
             m,
             k,
-            n.to_dim(),
+            n,
             b_storage,
             c_axis,
             h_axis,
@@ -232,7 +235,7 @@ impl ConvUnary {
                 &[wire],
             )?[0];
         }
-        let wire = Self::wire_geo_reshape(model, name, wire, &geo.output_shape)?;
+        let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
         Ok(wire)
     }
 
@@ -247,7 +250,7 @@ impl ConvUnary {
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
 
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
-        let (_, m, k, n, mmm) = self.compute_geo_sym(model.outlet_fact(wire)?)?;
+        let (_, m, k, n, mmm) = self.compute_geo(model.outlet_fact(wire)?)?;
         let padding = model.add_const(format!("{}.b0", name), Tensor::zero_dt(b_dt, &[])?)?;
 
         wire = model.wire_node(
@@ -345,16 +348,17 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         let b_fact = model.outlet_fact(wire)?.clone();
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
-        let (geo, m, k, n, mmm) = self.compute_geo_sym(&b_fact)?;
+        let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
         let geo = geo.to_concrete(input_shape)?;
-        let input_shape = self.pool_spec.data_format.shape(input_shape)?;
+        let input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
+        let c_stride = input_shape.c_stride();
         let data_offsets: Vec<isize> = geo.patch.centers_offsets();
         let kernel_offsets: Vec<isize> = (0..self.input_channels())
             .flat_map(|ici| {
                 geo.patch
                     .standard_layout_data_field
                     .iter()
-                    .map(move |x| x + (ici * input_shape.c_stride()) as isize)
+                    .map(move |x| x + (ici * c_stride) as isize)
             })
             .collect();
         let b_storage = mmm.b_from_data_and_offsets(
@@ -383,10 +387,10 @@ impl ConvUnary {
         Ok(wire)
     }
 
-    fn compute_geo_sym(
+    fn compute_geo(
         &self,
         input_fact: &TypedFact,
-    ) -> TractResult<(PoolGeometry, TDim, usize, TDim, Box<dyn MatMatMul>)> {
+    ) -> TractResult<(PoolGeometry, usize, usize, TDim, Box<dyn MatMatMul>)> {
         let a_dt = self.kernel.datum_type();
         let b_dt = input_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_dt);
@@ -394,37 +398,13 @@ impl ConvUnary {
         let geo = self.pool_spec.compute_geo(&input_fact.shape)?;
 
         trace!("output channels: {:?}", self.output_channels());
-        let m = self.output_channels().to_dim() / self.group;
+        let m = self.output_channels() / self.group;
         let k = self.kernel.len() / self.output_channels();
         let n: TDim =
             self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().maybe_product()?;
 
         let mmm = tract_linalg::ops()
-            .mmm(a_dt, b_dt, c_dt, m.to_usize().ok(), Some(k), n.to_usize().ok())
-            .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
-
-        Ok((geo, m, k, n, mmm))
-    }
-
-    fn compute_geo(
-        &self,
-        input_fact: &TypedFact,
-    ) -> TractResult<(ConcretePoolGeometry, usize, usize, usize, Box<dyn MatMatMul>)> {
-        let a_dt = self.kernel.datum_type();
-        let b_dt = input_fact.datum_type;
-        let c_dt = crate::ops::matmul::output_type(b_dt);
-
-        let input_shape = input_fact.shape.as_concrete().unwrap();
-        let geo =
-            self.pool_spec.compute_geo(&input_fact.shape)?.to_concrete(input_shape)?.into_owned();
-
-        trace!("output channels: {:?}", self.output_channels());
-        let m = self.output_channels() / self.group;
-        let k = self.kernel.len() / self.output_channels();
-        let n = geo.patch.output_shape.iter().cloned().product::<usize>();
-
-        let mmm = tract_linalg::ops()
-            .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), Some(n))
+            .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), n.to_usize().ok())
             .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
 
         Ok((geo, m, k, n, mmm))
