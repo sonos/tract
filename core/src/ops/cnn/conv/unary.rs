@@ -187,15 +187,13 @@ impl ConvUnary {
         let b_dt = model.outlet_fact(wires[0])?.datum_type;
         let b_storage = mmm.b_packed(b_dt.size_of(), k);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
-        let mmm_output_shape: TVec<usize> =
-            mmm_output_shape.iter().map(|x| x.to_usize().unwrap()).collect();
         let wire = self.wire_lir_matmatmul(
             model,
             name,
             im2col,
             mmm,
             i32::datum_type(),
-            &mmm_output_shape,
+            mmm_output_shape.clone().into(),
             m,
             k,
             n,
@@ -261,15 +259,13 @@ impl ConvUnary {
 
         let b_storage = mmm.b_packed(b_dt.size_of(), k.to_usize().unwrap());
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
-        let mmm_output_shape: TVec<usize> =
-            mmm_output_shape.iter().map(|x| x.to_usize().unwrap()).collect();
         let mut wire = self.wire_lir_matmatmul(
             model,
             name,
             wire,
             mmm,
             c_dt,
-            &mmm_output_shape,
+            mmm_output_shape.clone().into(),
             m.to_usize().unwrap(),
             k.to_usize().unwrap(),
             n.to_dim(),
@@ -374,7 +370,7 @@ impl ConvUnary {
             wire,
             mmm,
             c_dt,
-            &mmm_output_shape,
+            mmm_output_shape.into(),
             m.to_usize().unwrap(),
             k,
             n.to_dim(),
@@ -417,7 +413,7 @@ impl ConvUnary {
         wire: OutletId,
         mmm: Box<dyn MatMatMul>,
         c_datum_type: DatumType,
-        mmm_output_shape: &[usize],
+        mmm_output_shape: ShapeFact,
         m: usize,
         k: usize,
         n: TDim,
