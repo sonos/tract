@@ -341,19 +341,20 @@ impl ConvUnary {
         model: &mut TypedModel,
         name: &str,
         wire: OutletId,
+        input_shape: &[usize],
     ) -> TractResult<OutletId> {
         let b_fact = model.outlet_fact(wire)?.clone();
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
-        let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
-
-        let channel_stride = geo.input_shape.c_stride();
+        let (geo, m, k, n, mmm) = self.compute_geo_sym(&b_fact)?;
+        let geo = geo.to_concrete(input_shape)?;
+        let input_shape = self.pool_spec.data_format.shape(input_shape)?;
         let data_offsets: Vec<isize> = geo.patch.centers_offsets();
         let kernel_offsets: Vec<isize> = (0..self.input_channels())
             .flat_map(|ici| {
                 geo.patch
                     .standard_layout_data_field
                     .iter()
-                    .map(move |x| x + (ici * channel_stride) as isize)
+                    .map(move |x| x + (ici * input_shape.c_stride()) as isize)
             })
             .collect();
         let b_storage = mmm.b_from_data_and_offsets(
@@ -370,7 +371,7 @@ impl ConvUnary {
             mmm,
             c_dt,
             &mmm_output_shape,
-            m,
+            m.to_usize().unwrap(),
             k,
             n.to_dim(),
             b_storage,
@@ -973,7 +974,12 @@ impl TypedOp for ConvUnary {
                 let mut patch = TypedModelPatch::default();
                 let wire = patch.tap_model(model, node.inputs[0])?;
                 let wire = self
-                    .wire_as_direct(&mut patch, &*node.name, wire)
+                    .wire_as_direct(
+                        &mut patch,
+                        &*node.name,
+                        wire,
+                        input_fact.shape.as_concrete().unwrap(),
+                    )
                     .context("in wire_as_direct")?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 return Ok(Some(patch));
