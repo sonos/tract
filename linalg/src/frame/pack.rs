@@ -16,6 +16,10 @@ impl Packer {
         Packer { k, r: nr, alignment, end_padding_record }
     }
 
+    pub fn k(&self) -> usize {
+        self.k
+    }
+
     pub fn alignment(&self) -> usize {
         self.alignment
     }
