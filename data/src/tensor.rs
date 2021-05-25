@@ -1,8 +1,9 @@
-//! `Tensor`, tract main data object of interest.
+/! `Tensor`, tract main data object of interest.
 use crate::datum::{Blob, Datum, DatumType};
 use crate::dim::TDim;
 use crate::f16::f16;
 use crate::TVec;
+use itertools::Itertools;
 use ndarray::prelude::*;
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
@@ -525,7 +526,6 @@ impl Tensor {
     ///
     /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump(&self, force_full: bool) -> anyhow::Result<String> {
-        use itertools::Itertools;
         unsafe fn dump_t<D: Datum>(tensor: &Tensor, n: usize) -> String {
             tensor.as_slice_unchecked::<D>()[0..n].iter().join(", ")
         }
@@ -885,7 +885,8 @@ impl Tensor {
         }
     }
 
-    fn from_datum<D: ::ndarray::Dimension, T: Datum>(it: Array<T, D>) -> Tensor {
+    #[inline(never)]
+    fn from_datum<T: Datum>(it: ArrayD<T>) -> Tensor {
         if it.as_slice().is_some() {
             let layout =
                 alloc::Layout::from_size_align(it.len() * size_of::<T>(), align_of::<T>()).unwrap();
@@ -895,6 +896,93 @@ impl Tensor {
             let mut t = Tensor { dt: T::datum_type(), shape, layout, data, strides: tvec!() };
             t.update_strides();
             t
+        } else if it.strides().iter().all(|&s| s > 0) && it.ndim() < 6 {
+            unsafe {
+                let mut t = Self::uninitialized::<T>(it.shape()).unwrap();
+                let mut iptr = it.as_ptr();
+                let mut len_and_strides: TVec<(isize, isize)> = tvec!();
+                for (len, stride) in itertools::izip!(it.shape(), it.strides(), t.strides())
+                    .sorted_by_key(|(_, src, _)| *src)
+                    .map(|(l, _, dst)| (*l as isize, *dst))
+                {
+                    if !len_and_strides.is_empty()
+                        && len_and_strides.last().unwrap().1 * len_and_strides.last().unwrap().0
+                            == stride
+                    {
+                        len_and_strides.last_mut().unwrap().0 *= len;
+                    } else {
+                        len_and_strides.push((len, stride));
+                    }
+                }
+                match &*len_and_strides {
+                    &[(len_a, stride_a)] => {
+                        for a in 0..len_a {
+                            *t.as_ptr_mut_unchecked::<T>().offset(a * stride_a) = (&*iptr).clone();
+                            iptr = iptr.offset(1);
+                        }
+                    }
+                    &[(len_a, stride_a), (len_b, stride_b)] => {
+                        for b in 0..len_b {
+                            for a in 0..len_a {
+                                *t.as_ptr_mut_unchecked::<T>()
+                                    .offset(a * stride_a + b * stride_b) = dbg!((&*iptr).clone());
+                                iptr = iptr.offset(1);
+                            }
+                        }
+                    }
+                    &[(len_a, stride_a), (len_b, stride_b), (len_c, stride_c)] => {
+                        for c in 0..len_c {
+                            for b in 0..len_b {
+                                for a in 0..len_a {
+                                    *t.as_ptr_mut_unchecked::<T>()
+                                        .offset(a * stride_a + b * stride_b + c * stride_c) =
+                                        (&*iptr).clone();
+                                    iptr = iptr.offset(1);
+                                }
+                            }
+                        }
+                    }
+                    &[(len_a, stride_a), (len_b, stride_b), (len_c, stride_c), (len_d, stride_d)] => {
+                        for d in 0..len_d {
+                            for c in 0..len_c {
+                                for b in 0..len_b {
+                                    for a in 0..len_a {
+                                        *t.as_ptr_mut_unchecked::<T>().offset(
+                                            a * stride_a
+                                                + b * stride_b
+                                                + c * stride_c
+                                                + d * stride_d,
+                                        ) = (&*iptr).clone();
+                                        iptr = iptr.offset(1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    &[(len_a, stride_a), (len_b, stride_b), (len_c, stride_c), (len_d, stride_d), (len_e, stride_e)] => {
+                        for e in 0..len_e {
+                            for d in 0..len_d {
+                                for c in 0..len_c {
+                                    for b in 0..len_b {
+                                        for a in 0..len_a {
+                                            *t.as_ptr_mut_unchecked::<T>().offset(
+                                                a * stride_a
+                                                    + b * stride_b
+                                                    + c * stride_c
+                                                    + d * stride_d
+                                                    + e * stride_e,
+                                            ) = (&*iptr).clone();
+                                            iptr = iptr.offset(1);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => unreachable!(),
+                };
+                t
+            }
         } else {
             unsafe {
                 let mut t = Self::uninitialized::<T>(it.shape()).unwrap();
@@ -1052,7 +1140,7 @@ impl Serialize for Tensor {
 
 impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
     fn from(it: Array<T, D>) -> Tensor {
-        Tensor::from_datum(it)
+        Tensor::from_datum(it.into_dyn())
     }
 }
 
@@ -1099,5 +1187,75 @@ impl IntoArcTensor for Tensor {
 impl IntoArcTensor for Arc<Tensor> {
     fn into_arc_tensor(self) -> Arc<Tensor> {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    #[derive(Debug)]
+    struct PermuteAxisProblem {
+        shape: Vec<usize>,
+        permutation: Vec<usize>,
+    }
+
+    impl Arbitrary for PermuteAxisProblem {
+        type Strategy = BoxedStrategy<PermuteAxisProblem>;
+        type Parameters = ();
+
+        fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+            (0..5usize)
+                .prop_flat_map(|rank| {
+                    let permute: Vec<usize> = (0..rank).collect();
+                    (proptest::collection::vec(1..5usize, rank), Just(permute).prop_shuffle())
+                })
+                .prop_map(|(shape, permutation)| PermuteAxisProblem { shape, permutation })
+                .boxed()
+        }
+    }
+
+    impl PermuteAxisProblem {
+        fn input(&self) -> ArrayD<i32> {
+            let mut i = 0;
+            ArrayD::from_shape_simple_fn(&*self.shape, || {
+                i += 1;
+                i
+            })
+            .permuted_axes(&*self.permutation)
+        }
+
+        fn reference(&self) -> Tensor {
+            let values: Vec<i32> = self.input().into_iter().collect();
+            let shape = self.permutation.iter().map(|ix| self.shape[*ix]).collect::<TVec<usize>>();
+            super::litteral::tensor1(&values).into_shape(&shape).unwrap()
+        }
+
+        fn tract(&self) -> Tensor {
+            Tensor::from(dbg!(self.input()))
+        }
+
+        fn check(&self) -> proptest::test_runner::TestCaseResult {
+            prop_assert_eq!(dbg!(self.tract()), dbg!(self.reference()));
+            Ok(())
+        }
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn prop(pb: PermuteAxisProblem) {
+            pb.check().unwrap();
+        }
+    }
+
+    #[test]
+    fn t_1_2() {
+        PermuteAxisProblem { shape: vec![2, 1], permutation: vec![1, 0] }.check().unwrap();
+    }
+
+    #[test]
+    fn t_2_2() {
+        PermuteAxisProblem { shape: vec![2, 2], permutation: vec![1, 0] }.check().unwrap();
     }
 }
