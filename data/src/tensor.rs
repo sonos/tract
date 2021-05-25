@@ -925,7 +925,7 @@ impl Tensor {
                         for b in 0..len_b {
                             for a in 0..len_a {
                                 *t.as_ptr_mut_unchecked::<T>()
-                                    .offset(a * stride_a + b * stride_b) = dbg!((&*iptr).clone());
+                                    .offset(a * stride_a + b * stride_b) = (&*iptr).clone();
                                 iptr = iptr.offset(1);
                             }
                         }
