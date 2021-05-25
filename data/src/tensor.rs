@@ -1,4 +1,4 @@
-/! `Tensor`, tract main data object of interest.
+//! `Tensor`, tract main data object of interest.
 use crate::datum::{Blob, Datum, DatumType};
 use crate::dim::TDim;
 use crate::f16::f16;
