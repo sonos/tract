@@ -34,7 +34,7 @@ jobs:
     - name: Full test
       run: .travis/onnx-tests.sh ${{ matrix.opset }}
 
-  onnx-tests:
+  onnx-with-asserts:
     runs-on: ubuntu-latest
 
     steps:
