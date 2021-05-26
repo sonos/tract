@@ -7,19 +7,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  linux:
+  regular-tests:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v1
-      #    - uses: actions/cache@v2
-      #      with:
-      #        path: |
-      #          ~/.rustup
-      #          ~/.cargo/registry
-      #          ~/.cargo/git
-      #          target
-      #          .cache
-      #        key: ${{ runner.os }}-cargo-${{matrix.rust}}-2
     - name: Full test 
-      run: .travis/native.sh
+      run: .travis/regular-tests.sh
+
+  cli-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Full test 
+      run: .travis/cli-tests.sh
