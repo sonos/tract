@@ -12,7 +12,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: Full test 
+    - name: Full test
       run: .travis/regular-tests.sh
 
   cli-tests:
@@ -32,4 +32,12 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Full test
-      run: .travis/cli-tests.sh ${{ matrix.opset }}
+      run: .travis/onnx-tests.sh ${{ matrix.opset }}
+
+  onnx-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: With assertions
+      run: cargo -q test -q -p onnx-test-suite -- --skip real_
