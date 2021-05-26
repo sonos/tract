@@ -24,7 +24,7 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-${{matrix.rust}}-1
     - name: Native script
-      run: .travis/native.sh
+      run: .travis/regular-tests.sh
       env:
         SHORT: yes
         RUST_VERSION: ${{matrix.rust}}

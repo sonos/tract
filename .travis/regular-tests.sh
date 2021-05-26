@@ -1,0 +1,75 @@
+#!/bin/sh
+
+set -ex
+
+which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+PATH=$PATH:$HOME/.cargo/bin
+
+: "${RUST_VERSION:=stable}"
+rustup toolchain add $RUST_VERSION
+rustup default $RUST_VERSION
+
+rustc --version
+
+if [ `uname` = "Darwin" ]
+then
+    brew install coreutils
+fi
+
+# if [ `uname` = "Linux" -a -z "$TRAVIS" ]
+# then
+#     apt-get update
+#     apt-get -y upgrade
+#     apt-get install -y unzip wget curl python awscli build-essential git pkg-config libssl-dev
+#     cargo --version || ( curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y )
+# fi
+
+
+if [ -z "$CACHEDIR" ]
+then
+    CACHEDIR=$(realpath `dirname $0`/../.cached)
+fi
+
+export CACHEDIR
+
+cargo -q check --workspace --all-targets
+
+if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
+then
+    ALL_FEATURES=--all-features
+fi
+
+cargo -q test -q -p tract-core -p tract-hir -p tract-onnx -p tract-linalg
+# doc test are not finding libtensorflow.so
+cargo -q test -q -p tract-tensorflow --lib $ALL_FEATURES
+# useful as debug_asserts will come into play
+cargo -q test -q -p onnx-test-suite -- --skip real_
+
+if [ -n "$SHORT" ]
+then
+    exit 0
+fi
+
+if [ -n "$CI" ]
+then
+    for opset in onnx_1_4_1 onnx_1_5_0 onnx_1_6_0 onnx_1_7_0
+    do
+        cd harness/onnx-test-suite
+        cargo -q check -q --features $opset
+        cargo -q test -q --release --features $opset
+        cd ../..
+        rm -rf $CACHEDIR/onnx/$opset
+    done
+else
+    cargo -q check -p onnx-test-suite --all-features
+    cargo -q test -q -p onnx-test-suite --release --all-features
+fi
+
+cargo -q test -q --release -p core-proptest-pulse $ALL_FEATURES
+cargo -q test -q --release -p lstm-proptest-onnx-vs-tf $ALL_FEATURES
+cargo -q test -q --release -p nnef-inceptionv3 $ALL_FEATURES
+cargo -q test -q --release -p tf-inceptionv3 $ALL_FEATURES
+cargo -q test -q --release -p tf-mobilenet-v2 $ALL_FEATURES
+cargo -q test -q --release -p tf-moz-deepspeech $ALL_FEATURES
+
