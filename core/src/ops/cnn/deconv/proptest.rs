@@ -459,3 +459,23 @@ fn test_bias_0() {
     };
     assert_eq!(pb.tract(), pb.reference());
 }
+
+#[test]
+fn test_rank_5_with_group() {
+    let pb = DeconvProblem {
+        data_format: HWC,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input: arr4(&[[[[0.0, 0.0, 0.0, 1.0]]]]).into_dyn(),
+        kernel: arr1(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
+            .into_shape(vec![2, 2, 1, 2, 1])
+            .unwrap()
+            .into_dyn(),
+        bias: None,
+        strides: tvec!(1, 1, 1),
+        dilations: tvec!(1, 1, 1),
+        adjustments: tvec!(0, 0, 0),
+        group: 2,
+    };
+    assert_eq!(pb.tract(), pb.reference());
+}

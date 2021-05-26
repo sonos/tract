@@ -296,7 +296,6 @@ impl Expansion for StridedSlice {
                 )?[0];
             }
             target.rename_node(wire.node, prefix)?;
-            dbg!(&target);
             Ok(tvec!(wire))
         } else {
             bail!("StridedSlice in not typable when params are dynamic: got:{:?}", params);
