@@ -26,8 +26,18 @@ macro_rules! impl_stack_views_by_copy(
             }
 
             unsafe fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> anyhow::Result<ArrayD<$t>> {
-                Ok(ndarray::concatenate(ndarray::Axis(axis), views)?)
+                let mut shape = views[0].shape().to_vec();
+                shape[axis] = views.iter().map(|v| v.shape()[axis]).sum();
+                let mut array = Self::uninitialized_array(&*shape);
+                let mut offset = 0;
+                for v in views {
+                    let len = v.shape()[axis];
+                    array.slice_axis_mut(Axis(axis), (offset..(offset + len)).into()).assign(&v);
+                    offset += len;
+                }
+                Ok(array)
             }
+
             unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
                 Sh: ShapeBuilder<Dim = D>,
                 S: DataOwned<Elem=Self>,

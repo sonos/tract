@@ -41,3 +41,4 @@ mod datum;
 mod dim;
 mod f16;
 mod tensor;
+mod scatter;
