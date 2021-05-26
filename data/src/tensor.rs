@@ -1247,11 +1247,11 @@ mod tests {
         }
 
         fn tract(&self) -> Tensor {
-            Tensor::from(dbg!(self.input()))
+            Tensor::from(self.input())
         }
 
         fn check(&self) -> proptest::test_runner::TestCaseResult {
-            prop_assert_eq!(dbg!(self.tract()), dbg!(self.reference()));
+            prop_assert_eq!(self.tract(), self.reference());
             Ok(())
         }
     }
