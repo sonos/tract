@@ -51,21 +51,6 @@ then
     exit 0
 fi
 
-if [ -n "$CI" ]
-then
-    for opset in onnx_1_4_1 onnx_1_5_0 onnx_1_6_0 onnx_1_7_0
-    do
-        cd harness/onnx-test-suite
-        cargo -q check -q --features $opset
-        cargo -q test -q --release --features $opset
-        cd ../..
-        rm -rf $CACHEDIR/onnx/$opset
-    done
-else
-    cargo -q check -p onnx-test-suite --all-features
-    cargo -q test -q -p onnx-test-suite --release --all-features
-fi
-
 cargo -q test -q --release -p core-proptest-pulse $ALL_FEATURES
 cargo -q test -q --release -p lstm-proptest-onnx-vs-tf $ALL_FEATURES
 cargo -q test -q --release -p nnef-inceptionv3 $ALL_FEATURES

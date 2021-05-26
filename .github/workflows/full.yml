@@ -22,3 +22,14 @@ jobs:
     - uses: actions/checkout@v1
     - name: Full test 
       run: .travis/cli-tests.sh
+
+  onnx-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        opset: [1_4_1, 1_5_0, 1_6_0, 1_7_0]
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Full test
+      run: .travis/cli-tests.sh ${{ matrix.opset }}
