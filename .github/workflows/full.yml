@@ -7,19 +7,37 @@ on:
   workflow_dispatch:
 
 jobs:
-  linux:
+  regular-tests:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v1
-      #    - uses: actions/cache@v2
-      #      with:
-      #        path: |
-      #          ~/.rustup
-      #          ~/.cargo/registry
-      #          ~/.cargo/git
-      #          target
-      #          .cache
-      #        key: ${{ runner.os }}-cargo-${{matrix.rust}}-2
+    - name: Full test
+      run: .travis/regular-tests.sh
+
+  cli-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
     - name: Full test 
-      run: .travis/native.sh
+      run: .travis/cli-tests.sh
+
+  onnx-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        opset: [1_4_1, 1_5_0, 1_6_0, 1_7_0]
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Full test
+      run: .travis/onnx-tests.sh ${{ matrix.opset }}
+
+  onnx-with-asserts:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: With assertions
+      run: cargo -q test -q -p onnx-test-suite -- --skip real_
