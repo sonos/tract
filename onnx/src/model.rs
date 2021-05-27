@@ -206,7 +206,7 @@ impl Onnx {
             .find(|import| import.domain == "" || import.domain == "ai.onnx")
             .map(|op| op.version)
             .unwrap_or(0);
-        let graph = &proto.graph;
+        let graph = proto.graph.as_ref().ok_or_else(|| anyhow!("model proto does not contain a graph"))?;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
         if onnx_operator_set_version != 0
             && (onnx_operator_set_version < 9 || onnx_operator_set_version > 12)
@@ -221,7 +221,7 @@ impl Onnx {
             parent_graphs: vec![],
             onnx_operator_set_version,
         };
-        ctx.parse_graph(graph.as_ref().unwrap())
+        ctx.parse_graph(graph)
     }
 }
 
