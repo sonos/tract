@@ -1,4 +1,9 @@
-## Unreleased
+# Unreleased
+
+## 0.14.2 - 2021-05-27
+
+* better handling of errors in ONNX parser
+* fix/workaround some perfomance regressions bubling from recent ndarray changes
 
 ## 0.14.1 - 2021-05-18
 
