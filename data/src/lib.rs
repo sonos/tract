@@ -13,7 +13,7 @@ mod macros;
 pub type TVec<T> = smallvec::SmallVec<[T; 4]>;
 
 pub mod prelude {
-    pub use crate::datum::{Blob, Datum, DatumType};
+    pub use crate::datum::{Blob, Datum, DatumType, QParams};
     pub use crate::dim::{Symbol, SymbolValues, TDim, ToDim};
     pub use crate::f16::*;
     pub use crate::tensor::litteral::*;
@@ -41,5 +41,5 @@ pub use dim::UndeterminedSymbol;
 mod datum;
 mod dim;
 mod f16;
-mod tensor;
 mod scatter;
+mod tensor;

@@ -10,7 +10,7 @@ use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{
     ConcreteMatMulGeometry, LirMatMulUnary, MatMulGeometry, ProtoFusedSpec, SymbolicMatMulGeometry,
 };
-use crate::ops::matmul::QParams;
+use crate::ops::matmul::MatMulQParams;
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
 use tract_linalg::frame::Packer;
@@ -28,7 +28,7 @@ pub struct ConvUnary {
 
     pub bias: Option<Arc<Tensor>>,
 
-    pub q_params: Option<(DatumType, QParams)>,
+    pub q_params: Option<(DatumType, MatMulQParams)>,
 }
 
 impl_dyn_hash!(ConvUnary);
@@ -1037,7 +1037,7 @@ mod test {
             kernel: rctensor4(&[[[[1u8, 1], [1, 1]]]]),
             group: 1,
             bias: None,
-            q_params: Some((i32::datum_type(), QParams::all_dynamic(1))),
+            q_params: Some((i32::datum_type(), MatMulQParams::all_dynamic(1))),
         };
         let input = tvec!(
             rctensor4(&[[[[1u8, 2, 3], [4, 5, 6], [7, 8, 9]]]]),

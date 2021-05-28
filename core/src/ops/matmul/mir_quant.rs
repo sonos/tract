@@ -5,7 +5,7 @@ use crate::ops;
 use crate::ops::matmul::*;
 
 #[derive(Debug, Clone, Hash, PartialEq)]
-pub struct QParams {
+pub struct MatMulQParams {
     pub a0: AttrOrInput,
     pub a_scale: AttrOrInput,
     pub b0: AttrOrInput,
@@ -14,9 +14,9 @@ pub struct QParams {
     pub c_scale: AttrOrInput,
 }
 
-impl QParams {
-    pub fn noop_static(dt: DatumType) -> QParams {
-        QParams {
+impl MatMulQParams {
+    pub fn noop_static(dt: DatumType) -> MatMulQParams {
+        MatMulQParams {
             a0: AttrOrInput::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
             a_scale: AttrOrInput::Attr(rctensor0(1f32)),
             b0: AttrOrInput::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
@@ -26,8 +26,8 @@ impl QParams {
         }
     }
 
-    pub fn all_dynamic(offset: usize) -> QParams {
-        QParams {
+    pub fn all_dynamic(offset: usize) -> MatMulQParams {
+        MatMulQParams {
             a0: AttrOrInput::Input(offset),
             a_scale: AttrOrInput::Input(offset + 1),
             b0: AttrOrInput::Input(offset + 2),
@@ -65,7 +65,7 @@ impl QParams {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-    ) -> TractResult<Option<(Vec<OutletId>, QParams)>> {
+    ) -> TractResult<Option<(Vec<OutletId>, MatMulQParams)>> {
         let mut new = self.clone();
         let mut inputs = vec![];
         for (ix, input) in node.inputs.iter().enumerate() {
@@ -111,7 +111,7 @@ pub struct QMatMul {
     pub b_trans: bool,
     pub c_trans: bool,
     pub output_type: DatumType,
-    pub params: QParams,
+    pub params: MatMulQParams,
 }
 
 impl_dyn_hash!(QMatMul);
@@ -689,7 +689,13 @@ mod test {
             let result = model
                 .wire_node(
                     "qmm",
-                    QMatMul::new(false, false, false, i8::datum_type(), QParams::all_dynamic(3)),
+                    QMatMul::new(
+                        false,
+                        false,
+                        false,
+                        i8::datum_type(),
+                        MatMulQParams::all_dynamic(3),
+                    ),
                     &inputs,
                 )
                 .unwrap();

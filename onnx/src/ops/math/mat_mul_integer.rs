@@ -74,7 +74,7 @@ impl Expansion for MatMulInteger {
             let b_dt = target.outlet_fact(inputs[1])?.datum_type;
             Tensor::zero_scalar_dt(b_dt)?.into()
         };
-        let params = QParams {
+        let params = MatMulQParams {
             a0,
             b0,
             c0: tensor0(0i32).into(),
@@ -146,7 +146,7 @@ impl Expansion for QLinearMatMul {
             false,
             false,
             target.outlet_fact(inputs[7])?.datum_type,
-            tract_core::ops::matmul::QParams::all_dynamic(3),
+            tract_core::ops::matmul::MatMulQParams::all_dynamic(3),
         );
         let a_and_b =
             tract_hir::ops::binary::wire_rank_broadcast(prefix, target, &[inputs[0], inputs[3]])?;

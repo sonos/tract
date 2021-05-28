@@ -290,10 +290,8 @@ impl crate::ops::binary::BinMiniOp for Scale {
 
     fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
         let a = a.to_scalar::<f32>()?;
-        unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(
-            a: f32,
-            b: &mut Tensor,
-        ) where
+        unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(a: f32, b: &mut Tensor)
+        where
             f32: AsPrimitive<T>,
         {
             b.as_slice_mut_unchecked::<T>().iter_mut().for_each(|x| *x = scale_by(*x, a));
@@ -388,7 +386,7 @@ pub mod scale {
             let a = model.add_const("a", tensor2(&[[a]])).unwrap();
             let b = model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
             let bias = model.add_const("bias", tensor0(0i32)).unwrap();
-            let mut qp = ops::matmul::QParams::noop_static(i8::datum_type());
+            let mut qp = ops::matmul::MatMulQParams::noop_static(i8::datum_type());
             qp.c_scale = AttrOrInput::Attr(rctensor0(scale));
             let op = ops::matmul::QMatMul::new(false, false, false, i8::datum_type(), qp);
             let output = model.wire_node("mmm", op, &[a, b, bias]).unwrap();

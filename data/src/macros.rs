@@ -38,6 +38,10 @@ macro_rules! dispatch_datum {
             DatumType::Blob => $($path)::*::<Blob>($($args),*),
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
             DatumType::String => $($path)::*::<String>($($args),*),
+            DatumType::QI8(_) => $($path)::*::<i8>($($args),*),
+            DatumType::QI32(_) => $($path)::*::<i32>($($args),*),
+            DatumType::QU8(_) => $($path)::*::<u8>($($args),*),
+            DatumType::QU32(_) => $($path)::*::<u32>($($args),*),
         }
     } }
 }
@@ -62,6 +66,10 @@ macro_rules! dispatch_datum_by_size {
             DatumType::Blob => $($path)::*::<Blob>($($args),*),
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
             DatumType::String => $($path)::*::<String>($($args),*),
+            DatumType::QI8(_)   => $($path)::*::<i8>($($args),*),
+            DatumType::QI32(_)   => $($path)::*::<i32>($($args),*),
+            DatumType::QU8(_)   => $($path)::*::<u8>($($args),*),
+            DatumType::QU32(_)   => $($path)::*::<u32>($($args),*),
         }
     } }
 }
@@ -83,6 +91,10 @@ macro_rules! dispatch_copy {
             DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
+            DatumType::QI8(_)  => $($path)::*::<i8>($($args),*),
+            DatumType::QI32(_)  => $($path)::*::<i32>($($args),*),
+            DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
+            DatumType::QU32(_)  => $($path)::*::<u32>($($args),*),
             _ => panic!("{:?} is not Copy", $dt)
         }
     } }
@@ -105,6 +117,10 @@ macro_rules! dispatch_copy_by_size {
             DatumType::F16  => $($path)::*::<i16>($($args),*),
             DatumType::F32  => $($path)::*::<i32>($($args),*),
             DatumType::F64  => $($path)::*::<i64>($($args),*),
+            DatumType::QI8(_)  => $($path)::*::<i8>($($args),*),
+            DatumType::QI32(_)  => $($path)::*::<i32>($($args),*),
+            DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
+            DatumType::QU32(_)  => $($path)::*::<u32>($($args),*),
             _ => panic!("{:?} is not Copy", $dt)
         }
     } }
@@ -126,6 +142,10 @@ macro_rules! dispatch_numbers {
             DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
+            DatumType::QI8(_)  => $($path)::*::<i8>($($args),*),
+            DatumType::QI32(_)  => $($path)::*::<i32>($($args),*),
+            DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
+            DatumType::QU32(_)  => $($path)::*::<u32>($($args),*),
             _ => $crate::anyhow::bail!("{:?} is not a number", $dt)
         }
     } }
