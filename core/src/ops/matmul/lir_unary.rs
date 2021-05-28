@@ -38,38 +38,89 @@ impl ProtoFusedSpec {
     }
 }
 
-#[derive(Debug, Clone, Educe)]
+#[derive(Clone, Debug, Hash)]
+pub struct MatMulGeometry {
+    pub m: usize,
+    pub k: usize,
+    pub n: usize,
+    pub b_storage: MatrixStoreSpec,
+}
+
+#[derive(Clone, Debug, Hash)]
+pub enum MatMulGeometryConcretizer {
+    Symbolic { m: TDim, k: TDim, n: TDim, b_datum_type: DatumType },
+    Concrete(MatMulGeometry),
+}
+
+impl MatMulGeometryConcretizer {
+    fn is_concrete(&self) -> bool {
+        match self {
+            Self::Symbolic { .. } => false,
+            Self::Concrete(_) => true,
+        }
+    }
+
+    fn as_concrete(&self) -> Option<&MatMulGeometry> {
+        match self {
+            Self::Symbolic { .. } => None,
+            Self::Concrete(it) => Some(it),
+        }
+    }
+
+    fn to_concrete(
+        &self,
+        mmm: &dyn MatMatMul,
+        symbols: &SymbolValues,
+    ) -> TractResult<Cow<MatMulGeometry>> {
+        match self {
+            Self::Symbolic { m, k, n, b_datum_type } => {
+                let m = m.eval(symbols).to_usize()?;
+                let k = k.eval(symbols).to_usize()?;
+                let n = n.eval(symbols).to_usize()?;
+                let b_storage = unsafe { mmm.b_packed(b_datum_type.size_of(), k) };
+                Ok(Cow::Owned(MatMulGeometry { m, k, n, b_storage }))
+            }
+            Self::Concrete(it) => Ok(Cow::Borrowed(it)),
+        }
+    }
+
+    fn m(&self) -> Cow<TDim> {
+        match self {
+            Self::Symbolic { m, .. } => Cow::Borrowed(m),
+            Self::Concrete(it) => Cow::Owned(it.m.to_dim()),
+        }
+    }
+
+    fn k(&self) -> Cow<TDim> {
+        match self {
+            Self::Symbolic { k, .. } => Cow::Borrowed(k),
+            Self::Concrete(it) => Cow::Owned(it.k.to_dim()),
+        }
+    }
+
+    fn n(&self) -> Cow<TDim> {
+        match self {
+            Self::Symbolic { n, .. } => Cow::Borrowed(n),
+            Self::Concrete(it) => Cow::Owned(it.n.to_dim()),
+        }
+    }
+}
+
+#[derive(Clone, Educe, Debug)]
 #[educe(Hash)]
 pub struct LirMatMulUnary {
-    pub b_storage: MatrixStoreSpec,
     pub c_fact: TypedFact,
     pub c_m_axis: usize,
     pub c_n_axis: usize,
     pub micro_ops: ArrayD<(Arc<Tensor>, Vec<ProtoFusedSpec>)>,
+    pub c_final_shape: ShapeFact,
+    pub geometry: MatMulGeometryConcretizer,
     #[educe(Hash(method = "hash_mmm"))]
     pub mmm: Box<dyn MatMatMul>,
-    pub m: usize,
-    pub k: usize,
-    pub c_final_shape: ShapeFact,
     pub reshape_post: Vec<AxisOp>,
 }
 
-impl LirMatMulUnary {
-    pub fn m(&self) -> usize {
-        self.m
-    }
-
-    pub fn k(&self) -> usize {
-        self.k
-    }
-
-    pub fn n(&self) -> &TDim {
-        &self.c_fact.shape[self.c_n_axis]
-    }
-}
-
 fn hash_mmm<H: std::hash::Hasher>(mmm: &Box<dyn MatMatMul>, state: &mut H) {
-    // FIXME: this is buggy, but it should not matter too much
     mmm.type_id().hash(state)
 }
 
@@ -88,9 +139,9 @@ impl Op for LirMatMulUnary {
         let mut infos = vec![format!(
             "c_shape: {:?} m:{} k:{} n:{}",
             self.c_fact,
-            self.m(),
-            self.k(),
-            self.n(),
+            self.geometry.m(),
+            self.geometry.k(),
+            self.geometry.n(),
         )];
         infos.push(format!("Mult: {}", self.mmm));
         infos.push(format!("Ops: {:?}", self.micro_ops));
@@ -114,6 +165,7 @@ impl OpState for State {
         let shape = op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
         let final_shape = op.c_final_shape.eval_to_usize(&session.resolved_symbols)?;
         unsafe {
+            let geometry = op.geometry.to_concrete(&*op.mmm, &session.resolved_symbols)?;
             if session
                 .cached_mmm_scratch_space
                 .as_deref()
@@ -125,14 +177,23 @@ impl OpState for State {
             let scratch = session
                 .cached_mmm_scratch_space
                 .get_or_insert_with(|| op.mmm.allocate_scratch_space());
-            eval(op, scratch.as_mut(), &inputs, &shape, op.c_m_axis, op.c_n_axis, &final_shape)
+            eval(
+                op,
+                &geometry,
+                scratch.as_mut(),
+                &inputs,
+                &shape,
+                op.c_m_axis,
+                op.c_n_axis,
+                &final_shape,
+            )
         }
     }
 }
 
 impl EvalOp for LirMatMulUnary {
     fn is_stateless(&self) -> bool {
-        self.c_fact.shape.is_concrete()
+        self.geometry.is_concrete()
     }
 
     fn state(
@@ -144,9 +205,11 @@ impl EvalOp for LirMatMulUnary {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let geometry = self.geometry.as_concrete().unwrap();
         let mut scratch = unsafe { self.mmm.allocate_scratch_space() };
         eval(
             self,
+            &geometry,
             scratch.as_mut(),
             &*inputs,
             self.c_fact.shape.as_concrete().unwrap(),
@@ -159,6 +222,7 @@ impl EvalOp for LirMatMulUnary {
 
 fn eval(
     op: &LirMatMulUnary,
+    geometry: &MatMulGeometry,
     scratch: &mut dyn ScratchSpace,
     inputs: &[Arc<Tensor>],
     c_shape: &[usize],
@@ -194,9 +258,14 @@ fn eval(
                 let (pa, fused) = ops.iter().next().unwrap();
                 let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
                 op.mmm.run_with_scratch_space(
+                    geometry.m,
+                    geometry.k,
+                    geometry.n,
                     scratch,
-                    &op.mmm.a_packed(a_dt).wrap(&pa.view()),
-                    &op.b_storage.wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
+                    &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
+                    &geometry
+                        .b_storage
+                        .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
                     &mut c_storage.wrap(&c_view),
                     &f,
                 )?;
@@ -205,9 +274,12 @@ fn eval(
             let (pa, fused) = op.micro_ops.iter().next().unwrap();
             let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
             op.mmm.run_with_scratch_space(
+                geometry.m,
+                geometry.k,
+                geometry.n,
                 scratch,
-                &op.mmm.a_packed(a_dt).wrap(&pa.view()),
-                &op.b_storage.wrap(&inputs[0].view()),
+                &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
+                &geometry.b_storage.wrap(&inputs[0].view()),
                 &mut c_storage.wrap(&c.view_mut()),
                 &f,
             )?;
@@ -235,7 +307,7 @@ impl TypedOp for LirMatMulUnary {
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let sums = self.c_fact.shape.iter().maybe_product()?;
         Ok(tvec!(
-            (Cost::FMA(self.mmm.internal_type()), sums.maybe_mul(&self.k().to_dim())?),
+            (Cost::FMA(self.mmm.internal_type()), sums.maybe_mul(&self.geometry.k())?),
             (
                 Cost::Params(self.micro_ops.as_slice().unwrap()[0].0.datum_type()),
                 self.micro_ops.iter().fold(0.to_dim(), |sum, a| sum + a.0.len())
@@ -298,16 +370,10 @@ impl TypedOp for LirMatMulUnary {
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(cast) = op.downcast_ref::<ops::cast::Cast>().map(|cast| cast.to) {
                 if cast == i8::datum_type() && self.c_fact.datum_type == i32::datum_type() {
-                    let mmm = tract_linalg::ops()
-                        .mmm(
-                            self.micro_ops.iter().next().unwrap().0.datum_type(),
-                            model.outlet_fact(node.inputs[0])?.datum_type,
-                            i8::datum_type(),
-                            self.m(),
-                            self.k(),
-                            self.n().to_usize()?,
-                        )
-                        .context("MMM instantiation")?;
+                    let at = self.micro_ops.iter().nth(0).unwrap().0.datum_type();
+                    let bt = model.outlet_fact(node.inputs[0])?.datum_type;
+                    let mmm = tract_linalg::ops().mmm(at, bt, i8::datum_type(), self.c_fact.shape[self.c_m_axis].to_usize().ok(), None, self.c_fact.shape[self.c_n_axis].to_usize().ok()).unwrap();
+
                     let c_fact = TypedFact::dt_shape(i8::datum_type(), self.c_fact.shape.clone());
                     let mut patch = TypedModelPatch::fuse_with_next(
                         model,
@@ -368,13 +434,23 @@ impl TypedOp for LirMatMulUnary {
                     })
                     .collect::<TVec<_>>();
 
-                assert_eq!(&prefix.iter().cloned().product::<usize>() * self.m, arg.len());
+                assert_eq!(
+                    prefix.iter().cloned().product::<usize>()
+                        * self.geometry.m().to_usize().unwrap(),
+                    arg.len()
+                );
 
                 let arg_len = arg.len();
                 let arg = arg.into_shape(&[arg_len])?;
                 let mut i = 0;
                 let arg = ArrayD::from_shape_simple_fn(&*prefix, || {
-                    let t = arg.slice(0, i * self.m, (i + 1) * self.m).unwrap();
+                    let t = arg
+                        .slice(
+                            0,
+                            i * self.geometry.m().to_usize().unwrap(),
+                            (i + 1) * self.geometry.m().to_usize().unwrap(),
+                        )
+                        .unwrap();
                     i += 1;
                     if op.mini_op.is::<ops::math::Mul>() {
                         vec![ProtoFusedSpec::PerRowMul(t.into())]

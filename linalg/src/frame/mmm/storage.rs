@@ -104,7 +104,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
                     .iter()
                     .map(|offset| tensor.as_ptr_unchecked::<u8>().offset(*offset) as _)
                     .collect(),
-                nr: *nr,
+                    nr: *nr,
             },
         }
     }
@@ -138,7 +138,7 @@ impl<'s, 't> MatrixStore<'s, 't> {
     unsafe fn compute_strides(
         spec: &MatrixStoreSpec,
         tensor: &TensorView,
-    ) -> (isize, isize, isize, isize) {
+        ) -> (isize, isize, isize, isize) {
         let size_of = tensor.datum_type().size_of() as isize;
         match spec {
             MatrixStoreSpec::View { axes, .. } => {
@@ -181,16 +181,32 @@ impl<'s, 't> MatrixStore<'s, 't> {
             } => Tile {
                 ptr: ptr.offset(panel_row_byte_stride * down + panel_col_byte_stride * right)
                     as *mut _,
-                row_byte_stride: *row_byte_stride,
-                col_byte_stride: *col_byte_stride,
-                item_size: *item_size,
+                    row_byte_stride: *row_byte_stride,
+                    col_byte_stride: *col_byte_stride,
+                    item_size: *item_size,
             },
             _ => unimplemented!(),
         }
     }
 
     #[inline]
-    pub(super) unsafe fn set_from_tile<T: Datum + Copy>(
+    pub(super) unsafe fn set_from_tile(
+        &mut self,
+        down: usize,
+        right: usize,
+        height: usize,
+        width: usize,
+        tile: &Tile)
+    {
+        if self.item_size() == 1 {
+            self.set_from_tile_t::<i8>(down, right, height, width, tile)
+        } else {
+            self.set_from_tile_t::<i32>(down, right, height, width, tile)
+        }
+    }
+
+    #[inline]
+    unsafe fn set_from_tile_t<T: Datum + Copy>(
         &mut self,
         down: usize,
         right: usize,
@@ -211,8 +227,8 @@ impl<'s, 't> MatrixStore<'s, 't> {
             } => {
                 let dst = ptr.offset(
                     (*panel_row_byte_stride as usize * down
-                        + *panel_col_byte_stride as usize * right) as isize,
-                );
+                     + *panel_col_byte_stride as usize * right) as isize,
+                     );
                 for y in 0..height as isize {
                     for x in 0..width as isize {
                         let value = tile.offset(y + x * *mr as isize);
@@ -222,6 +238,14 @@ impl<'s, 't> MatrixStore<'s, 't> {
                     }
                 }
             }
+            _ => unimplemented!(),
+        }
+    }
+
+    #[inline]
+    pub fn item_size(&self) -> usize {
+        match self {
+            MatrixStore::Strides { item_size, .. } => *item_size,
             _ => unimplemented!(),
         }
     }

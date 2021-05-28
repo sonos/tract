@@ -76,8 +76,8 @@ impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for Dims {
 pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
     fn to_typed_fact(&self) -> TractResult<TypedFact>;
 
-    fn matches(&self, t: &Tensor) -> TractResult<bool> {
-        self.to_typed_fact()?.matches(t)
+    fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
+        self.to_typed_fact()?.matches(t, symbols)
     }
 
     fn same_as(&self, _other: &dyn Fact) -> bool;
@@ -229,7 +229,7 @@ impl TypedFact {
 
     pub fn consistent(&self) -> TractResult<()> {
         if let Some(k) = &self.konst {
-            if !self.matches(k.as_ref())? {
+            if !self.matches(k.as_ref(), None)? {
                 bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);
             }
         }
@@ -263,8 +263,9 @@ impl Fact for TypedFact {
         Ok(self.clone())
     }
 
-    fn matches(&self, t: &Tensor) -> TractResult<bool> {
-        Ok(self.datum_type == t.datum_type() && self.shape == t.shape())
+    fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
+        let shape = self.shape.eval_to_usize(symbols.unwrap_or(&SymbolValues::default()))?;
+        Ok(self.datum_type == t.datum_type() && &**shape == t.shape())
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {

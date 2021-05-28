@@ -73,7 +73,7 @@ pub(super) fn eval(
         let (m, k, n, c_shape) = compute_shape(a.shape(), b.shape(), a_trans, b_trans, c_trans)?;
         let dt = output_type(a.datum_type());
         let mm = tract_linalg::ops()
-            .mmm(a.datum_type(), b.datum_type(), dt, m, k, n)
+            .mmm(a.datum_type(), b.datum_type(), dt, Some(m), Some(k), Some(n))
             .with_context(|| {
                 format!(
                     "No matrix multiplier for {:?}x{:?} to {:?}",
@@ -83,14 +83,15 @@ pub(super) fn eval(
                 )
             })?;
         let c_storage = mm.c_from_data_and_strides(
+            dt.size_of(),
             if c_trans { 1 } else { c_shape[rank - 1] as isize },
             if !c_trans { 1 } else { c_shape[rank - 1] as isize },
         );
 
         let mut c = Tensor::uninitialized_dt(dt, &c_shape)?;
 
-        let a_pack = mm.a_pack();
-        let b_pack = mm.b_pack();
+        let a_pack = mm.a_pack(k);
+        let b_pack = mm.b_pack(k);
 
         let mut packed_a =
             Tensor::uninitialized_aligned_dt(a.datum_type(), &[a_pack.len(m)], a_pack.alignment())?;
@@ -117,8 +118,11 @@ pub(super) fn eval(
                 !b_trans as usize,
             );
             mm.run(
-                &mm.a_packed(a.datum_type()).wrap(&packed_a.view()),
-                &mm.b_packed(b.datum_type()).wrap(&packed_b.view()),
+                m,
+                k,
+                n,
+                &mm.a_packed(a.datum_type().size_of(), k).wrap(&packed_a.view()),
+                &mm.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
                 &mut c_storage.wrap(&c.view_at_prefix_mut(prefix.slice())?),
                 &[],
             )?;

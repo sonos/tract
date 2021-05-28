@@ -124,7 +124,7 @@ impl Fact for InferenceFact {
         TypedFact::try_from(self)
     }
 
-    fn matches(&self, t: &Tensor) -> TractResult<bool> {
+    fn matches(&self, t: &Tensor, _symbols: Option<&SymbolValues>) -> TractResult<bool> {
         Ok(self.unify(&InferenceFact::from(t)).is_ok())
     }
 

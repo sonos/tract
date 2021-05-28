@@ -4,6 +4,7 @@ use crate::annotations::*;
 use crate::model::Model;
 use crate::BenchLimits;
 use crate::CliResult;
+use crate::Parameters;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -18,6 +19,7 @@ pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
+    params: &Parameters,
 ) -> CliResult<()> {
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
@@ -25,18 +27,15 @@ pub fn profile(
     let mut iters = 0usize;
     let start = Instant::now();
     while iters < bench_limits.max_iters && start.elapsed() < bench_limits.max_time {
-        let _ = state.run_plan_with_eval(
-            crate::tensor::make_inputs_for_model(model)?,
-            |session_state, state, node, input| {
-                let start = Instant::now();
-                let r = tract_core::plan::eval(session_state, state, node, input);
-                let elapsed = start.elapsed();
-                *dg.node_mut(NodeQId(tvec!(), node.id))
-                    .profile
-                    .get_or_insert(Duration::default()) += elapsed;
-                r
-            },
-        )?;
+        let input = crate::tensor::retrieve_or_make_inputs(model, params)?;
+        let _ = state.run_plan_with_eval(input[0].clone(), |session_state, state, node, input| {
+            let start = Instant::now();
+            let r = tract_core::plan::eval(session_state, state, node, input);
+            let elapsed = start.elapsed();
+            *dg.node_mut(NodeQId(tvec!(), node.id)).profile.get_or_insert(Duration::default()) +=
+                elapsed;
+            r
+        })?;
         iters += 1;
     }
     let entire = start.elapsed();

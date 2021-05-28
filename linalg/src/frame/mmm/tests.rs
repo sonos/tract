@@ -283,24 +283,29 @@ where
     usize: AsPrimitive<TI>,
 {
     assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl::<K, TC, TI>::new(m, k, n);
+    let op = MatMatMulImpl::<K, TI>::new();
     unsafe {
         let mut packed_a =
-            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
+            Tensor::uninitialized_aligned::<TA>(&[op.a_pack(k).len(m)], op.a_pack(k).alignment())
                 .unwrap();
-        op.a_pack().pack(packed_a.view_mut(), a.view(), 1, 0);
+        op.a_pack(k).pack(packed_a.view_mut(), a.view(), 1, 0);
 
         let mut packed_b =
-            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(n)], op.b_pack().alignment())
+            Tensor::uninitialized_aligned::<TB>(&[op.b_pack(k).len(n)], op.b_pack(k).alignment())
                 .unwrap();
-        op.b_pack().pack(packed_b.view_mut(), b.view(), 0, 1);
+        op.b_pack(k).pack(packed_b.view_mut(), b.view(), 0, 1);
 
         let mut found = tensor0(TC::max_value()).broadcast_scalar_to_shape(&[m, n]).unwrap();
 
         op.run(
-            &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
-            &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
-            &mut op.c_from_data_and_strides(n as isize, 1).wrap(&found.view_mut()),
+            m,
+            k,
+            n,
+            &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
+            &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
+            &mut op
+                .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
+                .wrap(&found.view_mut()),
             &[],
         )
         .unwrap();
@@ -337,22 +342,25 @@ where
     usize: AsPrimitive<TI>,
 {
     unsafe {
-        let op = MatMatMulImpl::<K, TC, TI>::new(m, k, 1);
+        let op = MatMatMulImpl::<K, TI>::new();
         let mut packed_a =
-            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
+            Tensor::uninitialized_aligned::<TA>(&[op.a_pack(k).len(m)], op.a_pack(k).alignment())
                 .unwrap();
         let mut packed_b =
-            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(1)], op.b_pack().alignment())
+            Tensor::uninitialized_aligned::<TB>(&[op.b_pack(k).len(1)], op.b_pack(k).alignment())
                 .unwrap();
-        op.a_pack().pack(&mut packed_a.view_mut(), &a.view(), 1, 0);
+        op.a_pack(k).pack(&mut packed_a.view_mut(), &a.view(), 1, 0);
         let b = b.clone().into_shape(&[k, 1]).unwrap();
-        op.b_pack().pack(&mut packed_b.view_mut(), &b.view(), 0, 1);
+        op.b_pack(k).pack(&mut packed_b.view_mut(), &b.view(), 0, 1);
 
         let mut c = Tensor::uninitialized::<TC>(&[m, 1]).unwrap();
 
         op.run(
-            &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
-            &op.b_packed(b.datum_type()).wrap(&packed_b.view()),
+            m,
+            k,
+            1,
+            &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
+            &op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view()),
             &mut op.c_view().wrap(&c.view_mut()),
             &[],
         )
@@ -391,24 +399,29 @@ where
 {
     let a = tensor1(&*vec![TA::one(); m * k]).into_shape(&[m, k]).unwrap();
     let b = tensor1(&*vec![TB::one(); k * n]).into_shape(&[k, n]).unwrap();
-    let op = MatMatMulImpl::<K, TC, TI>::new(m, k, n);
+    let op = MatMatMulImpl::<K, TI>::new();
 
     let mut packed_a =
-        Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(m)], op.a_pack().alignment())
+        Tensor::uninitialized_aligned::<TA>(&[op.a_pack(k).len(m)], op.a_pack(k).alignment())
             .unwrap();
-    op.a_pack().pack(packed_a.view_mut(), a.view(), 1, 0);
+    op.a_pack(k).pack(packed_a.view_mut(), a.view(), 1, 0);
 
     let mut packed_b =
-        Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(n)], op.b_pack().alignment())
+        Tensor::uninitialized_aligned::<TB>(&[op.b_pack(k).len(n)], op.b_pack(k).alignment())
             .unwrap();
-    op.b_pack().pack(packed_b.view_mut(), b.view(), 0, 1);
+    op.b_pack(k).pack(packed_b.view_mut(), b.view(), 0, 1);
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
 
     op.run(
-        &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
-        &op.b_packed(TB::datum_type()).wrap(&packed_b.view()),
-        &mut op.c_from_data_and_strides(n as isize, 1).wrap(&mut found.view_mut()),
+        m,
+        k,
+        n,
+        &op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
+        &op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
+        &mut op
+            .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
+            .wrap(&mut found.view_mut()),
         spec,
     )
     .unwrap();
@@ -666,26 +679,31 @@ impl<TA: LADatum, TB: LADatum> ConvProblem<TA, TB> {
         usize: AsPrimitive<TI>,
     {
         unsafe {
-            let op = MatMatMulImpl::<K, TC, TI>::new(self.m(), self.k(), self.n());
+            let op = MatMatMulImpl::<K, TI>::new();
             let mut packed_a = Tensor::uninitialized_aligned::<TA>(
-                &[op.a_pack().len(self.m())],
-                op.a_pack().alignment(),
+                &[op.a_pack(self.k()).len(self.m())],
+                op.a_pack(self.k()).alignment(),
             )
             .unwrap();
-            op.a_pack().pack(packed_a.view_mut(), self.filters.view(), 1, 0);
+            op.a_pack(self.k()).pack(packed_a.view_mut(), self.filters.view(), 1, 0);
 
             let mut found = tensor0(TC::max_value())
                 .broadcast_scalar_to_shape(&[self.co, self.output_width()])
                 .unwrap();
             op.run(
-                &op.a_packed(TA::datum_type()).wrap(&packed_a.view()),
+                self.m(),
+                self.k(),
+                self.n(),
+                &op.a_packed(TA::datum_type().size_of(), self.k()).wrap(&packed_a.view()),
                 &op.b_from_data_and_offsets(
-                    TB::datum_type(),
+                    TB::datum_type().size_of(),
                     &self.data_rows_offsets(),
                     &self.data_cols_offsets(),
                 )
                 .wrap(&self.data.view()),
-                &mut op.c_from_data_and_strides(self.n() as isize, 1).wrap(&found.view_mut()),
+                &mut op
+                    .c_from_data_and_strides(TC::datum_type().size_of(), self.n() as isize, 1)
+                    .wrap(&found.view_mut()),
                 &[],
             )
             .unwrap();

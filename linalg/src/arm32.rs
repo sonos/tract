@@ -1,8 +1,8 @@
 use std::{env, fs};
 mod armv7neon;
 mod armvfpv2;
-use crate::frame::MatMatMulImpl;
 use crate::frame::ElementWiseImpl;
+use crate::frame::MatMatMulImpl;
 
 use crate::Ops;
 
@@ -24,33 +24,27 @@ fn has_neon() -> bool {
 pub fn plug(ops: &mut Ops) {
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
-        ops.mmv_f32 = Box::new(|m, k| {
-            Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1, f32, f32>::new(m, k, 1))
+        ops.mmv_f32 =
+            Box::new(|_, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1, f32>::new()));
+        ops.mmm_f32 =
+            Box::new(|_, _, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4, f32>::new()));
+        ops.qmmm_i8_i8 =
+            Box::new(|_, _, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x8x4, i32>::new()));
+        ops.qmmv_i8_i8 =
+            Box::new(|_, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x32x1, i32>::new()));
+        ops.qmmm_i8_i32 = Box::new(|_, _, _| {
+            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8xI32x8x4, i32>::new())
         });
-        ops.mmm_f32 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4, f32, f32>::new(m, k, n))
-        });
-        ops.qmmm_i8_i8 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x8x4, i8, i32>::new(m, k, n))
-        });
-        ops.qmmv_i8_i8 = Box::new(|m, k| {
-            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x32x1, i8, i32>::new(m, k, 1))
-        });
-        ops.qmmm_i8_i32 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8xI32x8x4, i32, i32>::new(m, k, n))
-        });
-        ops.qmmv_i8_i32 = Box::new(|m, k| {
-            Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8xI32x32x1, i32, i32>::new(m, k, 1))
-        });
+        ops.qmmv_i8_i32 =
+            Box::new(|_, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8xI32x32x1, i32>::new()));
         ops.sigmoid_f32 =
             Box::new(|| Box::new(ElementWiseImpl::<armv7neon::SigmoidF32x4n, f32>::new()));
         ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<armv7neon::TanhF32x4n, f32>::new()));
         ops.prefetch = Some(&armv7neon::prefetch);
     } else {
         log::info!("armvfpv2 activated for smmm");
-        ops.mmm_f32 = Box::new(|m, k, n| {
-            Box::new(MatMatMulImpl::<armvfpv2::MatMatMulF32x4x4, f32, f32>::new(m, k, n))
-        });
+        ops.mmm_f32 =
+            Box::new(|_, _, _| Box::new(MatMatMulImpl::<armvfpv2::MatMatMulF32x4x4, f32>::new()));
     }
 }
 

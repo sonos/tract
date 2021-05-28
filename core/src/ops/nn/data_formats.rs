@@ -69,6 +69,7 @@ impl DataFormat {
     }
 }
 
+pub type SymDataShape = BaseDataShape<TDim, TVec<TDim>>;
 pub type DataShape = BaseDataShape<usize, TVec<usize>>;
 
 #[derive(Clone, Debug, PartialEq, Hash)]

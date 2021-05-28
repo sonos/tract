@@ -1,5 +1,4 @@
 use super::KernelFormat;
-use crate::internal::*;
 use crate::ops::cnn::*;
 use crate::ops::nn::*;
 use crate::setup_test_logger;
@@ -102,7 +101,7 @@ impl ConvProblem {
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
         let mut output =
-            model.into_optimized()?.into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
+            dbg!(model.into_optimized()?).into_runnable()?.run(tvec![self.data.clone().into_tensor()])?;
         Ok(output.remove(0).into_tensor().into_array::<f32>()?)
     }
 }

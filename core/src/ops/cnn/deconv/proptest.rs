@@ -1,4 +1,3 @@
-use crate::internal::*;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::*;
 use crate::ops::nn::*;

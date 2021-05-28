@@ -56,7 +56,7 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     }
 
     #[inline]
-    pub unsafe fn for_tile<TC, K: MatMatMulKer<TI>>(
+    pub unsafe fn for_tile<K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
         down: usize,
@@ -64,17 +64,16 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         c_store: &MatrixStore,
     ) -> *const FusedKerSpec<TI>
     where
-        TC: Datum + Copy,
         TI: Datum + Copy + Debug + Zero,
     {
         if specs.is_empty() {
             std::ptr::null()
         } else {
-            self.fused_for_tile::<TC, K>(specs, down, right, c_store)
+            self.fused_for_tile::<K>(specs, down, right, c_store)
         }
     }
 
-    unsafe fn fused_for_tile<TC, K: MatMatMulKer<TI>>(
+    unsafe fn fused_for_tile<K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
         down: usize,
@@ -82,7 +81,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         c_store: &MatrixStore,
     ) -> *const FusedKerSpec<TI>
     where
-        TC: Datum + Copy,
         TI: Datum + Copy + Debug + Zero,
     {
         self.uspecs.clear();
@@ -199,13 +197,13 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
     }
 
     #[inline]
-    pub unsafe fn tmp_tile_c(&mut self, c: DatumType, mr: usize, nr: usize) -> Tile {
-        let ptr = self.get_raw_buffer(mr * nr * c.size_of());
+    pub unsafe fn tmp_tile_c(&mut self, item_size: usize, mr: usize, nr: usize) -> Tile {
+        let ptr = self.get_raw_buffer(mr * nr * item_size);
         Tile {
             ptr: ptr as _,
-            item_size: c.size_of(),
-            row_byte_stride: c.size_of() as isize,
-            col_byte_stride: (c.size_of() * mr) as isize,
+            item_size,
+            row_byte_stride: item_size as isize,
+            col_byte_stride: (item_size * mr) as isize,
         }
     }
 }

@@ -16,6 +16,10 @@ impl Packer {
         Packer { k, r: nr, alignment, end_padding_record }
     }
 
+    pub fn k(&self) -> usize {
+        self.k
+    }
+
     pub fn alignment(&self) -> usize {
         self.alignment
     }
@@ -24,7 +28,7 @@ impl Packer {
         self.r
     }
 
-    pub fn len(&self, n: usize) -> usize {
+    pub fn len<D: DimLike>(&self, n: D) -> D {
         (n.div_ceil(self.r) * (self.k + self.end_padding_record)) * self.r
     }
 

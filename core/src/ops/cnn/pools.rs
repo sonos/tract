@@ -1,9 +1,9 @@
 use crate::internal::*;
 
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
-use crate::ops::nn::{DataFormat, DataShape};
+use crate::ops::nn::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq)]
 pub struct PoolSpec {
     pub data_format: DataFormat,
     pub kernel_shape: TVec<usize>,
@@ -48,54 +48,85 @@ impl PoolSpec {
             .map_or_else(|| vec![1; self.kernel_shape.len()].into(), |d| d.into())
     }
 
-    pub fn compute_geo(
-        &self,
-        input_full_shape: &[usize],
-    ) -> TractResult<(DataShape, Patch, DataShape)> {
-        let input_shape = self.data_format.shape(input_full_shape.into())?;
-        let output_inner_stride = match self.data_format {
-            DataFormat::NCHW | DataFormat::CHW => 1,
-            DataFormat::NHWC | DataFormat::HWC => {
-                self.output_channel_override.clone().unwrap_or(*input_shape.c())
-            }
-        };
-        let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)?
-            .with_output_inner_stride(output_inner_stride)
-            .with_kernel_shape(self.kernel_shape.clone())
-            .with_padding(self.padding.clone());
-        if let Some(strides) = self.strides.clone() {
-            spec = spec.with_strides(strides);
-        }
-        if let Some(dilations) = self.dilations.clone() {
-            spec = spec.with_dilations(dilations);
-        }
-        let patch = spec.into_patch();
-        let output_shape = input_shape.fmt.from_n_c_hw(
-            *input_shape.n().unwrap_or(&1),
-            self.output_channel_override.unwrap_or(*input_shape.c()),
-            &*patch.output_shape,
-        )?;
-        Ok((input_shape, patch, output_shape))
-    }
-
-    pub fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let ishape = self.data_format.shape(inputs[0].shape.to_tvec())?;
+    pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TractResult<BaseDataShape<D, TVec<D>>> {
+        let ishape: BaseDataShape<D, TVec<D>> = self.data_format.shape(input.into())?;
         let computed = self.padding.compute(
             ishape.hw_dims(),
             &*self.kernel_shape,
             &self.dilations(),
             &self.strides(),
         );
-        let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<TDim>>();
+        let spatial_dims = computed.into_iter().map(|d| d.convoluted).collect::<TVec<D>>();
         let oshape = self.data_format.from_n_c_hw(
-            ishape.n().cloned().unwrap_or(1.to_dim()),
-            self.output_channel_override.map(|i| i.to_dim()).unwrap_or(ishape.c().clone()),
+            ishape.n().cloned().unwrap_or(1.into()),
+            self.output_channel_override.map(|i| i.into()).unwrap_or(ishape.c().clone()),
             spatial_dims,
         )?;
+        Ok(oshape)
+    }
+
+    pub fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let oshape = self.output_shape(&inputs[0].shape)?;
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, oshape.shape)))
     }
 
     pub fn dispose_n_axis(&self) -> PoolSpec {
         PoolSpec { data_format: self.data_format.dispose_n_axis(), ..self.clone() }
     }
+
+    pub fn compute_geo(&self, input_full_shape: &[TDim]) -> TractResult<PoolGeometry> {
+        let output_shape = self.output_shape(input_full_shape)?;
+        let input_shape: SymDataShape = self.data_format.shape(input_full_shape.into())?;
+        Ok(PoolGeometry::Symbolic(SymbolicPoolGeometry {
+            pool_spec: self.clone(),
+            input_shape,
+            output_shape,
+        }))
+    }
 }
+
+pub type PoolGeometry = super::GeometryBound<SymbolicPoolGeometry, ConcretePoolGeometry>;
+
+#[derive(Debug, Clone, Hash, PartialEq)]
+pub struct SymbolicPoolGeometry {
+    pub pool_spec: PoolSpec,
+    pub input_shape: SymDataShape,
+    pub output_shape: SymDataShape,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq)]
+pub struct ConcretePoolGeometry {
+    pub input_shape: DataShape,
+    pub patch: Patch,
+    pub output_shape: DataShape,
+}
+
+impl super::ResolveSymbolsTo<ConcretePoolGeometry> for SymbolicPoolGeometry {
+    fn resolve(&self, input_full_shape: &[usize]) -> TractResult<ConcretePoolGeometry> {
+        let input_shape = self.pool_spec.data_format.shape(input_full_shape.into())?;
+        let output_inner_stride = match self.pool_spec.data_format {
+            DataFormat::NCHW | DataFormat::CHW => 1,
+            DataFormat::NHWC | DataFormat::HWC => {
+                self.pool_spec.output_channel_override.clone().unwrap_or(*input_shape.c())
+            }
+        };
+        let mut spec = PatchSpec::for_full_shape(self.pool_spec.data_format, input_full_shape)?
+            .with_output_inner_stride(output_inner_stride)
+            .with_kernel_shape(self.pool_spec.kernel_shape.clone())
+            .with_padding(self.pool_spec.padding.clone());
+        if let Some(strides) = self.pool_spec.strides.clone() {
+            spec = spec.with_strides(strides);
+        }
+        if let Some(dilations) = self.pool_spec.dilations.clone() {
+            spec = spec.with_dilations(dilations);
+        }
+        let patch = spec.into_patch();
+        let output_shape = input_shape.fmt.from_n_c_hw(
+            *input_shape.n().unwrap_or(&1),
+            self.pool_spec.output_channel_override.unwrap_or(*input_shape.c()),
+            &*patch.output_shape,
+        )?;
+        Ok(ConcretePoolGeometry { input_shape, patch, output_shape })
+    }
+}
+

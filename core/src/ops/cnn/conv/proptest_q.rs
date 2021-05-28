@@ -1,5 +1,4 @@
 use super::proptest::*;
-use crate::internal::*;
 use crate::ops::cnn::KernelFormat::*;
 use crate::ops::cnn::*;
 use crate::ops::matmul::*;
@@ -12,6 +11,10 @@ use proptest::test_runner::TestCaseResult;
 use tract_itertools::izip;
 use tract_ndarray::prelude::*;
 use tract_ndarray::*;
+
+fn round_away<F: num_traits::Float>(x: F) -> F {
+    x.abs().round() * x.signum()
+}
 
 pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
     let len = shape.iter().product::<usize>();
@@ -35,6 +38,7 @@ pub fn q_params() -> BoxedStrategy<QParams> {
 
 #[derive(Debug)]
 struct QConvProblem {
+    optim: bool,
     shape_in: DataShape,
     shape_out: DataShape,
     kernel_format: KernelFormat,
@@ -115,7 +119,7 @@ impl QConvProblem {
         })
     }
 
-    fn tract(&self, optim: bool) -> anyhow::Result<ArrayD<i8>> {
+    fn tract(&self) -> anyhow::Result<ArrayD<i8>> {
         setup_test_logger();
         assert_eq!(self.data.shape(), &*self.shape_in.shape);
         let mut model = TypedModel::default();
@@ -138,7 +142,7 @@ impl QConvProblem {
         );
         let wire = model.wire_node("conv", op, &[wire])?[0];
         model.set_output_outlets(&[wire])?;
-        if optim {
+        if self.optim {
             model = model.into_optimized()?;
         } else {
             model = model.declutter()?;
@@ -148,8 +152,7 @@ impl QConvProblem {
     }
 
     fn check(&self) -> TestCaseResult {
-        prop_assert_eq!(self.tract(false).unwrap(), self.reference());
-        prop_assert_eq!(self.tract(true).unwrap(), self.reference());
+        prop_assert_eq!(self.tract().unwrap(), self.reference());
         Ok(())
     }
 }
@@ -159,6 +162,7 @@ impl Arbitrary for QConvProblem {
     type Strategy = BoxedStrategy<QConvProblem>;
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         (
+            any::<bool>(),
             any::<DataFormat>(),
             any::<KernelFormat>(),
             1usize..=10,
@@ -168,36 +172,50 @@ impl Arbitrary for QConvProblem {
             (1usize..=3).prop_flat_map(|r| shapes(r)),
             q_params(),
         )
-            .prop_flat_map(|(df, kf, n, mut ci0, co0, group, (mut ker_shape, data_shape), qp)| {
-                // FIXME in HWIO order, only regular and depthwise are supported
-                if kf == KernelFormat::HWIO && group > 1 {
-                    ci0 = 1;
-                }
-                let shape_in = df.from_n_c_hw(n, ci0 * group, &data_shape).unwrap();
-                let shape_out: TVec<_> =
-                    izip!(&ker_shape, data_shape).map(|(k, d)| d - k + 1).collect();
-                let shape_out = df.from_n_c_hw(n, co0 * group, &shape_out).unwrap();
-                let data_in = qtensor(shape_in.shape.iter().cloned().collect());
-                match kf {
-                    KernelFormat::HWIO => {
-                        ker_shape.push(ci0 * group);
-                        ker_shape.push(co0)
+            .prop_flat_map(
+                |(opt, df, kf, n, mut ci0, co0, group, (mut ker_shape, data_shape), qp)| {
+                    // FIXME in HWIO order, only regular and depthwise are supported
+                    if kf == KernelFormat::HWIO && group > 1 {
+                        ci0 = 1;
                     }
-                    KernelFormat::OIHW => {
-                        ker_shape.insert(0, ci0);
-                        ker_shape.insert(0, co0 * group)
+                    let shape_in = df.from_n_c_hw(n, ci0 * group, &data_shape).unwrap();
+                    let shape_out: TVec<_> =
+                        izip!(&ker_shape, data_shape).map(|(k, d)| d - k + 1).collect();
+                    let shape_out = df.from_n_c_hw(n, co0 * group, &shape_out).unwrap();
+                    let data_in = qtensor(shape_in.shape.iter().cloned().collect());
+                    match kf {
+                        KernelFormat::HWIO => {
+                            ker_shape.push(ci0 * group);
+                            ker_shape.push(co0)
+                        }
+                        KernelFormat::OIHW => {
+                            ker_shape.insert(0, ci0);
+                            ker_shape.insert(0, co0 * group)
+                        }
+                    };
+                    let kernel = qtensor(ker_shape);
+                    let bias = proptest::option::of(
+                        qtensor(vec![co0 * group]).prop_map(|a| a.mapv(|v| v as i32)),
+                    );
+                    (Just((opt, kf, shape_in, shape_out, group, qp)), data_in, kernel, bias)
+                    // FIXME
+                },
+            )
+            .prop_map(
+                |((optim, kernel_format, shape_in, shape_out, group, qp), data, kernel, bias)| {
+                    QConvProblem {
+                        optim,
+                        shape_in,
+                        shape_out,
+                        kernel_format,
+                        group,
+                        data,
+                        kernel,
+                        bias,
+                        qp,
                     }
-                };
-                let kernel = qtensor(ker_shape);
-                let bias = proptest::option::of(
-                    qtensor(vec![co0 * group]).prop_map(|a| a.mapv(|v| v as i32)),
-                );
-                (Just((kf, shape_in, shape_out, group, qp)), data_in, kernel, bias)
-                // FIXME
-            })
-            .prop_map(|((kernel_format, shape_in, shape_out, group, qp), data, kernel, bias)| {
-                QConvProblem { shape_in, shape_out, kernel_format, group, data, kernel, bias, qp }
-            })
+                },
+            )
             .boxed()
     }
 }
@@ -220,6 +238,7 @@ fn trivial_0() {
         kernel: arr3(&[[[0i8]]]).into_dyn(),
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
+        optim: true,
     }
     .check()
     .unwrap();
@@ -236,6 +255,7 @@ fn trivial_1() {
         kernel: arr3(&[[[64i8]]]).into_dyn(),
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
+        optim: true,
     }
     .check()
     .unwrap();
@@ -252,6 +272,7 @@ fn trivial_2() {
         kernel: arr3(&[[[8i8, -2]]]).into_dyn(),
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
+        optim: true,
     }
     .check()
     .unwrap();
@@ -268,6 +289,7 @@ fn shape_0() {
         kernel: arr4(&[[[[0]]]]).into_dyn(),
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
+        optim: true,
     }
     .check()
     .unwrap();
@@ -284,6 +306,7 @@ fn batch_0() {
         kernel: arr3(&[[[0, 0]]]).into_dyn(),
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
+        optim: true,
     }
     .check()
     .unwrap();
@@ -300,6 +323,7 @@ fn a0_0() {
         kernel: arr3(&[[[0]]]).into_dyn(),
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
+        optim: true,
     }
     .check()
     .unwrap();
@@ -318,6 +342,7 @@ fn scale_0() {
         kernel: arr3(&[[[1]]]).into_dyn(),
         bias: None,
         qp,
+        optim: true,
     }
     .check()
     .unwrap();
@@ -336,6 +361,7 @@ fn scale_1() {
         kernel: arr3(&[[[1]]]).into_dyn(),
         bias: None,
         qp,
+        optim: true,
     }
     .check()
     .unwrap();
@@ -354,6 +380,7 @@ fn scale_2() {
         kernel: arr3(&[[[2]]]).into_dyn(),
         bias: None,
         qp,
+        optim: true,
     }
     .check()
     .unwrap();
@@ -370,6 +397,7 @@ fn group_0() {
         kernel: arr3(&[[[0]], [[0]]]).into_dyn(),
         bias: None,
         qp: QParams::noop_static(i8::datum_type()),
+        optim: true,
     }
     .check()
     .unwrap();
@@ -388,6 +416,7 @@ fn group_1() {
         kernel: arr3(&[[[1]], [[0]]]).into_dyn(),
         bias: None,
         qp,
+        optim: true,
     }
     .check()
     .unwrap();
@@ -406,6 +435,7 @@ fn group_2() {
         kernel: arr3(&[[[0]], [[1]]]).into_dyn(),
         bias: None,
         qp,
+        optim: true,
     }
     .check()
     .unwrap();
@@ -424,77 +454,28 @@ fn rounding_on_arm() {
         kernel: arr3(&[[[0i8]], [[-15]]]).into_dyn(),
         bias: None,
         qp,
+        optim: true,
     }
     .check()
     .unwrap();
 }
 
-fn test_conv_q_and_bias(a0: i32, b0: i32, c0: i32, c_scale: f32, k: i8, i: i8, bias: i32) {
-    use super::*;
-    let mut model = TypedModel::default();
-    let source = model.add_source("input", TypedFact::dt_shape(i8::datum_type(), &[1, 1])).unwrap();
-    let mut q_params = QParams::noop_static(i32::datum_type());
-    q_params.a0 = AttrOrInput::Attr(rctensor0(a0));
-    q_params.b0 = AttrOrInput::Attr(rctensor0(b0));
-    q_params.c_scale = AttrOrInput::Attr(rctensor0(c_scale));
-    q_params.c0 = AttrOrInput::Attr(rctensor0(c0));
-    let conv = ConvUnary {
-        pool_spec: PoolSpec {
-            data_format: CHW,
-            kernel_shape: tvec![1],
-            padding: PaddingSpec::Valid,
-            dilations: None,
-            strides: None,
-            output_channel_override: Some(1),
-        },
-        kernel_fmt: KernelFormat::OIHW,
-        kernel: rctensor3(&[[[k]]]),
+#[test]
+fn bias_1() {
+    let qp = QParams::noop_static(i8::datum_type());
+    let data = ArrayD::zeros(vec![1, 1, 1, 1]);
+    let kernel = ArrayD::zeros(vec![2, 1, 1, 1]);
+    QConvProblem {
+        shape_in: NHWC.from_n_c_hw(1, 1, &[1, 1]).unwrap(),
+        shape_out: NHWC.from_n_c_hw(1, 2, &[1, 1]).unwrap(),
+        kernel_format: OIHW,
         group: 1,
-        bias: Some(rctensor1(&[bias])),
-        q_params: Some((i32::datum_type(), q_params)),
-    };
-    let output = model.wire_node("conv", conv, &[source]).unwrap();
-    model.set_output_outlets(&output).unwrap();
-
-    let input = tvec!(tensor2(&[[i]]));
-    let expected =
-        round_away((((k as i32) - a0) * ((i as i32) - b0) + bias) as f32 / c_scale) as i32 + c0;
-
-    let expected = tensor2(&[[expected]]);
-
-    //        dbg!(&model);
-    let output = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
-    assert_eq!(&*output[0], &expected);
-
-    let output = model.declutter().unwrap().into_runnable().unwrap().run(input.clone()).unwrap();
-    assert_eq!(&*output[0], &expected);
-
-    let output = model.into_optimized().unwrap().into_runnable().unwrap().run(input).unwrap();
-    assert_eq!(&*output[0], &expected);
-}
-
-fn round_away<F: num_traits::Float>(x: F) -> F {
-    x.abs().round() * x.signum()
-}
-
-proptest::proptest! {
-    #[test]
-    fn conv_q_and_bias_prop(a0 in 0i32..5, b0 in 0i32..5, c0 in 0i32..5, c_scale in 0f32..1., k in 0i8..5, i in 0i8..5, bias in 0i32..5) {
-        test_conv_q_and_bias(a0, b0, c0, c_scale, i, k, bias)
+        data,
+        kernel,
+        bias: Some(tract_ndarray::arr1(&[1, 2]).into_dyn()),
+        qp,
+        optim: true,
     }
-}
-
-#[test]
-fn conv_q_and_bias_0() {
-    test_conv_q_and_bias(0, 0, 0, 0.4447719, 0, 0, 1)
-}
-
-#[test]
-fn conv_q_and_bias_1() {
-    test_conv_q_and_bias(1, 0, 0, 0.4447719, 0, 1, 0)
-}
-
-#[test]
-fn conv_q_and_bias_2() {
-    test_conv_q_and_bias(4, 1, 0, 0.00029599667, 3, 0, 2)
+    .check()
+    .unwrap();
 }

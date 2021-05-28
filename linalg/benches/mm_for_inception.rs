@@ -6,18 +6,21 @@ use DatumType::F32;
 
 fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     unsafe {
-        let mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, n).unwrap();
+        let mm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
         let pa =
-            Tensor::uninitialized_aligned::<f32>(&[mm.a_pack().len(m)], mm.a_pack().alignment())
+            Tensor::uninitialized_aligned::<f32>(&[mm.a_pack(k).len(m)], mm.a_pack(k).alignment())
                 .unwrap();
         let pb =
-            Tensor::uninitialized_aligned::<f32>(&[mm.b_pack().len(n)], mm.b_pack().alignment())
+            Tensor::uninitialized_aligned::<f32>(&[mm.b_pack(k).len(n)], mm.b_pack(k).alignment())
                 .unwrap();
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
         be.iter(move || {
             mm.run(
-                &mm.a_packed(F32).wrap(&pa.view()),
-                &mm.b_packed(F32).wrap(&pb.view()),
+                m,
+                k,
+                n,
+                &mm.a_packed(F32.size_of(), k).wrap(&pa.view()),
+                &mm.b_packed(F32.size_of(), k).wrap(&pb.view()),
                 &mut mm.c_view().wrap(&mut c.view_mut()),
                 &[],
             )

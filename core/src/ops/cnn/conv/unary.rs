@@ -6,11 +6,10 @@ use crate::model::*;
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
-use crate::ops::cnn::Patch;
-use crate::ops::cnn::PoolSpec;
-use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
+use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
+use crate::ops::matmul::lir_unary::{LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
 use crate::ops::matmul::QParams;
-use crate::ops::nn::{DataFormat, DataShape};
+use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
 use tract_linalg::mmm::MatMatMul;
 use tract_linalg::{frame::Packer, mmm::MatrixStoreSpec};
@@ -123,9 +122,10 @@ impl ConvUnary {
     ) -> TractResult<OutletId> {
         use crate::ops::matmul::mir_quant as qmm;
         let c_dt = self.q_params.as_ref().unwrap().0;
+        let b_fact = model.outlet_fact(wires[0])?.clone();
 
-        let (input_shape, geo, output_shape, m, k, n, mmm) =
-            self.compute_geo(model.outlet_fact(wires[0])?)?;
+        let (_, m, k, n, mmm) = self.compute_geo(&b_fact)?;
+        let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
         let params = self
             .q_params
@@ -152,15 +152,7 @@ impl ConvUnary {
 
         let im2col = model.wire_node(
             format!("{}.im2col", name),
-            Im2Col::new(
-                geo,
-                self.pool_spec.data_format.clone(),
-                k,
-                n,
-                self.group,
-                *input_shape.c_dim() / self.group,
-                mmm.b_pack(),
-            )?,
+            Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
             &[wires[0], b0],
         )?[0];
 
@@ -179,7 +171,7 @@ impl ConvUnary {
 
         let mut sum_b = model.wire_node(
             format!("{}.sum_b", name),
-            super::QSumB { n, r: mmm.b_pack().panel_width(), k },
+            super::QSumB { n: n.clone(), r: mmm.b_pack(k).panel_width(), k },
             &[im2col],
         )?[0];
 
@@ -193,7 +185,7 @@ impl ConvUnary {
         }
 
         let b_dt = model.outlet_fact(wires[0])?.datum_type;
-        let b_storage = mmm.b_packed(b_dt);
+        let b_storage = mmm.b_packed(b_dt.size_of(), k);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
         let wire = self.wire_lir_matmatmul(
             model,
@@ -201,9 +193,10 @@ impl ConvUnary {
             im2col,
             mmm,
             i32::datum_type(),
-            &mmm_output_shape,
+            mmm_output_shape.clone().into(),
             m,
             k,
+            n,
             b_storage,
             c_axis,
             h_axis,
@@ -250,29 +243,21 @@ impl ConvUnary {
         name: &str,
         mut wire: OutletId,
     ) -> TractResult<OutletId> {
-        let b_fact = model.outlet_fact(wire)?;
+        let b_fact = model.outlet_fact(wire)?.clone();
         let b_dt = b_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
 
-        let (input_shape, geo, output_shape, m, k, n, mmm) =
-            self.compute_geo(model.outlet_fact(wire)?)?;
+        let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
+        let (_, m, k, n, mmm) = self.compute_geo(model.outlet_fact(wire)?)?;
         let padding = model.add_const(format!("{}.b0", name), Tensor::zero_dt(b_dt, &[])?)?;
 
         wire = model.wire_node(
             format!("{}.im2col", name),
-            Im2Col::new(
-                geo,
-                self.pool_spec.data_format.clone(),
-                k,
-                n,
-                self.group,
-                *input_shape.c_dim() / self.group,
-                mmm.b_pack(),
-            )?,
+            Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
             &[wire, padding],
         )?[0];
 
-        let b_storage = mmm.b_packed(b_dt);
+        let b_storage = mmm.b_packed(b_dt.size_of(), k.to_usize().unwrap());
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
         let mut wire = self.wire_lir_matmatmul(
             model,
@@ -280,9 +265,10 @@ impl ConvUnary {
             wire,
             mmm,
             c_dt,
-            &mmm_output_shape,
-            m,
-            k,
+            mmm_output_shape.clone().into(),
+            m.to_usize().unwrap(),
+            k.to_usize().unwrap(),
+            n.to_dim(),
             b_storage,
             c_axis,
             h_axis,
@@ -303,22 +289,23 @@ impl ConvUnary {
         Ok(wire)
     }
 
-    fn mmm_output_shape(
+    fn mmm_output_shape<D: DimLike>(
         &self,
-        output_shape: &DataShape,
-    ) -> TractResult<(TVec<usize>, usize, usize)> {
-        let geo_collapsed_out: usize = output_shape.hw_dims().iter().maybe_product()?;
-        let shape = output_shape.fmt.from_n_c_hw(
-            *output_shape.n().clone().unwrap_or(&1),
-            *output_shape.c(),
+        output_shape: &BaseDataShape<D, TVec<D>>,
+    ) -> TractResult<(TVec<D>, usize, usize)> {
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().maybe_product()?;
+        let shape: BaseDataShape<D, TVec<D>> = output_shape.fmt.from_n_c_hw(
+            output_shape.n().cloned().unwrap_or(1.into()),
+            output_shape.c().clone(),
             tvec!(geo_collapsed_out),
         )?;
-        let mut mmm_output_shape: TVec<usize> = shape.shape.clone().into();
+        let mut mmm_output_shape: TVec<D> = shape.shape.clone();
         let mut c_axis = shape.c_axis();
         let mut h_axis = shape.h_axis();
         if self.group > 1 {
-            mmm_output_shape[shape.c_axis()] /= self.group;
-            mmm_output_shape.insert(shape.c_axis(), self.group);
+            mmm_output_shape[shape.c_axis()] =
+                mmm_output_shape[shape.c_axis()].clone() / self.group;
+            mmm_output_shape.insert(shape.c_axis(), self.group.into());
             if self.group > 1 {
                 if h_axis > c_axis {
                     h_axis += 1;
@@ -329,13 +316,13 @@ impl ConvUnary {
         Ok((mmm_output_shape, c_axis, h_axis))
     }
 
-    fn wire_geo_reshape(
+    fn wire_geo_reshape<D: DimLike>(
         model: &mut TypedModel,
         name: &str,
         wire: OutletId,
-        output_shape: &DataShape,
+        output_shape: &BaseDataShape<D, TVec<D>>,
     ) -> TractResult<OutletId> {
-        let geo_collapsed_out: usize = output_shape.hw_dims().iter().maybe_product()?;
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().maybe_product()?;
         let wire = model.wire_node(
             name,
             AxisOp::Reshape(
@@ -353,23 +340,29 @@ impl ConvUnary {
         model: &mut TypedModel,
         name: &str,
         wire: OutletId,
+        input_shape: &[usize],
     ) -> TractResult<OutletId> {
         let b_fact = model.outlet_fact(wire)?.clone();
         let c_dt = crate::ops::matmul::output_type(b_fact.datum_type);
-        let (input_shape, geo, output_shape, m, k, _n, mmm) = self.compute_geo(&b_fact)?;
-
-        let channel_stride = input_shape.c_stride();
-        let data_offsets: Vec<isize> = geo.centers_offsets();
+        let (geo, m, k, n, mmm) = self.compute_geo(&b_fact)?;
+        let geo = geo.to_concrete(input_shape)?;
+        let input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
+        let c_stride = input_shape.c_stride();
+        let data_offsets: Vec<isize> = geo.patch.centers_offsets();
         let kernel_offsets: Vec<isize> = (0..self.input_channels())
             .flat_map(|ici| {
-                geo.standard_layout_data_field
+                geo.patch
+                    .standard_layout_data_field
                     .iter()
-                    .map(move |x| x + (ici * channel_stride) as isize)
+                    .map(move |x| x + (ici * c_stride) as isize)
             })
             .collect();
-        let b_storage =
-            mmm.b_from_data_and_offsets(b_fact.datum_type, &kernel_offsets, &data_offsets);
-        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let b_storage = mmm.b_from_data_and_offsets(
+            b_fact.datum_type.size_of(),
+            &kernel_offsets,
+            &data_offsets,
+        );
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
 
         let wire = self.wire_lir_matmatmul(
             model,
@@ -377,40 +370,40 @@ impl ConvUnary {
             wire,
             mmm,
             c_dt,
-            &mmm_output_shape,
-            m,
+            mmm_output_shape.into(),
+            m.to_usize().unwrap(),
             k,
+            n.to_dim(),
             b_storage,
             c_axis,
             h_axis,
         )?;
 
-        let wire = Self::wire_geo_reshape(model, name, wire, &output_shape)?;
+        let wire = Self::wire_geo_reshape(model, name, wire, &geo.output_shape)?;
         Ok(wire)
     }
 
     fn compute_geo(
         &self,
         input_fact: &TypedFact,
-    ) -> TractResult<(DataShape, Patch, DataShape, usize, usize, usize, Box<dyn MatMatMul>)> {
+    ) -> TractResult<(PoolGeometry, usize, usize, TDim, Box<dyn MatMatMul>)> {
         let a_dt = self.kernel.datum_type();
         let b_dt = input_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(b_dt);
 
-        trace!("to_im2col_pair: {:?}", self);
-        let (input_shape, geo, output_shape) =
-            self.pool_spec.compute_geo(input_fact.shape.as_concrete().unwrap())?;
+        let geo = self.pool_spec.compute_geo(&input_fact.shape)?;
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
         let k = self.kernel.len() / self.output_channels();
-        let n = geo.output_shape.iter().cloned().product::<usize>();
+        let n: TDim =
+            self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().maybe_product()?;
 
         let mmm = tract_linalg::ops()
-            .mmm(a_dt, b_dt, c_dt, m, k, n)
+            .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), n.to_usize().ok())
             .with_context(|| format!("No multiplier for {:?}x{:?} to {:?}", a_dt, b_dt, c_dt,))?;
 
-        Ok((input_shape, geo, output_shape, m, k, n, mmm))
+        Ok((geo, m, k, n, mmm))
     }
 
     fn wire_lir_matmatmul(
@@ -420,43 +413,46 @@ impl ConvUnary {
         wire: OutletId,
         mmm: Box<dyn MatMatMul>,
         c_datum_type: DatumType,
-        mmm_output_shape: &[usize],
+        mmm_output_shape: ShapeFact,
         m: usize,
         k: usize,
+        n: TDim,
         input_storage: MatrixStoreSpec,
         c_m_axis: usize,
         c_n_axis: usize,
     ) -> TractResult<OutletId> {
-        let kernels = self.kernel_as_packed_as(&mmm.a_pack(), m)?;
+        let kernels = self.kernel_as_packed_as(&mmm.a_pack(k), m)?;
         let shape = kernels.shape();
         let fused_ops = dispatch_copy!(Self::bias_as_non_linear(mmm.internal_type())(self))?;
         let mut iter = kernels.iter().cloned().zip(fused_ops.iter().cloned());
         let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 
+        let geometry = MatMulGeometry { b_storage: input_storage, m, k, n: n.to_usize().unwrap() };
+        let geometry = crate::ops::matmul::lir_unary::MatMulGeometryConcretizer::Concrete(geometry);
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
             LirMatMulUnary {
-                b_storage: input_storage,
                 c_fact: TypedFact::dt_shape(c_datum_type, mmm_output_shape.clone()),
                 micro_ops,
-                mmm,
-                k,
-                m,
                 c_m_axis,
                 c_n_axis,
                 c_final_shape: mmm_output_shape.into(),
                 reshape_post: vec![],
+                geometry,
+                mmm,
             },
             &[wire],
         )?[0];
         Ok(wire)
     }
 
-    pub fn to_depth_wise<T>(&self, input_full_shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
+    pub fn to_depth_wise<T>(&self, input: &TypedFact) -> TractResult<Box<dyn TypedOp>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + PartialEq + Sum,
     {
-        let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_full_shape)?;
+        let input_shape = input.shape.as_concrete().unwrap();
+        let ConcretePoolGeometry { input_shape, patch, output_shape } =
+            self.pool_spec.compute_geo(&input.shape)?.to_concrete(input_shape)?.into_owned();
         let op = DepthWise::new(
             patch,
             input_shape,
@@ -861,116 +857,126 @@ impl TypedOp for ConvUnary {
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
         let spatial_rank = input_shape.hw_rank();
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
-        if let Some(shape) = input_fact.shape.as_concrete() {
-            unsafe {
-                let dt = input_fact.datum_type;
-                if self.q_params.is_some() {
-                    let mut patch = TypedModelPatch::default();
-                    let inputs = node
-                        .inputs
-                        .iter()
-                        .map(|w| patch.tap_model(model, *w))
-                        .collect::<TractResult<TVec<_>>>()?;
-                    let wire = self.wire_as_quant_im2col(&mut patch, &node.name, &inputs)?;
-                    patch.shunt_outside(model, node.id.into(), wire)?;
-                    return Ok(Some(patch));
-                } else if kernel_spatial_shape.iter().product::<usize>() == 1
-                    && (0..spatial_rank)
-                        .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
-                    && self.group == 1
-                {
-                    use crate::ops::matmul::MatMulUnary;
-                    let mut patch = TypedModelPatch::default();
-                    let mut wire = patch.tap_model(model, node.inputs[0])?;
-                    let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
-                    let geo_dim: TDim = input_shape.hw_dims().iter().maybe_product()?;
-                    wire = patch.wire_node(
-                        format!("{}.reshape_input", &*node.name),
-                        AxisOp::Reshape(
-                            input_shape.h_axis(),
-                            input_shape.hw_dims().into(),
-                            tvec!(geo_dim.clone()),
-                        ),
-                        &[wire],
-                    )?[0];
-                    let kernel_shape = match self.kernel_fmt {
-                        KernelFormat::HWIO => &self.kernel.shape()[spatial_rank..],
-                        KernelFormat::OIHW => &self.kernel.shape()[..2],
-                    };
-                    let operating_rank = input_fact.rank() + 1 - kernel_spatial_shape.len();
-                    let kernel = self
-                        .kernel
-                        .as_ref()
+        unsafe {
+            let dt = input_fact.datum_type;
+            if self.q_params.is_some() {
+                let mut patch = TypedModelPatch::default();
+                let inputs = node
+                    .inputs
+                    .iter()
+                    .map(|w| patch.tap_model(model, *w))
+                    .collect::<TractResult<TVec<_>>>()?;
+                let wire = self.wire_as_quant_im2col(&mut patch, &node.name, &inputs)?;
+                patch.shunt_outside(model, node.id.into(), wire)?;
+                return Ok(Some(patch));
+            } else if kernel_spatial_shape.iter().product::<usize>() == 1
+                && (0..spatial_rank)
+                    .all(|i| self.pool_spec.stride(i) == 1 && self.pool_spec.dilation(i) == 1)
+                && self.group == 1
+            {
+                use crate::ops::matmul::MatMulUnary;
+                let mut patch = TypedModelPatch::default();
+                let mut wire = patch.tap_model(model, node.inputs[0])?;
+                let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
+                let geo_dim: TDim = input_shape.hw_dims().iter().maybe_product()?;
+                wire = patch.wire_node(
+                    format!("{}.reshape_input", &*node.name),
+                    AxisOp::Reshape(
+                        input_shape.h_axis(),
+                        input_shape.hw_dims().into(),
+                        tvec!(geo_dim.clone()),
+                    ),
+                    &[wire],
+                )?[0];
+                let kernel_shape = match self.kernel_fmt {
+                    KernelFormat::HWIO => &self.kernel.shape()[spatial_rank..],
+                    KernelFormat::OIHW => &self.kernel.shape()[..2],
+                };
+                let operating_rank = input_fact.rank() + 1 - kernel_spatial_shape.len();
+                let kernel = self
+                    .kernel
+                    .as_ref()
+                    .clone()
+                    .into_shape(&kernel_shape)?
+                    .broadcast_into_rank(operating_rank)?;
+                wire = patch.wire_node(
+                    &format!("{}.matmul", &node.name),
+                    MatMulUnary::new(
+                        kernel.into_arc_tensor(),
+                        self.kernel_fmt == KernelFormat::HWIO,
+                        input_c_is_last,
+                        input_c_is_last,
+                    ),
+                    &[wire],
+                )?[0];
+                if let Some(ref bias) = self.bias {
+                    let bias_shape =
+                        if input_c_is_last { [1, bias.len()] } else { [bias.len(), 1] };
+                    let bias = bias
                         .clone()
-                        .into_shape(&kernel_shape)?
-                        .broadcast_into_rank(operating_rank)?;
+                        .into_tensor()
+                        .into_shape(&bias_shape)?
+                        .broadcast_into_rank(operating_rank)?
+                        .into_arc_tensor();
                     wire = patch.wire_node(
-                        &format!("{}.matmul", &node.name),
-                        MatMulUnary::new(
-                            kernel.into_arc_tensor(),
-                            self.kernel_fmt == KernelFormat::HWIO,
-                            input_c_is_last,
-                            input_c_is_last,
-                        ),
+                        format!("{}.bias", node.name),
+                        crate::ops::math::add::unary(bias),
                         &[wire],
                     )?[0];
-                    if let Some(ref bias) = self.bias {
-                        let bias_shape =
-                            if input_c_is_last { [1, bias.len()] } else { [bias.len(), 1] };
-                        let bias = bias
-                            .clone()
-                            .into_tensor()
-                            .into_shape(&bias_shape)?
-                            .broadcast_into_rank(operating_rank)?
-                            .into_arc_tensor();
-                        wire = patch.wire_node(
-                            format!("{}.bias", node.name),
-                            crate::ops::math::add::unary(bias),
-                            &[wire],
-                        )?[0];
-                    }
-                    wire = patch.wire_node(
-                        &*node.name,
-                        AxisOp::Reshape(
-                            input_shape.h_axis(),
-                            tvec!(geo_dim),
-                            input_shape.hw_dims().into(),
-                        ),
-                        &[wire],
-                    )?[0];
-                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                    return Ok(Some(patch));
-                } else if should_use_direct(
-                    &self.pool_spec.data_format.shape(shape.into())?,
-                    &self.pool_spec,
-                    self.group,
-                ) {
-                    let mut patch = TypedModelPatch::default();
-                    let wire = patch.tap_model(model, node.inputs[0])?;
-                    let wire = self
-                        .wire_as_direct(&mut patch, &*node.name, wire)
-                        .context("in wire_as_direct")?;
-                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                    return Ok(Some(patch));
-                } else if self.group != 1
-                    && self.group == self.output_channels()
-                    && self.group == self.input_channels()
-                {
-                    let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))
-                        .context("in to_depth_wise")?;
-                    return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-                } else {
-                    let mut patch = TypedModelPatch::default();
-                    let wire = patch.tap_model(model, node.inputs[0])?;
-                    let wire = self
-                        .wire_as_im2col_pair(&mut patch, &*node.name, wire)
-                        .context("in wire_as_im2col_pair")?;
-                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                    return Ok(Some(patch));
                 }
+                wire = patch.wire_node(
+                    &*node.name,
+                    AxisOp::Reshape(
+                        input_shape.h_axis(),
+                        tvec!(geo_dim),
+                        input_shape.hw_dims().into(),
+                    ),
+                    &[wire],
+                )?[0];
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
+            } else if input_fact
+                .shape
+                .as_concrete()
+                .map(|s| {
+                    should_use_direct(
+                        &self.pool_spec.data_format.shape(s.into()).unwrap(),
+                        &self.pool_spec,
+                        self.group,
+                    )
+                })
+                .unwrap_or(false)
+            {
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.tap_model(model, node.inputs[0])?;
+                let wire = self
+                    .wire_as_direct(
+                        &mut patch,
+                        &*node.name,
+                        wire,
+                        input_fact.shape.as_concrete().unwrap(),
+                    )
+                    .context("in wire_as_direct")?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
+            } else if self.group != 1
+                && self.group == self.output_channels()
+                && self.group == self.input_channels()
+                && input_fact.shape.as_concrete().is_some()
+            {
+                let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, &input_fact))
+                    .context("in to_depth_wise")?;
+                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+            } else {
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.tap_model(model, node.inputs[0])?;
+                let wire = self
+                    .wire_as_im2col_pair(&mut patch, &*node.name, wire)
+                    .context("in wire_as_im2col_pair")?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
             }
         }
-        Ok(None)
     }
 
     as_op!();

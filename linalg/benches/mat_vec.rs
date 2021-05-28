@@ -12,18 +12,21 @@ fn mat_vec_mul(c: &mut Criterion) {
                 BenchmarkId::from_parameter(format!("{}x{}", m, k)),
                 &(m, k),
                 |be, (&m, &k)| {
-                    let mm = tract_linalg::ops().mmm(F32, F32, F32, m, k, 1).unwrap();
+                    let mm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(1)).unwrap();
                     let pa = Tensor::uninitialized_aligned::<f32>(
-                        &[mm.a_pack().len(m)],
-                        mm.a_pack().alignment(),
+                        &[mm.a_pack(k).len(m)],
+                        mm.a_pack(k).alignment(),
                     )
                     .unwrap();
                     let b = tensor1(&vec![0.0; k]);
                     let mut c = Tensor::zero::<f32>(&[m]).unwrap();
                     be.iter(move || {
                         mm.run(
-                            &mm.a_packed(F32).wrap(&pa.view()),
-                            &mm.b_packed(b.datum_type()).wrap(&b.view()),
+                            m,
+                            k,
+                            1,
+                            &mm.a_packed(F32.size_of(), k).wrap(&pa.view()),
+                            &mm.b_packed(b.datum_type().size_of(), k).wrap(&b.view()),
                             &mut mm.c_view().wrap(&c.view_mut()),
                             &[],
                         )
