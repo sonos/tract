@@ -34,6 +34,47 @@ impl std::str::FromStr for Blob {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+pub enum QParams {
+    MinMax { min: f32, max: f32 },
+    ZpScale { zero_point: i32, scale: f32 },
+}
+
+//FIXME ord and eq
+impl Eq for QParams {}
+
+impl Ord for QParams {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+
+impl Hash for QParams {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        if let QParams::MinMax { min, max } = self {
+            1.hash(state);
+            min.to_bits().hash(state);
+            max.to_bits().hash(state);
+        } else if let QParams::ZpScale { zero_point, scale } = self {
+            2.hash(state);
+            zero_point.hash(state);
+            scale.to_bits().hash(state);
+        }
+    }
+}
+
+impl QParams {
+    pub fn zp_scale(&self) -> (i32, f32) {
+        match self {
+            QParams::MinMax { min, max } => {
+                let scale = (max - min) / 254.;
+                dbg!(((-(min + max) / 2. / scale) as i32 + 2, scale))
+            }
+            QParams::ZpScale { zero_point, scale } => (*zero_point, *scale),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum DatumType {
     Bool,
@@ -51,12 +92,17 @@ pub enum DatumType {
     TDim,
     Blob,
     String,
+    QI8(QParams),
+    QI32(QParams),
+    QU8(QParams),
+    QU32(QParams),
 }
 
 impl DatumType {
     pub fn super_types(&self) -> TVec<DatumType> {
         use DatumType::*;
-        if *self == String || *self == TDim || *self == Blob || *self == Bool {
+        if *self == String || *self == TDim || *self == Blob || *self == Bool || self.is_quantized()
+        {
             tvec!(*self)
         } else if self.is_float() {
             [F16, F32, F64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
@@ -100,14 +146,14 @@ impl DatumType {
     }
 
     pub fn is_unsigned(&self) -> bool {
-        match self {
+        match self.unquantized() {
             DatumType::U8 | DatumType::U16 | DatumType::U32 | DatumType::U64 => true,
             _ => false,
         }
     }
 
     pub fn is_signed(&self) -> bool {
-        match self {
+        match self.unquantized() {
             DatumType::I8 | DatumType::I16 | DatumType::I32 | DatumType::I64 => true,
             _ => false,
         }
@@ -122,6 +168,37 @@ impl DatumType {
 
     pub fn is_copy(&self) -> bool {
         *self == DatumType::Bool || self.is_unsigned() || self.is_signed() || self.is_float()
+    }
+
+    pub fn is_quantized(&self) -> bool {
+        match self {
+            DatumType::QI8(_) | DatumType::QI32(_) | DatumType::QU8(_) | DatumType::QU32(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn qparams(&self) -> Option<QParams> {
+        match self {
+            DatumType::QI8(qparams)
+            | DatumType::QI32(qparams)
+            | DatumType::QU8(qparams)
+            | DatumType::QU32(qparams) => Some(*qparams),
+            _ => None,
+        }
+    }
+
+    pub fn zp_scale(&self) -> (i32, f32) {
+        self.qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.))
+    }
+
+    pub fn unquantized(&self) -> DatumType {
+        match self {
+            DatumType::QI8(_) => DatumType::I8,
+            DatumType::QI32(_) => DatumType::I32,
+            DatumType::QU8(_) => DatumType::U8,
+            DatumType::QU32(_) => DatumType::U32,
+            _ => *self,
+        }
     }
 
     pub fn integer(signed: bool, size: usize) -> Self {
