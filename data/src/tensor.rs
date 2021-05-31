@@ -810,10 +810,7 @@ impl Tensor {
             }
             macro_rules! n {
                 ($source:ty) => {
-                    if <$source>::datum_type() == self.datum_type()
-                        && !<$source>::datum_type().is_quantized()
-                        && !self.datum_type().is_quantized()
-                    {
+                    if <$source>::datum_type() == self.datum_type() {
                         match dt {
                             DatumType::I8 => self.natural_cast::<$source, i8>(&mut result),
                             DatumType::I16 => self.natural_cast::<$source, i16>(&mut result),
@@ -841,18 +838,20 @@ impl Tensor {
                     };
                 };
             }
-            n!(u8);
-            n!(u16);
-            n!(u32);
-            n!(u64);
-            n!(i8);
-            n!(i16);
-            n!(i32);
-            n!(i64);
-            n!(f16);
-            n!(f32);
-            n!(f64);
 
+            if !dt.is_quantized() && !self.datum_type().is_quantized() {
+                n!(u8);
+                n!(u16);
+                n!(u32);
+                n!(u64);
+                n!(i8);
+                n!(i16);
+                n!(i32);
+                n!(i64);
+                n!(f16);
+                n!(f32);
+                n!(f64);
+            }
             //FIXME : round properly (and maybe try to reduce code size / improve the macro ?)
             use num_traits::AsPrimitive;
             let float_convert = ((self.datum_type().is_float() || dt.is_float())
@@ -861,7 +860,6 @@ impl Tensor {
 
             let (s_zp, s_scale) = self.datum_type().zp_scale();
             let (d_zp, d_scale) = dt.zp_scale();
-
             macro_rules! q_n {
                 (__internal $source:ty, $dest:ty) => {{
                     if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
@@ -889,7 +887,7 @@ impl Tensor {
                     }
                 }};
                 (__first $t1:ty, $t2:ty, $($t: ty),+) => {
-                    q_n!(__internal $t1, $t2);
+                    q_n!(__first $t1, $t2);
                     q_n!(__first $t1, $($t),+);
                 };
                 (__first $t1:ty, $t2:ty) => {
@@ -905,7 +903,9 @@ impl Tensor {
                     q_n!(__first $t1, $t2)
                 };
             }
-            q_n!(u8, i8, u32, i32, f32, f64);
+            if dt.is_quantized() || self.datum_type().is_quantized() {
+                q_n!(u8, i8, u32, i32, f32, f64);
+            }
 
             anyhow::bail!("Unsupported cast from {:?} to {:?}", self.dt, dt)
         }
