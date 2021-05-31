@@ -30,7 +30,7 @@ impl EvalOp for MaxPool {
     }
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let shape:TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
+        let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
         self.to_lir(&shape)?.eval(inputs)
     }
 }
@@ -107,7 +107,7 @@ impl EvalOp for LirMaxPool {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let geo = self.geometry.to_concrete(input.shape())?;
-        dispatch_floatlike!(Self::eval_t(input.datum_type())(self, &*input, geo.as_ref()))
+        dispatch_numbers!(Self::eval_t(input.datum_type())(self, &*input, geo.as_ref()))
     }
 }
 

@@ -4,6 +4,8 @@ use crate::internal::*;
 use crate::ops;
 use crate::ops::matmul::*;
 
+use super::mir_quant_unary::QMatMulUnary;
+
 #[derive(Debug, Clone, Hash, PartialEq)]
 pub struct MatMulQParams {
     pub a0: AttrOrInput,
@@ -162,7 +164,21 @@ impl EvalOp for QMatMul {
             })
             .collect::<TractResult<Vec<_>>>()?;
 
-        let result = self.wire(&mut model, "adhoc", a, b, c, &params)?;
+        let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
+        let result = model.wire_node("adhoc.matmul", new_op, &[a, b])?[0];
+        let result = wire_matmul_quant(
+            &mut model,
+            "adhoc",
+            a,
+            self.a_trans,
+            b,
+            self.b_trans,
+            c,
+            self.c_trans,
+            result,
+            self.output_type,
+            &params,
+        )?;
         model.set_output_outlets(&[result])?;
         model.into_runnable()?.run(tvec![])
     }
@@ -199,6 +215,88 @@ impl TypedOp for QMatMul {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        let a_fact = model.outlet_fact(node.inputs[0])?;
+        let b_fact = model.outlet_fact(node.inputs[1])?;
+        let bias_fact = model.outlet_fact(node.inputs[2])?;
+
+        if bias_fact.konst.is_none() {
+            return Ok(None);
+        }
+
+        let konst_ix = if a_fact.konst.is_some() {
+            0
+        } else if b_fact.konst.is_some() {
+            1
+        } else {
+            return Ok(None);
+        };
+
+        let flip = konst_ix == 1;
+        let t_konst = [self.a_trans, self.b_trans][konst_ix] ^ flip;
+        let t_var = [self.b_trans, self.a_trans][konst_ix] ^ flip;
+        let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.clone().unwrap();
+        let bias = model.outlet_fact(node.inputs[2])?.konst.clone().unwrap();
+
+        let inputs: Vec<_> = node
+            .inputs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, out_id)| if i == konst_ix || i == 2 { None } else { Some(*out_id) })
+            .collect();
+
+        let new_params = {
+            let mut qp = self.params.clone();
+            //compensate for the removed parameter
+            for (_, a) in qp.iter_mut() {
+                if let AttrOrInput::Input(i) = a {
+                    *i -= 2
+                }
+            }
+            if flip {
+                MatMulQParams {
+                    a0: qp.b0,
+                    a_scale: qp.b_scale,
+                    b0: qp.a0,
+                    b_scale: qp.a_scale,
+                    c0: qp.c0,
+                    c_scale: qp.c_scale,
+                }
+            } else {
+                qp
+            }
+        };
+        TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &inputs,
+            QMatMulUnary::new(
+                konst,
+                bias,
+                t_konst,
+                t_var,
+                self.c_trans ^ flip,
+                self.output_type,
+                new_params,
+            ),
+        )
+        .map(Some)
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        cost(
+            &inputs[0].shape.to_tvec(),
+            &inputs[1].shape.to_tvec(),
+            inputs[0].datum_type,
+            self.a_trans,
+            self.b_trans,
+        )
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
 
         if let Some((inputs, qp)) = self.params.inline_static(model, node)? {
@@ -226,82 +324,80 @@ impl TypedOp for QMatMul {
             })
             .collect::<TractResult<Vec<OutletId>>>()?;
 
-        let result = self.wire(&mut patch, &node.name, a, b, bias, &params)?;
+        let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
+        let result = patch.wire_node(format!("{}.matmul", &node.name), new_op, &[a, b])?[0];
+        let result = wire_matmul_quant(
+            &mut patch,
+            &node.name,
+            a,
+            self.a_trans,
+            b,
+            self.b_trans,
+            bias,
+            self.c_trans,
+            result,
+            self.output_type,
+            &params,
+        )?;
         patch.shunt_outside(model, node.id.into(), result)?;
         Ok(Some(patch))
-    }
-
-    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        cost(
-            &inputs[0].shape.to_tvec(),
-            &inputs[1].shape.to_tvec(),
-            inputs[0].datum_type,
-            self.a_trans,
-            self.b_trans,
-        )
     }
 
     as_op!();
 }
 
-impl QMatMul {
-    fn wire(
-        &self,
-        model: &mut TypedModel,
-        name: &str,
-        a: OutletId,
-        b: OutletId,
-        c: OutletId,
-        params: &[OutletId],
-    ) -> TractResult<OutletId> {
-        let a_fact = model.outlet_fact(a)?.clone();
-        let rank = a_fact.rank();
-        let k = model.outlet_fact(a)?.shape[rank - 2 + !self.a_trans as usize].clone();
+pub(crate) fn wire_matmul_quant(
+    model: &mut TypedModel,
+    name: &str,
+    a: OutletId,
+    a_trans: bool,
+    b: OutletId,
+    b_trans: bool,
+    bias: OutletId,
+    c_trans: bool,
+    result: OutletId,
+    output_type: DatumType,
+    params: &[OutletId],
+) -> TractResult<OutletId> {
+    let a_fact = model.outlet_fact(a)?.clone();
+    let rank = a_fact.rank();
+    let k = model.outlet_fact(a)?.shape[rank - 2 + !a_trans as usize].clone();
 
-        let abc_scale = combine_scales(model, name, params[1], params[3], params[5])?;
+    let abc_scale = combine_scales(model, name, params[1], params[3], params[5])?;
 
-        let a_i32 = model.wire_node(
-            format!("{}.a_as_i32", name),
-            ops::cast::cast(i32::datum_type()),
-            &[a],
-        )?[0];
-        let b_i32 = model.wire_node(
-            format!("{}.b_as_i32", name),
-            ops::cast::cast(i32::datum_type()),
-            &[b],
-        )?[0];
-        let a_k_axis = rank - 2 + !self.a_trans as usize;
-        let sum_a = model.wire_node(
-            format!("{}.sum_a", name),
-            ops::nn::Reduce::new(tvec!(a_k_axis), ops::nn::Reducer::Sum),
-            &[a_i32],
-        )?[0];
-        let sum_a =
-            model.wire_node(format!("{}.sum_a_reduced", name), AxisOp::Rm(a_k_axis), &[sum_a])?[0];
-        let b_k_axis = rank - 2 + self.b_trans as usize;
-        let sum_b = model.wire_node(
-            format!("{}.sum_b", name),
-            ops::nn::Reduce::new(tvec!(b_k_axis), ops::nn::Reducer::Sum),
-            &[b_i32],
-        )?[0];
-        let sum_b =
-            model.wire_node(format!("{}.sum_b_reduced", name), AxisOp::Rm(b_k_axis), &[sum_b])?[0];
+    let a_i32 =
+        model.wire_node(format!("{}.a_as_i32", name), ops::cast::cast(i32::datum_type()), &[a])?[0];
+    let b_i32 =
+        model.wire_node(format!("{}.b_as_i32", name), ops::cast::cast(i32::datum_type()), &[b])?[0];
+    let a_k_axis = rank - 2 + !a_trans as usize;
+    let sum_a = model.wire_node(
+        format!("{}.sum_a", name),
+        ops::nn::Reduce::new(tvec!(a_k_axis), ops::nn::Reducer::Sum),
+        &[a_i32],
+    )?[0];
+    let sum_a =
+        model.wire_node(format!("{}.sum_a_reduced", name), AxisOp::Rm(a_k_axis), &[sum_a])?[0];
+    let b_k_axis = rank - 2 + b_trans as usize;
+    let sum_b = model.wire_node(
+        format!("{}.sum_b", name),
+        ops::nn::Reduce::new(tvec!(b_k_axis), ops::nn::Reducer::Sum),
+        &[b_i32],
+    )?[0];
+    let sum_b =
+        model.wire_node(format!("{}.sum_b_reduced", name), AxisOp::Rm(b_k_axis), &[sum_b])?[0];
 
-        let new_op = MatMul { a_trans: self.a_trans, b_trans: self.b_trans, c_trans: self.c_trans };
-        let result = model.wire_node(format!("{}.matmul", &name), new_op, &[a, b])?[0];
-        let result = wire_with_rank_broadcast(
-            &format!("{}.c", &name),
-            model,
-            ops::math::add::bin_typed(),
-            &[result, c],
-        )?[0];
-        let m_axis = rank - 2 + self.c_trans as usize;
-        let n_axis = rank - 1 - self.c_trans as usize;
-        let result = compensate_zero_points(
-            model, name, result, k, params[0], params[2], sum_a, sum_b, m_axis, n_axis,
-        )?;
-        requant(model, name, result, self.output_type, abc_scale, params[4])
-    }
+    let result = wire_with_rank_broadcast(
+        &format!("{}.add_bias", &name),
+        model,
+        ops::math::add::bin_typed(),
+        &[result, bias],
+    )?[0];
+    let m_axis = rank - 2 + c_trans as usize;
+    let n_axis = rank - 1 - c_trans as usize;
+    let result = compensate_zero_points(
+        model, name, result, k, params[0], params[2], sum_a, sum_b, m_axis, n_axis,
+    )?;
+    requant(model, name, result, output_type, abc_scale, params[4])
 }
 
 pub(crate) fn combine_scales(
@@ -351,6 +447,7 @@ pub(crate) fn compensate_zero_points(
 
     let sum_b =
         model.wire_node(format!("{}.reshape_sum_b", name), AxisOp::Add(m_axis), &[sum_b])?[0];
+
     debug_assert_eq!(
         model.outlet_fact(sum_a)?.shape[m_axis],
         model.outlet_fact(result)?.shape[m_axis]
@@ -463,10 +560,10 @@ pub(crate) fn clamp_and_cast_to(
         return Ok(wire);
     }
     let rank = model.outlet_fact(wire)?.rank();
-    let inf = tensor0(if dt == DatumType::I8 { -128i32 } else { 0 })
+    let inf = tensor0(if dt.is_signed() { -128i32 } else { 0 })
         .broadcast_into_rank(rank)?
         .into_arc_tensor();
-    let sup = tensor0(if dt == DatumType::I8 { 127i32 } else { 255 })
+    let sup = tensor0(if dt.is_signed() { 127i32 } else { 255 })
         .broadcast_into_rank(rank)?
         .into_arc_tensor();
     let wire = model.wire_node(format!("{}.min", name), ops::math::min::unary(sup), &[wire])?;

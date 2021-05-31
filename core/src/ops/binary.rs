@@ -540,6 +540,7 @@ macro_rules! bin_to_super_type {
      $(flip: $flip:expr,)?
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
+     $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
         #[derive(Debug, Clone, Hash)]
         pub struct $Op;
@@ -566,6 +567,26 @@ macro_rules! bin_to_super_type {
                     }
                     )*
                  )*
+
+                 $(
+                     $(
+                        $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                            let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                            let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                            let a = a.to_scalar::<$typ_dt>()?;
+                            let b = b.as_slice_mut::<$typ_dt>()?;
+                            unsafe {
+                                for i in 0..b.len() {
+                                    let mut c = $typ_dt::default();
+                                    cab(&mut c, a, b.get_unchecked_mut(i), zp, scale);
+                                    b[i] = c;
+                                }
+                            }
+                            return Ok(())
+                        }
+                        )*
+                    )*
+                 )?
                     bail!("{} does not support {:?} (inplace uniform)", self.name(), a.datum_type());
             }
 
@@ -586,6 +607,25 @@ macro_rules! bin_to_super_type {
                     }
                     )*
                  )*
+                 $(
+                    $(
+                       $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                           let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                           let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                           let a = a.as_slice::<$typ_dt>()?;
+                           let b = b.as_slice_mut::<$typ_dt>()?;
+                           unsafe {
+                               for i in 0..a.len() {
+                                   let mut c = $typ_dt::default();
+                                   cab(&mut c, &a[i], b.get_unchecked(i), zp, scale);
+                                   *b.get_unchecked_mut(i) = c;
+                               }
+                           }
+                           return Ok(())
+                       }
+                       )*
+                   )*
+                 )?
                     bail!("{} does not support {:?} (inplace)", self.name(), a.datum_type());
             }
 
@@ -600,6 +640,20 @@ macro_rules! bin_to_super_type {
                             return Ok(())
                         })*
                      )*
+                     $(
+                        $(
+                           $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                               let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                               let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                               let a = a.to_array_view::<$typ_dt>()?;
+                               let b = b.to_array_view::<$typ_dt>()?;
+                               let mut c = c.to_array_view_mut::<$typ_dt>()?;
+                               $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| cab(c, a, b, zp, scale));
+                               return Ok(())
+                           }
+                           )*
+                       )*
+                     )?
                     bail!("{} does not support {:?} (out of place)", self.name(), c.datum_type());
             }
 
@@ -612,6 +666,14 @@ macro_rules! bin_to_super_type {
             }
 
             fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+                if a.unquantized() == b.unquantized() {
+                    if a.is_quantized() || !b.is_quantized() {
+                        return Ok(a)
+                    }
+                    else {
+                        return Ok(b)
+                    }
+                }
                 self.operating_datum_type(a, b)
             }
 

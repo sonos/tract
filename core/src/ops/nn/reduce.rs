@@ -5,14 +5,35 @@ use std::convert::TryFrom;
 macro_rules! r {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
         match $dt {
-            DatumType::U8   => $($path)::*::<u8,_,_>($($args),*),
-            DatumType::I8   => $($path)::*::<i8,_,_>($($args),*),
-            DatumType::U16  => $($path)::*::<u16,_,_>($($args),*),
-            DatumType::I16  => $($path)::*::<i16,_,_>($($args),*),
-            DatumType::I32  => $($path)::*::<i32,_,_>($($args),*),
-            DatumType::I64  => $($path)::*::<i64,_,_>($($args),*),
-            DatumType::F32  => $($path)::*::<f32,_,_>($($args),*),
-            DatumType::F64  => $($path)::*::<f64,_,_>($($args),*),
+            DatumType::U8   => $($path)::*::<u8,_,_,_>($($args),*),
+            DatumType::I8   => $($path)::*::<i8,_,_,_>($($args),*),
+            DatumType::U16  => $($path)::*::<u16,_,_,_>($($args),*),
+            DatumType::I16  => $($path)::*::<i16,_,_,_>($($args),*),
+            DatumType::I32  => $($path)::*::<i32,_,_,_>($($args),*),
+            DatumType::I64  => $($path)::*::<i64,_,_,_>($($args),*),
+            DatumType::F32  => $($path)::*::<f32,_,_,_>($($args),*),
+            DatumType::F64  => $($path)::*::<f64,_,_,_>($($args),*),
+            DatumType::QI8(_)  => $($path)::*::<i8,_,_,_>($($args),*),
+            DatumType::QI32(_)  => $($path)::*::<i32,_,_,_>($($args),*),
+            DatumType::QU8(_)  => $($path)::*::<u8,_,_,_>($($args),*),
+            DatumType::QU32(_)  => $($path)::*::<u32,_,_,_>($($args),*),
+            _ => bail!("{:?} is not a number", $dt)
+        }
+    };
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*); $($q_path:ident)::* ($($q_args:expr),*)) => {
+        match $dt {
+            DatumType::U8   => $($path)::*::<u8,_,_,_>($($args),*),
+            DatumType::I8   => $($path)::*::<i8,_,_,_>($($args),*),
+            DatumType::U16  => $($path)::*::<u16,_,_,_>($($args),*),
+            DatumType::I16  => $($path)::*::<i16,_,_,_>($($args),*),
+            DatumType::I32  => $($path)::*::<i32,_,_,_>($($args),*),
+            DatumType::I64  => $($path)::*::<i64,_,_,_>($($args),*),
+            DatumType::F32  => $($path)::*::<f32,_,_,_>($($args),*),
+            DatumType::F64  => $($path)::*::<f64,_,_,_>($($args),*),
+            DatumType::QI8(_)  => $($q_path)::*::<i8,_,_,_>($($q_args),*),
+            DatumType::QI32(_)  => $($q_path)::*::<i32,_,_,_>($($q_args),*),
+            DatumType::QU8(_)  => $($q_path)::*::<u8,_,_,_>($($q_args),*),
+            DatumType::QU32(_)  => $($q_path)::*::<u32,_,_,_>($($q_args),*),
             _ => bail!("{:?} is not a number", $dt)
         }
     }
@@ -38,6 +59,7 @@ impl Reducer {
             .enumerate()
             .map(|(ax, &d)| if axes.contains(&ax) { 1 } else { d })
             .collect();
+        let (zp, scale) = input.datum_type().zp_scale();
         Ok(unsafe {
             match self {
                 ArgMax(last) => {
@@ -46,26 +68,42 @@ impl Reducer {
                 ArgMin(last) => {
                     r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmin_t, *last))
                 }
-                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t, false)),
-                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t, false)),
-                Prod => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t, false)),
-                Sum => dispatch_numbers!(Self::sum(dt)(self, axes, input)),
+                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t, ())),
+                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t, ())),
+                Prod => {
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t, ()); Self::reduce_t(self, axes, &output_shape, input, q_prod_t, (zp, scale)))
+                }
+                Sum => {
+                    if dt.is_float() {
+                        dispatch_numbers!(Self::sum(dt)(self, axes, input))
+                    } else {
+                        r!(Self::reduce_t(dt)(
+                            self,
+                            axes,
+                            &output_shape,
+                            input,
+                            q_sum_t,
+                            (zp, scale)
+                        ))
+                    }
+                }
             }
         })
     }
 
-    unsafe fn reduce_t<T, TO, F>(
+    unsafe fn reduce_t<T, TO, F, A>(
         &self,
         axes: &[usize],
         output_shape: &[usize],
         input: &Tensor,
         f: F,
-        last: bool,
+        args: A,
     ) -> Tensor
     where
-        F: for<'a> Fn(ArrayViewD<'a, T>, bool) -> TO,
+        F: for<'a> Fn(ArrayViewD<'a, T>, A) -> TO,
         T: Copy + Datum,
         TO: Copy + Datum,
+        A: Copy,
     {
         use ndarray::*;
         let input = input.to_array_view_unchecked::<T>();
@@ -78,7 +116,7 @@ impl Reducer {
                 .collect();
             let slice_info = SliceInfo::<_, IxDyn, IxDyn>::try_from(slice_spec).unwrap();
             let slice = input.slice(&slice_info);
-            f(slice, last)
+            f(slice, args)
         });
         result.into_tensor()
     }
@@ -160,25 +198,47 @@ where
         .0 as i64
 }
 
-fn max_t<'a, T>(v: ArrayViewD<'a, T>, _last: bool) -> T
+fn max_t<'a, T>(v: ArrayViewD<'a, T>, _: ()) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
 }
 
-fn min_t<'a, T>(v: ArrayViewD<'a, T>, _last: bool) -> T
+fn min_t<'a, T>(v: ArrayViewD<'a, T>, _: ()) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::max_value(), |acc, &v| if acc < v { acc } else { v })
 }
 
-fn prod_t<'a, T>(v: ArrayViewD<'a, T>, _last: bool) -> T
+fn prod_t<'a, T>(v: ArrayViewD<'a, T>, _: ()) -> T
 where
     T: Copy + Datum + num_traits::One,
 {
     v.fold(T::one(), |acc, &v| acc * v)
+}
+
+fn q_prod_t<'a, T>(v: ArrayViewD<'a, T>, zp_scale: (i32, f32)) -> T
+where
+    T: Copy + Datum + num_traits::One + num_traits::AsPrimitive<f32>,
+    f32: num_traits::AsPrimitive<T>,
+{
+    use num_traits::AsPrimitive;
+    let (zp, scale) = zp_scale;
+    (v.fold(1f32, |acc, &v| acc * (v.as_() - zp as f32)) * scale.powi(v.len() as i32 - 1)
+        + zp as f32)
+        .as_()
+}
+
+fn q_sum_t<'a, T>(v: ArrayViewD<'a, T>, zp_scale: (i32, f32)) -> T
+where
+    T: Copy + Datum + num_traits::Zero + num_traits::AsPrimitive<i32>,
+    i32: num_traits::AsPrimitive<T>,
+{
+    use num_traits::AsPrimitive;
+    let (zp, _) = zp_scale;
+    (v.fold(0i32, |acc, &v| acc + v.as_()) - zp * (v.len() as i32 - 1)).as_()
 }
 
 #[derive(Clone, Debug, new, Hash)]

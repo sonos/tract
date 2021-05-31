@@ -95,14 +95,24 @@ impl EvalOp for LirSumPool {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let geo = self.geometry.to_concrete(input.shape())?;
-        let mut values =
-            unsafe { Tensor::uninitialized_dt(input.datum_type(), &*geo.output_shape.shape)? };
-        dispatch_floatlike!(Self::eval_t(input.datum_type())(
-            self,
-            &*input,
-            values.as_ptr_mut()?,
-            geo.as_ref()
-        ))?;
+        let values = if input.datum_type().is_float() {
+            let mut values =
+                unsafe { Tensor::uninitialized_dt(input.datum_type(), &*geo.output_shape.shape)? };
+            dispatch_floatlike!(Self::eval_t(input.datum_type())(
+                self,
+                &*input,
+                values.as_ptr_mut()?,
+                geo.as_ref()
+            ))?;
+            values
+        } else {
+            let mut values =
+                unsafe { Tensor::uninitialized_dt(DatumType::F32, &*geo.output_shape.shape)? };
+            let input_f32 = input.cast_to_dt(DatumType::F32)?;
+            self.eval_t::<f32>(input_f32.as_ref(), values.as_ptr_mut()?, geo.as_ref())?;
+            values.cast_to_dt(input.datum_type())?.into_owned()
+        };
+
         Ok(tvec!(values.into_arc_tensor()))
     }
 }
@@ -116,7 +126,7 @@ impl TypedOp for LirSumPool {
 }
 
 impl LirSumPool {
-    fn eval_t<T: Copy + Datum + num_traits::Float + Sum>(
+    fn eval_t<T: Copy + Datum + Sum + num_traits::Float>(
         &self,
         input: &Tensor,
         values_ptr: *mut T,

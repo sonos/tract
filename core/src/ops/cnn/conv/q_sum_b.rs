@@ -75,7 +75,7 @@ impl QSumB {
         let mut shape: TVec<usize> = input.shape().into();
         shape[input.rank() - 1] = n;
         let mut output = ArrayD::zeros(&*shape);
-        match input.datum_type() {
+        match input.datum_type().unquantized() {
             DatumType::I8 => self.eval_t::<i8>(&input, &mut output.view_mut(), n)?,
             DatumType::U8 => self.eval_t::<u8>(&input, &mut output.view_mut(), n)?,
             dt => bail!("Unsupported input type in quantized operation ({:?})", dt),
