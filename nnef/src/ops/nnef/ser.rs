@@ -39,7 +39,9 @@ pub fn concat(
         .iter()
         .enumerate()
         .map(|(ix, s)| match s {
-            ops::array::ConcatSlice::Var => Ok(ast.mapping[inputs.next().unwrap()].as_ref().clone()),
+            ops::array::ConcatSlice::Var => {
+                Ok(ast.mapping[inputs.next().unwrap()].as_ref().clone())
+            }
             ops::array::ConcatSlice::Const(t) => {
                 Ok(ast.konst(format!("{}.const-{}", node.name, ix), t)?.as_ref().clone())
             }
@@ -179,7 +181,7 @@ pub fn conv_or_deconv(
     bias: &Option<Arc<Tensor>>,
     group: usize,
     deconv: bool,
-    adjustments: Option<&[usize]>
+    adjustments: Option<&[usize]>,
 ) -> TractResult<Option<Arc<RValue>>> {
     use tract_core::ops::cnn::PaddingSpec;
     let ci = pool_spec
@@ -193,9 +195,11 @@ pub fn conv_or_deconv(
     let mut kernel_shape = tvec!(co, ci / group);
     kernel_shape.extend(pool_spec.kernel_shape.iter().copied());
     weights.set_shape(&*kernel_shape)?;
-    let weigths = ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?;
+    let weigths =
+        ast.konst_variable(format!("{}_weigths", node.name), &weights.into_arc_tensor())?;
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
-    let conv_fragment = conv_or_deconv_fragment(ast, pool_spec.data_format, pool_spec.rank(), deconv);
+    let conv_fragment =
+        conv_or_deconv_fragment(ast, pool_spec.data_format, pool_spec.rank(), deconv);
     let padding = match &pool_spec.padding {
         PaddingSpec::Explicit(bef, after, _) => array(
             &bef.iter()
@@ -222,7 +226,11 @@ pub fn conv_or_deconv(
         ("padding", padding),
     ];
     if deconv && adjustments.unwrap().iter().any(|a| *a != 0) {
-        let output_shape = output_shape.hw_dims().iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
+        let output_shape = output_shape
+            .hw_dims()
+            .iter()
+            .map(|d| d.to_usize())
+            .collect::<TractResult<TVec<_>>>()?;
         named_args.push(("output_shape", ints(&*output_shape)));
     };
     wire = invocation(&conv_fragment, &inputs, &&named_args);
@@ -250,7 +258,16 @@ pub fn deconv(
         *op.kernel_format.i(op.kernel.shape()),
         *op.kernel_format.o(op.kernel.shape()),
     )?;
-    conv_or_deconv(ast, node, &op.pool_spec, weights.into_tensor(), &op.bias, op.group, true, Some(&op.adjustments))
+    conv_or_deconv(
+        ast,
+        node,
+        &op.pool_spec,
+        weights.into_tensor(),
+        &op.bias,
+        op.group,
+        true,
+        Some(&op.adjustments),
+    )
 }
 
 fn cnn_pool_fragment<'a>(
@@ -410,6 +427,29 @@ pub fn matmul(
     ast: &mut IntoAst,
     node: &TypedNode,
     op: &ops::matmul::MatMul,
+) -> TractResult<Option<Arc<RValue>>> {
+    let a = ast.force_assign(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
+    let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
+    let c = if op.c_trans {
+        invocation(
+            "matmul",
+            &[b, a],
+            &[("transposeA", logical(!op.b_trans)), ("transposeB", logical(!op.a_trans))],
+        )
+    } else {
+        invocation(
+            "matmul",
+            &[a, b],
+            &[("transposeA", logical(op.a_trans)), ("transposeB", logical(op.b_trans))],
+        )
+    };
+    Ok(Some(ast.force_assign(&node.name, &c)))
+}
+
+pub fn qmatmul(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::matmul::QMatMul,
 ) -> TractResult<Option<Arc<RValue>>> {
     let a = ast.force_assign(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
     let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());

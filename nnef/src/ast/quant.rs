@@ -33,7 +33,7 @@ fn qparam(i: &str) -> IResult<&str, QuantFormat> {
     let (i, _) = stag("(")(i)?;
     let (i, params, bits, signed) = match &*id {
         "linear_quantize" => {
-            let (i, (bits, min, max)) =
+            let (i, (bits, max, min)) =
                 permutation((arg("bits", float), arg("max", float), arg("min", float)))(i)?;
 
             (i, QParams::MinMax { min, max }, bits, true)
@@ -156,7 +156,7 @@ mod test {
                 (
                     "tensor_name2".to_string(),
                     QuantFormat::Linear {
-                        params: QParams::MinMax { min: 0.52, max: 123.82 },
+                        params: QParams::MinMax { max: 0.52, min: 123.82 },
                         bits: 82,
                         signed: true
                     }
@@ -164,7 +164,7 @@ mod test {
                 (
                     "tensor_name3".to_string(),
                     QuantFormat::Linear {
-                        params: QParams::MinMax { min: 0.53, max: 123.83 },
+                        params: QParams::ZpScale { zero_point: 52, scale: 123.83 },
                         bits: 83,
                         signed: true
                     }
