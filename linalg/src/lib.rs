@@ -81,17 +81,21 @@ impl Ops {
         n: Option<usize>,
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
-        match (a, b, c) {
+        match (a.unquantized(), b.unquantized(), c.unquantized()) {
             (F32, F32, F32) => {
                 Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) })
             }
-            (I8, I8, I32) => {
-                Some(if n == Some(1) { (self.qmmv_i8_i32)(m, k) } else { (self.qmmm_i8_i32)(m, k, n) })
-            }
+            (I8, I8, I32) => Some(if n == Some(1) {
+                (self.qmmv_i8_i32)(m, k)
+            } else {
+                (self.qmmm_i8_i32)(m, k, n)
+            }),
             (U8, U8, I32) => Some((self.qmmm_u8_i32)(m, k, n)),
-            (I8, I8, I8) => {
-                Some(if n == Some(1) { (self.qmmv_i8_i8)(m, k) } else { (self.qmmm_i8_i8)(m, k, n) })
-            }
+            (I8, I8, I8) => Some(if n == Some(1) {
+                (self.qmmv_i8_i8)(m, k)
+            } else {
+                (self.qmmm_i8_i8)(m, k, n)
+            }),
             (U8, U8, U8) => Some((self.qmmm_u8_u8)(m, k, n)),
             (I8, U8, I32) => Some((self.qmmm_i8_u8_i32)(m, k, n)),
             _ => None,
