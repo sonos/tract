@@ -46,9 +46,7 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
                 header.data_size_bytes
             );
         }
-        if header.item_type_vendor != 0 && header.item_type_vendor != TRACT_ITEM_TYPE_VENDOR {
-            bail!("Unknownn item type vendor {}", header.item_type_vendor);
-        }
+
         let dt = match (header.item_type_vendor, header.item_type, header.bits_per_item) {
             (0, 0, 16) => DatumType::F16,
             (0, 0, 32) => DatumType::F32,
@@ -61,11 +59,15 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             (0, 0x0100, 16) => DatumType::I16,
             (0, 0x0100, 32) => DatumType::I32,
             (0, 0x0100, 64) => DatumType::I64,
+            (1, 0, 8) => DatumType::U8,
+            (1, 0, 32) => DatumType::I32,
+            (4, 0, 32) => DatumType::I32,
             (TRACT_ITEM_TYPE_VENDOR, 0x1000, 0xFFFF) => DatumType::String,
             _ => bail!(
-                "Unsupported type in tensor type:{} bits_per_item:{}",
+                "Unsupported type in tensor type:{} bits_per_item:{} item_type_vendor:{}",
                 header.item_type,
-                header.bits_per_item
+                header.bits_per_item,
+                header.item_type_vendor
             ),
         };
         if dt.is_copy() {

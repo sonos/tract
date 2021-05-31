@@ -2,13 +2,33 @@ use crate::internal::*;
 
 pub mod dump;
 pub mod parse;
+pub mod quant;
 
 #[derive(Clone, Debug)]
 pub struct ProtoModel {
     pub doc: Document,
     pub tensors: Vec<(String, Arc<Tensor>)>,
+    pub quantization: Option<HashMap<String, QuantFormat>>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum QuantFormat {
+    Linear { params: QParams, bits: i8, signed: bool },
+}
+
+impl QuantFormat {
+    pub fn datum_type(&self) -> DatumType {
+        match self {
+            QuantFormat::Linear { params, bits, signed } => match (bits, signed) {
+                (8, true) => DatumType::QI8(*params),
+                (8, false) => DatumType::QU8(*params),
+                (32, true) => DatumType::QI32(*params),
+                (32, false) => DatumType::QU32(*params),
+                _ => todo!(),
+            },
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq)]
 pub struct Document {
     pub version: NumericLiteral,

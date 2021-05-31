@@ -1,6 +1,7 @@
 use crate::ast::*;
 use tract_core::internal::*;
 use tract_core::ops::cnn::deconv::adjustments;
+use tract_core::ops::matmul::MatMulQParams;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
 
@@ -14,7 +15,9 @@ pub fn external(
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let type_name = invocation.invocation.generic_type_name.unwrap_or(TypeName::Scalar);
-    let dt = if type_name == TypeName::Scalar {
+    let dt = if let Some(Some(dt)) = invocation.dt.get(0) {
+        *dt
+    } else if type_name == TypeName::Scalar {
         f32::datum_type()
     } else if type_name == TypeName::Logical {
         bool::datum_type()
@@ -32,7 +35,7 @@ pub fn variable(
 ) -> TractResult<TVec<OutletId>> {
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     let label: String = invocation.named_arg_as(builder, "label")?;
-    let tensor = builder
+    let mut tensor = builder
         .proto_model
         .tensors
         .iter()
@@ -40,6 +43,17 @@ pub fn variable(
         .ok_or_else(|| format_err!("No data for tensor {:?}", label))?
         .1
         .clone();
+    if let Some(Some(dt)) = invocation.dt.get(0) {
+        if *dt != tensor.datum_type() {
+            trace!(
+                "Casting tensor {} from {:?} to {:?} when deserializing",
+                label,
+                tensor.datum_type(),
+                *dt
+            );
+            tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
+        }
+    }
     if tensor.shape() != &*shape {
         bail!(
             "Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}",
@@ -98,7 +112,15 @@ pub fn concat(
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
-    let values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
+    let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
+    if let Some(dt) = invocation.dt[0] {
+        for value in &mut values {
+            if builder.model.node(value.node).outputs[value.slot].fact.datum_type != dt {
+                *value = builder.wire(ops::cast::cast(dt), &[*value])?[0];
+            }
+        }
+    }
+
     builder.wire(ops::array::TypedConcat::concat_vars(axis, values.len()), &values)
 }
 
@@ -274,12 +296,37 @@ pub fn conv_or_deconv(
         if stride.len() > 0 { Some(stride) } else { None },
         Some(kernel.shape()[0]),
     );
-    let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
-    let bias: Option<Arc<Tensor>> =
-        if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 { None } else { Some(bias) };
 
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
+
+    let output_dt = invocation.dt.get(0).cloned().flatten().unwrap_or(DatumType::F32);
+    let quantized = input_fact.datum_type.is_quantized()
+        || kernel.datum_type().is_quantized()
+        || output_dt.is_quantized();
+    let (b0, b_scale) = input_fact.datum_type.qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+    let (a0, a_scale) = kernel.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+    let (c0, c_scale) = output_dt.qparams().map(|q| q.zp_scale()).unwrap_or((b0, b_scale));
+    let qparams = if quantized {
+        Some((
+            output_dt,
+            MatMulQParams {
+                a0: AttrOrInput::Attr(Arc::new(a0.into())),
+                a_scale: AttrOrInput::Attr(Arc::new(a_scale.into())),
+                b0: AttrOrInput::Attr(Arc::new(b0.into())),
+                b_scale: AttrOrInput::Attr(Arc::new(b_scale.into())),
+                c0: AttrOrInput::Attr(Arc::new(c0.into())),
+                c_scale: AttrOrInput::Attr(Arc::new(c_scale.into())),
+            },
+        ))
+    } else {
+        None
+    };
+    let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
+
+    let bias: Option<Arc<Tensor>> =
+        if bias.is_uniform() && bias.cast_to_scalar::<f32>()? == 0.0 { None } else { Some(bias) };
+
     let op: Box<dyn TypedOp> = if deconv {
         let output_shape = invocation.named_arg_as::<TVec<usize>>(builder, "output_shape")?;
         let output_shape = Some(output_shape).filter(|os| os.len() == pool_spec.rank());
@@ -301,7 +348,14 @@ pub fn conv_or_deconv(
             group,
         ))
     } else {
-        Box::new(ConvUnary::new(pool_spec, KernelFormat::OIHW, kernel.clone(), group, bias, None))
+        Box::new(ConvUnary::new(
+            pool_spec,
+            KernelFormat::OIHW,
+            kernel.clone(),
+            group,
+            bias,
+            qparams,
+        ))
     };
     builder.wire(op, &[input])
 }
@@ -356,8 +410,6 @@ pub fn max_pool_with_index(
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
     let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
-    let border: String = invocation.named_arg_as(builder, "border")?;
-    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != size.len() {
         bail!(
@@ -366,7 +418,9 @@ pub fn max_pool_with_index(
                 size
                 );
     }
-    assert_eq!(border, "ignore");
+    let border: String = invocation.named_arg_as(builder, "border")?;
+    assert!(&*border == "ignore" || &*border == "constant"); //FIXME : constant might not actually be supported, but it is the default
+    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let op = ops::cnn::MaxPool { pool_spec, with_index_outputs: Some(i64::datum_type()) };
     builder.wire(op, &[input])
 }
@@ -383,8 +437,6 @@ pub fn sum_pool(
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
     let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
-    let border: String = invocation.named_arg_as(builder, "border")?;
-    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != size.len() {
         bail!(
@@ -393,7 +445,10 @@ pub fn sum_pool(
                 size
                 );
     }
-    assert_eq!(border, "ignore");
+    let border: String = invocation.named_arg_as(builder, "border")?;
+    //FIXME : constant might not actually be supported, but it is the default (it should be the same as ignore here ?)
+    assert!(&*border == "ignore" || &*border == "constant");
+    let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let op = ops::cnn::SumPool {
         pool_spec,
         count_include_pad: false,
@@ -449,10 +504,44 @@ pub fn matmul(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
-    let a = invocation.named_arg_as(builder, "A")?;
-    let b = invocation.named_arg_as(builder, "B")?;
+    let a: OutletId = invocation.named_arg_as(builder, "A")?;
+    let b: OutletId = invocation.named_arg_as(builder, "B")?;
     let a_trans = invocation.named_arg_as(builder, "transposeA")?;
     let b_trans = invocation.named_arg_as(builder, "transposeB")?;
+    if let Some(Some(dt)) = &invocation.dt.get(0) {
+        if let Some(qparams) = dt.qparams() {
+            let (a0, a_scale) =
+                builder.model.node(a.node).outputs[a.slot].fact.datum_type.zp_scale();
+            let (b0, b_scale) =
+                builder.model.node(b.node).outputs[b.slot].fact.datum_type.zp_scale();
+
+            let (c0, c_scale) = qparams.zp_scale();
+            //FIXME: bias is not specified in the nnef format, but whether the bias is a bias or an add later changes the quantized behaviour
+            let bias = builder.model.add_const(
+                format!("{}.bias", invocation.invocation.id),
+                Tensor::zero_dt(DatumType::QI8(qparams), &[1])?,
+            )?;
+            builder.model.node(a.node);
+
+            return builder.wire(
+                ops::matmul::QMatMul {
+                    a_trans,
+                    b_trans,
+                    c_trans: false,
+                    output_type: DatumType::QI8(qparams),
+                    params: MatMulQParams {
+                        a0: AttrOrInput::Attr(Arc::new(a0.into())),
+                        a_scale: AttrOrInput::Attr(Arc::new(a_scale.into())),
+                        b0: AttrOrInput::Attr(Arc::new(b0.into())),
+                        b_scale: AttrOrInput::Attr(Arc::new(b_scale.into())),
+                        c0: AttrOrInput::Attr(Arc::new(c0.into())),
+                        c_scale: AttrOrInput::Attr(Arc::new(c_scale.into())),
+                    },
+                },
+                &[a, b, bias],
+            );
+        }
+    }
     builder.wire(ops::matmul::MatMul { a_trans, b_trans, c_trans: false }, &[a, b])
 }
 

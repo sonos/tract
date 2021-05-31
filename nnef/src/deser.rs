@@ -57,7 +57,7 @@ impl<'mb> ModelBuilder<'mb> {
             .and_then(|body| body.get(0))
         {
             let properties: TVec<(String, Arc<Tensor>)> =
-                properties.right.resolve(self)?.to(self)?;
+                properties.right.resolve(self, &[])?.to(self)?;
             self.model.properties = properties.into_iter().collect();
         }
         Ok(())
@@ -74,9 +74,21 @@ impl<'mb> ModelBuilder<'mb> {
         // todo: can i relax the outlet id constraint ?
         for assignment in body {
             let identifiers = assignment.left.to_identifiers()?;
+            let datum_types = identifiers
+                .iter()
+                .map(|s| {
+                    self.proto_model
+                        .quantization
+                        .as_ref()
+                        .and_then(|qm| qm.get(*s).map(|q| q.datum_type()))
+                })
+                .collect::<Vec<_>>();
             self.naming_scopes.push(identifiers[0].to_string());
-            let values: TVec<OutletId> =
-                assignment.right.resolve(self).and_then(|v| v.to(self)).with_context(|| {
+            let values: TVec<OutletId> = assignment
+                .right
+                .resolve(self, &datum_types)
+                .and_then(|v| v.to(self))
+                .with_context(|| {
                     format!("Plugging in assignement for {:?}", identifiers.join(", "))
                 })?;
             if values.len() != identifiers.len() {
@@ -90,16 +102,27 @@ impl<'mb> ModelBuilder<'mb> {
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
                 self.scopes.last_mut().unwrap().insert(id.to_string(), Value::Wire(*outlet));
             }
+            for (qparam, value) in datum_types.into_iter().zip(values.iter()) {
+                if let Some(qparam) = qparam {
+                    let node = self.model.node_mut(value.node);
+                    let output_fact = &mut node.outputs[value.slot].fact;
+                    output_fact.datum_type = qparam;
+                }
+            }
             self.naming_scopes.pop();
         }
         Ok(())
     }
 
-    pub fn wire_invocation(&mut self, invocation: &Invocation) -> TractResult<Value> {
+    pub fn wire_invocation(
+        &mut self,
+        invocation: &Invocation,
+        dt: &[Option<DatumType>],
+    ) -> TractResult<Value> {
         for frag in &self.proto_model.doc.fragments {
             if frag.decl.id == invocation.id && frag.body.is_some() {
                 let resolved =
-                    ResolvedInvocation { invocation, default_params: &frag.decl.parameters };
+                    ResolvedInvocation { invocation, dt, default_params: &frag.decl.parameters };
                 return self.wire_fragment_invocation(
                     &resolved,
                     &frag.decl,
@@ -109,7 +132,7 @@ impl<'mb> ModelBuilder<'mb> {
         }
         for registry in &self.framework.registries {
             if self.registries.contains(&registry.id) {
-                if let Some(outputs) = registry.deserialize(self, invocation)? {
+                if let Some(outputs) = registry.deserialize(self, invocation, dt)? {
                     return Ok(outputs);
                 }
             }
@@ -177,9 +200,10 @@ impl<'mb> ModelBuilder<'mb> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ResolvedInvocation<'a> {
     pub invocation: &'a Invocation,
+    pub dt: &'a [Option<DatumType>],
     pub default_params: &'a [Parameter],
 }
 
@@ -190,7 +214,7 @@ impl<'a> ResolvedInvocation<'a> {
     {
         let rv = self.named_arg(name)?;
         let v = rv
-            .resolve(builder)
+            .resolve(builder, &[])
             .with_context(|| format!("Resolving argument `{}' ({:?})", name, rv))?;
         v.to::<T>(builder).with_context(|| format!("Converting argument `{}' from {:?}", name, v))
     }
@@ -248,19 +272,34 @@ impl LValue {
 impl Invocation {}
 
 impl RValue {
-    pub fn resolve(&self, builder: &mut ModelBuilder) -> TractResult<Value> {
+    pub fn resolve(
+        &self,
+        builder: &mut ModelBuilder,
+        dt: &[Option<DatumType>],
+    ) -> TractResult<Value> {
         match self {
             RValue::Identifier(id) => {
-                let outlet = builder
+                let mut outlet = builder
                     .scopes
                     .last()
                     .unwrap()
                     .get(id)
                     .cloned()
                     .ok_or_else(|| format_err!("No value for name {}", id))?;
+                if let Value::Wire(outlet_id) = outlet {
+                    let out_dt =
+                        builder.model.node(outlet_id.node).outputs[outlet_id.slot].fact.datum_type;
+                    if let Some(Some(dt)) = dt.get(0) {
+                        if out_dt != *dt {
+                            outlet = Value::Wire(
+                                builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?[0],
+                            )
+                        }
+                    }
+                }
                 Ok(outlet)
             }
-            RValue::Invocation(inv) => builder.wire_invocation(inv),
+            RValue::Invocation(inv) => builder.wire_invocation(inv, dt),
             RValue::Binary(left, op, right) => {
                 let op = match &**op {
                     "+" => "add",
@@ -284,13 +323,21 @@ impl RValue {
                         Argument { id: None, rvalue: right.as_ref().clone() },
                     ],
                 };
-                builder.wire_invocation(&inv)
+                builder.wire_invocation(&inv, dt)
             }
             RValue::Array(array) => Ok(Value::Array(
-                array.iter().map(|i| i.resolve(builder)).collect::<TractResult<_>>()?,
+                array
+                    .iter()
+                    .zip(std::iter::repeat(&dt.get(0).copied().flatten()))
+                    .map(|(i, dt)| i.resolve(builder, &[*dt]))
+                    .collect::<TractResult<_>>()?,
             )),
             RValue::Tuple(array) => Ok(Value::Tuple(
-                array.iter().map(|i| i.resolve(builder)).collect::<TractResult<_>>()?,
+                array
+                    .iter()
+                    .zip(dt.iter().chain(std::iter::repeat(&dt.get(0).copied().flatten())))
+                    .map(|(i, dt)| i.resolve(builder, &[*dt]))
+                    .collect::<TractResult<_>>()?,
             )),
             RValue::Literal(Literal::Numeric(f)) => {
                 if f.contains(".") || f.contains("e") {
@@ -308,7 +355,8 @@ impl RValue {
             RValue::Literal(Literal::Array(array)) => Ok(Value::Array(
                 array
                     .iter()
-                    .map(|i| RValue::Literal(i.clone()).resolve(builder))
+                    .zip(dt.iter())
+                    .map(|(i, dt)| RValue::Literal(i.clone()).resolve(builder, &[*dt]))
                     .collect::<TractResult<_>>()?,
             )),
             _ => panic!("{:?}", self),
@@ -318,7 +366,6 @@ impl RValue {
 
 #[derive(Clone, Debug)]
 pub enum Value {
-    Tensor(Arc<Tensor>),
     Wire(OutletId),
     Array(Vec<Value>),
     Tuple(Vec<Value>),
@@ -352,7 +399,6 @@ impl CoerceFrom<Value> for Value {
 impl CoerceFrom<Value> for Arc<Tensor> {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
-            Value::Tensor(t) => Ok(t.clone()),
             Value::Scalar(f) => Ok(rctensor0(*f)),
             Value::String(f) => Ok(rctensor0(f.clone())),
             Value::Wire(o) => builder
@@ -361,6 +407,23 @@ impl CoerceFrom<Value> for Arc<Tensor> {
                 .konst
                 .clone()
                 .ok_or_else(|| format_err!("Not a const")),
+            _ => bail!("Can not build a tensor from {:?}", from),
+        }
+    }
+}
+
+impl CoerceFrom<Value> for (Arc<Tensor>, DatumType) {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+        match from {
+            Value::Scalar(f) => Ok((rctensor0(*f), DatumType::F32)),
+            Value::String(f) => Ok((rctensor0(f.clone()), DatumType::String)),
+            Value::Wire(o) => {
+                let outlet_fact = builder.model.outlet_fact(*o)?;
+                Ok((
+                    outlet_fact.konst.clone().ok_or_else(|| format_err!("Not a const"))?,
+                    outlet_fact.datum_type,
+                ))
+            }
             _ => bail!("Can not build a tensor from {:?}", from),
         }
     }
@@ -404,7 +467,6 @@ impl CoerceFrom<Value> for String {
     fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::String(s) => Ok(s.to_string()),
-            Value::Tensor(t) => Ok(t.to_scalar::<String>()?.clone()),
             _ => bail!("Can not build a String from {:?}", from),
         }
     }
