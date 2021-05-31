@@ -4,10 +4,12 @@ use num_traits::{Float, Zero};
 use super::binary::*;
 
 bin_to_super_type!(add, Add,
-                   declutter_unary: declutter_unary_add,
-                   flip:commute,
-                   validation: Validation::Rounding,
-                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
+    declutter_unary: declutter_unary_add,
+    flip:commute,
+    validation: Validation::Rounding,
+    q: [i8] => |c, a, b, zp, _| (*c = (*a as i16 + *b as i16 - zp as i16).clamp(-128, 127) as i8),
+    [u8] => |c, a, b, zp, _| (*c = (*a as i16 + *b as i16 - zp as i16).clamp(0, 255) as u8);
+    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
 
 fn declutter_unary_add(
     _op: &Add,
@@ -23,8 +25,11 @@ fn declutter_unary_add(
     }
 }
 
-bin_to_super_type!(sub, Sub, declutter_unary: declutter_unary_sub, flip:flip_sub,
-                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
+bin_to_super_type!(sub, Sub, 
+    declutter_unary: declutter_unary_sub, flip:flip_sub,
+    q: [i8] => |c, a, b, zp, _| (*c = (*a as i16 - *b as i16 + zp as i16).clamp(-128, 127) as i8),
+    [u8] => |c, a, b, zp, _| (*c = (*a as i16 - *b as i16 + zp as i16).clamp(0, 255) as u8);
+    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
 fn declutter_unary_sub(
     _op: &Sub,
@@ -58,7 +63,16 @@ bin_to_super_type!(mul, Mul,
              let c = c.to_array_view_mut::<TDim>()?;
              crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() * *b);
              Ok(true)
-         } else {
+         } else if c.datum_type().is_quantized() || b.datum_type().is_quantized() || a.datum_type().is_quantized() {
+            let a_f32 = a.cast_to::<f32>()?;
+            let a_f32 = a_f32.to_array_view::<f32>()?;
+            let b_f32 = b.cast_to::<f32>()?;
+            let b_f32 = b_f32.to_array_view::<f32>()?;
+            let c_f32 = &a_f32 * &b_f32;
+            *c = c_f32.into_tensor().cast_to_dt(c.datum_type())?.into_owned();
+            Ok(true)
+         }
+         else {
              Ok(false)
          }
  },
@@ -77,6 +91,14 @@ bin_to_super_type!(div, Div,
              let b = b.to_array_view::<i32>()?;
              let c = c.to_array_view_mut::<TDim>()?;
              crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
+             Ok(true)
+        } else if c.datum_type().is_quantized() || b.datum_type().is_quantized() || a.datum_type().is_quantized() {
+             let a_f32 = a.cast_to::<f32>()?;
+             let a_f32 = a_f32.to_array_view::<f32>()?;
+             let b_f32 = b.cast_to::<f32>()?;
+             let b_f32 = b_f32.to_array_view::<f32>()?;
+             let c_f32 = &a_f32 / &b_f32;
+             *c = c_f32.into_tensor().cast_to_dt(c.datum_type())?.into_owned();
              Ok(true)
          } else {
              Ok(false)
@@ -274,12 +296,14 @@ fn declutter_as_shift(
 element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, i32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.abs());
     Ok(())
-});
+};
+q: [i8, u8] => f32::abs);
 
 element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.exp());
     Ok(())
 };
+q: [i8, u8] => f32::exp;
 validation: Validation::Rounding
 );
 
@@ -287,6 +311,7 @@ element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.ln());
     Ok(())
 };
+q: [i8, u8] => f32::ln;
 validation: Validation::Rounding
 );
 
@@ -294,6 +319,7 @@ element_wise!(square, Square, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.powi(2));
     Ok(())
 };
+q: [i8, u8] => |f : f32| f.powi(2);
 validation: Validation::Rounding
 );
 
@@ -301,6 +327,7 @@ element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sqrt());
     Ok(())
 };
+q: [i8, u8] => f32::sqrt;
 validation: Validation::Rounding
 );
 
@@ -308,6 +335,7 @@ element_wise!(recip, Recip, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.recip());
     Ok(())
 };
+q: [i8, u8] => f32::recip;
 cost: |dt| {tvec!((Cost::Div(dt), 1))};
 declutter: declutter_recip;
 validation: Validation::Rounding
@@ -340,23 +368,27 @@ element_wise!(rsqrt, Rsqrt, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sqrt().recip());
     Ok(())
 };
+q: [i8, u8] => |x : f32| x.sqrt().recip();
 validation: Validation::Rounding
 );
 
 element_wise!(ceil, Ceil, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.ceil());
     Ok(())
-});
+};
+q: [i8, u8] => f32::recip);
 
 element_wise!(floor, Floor, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.floor());
     Ok(())
-});
+};
+q: [i8, u8] => f32::floor);
 
 element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.round());
     Ok(())
-});
+};
+q: [i8, u8] => f32::round);
 
 const TOINT: f32 = 1.0f32 / std::f32::EPSILON;
 
@@ -382,67 +414,91 @@ pub fn round_ties_to_even(x: f32) -> f32 {
 element_wise!(round_half_to_even, RoundHalfToEven,[ f32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = round_ties_to_even(*x));
     Ok(())
-});
+};
+q: [i8, u8] => round_ties_to_even);
 
 element_wise!(cos, Cos, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.cos());
     Ok(())
-});
+};
+q: [i8, u8] => f32::cos);
 
 element_wise!(sin, Sin, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sin());
     Ok(())
-});
+};
+q: [i8, u8] => f32::sin);
 
 element_wise!(tan, Tan, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.tan());
     Ok(())
-});
+};
+q: [i8, u8] => f32::tan);
 
 element_wise!(acos, Acos, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.acos());
     Ok(())
-});
+};
+q: [i8, u8] => f32::acos);
 
 element_wise!(asin, Asin, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.asin());
     Ok(())
-});
+};
+q: [i8, u8] => f32::asin);
 
 element_wise!(atan, Atan, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.atan());
     Ok(())
-});
+};
+q: [i8, u8] => f32::atan);
 
 element_wise!(cosh, Cosh, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.cosh());
     Ok(())
-});
+};
+q: [i8, u8] => f32::cosh);
 
 element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sinh());
     Ok(())
-});
+};
+q: [i8, u8] => f32::sinh);
 
 element_wise!(tanh, Tanh,
  [f32] => |_, xs| { (tract_linalg::ops().tanh_f32)().run(xs) },
  [f16, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
+ q: [i8, u8] => f32::tanh;
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
 
-element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.acosh()); Ok(()) });
-element_wise!(asinh, Asinh, [f16, f32, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.asinh()); Ok(()) });
-element_wise!(atanh, Atanh, [f16, f32, f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.atanh()); Ok(()) });
+element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| { 
+    xs.iter_mut().for_each(|x| *x = x.acosh()); 
+    Ok(()) 
+};
+q: [i8, u8] => f32::acosh);
+element_wise!(asinh, Asinh, [f16, f32, f64] => |_, xs| { 
+    xs.iter_mut().for_each(|x| *x = x.asinh()); 
+    Ok(()) 
+};
+q: [i8, u8] => f32::asinh);
+element_wise!(atanh, Atanh, [f16, f32, f64] => |_, xs| { 
+    xs.iter_mut().for_each(|x| *x = x.atanh()); 
+    Ok(()) 
+};
+q: [i8, u8] => f32::atanh);
 
 element_wise!(neg, Neg, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = -x.clone());
     Ok(())
-});
+};
+q: [i8, u8] => |x: f32| -x);
 
 element_wise!(sign, Sign, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { x.signum() });
     Ok(())
-});
+};
+q: [i8, u8] => f32::signum);
 
 #[cfg(test)]
 mod tests {

@@ -982,7 +982,7 @@ impl TypedOp for ConvUnary {
                 && self.group == self.input_channels()
                 && input_fact.shape.as_concrete().is_some()
             {
-                let op = dispatch_floatlike!(Self::to_depth_wise(dt)(self, &input_fact))
+                let op = dispatch_numbers!(Self::to_depth_wise(dt)(self, &input_fact))
                     .context("in to_depth_wise")?;
                 return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
             } else {

@@ -162,7 +162,8 @@ impl TypedOp for ElementWiseOp {
 #[macro_export]
 macro_rules! element_wise {
     ($func:ident, $Op:ident $({$( $(#[$meta: meta])? $var: ident : $var_typ: path),*})?,
-        $( [$($typ:ident),*] => $f:expr ),*
+        $([$($typ:ident),*] => $f:expr ),*
+        $(; q: $( [$($typ_dt:ident),*] => $f_f32:expr),*)?
         $(; cost: $cost:expr )?
         $(; declutter: $declutter:expr )?
         $(; prefix: $prefix:expr )?
@@ -187,6 +188,26 @@ macro_rules! element_wise {
                     }
                     )*
                 )*
+                $(
+                    $(
+                       $(if t.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                           let dt = t.datum_type();
+                           let t: &mut[$typ_dt] = t.as_slice_mut::<$typ_dt>()?;
+                           let f: fn(&Self, &mut[$typ_dt], DatumType) -> TractResult<()> = |_, xs, dt| {
+                            use num_traits::AsPrimitive;
+                            let (zp, scale) = dt.zp_scale();
+                            xs.iter_mut().for_each(|x| {
+                                let x_f32 = (*x as f32 - zp as f32) * scale;
+                                *x = (($f_f32(x_f32) / scale) + zp as f32).as_()
+                            });
+                            Ok(())
+                        };
+                           f(self, t, dt)?;
+                           return Ok(())
+                       }
+                       )*
+                   )*
+                )?
                 bail!("{} does not support {:?}", self.name(), t.datum_type());
             }
             $(
