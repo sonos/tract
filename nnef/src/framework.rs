@@ -1,4 +1,5 @@
-use crate::ast::ProtoModel;
+use crate::ast::quant::write_quant_format;
+use crate::ast::{ProtoModel, QuantFormat};
 use crate::internal::*;
 use std::io::Read;
 use std::path::Path;
@@ -54,6 +55,21 @@ impl Nnef {
         header.set_cksum();
         ar.append(&header, &mut &*graph_data)?;
 
+        if let Some(quantization) = proto_model.quantization {
+            let mut quant_data = vec![];
+
+            for (name, format) in quantization.into_iter() {
+                write_quant_format(&mut quant_data, name, format)?;
+            }
+
+            header.set_path("graph.quant")?;
+            header.set_size(quant_data.len() as u64);
+            header.set_mode(0o644);
+            header.set_mtime(now.as_secs());
+            header.set_cksum();
+            ar.append(&header, &mut &*quant_data)?;
+        }
+
         for (label, t) in &proto_model.tensors {
             let label = label.to_string() + ".dat";
             let filename = std::path::Path::new(&label);
@@ -84,6 +100,14 @@ impl Nnef {
         std::fs::create_dir_all(path)?;
         let mut graph_nnef = std::fs::File::create(path.join("graph.nnef"))?;
         crate::ast::dump::Dumper::new(&mut graph_nnef).document(&proto_model.doc)?;
+
+        if let Some(quantization) = proto_model.quantization {
+            let mut graph_quant = std::fs::File::create(path.join("graph.nnef"))?;
+            for (name, format) in quantization.into_iter() {
+                write_quant_format(&mut graph_quant, name, format)?;
+            }
+        }
+
         for (label, t) in &proto_model.tensors {
             let label = label.to_string() + ".dat";
             std::fs::create_dir_all(path.join(&label).parent().unwrap())?;
@@ -108,6 +132,7 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
             return self.proto_model_for_read(&mut f);
         }
         let mut text: Option<String> = None;
+        let mut quantization = None;
         let mut tensors: Vec<(String, Arc<Tensor>)> = Default::default();
         for entry in walkdir::WalkDir::new(path) {
             let entry =
@@ -118,16 +143,17 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
                 .skip(path.components().count())
                 .collect::<std::path::PathBuf>();
             let mut stream = std::fs::File::open(entry.path())?;
-            read_stream(&subpath, &mut stream, &mut text, &mut tensors)?;
+            read_stream(&subpath, &mut stream, &mut text, &mut tensors, &mut quantization)?;
         }
         let text = text.ok_or_else(|| format_err!("Model must contain graph.nnef at top level"))?;
         let doc = crate::ast::parse::parse_document(&text)?;
-        Ok(ProtoModel { doc, tensors })
+        Ok(ProtoModel { doc, tensors, quantization })
     }
 
     fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
         let mut text: Option<String> = None;
         let mut tensors: Vec<(String, Arc<Tensor>)> = Default::default();
+        let mut quantization = None;
         let mut buffer = vec![0u8; 2];
         reader.read_exact(&mut buffer)?;
         let header = std::io::Cursor::new(buffer.clone());
@@ -146,11 +172,11 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         for entry in tar.entries()? {
             let mut entry = entry?;
             let path = entry.path()?.to_path_buf();
-            read_stream(&path, &mut entry, &mut text, &mut tensors)?;
+            read_stream(&path, &mut entry, &mut text, &mut tensors, &mut quantization)?;
         }
         let text = text.ok_or_else(|| format_err!("Model must contain graph.nnef at top level"))?;
         let doc = crate::ast::parse::parse_document(&text)?;
-        Ok(ProtoModel { doc, tensors })
+        Ok(ProtoModel { doc, tensors, quantization })
     }
 
     fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<TypedModel> {
@@ -163,6 +189,7 @@ fn read_stream<R: std::io::Read>(
     reader: &mut R,
     text: &mut Option<String>,
     tensors: &mut Vec<(String, Arc<Tensor>)>,
+    quantization: &mut Option<HashMap<String, QuantFormat>>,
 ) -> TractResult<()> {
     if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
         let mut t = String::new();
@@ -176,6 +203,15 @@ fn read_stream<R: std::io::Read>(
             .ok_or_else(|| format_err!("Badly encoded filename for tensor: {:?}", path))?;
         let tensor = crate::tensors::read_tensor(reader)?;
         tensors.push((id.to_string(), tensor.into_arc_tensor()));
+    } else if path.file_name().map(|n| n == "graph.quant").unwrap_or(false) {
+        let mut t = String::new();
+        reader.read_to_string(&mut t)?;
+        let quant = crate::ast::quant::parse_quantization(&t)?;
+        if quantization.is_none() {
+            *quantization = Some(quant.into_iter().collect())
+        } else {
+            bail!("Duplicate graph.quant file")
+        }
     }
     Ok(())
 }

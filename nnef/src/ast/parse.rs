@@ -7,7 +7,7 @@ use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, s
 
 use crate::ast::*;
 
-fn translate_error<'s, E: std::fmt::Debug>(e: E) -> TractError {
+pub(super) fn translate_error<'s, E: std::fmt::Debug>(e: E) -> TractError {
     format_err!("Fail to parse NNEF document: {:?}", e)
 }
 
@@ -348,7 +348,7 @@ fn loop_iters(i: &str) -> IResult<&str, Vec<(String, RValue)>> {
 
 // identifier: identifiers must consist of the following ASCII characters: _, [a-z], [A-Z], [0-9].
 // The identifier must not start with a digit.
-fn identifier(i: &str) -> IResult<&str, String> {
+pub(super) fn identifier(i: &str) -> IResult<&str, String> {
     map(
         recognize(pair(alt((alpha1, tag("_"))), many0(alt((alphanumeric1, tag("_")))))),
         String::from,
@@ -364,7 +364,7 @@ fn literal(i: &str) -> IResult<&str, Literal> {
     )))(i)
 }
 
-fn numeric_literal(i: &str) -> IResult<&str, String> {
+pub(super) fn numeric_literal(i: &str) -> IResult<&str, String> {
     fn exp_part(i: &str) -> IResult<&str, &str> {
         recognize(tuple((one_of("eE"), opt(tag("-")), digit1)))(i)
     }
@@ -392,7 +392,7 @@ fn string_literal(i: &str) -> IResult<&str, String> {
     })(i)
 }
 
-fn logical_literal(i: &str) -> IResult<&str, bool> {
+pub(super) fn logical_literal(i: &str) -> IResult<&str, bool> {
     spaced(alt((map(tag("true"), |_| true), map(tag("false"), |_| false))))(i)
 }
 
@@ -415,7 +415,7 @@ where
     delimited(space_and_comments, it, space_and_comments)
 }
 
-fn stag<'s>(t: &'static str) -> impl FnMut(&'s str) -> IResult<&'s str, &'s str> {
+pub(super) fn stag<'s>(t: &'static str) -> impl FnMut(&'s str) -> IResult<&'s str, &'s str> {
     spaced(tag(t))
 }
 

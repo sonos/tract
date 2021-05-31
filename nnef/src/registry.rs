@@ -146,27 +146,40 @@ impl Registry {
         &self,
         builder: &mut ModelBuilder,
         invocation: &ast::Invocation,
+        dt: &[Option<DatumType>],
     ) -> TractResult<Option<Value>> {
         if let Some(op) = self.primitives.get(&invocation.id) {
-            let resolved = ResolvedInvocation { invocation, default_params: &*op.0 };
+            let resolved = ResolvedInvocation { invocation, default_params: &*op.0, dt };
             let outlets = (op.1)(builder, &resolved)?;
             return Ok(Some(Value::Tuple(outlets.into_iter().map(Value::Wire).collect())));
         }
         if let Some(ew) = self.unit_element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
-            let input = invocation.arguments[0].rvalue.resolve(builder)?.to::<OutletId>(builder)?;
+            let input =
+                invocation.arguments[0].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
             let outlet = builder
                 .wire(tract_core::ops::element_wise::ElementWiseOp(ew.1.clone()), &[input])?;
+            if let Some(Some(assumed_out_dt)) = dt.get(0) {
+                let out_dt = builder.model.outlet_fact(outlet[0])?.datum_type;
+                if out_dt != *assumed_out_dt {
+                    return Ok(Some(Value::Wire(
+                        builder.wire(tract_core::ops::cast::cast(*assumed_out_dt), &outlet)?[0],
+                    )));
+                }
+            }
             return Ok(Some(Value::Wire(outlet[0])));
         }
         if let Some(ew) = self.element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
-            let resolved = ResolvedInvocation { invocation, default_params: &ew.3 };
+            let resolved = ResolvedInvocation { invocation, default_params: &ew.3, dt };
             return Ok(Some(Value::Wire((ew.4)(builder, &resolved)?[0])));
         }
         if let Some(bin) = self.binary_ops.iter().find(|bin| bin.0 == invocation.id) {
-            let mut a = invocation.arguments[0].rvalue.resolve(builder)?.to::<OutletId>(builder)?;
-            let mut b = invocation.arguments[1].rvalue.resolve(builder)?.to::<OutletId>(builder)?;
+            let mut a =
+                invocation.arguments[0].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
+            let mut b =
+                invocation.arguments[1].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
             let a_dt = builder.model.outlet_fact(a)?.datum_type;
             let b_dt = builder.model.outlet_fact(b)?.datum_type;
+
             // mitigation of nnef "scalar" type mismatch with tract-core more
             // strict types
             if a_dt != b_dt {
@@ -177,12 +190,18 @@ impl Registry {
                 };
             }
             let inputs = multicast(builder, &[a, b])?;
-            return Ok(Some(Value::Wire(
-                builder.wire(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0],
-            )));
+            let mut wire =
+                builder.wire(tract_core::ops::binary::TypedBinOp(bin.1.clone()), &inputs)?[0];
+            if let Some(Some(out_dt)) = dt.get(0) {
+                if out_dt != &a_dt {
+                    wire = builder.wire(tract_core::ops::cast::cast(*out_dt), &[wire])?[0];
+                }
+            }
+            return Ok(Some(Value::Wire(wire)));
         }
         if let Some(frag) = self.fragments.get(&invocation.id) {
-            let resolved = ResolvedInvocation { invocation, default_params: &frag.decl.parameters };
+            let resolved =
+                ResolvedInvocation { invocation, default_params: &frag.decl.parameters, dt };
             return Ok(Some(builder.wire_fragment_invocation(
                 &resolved,
                 &frag.decl,

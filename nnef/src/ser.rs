@@ -28,6 +28,7 @@ pub struct IntoAst<'a> {
     pub results: Vec<String>,
     pub mapping: HashMap<OutletId, Arc<RValue>>,
     pub tensors: Vec<(String, Arc<Tensor>)>,
+    pub quantization: HashMap<String, QuantFormat>,
     pub fragments: HashMap<String, FragmentDef>,
     pub body: Vec<Assignment>,
 }
@@ -43,15 +44,16 @@ impl<'a> IntoAst<'a> {
         let prefix = Self::extract_prefix(model);
         IntoAst {
             framework,
-            registries: vec!(),
+            registries: Default::default(),
             prefix,
             model,
-            parameters: vec![],
-            results: vec![],
+            parameters: Default::default(),
+            results: Default::default(),
             mapping: Default::default(),
             tensors: Default::default(),
+            quantization: Default::default(),
             fragments: Default::default(),
-            body: vec![],
+            body: Default::default(),
             parent: None,
         }
     }
@@ -204,7 +206,8 @@ impl<'a> IntoAst<'a> {
             fragments: fragments.into_iter().map(|(_, v)| v).collect(),
             graph_def: GraphDef { id, parameters, results, body },
         };
-        Ok(ProtoModel { doc, tensors })
+        let quantization = if self.quantization.len() > 0 { Some(self.quantization) } else { None };
+        Ok(ProtoModel { doc, tensors, quantization })
     }
 
     fn node(&mut self, node: &TypedNode) -> TractResult<TVec<Arc<RValue>>> {
@@ -225,12 +228,25 @@ impl<'a> IntoAst<'a> {
                 } else {
                     self.assignment(&names[0], outputs);
                 };
+
+                for (outlet, name) in node.outputs.iter().zip(names.iter()) {
+                    if let Some(params) = outlet.fact.datum_type.qparams() {
+                        let quant_format = QuantFormat::Linear {
+                            params,
+                            bits: outlet.fact.datum_type.size_of() as i8,
+                            signed: outlet.fact.datum_type.is_signed(),
+                        };
+                        self.quantization.insert(name.to_string(), quant_format);
+                    }
+                }
+
                 let mut outputs = tvec!();
                 for (ix, o) in names.into_iter().enumerate() {
                     let rv = Arc::new(ident(o));
                     self.mapping.insert((node.id, ix).into(), rv.clone());
                     outputs.push(rv);
                 }
+
                 return Ok(outputs);
             }
         }
