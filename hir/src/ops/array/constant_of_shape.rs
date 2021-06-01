@@ -35,12 +35,12 @@ impl Expansion for ConstantOfShape {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(ref shape) = target.outlet_fact(inputs[0])?.konst {
+        if let Some(shape) = target.outlet_fact(inputs[0])?.konst.clone() {
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
-            let op =
-                tract_core::ops::array::ConstantOfShape::new(shape.into(), self.scalar.clone());
-            return target.wire_node(&*prefix, op, &[]);
+            let scalar = target.add_const(format!("{}.scalar", prefix), self.scalar.clone())?;
+            let op = tract_core::ops::array::MultiBroadcastTo::new(shape.into());
+            return target.wire_node(&*prefix, op, &[scalar]);
         }
         bail!("shape input is variable")
     }
