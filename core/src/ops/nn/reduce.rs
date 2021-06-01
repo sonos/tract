@@ -75,7 +75,7 @@ impl Reducer {
                 }
                 Sum => {
                     if dt.is_float() {
-                        dispatch_numbers!(Self::sum(dt)(self, axes, input))
+                        dispatch_floatlike!(Self::sum(dt)(self, axes, input))
                     } else {
                         r!(Self::reduce_t(dt)(
                             self,
