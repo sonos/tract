@@ -74,6 +74,10 @@ impl From<Tensor> for TensorHolder {
             DatumType::U16 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
             DatumType::U32 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
             DatumType::U64 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::QU8(_) => TensorHolder::U8(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::QU32(_) => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::QI8(_) => TensorHolder::I8(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::QI32(_) => TensorHolder::I16(Self::to_tensor(m.into_array().unwrap())),
             DatumType::TDim => {
                 let dims = m.to_array_view::<TDim>().unwrap();
                 if let Ok(dims) = dims.iter().map(|d| d.to_i32()).collect::<TractResult<Vec<_>>>() {
