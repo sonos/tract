@@ -853,57 +853,59 @@ impl Tensor {
                 n!(f64);
             }
             //FIXME : round properly (and maybe try to reduce code size / improve the macro ?)
-            use num_traits::AsPrimitive;
-            let float_convert = ((self.datum_type().is_float() || dt.is_float())
-                && (self.datum_type().is_quantized() || dt.is_quantized()))
-                || (self.datum_type().is_quantized() && dt.is_quantized());
-
-            let (s_zp, s_scale) = self.datum_type().zp_scale();
-            let (d_zp, d_scale) = dt.zp_scale();
-            macro_rules! q_n {
-                (__internal $source:ty, $dest:ty) => {{
-                    if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
-                        && <$dest>::datum_type().unquantized() == dt.unquantized()
-                    {
-                        if float_convert
-                        {
-                            self.as_slice_unchecked::<$source>()
-                                .iter()
-                                .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
-                                .for_each(|(&s, d)| {
-                                    let s_float = (s as f64 - s_zp as f64) * s_scale as f64;
-                                    let d_float = s_float as f64 / d_scale as f64 + d_zp as f64;
-                                    *d = d_float.as_();
-                                });
-                        } else {
-                            self.as_slice_unchecked::<$source>()
-                                .iter()
-                                .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
-                                .for_each(|(&s, d)| {
-                                    *d = s.as_();
-                                });
-                        }
-                        return Ok(Cow::Owned(result));
-                    }
-                }};
-                (__first $t1:ty, $t2:ty, $($t: ty),+) => {
-                    q_n!(__first $t1, $t2);
-                    q_n!(__first $t1, $($t),+);
-                };
-                (__first $t1:ty, $t2:ty) => {
-                    q_n!(__internal $t1, $t2);
-                    q_n!(__internal $t2, $t1);
-                };
-                ($t1:ty, $t2:ty, $($t: ty),+) => {
-                    q_n!(__first $t1, $t2, $($t),+);
-                    q_n!(__internal $t1, $t1);
-                    q_n!($t2, $($t),+);
-                };
-                ($t1:ty, $t2:ty) => {
-                    q_n!(__first $t1, $t2)
-                };
-            }
+            //This macro generates the conversion for all pairs of input, both ways, and generates the conversion of a datum type to itself once.
             if dt.is_quantized() || self.datum_type().is_quantized() {
+                use num_traits::AsPrimitive;
+                let float_convert = ((self.datum_type().is_float() || dt.is_float())
+                    && (self.datum_type().is_quantized() || dt.is_quantized()))
+                    || (self.datum_type().is_quantized() && dt.is_quantized());
+
+                let (s_zp, s_scale) = self.datum_type().zp_scale();
+                let (d_zp, d_scale) = dt.zp_scale();
+                macro_rules! q_n {
+                    (__internal $source:ty, $dest:ty) => {{
+                        if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
+                            && <$dest>::datum_type().unquantized() == dt.unquantized()
+                        {
+                            if float_convert
+                            {
+                                self.as_slice_unchecked::<$source>()
+                                    .iter()
+                                    .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
+                                    .for_each(|(&s, d)| {
+                                        let s_float = (s as f64 - s_zp as f64) * s_scale as f64;
+                                        let d_float = s_float as f64 / d_scale as f64 + d_zp as f64;
+                                        *d = d_float.as_();
+                                    });
+                            } else {
+                                self.as_slice_unchecked::<$source>()
+                                    .iter()
+                                    .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
+                                    .for_each(|(&s, d)| {
+                                        *d = s.as_();
+                                    });
+                            }
+                            return Ok(Cow::Owned(result));
+                        }
+                    }};
+                    (__first $t1:ty, $t2:ty, $($t: ty),+) => {
+                        q_n!(__first $t1, $t2);
+                        q_n!(__first $t1, $($t),+);
+                    };
+                    (__first $t1:ty, $t2:ty) => {
+                        q_n!(__internal $t1, $t2);
+                        q_n!(__internal $t2, $t1);
+                    };
+                    ($t1:ty, $t2:ty, $($t: ty),+) => {
+                        q_n!(__first $t1, $t2, $($t),+);
+                        q_n!(__internal $t1, $t1);
+                        q_n!($t2, $($t),+);
+                    };
+                    ($t1:ty, $t2:ty) => {
+                        q_n!(__first $t1, $t2)
+                    };
+                }
+
                 q_n!(u8, i8, u32, i32, f32, f64);
             }
 

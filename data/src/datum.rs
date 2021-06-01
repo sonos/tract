@@ -40,7 +40,6 @@ pub enum QParams {
     ZpScale { zero_point: i32, scale: f32 },
 }
 
-//FIXME ord and eq
 impl Eq for QParams {}
 
 impl Ord for QParams {
@@ -51,14 +50,17 @@ impl Ord for QParams {
 
 impl Hash for QParams {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        if let QParams::MinMax { min, max } = self {
-            1.hash(state);
-            min.to_bits().hash(state);
-            max.to_bits().hash(state);
-        } else if let QParams::ZpScale { zero_point, scale } = self {
-            2.hash(state);
-            zero_point.hash(state);
-            scale.to_bits().hash(state);
+        match self {
+            QParams::MinMax { min, max } => {
+                0.hash(state);
+                min.to_bits().hash(state);
+                max.to_bits().hash(state);
+            }
+            QParams::ZpScale { zero_point, scale } => {
+                1.hash(state);
+                zero_point.hash(state);
+                scale.to_bits().hash(state);
+            }
         }
     }
 }

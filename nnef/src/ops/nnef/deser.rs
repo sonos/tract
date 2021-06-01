@@ -304,8 +304,8 @@ pub fn conv_or_deconv(
     let quantized = input_fact.datum_type.is_quantized()
         || kernel.datum_type().is_quantized()
         || output_dt.is_quantized();
-    let (b0, b_scale) = input_fact.datum_type.qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-    let (a0, a_scale) = kernel.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+    let (b0, b_scale) = input_fact.datum_type.zp_scale();
+    let (a0, a_scale) = kernel.datum_type().zp_scale();
     let (c0, c_scale) = output_dt.qparams().map(|q| q.zp_scale()).unwrap_or((b0, b_scale));
     let qparams = if quantized {
         Some((
