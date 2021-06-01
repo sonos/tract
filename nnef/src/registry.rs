@@ -151,7 +151,8 @@ impl Registry {
         if let Some(op) = self.primitives.get(&invocation.id) {
             let resolved =
                 ResolvedInvocation { invocation, default_params: &*op.0, dt_from_quant_file: dt };
-            let outlets = (op.1)(builder, &resolved)?;
+            let outlets = (op.1)(builder, &resolved)
+                .with_context(|| format!("Deserializing op `{}'", invocation.id))?;
             return Ok(Some(Value::Tuple(outlets.into_iter().map(Value::Wire).collect())));
         }
         if let Some(ew) = self.unit_element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
@@ -170,9 +171,11 @@ impl Registry {
             return Ok(Some(Value::Wire(outlet[0])));
         }
         if let Some(ew) = self.element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
-            let resolved =
-                ResolvedInvocation { invocation, default_params: &ew.3, dt_from_quant_file: dt };
-            return Ok(Some(Value::Wire((ew.4)(builder, &resolved)?[0])));
+            let resolved = ResolvedInvocation { invocation, default_params: &ew.3, dt_from_quant_file: dt };
+            return Ok(Some(Value::Wire(
+                (ew.4)(builder, &resolved)
+                    .with_context(|| format!("Deserializing op `{}'", invocation.id))?[0],
+            )));
         }
         if let Some(bin) = self.binary_ops.iter().find(|bin| bin.0 == invocation.id) {
             let mut a =
