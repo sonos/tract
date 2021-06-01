@@ -252,14 +252,6 @@ impl TypedOp for TypedBinOp {
         if let Some(patch) = self.0.declutter_bin(model, node)? {
             return Ok(Some(patch));
         }
-        // FIXME: i think this thing is useless now that ranks are assumed equals.
-        for i in 0..2 {
-            use super::array::MultiBroadcastTo;
-            let prec = model.node(node.inputs[i].node);
-            if prec.op_is::<MultiBroadcastTo>() {
-                return Ok(Some(TypedModelPatch::shunt_one_op(model, prec)?));
-            }
-        }
         if let Some(unary) = declutter_bin_to_unary(model, node, self.0.as_ref())? {
             return Ok(Some(unary));
         }
