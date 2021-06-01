@@ -157,7 +157,10 @@ impl<'mb> ModelBuilder<'mb> {
         }
         for registry in &self.framework.registries {
             if self.registries.contains(&registry.id) {
-                if let Some(outputs) = registry.deserialize(self, invocation, dt)? {
+                if let Some(outputs) = registry
+                    .deserialize(self, invocation, dt)
+                    .with_context(|| format!("Interrogating registry {}", registry.id))?
+                {
                     return Ok(outputs);
                 }
             }
@@ -331,7 +334,9 @@ impl RValue {
                 }
                 Ok(outlet)
             }
-            RValue::Invocation(inv) => builder.wire_invocation(inv, dt),
+            RValue::Invocation(inv) => builder
+                .wire_invocation(inv, dt)
+                .with_context(|| format!("Resolving invocation {}", inv.id)),
             RValue::Binary(left, op, right) => {
                 let op = match &**op {
                     "+" => "add",
@@ -355,7 +360,9 @@ impl RValue {
                         Argument { id: None, rvalue: right.as_ref().clone() },
                     ],
                 };
-                builder.wire_invocation(&inv, dt)
+                builder
+                    .wire_invocation(&inv, dt)
+                    .with_context(|| format!("Resolving invocation {}", inv.id))
             }
             RValue::Array(array) => Ok(Value::Array(
                 array

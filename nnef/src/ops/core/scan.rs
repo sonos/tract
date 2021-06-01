@@ -35,7 +35,7 @@ pub fn register(registry: &mut Registry) {
             .named("state"),
             ast::TypeSpec::Tuple(vec![
                 TypeName::String.spec(),  // body param name
-                TypeName::String.spec(),  // "all" or "last"
+                TypeName::String.spec(),  // "full" or "last"
                 TypeName::Integer.spec(), // axis
             ])
             .array()
@@ -186,14 +186,29 @@ fn de_scan(
         );
     }
     body.wire_body(fragment.body.as_deref().unwrap())?;
-    let body_outputs: Vec<OutletId> = fragment
+    let body_outputs = fragment
         .decl
         .results
         .iter()
-        .map(|r| body.scopes.last().unwrap()[&r.id].to::<OutletId>(builder))
+        .map(|r| {
+            Ok(body.scopes.last().unwrap().get(&r.id).with_context(|| {
+                format!("Could not find variable for scan output named `{}'", r.id)
+            })?)
+        })
+        .collect::<TractResult<Vec<&Value>>>()?;
+
+
+    let body_outputs: Vec<OutletId> = body_outputs
+        .iter()
+        .map(|v| v.to::<OutletId>(builder))
         .collect::<TractResult<Vec<OutletId>>>()?;
     body.model.set_output_outlets(&body_outputs)?;
     let outputs: TVec<(String, String, usize)> = invocation.named_arg_as(builder, "output")?;
+    for output in &outputs {
+        if output.1 != "full" && output.1 != "last" {
+            bail!("output named `{}' must specify type \"full\" or \"last\", found `{}'", output.0, output.1)
+        }
+    }
     let mut output_mapping = vec![];
     for output_name in fragment.decl.results.iter().map(|o| &*o.id) {
         output_mapping.push(OutputMapping {
