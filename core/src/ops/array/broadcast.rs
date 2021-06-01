@@ -1,9 +1,10 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Hash)]
 pub struct MultiBroadcastTo {
-    pub shape: TVec<TDim>,
+    pub shape: ShapeFact,
 }
+
 impl_dyn_hash!(MultiBroadcastTo);
 
 impl MultiBroadcastTo {
@@ -25,7 +26,7 @@ impl Op for MultiBroadcastTo {
 
 impl EvalOp for MultiBroadcastTo {
     fn is_stateless(&self) -> bool {
-        true
+        self.shape.is_concrete()
     }
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
@@ -36,9 +37,28 @@ impl EvalOp for MultiBroadcastTo {
     }
 }
 
+#[derive(Clone, Debug)]
+struct MultiBroadcastToState;
+
+impl OpState for MultiBroadcastToState {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        op: &dyn Op,
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let op = op.downcast_ref::<MultiBroadcastTo>().context("Wrong op")?;
+        let shape = op.shape.eval_to_usize(&session.resolved_symbols)?;
+        let tensor = inputs[0].broadcast_scalar_to_shape(&shape)?;
+        Ok(tvec!(tensor.into_arc_tensor()))
+    }
+}
+
 impl TypedOp for MultiBroadcastTo {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, &*self.shape)))
+        let mut fact = TypedFact::dt_shape(inputs[0].datum_type, self.shape.clone());
+        fact.uniform = inputs[0].uniform.clone();
+        Ok(tvec!(fact))
     }
 
     fn concretize_dims(
@@ -50,7 +70,8 @@ impl TypedOp for MultiBroadcastTo {
         values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let op = Self { shape: self.shape.iter().map(|d| d.eval(&values)).collect() };
+        let op =
+            Self { shape: self.shape.iter().map(|d| d.eval(&values)).collect::<TVec<_>>().into() };
         target.wire_node(&node.name, op, &[input])
     }
 

@@ -193,14 +193,14 @@ fn declutter_unary_mul_magic_values(
     {
         return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
     } else if a.is_uniform() && a.cast_to_scalar::<f64>()?.is_zero() {
+        let mut patch = TypedModelPatch::default();
         let fact = model.outlet_fact(node.inputs[0])?;
         let zero = Tensor::zero_dt(fact.datum_type, &[])?;
-        Ok(Some(TypedModelPatch::replace_single_op(
-            model,
-            node,
-            &[],
-            crate::ops::array::ConstantOfShape::new(fact.shape.to_tvec(), zero.into_arc_tensor()),
-        )?))
+        let zero = patch.add_const(format!("{}.zero", node.name), zero)?;
+        let broadcast = crate::ops::array::MultiBroadcastTo::new(fact.shape.clone());
+        let broadcast = patch.wire_node(&node.name, broadcast, &[zero])?;
+        patch.shunt_outside(model, node.id.into(), broadcast[0])?;
+        Ok(Some(patch))
     } else {
         Ok(None)
     }

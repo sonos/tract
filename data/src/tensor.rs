@@ -537,7 +537,7 @@ impl Tensor {
             ));
             Ok(format!(
                 "{},{:?} {}{}",
-                self.shape.iter().join("x"),
+                self.shape.iter().join(","),
                 self.dt,
                 data,
                 if trunc { "..." } else { "" }
