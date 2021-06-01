@@ -139,10 +139,13 @@ impl Parameters {
             }
             "nnef" => {
                 let nnef = super::nnef(&matches);
-                let mut file = std::fs::File::open(&filename)?;
-                let proto_model = if filename.to_string_lossy().ends_with("gz") {
+                let proto_model = if std::fs::metadata(filename)?.is_dir() {
+                    nnef.proto_model_for_path(filename)?
+                } else if filename.to_string_lossy().ends_with("gz") {
+                    let file = std::fs::File::open(&filename)?;
                     nnef.proto_model_for_read(&mut flate2::read::GzDecoder::new(file))?
                 } else {
+                    let mut file = std::fs::File::open(&filename)?;
                     nnef.proto_model_for_read(&mut file)?
                 };
                 info_usage("proto model loaded", probe);

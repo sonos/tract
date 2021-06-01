@@ -89,8 +89,8 @@ fn main() -> tract_core::anyhow::Result<()> {
 
     (@arg model: +takes_value "Sets the model to use")
 
-    (@arg format: -f +takes_value
-     "Hint the model format ('kaldi', 'onnx' or 'tf') instead of guess from extension.")
+    (@arg format: -f --format +takes_value
+     "Hint the model format ('kaldi', 'onnx', 'nnef' or 'tf') instead of guess from extension.")
 
     (@arg input: -i --input +takes_value +multiple number_of_values(1)
      "Set input shape and type (@file.pb or @file.npz:thing.npy or 3x4xi32).")
