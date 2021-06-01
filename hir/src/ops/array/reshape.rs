@@ -51,8 +51,6 @@ impl Expansion for Reshape {
 
 fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>> {
     let mut shape: TVec<TDim> = shape_spec.into();
-
-    // deal with zeros, stop if we see a -1
     fn deal_with_zero<'a>(
         mut input_dims: std::iter::Peekable<impl Iterator<Item = &'a TDim>>,
         shape: &mut [TDim],
@@ -71,8 +69,7 @@ fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>>
             loop {
                 let quotient = remaining_dim_input.maybe_div(slot);
                 if quotient.is_err() || quotient.as_ref().unwrap().1 != 1 {
-                    remaining_dim_input =
-                        remaining_dim_input.maybe_mul(input_dims.next().context("Invalid")?)?;
+                    remaining_dim_input *= input_dims.next().context("Invalid")?;
                 } else {
                     break;
                 }
@@ -88,11 +85,8 @@ fn compute_shape(input: &[TDim], shape_spec: &[TDim]) -> TractResult<TVec<TDim>>
     shape.reverse();
 
     if let Some(pos) = shape.iter().position(|d| *d == (-1).into()) {
-        let input_vol = input.iter().try_fold(1.to_dim(), |a, b| a.maybe_mul(b))?;
-        let shape_vol = shape
-            .iter()
-            .filter(|d| **d != (-1).into())
-            .try_fold(1.to_dim(), |a, b| a.maybe_mul(b))?;
+        let input_vol: TDim = input.iter().product();
+        let shape_vol: TDim = shape.iter().filter(|d| **d != (-1).into()).product();
         let div = input_vol.maybe_div(&shape_vol)?;
         if div.1 != 1 {
             bail!("invalid")
@@ -127,12 +121,10 @@ pub fn to_axis_ops(input_orig: &[TDim], output_spec: &[TDim]) -> TractResult<TVe
                 // rank is expected to be somewhat reasonable
                 for i in common..current_input.len() {
                     let i_group = &current_input[common..i + 1];
-                    let i_volume: TDim =
-                        if let Ok(v) = i_group.iter().maybe_product() { v } else { break };
+                    let i_volume: TDim = i_group.iter().product();
                     for o in common..final_output.len() {
                         let o_group = &final_output[common..o + 1];
-                        let o_volume: TDim =
-                            if let Ok(v) = o_group.iter().maybe_product() { v } else { break };
+                        let o_volume: TDim = o_group.iter().product();
                         if i_volume == o_volume {
                             stack.push(AxisOp::Reshape(common, i_group.into(), o_group.into()));
                             continue 'top;
@@ -196,6 +188,11 @@ mod tests {
             &*compute_shape(s![stream(), 1, 2, 128], s!(0, 0, -1)).unwrap(),
             s![stream(), 1, 256]
         )
+    }
+
+    #[test]
+    fn compute_bug_2() {
+        assert_eq!(&*compute_shape(s!['s', 'b', 2, 128], s!(0, 0, -1)).unwrap(), s!['s', 'b', 256])
     }
 
     #[test]

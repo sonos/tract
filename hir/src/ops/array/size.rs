@@ -33,7 +33,7 @@ impl Expansion for Size {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let mut size = tensor0(model.outlet_fact(inputs[0])?.shape.iter().maybe_product()?);
+        let mut size = tensor0(model.outlet_fact(inputs[0])?.shape.iter().product::<TDim>());
         if let Ok(s) = size.cast_to_dt(self.dt) {
             size = s.into_owned();
         }

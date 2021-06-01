@@ -209,10 +209,10 @@ impl LSTM {
         use tract_hir::ops::{array, math, matmul, scan};
 
         let x_fact = target.outlet_fact(inputs[0])?.clone();
-        let r_fact = target.outlet_fact(inputs[2])?;
+        let r_fact = target.outlet_fact(inputs[2])?.clone();
 
-        let b_size = x_fact.shape[1].to_usize().unwrap();
-        let h_size = r_fact.shape[2].to_usize().unwrap();
+        let b_size = &x_fact.shape[1];
+        let h_size = &r_fact.shape[2];
 
         let mut body = TypedModel::default();
         let mut outer_inputs = vec![];
@@ -290,12 +290,24 @@ impl LSTM {
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
             scan::StateInitializer::Value(
-                tract_ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
+                tensor0(0.0f32)
+                    .broadcast_scalar_to_shape(&[
+                        1,
+                        b_size.to_usize().unwrap(),
+                        h_size.to_usize().unwrap(),
+                    ])?
+                    .into_arc_tensor(),
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
         let h_source = body
-            .add_source("h_source", TypedFact::dt_shape(x_fact.datum_type, &[1, b_size, h_size]))?
+            .add_source(
+                "h_source",
+                TypedFact::dt_shape(
+                    x_fact.datum_type,
+                    &[1.to_dim(), b_size.clone(), h_size.clone()],
+                ),
+            )?
             .into();
 
         let initializer = if let Some(initial_c_input) = self.optional_initial_c_input {
@@ -306,12 +318,24 @@ impl LSTM {
             scan::StateInitializer::FromInput(initial_c_input)
         } else {
             scan::StateInitializer::Value(
-                tract_ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
+                tensor0(0.0f32)
+                    .broadcast_scalar_to_shape(&[
+                        1,
+                        b_size.to_usize().unwrap(),
+                        h_size.to_usize().unwrap(),
+                    ])?
+                    .into_arc_tensor(),
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
         let c_source = body
-            .add_source("c_source", TypedFact::dt_shape(x_fact.datum_type, &[1, b_size, h_size]))?
+            .add_source(
+                "c_source",
+                TypedFact::dt_shape(
+                    x_fact.datum_type,
+                    &[1.to_dim(), b_size.clone(), h_size.clone()],
+                ),
+            )?
             .into();
 
         // P: onnx [num_directions, 3*hidde_size]
@@ -328,26 +352,26 @@ impl LSTM {
         wire!(Ht_1 = AxisOp::Rm(0), h_source);
         wire!(Ct_1 = AxisOp::Rm(0), c_source);
 
-        wire!(Wi = array::Slice::new(0, 0 * h_size, 1 * h_size), W);
-        wire!(Wo = array::Slice::new(0, 1 * h_size, 2 * h_size), W);
-        wire!(Wf = array::Slice::new(0, 2 * h_size, 3 * h_size), W);
-        wire!(Wc = array::Slice::new(0, 3 * h_size, 4 * h_size), W);
+        wire!(Wi = array::Slice::new(0, 0.to_dim() * h_size, 1.to_dim() * h_size), W);
+        wire!(Wo = array::Slice::new(0, 1.to_dim() * h_size, 2.to_dim() * h_size), W);
+        wire!(Wf = array::Slice::new(0, 2.to_dim() * h_size, 3.to_dim() * h_size), W);
+        wire!(Wc = array::Slice::new(0, 3.to_dim() * h_size, 4.to_dim() * h_size), W);
 
-        wire!(Ri = array::Slice::new(0, 0 * h_size, 1 * h_size), R);
-        wire!(Ro = array::Slice::new(0, 1 * h_size, 2 * h_size), R);
-        wire!(Rf = array::Slice::new(0, 2 * h_size, 3 * h_size), R);
-        wire!(Rc = array::Slice::new(0, 3 * h_size, 4 * h_size), R);
+        wire!(Ri = array::Slice::new(0, 0.to_dim() * h_size, 1.to_dim() * h_size), R);
+        wire!(Ro = array::Slice::new(0, 1.to_dim() * h_size, 2.to_dim() * h_size), R);
+        wire!(Rf = array::Slice::new(0, 2.to_dim() * h_size, 3.to_dim() * h_size), R);
+        wire!(Rc = array::Slice::new(0, 3.to_dim() * h_size, 4.to_dim() * h_size), R);
 
         let biases = if let Some(b) = b {
-            wire!(Wbi = array::Slice::new(1, 0 * h_size, 1 * h_size), b);
-            wire!(Wbo = array::Slice::new(1, 1 * h_size, 2 * h_size), b);
-            wire!(Wbf = array::Slice::new(1, 2 * h_size, 3 * h_size), b);
-            wire!(Wbc = array::Slice::new(1, 3 * h_size, 4 * h_size), b);
+            wire!(Wbi = array::Slice::new(1, 0.to_dim() * h_size, 1.to_dim() * h_size), b);
+            wire!(Wbo = array::Slice::new(1, 1.to_dim() * h_size, 2.to_dim() * h_size), b);
+            wire!(Wbf = array::Slice::new(1, 2.to_dim() * h_size, 3.to_dim() * h_size), b);
+            wire!(Wbc = array::Slice::new(1, 3.to_dim() * h_size, 4.to_dim() * h_size), b);
 
-            wire!(Rbi = array::Slice::new(1, 4 * h_size, 5 * h_size), b);
-            wire!(Rbo = array::Slice::new(1, 5 * h_size, 6 * h_size), b);
-            wire!(Rbf = array::Slice::new(1, 6 * h_size, 7 * h_size), b);
-            wire!(Rbc = array::Slice::new(1, 7 * h_size, 8 * h_size), b);
+            wire!(Rbi = array::Slice::new(1, 4.to_dim() * h_size, 5.to_dim() * h_size), b);
+            wire!(Rbo = array::Slice::new(1, 5.to_dim() * h_size, 6.to_dim() * h_size), b);
+            wire!(Rbf = array::Slice::new(1, 6.to_dim() * h_size, 7.to_dim() * h_size), b);
+            wire!(Rbc = array::Slice::new(1, 7.to_dim() * h_size, 8.to_dim() * h_size), b);
 
             wire!(bi = math::add::bin_typed(), Wbi, Rbi);
             wire!(bo = math::add::bin_typed(), Wbo, Rbo);
@@ -360,9 +384,9 @@ impl LSTM {
         };
 
         let peepholes = if let Some(p) = p {
-            wire!(pi = array::Slice::new(1, 0 * h_size, 1 * h_size), p);
-            wire!(po = array::Slice::new(1, 1 * h_size, 2 * h_size), p);
-            wire!(pf = array::Slice::new(1, 2 * h_size, 3 * h_size), p);
+            wire!(pi = array::Slice::new(1, 0.to_dim() * h_size, 1.to_dim() * h_size), p);
+            wire!(po = array::Slice::new(1, 1.to_dim() * h_size, 2.to_dim() * h_size), p);
+            wire!(pf = array::Slice::new(1, 2.to_dim() * h_size, 3.to_dim() * h_size), p);
             Some((pi, po, pf))
         } else {
             None

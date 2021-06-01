@@ -192,7 +192,7 @@ impl TypedOp for TypedBinOp {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = self.output_facts(inputs)?[0].shape.iter().maybe_product()?;
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
         Ok(self
             .0
             .cost_per_element(inputs[0].datum_type)
@@ -436,7 +436,7 @@ impl TypedOp for UnaryOp {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = self.output_facts(inputs)?[0].shape.iter().maybe_product()?;
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
         let mut cost: TVec<_> = self
             .mini_op
             .cost_per_element(inputs[0].datum_type)
@@ -507,7 +507,7 @@ impl TypedOp for MergeOpUnicast {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let count: TDim = self.output_facts(inputs)?[0].shape.iter().maybe_product()?;
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
         Ok(self
             .0
             .cost_per_element(inputs[0].datum_type)

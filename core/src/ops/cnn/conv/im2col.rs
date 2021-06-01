@@ -57,7 +57,7 @@ impl ResolveSymbolsTo<ConcreteGeometry> for SymbolicGeometry {
             Patcher::Generic
         };
         let ci_per_group = pool.input_shape.c_dim() / self.group;
-        let n = pool.output_shape.hw_dims().iter().maybe_product()?;
+        let n = pool.output_shape.hw_dims().iter().product();
         let input_shape_with_n = match self.pool_spec.data_format {
             DataFormat::HWC => DataFormat::NHWC.from_n_c_hw(
                 1,
@@ -128,7 +128,7 @@ impl Im2Col {
         if group != 1 {
             output_shape.push(group.into());
         }
-        let n: D = conv_output_shape.hw_dims().iter().maybe_product()?;
+        let n: D = conv_output_shape.hw_dims().iter().cloned().product();
         output_shape.push(b_pack.len(n).into());
         Ok(output_shape)
     }

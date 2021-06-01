@@ -71,8 +71,8 @@ pub fn reshape(
         }
     }
     if let Some(pos) = replacement.iter().position(|d| *d == (-1).to_dim()) {
-        let product: TDim = replacement.iter().filter(|d| **d != (-1).to_dim()).maybe_product()?;
-        let product_input: TDim = input_shape[start..][..count].iter().maybe_product()?;
+        let product: TDim = replacement.iter().filter(|d| **d != (-1).to_dim()).product();
+        let product_input: TDim = input_shape[start..][..count].iter().product();
         replacement[pos] = product_input.maybe_div(&product)?.0;
     }
 
@@ -429,7 +429,7 @@ pub fn reduce(
 
     let fact = builder.model.outlet_fact(wire[0])?;
     let input_shape = &builder.model.outlet_fact(input)?.shape;
-    let cardinality: TDim = axes.iter().map(|ax| &input_shape[*ax]).maybe_product()?;
+    let cardinality: TDim = axes.iter().map(|ax| &input_shape[*ax]).product();
     if let Ok(c) = cardinality.to_isize() {
         if fact.datum_type.is_float() {
             let cardinality = tensor0((c as f64).recip())

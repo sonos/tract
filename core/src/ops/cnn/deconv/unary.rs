@@ -25,7 +25,7 @@ impl DeconvUnary {
         use std::iter::once;
         let input_shape = target.outlet_fact(input)?.shape.clone();
         let shape = self.pool_spec.data_format.shape(input_shape.to_tvec())?;
-        let geo_dim = shape.hw_dims().iter().maybe_product()?;
+        let geo_dim = shape.hw_dims().iter().product();
 
         // collapse input as (N) I HW or (N) HW I
         let mut input = target.wire_node(

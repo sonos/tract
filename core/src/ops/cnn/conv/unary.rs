@@ -293,7 +293,7 @@ impl ConvUnary {
         &self,
         output_shape: &BaseDataShape<D, TVec<D>>,
     ) -> TractResult<(TVec<D>, usize, usize)> {
-        let geo_collapsed_out: D = output_shape.hw_dims().iter().maybe_product()?;
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().cloned().product();
         let shape: BaseDataShape<D, TVec<D>> = output_shape.fmt.from_n_c_hw(
             output_shape.n().cloned().unwrap_or(1.into()),
             output_shape.c().clone(),
@@ -322,7 +322,7 @@ impl ConvUnary {
         wire: OutletId,
         output_shape: &BaseDataShape<D, TVec<D>>,
     ) -> TractResult<OutletId> {
-        let geo_collapsed_out: D = output_shape.hw_dims().iter().maybe_product()?;
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().cloned().product();
         let wire = model.wire_node(
             name,
             AxisOp::Reshape(
@@ -397,7 +397,7 @@ impl ConvUnary {
         let m = self.output_channels() / self.group;
         let k = self.kernel.len() / self.output_channels();
         let n: TDim =
-            self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().maybe_product()?;
+            self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().cloned().product();
 
         let mmm = tract_linalg::ops()
             .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), n.to_usize().ok())
@@ -728,7 +728,7 @@ impl TypedOp for ConvUnary {
             &*self.pool_spec.strides.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
         );
         let n_output_points: TDim =
-            output_dims.iter().map(|d| d.convoluted.clone()).maybe_product()?;
+            output_dims.iter().map(|d| d.convoluted.clone()).product::<TDim>();
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         let one = 1.to_dim();
@@ -739,13 +739,11 @@ impl TypedOp for ConvUnary {
             ),
             (
                 Cost::FMA(inputs[0].datum_type),
-                shape
-                    .n()
-                    .unwrap_or(&one)
-                    .maybe_mul(shape.c())?
-                    .maybe_mul(&n_output_channels)?
-                    .maybe_mul(&n_output_points)?
-                    .maybe_mul(&kernel_surface)?
+                shape.n().cloned().unwrap_or(one)
+                    * shape.c()
+                    * n_output_channels
+                    * n_output_points
+                    * kernel_surface
                     / self.group
             )
         ))
@@ -878,7 +876,7 @@ impl TypedOp for ConvUnary {
                 let mut patch = TypedModelPatch::default();
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
                 let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
-                let geo_dim: TDim = input_shape.hw_dims().iter().maybe_product()?;
+                let geo_dim: TDim = input_shape.hw_dims().iter().product();
                 wire = patch.wire_node(
                     format!("{}.reshape_input", &*node.name),
                     AxisOp::Reshape(

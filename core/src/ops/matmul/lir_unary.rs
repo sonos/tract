@@ -305,9 +305,9 @@ impl TypedOp for LirMatMulUnary {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let sums = self.c_fact.shape.iter().maybe_product()?;
+        let sums: TDim = self.c_fact.shape.iter().product();
         Ok(tvec!(
-            (Cost::FMA(self.mmm.internal_type()), sums.maybe_mul(&self.geometry.k())?),
+            (Cost::FMA(self.mmm.internal_type()), sums * self.geometry.k().as_ref()),
             (
                 Cost::Params(self.micro_ops.as_slice().unwrap()[0].0.datum_type()),
                 self.micro_ops.iter().fold(0.to_dim(), |sum, a| sum + a.0.len())
@@ -372,7 +372,16 @@ impl TypedOp for LirMatMulUnary {
                 if cast == i8::datum_type() && self.c_fact.datum_type == i32::datum_type() {
                     let at = self.micro_ops.iter().nth(0).unwrap().0.datum_type();
                     let bt = model.outlet_fact(node.inputs[0])?.datum_type;
-                    let mmm = tract_linalg::ops().mmm(at, bt, i8::datum_type(), self.c_fact.shape[self.c_m_axis].to_usize().ok(), None, self.c_fact.shape[self.c_n_axis].to_usize().ok()).unwrap();
+                    let mmm = tract_linalg::ops()
+                        .mmm(
+                            at,
+                            bt,
+                            i8::datum_type(),
+                            self.c_fact.shape[self.c_m_axis].to_usize().ok(),
+                            None,
+                            self.c_fact.shape[self.c_n_axis].to_usize().ok(),
+                        )
+                        .unwrap();
 
                     let c_fact = TypedFact::dt_shape(i8::datum_type(), self.c_fact.shape.clone());
                     let mut patch = TypedModelPatch::fuse_with_next(

@@ -1,7 +1,18 @@
 use itertools::Itertools;
-use num_traits::{AsPrimitive, Zero};
+use num_traits::{AsPrimitive, PrimInt, Zero};
 use std::collections::HashMap;
 use std::{fmt, ops};
+
+#[derive(Debug)]
+pub struct UndeterminedSymbol(TDim);
+
+impl std::fmt::Display for UndeterminedSymbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Undertermined symbol in expression: {}", self.0)
+    }
+}
+
+impl std::error::Error for UndeterminedSymbol {}
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
@@ -29,6 +40,12 @@ impl From<char> for Symbol {
             table.push(c);
             Symbol(c, table.len() - 1)
         }
+    }
+}
+
+impl From<char> for TDim {
+    fn from(c: char) -> TDim {
+        Symbol::from(c).into()
     }
 }
 
@@ -67,7 +84,8 @@ pub enum TDim {
     Sym(Symbol),
     Val(i64),
     Add(Vec<TDim>),
-    Mul(i64, Box<TDim>),
+    Mul(Vec<TDim>),
+    MulInt(i64, Box<TDim>),
     Div(Box<TDim>, u64),
 }
 
@@ -79,7 +97,8 @@ impl fmt::Display for TDim {
             Sym(sym) => write!(fmt, "{}", sym.0),
             Val(it) => write!(fmt, "{}", it),
             Add(it) => write!(fmt, "{}", it.iter().map(|x| format!("{}", x)).join("+")),
-            Mul(a, b) => write!(fmt, "{}.{}", a, b),
+            Mul(it) => write!(fmt, "{}", it.iter().map(|x| format!("{}", x)).join("*")),
+            MulInt(a, b) => write!(fmt, "{}*{}", a, b),
             Div(a, b) => write!(fmt, "({})/{}", a, b),
         }
     }
@@ -94,7 +113,7 @@ impl TDim {
         if let Val(v) = self {
             Ok(*v)
         } else {
-            anyhow::bail!("Not a determined integer: {}", self)
+            Err(UndeterminedSymbol(self.clone()).into())
         }
     }
 
@@ -103,8 +122,9 @@ impl TDim {
             Sym(sym) => values[*sym].map(|s| Val(s)).unwrap_or(Sym(*sym)),
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
+            Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
             Div(a, q) => a.eval(values) / *q as i64,
-            Mul(p, a) => a.eval(values) * *p,
+            MulInt(p, a) => a.eval(values) * *p,
         }
     }
 
@@ -124,33 +144,33 @@ impl TDim {
         match self {
             Sym(_) | Val(_) => 1,
             Add(terms) => 2 * terms.iter().map(TDim::cost).sum::<usize>(),
+            Mul(terms) => 3 * terms.iter().map(TDim::cost).sum::<usize>(),
             Div(a, _) => 3 * a.cost(),
-            Mul(_, a) => 2 * a.cost(),
+            MulInt(_, a) => 2 * a.cost(),
         }
     }
 
     fn wiggle(&self) -> Vec<TDim> {
         use self::TDim::*;
         match self {
-            Sym(_) | Val(_) => vec![self.clone()],
+            Sym(_) | Val(_) | Mul(_) => vec![self.clone()],
             Add(terms) => {
                 let mut forms = vec![];
                 let sub_wiggle = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
                 for sub in sub_wiggle {
-                    for (ix, num, q) in sub
-                        .iter()
-                        .enumerate()
-                        .filter_map(
-                            |(ix, t)| if let Div(a, q) = t { Some((ix, a, q)) } else { None },
-                        )
-                        .next()
-                    {
+                    for (ix, num, q) in sub.iter().enumerate().find_map(|(ix, t)| {
+                        if let Div(a, q) = t {
+                            Some((ix, a, q))
+                        } else {
+                            None
+                        }
+                    }) {
                         let new_num = sub
                             .iter()
                             .enumerate()
                             .map(|(ix2, t)| {
                                 if ix2 != ix {
-                                    Mul(*q as i64, b!(t.clone()))
+                                    MulInt(*q as i64, b!(t.clone()))
                                 } else {
                                     (**num).clone()
                                 }
@@ -162,7 +182,7 @@ impl TDim {
                 }
                 forms
             }
-            Mul(p, a) => a.wiggle().into_iter().map(|a| Mul(*p, b!(a))).collect(),
+            MulInt(p, a) => a.wiggle().into_iter().map(|a| MulInt(*p, b!(a))).collect(),
             Div(a, q) => {
                 let mut forms = vec![];
                 for num in a.wiggle() {
@@ -198,7 +218,7 @@ impl TDim {
                         }
                         Val(0) => (),
                         Val(v) => *reduced.entry(Val(1)).or_insert(0) += v,
-                        Mul(v, f) => {
+                        MulInt(v, f) => {
                             *reduced.entry((*f).clone()).or_insert(0) += v;
                         }
                         n => *reduced.entry(n).or_insert(0) += 1,
@@ -214,7 +234,7 @@ impl TDim {
                         } else if v == 1 {
                             Some(k)
                         } else {
-                            Some(Mul(v, b![k]))
+                            Some(MulInt(v, b![k]))
                         }
                     })
                     .collect();
@@ -227,9 +247,33 @@ impl TDim {
                     members.remove(0)
                 }
             }
-            Mul(p, a) => {
-                if let Mul(p2, a) = *a {
-                    return Mul(p * p2, a).simplify();
+            Mul(terms) => {
+                let (ints, mut rest): (i64, Vec<TDim>) =
+                    terms.into_iter().fold((1, vec![]), |acc, t| match t.simplify() {
+                        MulInt(a, p) => {
+                            (acc.0 * a, acc.1.into_iter().chain(Some(p.as_ref().clone())).collect())
+                        }
+                        Val(a) => (acc.0 * a, acc.1),
+                        it => {
+                            (acc.0, acc.1.into_iter().chain(Some(it.clone()).into_iter()).collect())
+                        }
+                    });
+                if rest.len() == 0 {
+                    Val(ints)
+                } else if ints == 0 {
+                    Val(0)
+                } else {
+                    let rest = if rest.len() == 1 { rest.remove(0) } else { Mul(rest) };
+                    if ints == 1 {
+                        rest
+                    } else {
+                        MulInt(ints, Box::new(rest))
+                    }
+                }
+            }
+            MulInt(p, a) => {
+                if let MulInt(p2, a) = *a {
+                    return MulInt(p * p2, a).simplify();
                 } else if let Val(p2) = *a {
                     return Val(p * p2);
                 }
@@ -239,13 +283,13 @@ impl TDim {
                 } else if p == 1 {
                     a
                 } else if let Add(terms) = &a {
-                    Add(terms.clone().into_iter().map(|a| Mul(p, b!(a)).simplify()).collect())
+                    Add(terms.clone().into_iter().map(|a| MulInt(p, b!(a)).simplify()).collect())
                 } else if let Val(p2) = a {
                     Val(p * p2)
-                } else if let Mul(p2, a) = a {
-                    Mul(p * p2, a)
+                } else if let MulInt(p2, a) = a {
+                    MulInt(p * p2, a)
                 } else {
-                    Mul(p, b!(a))
+                    MulInt(p, b!(a))
                 }
             }
             Div(a, q) => {
@@ -257,11 +301,11 @@ impl TDim {
                 let a = a.simplify();
                 if let Val(a) = a {
                     Val(a / q as i64)
-                } else if let Mul(-1, a) = a {
-                    Mul(-1, b!(Div(a, q)))
+                } else if let MulInt(-1, a) = a {
+                    MulInt(-1, b!(Div(a, q)))
                 } else if let Add(mut terms) = a {
                     if terms.iter().any(|t| {
-                        if let Mul(-1, s) = t {
+                        if let MulInt(-1, s) = t {
                             if let Sym(_) = &**s {
                                 true
                             } else {
@@ -271,10 +315,10 @@ impl TDim {
                             false
                         }
                     }) {
-                        Mul(
+                        MulInt(
                             -1,
                             b!(Div(
-                                b!(Add(terms.into_iter().map(|t| Mul(-1, b!(t))).collect())
+                                b!(Add(terms.into_iter().map(|t| MulInt(-1, b!(t))).collect())
                                     .simplify()),
                                 q
                             )),
@@ -300,7 +344,7 @@ impl TDim {
                     } else {
                         Div(b!(Add(terms)), q)
                     }
-                } else if let Mul(p, a) = a {
+                } else if let MulInt(p, a) = a {
                     if p == q as i64 {
                         a.simplify()
                     } else {
@@ -308,11 +352,11 @@ impl TDim {
                         if gcd == p {
                             Div(a, q / gcd as u64)
                         } else if gcd == q as i64 {
-                            Mul(p / gcd, a)
+                            MulInt(p / gcd, a)
                         } else if gcd > 1 {
-                            Div(b!(Mul(p / gcd, a)), q / gcd as u64).simplify()
+                            Div(b!(MulInt(p / gcd, a)), q / gcd as u64).simplify()
                         } else {
-                            Div(b!(Mul(p, a)), q)
+                            Div(b!(MulInt(p, a)), q)
                         }
                     }
                 } else {
@@ -333,7 +377,8 @@ impl TDim {
                 let (head, tail) = terms.split_first().unwrap();
                 tail.iter().fold(head.gcd(), |a, b| a.gcd(&b.gcd()))
             }
-            Mul(p, a) => a.gcd() * p.abs() as u64,
+            MulInt(p, a) => a.gcd() * p.abs() as u64,
+            Mul(_) => 1,
             Div(a, q) => {
                 if a.gcd() % *q == 0 {
                     a.gcd() / *q
@@ -354,12 +399,13 @@ impl TDim {
             Val(v) => Val(v / d as i64),
             Sym(_) => panic!(),
             Add(terms) => Add(terms.iter().map(|t| t.div(d)).collect()),
-            Mul(p, a) => {
+            Mul(_) => Div(Box::new(self.clone()), d),
+            MulInt(p, a) => {
                 if *p == d as i64 {
                     (**a).clone()
                 } else {
                     let gcd = (p.abs() as u64).gcd(&d);
-                    Mul(p / gcd as i64, b!(a.div(d / gcd)))
+                    MulInt(p / gcd as i64, b!(a.div(d / gcd)))
                 }
             }
             Div(a, q) => Div(a.clone(), q * d),
@@ -379,7 +425,11 @@ impl TDim {
                     .iter()
                     .map(|d| slope_rec(d, sym))
                     .fold((1, 1), |a, b| ((a.0 * b.1 + a.1 * b.0), (b.1 * a.1))),
-                Mul(p, a) => {
+                Mul(terms) => terms
+                    .iter()
+                    .map(|d| slope_rec(d, sym))
+                    .fold((1, 1), |a, b| ((a.0 * b.0), (b.1 * a.1))),
+                MulInt(p, a) => {
                     let (n, d) = slope_rec(a, sym);
                     (p * n, d)
                 }
@@ -397,11 +447,11 @@ impl TDim {
         match self {
             Val(_) => maplit::hashset!(),
             Sym(s) => maplit::hashset!(*s),
-            Add(terms) => terms.iter().fold(maplit::hashset!(), |mut set, v| {
+            Add(terms) | Mul(terms) => terms.iter().fold(maplit::hashset!(), |mut set, v| {
                 set.extend(v.symbols().into_iter());
                 set
             }),
-            Mul(_, a) => a.symbols(),
+            MulInt(_, a) => a.symbols(),
             Div(a, _) => a.symbols(),
         }
     }
@@ -448,6 +498,18 @@ impl<'a> ::std::iter::Sum<&'a TDim> for TDim {
     }
 }
 
+impl std::iter::Product for TDim {
+    fn product<I: Iterator<Item = TDim>>(iter: I) -> Self {
+        iter.fold(TDim::Val(1), |a, b| a * b)
+    }
+}
+
+impl<'a> ::std::iter::Product<&'a TDim> for TDim {
+    fn product<I: Iterator<Item = &'a TDim>>(iter: I) -> TDim {
+        iter.fold(1.into(), |a, b| a * b)
+    }
+}
+
 macro_rules! from_i {
     ($i: ty) => {
         impl From<$i> for TDim {
@@ -465,6 +527,7 @@ macro_rules! from_i {
 
 from_i!(i32);
 from_i!(i64);
+from_i!(u64);
 from_i!(isize);
 from_i!(usize);
 
@@ -483,7 +546,7 @@ impl<'a> From<&'a Symbol> for TDim {
 impl ops::Neg for TDim {
     type Output = Self;
     fn neg(self) -> Self {
-        TDim::Mul(-1, Box::new(self)).reduce()
+        TDim::MulInt(-1, Box::new(self)).reduce()
     }
 }
 
@@ -558,27 +621,41 @@ impl<'a> ops::Sub<&'a TDim> for TDim {
     }
 }
 
-impl ops::MulAssign<i64> for TDim {
-    fn mul_assign(&mut self, rhs: i64) {
-        *self = TDim::Mul(rhs, Box::new(std::mem::take(self))).reduce()
+impl<I: Into<TDim>> ops::MulAssign<I> for TDim {
+    fn mul_assign(&mut self, rhs: I) {
+        *self = TDim::Mul(vec![rhs.into(), std::mem::take(self)]).reduce()
     }
 }
 
-impl<I: AsPrimitive<i64>> ops::Mul<I> for TDim {
+impl<'a> ops::MulAssign<&'a TDim> for TDim {
+    fn mul_assign(&mut self, rhs: &'a TDim) {
+        *self = TDim::Mul(vec![std::mem::take(self), rhs.clone()]).reduce()
+    }
+}
+
+impl<I: Into<TDim>> ops::Mul<I> for TDim {
     type Output = Self;
     fn mul(mut self, rhs: I) -> Self {
-        self *= rhs.as_();
+        self *= rhs.into();
         self
     }
 }
 
-impl<I: AsPrimitive<u64>> ops::DivAssign<I> for TDim {
+impl<'a> ops::Mul<&'a TDim> for TDim {
+    type Output = Self;
+    fn mul(mut self, rhs: &'a TDim) -> Self {
+        self *= rhs;
+        self
+    }
+}
+
+impl<I: AsPrimitive<u64> + PrimInt> ops::DivAssign<I> for TDim {
     fn div_assign(&mut self, rhs: I) {
         *self = TDim::Div(Box::new(std::mem::take(self)), rhs.as_()).reduce()
     }
 }
 
-impl<I: AsPrimitive<u64>> ops::Div<I> for TDim {
+impl<I: AsPrimitive<u64> + PrimInt> ops::Div<I> for TDim {
     type Output = Self;
     fn div(mut self, rhs: I) -> Self {
         self /= rhs.as_();
@@ -586,13 +663,13 @@ impl<I: AsPrimitive<u64>> ops::Div<I> for TDim {
     }
 }
 
-impl<I: AsPrimitive<u64>> ops::RemAssign<I> for TDim {
+impl<I: AsPrimitive<u64> + PrimInt> ops::RemAssign<I> for TDim {
     fn rem_assign(&mut self, rhs: I) {
         *self += -(self.clone() / rhs.as_() * rhs.as_());
     }
 }
 
-impl<I: AsPrimitive<u64>> ops::Rem<I> for TDim {
+impl<I: AsPrimitive<u64> + PrimInt> ops::Rem<I> for TDim {
     type Output = Self;
     fn rem(mut self, rhs: I) -> Self {
         self %= rhs;
@@ -630,7 +707,7 @@ mod tests {
     }
 
     fn mul(a: i64, b: &TDim) -> TDim {
-        TDim::Mul(a, b![b.clone()])
+        TDim::MulInt(a, b![b.clone()])
     }
 
     fn div(a: &TDim, b: u64) -> TDim {
@@ -658,7 +735,7 @@ mod tests {
 
     #[test]
     fn reduce_cplx_ex_3() {
-        assert_eq!(div(&Mul(1, b!(Mul(4, b!(s())))), 4).reduce(), s())
+        assert_eq!(div(&MulInt(1, b!(MulInt(4, b!(s())))), 4).reduce(), s())
     }
 
     #[test]
@@ -716,6 +793,14 @@ mod tests {
         assert_eq!(e, TDim::from(3));
         let e: TDim = TDim::from(3) + 2 + 1;
         assert_eq!(e, TDim::from(6));
+    }
+
+    #[test]
+    fn reduce_muls() {
+        let e: TDim = Val(1) * s();
+        assert_eq!(e, s());
+        let e: TDim = s() * 'b' * 1;
+        assert_eq!(e, s() * 'b');
     }
 
     #[test]

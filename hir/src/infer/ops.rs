@@ -1,4 +1,5 @@
 use super::Factoid;
+use tract_data::UndeterminedSymbol;
 use crate::infer::*;
 use std::fmt;
 use tract_core::downcast_rs::Downcast;
@@ -50,10 +51,8 @@ pub trait InferenceOp:
                             values.into_iter().map(|t| t.into()).collect::<TVec<_>>();
                         return Ok((infered_inputs, output_values, observed));
                     }
-                    Err(e) => match e {
-                        //            TractError(TractErrorKind::StreamTensor, _) => (),
-                        e => return Err(e).context("Eager eval"),
-                    },
+                    Err(e) if e.source().map(|e| e.downcast_ref::<UndeterminedSymbol>()).is_some() => (),
+                    Err(e) => return Err(e).context("Eager eval"),
                 }
             }
         }
