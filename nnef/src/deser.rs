@@ -38,13 +38,23 @@ impl<'mb> ModelBuilder<'mb> {
         self.scopes.push(HashMap::new());
         self.wire_body(&self.proto_model.doc.graph_def.body)?;
         let vars = self.scopes.pop().unwrap();
+
         let outputs = self
             .proto_model
             .doc
             .graph_def
             .results
             .iter()
-            .map(|s| vars[s].to::<OutletId>(self))
+            .map(|s| {
+                Ok(vars
+                    .get(s)
+                    .with_context(|| format!("Could not find variable for output named `{}'", s))?)
+            })
+            .collect::<TractResult<TVec<&Value>>>()?;
+
+        let outputs = outputs
+            .into_iter()
+            .map(|s| s.to::<OutletId>(self))
             .collect::<TractResult<TVec<OutletId>>>()?;
         self.model.set_output_outlets(&outputs)?;
         if let Some(properties) = self
@@ -84,20 +94,32 @@ impl<'mb> ModelBuilder<'mb> {
                 })
                 .collect::<Vec<_>>();
             self.naming_scopes.push(identifiers[0].to_string());
-            let values: TVec<OutletId> = assignment
-                .right
-                .resolve(self, &datum_types)
-                .and_then(|v| v.to(self))
-                .with_context(|| {
-                    format!("Plugging in assignement for {:?}", identifiers.join(", "))
-                })?;
-            if values.len() != identifiers.len() {
-                bail!(
-                    "Assignement for {} received {} value(s).",
-                    identifiers.join(","),
-                    values.len()
-                )
-            }
+            let values = if identifiers.len() == 1 {
+                let value: OutletId = assignment
+                    .right
+                    .resolve(self, &datum_types)
+                    .and_then(|v| v.to(self))
+                    .with_context(|| {
+                        format!("Plugging in assignement for {:?}", identifiers.join(", "))
+                    })?;
+                tvec!(value)
+            } else {
+                let values: TVec<OutletId> = assignment
+                    .right
+                    .resolve(self, &datum_types)
+                    .and_then(|v| v.to(self))
+                    .with_context(|| {
+                        format!("Plugging in assignement for {:?}", identifiers.join(", "))
+                    })?;
+                if values.len() != identifiers.len() {
+                    bail!(
+                        "Assignement for {} received {} value(s).",
+                        identifiers.join(","),
+                        values.len()
+                    )
+                }
+                values
+            };
             self.model.node_mut(values[0].node).name = format!("{}", self.naming_scopes.join("."));
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
                 self.scopes.last_mut().unwrap().insert(id.to_string(), Value::Wire(*outlet));
@@ -436,6 +458,17 @@ impl CoerceFrom<Value> for Arc<Tensor> {
                 .konst
                 .clone()
                 .ok_or_else(|| format_err!("Not a const")),
+            Value::Array(items) => {
+                let mut tensors = vec![];
+                for item in items {
+                    let tensor = Arc::<Tensor>::coerce(builder, item)?;
+                    let mut tensor = tensor.into_tensor();
+                    tensor.insert_axis(0)?;
+                    tensors.push(tensor);
+                }
+                let tensor = Tensor::stack_tensors(0, &tensors)?;
+                Ok(tensor.into_arc_tensor())
+            }
             _ => bail!("Can not build a tensor from {:?}", from),
         }
     }
@@ -473,6 +506,10 @@ impl CoerceFrom<Value> for OutletId {
             }
             Value::Wire(outlet) => Ok(*outlet),
             Value::Tuple(tuple) if tuple.len() == 1 => OutletId::coerce(builder, &tuple[0]),
+            Value::Array(_) => {
+                let tensor = Arc::<Tensor>::coerce(builder, from)?;
+                Ok(builder.wire(tract_core::ops::konst::Const::new(tensor), &[])?[0])
+            }
             _ => bail!("Can not build an outletid from {:?}", from),
         }
     }
