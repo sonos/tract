@@ -288,7 +288,6 @@ impl AxisOp {
             }
             Reshape(at, from, to) => {
                 let mut shape: TVec<usize> = tensor.shape().into();
-                dbg!(&shape);
                 self.change_shape_array(&mut shape, broadcasting)?;
                 if tensor.set_shape(&shape).is_ok() {
                     Ok(())
