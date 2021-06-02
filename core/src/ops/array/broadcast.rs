@@ -35,6 +35,10 @@ impl EvalOp for MultiBroadcastTo {
             self.shape.iter().map(|d| Ok(d.to_usize()?)).collect::<TractResult<_>>()?;
         dispatch_datum!(Self::eval_t(input.datum_type())(&*input, &*dims))
     }
+
+    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(MultiBroadcastToState)))
+    }
 }
 
 #[derive(Clone, Debug)]
