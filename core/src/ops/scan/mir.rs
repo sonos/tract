@@ -741,6 +741,7 @@ impl TypedOp for Scan {
                 .iter()
                 .map(|om| om.concretize_dims(values))
                 .collect::<TractResult<Vec<_>>>()?,
+            body: self.body.concretize_dims(values)?,
             ..self.clone()
         };
         target.wire_node(&node.name, op, &inputs)
