@@ -1,4 +1,4 @@
-use super::lir_unary::{LirMatMulUnary, MatMulGeometry, MatMulGeometryConcretizer};
+use super::lir_unary::{LirMatMulUnary, ConcreteMatMulGeometry, MatMulGeometry};
 use super::*;
 use crate::internal::*;
 use tract_ndarray::prelude::*;
@@ -312,12 +312,12 @@ impl MatMulUnary {
                 overrided_shape.swap(rank - 2, rank - 1);
                 strides.swap(rank - 2, rank - 1);
             }
-            let geometry = MatMulGeometry { m, k, n, b_storage };
+            let geometry = ConcreteMatMulGeometry { m, k, n, b_storage };
             wire = patch.wire_node(
                 format!("{}.matmatmul", &*node.name),
                 LirMatMulUnary {
                     c_fact: TypedFact::dt_shape(c_dt, &c_shape),
-                    geometry: MatMulGeometryConcretizer::Concrete(geometry),
+                    geometry: MatMulGeometry::Concrete(geometry),
                     micro_ops: packed_as,
                     c_m_axis: rank - 2 + self.c_trans as usize,
                     c_n_axis: rank - 2 + !self.c_trans as usize,

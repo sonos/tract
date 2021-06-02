@@ -7,7 +7,7 @@ use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
-use crate::ops::matmul::lir_unary::{LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
+use crate::ops::matmul::lir_unary::{LirMatMulUnary, ConcreteMatMulGeometry, ProtoFusedSpec};
 use crate::ops::matmul::QParams;
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
@@ -427,8 +427,7 @@ impl ConvUnary {
         let mut iter = kernels.iter().cloned().zip(fused_ops.iter().cloned());
         let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 
-        let geometry = MatMulGeometry { b_storage: input_storage, m, k, n: n.to_usize().unwrap() };
-        let geometry = crate::ops::matmul::lir_unary::MatMulGeometryConcretizer::Concrete(geometry);
+        let geometry = ConcreteMatMulGeometry { b_storage: input_storage, m, k, n: n.to_usize().unwrap() };
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
             LirMatMulUnary {
@@ -438,7 +437,7 @@ impl ConvUnary {
                 c_n_axis,
                 c_final_shape: mmm_output_shape.into(),
                 reshape_post: vec![],
-                geometry,
+                geometry: GeometryBound::Concrete(geometry),
                 mmm,
             },
             &[wire],
