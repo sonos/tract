@@ -374,7 +374,7 @@ impl Tensor {
 
     pub fn broadcast_scalar_to_shape(&self, shape: &[usize]) -> anyhow::Result<Tensor> {
         if self.rank() > 0 {
-            anyhow::bail!("broadcast_scalar_to_shape called on {:?}", self);
+            anyhow::bail!("broadcast_scalar_to_shape called on {:?}, which is not a salar", self);
         }
         unsafe fn make<T: Datum>(src: &Tensor, dst: &mut Tensor) {
             let value: &T = src.to_scalar_unchecked::<T>();
