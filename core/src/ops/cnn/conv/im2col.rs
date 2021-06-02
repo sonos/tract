@@ -4,7 +4,7 @@ use crate::internal::*;
 use ndarray::prelude::*;
 
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry};
-use crate::ops::cnn::{GeometryBound, PoolSpec, ResolveSymbolsTo};
+use crate::ops::cnn::{GeometryBound, PoolSpec, ResolveTo};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
 #[derive(Debug, Clone, PartialEq, Educe)]
@@ -44,7 +44,8 @@ impl GeometryBound<SymbolicGeometry, ConcreteGeometry> {
     }
 }
 
-impl ResolveSymbolsTo<ConcreteGeometry> for SymbolicGeometry {
+impl ResolveTo<ConcreteGeometry> for SymbolicGeometry {
+    type Param = [usize];
     fn resolve(&self, input_full_shape: &[usize]) -> TractResult<ConcreteGeometry> {
         let pool = self.pool_geometry.to_concrete(input_full_shape)?.into_owned();
         let patcher = if !pool.patch.padded && pool.patch.rank() == 2 {
@@ -104,14 +105,14 @@ impl Im2Col {
         pool_spec: PoolSpec,
         group: usize,
         k: usize,
-        input_full_shape: &[TDim],
+        input_full_shape: &ShapeFact,
         mmm: Box<dyn MatMatMul>,
     ) -> TractResult<Im2Col> {
         let b_pack = mmm.b_pack(k);
         let pool_geometry = pool_spec.compute_geo(input_full_shape)?;
-        let geometry: GeometryBound<SymbolicGeometry, ConcreteGeometry> =
+        let geometry: GeometryBound<_, _> =
             SymbolicGeometry { group, pool_spec: pool_spec.clone(), pool_geometry, b_pack }.into();
-        let geometry = geometry.optimize(input_full_shape)?;
+        let geometry = geometry.optimize_if(input_full_shape.as_concrete())?;
         Ok(Im2Col { pool_spec, group, geometry })
     }
 

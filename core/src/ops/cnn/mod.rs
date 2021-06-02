@@ -18,8 +18,9 @@ pub use self::patches::{Patch, PatchSpec};
 pub use self::pools::PoolSpec;
 pub use self::sumpool::SumPool;
 
-pub trait ResolveSymbolsTo<Concrete> {
-    fn resolve(&self, input_full_shape: &[usize]) -> TractResult<Concrete>;
+pub trait ResolveTo<Concrete> {
+    type Param: ?Sized;
+    fn resolve(&self, param: &Self::Param) -> TractResult<Concrete>;
 }
 
 #[derive(Debug, Clone, Hash, PartialEq)]
@@ -28,7 +29,7 @@ pub enum GeometryBound<Symbolic, Concrete> {
     Concrete(Concrete),
 }
 
-impl<S: ResolveSymbolsTo<C>, C: Clone> GeometryBound<S, C> {
+impl<S: ResolveTo<C>, C: Clone> GeometryBound<S, C> {
     pub fn is_concrete(&self) -> bool {
         match self {
             GeometryBound::Concrete { .. } => true,
@@ -36,28 +37,23 @@ impl<S: ResolveSymbolsTo<C>, C: Clone> GeometryBound<S, C> {
         }
     }
 
-    pub fn into_concrete(self, input_full_shape: &[usize]) -> TractResult<Self> {
+    pub fn into_concrete(self, param: &S::Param) -> TractResult<Self> {
         match self {
-            Self::Symbolic(sym) => Ok(Self::Concrete(sym.resolve(input_full_shape)?)),
+            Self::Symbolic(sym) => Ok(Self::Concrete(sym.resolve(param)?)),
             Self::Concrete(conc) => Ok(Self::Concrete(conc)),
         }
     }
 
-    pub fn to_concrete(&self, input_full_shape: &[usize]) -> TractResult<Cow<C>> {
+    pub fn to_concrete(&self, param: &S::Param) -> TractResult<Cow<C>> {
         match self {
-            Self::Symbolic(sym) => Ok(Cow::Owned(sym.resolve(input_full_shape)?)),
+            Self::Symbolic(sym) => Ok(Cow::Owned(sym.resolve(param)?)),
             Self::Concrete(conc) => Ok(Cow::Borrowed(conc)),
         }
     }
 
-    pub fn optimize(self, input_full_shape: &[TDim]) -> TractResult<Self> {
-        if self.is_concrete() {
-            return Ok(self)
-        }
-        if let Ok(input_full_shape) =
-            input_full_shape.iter().map(|x| x.to_usize()).collect::<TractResult<TVec<usize>>>()
-        {
-            self.into_concrete(&input_full_shape)
+    pub fn optimize_if(self, param: Option<&S::Param>) -> TractResult<Self> {
+        if let Some(param) = param {
+            self.into_concrete(&param)
         } else {
             Ok(self)
         }
