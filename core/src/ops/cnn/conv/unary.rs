@@ -7,12 +7,14 @@ use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
-use crate::ops::matmul::lir_unary::{LirMatMulUnary, ConcreteMatMulGeometry, ProtoFusedSpec};
+use crate::ops::matmul::lir_unary::{
+    ConcreteMatMulGeometry, LirMatMulUnary, MatMulGeometry, ProtoFusedSpec, SymbolicMatMulGeometry,
+};
 use crate::ops::matmul::QParams;
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
+use tract_linalg::frame::Packer;
 use tract_linalg::mmm::MatMatMul;
-use tract_linalg::{frame::Packer, mmm::MatrixStoreSpec};
 
 use std::iter::Sum;
 
@@ -185,8 +187,17 @@ impl ConvUnary {
         }
 
         let b_dt = model.outlet_fact(wires[0])?.datum_type;
-        let b_storage = mmm.b_packed(b_dt.size_of(), k);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let mut geometry = MatMulGeometry::from(SymbolicMatMulGeometry {
+            b_datum_type: b_dt,
+            m: m.to_dim(),
+            k: k.to_dim(),
+            n: n.clone(),
+            mmm: mmm.clone(),
+        });
+        if n.to_usize().is_ok() {
+            geometry = geometry.optimize_if(Some(&SymbolValues::default()))?;
+        }
         let wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -196,8 +207,7 @@ impl ConvUnary {
             mmm_output_shape.clone().into(),
             m,
             k,
-            n,
-            b_storage,
+            geometry.into(),
             c_axis,
             h_axis,
         )?;
@@ -257,8 +267,17 @@ impl ConvUnary {
             &[wire, padding],
         )?[0];
 
-        let b_storage = mmm.b_packed(b_dt.size_of(), k.to_usize().unwrap());
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let mut geometry = MatMulGeometry::from(SymbolicMatMulGeometry {
+            b_datum_type: b_dt,
+            m: m.to_dim(),
+            k: k.to_dim(),
+            n: n.clone(),
+            mmm: mmm.clone(),
+        });
+        if n.to_usize().is_ok() {
+            geometry = geometry.optimize_if(Some(&SymbolValues::default()))?;
+        }
         let mut wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -268,8 +287,7 @@ impl ConvUnary {
             mmm_output_shape.clone().into(),
             m.to_usize().unwrap(),
             k.to_usize().unwrap(),
-            n.to_dim(),
-            b_storage,
+            geometry,
             c_axis,
             h_axis,
         )?;
@@ -364,6 +382,12 @@ impl ConvUnary {
         );
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
 
+        let geometry = MatMulGeometry::Concrete(ConcreteMatMulGeometry {
+            m,
+            k,
+            n: n.to_usize().unwrap(),
+            b_storage,
+        });
         let wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -373,8 +397,7 @@ impl ConvUnary {
             mmm_output_shape.into(),
             m.to_usize().unwrap(),
             k,
-            n.to_dim(),
-            b_storage,
+            geometry,
             c_axis,
             h_axis,
         )?;
@@ -416,8 +439,7 @@ impl ConvUnary {
         mmm_output_shape: ShapeFact,
         m: usize,
         k: usize,
-        n: TDim,
-        input_storage: MatrixStoreSpec,
+        geometry: MatMulGeometry,
         c_m_axis: usize,
         c_n_axis: usize,
     ) -> TractResult<OutletId> {
@@ -427,7 +449,6 @@ impl ConvUnary {
         let mut iter = kernels.iter().cloned().zip(fused_ops.iter().cloned());
         let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 
-        let geometry = ConcreteMatMulGeometry { b_storage: input_storage, m, k, n: n.to_usize().unwrap() };
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
             LirMatMulUnary {
@@ -437,7 +458,7 @@ impl ConvUnary {
                 c_n_axis,
                 c_final_shape: mmm_output_shape.into(),
                 reshape_post: vec![],
-                geometry: GeometryBound::Concrete(geometry),
+                geometry: geometry.into(),
                 mmm,
             },
             &[wire],
@@ -653,11 +674,11 @@ impl TypedOp for ConvUnary {
         }
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
             bail!(
-                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
-                self.pool_spec.output_channel_override,
-                self.output_channels(),
-                self
-                );
+                    "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
+                    self.pool_spec.output_channel_override,
+                    self.output_channels(),
+                    self
+                    );
         }
         if let Some(bias) = &self.bias {
             if bias.len() != self.output_channels() {
@@ -985,12 +1006,12 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
         return false;
     }
     let direct =
-        // no real rationale here, pure heuristic to force "right" pick in
-        // both hey_snips v3 and v4. just hope this will generalize ok
-        (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
-        // that one kind of make sense, better use direct that generate a huge
-        // im2col matrix (when both kernel and input are big)
-        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
+            // no real rationale here, pure heuristic to force "right" pick in
+            // both hey_snips v3 and v4. just hope this will generalize ok
+            (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
+            // that one kind of make sense, better use direct that generate a huge
+            // im2col matrix (when both kernel and input are big)
+            pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
     direct
 }
 
