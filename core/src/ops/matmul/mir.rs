@@ -126,8 +126,8 @@ pub(super) fn cost<A: DimLike + Clone, B: DimLike + Clone>(
         b_trans,
         false,
     )?;
-    let mul = c_shape.iter().rev().skip(2).cloned().maybe_product()?;
-    Ok(tvec!((Cost::FMA(dt), [mul, m.to_dim(), k.to_dim(), n.to_dim()].iter().maybe_product()?)))
+    let mul = c_shape.iter().rev().skip(2).cloned().product();
+    Ok(tvec!((Cost::FMA(dt), [mul, m.to_dim(), k.to_dim(), n.to_dim()].iter().product())))
 }
 
 #[cfg(test)]

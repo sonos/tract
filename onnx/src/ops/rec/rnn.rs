@@ -166,10 +166,10 @@ impl RNN {
         use tract_hir::ops::{array, math, matmul, scan};
 
         let x_fact = target.outlet_fact(inputs[0])?.clone();
-        let r_fact = target.outlet_fact(inputs[2])?;
+        let r_fact = target.outlet_fact(inputs[2])?.clone();
 
-        let b_size = x_fact.shape[1].to_usize().unwrap();
-        let h_size = r_fact.shape[2].to_usize().unwrap();
+        let b_size = &x_fact.shape[1];
+        let h_size = &r_fact.shape[2];
 
         let chunk = if dir == 0 { 1 } else { -1 };
 
@@ -246,19 +246,31 @@ impl RNN {
             scan::StateInitializer::FromInput(initial_h_input)
         } else {
             scan::StateInitializer::Value(
-                tract_ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
+                tensor0(0.0f32)
+                    .broadcast_scalar_to_shape(&[
+                        1,
+                        b_size.to_usize().unwrap(),
+                        h_size.to_usize().unwrap(),
+                    ])?
+                    .into_arc_tensor(),
             )
         };
         input_mapping.push(scan::InputMapping::State { initializer });
         let h_source = body
-            .add_source("h_source", TypedFact::dt_shape(x_fact.datum_type, &[1, b_size, h_size]))?
+            .add_source(
+                "h_source",
+                TypedFact::dt_shape(
+                    x_fact.datum_type,
+                    &[1.to_dim(), b_size.clone(), h_size.clone()],
+                ),
+            )?
             .into();
 
         wire!(Ht_1 = AxisOp::Rm(0), h_source);
 
         let bias = if let Some(b) = b {
-            wire!(Wbi = array::Slice::new(1, 0 * h_size, 1 * h_size), b);
-            wire!(Rbi = array::Slice::new(1, 1 * h_size, 2 * h_size), b);
+            wire!(Wbi = array::Slice::new(1, 0.to_dim() * h_size, 1.to_dim() * h_size), b);
+            wire!(Rbi = array::Slice::new(1, 1.to_dim() * h_size, 2.to_dim() * h_size), b);
             wire!(bi = math::add::bin_typed(), Wbi, Rbi);
             Some(bi)
         } else {

@@ -37,7 +37,7 @@ impl Expansion for LayerHardmax {
         let input_dt = input_fact.datum_type;
         let rank = input_fact.rank();
         let axis = if self.axis < 0 { rank as isize + self.axis } else { self.axis } as usize;
-        let suffix_dim: TDim = input_fact.shape[axis..].iter().maybe_product()?;
+        let suffix_dim: TDim = input_fact.shape[axis..].iter().product();
         let dim = suffix_dim
             .to_usize()
             .context("OneHot assumes known dimension on working axes suffix.")?;

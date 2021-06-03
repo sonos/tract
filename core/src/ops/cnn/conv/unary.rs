@@ -7,12 +7,14 @@ use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
-use crate::ops::matmul::lir_unary::{LirMatMulUnary, MatMulGeometry, ProtoFusedSpec};
+use crate::ops::matmul::lir_unary::{
+    ConcreteMatMulGeometry, LirMatMulUnary, MatMulGeometry, ProtoFusedSpec, SymbolicMatMulGeometry,
+};
 use crate::ops::matmul::QParams;
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
+use tract_linalg::frame::Packer;
 use tract_linalg::mmm::MatMatMul;
-use tract_linalg::{frame::Packer, mmm::MatrixStoreSpec};
 
 use std::iter::Sum;
 
@@ -185,8 +187,17 @@ impl ConvUnary {
         }
 
         let b_dt = model.outlet_fact(wires[0])?.datum_type;
-        let b_storage = mmm.b_packed(b_dt.size_of(), k);
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let mut geometry = MatMulGeometry::from(SymbolicMatMulGeometry {
+            b_datum_type: b_dt,
+            m: m.to_dim(),
+            k: k.to_dim(),
+            n: n.clone(),
+            mmm: mmm.clone(),
+        });
+        if n.to_usize().is_ok() {
+            geometry = geometry.optimize_if(Some(&SymbolValues::default()))?;
+        }
         let wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -196,8 +207,7 @@ impl ConvUnary {
             mmm_output_shape.clone().into(),
             m,
             k,
-            n,
-            b_storage,
+            geometry.into(),
             c_axis,
             h_axis,
         )?;
@@ -257,8 +267,17 @@ impl ConvUnary {
             &[wire, padding],
         )?[0];
 
-        let b_storage = mmm.b_packed(b_dt.size_of(), k.to_usize().unwrap());
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let mut geometry = MatMulGeometry::from(SymbolicMatMulGeometry {
+            b_datum_type: b_dt,
+            m: m.to_dim(),
+            k: k.to_dim(),
+            n: n.clone(),
+            mmm: mmm.clone(),
+        });
+        if n.to_usize().is_ok() {
+            geometry = geometry.optimize_if(Some(&SymbolValues::default()))?;
+        }
         let mut wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -268,8 +287,7 @@ impl ConvUnary {
             mmm_output_shape.clone().into(),
             m.to_usize().unwrap(),
             k.to_usize().unwrap(),
-            n.to_dim(),
-            b_storage,
+            geometry,
             c_axis,
             h_axis,
         )?;
@@ -293,7 +311,7 @@ impl ConvUnary {
         &self,
         output_shape: &BaseDataShape<D, TVec<D>>,
     ) -> TractResult<(TVec<D>, usize, usize)> {
-        let geo_collapsed_out: D = output_shape.hw_dims().iter().maybe_product()?;
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().cloned().product();
         let shape: BaseDataShape<D, TVec<D>> = output_shape.fmt.from_n_c_hw(
             output_shape.n().cloned().unwrap_or(1.into()),
             output_shape.c().clone(),
@@ -322,7 +340,7 @@ impl ConvUnary {
         wire: OutletId,
         output_shape: &BaseDataShape<D, TVec<D>>,
     ) -> TractResult<OutletId> {
-        let geo_collapsed_out: D = output_shape.hw_dims().iter().maybe_product()?;
+        let geo_collapsed_out: D = output_shape.hw_dims().iter().cloned().product();
         let wire = model.wire_node(
             name,
             AxisOp::Reshape(
@@ -364,6 +382,12 @@ impl ConvUnary {
         );
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
 
+        let geometry = MatMulGeometry::Concrete(ConcreteMatMulGeometry {
+            m,
+            k,
+            n: n.to_usize().unwrap(),
+            b_storage,
+        });
         let wire = self.wire_lir_matmatmul(
             model,
             name,
@@ -373,8 +397,7 @@ impl ConvUnary {
             mmm_output_shape.into(),
             m.to_usize().unwrap(),
             k,
-            n.to_dim(),
-            b_storage,
+            geometry,
             c_axis,
             h_axis,
         )?;
@@ -397,7 +420,7 @@ impl ConvUnary {
         let m = self.output_channels() / self.group;
         let k = self.kernel.len() / self.output_channels();
         let n: TDim =
-            self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().maybe_product()?;
+            self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().cloned().product();
 
         let mmm = tract_linalg::ops()
             .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), n.to_usize().ok())
@@ -416,8 +439,7 @@ impl ConvUnary {
         mmm_output_shape: ShapeFact,
         m: usize,
         k: usize,
-        n: TDim,
-        input_storage: MatrixStoreSpec,
+        geometry: MatMulGeometry,
         c_m_axis: usize,
         c_n_axis: usize,
     ) -> TractResult<OutletId> {
@@ -427,8 +449,6 @@ impl ConvUnary {
         let mut iter = kernels.iter().cloned().zip(fused_ops.iter().cloned());
         let micro_ops = ArrayD::from_shape_fn(shape, |_| iter.next().unwrap());
 
-        let geometry = MatMulGeometry { b_storage: input_storage, m, k, n: n.to_usize().unwrap() };
-        let geometry = crate::ops::matmul::lir_unary::MatMulGeometryConcretizer::Concrete(geometry);
         let wire = model.wire_node(
             format!("{}.matmatmul", name),
             LirMatMulUnary {
@@ -438,7 +458,7 @@ impl ConvUnary {
                 c_n_axis,
                 c_final_shape: mmm_output_shape.into(),
                 reshape_post: vec![],
-                geometry,
+                geometry: geometry.into(),
                 mmm,
             },
             &[wire],
@@ -654,11 +674,11 @@ impl TypedOp for ConvUnary {
         }
         if self.pool_spec.output_channel_override != Some(self.output_channels()) {
             bail!(
-                "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
-                self.pool_spec.output_channel_override,
-                self.output_channels(),
-                self
-                );
+                    "Inconsistent convolution: output channels from pool spec is {:?}, kernel expects {} output channels, {:?}",
+                    self.pool_spec.output_channel_override,
+                    self.output_channels(),
+                    self
+                    );
         }
         if let Some(bias) = &self.bias {
             if bias.len() != self.output_channels() {
@@ -728,7 +748,7 @@ impl TypedOp for ConvUnary {
             &*self.pool_spec.strides.clone().unwrap_or(tvec!(1; kernel_spatial_shape.len())),
         );
         let n_output_points: TDim =
-            output_dims.iter().map(|d| d.convoluted.clone()).maybe_product()?;
+            output_dims.iter().map(|d| d.convoluted.clone()).product::<TDim>();
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         let one = 1.to_dim();
@@ -739,13 +759,11 @@ impl TypedOp for ConvUnary {
             ),
             (
                 Cost::FMA(inputs[0].datum_type),
-                shape
-                    .n()
-                    .unwrap_or(&one)
-                    .maybe_mul(shape.c())?
-                    .maybe_mul(&n_output_channels)?
-                    .maybe_mul(&n_output_points)?
-                    .maybe_mul(&kernel_surface)?
+                shape.n().cloned().unwrap_or(one)
+                    * shape.c()
+                    * n_output_channels
+                    * n_output_points
+                    * kernel_surface
                     / self.group
             )
         ))
@@ -878,7 +896,7 @@ impl TypedOp for ConvUnary {
                 let mut patch = TypedModelPatch::default();
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
                 let input_c_is_last = input_shape.c_axis() == input_shape.rank() - 1;
-                let geo_dim: TDim = input_shape.hw_dims().iter().maybe_product()?;
+                let geo_dim: TDim = input_shape.hw_dims().iter().product();
                 wire = patch.wire_node(
                     format!("{}.reshape_input", &*node.name),
                     AxisOp::Reshape(
@@ -988,12 +1006,12 @@ fn should_use_direct(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize
         return false;
     }
     let direct =
-        // no real rationale here, pure heuristic to force "right" pick in
-        // both hey_snips v3 and v4. just hope this will generalize ok
-        (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
-        // that one kind of make sense, better use direct that generate a huge
-        // im2col matrix (when both kernel and input are big)
-        pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
+            // no real rationale here, pure heuristic to force "right" pick in
+            // both hey_snips v3 and v4. just hope this will generalize ok
+            (0..spatial_rank).any(|d| pool_spec.dilation(d) > 1 && pool_spec.kernel_shape[d] > 2) ||
+            // that one kind of make sense, better use direct that generate a huge
+            // im2col matrix (when both kernel and input are big)
+            pool_spec.kernel_shape.iter().product::<usize>() * input_shape.shape.iter().product::<usize>() > 1048576;
     direct
 }
 

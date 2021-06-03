@@ -152,7 +152,7 @@ impl MutableState {
 impl OpState for State {
     fn eval(
         &mut self,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         _op: &dyn Op,
         inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
@@ -186,7 +186,8 @@ impl OpState for State {
         for (ix, output) in op.output_mapping.iter().enumerate() {
             if let Some(slot) = output.full_slot {
                 let fact = op.plan.model().output_fact(ix)?;
-                let mut shape: TVec<usize> = fact.shape.as_concrete().unwrap().into();
+                let mut shape: TVec<usize> =
+                    fact.shape.eval_to_usize(&session.resolved_symbols)?.into_owned();
                 let scanning_dim = output
                     .full_dim_hint
                     .as_ref()
@@ -288,7 +289,7 @@ impl TypedOp for LirScan {
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();
                 let scanning_dim =
-                    output.full_dim_hint.clone().unwrap_or(shape[output.axis].maybe_mul(&iters)?);
+                    output.full_dim_hint.clone().unwrap_or(shape[output.axis].clone() * &iters);
                 shape.set(output.axis, scanning_dim);
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)));
             }

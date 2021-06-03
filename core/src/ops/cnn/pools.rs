@@ -101,7 +101,8 @@ pub struct ConcretePoolGeometry {
     pub output_shape: DataShape,
 }
 
-impl super::ResolveSymbolsTo<ConcretePoolGeometry> for SymbolicPoolGeometry {
+impl super::ResolveTo<ConcretePoolGeometry> for SymbolicPoolGeometry {
+    type Param = [usize];
     fn resolve(&self, input_full_shape: &[usize]) -> TractResult<ConcretePoolGeometry> {
         let input_shape = self.pool_spec.data_format.shape(input_full_shape.into())?;
         let output_inner_stride = match self.pool_spec.data_format {

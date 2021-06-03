@@ -36,7 +36,7 @@ impl Expansion for GlobalAvgPool {
             &[input],
         )?;
         let div =
-            tensor0((input_fact.shape.iter().skip(2).maybe_product()?.to_i64()? as f64).recip())
+            tensor0((input_fact.shape.iter().skip(2).product::<TDim>().to_i64()? as f64).recip())
                 .cast_to_dt(input_fact.datum_type)?
                 .into_owned()
                 .broadcast_into_rank(input_fact.rank())?;
@@ -102,7 +102,7 @@ impl Expansion for GlobalLpPool {
             &wire,
         )?;
         let div =
-            tensor0((input_fact.shape.iter().skip(2).maybe_product()?.to_i64()? as f64).recip())
+            tensor0((input_fact.shape.iter().skip(2).product::<TDim>().to_i64()? as f64).recip())
                 .cast_to_dt(input_fact.datum_type)?
                 .into_owned()
                 .broadcast_into_rank(input_fact.rank())?;

@@ -71,6 +71,7 @@ pub mod ops;
 pub mod broadcast;
 pub mod framework;
 mod hash;
+mod late_bind;
 pub mod model;
 pub mod optim;
 pub mod plan;
@@ -99,11 +100,14 @@ pub mod prelude {
 pub mod internal {
     pub use crate::hash::{dyn_hash, hash_f32, hash_opt_f32, DynHash, SloppyHash};
     pub use crate::impl_dyn_hash;
+    pub use crate::late_bind::*;
     pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::invariants::*;
-    pub use crate::ops::{AttrOrInput, AxisInfo, Cost, EvalOp, Invariants, Op, OpState, Validation};
+    pub use crate::ops::{
+        AttrOrInput, AxisInfo, Cost, EvalOp, Invariants, Op, OpState, Validation,
+    };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use anyhow::{anyhow, bail, format_err, Context as TractErrorContext};

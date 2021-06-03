@@ -273,9 +273,7 @@ impl Annotations {
                     let cost = model.node(node_id).op.cost(&*inputs)?;
                     annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
                         .into_iter()
-                        .map(|(k, v)| {
-                            (k, if k.is_compute() { v.maybe_mul(&multiplier).unwrap() } else { v })
-                        })
+                        .map(|(k, v)| (k, if k.is_compute() { v * &multiplier } else { v }))
                         .collect();
 
                     let nested_subs = model.nested_models(node_id);
@@ -288,7 +286,7 @@ impl Annotations {
                             annotations,
                             *sub,
                             &*prefix,
-                            multiplier.maybe_mul(multi.as_ref().unwrap()).unwrap(),
+                            multi.clone().unwrap_or(1.into()) * &multiplier,
                         )?;
                     }
                 }

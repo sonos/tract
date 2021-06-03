@@ -153,6 +153,6 @@ impl TypedOp for Delay {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        Ok(tvec!((Cost::Buffer(self.datum_type), self.buffer_shape.iter().maybe_product()?)))
+        Ok(tvec!((Cost::Buffer(self.datum_type), self.buffer_shape.iter().product())))
     }
 }

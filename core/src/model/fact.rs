@@ -141,6 +141,13 @@ impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
     }
 }
 
+impl<'a, D: ToDim> std::iter::FromIterator<&'a D> for ShapeFact {
+    fn from_iter<T: IntoIterator<Item = &'a D>>(iter: T) -> Self {
+        ShapeFact::from_dims(iter.into_iter().map(|d| d.to_dim()))
+    }
+
+}
+
 impl fmt::Debug for Dims {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use tract_itertools::Itertools;

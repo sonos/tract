@@ -288,11 +288,16 @@ where
             .input_outlets()?
             .get(input)
             .ok_or_else(|| format_err!("Invalid input id for model ({}).", input))?;
+        fn resolve(symbols: &mut SymbolValues, expected: &TDim, provided: i64) {
+            match expected {
+                TDim::Sym(s) => symbols[*s] = Some(provided),
+                TDim::MulInt(x, expr) => resolve(symbols, expr, provided / *x),
+                _ => (),
+            }
+        }
         if let Ok(fact) = self.model().outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {
-                if let TDim::Sym(s) = expected {
-                    self.session_state.resolved_symbols[s] = Some(*provided as i64);
-                }
+                resolve(&mut self.session_state.resolved_symbols, &expected, *provided as i64)
             }
         }
         self.plan

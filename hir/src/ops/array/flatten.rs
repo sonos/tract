@@ -13,7 +13,7 @@ impl Flatten {
             bail!("Can not compute a shape with square of symbols")
         }
         let axis = if self.axis >= 0 { self.axis } else { self.axis + shape.len() as i64 } as usize;
-        Ok([shape[..axis].iter().maybe_product()?, shape[axis..].iter().maybe_product()?])
+        Ok([shape[..axis].iter().cloned().product::<D>(), shape[axis..].iter().cloned().product()])
     }
 }
 

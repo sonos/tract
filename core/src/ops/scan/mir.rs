@@ -617,7 +617,7 @@ impl TypedOp for Scan {
             if let Some(slot) = output.full_slot {
                 let mut shape = fact.shape.clone();
                 let scanning_dim =
-                    output.full_dim_hint.clone().unwrap_or(shape[output.axis].maybe_mul(&iters)?);
+                    output.full_dim_hint.clone().unwrap_or(shape[output.axis].clone() * &iters);
                 shape.set(output.axis, scanning_dim);
                 outputs.push((slot, TypedFact::dt_shape(fact.datum_type, shape)));
             }
@@ -741,6 +741,7 @@ impl TypedOp for Scan {
                 .iter()
                 .map(|om| om.concretize_dims(values))
                 .collect::<TractResult<Vec<_>>>()?,
+            body: self.body.concretize_dims(values)?,
             ..self.clone()
         };
         target.wire_node(&node.name, op, &inputs)

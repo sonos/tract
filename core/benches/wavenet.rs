@@ -35,7 +35,7 @@ fn im2col(c: &mut Criterion) {
                         pool_spec,
                         1,
                         48,
-                        &[len.to_dim(), 16.to_dim()],
+                        &([len, 16].iter().collect()),
                         mmm,
                     )
                     .unwrap();
@@ -64,7 +64,7 @@ fn mmm(c: &mut Criterion) {
                 let input = tvec!(Tensor::zero_dt(f32::datum_type(), &[mmm.b_pack(48).len(8)])
                     .unwrap()
                     .into_arc_tensor());
-                let geometry = MatMulGeometryConcretizer::Concrete(MatMulGeometry {
+                let geometry = MatMulGeometry::Concrete(ConcreteMatMulGeometry {
                     k: 48,
                     m: 64,
                     n: 8,

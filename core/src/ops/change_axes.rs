@@ -139,7 +139,7 @@ impl AxisOp {
                 // semantics
                 if x == from {
                     None
-                // Some((Some(Rm(*to)), None))
+                    // Some((Some(Rm(*to)), None))
                 } else if x < from.min(to) {
                     Some((Some(self.clone()), Some(Move(from - 1, to - 1))))
                 } else if x > from.max(to) {
@@ -410,15 +410,48 @@ impl Op for AxisOp {
 
 impl_dyn_hash!(AxisOp);
 
+#[derive(Debug, Clone)]
+struct ReshapeState;
+
 impl EvalOp for AxisOp {
     fn is_stateless(&self) -> bool {
-        true
+        match self {
+            AxisOp::Reshape(_, from, _) => from.iter().all(|d| d.to_usize().is_ok()),
+            _ => true,
+        }
     }
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut input = args_1!(inputs).into_tensor();
         self.change_tensor(&mut input, false)?;
         Ok(tvec!(input.into_arc_tensor()))
+    }
+
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(if !self.is_stateless() { Some(Box::new(ReshapeState)) } else { None })
+    }
+}
+
+impl OpState for ReshapeState {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        op: &dyn Op,
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let op = op.downcast_ref::<AxisOp>().unwrap();
+        match op {
+            AxisOp::Reshape(skip, from, to) => {
+                let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                AxisOp::Reshape(*skip, from, to).eval(inputs)
+            }
+            _ => bail!("Only reshape can be stateful"),
+        }
     }
 }
 

@@ -5,7 +5,7 @@ use std::ops;
 
 mod tree;
 
-pub use self::tree::{Symbol, SymbolValues, TDim};
+pub use self::tree::{Symbol, SymbolValues, TDim, UndeterminedSymbol};
 type TractError = anyhow::Error;
 type TractResult<T> = anyhow::Result<T>;
 
@@ -31,17 +31,19 @@ pub trait DimLike:
     + ops::Sub<Self, Output = Self>
     + ops::Sub<usize, Output = Self>
     + for<'a> ops::Sub<&'a Self, Output = Self>
+    + ops::Mul<Self, Output = Self>
     + ops::Mul<usize, Output = Self>
+    + for<'a> ops::Mul<&'a Self, Output = Self>
     + ops::Div<usize, Output = Self>
     + ops::Rem<usize, Output = Self>
     + Send
     + Sync
     + 'static
     + std::iter::Sum
+    + std::iter::Product
     + ToDim
 {
     fn maybe_div(&self, other: &Self) -> TractResult<(Self, u64)>;
-    fn maybe_mul(&self, other: &Self) -> TractResult<Self>;
 
     /// Integer divise, rounding up to next integer.
     fn div_ceil(&self, other: usize) -> Self {
@@ -76,43 +78,37 @@ impl DimLike for TDim {
         } else if other.is_zero() {
             anyhow::bail!("Division by zero")
         }
-        let quotient = match (self.to_i64(), other.to_i64()) {
-            (Ok(p), Ok(q)) => {
-                let (p, q) = tree::reduce_ratio(p, q);
-                Some((p.into(), q))
-            }
-            (_, Ok(q)) => Some((self.clone() / q, 1)),
-            (_, _) => {
-                if self.symbols().len() == 1 && other.symbols().len() == 1 {
-                    let sym = self.symbols().into_iter().nth(0).unwrap();
-                    let slope_p = self.slope(sym);
-                    let slope_q = other.slope(sym);
-                    let (p, q) = tree::reduce_ratio(
-                        slope_p.0 * slope_q.1 as i64,
-                        slope_q.0 * slope_p.1 as i64,
-                    );
-                    Some((p.into(), q))
-                } else {
-                    None
+        fn expand(dim: &TDim) -> (i64, Vec<TDim>) {
+            match dim {
+                TDim::Mul(terms) => terms.iter().map(expand).fold((1i64, vec![]), |acc, t| {
+                    (acc.0 * t.0, acc.1.into_iter().chain(t.1.into_iter()).collect())
+                }),
+                TDim::MulInt(a, terms) => {
+                    let (b, v) = expand(terms);
+                    (a * b, v)
                 }
-            }
-        };
-        if let Some(quotient) = quotient {
-            if self == &(other.clone().maybe_mul(&quotient.0).unwrap() / quotient.1) {
-                return Ok(quotient);
+                TDim::Val(x) => (*x, vec![]),
+                it => (1, vec![it.clone()]),
             }
         }
-        anyhow::bail!("Quotient is a non linear expression ({} / {})", self, other)
-    }
-
-    fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
-        if let Ok(d) = other.to_i64() {
-            Ok(self.clone() * d)
-        } else if let Ok(a) = self.to_i64() {
-            Ok(other.clone() * a)
-        } else {
-            anyhow::bail!("product with too many symbols")
+        let (mut num_int, mut num) = expand(self);
+        let (mut denum_int, denum) = expand(other);
+        for it in denum {
+            if let Some(pos) = num.iter().position(|n| n == &it) {
+                num.remove(pos);
+            } else {
+                anyhow::bail!("Can't divide {} by {}", self, other)
+            }
         }
+        use num_integer::Integer;
+        if denum_int < 0 {
+            num_int *= -1;
+            denum_int *= -1;
+        }
+        let gcd = num_int.gcd(&denum_int);
+        num_int /= gcd;
+        denum_int /= gcd;
+        Ok(((TDim::Mul(num) * num_int).reduce(), denum_int as u64))
     }
 
     fn to_i64(&self) -> TractResult<i64> {
@@ -136,10 +132,6 @@ impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
 }
 
 impl DimLike for usize {
-    fn maybe_mul(&self, other: &Self) -> TractResult<Self> {
-        Ok(self * other)
-    }
-
     fn maybe_div(&self, other: &Self) -> TractResult<(Self, u64)> {
         use num_integer::Integer;
         let gcd = self.gcd(other);
@@ -163,16 +155,6 @@ impl<'a> std::convert::TryFrom<&'a TDim> for usize {
     type Error = anyhow::Error;
     fn try_from(d: &'a TDim) -> anyhow::Result<usize> {
         d.to_usize()
-    }
-}
-
-pub trait MaybeProduct<D> {
-    fn maybe_product(self) -> TractResult<D>;
-}
-
-impl<D: DimLike, A: std::borrow::Borrow<D>, I: Iterator<Item = A>> MaybeProduct<D> for I {
-    fn maybe_product(mut self) -> TractResult<D> {
-        self.try_fold(D::one(), |acc, d| acc.maybe_mul(d.borrow()))
     }
 }
 
@@ -229,5 +211,13 @@ mod tests {
     #[test]
     fn div_sym_sym_rem() {
         assert!((s() + 1).maybe_div(&(s() * 4)).is_err());
+    }
+
+    #[test]
+    fn div_sym_sym_complex() {
+        assert_eq!(
+            (256.to_dim() * 's' * 'b').maybe_div(&(1.to_dim() * 's' * 'b')).unwrap(),
+            (256.into(), 1)
+        );
     }
 }
