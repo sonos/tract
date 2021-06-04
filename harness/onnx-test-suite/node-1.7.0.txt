@@ -69,7 +69,7 @@ test_averagepool_2d_strides
 test_averagepool_3d_default
 test_basic_conv_with_padding input:x
 test_basic_conv_without_padding input:x
-test_basic_convinteger                                                              input:x not-nnef
+test_basic_convinteger                                                              input:x 
 test_batchnorm_epsilon input:x
 test_batchnorm_example input:x
 test_cast_DOUBLE_to_FLOAT
@@ -121,7 +121,7 @@ test_constantofshape_int_zeros                                                  
 test_conv_with_strides_and_asymmetric_padding input:x
 test_conv_with_strides_no_padding input:x
 test_conv_with_strides_padding input:x
-test_convinteger_with_padding                                                       input:x not-nnef
+test_convinteger_with_padding                                                       input:x 
 test_convtranspose input:X
 test_convtranspose_1d input:X
 test_convtranspose_3d input:X
@@ -250,7 +250,7 @@ test_lstm_with_peepholes
 test_matmul_2d
 test_matmul_3d
 test_matmul_4d
-test_matmulinteger                                                               not-nnef
+test_matmulinteger                                                               
 test_max_example
 test_max_float32
 test_max_float64
@@ -352,9 +352,9 @@ test_pow_types_int64_float32
 test_pow_types_int64_int64
 test_prelu_broadcast
 test_prelu_example
-test_qlinearconv                                                                     not-typable not-nnef
-test_qlinearmatmul_2D                                                                not-nnef
-test_qlinearmatmul_3D                                                                not-nnef
+test_qlinearconv                                                                     not-typable 
+test_qlinearmatmul_2D                                                                
+test_qlinearmatmul_3D                                                                
 test_quantizelinear                                                                 input:x not-nnef
 test_reciprocal
 test_reciprocal_example

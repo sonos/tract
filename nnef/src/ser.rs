@@ -211,9 +211,13 @@ impl<'a> IntoAst<'a> {
     }
 
     fn node(&mut self, node: &TypedNode) -> TractResult<TVec<Arc<RValue>>> {
+        let mut required_registries = Vec::new();
         for reg in &self.framework.registries {
             if let Some(outputs) = reg.serialize(self, node)? {
-                self.ensure_registry(&reg.id)?;
+                if self.ensure_registry(&reg.id).is_err() {
+                    required_registries.push(&reg.id);
+                    continue;
+                };
                 let scoped = self.scoped_id(&node.name);
                 let names: Vec<String> = (0..node.outputs.len())
                     .map(|ix| if ix > 0 { format!("{}_{}", scoped, ix) } else { scoped.clone() })
@@ -250,7 +254,16 @@ impl<'a> IntoAst<'a> {
                 return Ok(outputs);
             }
         }
-        bail!("No serializer found for node {}", node);
+        if required_registries.is_empty() {
+            bail!("No serializer found for node {}", node);
+        } else if required_registries.len() == 1 {
+            bail!(
+                "Registry {} required, consider allowing it on the NNEF framework.",
+                required_registries[0]
+            );
+        } else {
+            bail!("One of the following registries is required: {:?}, consider allowing one on the NNEF framework.", required_registries);
+        }
     }
 
     pub fn scoped_id(&self, name: impl Into<String>) -> String {

@@ -272,7 +272,7 @@ impl Fact for TypedFact {
 
     fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
         let shape = self.shape.eval_to_usize(symbols.unwrap_or(&SymbolValues::default()))?;
-        Ok(self.datum_type.unquantized() == t.datum_type().unquantized() && &**shape == t.shape())
+        Ok(self.datum_type == t.datum_type() && &**shape == t.shape())
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {

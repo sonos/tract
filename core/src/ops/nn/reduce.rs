@@ -1,6 +1,7 @@
-use crate::internal::*;
+use crate::{internal::*, ops::quant::ClampCast};
 use ndarray::prelude::*;
 use std::convert::TryFrom;
+use tract_num_traits::Bounded;
 
 macro_rules! r {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
@@ -14,9 +15,7 @@ macro_rules! r {
             DatumType::F32  => $($path)::*::<f32,_,_,_>($($args),*),
             DatumType::F64  => $($path)::*::<f64,_,_,_>($($args),*),
             DatumType::QI8(_)  => $($path)::*::<i8,_,_,_>($($args),*),
-            DatumType::QI32(_)  => $($path)::*::<i32,_,_,_>($($args),*),
             DatumType::QU8(_)  => $($path)::*::<u8,_,_,_>($($args),*),
-            DatumType::QU32(_)  => $($path)::*::<u32,_,_,_>($($args),*),
             _ => bail!("{:?} is not a number", $dt)
         }
     };
@@ -31,9 +30,7 @@ macro_rules! r {
             DatumType::F32  => $($path)::*::<f32,_,_,_>($($args),*),
             DatumType::F64  => $($path)::*::<f64,_,_,_>($($args),*),
             DatumType::QI8(_)  => $($q_path)::*::<i8,_,_,_>($($q_args),*),
-            DatumType::QI32(_)  => $($q_path)::*::<i32,_,_,_>($($q_args),*),
             DatumType::QU8(_)  => $($q_path)::*::<u8,_,_,_>($($q_args),*),
-            DatumType::QU32(_)  => $($q_path)::*::<u32,_,_,_>($($q_args),*),
             _ => bail!("{:?} is not a number", $dt)
         }
     }
@@ -221,24 +218,22 @@ where
 
 fn q_prod_t<'a, T>(v: ArrayViewD<'a, T>, zp_scale: (i32, f32)) -> T
 where
-    T: Copy + Datum + num_traits::One + num_traits::AsPrimitive<f32>,
+    T: Copy + num_traits::AsPrimitive<f32> + Bounded,
     f32: num_traits::AsPrimitive<T>,
 {
-    use num_traits::AsPrimitive;
     let (zp, scale) = zp_scale;
     (v.fold(1f32, |acc, &v| acc * (v.as_() - zp as f32)) * scale.powi(v.len() as i32 - 1)
         + zp as f32)
-        .as_()
+        .clamp_cast()
 }
 
 fn q_sum_t<'a, T>(v: ArrayViewD<'a, T>, zp_scale: (i32, f32)) -> T
 where
-    T: Copy + Datum + num_traits::Zero + num_traits::AsPrimitive<i32>,
+    T: Copy + Bounded + num_traits::AsPrimitive<i32>,
     i32: num_traits::AsPrimitive<T>,
 {
-    use num_traits::AsPrimitive;
     let (zp, _) = zp_scale;
-    (v.fold(0i32, |acc, &v| acc + v.as_()) - zp * (v.len() as i32 - 1)).as_()
+    (v.fold(0i32, |acc, &v| acc + v.as_()) - zp * (v.len() as i32 - 1)).clamp_cast()
 }
 
 #[derive(Clone, Debug, new, Hash)]

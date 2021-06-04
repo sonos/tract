@@ -130,6 +130,7 @@ impl LirMaxPool {
         input: &Tensor,
         geo: &ConcretePoolGeometry,
     ) -> TractResult<TVec<Arc<Tensor>>> {
+        let input_dt = input.datum_type();
         let input: ArrayViewD<T> = input.to_array_view()?;
         let input_ptr = input.as_ptr();
 
@@ -166,6 +167,10 @@ impl LirMaxPool {
                     }
                 }
             });
+        }
+        let mut values = values.into_tensor();
+        unsafe {
+            values.set_datum_type(input_dt);
         }
         if let Some(dt) = self.with_index_outputs {
             Ok(tvec!(

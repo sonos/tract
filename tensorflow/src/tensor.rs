@@ -64,9 +64,7 @@ impl TryFrom<DatumType> for DataType {
             DatumType::Blob => Ok(DataType::DtString),
             DatumType::String => Ok(DataType::DtString),
             DatumType::QI8(_) => Ok(DataType::DtQint8),
-            DatumType::QI32(_) => Ok(DataType::DtQint32),
             DatumType::QU8(_) => Ok(DataType::DtQint8),
-            DatumType::QU32(_) => Ok(DataType::DtQint32),
             DatumType::TDim => bail!("Dimension is not translatable in protobuf"),
         }
     }

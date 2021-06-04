@@ -102,7 +102,7 @@ impl Nnef {
         crate::ast::dump::Dumper::new(&mut graph_nnef).document(&proto_model.doc)?;
 
         if let Some(quantization) = proto_model.quantization {
-            let mut graph_quant = std::fs::File::create(path.join("graph.nnef"))?;
+            let mut graph_quant = std::fs::File::create(path.join("graph.quant"))?;
             for (name, format) in quantization.into_iter() {
                 write_quant_format(&mut graph_quant, name, format)?;
             }
