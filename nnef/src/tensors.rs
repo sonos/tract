@@ -13,8 +13,8 @@ struct Header {
     rank: u32,
     dims: [u32; 8],
     bits_per_item: u32,
-    item_type_vendor: u16,
     item_type: u16,
+    item_type_vendor: u16,
     item_type_params_deprecated: [u8; 32],
     padding: [u32; 11],
 }
@@ -46,7 +46,9 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
                 header.data_size_bytes
             );
         }
-
+        if header.item_type_vendor != 0 && header.item_type_vendor != TRACT_ITEM_TYPE_VENDOR {
+            bail!("Unknownn item type vendor {}", header.item_type_vendor);
+        }
         let dt = match (header.item_type_vendor, header.item_type, header.bits_per_item) {
             (0, 0, 16) => DatumType::F16,
             (0, 0, 32) => DatumType::F32,
@@ -55,19 +57,15 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             (0, 1, 16) => DatumType::U16,
             (0, 1, 32) => DatumType::U32,
             (0, 1, 64) => DatumType::U64,
-            (0, 0x0100, 8) => DatumType::I8,
-            (0, 0x0100, 16) => DatumType::I16,
-            (0, 0x0100, 32) => DatumType::I32,
-            (0, 0x0100, 64) => DatumType::I64,
-            (1, 0, 8) => DatumType::U8,
-            (1, 0, 32) => DatumType::I32,
-            (4, 0, 32) => DatumType::I32,
+            (0, 4, 8) => DatumType::I8,
+            (0, 4, 16) => DatumType::I16,
+            (0, 4, 32) => DatumType::I32,
+            (0, 4, 64) => DatumType::I64,
             (TRACT_ITEM_TYPE_VENDOR, 0x1000, 0xFFFF) => DatumType::String,
             _ => bail!(
-                "Unsupported type in tensor type:{} bits_per_item:{} item_type_vendor:{}",
+                "Unsupported type in tensor type:{} bits_per_item:{}",
                 header.item_type,
-                header.bits_per_item,
-                header.item_type_vendor
+                header.bits_per_item
             ),
         };
         if dt.is_copy() {
@@ -108,7 +106,7 @@ pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResul
         header.item_type = if tensor.datum_type().is_float() {
             0
         } else if tensor.datum_type().is_signed() {
-            0x100
+            4
         } else if tensor.datum_type().is_unsigned() {
             1
         } else if tensor.datum_type() == DatumType::String {

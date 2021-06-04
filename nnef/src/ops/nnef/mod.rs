@@ -1,7 +1,7 @@
 use crate::internal::*;
 
-mod deser;
-mod ser;
+pub mod deser;
+pub mod ser;
 
 pub fn tract_nnef() -> Registry {
     use tract_core::ops;

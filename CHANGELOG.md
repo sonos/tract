@@ -1,5 +1,7 @@
 # Unreleased
 
+* Switched the order of item_type and item_type_vendor in the NNEF tendor format to be consistent with NNEF-tools. Breaking for tensor files containing integers or strings.
+
 ## 0.14.2 - 2021-05-27
 
 * better handling of errors in ONNX parser

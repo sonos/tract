@@ -32,6 +32,15 @@ fn cast_load(
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
-    let to = invocation.named_arg_as::<String>(builder, "to")?.parse()?;
+    let invocation_dt = invocation.dt.get(0).copied().flatten();
+    let to = if let Ok(s) = invocation.named_arg_as::<String>(builder, "to") {
+        let dt = s.parse()?;
+        if invocation_dt.is_some() && dt != invocation_dt.unwrap() {
+            bail!("Mismatched cast: expected {:?}, got {:?}", invocation_dt.unwrap(), dt)
+        }
+        dt
+    } else {
+        invocation_dt.ok_or(format_err!("No datum type for cast"))?
+    };
     builder.wire(ElementWiseOp(Box::new(Cast { to })), &[input])
 }

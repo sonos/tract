@@ -290,6 +290,13 @@ impl RValue {
                     let out_dt =
                         builder.model.node(outlet_id.node).outputs[outlet_id.slot].fact.datum_type;
                     if let Some(Some(dt)) = dt.get(0) {
+                        if out_dt.unquantized() != dt.unquantized() {
+                            return Err(format_err!(
+                                "Mismatched types expected {:?}, got {:?}",
+                                dt,
+                                out_dt
+                            ));
+                        }
                         if out_dt != *dt {
                             outlet = Value::Wire(
                                 builder.wire(tract_core::ops::cast::cast(*dt), &[outlet_id])?[0],
@@ -335,7 +342,7 @@ impl RValue {
             RValue::Tuple(array) => Ok(Value::Tuple(
                 array
                     .iter()
-                    .zip(dt.iter().chain(std::iter::repeat(&dt.get(0).copied().flatten())))
+                    .zip(dt.iter().chain(std::iter::repeat(&None)))
                     .map(|(i, dt)| i.resolve(builder, &[*dt]))
                     .collect::<TractResult<_>>()?,
             )),
@@ -355,7 +362,7 @@ impl RValue {
             RValue::Literal(Literal::Array(array)) => Ok(Value::Array(
                 array
                     .iter()
-                    .zip(dt.iter())
+                    .zip(std::iter::repeat(&dt.get(0).copied().flatten()))
                     .map(|(i, dt)| RValue::Literal(i.clone()).resolve(builder, &[*dt]))
                     .collect::<TractResult<_>>()?,
             )),
@@ -366,6 +373,7 @@ impl RValue {
 
 #[derive(Clone, Debug)]
 pub enum Value {
+    Tensor(Arc<Tensor>),
     Wire(OutletId),
     Array(Vec<Value>),
     Tuple(Vec<Value>),
@@ -399,6 +407,8 @@ impl CoerceFrom<Value> for Value {
 impl CoerceFrom<Value> for Arc<Tensor> {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
+            Value::Dim(t) => Ok(rctensor0(t.to_i32()?)),
+            Value::Tensor(t) => Ok(t.clone()),
             Value::Scalar(f) => Ok(rctensor0(*f)),
             Value::String(f) => Ok(rctensor0(f.clone())),
             Value::Wire(o) => builder
@@ -415,6 +425,7 @@ impl CoerceFrom<Value> for Arc<Tensor> {
 impl CoerceFrom<Value> for (Arc<Tensor>, DatumType) {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
+            Value::Tensor(t) => Ok((t.clone(), t.datum_type())),
             Value::Scalar(f) => Ok((rctensor0(*f), DatumType::F32)),
             Value::String(f) => Ok((rctensor0(f.clone()), DatumType::String)),
             Value::Wire(o) => {
@@ -432,6 +443,9 @@ impl CoerceFrom<Value> for (Arc<Tensor>, DatumType) {
 impl CoerceFrom<Value> for OutletId {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
+            Value::Tensor(t) => {
+                Ok(builder.wire(tract_core::ops::konst::Const::new(t.clone()), &[])?[0])
+            }
             Value::Scalar(f) => {
                 Ok(builder.wire(tract_core::ops::konst::Const::new(rctensor0(*f)), &[])?[0])
             }
@@ -467,6 +481,7 @@ impl CoerceFrom<Value> for String {
     fn coerce(_builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::String(s) => Ok(s.to_string()),
+            Value::Tensor(t) => Ok(t.to_scalar::<String>()?.clone()),
             _ => bail!("Can not build a String from {:?}", from),
         }
     }

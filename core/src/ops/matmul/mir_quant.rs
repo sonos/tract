@@ -560,12 +560,8 @@ pub(crate) fn clamp_and_cast_to(
         return Ok(wire);
     }
     let rank = model.outlet_fact(wire)?.rank();
-    let inf = tensor0(if dt.is_signed() { -128i32 } else { 0 })
-        .broadcast_into_rank(rank)?
-        .into_arc_tensor();
-    let sup = tensor0(if dt.is_signed() { 127i32 } else { 255 })
-        .broadcast_into_rank(rank)?
-        .into_arc_tensor();
+    let inf = tensor0(dt.min_value::<i32>()).broadcast_into_rank(rank)?.into_arc_tensor();
+    let sup = tensor0(dt.max_value::<i32>()).broadcast_into_rank(rank)?.into_arc_tensor();
     let wire = model.wire_node(format!("{}.min", name), ops::math::min::unary(sup), &[wire])?;
     let wire = model.wire_node(format!("{}.max", name), ops::math::max::unary(inf), &wire)?;
     let wire = model.wire_node(format!("{}.cast", name), ops::cast::cast(dt), &wire)?;

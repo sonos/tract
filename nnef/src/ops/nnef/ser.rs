@@ -173,6 +173,46 @@ fn conv_or_deconv_fragment<'a>(
     fragment_name
 }
 
+pub fn make_conv_named_args<'a>(
+    node: &'a TypedNode,
+    pool_spec: &'a PoolSpec,
+    group: usize,
+    deconv: bool,
+    adjustments: Option<&[usize]>,
+) -> TractResult<TVec<(&'a str, RValue)>> {
+    use tract_core::ops::cnn::PaddingSpec;
+    let output_shape = pool_spec.data_format.shape(node.outputs[0].fact.shape.to_tvec())?;
+    let padding = match &pool_spec.padding {
+        PaddingSpec::Explicit(bef, after, _) => array(
+            &bef.iter()
+                .zip(after.iter())
+                .map(|(a, b)| tuple_2(numeric(a), numeric(b)))
+                .collect::<Vec<_>>(),
+        ),
+        PaddingSpec::SameUpper => array(&[]),
+        PaddingSpec::SameLower => bail!("Unsupported padding scheme"),
+        PaddingSpec::Valid => array(
+            (0..pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
+        ),
+    };
+    let mut named_args = tvec![
+        ("dilation", ints(&pool_spec.dilations())),
+        ("stride", ints(&pool_spec.strides())),
+        ("border", string("constant")),
+        ("groups", numeric(group)),
+        ("padding", padding),
+    ];
+    if deconv && adjustments.unwrap().iter().any(|a| *a != 0) {
+        let output_shape = output_shape
+            .hw_dims()
+            .iter()
+            .map(|d| d.to_usize())
+            .collect::<TractResult<TVec<_>>>()?;
+        named_args.push(("output_shape", ints(&*output_shape)));
+    };
+    Ok(named_args)
+}
+
 pub fn conv_or_deconv(
     ast: &mut IntoAst,
     node: &TypedNode,
@@ -183,7 +223,6 @@ pub fn conv_or_deconv(
     deconv: bool,
     adjustments: Option<&[usize]>,
 ) -> TractResult<Option<Arc<RValue>>> {
-    use tract_core::ops::cnn::PaddingSpec;
     let ci = pool_spec
         .data_format
         .shape(&ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec())?
@@ -200,39 +239,15 @@ pub fn conv_or_deconv(
     wire = ast.force_assign(format!("{}_input", node.name), &wire);
     let conv_fragment =
         conv_or_deconv_fragment(ast, pool_spec.data_format, pool_spec.rank(), deconv);
-    let padding = match &pool_spec.padding {
-        PaddingSpec::Explicit(bef, after, _) => array(
-            &bef.iter()
-                .zip(after.iter())
-                .map(|(a, b)| tuple_2(numeric(a), numeric(b)))
-                .collect::<Vec<_>>(),
-        ),
-        PaddingSpec::SameUpper => array(&[]),
-        PaddingSpec::SameLower => bail!("Unsupported padding scheme"),
-        PaddingSpec::Valid => array(
-            (0..pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
-        ),
-    };
+
     let mut inputs = tvec![wire, weigths];
     if let Some(bias) = bias.as_ref() {
         let bias = ast.konst(format!("{}_bias", node.name), bias)?;
         inputs.push(bias)
     }
-    let mut named_args = tvec![
-        ("dilation", ints(&pool_spec.dilations())),
-        ("stride", ints(&pool_spec.strides())),
-        ("border", string("constant")),
-        ("groups", numeric(group)),
-        ("padding", padding),
-    ];
-    if deconv && adjustments.unwrap().iter().any(|a| *a != 0) {
-        let output_shape = output_shape
-            .hw_dims()
-            .iter()
-            .map(|d| d.to_usize())
-            .collect::<TractResult<TVec<_>>>()?;
-        named_args.push(("output_shape", ints(&*output_shape)));
-    };
+
+    let named_args = make_conv_named_args(node, pool_spec, group, deconv, adjustments)?;
+
     wire = invocation(&conv_fragment, &inputs, &&named_args);
     wire = ast.force_assign(&node.name, &wire);
     Ok(Some(wire))
@@ -243,6 +258,9 @@ pub fn conv(
     node: &TypedNode,
     op: &ops::cnn::conv::ConvUnary,
 ) -> TractResult<Option<Arc<RValue>>> {
+    if op.q_params.is_some() && !node.outputs[0].fact.datum_type.is_quantized() {
+        return Ok(None);
+    }
     let weights = op.kernel_as_group_o_ihw()?.into_tensor();
     conv_or_deconv(ast, node, &op.pool_spec, weights, &op.bias, op.group, false, None)
 }
@@ -451,6 +469,9 @@ pub fn qmatmul(
     node: &TypedNode,
     op: &ops::matmul::QMatMul,
 ) -> TractResult<Option<Arc<RValue>>> {
+    if !node.outputs[0].fact.datum_type.is_quantized() {
+        return Ok(None);
+    }
     let a = ast.force_assign(format!("{}_a", node.name), &ast.mapping[&node.inputs[0]].clone());
     let b = ast.force_assign(format!("{}_b", node.name), &ast.mapping[&node.inputs[1]].clone());
     let c = if op.c_trans {

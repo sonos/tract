@@ -1,15 +1,28 @@
-use crate::internal::*;
-use num_traits::{Float, Zero};
-
 use super::binary::*;
+use crate::internal::*;
+use crate::ops::quant::ClampCast;
+use crate::ops::quant::scale_by;
+use num_traits::bounds::Bounded;
+use num_traits::int::PrimInt;
+use num_traits::{Float, Zero};
+use tract_num_traits::AsPrimitive;
+
+
 
 bin_to_super_type!(add, Add,
     declutter_unary: declutter_unary_add,
     flip:commute,
     validation: Validation::Rounding,
-    q: [i8] => |c, a, b, zp, _| (*c = (*a as i16 + *b as i16 - zp as i16).clamp(-128, 127) as i8),
-    [u8] => |c, a, b, zp, _| (*c = (*a as i16 + *b as i16 - zp as i16).clamp(0, 255) as u8);
+    q: [i8, u8] => add_quant;
     [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
+
+fn add_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
+    where
+        T: PrimInt + Bounded + AsPrimitive<i16>,
+        i16: AsPrimitive<T>,
+    {
+        *c = (a.as_() + b.as_() - zp as i16).clamp_cast()
+    }
 
 fn declutter_unary_add(
     _op: &Add,
@@ -27,10 +40,17 @@ fn declutter_unary_add(
 
 bin_to_super_type!(sub, Sub, 
     declutter_unary: declutter_unary_sub, flip:flip_sub,
-    q: [i8] => |c, a, b, zp, _| (*c = (*a as i16 - *b as i16 + zp as i16).clamp(-128, 127) as i8),
-    [u8] => |c, a, b, zp, _| (*c = (*a as i16 - *b as i16 + zp as i16).clamp(0, 255) as u8);
+    q: [i8, u8] => sub_quant;
     [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
+
+fn sub_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
+    where
+        T: PrimInt + Bounded + AsPrimitive<i16>,
+        i16: AsPrimitive<T>,
+    {
+        *c = (a.as_() - b.as_() + zp as i16).clamp_cast()
+    }
 fn declutter_unary_sub(
     _op: &Sub,
     model: &TypedModel,
@@ -63,17 +83,33 @@ bin_to_super_type!(mul, Mul,
              let c = c.to_array_view_mut::<TDim>()?;
              crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() * *b);
              Ok(true)
-         } else if c.datum_type().is_quantized() || b.datum_type().is_quantized() || a.datum_type().is_quantized() {
-            let a_f32 = a.cast_to::<f32>()?;
-            let a_f32 = a_f32.to_array_view::<f32>()?;
-            let b_f32 = b.cast_to::<f32>()?;
-            let b_f32 = b_f32.to_array_view::<f32>()?;
-            let c_f32 = &a_f32 * &b_f32;
-            *c = c_f32.into_tensor().cast_to_dt(c.datum_type())?.into_owned();
-            Ok(true)
-         }
+         } 
          else {
-             Ok(false)
+             match c.datum_type() {
+                 DatumType::QI8(params) => {
+                    let (zp, scale) = params.zp_scale();
+                    let a = a.to_array_view::<i8>()?;
+                    let b = b.to_array_view::<i8>()?;
+                    let c = c.to_array_view_mut::<i8>()?;
+                    crate::ndarray::Zip::from(c)
+                    .and_broadcast(a)
+                    .and_broadcast(b)
+                    .for_each(|c,a,b| *c = scale_by((*a as i16 - zp as i16) * (*b as i16 - zp as i16) + zp as i16, scale).clamp_cast());
+                    Ok(true)
+                 }
+                 DatumType::QU8(params) => {
+                    let (zp, scale) = params.zp_scale();
+                    let a = a.to_array_view::<u8>()?;
+                    let b = b.to_array_view::<u8>()?;
+                    let c = c.to_array_view_mut::<u8>()?;
+                    crate::ndarray::Zip::from(c)
+                    .and_broadcast(a)
+                    .and_broadcast(b)
+                    .for_each(|c,a,b| *c = scale_by((*a as i16 - zp as i16) * (*b as i16 - zp as i16) + zp as i16, scale).clamp_cast());
+                    Ok(true)
+                 }
+                 _ => Ok(false)
+             }
          }
  },
  [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() * b

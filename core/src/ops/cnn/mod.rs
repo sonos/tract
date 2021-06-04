@@ -17,4 +17,3 @@ pub use self::patch_axis::PatchAxis;
 pub use self::patches::{Patch, PatchSpec};
 pub use self::pools::PoolSpec;
 pub use self::sumpool::SumPool;
-

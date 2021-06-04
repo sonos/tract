@@ -6,6 +6,8 @@ mod cast;
 mod downsample;
 mod gather;
 mod one_hot;
+mod qconv;
+mod qmatmul;
 mod reduce;
 mod scan;
 mod scatter;
@@ -36,7 +38,8 @@ pub fn register(registry: &mut Registry) {
         &ops::math::ShiftRight,
         &ops::math::FlippedShiftRight,
     );
-
+    qmatmul::register(registry);
+    qconv::register(registry);
     broadcast::register(registry);
     cast::register(registry);
     downsample::register(registry);

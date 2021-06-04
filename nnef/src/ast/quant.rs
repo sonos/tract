@@ -1,4 +1,8 @@
+use std::str::FromStr;
+
 use nom::branch::permutation;
+use nom::character::complete::digit1;
+use nom::combinator::map_res;
 use tract_core::internal::*;
 
 use nom::{bytes::complete::*, multi::*};
@@ -26,6 +30,10 @@ fn quantization(i: &str) -> IResult<&str, (String, QuantFormat)> {
     Ok((i, (id, qp)))
 }
 
+fn integer_numeric<T: FromStr>(i: &str) -> IResult<&str, T> {
+    map_res(digit1, |s: &str| s.parse::<T>())(i)
+}
+
 // <qparam> ::= "<identifier>": <qparam>
 fn qparam(i: &str) -> IResult<&str, QuantFormat> {
     let (i, id) =
@@ -34,25 +42,26 @@ fn qparam(i: &str) -> IResult<&str, QuantFormat> {
     let (i, params, bits, signed) = match &*id {
         "linear_quantize" => {
             let (i, (bits, max, min)) =
-                permutation((arg("bits", float), arg("max", float), arg("min", float)))(i)?;
+                permutation((arg("bits", integer_numeric), arg("max", float), arg("min", float)))(
+                    i,
+                )?;
 
             (i, QParams::MinMax { min, max }, bits, true)
         }
         "zero_point_linear_quantize" => {
             let (i, (zero_point, scale, bits, signed, _)) = permutation((
-                arg("zero_point", float),
+                arg("zero_point", integer_numeric),
                 arg("scale", float),
-                arg("bits", float),
+                arg("bits", integer_numeric),
                 arg("signed", logical_literal),
                 opt(arg("symmetric", logical_literal)),
             ))(i)?;
-            (i, QParams::ZpScale { zero_point: zero_point as i32, scale }, bits, signed)
+            (i, QParams::ZpScale { zero_point, scale }, bits, signed)
         }
         _ => unreachable!(),
     };
 
     let (i, _) = stag(")")(i)?;
-    let bits = bits as i8;
     Ok((i, QuantFormat::Linear { params, bits, signed }))
 }
 // <arg>(<id>, <f>) ::= <id> "=" <f> ","
@@ -77,10 +86,10 @@ pub(crate) fn write_quant_format(
     match format {
         QuantFormat::Linear {
             params: QParams::ZpScale {zero_point, scale}, bits, signed
-        } => writeln!(w, "{}: zero_point_linear_quantize(zero_point = {}, scale = {}, bits = {}, signed = {}, symmetric = {});", name, zero_point, scale, bits, signed, zero_point == 0)?,
+        } => writeln!(w, "{}: zero_point_linear_quantize(zero_point = {}, scale = {:.9}, bits = {}, signed = {}, symmetric = {});", name, zero_point, scale, bits, signed, zero_point == 0)?,
         QuantFormat::Linear {
             params: QParams::MinMax {min, max}, bits, signed: _
-        } => writeln!(w, "{}: linear_quantize(max = {}, min = {}, bits = {});", name, max, min, bits)?,
+        } => writeln!(w, "{}: linear_quantize(max = {:.9}, min = {:.9}, bits = {});", name, max, min, bits)?,
     }
     Ok(())
 }

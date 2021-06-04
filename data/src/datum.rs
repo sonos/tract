@@ -9,6 +9,7 @@ use std::{fmt, ops};
 
 mod arrays;
 pub use arrays::ArrayDatum;
+use num_traits::AsPrimitive;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Educe)]
 #[educe(Hash)]
@@ -69,8 +70,8 @@ impl QParams {
     pub fn zp_scale(&self) -> (i32, f32) {
         match self {
             QParams::MinMax { min, max } => {
-                let scale = (max - min) / 254.;
-                dbg!(((-(min + max) / 2. / scale) as i32 + 2, scale))
+                let scale = (max - min) / 255.;
+                ((-(min + max) / 2. / scale) as i32, scale)
             }
             QParams::ZpScale { zero_point, scale } => (*zero_point, *scale),
         }
@@ -95,9 +96,7 @@ pub enum DatumType {
     Blob,
     String,
     QI8(QParams),
-    QI32(QParams),
     QU8(QParams),
-    QU32(QParams),
 }
 
 impl DatumType {
@@ -174,21 +173,26 @@ impl DatumType {
 
     pub fn is_quantized(&self) -> bool {
         match self {
-            DatumType::QI8(_) | DatumType::QI32(_) | DatumType::QU8(_) | DatumType::QU32(_) => true,
+            DatumType::QI8(_) | DatumType::QU8(_) => true,
             _ => false,
         }
     }
 
     pub fn qparams(&self) -> Option<QParams> {
         match self {
-            DatumType::QI8(qparams)
-            | DatumType::QI32(qparams)
-            | DatumType::QU8(qparams)
-            | DatumType::QU32(qparams) => Some(*qparams),
+            DatumType::QI8(qparams) | DatumType::QU8(qparams) => Some(*qparams),
             _ => None,
         }
     }
 
+    pub fn with_qparams(&self, qparams: QParams) -> DatumType {
+        match self {
+            DatumType::QI8(_) => DatumType::QI8(qparams),
+            DatumType::QU8(_) => DatumType::QI8(qparams),
+            _ => *self,
+        }
+    }
+    #[inline(always)]
     pub fn zp_scale(&self) -> (i32, f32) {
         self.qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.))
     }
@@ -196,9 +200,7 @@ impl DatumType {
     pub fn unquantized(&self) -> DatumType {
         match self {
             DatumType::QI8(_) => DatumType::I8,
-            DatumType::QI32(_) => DatumType::I32,
             DatumType::QU8(_) => DatumType::U8,
-            DatumType::QU32(_) => DatumType::U32,
             _ => *self,
         }
     }
@@ -235,6 +237,51 @@ impl DatumType {
             _ => self.size_of(),
         }
     }
+
+    pub fn min_value<T>(&self) -> T
+    where
+        T: Copy + 'static,
+        i64: AsPrimitive<T>,
+        f64: AsPrimitive<T>,
+    {
+        match self {
+            DatumType::QU8(_)
+            | DatumType::U8
+            | DatumType::U16
+            | DatumType::U32
+            | DatumType::U64 => 0.as_(),
+            DatumType::I8 | DatumType::QI8(_) => (i8::MIN as i64).as_(),
+            DatumType::I16 => (i16::MIN as i64).as_(),
+            DatumType::I32 => (i32::MIN as i64).as_(),
+            DatumType::I64 => i64::MIN.as_(),
+            DatumType::F16 => (half::f16::MIN.to_f64()).as_(),
+            DatumType::F32 => (f32::MIN as f64).as_(),
+            DatumType::F64 => f64::MIN.as_(),
+            _ => panic!("No min value for datum type {:?}", self),
+        }
+    }
+    pub fn max_value<T>(&self) -> T
+    where
+        T: Copy + 'static,
+        i64: AsPrimitive<T>,
+        u64: AsPrimitive<T>,
+        f64: AsPrimitive<T>,
+    {
+        match self {
+            DatumType::U8 | DatumType::QU8(_) => (u8::MAX as i64).as_(),
+            DatumType::U16 => (u16::MAX as u64).as_(),
+            DatumType::U32 => (u32::MAX as i64).as_(),
+            DatumType::U64 => u64::MAX.as_(),
+            DatumType::I8 | DatumType::QI8(_) => (i8::MAX as i64).as_(),
+            DatumType::I16 => (i16::MAX as i64).as_(),
+            DatumType::I32 => (i32::MAX as i64).as_(),
+            DatumType::I64 => i64::MAX.as_(),
+            DatumType::F16 => (half::f16::MAX.to_f64()).as_(),
+            DatumType::F32 => (f32::MAX as f64).as_(),
+            DatumType::F64 => f64::MAX.as_(),
+            _ => panic!("No max value for datum type {:?}", self),
+        }
+    }
 }
 
 impl std::str::FromStr for DatumType {
@@ -261,6 +308,27 @@ impl std::str::FromStr for DatumType {
         }
     }
 }
+
+#[inline]
+pub fn scale_by<T: Datum + AsPrimitive<f32>>(b: T, a: f32) -> T
+where
+    f32: AsPrimitive<T>,
+{
+    let b = b.as_();
+    ((b.abs() * a).round() * b.signum()).as_()
+}
+
+pub trait ClampCast: PartialOrd + Copy + 'static {
+    #[inline(always)]
+    fn clamp_cast<O>(self) -> O
+    where
+        Self: AsPrimitive<O>,
+        O: AsPrimitive<Self> + num_traits::Bounded,
+    {
+        num_traits::clamp(self, O::min_value().as_(), O::max_value().as_()).as_()
+    }
+}
+impl<T: PartialOrd + Copy + 'static> ClampCast for T {}
 
 pub trait Datum:
     Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq

@@ -1,7 +1,10 @@
 use crate::ast::*;
 use tract_core::internal::*;
 use tract_core::ops::cnn::deconv::adjustments;
+use tract_core::ops::cnn::PaddingSpec;
+use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::matmul::MatMulQParams;
+use tract_core::ops::nn::DataFormat;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
 
@@ -44,6 +47,14 @@ pub fn variable(
         .1
         .clone();
     if let Some(Some(dt)) = invocation.dt.get(0) {
+        if dt.size_of() != tensor.datum_type().size_of() {
+            bail!(
+                "Mismatched tensor type for tensor {}: expected {:?}, got {:?}",
+                label,
+                *dt,
+                tensor.datum_type()
+            );
+        }
         if *dt != tensor.datum_type() {
             trace!(
                 "Casting tensor {} from {:?} to {:?} when deserializing",
@@ -51,6 +62,7 @@ pub fn variable(
                 tensor.datum_type(),
                 *dt
             );
+            //FIXME: avoid cast by late-loading tensors ?
             tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
         }
     }
@@ -113,10 +125,10 @@ pub fn concat(
 ) -> TractResult<TVec<OutletId>> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
-    if let Some(dt) = invocation.dt[0] {
+    if let Some(Some(dt)) = invocation.dt.get(0) {
         for value in &mut values {
-            if builder.model.node(value.node).outputs[value.slot].fact.datum_type != dt {
-                *value = builder.wire(ops::cast::cast(dt), &[*value])?[0];
+            if builder.model.node(value.node).outputs[value.slot].fact.datum_type != *dt {
+                *value = builder.wire(ops::cast::cast(*dt), &[*value])?[0];
             }
         }
     }
@@ -242,31 +254,18 @@ pub fn deconv(
     conv_or_deconv(builder, invocation, true)
 }
 
-pub fn conv_or_deconv(
+pub fn read_conv_parameters(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-    deconv: bool,
-) -> TractResult<TVec<OutletId>> {
-    use ops::cnn::deconv::DeconvUnary;
-    use ops::cnn::{ConvUnary, KernelFormat};
-    use ops::cnn::{PaddingSpec, PoolSpec};
-    use ops::nn::DataFormat;
-    let input: OutletId = invocation.named_arg_as(builder, "input")?;
-    let kernel: Arc<Tensor> = invocation.named_arg_as(builder, "filter")?;
-    let input_fact = builder.model.outlet_fact(input)?.clone();
-    if input_fact.rank() != kernel.rank() {
-        bail!(
-            "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
-            input_fact,
-            kernel
-        );
-    }
+    kernel_shape: &[usize],
+    input_fact: &TypedFact,
+) -> TractResult<(usize, PoolSpec)> {
     let mut group = invocation.named_arg_as(builder, "groups")?;
     if group == 0 {
-        group = kernel.shape()[0]
+        group = kernel_shape[0]
     }
-    if input_fact.shape[1] != kernel.shape()[1].to_dim() * group {
-        bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel);
+    if input_fact.shape[1] != kernel_shape[1].to_dim() * group {
+        bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel_shape);
     }
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
     if dilation.len() != 0 && dilation.len() != input_fact.rank() - 2 {
@@ -290,15 +289,40 @@ pub fn conv_or_deconv(
     };
     let pool_spec = PoolSpec::new(
         DataFormat::NCHW,
-        kernel.shape()[2..].into(),
+        kernel_shape[2..].into(),
         padding,
         if dilation.len() > 0 { Some(dilation) } else { None },
         if stride.len() > 0 { Some(stride) } else { None },
-        Some(kernel.shape()[0]),
+        Some(kernel_shape[0]),
     );
 
     let border: String = invocation.named_arg_as(builder, "border")?;
     assert_eq!(border, "constant");
+
+    Ok((group, pool_spec))
+}
+
+pub fn conv_or_deconv(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+    deconv: bool,
+) -> TractResult<TVec<OutletId>> {
+    use ops::cnn::deconv::DeconvUnary;
+    use ops::cnn::{ConvUnary, KernelFormat};
+
+    let input: OutletId = invocation.named_arg_as(builder, "input")?;
+    let kernel: Arc<Tensor> = invocation.named_arg_as(builder, "filter")?;
+    let input_fact = builder.model.outlet_fact(input)?.clone();
+    if input_fact.rank() != kernel.rank() {
+        bail!(
+            "Convolution input expected as NCHW, filter as OIHW. Got {:?} and {:?}.",
+            input_fact,
+            kernel
+        );
+    }
+
+    let (group, pool_spec) =
+        read_conv_parameters(builder, invocation, kernel.shape(), &input_fact)?;
 
     let output_dt = invocation.dt.get(0).cloned().flatten().unwrap_or(DatumType::F32);
     let quantized = input_fact.datum_type.is_quantized()
@@ -365,8 +389,6 @@ fn pool_spec_for_pools(
     invocation: &ResolvedInvocation,
     shape: &[usize],
 ) -> TractResult<ops::cnn::PoolSpec> {
-    use ops::cnn::{PaddingSpec, PoolSpec};
-    use ops::nn::DataFormat;
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
     if dilation.len() > 0 && (dilation.len() != shape.len() || dilation[0] != 1 || dilation[1] != 1)
     {
@@ -419,7 +441,8 @@ pub fn max_pool_with_index(
                 );
     }
     let border: String = invocation.named_arg_as(builder, "border")?;
-    assert!(&*border == "ignore" || &*border == "constant"); //FIXME : constant might not actually be supported, but it is the default
+    assert!(&*border == "ignore" || &*border == "constant");
+    //FIXME : constant is not actually supported, but it should be the same in most cases
     let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let op = ops::cnn::MaxPool { pool_spec, with_index_outputs: Some(i64::datum_type()) };
     builder.wire(op, &[input])
@@ -446,7 +469,6 @@ pub fn sum_pool(
                 );
     }
     let border: String = invocation.named_arg_as(builder, "border")?;
-    //FIXME : constant might not actually be supported, but it is the default (it should be the same as ignore here ?)
     assert!(&*border == "ignore" || &*border == "constant");
     let pool_spec = pool_spec_for_pools(builder, invocation, &size)?;
     let op = ops::cnn::SumPool {

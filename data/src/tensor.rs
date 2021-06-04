@@ -1,5 +1,5 @@
 //! `Tensor`, tract main data object of interest.
-use crate::datum::{Blob, Datum, DatumType};
+use crate::datum::{scale_by, Blob, ClampCast, Datum, DatumType};
 use crate::dim::TDim;
 use crate::f16::f16;
 use crate::TVec;
@@ -54,9 +54,7 @@ impl Hash for Tensor {
                 String => self.as_slice_unchecked::<std::string::String>().hash(state),
                 Blob => self.as_slice_unchecked::<crate::datum::Blob>().hash(state),
                 QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
-                QI32(_) => self.as_slice_unchecked::<i32>().hash(state),
                 QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
-                QU32(_) => self.as_slice_unchecked::<u32>().hash(state),
             }
         }
     }
@@ -189,9 +187,7 @@ impl Tensor {
                 DatumType::Blob => Blob::stack_tensors(axis, &tensors),
                 DatumType::String => String::stack_tensors(axis, &tensors),
                 DatumType::QI8(_) => i8::stack_tensors(axis, &tensors),
-                DatumType::QI32(_) => i32::stack_tensors(axis, &tensors),
                 DatumType::QU8(_) => i8::stack_tensors(axis, &tensors),
-                DatumType::QU32(_) => i32::stack_tensors(axis, &tensors),
             }
         }?;
         tensor.dt = dt;
@@ -852,61 +848,90 @@ impl Tensor {
                 n!(f32);
                 n!(f64);
             }
-            //FIXME : round properly (and maybe try to reduce code size / improve the macro ?)
-            //This macro generates the conversion for all pairs of input, both ways, and generates the conversion of a datum type to itself once.
-            if dt.is_quantized() || self.datum_type().is_quantized() {
-                use num_traits::AsPrimitive;
-                let float_convert = ((self.datum_type().is_float() || dt.is_float())
-                    && (self.datum_type().is_quantized() || dt.is_quantized()))
-                    || (self.datum_type().is_quantized() && dt.is_quantized());
 
+            if dt.is_quantized() || self.datum_type().is_quantized() {
                 let (s_zp, s_scale) = self.datum_type().zp_scale();
                 let (d_zp, d_scale) = dt.zp_scale();
-                macro_rules! q_n {
-                    (__internal $source:ty, $dest:ty) => {{
-                        if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
-                            && <$dest>::datum_type().unquantized() == dt.unquantized()
-                        {
-                            if float_convert
-                            {
-                                self.as_slice_unchecked::<$source>()
-                                    .iter()
-                                    .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
-                                    .for_each(|(&s, d)| {
-                                        let s_float = (s as f64 - s_zp as f64) * s_scale as f64;
-                                        let d_float = s_float as f64 / d_scale as f64 + d_zp as f64;
-                                        *d = d_float.as_();
-                                    });
-                            } else {
-                                self.as_slice_unchecked::<$source>()
-                                    .iter()
-                                    .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
-                                    .for_each(|(&s, d)| {
-                                        *d = s.as_();
-                                    });
-                            }
+
+                macro_rules! q8_to_q8 {
+                    ($typ:ty) => {
+                        if dt.unquantized() == <$typ>::datum_type() {
+                            self.as_slice_unchecked::<$typ>()
+                                .iter()
+                                .zip(result.as_slice_mut_unchecked::<$typ>().iter_mut())
+                                .for_each(|(&s, d)| {
+                                    *d = (d_zp as i16
+                                        + scale_by(s as i16 - s_zp as i16, s_scale / d_scale))
+                                    .clamp_cast()
+                                });
                             return Ok(Cow::Owned(result));
                         }
-                    }};
-                    (__first $t1:ty, $t2:ty, $($t: ty),+) => {
-                        q_n!(__first $t1, $t2);
-                        q_n!(__first $t1, $($t),+);
-                    };
-                    (__first $t1:ty, $t2:ty) => {
-                        q_n!(__internal $t1, $t2);
-                        q_n!(__internal $t2, $t1);
-                    };
-                    ($t1:ty, $t2:ty, $($t: ty),+) => {
-                        q_n!(__first $t1, $t2, $($t),+);
-                        q_n!(__internal $t1, $t1);
-                        q_n!($t2, $($t),+);
-                    };
-                    ($t1:ty, $t2:ty) => {
-                        q_n!(__first $t1, $t2)
                     };
                 }
 
-                q_n!(u8, i8, u32, i32, f32, f64);
+                macro_rules! q_f {
+                    ($source:ty, $dest:ty) => {
+                        if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
+                            && <$dest>::datum_type().unquantized() == dt.unquantized()
+                        {
+                            self.as_slice_unchecked::<$source>()
+                                .iter()
+                                .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
+                                .for_each(|(&s, d)| {
+                                    let s_float = (s as f64 - s_zp as f64) * s_scale as f64;
+                                    let d_float = s_float as f64 / d_scale as f64 + d_zp as f64;
+                                    *d = d_float.clamp_cast();
+                                });
+                            return Ok(Cow::Owned(result));
+                        }
+                    };
+                }
+                macro_rules! q_n {
+                    ($source:ty, $dest:ty) => {{
+                        if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
+                            && <$dest>::datum_type().unquantized() == dt.unquantized()
+                        {
+                            self.as_slice_unchecked::<$source>()
+                                .iter()
+                                .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
+                                .for_each(|(&s, d)| {
+                                    *d = s.clamp_cast();
+                                });
+                            return Ok(Cow::Owned(result));
+                        }
+                    }};
+                }
+
+                if dt.unquantized() == self.datum_type().unquantized()
+                    && dt.is_quantized()
+                    && self.datum_type().is_quantized()
+                {
+                    q8_to_q8!(i8);
+                    q8_to_q8!(u8);
+                }
+
+                q_f!(f32, i8);
+                q_f!(f32, u8);
+                q_f!(i8, f32);
+                q_f!(u8, f32);
+
+                if dt.is_quantized() && self.datum_type().is_quantized() {
+                    q_f!(u8, i8);
+                    q_f!(i8, u8);
+                }
+
+                q_n!(i8, i32);
+                q_n!(i8, u32);
+                q_n!(u8, i32);
+                q_n!(u8, u32);
+                q_n!(i32, i8);
+                q_n!(i32, u8);
+                q_n!(u32, i8);
+                q_n!(u32, u8);
+                q_n!(i8, i8);
+                q_n!(u8, u8);
+                q_n!(i32, i32);
+                q_n!(u32, u32);
             }
 
             anyhow::bail!("Unsupported cast from {:?} to {:?}", self.dt, dt)
