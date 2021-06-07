@@ -32,7 +32,7 @@ fn cast_load(
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let input = invocation.named_arg_as(builder, "input")?;
-    let invocation_dt = invocation.dt.get(0).copied().flatten();
+    let invocation_dt = invocation.dt_from_quant_file.get(0).copied().flatten();
     let to = if let Ok(s) = invocation.named_arg_as::<String>(builder, "to") {
         let dt = s.parse()?;
         if invocation_dt.is_some() && dt != invocation_dt.unwrap() {

@@ -772,42 +772,42 @@ impl Tensor {
     }
 
     /// Optionnaly convert data to a tensor for a new DatumType.
-    pub fn cast_to_dt(&self, dt: DatumType) -> anyhow::Result<Cow<Tensor>> {
+    pub fn cast_to_dt(&self, dst_dt: DatumType) -> anyhow::Result<Cow<Tensor>> {
         unsafe {
-            if self.dt == dt {
+            if self.dt == dst_dt {
                 return Ok(Cow::Borrowed(self));
             }
-            if self.dt == TDim::datum_type() && (dt.is_integer() || dt.is_float()) {
+            if self.dt == TDim::datum_type() && (dst_dt.is_integer() || dst_dt.is_float()) {
                 let slice = self.as_slice_unchecked::<TDim>();
                 let mut ints = Self::uninitialized::<i64>(&self.shape)?;
                 let ints_slice = ints.as_slice_mut_unchecked::<i64>();
                 for i in 0..self.len() {
                     ints_slice[i] = slice[i].to_i64()?;
                 }
-                return Ok(Cow::Owned(ints.cast_to_dt(dt)?.into_owned()));
+                return Ok(Cow::Owned(ints.cast_to_dt(dst_dt)?.into_owned()));
             }
-            if self.dt == bool::datum_type() && (dt.is_integer() || dt.is_float()) {
+            if self.dt == bool::datum_type() && (dst_dt.is_integer() || dst_dt.is_float()) {
                 let slice = self.as_slice_unchecked::<bool>();
                 let mut ints = Self::uninitialized::<i8>(&self.shape)?;
                 let ints_slice = ints.as_slice_mut_unchecked::<i8>();
                 for i in 0..self.len() {
                     ints_slice[i] = slice[i] as usize as i8;
                 }
-                return Ok(Cow::Owned(ints.cast_to_dt(dt)?.into_owned()));
+                return Ok(Cow::Owned(ints.cast_to_dt(dst_dt)?.into_owned()));
             }
-            let mut result = Self::uninitialized_dt(dt, &self.shape)?;
+            let mut result = Self::uninitialized_dt(dst_dt, &self.shape)?;
             if self.dt == DatumType::String {
-                dispatch_datum!(Self::cast_from_string(dt)(self, &mut result))?;
+                dispatch_datum!(Self::cast_from_string(dst_dt)(self, &mut result))?;
                 return Ok(Cow::Owned(result));
             }
-            if dt == DatumType::String {
+            if dst_dt == DatumType::String {
                 dispatch_datum!(Self::cast_to_string(self.dt)(self, &mut result));
                 return Ok(Cow::Owned(result));
             }
             macro_rules! n {
                 ($source:ty) => {
                     if <$source>::datum_type() == self.datum_type() {
-                        match dt {
+                        match dst_dt {
                             DatumType::I8 => self.natural_cast::<$source, i8>(&mut result),
                             DatumType::I16 => self.natural_cast::<$source, i16>(&mut result),
                             DatumType::I32 => self.natural_cast::<$source, i32>(&mut result),
@@ -834,8 +834,8 @@ impl Tensor {
                     };
                 };
             }
-
-            if !dt.is_quantized() && !self.datum_type().is_quantized() {
+            //If there is no quantization
+            if !dst_dt.is_quantized() && !self.datum_type().is_quantized() {
                 n!(u8);
                 n!(u16);
                 n!(u32);
@@ -847,15 +847,13 @@ impl Tensor {
                 n!(f16);
                 n!(f32);
                 n!(f64);
-            }
-
-            if dt.is_quantized() || self.datum_type().is_quantized() {
+            } else {
                 let (s_zp, s_scale) = self.datum_type().zp_scale();
-                let (d_zp, d_scale) = dt.zp_scale();
-
+                let (d_zp, d_scale) = dst_dt.zp_scale();
+                //TODO: optimize scale_by
                 macro_rules! q8_to_q8 {
                     ($typ:ty) => {
-                        if dt.unquantized() == <$typ>::datum_type() {
+                        if dst_dt.unquantized() == <$typ>::datum_type() {
                             self.as_slice_unchecked::<$typ>()
                                 .iter()
                                 .zip(result.as_slice_mut_unchecked::<$typ>().iter_mut())
@@ -872,24 +870,25 @@ impl Tensor {
                 macro_rules! q_f {
                     ($source:ty, $dest:ty) => {
                         if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
-                            && <$dest>::datum_type().unquantized() == dt.unquantized()
+                            && <$dest>::datum_type().unquantized() == dst_dt.unquantized()
                         {
                             self.as_slice_unchecked::<$source>()
                                 .iter()
                                 .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
                                 .for_each(|(&s, d)| {
-                                    let s_float = (s as f64 - s_zp as f64) * s_scale as f64;
-                                    let d_float = s_float as f64 / d_scale as f64 + d_zp as f64;
+                                    let s_float = (s as f32 - s_zp as f32) * s_scale as f32;
+                                    let d_float = s_float as f32 / d_scale as f32 + d_zp as f32;
                                     *d = d_float.clamp_cast();
                                 });
                             return Ok(Cow::Owned(result));
                         }
                     };
                 }
+
                 macro_rules! q_n {
                     ($source:ty, $dest:ty) => {{
                         if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
-                            && <$dest>::datum_type().unquantized() == dt.unquantized()
+                            && <$dest>::datum_type().unquantized() == dst_dt.unquantized()
                         {
                             self.as_slice_unchecked::<$source>()
                                 .iter()
@@ -902,8 +901,8 @@ impl Tensor {
                     }};
                 }
 
-                if dt.unquantized() == self.datum_type().unquantized()
-                    && dt.is_quantized()
+                if dst_dt.unquantized() == self.datum_type().unquantized()
+                    && dst_dt.is_quantized()
                     && self.datum_type().is_quantized()
                 {
                     q8_to_q8!(i8);
@@ -915,7 +914,7 @@ impl Tensor {
                 q_f!(i8, f32);
                 q_f!(u8, f32);
 
-                if dt.is_quantized() && self.datum_type().is_quantized() {
+                if dst_dt.is_quantized() && self.datum_type().is_quantized() {
                     q_f!(u8, i8);
                     q_f!(i8, u8);
                 }
@@ -934,7 +933,7 @@ impl Tensor {
                 q_n!(u32, u32);
             }
 
-            anyhow::bail!("Unsupported cast from {:?} to {:?}", self.dt, dt)
+            anyhow::bail!("Unsupported cast from {:?} to {:?}", self.dt, dst_dt)
         }
     }
 

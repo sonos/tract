@@ -149,7 +149,8 @@ impl Registry {
         dt: &[Option<DatumType>],
     ) -> TractResult<Option<Value>> {
         if let Some(op) = self.primitives.get(&invocation.id) {
-            let resolved = ResolvedInvocation { invocation, default_params: &*op.0, dt };
+            let resolved =
+                ResolvedInvocation { invocation, default_params: &*op.0, dt_from_quant_file: dt };
             let outlets = (op.1)(builder, &resolved)?;
             return Ok(Some(Value::Tuple(outlets.into_iter().map(Value::Wire).collect())));
         }
@@ -169,7 +170,8 @@ impl Registry {
             return Ok(Some(Value::Wire(outlet[0])));
         }
         if let Some(ew) = self.element_wise_ops.iter().find(|ew| ew.0 == invocation.id) {
-            let resolved = ResolvedInvocation { invocation, default_params: &ew.3, dt };
+            let resolved =
+                ResolvedInvocation { invocation, default_params: &ew.3, dt_from_quant_file: dt };
             return Ok(Some(Value::Wire((ew.4)(builder, &resolved)?[0])));
         }
         if let Some(bin) = self.binary_ops.iter().find(|bin| bin.0 == invocation.id) {
@@ -200,8 +202,11 @@ impl Registry {
             return Ok(Some(Value::Wire(wire)));
         }
         if let Some(frag) = self.fragments.get(&invocation.id) {
-            let resolved =
-                ResolvedInvocation { invocation, default_params: &frag.decl.parameters, dt };
+            let resolved = ResolvedInvocation {
+                invocation,
+                default_params: &frag.decl.parameters,
+                dt_from_quant_file: dt,
+            };
             return Ok(Some(builder.wire_fragment_invocation(
                 &resolved,
                 &frag.decl,

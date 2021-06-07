@@ -121,8 +121,11 @@ impl<'mb> ModelBuilder<'mb> {
     ) -> TractResult<Value> {
         for frag in &self.proto_model.doc.fragments {
             if frag.decl.id == invocation.id && frag.body.is_some() {
-                let resolved =
-                    ResolvedInvocation { invocation, dt, default_params: &frag.decl.parameters };
+                let resolved = ResolvedInvocation {
+                    invocation,
+                    dt_from_quant_file: dt,
+                    default_params: &frag.decl.parameters,
+                };
                 return self.wire_fragment_invocation(
                     &resolved,
                     &frag.decl,
@@ -203,7 +206,7 @@ impl<'mb> ModelBuilder<'mb> {
 #[derive(Clone)]
 pub struct ResolvedInvocation<'a> {
     pub invocation: &'a Invocation,
-    pub dt: &'a [Option<DatumType>],
+    pub dt_from_quant_file: &'a [Option<DatumType>],
     pub default_params: &'a [Parameter],
 }
 
@@ -339,13 +342,22 @@ impl RValue {
                     .map(|(i, dt)| i.resolve(builder, &[*dt]))
                     .collect::<TractResult<_>>()?,
             )),
-            RValue::Tuple(array) => Ok(Value::Tuple(
-                array
-                    .iter()
-                    .zip(dt.iter().chain(std::iter::repeat(&None)))
-                    .map(|(i, dt)| i.resolve(builder, &[*dt]))
-                    .collect::<TractResult<_>>()?,
-            )),
+            RValue::Tuple(array) => {
+                let dt_iter: Box<dyn Iterator<Item = &Option<DatumType>>> = if dt.len() == 0 {
+                    Box::new(std::iter::repeat(&None))
+                } else if dt.len() == array.len() {
+                    Box::new(dt.iter())
+                } else {
+                    bail!("Wrong number of types for a tuple")
+                };
+                Ok(Value::Tuple(
+                    array
+                        .iter()
+                        .zip(dt_iter)
+                        .map(|(i, dt)| i.resolve(builder, &[*dt]))
+                        .collect::<TractResult<_>>()?,
+                ))
+            }
             RValue::Literal(Literal::Numeric(f)) => {
                 if f.contains(".") || f.contains("e") {
                     f.parse::<f32>()
