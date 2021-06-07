@@ -18,7 +18,7 @@ pub fn external(
     invocation: &ResolvedInvocation,
 ) -> TractResult<TVec<OutletId>> {
     let type_name = invocation.invocation.generic_type_name.unwrap_or(TypeName::Scalar);
-    let dt = if let Some(Some(dt)) = invocation.dt.get(0) {
+    let dt = if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
         *dt
     } else if type_name == TypeName::Scalar {
         f32::datum_type()
@@ -46,7 +46,7 @@ pub fn variable(
         .ok_or_else(|| format_err!("No data for tensor {:?}", label))?
         .1
         .clone();
-    if let Some(Some(dt)) = invocation.dt.get(0) {
+    if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
         if dt.size_of() != tensor.datum_type().size_of() {
             bail!(
                 "Mismatched tensor type for tensor {}: expected {:?}, got {:?}",
@@ -125,7 +125,7 @@ pub fn concat(
 ) -> TractResult<TVec<OutletId>> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
-    if let Some(Some(dt)) = invocation.dt.get(0) {
+    if let Some(Some(dt)) = invocation.dt_from_quant_file.get(0) {
         for value in &mut values {
             if builder.model.node(value.node).outputs[value.slot].fact.datum_type != *dt {
                 *value = builder.wire(ops::cast::cast(*dt), &[*value])?[0];
@@ -324,7 +324,8 @@ pub fn conv_or_deconv(
     let (group, pool_spec) =
         read_conv_parameters(builder, invocation, kernel.shape(), &input_fact)?;
 
-    let output_dt = invocation.dt.get(0).cloned().flatten().unwrap_or(DatumType::F32);
+    let output_dt =
+        invocation.dt_from_quant_file.get(0).cloned().flatten().unwrap_or(DatumType::F32);
     let quantized = input_fact.datum_type.is_quantized()
         || kernel.datum_type().is_quantized()
         || output_dt.is_quantized();
@@ -530,7 +531,7 @@ pub fn matmul(
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
     let a_trans = invocation.named_arg_as(builder, "transposeA")?;
     let b_trans = invocation.named_arg_as(builder, "transposeB")?;
-    if let Some(Some(dt)) = &invocation.dt.get(0) {
+    if let Some(Some(dt)) = &invocation.dt_from_quant_file.get(0) {
         if let Some(qparams) = dt.qparams() {
             let (a0, a_scale) =
                 builder.model.node(a.node).outputs[a.slot].fact.datum_type.zp_scale();

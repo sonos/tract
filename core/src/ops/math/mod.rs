@@ -1,6 +1,6 @@
 use super::binary::*;
 use crate::internal::*;
-use crate::ops::quant::ClampCast;
+use tract_data::internal::ClampCast;
 use crate::ops::quant::scale_by;
 use num_traits::bounds::Bounded;
 use num_traits::int::PrimInt;

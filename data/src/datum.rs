@@ -238,47 +238,36 @@ impl DatumType {
         }
     }
 
-    pub fn min_value<T>(&self) -> T
-    where
-        T: Copy + 'static,
-        i64: AsPrimitive<T>,
-        f64: AsPrimitive<T>,
-    {
+    pub fn min_value(&self) -> Tensor {
         match self {
             DatumType::QU8(_)
             | DatumType::U8
             | DatumType::U16
             | DatumType::U32
-            | DatumType::U64 => 0.as_(),
-            DatumType::I8 | DatumType::QI8(_) => (i8::MIN as i64).as_(),
-            DatumType::I16 => (i16::MIN as i64).as_(),
-            DatumType::I32 => (i32::MIN as i64).as_(),
-            DatumType::I64 => i64::MIN.as_(),
-            DatumType::F16 => (half::f16::MIN.to_f64()).as_(),
-            DatumType::F32 => (f32::MIN as f64).as_(),
-            DatumType::F64 => f64::MIN.as_(),
+            | DatumType::U64 => Tensor::zero_dt(*self, &[1]).unwrap(),
+            DatumType::I8 | DatumType::QI8(_) => tensor0(i8::MIN),
+            DatumType::I16 => tensor0(i16::MIN),
+            DatumType::I32 => tensor0(i32::MIN),
+            DatumType::I64 => tensor0(i64::MIN),
+            DatumType::F16 => tensor0(f16(half::f16::MIN)),
+            DatumType::F32 => tensor0(f32::MIN),
+            DatumType::F64 => tensor0(f64::MIN),
             _ => panic!("No min value for datum type {:?}", self),
         }
     }
-    pub fn max_value<T>(&self) -> T
-    where
-        T: Copy + 'static,
-        i64: AsPrimitive<T>,
-        u64: AsPrimitive<T>,
-        f64: AsPrimitive<T>,
-    {
+    pub fn max_value(&self) -> Tensor {
         match self {
-            DatumType::U8 | DatumType::QU8(_) => (u8::MAX as i64).as_(),
-            DatumType::U16 => (u16::MAX as u64).as_(),
-            DatumType::U32 => (u32::MAX as i64).as_(),
-            DatumType::U64 => u64::MAX.as_(),
-            DatumType::I8 | DatumType::QI8(_) => (i8::MAX as i64).as_(),
-            DatumType::I16 => (i16::MAX as i64).as_(),
-            DatumType::I32 => (i32::MAX as i64).as_(),
-            DatumType::I64 => i64::MAX.as_(),
-            DatumType::F16 => (half::f16::MAX.to_f64()).as_(),
-            DatumType::F32 => (f32::MAX as f64).as_(),
-            DatumType::F64 => f64::MAX.as_(),
+            DatumType::U8 | DatumType::QU8(_) => tensor0(u8::MAX),
+            DatumType::U16 => tensor0(u16::MAX),
+            DatumType::U32 => tensor0(u32::MAX),
+            DatumType::U64 => tensor0(u64::MAX),
+            DatumType::I8 | DatumType::QI8(_) => tensor0(i8::MAX),
+            DatumType::I16 => tensor0(i16::MAX),
+            DatumType::I32 => tensor0(i32::MAX),
+            DatumType::I64 => tensor0(i64::MAX),
+            DatumType::F16 => tensor0(f16(half::f16::MAX)),
+            DatumType::F32 => tensor0(f32::MAX),
+            DatumType::F64 => tensor0(f64::MAX),
             _ => panic!("No max value for datum type {:?}", self),
         }
     }

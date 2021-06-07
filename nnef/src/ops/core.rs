@@ -38,13 +38,13 @@ pub fn register(registry: &mut Registry) {
         &ops::math::ShiftRight,
         &ops::math::FlippedShiftRight,
     );
-    qmatmul::register(registry);
-    qconv::register(registry);
     broadcast::register(registry);
     cast::register(registry);
     downsample::register(registry);
     gather::register(registry);
     one_hot::register(registry);
+    qconv::register(registry);
+    qmatmul::register(registry);
     reduce::register(registry);
     scatter::register(registry);
     scan::register(registry);

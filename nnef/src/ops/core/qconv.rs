@@ -17,7 +17,7 @@ fn qconv_parameters() -> Vec<Parameter> {
     vec![
         TypeName::Scalar.tensor().named("input"),
         TypeName::Scalar.tensor().named("filter"),
-        TypeName::Scalar.tensor().named_with_lit("bias", Some(0.into())),
+        TypeName::Scalar.tensor().named("bias").default(0),
         TypeName::Integer.spec().named("group"),
         TypeName::Integer.array().named("dilation"),
         TypeName::Integer.array().named("stride"),

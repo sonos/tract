@@ -52,9 +52,6 @@ impl TypeSpec {
     pub fn named(self, s: impl Into<String>) -> Parameter {
         Parameter { id: s.into(), spec: self, lit: None }
     }
-    pub fn named_with_lit(self, s: impl Into<String>, lit: Option<Literal>) -> Parameter {
-        Parameter { id: s.into(), spec: self, lit }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

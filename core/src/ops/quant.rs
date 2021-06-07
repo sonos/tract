@@ -2,7 +2,6 @@ use crate::internal::*;
 use crate::ops::element_wise::ElementWiseOp;
 use num_traits::AsPrimitive;
 use tract_linalg::lut::Lut;
-use tract_num_traits::Bounded;
 
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
     (((x * scale).round() as i32) + zero_point as i32)
@@ -15,18 +14,6 @@ pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
         .max(i8::min_value() as i32)
         .min(i8::max_value() as i32) as i8
 }
-
-pub trait ClampCast: PartialOrd + Copy + 'static {
-    #[inline(always)]
-    fn clamp_cast<O>(self) -> O
-    where
-        Self: AsPrimitive<O>,
-        O: AsPrimitive<Self> + Bounded,
-    {
-        num_traits::clamp(self, O::min_value().as_(), O::max_value().as_()).as_()
-    }
-}
-impl<T: PartialOrd + Copy + 'static> ClampCast for T {}
 
 element_wise_oop!(quantize_linear_u8,
  QuantizeLinearU8 {

@@ -1,4 +1,4 @@
-use crate::{internal::*, ops::quant::ClampCast};
+use crate::{internal::*, tract_data::internal::ClampCast};
 use ndarray::prelude::*;
 use std::convert::TryFrom;
 use tract_num_traits::Bounded;
