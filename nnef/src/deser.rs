@@ -343,18 +343,25 @@ impl RValue {
                     .collect::<TractResult<_>>()?,
             )),
             RValue::Tuple(array) => {
-                let dt_iter: Box<dyn Iterator<Item = &Option<DatumType>>> = if dt.len() == 0 {
-                    Box::new(std::iter::repeat(&None))
-                } else if dt.len() == array.len() {
-                    Box::new(dt.iter())
-                } else {
-                    bail!("Wrong number of types for a tuple")
-                };
+                let dt_iter: Box<dyn Iterator<Item = &Option<DatumType>>> =
+                    if dt.len() == 0 || dt.len() == 1 && dt[0] == None {
+                        Box::new(std::iter::repeat(&None))
+                    } else if dt.len() == array.len() {
+                        Box::new(dt.iter())
+                    } else {
+                        bail!("Wrong number of types for a tuple, got {:?} for {:?}", dt, array)
+                    };
                 Ok(Value::Tuple(
                     array
                         .iter()
                         .zip(dt_iter)
-                        .map(|(i, dt)| i.resolve(builder, &[*dt]))
+                        .map(|(i, dt)| {
+                            if dt.is_none() {
+                                i.resolve(builder, &[])
+                            } else {
+                                i.resolve(builder, &[*dt])
+                            }
+                        })
                         .collect::<TractResult<_>>()?,
                 ))
             }
