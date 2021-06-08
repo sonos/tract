@@ -574,6 +574,11 @@ impl Parameters {
                             reference_model,
                         ));
                     }
+                } else {
+                    debug!("Skip stage {}", $name);
+                    if stop_at == $name {
+                        bail!("Stage {} is skipped, it can not be used as stop with these input format or parameters.", $name);
+                    }
                 }
             };
         }
