@@ -147,7 +147,9 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         }
         let text = text.ok_or_else(|| format_err!("Model must contain graph.nnef at top level"))?;
         let doc = crate::ast::parse::parse_document(&text)?;
-        Ok(ProtoModel { doc, tensors, quantization })
+        let proto = ProtoModel { doc, tensors, quantization };
+        proto.validate()?;
+        Ok(proto)
     }
 
     fn proto_model_for_read(&self, reader: &mut dyn std::io::Read) -> TractResult<ProtoModel> {
@@ -176,7 +178,9 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         }
         let text = text.ok_or_else(|| format_err!("Model must contain graph.nnef at top level"))?;
         let doc = crate::ast::parse::parse_document(&text)?;
-        Ok(ProtoModel { doc, tensors, quantization })
+        let proto = ProtoModel { doc, tensors, quantization };
+        proto.validate()?;
+        Ok(proto)
     }
 
     fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<TypedModel> {

@@ -1,4 +1,5 @@
 use crate::internal::*;
+use tract_itertools::Itertools;
 
 pub mod dump;
 pub mod parse;
@@ -9,6 +10,12 @@ pub struct ProtoModel {
     pub doc: Document,
     pub tensors: Vec<(String, Arc<Tensor>)>,
     pub quantization: Option<HashMap<String, QuantFormat>>,
+}
+
+impl ProtoModel {
+    pub fn validate(&self) -> TractResult<()> {
+        self.doc.validate()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -35,6 +42,15 @@ pub struct Document {
     pub extension: Vec<Vec<String>>,
     pub fragments: Vec<FragmentDef>,
     pub graph_def: GraphDef,
+}
+
+impl Document {
+    pub fn validate(&self) -> TractResult<()> {
+        for frag in &self.fragments {
+            frag.validate()?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -92,12 +108,58 @@ pub struct FragmentDef {
     pub body: Option<Vec<Assignment>>,
 }
 
+impl FragmentDef {
+    pub fn validate(&self) -> TractResult<()> {
+        self.decl.validate().with_context(|| format!("Invalid fragment `{}'", self.decl.id))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FragmentDecl {
     pub id: String,
     pub generic_decl: Option<Option<TypeName>>,
     pub parameters: Vec<Parameter>,
     pub results: Vec<Result_>,
+}
+
+impl FragmentDecl {
+    pub fn validate(&self) -> TractResult<()> {
+        if let Some(dup) = self
+            .parameters
+            .iter()
+            .map(|p| &*p.id)
+            .sorted()
+            .group_by(|x| x.to_owned())
+            .into_iter()
+            .find_map(|(key, values)| if values.count() > 1 { Some(key) } else { None })
+        {
+            bail!("Duplicate parameter name found `{}'", dup);
+        }
+        if let Some(dup) = self
+            .results
+            .iter()
+            .map(|p| &*p.id)
+            .sorted()
+            .group_by(|x| x.to_owned())
+            .into_iter()
+            .find_map(|(key, values)| if values.count() > 1 { Some(key) } else { None })
+        {
+            bail!("Duplicate result name found `{}'", dup);
+        }
+        if let Some(dup) = self
+            .parameters
+            .iter()
+            .map(|p| &*p.id)
+            .chain(self.results.iter().map(|p| &*p.id))
+            .sorted()
+            .group_by(|x| x.to_owned())
+            .into_iter()
+            .find_map(|(key, values)| if values.count() > 1 { Some(key) } else { None })
+        {
+            bail!("Same name used as parameter and result `{}'", dup);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
