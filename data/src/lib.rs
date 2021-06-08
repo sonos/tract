@@ -28,6 +28,7 @@ pub mod prelude {
 }
 
 pub mod internal {
+    pub use crate::datum::ClampCast;
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
