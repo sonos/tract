@@ -47,8 +47,8 @@ impl Optimizer {
             Box::new(OpOptim("codegen", TypedOp::codegen, 0)),
             Box::new(OpOptim("declutter", TypedOp::declutter, 0)),
             Box::new(PropConst),
-            Box::new(ChangeAxes),
             Box::new(PushSplitDown),
+            Box::new(ChangeAxes),
             Box::new(OpOptim("fuse", TypedOp::fuse, 0)),
         ])
     }
