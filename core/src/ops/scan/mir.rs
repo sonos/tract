@@ -387,7 +387,7 @@ impl Scan {
             let slot = if let Some(slot) = mapping.full_slot { slot } else { continue };
             let emitter_outlet = self.body.output_outlets()?[model_ix];
             let emitter_node = self.body.node(emitter_outlet.node);
-            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 1
+            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 0
                 || emitter_node.inputs.len() > 1
             {
                 continue;
