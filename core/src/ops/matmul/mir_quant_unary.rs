@@ -506,7 +506,7 @@ mod test {
                     "qmm",
                     QMatMulUnary::new(
                         self.a.clone().into_arc_tensor(),
-                        self.bias.clone().into_arc_tensor(),
+                        Some(self.bias.clone().into_arc_tensor()),
                         false,
                         false,
                         false,
