@@ -48,7 +48,6 @@ impl Optimizer {
             Box::new(OpOptim("declutter", TypedOp::declutter, 0)),
             Box::new(PropConst),
             Box::new(PushSplitDown),
-            Box::new(ChangeAxes),
             Box::new(OpOptim("fuse", TypedOp::fuse, 0)),
         ])
     }
