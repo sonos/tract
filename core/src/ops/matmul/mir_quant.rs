@@ -207,6 +207,18 @@ impl TypedOp for QMatMul {
             self.b_trans,
             self.c_trans,
         )?;
+
+        if inputs[2].rank() == 2 {
+            let expected_bias_shape: [TDim; 2] = if self.c_trans {
+                [1.to_dim(), c_shape[c_shape.len() - 1].clone()]
+            } else {
+                [c_shape[c_shape.len() - 2].clone(), 1.to_dim()]
+            };
+            anyhow::ensure!(&**inputs[2].shape == expected_bias_shape);
+        } else {
+            anyhow::ensure!(inputs[2].shape.iter().product::<TDim>() == 1.to_dim());
+        };
+
         Ok(tvec!(TypedFact::dt_shape(self.output_type, c_shape)))
     }
 
@@ -369,21 +381,8 @@ pub(crate) fn wire_matmul_quant(
     let rank = a_fact.rank();
     let m_axis = rank - 2 + c_trans as usize;
     let n_axis = rank - 1 - c_trans as usize;
-    let result_fact = model.outlet_fact(result)?.clone();
 
     if let Some(bias) = bias {
-        let bias_fact = model.outlet_fact(bias)?.clone();
-        if bias_fact.rank() == 2 {
-            let expected_bias_shape: [TDim; 2] = if c_trans {
-                [1.to_dim(), result_fact.shape[rank - 1].clone()]
-            } else {
-                [result_fact.shape[rank - 2].clone(), 1.to_dim()]
-            };
-            assert_eq!(&**bias_fact.shape, expected_bias_shape);
-        } else {
-            assert_eq!(bias_fact.shape.iter().product::<TDim>(), 1.to_dim());
-        };
-
         result = wire_with_rank_broadcast(
             &format!("{}.add_bias", &name),
             model,

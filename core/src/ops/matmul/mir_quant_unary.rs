@@ -112,65 +112,111 @@ impl TypedOp for QMatMulUnary {
             self.b_trans,
             self.c_trans,
         )?;
+
+        if let Some(bias) = &self.bias {
+            if bias.rank() == 2 {
+                let expected_bias_shape = if self.c_trans {
+                    [1, c_shape[c_shape.len() - 1].to_usize()?]
+                } else {
+                    [c_shape[c_shape.len() - 2].to_usize()?, 1]
+                };
+                anyhow::ensure!(bias.shape() == expected_bias_shape);
+            } else {
+                anyhow::ensure!(bias.len() == 1);
+            };
+        }
+
         Ok(tvec!(TypedFact::dt_shape(self.output_type, c_shape)))
     }
 
-    /*
-           fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-           super::mir_unary::mir_unary_invariants(model, node, &self.a, self.b_trans, self.c_trans)
-           }
+    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+        super::mir_unary::mir_unary_invariants(model, node, &self.a, self.b_trans, self.c_trans)
+    }
 
-           fn change_axes(
-           &self,
-           model: &TypedModel,
-           node: &TypedNode,
-           _io: InOut,
-           change: &AxisOp,
-           ) -> TractResult<Option<AxisChangeConsequence>> {
-           let b = &model.outlet_fact(node.inputs[0])?;
-           match change {
-           AxisOp::Move(from, to) => {
-           if *from == b.rank() - 2 && *to == b.rank() - 1 {
-           let op = QMatMulUnary {
-           b_trans: !self.b_trans,
-           c_trans: !self.c_trans,
-           ..self.clone()
-           };
-           Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
-           } else {
-           Ok(None)
-           }
-           }
-           AxisOp::Add(axis) if *axis < b.rank() - 1 => {
-           let mut a = self.a.clone().into_tensor();
-           a.insert_axis(*axis)?;
-           let op =
-           Some(Box::new(QMatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-           Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
-           }
-    // b is [.. 1, n], can add axis to the right and transpose
-    AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
-    let mut a = self.a.clone().into_tensor();
-    a.insert_axis(*axis - 2)?;
-    let op = QMatMulUnary {
-    b_trans: !self.b_trans,
-    c_trans: !self.c_trans,
-    a: a.into_arc_tensor(),
-    ..self.clone()
-    };
-    Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        let b = &model.outlet_fact(node.inputs[0])?;
+        match change {
+            AxisOp::Move(from, to) => {
+                if *from == b.rank() - 2 && *to == b.rank() - 1 {
+                    let op = QMatMulUnary {
+                        b_trans: !self.b_trans,
+                        c_trans: !self.c_trans,
+                        ..self.clone()
+                    };
+                    Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+                } else {
+                    Ok(None)
+                }
+            }
+            AxisOp::Add(axis) if *axis < b.rank() - 1 => {
+                let mut a = self.a.clone().into_tensor();
+                a.insert_axis(*axis)?;
+                let op =
+                    Some(Box::new(QMatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+            }
+            // b is [.. 1, n], can add axis to the right and transpose
+            AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
+                let mut a = self.a.clone().into_tensor();
+                a.insert_axis(*axis - 2)?;
+                let op = QMatMulUnary {
+                    b_trans: !self.b_trans,
+                    c_trans: !self.c_trans,
+                    a: a.into_arc_tensor(),
+                    ..self.clone()
+                };
+                Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+            }
+            AxisOp::Rm(axis) if b.rank() - axis > 2 => {
+                let mut a = self.a.clone().into_tensor();
+                a.remove_axis(*axis)?;
+                let op =
+                    Some(Box::new(QMatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+                Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+            }
+            _ => return Ok(None),
+        }
     }
-    AxisOp::Rm(axis) if b.rank() - axis > 2 => {
-    let mut a = self.a.clone().into_tensor();
-    a.remove_axis(*axis)?;
-    let op =
-    Some(Box::new(QMatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
-    Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+
+    fn slice_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        patch: &mut TypedModelPatch,
+        _output_slot: usize,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<OutletId>> {
+        let b_fact = model.outlet_fact(node.inputs[0])?;
+        let c_fact = &self.output_facts(&[b_fact])?[0];
+        if axis + self.c_trans as usize == c_fact.shape.rank() {
+            let a_split_axis = self.a.rank() - 1 - !self.a_trans as usize;
+            let a = self.a.slice(a_split_axis, start, end)?.into_arc_tensor();
+            let bias = if let Some(bias) = self.bias.as_ref().filter(|b| b.len() > 1) {
+                debug_assert_eq!(bias.rank(), 2);
+                let bias_axis = if self.c_trans { 0 } else { 1 };
+                Some(bias.slice(bias_axis, start, end)?.into_arc_tensor())
+            } else {
+                self.bias.clone()
+            };
+            let wire = patch.tap_model(model, node.inputs[0])?;
+            return Ok(Some(
+                patch.wire_node(
+                    format!("{}.sliced-m-{}-{}", node.name, start, end),
+                    Self { a, bias, ..self.clone() },
+                    &[wire],
+                )?[0],
+            ));
+        }
+        return Ok(None);
     }
-    _ => return Ok(None),
-    }
-    }
-    */
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         cost(
