@@ -8,7 +8,7 @@ use mir_quant::MatMulQParams;
 #[derive(Debug, Clone, new, Hash)]
 pub struct QMatMulUnary {
     pub a: Arc<Tensor>,
-    pub bias: Arc<Tensor>,
+    pub bias: Option<Arc<Tensor>>,
     pub a_trans: bool,
     pub b_trans: bool,
     pub c_trans: bool,
@@ -54,7 +54,11 @@ impl EvalOp for QMatMulUnary {
         let mut model = TypedModel::default();
         let a = model.add_const("source_a", self.a.clone())?;
         let b = model.add_const("source_b", inputs[0].clone())?;
-        let bias = model.add_const("source_bias", self.bias.clone())?;
+        let bias = if let Some(bias) = self.bias.clone() {
+            Some(model.add_const("source_bias", bias)?)
+        } else {
+            None
+        };
 
         let params = self
             .params
@@ -111,6 +115,63 @@ impl TypedOp for QMatMulUnary {
         Ok(tvec!(TypedFact::dt_shape(self.output_type, c_shape)))
     }
 
+    /*
+           fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+           super::mir_unary::mir_unary_invariants(model, node, &self.a, self.b_trans, self.c_trans)
+           }
+
+           fn change_axes(
+           &self,
+           model: &TypedModel,
+           node: &TypedNode,
+           _io: InOut,
+           change: &AxisOp,
+           ) -> TractResult<Option<AxisChangeConsequence>> {
+           let b = &model.outlet_fact(node.inputs[0])?;
+           match change {
+           AxisOp::Move(from, to) => {
+           if *from == b.rank() - 2 && *to == b.rank() - 1 {
+           let op = QMatMulUnary {
+           b_trans: !self.b_trans,
+           c_trans: !self.c_trans,
+           ..self.clone()
+           };
+           Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+           } else {
+           Ok(None)
+           }
+           }
+           AxisOp::Add(axis) if *axis < b.rank() - 1 => {
+           let mut a = self.a.clone().into_tensor();
+           a.insert_axis(*axis)?;
+           let op =
+           Some(Box::new(QMatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+           Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+           }
+    // b is [.. 1, n], can add axis to the right and transpose
+    AxisOp::Add(axis) if *axis == b.rank() && b.shape[b.rank() - 2] == 1.to_dim() => {
+    let mut a = self.a.clone().into_tensor();
+    a.insert_axis(*axis - 2)?;
+    let op = QMatMulUnary {
+    b_trans: !self.b_trans,
+    c_trans: !self.c_trans,
+    a: a.into_arc_tensor(),
+    ..self.clone()
+    };
+    Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+    }
+    AxisOp::Rm(axis) if b.rank() - axis > 2 => {
+    let mut a = self.a.clone().into_tensor();
+    a.remove_axis(*axis)?;
+    let op =
+    Some(Box::new(QMatMulUnary { a: a.into_arc_tensor(), ..self.clone() }) as _);
+    Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+    }
+    _ => return Ok(None),
+    }
+    }
+    */
+
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         cost(
             &inputs[0].shape.to_tvec(),
@@ -144,11 +205,11 @@ impl TypedOp for QMatMulUnary {
             &[],
         )?[0];
         let b = patch.tap_model(model, node.inputs[0])?;
-        let bias = patch.wire_node(
-            format!("{}.bias_const", &node.name),
-            ops::konst::Const(self.bias.clone()),
-            &[],
-        )?[0];
+        let bias = if let Some(bias) = self.bias.clone() {
+            Some(patch.add_const(format!("{}.bias_const", &node.name), bias)?)
+        } else {
+            None
+        };
 
         let params = self
             .params

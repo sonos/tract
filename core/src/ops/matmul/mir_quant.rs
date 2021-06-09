@@ -154,7 +154,7 @@ impl EvalOp for QMatMul {
         let mut model = TypedModel::default();
         let a = model.add_const("source_a", inputs[0].clone())?;
         let b = model.add_const("source_b", inputs[1].clone())?;
-        let c = model.add_const("source_c", inputs[2].clone())?;
+        let bias = model.add_const("source_bias", inputs[2].clone())?;
 
         let params = self
             .params
@@ -173,7 +173,7 @@ impl EvalOp for QMatMul {
             self.a_trans,
             b,
             self.b_trans,
-            c,
+            Some(bias),
             self.c_trans,
             result,
             self.output_type,
@@ -265,13 +265,19 @@ impl TypedOp for QMatMul {
                 qp
             }
         };
+
         TypedModelPatch::replace_single_op(
             model,
             node,
             &inputs,
             QMatMulUnary::new(
                 konst,
-                bias,
+                // if bias is uniformly zero, it can be discarded
+                Some(bias).filter(|b| {
+                    b.as_uniform()
+                        .map(|b| b.cast_to_scalar::<f32>().unwrap() != 0.0)
+                        .unwrap_or(false)
+                }),
                 t_konst,
                 t_var,
                 self.c_trans ^ flip,
@@ -333,7 +339,7 @@ impl TypedOp for QMatMul {
             self.a_trans,
             b,
             self.b_trans,
-            bias,
+            Some(bias),
             self.c_trans,
             result,
             self.output_type,
@@ -353,14 +359,39 @@ pub(crate) fn wire_matmul_quant(
     a_trans: bool,
     b: OutletId,
     b_trans: bool,
-    bias: OutletId,
+    bias: Option<OutletId>,
     c_trans: bool,
-    result: OutletId,
+    mut result: OutletId,
     output_type: DatumType,
     params: &[OutletId],
 ) -> TractResult<OutletId> {
     let a_fact = model.outlet_fact(a)?.clone();
     let rank = a_fact.rank();
+    let m_axis = rank - 2 + c_trans as usize;
+    let n_axis = rank - 1 - c_trans as usize;
+    let result_fact = model.outlet_fact(result)?.clone();
+
+    if let Some(bias) = bias {
+        let bias_fact = model.outlet_fact(bias)?.clone();
+        if bias_fact.rank() == 2 {
+            let expected_bias_shape: [TDim; 2] = if c_trans {
+                [1.to_dim(), result_fact.shape[rank - 1].clone()]
+            } else {
+                [result_fact.shape[rank - 2].clone(), 1.to_dim()]
+            };
+            assert_eq!(&**bias_fact.shape, expected_bias_shape);
+        } else {
+            assert_eq!(bias_fact.shape.iter().product::<TDim>(), 1.to_dim());
+        };
+
+        result = wire_with_rank_broadcast(
+            &format!("{}.add_bias", &name),
+            model,
+            ops::math::add::bin_typed(),
+            &[result, bias],
+        )?[0];
+    }
+
     let k = model.outlet_fact(a)?.shape[rank - 2 + !a_trans as usize].clone();
 
     let abc_scale = combine_scales(model, name, params[1], params[3], params[5])?;
@@ -385,15 +416,6 @@ pub(crate) fn wire_matmul_quant(
     )?[0];
     let sum_b =
         model.wire_node(format!("{}.sum_b_reduced", name), AxisOp::Rm(b_k_axis), &[sum_b])?[0];
-
-    let result = wire_with_rank_broadcast(
-        &format!("{}.add_bias", &name),
-        model,
-        ops::math::add::bin_typed(),
-        &[result, bias],
-    )?[0];
-    let m_axis = rank - 2 + c_trans as usize;
-    let n_axis = rank - 1 - c_trans as usize;
     let result = compensate_zero_points(
         model, name, result, k, params[0], params[2], sum_a, sum_b, m_axis, n_axis,
     )?;

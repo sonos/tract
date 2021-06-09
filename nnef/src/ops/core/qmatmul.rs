@@ -23,7 +23,7 @@ fn qmatmul_parameters() -> Vec<Parameter> {
     vec![
         TypeName::Scalar.tensor().named("A"),
         TypeName::Scalar.tensor().named("B"),
-        TypeName::Scalar.tensor().named("bias"),
+        TypeName::Scalar.tensor().named("bias").default(0),
         TypeName::Logical.spec().named("transposeA"),
         TypeName::Logical.spec().named("transposeB"),
         TypeName::Logical.spec().named("transposeB"),
@@ -100,30 +100,30 @@ fn qmatmul_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option
     let op = node.op_as::<QMatMulUnary>().unwrap();
     let a = ast.konst_variable(format!("{}.a", node.name), &op.a)?;
     let b = ast.mapping[&node.inputs[0]].clone();
-    let bias = ast.konst_variable(format!("{}.bias", node.name), &op.bias)?;
 
     let [a0, a_scale, b0, b_scale, c0, c_scale] =
         qparams_to_rvalues(&op.params, &node.inputs, &ast.mapping)?;
 
-    Ok(Some(invocation(
-        "tract_core_qmatmul",
-        &[],
-        &[
-            ("A", (*a).clone()),
-            ("B", (*b).clone()),
-            ("bias", (*bias).clone()),
-            ("transposeA", logical(op.a_trans)),
-            ("transposeB", logical(op.b_trans)),
-            ("transposeC", logical(op.c_trans)),
-            ("a0", a0),
-            ("a_scale", a_scale),
-            ("b0", b0),
-            ("b_scale", b_scale),
-            ("c0", c0),
-            ("c_scale", c_scale),
-            ("output_type", string(format!("{:?}", op.output_type))),
-        ],
-    )))
+    let mut args = vec![
+        ("A", (*a).clone()),
+        ("B", (*b).clone()),
+        ("transposeA", logical(op.a_trans)),
+        ("transposeB", logical(op.b_trans)),
+        ("transposeC", logical(op.c_trans)),
+        ("a0", a0),
+        ("a_scale", a_scale),
+        ("b0", b0),
+        ("b_scale", b_scale),
+        ("c0", c0),
+        ("c_scale", c_scale),
+        ("output_type", string(format!("{:?}", op.output_type))),
+    ];
+
+    if let Some(bias) = &op.bias {
+        args.push(("bias", (&*ast.konst_variable(format!("{}.bias", node.name), bias)?).clone()));
+    }
+
+    Ok(Some(invocation("tract_core_qmatmul", &[], &*args)))
 }
 
 pub fn values_to_qparams(
