@@ -218,6 +218,21 @@ impl TypedOp for QMatMulUnary {
         return Ok(None);
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        super::mir_unary::mir_unary_declutter_leading_concat_on_k(
+            model,
+            node,
+            &self.a,
+            self.a_trans,
+            self.b_trans,
+            &|a: Arc<Tensor>| Box::new(QMatMulUnary { a, ..self.clone() }),
+        )
+    }
+
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         cost(
             &inputs[0].shape.to_tvec(),
