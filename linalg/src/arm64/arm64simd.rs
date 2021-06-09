@@ -1,7 +1,9 @@
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::mmm::*;
 
+extern_kernel!(fn arm64simd_mmm_f32_8x4_a53(op: *const MatMatMulKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_8x8_a53(op: *const MatMatMulKerSpec<f32>) -> isize);
+extern_kernel!(fn arm64simd_mmm_f32_8x4_gen(op: *const MatMatMulKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_8x8_gen(op: *const MatMatMulKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_12x8_a53(op: *const MatMatMulKerSpec<f32>) -> isize);
 extern_kernel!(fn arm64simd_mmm_f32_12x8_gen(op: *const MatMatMulKerSpec<f32>) -> isize);
@@ -12,10 +14,12 @@ extern_kernel!(fn arm64simd_mmm_i8_64x1(op: *const MatMatMulKerSpec<i32>) -> isi
 extern_kernel!(fn arm64simd_sigmoid_f32_4n(ptr: *mut f32, count: usize) -> ());
 extern_kernel!(fn arm64simd_tanh_f32_4n(ptr: *mut f32, count: usize) -> ());
 
+MMMKernel!(MatMatMulF32x8x4A53<f32>, "arm64simd (cortex A53)", arm64simd_mmm_f32_8x4_a53; 8, 4; 16, 16; 1, 1);
 MMMKernel!(MatMatMulF32x8x8A53<f32>, "arm64simd (cortex A53)", arm64simd_mmm_f32_8x8_a53; 8, 8; 16, 16; 1, 1);
 MMMKernel!(MatMatMulF32x12x8A53<f32>, "arm64simd (cortex A53)", arm64simd_mmm_f32_12x8_a53; 12, 8; 16, 16; 1, 1);
 MMMKernel!(MatMatMulF32x64x1A53<f32>, "arm64simd (cortex A53)", arm64simd_mmm_f32_64x1_a53; 64, 1; 16, 16; 1, 1);
 
+MMMKernel!(MatMatMulF32x8x4<f32>, "arm64simd (generic)", arm64simd_mmm_f32_8x4_gen; 8, 4; 16, 16; 1, 1);
 MMMKernel!(MatMatMulF32x8x8<f32>, "arm64simd (generic)", arm64simd_mmm_f32_8x8_gen; 8, 8; 16, 16; 1, 1);
 MMMKernel!(MatMatMulF32x12x8<f32>, "arm64simd (generic)", arm64simd_mmm_f32_12x8_gen; 12, 8; 16, 16; 1, 1);
 MMMKernel!(MatMatMulF32x64x1<f32>, "arm64simd (generic)", arm64simd_mmm_f32_64x1_gen; 64, 1; 16, 16; 1, 1);
@@ -78,7 +82,9 @@ impl ElementWiseKer<f32> for TanhF32x4n {
     }
 }
 
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x4A53, test_MatMatMulF32x8x4a53, true);
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8A53, test_MatMatMulF32x8x8a53, true);
+test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x4, test_MatMatMulF32x8x4, true);
 test_mmm_kernel_f32!(crate::arm64::arm64simd::MatMatMulF32x8x8, test_MatMatMulF32x8x8, true);
 test_mmm_kernel_f32!(
     crate::arm64::arm64simd::MatMatMulF32x12x8A53,
