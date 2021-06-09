@@ -124,57 +124,14 @@ impl TypedOp for MatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        use crate::ops::array::concat::ConcatSlice;
-        use crate::ops::array::TypedConcat;
-        let input_fact = model.outlet_fact(node.inputs[0])?;
-        if let Some(concat) = model.nodes()[node.inputs[0].node].op().downcast_ref::<TypedConcat>()
-        {
-            let mut patch = TypedModelPatch::new("split over k-concatenated input");
-            let k_axis = self.a.rank() - 1 - self.a_trans as usize;
-            if concat.axis == input_fact.shape.rank() - 1 && self.b_trans {
-                let mut input = 0;
-                let concat_node = model.node(node.inputs[0].node);
-                let offsets = concat
-                    .offsets(&model.node_input_facts(concat_node.id)?)?
-                    .iter()
-                    .map(|x| x.to_usize())
-                    .collect::<TractResult<Vec<usize>>>()?;
-                let mut wires = vec![];
-                for (ix, slice) in concat.slices.iter().enumerate() {
-                    let wire = match slice {
-                        ConcatSlice::Const(t) => patch.add_const(
-                            format!("{}.const-{}", node.name, ix),
-                            t.clone().into_arc_tensor(),
-                        )?,
-                        ConcatSlice::Var => {
-                            input += 1;
-                            patch.tap_model(model, concat_node.inputs[input - 1])?
-                        }
-                    };
-                    let mut a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
-                    while a.rank() > 0 && a.shape()[0] == 1 {
-                        a.remove_axis(0)?;
-                    }
-                    let wire = patch.wire_node(
-                        format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
-                        MatMulUnary { a: a.into_arc_tensor(), ..self.clone() },
-                        &[wire],
-                    )?[0];
-                    wires.push(wire)
-                }
-                let mut wire = wires[0];
-                for (ix, w) in wires[1..].iter().enumerate() {
-                    wire = patch.wire_node(
-                        format!("{}.k-add-{}", node.name, ix),
-                        crate::ops::binary::TypedBinOp(Box::new(crate::ops::math::Add)),
-                        &[wire, *w],
-                    )?[0];
-                }
-                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                return Ok(Some(patch));
-            }
-        }
-        Ok(None)
+        mir_unary_declutter_leading_concat_on_k(
+            model,
+            node,
+            &self.a,
+            self.a_trans,
+            self.b_trans,
+            &|a: Arc<Tensor>| Box::new(MatMulUnary { a, ..self.clone() }),
+        )
     }
 
     fn slice_output(
@@ -341,4 +298,64 @@ pub(super) fn mir_unary_invariants(
         invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
     };
     Ok(invars.into_iter().collect())
+}
+
+pub(super) fn mir_unary_declutter_leading_concat_on_k(
+    model: &TypedModel,
+    node: &TypedNode,
+    a: &Tensor,
+    a_trans: bool,
+    b_trans: bool,
+    construct: &dyn Fn(Arc<Tensor>) -> Box<dyn TypedOp>,
+) -> TractResult<Option<TypedModelPatch>> {
+    use crate::ops::array::concat::ConcatSlice;
+    use crate::ops::array::TypedConcat;
+    let input_fact = model.outlet_fact(node.inputs[0])?;
+    if let Some(concat) = model.nodes()[node.inputs[0].node].op().downcast_ref::<TypedConcat>() {
+        let mut patch = TypedModelPatch::new("split over k-concatenated input");
+        let k_axis = a.rank() - 1 - a_trans as usize;
+        if concat.axis == input_fact.shape.rank() - 1 && b_trans {
+            let mut input = 0;
+            let concat_node = model.node(node.inputs[0].node);
+            let offsets = concat
+                .offsets(&model.node_input_facts(concat_node.id)?)?
+                .iter()
+                .map(|x| x.to_usize())
+                .collect::<TractResult<Vec<usize>>>()?;
+            let mut wires = vec![];
+            for (ix, slice) in concat.slices.iter().enumerate() {
+                let wire = match slice {
+                    ConcatSlice::Const(t) => patch.add_const(
+                        format!("{}.const-{}", node.name, ix),
+                        t.clone().into_arc_tensor(),
+                    )?,
+                    ConcatSlice::Var => {
+                        input += 1;
+                        patch.tap_model(model, concat_node.inputs[input - 1])?
+                    }
+                };
+                let mut a = a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
+                while a.rank() > 0 && a.shape()[0] == 1 {
+                    a.remove_axis(0)?;
+                }
+                let wire = patch.wire_node(
+                    format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
+                    construct(a.into_arc_tensor()),
+                    &[wire],
+                )?[0];
+                wires.push(wire)
+            }
+            let mut wire = wires[0];
+            for (ix, w) in wires[1..].iter().enumerate() {
+                wire = patch.wire_node(
+                    format!("{}.k-add-{}", node.name, ix),
+                    crate::ops::binary::TypedBinOp(Box::new(crate::ops::math::Add)),
+                    &[wire, *w],
+                )?[0];
+            }
+            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+            return Ok(Some(patch));
+        }
+    }
+    Ok(None)
 }
