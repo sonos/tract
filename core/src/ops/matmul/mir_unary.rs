@@ -1,4 +1,4 @@
-use super::lir_unary::{LirMatMulUnary, ConcreteMatMulGeometry, MatMulGeometry};
+use super::lir_unary::{ConcreteMatMulGeometry, LirMatMulUnary, MatMulGeometry};
 use super::*;
 use crate::internal::*;
 use tract_ndarray::prelude::*;
@@ -65,26 +65,7 @@ impl TypedOp for MatMulUnary {
     }
 
     fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let input_fact = model.outlet_fact(node.inputs[0])?;
-        if input_fact.shape.rank() != node.outputs[0].fact.shape.rank() {
-            return Ok(Invariants::none());
-        }
-        let mut broadcasted_a_shape: TVec<_> = self.a.shape().into();
-        while broadcasted_a_shape.len() < input_fact.shape.rank() {
-            broadcasted_a_shape.insert(0, 1);
-        }
-        let mut invars = broadcasted_a_shape[..broadcasted_a_shape.len() - 2]
-            .into_iter()
-            .enumerate()
-            .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
-            .collect::<Vec<_>>();
-        if self.b_trans && self.c_trans && input_fact.rank() >= 2 {
-            invars.push(AxisInfo::simple(input_fact.shape.rank() - 2))
-        }
-        if !self.b_trans && !self.c_trans {
-            invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
-        };
-        Ok(invars.into_iter().collect())
+        mir_unary_invariants(model, node, &self.a, self.b_trans, self.c_trans)
     }
 
     fn change_axes(
@@ -331,4 +312,33 @@ impl MatMulUnary {
         }
         Ok(patch)
     }
+}
+
+pub(super) fn mir_unary_invariants(
+    model: &TypedModel,
+    node: &TypedNode,
+    a: &Tensor,
+    b_trans: bool,
+    c_trans: bool,
+) -> TractResult<Invariants> {
+    let input_fact = model.outlet_fact(node.inputs[0])?;
+    if input_fact.shape.rank() != node.outputs[0].fact.shape.rank() {
+        return Ok(Invariants::none());
+    }
+    let mut broadcasted_a_shape: TVec<_> = a.shape().into();
+    while broadcasted_a_shape.len() < input_fact.shape.rank() {
+        broadcasted_a_shape.insert(0, 1);
+    }
+    let mut invars = broadcasted_a_shape[..broadcasted_a_shape.len() - 2]
+        .into_iter()
+        .enumerate()
+        .map(|(axis, &period)| AxisInfo::simple(axis).with_period(period))
+        .collect::<Vec<_>>();
+    if b_trans && c_trans && input_fact.rank() >= 2 {
+        invars.push(AxisInfo::simple(input_fact.shape.rank() - 2))
+    }
+    if !b_trans && !c_trans {
+        invars.push(AxisInfo::simple(input_fact.shape.rank() - 1))
+    };
+    Ok(invars.into_iter().collect())
 }
