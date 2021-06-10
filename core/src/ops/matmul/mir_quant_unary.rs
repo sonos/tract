@@ -2,8 +2,9 @@ use ops::matmul::mir_quant::wire_matmul_quant;
 
 use crate::internal::*;
 use crate::ops;
+use crate::ops::matmul::mir_quant::combine_scales;
+use crate::ops::matmul::mir_quant::requant;
 use crate::ops::matmul::*;
-use crate::ops::matmul::mir_quant::clamp_and_cast_to;
 use mir_quant::MatMulQParams;
 
 #[derive(Debug, Clone, new, Hash)]
@@ -247,6 +248,35 @@ impl TypedOp for QMatMulUnary {
                     .map(|x| x.to_usize())
                     .collect::<TractResult<Vec<usize>>>()?;
                 let mut wires = vec![];
+                let mut params_for_split = self.params.clone();
+                params_for_split.a_scale = tensor0(1.0f32).into();
+                params_for_split.b_scale = tensor0(1.0f32).into();
+                params_for_split.c_scale = tensor0(1.0f32).into();
+                params_for_split.c0 = tensor0(0i32).into();
+                let mut params_outlets = tvec!();
+                for k in &[
+                    &self.params.a_scale,
+                    &self.params.b_scale,
+                    &self.params.c_scale,
+                    &self.params.c0,
+                ] {
+                    let outlet = match k {
+                        &AttrOrInput::Attr(t) => {
+                            patch.add_const(format!("{}.a_scale", node.name), t.clone())?
+                        }
+                        &AttrOrInput::Input(i) => patch.tap_model(model, node.inputs[*i])?,
+                    };
+                    params_outlets.push(outlet);
+                }
+                let scale = combine_scales(
+                    &mut patch,
+                    &node.name,
+                    params_outlets[0],
+                    params_outlets[1],
+                    params_outlets[2],
+                )?;
+                let c0 = params_outlets[3];
+
                 for (ix, slice) in concat.slices.iter().enumerate() {
                     let wire = match slice {
                         ConcatSlice::Const(t) => patch.add_const(
@@ -267,6 +297,8 @@ impl TypedOp for QMatMulUnary {
                         Self {
                             a: a.into_arc_tensor(),
                             output_type: DatumType::I32,
+                            bias: self.bias.clone().filter(|_| ix == 0),
+                            params: params_for_split.clone(),
                             ..self.clone()
                         },
                         &[wire],
@@ -281,7 +313,7 @@ impl TypedOp for QMatMulUnary {
                         &[wire, *w],
                     )?[0];
                 }
-                wire = clamp_and_cast_to(&mut patch, &node.name, self.output_type, wire)?;
+                wire = requant(&mut patch, &node.name, wire, self.output_type, scale, c0)?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 return Ok(Some(patch));
             }
