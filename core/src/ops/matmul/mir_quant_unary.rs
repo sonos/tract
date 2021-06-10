@@ -3,6 +3,7 @@ use ops::matmul::mir_quant::wire_matmul_quant;
 use crate::internal::*;
 use crate::ops;
 use crate::ops::matmul::*;
+use crate::ops::matmul::mir_quant::clamp_and_cast_to;
 use mir_quant::MatMulQParams;
 
 #[derive(Debug, Clone, new, Hash)]
@@ -144,9 +145,16 @@ impl TypedOp for QMatMulUnary {
         match change {
             AxisOp::Move(from, to) => {
                 if *from == b.rank() - 2 && *to == b.rank() - 1 {
+                    let mut bias = self.bias.clone();
+                    if let Some(b) = &mut bias {
+                        if b.rank() == 2 {
+                            *b = b.clone().into_tensor().permute_axes(&[1, 0])?.into_arc_tensor();
+                        }
+                    }
                     let op = QMatMulUnary {
                         b_trans: !self.b_trans,
                         c_trans: !self.c_trans,
+                        bias,
                         ..self.clone()
                     };
                     Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
@@ -201,7 +209,7 @@ impl TypedOp for QMatMulUnary {
             let a = self.a.slice(a_split_axis, start, end)?.into_arc_tensor();
             let bias = if let Some(bias) = self.bias.as_ref().filter(|b| b.len() > 1) {
                 debug_assert_eq!(bias.rank(), 2);
-                let bias_axis = if self.c_trans { 0 } else { 1 };
+                let bias_axis = if self.c_trans { 1 } else { 0 };
                 Some(bias.slice(bias_axis, start, end)?.into_arc_tensor())
             } else {
                 self.bias.clone()
@@ -223,14 +231,62 @@ impl TypedOp for QMatMulUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        super::mir_unary::mir_unary_declutter_leading_concat_on_k(
-            model,
-            node,
-            &self.a,
-            self.a_trans,
-            self.b_trans,
-            &|a: Arc<Tensor>| Box::new(QMatMulUnary { a, ..self.clone() }),
-        )
+        use crate::ops::array::concat::ConcatSlice;
+        use crate::ops::array::TypedConcat;
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        if let Some(concat) = model.nodes()[node.inputs[0].node].op().downcast_ref::<TypedConcat>()
+        {
+            let mut patch = TypedModelPatch::new("split over k-concatenated input");
+            let k_axis = self.a.rank() - 1 - self.a_trans as usize;
+            if concat.axis == input_fact.shape.rank() - 1 && self.b_trans {
+                let mut input = 0;
+                let concat_node = model.node(node.inputs[0].node);
+                let offsets = concat
+                    .offsets(&model.node_input_facts(concat_node.id)?)?
+                    .iter()
+                    .map(|x| x.to_usize())
+                    .collect::<TractResult<Vec<usize>>>()?;
+                let mut wires = vec![];
+                for (ix, slice) in concat.slices.iter().enumerate() {
+                    let wire = match slice {
+                        ConcatSlice::Const(t) => patch.add_const(
+                            format!("{}.const-{}", node.name, ix),
+                            t.clone().into_arc_tensor(),
+                        )?,
+                        ConcatSlice::Var => {
+                            input += 1;
+                            patch.tap_model(model, concat_node.inputs[input - 1])?
+                        }
+                    };
+                    let mut a = self.a.slice(k_axis, offsets[ix], offsets[ix + 1])?;
+                    while a.rank() > 0 && a.shape()[0] == 1 {
+                        a.remove_axis(0)?;
+                    }
+                    let wire = patch.wire_node(
+                        format!("{}.k-{}-{}", node.name, offsets[ix], offsets[ix + 1]),
+                        Self {
+                            a: a.into_arc_tensor(),
+                            output_type: DatumType::I32,
+                            ..self.clone()
+                        },
+                        &[wire],
+                    )?[0];
+                    wires.push(wire)
+                }
+                let mut wire = wires[0];
+                for (ix, w) in wires[1..].iter().enumerate() {
+                    wire = patch.wire_node(
+                        format!("{}.k-add-{}", node.name, ix),
+                        crate::ops::binary::TypedBinOp(Box::new(crate::ops::math::Add)),
+                        &[wire, *w],
+                    )?[0];
+                }
+                wire = clamp_and_cast_to(&mut patch, &node.name, self.output_type, wire)?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
