@@ -3,6 +3,7 @@ mod arm64simd;
 use crate::Ops;
 
 use crate::frame::ElementWiseImpl;
+use crate::frame::MatMatMul;
 use crate::frame::MatMatMulImpl;
 
 use tract_data::internal::DimLike;
@@ -19,27 +20,29 @@ pub fn plug(ops: &mut Ops) {
         log::info!("arm64simd activated for smmm (cortex A53)");
         ops.mmv_f32 =
             Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1A53, f32>::new()));
-        ops.mmm_f32 = Box::new(|m, _, _| {
-            if m.is_some()
-                && (m.unwrap() >= 128 || m.unwrap().div_ceil(12) * 12 <= m.unwrap().div_ceil(8) * 8)
-            {
-                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8A53, f32>::new())
-            } else {
-                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32>::new())
-            }
+        ops.mmm_f32 = Box::new(|m, _, n| {
+            best_of(
+                m,
+                n,
+                &[
+                    Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8A53, f32>::new()),
+                    Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8A53, f32>::new()),
+                ],
+            )
         })
     } else {
         log::info!("arm64simd activated for smmm (generic)");
         ops.mmv_f32 =
             Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32>::new()));
-        ops.mmm_f32 = Box::new(|m, _, _| {
-            if m.is_some()
-                && (m.unwrap() >= 128 || m.unwrap().div_ceil(12) * 12 <= m.unwrap().div_ceil(8) * 8)
-            {
-                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8, f32>::new())
-            } else {
-                Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32>::new())
-            }
+        ops.mmm_f32 = Box::new(|m, _, n| {
+            best_of(
+                m,
+                n,
+                &[
+                    Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x12x8, f32>::new()),
+                    Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x8x8, f32>::new()),
+                ],
+            )
         })
     }
 
@@ -55,4 +58,20 @@ pub fn plug(ops: &mut Ops) {
     ops.sigmoid_f32 =
         Box::new(|| Box::new(ElementWiseImpl::<arm64simd::SigmoidF32x4n, f32>::new()));
     ops.tanh_f32 = Box::new(|| Box::new(ElementWiseImpl::<arm64simd::TanhF32x4n, f32>::new()));
+}
+
+fn best_of(
+    m: Option<usize>,
+    n: Option<usize>,
+    kernels: &[Box<dyn MatMatMul>],
+) -> Box<dyn MatMatMul> {
+    if let (Some(m), Some(n)) = (m, n) {
+        kernels
+            .iter()
+            .min_by_key(|k| (m.div_ceil(k.mr()) * n.div_ceil(k.nr()) + 1) * k.mr() * k.nr())
+            .unwrap()
+            .clone()
+    } else {
+        kernels.iter().max_by_key(|k| k.mr() * k.nr()).unwrap().clone()
+    }
 }
