@@ -328,7 +328,7 @@ mod test {
         QMatMulUnaryProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 0,
             b0: 0,
             c0: 1,
@@ -344,7 +344,7 @@ mod test {
         QMatMulUnaryProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 0,
             b0: 0,
             c0: 1,
@@ -360,7 +360,7 @@ mod test {
         QMatMulUnaryProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[34]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: -17,
             b0: 1,
             c0: 0,
@@ -376,7 +376,7 @@ mod test {
         QMatMulUnaryProblem {
             a: arr2(&[[26]]),
             b: arr2(&[[0]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 27,
             b0: -1,
             c0: 1,
@@ -392,7 +392,7 @@ mod test {
         QMatMulUnaryProblem {
             a: arr2(&[[-23]]),
             b: arr2(&[[-2]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: -11,
             b0: -45,
             c0: 0,
@@ -408,7 +408,7 @@ mod test {
         QMatMulUnaryProblem {
             a: arr2(&[[47], [0]]),
             b: arr2(&[[1, 0, 30]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 86,
             b0: 19,
             c0: 0,
@@ -424,7 +424,7 @@ mod test {
         QMatMulUnaryProblem {
             a: arr2(&[[-30]]),
             b: arr2(&[[0, 107, 0]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: -59,
             b0: 117,
             c0: 0,
@@ -439,7 +439,7 @@ mod test {
         QMatMulUnaryProblem {
             a: arr2(&[[11, 7, 3], [10, 6, 2], [9, 5, 1], [8, 4, 0]]),
             b: arr2(&[[1, 4], [2, 5], [3, 6]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 12,
             b0: 0,
             c0: 0,
@@ -454,7 +454,7 @@ mod test {
     struct QMatMulUnaryProblem {
         a: Array2<i8>,
         b: Array2<i8>,
-        bias: Array2<i32>,
+        bias: Tensor,
         a0: i8,
         b0: i8,
         c0: i8,
@@ -504,7 +504,7 @@ mod test {
             let result = model
                 .wire_node(
                     "qmm",
-                    QMatMulUnary::new(
+                    dbg!(QMatMulUnary::new(
                         self.a.clone().into_arc_tensor(),
                         Some(self.bias.clone().into_arc_tensor()),
                         false,
@@ -512,7 +512,7 @@ mod test {
                         false,
                         i8::datum_type(),
                         MatMulQParams::all_dynamic(1),
-                    ),
+                    )),
                     &inputs,
                 )
                 .unwrap();
@@ -566,7 +566,7 @@ mod test {
                     QMatMulUnaryProblem {
                         a: Array2::from_shape_vec((m, k), a).unwrap(),
                         b: Array2::from_shape_vec((k, n), b).unwrap(),
-                        bias: arr2(&[[0i32]]),
+                        bias: tensor0(0i32),
                         a0,
                         b0,
                         c0,

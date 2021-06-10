@@ -214,6 +214,8 @@ impl TypedOp for QMatMul {
             } else {
                 [c_shape[c_shape.len() - 2].clone(), 1.to_dim()]
             };
+            dbg!(&expected_bias_shape);
+            dbg!(&inputs[2]);
             anyhow::ensure!(&**inputs[2].shape == expected_bias_shape);
         } else {
             anyhow::ensure!(inputs[2].shape.iter().product::<TDim>() == 1.to_dim());
@@ -618,7 +620,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 0,
             b0: 0,
             c0: 1,
@@ -634,7 +636,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 0,
             b0: 0,
             c0: 1,
@@ -650,7 +652,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[0]]),
             b: arr2(&[[34]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: -17,
             b0: 1,
             c0: 0,
@@ -666,7 +668,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[26]]),
             b: arr2(&[[0]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 27,
             b0: -1,
             c0: 1,
@@ -682,7 +684,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[-23]]),
             b: arr2(&[[-2]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: -11,
             b0: -45,
             c0: 0,
@@ -698,7 +700,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[47], [0]]),
             b: arr2(&[[1, 0, 30]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 86,
             b0: 19,
             c0: 0,
@@ -714,7 +716,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[-30]]),
             b: arr2(&[[0, 107, 0]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: -59,
             b0: 117,
             c0: 0,
@@ -729,7 +731,7 @@ mod test {
         QMatMulProblem {
             a: arr2(&[[11, 7, 3], [10, 6, 2], [9, 5, 1], [8, 4, 0]]),
             b: arr2(&[[1, 4], [2, 5], [3, 6]]),
-            bias: arr2(&[[0]]),
+            bias: tensor0(0i32),
             a0: 12,
             b0: 0,
             c0: 0,
@@ -744,7 +746,7 @@ mod test {
     struct QMatMulProblem {
         a: Array2<i8>,
         b: Array2<i8>,
-        bias: Array2<i32>,
+        bias: Tensor,
         a0: i8,
         b0: i8,
         c0: i8,
@@ -795,13 +797,7 @@ mod test {
             );
             inputs.push(
                 model
-                    .add_source(
-                        "bias",
-                        TypedFact::dt_shape(
-                            i32::datum_type(),
-                            &[self.bias.nrows(), self.bias.ncols()],
-                        ),
-                    )
+                    .add_source("bias", TypedFact::dt_shape(i32::datum_type(), self.bias.shape()))
                     .unwrap(),
             );
             inputs.push(model.add_source("a0", TypedFact::scalar::<i8>()).unwrap());
@@ -830,7 +826,7 @@ mod test {
                 .run(tvec!(
                     self.a.clone().into_tensor(),
                     self.b.clone().into_tensor(),
-                    self.bias.clone().into_tensor(),
+                    self.bias.clone(),
                     self.a0.into(),
                     self.a_scale.into(),
                     self.b0.into(),
@@ -875,7 +871,7 @@ mod test {
                     QMatMulProblem {
                         a: Array2::from_shape_vec((m, k), a).unwrap(),
                         b: Array2::from_shape_vec((k, n), b).unwrap(),
-                        bias: arr2(&[[0i32]]),
+                        bias: tensor0(0i32),
                         a0,
                         b0,
                         c0,
