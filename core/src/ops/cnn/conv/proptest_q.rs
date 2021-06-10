@@ -479,3 +479,23 @@ fn bias_1() {
     .check()
     .unwrap();
 }
+
+#[test]
+fn bias_2() {
+    let qp = MatMulQParams::noop_static(i8::datum_type());
+    let data = ArrayD::zeros(vec![1, 1]);
+    let kernel = ArrayD::zeros(vec![2, 1, 1]);
+    QConvProblem {
+        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_out: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
+        kernel_format: OIHW,
+        group: 1,
+        data,
+        kernel,
+        bias: Some(tract_ndarray::arr1(&[0, 1]).into_dyn()),
+        qp,
+        optim: false,
+    }
+    .check()
+    .unwrap();
+}
