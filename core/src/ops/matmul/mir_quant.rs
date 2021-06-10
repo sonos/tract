@@ -214,8 +214,6 @@ impl TypedOp for QMatMul {
             } else {
                 [c_shape[c_shape.len() - 2].clone(), 1.to_dim()]
             };
-            dbg!(&expected_bias_shape);
-            dbg!(&inputs[2]);
             anyhow::ensure!(&**inputs[2].shape == expected_bias_shape);
         } else {
             anyhow::ensure!(inputs[2].shape.iter().product::<TDim>() == 1.to_dim());
@@ -290,7 +288,7 @@ impl TypedOp for QMatMul {
                 Some(bias).filter(|b| {
                     b.as_uniform()
                         .map(|b| b.cast_to_scalar::<f32>().unwrap() != 0.0)
-                        .unwrap_or(false)
+                        .unwrap_or(true)
                 }),
                 t_konst,
                 t_var,
