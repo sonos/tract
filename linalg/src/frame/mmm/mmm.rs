@@ -12,6 +12,9 @@ use tract_data::internal::*;
 pub trait MatMatMul:
     Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
 {
+    fn mr(&self) -> usize;
+    fn nr(&self) -> usize;
+
     fn a_pack(&self, k: usize) -> Packer;
     fn b_pack(&self, k: usize) -> Packer;
 
@@ -143,6 +146,14 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
+    fn mr(&self) -> usize {
+        K::mr()
+    }
+
+    fn nr(&self) -> usize {
+        K::nr()
+    }
+
     fn a_pack(&self, k: usize) -> Packer {
         Packer::new(k, K::mr(), K::alignment_bytes_packed_a(), K::end_padding_packed_a())
     }
