@@ -1,0 +1,518 @@
+// vim: ft=arm
+
+// x19..x26 are used, callee-preserved
+
+// C tile regs: v16 to v31, (scratch)
+
+// v8 is used, d8 (lower half) must preserved
+// v0-v7 (scratch registers)
+//  packed A buffering (2x8 values): alternating v0, v1 with v2, v3
+//  packed B buffering (2x8 values): alternating v4, v5 with v6, v7
+
+.text
+.align 4
+
+.cpu generic+fp+simd
+.global {{G}}arm64simd_mmm_f32_16x4_{{core}}_{{suffix}}
+{{G}}arm64simd_mmm_f32_16x4_{{core}}_{{suffix}}:
+
+    stp         x19, x20, [sp, #-16]!
+    stp         x21, x22, [sp, #-16]!
+    stp         x23, x24, [sp, #-16]!
+    stp         x25, x26, [sp, #-16]!
+
+    str         q8, [sp, #-16]!
+
+{% for r in (16..31) %}
+    eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
+{% endfor %}
+
+    ldp         x7, x8, [x0]        // a, b
+    ldp         x9, x10, [x0, #16]  // c, lin
+
+    ldp         x2, x1, [x7]        // a disc, a first arg
+
+    cmp         x2, #1
+    bne         .unsupported
+
+    ldp         x5, x3, [x10]       // lin disc, k
+    cmp         x5, #0
+    bne         .unsupported
+    cmp         x3, #0
+    beq         .non_linear
+
+    ldp         x4, x2, [x8]        // b disc, first arg
+    cmp         x4, #1
+    beq         .packed_packed
+    cmp         x4, #2
+    beq         .packed_tops_and_offsets
+    b           .unsupported
+
+.packed_tops_and_offsets:
+    ldr         x8, [x8, #16]       // cols ptr ptr (x2 = row offsets ptr)
+    ldr         x4, [ x2 ], #8      // fist row offset
+
+    ldp         x19, x20, [x8], #16 // heads of cols ptrs
+    ldp         x21, x22, [x8], #16
+/*
+
+    cmp         x3, #4
+    blt         .packed_tops_and_offsets_loop_1
+
+.p2align 4
+.packed_tops_and_offsets_loop_4:
+    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+    add         x12, x4, x23
+    ld1         {v5.s}[0], [ x12 ]
+    add         x13, x4, x24
+    ld1         {v5.s}[1], [ x13 ]
+    add         x14, x4, x25
+    ld1         {v5.s}[2], [ x14 ]
+    add         x15, x4, x26
+    ld1         {v5.s}[3], [ x15 ]
+
+    ldr         x4, [ x2 ], #8
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+
+    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+    add         x12, x4, x23
+    ld1         {v5.s}[0], [ x12 ]
+    add         x13, x4, x24
+    ld1         {v5.s}[1], [ x13 ]
+    add         x14, x4, x25
+    ld1         {v5.s}[2], [ x14 ]
+    add         x15, x4, x26
+    ld1         {v5.s}[3], [ x15 ]
+
+    ldr         x4, [ x2 ], #8
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+
+    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+    add         x12, x4, x23
+    ld1         {v5.s}[0], [ x12 ]
+    add         x13, x4, x24
+    ld1         {v5.s}[1], [ x13 ]
+    add         x14, x4, x25
+    ld1         {v5.s}[2], [ x14 ]
+    add         x15, x4, x26
+    ld1         {v5.s}[3], [ x15 ]
+
+    ldr         x4, [ x2 ], #8
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+
+    ld1         { v0.4s, v1.4s }, [ x1 ], #32
+
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+    add         x12, x4, x23
+    ld1         {v5.s}[0], [ x12 ]
+    add         x13, x4, x24
+    ld1         {v5.s}[1], [ x13 ]
+    add         x14, x4, x25
+    ld1         {v5.s}[2], [ x14 ]
+    add         x15, x4, x26
+    ld1         {v5.s}[3], [ x15 ]
+
+    ldr         x4, [ x2 ], #8
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+    sub x3, x3, #4
+    cmp x3, #4
+    bge .packed_tops_and_offsets_loop_4
+
+    cmp x3, #0
+    beq .non_linear
+*/
+
+.p2align 4
+.packed_tops_and_offsets_loop_1:
+
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x1 ], #64
+
+    add         x8, x4, x19
+    ld1         {v4.s}[0], [ x8 ]
+    add         x9, x4, x20
+    ld1         {v4.s}[1], [ x9 ]
+    add         x10, x4, x21
+    ld1         {v4.s}[2], [ x10 ]
+    add         x11, x4, x22
+    ld1         {v4.s}[3], [ x11 ]
+
+    ldr         x4, [ x2 ], #8
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v2.4s, v4.s[0]
+    fmla        v19.4s, v3.4s, v4.s[0]
+    fmla        v20.4s, v0.4s, v4.s[1]
+    fmla        v21.4s, v1.4s, v4.s[1]
+    fmla        v22.4s, v2.4s, v4.s[1]
+    fmla        v23.4s, v3.4s, v4.s[1]
+
+    fmla        v24.4s, v0.4s, v4.s[2]
+    fmla        v25.4s, v1.4s, v4.s[2]
+    fmla        v26.4s, v2.4s, v4.s[2]
+    fmla        v27.4s, v3.4s, v4.s[2]
+    fmla        v28.4s, v0.4s, v4.s[3]
+    fmla        v29.4s, v1.4s, v4.s[3]
+    fmla        v30.4s, v2.4s, v4.s[3]
+    fmla        v31.4s, v3.4s, v4.s[3]
+
+    subs        x3, x3, #1
+    bne         .packed_tops_and_offsets_loop_1
+
+    b           .non_linear
+
+.packed_packed:
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x1 ], #64
+    ld1         { v4.4s }, [ x2 ], #16
+
+{% capture packed_packed_loop1 %}
+    {% if core == "a53" %}
+        {% include "arm64simd_mmm_f32_16x4/packed_packed_loop1/naive.tmpli" %}
+    {% else %}
+        {% include "arm64simd_mmm_f32_16x4/packed_packed_loop1/naive.tmpli" %}
+    {% endif %}
+{% endcapture %}
+
+    cmp         x3, #4
+    blt         .packed_packed_loop_1
+
+.p2align 4
+.packed_packed_loop_4:
+    {{ packed_packed_loop1 }}
+    {{ packed_packed_loop1 }}
+    {{ packed_packed_loop1 }}
+    {{ packed_packed_loop1 }}
+
+    sub x3, x3, #4
+    cmp x3, #4
+    bge .packed_packed_loop_4
+
+    cmp x3, #0
+    beq .non_linear
+
+.p2align 4
+.packed_packed_loop_1:
+    {{ packed_packed_loop1 }}
+    subs        x3, x3, #1
+    bne .packed_packed_loop_1
+
+    b .non_linear
+
+.non_linear:
+    ldr         x1, [x0, #32]
+    cmp         x1, #0
+    bne         .non_linear_loop_entry
+
+.store:
+    ldr         x3, [x0, #16]
+    ldp         x5, x6, [x3]                // c base ptr, rsc
+    ldp         x7, x8, [x3, #16]           // csc, item_size
+
+    cmp         x6, #4
+    bne         .store_strides_generic
+
+    {% for col in (0..3) %}
+        str q{{col | times:4 | plus:16 | plus: 0}}, [ x5 ]
+        str q{{col | times:4 | plus:16 | plus: 1}}, [ x5, #16 ]
+        str q{{col | times:4 | plus:16 | plus: 2}}, [ x5, #32 ]
+        str q{{col | times:4 | plus:16 | plus: 3}}, [ x5, #48 ]
+        add x5, x5, x7
+    {% endfor %}
+
+    mov         x0, #0
+    b           .return
+
+.store_strides_generic:
+
+    {% for col in (0..3) %}
+        mov x4, x5
+        {% for reg in (0..3) %}
+            {% for lane in (0..3) %}
+                st1 { v{{col | times:4 | plus: 16 | plus: reg}}.s }[{{lane}}], [ x4 ], x6
+            {% endfor %}
+        {% endfor %}
+        add x5, x5, x7
+    {% endfor %}
+
+    mov         x0, #0
+    b           .return
+
+.return:
+    ldr         q8, [sp], #16
+
+    ldp         x25, x26, [sp], #16
+    ldp         x23, x24, [sp], #16
+    ldp         x21, x22, [sp], #16
+    ldp         x19, x20, [sp], #16
+
+    ret
+
+.non_linear_loop_entry:
+    sub         x1, x1, 40
+
+.non_linear_loop:
+    add         x1, x1, 40
+    ldr         x2, [x1]
+    cmp         x2, #0
+    beq         .store
+    cmp         x2, #1
+    beq         .min
+    cmp         x2, #2
+    beq         .max
+    cmp         x2, #3
+    beq         .add_unicast
+    cmp         x2, #4
+    beq         .per_row_mul
+    cmp         x2, #5
+    beq         .per_row_add
+    cmp         x2, #6
+    beq         .per_col_mul
+    cmp         x2, #7
+    beq         .per_col_add
+    cmp         x2, #8
+    beq         .add_row_col_product
+    cmp         x2, #9
+    beq         .scalar_mul
+    cmp         x2, #10
+    beq         .scalar_add
+
+    add         x0, x2, #4000
+    b           .return
+
+.min:
+    add         x2, x1, #8
+    ld1         {v0.s}[0], [ x2 ]
+    dup         v0.4s, v0.s[0]
+    {% for reg in (16..31) %}
+        fmin        v{{reg}}.4s, v{{reg}}.4s, v0.4s
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.max:
+    add         x2, x1, #8
+    ld1         {v0.s}[0], [ x2 ]
+    dup         v0.4s, v0.s[0]
+    {% for reg in (16..31) %}
+        fmax        v{{reg}}.4s, v{{reg}}.4s, v0.4s
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.add_unicast:
+    ldp         x5, x6, [x1, #8]
+    ldp         x7, x8, [x1, #24]
+
+    {% for col in (0..3) %}
+        mov x4, x5
+        {% for reg in (0..3) %}
+            {% for lane in (0..3) %}
+                ld1 {v0.s}[{{lane}}], [ x4 ], x6
+            {% endfor %}
+            fadd v{{col | times:4 | plus: 16| plus: reg}}.4s, v{{col | times:4 | plus: 16 | plus: reg}}.4s, v0.4s
+        {% endfor %}
+        add x5, x5, x7
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.per_col_mul:
+    ldr         x2, [x1, #8]
+    ldr         q0, [ x2 ], #16
+
+    {% for col in (0..3) %}
+        {% for reg in (0..3) %}
+            fmul v{{col | times:4 | plus: 16 | plus: reg}}.4s, v{{col | times:4 | plus: reg|plus:16}}.4s, v0.s[{{col}}]
+        {% endfor %}
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.per_col_add:
+    ldr         x2, [x1, #8]
+    ldr         q0, [ x2 ], #16
+
+    {% for col in (0..3) %}
+	    dup v2.4s, v0.s[{{col}}]
+        {% for reg in (0..3) %}
+            fadd v{{col | times:4 | plus: reg|plus:16}}.4s, v{{col | times:4 | plus: reg|plus:16}}.4s, v2.4s
+    	{% endfor %}
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.per_row_mul:
+    ldr         x2, [x1, #8]
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x2 ]
+
+    {% for col in (0..3) %}
+        {% for reg in (0..3) %}
+            fmul v{{col | times:4 | plus: reg | plus:16}}.4s, v{{col | times:4 | plus: reg | plus:16}}.4s, v{{reg}}.4s
+        {% endfor %}
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.per_row_add:
+    ldr         x2, [x1, #8]
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x2 ]
+
+    {% for col in (0..3) %}
+        {% for reg in (0..3) %}
+            fadd v{{col | times:4 | plus: reg | plus:16}}.4s, v{{col | times:4 | plus: reg | plus:16}}.4s, v{{reg}}.4s
+        {% endfor %}
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.add_row_col_product:
+    ldr     x2, [x1, #8]
+    ldr     x3, [x1, #16]
+
+    ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [ x2 ]
+    ld1         { v4.4s }, [ x3 ]
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v2.4s, v4.s[0]
+    fmla        v19.4s, v3.4s, v4.s[0]
+    fmla        v20.4s, v0.4s, v4.s[1]
+    fmla        v21.4s, v1.4s, v4.s[1]
+    fmla        v22.4s, v2.4s, v4.s[1]
+    fmla        v23.4s, v3.4s, v4.s[1]
+
+    fmla        v24.4s, v0.4s, v4.s[2]
+    fmla        v25.4s, v1.4s, v4.s[2]
+    fmla        v26.4s, v2.4s, v4.s[2]
+    fmla        v27.4s, v3.4s, v4.s[2]
+    fmla        v28.4s, v0.4s, v4.s[3]
+    fmla        v29.4s, v1.4s, v4.s[3]
+    fmla        v30.4s, v2.4s, v4.s[3]
+    fmla        v31.4s, v3.4s, v4.s[3]
+
+    b           .non_linear_loop
+
+.scalar_mul:
+    add         x2, x1, #8
+    ld1         {v0.s}[0], [ x2 ]
+    dup         v0.4s, v0.s[0]
+    {% for reg in (16..31) %}
+        fmul        v{{reg}}.4s, v{{reg}}.4s, v0.4s
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.scalar_add:
+    add         x2, x1, #8
+    ld1         {v0.s}[0], [ x2 ]
+    dup         v0.4s, v0.s[0]
+    {% for reg in (16..31) %}
+        fadd        v{{reg}}.4s, v{{reg}}.4s, v0.4s
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.unsupported:
+    mov         x0, #1
+    b           .return
