@@ -136,7 +136,7 @@ then
             dump --assert-op-count Add 2 --assert-op-count Mul 22 --assert-op-count Max 0
     ./target/release/tract .cached/en_tdnn_lstm_bn_q7/model.onnx \
             -O -i S,40,f32 --output-node output --pulse 24 \
-            dump --assert-op-count Add 13 --assert-op-count Mul 17 --assert-op-count Max 7
+            dump --assert-op-count Add 14 --assert-op-count Mul 17 --assert-op-count Max 7
     (
     cd onnx/test_cases
     [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
