@@ -172,7 +172,6 @@ fn de_scan(
                 (*wire, fact)
             } else if let Some((_, wire, _out)) = state.iter().find(|s| s.0 == par.id) {
                 let fact = builder.model.outlet_fact(*wire)?.clone();
-                dbg!(&fact);
                 input_mapping.push(InputMapping::State {
                     initializer: StateInitializer::FromInput(outer_inputs.len()),
                 });
