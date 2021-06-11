@@ -66,11 +66,12 @@ fn best_of(
     kernels: &[Box<dyn MatMatMul>],
 ) -> Box<dyn MatMatMul> {
     if let (Some(m), Some(n)) = (m, n) {
-        kernels
+        let k = kernels
             .iter()
-            .min_by_key(|k| (m.div_ceil(k.mr()) * n.div_ceil(k.nr()) + 1) * k.mr() * k.nr())
+            .min_by_key(|k| (m.div_ceil(k.mr()) * n.div_ceil(k.nr())) * (10 + k.mr() * k.nr()))
             .unwrap()
-            .clone()
+            .clone();
+        k
     } else {
         kernels.iter().max_by_key(|k| k.mr() * k.nr()).unwrap().clone()
     }
