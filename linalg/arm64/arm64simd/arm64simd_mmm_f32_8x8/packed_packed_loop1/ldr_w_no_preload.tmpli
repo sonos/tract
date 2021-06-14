@@ -47,5 +47,5 @@ ins         v1.s[1], w10
 ins         v5.s[1], w25
 ins         v0.s[3], w8
 ins         v4.s[3], w23
-ins         v1.s[3], w8
+ins         v1.s[3], w12
 ins         v5.s[3], w27
