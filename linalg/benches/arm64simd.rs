@@ -731,7 +731,7 @@ fn packed_packed_16x4_loop1(c: &mut Criterion) {
                 b.iter(|| unsafe {
                     let mut p = F32;
                     let mut q = F32;
-                    r4!(asm!(include_str!(concat!("../arm64/arm64simd/arm64simd_mmm_f32_12x8/packed_packed_loop1/", stringify!($id), ".tmpli")),
+                    r4!(asm!(include_str!(concat!("../arm64/arm64simd/arm64simd_mmm_f32_16x4/packed_packed_loop1/", stringify!($id), ".tmpli")),
                     inout("x1") p, inout("x2") q,
                     out("x4") _, out("x5") _, out("x6") _, out("x7") _,
                     out("x8") _, out("x9") _, out("x10") _, out("x11") _,
@@ -750,6 +750,7 @@ fn packed_packed_16x4_loop1(c: &mut Criterion) {
     }
 
     bench_4_loop_1!(naive);
+    bench_4_loop_1!(cortex_a53);
 }
 
 criterion_group!(
