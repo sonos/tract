@@ -298,6 +298,28 @@ impl Scan {
         Ok(None)
     }
 
+    fn declutter_discard_empty_output_mapping_with_body_output(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        for (ix, om) in self.output_mapping.iter().enumerate() {
+            if om.last_value_slot.is_none() && om.full_slot.is_none() && !om.state {
+                let mut new_op = self.clone();
+                new_op.output_mapping.remove(ix);
+                new_op.body.outputs.remove(ix);
+                new_op.decluttered = false;
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &node.inputs,
+                    new_op,
+                )?));
+            }
+        }
+        Ok(None)
+    }
+
     fn declutter_pull_batcheable_input(
         &self,
         model: &TypedModel,
@@ -384,12 +406,31 @@ impl Scan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         for (model_ix, mapping) in self.output_mapping.iter().enumerate() {
-            let slot = if let Some(slot) = mapping.full_slot { slot } else { continue };
+            //dbg!(mapping);
+            //dbg!(&node.outputs);
+            let mut is_used = false;
+            for slot in &[mapping.full_slot, mapping.last_value_slot] {
+                //dbg!(slot);
+                if let Some(slot) = slot {
+                    //dbg!(slot);
+                    if node.outputs[*slot].successors.len() > 0
+                        || model.outputs.contains(&(node.id, *slot).into())
+                    {
+                        //dbg!("is_used");
+                        is_used = true;
+                    }
+                }
+            }
+            if !is_used {
+                continue;
+            }
             let emitter_outlet = self.body.output_outlets()?[model_ix];
             let emitter_node = self.body.node(emitter_outlet.node);
-            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 0
-                || emitter_node.inputs.len() > 1
-            {
+            //dbg!(emitter_node);
+            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 0 {
+                // FIXME continue if wire is a state
+                // continue is both last_value and full values are exported
+                //dbg!("have successors node");
                 continue;
             }
             let invariants = emitter_node.op.invariants(&self.body, &emitter_node)?;
@@ -398,10 +439,30 @@ impl Scan {
             } else {
                 continue;
             };
+
+            //dbg!("do it");
             let mut fixed_body = self.body.clone();
-            fixed_body.outputs[model_ix] = emitter_node.inputs[0];
             let mut output_mapping = self.output_mapping.clone();
+            /*
+            // first input of extracted node replace its output
+            fixed_body.outputs[model_ix] = emitter_node.inputs[0];
             output_mapping[model_ix] = OutputMapping { axis: axis_before, ..mapping.clone() };
+            */
+
+            // add inputs at the end, first full, then again as last_value
+            for (ix, input) in emitter_node.inputs.iter().enumerate() {
+                fixed_body.outputs.push(*input);
+                let full_slot = Some(node.outputs.len() + ix);
+                let last_value_slot = Some(node.outputs.len() + ix + emitter_node.inputs.len());
+                output_mapping.push(OutputMapping {
+                    axis: axis_before,
+                    full_slot,
+                    last_value_slot,
+                    ..mapping.clone()
+                });
+            }
+
+            eprintln!("{}", fixed_body);
 
             let mut outside_patch = TypedModelPatch::default();
             let inputs = node
@@ -418,22 +479,35 @@ impl Scan {
                 seq_length_input_slot: self.seq_length_input_slot,
             };
             let scan_outputs = outside_patch.wire_node(&*node.name, new_op, &*inputs)?;
+            if let Some(output) = mapping.full_slot {
+                let inputs = (node.outputs.len()..node.outputs.len() + emitter_node.inputs.len())
+                    .map(|slot| scan_outputs[slot])
+                    .collect::<TVec<_>>();
+                let wire = outside_patch.wire_node(
+                    &*emitter_node.name,
+                    emitter_node.op.clone(),
+                    &inputs,
+                )?[0];
+                outside_patch.shunt_outside(model, OutletId::new(node.id, output), wire)?;
+            }
+            /*
             let wire = outside_patch.wire_node(
-                &*emitter_node.name,
-                emitter_node.op.clone(),
-                &[scan_outputs[slot]],
+            &*emitter_node.name,
+            emitter_node.op.clone(),
+            &[scan_outputs[slot]],
             )?[0];
             for ix in 0..node.outputs.len() {
-                if ix == slot {
-                    outside_patch.shunt_outside(model, OutletId::new(node.id, ix), wire)?;
-                } else {
-                    outside_patch.shunt_outside(
-                        model,
-                        OutletId::new(node.id, ix),
-                        scan_outputs[ix],
-                    )?;
-                }
+            if ix == slot {
+            outside_patch.shunt_outside(model, OutletId::new(node.id, ix), wire)?;
+            } else {
+            outside_patch.shunt_outside(
+            model,
+            OutletId::new(node.id, ix),
+            scan_outputs[ix],
+            )?;
             }
+            }
+            */
             return Ok(Some(outside_patch));
         }
         Ok(None)
@@ -707,6 +781,7 @@ impl TypedOp for Scan {
                 {
                     trace!(stringify!($func));
                     r.push_context(stringify!($func));
+                    // FIXME: wtf ?
                     for node in r.nodes() {
                         if let Some(scan) = node.op_as::<Self>() {
                             scan.body.invariants().unwrap();
@@ -723,6 +798,7 @@ impl TypedOp for Scan {
         pass!(declutter_pull_batcheable_output);
         pass!(declutter_const_initializer);
         pass!(declutter_discard_useless_outer_output);
+        pass!(declutter_discard_empty_output_mapping_with_body_output);
         Ok(None)
     }
 
