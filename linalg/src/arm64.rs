@@ -72,7 +72,9 @@ fn best_of(
             .iter()
             .min_by_key(|k| {
                 (m.div_ceil(k.mr()) * n.div_ceil(k.nr()))
-                    * (50 + k.mr() * k.nr() + 5 * k.mr().abs_sub(k.nr()))
+                    * (50
+                        + k.mr() * k.nr()
+                        + 5 * (k.mr() as isize - k.nr() as isize).abs() as usize)
             })
             .unwrap()
             .clone();
