@@ -434,11 +434,14 @@ impl Scan {
                 continue;
             }
             let invariants = emitter_node.op.invariants(&self.body, &emitter_node)?;
+            dbg!(mapping.axis);
             let axis_before = if let Some(a) = invariants.unary_track_axis_up(mapping.axis, false) {
                 a
             } else {
                 continue;
             };
+            dbg!(axis_before);
+            dbg!(&self.output_mapping);
 
             //dbg!("do it");
             let mut fixed_body = self.body.clone();
@@ -450,19 +453,41 @@ impl Scan {
             */
 
             // add inputs at the end, first full, then again as last_value
+            eprintln!("BEFORE:\n{}", fixed_body);
+            let mut full_values_slots = vec![];
+            let mut last_values_slots = vec![];
+            let mut current_output_number = node.outputs.len();
             for (ix, input) in emitter_node.inputs.iter().enumerate() {
-                fixed_body.outputs.push(*input);
-                let full_slot = Some(node.outputs.len() + ix);
-                let last_value_slot = Some(node.outputs.len() + ix + emitter_node.inputs.len());
-                output_mapping.push(OutputMapping {
-                    axis: axis_before,
-                    full_slot,
-                    last_value_slot,
-                    ..mapping.clone()
-                });
+                if let Some(position) = fixed_body.outputs.iter().position(|o| o == input) {
+                    let mut mapping = &mut output_mapping[position];
+                    if mapping.last_value_slot.is_none() {
+                        mapping.last_value_slot = Some(current_output_number);
+                        current_output_number += 1;
+                    }
+                    if mapping.full_slot.is_none() {
+                        mapping.axis = axis_before;
+                        mapping.full_slot = Some(current_output_number);
+                        current_output_number += 1;
+                    }
+                    full_values_slots.push(mapping.full_slot.unwrap());
+                    last_values_slots.push(mapping.last_value_slot.unwrap());
+                } else {
+                    fixed_body.outputs.push(*input);
+                    let full_slot = Some(current_output_number);
+                    let last_value_slot = Some(current_output_number + 1);
+                    current_output_number += 2;
+                    output_mapping.push(OutputMapping {
+                        axis: axis_before,
+                        full_slot,
+                        last_value_slot,
+                        ..mapping.clone()
+                    });
+                    full_values_slots.push(full_slot.unwrap());
+                    last_values_slots.push(last_value_slot.unwrap());
+                }
             }
-
-            eprintln!("{}", fixed_body);
+            eprintln!("AFTER:\n{}", fixed_body);
+            dbg!(&output_mapping);
 
             let mut outside_patch = TypedModelPatch::default();
             let inputs = node
@@ -480,9 +505,8 @@ impl Scan {
             };
             let scan_outputs = outside_patch.wire_node(&*node.name, new_op, &*inputs)?;
             if let Some(output) = mapping.full_slot {
-                let inputs = (node.outputs.len()..node.outputs.len() + emitter_node.inputs.len())
-                    .map(|slot| scan_outputs[slot])
-                    .collect::<TVec<_>>();
+                let inputs =
+                    full_values_slots.iter().map(|slot| scan_outputs[*slot]).collect::<TVec<_>>();
                 let wire = outside_patch.wire_node(
                     &*emitter_node.name,
                     emitter_node.op.clone(),

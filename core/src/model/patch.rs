@@ -1,6 +1,8 @@
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
+use tract_data::itertools::Itertools;
+
 use crate::internal::*;
 use crate::model::*;
 
@@ -277,6 +279,11 @@ where
             } else if outlet.slot == 0 {
                 target.set_outlet_label(replace_by, target.node(outlet.node).name.clone())?;
             }
+        }
+        dbg!("apply patch");
+        dbg!(&target.outputs);
+        if target.outputs.len() > target.outputs.iter().sorted().dedup().count() {
+            bail!("Duplicate usage of node as output");
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
