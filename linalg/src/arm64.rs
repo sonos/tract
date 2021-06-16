@@ -69,7 +69,7 @@ fn best_of(
             .min_by_key(|k| {
                 let rows = m.div_ceil(k.mr());
                 let cols = n.div_ceil(k.nr());
-                (rows * cols) * (50 + k.mr() * k.nr() + 10 * (k.nr() + k.mr()))
+                (rows * cols) * (25 + k.mr() * k.nr() + 10 * (k.nr() + k.mr()))
             })
             .unwrap()
             .clone();
@@ -99,6 +99,7 @@ mod tests {
     #[test]
     fn kernel_choice() {
         assert_eq!(best(128, 40), (12, 8)); // hey_snips_v1 layer_0_2
+        assert_eq!(best(32, 24), (12, 8)); // hey_snips_v1 layer_0_2
         assert_eq!(best(200, 12), (12, 8)); // 15M h_new
         assert_eq!(best(768, 12), (12, 8)); // 15M h_new
         assert_eq!(best(768, 4), (16, 4)); // 15M h_new
