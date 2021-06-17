@@ -8,10 +8,13 @@ use crate::frame::MatMatMulImpl;
 use tract_data::internal::DimLike;
 
 fn is_cortex_a53() -> std::io::Result<bool> {
+    /*
     let cpu_info = std::fs::read_to_string("/proc/cpuinfo")?;
     let a53 =
         cpu_info.split("\n").any(|line| line.starts_with("CPU part") && line.contains("0xd03"));
     Ok(a53)
+        */
+        Ok(false)
 }
 
 pub fn plug(ops: &mut Ops) {
