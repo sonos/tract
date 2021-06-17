@@ -38,6 +38,7 @@ criterion = "0.3"
 proptest = "1"
 
 [[bench]]
+bench = false
 name = "arm64"
 harness = false
 
