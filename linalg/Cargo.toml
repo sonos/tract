@@ -38,6 +38,10 @@ criterion = "0.3"
 proptest = "1"
 
 [[bench]]
+name = "arm64"
+harness = false
+
+[[bench]]
 name = "mat_vec"
 harness = false
 

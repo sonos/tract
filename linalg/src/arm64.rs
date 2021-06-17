@@ -1,5 +1,5 @@
 mod arm64simd;
-use arm64simd::*;
+pub use arm64simd::*;
 
 use crate::Ops;
 
@@ -10,10 +10,13 @@ use crate::frame::MatMatMulImpl;
 use tract_data::internal::DimLike;
 
 fn is_cortex_a53() -> std::io::Result<bool> {
+    /*
     let cpu_info = std::fs::read_to_string("/proc/cpuinfo")?;
     let a53 =
         cpu_info.split("\n").any(|line| line.starts_with("CPU part") && line.contains("0xd03"));
     Ok(a53)
+    */
+    Ok(false)
 }
 
 pub fn plug(ops: &mut Ops) {
@@ -64,12 +67,36 @@ fn best_of(
     kernels: &[Box<dyn MatMatMul>],
 ) -> Box<dyn MatMatMul> {
     if let (Some(m), Some(n)) = (m, n) {
+//        eprintln!("{}x{}", m, n);
+        let a53 = is_cortex_a53().unwrap_or(false);
         let k = kernels
             .iter()
             .min_by_key(|k| {
                 let rows = m.div_ceil(k.mr());
                 let cols = n.div_ceil(k.nr());
-                (rows * cols) * (25 + k.mr() * k.nr() + 10 * (k.nr() + k.mr()))
+                let tiles = rows * cols;
+                //        let cost = 10 + k.mr() * k.nr() + 4 * (k.nr() + k.mr());
+                let cost = match (a53, m, n) {
+                    (true, 16, 4) => 15703,
+                    (true, 12, 8) => 18770,
+                    (true, 8, 8) => 14152,
+                    (false, 16, 4) => 14896,
+                    (false, 12, 8) => 18665,
+                    (false, 8, 8) => 13756,
+                    _ => 1,
+                };
+                let score = tiles * cost;
+                /*
+                eprintln!(
+                    "  k:{:2}x{} tiles:{:3} cost:{:3} => {:5}",
+                    k.mr(),
+                    k.nr(),
+                    tiles,
+                    cost,
+                    tiles * cost
+                );
+                */
+                score
             })
             .unwrap()
             .clone();
@@ -97,9 +124,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn kernel_choice() {
         assert_eq!(best(128, 40), (12, 8)); // hey_snips_v1 layer_0_2
-        assert_eq!(best(32, 24), (12, 8)); // hey_snips_v1 layer_0_2
+        assert_eq!(best(32, 24), (8, 8)); // hey_snips_v3
         assert_eq!(best(200, 12), (12, 8)); // 15M h_new
         assert_eq!(best(768, 12), (12, 8)); // 15M h_new
         assert_eq!(best(768, 4), (16, 4)); // 15M h_new
