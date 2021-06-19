@@ -30,7 +30,7 @@ impl PulsedOp for QMatMulUnary {
             self.c_trans,
         )?;
         fact.datum_type = self.output_type;
-        fact.shape = c_shape;
+        fact.shape = c_shape.into();
         Ok(tvec!(fact))
     }
 

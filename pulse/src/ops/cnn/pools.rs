@@ -81,7 +81,7 @@ pub fn pulsed_output_facts(
     let stride = spec.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
     fact.delay /= stride;
     fact.dim = (fact.dim.clone() - kernel_len.to_dim()).div_ceil(stride as _);
-    fact.shape = oshape.shape;
+    fact.shape = oshape.shape.into();
     Ok(tvec!(fact))
 }
 

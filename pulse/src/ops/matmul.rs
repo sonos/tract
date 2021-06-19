@@ -29,7 +29,7 @@ impl PulsedOp for MatMulUnary {
             self.c_trans,
         )?;
         fact.datum_type = tract_core::ops::matmul::output_type(inputs[0].datum_type);
-        fact.shape = c_shape;
+        fact.shape = c_shape.into();
         Ok(tvec!(fact))
     }
 

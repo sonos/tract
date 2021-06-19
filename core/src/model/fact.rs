@@ -4,12 +4,16 @@ use downcast_rs::Downcast;
 use std::fmt;
 
 #[derive(Clone, PartialEq, Hash)]
-pub struct Dims {
+pub struct ShapeFact {
     dims: TVec<TDim>,
     concrete: Option<TVec<usize>>,
 }
 
-impl Dims {
+impl ShapeFact {
+    pub fn rank(&self) -> usize {
+        self.dims.len()
+    }
+
     fn compute_concrete(&mut self) {
         self.concrete =
             self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
@@ -51,23 +55,45 @@ impl Dims {
         self.iter().map(|d| d.eval(&values).to_isize()).collect::<TractResult<_>>()
     }
 
-    pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> Dims {
-        let mut dims = Dims { dims: it.into_iter().map(|d| d.to_dim()).collect(), concrete: None };
+    pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> ShapeFact {
+        let mut dims = ShapeFact { dims: it.into_iter().map(|d| d.to_dim()).collect(), concrete: None };
         dims.compute_concrete();
         dims
     }
+
+    pub fn set(&mut self, ix: usize, dim: TDim) {
+        self.dims[ix] = dim;
+        self.compute_concrete();
+    }
+
+    pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
+        self.dims.insert(axis, 1.into());
+        if let Some(concrete) = &mut self.concrete {
+            concrete.insert(axis, 1);
+        }
+        Ok(())
+    }
+
+    pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
+        self.dims.remove(axis);
+        if let Some(concrete) = &mut self.concrete {
+            concrete.remove(axis);
+        }
+        Ok(())
+    }
+
 }
 
-impl std::ops::Deref for Dims {
+impl std::ops::Deref for ShapeFact {
     type Target = [TDim];
     fn deref(&self) -> &[TDim] {
         &self.dims
     }
 }
 
-impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for Dims {
-    fn from(it: T) -> Dims {
-        Dims::from_dims(it)
+impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
+    fn from(it: T) -> ShapeFact {
+        ShapeFact::from_dims(it)
     }
 }
 
@@ -88,17 +114,17 @@ pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync +
 impl_downcast!(Fact);
 dyn_clone::clone_trait_object!(Fact);
 
+/*
 /// Fully determined dimension of a tensor.
 ///
 /// Tensors in tract can have one streaming dimension. TDim generalize the
 /// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
 /// (sometimes hypothetical) tensor length on the streaming axis.
-#[derive(Clone, PartialEq, Hash)]
-pub struct ShapeFact(Dims);
+pub struct ShapeFact(ShapeFact);
 
 impl std::ops::Deref for ShapeFact {
-    type Target = Dims;
-    fn deref(&self) -> &Dims {
+    type Target = ShapeFact;
+    fn deref(&self) -> &ShapeFact {
         &self.0
     }
 }
@@ -109,52 +135,53 @@ impl ShapeFact {
         self.0.len()
     }
 
-    pub fn insert_axis(&mut self, axis: usize) -> TractResult<()> {
-        self.0.dims.insert(axis, 1.into());
-        if let Some(concrete) = &mut self.0.concrete {
-            concrete.insert(axis, 1);
-        }
-        Ok(())
-    }
-
-    pub fn remove_axis(&mut self, axis: usize) -> TractResult<()> {
-        self.0.dims.remove(axis);
-        if let Some(concrete) = &mut self.0.concrete {
-            concrete.remove(axis);
-        }
-        Ok(())
-    }
-
     pub fn set(&mut self, ix: usize, dim: TDim) {
         self.0.dims[ix] = dim;
         self.0.compute_concrete();
     }
 
     pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> ShapeFact {
-        ShapeFact(Dims::from_dims(it))
+        ShapeFact(ShapeFact::from_dims(it))
     }
 }
 
 impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
     fn from(it: T) -> ShapeFact {
-        ShapeFact(Dims::from_dims(it))
+        ShapeFact(ShapeFact::from_dims(it))
     }
 }
+*/
 
-impl<'a, D: ToDim> std::iter::FromIterator<&'a D> for ShapeFact {
-    fn from_iter<T: IntoIterator<Item = &'a D>>(iter: T) -> Self {
+/*
+impl<D: ToDim> std::iter::FromIterator<D> for ShapeFact {
+    fn from_iter<T: IntoIterator<Item = D>>(iter: T) -> Self {
+        ShapeFact::from_dims(iter.into_iter().map(|d| d.to_dim()))
+    }
+
+}
+*/
+
+impl<D: ToDim> std::iter::FromIterator<D> for ShapeFact {
+    fn from_iter<T: IntoIterator<Item = D>>(iter: T) -> Self {
         ShapeFact::from_dims(iter.into_iter().map(|d| d.to_dim()))
     }
 
 }
 
-impl fmt::Debug for Dims {
+impl fmt::Debug for ShapeFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use tract_itertools::Itertools;
         write!(fmt, "{}", self.iter().join(","))
     }
 }
 
+impl AsRef<[TDim]> for ShapeFact {
+    fn as_ref(&self) -> &[TDim] {
+        &self.dims
+    }
+}
+
+/*
 impl<T: AsRef<[usize]>> std::cmp::PartialEq<T> for ShapeFact {
     fn eq(&self, other: &T) -> bool {
         let other = other.as_ref();
@@ -167,6 +194,7 @@ impl fmt::Debug for ShapeFact {
         self.0.fmt(f)
     }
 }
+*/
 
 /// Fully determined tensor information for TypedModel.
 #[derive(Clone, PartialEq, Hash)]
@@ -258,7 +286,7 @@ impl TypedFact {
     }
 
     pub fn without_value(&self) -> Self {
-        Self::dt_shape(self.datum_type, &**self.shape)
+        Self::dt_shape(self.datum_type, self.shape.clone())
     }
 }
 

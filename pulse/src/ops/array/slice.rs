@@ -31,7 +31,7 @@ impl PulsedOp for Slice {
             fact.delay += self.start.to_usize()?;
             fact.dim = len
         } else {
-            fact.shape[self.axis] = len;
+            fact.shape.set(self.axis, len);
         }
         Ok(tvec!(fact))
     }

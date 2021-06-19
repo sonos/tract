@@ -170,7 +170,7 @@ impl OpState for State {
                 &shape,
                 op.c_m_axis,
                 op.c_n_axis,
-                &final_shape,
+                &*final_shape,
                 )
         }
     }

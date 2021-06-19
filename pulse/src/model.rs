@@ -99,8 +99,8 @@ impl
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(pulsifier) = self.1.get(&node.op.type_id())
-        {
+        //        if node.inputs.iter().map(|i| target.input_fact(&mapping[i]).unwrap()).all(|f| f.shape.
+        if let Some(pulsifier) = self.1.get(&node.op.type_id()) {
             (pulsifier.func)(source, node, target, mapping, self.0)
         } else {
             bail!("No pulsifier for {}", node);
