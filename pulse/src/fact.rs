@@ -18,7 +18,7 @@ pub trait StreamFact {
 
 impl StreamFact for ShapeFact {
     fn stream_info(&self) -> Option<(usize, &TDim)> {
-        let streaming_dims: TVec<(usize, &TDim)> = (&***self)
+        let streaming_dims: TVec<(usize, &TDim)> = (&**self)
             .iter()
             .enumerate()
             .filter(|(_ix, d)| d.symbols().contains(&stream_symbol()))
@@ -34,7 +34,7 @@ impl StreamFact for ShapeFact {
 #[derive(Clone, PartialEq, Hash)]
 pub struct PulsedFact {
     pub datum_type: DatumType,
-    pub shape: TVec<TDim>,
+    pub shape: ShapeFact,
     pub axis: usize,
     pub dim: TDim,
     pub delay: usize,
@@ -51,7 +51,7 @@ impl PulsedFact {
             .ok_or_else(|| format_err!("Can not pulse a tensor with no streaming dim"))?;
         let mut shape: TVec<TDim> = tf.shape.iter().collect();
         shape[axis] = pulse.into();
-        Ok(PulsedFact { datum_type, shape, axis, dim: len.clone(), delay: 0 })
+        Ok(PulsedFact { datum_type, shape: shape.into(), axis, dim: len.clone(), delay: 0 })
     }
 
     pub fn pulse(&self) -> usize {
@@ -59,7 +59,7 @@ impl PulsedFact {
     }
 
     pub fn to_pulse_fact(&self) -> TypedFact {
-        TypedFact::dt_shape(self.datum_type, &self.shape)
+        TypedFact::dt_shape(self.datum_type, self.shape.clone())
     }
 
     pub fn streaming_shape(&self) -> Vec<TDim> {
@@ -112,12 +112,12 @@ impl Fact for PulsedFact {
 
 impl From<PulsedFact> for TypedFact {
     fn from(fact: PulsedFact) -> TypedFact {
-        TypedFact::dt_shape(fact.datum_type, &fact.shape)
+        TypedFact::dt_shape(fact.datum_type, fact.shape)
     }
 }
 
 impl<'a> From<&'a PulsedFact> for TypedFact {
     fn from(fact: &'a PulsedFact) -> TypedFact {
-        TypedFact::dt_shape(fact.datum_type, &fact.shape)
+        TypedFact::dt_shape(fact.datum_type, fact.shape.clone())
     }
 }

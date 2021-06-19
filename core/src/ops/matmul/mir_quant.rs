@@ -214,7 +214,7 @@ impl TypedOp for QMatMul {
             } else {
                 [c_shape[c_shape.len() - 2].clone(), 1.to_dim()]
             };
-            anyhow::ensure!(&**inputs[2].shape == expected_bias_shape);
+            anyhow::ensure!(*inputs[2].shape == expected_bias_shape);
         } else {
             anyhow::ensure!(inputs[2].shape.iter().product::<TDim>() == 1.to_dim());
         };

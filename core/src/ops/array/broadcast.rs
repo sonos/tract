@@ -65,7 +65,7 @@ impl OpState for MultiBroadcastToState {
         let op = op.downcast_ref::<MultiBroadcastTo>().context("Wrong op")?;
         let shape = op.shape.eval_to_usize(&session.resolved_symbols)?;
         dispatch_datum_by_size!(MultiBroadcastTo::eval_t(inputs[0].datum_type())(
-            &inputs[0], &shape
+            &inputs[0], &*shape
         ))
     }
 }

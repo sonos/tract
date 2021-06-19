@@ -27,7 +27,7 @@ fn pulsify(
 impl PulsedOp for Downsample {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
-        fact.shape[self.axis] /= self.stride as usize;
+        fact.shape.set(self.axis, fact.shape[self.axis].clone() / self.stride as usize);
         fact.dim = fact.dim.div_ceil(self.stride as _);
         Ok(tvec!(fact))
     }

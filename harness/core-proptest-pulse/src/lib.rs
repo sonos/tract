@@ -47,7 +47,7 @@ fn proptest_regular_against_pulse(
     let output_stream_axis = output_fact.axis;
     let delay = output_fact.delay;
     let mut initial_output_shape = output_fact.shape.clone();
-    initial_output_shape[output_stream_axis] = 0.to_dim();
+    initial_output_shape.set(output_stream_axis, 0.to_dim());
     let initial_output_shape: TVec<usize> =
         initial_output_shape.iter().map(|d| d.to_usize().unwrap()).collect();
 

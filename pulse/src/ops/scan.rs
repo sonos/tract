@@ -47,7 +47,7 @@ impl PulsedOp for Scan {
                 format_err!("Expects output 0 to be the full stream (and no other output)")
             })?;
         let output_body_fact = self.body.output_fact(output_body_ix)?;
-        let shape = output_body_fact
+        let shape:ShapeFact = output_body_fact
             .shape
             .iter()
             .enumerate()
@@ -63,7 +63,7 @@ impl PulsedOp for Scan {
             .collect();
         let fact = PulsedFact {
             datum_type: output_body_fact.datum_type,
-            shape,
+            shape: shape.into(),
             axis: output_mapping.axis,
             dim: inputs[0].dim.clone(),
             delay: inputs[0].delay,
