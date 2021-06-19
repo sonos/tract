@@ -114,53 +114,6 @@ pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync +
 impl_downcast!(Fact);
 dyn_clone::clone_trait_object!(Fact);
 
-/*
-/// Fully determined dimension of a tensor.
-///
-/// Tensors in tract can have one streaming dimension. TDim generalize the
-/// regular tensor dimensions (usize) to arithmetic expressions of `S`, the
-/// (sometimes hypothetical) tensor length on the streaming axis.
-pub struct ShapeFact(ShapeFact);
-
-impl std::ops::Deref for ShapeFact {
-    type Target = ShapeFact;
-    fn deref(&self) -> &ShapeFact {
-        &self.0
-    }
-}
-
-impl ShapeFact {
-    /// Rank of the tensor.
-    pub fn rank(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn set(&mut self, ix: usize, dim: TDim) {
-        self.0.dims[ix] = dim;
-        self.0.compute_concrete();
-    }
-
-    pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> ShapeFact {
-        ShapeFact(ShapeFact::from_dims(it))
-    }
-}
-
-impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
-    fn from(it: T) -> ShapeFact {
-        ShapeFact(ShapeFact::from_dims(it))
-    }
-}
-*/
-
-/*
-impl<D: ToDim> std::iter::FromIterator<D> for ShapeFact {
-    fn from_iter<T: IntoIterator<Item = D>>(iter: T) -> Self {
-        ShapeFact::from_dims(iter.into_iter().map(|d| d.to_dim()))
-    }
-
-}
-*/
-
 impl<D: ToDim> std::iter::FromIterator<D> for ShapeFact {
     fn from_iter<T: IntoIterator<Item = D>>(iter: T) -> Self {
         ShapeFact::from_dims(iter.into_iter().map(|d| d.to_dim()))
@@ -180,21 +133,6 @@ impl AsRef<[TDim]> for ShapeFact {
         &self.dims
     }
 }
-
-/*
-impl<T: AsRef<[usize]>> std::cmp::PartialEq<T> for ShapeFact {
-    fn eq(&self, other: &T) -> bool {
-        let other = other.as_ref();
-        other.len() == self.rank() && other.iter().zip(self.iter()).all(|(i, d)| i.to_dim() == d)
-    }
-}
-
-impl fmt::Debug for ShapeFact {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-*/
 
 /// Fully determined tensor information for TypedModel.
 #[derive(Clone, PartialEq, Hash)]
