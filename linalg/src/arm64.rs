@@ -64,7 +64,7 @@ fn best_of(
     kernels: &[Box<dyn MatMatMul>],
 ) -> Box<dyn MatMatMul> {
     if let (Some(m), Some(n)) = (m, n) {
-//        eprintln!("{}x{}", m, n);
+        //        eprintln!("{}x{}", m, n);
         let a53 = is_cortex_a53().unwrap_or(false);
         let k = kernels
             .iter()
@@ -74,9 +74,9 @@ fn best_of(
                 let tiles = rows * cols;
                 //        let cost = 10 + k.mr() * k.nr() + 4 * (k.nr() + k.mr());
                 let cost = match (a53, k.mr(), k.nr()) {
-                    (true, 16, 4) => 15703,
-                    (true, 12, 8) => 18770,
-                    (true, 8, 8) => 14152,
+                    (true, 16, 4) => 9678,
+                    (true, 12, 8) => 12821,
+                    (true, 8, 8) => 8687,
                     (false, 16, 4) => 86726,
                     (false, 12, 8) => 12863,
                     (false, 8, 8) => 87252,
