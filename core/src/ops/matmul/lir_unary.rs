@@ -122,11 +122,11 @@ impl Op for LirMatMulUnary {
 
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
-            "c_shape: {:?} m:{} k:{} n:{}",
+            "c_shape:{:?}, c_m_axis:{} c_n_axis:{} b_storage:{:?}",
             self.c_fact,
-            self.geometry.m(),
-            self.geometry.k(),
-            self.geometry.n(),
+            self.c_m_axis,
+            self.c_n_axis,
+            self.geometry,
             )];
         infos.push(format!("Mult: {}", self.mmm));
         infos.push(format!("Ops: {:?}", self.micro_ops));

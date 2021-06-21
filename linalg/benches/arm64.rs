@@ -28,8 +28,8 @@ fn ker<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(
     let ref c = Tile {
         ptr: unsafe { c.as_ptr_mut_unchecked::<u8>() as _ },
         item_size,
-        row_byte_stride: (item_size * K::nr()) as isize,
-        col_byte_stride: item_size as isize,
+        col_byte_stride: (item_size * K::mr()) as isize,
+        row_byte_stride: item_size as isize,
     };
     let ref linear = LinearSpec::Mul { k };
     let op = MatMatMulKerSpec { a, b, c, linear, non_linear: std::ptr::null() };
@@ -40,7 +40,7 @@ fn ker<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(
 
 fn run(criterion: &mut Criterion) {
     use tract_linalg::arm64::*;
-    let k = 50;
+    let k = 32;
     let mut criterion = criterion.benchmark_group(format!("k{}", k));
     ker::<f32, MatMatMulF32x16x4>(&mut criterion, k);
     ker::<f32, MatMatMulF32x12x8>(&mut criterion, k);
