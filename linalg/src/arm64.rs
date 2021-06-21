@@ -10,13 +10,10 @@ use crate::frame::MatMatMulImpl;
 use tract_data::internal::DimLike;
 
 fn is_cortex_a53() -> std::io::Result<bool> {
-    /*
     let cpu_info = std::fs::read_to_string("/proc/cpuinfo")?;
     let a53 =
         cpu_info.split("\n").any(|line| line.starts_with("CPU part") && line.contains("0xd03"));
     Ok(a53)
-    */
-    Ok(false)
 }
 
 pub fn plug(ops: &mut Ops) {
@@ -76,7 +73,7 @@ fn best_of(
                 let cols = n.div_ceil(k.nr());
                 let tiles = rows * cols;
                 //        let cost = 10 + k.mr() * k.nr() + 4 * (k.nr() + k.mr());
-                let cost = match (a53, m, n) {
+                let cost = match (a53, k.mr(), k.nr()) {
                     (true, 16, 4) => 15703,
                     (true, 12, 8) => 18770,
                     (true, 8, 8) => 14152,
@@ -126,11 +123,11 @@ mod tests {
     #[test]
     #[ignore]
     fn kernel_choice() {
-        assert_eq!(best(128, 40), (12, 8)); // hey_snips_v1 layer_0_2
+        assert_eq!(best(128, 40), (12, 8)); // hey_snips_v1
         assert_eq!(best(32, 24), (8, 8)); // hey_snips_v3
-        assert_eq!(best(200, 12), (12, 8)); // 15M h_new
-        assert_eq!(best(768, 12), (12, 8)); // 15M h_new
-        assert_eq!(best(768, 4), (16, 4)); // 15M h_new
-        assert_eq!(best(2000, 4), (16, 4)); // 15M output
+        assert_eq!(best(200, 12), (12, 8)); // 15M
+        assert_eq!(best(768, 12), (12, 8)); // 15M
+        assert_eq!(best(768, 4), (16, 4)); // 15M
+        assert_eq!(best(2000, 4), (16, 4)); // 15M
     }
 }
