@@ -118,8 +118,9 @@ mod tests {
     use super::*;
 
     fn best(m: usize, n: usize) -> (usize, usize) {
-        let k = best_of(
+        let ker = best_of(
             Some(m),
+            Some(64),
             Some(n),
             &[
                 Box::new(MatMatMulImpl::<MatMatMulF32x12x8, f32>::new()),
@@ -127,7 +128,7 @@ mod tests {
                 Box::new(MatMatMulImpl::<MatMatMulF32x16x4, f32>::new()),
             ],
         );
-        (k.mr(), k.nr())
+        (ker.mr(), ker.nr())
     }
 
     #[test]
