@@ -64,7 +64,7 @@ fn best_of(
     kernels: &[Box<dyn MatMatMul>],
 ) -> Box<dyn MatMatMul> {
     if let (Some(m), Some(n)) = (m, n) {
-        //        eprintln!("{}x{}", m, n);
+        // eprintln!("{}x{}", m, n);
         let a53 = is_cortex_a53().unwrap_or(false);
         let k = kernels
             .iter()
@@ -74,15 +74,16 @@ fn best_of(
                 let tiles = rows * cols;
                 //        let cost = 10 + k.mr() * k.nr() + 4 * (k.nr() + k.mr());
                 let cost = match (a53, k.mr(), k.nr()) {
-                    (true, 16, 4) => 9678,
-                    (true, 12, 8) => 12821,
-                    (true, 8, 8) => 8687,
+                    (true, 16, 4) => 968,
+                    (true, 12, 8) => 1141,
+                    (true, 8, 8) => 869,
                     (false, 16, 4) => 86726,
                     (false, 12, 8) => 12863,
                     (false, 8, 8) => 87252,
                     _ => 1,
                 };
-                let score = tiles * cost;
+                let indirect_tiles = (rows * k.mr() > m) as usize * cols + (cols * k.nr() > n) as usize * rows;
+                let score = tiles * cost + indirect_tiles * 100;
                 /*
                 eprintln!(
                     "  k:{:2}x{} tiles:{:3} cost:{:3} => {:5}",
@@ -124,7 +125,7 @@ mod tests {
     #[ignore]
     fn kernel_choice() {
         assert_eq!(best(128, 40), (12, 8)); // hey_snips_v1
-        assert_eq!(best(32, 24), (8, 8)); // hey_snips_v3
+        assert_eq!(best(32, 8), (8, 8)); // hey_snips_v3
         assert_eq!(best(200, 12), (12, 8)); // 15M
         assert_eq!(best(768, 12), (12, 8)); // 15M
         assert_eq!(best(768, 4), (16, 4)); // 15M
