@@ -153,6 +153,22 @@
     ldp         x5, x6, [x3]                // c base ptr, rsc
     ldp         x7, x8, [x3, #16]           // csc, item_size
 
+    cmp         x6, #4
+    bne         .store_strides_generic
+    cmp         x7, #48
+    bne         .store_strides_generic
+
+    {% for col in (0..7) %}
+        str q{{col | times:3 | plus: 8 }}, [ x5 ]
+        str q{{col | times:3 | plus: 9}}, [ x5, #16 ]
+        str q{{col | times:3 | plus: 10}}, [ x5, #32 ]
+        add x5, x5, x7
+    {% endfor %}
+
+    mov         x0, #0
+    b           .return
+
+.store_strides_generic:
     {% for col in (0..7) %}
         mov x4, x5
         {% for reg in (0..2) %}
