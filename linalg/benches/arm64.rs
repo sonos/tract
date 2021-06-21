@@ -40,7 +40,7 @@ fn ker<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(
 
 fn run(criterion: &mut Criterion) {
     use tract_linalg::arm64::*;
-    let k = 32;
+    let k = 1000;
     let mut criterion = criterion.benchmark_group(format!("k{}", k));
     ker::<f32, MatMatMulF32x16x4>(&mut criterion, k);
     ker::<f32, MatMatMulF32x12x8>(&mut criterion, k);

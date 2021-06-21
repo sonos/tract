@@ -20,9 +20,10 @@ pub fn plug(ops: &mut Ops) {
     if is_cortex_a53().unwrap_or(false) {
         log::info!("arm64simd activated for smmm (cortex A53)");
         ops.mmv_f32 = Box::new(|_, _| Box::new(MatMatMulImpl::<MatMatMulF32x64x1A53, f32>::new()));
-        ops.mmm_f32 = Box::new(|m, _, n| {
+        ops.mmm_f32 = Box::new(|m, k, n| {
             best_of(
                 m,
+                k,
                 n,
                 &[
                     Box::new(MatMatMulImpl::<MatMatMulF32x12x8A53, f32>::new()),
@@ -35,9 +36,10 @@ pub fn plug(ops: &mut Ops) {
         log::info!("arm64simd activated for smmm (generic)");
         ops.mmv_f32 =
             Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32>::new()));
-        ops.mmm_f32 = Box::new(|m, _, n| {
+        ops.mmm_f32 = Box::new(|m, k, n| {
             best_of(
                 m,
+                k,
                 n,
                 &[
                     Box::new(MatMatMulImpl::<MatMatMulF32x12x8, f32>::new()),
@@ -60,29 +62,36 @@ pub fn plug(ops: &mut Ops) {
 
 fn best_of(
     m: Option<usize>,
+    k: Option<usize>,
     n: Option<usize>,
     kernels: &[Box<dyn MatMatMul>],
 ) -> Box<dyn MatMatMul> {
-    if let (Some(m), Some(n)) = (m, n) {
+    if let (Some(m), Some(k), Some(n)) = (m, k, n) {
         // eprintln!("{}x{}", m, n);
         let a53 = is_cortex_a53().unwrap_or(false);
-        let k = kernels
+        let ker = kernels
             .iter()
-            .min_by_key(|k| {
-                let rows = m.div_ceil(k.mr());
-                let cols = n.div_ceil(k.nr());
+            .min_by_key(|ker| {
+                let rows = m.div_ceil(ker.mr());
+                let cols = n.div_ceil(ker.nr());
                 let tiles = rows * cols;
                 //        let cost = 10 + k.mr() * k.nr() + 4 * (k.nr() + k.mr());
-                let cost = match (a53, k.mr(), k.nr()) {
+                let cost = match (a53, ker.mr(), ker.nr()) {
+                    (true, 16, 4) => 65 + k * 31,
+                    (true, 12, 8) => 88 + k * 36,
+                    (true, 8, 8) => 68 + k * 27,
+                    /*
                     (true, 16, 4) => 968,
                     (true, 12, 8) => 1141,
                     (true, 8, 8) => 869,
+                    */
                     (false, 16, 4) => 86726,
                     (false, 12, 8) => 12863,
                     (false, 8, 8) => 87252,
                     _ => 1,
                 };
-                let indirect_tiles = (rows * k.mr() > m) as usize * cols + (cols * k.nr() > n) as usize * rows;
+                let indirect_tiles =
+                    (rows * ker.mr() > m) as usize * cols + (cols * ker.nr() > n) as usize * rows;
                 let score = tiles * cost + indirect_tiles * 100;
                 /*
                 eprintln!(
@@ -98,7 +107,7 @@ fn best_of(
             })
             .unwrap()
             .clone();
-        k
+        ker
     } else {
         kernels.iter().max_by_key(|k| k.mr() * k.nr()).unwrap().clone()
     }
