@@ -82,13 +82,6 @@ impl MatMulGeometry {
             Self::Concrete(it) => Cow::Owned(it.k.to_dim()),
         }
     }
-
-    fn n(&self) -> Cow<TDim> {
-        match self {
-            Self::Symbolic(it) => Cow::Borrowed(&it.n),
-            Self::Concrete(it) => Cow::Owned(it.n.to_dim()),
-        }
-    }
 }
 
 #[derive(Clone, Educe, Debug)]
