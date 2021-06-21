@@ -42,12 +42,12 @@ fn run(criterion: &mut Criterion) {
     use tract_linalg::arm64::*;
     let k = 5;
     let mut criterion = criterion.benchmark_group(format!("k{}", k));
-    ker::<f32, MatMatMulF32x16x4A53>(&mut criterion, k);
-    ker::<f32, MatMatMulF32x12x8A53>(&mut criterion, k);
-    ker::<f32, MatMatMulF32x8x8A53>(&mut criterion, k);
     ker::<f32, MatMatMulF32x16x4>(&mut criterion, k);
     ker::<f32, MatMatMulF32x12x8>(&mut criterion, k);
     ker::<f32, MatMatMulF32x8x8>(&mut criterion, k);
+    ker::<f32, MatMatMulF32x16x4A53>(&mut criterion, k);
+    ker::<f32, MatMatMulF32x12x8A53>(&mut criterion, k);
+    ker::<f32, MatMatMulF32x8x8A53>(&mut criterion, k);
     criterion.finish();
 }
 
