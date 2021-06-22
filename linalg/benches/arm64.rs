@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tract_data::prelude::*;
 use tract_linalg::frame::mmm::LinearSpec;
@@ -10,7 +10,10 @@ fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
 }
 
-fn bench_to_nanos<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(k: usize, loops: usize) -> f64 {
+fn bench_to_nanos<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(
+    k: usize,
+    loops: usize,
+) -> f64 {
     let item_size = T::datum_type().size_of();
     let a = Tensor::zero_aligned::<T>(
         &[(k + K::end_padding_packed_a()) * K::mr()],
@@ -41,7 +44,7 @@ fn bench_to_nanos<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(k: usi
         values.push(start.elapsed());
     }
     values.sort();
-    values[loops/2].as_nanos() as f64
+    values[loops / 2].as_nanos() as f64
 }
 
 fn model<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>() -> (f64, f64) {
@@ -53,8 +56,15 @@ fn model<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>() -> (f64, f64)
 }
 
 fn as_match_line<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>() {
-    let coeffs = model::<T,K>();
-    println!("({:?}, {}, {}) => {} * k + {},", K::name(), K::mr(), K::nr(), (coeffs.0 * 1000.).round(), (coeffs.1 * 1000.).round());
+    let coeffs = model::<T, K>();
+    println!(
+        "({:?}, {}, {}) => {} * k + {},",
+        K::name(),
+        K::mr(),
+        K::nr(),
+        (coeffs.0 * 1000.).round(),
+        (coeffs.1 * 1000.).round()
+    );
 }
 
 fn main() {
