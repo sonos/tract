@@ -592,7 +592,7 @@ mod test {
             let result = model
                 .wire_node(
                     "qmm",
-                    dbg!(QMatMulUnary::new(
+                    QMatMulUnary::new(
                         self.a.clone().into_arc_tensor(),
                         Some(self.bias.clone().into_arc_tensor()),
                         false,
@@ -600,7 +600,7 @@ mod test {
                         false,
                         i8::datum_type(),
                         MatMulQParams::all_dynamic(1),
-                    )),
+                    ),
                     &inputs,
                 )
                 .unwrap();

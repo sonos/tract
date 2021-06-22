@@ -406,17 +406,12 @@ impl Scan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         for (model_ix, mapping) in self.output_mapping.iter().enumerate() {
-            //dbg!(mapping);
-            //dbg!(&node.outputs);
             let mut is_used = false;
             for slot in &[mapping.full_slot, mapping.last_value_slot] {
-                //dbg!(slot);
                 if let Some(slot) = slot {
-                    //dbg!(slot);
                     if node.outputs[*slot].successors.len() > 0
                         || model.outputs.contains(&(node.id, *slot).into())
                     {
-                        //dbg!("is_used");
                         is_used = true;
                     }
                 }
@@ -426,38 +421,27 @@ impl Scan {
             }
             let emitter_outlet = self.body.output_outlets()?[model_ix];
             let emitter_node = self.body.node(emitter_outlet.node);
-            //dbg!(emitter_node);
-            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 0 {
-                // FIXME continue if wire is a state
-                // continue is both last_value and full values are exported
-                //dbg!("have successors node");
+            if emitter_node.outputs[emitter_outlet.slot].successors.len() > 0
+                || mapping.state
+                || mapping.chunk > 1
+            {
+                // continue if both last_value and full values are exported
                 continue;
             }
             let invariants = emitter_node.op.invariants(&self.body, &emitter_node)?;
-            dbg!(mapping.axis);
             let axis_before = if let Some(a) = invariants.unary_track_axis_up(mapping.axis, false) {
                 a
             } else {
                 continue;
             };
-            dbg!(axis_before);
-            dbg!(&self.output_mapping);
 
-            //dbg!("do it");
             let mut fixed_body = self.body.clone();
             let mut output_mapping = self.output_mapping.clone();
-            /*
-            // first input of extracted node replace its output
-            fixed_body.outputs[model_ix] = emitter_node.inputs[0];
-            output_mapping[model_ix] = OutputMapping { axis: axis_before, ..mapping.clone() };
-            */
 
-            // add inputs at the end, first full, then again as last_value
-            eprintln!("BEFORE:\n{}", fixed_body);
             let mut full_values_slots = vec![];
             let mut last_values_slots = vec![];
             let mut current_output_number = node.outputs.len();
-            for (ix, input) in emitter_node.inputs.iter().enumerate() {
+            for input in &emitter_node.inputs {
                 if let Some(position) = fixed_body.outputs.iter().position(|o| o == input) {
                     let mut mapping = &mut output_mapping[position];
                     if mapping.last_value_slot.is_none() {
@@ -486,8 +470,6 @@ impl Scan {
                     last_values_slots.push(last_value_slot.unwrap());
                 }
             }
-            eprintln!("AFTER:\n{}", fixed_body);
-            dbg!(&output_mapping);
 
             let mut outside_patch = TypedModelPatch::default();
             let inputs = node
@@ -504,34 +486,21 @@ impl Scan {
                 seq_length_input_slot: self.seq_length_input_slot,
             };
             let scan_outputs = outside_patch.wire_node(&*node.name, new_op, &*inputs)?;
-            if let Some(output) = mapping.full_slot {
-                let inputs =
-                    full_values_slots.iter().map(|slot| scan_outputs[*slot]).collect::<TVec<_>>();
-                let wire = outside_patch.wire_node(
-                    &*emitter_node.name,
-                    emitter_node.op.clone(),
-                    &inputs,
-                )?[0];
-                outside_patch.shunt_outside(model, OutletId::new(node.id, output), wire)?;
+            let output = mapping.full_slot.unwrap();
+            let inputs =
+                full_values_slots.iter().map(|slot| scan_outputs[*slot]).collect::<TVec<_>>();
+            let wire =
+                outside_patch.wire_node(&*emitter_node.name, emitter_node.op.clone(), &inputs)?[0];
+            outside_patch.shunt_outside(model, OutletId::new(node.id, output), wire)?;
+            for output_slot in 0..node.outputs.len() {
+                if output_slot != output {
+                    outside_patch.shunt_outside(
+                        model,
+                        OutletId::new(node.id, output_slot),
+                        OutletId::new(scan_outputs[0].node, output_slot),
+                    )?;
+                }
             }
-            /*
-            let wire = outside_patch.wire_node(
-            &*emitter_node.name,
-            emitter_node.op.clone(),
-            &[scan_outputs[slot]],
-            )?[0];
-            for ix in 0..node.outputs.len() {
-            if ix == slot {
-            outside_patch.shunt_outside(model, OutletId::new(node.id, ix), wire)?;
-            } else {
-            outside_patch.shunt_outside(
-            model,
-            OutletId::new(node.id, ix),
-            scan_outputs[ix],
-            )?;
-            }
-            }
-            */
             return Ok(Some(outside_patch));
         }
         Ok(None)
