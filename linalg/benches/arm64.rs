@@ -10,7 +10,7 @@ fn ruin_cache() {
     let _a = (0..1000000).collect::<Vec<i32>>();
 }
 
-fn bench<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(k: usize) -> Duration {
+fn bench_to_nanos<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(k: usize, loops: usize) -> f64 {
     let item_size = T::datum_type().size_of();
     let a = Tensor::zero_aligned::<T>(
         &[(k + K::end_padding_packed_a()) * K::mr()],
@@ -33,27 +33,28 @@ fn bench<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(k: usize) -> Du
     };
     let ref linear = LinearSpec::Mul { k };
     let op = MatMatMulKerSpec { a, b, c, linear, non_linear: std::ptr::null() };
-    let mut duration = Duration::default();
-    for _ in 0..1000 {
+    let mut values = Vec::with_capacity(loops);
+    for _ in 0..loops {
         ruin_cache();
         let start = Instant::now();
         K::kernel(&op);
-        duration += start.elapsed()
+        values.push(start.elapsed());
     }
-    duration
+    values.sort();
+    values[loops/2].as_nanos() as f64
 }
 
 fn model<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>() -> (f64, f64) {
     let x = 1000;
-    let zp = bench::<T, K>(0).as_nanos() as f64;
-    let y = bench::<T, K>(x).as_nanos() as f64;
+    let zp = bench_to_nanos::<T, K>(0, 10000);
+    let y = bench_to_nanos::<T, K>(x, 1000);
     let slope = (y - zp) / x as f64;
     (slope, zp)
 }
 
 fn as_match_line<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>() {
     let coeffs = model::<T,K>();
-    println!("({:?}, {}, {}) => {} * k + {},", K::name(), K::mr(), K::nr(), coeffs.0.round(), coeffs.1.round());
+    println!("({:?}, {}, {}) => {} * k + {},", K::name(), K::mr(), K::nr(), (coeffs.0 * 1000.).round(), (coeffs.1 * 1000.).round());
 }
 
 fn main() {
