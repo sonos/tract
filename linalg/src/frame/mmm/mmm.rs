@@ -12,6 +12,7 @@ use tract_data::internal::*;
 pub trait MatMatMul:
     Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
 {
+    fn kernel_name(&self) -> &'static str;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
@@ -146,6 +147,10 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
+    fn kernel_name(&self) -> &'static str {
+        K::name()
+    }
+
     fn mr(&self) -> usize {
         K::mr()
     }
