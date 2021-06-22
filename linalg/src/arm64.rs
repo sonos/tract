@@ -79,6 +79,12 @@ fn best_of(
                     }
                 } else {
                     match (ker.kernel_name(), ker.mr(), ker.nr()) {
+                        ("arm64simd (generic)", 16, 4) => 1500 * k + 83000,
+                        ("arm64simd (generic)", 12, 8) => 2083 * k + 83000,
+                        ("arm64simd (generic)", 8, 8) => 1458 * k + 83000,
+                        ("arm64simd (cortex A53)", 16, 4) => 4792 * k + 83000,
+                        ("arm64simd (cortex A53)", 12, 8) => 5625 * k + 83000,
+                        ("arm64simd (cortex A53)", 8, 8) => 4834 * k + 41000,
                         _ => panic!("uncosted kernel"),
                     };
                 };
