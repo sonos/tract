@@ -311,8 +311,6 @@
 
     cmp         x6, #4
     bne         .store_strides_generic
-    cmp         x7, #64
-    bne         .store_strides_generic
 
     {% for col in (0..3) %}
         str q{{col | times:4 | plus:16 | plus: 0}}, [ x5 ]
