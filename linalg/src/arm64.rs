@@ -86,7 +86,7 @@ fn best_of(
                         ("arm64simd (cortex A53)", 12, 8) => 5625 * k + 83000,
                         ("arm64simd (cortex A53)", 8, 8) => 4834 * k + 41000,
                         _ => panic!("uncosted kernel"),
-                    };
+                    }
                 };
                 let indirect_tiles =
                     (rows * ker.mr() > m) as usize * cols + (cols * ker.nr() > n) as usize * rows;
