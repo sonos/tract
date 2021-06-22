@@ -69,12 +69,12 @@ fn best_of(
                 //        let cost = 10 + k.mr() * k.nr() + 4 * (k.nr() + k.mr());
                 let cost = if a53 {
                     match (ker.kernel_name(), ker.mr(), ker.nr()) {
-                        ("arm64simd (generic)", 16, 4) => 31980 * k + 1201594,
-                        ("arm64simd (generic)", 12, 8) => 38657 * k + 1318482,
-                        ("arm64simd (generic)", 8, 8) => 29170 * k + 1069101,
-                        ("arm64simd (cortex A53)", 16, 4) => 32966 * k + 1110469,
-                        ("arm64simd (cortex A53)", 12, 8) => 37902 * k + 1142451,
-                        ("arm64simd (cortex A53)", 8, 8) => 28469 * k + 1126753,
+                        ("arm64simd (generic)", 16, 4) => 31043 * k + 937000,
+                        ("arm64simd (generic)", 12, 8) => 37448 * k + 990000,
+                        ("arm64simd (generic)", 8, 8) => 28228 * k + 990000,
+                        ("arm64simd (cortex A53)", 16, 4) => 32239 * k + 990000,
+                        ("arm64simd (cortex A53)", 12, 8) => 36823 * k + 990000,
+                        ("arm64simd (cortex A53)", 8, 8) => 28333 * k + 990000,
                         _ => panic!("uncosted kernel"),
                     }
                 } else {
