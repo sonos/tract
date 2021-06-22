@@ -14,17 +14,13 @@ fn pulsify(
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
 ) -> TractResult<TVec<OutletId>> {
-    if node.inputs.len() > 1 {
-        bail!("Pulsification not implemented for more than one input to Concat")
-    }
-
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?;
 
     if fact.axis == op.axis {
         pulsify_along_concat_axis(op, source, node, target, mapping)
     } else {
-        bail!("Pulsify for Concat on a separate axis is not implemented (but possible)");
+        pulsify_across_concat_axis(op, source, node, target, mapping)
     }
 }
 
@@ -71,13 +67,26 @@ fn pulsify_along_concat_axis(
     target.wire_node(&*node.name, main_op, &[input])
 }
 
-impl PulsedOp for PulsedSameAxisConcat {
+fn pulsify_across_concat_axis(
+    op: &TypedConcat,
+    _source: &TypedModel,
+    node: &TypedNode,
+    target: &mut PulsedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+) -> TractResult<TVec<OutletId>> {
+    let sync_inputs = crate::ops::binary::sync_inputs(node, target, mapping)?;
+    target.wire_node(&node.name, op.clone(), &sync_inputs)
+}
+
+impl PulsedOp for TypedConcat {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
+        let typed_input_facts: TVec<TypedFact> =
+            inputs.iter().map(|pf| pf.to_typed_fact()).collect::<TractResult<_>>()?;
+        let typed_input_facts_ref: TVec<&TypedFact> = typed_input_facts.iter().collect();
+
+        let typed_fact = self.output_facts(&typed_input_facts_ref)?.remove(0);
         let mut fact = inputs[0].clone();
-        let before = self.pre_slice.shape()[self.axis];
-        let after = self.post_slice.shape()[self.axis];
-        fact.dim += (before + after).to_dim();
-        fact.delay -= before;
+        fact.shape.set(self.axis, typed_fact.shape[self.axis].clone());
         Ok(tvec!(fact))
     }
 
@@ -126,6 +135,20 @@ impl TypedOp for PulsedSameAxisConcat {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
     }
+}
+
+impl PulsedOp for PulsedSameAxisConcat {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
+        let mut fact = inputs[0].clone();
+        let before = self.pre_slice.shape()[self.axis];
+        let after = self.post_slice.shape()[self.axis];
+        fact.dim += (before + after).to_dim();
+        fact.delay -= before;
+        Ok(tvec!(fact))
+    }
+
+    as_op!();
+    pulsed_op_to_typed_op!();
 }
 
 #[derive(Clone, Debug)]

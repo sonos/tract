@@ -280,8 +280,6 @@ where
                 target.set_outlet_label(replace_by, target.node(outlet.node).name.clone())?;
             }
         }
-        dbg!("apply patch");
-        dbg!(&target.outputs);
         if target.outputs.len() > target.outputs.iter().sorted().dedup().count() {
             bail!("Duplicate usage of node as output");
         }

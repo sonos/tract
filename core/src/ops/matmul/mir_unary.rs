@@ -308,7 +308,7 @@ impl MatMulUnary {
         use crate::ops::array::Slice;
         let m_axis = node.outputs[0].fact.rank() - 2 + self.c_trans as usize;
         if let Some(slice) = node.outputs[0].successors.iter().find_map(|inlet| {
-            if model.node(inlet.node).op_as::<Slice>().map(|slice| slice.axis == m_axis).is_some() {
+            if model.node(inlet.node).op_as::<Slice>().filter(|slice| slice.axis == m_axis).is_some() {
                 Some(inlet.node)
             } else {
                 None

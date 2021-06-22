@@ -5,7 +5,7 @@ use tract_pulse_opl::ops::Delay;
 
 register_all!(UnaryOp: pulsify_un, TypedBinOp: pulsify_bin, Iff: pulsify_iff);
 
-fn sync_inputs(
+pub(crate) fn sync_inputs(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
