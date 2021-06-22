@@ -17,37 +17,28 @@ fn is_cortex_a53() -> std::io::Result<bool> {
 }
 
 pub fn plug(ops: &mut Ops) {
+    ops.mmm_f32 = Box::new(|m, k, n| {
+        best_of(
+            m,
+            k,
+            n,
+            &[
+                Box::new(MatMatMulImpl::<MatMatMulF32x12x8A53, f32>::new()),
+                Box::new(MatMatMulImpl::<MatMatMulF32x8x8A53, f32>::new()),
+                Box::new(MatMatMulImpl::<MatMatMulF32x16x4A53, f32>::new()),
+                Box::new(MatMatMulImpl::<MatMatMulF32x12x8, f32>::new()),
+                Box::new(MatMatMulImpl::<MatMatMulF32x8x8, f32>::new()),
+                Box::new(MatMatMulImpl::<MatMatMulF32x16x4, f32>::new()),
+            ],
+        )
+    });
     if is_cortex_a53().unwrap_or(false) {
-        log::info!("arm64simd activated for smmm (cortex A53)");
+        log::info!("arm64simd activated for smmv (cortex A53)");
         ops.mmv_f32 = Box::new(|_, _| Box::new(MatMatMulImpl::<MatMatMulF32x64x1A53, f32>::new()));
-        ops.mmm_f32 = Box::new(|m, k, n| {
-            best_of(
-                m,
-                k,
-                n,
-                &[
-                    Box::new(MatMatMulImpl::<MatMatMulF32x12x8A53, f32>::new()),
-                    Box::new(MatMatMulImpl::<MatMatMulF32x8x8A53, f32>::new()),
-                    Box::new(MatMatMulImpl::<MatMatMulF32x16x4A53, f32>::new()),
-                ],
-            )
-        })
     } else {
-        log::info!("arm64simd activated for smmm (generic)");
+        log::info!("arm64simd activated for smmv (generic)");
         ops.mmv_f32 =
             Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32>::new()));
-        ops.mmm_f32 = Box::new(|m, k, n| {
-            best_of(
-                m,
-                k,
-                n,
-                &[
-                    Box::new(MatMatMulImpl::<MatMatMulF32x12x8, f32>::new()),
-                    Box::new(MatMatMulImpl::<MatMatMulF32x8x8, f32>::new()),
-                    Box::new(MatMatMulImpl::<MatMatMulF32x16x4, f32>::new()),
-                ],
-            )
-        })
     }
 
     ops.qmmm_i8_i8 = Box::new(|_, _, _| Box::new(MatMatMulImpl::<MatMatMulI8x8x8, i32>::new()));
@@ -76,28 +67,24 @@ fn best_of(
                 let cols = n.div_ceil(ker.nr());
                 let tiles = rows * cols;
                 //        let cost = 10 + k.mr() * k.nr() + 4 * (k.nr() + k.mr());
-                let cost = match (a53, ker.mr(), ker.nr()) {
-                    (true, 16, 4) => 65 + k * 31,
-                    (true, 12, 8) => 88 + k * 36,
-                    (true, 8, 8) => 68 + k * 27,
-                    (false, 16, 4) => 86726,
-                    (false, 12, 8) => 12863,
-                    (false, 8, 8) => 87252,
-                    _ => 1,
+                let cost = if a53 {
+                    match (ker.kernel_name(), ker.mr(), ker.nr()) {
+                        ("arm64simd (generic)", 16, 4) => 31980 * k + 1201594,
+                        ("arm64simd (generic)", 12, 8) => 38657 * k + 1318482,
+                        ("arm64simd (generic)", 8, 8) => 29170 * k + 1069101,
+                        ("arm64simd (cortex A53)", 16, 4) => 32966 * k + 1110469,
+                        ("arm64simd (cortex A53)", 12, 8) => 37902 * k + 1142451,
+                        ("arm64simd (cortex A53)", 8, 8) => 28469 * k + 1126753,
+                        _ => panic!("uncosted kernel"),
+                    }
+                } else {
+                    match (ker.kernel_name(), ker.mr(), ker.nr()) {
+                        _ => panic!("uncosted kernel"),
+                    };
                 };
                 let indirect_tiles =
                     (rows * ker.mr() > m) as usize * cols + (cols * ker.nr() > n) as usize * rows;
                 let score = tiles * cost + indirect_tiles * 100;
-                /*
-                eprintln!(
-                    "  k:{:2}x{} tiles:{:3} cost:{:3} => {:5}",
-                    k.mr(),
-                    k.nr(),
-                    tiles,
-                    cost,
-                    tiles * cost
-                );
-                */
                 score
             })
             .unwrap()

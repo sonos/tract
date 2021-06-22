@@ -1,5 +1,4 @@
-use criterion::measurement::WallTime;
-use criterion::{criterion_group, criterion_main, BenchmarkGroup, Criterion};
+use std::time::{Duration, Instant};
 
 use tract_data::prelude::*;
 use tract_linalg::frame::mmm::LinearSpec;
@@ -7,10 +6,11 @@ use tract_linalg::frame::mmm::MatMatMulKer;
 use tract_linalg::frame::mmm::MatMatMulKerSpec;
 use tract_linalg::mmm::{PanelStore, Tile};
 
-fn ker<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(
-    criterion: &mut BenchmarkGroup<WallTime>,
-    k: usize,
-) {
+fn ruin_cache() {
+    let _a = (0..1000000).collect::<Vec<i32>>();
+}
+
+fn bench<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(k: usize) -> Duration {
     let item_size = T::datum_type().size_of();
     let a = Tensor::zero_aligned::<T>(
         &[(k + K::end_padding_packed_a()) * K::mr()],
@@ -33,23 +33,35 @@ fn ker<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>(
     };
     let ref linear = LinearSpec::Mul { k };
     let op = MatMatMulKerSpec { a, b, c, linear, non_linear: std::ptr::null() };
-    criterion.bench_function(format!("{}/{}x{}", K::name(), K::mr(), K::nr()), |b| {
-        b.iter(|| K::kernel(&op))
-    });
+    let mut duration = Duration::default();
+    for _ in 0..1000 {
+        ruin_cache();
+        let start = Instant::now();
+        K::kernel(&op);
+        duration += start.elapsed()
+    }
+    duration
 }
 
-fn run(criterion: &mut Criterion) {
+fn model<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>() -> (f64, f64) {
+    let x = 1000;
+    let zp = bench::<T, K>(0).as_nanos() as f64;
+    let y = bench::<T, K>(x).as_nanos() as f64;
+    let slope = (y - zp) / x as f64;
+    (slope, zp)
+}
+
+fn as_match_line<T: Datum + Copy + num_traits::Zero, K: MatMatMulKer<T>>() {
+    let coeffs = model::<T,K>();
+    println!("({:?}, {}, {}) => {} * k + {},", K::name(), K::mr(), K::nr(), coeffs.0.round(), coeffs.1.round());
+}
+
+fn main() {
     use tract_linalg::arm64::*;
-    let k = 1000;
-    let mut criterion = criterion.benchmark_group(format!("k{}", k));
-    ker::<f32, MatMatMulF32x16x4>(&mut criterion, k);
-    ker::<f32, MatMatMulF32x12x8>(&mut criterion, k);
-    ker::<f32, MatMatMulF32x8x8>(&mut criterion, k);
-    ker::<f32, MatMatMulF32x16x4A53>(&mut criterion, k);
-    ker::<f32, MatMatMulF32x12x8A53>(&mut criterion, k);
-    ker::<f32, MatMatMulF32x8x8A53>(&mut criterion, k);
-    criterion.finish();
+    as_match_line::<f32, MatMatMulF32x16x4>();
+    as_match_line::<f32, MatMatMulF32x12x8>();
+    as_match_line::<f32, MatMatMulF32x8x8>();
+    as_match_line::<f32, MatMatMulF32x16x4A53>();
+    as_match_line::<f32, MatMatMulF32x12x8A53>();
+    as_match_line::<f32, MatMatMulF32x8x8A53>();
 }
-
-criterion_group!(benches, run);
-criterion_main!(benches);
