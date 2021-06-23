@@ -17,28 +17,37 @@ fn is_cortex_a53() -> std::io::Result<bool> {
 }
 
 pub fn plug(ops: &mut Ops) {
-    ops.mmm_f32 = Box::new(|m, k, n| {
-        best_of(
-            m,
-            k,
-            n,
-            &[
-                Box::new(MatMatMulImpl::<MatMatMulF32x12x8A53, f32>::new()),
-                Box::new(MatMatMulImpl::<MatMatMulF32x8x8A53, f32>::new()),
-                Box::new(MatMatMulImpl::<MatMatMulF32x16x4A53, f32>::new()),
-                Box::new(MatMatMulImpl::<MatMatMulF32x12x8, f32>::new()),
-                Box::new(MatMatMulImpl::<MatMatMulF32x8x8, f32>::new()),
-                Box::new(MatMatMulImpl::<MatMatMulF32x16x4, f32>::new()),
-            ],
-        )
-    });
     if is_cortex_a53().unwrap_or(false) {
         log::info!("arm64simd activated for smmv (cortex A53)");
         ops.mmv_f32 = Box::new(|_, _| Box::new(MatMatMulImpl::<MatMatMulF32x64x1A53, f32>::new()));
+        ops.mmm_f32 = Box::new(|m, k, n| {
+            best_of(
+                m,
+                k,
+                n,
+                &[
+                    Box::new(MatMatMulImpl::<MatMatMulF32x12x8A53, f32>::new()),
+                    Box::new(MatMatMulImpl::<MatMatMulF32x8x8A53, f32>::new()),
+                    Box::new(MatMatMulImpl::<MatMatMulF32x16x4A53, f32>::new()),
+                ],
+            )
+        });
     } else {
         log::info!("arm64simd activated for smmv (generic)");
         ops.mmv_f32 =
             Box::new(|_, _| Box::new(MatMatMulImpl::<arm64simd::MatMatMulF32x64x1, f32>::new()));
+        ops.mmm_f32 = Box::new(|m, k, n| {
+            best_of(
+                m,
+                k,
+                n,
+                &[
+                    Box::new(MatMatMulImpl::<MatMatMulF32x12x8, f32>::new()),
+                    Box::new(MatMatMulImpl::<MatMatMulF32x8x8, f32>::new()),
+                    Box::new(MatMatMulImpl::<MatMatMulF32x16x4, f32>::new()),
+                ],
+            )
+        });
     }
 
     ops.qmmm_i8_i8 = Box::new(|_, _, _| Box::new(MatMatMulImpl::<MatMatMulI8x8x8, i32>::new()));
