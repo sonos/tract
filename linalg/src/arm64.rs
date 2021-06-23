@@ -98,7 +98,7 @@ fn best_of(
                 };
                 let indirect_tiles =
                     (rows * ker.mr() > m) as usize * cols + (cols * ker.nr() > n) as usize * rows;
-                let score = tiles * cost + indirect_tiles * ker.nr() * ker.mr() * 15000;
+                let score = tiles * cost + indirect_tiles * ker.nr() * ker.mr() * 25000;
                 /*
                 eprintln!(
                     " {} {}x{} cost: {} tiles: {} indirect_tiles: {} score: {}",
