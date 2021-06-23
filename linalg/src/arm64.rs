@@ -58,7 +58,7 @@ fn best_of(
     kernels: &[Box<dyn MatMatMul>],
 ) -> Box<dyn MatMatMul> {
     if let (Some(m), Some(k), Some(n)) = (m, k, n) {
-        eprintln!("{}x{}x{}", m, k, n);
+        // eprintln!("{}x{}x{}", m, k, n);
         let a53 = is_cortex_a53().unwrap_or(false);
         let ker = kernels
             .iter()
@@ -90,6 +90,7 @@ fn best_of(
                 let indirect_tiles =
                     (rows * ker.mr() > m) as usize * cols + (cols * ker.nr() > n) as usize * rows;
                 let score = tiles * cost + indirect_tiles * ker.nr() * ker.mr() * 15000;
+                /*
                 eprintln!(
                     " {} {}x{} cost: {} tiles: {} indirect_tiles: {} score: {}",
                     ker.kernel_name(),
@@ -100,6 +101,7 @@ fn best_of(
                     indirect_tiles,
                     score,
                 );
+                */
                 score
             })
             .unwrap()
