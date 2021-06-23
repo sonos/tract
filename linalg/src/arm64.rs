@@ -58,7 +58,7 @@ fn best_of(
     kernels: &[Box<dyn MatMatMul>],
 ) -> Box<dyn MatMatMul> {
     if let (Some(m), Some(k), Some(n)) = (m, k, n) {
-        // eprintln!("{}x{}", m, n);
+        eprintln!("{}x{}x{}", m, k, n);
         let a53 = is_cortex_a53().unwrap_or(false);
         let ker = kernels
             .iter()
@@ -66,7 +66,6 @@ fn best_of(
                 let rows = m.div_ceil(ker.mr());
                 let cols = n.div_ceil(ker.nr());
                 let tiles = rows * cols;
-                //        let cost = 10 + k.mr() * k.nr() + 4 * (k.nr() + k.mr());
                 let cost = if a53 {
                     match (ker.kernel_name(), ker.mr(), ker.nr()) {
                         ("arm64simd (generic)", 16, 4) => 31043 * k + 937000,
@@ -90,7 +89,17 @@ fn best_of(
                 };
                 let indirect_tiles =
                     (rows * ker.mr() > m) as usize * cols + (cols * ker.nr() > n) as usize * rows;
-                let score = tiles * cost + indirect_tiles * 100;
+                let score = tiles * cost + indirect_tiles * ker.nr() * ker.mr() * 15000;
+                eprintln!(
+                    " {} {}x{} cost: {} tiles: {} indirect_tiles: {} score: {}",
+                    ker.kernel_name(),
+                    ker.mr(),
+                    ker.nr(),
+                    cost,
+                    tiles,
+                    indirect_tiles,
+                    score,
+                );
                 score
             })
             .unwrap()
@@ -98,35 +107,5 @@ fn best_of(
         ker
     } else {
         kernels.iter().max_by_key(|k| k.mr() * k.nr()).unwrap().clone()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn best(m: usize, n: usize) -> (usize, usize) {
-        let ker = best_of(
-            Some(m),
-            Some(64),
-            Some(n),
-            &[
-                Box::new(MatMatMulImpl::<MatMatMulF32x12x8, f32>::new()),
-                Box::new(MatMatMulImpl::<MatMatMulF32x8x8, f32>::new()),
-                Box::new(MatMatMulImpl::<MatMatMulF32x16x4, f32>::new()),
-            ],
-        );
-        (ker.mr(), ker.nr())
-    }
-
-    #[test]
-    #[ignore]
-    fn kernel_choice() {
-        assert_eq!(best(128, 40), (12, 8)); // hey_snips_v1
-        assert_eq!(best(32, 8), (8, 8)); // hey_snips_v3
-        assert_eq!(best(200, 12), (12, 8)); // 15M
-        assert_eq!(best(768, 12), (12, 8)); // 15M
-        assert_eq!(best(768, 4), (16, 4)); // 15M
-        assert_eq!(best(2000, 4), (16, 4)); // 15M
     }
 }
