@@ -3,14 +3,14 @@
 # 0.15.0 - 2021-06-24
 
 * Switched the order of item_type and item_type_vendor in the NNEF tendor format to be consistent with NNEF-tools, and changed the item_type of integers due to an error in the specification. Breaking for tensor files containing integers or strings.
-* Scan output benching optimisation
+* Scan output batching optimisation
 * Concat pulsification over a secondary axis
-* New arm64 16x4 f32 kernel
+* new aarch64 16x4 f32 kernel
 
 ## 0.14.2 - 2021-05-27
 
 * better handling of errors in ONNX parser
-* fix/workaround some perfomance regressions bubling from recent ndarray changes
+* fix/workaround some performance regressions bubling from recent ndarray changes
 
 ## 0.14.1 - 2021-05-18
 
