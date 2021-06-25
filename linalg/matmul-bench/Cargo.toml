@@ -1,0 +1,22 @@
+[package]
+name = "matmul-bench"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+edition = "2018"
+
+[workspace]
+members = []
+
+[dependencies]
+tract-data = { path = "../../data" }
+tract-linalg = { path = ".." }
+
+[dev-dependencies]
+criterion = "*"
+matrixmultiply = "*"
+cblas = "0.3"
+blis-src = { version = "0.2", features = ["static"] }
+
+[[bench]]
+name = "matmul"
+harness = false
