@@ -1,6 +1,10 @@
 #![allow(non_snake_case)]
+#[cfg(feature = "blis")]
 extern crate blis_src;
+#[cfg(feature = "blis")]
 extern crate cblas;
+#[cfg(feature = "accelerate")]
+extern crate accelerate_src;
 
 use criterion::measurement::WallTime;
 use criterion::*;
@@ -83,11 +87,13 @@ fn matrixmultiply(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: us
     });
 }
 
+#[allow(unused_variables, unused_mut)]
 fn cblas(crit: &mut BenchmarkGroup<WallTime>, m: usize, k: usize, n: usize) {
     let a = vec![0f32; m * k];
     let b = vec![0f32; k * n];
     let mut c = vec![0f32; m * n];
-    crit.bench_function("cblas", |be| {
+    #[cfg(feature = "blas")]
+    crit.bench_function("blas", |be| {
         be.iter(|| unsafe {
             cblas::sgemm(
                 cblas::Layout::RowMajor,
