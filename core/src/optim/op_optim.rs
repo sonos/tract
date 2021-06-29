@@ -19,7 +19,7 @@ impl OpOptim {
                 .with_context(|| format!("{:?} node {}", self, node))?;
             if let Some(mut p) = patch {
                 p.push_context(format!("{:?} {}", self, node));
-                self.2 = ix;
+                self.2 = ix + p.dont_apply_twice.is_some() as usize;
                 return Ok(Some(p));
             }
         }
