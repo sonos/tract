@@ -888,8 +888,6 @@ impl Assertions {
                 }
             }
 
-            dbg!(&assert_outputs);
-
             if sub.values_of("assert_output").is_some()
                 || sub.values_of("assert-output-bundle").is_some()
             {
