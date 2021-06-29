@@ -391,6 +391,8 @@ fma_mmm_i8_8x8_{{suffix}} proc
     cmp     rax,    13
     je      {{L}}q_away
 
+    cmp     rax,    15
+    je      {{L}}q_shift_right_rounding
 
     jmp     {{L}}unimplemented
 
@@ -666,6 +668,25 @@ i128_shuffle dd              0, 4
 
     vpsignd     ymm{{i}}, ymm10, ymm{{i}}   // re-apply sign
 
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_shift_right_rounding:
+    mov     r8, [ rcx + 16 ]
+    mov     rax, [ rcx + 8 ]                // shift
+    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
+    cmp     r8, 1
+    je      {{L}}q_shift_right_rounding_zero
+
+    jmp     {{L}}unimplemented
+   
+{{L}}q_shift_right_rounding_zero: // signum * (abs >> shift)
+    
+{% for i in (0..7) %}
+    vpabsd  ymm10, ymm{{i}}
+    vpsrad  ymm10, ymm10, xmm8
+    vpsignd ymm{{i}}, ymm10, ymm{{i}}
 {% endfor %}
 
     jmp    {{L}}non_linear_loop

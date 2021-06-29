@@ -242,6 +242,8 @@ store_strides_i32:
     beq         .q_towards_plusinf
     cmp         x2, #13
     beq         .q_away
+    cmp         x2, #15
+    beq         .q_shift_right_rounding
 
     b           .unsupported
 
@@ -440,7 +442,29 @@ non_linear_addc_i32:
         {% endfor %}
     {% endfor %}
 
+    b .non_linear_loop
 
+.q_shift_right_rounding:
+    ldp         x5, x6, [x1, #8]    // x5: shift, x6: policy
+
+    cmp     x6, 1
+    beq     .q_shift_right_rounding_zero
+
+    b .unsupported
+
+.q_shift_right_rounding_zero: // signum * (abs >> shift)
+    neg w5, w5
+    ins v1.s[0], w5
+    dup v1.4s, v1.4s[0]
+
+    {% for q in (16..31) %}
+        cmlt        v0.4s, v{{q}}.4s, #0
+        abs         v{{q}}.4s, v{{q}}.4s
+        sqshl      v{{q}}.4s, v{{q}}.4s, v1.4s
+        neg         v3.4s, v{{q}}.4s
+        bit         v{{q}}.16b, v3.16b, v0.16b
+    {% endfor %}
+   
     b .non_linear_loop
 
 .unsupported:

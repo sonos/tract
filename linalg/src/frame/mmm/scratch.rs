@@ -189,6 +189,10 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                         })
                     }
                 }
+                FusedSpec::QWrappingMulHighDoubling(i) => {
+                    FusedKerSpec::QWrappingMulHighDoubling(*i)
+                }
+                FusedSpec::QShiftRightRounding(i, rp) => FusedKerSpec::QShiftRightRounding(*i, *rp),
             };
             self.uspecs.push(s);
         }

@@ -3,6 +3,18 @@ use std::fmt::Debug;
 use super::Tile;
 use tract_data::internal::*;
 
+#[repr(usize)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum RoundingPolicy {
+    Native,
+    Zero,
+    Away,
+    MinusInf,
+    PlusInf,
+    Even,
+    Odd,
+}
+
 #[derive(Clone, Debug)]
 pub enum FusedSpec<'t> {
     Min(&'t Tensor),
@@ -18,7 +30,14 @@ pub enum FusedSpec<'t> {
     QTowardsPlusInf(&'t Tensor, usize),
     QAway(&'t Tensor, usize),
     AddUnicast(TensorView<'t>),
+    QWrappingMulHighDoubling(i32),
+    QShiftRightRounding(usize, RoundingPolicy),
 }
+
+// Scale(f32, rounding policy) // recalcul ?
+// QWrapMulHigh(i32) + QShiftRightTiesEven + QShiftRightTiesAway + QShiftRightTiesPlus +
+// QShiftRightTiesZero + QShiftRightTies
+// Scale(i32, shift, policy)
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -37,6 +56,8 @@ pub enum FusedKerSpec<TI: Copy> {
     QTowardsEven(TI, usize),
     QTowardsPlusInf(TI, usize),
     QAway(TI, usize),
+    QWrappingMulHighDoubling(i32),
+    QShiftRightRounding(usize, RoundingPolicy),
 }
 
 #[cfg(test)]
@@ -45,6 +66,7 @@ pub mod test {
     use super::*;
     use crate::frame::mmm::storage::*;
     use crate::frame::mmm::*;
+    use crate::generic::PseudoRightShift;
     use num_traits::{AsPrimitive, Bounded, Zero};
     use proptest::prelude::*;
     use std::fmt;
@@ -172,9 +194,10 @@ pub mod test {
     macro_rules! qmmm_kernel_fuse_tests {
         ($cond:expr, $ker:ty, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
             mod fuseq {
+                use crate::frame::mmm::fuse::RoundingPolicy;
                 #[allow(unused_imports)]
                 use crate::frame::mmm::fuse::test;
-                use crate::frame::mmm::fuse::test::{QAwayProblem, QTowardsPlusInfProblem};
+                use crate::frame::mmm::fuse::test::{QAwayProblem, QTowardsPlusInfProblem, QRightShiftProblem};
                 use crate::frame::mmm::kernel::MatMatMulKer;
                 use num_traits::AsPrimitive;
                 use proptest::prelude::*;
@@ -234,6 +257,17 @@ pub mod test {
                     }
                 }
 
+                #[test]
+                fn return_q_right_shift_prop_0() {
+                    if $cond {
+                        let len = <$ker>::mr() * <$ker>::nr();
+                        let mut v = vec!(0; len - 1);
+                        v.push(1);
+                        let pb = QRightShiftProblem::<$ker, $tc, $ti>::new(v, 1, RoundingPolicy::Zero);
+                        assert_eq!(pb.run(), pb.reference())
+                    }
+                }
+
                 proptest::proptest! {
                     #[test]
                     fn return_q_towards_plusinf_prop(pb in any::<QTowardsPlusInfProblem<$ker, $tc, $ti>>()) {
@@ -244,6 +278,13 @@ pub mod test {
 
                     #[test]
                     fn return_q_away_prop(pb in any::<QAwayProblem<$ker, $tc, $ti>>()) {
+                        if $cond {
+                            prop_assert_eq!(pb.run(), pb.reference())
+                        }
+                    }
+
+                    #[test]
+                    fn return_q_right_shift_prop(pb in any::<QRightShiftProblem<$ker, $tc, $ti>>()) {
                         if $cond {
                             prop_assert_eq!(pb.run(), pb.reference())
                         }
@@ -730,6 +771,76 @@ pub mod test {
             fused_ops::<K, TC, TI>(
                 &*self.c,
                 &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QAway((1 << 30).as_(), 2)],
+            )
+        }
+    }
+
+    #[derive(Debug, new)]
+    pub struct QRightShiftProblem<K, TC, TI>
+    where
+        K: MatMatMulKer<TI>,
+        TC: Copy + Debug + 'static,
+        TI: Copy + Debug,
+        i64: AsPrimitive<TC>,
+    {
+        pub c: Vec<TC>,
+        pub shift: usize,
+        pub policy: RoundingPolicy,
+        pub boo: std::marker::PhantomData<(K, TC, TI)>,
+    }
+
+    impl<K, TC, TI> Arbitrary for QRightShiftProblem<K, TC, TI>
+    where
+        K: MatMatMulKer<TI>,
+        TC: Copy + Debug + 'static,
+        TI: Copy + Debug,
+        i64: AsPrimitive<TC>,
+    {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+        fn arbitrary_with(_p: ()) -> Self::Strategy {
+            use RoundingPolicy::*;
+            let len = K::mr() * K::nr();
+            (
+                proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len),
+                0usize..8,
+                proptest::prop_oneof![
+                    Just(Zero),
+                    /*
+                    Just(Away),
+                    Just(PlusInf),
+                    Just(MinusInf),
+                    Just(Odd),
+                    Just(Even)
+                    */
+                ],
+            )
+                .prop_map(|(c, shift, policy)| QRightShiftProblem {
+                    c,
+                    shift,
+                    policy,
+                    boo: std::marker::PhantomData,
+                })
+                .boxed()
+        }
+    }
+
+    impl<K, TC, TI> QRightShiftProblem<K, TC, TI>
+    where
+        K: MatMatMulKer<TI>,
+        TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
+        TI: Copy + Debug + 'static + AsPrimitive<i64> + PseudoRightShift + AsPrimitive<TC>,
+        usize: AsPrimitive<TC> + AsPrimitive<TI>,
+        i64: AsPrimitive<TC>,
+    {
+        pub fn reference(&self) -> Vec<TC> {
+            self.c.iter().map(|input| (input.as_()).shift(self.shift, self.policy).as_()).collect()
+        }
+
+        pub fn run(&self) -> Vec<TC> {
+            fused_ops::<K, TC, TI>(
+                &*self.c,
+                &[FusedKerSpec::QShiftRightRounding(self.shift, self.policy)],
             )
         }
     }
