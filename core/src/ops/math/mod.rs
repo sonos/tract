@@ -341,7 +341,6 @@ fn declutter_unary_flipped_pow(
     node: &TypedNode,
     a: &Arc<Tensor>,
 ) -> TractResult<Option<TypedModelPatch>> {
-    dbg!(a);
     if let Some(a) = a.as_uniform() {
         let a = a.cast_to_scalar::<f32>()?;
         if a == 1.0 {
