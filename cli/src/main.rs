@@ -251,6 +251,8 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(
             Arg::with_name("assert-output")
             .takes_value(true)
+            .multiple(true)
+            .number_of_values(1)
             .long("assert-output")
             .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
             )
@@ -313,6 +315,8 @@ fn main() -> tract_core::anyhow::Result<()> {
             Arg::with_name("assert-output")
                 .takes_value(true)
                 .long("assert-output")
+                .multiple(true)
+                .number_of_values(1)
                 .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
         )
         .arg(

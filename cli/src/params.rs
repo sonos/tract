@@ -376,8 +376,8 @@ impl Parameters {
                 let (name, t) = tensor::for_string(v)?;
                 let fact = t.clone().without_value();
                 let fact: F = (&fact).try_into().unwrap();
-                let outlet = if let Some(name) = name.filter(|s| s.len() > 0) {
-                    let node = raw_model.node_by_name(&*name)?;
+                let outlet = if let Some(name) = name.as_ref().filter(|s| s.len() > 0) {
+                    let node = raw_model.node_by_name(name)?;
                     OutletId::new(node.id, 0)
                 } else {
                     raw_model.input_outlets()?[ix]
@@ -399,7 +399,7 @@ impl Parameters {
                     raw_model.node_mut(outlet.node).inputs.clear();
                     raw_model.node_mut(outlet.node).op = raw_model.create_source(fact.clone())
                 }
-                info!("Input #{}: {:?}", ix, t);
+                info!("Input #{}: (named: {}) {:?}", ix, name.as_deref().unwrap_or(""), t);
                 raw_model.set_outlet_fact(outlet, fact)?;
             }
         }
@@ -860,7 +860,14 @@ impl Assertions {
             let mut assert_outputs: Vec<Option<Arc<Tensor>>> = vec![None; output_names.len()];
             if let Some(values) = sub.values_of("assert-output") {
                 for (ix, o) in values.enumerate() {
-                    assert_outputs[ix] = tensor::for_string(o).unwrap().1.value.concretize();
+                    let (name, fact) = tensor::for_string(o)?;
+                    info!("Output assertion #{}: (named: {}) {:?}", ix, name.as_deref().unwrap_or(""), fact);
+                    let oix = if let Some(name) = name {
+                        output_names.iter().position(|names| names.contains(&name)).unwrap_or(ix)
+                    } else {
+                        ix
+                    };
+                    assert_outputs[oix] = fact.value.concretize();
                 }
             }
 
@@ -880,6 +887,8 @@ impl Assertions {
                     }
                 }
             }
+
+            dbg!(&assert_outputs);
 
             if sub.values_of("assert_output").is_some()
                 || sub.values_of("assert-output-bundle").is_some()
