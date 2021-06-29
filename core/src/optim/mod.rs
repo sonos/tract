@@ -1,4 +1,5 @@
 use crate::internal::*;
+use std::collections::HashSet;
 use std::fmt::Debug;
 use tract_itertools::Itertools;
 
@@ -57,10 +58,11 @@ impl Optimizer {
         {
             model.check_consistent_facts()?;
         }
+        let mut seen = HashSet::new();
         let mut model = model.compact()?;
         let mut counter = 0;
         for i in 0.. {
-            let counter_and_model = self.run_all_passes(i, counter, model)?;
+            let counter_and_model = self.run_all_passes(i, counter, model, &mut seen)?;
             if counter_and_model.0 == counter {
                 return Ok(counter_and_model.1);
             }
@@ -76,10 +78,11 @@ impl Optimizer {
         i: usize,
         mut counter: usize,
         mut model: TypedModel,
+        seen: &mut HashSet<String>,
     ) -> TractResult<(usize, TypedModel)> {
         let mut passes = self.passes.clone();
         for p in passes.iter_mut() {
-            let counter_and_model = self.run_one_pass_outer(i, p.as_mut(), counter, model)?;
+            let counter_and_model = self.run_one_pass_outer(i, p.as_mut(), counter, model, seen)?;
             counter = counter_and_model.0;
             model = counter_and_model.1.compact()?;
         }
@@ -92,9 +95,10 @@ impl Optimizer {
         p: &mut dyn TypedPass,
         mut counter: usize,
         mut model: TypedModel,
+        seen: &mut HashSet<String>,
     ) -> TractResult<(usize, TypedModel)> {
         loop {
-            let counter_and_model = self.run_one_pass_inner(i, p, counter, model)?;
+            let counter_and_model = self.run_one_pass_inner(i, p, counter, model, seen)?;
             if counter_and_model.0 == counter {
                 return Ok(counter_and_model);
             }
@@ -109,8 +113,8 @@ impl Optimizer {
         p: &mut dyn TypedPass,
         mut counter: usize,
         mut model: TypedModel,
+        seen: &mut HashSet<String>,
     ) -> TractResult<(usize, TypedModel)> {
-        let mut seen = std::collections::HashSet::new();
         p.reset()?;
         while let Some(mut patch) = p.next(&model)? {
             if let Some(steps) = self.steps {
@@ -136,7 +140,6 @@ impl Optimizer {
             }
             debug!("applying patch #{}: {}", counter, patch.context.iter().rev().join(" >> "),);
             patch.apply(&mut model)?;
-            seen.clear();
             counter += 1;
         }
         #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
