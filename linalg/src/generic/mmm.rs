@@ -4,51 +4,12 @@ use std::{fmt, ops};
 
 use tract_data::prelude::*;
 
+use super::*;
 use crate::frame::mmm::LinearSpec::*;
 use crate::frame::mmm::PanelStore::*;
 use crate::frame::mmm::*;
 
 use num_traits::sign::Signed;
-
-pub trait PseudoRightShift {
-    fn q_away(self, mult: Self, shift: usize) -> Self;
-    fn q_even(self, mult: Self, shift: usize) -> Self;
-    fn q_to_plus_inf(self, mult: Self, shift: usize) -> Self;
-}
-
-impl PseudoRightShift for i32 {
-    fn q_even(self, mult: Self, shift: usize) -> Self {
-        let v = ((self as i64 * mult as i64) >> (30 + shift)) as i32;
-        let truncated = v.abs();
-        let nudge = ((truncated & 0x3) == 0x3) as usize as i32;
-        let pos = (truncated + nudge) >> 1;
-        if v.is_negative() {
-            -pos
-        } else {
-            pos
-        }
-    }
-    fn q_to_plus_inf(self, mult: Self, shift: usize) -> Self {
-        let v = ((self as i64 * mult as i64) >> (30 + shift)) as i32;
-        (v + 1) >> 1
-    }
-    fn q_away(self, mult: Self, shift: usize) -> Self {
-        let v = ((self.abs() as i64 * mult as i64) >> (30 + shift)) as i32;
-        ((v + 1) >> 1) * self.signum()
-    }
-}
-
-impl PseudoRightShift for f32 {
-    fn q_even(self, mult: Self, shift: usize) -> Self {
-        self * mult * 2f32.powi(-(shift as i32))
-    }
-    fn q_to_plus_inf(self, mult: Self, shift: usize) -> Self {
-        self * mult * 2f32.powi(-(shift as i32))
-    }
-    fn q_away(self, mult: Self, shift: usize) -> Self {
-        self * mult * 2f32.powi(-(shift as i32))
-    }
-}
 
 #[derive(Copy, Clone, Debug)]
 pub struct GenericMmm4x4<TA, TB, TC, TI>(PhantomData<(TA, TB, TC, TI)>)
@@ -315,7 +276,15 @@ where
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TC, TI, _>(&tile, &mut ab),
-                }
+                    FusedKerSpec::QWrappingMulHighDoubling(_) => (),
+                    FusedKerSpec::QShiftRightRounding(shift, pol) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] = ab[i][j].shift(shift, pol)
+                            }
+                        }
+                    }
+                };
                 pnl = pnl.add(1);
             }
             let Tile { ptr: c, row_byte_stride, col_byte_stride, .. } = spec.c;
@@ -563,6 +532,12 @@ where
                             std::slice::from_raw_parts_mut(ab.as_ptr().offset(3) as _, 1),
                         ],
                     ),
+                    FusedKerSpec::QWrappingMulHighDoubling(_) => (),
+                    FusedKerSpec::QShiftRightRounding(shift, pol) => {
+                        for i in 0..4 {
+                            ab[i] = ab[i].shift(shift, pol)
+                        }
+                    }
                 }
                 pnl = pnl.add(1);
             }
@@ -815,6 +790,14 @@ where
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TC, TI, _>(&tile, &mut ab),
+                    FusedKerSpec::QWrappingMulHighDoubling(_) => (),
+                    FusedKerSpec::QShiftRightRounding(shift, pol) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                ab[i][j] = ab[i][j].shift(shift, pol)
+                            }
+                        }
+                    }
                 }
                 pnl = pnl.add(1);
             }
