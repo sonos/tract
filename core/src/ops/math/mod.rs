@@ -184,9 +184,11 @@ bin_to_super_type!(max, Max, flip:commute,
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a.max(b));
 
 bin_to_super_type!(pow, Pow,
+                   flip: flip_pow,
                    [f32, f64] => |c,a,b| *c = a.powf(*b),
                    [i32, i64] => |c,a,b| *c = a.pow(*b as u32));
 bin_to_super_type!(flipped_pow, FlippedPow,
+                   declutter_unary: declutter_unary_flipped_pow,
                    [f32, f64] => |c,a,b| *c = b.powf(*a),
                    [i32, i64] => |c,a,b| *c = b.pow(*a as u32));
 
@@ -223,6 +225,10 @@ fn flip_div(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
     })(&mut t)
     .unwrap();
     Some(UnaryOp::new(Box::new(Mul), Arc::new(t)))
+}
+
+fn flip_pow(_op: &dyn BinMiniOp, t: &Arc<Tensor>) -> Option<UnaryOp> {
+    Some(UnaryOp::new(Box::new(FlippedPow), t.clone()))
 }
 
 fn declutter_unary_mul(
@@ -329,6 +335,29 @@ fn declutter_as_shift(
     Ok(None)
 }
 
+fn declutter_unary_flipped_pow(
+    _op: &FlippedPow,
+    model: &TypedModel,
+    node: &TypedNode,
+    a: &Arc<Tensor>,
+) -> TractResult<Option<TypedModelPatch>> {
+    dbg!(a);
+    if let Some(a) = a.as_uniform() {
+        let a = a.cast_to_scalar::<f32>()?;
+        if a == 1.0 {
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        } else if a == 2.0 {
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, square())?))
+        } else if a == 3.0 {
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, cube())?))
+        } else if a == 0.5 {
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, sqrt())?))
+        }
+    }
+    Ok(None)
+}
+
+
 element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, i32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.abs());
     Ok(())
@@ -358,6 +387,15 @@ element_wise!(square, Square, [f16, f32, f64] => |_, xs| {
 q: [i8, u8] => |f : f32| f.powi(2);
 validation: Validation::Rounding
 );
+
+element_wise!(cube, Cube, [f16, f32, f64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = x.powi(3));
+    Ok(())
+};
+q: [i8, u8] => |f : f32| f.powi(3);
+validation: Validation::Rounding
+);
+
 
 element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sqrt());
