@@ -391,6 +391,9 @@ fma_mmm_i8_8x8_{{suffix}} proc
     cmp     rax,    13
     je      {{L}}q_away
 
+    cmp     rax,    14
+    je      {{L}}q_wrapping_mul_high_doubling
+
     cmp     rax,    15
     je      {{L}}q_shift_right_rounding
 
@@ -672,20 +675,128 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
+{{L}}q_wrapping_mul_high_doubling:
+    vpbroadcastd    ymm12, dword ptr [rcx + 8]  //mult // broatcasted x 8
+
+{% for i in (0..7) %}
+    vpand       ymm10, ymm{{i}}, ymm{{i}}       // ymm10 <- ymmi
+
+    vpsrldq     ymm15, ymm10, 4                 // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm15, ymm15, ymm12             // ymm15 <- a1*c, a3*c, a5*c, a7*c
+    vpmuldq     ymm10, ymm10, ymm12             // ymm10  <- a0*c, a2*c, a4*c, a6*c
+
+    vpsrlq      ymm10, ymm10, 31
+    vpsrlq      ymm15, ymm15, 31
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm{{i}}, ymm15, ymm10, 85     // 0x55 ymmi <- ymmi::ymm15 (back to i32)
+
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
 {{L}}q_shift_right_rounding:
     mov     r8, [ rcx + 16 ]
     mov     rax, [ rcx + 8 ]                // shift
-    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
+
+    cmp rax, 0
+    je {{L}}non_linear_loop
+    
+{% if msvc %}
+    vpbroadcastd    ymm11, dword ptr [offset one_32bit] // 1, broadcasted x8
+{% else %}
+    vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
+{% endif %}
+
     cmp     r8, 1
     je      {{L}}q_shift_right_rounding_zero
+    cmp     r8, 2
+    je      {{L}}q_shift_right_rounding_away
+    cmp     r8, 3
+    je      {{L}}q_shift_right_rounding_minus_inf
+    cmp     r8, 4
+    je      {{L}}q_shift_right_rounding_plus_inf
+    cmp     r8, 5
+    je      {{L}}q_shift_right_rounding_even
+    cmp     r8, 6
+    je      {{L}}q_shift_right_rounding_odd
+
 
     jmp     {{L}}unimplemented
    
 {{L}}q_shift_right_rounding_zero: // signum * (abs >> shift)
-    
+    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
 {% for i in (0..7) %}
     vpabsd  ymm10, ymm{{i}}
     vpsrad  ymm10, ymm10, xmm8
+    vpsignd ymm{{i}}, ymm10, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_shift_right_rounding_away: // signum * (abs >> shift - 1) + 1 >> 1
+    sub         rax, 1
+    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
+{% for i in (0..7) %}
+    vpabsd  ymm10, ymm{{i}}
+    vpsrad  ymm10, ymm10, xmm8
+    vpaddd  ymm10, ymm10, ymm11
+    vpsrad  ymm10, ymm10, 1
+    vpsignd ymm{{i}}, ymm10, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_shift_right_rounding_minus_inf: // val >> shift
+    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
+{% for i in (0..7) %}
+    vpsrad  ymm{{i}}, ymm{{i}}, xmm8
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_shift_right_rounding_plus_inf: //  (val >> shift - 1) + 1 >> 1
+    sub         rax, 1
+    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
+{% for i in (0..7) %}
+    vpsrad  ymm{{i}}, ymm{{i}}, xmm8
+    vpaddd  ymm{{i}}, ymm{{i}}, ymm11
+    vpsrad  ymm{{i}}, ymm{{i}}, 1
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x3 == 0x3) >> 1)
+    sub         rax, 1
+    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
+{% for i in (0..7) %}
+    vpabsd  ymm10, ymm{{i}}
+    vpsrad  ymm10, ymm10, xmm8
+
+    vpand  ymm12, ymm10, ymm11
+    vpsrad  ymm9, ymm10, 1
+    vpand  ymm12, ymm12, ymm9
+
+    vpaddd  ymm10, ymm10, ymm12 //val += (val & 0x3 == 0x3)
+    vpsrad  ymm10, ymm10, 1
+    vpsignd ymm{{i}}, ymm10, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_shift_right_rounding_odd: // signum * ((abs >> shift-1) + (abs & 0x3 == 0x1) >> 1)
+    sub         rax, 1
+    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
+{% for i in (0..7) %}
+    vpabsd  ymm10, ymm{{i}}
+    vpsrad  ymm10, ymm10, xmm8
+
+    vpand  ymm12, ymm10, ymm11
+    vpsrad  ymm9, ymm10, 1
+    vpandn   ymm12, ymm9, ymm12
+
+    vpaddd  ymm10, ymm10, ymm12 //val += (val & 0x3 == 0x1)
+    vpsrad  ymm10, ymm10, 1
     vpsignd ymm{{i}}, ymm10, ymm{{i}}
 {% endfor %}
 

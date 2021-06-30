@@ -5,6 +5,7 @@ pub trait PseudoRightShift {
     fn q_even(self, mult: Self, shift: usize) -> Self;
     fn q_to_plus_inf(self, mult: Self, shift: usize) -> Self;
     fn shift(self, shift: usize, policy: RoundingPolicy) -> Self;
+    fn doubling_mul(self, mult: i32) -> Self;
 }
 
 impl PseudoRightShift for f32 {
@@ -19,6 +20,9 @@ impl PseudoRightShift for f32 {
     }
     fn shift(self, shift: usize, _policy: RoundingPolicy) -> Self {
         self * 2f32.powi(-(shift as i32))
+    }
+    fn doubling_mul(self, mult: i32) -> Self {
+        self * mult as f32 * 2.
     }
 }
 
@@ -71,6 +75,9 @@ impl PseudoRightShift for i32 {
             _ => panic!(),
         }
     }
+    fn doubling_mul(self, mult: i32) -> Self {
+        (self as i64 * mult as i64 >> 31) as i32
+    }
 }
 
 #[cfg(test)]
@@ -110,7 +117,7 @@ mod test {
         assert_eq!((-2i32).shift(1, PlusInf), -1);
         assert_eq!((-3i32).shift(1, PlusInf), -1);
     }
-    
+
     #[test]
     fn test_minus_inf() {
         assert_eq!(0i32.shift(1, MinusInf), 0);
