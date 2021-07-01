@@ -539,7 +539,7 @@ non_linear_addc_i32:
    
     b .non_linear_loop
 
-.q_shift_right_rounding_even: // signuum * ((abs >> shift-1) + (abs & 0x3 == 0x3) >> 1)
+.q_shift_right_rounding_even: // signuum * ((abs >> shift-1) + (abs & 0x2 == 0x1) >> 1)
     sub w5, w5, #1
     neg w5, w5
     ins v1.s[0], w5
@@ -549,13 +549,11 @@ non_linear_addc_i32:
         cmlt        v0.4s, v{{q}}.4s, #0
         abs         v{{q}}.4s, v{{q}}.4s
         sqshl       v{{q}}.4s, v{{q}}.4s, v1.4s
-
-        and         v2.16b, v4.16b, v{{q}}.16b     //val & 0x1 == 0x1
         
         sshr        v3.4s, v{{q}}.4s, #1 
-        and         v2.16b, v4.16b, v3.16b         //val & 0x3 == 0x3
+        and         v2.16b, v4.16b, v3.16b         //val & 0x2 == 0x2
 
-        add         v{{q}}.4s, v{{q}}.4s, v2.4s //val += (val & 0x3 == 0x3)
+        add         v{{q}}.4s, v{{q}}.4s, v2.4s    //val += (val & 0x2 == 0x2)
 
         sshr        v{{q}}.4s, v{{q}}.4s, #1
         neg         v3.4s, v{{q}}.4s
@@ -564,7 +562,7 @@ non_linear_addc_i32:
    
     b .non_linear_loop
 
-.q_shift_right_rounding_odd: // signuum * ((abs >> shift-1) + (abs & 0x3 == 0x1) >> 1)
+.q_shift_right_rounding_odd: // signuum * ((abs >> shift-1) + (abs & 0x2 == 0x0) >> 1)
     sub w5, w5, #1
     neg w5, w5
     ins v1.s[0], w5
@@ -574,14 +572,12 @@ non_linear_addc_i32:
         cmlt        v0.4s, v{{q}}.4s, #0
         abs         v{{q}}.4s, v{{q}}.4s
         sqshl       v{{q}}.4s, v{{q}}.4s, v1.4s
-
-        and         v2.16b, v4.16b, v{{q}}.16b     //val & 0x1 == 0x1
         
         sshr        v3.4s, v{{q}}.4s, #1 
         not         v3.16b, v3.16b
-        and         v2.16b, v4.16b, v3.16b         //val & 0x3 == 0x1
+        and         v2.16b, v4.16b, v3.16b         //val & 0x2 == 0x0
 
-        add         v{{q}}.4s, v{{q}}.4s, v2.4s //val += (val & 0x3 == 0x1)
+        add         v{{q}}.4s, v{{q}}.4s, v2.4s    //val += (val & 0x2 == 0x0)
 
         sshr        v{{q}}.4s, v{{q}}.4s, #1
         neg         v3.4s, v{{q}}.4s

@@ -769,7 +769,7 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
    
     b .non_linear_loop
 
-.q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x3 == 0x3) >> 1)
+.q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x2) >> 1)
     sub             r5, r5, #1
     neg             r5, r5
     vmov            s4, r5
@@ -780,11 +780,10 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
         vabs.s32    q{{q}}, q{{q}}
         vshl.s32    q{{q}}, q{{q}}, q1
 
-        vand.s32    q3, q2, q{{q}}              //val & 0x1 == 0x1
         vshr.s32    q4, q{{q}}, #1 
-        vand.s32    q3, q4, q3                  //val & 0x3 == 0x3
+        vand.s32    q4, q4, q2                  //val & 0x2 == 0x2
 
-        vadd.s32    q{{q}}, q{{q}}, q3
+        vadd.s32    q{{q}}, q{{q}}, q4
         vshr.s32    q{{q}}, q{{q}}, #1
         vneg.s32    q3, q{{q}}
         vbit.s32    q{{q}}, q3, q0
@@ -792,7 +791,7 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
    
     b .non_linear_loop
 
-.q_shift_right_rounding_odd: // signum * ((abs >> shift-1) + (abs & 0x3 == 0x1) >> 1)
+.q_shift_right_rounding_odd: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x0) >> 1)
     sub             r5, r5, #1
     neg             r5, r5
     vmov            s4, r5
@@ -803,12 +802,11 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
         vabs.s32    q{{q}}, q{{q}}
         vshl.s32    q{{q}}, q{{q}}, q1
 
-        vand.s32    q3, q2, q{{q}}              //val & 0x1 == 0x1
         vshr.s32    q4, q{{q}}, #1 
         vmvn.s32    q4, q4
-        vand.s32    q3, q4, q3                  //val & 0x3 == 0x1
+        vand.s32    q4, q4, q2                  //val & 0x2 == 0x0
 
-        vadd.s32    q{{q}}, q{{q}}, q3
+        vadd.s32    q{{q}}, q{{q}}, q4
         vshr.s32    q{{q}}, q{{q}}, #1
         vneg.s32    q3, q{{q}}
         vbit.s32    q{{q}}, q3, q0
