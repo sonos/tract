@@ -766,36 +766,34 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
-{{L}}q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x3 == 0x3) >> 1)
+{{L}}q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x2) >> 1)
     sub         rax, 1
     pinsrq      xmm8, rax, 0                // xmm8 <- shift value
 {% for i in (0..7) %}
     vpabsd  ymm10, ymm{{i}}
     vpsrad  ymm10, ymm10, xmm8
 
-    vpand  ymm12, ymm10, ymm11
     vpsrad  ymm9, ymm10, 1
-    vpand  ymm12, ymm12, ymm9
+    vpand  ymm9, ymm11, ymm9
 
-    vpaddd  ymm10, ymm10, ymm12 //val += (val & 0x3 == 0x3)
+    vpaddd  ymm10, ymm10, ymm9 //val += (val & 0x2 == 0x2)
     vpsrad  ymm10, ymm10, 1
     vpsignd ymm{{i}}, ymm10, ymm{{i}}
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
 
-{{L}}q_shift_right_rounding_odd: // signum * ((abs >> shift-1) + (abs & 0x3 == 0x1) >> 1)
+{{L}}q_shift_right_rounding_odd: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x0) >> 1)
     sub         rax, 1
     pinsrq      xmm8, rax, 0                // xmm8 <- shift value
 {% for i in (0..7) %}
     vpabsd  ymm10, ymm{{i}}
     vpsrad  ymm10, ymm10, xmm8
 
-    vpand  ymm12, ymm10, ymm11
     vpsrad  ymm9, ymm10, 1
-    vpandn   ymm12, ymm9, ymm12
+    vpandn   ymm9, ymm9, ymm11
 
-    vpaddd  ymm10, ymm10, ymm12 //val += (val & 0x3 == 0x1)
+    vpaddd  ymm10, ymm10, ymm9 //val += (val & 0x2 == 0x0)
     vpsrad  ymm10, ymm10, 1
     vpsignd ymm{{i}}, ymm10, ymm{{i}}
 {% endfor %}
