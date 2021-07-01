@@ -464,7 +464,7 @@ non_linear_addc_i32:
 
     mov w3, #1
     ins v4.s[0], w3
-    dup v4.4s, v4.4s[0]
+    dup v4.4s, v4.s[0]
 
     cmp     x6, 1
     beq     .q_shift_right_rounding_zero
@@ -484,7 +484,7 @@ non_linear_addc_i32:
 .q_shift_right_rounding_zero: // signum * (abs >> shift)
     neg w5, w5
     ins v1.s[0], w5
-    dup v1.4s, v1.4s[0]
+    dup v1.4s, v1.s[0]
 
     {% for q in (16..31) %}
         cmlt        v0.4s, v{{q}}.4s, #0
@@ -500,7 +500,7 @@ non_linear_addc_i32:
     sub w5, w5, #1
     neg w5, w5
     ins v1.s[0], w5
-    dup v1.4s, v1.4s[0]
+    dup v1.4s, v1.s[0]
 
     {% for q in (16..31) %}
         cmlt        v0.4s, v{{q}}.4s, #0
@@ -517,7 +517,7 @@ non_linear_addc_i32:
 .q_shift_right_rounding_minus_inf: // val >> shift
     neg w5, w5
     ins v1.s[0], w5
-    dup v1.4s, v1.4s[0]
+    dup v1.4s, v1.s[0]
 
     {% for q in (16..31) %}
         sqshl       v{{q}}.4s, v{{q}}.4s, v1.4s
@@ -529,7 +529,7 @@ non_linear_addc_i32:
     sub w5, w5, #1
     neg w5, w5
     ins v1.s[0], w5
-    dup v1.4s, v1.4s[0]
+    dup v1.4s, v1.s[0]
 
     {% for q in (16..31) %}
         sqshl       v{{q}}.4s, v{{q}}.4s, v1.4s
@@ -543,7 +543,7 @@ non_linear_addc_i32:
     sub w5, w5, #1
     neg w5, w5
     ins v1.s[0], w5
-    dup v1.4s, v1.4s[0]
+    dup v1.4s, v1.s[0]
 
     {% for q in (16..31) %}
         cmlt        v0.4s, v{{q}}.4s, #0
@@ -568,7 +568,7 @@ non_linear_addc_i32:
     sub w5, w5, #1
     neg w5, w5
     ins v1.s[0], w5
-    dup v1.4s, v1.4s[0]
+    dup v1.4s, v1.s[0]
 
     {% for q in (16..31) %}
         cmlt        v0.4s, v{{q}}.4s, #0
