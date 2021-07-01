@@ -1,12 +1,12 @@
 use super::binary::*;
 use crate::internal::*;
 use tract_data::internal::ClampCast;
+use tract_linalg::mmm::RoundingPolicy;
 use crate::ops::quant::scale_by;
 use num_traits::bounds::Bounded;
 use num_traits::int::PrimInt;
 use num_traits::{Float, Zero};
 use tract_num_traits::AsPrimitive;
-
 
 
 bin_to_super_type!(add, Add,
@@ -483,6 +483,47 @@ pub fn round_ties_to_even(x: f32) -> f32 {
         y
     }
 }
+
+pub fn rounding_rshift(policy: RoundingPolicy, shift: usize, val: i32) -> i32 {
+    use RoundingPolicy::*;
+        if shift == 0 {
+            return val;
+        }
+        match policy {
+            Zero => val.signum() * (val.abs() >> shift),
+            MinusInf => val >> shift,
+            PlusInf => ((val >> (shift - 1)) + 1) >> 1,
+            Away => val.signum() * (((val.abs() >> (shift - 1)) + 1) >> 1),
+            Even => {
+                let signum = val.signum();
+                let mut val = val.abs() >> (shift - 1);
+                if val & 0x3 == 0x3 {
+                    val += 1
+                };
+                (val >> 1) * signum
+            }
+            Odd => {
+                let signum = val.signum();
+                let mut val = val.abs() >> (shift - 1);
+                if val & 0x3 == 0x1 {
+                    val += 1
+                };
+                (val >> 1) * signum
+            }
+            _ => panic!(),
+        }
+}
+
+element_wise!(q_rounding_right_shift, QRoundingRightShift {policy: RoundingPolicy, shift: usize},[i32] => |op, xs| {
+    xs.iter_mut().for_each(|x| *x = rounding_rshift(op.policy, op.shift, *x));
+    Ok(())
+});
+
+element_wise!(q_wrapping_mul_high_doubling, QWrappingMulHighDoubling {mult: i32},[i32] => |op, xs| {
+    xs.iter_mut().for_each(|x| *x = (*x as i64 * op.mult as i64 >> 31) as i32);
+    Ok(())
+});
+
 
 element_wise!(round_half_to_even, RoundHalfToEven,[ f32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = round_ties_to_even(*x));

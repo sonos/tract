@@ -4,7 +4,7 @@ use super::Tile;
 use tract_data::internal::*;
 
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Hash)]
 pub enum RoundingPolicy {
     Native,
     Zero,

@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::mmm::{FusedSpec, MatMatMul, MatrixStoreSpec, ScratchSpace};
+use tract_linalg::mmm::{FusedSpec, MatMatMul, MatrixStoreSpec, RoundingPolicy, ScratchSpace};
 
 #[derive(PartialEq, Clone, Hash, Debug)]
 pub enum ProtoFusedSpec {
@@ -16,6 +16,8 @@ pub enum ProtoFusedSpec {
     ScalarAdd(AttrOrInput),
     QAway(AttrOrInput, usize),
     AddUnicast(AttrOrInput),
+    QWrappingMulHighDoubling(i32),
+    QShiftRightRounding(usize, RoundingPolicy),
 }
 
 impl ProtoFusedSpec {
@@ -34,6 +36,12 @@ impl ProtoFusedSpec {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
             ProtoFusedSpec::AddUnicast(v) => FusedSpec::AddUnicast(v.tensor(inputs).view()),
+            ProtoFusedSpec::QWrappingMulHighDoubling(mult) => {
+                FusedSpec::QWrappingMulHighDoubling(*mult)
+            }
+            ProtoFusedSpec::QShiftRightRounding(shift, policy) => {
+                FusedSpec::QShiftRightRounding(*shift, *policy)
+            }
         }
     }
 }
@@ -116,11 +124,8 @@ impl Op for LirMatMulUnary {
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
             "c_shape:{:?}, c_m_axis:{} c_n_axis:{} b_storage:{:?}",
-            self.c_fact,
-            self.c_m_axis,
-            self.c_n_axis,
-            self.geometry,
-            )];
+            self.c_fact, self.c_m_axis, self.c_n_axis, self.geometry,
+        )];
         infos.push(format!("Mult: {}", self.mmm));
         infos.push(format!("Ops: {:?}", self.micro_ops));
         Ok(infos)
@@ -138,7 +143,7 @@ impl OpState for State {
         session: &mut SessionState,
         op: &dyn Op,
         inputs: TVec<Arc<Tensor>>,
-        ) -> TractResult<TVec<Arc<Tensor>>> {
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
         let shape = op.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
         let final_shape = op.c_final_shape.eval_to_usize(&session.resolved_symbols)?;
@@ -146,12 +151,12 @@ impl OpState for State {
             let geometry = op.geometry.to_concrete(&session.resolved_symbols)?;
             if session
                 .cached_mmm_scratch_space
-                    .as_deref()
-                    .map(|scratch| op.mmm.can_use_scratch_space(scratch))
-                    == Some(false)
-                    {
-                        session.cached_mmm_scratch_space = None
-                    }
+                .as_deref()
+                .map(|scratch| op.mmm.can_use_scratch_space(scratch))
+                == Some(false)
+            {
+                session.cached_mmm_scratch_space = None
+            }
             let scratch = session
                 .cached_mmm_scratch_space
                 .get_or_insert_with(|| op.mmm.allocate_scratch_space());
@@ -164,7 +169,7 @@ impl OpState for State {
                 op.c_m_axis,
                 op.c_n_axis,
                 &*final_shape,
-                )
+            )
         }
     }
 }
@@ -178,7 +183,7 @@ impl EvalOp for LirMatMulUnary {
         &self,
         _session: &mut SessionState,
         _node_id: usize,
-        ) -> TractResult<Option<Box<dyn OpState>>> {
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(State)))
     }
 
@@ -194,7 +199,7 @@ impl EvalOp for LirMatMulUnary {
             self.c_m_axis,
             self.c_n_axis,
             self.c_final_shape.as_concrete().unwrap(),
-            )
+        )
     }
 }
 
@@ -207,61 +212,61 @@ fn eval(
     c_m_axis: usize,
     c_n_axis: usize,
     c_final_shape: &[usize],
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+) -> TractResult<TVec<Arc<Tensor>>> {
     unsafe {
         let a_dt = op.micro_ops.iter().next().unwrap().0.datum_type();
         let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
         let c_storage = op.mmm.c_view_with_axis(c_m_axis, c_n_axis);
         if op
             .c_fact
-                .shape
-                .iter()
-                .enumerate()
-                .any(|(ix, d)| ix != c_m_axis && ix != c_n_axis && d != 1.to_dim())
-                {
-                    let mut looping_shape: TVec<usize> = c_shape.into();
-                    looping_shape[c_m_axis] = 1;
-                    looping_shape[c_n_axis] = 1;
-                    for prefix in indices(&*looping_shape) {
-                        let mut ops = op.micro_ops.view();
-                        let mut b_prefix = tvec!();
-                        let mut c_view = c.view();
-                        for (ix, &dim) in prefix.slice().iter().enumerate() {
-                            if ix != c_m_axis && ix != c_n_axis {
-                                ops.index_axis_inplace(Axis(0), dim.min(ops.shape()[0] - 1));
-                                b_prefix.push(dim);
-                            }
-                            c_view.offset_axis_unchecked(ix, dim as isize);
-                        }
-                        let (pa, fused) = ops.iter().next().unwrap();
-                        let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
-                        op.mmm.run_with_scratch_space(
-                            geometry.m,
-                            geometry.k,
-                            geometry.n,
-                            scratch,
-                            &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
-                            &geometry
-                            .b_storage
-                            .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
-                            &mut c_storage.wrap(&c_view),
-                            &f,
-                            )?;
+            .shape
+            .iter()
+            .enumerate()
+            .any(|(ix, d)| ix != c_m_axis && ix != c_n_axis && d != 1.to_dim())
+        {
+            let mut looping_shape: TVec<usize> = c_shape.into();
+            looping_shape[c_m_axis] = 1;
+            looping_shape[c_n_axis] = 1;
+            for prefix in indices(&*looping_shape) {
+                let mut ops = op.micro_ops.view();
+                let mut b_prefix = tvec!();
+                let mut c_view = c.view();
+                for (ix, &dim) in prefix.slice().iter().enumerate() {
+                    if ix != c_m_axis && ix != c_n_axis {
+                        ops.index_axis_inplace(Axis(0), dim.min(ops.shape()[0] - 1));
+                        b_prefix.push(dim);
                     }
-                } else {
-                    let (pa, fused) = op.micro_ops.iter().next().unwrap();
-                    let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
-                    op.mmm.run_with_scratch_space(
-                        geometry.m,
-                        geometry.k,
-                        geometry.n,
-                        scratch,
-                        &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
-                        &geometry.b_storage.wrap(&inputs[0].view()),
-                        &mut c_storage.wrap(&c.view_mut()),
-                        &f,
-                        )?;
+                    c_view.offset_axis_unchecked(ix, dim as isize);
                 }
+                let (pa, fused) = ops.iter().next().unwrap();
+                let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
+                op.mmm.run_with_scratch_space(
+                    geometry.m,
+                    geometry.k,
+                    geometry.n,
+                    scratch,
+                    &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
+                    &geometry
+                        .b_storage
+                        .wrap(&TensorView::at_prefix_unchecked(&inputs[0], &*b_prefix)),
+                    &mut c_storage.wrap(&c_view),
+                    &f,
+                )?;
+            }
+        } else {
+            let (pa, fused) = op.micro_ops.iter().next().unwrap();
+            let f: Vec<FusedSpec> = fused.iter().map(|f| f.resolve(inputs)).collect::<Vec<_>>();
+            op.mmm.run_with_scratch_space(
+                geometry.m,
+                geometry.k,
+                geometry.n,
+                scratch,
+                &op.mmm.a_packed(a_dt.size_of(), geometry.k).wrap(&pa.view()),
+                &geometry.b_storage.wrap(&inputs[0].view()),
+                &mut c_storage.wrap(&c.view_mut()),
+                &f,
+            )?;
+        }
         c.set_shape_unchecked(c_final_shape);
         Ok(tvec!(c.into_arc_tensor()))
     }
@@ -275,7 +280,7 @@ impl TypedOp for LirMatMulUnary {
                 "Constant A table and c_prefix should have the same len. (resp {} and {})",
                 self.micro_ops.ndim(),
                 c_prefix_len
-                );
+            );
         }
         let mut fact = self.c_fact.clone();
         fact.shape = self.c_final_shape.clone();
@@ -285,22 +290,22 @@ impl TypedOp for LirMatMulUnary {
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let sums: TDim = self.c_fact.shape.iter().product();
         Ok(tvec!(
-                (Cost::FMA(self.mmm.internal_type()), sums * self.geometry.k().as_ref()),
-                (
-                    Cost::Params(self.micro_ops.as_slice().unwrap()[0].0.datum_type()),
-                    self.micro_ops.iter().fold(0.to_dim(), |sum, a| sum + a.0.len())
-                )
-                ))
+            (Cost::FMA(self.mmm.internal_type()), sums * self.geometry.k().as_ref()),
+            (
+                Cost::Params(self.micro_ops.as_slice().unwrap()[0].0.datum_type()),
+                self.micro_ops.iter().fold(0.to_dim(), |sum, a| sum + a.0.len())
+            )
+        ))
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
         if node.outputs.len() != 1
             || node.outputs[0].successors.len() != 1
-                || model.output_outlets()?.iter().any(|outlet| outlet.node == node.id)
-                {
-                    return Ok(None);
-                }
+            || model.output_outlets()?.iter().any(|outlet| outlet.node == node.id)
+        {
+            return Ok(None);
+        }
         let succ = model.node(node.outputs[0].successors[0].node);
         if let Some(op) = succ.op_as::<ops::AxisOp>() {
             if op.only_shape() {
@@ -314,31 +319,31 @@ impl TypedOp for LirMatMulUnary {
                         reshape_post,
                         ..self.clone()
                     },
-                    )?;
+                )?;
                 patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
                 return Ok(Some(patch));
             }
         }
 
         let merge = |fused_micro_op: &ArrayD<Vec<ProtoFusedSpec>>,
-        additional_inputs: &[OutletId]|
-            -> TractResult<Option<TypedModelPatch>> {
-                let mut new_op = self.clone();
-                new_op
-                    .micro_ops
-                    .zip_mut_with(fused_micro_op, |lhs, rhs| lhs.1.extend(rhs.iter().cloned()));
-                let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
-                patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
-                let inputs = node
-                    .inputs
-                    .iter()
-                    .chain(additional_inputs.iter())
-                    .map(|i| patch.tap_model(model, *i))
-                    .collect::<TractResult<TVec<OutletId>>>()?;
-                let output = patch.wire_node(&node.name, new_op, &inputs)?;
-                patch.shunt_outside(model, succ.id.into(), output[0])?;
-                Ok(Some(patch))
-            };
+                     additional_inputs: &[OutletId]|
+         -> TractResult<Option<TypedModelPatch>> {
+            let mut new_op = self.clone();
+            new_op
+                .micro_ops
+                .zip_mut_with(fused_micro_op, |lhs, rhs| lhs.1.extend(rhs.iter().cloned()));
+            let mut patch = TypedModelPatch::new(format!("fusing {}", succ));
+            patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ.name, node.name));
+            let inputs = node
+                .inputs
+                .iter()
+                .chain(additional_inputs.iter())
+                .map(|i| patch.tap_model(model, *i))
+                .collect::<TractResult<TVec<OutletId>>>()?;
+            let output = patch.wire_node(&node.name, new_op, &inputs)?;
+            patch.shunt_outside(model, succ.id.into(), output[0])?;
+            Ok(Some(patch))
+        };
 
         let merge_broadcast = |spec: &[ProtoFusedSpec], additional_inputs: &[OutletId]| {
             let array = arr0(spec.to_vec()).into_dyn();
@@ -358,7 +363,7 @@ impl TypedOp for LirMatMulUnary {
                             self.c_fact.shape[self.c_m_axis].to_usize().ok(),
                             None,
                             self.c_fact.shape[self.c_n_axis].to_usize().ok(),
-                            )
+                        )
                         .unwrap();
 
                     let c_fact = TypedFact::dt_shape(i8::datum_type(), self.c_fact.shape.clone());
@@ -366,39 +371,46 @@ impl TypedOp for LirMatMulUnary {
                         model,
                         &node,
                         Self { mmm, c_fact, ..self.clone() },
-                        )?;
+                    )?;
                     patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
                     return Ok(Some(patch));
                 }
+            } else if let Some(op) = op.downcast_ref::<ops::math::QWrappingMulHighDoubling>() {
+                return merge_broadcast(&[ProtoFusedSpec::QWrappingMulHighDoubling(op.mult)], &[]);
+            } else if let Some(op) = op.downcast_ref::<ops::math::QRoundingRightShift>() {
+                return merge_broadcast(
+                    &[ProtoFusedSpec::QShiftRightRounding(op.shift, op.policy)],
+                    &[],
+                );
             }
         } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
             if op.a.len() == 1 {
                 if op.mini_op.is::<ops::quant::Scale>()
                     && self.c_fact.datum_type == i32::datum_type()
-                    {
-                        // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
-                        let factor = op.a.cast_to_scalar::<f32>()?;
-                        if factor <= 0.0 || factor >= 0.5 {
-                            return Ok(None);
-                        }
-                        let factor_bits = factor.to_bits();
-                        let current_exponent = factor_bits >> 23;
-                        let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
-                        let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as u32;
-                        let shift = 126usize - current_exponent as usize;
-                        return merge_broadcast(
-                            &[ProtoFusedSpec::QAway(tensor0(int_multi).into(), shift)],
-                            &[],
-                            );
-                    } else if op.mini_op.is::<ops::math::Max>() {
-                        return merge_broadcast(&[ProtoFusedSpec::Max((&op.a).into())], &[]);
-                    } else if op.mini_op.is::<ops::math::Min>() {
-                        return merge_broadcast(&[ProtoFusedSpec::Min((&op.a).into())], &[]);
-                    } else if op.mini_op.is::<ops::math::Mul>() {
-                        return merge_broadcast(&[ProtoFusedSpec::ScalarMul((&op.a).into())], &[]);
-                    } else {
+                {
+                    // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
+                    let factor = op.a.cast_to_scalar::<f32>()?;
+                    if factor <= 0.0 || factor >= 0.5 {
                         return Ok(None);
                     }
+                    let factor_bits = factor.to_bits();
+                    let current_exponent = factor_bits >> 23;
+                    let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
+                    let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as u32;
+                    let shift = 126usize - current_exponent as usize;
+                    return merge_broadcast(
+                        &[ProtoFusedSpec::QAway(tensor0(int_multi).into(), shift)],
+                        &[],
+                    );
+                } else if op.mini_op.is::<ops::math::Max>() {
+                    return merge_broadcast(&[ProtoFusedSpec::Max((&op.a).into())], &[]);
+                } else if op.mini_op.is::<ops::math::Min>() {
+                    return merge_broadcast(&[ProtoFusedSpec::Min((&op.a).into())], &[]);
+                } else if op.mini_op.is::<ops::math::Mul>() {
+                    return merge_broadcast(&[ProtoFusedSpec::ScalarMul((&op.a).into())], &[]);
+                } else {
+                    return Ok(None);
+                }
             }
             let mut arg = op.a.clone().into_tensor();
             for axis_change in self.reshape_post.iter().rev() {
@@ -406,64 +418,64 @@ impl TypedOp for LirMatMulUnary {
             }
             if arg.shape()[self.c_n_axis] == 1
                 && arg.shape()[self.c_m_axis].to_dim() == self.c_fact.shape[self.c_m_axis]
-                    && (op.mini_op.is::<ops::math::Mul>() || op.mini_op.is::<ops::math::Add>())
-                    {
-                        let prefix = arg
-                            .shape()
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(ix, d)| {
-                                if ix != self.c_n_axis && ix != self.c_m_axis {
-                                    Some(*d)
-                                } else {
-                                    None
-                                }
-                            })
-                        .collect::<TVec<_>>();
+                && (op.mini_op.is::<ops::math::Mul>() || op.mini_op.is::<ops::math::Add>())
+            {
+                let prefix = arg
+                    .shape()
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(ix, d)| {
+                        if ix != self.c_n_axis && ix != self.c_m_axis {
+                            Some(*d)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<TVec<_>>();
 
-                        assert_eq!(
-                            prefix.iter().cloned().product::<usize>()
-                            * self.geometry.m().to_usize().unwrap(),
-                            arg.len()
-                            );
+                assert_eq!(
+                    prefix.iter().cloned().product::<usize>()
+                        * self.geometry.m().to_usize().unwrap(),
+                    arg.len()
+                );
 
-                        let arg_len = arg.len();
-                        let arg = arg.into_shape(&[arg_len])?;
-                        let mut i = 0;
-                        let arg = ArrayD::from_shape_simple_fn(&*prefix, || {
-                            let t = arg
-                                .slice(
-                                    0,
-                                    i * self.geometry.m().to_usize().unwrap(),
-                                    (i + 1) * self.geometry.m().to_usize().unwrap(),
-                                    )
-                                .unwrap();
-                            i += 1;
-                            if op.mini_op.is::<ops::math::Mul>() {
-                                vec![ProtoFusedSpec::PerRowMul(t.into())]
-                            } else if op.mini_op.is::<ops::math::Add>() {
-                                vec![ProtoFusedSpec::PerRowAdd(t.into())]
-                            } else {
-                                unreachable!()
-                            }
-                        });
-                        return merge(&arg, &[]);
+                let arg_len = arg.len();
+                let arg = arg.into_shape(&[arg_len])?;
+                let mut i = 0;
+                let arg = ArrayD::from_shape_simple_fn(&*prefix, || {
+                    let t = arg
+                        .slice(
+                            0,
+                            i * self.geometry.m().to_usize().unwrap(),
+                            (i + 1) * self.geometry.m().to_usize().unwrap(),
+                        )
+                        .unwrap();
+                    i += 1;
+                    if op.mini_op.is::<ops::math::Mul>() {
+                        vec![ProtoFusedSpec::PerRowMul(t.into())]
+                    } else if op.mini_op.is::<ops::math::Add>() {
+                        vec![ProtoFusedSpec::PerRowAdd(t.into())]
+                    } else {
+                        unreachable!()
                     }
+                });
+                return merge(&arg, &[]);
+            }
         } else if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
             if self.c_n_axis == self.c_final_shape.rank() - 2
                 && self.c_m_axis == self.c_final_shape.rank() - 1
-                    && self.micro_ops.len() == 1
-                    {
-                        let other_slot = 1 - node.outputs[0].successors[0].slot;
-                        let other_input = succ.inputs[other_slot];
+                && self.micro_ops.len() == 1
+            {
+                let other_slot = 1 - node.outputs[0].successors[0].slot;
+                let other_input = succ.inputs[other_slot];
 
-                        if op.0.is::<ops::math::Add>() {
-                            return merge_broadcast(
-                                &[ProtoFusedSpec::AddUnicast(node.inputs.len().into())],
-                                &[other_input],
-                                );
-                        }
-                    }
+                if op.0.is::<ops::math::Add>() {
+                    return merge_broadcast(
+                        &[ProtoFusedSpec::AddUnicast(node.inputs.len().into())],
+                        &[other_input],
+                    );
+                }
+            }
         };
         Ok(None)
     }

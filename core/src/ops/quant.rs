@@ -1,7 +1,10 @@
 use crate::internal::*;
 use crate::ops::element_wise::ElementWiseOp;
+use crate::ops::math::QRoundingRightShift;
+use crate::ops::math::QWrappingMulHighDoubling;
 use num_traits::AsPrimitive;
 use tract_linalg::lut::Lut;
+use tract_linalg::mmm::RoundingPolicy;
 
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
     (((x * scale).round() as i32) + zero_point as i32)
@@ -343,10 +346,36 @@ impl crate::ops::binary::BinMiniOp for Scale {
         a: &Arc<Tensor>,
     ) -> TractResult<Option<TypedModelPatch>> {
         if a.is_uniform() && *a.to_scalar::<f32>()? == 1. {
-            Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
-        } else {
-            Ok(None)
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
+        } else if a.is_uniform() && node.outputs[0].fact.datum_type == DatumType::I32 {
+            let factor = *a.to_scalar::<f32>()?;
+            if factor <= 0.0 || factor >= 0.5 {
+                return Ok(None);
+            }
+            let factor_bits = factor.to_bits();
+            let current_exponent = factor_bits >> 23;
+            let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
+            let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as i32;
+            let shift = 126usize - current_exponent as usize;
+            let mut patch = TypedModelPatch::default();
+            let outlet = patch.tap_model(model, node.inputs[0])?;
+            let wire = patch.wire_node(
+                format!("{}.mul", node.name),
+                ElementWiseOp(Box::new(QWrappingMulHighDoubling { mult: int_multi })),
+                &[outlet],
+            )?;
+            let wire = patch.wire_node(
+                format!("{}.shift", node.name),
+                ElementWiseOp(Box::new(QRoundingRightShift {
+                    policy: RoundingPolicy::Even,
+                    shift,
+                })),
+                &*wire,
+            )?;
+            patch.shunt_outside(model, node.id.into(), wire[0])?;
+            return Ok(Some(patch));
         }
+        Ok(None)
     }
 }
 
