@@ -1,10 +1,11 @@
 use crate::internal::*;
 use crate::ops::element_wise::ElementWiseOp;
-use crate::ops::math::QRoundingRightShift;
-use crate::ops::math::QWrappingMulHighDoubling;
+use crate::ops::math::QScale;
 use num_traits::AsPrimitive;
 use tract_linalg::lut::Lut;
 use tract_linalg::mmm::RoundingPolicy;
+
+use super::math::round_ties_to_even;
 
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
     (((x * scale).round() as i32) + zero_point as i32)
@@ -357,22 +358,13 @@ impl crate::ops::binary::BinMiniOp for Scale {
             let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
             let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as i32;
             let shift = 126usize - current_exponent as usize;
-            let mut patch = TypedModelPatch::default();
-            let outlet = patch.tap_model(model, node.inputs[0])?;
-            let wire = patch.wire_node(
-                format!("{}.mul", node.name),
-                ElementWiseOp(Box::new(QWrappingMulHighDoubling { mult: int_multi })),
-                &[outlet],
-            )?;
-            let wire = patch.wire_node(
-                format!("{}.shift", node.name),
-                ElementWiseOp(Box::new(QRoundingRightShift {
-                    policy: RoundingPolicy::Even,
-                    shift,
-                })),
-                &*wire,
-            )?;
-            patch.shunt_outside(model, node.id.into(), wire[0])?;
+            let op = ElementWiseOp(Box::new(QScale {
+                mult: int_multi,
+                shift,
+                policy: RoundingPolicy::Even,
+            }));
+            let patch = TypedModelPatch::replace_single_op(model, node, &*node.inputs, op)?;
+
             return Ok(Some(patch));
         }
         Ok(None)
@@ -385,7 +377,7 @@ where
     f32: AsPrimitive<T>,
 {
     let b = b.as_();
-    ((b.abs() * a).round() * b.signum()).as_()
+    (round_ties_to_even(b.abs() * a) * b.signum()).as_()
 }
 
 pub mod scale {
@@ -403,11 +395,12 @@ pub mod scale {
     mod test {
         use crate::internal::*;
         use crate::ops;
+        use crate::ops::math::round_ties_to_even;
         use proptest::prelude::*;
 
         fn test_scale(a: i8, b: i8, scale: f32) {
             let expected = (((a as i32) * (b as i32)) as f32) / scale;
-            let expected = expected.abs().round() * expected.signum();
+            let expected = round_ties_to_even(expected.abs()) * expected.signum();
             let expected = (expected as i32).max(-128).min(127);
             let expected = rctensor2(&[[expected as i8]]);
 

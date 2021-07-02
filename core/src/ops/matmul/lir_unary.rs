@@ -16,8 +16,7 @@ pub enum ProtoFusedSpec {
     ScalarAdd(AttrOrInput),
     QAway(AttrOrInput, usize),
     AddUnicast(AttrOrInput),
-    QWrappingMulHighDoubling(i32),
-    QShiftRightRounding(usize, RoundingPolicy),
+    QScale(usize, RoundingPolicy, i32),
 }
 
 impl ProtoFusedSpec {
@@ -36,12 +35,7 @@ impl ProtoFusedSpec {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
             ProtoFusedSpec::AddUnicast(v) => FusedSpec::AddUnicast(v.tensor(inputs).view()),
-            ProtoFusedSpec::QWrappingMulHighDoubling(mult) => {
-                FusedSpec::QWrappingMulHighDoubling(*mult)
-            }
-            ProtoFusedSpec::QShiftRightRounding(shift, policy) => {
-                FusedSpec::QShiftRightRounding(*shift, *policy)
-            }
+            ProtoFusedSpec::QScale(s, rp, m) => FusedSpec::QScale(*s, *rp, *m),
         }
     }
 }
@@ -375,11 +369,9 @@ impl TypedOp for LirMatMulUnary {
                     patch.dont_apply_twice = Some(format!("Fuse {} into {}", succ, node));
                     return Ok(Some(patch));
                 }
-            } else if let Some(op) = op.downcast_ref::<ops::math::QWrappingMulHighDoubling>() {
-                return merge_broadcast(&[ProtoFusedSpec::QWrappingMulHighDoubling(op.mult)], &[]);
-            } else if let Some(op) = op.downcast_ref::<ops::math::QRoundingRightShift>() {
+            } else if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
                 return merge_broadcast(
-                    &[ProtoFusedSpec::QShiftRightRounding(op.shift, op.policy)],
+                    &[ProtoFusedSpec::QScale(op.shift, op.policy, op.mult)],
                     &[],
                 );
             }
