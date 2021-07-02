@@ -197,6 +197,22 @@ pub mod test {
                 }
 
                 #[test]
+                fn packed_offsets_bug_2() {
+                    if $cond {
+                        let mut pa = vec!(<$ta>::zero(); <$ker>::mr() * 3);
+                        let len = pa.len() - 1;
+                        pa[len] = 1 as _;
+                        let pb = PackedOffsetsProblem::<$ker, $ta, $tb, $tc, $ti>::new(pa,
+                            vec!(0 as _, 1 as _),
+                            vec!(0usize; <$ker>::nr()),
+                            vec!(1usize, 0, 0),
+                            true);
+                        assert_eq!(pb.run(), pb.reference())
+                    }
+                }
+
+
+                #[test]
                 fn packed_offsets_k1() {
                     if $cond {
                         test::packed_offsets::<$ker, $ta, $tb, $tc, $ti>(1, <$ker>::nr())
