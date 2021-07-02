@@ -276,17 +276,10 @@ where
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TC, TI, _>(&tile, &mut ab),
-                    FusedKerSpec::QWrappingMulHighDoubling(mult) => {
+                    FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..4 {
                             for j in 0..4 {
-                                ab[i][j] = ab[i][j].doubling_mul(mult);
-                            }
-                        }
-                    }
-                    FusedKerSpec::QShiftRightRounding(shift, pol) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                ab[i][j] = ab[i][j].shift(shift, pol)
+                                ab[i][j] = ab[i][j].q_scale(mult, shift, rp);
                             }
                         }
                     }
@@ -538,14 +531,9 @@ where
                             std::slice::from_raw_parts_mut(ab.as_ptr().offset(3) as _, 1),
                         ],
                     ),
-                    FusedKerSpec::QWrappingMulHighDoubling(mult) => {
+                    FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..4 {
-                            ab[i] = ab[i].doubling_mul(mult);
-                        }
-                    }
-                    FusedKerSpec::QShiftRightRounding(shift, pol) => {
-                        for i in 0..4 {
-                            ab[i] = ab[i].shift(shift, pol)
+                            ab[i] = ab[i].q_scale(mult, shift, rp);
                         }
                     }
                 }
@@ -800,17 +788,10 @@ where
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TC, TI, _>(&tile, &mut ab),
-                    FusedKerSpec::QWrappingMulHighDoubling(mult) => {
+                    FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..3 {
                             for j in 0..2 {
-                                ab[i][j] = ab[i][j].doubling_mul(mult);
-                            }
-                        }
-                    }
-                    FusedKerSpec::QShiftRightRounding(shift, pol) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] = ab[i][j].shift(shift, pol)
+                                ab[i][j] = ab[i][j].q_scale(mult, shift, rp);
                             }
                         }
                     }

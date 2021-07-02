@@ -30,14 +30,8 @@ pub enum FusedSpec<'t> {
     QTowardsPlusInf(&'t Tensor, usize),
     QAway(&'t Tensor, usize),
     AddUnicast(TensorView<'t>),
-    QWrappingMulHighDoubling(i32),
-    QShiftRightRounding(usize, RoundingPolicy),
+    QScale(usize, RoundingPolicy, i32),
 }
-
-// Scale(f32, rounding policy) // recalcul ?
-// QWrapMulHigh(i32) + QShiftRightTiesEven + QShiftRightTiesAway + QShiftRightTiesPlus +
-// QShiftRightTiesZero + QShiftRightTies
-// Scale(i32, shift, policy)
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -56,8 +50,7 @@ pub enum FusedKerSpec<TI: Copy> {
     QTowardsEven(TI, usize),
     QTowardsPlusInf(TI, usize),
     QAway(TI, usize),
-    QWrappingMulHighDoubling(i32),
-    QShiftRightRounding(usize, RoundingPolicy),
+    QScale(usize, RoundingPolicy, i32),
 }
 
 #[cfg(test)]
@@ -197,7 +190,7 @@ pub mod test {
                 use crate::frame::mmm::fuse::RoundingPolicy;
                 #[allow(unused_imports)]
                 use crate::frame::mmm::fuse::test;
-                use crate::frame::mmm::fuse::test::{QWrappingMulHighDoublingProblem, QAwayProblem, QTowardsPlusInfProblem, QRightShiftProblem};
+                use crate::frame::mmm::fuse::test::{ QAwayProblem, QTowardsPlusInfProblem, QScaleProblem};
                 use crate::frame::mmm::kernel::MatMatMulKer;
                 use num_traits::AsPrimitive;
                 use proptest::prelude::*;
@@ -263,7 +256,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(1);
-                        let pb = QRightShiftProblem::<$ker, $tc, $ti>::new(v, 1, RoundingPolicy::Zero);
+                        let pb = QScaleProblem::<$ker, $tc, $ti>::new(v, 2^31, 1, RoundingPolicy::Zero);
                         assert_eq!(pb.run(), pb.reference())
                     }
                 }
@@ -274,7 +267,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(1);
-                        let pb = QRightShiftProblem::<$ker, $tc, $ti>::new(v, 1, RoundingPolicy::Away);
+                        let pb = QScaleProblem::<$ker, $tc, $ti>::new(v, 2^31, 1, RoundingPolicy::Away);
                         assert_eq!(pb.run(), pb.reference())
                     }
                 }
@@ -285,7 +278,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(4);
-                        let pb = QRightShiftProblem::<$ker, $tc, $ti>::new(v, 3, RoundingPolicy::Odd);
+                        let pb = QScaleProblem::<$ker, $tc, $ti>::new(v, 2^31, 3, RoundingPolicy::Odd);
                         assert_eq!(pb.run(), pb.reference())
                     }
                 }
@@ -296,7 +289,7 @@ pub mod test {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
                         v.push(6);
-                        let pb = QWrappingMulHighDoublingProblem::<$ker, $tc, $ti>::new(v, 715827883);
+                        let pb = QScaleProblem::<$ker, $tc, $ti>::new(v, 715827883, 0, RoundingPolicy::Even);
                         assert_eq!(pb.run(), pb.reference())
                     }
                 }
@@ -317,14 +310,7 @@ pub mod test {
                     }
 
                     #[test]
-                    fn return_q_right_shift_prop(pb in any::<QRightShiftProblem<$ker, $tc, $ti>>()) {
-                        if $cond {
-                            prop_assert_eq!(pb.run(), pb.reference())
-                        }
-                    }
-
-                    #[test]
-                    fn return_q_wrapping_mul_high_doubling_prop(pb in any::<QWrappingMulHighDoublingProblem<$ker, $tc, $ti>>()) {
+                    fn return_q_right_shift_prop(pb in any::<QScaleProblem<$ker, $tc, $ti>>()) {
                         if $cond {
                             prop_assert_eq!(pb.run(), pb.reference())
                         }
@@ -816,7 +802,7 @@ pub mod test {
     }
 
     #[derive(Debug, new)]
-    pub struct QRightShiftProblem<K, TC, TI>
+    pub struct QScaleProblem<K, TC, TI>
     where
         K: MatMatMulKer<TI>,
         TC: Copy + Debug + 'static,
@@ -824,12 +810,13 @@ pub mod test {
         i64: AsPrimitive<TC>,
     {
         pub c: Vec<TC>,
+        pub mult: i32,
         pub shift: usize,
         pub policy: RoundingPolicy,
         pub boo: std::marker::PhantomData<(K, TC, TI)>,
     }
 
-    impl<K, TC, TI> Arbitrary for QRightShiftProblem<K, TC, TI>
+    impl<K, TC, TI> Arbitrary for QScaleProblem<K, TC, TI>
     where
         K: MatMatMulKer<TI>,
         TC: Copy + Debug + 'static,
@@ -843,6 +830,7 @@ pub mod test {
             let len = K::mr() * K::nr();
             (
                 proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len),
+                (1 << 29)..(1 << 30),
                 0usize..8,
                 proptest::prop_oneof![
                     Just(Zero),
@@ -853,66 +841,10 @@ pub mod test {
                     Just(Even)
                 ],
             )
-                .prop_map(|(c, shift, policy)| QRightShiftProblem {
+                .prop_map(|(c, mult, shift, policy)| QScaleProblem {
                     c,
                     shift,
                     policy,
-                    boo: std::marker::PhantomData,
-                })
-                .boxed()
-        }
-    }
-
-    impl<K, TC, TI> QRightShiftProblem<K, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
-        TI: Copy + Debug + 'static + AsPrimitive<i64> + PseudoRightShift + AsPrimitive<TC>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-        i64: AsPrimitive<TC>,
-    {
-        pub fn reference(&self) -> Vec<TC> {
-            self.c.iter().map(|input| (input.as_()).shift(self.shift, self.policy).as_()).collect()
-        }
-
-        pub fn run(&self) -> Vec<TC> {
-            fused_ops::<K, TC, TI>(
-                &*self.c,
-                &[FusedKerSpec::QShiftRightRounding(self.shift, self.policy)],
-            )
-        }
-    }
-
-    #[derive(Debug, new)]
-    pub struct QWrappingMulHighDoublingProblem<K, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static,
-        TI: Copy + Debug,
-        i64: AsPrimitive<TC>,
-    {
-        pub c: Vec<TC>,
-        pub mult: i32,
-        pub boo: std::marker::PhantomData<(K, TC, TI)>,
-    }
-
-    impl<K, TC, TI> Arbitrary for QWrappingMulHighDoublingProblem<K, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static,
-        TI: Copy + Debug,
-        i64: AsPrimitive<TC>,
-    {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<Self>;
-        fn arbitrary_with(_p: ()) -> Self::Strategy {
-            let len = K::mr() * K::nr();
-            (
-                proptest::collection::vec((-20i64..20).prop_map(|i| (3 * i).as_()), len..=len),
-                (1 << 29)..(1 << 30),
-            )
-                .prop_map(|(c, mult)| QWrappingMulHighDoublingProblem {
-                    c,
                     mult,
                     boo: std::marker::PhantomData,
                 })
@@ -920,7 +852,7 @@ pub mod test {
         }
     }
 
-    impl<K, TC, TI> QWrappingMulHighDoublingProblem<K, TC, TI>
+    impl<K, TC, TI> QScaleProblem<K, TC, TI>
     where
         K: MatMatMulKer<TI>,
         TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
@@ -929,11 +861,17 @@ pub mod test {
         i64: AsPrimitive<TC>,
     {
         pub fn reference(&self) -> Vec<TC> {
-            self.c.iter().map(|input| (input.as_()).doubling_mul(self.mult).as_()).collect()
+            self.c
+                .iter()
+                .map(|input| (input.as_()).q_scale(self.mult, self.shift, self.policy).as_())
+                .collect()
         }
 
         pub fn run(&self) -> Vec<TC> {
-            fused_ops::<K, TC, TI>(&*self.c, &[FusedKerSpec::QWrappingMulHighDoubling(self.mult)])
+            fused_ops::<K, TC, TI>(
+                &*self.c,
+                &[FusedKerSpec::QScale(self.shift, self.policy, self.mult)],
+            )
         }
     }
 

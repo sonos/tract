@@ -1,6 +1,7 @@
 use super::proptest::*;
 use crate::ops::cnn::KernelFormat::*;
 use crate::ops::cnn::*;
+use crate::ops::math::round_ties_to_even;
 use crate::ops::matmul::*;
 use crate::ops::nn::DataFormat::*;
 use crate::ops::nn::*;
@@ -11,10 +12,6 @@ use proptest::test_runner::TestCaseResult;
 use tract_itertools::izip;
 use tract_ndarray::prelude::*;
 use tract_ndarray::*;
-
-fn round_away<F: num_traits::Float>(x: F) -> F {
-    x.abs().round() * x.signum()
-}
 
 pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
     let len = shape.iter().product::<usize>();
@@ -113,7 +110,7 @@ impl QConvProblem {
             temp += &bias.clone().into_shape(shape).unwrap();
         }
         temp.mapv(|i| {
-            (round_away(i as f32 / scale as f32) as i32 + c0)
+            (round_ties_to_even(i as f32 / scale as f32) as i32 + c0)
                 .max(std::i8::MIN as i32)
                 .min(std::i8::MAX as i32) as i8
         })
@@ -379,6 +376,26 @@ fn scale_2() {
         data: arr2(&[[-1]]).into_dyn(),
         kernel: arr3(&[[[2]]]).into_dyn(),
         bias: None,
+        qp,
+        optim: true,
+    }
+    .check()
+    .unwrap();
+}
+
+#[test]
+fn scale_3() {
+    let mut qp = MatMulQParams::noop_static(i8::datum_type());
+    qp.b_scale = AttrOrInput::Attr(rctensor0(0.5f32));
+    qp.c_scale = AttrOrInput::Attr(rctensor0(2f32));
+    QConvProblem {
+        shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
+        kernel_format: OIHW,
+        group: 1,
+        data: arr2(&[[0i8]]).into_dyn(),
+        kernel: arr3(&[[[0i8]]]).into_dyn(),
+        bias: Some(arr2(&[[35i32]]).into_dyn()),
         qp,
         optim: true,
     }
