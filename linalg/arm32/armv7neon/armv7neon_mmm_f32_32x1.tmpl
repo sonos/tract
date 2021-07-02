@@ -47,9 +47,7 @@ armv7neon_mmm_f32_32x1_{{suffix}}:
     // check linear
     ldm     r10, {r5, r6}
     pld     [r1]
-    pld     [r1, #32]
     pld     [r1, #64]
-    pld     [r1, #96]
     cmp     r5, #0
     bne     .unsupported
     cmp     r6, #0
@@ -60,9 +58,12 @@ armv7neon_mmm_f32_32x1_{{suffix}}:
     // B
     ldm     r8, { r4, r5, r6 }
     pld     [r1, #128]
-    pld     [r1, #160]
     pld     [r1, #192]
-    pld     [r1, #224]
+    pld     [r1, #256]
+    pld     [r1, #320]
+    pld     [r1, #384]
+    pld     [r1, #448]
+    pld     [r1, #512]
     pld     [r5]
     cmp     r4, #1
     beq     .packed_packed
@@ -110,6 +111,8 @@ armv7neon_mmm_f32_32x1_{{suffix}}:
     .packed_packed_loop_1:
     vldmia          r1!, { q0-q3 }
     vld1.f32        d8[0], [r5], r6
+    pld             [r1, #512]
+    pld             [r5, #64]
 
     vmla.f32        q8, q0, d8[0]
     vmla.f32        q9, q1, d8[0]
@@ -139,6 +142,18 @@ armv7neon_mmm_f32_32x1_{{suffix}}:
 .store:
     ldr     r3, [r0, #8]
     ldm     r3, { r4, r5 } // ptr, rsc
+    cmp     r5, #4
+    bne     .store_generic
+
+    vst1.f64    {d16-d19}, [r4]!
+    vst1.f64    {d20-d23}, [r4]!
+    vst1.f64    {d24-d27}, [r4]!
+    vst1.f64    {d28-d31}, [r4]!
+
+    mov     r0,     #0
+    b       .return
+
+.store_generic:
 
     {% for reg in (16..31) %}
         vst1.f32    d{{reg}}[0], [r4], r5
