@@ -137,7 +137,7 @@ impl Expansion for ConvTranspose {
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),
-                    Some(kernel.shape()[0]),
+                    Some(kernel.shape()[0] * self.group),
                 );
                 let adjustments = adjustments(
                     &pool_spec,
@@ -159,7 +159,7 @@ impl Expansion for ConvTranspose {
                     self.padding_spec.clone(),
                     self.dilations.clone(),
                     self.strides.clone(),
-                    Some(kernel.shape()[0]),
+                    Some(kernel.shape()[0] * self.group),
                 );
                 tract_core::ops::cnn::DeconvUnary::new(
                     pool_spec,
