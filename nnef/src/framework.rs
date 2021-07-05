@@ -197,9 +197,11 @@ fn read_stream<R: std::io::Read>(
     quantization: &mut Option<HashMap<String, QuantFormat>>,
 ) -> TractResult<()> {
     // ignore path with any component starting with "." (because OSX's tar is weird)
+    #[cfg(target_family="unix")]
     if path.components().any(|name| name.as_os_str().as_bytes().get(0) == Some(&b'.')) {
         return Ok(())
-    } else if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
+    }
+    if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
         let mut t = String::new();
         reader.read_to_string(&mut t)?;
         *text = Some(t);
