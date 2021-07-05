@@ -27,7 +27,7 @@ pub fn plug(ops: &mut Ops) {
         ops.mmv_f32 =
             Box::new(|_, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1, f32>::new()));
         ops.mmm_f32 =
-            Box::new(|_, _, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4, f32>::new()));
+            Box::new(|_, _, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6, f32>::new()));
         ops.qmmm_i8_i8 =
             Box::new(|_, _, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x8x4, i32>::new()));
         ops.qmmv_i8_i8 =
