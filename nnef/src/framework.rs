@@ -2,6 +2,7 @@ use crate::ast::quant::write_quant_format;
 use crate::ast::{ProtoModel, QuantFormat};
 use crate::internal::*;
 use std::io::Read;
+#[cfg(target_family="unix")]
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
 
