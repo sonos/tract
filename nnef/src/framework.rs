@@ -2,6 +2,7 @@ use crate::ast::quant::write_quant_format;
 use crate::ast::{ProtoModel, QuantFormat};
 use crate::internal::*;
 use std::io::Read;
+use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
 
 pub fn stdlib() -> Vec<FragmentDef> {
@@ -195,7 +196,10 @@ fn read_stream<R: std::io::Read>(
     tensors: &mut Vec<(String, Arc<Tensor>)>,
     quantization: &mut Option<HashMap<String, QuantFormat>>,
 ) -> TractResult<()> {
-    if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
+    // ignore path with any component starting with "." (because OSX's tar is weird)
+    if path.components().any(|name| name.as_os_str().as_bytes().get(0) == Some(&b'.')) {
+        return Ok(())
+    } else if path.file_name().map(|n| n == "graph.nnef").unwrap_or(false) {
         let mut t = String::new();
         reader.read_to_string(&mut t)?;
         *text = Some(t);
