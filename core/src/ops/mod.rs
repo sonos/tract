@@ -137,7 +137,7 @@ pub trait TypedOp:
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
 
     #[allow(unused_variables)]
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
         Ok(Invariants::default())
     }
 

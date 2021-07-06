@@ -334,7 +334,8 @@ impl Scan {
                     if successor_node.inputs.len() != 1 || successor_node.outputs.len() != 1 {
                         continue;
                     }
-                    let invariants = successor_node.op.invariants(&self.body, &successor_node)?;
+                    let (input_facts, output_facts) = self.body.node_facts(successor_node.id)?;
+                    let invariants = successor_node.op.invariants(&input_facts, &output_facts)?;
                     if let Some(axis_after) = invariants.unary_track_axis_down(axis, false) {
                         let mut outside_patch = TypedModelPatch::default();
                         let mut patch_inputs = node
@@ -428,7 +429,8 @@ impl Scan {
                 // continue if both last_value and full values are exported
                 continue;
             }
-            let invariants = emitter_node.op.invariants(&self.body, &emitter_node)?;
+            let (input_facts, output_facts) = self.body.node_facts(emitter_node.id)?;
+            let invariants = emitter_node.op.invariants(&input_facts, &output_facts)?;
             let axis_before = if let Some(a) = invariants.unary_track_axis_up(mapping.axis, false) {
                 a
             } else {
@@ -697,7 +699,11 @@ impl TypedOp for Scan {
         Ok(outputs)
     }
 
-    fn invariants(&self, _model: &TypedModel, _node: &TypedNode) -> TractResult<Invariants> {
+    fn invariants(
+        &self,
+        _inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
         let mut invariants = tvec!();
         let body_invs = self.body.invariants().with_context(|| "Computing body invariants")?;
         for axis in body_invs.axes {

@@ -175,9 +175,13 @@ impl TypedOp for TypedBinOp {
         Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let a = model.outlet_fact(node.inputs[0])?;
-        let b = model.outlet_fact(node.inputs[1])?;
+    fn invariants(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
+        let a = &inputs[0];
+        let b = &inputs[1];
         assert!(a.rank() == b.rank());
         let rank = a.rank();
         Ok((0..rank)
@@ -386,8 +390,12 @@ impl TypedOp for UnaryOp {
         )))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let b = model.outlet_fact(node.inputs[0])?;
+    fn invariants(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
+        let b = &inputs[0];
         debug_assert_eq!(self.a.rank(), b.rank());
         Ok(self
             .a

@@ -124,8 +124,8 @@ impl TypedOp for DequantizeLinearF32 {
         Ok(tvec!(fact))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        Invariants::new_element_wise(model, node)
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        Invariants::new_element_wise(inputs, outputs)
     }
 
     fn change_axes(
@@ -225,9 +225,10 @@ impl TypedOp for DequantizeLinearF32 {
                     return Ok(Some(patch));
                 }
             }
+            let (input_facts, output_facts) = model.node_facts(quant.id)?;
             let invariants = quant
                 .op
-                .invariants(model, quant)
+                .invariants(&input_facts, &output_facts)
                 .with_context(|| format!("Querying invariants for {}", quant))?;
             if invariants.element_wise() {
                 current = quant;

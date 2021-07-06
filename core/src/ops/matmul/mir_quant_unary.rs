@@ -131,8 +131,8 @@ impl TypedOp for QMatMulUnary {
         Ok(tvec!(TypedFact::dt_shape(self.output_type, c_shape)))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        super::mir_unary::mir_unary_invariants(model, node, &self.a, self.b_trans, self.c_trans)
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        super::mir_unary::mir_unary_invariants(&inputs[0], &outputs[0], &self.a, self.b_trans, self.c_trans)
     }
 
     fn change_axes(

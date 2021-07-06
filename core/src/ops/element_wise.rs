@@ -127,8 +127,8 @@ impl TypedOp for ElementWiseOp {
         self.0.declutter(model, node)
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        Invariants::new_element_wise(model, node)
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        Invariants::new_element_wise(inputs, outputs)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {

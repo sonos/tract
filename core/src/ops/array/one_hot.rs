@@ -27,9 +27,9 @@ impl TypedOp for OneHot {
         Ok(tvec!(TypedFact::dt_shape(self.off.datum_type(), &*shape)))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+    fn invariants(&self, inputs: &[&TypedFact], _outputs: &[&TypedFact]) -> TractResult<Invariants> {
         let mut axes = vec![];
-        for i in 0..model.outlet_fact(node.inputs[0])?.rank() {
+        for i in 0..inputs[0].rank() {
             axes.push(AxisInfo {
                 inputs: tvec!(Some(i)),
                 outputs: tvec!(Some(i + (i >= self.axis) as usize)),

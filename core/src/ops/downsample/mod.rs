@@ -116,7 +116,8 @@ fn pull_downsample_up(
     }
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
-        let invariants = prec.op.invariants(model, prec)?;
+        let (input_facts, output_facts) = model.node_facts(prec.id)?;
+        let invariants = prec.op.invariants(&input_facts, &output_facts)?;
         debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, invariants);
         if let Some(crop_op) = prec.op_as::<ops::array::Slice>() {
             return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);

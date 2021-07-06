@@ -693,13 +693,17 @@ impl TypedOp for ConvUnary {
         Ok(tvec!(fact))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let fact = model.outlet_fact(node.inputs[0])?;
+    fn invariants(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
+        let fact = &inputs[0];
         let shape = self.pool_spec.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>())?;
         let mut axes = vec![];
         if let Some(n_axis) = shape.n_axis() {
             let mut info = AxisInfo::simple(n_axis).disposable(true);
-            info.inputs.extend(std::iter::repeat(None).take(node.inputs.len() - 1));
+            info.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
             axes.push(info);
         }
         let kernel_spatial_shape =
@@ -708,7 +712,7 @@ impl TypedOp for ConvUnary {
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
             if dim == 1 && self.pool_spec.stride(ix) == 1 {
                 let mut info = AxisInfo::simple(ix + h_axis).disposable(true);
-                info.inputs.extend(std::iter::repeat(None).take(node.inputs.len() - 1));
+                info.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
                 axes.push(info)
             }
         }
