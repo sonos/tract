@@ -2,10 +2,10 @@
 
     .arm
     .text
-    .global armv7neon_mmm_f32_8x6_{{suffix}}
-    .type armv7neon_mmm_f32_8x6_{{suffix}}, %function
+    .global armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}
+    .type armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}, %function
 
-armv7neon_mmm_f32_8x6_{{suffix}}:
+armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}:
 
     pld     [r0]
     push    { r4-r12 }
@@ -111,111 +111,46 @@ armv7neon_mmm_f32_8x6_{{suffix}}:
     .packed_packed:
     pld     [r5]                           // packed B ptr       
 
-    cmp r3, #4
-    blt .packed_packed_loop_1
-
-    .packed_packed_loop_4:
-
-    vld1.64         {d0-d3}, [r1]!
-    vld1.64         {d4, d5, d6}, [r5]!
-    pld             [r1, #512]
-    pld             [r5, #512]
-
-    vmla.f32        q4, q0, d4[0]
-    vmla.f32        q5, q1, d4[0]
-
-    vmla.f32        q6, q0, d4[1]
-    vmla.f32        q7, q1, d4[1]
-
-    vmla.f32        q8, q0, d5[0]
-    vmla.f32        q9, q1, d5[0]
-
-    vmla.f32        q10, q0, d5[1]
-    vmla.f32        q11, q1, d5[1]
-
-    vmla.f32        q12, q0, d6[0]
-    vmla.f32        q13, q1, d6[0]
-
-    vmla.f32        q14, q0, d6[1]
-    vmla.f32        q15, q1, d6[1]
-
-    vld1.64         {d0-d3}, [r1]!
-    vld1.64         {d4, d5, d6}, [r5]!
-    pld             [r1, #512]
-    pld             [r5, #512]
-
-    vmla.f32        q4, q0, d4[0]
-    vmla.f32        q5, q1, d4[0]
-
-    vmla.f32        q6, q0, d4[1]
-    vmla.f32        q7, q1, d4[1]
-
-    vmla.f32        q8, q0, d5[0]
-    vmla.f32        q9, q1, d5[0]
-
-    vmla.f32        q10, q0, d5[1]
-    vmla.f32        q11, q1, d5[1]
-
-    vmla.f32        q12, q0, d6[0]
-    vmla.f32        q13, q1, d6[0]
-
-    vmla.f32        q14, q0, d6[1]
-    vmla.f32        q15, q1, d6[1]
-
-    vld1.64         {d0-d3}, [r1]!
-    vld1.64         {d4, d5, d6}, [r5]!
-    pld             [r1, #512]
-    pld             [r5, #512]
-
-    vmla.f32        q4, q0, d4[0]
-    vmla.f32        q5, q1, d4[0]
-
-    vmla.f32        q6, q0, d4[1]
-    vmla.f32        q7, q1, d4[1]
-
-    vmla.f32        q8, q0, d5[0]
-    vmla.f32        q9, q1, d5[0]
-
-    vmla.f32        q10, q0, d5[1]
-    vmla.f32        q11, q1, d5[1]
-
-    vmla.f32        q12, q0, d6[0]
-    vmla.f32        q13, q1, d6[0]
-
-    vmla.f32        q14, q0, d6[1]
-    vmla.f32        q15, q1, d6[1]
-
-    vld1.64         {d0-d3}, [r1]!
-    vld1.64         {d4, d5, d6}, [r5]!
-    pld             [r1, #512]
-    pld             [r5, #512]
-
-    vmla.f32        q4, q0, d4[0]
-    vmla.f32        q5, q1, d4[0]
-
-    vmla.f32        q6, q0, d4[1]
-    vmla.f32        q7, q1, d4[1]
-
-    vmla.f32        q8, q0, d5[0]
-    vmla.f32        q9, q1, d5[0]
-
-    vmla.f32        q10, q0, d5[1]
-    vmla.f32        q11, q1, d5[1]
-
-    vmla.f32        q12, q0, d6[0]
-    vmla.f32        q13, q1, d6[0]
-
-    vmla.f32        q14, q0, d6[1]
-    vmla.f32        q15, q1, d6[1]
-
-    sub r3, r3, #4
-    cmp r3, #4
-    bge .packed_packed_loop_4
-
     cmp r3, #0
     beq .non_linear
 
     .packed_packed_loop_1:
+
+{% if core == "cortexa7" %}
+
+    vldr            d0, [r1]
+    vldr            d1, [r1, #8]
+    vldr            d2, [r1, #16]
+    vldr            d3, [r1, #24]
+    vldr            d4, [r5]
+    vldr            d5, [r5, #8]
+    vldr            d6, [r5, #16]
+    pld             [r1, #512]
+    pld             [r5, #512]
+
+    vmla.f32        q4, q0, d4[0]
+    vmla.f32        q5, q1, d4[0]
+
+    vmla.f32        q6, q0, d4[1]
+    vmla.f32        q7, q1, d4[1]
+
+    vmla.f32        q8, q0, d5[0]
+    vmla.f32        q9, q1, d5[0]
+
+    vmla.f32        q10, q0, d5[1]
+    vmla.f32        q11, q1, d5[1]
+
+    vmla.f32        q12, q0, d6[0]
+    vmla.f32        q13, q1, d6[0]
+
+    vmla.f32        q14, q0, d6[1]
+    vmla.f32        q15, q1, d6[1]
+
+    add             r1, #32
+    add             r5, #24
+
+{% else %}
+
     vld1.64         {d0-d3}, [r1]!
     vld1.64         {d4, d5, d6}, [r5]!
     pld             [r1, #512]
@@ -238,6 +173,8 @@ armv7neon_mmm_f32_8x6_{{suffix}}:
 
     vmla.f32        q14, q0, d6[1]
     vmla.f32        q15, q1, d6[1]
+
+{% endif %}
 
     subs r3, r3, #1
     bne .packed_packed_loop_1

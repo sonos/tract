@@ -14,6 +14,17 @@ fn has_neon_cpuinfo() -> std::io::Result<bool> {
     Ok(neon)
 }
 
+fn cpu_part() -> Option<usize> {
+    fs::read_to_string("/proc/cpuinfo").ok().and_then(|cpuinfo| {
+        cpuinfo
+            .lines()
+            .find(|line| line.starts_with("CPU part"))
+            .and_then(|s| s.trim().split_whitespace().last())
+            .and_then(|s| s.strip_prefix("0x"))
+            .and_then(|s| dbg!(usize::from_str_radix(s, 16).ok()))
+    })
+}
+
 fn has_neon() -> bool {
     if let Ok(v) = env::var("TRACT_CPU_ARM32_NEON") {
         return v == "true" || v == "1";
@@ -24,10 +35,31 @@ fn has_neon() -> bool {
 pub fn plug(ops: &mut Ops) {
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
-        ops.mmv_f32 =
-            Box::new(|_, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1, f32>::new()));
-        ops.mmm_f32 =
-            Box::new(|_, _, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6, f32>::new()));
+        let cpu = cpu_part().unwrap_or(0);
+        dbg!(cpu);
+        ops.mmv_f32 = match cpu {
+            0xc07 => Box::new(|_, _| {
+                Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1CortexA7, f32>::new())
+            }),
+            0xc09 => Box::new(|_, _| {
+                Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1CortexA9, f32>::new())
+            }),
+            _ => Box::new(|_, _| {
+                Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1Generic, f32>::new())
+            }),
+        };
+
+        ops.mmm_f32 = match cpu {
+            0xc07 => Box::new(|_, _, _| {
+                Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6CortexA7, f32>::new())
+            }),
+            0xc09 => Box::new(|_, _, _| {
+                Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6CortexA9, f32>::new())
+            }),
+            _ => Box::new(|_, _, _| {
+                Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6Generic, f32>::new())
+            }),
+        };
         ops.qmmm_i8_i8 =
             Box::new(|_, _, _| Box::new(MatMatMulImpl::<armv7neon::MatMatMulI8x8x4, i32>::new()));
         ops.qmmv_i8_i8 =
