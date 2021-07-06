@@ -100,15 +100,28 @@ impl
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         if let Some(pulsifier) = self.1.get(&node.op.type_id()) {
-            (pulsifier.func)(source, node, target, mapping, self.0)
+            return (pulsifier.func)(source, node, target, mapping, self.0)
         } else {
-            bail!("No pulsifier for {}", node);
+            let (input_facts, output_facts) = source.node_facts(node.id)?;
+            if input_facts.len() == 1 && output_facts.len() == 1 {
+                let invariants = node.op.invariants(&input_facts, &output_facts)?;
+                let pulse_input_fact = target.outlet_fact(mapping[&node.inputs[0]])?;
+                let axis_info = invariants.track_input_axis(0, pulse_input_fact.axis);
+                if let Some(axis_info ) = axis_info {
+                    if axis_info.outputs[0].is_some() {
+                        let pulse_op = PulseWrappingOp(node.op.clone());
+                        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+                        return target.wire_node(&node.name, pulse_op, &inputs)
+                    }
+                }
+            }
+
         }
+        bail!("No pulsifier nor pulsable axis invariant for {}", node);
     }
 }
 
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 struct PulseWrappingOp(Box<dyn TypedOp>);
 
 impl_dyn_hash!(PulseWrappingOp);
@@ -134,7 +147,11 @@ impl EvalOp for PulseWrappingOp {
         self.0.eval(inputs)
     }
 
-    fn state(&self, session: &mut SessionState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(
+        &self,
+        session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         self.0.state(session, node_id)
     }
 }
@@ -142,8 +159,34 @@ impl EvalOp for PulseWrappingOp {
 impl PulsedOp for PulseWrappingOp {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let input_stream_axis = inputs[0].axis;
-        let self.0.
+        let input_facts =
+            inputs.iter().map(|pf| pf.to_typed_fact()).collect::<TractResult<TVec<_>>>()?;
+        let input_facts_ref = input_facts.iter().collect::<TVec<_>>();
+        let output_facts = self.0.output_facts(&*input_facts_ref)?;
+        let output_facts_ref = output_facts.iter().collect::<TVec<_>>();
+        let invariant = self.0.invariants(&input_facts_ref, &output_facts_ref)?;
+        let axis_info = invariant
+            .track_input_axis(0, input_stream_axis)
+            .context("Unable to track pulse axis on PulseWrappingOp")?;
+        std::mem::forget(output_facts_ref);
+        output_facts
+            .into_iter()
+            .enumerate()
+            .map(|(ix, tf)| {
+                Ok(PulsedFact {
+                    shape: tf.shape,
+                    datum_type: tf.datum_type,
+                    delay: inputs[0].delay,
+                    axis: axis_info.outputs[ix].context("Disappearing streaming axis")?,
+                    dim: inputs[0].dim.clone(),
+                })
+            })
+            .collect()
     }
 
     as_op!();
+
+    fn to_typed(&self) -> Box<dyn TypedOp> {
+        self.0.clone()
+    }
 }

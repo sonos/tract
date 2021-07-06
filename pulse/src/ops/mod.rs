@@ -7,11 +7,9 @@ pub mod cnn;
 pub mod delay;
 pub mod downsample;
 pub mod dummy;
-pub mod element_wise;
 pub mod matmul;
 pub mod nn;
 pub mod qmatmul;
-pub mod quant;
 pub mod scan;
 pub mod source;
 
@@ -21,11 +19,9 @@ register_all_mod!(
     change_axes,
     cnn,
     downsample,
-    element_wise,
     matmul,
     nn,
     qmatmul,
-    quant,
     scan,
     source
 );

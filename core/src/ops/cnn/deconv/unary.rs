@@ -171,6 +171,20 @@ impl TypedOp for DeconvUnary {
         Ok(tvec!(TypedFact::dt_shape(x_fact.datum_type, &output_shape)))
     }
 
+    fn invariants(&self, _inputs: &[&TypedFact], _outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        let mut invariants = Invariants::default();
+        if self.pool_spec.data_format.has_n() {
+            invariants.axes.push(AxisInfo::simple(0))
+        }
+        for geo_axis in 0..self.pool_spec.kernel_shape.len() {
+            let kernel_len = self.pool_spec.kernel_shape[geo_axis];
+            if kernel_len == 1 {
+            invariants.axes.push(AxisInfo::simple(geo_axis + self.pool_spec.data_format.h_axis()))
+            }
+        }
+        Ok(invariants)
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,
