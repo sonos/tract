@@ -21,7 +21,7 @@ fn cpu_part() -> Option<usize> {
             .find(|line| line.starts_with("CPU part"))
             .and_then(|s| s.trim().split_whitespace().last())
             .and_then(|s| s.strip_prefix("0x"))
-            .and_then(|s| dbg!(usize::from_str_radix(s, 16).ok()))
+            .and_then(|s| usize::from_str_radix(s, 16).ok())
     })
 }
 
@@ -36,7 +36,6 @@ pub fn plug(ops: &mut Ops) {
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
         let cpu = cpu_part().unwrap_or(0);
-        dbg!(cpu);
         ops.mmv_f32 = match cpu {
             0xc07 => Box::new(|_, _| {
                 Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1CortexA7, f32>::new())
