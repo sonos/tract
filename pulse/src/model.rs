@@ -99,11 +99,51 @@ impl
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        //        if node.inputs.iter().map(|i| target.input_fact(&mapping[i]).unwrap()).all(|f| f.shape.
         if let Some(pulsifier) = self.1.get(&node.op.type_id()) {
             (pulsifier.func)(source, node, target, mapping, self.0)
         } else {
             bail!("No pulsifier for {}", node);
         }
     }
+}
+
+
+#[derive(Debug, Clone)]
+struct PulseWrappingOp(Box<dyn TypedOp>);
+
+impl_dyn_hash!(PulseWrappingOp);
+
+impl Op for PulseWrappingOp {
+    fn name(&self) -> Cow<str> {
+        format!("PulseWrapping({}", self.0.name()).into()
+    }
+
+    fn as_typed(&self) -> Option<&dyn TypedOp> {
+        Some(self.0.as_ref())
+    }
+
+    op_pulse!();
+}
+
+impl EvalOp for PulseWrappingOp {
+    fn is_stateless(&self) -> bool {
+        self.0.is_stateless()
+    }
+
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        self.0.eval(inputs)
+    }
+
+    fn state(&self, session: &mut SessionState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+        self.0.state(session, node_id)
+    }
+}
+
+impl PulsedOp for PulseWrappingOp {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
+        let input_stream_axis = inputs[0].axis;
+        let self.0.
+    }
+
+    as_op!();
 }
