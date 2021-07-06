@@ -16,10 +16,10 @@
 
     .arm
     .text
-    .global armv7neon_mmm_f32_32x1_{{suffix}}
-    .type armv7neon_mmm_f32_32x1_{{suffix}}, %function
+    .global armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}
+    .type armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}, %function
 
-armv7neon_mmm_f32_32x1_{{suffix}}:
+armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
 
     pld     [r0]
     push    { r4-r12 }
@@ -195,9 +195,52 @@ armv7neon_mmm_f32_32x1_{{suffix}}:
     beq .non_linear
 
     .packed_packed_loop_1:
+
+{% if core == "cortexa7" %}
+    vldr            d0, [r1]
+    vldr            d1, [r1, #8]
+    vldr            d2, [r1, #16]
+    vldr            d3, [r1, #24]
+    vldr            d4, [r1, #32]
+    vldr            d5, [r1, #40]
+    vldr            d6, [r1, #48]
+    vldr            d7, [r1, #56]
+    vldr            d8, [r1, #64]
+    vldr            d9, [r1, #72]
+    vldr            d10, [r1, #80]
+    vldr            d11, [r1, #88]
+    vldr            s30, [r5]
+
+    pld             [r1, #512]
+    pld             [r1, #576]
+    pld             [r5, #64]
+
+    vmla.f32        q8, q0, d15[0]
+    vmla.f32        q9, q1, d15[0]
+
+    vldr            d0, [r1, #96]
+    vldr            d1, [r1, #104]
+    vldr            d2, [r1, #112]
+    vldr            d3, [r1, #120]
+
+    vmla.f32        q10, q2, d15[0]
+    vmla.f32        q11, q3, d15[0]
+
+    vmla.f32        q12, q4, d15[0]
+    vmla.f32        q13, q5, d15[0]
+
+    vmla.f32        q14, q0, d15[0]
+    vmla.f32        q15, q1, d15[0]
+
+    add             r1, #128
+    add             r5, #4
+
+{% else %}
+
     vld1.64         {d0-d3}, [r1]!
     vld1.64         {d4-d7}, [r1]!
     pld             [r1, #512]
+    pld             [r1, #576]
     vld1.64         {d8-d11}, [r1]!
     vld1.f32        d15[0], [r5]!
     pld             [r5, #64]
@@ -214,6 +257,8 @@ armv7neon_mmm_f32_32x1_{{suffix}}:
 
     vmla.f32        q14, q0, d15[0]
     vmla.f32        q15, q1, d15[0]
+
+{% endif %}
 
     subs            r3, r3, #1
     bne .packed_packed_loop_1

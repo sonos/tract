@@ -113,7 +113,11 @@ fn main() {
                 .flag("-mfpu=vfp")
                 .static_flag(true)
                 .compile("armvfpv2");
-            let files = preprocess_files("arm32/armv7neon", &[], &suffix);
+            let files = preprocess_files(
+                "arm32/armv7neon",
+                &[("core", vec!["cortexa7", "cortexa9", "generic"])],
+                &suffix,
+            );
             cc::Build::new()
                 .files(files)
                 .flag("-marm")
