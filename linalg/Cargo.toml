@@ -70,3 +70,8 @@ harness = false
 bench = false
 name = "arm64simd"
 harness = false
+
+[[bench]]
+bench = false
+name = "arm32neon"
+harness = false
