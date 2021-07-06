@@ -1,6 +1,6 @@
 use std::hash::*;
-use tract_nnef::internal::*;
 use tract_itertools::Itertools;
+use tract_nnef::internal::*;
 use tract_smallvec::SmallVec;
 
 pub fn register(registry: &mut Registry) {
@@ -77,8 +77,8 @@ impl TypedOp for DirectLookup {
         Ok(tvec!(TypedFact::dt_shape(self.values.datum_type(), inputs[0].shape.iter())))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        Invariants::new_element_wise(model, node)
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        Invariants::new_element_wise(inputs, outputs)
     }
 
     fn change_axes(
@@ -185,8 +185,8 @@ impl TypedOp for ReverseLookup {
         Ok(tvec!(TypedFact::dt_shape(i32::datum_type(), inputs[0].shape.iter())))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        Invariants::new_element_wise(model, node)
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        Invariants::new_element_wise(inputs, outputs)
     }
 
     fn change_axes(

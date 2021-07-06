@@ -102,14 +102,14 @@ impl TypedOp for TypedConcat {
         Ok(tvec!(fact))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
         if self.slices.iter().any(|s| s.as_const().is_some()) {
             Ok(Invariants::none())
         } else {
-            let rank = model.outlet_fact(node.inputs[0])?.shape.rank();
+            let rank = inputs[0].rank();
             (0..rank)
                 .filter(|&ax| ax != self.axis)
-                .map(|axis| AxisInfo::for_node(model, node, axis))
+                .map(|axis| AxisInfo::for_facts(inputs, outputs, axis))
                 .collect()
         }
     }

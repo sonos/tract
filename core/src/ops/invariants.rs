@@ -1,6 +1,6 @@
 use crate::internal::*;
-use tract_itertools::Itertools;
 use std::fmt;
+use tract_itertools::Itertools;
 
 #[derive(Clone, Default)]
 pub struct Invariants {
@@ -13,16 +13,18 @@ impl Invariants {
         Invariants { element_wise: false, axes: tvec!() }
     }
 
-    pub fn new_element_wise(model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let (input_facts, output_facts) = model.node_facts(node.id)?;
-        let all_facts = input_facts.iter().chain(output_facts.iter()).collect::<Vec<_>>();
+    pub fn new_element_wise(
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<Invariants> {
+        let all_facts = inputs.iter().chain(outputs.iter()).collect::<Vec<_>>();
         let shape = &all_facts[0].shape;
         if all_facts.iter().any(|s| shape != &s.shape) {
-            bail!("Inconsistent element wise operation: {:?} {:?}", input_facts, output_facts);
+            bail!("Inconsistent element wise operation: {:?} {:?}", inputs, outputs);
         }
         let axes = (0..shape.rank())
             .map(|axis| {
-                Ok(AxisInfo::for_node(model, node, axis)?.disposable(shape[axis] == 1.into()))
+                Ok(AxisInfo::for_facts(inputs, outputs, axis)?.disposable(shape[axis] == 1.into()))
             })
             .collect::<TractResult<_>>()?;
         Ok(Invariants { element_wise: true, axes })
@@ -113,10 +115,14 @@ impl AxisInfo {
         AxisInfo { disposable, ..self }
     }
 
-    pub fn for_node(_model: &TypedModel, node: &TypedNode, axis: usize) -> TractResult<AxisInfo> {
+    pub fn for_facts(
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+        axis: usize,
+    ) -> TractResult<AxisInfo> {
         Ok(AxisInfo {
-            inputs: node.inputs.iter().map(|_| Some(axis)).collect(),
-            outputs: node.outputs.iter().map(|_| Some(axis)).collect(),
+            inputs: inputs.iter().map(|_| Some(axis)).collect(),
+            outputs: outputs.iter().map(|_| Some(axis)).collect(),
             disposable: true,
             period: 1,
         })
@@ -164,31 +170,6 @@ impl Invariants {
         }
     }
 }
-/*
-#[derive(Debug, Clone, Default)]
-pub struct OutletMap<T>(std::collections::BTreeMap<OutletId, T>);
-
-impl<T> OutletMap<T> {
-fn insert(&mut self, outlet: OutletId, t: T) {
-self.0.insert(outlet, t);
-}
-
-fn remove(&mut self, outlet: &OutletId) -> Option<T> {
-self.0.remove(outlet)
-}
-
-fn get(&self, outlet: &OutletId) -> Option<&T> {
-self.0.get(outlet)
-}
-}
-
-impl<'a, T> std::ops::Index<&'a OutletId> for OutletMap<T> {
-type Output = T;
-fn index(&self, index: &'a OutletId) -> &Self::Output {
-&self.0[index]
-}
-}
-*/
 
 #[derive(Debug, Clone, Default)]
 pub struct OutletMap<T>(Vec<TVec<Option<T>>>);
@@ -228,12 +209,6 @@ impl<T> OutletMap<T> {
     fn keys(&self) -> OutletMapKeysIter<T> {
         OutletMapKeysIter(self, (0, 0).into())
     }
-
-    /*
-    fn iter(&self) -> OutletMapIter<T> {
-        OutletMapIter(self, 0, 0)
-    }
-    */
 }
 
 impl<'a, T: Clone> std::ops::Index<&'a OutletId> for OutletMap<T> {
@@ -292,9 +267,10 @@ impl AxisTracking {
             let axis = mapped_outlets[&wire];
             let emiter_node = model.node(wire.node);
             let mut nodes = vec![];
+            let (input_facts, output_facts) = model.node_facts(emiter_node.id)?;
             let invs = emiter_node
                 .op
-                .invariants(&model, emiter_node)
+                .invariants(&input_facts, &output_facts)
                 .with_context(|| format!("Computing invariants for {}", emiter_node))?;
             assert!(invs.axes.iter().all(|axis| axis.inputs.len() == emiter_node.inputs.len()));
             assert!(invs.axes.iter().all(|axis| axis.outputs.len() == emiter_node.outputs.len()));
@@ -305,7 +281,8 @@ impl AxisTracking {
             };
             for succ in &emiter_node.outputs[wire.slot].successors {
                 let succ_node = model.node(succ.node);
-                let invs = succ_node.op.invariants(&model, succ_node)?;
+                let (input_facts, output_facts) = model.node_facts(succ_node.id)?;
+                let invs = succ_node.op.invariants(&input_facts, &output_facts)?;
                 assert!(invs.axes.iter().all(|axis| axis.inputs.len() == succ_node.inputs.len()));
                 assert!(invs.axes.iter().all(|axis| axis.outputs.len() == succ_node.outputs.len()));
                 if let Some(info) = invs.track_input_axis(succ.slot, axis) {

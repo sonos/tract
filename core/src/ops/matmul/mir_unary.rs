@@ -64,8 +64,8 @@ impl TypedOp for MatMulUnary {
         Ok(tvec!(TypedFact::dt_shape(c_dt, c_shape)))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        mir_unary_invariants(model, node, &self.a, self.b_trans, self.c_trans)
+    fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        mir_unary_invariants(&inputs[0], &outputs[0], &self.a, self.b_trans, self.c_trans)
     }
 
     fn change_axes(
@@ -401,14 +401,13 @@ impl MatMulUnary {
 }
 
 pub(super) fn mir_unary_invariants(
-    model: &TypedModel,
-    node: &TypedNode,
+    input_fact: &TypedFact,
+    output_fact: &TypedFact,
     a: &Tensor,
     b_trans: bool,
     c_trans: bool,
 ) -> TractResult<Invariants> {
-    let input_fact = model.outlet_fact(node.inputs[0])?;
-    if input_fact.shape.rank() != node.outputs[0].fact.shape.rank() {
+    if input_fact.shape.rank() != output_fact.shape.rank() {
         return Ok(Invariants::none());
     }
     let mut broadcasted_a_shape: TVec<_> = a.shape().into();

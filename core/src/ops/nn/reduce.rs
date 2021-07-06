@@ -280,10 +280,8 @@ impl TypedOp for Reduce {
         Ok(tvec!(TypedFact::dt_shape(dt, shape)))
     }
 
-    #[allow(unused_variables)]
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let input = model.outlet_fact(node.inputs[0])?;
-        let axes = (0..input.rank())
+    fn invariants(&self, inputs: &[&TypedFact], _outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        let axes = (0..inputs[0].rank())
             .filter(|axis| !self.axes.contains(axis))
             .map(|axis| AxisInfo::simple(axis))
             .collect::<TVec<_>>();

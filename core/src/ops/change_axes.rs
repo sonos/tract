@@ -464,9 +464,9 @@ impl TypedOp for AxisOp {
         Ok(tvec!(TypedFact::dt_shape(inputs[0].datum_type, shape)))
     }
 
-    fn invariants(&self, _model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
+    fn invariants(&self, _inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
         let mut axes = vec![];
-        for i in 0..node.outputs[0].fact.shape.rank() {
+        for i in 0..outputs[0].rank() {
             if let Some(out) = self.transform_axis(i) {
                 axes.push(AxisInfo {
                     inputs: tvec!(Some(i)),

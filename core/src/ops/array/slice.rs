@@ -67,9 +67,8 @@ impl TypedOp for Slice {
         Ok(tvec!(fact))
     }
 
-    fn invariants(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Invariants> {
-        let fact = model.outlet_fact(node.inputs[0])?;
-        let axes = (0..fact.shape.rank())
+    fn invariants(&self, inputs: &[&TypedFact], _outputs: &[&TypedFact]) -> TractResult<Invariants> {
+        let axes = (0..inputs[0].rank())
             .filter(|&ax| self.axis != ax)
             .map(|axis| AxisInfo::simple(axis))
             .collect();
