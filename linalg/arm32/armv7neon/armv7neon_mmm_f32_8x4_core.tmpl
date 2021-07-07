@@ -330,17 +330,17 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     pld             [r1, #512]
     pld             [r5, #512]
 
-    vmla.f32        q8, q0, d8[0]
-    vmla.f32        q9, q1, d8[0]
+    vmla.f32        q8, q0, d4[0]
+    vmla.f32        q9, q1, d4[0]
 
-    vmla.f32        q10, q0, d8[1]
-    vmla.f32        q11, q1, d8[1]
+    vmla.f32        q10, q0, d4[1]
+    vmla.f32        q11, q1, d4[1]
 
-    vmla.f32        q12, q0, d9[0]
-    vmla.f32        q13, q1, d9[0]
+    vmla.f32        q12, q0, d5[0]
+    vmla.f32        q13, q1, d5[0]
 
-    vmla.f32        q14, q0, d9[1]
-    vmla.f32        q15, q1, d9[1]
+    vmla.f32        q14, q0, d5[1]
+    vmla.f32        q15, q1, d5[1]
 
 {% if core == "cortexa7" %}
     add             r1, #32
