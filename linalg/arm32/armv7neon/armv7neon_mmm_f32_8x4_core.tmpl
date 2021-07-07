@@ -17,10 +17,10 @@
 
     .arm
     .text
-    .global armv7neon_mmm_f32_8x4_{{suffix}}
-    .type armv7neon_mmm_f32_8x4_{{suffix}}, %function
+    .global armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}
+    .type armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}, %function
 
-armv7neon_mmm_f32_8x4_{{suffix}}:
+armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
 
     pld     [r0]
     push    { r4-r12 }
