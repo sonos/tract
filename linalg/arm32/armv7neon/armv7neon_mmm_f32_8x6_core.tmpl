@@ -66,9 +66,20 @@ armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}:
 
     .packed_tops_and_offsets_loop_1:
     ldmia           r2!, { r4 }
-    vldmia          r1!, { q0, q1 }
+
+{% if core == "cortexa7" %}
+    vldr            d0, [r1]
+    vldr            d1, [r1, #8]
+    vldr            d2, [r1, #16]
+    vldr            d3, [r1, #24]
+{% else %}
+    vld1.64         {d0-d3}, [r1]!
+{% endif %}
+
     sub             r12, r4, r11
     mov             r11, r4
+
+    pld             [r1, #512]
 
     add             r5, r5, r12
     add             r6, r6, r12
@@ -76,6 +87,10 @@ armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}:
     add             r8, r8, r12
     add             r9, r9, r12
     add             r10, r10, r12
+
+{% if core == "cortexa7" %}
+    add             r1, #32
+{% endif %}
 
     vldr            s8, [r5]
     vldr            s9, [r6]
@@ -117,7 +132,6 @@ armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}:
     .packed_packed_loop_1:
 
 {% if core == "cortexa7" %}
-
     vldr            d0, [r1]
     vldr            d1, [r1, #8]
     vldr            d2, [r1, #16]
@@ -125,34 +139,11 @@ armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}:
     vldr            d4, [r5]
     vldr            d5, [r5, #8]
     vldr            d6, [r5, #16]
-    pld             [r1, #512]
-    pld             [r5, #512]
-
-    vmla.f32        q4, q0, d4[0]
-    vmla.f32        q5, q1, d4[0]
-
-    vmla.f32        q6, q0, d4[1]
-    vmla.f32        q7, q1, d4[1]
-
-    vmla.f32        q8, q0, d5[0]
-    vmla.f32        q9, q1, d5[0]
-
-    vmla.f32        q10, q0, d5[1]
-    vmla.f32        q11, q1, d5[1]
-
-    vmla.f32        q12, q0, d6[0]
-    vmla.f32        q13, q1, d6[0]
-
-    vmla.f32        q14, q0, d6[1]
-    vmla.f32        q15, q1, d6[1]
-
-    add             r1, #32
-    add             r5, #24
-
 {% else %}
-
     vld1.64         {d0-d3}, [r1]!
     vld1.64         {d4, d5, d6}, [r5]!
+{% endif %}
+
     pld             [r1, #512]
     pld             [r5, #512]
 
@@ -174,6 +165,9 @@ armv7neon_mmm_f32_8x6_{{core}}_{{suffix}}:
     vmla.f32        q14, q0, d6[1]
     vmla.f32        q15, q1, d6[1]
 
+{% if core == "cortexa7" %}
+    add             r1, #32
+    add             r5, #24
 {% endif %}
 
     subs r3, r3, #1
