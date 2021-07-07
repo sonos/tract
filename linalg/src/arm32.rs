@@ -36,6 +36,11 @@ pub fn plug(ops: &mut Ops) {
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
         let cpu = cpu_part().unwrap_or(0);
+
+        fn prefer_8x4(_m: Option<usize>, _k: Option<usize>, n:Option<usize>) -> bool {
+            n.map(|n| n % 4 == 0 && n % 6 != 0 && n <= 12).unwrap_or(false)
+        }
+
         ops.mmv_f32 = match cpu {
             0xc07 => Box::new(|_, _| {
                 Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x32x1CortexA7, f32>::new())
@@ -49,14 +54,26 @@ pub fn plug(ops: &mut Ops) {
         };
 
         ops.mmm_f32 = match cpu {
-            0xc07 => Box::new(|_, _, _| {
-                Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6CortexA7, f32>::new())
+            0xc07 => Box::new(|m, k, n| {
+                if prefer_8x4(m, k, n) {
+                    Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4CortexA7, f32>::new())
+                } else {
+                    Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6CortexA7, f32>::new())
+                }
             }),
-            0xc09 => Box::new(|_, _, _| {
-                Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6CortexA9, f32>::new())
+            0xc09 => Box::new(|m, k, n| {
+                if prefer_8x4(m, k, n) {
+                    Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4CortexA9, f32>::new())
+                } else {
+                    Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6CortexA9, f32>::new())
+                }
             }),
-            _ => Box::new(|_, _, _| {
-                Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6Generic, f32>::new())
+            _ => Box::new(|m, k, n| {
+                if prefer_8x4(m, k, n) {
+                    Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x4Generic, f32>::new())
+                } else {
+                    Box::new(MatMatMulImpl::<armv7neon::MatMatMulF32x8x6Generic, f32>::new())
+                }
             }),
         };
         ops.qmmm_i8_i8 =
