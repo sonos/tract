@@ -20,7 +20,7 @@ derive-new = "0.5"
 educe = "0.4"
 log = "0.4"
 num-integer = "0.1"
-prost = "0.7"
+prost = "0.8"
 smallvec = "1"
 tract-hir = { path = "../hir" }
 tract-nnef = { path = "../nnef" }
@@ -30,4 +30,4 @@ tract-onnx-opl = { path = "../onnx-opl" }
 mapr = "0.8"
 
 [build-dependencies]
-prost-build = "0.7"
+prost-build = "0.8"
