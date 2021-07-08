@@ -1,5 +1,8 @@
 # Unreleased
 
+# 0.15.1 - 2021-07-08
+* some optimisations for arm32 (cortex-a7 and a9)
+
 # 0.15.0 - 2021-06-24
 
 * Switched the order of item_type and item_type_vendor in the NNEF tendor format to be consistent with NNEF-tools, and changed the item_type of integers due to an error in the specification. Breaking for tensor files containing integers or strings.
