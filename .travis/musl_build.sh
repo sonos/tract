@@ -19,9 +19,7 @@ case $ARCH in
 esac
 
 
-# only works starting with 1.48
-export RUSTUP_TOOLCHAIN=1.48.0
-
+rustup update
 rustup target add $RUST_TRIPLE
 
 curl -s https://musl.cc/${MUSL_TRIPLE}-cross.tgz | tar zx
