@@ -67,6 +67,7 @@ pub mod test {
 
     #[test]
     fn check_non_linear_enum_size() {
+        assert_eq!(std::mem::size_of::<RoundingPolicy>(), std::mem::size_of::<usize>());
         assert_eq!(
             std::mem::size_of::<super::FusedKerSpec<f32>>(),
             std::mem::size_of::<usize>() + std::mem::size_of::<Tile>()
@@ -251,7 +252,7 @@ pub mod test {
                 }
 
                 #[test]
-                fn return_q_right_shift_0() {
+                fn return_q_scale_0() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
@@ -262,7 +263,7 @@ pub mod test {
                 }
 
                 #[test]
-                fn return_q_right_shift_1() {
+                fn return_q_scale_1() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
@@ -273,7 +274,7 @@ pub mod test {
                 }
 
                 #[test]
-                fn return_q_right_shift_2() {
+                fn return_q_scale_2() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
@@ -284,7 +285,28 @@ pub mod test {
                 }
 
                 #[test]
-                fn return_q_wrapping_mul_high_doubling_0() {
+                fn return_q_scale_3() {
+                    if $cond {
+                        let len = <$ker>::mr() * <$ker>::nr();
+                        let mut v = vec!(0; len - 1);
+                        v.push(1);
+                        let pb = QScaleProblem::<$ker, $tc, $ti>::new(v, 536870913, 0, RoundingPolicy::Zero);
+                        assert_eq!(pb.run(), pb.reference())
+                    }
+                }
+                #[test]
+                fn return_q_scale_4() {
+                    if $cond {
+                        let len = <$ker>::mr() * <$ker>::nr();
+                        let mut v = vec!(0; len - 1);
+                        v.push(2);
+                        let pb = QScaleProblem::<$ker, $tc, $ti>::new(v, 536870913, 0, RoundingPolicy::Zero);
+                        assert_eq!(pb.run(), pb.reference())
+                    }
+                }
+
+                #[test]
+                fn return_q_scale_5() {
                     if $cond {
                         let len = <$ker>::mr() * <$ker>::nr();
                         let mut v = vec!(0; len - 1);
@@ -293,6 +315,29 @@ pub mod test {
                         assert_eq!(pb.run(), pb.reference())
                     }
                 }
+
+                macro_rules! test_q_scale {
+                    ($policy: ident) => {
+                        paste! {
+                            #[test]
+                            fn [<return_q_scale_ $policy:lower>]() {
+                                if $cond {
+                                    let len = (<$ker>::mr() * <$ker>::nr()) as i64;
+                                    let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
+                                    let pb = QScaleProblem::<$ker, $tc, $ti>::new(v, 1<<30, 2, RoundingPolicy::$policy);
+                                    assert_eq!(pb.run(), pb.reference())
+                                }
+                            }
+                        }
+                    }
+                }
+
+                test_q_scale!(Zero);
+                test_q_scale!(Away);
+                test_q_scale!(MinusInf);
+                test_q_scale!(PlusInf);
+                test_q_scale!(Even);
+                test_q_scale!(Odd);
 
                 proptest::proptest! {
                     #[test]
@@ -310,7 +355,7 @@ pub mod test {
                     }
 
                     #[test]
-                    fn return_q_right_shift_prop(pb in any::<QScaleProblem<$ker, $tc, $ti>>()) {
+                    fn return_q_scale_prop(pb in any::<QScaleProblem<$ker, $tc, $ti>>()) {
                         if $cond {
                             prop_assert_eq!(pb.run(), pb.reference())
                         }
@@ -819,7 +864,7 @@ pub mod test {
     impl<K, TC, TI> Arbitrary for QScaleProblem<K, TC, TI>
     where
         K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static,
+        TC: Copy + Debug + Arbitrary + 'static,
         TI: Copy + Debug,
         i64: AsPrimitive<TC>,
     {
