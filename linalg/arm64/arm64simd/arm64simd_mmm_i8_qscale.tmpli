@@ -1,3 +1,5 @@
+// vim: ft=arm
+
 .q_scale:
     ldp     x5, x6, [x1, #8]            // x5: shift, x6: policy
     add     x2, x1, #24
