@@ -1,5 +1,8 @@
 # Unreleased
 
+# 0.15.2 - 2021-07-09
+* bump prost dep
+
 # 0.15.1 - 2021-07-08
 * some optimisations for arm32 (cortex-a7 and a9)
 
