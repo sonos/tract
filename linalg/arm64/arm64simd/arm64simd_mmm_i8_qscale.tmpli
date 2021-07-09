@@ -1,0 +1,172 @@
+.q_scale:
+    ldp     x5, x6, [x1, #8]            // x5: shift, x6: policy
+    add     x2, x1, #24
+    ld1r    { v2.4s }, [x2]
+
+    mov     w3, #1                      //one
+    ins     v4.d[0], x3
+    dup     v4.2d, v4.d[0]
+
+    add     x5, x5, #32                 //add 31 to shift
+    neg     x5, x5                      //broadcast shift
+    ins     v1.d[0], x5
+    dup     v1.2d, v1.d[0]
+
+    cmp     x6, 1
+    beq     .q_shift_right_rounding_zero
+    cmp     x6, 2
+    beq     .q_shift_right_rounding_away
+    cmp     x6, 3
+    beq     .q_shift_right_rounding_minus_inf
+    cmp     x6, 4
+    beq     .q_shift_right_rounding_plus_inf
+    cmp     x6, 5
+    beq     .q_shift_right_rounding_even
+    cmp     x6, 6
+    beq     .q_shift_right_rounding_odd
+    
+    b .unsupported
+
+.q_shift_right_rounding_zero: // signum * (abs >> shift)
+
+
+    {% for q in (16..31) %}
+        sqdmull     v8.2d, v{{q}}.2s, v2.2s 
+        sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
+
+        cmlt        v0.4s, v{{q}}.4s, #0
+
+        abs         v8.2d, v8.2d
+        sub         v8.2d, v8.2d, v4.2d
+        sqrshl      v8.2d, v8.2d, v1.2d
+        
+        abs         v9.2d, v9.2d
+        sub         v9.2d, v9.2d, v4.2d
+        sqrshl      v9.2d, v9.2d, v1.2d
+              
+        uzp1         v{{q}}.4s, v8.4s, v9.4s    //combine back
+
+        neg         v3.4s, v{{q}}.4s
+        bit         v{{q}}.16b, v3.16b, v0.16b
+    {% endfor %}
+   
+    b .non_linear_loop
+
+.q_shift_right_rounding_away: // signum * (abs >> (shift-1) + 1 >> 1)
+
+    {% for q in (16..31) %}
+        sqdmull     v8.2d, v{{q}}.2s, v2.2s 
+        sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
+
+        cmlt        v0.4s, v{{q}}.4s, #0
+
+        abs         v8.2d, v8.2d
+        sqrshl      v8.2d, v8.2d, v1.2d
+        
+        abs         v9.2d, v9.2d
+        sqrshl      v9.2d, v9.2d, v1.2d
+              
+        uzp1         v{{q}}.4s, v8.4s, v9.4s    //combine back
+
+        neg         v3.4s, v{{q}}.4s
+        bit         v{{q}}.16b, v3.16b, v0.16b
+    {% endfor %}
+   
+    b .non_linear_loop
+
+.q_shift_right_rounding_minus_inf: // val >> shift
+
+    {% for q in (16..31) %}
+        sqdmull     v8.2d, v{{q}}.2s, v2.2s 
+        sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
+
+        sub         v8.2d, v8.2d, v4.2d
+        sqrshl      v8.2d, v8.2d, v1.2d
+        
+        sub         v9.2d, v9.2d, v4.2d
+        sqrshl      v9.2d, v9.2d, v1.2d
+              
+        uzp1         v{{q}}.4s, v8.4s, v9.4s    //combine back
+    {% endfor %}
+
+    b .non_linear_loop
+
+.q_shift_right_rounding_plus_inf: // (val >> shift-1)+1 >>1
+
+    {% for q in (16..31) %}
+        sqdmull     v8.2d, v{{q}}.2s, v2.2s 
+        sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
+
+        sqrshl      v8.2d, v8.2d, v1.2d
+        sqrshl      v9.2d, v9.2d, v1.2d
+              
+        uzp1         v{{q}}.4s, v8.4s, v9.4s    //combine back
+    {% endfor %}
+   
+    b .non_linear_loop
+
+.q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x1) >> 1)
+
+    {% for q in (16..31) %}
+        sqdmull     v8.2d, v{{q}}.2s, v2.2s 
+        sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
+
+        cmlt        v0.4s, v{{q}}.4s, #0
+
+        abs         v8.2d, v8.2d
+
+        sqshl       v3.2d, v8.2d, v1.2d
+        and         v3.16b, v3.16b, v4.16b             
+        sub         v3.2d, v3.2d, v4.2d         //nudge : -1 if we want to round down, 0 if up
+
+        add         v8.2d, v8.2d, v3.2d
+        sqrshl      v8.2d, v8.2d, v1.2d
+
+        abs         v9.2d, v9.2d
+        
+        sqshl       v3.2d, v9.2d, v1.2d
+        and         v3.16b, v3.16b, v4.16b             
+        sub         v3.2d, v3.2d, v4.2d         //nudge : -1 if we want to round down, 0 if up
+
+        add         v9.2d, v9.2d, v3.2d
+        sqrshl      v9.2d, v9.2d, v1.2d
+              
+        uzp1         v{{q}}.4s, v8.4s, v9.4s    //combine back
+
+        neg         v3.4s, v{{q}}.4s
+        bit         v{{q}}.16b, v3.16b, v0.16b
+    {% endfor %}
+   
+    b .non_linear_loop
+
+.q_shift_right_rounding_odd: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x0) >> 1)
+
+    {% for q in (16..31) %}
+        sqdmull     v8.2d, v{{q}}.2s, v2.2s 
+        sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
+
+        cmlt        v0.4s, v{{q}}.4s, #0
+
+        abs         v8.2d, v8.2d
+
+        sqshl       v3.2d, v8.2d, v1.2d
+        and         v3.16b, v3.16b, v4.16b      //nudge : -1 if we want to round down, 0 if up
+
+        sub         v8.2d, v8.2d, v3.2d
+        sqrshl      v8.2d, v8.2d, v1.2d
+        
+        abs         v9.2d, v9.2d
+
+        sqshl       v3.2d, v9.2d, v1.2d
+        and         v3.16b, v3.16b, v4.16b      //nudge : -1 if we want to round down, 0 if up
+
+        sub         v9.2d, v9.2d, v3.2d
+        sqrshl      v9.2d, v9.2d, v1.2d
+              
+        uzp1        v{{q}}.4s, v8.4s, v9.4s    //combine back
+
+        neg         v3.4s, v{{q}}.4s
+        bit         v{{q}}.16b, v3.16b, v0.16b
+    {% endfor %}
+   
+    b .non_linear_loop
