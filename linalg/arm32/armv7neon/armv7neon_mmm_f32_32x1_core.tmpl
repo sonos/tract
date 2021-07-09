@@ -267,6 +267,8 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     beq     .scalar_mul
     cmp     r4, #10
     beq     .scalar_add
+    cmp     r2, #14
+    beq     .q_scale
 
     b .unsupported
 
@@ -372,6 +374,8 @@ armv7neon_mmm_f32_32x1_{{core}}_{{suffix}}:
     {% endfor %}
 
     b .non_linear_loop
+
+    {% include "armv7neon_mmm_i8_scale_q8_q15.tmpliq" %}
 
 .unsupported:
     mov         r0,     #1

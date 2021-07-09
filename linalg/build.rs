@@ -224,11 +224,17 @@ fn load_partials(p: &path::Path) -> liquid::partials::InMemorySource {
     let mut mem = liquid::partials::InMemorySource::new();
     for f in walkdir::WalkDir::new(p) {
         let f = f.unwrap();
-        if f.path().extension().map(|ext| ext == "tmpli").unwrap_or(false) {
-            println!("cargo:rerun-if-changed={}", f.path().to_string_lossy());
+        let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or("".into());
+        let text = match ext.as_ref() {
+            "tmpli" => Some(
+                std::fs::read_to_string(f.path()).unwrap().replace("{{", "{").replace("}}", "}"),
+            ),
+            "tmpliq" => Some(std::fs::read_to_string(f.path()).unwrap()),
+            _ => None,
+        };
+        if let Some(text) = text {
             let key = f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned();
-            let text =
-                std::fs::read_to_string(f.path()).unwrap().replace("{{", "{").replace("}}", "}");
+            println!("cargo:rerun-if-changed={}", f.path().to_string_lossy());
             mem.add(key, text);
         }
     }
