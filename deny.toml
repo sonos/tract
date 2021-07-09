@@ -33,11 +33,11 @@ skip = [
     { name = "itertools", version="<0.10.0" },  # ndarray/criterion brings in an older version.
     { name = "ansi_term", version="<0.12.1" },  # clap brings in an old one.
     { name = "miniz_oxide", version="<0.4" }, # ndarray-npy pulls in an old version of flate
-    { name = "cfg-if", version="<1.0" }, # cascading from flate too
+#    { name = "cfg-if", version="<1.0" }, # cascading from flate too
     { name = "quick-error", version="<2" }, # cascading from flate too
-    { name = "py_literal", version="<0.4" }, # cascading from flate too
-    { name = "num-complex", version="<0.4" }, # cascading from flate too
-    { name = "num-bigint", version="<0.4" }, # cascading from flate too
+#    { name = "py_literal", version="<0.4" }, # cascading from flate too
+#    { name = "num-complex", version="<0.4" }, # cascading from flate too
+#    { name = "num-bigint", version="<0.4" }, # cascading from flate too
 ]
 
 [sources]
