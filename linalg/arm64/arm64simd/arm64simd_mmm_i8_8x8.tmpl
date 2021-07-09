@@ -447,16 +447,16 @@ non_linear_addc_i32:
 .q_scale:
     ldp     x5, x6, [x1, #8]            // x5: shift, x6: policy
     add     x2, x1, #24
-    ld1r    { v2.4s }, [x2]
+    ld1r    { v2.4s }, [x2]             // v2.4s <- multiplier
 
-    mov     w3, #1                      //one
+    mov     w3, #1                      
     ins     v4.d[0], x3
-    dup     v4.2d, v4.d[0]
+    dup     v4.2d, v4.d[0]              // v4.2d <- 1
 
-    add     x5, x5, #32                 //add 31 to shift
-    neg     x5, x5                      //broadcast shift
-    ins     v1.d[0], x5
-    dup     v1.2d, v1.d[0]
+    add     x5, x5, #32                 // add 32 to shift
+    neg     x5, x5                      // broadcast shift
+    ins     v1.d[0], x5                 
+    dup     v1.2d, v1.d[0]              // v1.2s <- -(shift + 32)
 
     cmp     x6, 1
     beq     .q_shift_right_rounding_zero
@@ -473,8 +473,10 @@ non_linear_addc_i32:
     
     b .unsupported
 
-.q_shift_right_rounding_zero: // signum * (abs >> shift)
-
+// FIXME: transfer abs on initial values
+.q_shift_right_rounding_zero:
+        // rust: signum * ((abs + nudge2) >> shift
+        // asm: signum * (2*abs - 1) >>r (shift + 1)
 
     {% for q in (16..31) %}
         sqdmull     v8.2d, v{{q}}.2s, v2.2s 

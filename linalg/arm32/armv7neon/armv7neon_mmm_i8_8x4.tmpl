@@ -447,16 +447,12 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
     beq     .scalar_mul
     cmp     r2, #10
     beq     .scalar_add
-    cmp     r2, #11
-    beq     .q_towards_even
     cmp     r2, #12
     beq     .q_towards_plusinf
     cmp     r2, #13
     beq     .q_away
     cmp     r2, #14
-    beq     .q_wrapping_mul_high_doubling
-    cmp     r2, #15
-    beq     .q_shift_right_rounding
+    beq     .q_scale
 
     b .unsupported
 
@@ -602,41 +598,6 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
 
     b .non_linear_loop
 
-.q_towards_even:
-    b .unsupported
-/*
-    vldr.s32    s0, [r1, #4]
-    ldr         r2, [r1, #8]
-    neg         r2, r2
-    add         r2, #3
-    vmov.s8     d2[0], r2
-    vdup.s8     q1, d2[0]
-    vneg.s8     q1, q1                      // q1 = initial shift
-    mov         r2, #3
-    vmov.s8     d6[0], r2
-    vdup.s8     q3, d6[0]                   // q3 = 0x11
-    mov         r2, #1
-    vmov.s8     d10[0], r2
-    vdup.s8     q5, d10[0]                  // q5 = 1
-    {% for q in (8..15) %}
-        vqdmulh.s32    q{{q}}, q{{q}}, d0[0]
-    {% endfor %}
-    {% for q in (8..15) %}
-        vrshl.s8    q{{q}}, q{{q}}, q1
-        vclt.s8     q2, q{{q}}, #0          // q2=is_neg(q)
-        vqabs.s8    q{{q}}, q{{q}}          // q=abs(q)
-        vand.s8     q4, q{{q}}, q3          // q4=abs(q) & 0x11
-        vceq.s8     q4, q4, q3              // q4=(abs(q) & 0x11) == 0x11
-        vshr.u8     q4, q4, #7              // q4=nudge
-        vadd.s8     q{{q}}, q{{q}}, q4
-        vshr.s8     q{{q}}, q{{q}}, #1
-        vneg.s8     q4, q{{q}}
-        vbit        q{{q}}, q4, q2
-    {% endfor %}
-
-    b .non_linear_loop
-*/
-
 .q_towards_plusinf:
     vldr        s0, [r1, #4]
     vldr        s4, [r1, #8]
@@ -678,138 +639,136 @@ armv7neon_mmm_i8_8x4_{{suffix}}:
 
     b .non_linear_loop
 
-.q_wrapping_mul_high_doubling:
-    vldr        s0, [r1, #4]
+.q_scale:
+    // *r1 -> discr, shift, policy, multiplier
+    ldm         r1, { r4, r5, r6, r7 }
+    vdup.s32    q0, r7                      // q0 <- multiplier
 
-    {% for q in (8..15) %}
-    vqdmulh.s32 q{{q}}, q{{q}}, d0[0]
-    {% endfor %}
+    mov         r3, #1
+    vdup.s32    q1, r3                      // q1 <- ones
+    vmovl.s32   q1, d2
 
-    b .non_linear_loop
+    add         r5, #32
+    neg         r5, r5
+    vdup.s32    q2, r5                      // q2 <- -(shift + 32)
+    vmovl.s32   q2, d4
 
-.q_shift_right_rounding:
-    ldr         r5, [r1, #4]        // r5: shift, r6: policy
-    ldr         r6, [r1, #8]
-
-    cmp         r5, #0                       // if shift is zero, return 
-    beq         .non_linear_loop
-
-    vmov.s32     q2, #1
-
-    cmp         r6, #1
-    beq         .q_shift_right_rounding_zero
-    cmp         r6, #2
-    beq         .q_shift_right_rounding_away
-    cmp         r6, #3
-    beq         .q_shift_right_rounding_minus_inf
-    cmp         r6, #4
-    beq         .q_shift_right_rounding_plus_inf
-    cmp         r6, #5
-    beq         .q_shift_right_rounding_even
-    cmp         r6, #6
-    beq         .q_shift_right_rounding_odd
-    
+    cmp     r6, #1
+    beq     .q_shift_right_rounding_zero
+    cmp     r6, #2
+    beq     .q_shift_right_rounding_away
+    cmp     r6, #3
+    beq     .q_shift_right_rounding_minus_inf
+    cmp     r6, #4
+    beq     .q_shift_right_rounding_plus_inf
+    cmp     r6, #5
+    beq     .q_shift_right_rounding_even
+    cmp     r6, #6
+    beq     .q_shift_right_rounding_odd
     b .unsupported
 
-.q_shift_right_rounding_zero: // signum * (abs >> shift)
-    neg             r5, r5
-    vmov            s4, r5
-    vdup.s32        q1, d2[0]
-
+.q_shift_right_rounding_zero:
     {% for q in (8..15) %}
-        vclt.s32    q0, q{{q}}, #0
+        vclt.s32    q7, q{{q}}, #0
         vabs.s32    q{{q}}, q{{q}}
-        vqshl.s32   q{{q}}, q{{q}}, q1
-        vneg.s32    q3, q{{q}}
-        vbit.s32    q{{q}}, q3, q0
+        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
+        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vsub.s64    q5, q1
+        vsub.s64    q6, q1
+        vqrshl.s64  q5, q2
+        vqrshl.s64  q6, q2
+        vmovn.s64   d{{q | times:2}}, q5
+        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vneg.s32    q5, q{{q}}
+        vbit.s32    q{{q}}, q5, q7
     {% endfor %}
    
     b .non_linear_loop
 
-.q_shift_right_rounding_away: // signum * (abs >> (shift-1) + 1 >> 1)
-    sub             r5, r5, #1
-    neg             r5, r5
-    vmov            s4, r5
-    vdup.s32        q1, d2[0]
-
+.q_shift_right_rounding_away:
     {% for q in (8..15) %}
-        vclt.s32    q0, q{{q}}, #0
+        vclt.s32    q7, q{{q}}, #0
         vabs.s32    q{{q}}, q{{q}}
-        vshl.s32    q{{q}}, q{{q}}, q1
-        vadd.s32    q{{q}}, q{{q}}, q2
-        vshr.s32    q{{q}}, q{{q}}, #1
-        vneg.s32    q3, q{{q}}
-        vbit.s32    q{{q}}, q3, q0
+        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
+        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vqrshl.s64  q5, q2
+        vqrshl.s64  q6, q2
+        vmovn.s64   d{{q | times:2}}, q5
+        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vneg.s32    q5, q{{q}}
+        vbit.s32    q{{q}}, q5, q7
     {% endfor %}
    
     b .non_linear_loop
 
-.q_shift_right_rounding_minus_inf: // val >> shift
-    neg             r5, r5
-    vmov            s4, r5
-    vdup.s32        q1, d2[0]
-
+.q_shift_right_rounding_minus_inf:
     {% for q in (8..15) %}
-        vshl.s32    q{{q}}, q{{q}}, q1
+        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
+        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vsub.s64    q5, q1
+        vsub.s64    q6, q1
+        vqrshl.s64  q5, q2
+        vqrshl.s64  q6, q2
+        vmovn.s64   d{{q | times:2}}, q5
+        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
     {% endfor %}
    
     b .non_linear_loop
 
-.q_shift_right_rounding_plus_inf: // (val >> shift-1)+1 >>1
-    sub             r5, r5, #1
-    neg             r5, r5
-    vmov            s4, r5
-    vdup.s32        q1, d2[0]
-
+.q_shift_right_rounding_plus_inf:
     {% for q in (8..15) %}
-        vshl.s32    q{{q}}, q{{q}}, q1
-        vadd.s32    q{{q}}, q{{q}}, q2
-        vshr.s32    q{{q}}, q{{q}}, #1
+        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
+        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vqrshl.s64  q5, q2
+        vqrshl.s64  q6, q2
+        vmovn.s64   d{{q | times:2}}, q5
+        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
     {% endfor %}
-   
+
     b .non_linear_loop
 
-.q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x2) >> 1)
-    sub             r5, r5, #1
-    neg             r5, r5
-    vmov            s4, r5
-    vdup.s32        q1, d2[0]
-
+.q_shift_right_rounding_even:
     {% for q in (8..15) %}
-        vclt.s32    q0, q{{q}}, #0
+        vclt.s32    q7, q{{q}}, #0
         vabs.s32    q{{q}}, q{{q}}
-        vshl.s32    q{{q}}, q{{q}}, q1
-
-        vshr.s32    q4, q{{q}}, #1 
-        vand.s32    q4, q4, q2                  //val & 0x2 == 0x2
-
-        vadd.s32    q{{q}}, q{{q}}, q4
-        vshr.s32    q{{q}}, q{{q}}, #1
-        vneg.s32    q3, q{{q}}
-        vbit.s32    q{{q}}, q3, q0
+        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
+        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vqshl.s64   q3, q5, q2
+        vqshl.s64   q4, q6, q2
+        vand        q3, q3, q1
+        vand        q4, q4, q1
+        vsub.s64    q3, q3, q1
+        vsub.s64    q4, q4, q1
+        vadd.s64    q5, q3
+        vadd.s64    q6, q4
+        vqrshl.s64  q5, q2
+        vqrshl.s64  q6, q2
+        vmovn.s64   d{{q | times:2}}, q5
+        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vneg.s32    q5, q{{q}}
+        vbit.s32    q{{q}}, q5, q7
     {% endfor %}
    
     b .non_linear_loop
 
-.q_shift_right_rounding_odd: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x0) >> 1)
-    sub             r5, r5, #1
-    neg             r5, r5
-    vmov            s4, r5
-    vdup.s32        q1, d2[0]
-
+.q_shift_right_rounding_odd:
     {% for q in (8..15) %}
-        vclt.s32    q0, q{{q}}, #0
+        vclt.s32    q7, q{{q}}, #0
         vabs.s32    q{{q}}, q{{q}}
-        vshl.s32    q{{q}}, q{{q}}, q1
-
-        vshr.s32    q4, q{{q}}, #1 
-        vmvn.s32    q4, q4
-        vand.s32    q4, q4, q2                  //val & 0x2 == 0x0
-
-        vadd.s32    q{{q}}, q{{q}}, q4
-        vshr.s32    q{{q}}, q{{q}}, #1
-        vneg.s32    q3, q{{q}}
-        vbit.s32    q{{q}}, q3, q0
+        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
+        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vqshl.s64   q3, q5, q2
+        vqshl.s64   q4, q6, q2
+        vand        q3, q3, q1
+        vand        q4, q4, q1
+        vsub.s64    q5, q3
+        vsub.s64    q6, q4
+        vqrshl.s64  q5, q2
+        vqrshl.s64  q6, q2
+        vmovn.s64   d{{q | times:2}}, q5
+        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vneg.s32    q5, q{{q}}
+        vbit.s32    q{{q}}, q5, q7
     {% endfor %}
    
     b .non_linear_loop
