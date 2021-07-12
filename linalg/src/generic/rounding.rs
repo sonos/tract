@@ -43,33 +43,22 @@ impl PseudoRightShift for i32 {
         let v = ((self.abs() as i64 * mult as i64) >> (30 + shift)) as i32;
         ((v + 1) >> 1) * self.signum()
     }
+
     fn q_scale(self, mult: i32, shift: usize, policy: RoundingPolicy) -> Self {
         use RoundingPolicy::*;
         let val = self as i64 * mult as i64;
         let shift = shift + 31;
-        let nudge1 = 1 << (shift - 1);
-        let nudge2 = (1 << (shift - 1)) - 1;
-        (match policy {
-            Zero => val.signum() * (val.abs() + nudge2 >> shift),
-            MinusInf => {
-                let nudge = if val < 0 { nudge1 } else { nudge2 };
-                val.signum() * (val.abs() + nudge >> shift)
-            }
-            PlusInf => {
-                let nudge = if val < 0 { nudge2 } else { nudge1 };
-                val.signum() * (val.abs() + nudge >> shift)
-            }
-            Away => val.signum() * (val.abs() + nudge1 >> shift),
-            Even => {
-                let nudge = if (val.abs() >> shift) & 0x1 == 0x1 { nudge1 } else { nudge2 };
-                (val.abs() + nudge >> shift) * val.signum()
-            }
-            Odd => {
-                let nudge = if (val.abs() >> shift) & 0x1 == 0x0 { nudge1 } else { nudge2 };
-                (val.abs() + nudge >> shift) * val.signum()
-            }
+        let half: i64 = 1 << (shift - 1);
+        let nudge: i64 = match policy {
+            Zero => -1,
+            MinusInf => -((val >= 0) as i64),
+            PlusInf => -((val <= 0) as i64),
+            Away => 0,
+            Even => ((val.abs() >> shift) & 0x1) - 1,
+            Odd => -((val.abs() >> shift) & 0x1),
             _ => panic!(),
-        }) as i32
+        };
+        (val.signum() * ((val.abs() + half + nudge) >> shift)) as i32
     }
 }
 
