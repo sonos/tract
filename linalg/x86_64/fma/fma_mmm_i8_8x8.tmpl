@@ -581,7 +581,7 @@ i128_shuffle dd              0, 4
 
 {{L}}q_scale:
     mov             r8, [ rcx + 16 ]        // policy
-    vbroadcastss    ymm8, [rcx + 24]        // multi
+    vbroadcastss    ymm8, dword ptr [rcx + 24] // multi
 
     mov             rax, 1
     movq            xmm9, rax
