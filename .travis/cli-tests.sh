@@ -134,15 +134,15 @@ then
     ./target/release/tract $CACHEDIR/en_tdnn_15M.onnx \
             -O -i S,40,f32 --output-node output --pulse 24 \
             dump --assert-op-count Add 6 --assert-op-count Mul 22 --assert-op-count Max 0
-    ./target/release/tract .cached/en_tdnn_lstm_bn_q7/model.onnx \
-            -O -i S,40,f32 --output-node output --pulse 24 \
-            dump --assert-op-count Add 13 --assert-op-count Mul 17 --assert-op-count Max 7
+#    ./target/release/tract .cached/en_tdnn_lstm_bn_q7/model.onnx \
+#            -O -i S,40,f32 --output-node output --pulse 24 \
+#            dump --assert-op-count Add 13 --assert-op-count Mul 17 --assert-op-count Max 7
     (
     cd onnx/test_cases
-    [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
-    echo 'IGNORE="plain nnef"' >> en_tdnn_lstm_bn_q7/vars.sh
-    echo 'OPTIONS="--output-node output"' >> en_tdnn_lstm_bn_q7/vars.sh
-    TRACT_RUN=../../target/release/tract ./run_all.sh en_tdnn_lstm_bn_q7
+#    [ -e en_tdnn_lstm_bn_q7 ] || ln -s "$CACHEDIR/en_tdnn_lstm_bn_q7" .
+#    echo 'IGNORE="plain nnef"' >> en_tdnn_lstm_bn_q7/vars.sh
+#    echo 'OPTIONS="--output-node output"' >> en_tdnn_lstm_bn_q7/vars.sh
+#    TRACT_RUN=../../target/release/tract ./run_all.sh en_tdnn_lstm_bn_q7
 )
 fi
 
