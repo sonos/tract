@@ -579,8 +579,6 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
-// --------------------------------------------------
-
 {{L}}q_scale:
     mov             r8, [ rcx + 16 ]        // policy
     vbroadcastss    ymm8, [rcx + 24]        // multi
@@ -730,114 +728,6 @@ i128_shuffle dd              0, 4
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
-
-
-
- /*
-{{L}}q_shift_right_rounding:
-    mov     r8, [ rcx + 16 ]
-    mov     rax, [ rcx + 8 ]                // shift
-
-    cmp rax, 0
-    je {{L}}non_linear_loop
-    
-{% if msvc %}
-    vpbroadcastd    ymm11, dword ptr [offset one_32bit] // 1, broadcasted x8
-{% else %}
-    vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
-{% endif %}
-
-    cmp     r8, 1
-    je      {{L}}q_shift_right_rounding_zero
-    cmp     r8, 2
-    je      {{L}}q_shift_right_rounding_away
-    cmp     r8, 3
-    je      {{L}}q_shift_right_rounding_minus_inf
-    cmp     r8, 4
-    je      {{L}}q_shift_right_rounding_plus_inf
-    cmp     r8, 5
-    je      {{L}}q_shift_right_rounding_even
-    cmp     r8, 6
-    je      {{L}}q_shift_right_rounding_odd
-
-
-    jmp     {{L}}unimplemented
- 
-{{L}}q_shift_right_rounding_zero: // signum * (abs >> shift)
-    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
-{% for i in (0..7) %}
-    vpabsd  ymm10, ymm{{i}}
-    vpsrad  ymm10, ymm10, xmm8
-    vpsignd ymm{{i}}, ymm10, ymm{{i}}
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}q_shift_right_rounding_away: // signum * (abs >> shift - 1) + 1 >> 1
-    sub         rax, 1
-    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
-{% for i in (0..7) %}
-    vpabsd  ymm10, ymm{{i}}
-    vpsrad  ymm10, ymm10, xmm8
-    vpaddd  ymm10, ymm10, ymm11
-    vpsrad  ymm10, ymm10, 1
-    vpsignd ymm{{i}}, ymm10, ymm{{i}}
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}q_shift_right_rounding_minus_inf: // val >> shift
-    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
-{% for i in (0..7) %}
-    vpsrad  ymm{{i}}, ymm{{i}}, xmm8
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}q_shift_right_rounding_plus_inf: //  (val >> shift - 1) + 1 >> 1
-    sub         rax, 1
-    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
-{% for i in (0..7) %}
-    vpsrad  ymm{{i}}, ymm{{i}}, xmm8
-    vpaddd  ymm{{i}}, ymm{{i}}, ymm11
-    vsrad  ymm{{i}}, ymm{{i}}, 1
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x2) >> 1)
-    sub         rax, 1
-    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
-{% for i in (0..7) %}
-    vpabsd  ymm10, ymm{{i}}
-    vpsrad  ymm10, ymm10, xmm8
-
-    vpsrad  ymm9, ymm10, 1
-    vpand  ymm9, ymm11, ymm9
-
-    vpaddd  ymm10, ymm10, ymm9 //val += (val & 0x2 == 0x2)
-    vpsrad  ymm10, ymm10, 1
-    vpsignd ymm{{i}}, ymm10, ymm{{i}}
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}q_shift_right_rounding_odd: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x0) >> 1)
-    sub         rax, 1
-    pinsrq      xmm8, rax, 0                // xmm8 <- shift value
-{% for i in (0..7) %}
-    vpabsd  ymm10, ymm{{i}}
-    vpsrad  ymm10, ymm10, xmm8
-
-    vpsrad  ymm9, ymm10, 1
-    vpandn   ymm9, ymm9, ymm11
-
-    vpaddd  ymm10, ymm10, ymm9 //val += (val & 0x2 == 0x0)
-    vpsrad  ymm10, ymm10, 1
-    vpsignd ymm{{i}}, ymm10, ymm{{i}}
-{% endfor %}
-
-*/
 
 {{L}}q_shift_right_rounding_even:           // signum * ( (abs + nudge) >> shift )
 {% for i in (0..7) %}
