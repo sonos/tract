@@ -385,12 +385,6 @@ fma_mmm_i8_8x8_{{suffix}} proc
     cmp     rax,    10
     je      {{L}}scalar_add
 
-    cmp     rax,    12
-    je      {{L}}q_torwards_plusinf
-
-    cmp     rax,    13
-    je      {{L}}q_away
-
     cmp     rax,    14
     je      {{L}}q_scale
 
@@ -585,113 +579,6 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
-{{L}}q_torwards_plusinf:     // (((x * arg1) >> (30 + arg2)) as i32 + 1) >> 1
-
-{% if msvc %}
-    vpbroadcastd    ymm11, dword ptr [offset one_32bit] // 1, broadcasted x8
-{% else %}
-    vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
-{% endif %}
-
-    vpbroadcastd    ymm12, dword ptr [rcx + 8]  // mult // broatcasted x 8
-
-    mov         r8, [rcx + 16]
-    add         r8, 30                      // r8 <- 30 + arg2
-    mov         r9, 64
-    sub         r9, r8                      // r9 <- 64 - (30 + arg2)
-
-    vpxor       ymm8, ymm0, ymm0            // ymm8 <- 0
-    pinsrq      xmm8, r8, 0
-    vpxor       ymm9, ymm0, ymm0            // ymm9 <- 0
-    pinsrq      xmm9, r9, 0
-
-{% for i in (0..7) %}
-    vpsrldq     ymm15, ymm{{i}}, 4          // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
-    vpmuldq     ymm15, ymm15, ymm12         // ymm15 <- a1*c, a3*c, a5*c, a7*c
-    vpmuldq     ymm{{i}}, ymm{{i}}, ymm12   // ymmi  <- a0*c, a2*c, a4*c, a6*c
-
-    // arithmetic shift for ymm{{i}}
-    vpxor       ymm14, ymm0, ymm0
-    vpcmpgtq    ymm14, ymm14, ymm{{i}}      // ymm14 <- sign(ymmi)
-    vpsrlq      ymm{{i}}, ymm{{i}}, xmm8    // *logical* shift
-    vpsllq      ymm14, ymm14, xmm9          // sign extension prefix
-    vpor        ymm{{i}}, ymm{{i}}, ymm14
-
-    // arithmetic shift for ymm15
-    vpxor       ymm14, ymm0, ymm0
-    vpcmpgtq    ymm14, ymm14, ymm15         // ymm14 <- sign(ymm15)
-    vpsrlq      ymm15, ymm15, xmm8          // *logical* shift
-    vpsllq      ymm14, ymm14, xmm9          // sign extension prefix
-    vpor        ymm15, ymm15, ymm14
-
-    vpslldq     ymm15, ymm15, 4
-    vpblendd    ymm{{i}}, ymm15, ymm{{i}}, 85   // 0x55 ymmi <- ymmi::ymm15 (back to i32)
-
-    vpaddd      ymm{{i}}, ymm{{i}}, ymm11   // +=1
-    vpsrad      ymm{{i}}, ymm{{i}}, 1       // >>=1
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}q_away:     // (((abs(x) * arg1) >> (30 + arg2)) as i32 + 1) >> 1 * sign(x)
-
-{% if msvc %}
-    vpbroadcastd    ymm11, dword ptr [offset one_32bit] // 1, broadcasted x8
-{% else %}
-    vpbroadcastd    ymm11, dword ptr [rip + {{L}}one_32bit] // 1, broadcasted x8
-{% endif %}
-
-    vpbroadcastd    ymm12, dword ptr [rcx + 8]  // mult // broatcasted x 8
-
-    mov         r8, [rcx + 16]
-    add         r8, 30                      // r8 <- 30 + arg2
-
-    vpxor       ymm8, ymm0, ymm0            // ymm8 <- 0
-    pinsrq      xmm8, r8, 0
-
-{% for i in (0..7) %}
-    vpand       ymm10, ymm{{i}}, ymm{{i}}   // ymm10 <- ymmi
-
-    vpabsd      ymm10, ymm10                // ymm10 <- abs(ymm10)
-    vpsrldq     ymm15, ymm10, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
-    vpmuldq     ymm15, ymm15, ymm12         // ymm15 <- a1*c, a3*c, a5*c, a7*c
-    vpmuldq     ymm10, ymm10, ymm12         // ymm10  <- a0*c, a2*c, a4*c, a6*c
-
-    vpsrlq      ymm10, ymm10, xmm8          // *logical* shift is ok, we are > 0
-    vpsrlq      ymm15, ymm15, xmm8
-
-    vpslldq     ymm15, ymm15, 4
-    vpblendd    ymm10, ymm15, ymm10, 85     // 0x55 ymmi <- ymmi::ymm15 (back to i32)
-
-    vpaddd      ymm10, ymm10, ymm11         // +=1
-    vpsrad      ymm10, ymm10, 1             // >>=1
-
-    vpsignd     ymm{{i}}, ymm10, ymm{{i}}   // re-apply sign
-
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
-{{L}}q_wrapping_mul_high_doubling:
-    vpbroadcastd    ymm12, dword ptr [rcx + 8]  //mult // broatcasted x 8
-
-{% for i in (0..7) %}
-    vpand       ymm10, ymm{{i}}, ymm{{i}}       // ymm10 <- ymmi
-
-    vpsrldq     ymm15, ymm10, 4                 // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
-    vpmuldq     ymm15, ymm15, ymm12             // ymm15 <- a1*c, a3*c, a5*c, a7*c
-    vpmuldq     ymm10, ymm10, ymm12             // ymm10  <- a0*c, a2*c, a4*c, a6*c
-
-    vpsrlq      ymm10, ymm10, 31
-    vpsrlq      ymm15, ymm15, 31
-
-    vpslldq     ymm15, ymm15, 4
-    vpblendd    ymm{{i}}, ymm15, ymm10, 85     // 0x55 ymmi <- ymmi::ymm15 (back to i32)
-
-{% endfor %}
-
-    jmp    {{L}}non_linear_loop
-
 // --------------------------------------------------
 
 {{L}}q_scale:
@@ -720,6 +607,10 @@ i128_shuffle dd              0, 4
     je      {{L}}q_shift_right_rounding_minus_inf
     cmp     r8, 4
     je      {{L}}q_shift_right_rounding_plus_inf
+    cmp     r8, 5
+    je      {{L}}q_shift_right_rounding_even
+    cmp     r8, 6
+    je      {{L}}q_shift_right_rounding_odd
 
     jmp    {{L}}unimplemented
 
@@ -840,6 +731,8 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
+
+
  /*
 {{L}}q_shift_right_rounding:
     mov     r8, [ rcx + 16 ]
@@ -946,7 +839,63 @@ i128_shuffle dd              0, 4
 
 */
 
+{{L}}q_shift_right_rounding_even:           // signum * ( (abs + nudge) >> shift )
+{% for i in (0..7) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpsrlq      ymm12, ymm14, xmm10
+    vpand       ymm12, ymm12, ymm9
+    vpaddq      ymm14, ymm14, ymm12
+    vpsubq      ymm14, ymm14, ymm9
+
+    vpsrlq      ymm12, ymm15, xmm10
+    vpand       ymm12, ymm12, ymm9
+    vpaddq      ymm15, ymm15, ymm12
+    vpsubq      ymm15, ymm15, ymm9
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
     jmp    {{L}}non_linear_loop
+
+{{L}}q_shift_right_rounding_odd:           // signum * ( (abs + nudge) >> shift )
+{% for i in (0..7) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpsrlq      ymm12, ymm14, xmm10
+    vpand       ymm12, ymm12, ymm9
+    vpsubq      ymm14, ymm14, ymm12
+
+    vpsrlq      ymm12, ymm15, xmm10
+    vpand       ymm12, ymm12, ymm9
+    vpsubq      ymm15, ymm15, ymm12
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
 
 {{L}}one_32bit:
 {% if msvc %}

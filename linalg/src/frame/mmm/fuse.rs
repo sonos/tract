@@ -326,6 +326,7 @@ pub mod test {
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
                                     let pb = QScaleProblem::<$ker, $tc, $ti>::new(v, 1<<30, 2, RoundingPolicy::$policy);
                                     assert_eq!(pb.run(), pb.reference())
+                              //      }
                                 }
                             }
                         }
