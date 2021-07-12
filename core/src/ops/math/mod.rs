@@ -1,7 +1,7 @@
 use super::binary::*;
 use crate::internal::*;
 use tract_data::internal::ClampCast;
-use tract_linalg::PseudoRightShift;
+use tract_linalg::ScaleShiftAndRound;
 use tract_linalg::mmm::RoundingPolicy;
 use crate::ops::quant::scale_by;
 use num_traits::bounds::Bounded;

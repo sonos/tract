@@ -14,7 +14,6 @@ pub enum ProtoFusedSpec {
     AddRowColProducts(AttrOrInput, AttrOrInput),
     ScalarMul(AttrOrInput),
     ScalarAdd(AttrOrInput),
-    QAway(AttrOrInput, usize),
     AddUnicast(AttrOrInput),
     QScale(usize, RoundingPolicy, i32),
 }
@@ -30,7 +29,6 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::PerRowMul(v) => FusedSpec::PerRowMul(v.tensor(inputs)),
             ProtoFusedSpec::ScalarMul(v) => FusedSpec::ScalarMul(v.tensor(inputs)),
             ProtoFusedSpec::ScalarAdd(v) => FusedSpec::ScalarAdd(v.tensor(inputs)),
-            ProtoFusedSpec::QAway(v, n) => FusedSpec::QAway(v.tensor(inputs), *n),
             ProtoFusedSpec::AddRowColProducts(row, col) => {
                 FusedSpec::AddRowColProducts(row.tensor(inputs), col.tensor(inputs))
             }
@@ -377,24 +375,7 @@ impl TypedOp for LirMatMulUnary {
             }
         } else if let Some(op) = succ.op_as::<ops::binary::UnaryOp>() {
             if op.a.len() == 1 {
-                if op.mini_op.is::<ops::quant::Scale>()
-                    && self.c_fact.datum_type == i32::datum_type()
-                {
-                    // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/util/gemmlowp_common.h#L16
-                    let factor = op.a.cast_to_scalar::<f32>()?;
-                    if factor <= 0.0 || factor >= 0.5 {
-                        return Ok(None);
-                    }
-                    let factor_bits = factor.to_bits();
-                    let current_exponent = factor_bits >> 23;
-                    let bumped_multi = f32::from_bits(factor_bits & 0x007fffff | 0x3f000000);
-                    let int_multi = (bumped_multi * (1i64 << 31) as f32).round() as u32;
-                    let shift = 126usize - current_exponent as usize;
-                    return merge_broadcast(
-                        &[ProtoFusedSpec::QAway(tensor0(int_multi).into(), shift)],
-                        &[],
-                    );
-                } else if op.mini_op.is::<ops::math::Max>() {
+                if op.mini_op.is::<ops::math::Max>() {
                     return merge_broadcast(&[ProtoFusedSpec::Max((&op.a).into())], &[]);
                 } else if op.mini_op.is::<ops::math::Min>() {
                     return merge_broadcast(&[ProtoFusedSpec::Min((&op.a).into())], &[]);
