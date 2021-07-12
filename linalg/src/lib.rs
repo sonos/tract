@@ -16,7 +16,7 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 #[macro_use]
 pub mod frame;
 mod generic;
-pub use generic::PseudoRightShift;
+pub use generic::ScaleShiftAndRound;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
 

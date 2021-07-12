@@ -26,9 +26,6 @@ pub enum FusedSpec<'t> {
     AddRowColProducts(&'t Tensor, &'t Tensor),
     ScalarMul(&'t Tensor),
     ScalarAdd(&'t Tensor),
-    QTowardsEven(&'t Tensor, usize),
-    QTowardsPlusInf(&'t Tensor, usize),
-    QAway(&'t Tensor, usize),
     AddUnicast(TensorView<'t>),
     QScale(usize, RoundingPolicy, i32),
 }
@@ -47,9 +44,6 @@ pub enum FusedKerSpec<TI: Copy> {
     AddRowColProducts(*const TI, *const TI),
     ScalarMul(TI),
     ScalarAdd(TI),
-    QTowardsEven(TI, usize),
-    QTowardsPlusInf(TI, usize),
-    QAway(TI, usize),
     QScale(usize, RoundingPolicy, i32),
 }
 
@@ -59,11 +53,11 @@ pub mod test {
     use super::*;
     use crate::frame::mmm::storage::*;
     use crate::frame::mmm::*;
-    use crate::generic::PseudoRightShift;
+    use crate::generic::ScaleShiftAndRound;
     use num_traits::{AsPrimitive, Bounded, Zero};
     use proptest::prelude::*;
     use std::fmt;
-    use std::ops::{Add, Mul, Sub};
+    use std::ops::{Add, Mul};
 
     #[test]
     fn check_non_linear_enum_size() {
@@ -191,65 +185,9 @@ pub mod test {
                 use crate::frame::mmm::fuse::RoundingPolicy;
                 #[allow(unused_imports)]
                 use crate::frame::mmm::fuse::test;
-                use crate::frame::mmm::fuse::test::{ QAwayProblem, QTowardsPlusInfProblem, QScaleProblem};
+                use crate::frame::mmm::fuse::test::QScaleProblem;
                 use crate::frame::mmm::kernel::MatMatMulKer;
-                use num_traits::AsPrimitive;
                 use proptest::prelude::*;
-
-                #[test]
-                #[ignore]
-                fn return_q_towards_even() {
-                    if $cond {
-                        test::return_q_towards_even::<$ker, $tc, $ti>()
-                    }
-                }
-
-                #[test]
-                fn return_q_towards_plusinf() {
-                    if $cond {
-                        let len = <$ker>::mr() * <$ker>::nr();
-                        let half_len: $ti = (len / 2).as_();
-                        let v: Vec<$tc> = (0..len)
-                            .map(|f| {
-                                (<usize as AsPrimitive<$ti>>::as_(f) - half_len)
-                                    .min(<$tc>::max_value().as_())
-                                    .max(<$tc>::min_value().as_())
-                                    .as_()
-                            })
-                        .collect();
-                        let pb = QTowardsPlusInfProblem::<$ker, $tc, $ti>::new(v);
-                        assert_eq!(pb.run(), pb.reference())
-                    }
-                }
-
-                #[test]
-                fn return_q_away() {
-                    if $cond {
-                        let len = <$ker>::mr() * <$ker>::nr();
-                        let half_len: $ti = (len / 2).as_();
-                        let v: Vec<$tc> = (0..len)
-                            .map(|f| {
-                                (<usize as AsPrimitive<$ti>>::as_(f) - half_len)
-                                    .min(<$tc>::max_value().as_())
-                                    .max(<$tc>::min_value().as_())
-                                    .as_()
-                            })
-                        .collect();
-                        let pb = QAwayProblem::<$ker, $tc, $ti>::new(v);
-                        assert_eq!(pb.run(), pb.reference())
-                    }
-                }
-
-                #[test]
-                fn return_q_towards_plusinf_1() {
-                    if $cond {
-                        let len = <$ker>::mr() * <$ker>::nr();
-                        let mut v = vec!(0; len - 1);
-                        v.push(2);
-                        let pb = QTowardsPlusInfProblem::<$ker, $tc, $ti>::new(v);
-                        assert_eq!(pb.run(), pb.reference())
-                    }
-                }
 
                 #[test]
                 fn return_q_scale_0() {
@@ -341,20 +279,6 @@ pub mod test {
                 test_q_scale!(Odd);
 
                 proptest::proptest! {
-                    #[test]
-                    fn return_q_towards_plusinf_prop(pb in any::<QTowardsPlusInfProblem<$ker, $tc, $ti>>()) {
-                        if $cond {
-                            prop_assert_eq!(pb.run(), pb.reference())
-                        }
-                    }
-
-                    #[test]
-                    fn return_q_away_prop(pb in any::<QAwayProblem<$ker, $tc, $ti>>()) {
-                        if $cond {
-                            prop_assert_eq!(pb.run(), pb.reference())
-                        }
-                    }
-
                     #[test]
                     fn return_q_scale_prop(pb in any::<QScaleProblem<$ker, $tc, $ti>>()) {
                         if $cond {
@@ -679,174 +603,6 @@ pub mod test {
         }));
     }
 
-    pub fn return_q_towards_even<K, TC, TI>()
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy
-            + PartialEq
-            + 'static
-            + Bounded
-            + Debug
-            + Sub<Output = TC>
-            + AsPrimitive<TI>
-            + Mul<Output = TC>,
-        TI: Copy
-            + Add
-            + Sub<Output = TI>
-            + Mul<Output = TI>
-            + Debug
-            + fmt::Display
-            + Ord
-            + PartialEq
-            + 'static
-            + AsPrimitive<TC>
-            + AsPrimitive<i64>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-        i64: AsPrimitive<TC>,
-    {
-        let len = K::mr() * K::nr();
-        let half_len: TI = (len / 2).as_();
-        let v: Vec<TC> = (0..len)
-            .map(|f| {
-                (<usize as AsPrimitive<TI>>::as_(f) - half_len)
-                    .min(TC::max_value().as_())
-                    .max(TC::min_value().as_())
-                    .as_()
-            })
-            .collect();
-        let found = fused_ops::<K, TC, TI>(
-            &*v,
-            &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QTowardsEven((1 << 30).as_(), 2)],
-        );
-        assert!(found.iter().zip(v.iter()).all(|(&found, input)| {
-            let input: TI = input.as_();
-            let input: i64 = input.as_();
-            let input = input >> 1;
-            let trunc = input.abs();
-            let nudge = (trunc & 0x3 == 0x3) as i64;
-            let mut trunc = (trunc + nudge) >> 1;
-            if input.is_negative() {
-                trunc = -trunc;
-            }
-            trunc.as_() == found
-        }));
-    }
-
-    #[derive(Debug, new)]
-    pub struct QTowardsPlusInfProblem<K, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static,
-        TI: Copy + Debug,
-        i64: AsPrimitive<TC>,
-    {
-        pub c: Vec<TC>,
-        pub boo: std::marker::PhantomData<(K, TC, TI)>,
-    }
-
-    impl<K, TC, TI> Arbitrary for QTowardsPlusInfProblem<K, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static,
-        TI: Copy + Debug,
-        i64: AsPrimitive<TC>,
-    {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<Self>;
-        fn arbitrary_with(_p: ()) -> Self::Strategy {
-            let len = K::mr() * K::nr();
-            proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len)
-                .prop_map(|c| QTowardsPlusInfProblem { c, boo: std::marker::PhantomData })
-                .boxed()
-        }
-    }
-
-    impl<K, TC, TI> QTowardsPlusInfProblem<K, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
-        TI: Copy + Debug + 'static + AsPrimitive<i64>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-        i64: AsPrimitive<TC>,
-    {
-        pub fn reference(&self) -> Vec<TC> {
-            self.c
-                .iter()
-                .map(|input| {
-                    let input: TI = input.as_();
-                    let input: i64 = input.as_();
-                    (((input >> 1) + 1) >> 1).as_()
-                })
-                .collect()
-        }
-
-        pub fn run(&self) -> Vec<TC> {
-            fused_ops::<K, TC, TI>(
-                &*self.c,
-                &[
-                    FusedKerSpec::ScalarMul(2.as_()),
-                    FusedKerSpec::QTowardsPlusInf((1 << 30).as_(), 2),
-                ],
-            )
-        }
-    }
-
-    #[derive(Debug, new)]
-    pub struct QAwayProblem<K, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static,
-        TI: Copy + Debug,
-        i64: AsPrimitive<TC>,
-    {
-        pub c: Vec<TC>,
-        pub boo: std::marker::PhantomData<(K, TC, TI)>,
-    }
-
-    impl<K, TC, TI> Arbitrary for QAwayProblem<K, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static,
-        TI: Copy + Debug,
-        i64: AsPrimitive<TC>,
-    {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<Self>;
-        fn arbitrary_with(_p: ()) -> Self::Strategy {
-            let len = K::mr() * K::nr();
-            proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len)
-                .prop_map(|c| QAwayProblem { c, boo: std::marker::PhantomData })
-                .boxed()
-        }
-    }
-
-    impl<K, TC, TI> QAwayProblem<K, TC, TI>
-    where
-        K: MatMatMulKer<TI>,
-        TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
-        TI: Copy + Debug + 'static + AsPrimitive<i64>,
-        usize: AsPrimitive<TC> + AsPrimitive<TI>,
-        i64: AsPrimitive<TC>,
-    {
-        pub fn reference(&self) -> Vec<TC> {
-            self.c
-                .iter()
-                .map(|input| {
-                    let input: TI = input.as_();
-                    let input: i64 = input.as_();
-                    ((((input.abs() >> 1) + 1) >> 1) * input.signum()).as_()
-                })
-                .collect()
-        }
-
-        pub fn run(&self) -> Vec<TC> {
-            fused_ops::<K, TC, TI>(
-                &*self.c,
-                &[FusedKerSpec::ScalarMul(2.as_()), FusedKerSpec::QAway((1 << 30).as_(), 2)],
-            )
-        }
-    }
-
     #[derive(Debug, new)]
     pub struct QScaleProblem<K, TC, TI>
     where
@@ -902,7 +658,7 @@ pub mod test {
     where
         K: MatMatMulKer<TI>,
         TC: Copy + Debug + 'static + AsPrimitive<TI> + PartialEq,
-        TI: Copy + Debug + 'static + AsPrimitive<i64> + PseudoRightShift + AsPrimitive<TC>,
+        TI: Copy + Debug + 'static + AsPrimitive<i64> + ScaleShiftAndRound + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
         i64: AsPrimitive<TC>,
     {

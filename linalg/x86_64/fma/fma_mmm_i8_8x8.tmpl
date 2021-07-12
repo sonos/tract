@@ -385,7 +385,7 @@ fma_mmm_i8_8x8_{{suffix}} proc
     cmp     rax,    10
     je      {{L}}scalar_add
 
-    cmp     rax,    14
+    cmp     rax,    11
     je      {{L}}q_scale
 
     jmp     {{L}}unimplemented

@@ -22,7 +22,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
-        + PseudoRightShift
+        + ScaleShiftAndRound
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -40,7 +40,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
-        + PseudoRightShift
+        + ScaleShiftAndRound
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -60,7 +60,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
-        + PseudoRightShift
+        + ScaleShiftAndRound
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -80,7 +80,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
-        + PseudoRightShift
+        + ScaleShiftAndRound
         + PartialOrd
         + Zero
         + Signed
@@ -254,27 +254,6 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::QTowardsEven(mult, shift) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                ab[i][j] = ab[i][j].q_even(mult, shift);
-                            }
-                        }
-                    }
-                    FusedKerSpec::QTowardsPlusInf(mult, shift) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                ab[i][j] = ab[i][j].q_to_plus_inf(mult, shift);
-                            }
-                        }
-                    }
-                    FusedKerSpec::QAway(mult, shift) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                ab[i][j] = ab[i][j].q_away(mult, shift);
-                            }
-                        }
-                    }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TC, TI, _>(&tile, &mut ab),
                     FusedKerSpec::QScale(shift, rp, mult) => {
                         for i in 0..4 {
@@ -324,7 +303,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
-        + PseudoRightShift
+        + ScaleShiftAndRound
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -342,7 +321,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
-        + PseudoRightShift
+        + ScaleShiftAndRound
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -362,7 +341,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
-        + PseudoRightShift
+        + ScaleShiftAndRound
         + PartialOrd
         + Zero
         + fmt::Debug
@@ -382,7 +361,7 @@ where
         + ops::AddAssign
         + ops::Mul<Output = TI>
         + ops::MulAssign
-        + PseudoRightShift
+        + ScaleShiftAndRound
         + PartialOrd
         + Zero
         + Signed
@@ -507,21 +486,6 @@ where
                             ab[i] *= a;
                         }
                     }
-                    FusedKerSpec::QTowardsEven(mult, shift) => {
-                        for i in 0..4 {
-                            ab[i] = ab[i].q_even(mult, shift);
-                        }
-                    }
-                    FusedKerSpec::QTowardsPlusInf(mult, shift) => {
-                        for i in 0..4 {
-                            ab[i] = ab[i].q_to_plus_inf(mult, shift);
-                        }
-                    }
-                    FusedKerSpec::QAway(mult, shift) => {
-                        for i in 0..4 {
-                            ab[i] = ab[i].q_away(mult, shift);
-                        }
-                    }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TC, TI, _>(
                         &tile,
                         &mut [
@@ -623,7 +587,7 @@ where
         + ops::Mul<Output = TI>
         + ops::MulAssign
         + PartialOrd
-        + PseudoRightShift
+        + ScaleShiftAndRound
         + Zero
         + Signed
         + fmt::Debug
@@ -763,27 +727,6 @@ where
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] *= a;
-                            }
-                        }
-                    }
-                    FusedKerSpec::QTowardsEven(mult, shift) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] = ab[i][j].q_even(mult, shift);
-                            }
-                        }
-                    }
-                    FusedKerSpec::QTowardsPlusInf(mult, shift) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] = ab[i][j].q_to_plus_inf(mult, shift);
-                            }
-                        }
-                    }
-                    FusedKerSpec::QAway(mult, shift) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] = ab[i][j].q_away(mult, shift);
                             }
                         }
                     }
