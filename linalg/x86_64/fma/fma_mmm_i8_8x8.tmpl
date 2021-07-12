@@ -716,13 +716,10 @@ i128_shuffle dd              0, 4
     je      {{L}}q_shift_right_rounding_zero
     cmp     r8, 2
     je      {{L}}q_shift_right_rounding_away
-
-    /*
     cmp     r8, 3
     je      {{L}}q_shift_right_rounding_minus_inf
     cmp     r8, 4
     je      {{L}}q_shift_right_rounding_plus_inf
-    */
 
     jmp    {{L}}unimplemented
 
@@ -764,6 +761,80 @@ i128_shuffle dd              0, 4
     vpslldq     ymm15, ymm15, 4
     vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
     vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_shift_right_rounding_minus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
+{% for i in (0..7) %}
+    vpabsd      ymm14, ymm{{i}}             
+    // sign extract for nudging in the right direction
+    vpxor       ymm13, ymm13, ymm13
+    vpcmpgtd    ymm13, ymm{{i}}, ymm13      // ymm13 <- s0, s1, ..s8 (signums, as all ones or all zeros)
+    vpsrld      ymm13, ymm13, 31            // then just 0 or 1
+
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    // reinterpret ymm13=s0i32..s7 as i64 and blend with zero to pick the even ones as i64
+    vpxor       ymm12, ymm12, ymm12
+    vpblendd    ymm12, ymm12, ymm13, 85     // 0x55
+    vpsubq      ymm14, ymm14, ymm12
+
+    vpsrldq     ymm13, ymm13, 4             // ymm13 <- s1, s2, .., s7, 0
+    vpxor       ymm12, ymm12, ymm12
+    vpblendd    ymm12, ymm12, ymm13, 85     // 0x55
+    vpsubq      ymm15, ymm15, ymm12
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_shift_right_rounding_plus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
+{% for i in (0..7) %}
+    // FIXME maybe: avoid negating everything
+    vpxor       ymm13, ymm13, ymm13
+    vpsubd      ymm{{i}}, ymm13, ymm{{i}}
+    vpabsd      ymm14, ymm{{i}}             
+    // sign extract for nudging in the right direction
+    vpcmpgtd    ymm13, ymm{{i}}, ymm13      // ymm13 <- s0, s1, ..s8 (signums, as all ones or all zeros)
+    vpsrld      ymm13, ymm13, 31            // then just 0 or 1
+
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    // reinterpret ymm13=s0i32..s7 as i64 and blend with zero to pick the even ones as i64
+    vpxor       ymm12, ymm12, ymm12
+    vpblendd    ymm12, ymm12, ymm13, 85     // 0x55
+    vpsubq      ymm14, ymm14, ymm12
+
+    vpsrldq     ymm13, ymm13, 4             // ymm13 <- s1, s2, .., s7, 0
+    vpxor       ymm12, ymm12, ymm12
+    vpblendd    ymm12, ymm12, ymm13, 85     // 0x55
+    vpsubq      ymm15, ymm15, ymm12
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+    vpxor       ymm13, ymm13, ymm13
+    vpsubd      ymm{{i}}, ymm13, ymm{{i}}
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
