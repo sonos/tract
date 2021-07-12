@@ -30,22 +30,19 @@
     
     b .unsupported
 
-// FIXME: transfer abs on initial values
 .q_shift_right_rounding_zero:
         // rust: signum * ((abs + nudge2) >> shift
         // asm: signum * (2*abs - 1) >>r (shift + 1)
 
     {% for q in (16..31) %}
+        cmlt        v0.4s, v{{q}}.4s, #0
+        abs         v{{q}}.4s, v{{q}}.4s
         sqdmull     v8.2d, v{{q}}.2s, v2.2s 
         sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
 
-        cmlt        v0.4s, v{{q}}.4s, #0
-
-        abs         v8.2d, v8.2d
         sub         v8.2d, v8.2d, v4.2d
         sqrshl      v8.2d, v8.2d, v1.2d
         
-        abs         v9.2d, v9.2d
         sub         v9.2d, v9.2d, v4.2d
         sqrshl      v9.2d, v9.2d, v1.2d
               
@@ -60,15 +57,12 @@
 .q_shift_right_rounding_away: // signum * (abs >> (shift-1) + 1 >> 1)
 
     {% for q in (16..31) %}
+        cmlt        v0.4s, v{{q}}.4s, #0
+        abs         v{{q}}.4s, v{{q}}.4s
         sqdmull     v8.2d, v{{q}}.2s, v2.2s 
         sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
 
-        cmlt        v0.4s, v{{q}}.4s, #0
-
-        abs         v8.2d, v8.2d
         sqrshl      v8.2d, v8.2d, v1.2d
-        
-        abs         v9.2d, v9.2d
         sqrshl      v9.2d, v9.2d, v1.2d
               
         uzp1         v{{q}}.4s, v8.4s, v9.4s    //combine back
@@ -110,24 +104,20 @@
    
     b .non_linear_loop
 
-.q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x1) >> 1)
+.q_shift_right_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x1) - 1 >> 1)
 
     {% for q in (16..31) %}
+        cmlt        v0.4s, v{{q}}.4s, #0
+        abs         v{{q}}.4s, v{{q}}.4s
         sqdmull     v8.2d, v{{q}}.2s, v2.2s 
         sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
 
-        cmlt        v0.4s, v{{q}}.4s, #0
-
-        abs         v8.2d, v8.2d
-
-        sqshl       v3.2d, v8.2d, v1.2d
-        and         v3.16b, v3.16b, v4.16b             
+        sqshl       v3.2d, v8.2d, v1.2d         // abs >> shift - 1
+        and         v3.16b, v3.16b, v4.16b      // abs & 0x1
         sub         v3.2d, v3.2d, v4.2d         //nudge : -1 if we want to round down, 0 if up
 
         add         v8.2d, v8.2d, v3.2d
         sqrshl      v8.2d, v8.2d, v1.2d
-
-        abs         v9.2d, v9.2d
         
         sqshl       v3.2d, v9.2d, v1.2d
         and         v3.16b, v3.16b, v4.16b             
@@ -144,15 +134,13 @@
    
     b .non_linear_loop
 
-.q_shift_right_rounding_odd: // signum * ((abs >> shift-1) + (abs & 0x2 == 0x0) >> 1)
+.q_shift_right_rounding_odd: // signum * ((abs >> shift-1) - (abs & 0x1) >> 1)
 
     {% for q in (16..31) %}
+        cmlt        v0.4s, v{{q}}.4s, #0
+        abs         v{{q}}.4s, v{{q}}.4s
         sqdmull     v8.2d, v{{q}}.2s, v2.2s 
         sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
-
-        cmlt        v0.4s, v{{q}}.4s, #0
-
-        abs         v8.2d, v8.2d
 
         sqshl       v3.2d, v8.2d, v1.2d
         and         v3.16b, v3.16b, v4.16b      //nudge : -1 if we want to round down, 0 if up
@@ -160,8 +148,6 @@
         sub         v8.2d, v8.2d, v3.2d
         sqrshl      v8.2d, v8.2d, v1.2d
         
-        abs         v9.2d, v9.2d
-
         sqshl       v3.2d, v9.2d, v1.2d
         and         v3.16b, v3.16b, v4.16b      //nudge : -1 if we want to round down, 0 if up
 
