@@ -164,11 +164,7 @@
     beq         .scalar_mul
     cmp         x2, #10
     beq         .scalar_add
-    cmp         x2, #12
-    beq         .q_towards_plusinf
-    cmp         x2, #13
-    beq         .q_away
-    cmp         x2, #14
+    cmp         x2, #11
     beq         .q_scale
 
     b           .unsupported

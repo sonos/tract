@@ -140,13 +140,6 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                 }
                 FusedSpec::ScalarMul(t) => FusedKerSpec::ScalarMul(*t.to_scalar_unchecked()),
                 FusedSpec::ScalarAdd(t) => FusedKerSpec::ScalarAdd(*t.to_scalar_unchecked()),
-                FusedSpec::QTowardsEven(m, s) => {
-                    FusedKerSpec::QTowardsEven(*m.to_scalar_unchecked(), *s)
-                }
-                FusedSpec::QTowardsPlusInf(m, s) => {
-                    FusedKerSpec::QTowardsPlusInf(*m.to_scalar_unchecked(), *s)
-                }
-                FusedSpec::QAway(m, s) => FusedKerSpec::QAway(*m.to_scalar_unchecked(), *s),
                 FusedSpec::AddUnicast(tensor) => {
                     let (rsc, csc, item_count) = match c_store {
                         MatrixStore::Strides {
