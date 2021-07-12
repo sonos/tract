@@ -732,6 +732,7 @@ i128_shuffle dd              0, 4
 
     vpaddq      ymm14, ymm14, ymm11
     vpaddq      ymm15, ymm15, ymm11
+
     vpsubq      ymm14, ymm14, ymm9
     vpsubq      ymm15, ymm15, ymm9
 
@@ -801,14 +802,16 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}q_shift_right_rounding_plus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
+
+    vpbroadcastd ymm9, xmm9
+
 {% for i in (0..7) %}
-    // FIXME maybe: avoid negating everything
-    vpxor       ymm13, ymm13, ymm13
-    vpsubd      ymm{{i}}, ymm13, ymm{{i}}
     vpabsd      ymm14, ymm{{i}}             
+    vpxor       ymm13, ymm13, ymm13
+
     // sign extract for nudging in the right direction
     vpcmpgtd    ymm13, ymm{{i}}, ymm13      // ymm13 <- s0, s1, ..s8 (signums, as all ones or all zeros)
-    vpsrld      ymm13, ymm13, 31            // then just 0 or 1
+    vpaddd      ymm13, ymm13, ymm9          // if val >= 0 { 0i32 } else { 1i32 }
 
     vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
     vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
@@ -833,8 +836,6 @@ i128_shuffle dd              0, 4
     vpslldq     ymm15, ymm15, 4
     vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
     vpsignd     ymm{{i}}, ymm14, ymm{{i}}
-    vpxor       ymm13, ymm13, ymm13
-    vpsubd      ymm{{i}}, ymm13, ymm{{i}}
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
