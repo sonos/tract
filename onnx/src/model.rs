@@ -209,7 +209,7 @@ impl Onnx {
         let graph = proto.graph.as_ref().ok_or_else(|| anyhow!("model proto does not contain a graph"))?;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
         if onnx_operator_set_version != 0
-            && (onnx_operator_set_version < 9 || onnx_operator_set_version > 12)
+            && (onnx_operator_set_version < 9 || onnx_operator_set_version > 14)
         {
             warn!("ONNX operator for your model is {}, tract is tested against \
                   operator set 9, 10, 11 and 12 only. Your model may still work so this is not a hard fail.",
