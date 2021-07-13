@@ -274,7 +274,6 @@ test_maxpool_2d_precomputed_strides
 test_maxpool_2d_same_lower not-nnef
 test_maxpool_2d_same_upper
 test_maxpool_2d_strides
-test_maxpool_2d_uint8
 test_maxpool_3d_default
 test_maxpool_with_argmax_2d_precomputed_pads not-nnef
 test_mean_example
