@@ -11,7 +11,7 @@ pub struct Squeeze {
 impl_dyn_hash!(Squeeze);
 
 impl Squeeze {
-    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
+    pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {
             let axes = axes
                 .iter()
@@ -53,7 +53,7 @@ impl Expansion for Squeeze {
             s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - axes.len() as i64)?;
         }
         s.given(&inputs[0].shape, move |s, shape| {
-            let output_shape = self.compute_shape(&shape)?;
+            let output_shape = self.output_shape(&shape)?;
             s.equals(&outputs[0].shape, output_shape)
         })
     }
