@@ -19,7 +19,9 @@ onnx_1_4_1 = []
 onnx_1_5_0 = []
 onnx_1_6_0 = []
 onnx_1_7_0 = []
-default = [ "onnx_1_7_0" ]
+onnx_1_8_1 = []
+onnx_1_9_0 = []
+default = [ "onnx_1_9_0" ]
 
 [dev-dependencies]
 env_logger = "0.8"
