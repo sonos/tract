@@ -1,31 +1,51 @@
 use crate::internal::*;
+use tract_pulse_opl::ops::Delay;
 
 pub mod array;
-pub mod binary;
-pub mod change_axes;
 pub mod cnn;
 pub mod delay;
 pub mod downsample;
 pub mod dummy;
-pub mod element_wise;
 pub mod matmul;
-pub mod nn;
 pub mod qmatmul;
-pub mod quant;
 pub mod scan;
 pub mod source;
 
+pub(crate) fn sync_inputs(
+    node: &TypedNode,
+    target: &mut PulsedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+) -> TractResult<TVec<OutletId>> {
+    let delay = node
+        .inputs
+        .iter()
+        .map(|input| target.outlet_fact(mapping[input]).unwrap().delay)
+        .max()
+        .unwrap();
+    let mut inputs = tvec!();
+    for input in &node.inputs {
+        let mut input = mapping[input];
+        let fact = target.outlet_fact(input)?.clone();
+        if fact.delay < delay {
+            let add_delay = delay - fact.delay;
+            input = target.wire_node(
+                format!("{}.Delay", &*node.name),
+                Delay::new(fact.axis, &fact.into(), add_delay, 0),
+                &[input],
+            )?[0];
+        }
+        inputs.push(input);
+    }
+    Ok(inputs)
+}
+
+
 register_all_mod!(
     array,
-    binary,
-    change_axes,
     cnn,
     downsample,
-    element_wise,
     matmul,
-    nn,
     qmatmul,
-    quant,
     scan,
     source
 );
@@ -39,7 +59,7 @@ pub struct OpPulsifier {
         &mut PulsedModel,
         &HashMap<OutletId, OutletId>,
         usize,
-    ) -> TractResult<TVec<OutletId>>,
+    ) -> TractResult<Option<TVec<OutletId>>>,
 }
 
 impl OpPulsifier {

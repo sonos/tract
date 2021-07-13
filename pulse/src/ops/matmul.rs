@@ -10,13 +10,13 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?;
     if fact.axis >= fact.shape.len() - op.b_trans as usize {
         bail!("Can not pulsify MatMulUnaryA on the k dimension");
     }
-    target.wire_node(&*node.name, op.clone(), &[input])
+    Ok(Some(target.wire_node(&*node.name, op.clone(), &[input])?))
 }
 impl PulsedOp for MatMulUnary {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {

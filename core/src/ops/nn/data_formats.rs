@@ -64,6 +64,10 @@ impl DataFormat {
     pub fn c_is_last(&self) -> bool {
         *self == DataFormat::NHWC || *self == DataFormat::HWC
     }
+
+    pub fn h_axis(&self) -> usize {
+        self.has_n() as usize + !self.c_is_last() as usize
+    }
 }
 
 pub type SymDataShape = BaseDataShape<TDim, TVec<TDim>>;
