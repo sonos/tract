@@ -10,7 +10,7 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     for input_id in 0..node.inputs.len() {
         let input = mapping[&node.inputs[input_id]];
         let input_fact = target.outlet_fact(input)?;
@@ -37,7 +37,7 @@ fn pulsify(
             om.full_dim_hint = None;
         }
     }
-    target.wire_node(&*node.name, op, &pulse_inputs)
+    Ok(Some(target.wire_node(&*node.name, op, &pulse_inputs)?))
 }
 
 impl PulsedOp for Scan {

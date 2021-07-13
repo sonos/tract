@@ -10,7 +10,7 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
     let op: Box<dyn PulsedOp> = if op.axis == fact.axis {
@@ -20,7 +20,7 @@ fn pulsify(
     } else {
         tract_core::dyn_clone::clone_box(op)
     };
-    target.wire_node(&*node.name, op, &[input])
+    Ok(Some(target.wire_node(&*node.name, op, &[input])?))
 }
 
 impl PulsedOp for Slice {

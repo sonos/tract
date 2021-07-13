@@ -35,7 +35,7 @@ pub struct OpPulsifier {
         &mut PulsedModel,
         &HashMap<OutletId, OutletId>,
         usize,
-    ) -> TractResult<TVec<OutletId>>,
+    ) -> TractResult<Option<TVec<OutletId>>>,
 }
 
 impl OpPulsifier {

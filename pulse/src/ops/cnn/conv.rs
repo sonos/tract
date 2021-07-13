@@ -10,7 +10,7 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     fn zero<D: Datum>() -> Tensor {
         tensor0(D::default())
     }
@@ -18,7 +18,7 @@ fn pulsify(
     let zero = dispatch_numbers!(zero(fact.datum_type)());
     let (wire, pool_spec) =
         super::pools::pulsify(&op.pool_spec, source, node, target, mapping, Some(zero))?;
-    target.wire_node(&node.name, ConvUnary { pool_spec, ..op.clone() }, &[wire])
+    Ok(Some(target.wire_node(&node.name, ConvUnary { pool_spec, ..op.clone() }, &[wire])?))
 }
 
 impl PulsedOp for ConvUnary {

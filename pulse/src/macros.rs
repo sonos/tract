@@ -30,7 +30,7 @@ macro_rules! register_all {
                            target: &mut PulsedModel,
                            mapping: &HashMap<OutletId, OutletId>,
                            pulse: usize|
-                     -> TractResult<TVec<OutletId>> {
+                     -> TractResult<Option<TVec<OutletId>>> {
                         let op = node.op_as::<$op>().unwrap();
                         ($func)(op, source, node, target, mapping, pulse)
                     },

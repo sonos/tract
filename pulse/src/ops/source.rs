@@ -10,10 +10,10 @@ fn pulsify(
     target: &mut PulsedModel,
     _mapping: &HashMap<OutletId, OutletId>,
     pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let pulsed_fact = PulsedFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
     let id = target.add_source(node.name.clone(), pulsed_fact)?;
-    Ok(tvec!(id))
+    Ok(Some(tvec!(id)))
 }
 
 #[derive(Debug, Clone, Hash)]

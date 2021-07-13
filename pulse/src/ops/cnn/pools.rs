@@ -11,14 +11,14 @@ fn pulsify_max_pool(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     fn min_value<D: Datum + tract_core::num_traits::Bounded>() -> Tensor {
         tensor0(D::min_value())
     }
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
     let min = dispatch_numbers!(min_value(fact.datum_type)());
     let (wire, pool_spec) = pulsify(&op.pool_spec, source, node, target, mapping, Some(min))?;
-    target.wire_node(&node.name, MaxPool { pool_spec, ..op.clone() }, &[wire])
+    Ok(Some(target.wire_node(&node.name, MaxPool { pool_spec, ..op.clone() }, &[wire])?))
 }
 
 fn pulsify_sum_pool(
@@ -28,9 +28,9 @@ fn pulsify_sum_pool(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let (wire, pool_spec) = pulsify(&op.pool_spec, source, node, target, mapping, None)?;
-    target.wire_node(&node.name, SumPool { pool_spec, ..op.clone() }, &[wire])
+    Ok(Some(target.wire_node(&node.name, SumPool { pool_spec, ..op.clone() }, &[wire])?))
 }
 
 impl PulsedOp for SumPool {

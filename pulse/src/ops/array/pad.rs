@@ -12,7 +12,7 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let mut input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
     if !op.pads.iter().enumerate().all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0)) {
@@ -52,7 +52,7 @@ fn pulsify(
         end_input: fact.delay.to_dim() + extra_delay + fact.dim,
         mode: op.mode.clone(),
     };
-    target.wire_node(&*node.name, op, &[input])
+    Ok(Some(target.wire_node(&*node.name, op, &[input])?))
 }
 
 #[derive(Debug, Clone, Default, Hash)]

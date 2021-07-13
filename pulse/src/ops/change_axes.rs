@@ -10,9 +10,9 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
-    target.wire_node(&*node.name, op.clone(), &[input])
+    Ok(Some(target.wire_node(&*node.name, op.clone(), &[input])?))
 }
 
 impl PulsedOp for AxisOp {

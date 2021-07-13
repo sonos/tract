@@ -13,7 +13,7 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?;
 
@@ -30,7 +30,7 @@ fn pulsify_along_concat_axis(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     if node.inputs.len() > 1 {
         bail!("Concat can not pulse more than on input on concat axis")
     }
@@ -64,7 +64,7 @@ fn pulsify_along_concat_axis(
         input_delay: fact.delay.saturating_sub(before),
         input_len: fact.dim.clone(),
     };
-    target.wire_node(&*node.name, main_op, &[input])
+    Ok(Some(target.wire_node(&*node.name, main_op, &[input])?))
 }
 
 fn pulsify_across_concat_axis(
@@ -73,9 +73,9 @@ fn pulsify_across_concat_axis(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let sync_inputs = crate::ops::binary::sync_inputs(node, target, mapping)?;
-    target.wire_node(&node.name, op.clone(), &sync_inputs)
+    Ok(Some(target.wire_node(&node.name, op.clone(), &sync_inputs)?))
 }
 
 impl PulsedOp for TypedConcat {

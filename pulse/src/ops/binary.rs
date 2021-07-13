@@ -40,9 +40,9 @@ fn pulsify_bin(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let inputs = &*sync_inputs(node, target, mapping)?;
-    target.wire_node(&*node.name, op.clone(), &inputs)
+    Ok(Some(target.wire_node(&*node.name, op.clone(), &inputs)?))
 }
 
 impl PulsedOp for TypedBinOp {
@@ -68,9 +68,9 @@ fn pulsify_un(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
-    target.wire_node(&*node.name, op.clone(), &[input])
+    Ok(Some(target.wire_node(&*node.name, op.clone(), &[input])?))
 }
 
 impl PulsedOp for UnaryOp {
@@ -97,9 +97,9 @@ fn pulsify_iff(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
-) -> TractResult<TVec<OutletId>> {
+) -> TractResult<Option<TVec<OutletId>>> {
     let inputs = &*sync_inputs(node, target, mapping)?;
-    target.wire_node(&*node.name, op.clone(), &inputs)
+    Ok(Some(target.wire_node(&*node.name, op.clone(), &inputs)?))
 }
 
 impl PulsedOp for Iff {
