@@ -3,6 +3,7 @@ mod nonzero;
 mod one_hot;
 mod pad;
 mod slice;
+mod squeeze;
 mod unsqueeze;
 
 use tract_hir::internal::*;
@@ -33,7 +34,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::I64)), vec![])));
     reg.insert("Slice", slice::slice);
     reg.insert("Split", split);
-    reg.insert("Squeeze", squeeze);
+    reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("Tile", |_, _| Ok((expand(array::Tile::default()), vec![])));
     reg.insert("Transpose", transpose);
     reg.insert("Unsqueeze", unsqueeze::unsqueeze);
@@ -136,14 +137,6 @@ pub fn split(
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let split = node.get_attr_opt_vec("split")?;
     Ok((expand(array::Split::new(axis, node.output.len(), split)), vec![]))
-}
-
-pub fn squeeze(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let axes = node.get_attr_opt_vec("axes")?;
-    Ok((expand(array::Squeeze::new(axes)), vec![]))
 }
 
 pub fn transpose(
