@@ -11,6 +11,7 @@ mod conv_transpose;
 mod dropout;
 mod instance_norm;
 mod lrn;
+mod reduce;
 
 pub fn arg_max_min(
     _ctx: &ParsingContext,
@@ -25,15 +26,6 @@ pub fn arg_max_min(
         nn::Reducer::ArgMin(take_last)
     };
     Ok((expand(nn::Reduce::new(Some(vec![axis]), keepdims, red)), vec![]))
-}
-
-fn reduce(
-    node: &NodeProto,
-    reducer: nn::Reducer,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let axes = node.get_attr_opt_vec("axes")?;
-    let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
-    Ok((expand(ops::nn::Reduce::new(axes, keep_dims, reducer)), vec![]))
 }
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -59,16 +51,16 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ParametricSoftplus", parametric_softplus);
     reg.insert("QLinearConv", conv_qlinear);
     reg.insert("PRelu", |_, _| Ok((expand(Prelu), vec![])));
-    reg.insert("ReduceL1", |_, node| reduce(node, nn::Reducer::L1));
-    reg.insert("ReduceL2", |_, node| reduce(node, nn::Reducer::L2));
-    reg.insert("ReduceLogSum", |_, node| reduce(node, nn::Reducer::LogSum));
-    reg.insert("ReduceLogSumExp", |_, node| reduce(node, nn::Reducer::LogSumExp));
-    reg.insert("ReduceMax", |_, node| reduce(node, nn::Reducer::Max));
-    reg.insert("ReduceMean", |_, node| reduce(node, nn::Reducer::Mean));
-    reg.insert("ReduceMin", |_, node| reduce(node, nn::Reducer::Min));
-    reg.insert("ReduceProd", |_, node| reduce(node, nn::Reducer::Prod));
-    reg.insert("ReduceSum", |_, node| reduce(node, nn::Reducer::Sum));
-    reg.insert("ReduceSumSquare", |_, node| reduce(node, nn::Reducer::SumSquare));
+    reg.insert("ReduceL1", |c, node| reduce::reduce(c, node, nn::Reducer::L1));
+    reg.insert("ReduceL2", |c, node| reduce::reduce(c, node, nn::Reducer::L2));
+    reg.insert("ReduceLogSum", |c, node| reduce::reduce(c, node, nn::Reducer::LogSum));
+    reg.insert("ReduceLogSumExp", |c, node| reduce::reduce(c, node, nn::Reducer::LogSumExp));
+    reg.insert("ReduceMax", |c, node| reduce::reduce(c, node, nn::Reducer::Max));
+    reg.insert("ReduceMean", |c, node| reduce::reduce(c, node, nn::Reducer::Mean));
+    reg.insert("ReduceMin", |c, node| reduce::reduce(c, node, nn::Reducer::Min));
+    reg.insert("ReduceProd", |c, node| reduce::reduce(c, node, nn::Reducer::Prod));
+    reg.insert("ReduceSum", |c, node| reduce::reduce(c, node, nn::Reducer::Sum));
+    reg.insert("ReduceSumSquare", |c, node| reduce::reduce(c, node, nn::Reducer::SumSquare));
     reg.insert("Relu", |_, _| Ok((expand(ops::activations::Clip::new(Some(0.0), None)), vec![])));
     reg.insert("ScaledTanh", scaled_tanh);
     reg.insert("Shrink", shrink);

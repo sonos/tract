@@ -135,7 +135,7 @@ impl Reduce {
         resolved_axes.as_ref().map(|axes| axes.contains(&ax)).unwrap_or(true)
     }
 
-    fn output_shape(&self, shape: &[TDim]) -> TVec<TDim> {
+    pub fn output_shape(&self, shape: &[TDim]) -> TVec<TDim> {
         shape
             .iter()
             .enumerate()
