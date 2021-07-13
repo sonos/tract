@@ -20,7 +20,7 @@ fn pulsify(
     if fact.axis == op.axis {
         pulsify_along_concat_axis(op, source, node, target, mapping)
     } else {
-        pulsify_across_concat_axis(op, source, node, target, mapping)
+        Ok(None)
     }
 }
 
@@ -65,33 +65,6 @@ fn pulsify_along_concat_axis(
         input_len: fact.dim.clone(),
     };
     Ok(Some(target.wire_node(&*node.name, main_op, &[input])?))
-}
-
-fn pulsify_across_concat_axis(
-    op: &TypedConcat,
-    _source: &TypedModel,
-    node: &TypedNode,
-    target: &mut PulsedModel,
-    mapping: &HashMap<OutletId, OutletId>,
-) -> TractResult<Option<TVec<OutletId>>> {
-    let sync_inputs = crate::ops::binary::sync_inputs(node, target, mapping)?;
-    Ok(Some(target.wire_node(&node.name, op.clone(), &sync_inputs)?))
-}
-
-impl PulsedOp for TypedConcat {
-    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
-        let typed_input_facts: TVec<TypedFact> =
-            inputs.iter().map(|pf| pf.to_typed_fact()).collect::<TractResult<_>>()?;
-        let typed_input_facts_ref: TVec<&TypedFact> = typed_input_facts.iter().collect();
-
-        let typed_fact = self.output_facts(&typed_input_facts_ref)?.remove(0);
-        let mut fact = inputs[0].clone();
-        fact.shape.set(self.axis, typed_fact.shape[self.axis].clone());
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-    pulsed_op_to_typed_op!();
 }
 
 /// Concat with pulse along concat axis

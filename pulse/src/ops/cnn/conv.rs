@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::cnn::pools::pulsify_pooled_input;
 use tract_core::ops::cnn::ConvUnary;
 
 register_all!(ConvUnary: pulsify);
@@ -16,9 +17,13 @@ fn pulsify(
     }
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
     let zero = dispatch_numbers!(zero(fact.datum_type)());
-    let (wire, pool_spec) =
-        super::pools::pulsify(&op.pool_spec, source, node, target, mapping, Some(zero))?;
-    Ok(Some(target.wire_node(&node.name, ConvUnary { pool_spec, ..op.clone() }, &[wire])?))
+    if let Some((wire, pool_spec)) =
+        pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, Some(zero))?
+    {
+        Ok(Some(target.wire_node(&node.name, ConvUnary { pool_spec, ..op.clone() }, &[wire])?))
+    } else {
+        Ok(None)
+    }
 }
 
 impl PulsedOp for ConvUnary {

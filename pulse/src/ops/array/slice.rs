@@ -13,26 +13,23 @@ fn pulsify(
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
-    let op: Box<dyn PulsedOp> = if op.axis == fact.axis {
+    if op.axis == fact.axis {
         let skip = op.start.to_usize()?;
         let take = (op.end.clone() - &op.start).to_dim();
-        PulsedAxisSlice { axis: op.axis, skip, take }.into()
+        let op = PulsedAxisSlice { axis: op.axis, skip, take };
+        Ok(Some(target.wire_node(&*node.name, op, &[input])?))
     } else {
-        tract_core::dyn_clone::clone_box(op)
-    };
-    Ok(Some(target.wire_node(&*node.name, op, &[input])?))
+        Ok(None)
+    }
 }
 
 impl PulsedOp for Slice {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         let mut fact = inputs[0].clone();
         let len = (self.end.clone() - &self.start).to_dim();
-        if self.axis == fact.axis {
-            fact.delay += self.start.to_usize()?;
-            fact.dim = len
-        } else {
-            fact.shape.set(self.axis, len);
-        }
+        debug_assert_eq!(fact.axis, self.axis);
+        fact.delay += self.start.to_usize()?;
+        fact.dim = len;
         Ok(tvec!(fact))
     }
 

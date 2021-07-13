@@ -1,4 +1,4 @@
-use crate::internal::*;
+use crate::{internal::*, ops::sync_inputs};
 use tract_core::model::translator::Translate;
 
 pub type PulsedModel = Graph<PulsedFact, Box<dyn PulsedOp>>;
@@ -101,20 +101,18 @@ impl
     ) -> TractResult<TVec<OutletId>> {
         if let Some(pulsifier) = self.1.get(&node.op.type_id()) {
             if let Some(pulsified) = (pulsifier.func)(source, node, target, mapping, self.0)? {
-                return Ok(pulsified)
+                return Ok(pulsified);
             }
         }
         let (input_facts, output_facts) = source.node_facts(node.id)?;
-        if input_facts.len() == 1 && output_facts.len() == 1 {
+        if input_facts.len() >= 1 {
             let invariants = node.op.invariants(&input_facts, &output_facts)?;
             let pulse_input_fact = target.outlet_fact(mapping[&node.inputs[0]])?;
             let axis_info = invariants.track_input_axis(0, pulse_input_fact.axis);
-            if let Some(axis_info ) = axis_info {
-                if axis_info.outputs[0].is_some() {
-                    let pulse_op = PulseWrappingOp(node.op.clone());
-                    let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
-                    return target.wire_node(&node.name, pulse_op, &inputs)
-                }
+            if axis_info.is_some() {
+                let pulse_op = PulseWrappingOp(node.op.clone());
+                let inputs = sync_inputs(node, target, mapping)?;
+                return target.wire_node(&node.name, pulse_op, &inputs);
             }
         }
 

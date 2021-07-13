@@ -17,8 +17,13 @@ fn pulsify_max_pool(
     }
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
     let min = dispatch_numbers!(min_value(fact.datum_type)());
-    let (wire, pool_spec) = pulsify(&op.pool_spec, source, node, target, mapping, Some(min))?;
-    Ok(Some(target.wire_node(&node.name, MaxPool { pool_spec, ..op.clone() }, &[wire])?))
+    if let Some((wire, pool_spec)) =
+        pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, Some(min))?
+    {
+        Ok(Some(target.wire_node(&node.name, MaxPool { pool_spec, ..op.clone() }, &[wire])?))
+    } else {
+        Ok(None)
+    }
 }
 
 fn pulsify_sum_pool(
@@ -29,8 +34,13 @@ fn pulsify_sum_pool(
     mapping: &HashMap<OutletId, OutletId>,
     _pulse: usize,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let (wire, pool_spec) = pulsify(&op.pool_spec, source, node, target, mapping, None)?;
-    Ok(Some(target.wire_node(&node.name, SumPool { pool_spec, ..op.clone() }, &[wire])?))
+    if let Some((wire, pool_spec)) =
+        pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, None)?
+    {
+        Ok(Some(target.wire_node(&node.name, SumPool { pool_spec, ..op.clone() }, &[wire])?))
+    } else {
+        Ok(None)
+    }
 }
 
 impl PulsedOp for SumPool {
@@ -85,19 +95,19 @@ pub fn pulsed_output_facts(
     Ok(tvec!(fact))
 }
 
-pub fn pulsify(
+pub fn pulsify_pooled_input(
     spec: &PoolSpec,
     _source: &TypedModel,
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     padding_value: Option<Tensor>,
-) -> TractResult<(OutletId, PoolSpec)> {
+) -> TractResult<Option<(OutletId, PoolSpec)>> {
     let mut wire = mapping[&node.inputs[0]];
     let mut fact: PulsedFact = target.outlet_fact(wire)?.clone();
     let input_shape = spec.data_format.shape(fact.shape.clone())?;
     if Some(fact.axis) == input_shape.n_axis() {
-        return Ok((wire, spec.clone()));
+        return Ok(None);
     }
     if fact.axis == input_shape.c_axis() {
         bail!("Can not pulsify cnn pooling ops along the input channel axis");
