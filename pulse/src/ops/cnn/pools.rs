@@ -194,8 +194,8 @@ pub fn pulsify_pooled_input(
                 aft.push(c.pad_after.to_usize()?);
             };
         }
-        Ok((wire, PoolSpec { padding: PaddingSpec::Explicit(bef, aft, true), ..spec.clone() }))
+        Ok(Some((wire, PoolSpec { padding: PaddingSpec::Explicit(bef, aft, true), ..spec.clone() })))
     } else {
-        Ok((wire, spec.clone()))
+        Ok(Some((wire, spec.clone())))
     }
 }
