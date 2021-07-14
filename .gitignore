@@ -11,3 +11,4 @@ perf.data*
 readings.*
 metrics
 tract.out
+*.onnx
