@@ -23,7 +23,7 @@ impl_dyn_hash!(Unsqueeze13);
 
 impl Expansion for Unsqueeze13 {
     fn name(&self) -> Cow<str> {
-        "Reduce13".into()
+        "Unsqueeze13".into()
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(

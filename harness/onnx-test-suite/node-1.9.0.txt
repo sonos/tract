@@ -503,9 +503,9 @@ test_softsign_example
 test_split_equal_parts_1d
 test_split_equal_parts_2d
 test_split_equal_parts_default_axis
-test_split_variable_parts_1d
-test_split_variable_parts_2d
-test_split_variable_parts_default_axis
+test_split_variable_parts_1d input:input
+test_split_variable_parts_2d input:input
+test_split_variable_parts_default_axis input:input
 test_split_zero_size_splits  not-typable not-nnef
 test_sqrt
 test_sqrt_example
