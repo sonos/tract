@@ -72,6 +72,14 @@ test_basic_conv_without_padding input:x
 test_basic_convinteger                                                              input:x 
 test_batchnorm_epsilon input:x
 test_batchnorm_example input:x
+test_bitshift_left_uint16
+test_bitshift_left_uint32
+test_bitshift_left_uint64
+test_bitshift_left_uint8
+test_bitshift_right_uint16
+test_bitshift_right_uint32
+test_bitshift_right_uint64
+test_bitshift_right_uint8
 test_cast_DOUBLE_to_FLOAT
 test_cast_DOUBLE_to_FLOAT16
 test_cast_FLOAT16_to_DOUBLE

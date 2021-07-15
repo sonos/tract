@@ -18,6 +18,8 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Div", |_, _| Ok((ops::math::Div.into_hir(), vec![])));
     reg.insert("Mod", rem::rem);
 
+    reg.insert("BitShift", bitshift);
+
     reg.insert("Sum", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Add), false)), vec![])));
     reg.insert("Max", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Max), false)), vec![])));
     reg.insert("Min", |_, _| Ok((Box::new(Nary(Box::new(ops::math::Min), false)), vec![])));
@@ -70,4 +72,16 @@ fn isinf(
     let detect_positive = node.get_attr_opt("detect_positive")?.unwrap_or(1) != 0;
     let detect_negative = node.get_attr_opt("detect_negative")?.unwrap_or(1) != 0;
     Ok((Box::new(tract_onnx_opl::is_inf::is_inf(detect_positive, detect_negative)), vec![]))
+}
+
+fn bitshift(
+    _ctx: &ParsingContext,
+    node: &NodeProto,
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
+    let op: Box<dyn InferenceOp> = if node.get_attr_opt("direction")?.unwrap_or("LEFT") == "RIGHT" {
+        ops::math::ShiftRight.into_hir()
+    } else {
+        ops::math::ShiftLeft.into_hir()
+    };
+    Ok((op, vec![]))
 }
