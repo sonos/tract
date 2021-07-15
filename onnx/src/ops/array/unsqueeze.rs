@@ -34,6 +34,7 @@ impl Expansion for Unsqueeze13 {
     ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
+        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, shape, axes| {
             let axes = axes
                 .cast_to::<i64>()?
