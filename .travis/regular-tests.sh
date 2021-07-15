@@ -8,7 +8,7 @@ PATH=$PATH:$HOME/.cargo/bin
 
 : "${RUST_VERSION:=stable}"
 rustup toolchain add $RUST_VERSION
-rustup default $RUST_VERSION
+export RUSTUP_TOOLCHAIN=$RUST_VERSION
 
 rustc --version
 
