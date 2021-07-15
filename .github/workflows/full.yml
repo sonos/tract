@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        opset: [1_4_1, 1_5_0, 1_6_0, 1_7_0]
+        opset: [1_4_1, 1_5_0, 1_6_0, 1_7_0, 1_8_1, 1_9_0]
 
     steps:
     - uses: actions/checkout@v1

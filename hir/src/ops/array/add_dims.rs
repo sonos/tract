@@ -10,7 +10,7 @@ pub struct AddDims {
 impl_dyn_hash!(AddDims);
 
 impl AddDims {
-    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
+    pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
         let rank = input.len() as isize;
         let mut shape: TVec<D> = input.iter().cloned().collect();
         let axes = self
@@ -46,7 +46,7 @@ impl Expansion for AddDims {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, (&inputs[0].rank).bex() + self.axes.len() as i64)?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let output_shape = self.compute_shape(&shape);
+            let output_shape = self.output_shape(&shape);
             s.equals(&outputs[0].shape, output_shape)
         })
     }

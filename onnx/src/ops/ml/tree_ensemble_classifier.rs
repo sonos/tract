@@ -283,7 +283,7 @@ impl Expansion for TreeEnsembleClassifier {
         match self.post_transform {
             None => (),
             Some(PostTransform::Softmax) => {
-                scores = tract_hir::ops::nn::LayerSoftmax::new(1).wire(
+                scores = tract_hir::ops::nn::LayerSoftmax::new(1, false).wire(
                     &format!("{}.softmax", prefix),
                     model,
                     &scores,

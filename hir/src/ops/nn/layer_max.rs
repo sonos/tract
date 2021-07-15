@@ -6,6 +6,7 @@ use crate::internal::*;
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct LayerHardmax {
     axis: isize,
+    coerce_to_2d: bool,
 }
 
 impl_dyn_hash!(LayerHardmax);
@@ -38,16 +39,22 @@ impl Expansion for LayerHardmax {
         let rank = input_fact.rank();
         let axis = if self.axis < 0 { rank as isize + self.axis } else { self.axis } as usize;
         let suffix_dim: TDim = input_fact.shape[axis..].iter().product();
-        let dim = suffix_dim
-            .to_usize()
-            .context("OneHot assumes known dimension on working axes suffix.")?;
+        let dim = if self.coerce_to_2d {
+            suffix_dim.to_usize()
+        } else {
+            input_fact.shape[axis].to_usize()
+        }
+        .context("Assumes known dimension on working axes suffix.")?;
         let off = tensor0(0f32).cast_to_dt(input_dt)?.into_owned().into_arc_tensor();
         let on = tensor0(1f32).cast_to_dt(input_dt)?.into_owned().into_arc_tensor();
-        let mut wires = target.wire_node(
-            format!("{}.reshaped", name),
-            AxisOp::Reshape(axis, input_fact.shape[axis..].into(), tvec!(suffix_dim.clone())),
-            &[input],
-        )?;
+        let mut wires = inputs.into();
+        if self.coerce_to_2d {
+            wires = target.wire_node(
+                format!("{}.reshaped", name),
+                AxisOp::Reshape(axis, input_fact.shape[axis..].into(), tvec!(suffix_dim.clone())),
+                &[input],
+            )?;
+        }
         wires = target.wire_node(
             format!("{}.argmax", name),
             nn::Reduce::new(tvec!(axis), nn::Reducer::ArgMax(false)),
@@ -60,17 +67,21 @@ impl Expansion for LayerHardmax {
             array::OneHot { axis, dim, off, on },
             &wires,
         )?;
-        target.wire_node(
-            format!("{}.hardmax_reshaped", name),
-            AxisOp::Reshape(axis, tvec!(suffix_dim), input_fact.shape[axis..].into()),
-            &wires,
-        )
+        if self.coerce_to_2d {
+            wires = target.wire_node(
+                format!("{}.hardmax_reshaped", name),
+                AxisOp::Reshape(axis, tvec!(suffix_dim), input_fact.shape[axis..].into()),
+                &wires,
+            )?;
+        }
+        Ok(wires)
     }
 }
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct LayerLogSoftmax {
     axis: isize,
+    coerce_to_2d: bool,
 }
 
 impl_dyn_hash!(LayerLogSoftmax);
@@ -97,7 +108,8 @@ impl Expansion for LayerLogSoftmax {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let softmax = LayerSoftmax { axis: self.axis }.wire(name, target, inputs)?;
+        let softmax = LayerSoftmax { axis: self.axis, coerce_to_2d: self.coerce_to_2d }
+            .wire(name, target, inputs)?;
         target.wire_node(format!("{}.logsoftmax", name), tract_core::ops::math::ln(), &softmax)
     }
 }
@@ -105,6 +117,7 @@ impl Expansion for LayerLogSoftmax {
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct LayerSoftmax {
     axis: isize,
+    coerce_to_2d: bool,
 }
 
 impl_dyn_hash!(LayerSoftmax);
@@ -134,7 +147,8 @@ impl Expansion for LayerSoftmax {
         let input = inputs[0];
         let rank = target.outlet_fact(input)?.rank();
         let axis = if self.axis < 0 { rank as isize + self.axis } else { self.axis } as usize;
-        let reducing_axes = (axis..rank).collect::<TVec<usize>>();
+        let reducing_axes =
+            if self.coerce_to_2d { (axis..rank).collect::<TVec<usize>>() } else { tvec!(axis) };
         let maxes = target.wire_node(
             format!("{}.max", name),
             nn::Reduce::new(reducing_axes.clone(), nn::Reducer::Max),

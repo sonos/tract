@@ -22,7 +22,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
         Ok(expand(tract_hir::ops::activations::Clip::new(Some(0.0), Some(6.0))))
     });
     reg.insert("Sigmoid", |_, _| Ok(Box::new(tract_hir::ops::nn::sigmoid())));
-    reg.insert("Softmax", |_, _| Ok(expand(LayerSoftmax::new(1))));
+    reg.insert("Softmax", |_, _| Ok(expand(LayerSoftmax::new(1, true))));
     reg.insert("SpaceToBatchND", s2b::space_to_batch_nd);
     reg.insert("BatchToSpaceND", s2b::batch_to_space_nd);
 }
