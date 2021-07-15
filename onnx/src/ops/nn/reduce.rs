@@ -42,33 +42,54 @@ impl Expansion for Reduce13 {
     ) -> InferenceResult {
         check_input_arity(&inputs, 1 + self.have_axis_input as usize)?;
         check_output_arity(&outputs, 1)?;
-        s.given_2(&inputs[0].rank, &inputs[1].value, move |s, rank, axes| {
-            let mut axes = axes.cast_to::<i64>()?.as_slice::<i64>()?.to_vec();
-            if axes.len() == 0 && !self.noop_with_empty_axes {
-                axes = (0..rank as i64).collect()
-            };
-            if let tract_hir::ops::nn::Reducer::ArgMax(_) | tract_hir::ops::nn::Reducer::ArgMin(_) =
-                self.reducer
-            {
-                s.equals(&outputs[0].datum_type, DatumType::I64)?;
-            } else {
-                s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-            }
-            if self.keep_dims {
-                s.equals(&inputs[0].rank, &outputs[0].rank)?;
-            } else {
-                s.equals(inputs[0].rank.bex() - axes.len() as i64, &outputs[0].rank)?;
-            }
-            s.given(&inputs[0].shape, move |s, shape| {
+        if let tract_hir::ops::nn::Reducer::ArgMax(_) | tract_hir::ops::nn::Reducer::ArgMin(_) =
+            self.reducer
+        {
+            s.equals(&outputs[0].datum_type, DatumType::I64)?;
+        } else {
+            s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        }
+        if self.have_axis_input {
+            s.given_2(&inputs[0].rank, &inputs[1].value, move |s, rank, axes| {
+                let mut axes = axes.cast_to::<i64>()?.as_slice::<i64>()?.to_vec();
+                if axes.len() == 0 && !self.noop_with_empty_axes {
+                    axes = (0..rank as i64).collect()
+                };
                 let op = tract_hir::ops::nn::Reduce::new(
                     Some(axes.clone()),
                     self.keep_dims,
                     self.reducer,
                 );
-                let out_shape = op.output_shape(&*shape);
-                s.equals(&outputs[0].shape, out_shape)
+                if self.keep_dims {
+                    s.equals(&inputs[0].rank, &outputs[0].rank)?;
+                } else {
+                    s.equals(inputs[0].rank.bex() - axes.len() as i64, &outputs[0].rank)?;
+                }
+                s.given(&inputs[0].shape, move |s, shape| {
+                    let out_shape = op.output_shape(&*shape);
+                    s.equals(&outputs[0].shape, out_shape)
+                })
             })
-        })
+        } else {
+            s.given(&inputs[0].rank, move |s, rank| {
+                let axes =
+                    if self.noop_with_empty_axes { vec![] } else { (0..rank as i64).collect() };
+                let op = tract_hir::ops::nn::Reduce::new(
+                    Some(axes.clone()),
+                    self.keep_dims,
+                    self.reducer,
+                );
+                if self.keep_dims {
+                    s.equals(&inputs[0].rank, &outputs[0].rank)?;
+                } else {
+                    s.equals(inputs[0].rank.bex() - axes.len() as i64, &outputs[0].rank)?;
+                }
+                s.given(&inputs[0].shape, move |s, shape| {
+                    let out_shape = op.output_shape(&*shape);
+                    s.equals(&outputs[0].shape, out_shape)
+                })
+            })
+        }
     }
 
     fn wire(
@@ -77,16 +98,28 @@ impl Expansion for Reduce13 {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        if let Some(axes) = model.outlet_fact(inputs[1])?.konst.as_ref() {
-            let mut axes = axes.cast_to::<i64>()?.as_slice::<i64>()?.to_vec();
-            if axes.len() == 0 && !self.noop_with_empty_axes {
-                axes = (0..model.outlet_fact(inputs[0])?.rank() as i64).collect()
-            };
-            let op = tract_hir::ops::nn::Reduce::new(Some(axes), self.keep_dims, self.reducer);
-            op.wire(prefix, model, &inputs[0..1])
+        let axes: Vec<i64> = if self.have_axis_input {
+            model
+                .outlet_fact(inputs[1])?
+                .konst
+                .as_ref()
+                .context("expected axes as a constant")?
+                .as_slice::<i64>()?
+                .to_vec()
         } else {
-            bail!("Need axes to be a constant")
-        }
+            vec![]
+        };
+        let axes: Vec<i64> = if axes.len() == 0 {
+            if self.noop_with_empty_axes {
+                vec![]
+            } else {
+                (0..model.outlet_fact(inputs[0])?.rank()).map(|ax| ax as i64).collect()
+            }
+        } else {
+            axes
+        };
+        let op = tract_hir::ops::nn::Reduce::new(Some(axes), self.keep_dims, self.reducer);
+        op.wire(prefix, model, &inputs[0..1])
     }
 
     op_onnx!();
