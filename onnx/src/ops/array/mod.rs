@@ -3,6 +3,7 @@ mod nonzero;
 mod one_hot;
 mod pad;
 mod slice;
+mod split;
 mod squeeze;
 mod unsqueeze;
 
@@ -33,7 +34,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Shape", |_, _| Ok((expand(array::Shape::new(DatumType::I64)), vec![])));
     reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::I64)), vec![])));
     reg.insert("Slice", slice::slice);
-    reg.insert("Split", split);
+    reg.insert("Split", split::split);
     reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("Tile", |_, _| Ok((expand(array::Tile::default()), vec![])));
     reg.insert("Transpose", transpose);
@@ -128,15 +129,6 @@ pub fn scatter_elements(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     Ok((expand(array::ScatterElements::new(axis)), vec![]))
-}
-
-pub fn split(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let axis = node.get_attr_opt("axis")?.unwrap_or(0);
-    let split = node.get_attr_opt_vec("split")?;
-    Ok((expand(array::Split::new(axis, node.output.len(), split)), vec![]))
 }
 
 pub fn transpose(
