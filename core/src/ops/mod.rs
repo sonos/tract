@@ -313,7 +313,6 @@ impl std::fmt::Display for Box<dyn TypedOp> {
     }
 }
 
-
 #[derive(Debug, Clone, Hash, PartialEq)]
 pub enum AttrOrInput {
     Attr(Arc<Tensor>),
@@ -331,6 +330,12 @@ impl AttrOrInput {
     fn remove_input(&mut self, ix: usize) {
         if let AttrOrInput::Input(slot) = self {
             *slot = *slot - (*slot > ix) as usize;
+        }
+    }
+
+    fn insert_input(&mut self, ix: usize) {
+        if let AttrOrInput::Input(slot) = self {
+            *slot = *slot + (*slot >= ix) as usize;
         }
     }
 
@@ -365,5 +370,3 @@ impl<'a> From<&'a Arc<Tensor>> for AttrOrInput {
         AttrOrInput::Attr(t.clone())
     }
 }
-
-
