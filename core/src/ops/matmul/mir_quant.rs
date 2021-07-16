@@ -76,9 +76,7 @@ impl MatMulQParams {
                 model.outlet_fact(*input)?.konst.as_ref(),
             ) {
                 *new.iter_mut().nth(position).unwrap().1 = AttrOrInput::Attr(k.clone());
-                for qp in new.iter_mut() {
-                    qp.1.remove_input(position);
-                }
+                new.remove_input(inputs.len());
             } else {
                 inputs.push(*input)
             }
@@ -87,18 +85,14 @@ impl MatMulQParams {
     }
 
     pub fn remove_input(&mut self, ix: usize) {
-        for qp in self.iter_mut() {
-            if let AttrOrInput::Input(slot) = qp.1 {
-                *slot = *slot - (*slot > ix) as usize;
-            }
+        for (_, qp) in self.iter_mut() {
+            qp.remove_input(ix);
         }
     }
 
     pub fn insert_input(&mut self, ix: usize) {
-        for qp in self.iter_mut() {
-            if let AttrOrInput::Input(slot) = qp.1 {
-                *slot = *slot + (*slot >= ix) as usize;
-            }
+        for (_, qp) in self.iter_mut() {
+            qp.insert_input(ix)
         }
     }
 
@@ -880,5 +874,117 @@ mod test {
                 })
                 .boxed()
         }
+    }
+
+    fn setup_qparams(inputs: [usize; 6]) -> ([OutletId; 9], MatMulQParams, TypedModel, OutletId) {
+        let mut model = TypedModel::default();
+        let ids = [
+            model.add_source("a", TypedFact::dt_shape(i8::datum_type(), &[2, 3])).unwrap(),
+            model.add_source("b", TypedFact::dt_shape(i8::datum_type(), &[3, 4])).unwrap(),
+            model.add_const("bias", Tensor::zero_scalar::<i32>().unwrap()).unwrap(),
+            model.add_const("a0", Tensor::zero_scalar::<i8>().unwrap()).unwrap(),
+            model.add_const("a_scale", Tensor::zero_scalar::<f32>().unwrap()).unwrap(),
+            model.add_source("b0", TypedFact::dt_scalar(i8::datum_type())).unwrap(),
+            model.add_source("b_scale", TypedFact::dt_scalar(f32::datum_type())).unwrap(),
+            model.add_const("c0", Tensor::zero_scalar::<i8>().unwrap()).unwrap(),
+            model.add_const("c_scale", Tensor::zero_scalar::<f32>().unwrap()).unwrap(),
+        ];
+        let indices = inputs
+            .iter()
+            .enumerate()
+            .sorted_by(|(_, this), (_, other)| this.cmp(other))
+            .map(|(idx, _)| idx + 3)
+            .collect::<Vec<_>>();
+        let qparams = MatMulQParams {
+            a0: AttrOrInput::Input(indices[0]),
+            a_scale: AttrOrInput::Input(indices[1]),
+            b0: AttrOrInput::Input(indices[2]),
+            b_scale: AttrOrInput::Input(indices[3]),
+            c0: AttrOrInput::Input(indices[4]),
+            c_scale: AttrOrInput::Input(indices[5]),
+        };
+        let op = QMatMul {
+            a_trans: false,
+            b_trans: false,
+            c_trans: false,
+            output_type: i8::datum_type(),
+            params: qparams.clone(),
+        };
+        let node = model
+            .wire_node(
+                "qmatmul",
+                op,
+                &[
+                    ids[0],
+                    ids[1],
+                    ids[2],
+                    ids[inputs[0]],
+                    ids[inputs[1]],
+                    ids[inputs[2]],
+                    ids[inputs[3]],
+                    ids[inputs[4]],
+                    ids[inputs[5]],
+                ],
+            )
+            .unwrap()[0];
+
+        (ids, qparams, model, node)
+    }
+
+    #[test]
+    fn test_qparams_inline_ascending() {
+        let (ids, qparams, model, node) = setup_qparams([3, 4, 5, 6, 7, 8]);
+        let (new_ids, new_qparams) =
+            qparams.inline_static(&model, model.node(node.node)).unwrap().unwrap();
+        assert_eq!(new_ids, [ids[0], ids[1], ids[2], ids[5], ids[6]]);
+        assert!(matches!(
+            new_qparams,
+            MatMulQParams {
+                a0: AttrOrInput::Attr(_),
+                a_scale: AttrOrInput::Attr(_),
+                b0: AttrOrInput::Input(3),
+                b_scale: AttrOrInput::Input(4),
+                c0: AttrOrInput::Attr(_),
+                c_scale: AttrOrInput::Attr(_),
+            },
+        ));
+    }
+
+    #[test]
+    fn test_qparams_inline_descending() {
+        let (ids, qparams, model, node) = setup_qparams([8, 7, 6, 5, 4, 3]);
+        let (new_ids, new_qparams) =
+            qparams.inline_static(&model, model.node(node.node)).unwrap().unwrap();
+        assert_eq!(new_ids, [ids[0], ids[1], ids[2], ids[6], ids[5]]);
+        assert!(matches!(
+            new_qparams,
+            MatMulQParams {
+                a0: AttrOrInput::Attr(_),
+                a_scale: AttrOrInput::Attr(_),
+                b0: AttrOrInput::Input(4),
+                b_scale: AttrOrInput::Input(3),
+                c0: AttrOrInput::Attr(_),
+                c_scale: AttrOrInput::Attr(_),
+            },
+        ));
+    }
+
+    #[test]
+    fn test_qparams_inline_mixed() {
+        let (ids, qparams, model, node) = setup_qparams([5, 3, 8, 4, 7, 6]);
+        let (new_ids, new_qparams) =
+            qparams.inline_static(&model, model.node(node.node)).unwrap().unwrap();
+        assert_eq!(new_ids, [ids[0], ids[1], ids[2], ids[5], ids[6]]);
+        assert!(matches!(
+            new_qparams,
+            MatMulQParams {
+                a0: AttrOrInput::Attr(_),
+                a_scale: AttrOrInput::Attr(_),
+                b0: AttrOrInput::Input(3),
+                b_scale: AttrOrInput::Input(4),
+                c0: AttrOrInput::Attr(_),
+                c_scale: AttrOrInput::Attr(_),
+            },
+        ));
     }
 }
