@@ -1,5 +1,5 @@
 //! `Tensor`, tract main data object of interest.
-use crate::datum::{scale_by, Blob, ClampCast, Datum, DatumType};
+use crate::datum::{round_ties_to_even, scale_by, Blob, ClampCast, Datum, DatumType};
 use crate::dim::TDim;
 use crate::f16::f16;
 use crate::TVec;
@@ -868,7 +868,7 @@ impl Tensor {
                 }
 
                 macro_rules! q_f {
-                    ($source:ty, $dest:ty) => {
+                    ($source:ty, $dest:ty, $round:expr) => {
                         if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
                             && <$dest>::datum_type().unquantized() == dst_dt.unquantized()
                         {
@@ -878,7 +878,7 @@ impl Tensor {
                                 .for_each(|(&s, d)| {
                                     let s_float = (s as f32 - s_zp as f32) * s_scale as f32;
                                     let d_float = s_float as f32 / d_scale as f32 + d_zp as f32;
-                                    *d = d_float.clamp_cast();
+                                    *d = $round(d_float).clamp_cast();
                                 });
                             return Ok(Cow::Owned(result));
                         }
@@ -886,7 +886,7 @@ impl Tensor {
                 }
 
                 macro_rules! q_n {
-                    ($source:ty, $dest:ty) => {{
+                    (clamp $source:ty, $dest:ty) => {{
                         if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
                             && <$dest>::datum_type().unquantized() == dst_dt.unquantized()
                         {
@@ -895,6 +895,19 @@ impl Tensor {
                                 .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
                                 .for_each(|(&s, d)| {
                                     *d = s.clamp_cast();
+                                });
+                            return Ok(Cow::Owned(result));
+                        }
+                    }};
+                    ($source:ty, $dest:ty) => {{
+                        if <$source>::datum_type().unquantized() == self.datum_type().unquantized()
+                            && <$dest>::datum_type().unquantized() == dst_dt.unquantized()
+                        {
+                            self.as_slice_unchecked::<$source>()
+                                .iter()
+                                .zip(result.as_slice_mut_unchecked::<$dest>().iter_mut())
+                                .for_each(|(&s, d)| {
+                                    *d = s as $dest;
                                 });
                             return Ok(Cow::Owned(result));
                         }
@@ -909,24 +922,24 @@ impl Tensor {
                     q8_to_q8!(u8);
                 }
 
-                q_f!(f32, i8);
-                q_f!(f32, u8);
-                q_f!(i8, f32);
-                q_f!(u8, f32);
+                q_f!(f32, i8, round_ties_to_even);
+                q_f!(f32, u8, round_ties_to_even);
+                q_f!(i8, f32, |f| f);
+                q_f!(u8, f32, |f| f);
 
                 if dst_dt.is_quantized() && self.datum_type().is_quantized() {
-                    q_f!(u8, i8);
-                    q_f!(i8, u8);
+                    q_f!(u8, i8, round_ties_to_even);
+                    q_f!(i8, u8, round_ties_to_even);
                 }
 
                 q_n!(i8, i32);
                 q_n!(i8, u32);
                 q_n!(u8, i32);
                 q_n!(u8, u32);
-                q_n!(i32, i8);
-                q_n!(i32, u8);
-                q_n!(u32, i8);
-                q_n!(u32, u8);
+                q_n!(clamp i32, i8);
+                q_n!(clamp i32, u8);
+                q_n!(clamp u32, i8);
+                q_n!(clamp u32, u8);
                 q_n!(i8, i8);
                 q_n!(u8, u8);
                 q_n!(i32, i32);

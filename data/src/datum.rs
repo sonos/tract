@@ -298,13 +298,34 @@ impl std::str::FromStr for DatumType {
     }
 }
 
+const TOINT: f32 = 1.0f32 / std::f32::EPSILON;
+
+pub fn round_ties_to_even(x: f32) -> f32 {
+    let u = x.to_bits();
+    let e = u >> 23 & 0xff;
+    if e >= 0x7f + 23 {
+        return x;
+    }
+    let s = u >> 31;
+    let y = if s == 1 { x - TOINT + TOINT } else { x + TOINT - TOINT };
+    if y == 0.0 {
+        if s == 1 {
+            -0f32
+        } else {
+            0f32
+        }
+    } else {
+        y
+    }
+}
+
 #[inline]
 pub fn scale_by<T: Datum + AsPrimitive<f32>>(b: T, a: f32) -> T
 where
     f32: AsPrimitive<T>,
 {
     let b = b.as_();
-    ((b.abs() * a).round() * b.signum()).as_()
+    (round_ties_to_even(b.abs() * a) * b.signum()).as_()
 }
 
 pub trait ClampCast: PartialOrd + Copy + 'static {

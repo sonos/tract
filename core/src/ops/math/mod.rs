@@ -8,7 +8,7 @@ use num_traits::bounds::Bounded;
 use num_traits::int::PrimInt;
 use num_traits::{Float, Zero};
 use tract_num_traits::AsPrimitive;
-
+pub use tract_data::prelude::round_ties_to_even;
 
 bin_to_super_type!(add, Add,
     declutter_unary: declutter_unary_add,
@@ -464,26 +464,7 @@ element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
 };
 q: [i8, u8] => f32::round);
 
-const TOINT: f32 = 1.0f32 / std::f32::EPSILON;
 
-pub fn round_ties_to_even(x: f32) -> f32 {
-    let u = x.to_bits();
-    let e = u >> 23 & 0xff;
-    if e >= 0x7f + 23 {
-        return x;
-    }
-    let s = u >> 31;
-    let y = if s == 1 { x - TOINT + TOINT } else { x + TOINT - TOINT };
-    if y == 0.0 {
-        if s == 1 {
-            -0f32
-        } else {
-            0f32
-        }
-    } else {
-        y
-    }
-}
 
 
 element_wise!(q_scale, QScale {mult: i32, policy: RoundingPolicy, shift: usize},[i32] => |op, xs| {
