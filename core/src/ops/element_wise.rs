@@ -194,7 +194,6 @@ macro_rules! element_wise {
                            let dt = t.datum_type();
                            let t: &mut[$typ_dt] = t.as_slice_mut::<$typ_dt>()?;
                            let f: fn(&Self, &mut[$typ_dt], DatumType) -> TractResult<()> = |_, xs, dt| {
-                            use num_traits::AsPrimitive;
                             let (zp, scale) = dt.zp_scale();
                             xs.iter_mut().for_each(|x| {
                                 let x_f32 = (*x as f32 - zp as f32) * scale;
