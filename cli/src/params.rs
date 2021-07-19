@@ -1,3 +1,6 @@
+use reqwest::Url;
+use std::io::Read;
+use std::path::PathBuf;
 use std::str::FromStr;
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
@@ -21,6 +24,36 @@ use super::{info_usage, tensor};
 use super::model::Model;
 
 use std::convert::*;
+
+#[derive(Debug)]
+enum ModelLocation {
+    Fs(PathBuf),
+    Http(Url),
+}
+
+impl ModelLocation {
+    fn path(&self) -> Cow<std::path::Path> {
+        match &self {
+            &ModelLocation::Fs(p) => p.into(),
+            &ModelLocation::Http(u) => std::path::Path::new(u.path()).into(),
+        }
+    }
+
+    fn is_dir(&self) -> bool {
+        if let &ModelLocation::Fs(p) = &self {
+            p.is_dir()
+        } else {
+            false
+        }
+    }
+
+    fn read(&self) -> TractResult<Box<dyn Read>> {
+        match self {
+            ModelLocation::Fs(p) => Ok(Box::new(std::fs::File::open(p)?)),
+            ModelLocation::Http(u) => Ok(Box::new(reqwest::blocking::get(u.clone())?)),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum SomeGraphDef {
@@ -82,38 +115,41 @@ type TfExt = tract_tensorflow::model::TfModelExtensions;
 type TfExt = ();
 
 impl Parameters {
-    fn disco_model(matches: &clap::ArgMatches) -> CliResult<(std::path::PathBuf, bool)> {
-        let filename = matches.value_of("model").context("Model argument required")?;
-        let filename = std::path::PathBuf::from(filename);
-        let (filename, onnx_tc) = if !filename.exists() {
-            bail!("model not found: {:?}", filename)
-        } else if std::fs::metadata(&filename)?.is_dir() && filename.join("graph.nnef").exists() {
-            (filename, false)
-        } else if std::fs::metadata(&filename)?.is_dir() && filename.join("model.onnx").exists() {
-            (filename.join("model.onnx"), true)
+    fn disco_model(matches: &clap::ArgMatches) -> CliResult<(ModelLocation, bool)> {
+        let model = matches.value_of("model").context("Model argument required")?;
+        let path = std::path::PathBuf::from(model);
+        let (location, onnx_tc) = if model.starts_with("http://") {
+            (ModelLocation::Http(model.parse()?), false)
+        } else if !path.exists() {
+            bail!("model not found: {:?}", path)
+        } else if std::fs::metadata(&path)?.is_dir() && path.join("graph.nnef").exists() {
+            (ModelLocation::Fs(path), false)
+        } else if std::fs::metadata(&path)?.is_dir() && path.join("model.onnx").exists() {
+            (ModelLocation::Fs(path.join("model.onnx")), true)
         } else {
-            (filename, false)
+            (ModelLocation::Fs(path), false)
         };
-        Ok((filename, onnx_tc))
+        Ok((location, onnx_tc))
     }
 
     fn load_model(
         matches: &clap::ArgMatches,
         probe: Option<&Probe>,
-        filename: &std::path::Path,
+        location: &ModelLocation,
     ) -> CliResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
 
         let format = matches.value_of("format").unwrap_or(
-            if filename.extension().map(|s| s == "onnx").unwrap_or(false) {
+            if location.path().extension().map(|s| s == "onnx").unwrap_or(false) {
                 "onnx"
-            } else if filename.extension().map(|s| s == "raw" || s == "txt").unwrap_or(false) {
+            } else if location.path().extension().map(|s| s == "raw" || s == "txt").unwrap_or(false)
+            {
                 "kaldi"
-            } else if filename.is_dir()
-                || filename.to_string_lossy().ends_with(".tar")
-                || filename.to_string_lossy().ends_with(".tar.gz")
-                || filename.extension().map(|s| s == "tgz").unwrap_or(false)
+            } else if location.is_dir()
+                || location.path().to_string_lossy().ends_with(".tar")
+                || location.path().to_string_lossy().ends_with(".tar.gz")
+                || location.path().extension().map(|s| s == "tgz").unwrap_or(false)
             {
                 "nnef"
             } else {
@@ -125,7 +161,7 @@ impl Parameters {
             "kaldi" => {
                 let kaldi = tract_kaldi::kaldi();
                 info_usage("loaded framework (kaldi)", probe);
-                let mut graph = kaldi.proto_model_for_path(&filename)?;
+                let mut graph = kaldi.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
                 if let Some(i) = matches.value_of("kaldi_adjust_final_offset") {
                     graph.adjust_final_offset = i.parse()?;
@@ -139,14 +175,19 @@ impl Parameters {
             }
             "nnef" => {
                 let nnef = super::nnef(&matches);
-                let proto_model = if std::fs::metadata(filename)?.is_dir() {
-                    nnef.proto_model_for_path(filename)?
-                } else if filename.to_string_lossy().ends_with("gz") {
-                    let file = std::fs::File::open(&filename)?;
-                    nnef.proto_model_for_read(&mut flate2::read::GzDecoder::new(file))?
+                let proto_model = if location.is_dir() {
+                    nnef.proto_model_for_read(&mut *location.read()?)?
+                } else if location
+                    .path()
+                    .extension()
+                    .map(|e| e.to_string_lossy().ends_with("gz"))
+                    .unwrap_or(false)
+                {
+                    nnef.proto_model_for_read(&mut flate2::read::GzDecoder::new(
+                        &mut *location.read()?,
+                    ))?
                 } else {
-                    let mut file = std::fs::File::open(&filename)?;
-                    nnef.proto_model_for_read(&mut file)?
+                    nnef.proto_model_for_read(&mut *location.read()?)?
                 };
                 info_usage("proto model loaded", probe);
                 if need_graph {
@@ -173,7 +214,7 @@ impl Parameters {
             "onnx" => {
                 let onnx = tract_onnx::onnx();
                 info_usage("loaded framework (onnx)", probe);
-                let graph = onnx.proto_model_for_path(&filename)?;
+                let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
                 let parsed = onnx.parse(&graph)?;
                 if need_graph {
@@ -190,7 +231,7 @@ impl Parameters {
             "tf" => {
                 let tf = tract_tensorflow::tensorflow();
                 info_usage("loaded framework (tf)", probe);
-                let mut graph = tf.proto_model_for_path(&filename)?;
+                let mut graph = tf.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
                 if matches.is_present("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
@@ -352,7 +393,7 @@ impl Parameters {
         raw_model: &mut Graph<F, O>,
         assertions: &mut Assertions,
         matches: &clap::ArgMatches,
-        filename: &std::path::Path,
+        location: &ModelLocation,
         onnx_tc: bool,
     ) -> CliResult<HashMap<String, Vec<Arc<Tensor>>>>
     where
@@ -465,7 +506,7 @@ impl Parameters {
                 raw_model,
                 &mut input_values,
                 assertions,
-                filename.parent().unwrap().join("test_data_set_0").as_path(),
+                location.path().parent().unwrap().join("test_data_set_0").as_path(),
             )?
         }
 
@@ -569,10 +610,10 @@ impl Parameters {
                     }
                     if stop_at == $name {
                         return Ok((
-                            $to.take().expect("returnable model"),
-                            pulsed_model,
-                            reference_model,
-                        ));
+                                $to.take().expect("returnable model"),
+                                pulsed_model,
+                                reference_model,
+                                ));
                     }
                 } else {
                     debug!("Skip stage {}", $name);
@@ -861,7 +902,12 @@ impl Assertions {
             if let Some(values) = sub.values_of("assert-output") {
                 for (ix, o) in values.enumerate() {
                     let (name, fact) = tensor::for_string(o)?;
-                    info!("Output assertion #{}: (named: {}) {:?}", ix, name.as_deref().unwrap_or(""), fact);
+                    info!(
+                        "Output assertion #{}: (named: {}) {:?}",
+                        ix,
+                        name.as_deref().unwrap_or(""),
+                        fact
+                    );
                     let oix = if let Some(name) = name {
                         output_names.iter().position(|names| names.contains(&name)).unwrap_or(ix)
                     } else {
