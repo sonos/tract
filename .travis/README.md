@@ -77,3 +77,41 @@ then
 systemctl enable minion.timer
 systemctl start minion.timer
 ```
+
+# Setup file server (http only)
+
+
+```
+sudo apt install nginx awscli vim
+```
+
+* setup aws credentials (.aws/credentials)
+* in $HOME/sync-data.sh:
+
+```
+
+```
+* chmod +x $HOME/sync-data.sh
+* run it: ./sync-data.sh
+* `crontab -e`
+
+```
+*/5 * * * * $HOME/sync-data.sh
+```
+
+
+* `sudo vi /etc/nginx/sites-available/models`
+
+```
+server {
+    root /home/raspbian/models/;
+
+    location /models {
+    }
+}
+```
+
+* `sudo ln -s /etc/nginx/sites-available/models /etc/nginx/sites-enabled/`
+* `sudo rm /etc/nginx/sites-enabled/default`
+* `sudo /etc/init.d/nginx reload`
+* test : `curl -I http://localhost/hey_snips_v1.pb`
