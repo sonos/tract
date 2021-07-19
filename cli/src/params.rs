@@ -118,7 +118,7 @@ impl Parameters {
     fn disco_model(matches: &clap::ArgMatches) -> CliResult<(ModelLocation, bool)> {
         let model = matches.value_of("model").context("Model argument required")?;
         let path = std::path::PathBuf::from(model);
-        let (location, onnx_tc) = if model.starts_with("http://") {
+        let (location, onnx_tc) = if model.starts_with("http://") || model.starts_with("https://") {
             (ModelLocation::Http(model.parse()?), false)
         } else if !path.exists() {
             bail!("model not found: {:?}", path)
