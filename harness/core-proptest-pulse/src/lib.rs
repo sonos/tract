@@ -12,7 +12,7 @@ use tract_ndarray::*;
 use tract_pulse::internal::*;
 
 mod conv_plus_conv;
-// mod deconv;
+mod deconv;
 mod delay_plus_pool;
 mod pad_plus_conv;
 

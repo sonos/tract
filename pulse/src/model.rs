@@ -121,7 +121,7 @@ impl
 }
 
 #[derive(Debug, Clone, Hash)]
-struct PulseWrappingOp(Box<dyn TypedOp>);
+pub(crate) struct PulseWrappingOp(pub Box<dyn TypedOp>);
 
 impl_dyn_hash!(PulseWrappingOp);
 
