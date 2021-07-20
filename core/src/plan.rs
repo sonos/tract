@@ -441,6 +441,6 @@ where
         None => node.op().eval(input),
     }
     .with_context(|| format!("Evaluating {}", node));
-    eprintln!("{} {:?}", node, r);
+//    eprintln!("{} {:?}", node, r);
     r
 }

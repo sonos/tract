@@ -4,6 +4,7 @@ use tract_nnef::internal::*;
 mod macros;
 
 mod concat;
+mod deconv_delay;
 mod delay;
 mod pad;
 
@@ -16,6 +17,7 @@ pub mod prelude {
 }
 
 pub mod ops {
+    pub use super::deconv_delay::DeconvDelay;
     pub use super::delay::Delay;
     pub use super::pad::PulsePad;
 }
