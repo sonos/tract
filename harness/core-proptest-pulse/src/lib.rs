@@ -12,6 +12,7 @@ use tract_ndarray::*;
 use tract_pulse::internal::*;
 
 mod conv_plus_conv;
+// mod deconv;
 mod delay_plus_pool;
 mod pad_plus_conv;
 
@@ -21,24 +22,26 @@ fn setup_test_logger() {
 }
 
 fn proptest_regular_against_pulse(
-    model: InferenceModel,
+    model: TypedModel,
     pulse: usize,
     input_array: ArrayD<f32>,
     axis: usize,
 ) -> TestCaseResult {
     setup_test_logger();
-    let mut ref_model = model.clone();
     let s = stream_symbol();
-    debug!("Run reference");
-    ref_model
-        .set_input_fact(0, InferenceFact::dt_shape(f32::datum_type(), input_array.shape()))
+
+    let len = input_array.shape()[axis];
+    let model = model.declutter().unwrap();
+    let runnable = model
+        .clone()
+        .concretize_dims(&SymbolValues::default().with(s, len as i64))
+        .unwrap()
+        .into_runnable()
         .unwrap();
-    let input = Tensor::from(input_array.clone());
-    let plan = SimplePlan::new(&ref_model).unwrap();
-    let outputs = plan.run(tvec!(input.clone())).unwrap();
+    dbg!(&runnable);
+    let outputs = runnable.run(tvec!(input_array.clone().into_tensor())).unwrap();
 
     debug!("Build pulsing model");
-    let model = model.into_typed().unwrap();
     dbg!(&model);
     let pulsed = PulsedModel::new(&model, pulse).unwrap();
     dbg!(&pulsed);
@@ -122,6 +125,7 @@ proptest! {
             .unwrap();
         let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
         model.set_output_outlets(&slice).unwrap();
+        let model = model.into_typed().unwrap();
 
         let input = Array1::range(1.0f32, full_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -137,6 +141,7 @@ proptest! {
         let pad = model.wire_node("pad",Pad::new(vec![(begin as _, end as _)],
             PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
         model.set_output_outlets(&pad).unwrap();
+        let model = model.into_typed().unwrap();
 
         let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -160,6 +165,7 @@ fn test_simple_conv() {
 
     model.wire_node("conv", expand(Conv::default()), &[a, ker]).unwrap();
     model.auto_outputs().unwrap();
+    let model = model.into_typed().unwrap();
 
     let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]);
     proptest_regular_against_pulse(model, 4, input.into_dyn(), 2).unwrap();
@@ -174,6 +180,7 @@ fn test_crop_after_1() {
         .unwrap();
     model.wire_node("slice", Slice::new(0, 0, 0), &[a]).unwrap();
     model.auto_outputs().unwrap();
+    let model = model.into_typed().unwrap();
 
     let input = arr1(&[1.0]);
     proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
@@ -194,6 +201,7 @@ fn test_pad_after_1() {
         )
         .unwrap();
     model.auto_outputs().unwrap();
+    let model = model.into_typed().unwrap();
 
     let input = arr1(&[]);
     proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
@@ -214,6 +222,7 @@ fn test_pad_before_1() {
         )
         .unwrap();
     model.auto_outputs().unwrap();
+    let model = model.into_typed().unwrap();
 
     let input = arr1(&[1.0]);
     proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
@@ -234,6 +243,7 @@ fn test_pad_before_2() {
         )
         .unwrap();
     model.auto_outputs().unwrap();
+    let model = model.into_typed().unwrap();
 
     let input = arr1(&[1.0, 2.0]);
     proptest_regular_against_pulse(model, 2, input.into_dyn(), 0).unwrap();

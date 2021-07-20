@@ -83,6 +83,7 @@ impl ConvPlusConvProblem {
         let id = self.conv1.chain("conv1", &mut model, input);
         let _id = self.conv2.chain("conv2", &mut model, id);
         model.auto_outputs().unwrap();
+        let model = model.into_typed().unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
     }
 }
