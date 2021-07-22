@@ -183,9 +183,9 @@ case "$PLATFORM" in
         ;;
 esac
 
-# if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
-# then
-     export RUSTC_TRIPLE
-     TASK_NAME=`.travis/make_bundle.sh`
-#     aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
-# fi
+if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
+then
+    export RUSTC_TRIPLE
+    TASK_NAME=`.travis/make_bundle.sh`
+    aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
+fi
