@@ -21,9 +21,8 @@ case $CACHEDIR in
       [ -d $CACHEDIR ] || mkdir $CACHEDIR
       aws s3 sync s3://tract-ci-builds/model $CACHEDIR
       (cd $CACHEDIR
-
-      [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
-      [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
+          [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+          [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
       )
     ;;
 esac
