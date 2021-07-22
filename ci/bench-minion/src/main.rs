@@ -28,6 +28,8 @@ struct Config {
     s3_logs: String,
     platform: String,
     graphite: Option<Graphite>,
+    #[serde(default = "default_idle_sleep_secs")]
+    idle_sleep_secs: usize,
 }
 
 #[derive(Deserialize, Debug)]
@@ -57,6 +59,10 @@ fn default_logs() -> String {
     "logs".to_string()
 }
 
+fn default_idle_sleep_secs() -> usize {
+    5 * 60
+}
+
 fn deser_region<'de, D>(d: D) -> Result<Region, D::Error>
 where
     D: Deserializer<'de>,
@@ -81,12 +87,11 @@ fn read_config(path: impl AsRef<Path>) -> Result<Config> {
 }
 
 fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> Result<()> {
-    log::info!("Performing {}", task.key);
+    log::info!("Retrieving task {}", task.key);
     let task_dir = config.workdir.join("current");
     if task_dir.exists() {
         std::fs::remove_dir_all(&task_dir)?;
     }
-    log::info!("Retrieving task...");
     std::fs::create_dir_all(&task_dir)?;
     let (reader, mut writer) = pipe::pipe_buffered();
     let task_dir_2 = task_dir.clone();
@@ -107,12 +112,13 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
             vars.insert(pair.next().unwrap().to_string(), pair.next().unwrap().to_string());
         }
     }
-    log::info!("Vars: {:?}", vars);
-    let status = std::process::Command::new("sh")
-        .current_dir(task_dir.join(task_name))
+    let mut cmd = std::process::Command::new("sh");
+    cmd.current_dir(task_dir.join(task_name))
+        .envs(&vars)
         .arg("-c")
-        .arg("pwd ; . ./vars ; ./entrypoint.sh 2> stderr.log > stdout.log")
-        .status()?;
+        .arg("./entrypoint.sh 2> stderr.log > stdout.log");
+    log::info!("Running {:?}", cmd);
+    let status = cmd.status()?;
     log::info!("Script ran: {:?}", status);
     for log in &["stderr.log", "stdout.log"] {
         let local_path = task_dir.join(task_name).join(log);
@@ -135,7 +141,10 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
     let metrics_files = task_dir.join(task_name).join("metrics");
     if metrics_files.exists() {
         if let Some(gr) = &config.graphite {
-            let prefix = format!("{}.{}.{}.{}", gr.prefix, config.platform, config.id, vars["TRAVIS_BRANCH_SANE"]);
+            let prefix = format!(
+                "{}.{}.{}.{}",
+                gr.prefix, config.platform, config.id, vars["TRAVIS_BRANCH_SANE"]
+            );
             let mut socket = TcpStream::connect((gr.host.clone(), gr.port))?;
             let ts = &vars["TIMESTAMP"];
             for line in std::fs::read_to_string(metrics_files)?.lines() {
@@ -168,7 +177,6 @@ fn consider_task(config: &Config, bucket: &Bucket, task: &Object) -> Result<bool
 }
 
 fn run(config: &Config) -> Result<bool> {
-    log::info!("Running...");
     std::thread::sleep(Duration::from_secs(10));
     let credentials = Credentials::default().unwrap();
     let bucket = Bucket::new(&config.s3_bucket, config.region.clone(), credentials)?;
@@ -197,12 +205,13 @@ fn main_loop() -> Result<()> {
         std::fs::File::create(&lock).with_context(|| format!("Creating lock file {:?}", lock))?;
     loop {
         if let Ok(_) = lock.try_lock_exclusive() {
-            log::info!("Lock obtained, starting for good.");
+            log::info!("Lock taken, fetching task list");
             match run(&config) {
                 Ok(done_something) => {
                     if !done_something {
-                        log::info!("Nothing to do, sleeping a while");
-                        std::thread::sleep(Duration::from_secs(5 * 60));
+                        let dur = Duration::from_secs(config.idle_sleep_secs as _);
+                        log::info!("No task left, sleeping for {:?}", dur);
+                        std::thread::sleep(dur);
                     }
                 }
                 Err(e) => {
@@ -210,7 +219,7 @@ fn main_loop() -> Result<()> {
                 }
             }
         } else {
-            log::info!("Already locked, bailing out...");
+            log::info!("Already locked, retry in 1 sec...");
             std::thread::sleep(Duration::from_secs(1));
         };
     }
