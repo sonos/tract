@@ -5,7 +5,7 @@ set -ex
 start=$(date +%s)
 
 ROOT=`pwd`
-CACHEDIR=${CACHEDIR:-$HOME/.cache}
+
 if [ -x tract ]
 then
     TRACT=./tract
@@ -14,39 +14,26 @@ else
     TRACT=./target/release/tract
 fi
 
-[ -e vars ] && . ./vars
+CACHEDIR=${CACHEDIR:-$HOME/.cache}
+case $CACHEDIR in
+  "http"*) ;;
+  *) 
+      [ -d $CACHEDIR ] || mkdir $CACHEDIR
+      aws s3 sync s3://tract-ci-builds/model $CACHEDIR
+      (cd $CACHEDIR
 
-[ -d $CACHEDIR ] || mkdir $CACHEDIR
-aws s3 sync s3://tract-ci-builds/model $CACHEDIR
-(cd $CACHEDIR
-chmod +x tflite*
-[ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
-[ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
-)
+      [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+      [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
+      )
+    ;;
+esac
+
+
 
 touch metrics
 if [ -e sizes ]
 then
     cat sizes >> metrics
-fi
-
-if [ -e benches ]
-then
-    mkdir -p target/criterion
-    for bench in benches/*
-    do
-        $bench --bench
-    done
-    for bench in `find target/criterion -path "*/new/*" -name raw.csv`
-    do
-        group=`cat $bench | tail -1 | cut -d , -f 1 | cut -d . -f 1`
-        func=`cat $bench | tail -1 | cut -d , -f 2 | cut -d . -f 1`
-        value=`cat $bench | tail -1 | cut -d , -f 3 | cut -d . -f 1`
-        nanos=`cat $bench | tail -1 | cut -d , -f 6 | cut -d . -f 1`
-        iter=`cat $bench | tail -1 | cut -d , -f 8 | cut -d . -f 1`
-        time=$((nanos/iter))
-        echo microbench.${group}.${func:-none}.${value:-none} $(($nanos/$iter)) >> metrics
-    done
 fi
 
 net_bench() {
@@ -62,7 +49,7 @@ net_bench() {
 
     for stage in model_ready before_optimize
     do
-        pattern=$(echo $stage | tr "_-" "..")
+        pattern=$(echo $stage | sed 's/[_-]/./g')
         v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
         echo net.$net.time_to_$stage.$pb $v >> metrics
         v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
@@ -126,74 +113,6 @@ net_bench speaker_id pulse8 $CACHEDIR/speaker-id-2019-03.onnx -i 1,S,40,f32 --ou
 
 net_bench voicecom_fake_quant 2sec $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb -i 200,10,f32
 net_bench voicecom_float 2sec $CACHEDIR/snips-voice-commands-cnn-float.pb -i 200,10,f32
-
-if [ -e /etc/issue ] && ( cat /etc/issue | grep Raspbian )
-then
-    cpu=`awk '/^Revision/ {sub("^1000", "", $3); print $3}' /proc/cpuinfo`
-    # raspi 3 can run official tflite builds
-    if [ "$cpu" = "a22082" ]
-    then
-        tflites="rpitools official_rpi rpitools_2019_03 official_rpi_2019_03"
-    else
-        tflites="rpitools rpitools_2019_03"
-    fi
-elif [ -e /etc/issue ] && ( cat /etc/issue | grep i.MX )
-then
-    if [ `uname -m` = "aarch64" ]
-    then
-        tflites="aarch64_unknown_linux_gnu aarch64_unknown_linux_gnu_2019_03"
-    elif [ `uname -m` = "armv7l" ]
-    then
-        tflites="official_rpi official_rpi_2019_03"
-    fi
-elif [ -e /etc/issue ] && ( cat /etc/issue | grep buster )
-then
-    if [ `uname -m` = "aarch64" ]
-    then
-        tflites="aarch64_unknown_linux_gnu aarch64_unknown_linux_gnu_2019_03"
-    fi
-fi
-
-for tflite in $tflites
-do
-    $CACHEDIR/tflite_benchmark_model_$tflite \
-        --graph=$CACHEDIR/inception_v3_2016_08_28_frozen.tflite \
-        --num_runs=1 \
-        2> bench
-    usec=`cat bench | tail -1 | sed "s/.* //"`
-    sec=`python -c "print(float($usec) / 1000000)"`
-    echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
-
-    $CACHEDIR/tflite_benchmark_model_$tflite \
-        --graph=$CACHEDIR/hey_snips_v1.tflite \
-        2> bench
-    usec=`cat bench | tail -1 | sed "s/.* //"`
-    sec=`python -c "print(float($usec) / 1000000)"`
-    echo net.hey_snips_v1.tflite_$tflite.400ms $sec >> metrics
-
-    $CACHEDIR/tflite_benchmark_model_$tflite \
-        --graph=$CACHEDIR/ARM-ML-KWS-CNN-M.tflite \
-        2> bench
-    usec=`cat bench | tail -1 | sed "s/.* //"`
-    sec=`python -c "print(float($usec) / 1000000)"`
-    echo net.arm_ml_kws_cnn_m.tflite_$tflite.pass $sec >> metrics
-
-    $CACHEDIR/tflite_benchmark_model_$tflite \
-        --graph=$CACHEDIR/mobilenet_v1_1.0_224.tflite \
-        --num_runs=1 \
-        2> bench
-    usec=`cat bench | tail -1 | sed "s/.* //"`
-    sec=`python -c "print(float($usec) / 1000000)"`
-    echo net.mobilenet_v1.tflite_$tflite.pass $sec >> metrics
-
-    $CACHEDIR/tflite_benchmark_model_$tflite \
-        --graph=$CACHEDIR/mobilenet_v2_1.4_224.tflite \
-        --num_runs=1 \
-    2> bench
-    usec=`cat bench | tail -1 | sed "s/.* //"`
-    sec=`python -c "print(float($usec) / 1000000)"`
-    echo net.mobilenet_v2.tflite_$tflite.pass $sec >> metrics
-done
 
 end=$(date +%s)
 
