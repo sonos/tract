@@ -38,7 +38,7 @@ then
     else
         NAME=linux
     fi
-    VERSION=0.4.38
+    VERSION=0.4.61
     wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
     tar vzxf cargo-dinghy.tgz --strip-components 1
     mv cargo-dinghy $HOME/.cargo/bin
@@ -95,13 +95,16 @@ case "$PLATFORM" in
         cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg
         ;;
 
-    "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf")
+    "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
+    "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" )
+
         case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
                 export ARCH=aarch64
                 export QEMU_ARCH=aarch64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-gnu
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
+                export TARGET_CC=$DEBIAN_TRIPLE-gcc
                 ;;
             "armv6vfp-unknown-linux-gnueabihf")
                 export ARCH=armv6vfp
@@ -109,6 +112,7 @@ case "$PLATFORM" in
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
+                export TARGET_CC=$DEBIAN_TRIPLE-gcc
                 ;;
             "armv7-unknown-linux-gnueabihf")
                 export ARCH=armv7
@@ -116,7 +120,26 @@ case "$PLATFORM" in
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
+                export TARGET_CC=$DEBIAN_TRIPLE-gcc
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
+                ;;
+            "aarch64-unknown-linux-musl")
+                export ARCH=aarch64
+                export QEMU_ARCH=aarch64
+                export RUSTC_TRIPLE=$ARCH-unknown-linux-musl
+                export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
+                [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
+                export TARGET_CC=aarch64-linux-musl-gcc
+                ;;
+            "armv7-unknown-linux-musl")
+                export ARCH=armv7
+                export QEMU_ARCH=arm
+                export RUSTC_TRIPLE=armv7-unknown-linux-musleabihf
+                export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
+                export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
+                [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/armv7l-linux-musleabihf-cross.tgz | tar zx
+                export TARGET_CFLAGS="-mfpu=neon"
+                export TARGET_CC=armv7l-linux-musleabihf-gcc
                 ;;
             *)
                 echo "unsupported platform $PLATFORM"
@@ -124,10 +147,16 @@ case "$PLATFORM" in
                 ;;
         esac
 
-        export TARGET_CC=$DEBIAN_TRIPLE-gcc
-
         mkdir -p $ROOT/target/$RUSTC_TRIPLE
-        echo "[platforms.$PLATFORM]\ndeb_multiarch='$DEBIAN_TRIPLE'\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
+        echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'" > .dinghy.toml
+        if [ -n "$DEBIAN_TRIPLE" ]
+        then
+            echo "deb_multiarch='$DEBIAN_TRIPLE'" >> .dinghy.toml
+        fi
+        if [ -n "$CUSTOM_TC" ]
+        then
+            echo "toolchain='$CUSTOM_TC'" >> .dinghy.toml
+        fi
         echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
 
         echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu
@@ -135,7 +164,11 @@ case "$PLATFORM" in
 
         DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
 
-        $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
+        if [ -n "$DEBIAN_TRIPLE" ]
+        then
+            $SUDO apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE 
+        fi
+        $SUDO apt-get -y install qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
         qemu-$QEMU_ARCH --version
         cargo dinghy --platform $PLATFORM test --release -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
@@ -143,6 +176,7 @@ case "$PLATFORM" in
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
         ;;
+
     "wasm32-unknown-unknown")
         rustup target add wasm32-unknown-unknown
         cargo check --target wasm32-unknown-unknown -p tract-onnx -p tract-tensorflow
