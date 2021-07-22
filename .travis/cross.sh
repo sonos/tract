@@ -104,7 +104,6 @@ case "$PLATFORM" in
                 export QEMU_ARCH=aarch64
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-gnu
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
-                export TARGET_CC=$DEBIAN_TRIPLE-gcc
                 ;;
             "armv6vfp-unknown-linux-gnueabihf")
                 export ARCH=armv6vfp
@@ -112,7 +111,6 @@ case "$PLATFORM" in
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
-                export TARGET_CC=$DEBIAN_TRIPLE-gcc
                 ;;
             "armv7-unknown-linux-gnueabihf")
                 export ARCH=armv7
@@ -129,7 +127,6 @@ case "$PLATFORM" in
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-musl
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
                 [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
-                export TARGET_CC=aarch64-linux-musl-gcc
                 ;;
             "armv7-unknown-linux-musl")
                 export ARCH=armv7
@@ -139,7 +136,6 @@ case "$PLATFORM" in
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
                 [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/armv7l-linux-musleabihf-cross.tgz | tar zx
                 export TARGET_CFLAGS="-mfpu=neon"
-                export TARGET_CC=armv7l-linux-musleabihf-gcc
                 ;;
             *)
                 echo "unsupported platform $PLATFORM"
@@ -187,9 +183,9 @@ case "$PLATFORM" in
         ;;
 esac
 
-if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
-then
-    export RUSTC_TRIPLE
-    TASK_NAME=`.travis/make_bundle.sh`
-    aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
-fi
+# if [ -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
+# then
+     export RUSTC_TRIPLE
+     TASK_NAME=`.travis/make_bundle.sh`
+#     aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
+# fi
