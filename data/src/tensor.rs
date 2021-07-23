@@ -1,5 +1,5 @@
 //! `Tensor`, tract main data object of interest.
-use crate::datum::{round_ties_to_even, scale_by, Blob, ClampCast, Datum, DatumType};
+use crate::datum::{round_ties_to_even, scale_by, Blob, ClampCast, Datum, DatumType, QParams};
 use crate::dim::TDim;
 use crate::f16::f16;
 use crate::TVec;
@@ -1098,6 +1098,25 @@ impl Tensor {
 
     pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> anyhow::Result<view::TensorView> {
         view::TensorView::at_prefix(self, prefix)
+    }
+
+    /// Offsets the tensor as an i8 type if it's an u8 type, otherwise passes it unchanged.
+    pub fn offset_u8_as_i8(self: &Arc<Self>) -> Arc<Self> {
+        let mut t = if let DatumType::U8 = self.dt.unquantized() {
+            self.to_array_view::<u8>().unwrap().mapv(|v| v.wrapping_sub(128) as i8).into_tensor()
+        } else {
+            return self.clone();
+        };
+
+        if let DatumType::QU8(qp) = self.dt {
+            if let QParams::ZpScale { zero_point, scale } = qp {
+                t.dt = DatumType::QI8(QParams::ZpScale { zero_point: zero_point - 128, scale });
+            } else {
+                t.dt = DatumType::QI8(qp);
+            }
+        }
+
+        t.into_arc_tensor()
     }
 }
 

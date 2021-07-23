@@ -251,7 +251,7 @@ macro_rules! element_wise {
 
 #[macro_export]
 macro_rules! element_wise_oop {
-    ($func:ident, $Op:ident $({$( $(#[$meta: meta])? $var: ident : $var_typ: path),*})?,
+    ($(#[$fmeta:meta])* $func:ident, $Op:ident $({$( $(#[$meta: meta])? $var: ident : $var_typ: path),*})?,
         $( [$($typ:ident),*] => $typ_dst:ident $f:expr ),*
         $(; cost: $cost:expr )?
         $(; info: $info:expr )?
@@ -318,6 +318,7 @@ macro_rules! element_wise_oop {
             }
             )?
         }
+        $(#[$fmeta])*
         pub fn $func($( $($var: $var_typ),* )?) -> $crate::ops::element_wise::ElementWiseOp {
             $crate::ops::element_wise::ElementWiseOp(Box::new($Op { $( $($var),* )? } ))
         }

@@ -446,3 +446,18 @@ pub mod scale {
         }
     }
 }
+
+/// Offsets u8 integers as i8 integers.
+pub(crate) fn offset_u8_as_i8_elementwise(x: u8) -> i8 {
+    x.wrapping_sub(128) as i8
+}
+
+element_wise_oop!(
+    /// Offsets nodes of u8 type to i8 type elementwise.
+    offset_u8_as_i8,
+    OffsetU8asI8,
+    [u8] => i8 |_, xs, ys| {
+        xs.iter().zip(ys.iter_mut()).for_each(|(x, y)| *y = offset_u8_as_i8_elementwise(*x));
+        Ok(())
+    }
+);
