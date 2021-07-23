@@ -108,6 +108,14 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
     std::fs::create_dir_all(&task_dir)?;
     let (reader, mut writer) = pipe::pipe_buffered();
     let task_dir_2 = task_dir.clone();
+    let (watchdog_send, watchdog_recv) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(60));
+        if watchdog_recv.try_recv() != Ok(()) {
+            log::error!("S3/TLS timeout, take a red pill.");
+            std::process::exit(12);
+        }
+    });
     let thr = std::thread::spawn(move || {
         let uncompressed = flate2::read::GzDecoder::new(reader);
         tar::Archive::new(uncompressed).unpack(task_dir_2)
@@ -116,6 +124,7 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
     if thr.join().is_err() {
         anyhow::bail!("Failed to untar")
     }
+    watchdog_send.send(())?;
     let vars_file = task_dir.join(task_name).join("vars");
     log::info!("Reading vars...");
     let mut vars: HashMap<String, String> = HashMap::default();
