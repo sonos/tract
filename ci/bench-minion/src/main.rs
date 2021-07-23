@@ -139,10 +139,8 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
         }
     }
     let metrics_files = task_dir.join(task_name).join("metrics");
-    dbg!(&metrics_files);
     if metrics_files.exists() {
         if let Some(gr) = &config.graphite {
-            dbg!(&gr);
             let prefix = format!(
                 "{}.{}.{}.{}",
                 gr.prefix, config.platform, config.id, vars["TRAVIS_BRANCH_SANE"]
@@ -150,8 +148,7 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
             let mut socket = TcpStream::connect((gr.host.clone(), gr.port))?;
             let ts = &vars["TIMESTAMP"];
             for line in std::fs::read_to_string(metrics_files)?.lines() {
-                eprintln!("{}.{} {}", prefix, line, ts);
-                writeln!(socket, "{}{} {}", prefix, line, ts)?;
+                writeln!(socket, "{}.{} {}", prefix, line, ts)?;
             }
         }
     }
