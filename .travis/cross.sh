@@ -55,7 +55,6 @@ case "$PLATFORM" in
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > $HOME/.dinghy.toml
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
-        cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
         ;;
 
     "aarch64-linux-android"|"armv7-linux-androideabi"|"i686-linux-android"|"x86_64-linux-android")
@@ -170,7 +169,6 @@ case "$PLATFORM" in
         cargo dinghy --platform $PLATFORM test --release -p tract-linalg $DINGHY_TEST_ARGS -- --nocapture
         cargo dinghy --platform $PLATFORM test --release -p tract-core $DINGHY_TEST_ARGS
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
-        cargo dinghy --platform $PLATFORM bench --no-run -p tract-linalg
         ;;
 
     "wasm32-unknown-unknown")
