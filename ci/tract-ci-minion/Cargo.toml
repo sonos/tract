@@ -1,5 +1,5 @@
 [package]
-name = "bench-minion"
+name = "tract-ci-minion"
 version = "0.1.0"
 edition = "2018"
 
