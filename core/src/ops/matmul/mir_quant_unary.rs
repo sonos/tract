@@ -2,8 +2,7 @@ use ops::matmul::mir_quant::wire_matmul_quant;
 
 use crate::internal::*;
 use crate::ops;
-use crate::ops::matmul::mir_quant::combine_scales;
-use crate::ops::matmul::mir_quant::requant;
+use crate::ops::matmul::mir_quant::{combine_scales, requant, wire_offset_u8_as_i8};
 use crate::ops::matmul::*;
 use mir_quant::MatMulQParams;
 
@@ -54,7 +53,8 @@ impl EvalOp for QMatMulUnary {
         }
 
         let mut model = TypedModel::default();
-        let a = model.add_const("source_a", self.a.clone())?;
+        let t_a = self.a.offset_u8_as_i8();
+        let a = model.add_const("source_a", t_a.clone())?;
         let b = model.add_const("source_b", inputs[0].clone())?;
         let bias = if let Some(bias) = self.bias.clone() {
             Some(model.add_const("source_bias", bias)?)
@@ -62,7 +62,7 @@ impl EvalOp for QMatMulUnary {
             None
         };
 
-        let params = self
+        let mut params = self
             .params
             .iter()
             .map(|(name, qp)| {
@@ -70,8 +70,11 @@ impl EvalOp for QMatMulUnary {
             })
             .collect::<TractResult<Vec<_>>>()?;
 
+        let a = wire_offset_u8_as_i8(&mut model, "adhoc", a, "a", &mut params[0], "a0")?;
+        let b = wire_offset_u8_as_i8(&mut model, "adhoc", b, "b", &mut params[2], "b0")?;
+
         let new_op = MatMulUnary {
-            a: self.a.clone(),
+            a: t_a,
             a_trans: self.a_trans,
             b_trans: self.b_trans,
             c_trans: self.c_trans,
@@ -337,12 +340,17 @@ impl TypedOp for QMatMulUnary {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
+        let t_a = self.a.offset_u8_as_i8();
 
         if let Some((inputs, qp)) = self.params.inline_static(model, node)? {
             let mut patch = TypedModelPatch::new("inlining matmul quantized params");
             let inputs: Vec<OutletId> =
                 inputs.iter().map(|i| patch.tap_model(model, *i)).collect::<TractResult<_>>()?;
-            let op = Self { params: qp, ..self.clone() };
+            let op = Self {
+                a: t_a,
+                params: MatMulQParams { a0: qp.a0.offset_u8_as_i8(&patch, &inputs)?, ..qp },
+                ..self.clone()
+            };
             let wire = patch.wire_node(&node.name, op, &inputs)?;
             patch.shunt_outside(model, node.id.into(), wire[0])?;
             return Ok(Some(patch));
@@ -350,7 +358,7 @@ impl TypedOp for QMatMulUnary {
 
         let a = patch.wire_node(
             format!("{}.a_const", &node.name),
-            ops::konst::Const(self.a.clone()),
+            ops::konst::Const(t_a.clone()),
             &[],
         )?[0];
         let b = patch.tap_model(model, node.inputs[0])?;
@@ -360,7 +368,7 @@ impl TypedOp for QMatMulUnary {
             None
         };
 
-        let params = self
+        let mut params = self
             .params
             .iter()
             .map(|(name, qp)| match qp {
@@ -370,8 +378,12 @@ impl TypedOp for QMatMulUnary {
                 }
             })
             .collect::<TractResult<Vec<OutletId>>>()?;
+
+        let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut params[0], "a0")?;
+        let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut params[2], "b0")?;
+
         let new_op = MatMulUnary {
-            a: self.a.clone(),
+            a: t_a,
             a_trans: self.a_trans,
             b_trans: self.b_trans,
             c_trans: self.c_trans,
@@ -406,14 +418,49 @@ mod test {
 
     proptest! {
         #[test]
-        fn prop(pb in any::<QMatMulUnaryProblem>()) {
-            pb.check()
+        fn prop_i8_i8_i8(pb in any::<QMatMulUnaryProblemI8I8I8>()) {
+            pb.check();
+        }
+
+        #[test]
+        fn prop_i8_i8_u8(pb in any::<QMatMulUnaryProblemI8I8U8>()) {
+            pb.check();
+        }
+
+        #[test]
+        fn prop_i8_u8_i8(pb in any::<QMatMulUnaryProblemI8U8I8>()) {
+            pb.check();
+        }
+
+        #[test]
+        fn prop_u8_i8_i8(pb in any::<QMatMulUnaryProblemU8I8I8>()) {
+            pb.check();
+        }
+
+        #[test]
+        fn prop_i8_u8_u8(pb in any::<QMatMulUnaryProblemI8U8U8>()) {
+            pb.check();
+        }
+
+        #[test]
+        fn prop_u8_i8_u8(pb in any::<QMatMulUnaryProblemU8I8U8>()) {
+            pb.check();
+        }
+
+        #[test]
+        fn prop_u8_u8_i8(pb in any::<QMatMulUnaryProblemU8U8I8>()) {
+            pb.check();
+        }
+
+        #[test]
+        fn prop_u8_u8_u8(pb in any::<QMatMulUnaryProblemU8U8U8>()) {
+            pb.check();
         }
     }
 
     #[test]
     fn c0() {
-        QMatMulUnaryProblem {
+        QMatMulUnaryProblemI8I8I8 {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
             bias: tensor0(0i32),
@@ -424,12 +471,12 @@ mod test {
             b_scale: 1.0,
             c_scale: 1.0,
         }
-        .check()
+        .check();
     }
 
     #[test]
     fn b_scale() {
-        QMatMulUnaryProblem {
+        QMatMulUnaryProblemI8I8I8 {
             a: arr2(&[[0]]),
             b: arr2(&[[0]]),
             bias: tensor0(0i32),
@@ -445,7 +492,7 @@ mod test {
 
     #[test]
     fn sat() {
-        QMatMulUnaryProblem {
+        QMatMulUnaryProblemI8I8I8 {
             a: arr2(&[[0]]),
             b: arr2(&[[34]]),
             bias: tensor0(0i32),
@@ -461,7 +508,7 @@ mod test {
 
     #[test]
     fn rounding() {
-        QMatMulUnaryProblem {
+        QMatMulUnaryProblemI8I8I8 {
             a: arr2(&[[26]]),
             b: arr2(&[[0]]),
             bias: tensor0(0i32),
@@ -477,7 +524,7 @@ mod test {
 
     #[test]
     fn neg_rounding() {
-        QMatMulUnaryProblem {
+        QMatMulUnaryProblemI8I8I8 {
             a: arr2(&[[-23]]),
             b: arr2(&[[-2]]),
             bias: tensor0(0i32),
@@ -493,7 +540,7 @@ mod test {
 
     #[test]
     fn rounding_ties_2() {
-        QMatMulUnaryProblem {
+        QMatMulUnaryProblemI8I8I8 {
             a: arr2(&[[47], [0]]),
             b: arr2(&[[1, 0, 30]]),
             bias: tensor0(0i32),
@@ -509,7 +556,7 @@ mod test {
 
     #[test]
     fn rounding_ties_3() {
-        QMatMulUnaryProblem {
+        QMatMulUnaryProblemI8I8I8 {
             a: arr2(&[[-30]]),
             b: arr2(&[[0, 107, 0]]),
             bias: tensor0(0i32),
@@ -519,12 +566,13 @@ mod test {
             a_scale: 1.0,
             b_scale: 0.15,
             c_scale: 0.6,
-        };
+        }
+        .check();
     }
 
     #[test]
     fn onnx_test_matmulinteger() {
-        QMatMulUnaryProblem {
+        QMatMulUnaryProblemI8I8I8 {
             a: arr2(&[[11, 7, 3], [10, 6, 2], [9, 5, 1], [8, 4, 0]]),
             b: arr2(&[[1, 4], [2, 5], [3, 6]]),
             bias: tensor0(0i32),
@@ -535,135 +583,309 @@ mod test {
             b_scale: 1.0,
             c_scale: 1.0,
         }
-        .check()
-    }
-
-    #[derive(Debug)]
-    struct QMatMulUnaryProblem {
-        a: Array2<i8>,
-        b: Array2<i8>,
-        bias: Tensor,
-        a0: i8,
-        b0: i8,
-        c0: i8,
-        a_scale: f32,
-        b_scale: f32,
-        c_scale: f32,
+        .check();
     }
 
     fn round_ties_to_right(x: f32) -> i32 {
         (x + 0.5).floor() as i32
     }
 
-    impl QMatMulUnaryProblem {
-        fn check(&self) {
-            let r = self.reference();
-            let t = self.tract();
-            if r.iter().zip(t.iter()).any(|(r, t)| r.max(t) - r.min(t) > 1) {
-                panic!("mismatch! refernce: {:?} tract: {:?}", r, t)
-            }
-        }
-
-        fn reference(&self) -> Array2<i8> {
-            let a = self.a.map(|&x| (x as f32 - self.a0 as f32) * self.a_scale);
-            let b = self.b.map(|&x| (x as f32 - self.b0 as f32) * self.b_scale);
-            let c = a.dot(&b);
-            let c = c.map(|&x| round_ties_to_right(x / self.c_scale) + self.c0 as i32);
-            c.map(|&x| x.max(-128).min(127) as i8)
-        }
-
-        fn tract(&self) -> Array2<i8> {
-            let mut model = TypedModel::default();
-            let mut inputs = tvec!();
-            inputs.push(
-                model
-                    .add_source(
-                        "b",
-                        TypedFact::dt_shape(i8::datum_type(), &[self.b.nrows(), self.b.ncols()]),
-                    )
-                    .unwrap(),
-            );
-            inputs.push(model.add_source("a0", TypedFact::scalar::<i8>()).unwrap());
-            inputs.push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
-            inputs.push(model.add_source("b0", TypedFact::scalar::<i8>()).unwrap());
-            inputs.push(model.add_source("b_scale", TypedFact::scalar::<f32>()).unwrap());
-            inputs.push(model.add_source("c0", TypedFact::scalar::<i8>()).unwrap());
-            inputs.push(model.add_source("c_scale", TypedFact::scalar::<f32>()).unwrap());
-            let result = model
-                .wire_node(
-                    "qmm",
-                    QMatMulUnary::new(
-                        self.a.clone().into_arc_tensor(),
-                        Some(self.bias.clone().into_arc_tensor()),
-                        false,
-                        false,
-                        false,
-                        i8::datum_type(),
-                        MatMulQParams::all_dynamic(1),
-                    ),
-                    &inputs,
-                )
-                .unwrap();
-            model.set_output_outlets(&result).unwrap();
-            let mut result = model
-                .into_runnable()
-                .unwrap()
-                .run(tvec!(
-                    self.b.clone().into_tensor(),
-                    self.a0.into(),
-                    self.a_scale.into(),
-                    self.b0.into(),
-                    self.b_scale.into(),
-                    self.c0.into(),
-                    self.c_scale.into(),
-                ))
-                .unwrap();
-            result
-                .remove(0)
-                .into_tensor()
-                .into_array::<i8>()
-                .unwrap()
-                .into_dimensionality()
-                .unwrap()
-        }
-    }
-
     fn scale() -> BoxedStrategy<f32> {
         prop_oneof![Just(1.0), (1i32..=20).prop_map(|x| x as f32 / 20.0)].boxed()
     }
 
-    impl Arbitrary for QMatMulUnaryProblem {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<QMatMulUnaryProblem>;
-        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            (1usize..=4, 1usize..=4, 1usize..=4)
-                .prop_flat_map(|(m, k, n)| {
-                    (
-                        Just((m, k, n)),
-                        vec(any::<i8>(), m * k..=m * k),
-                        vec(any::<i8>(), k * n..=k * n),
-                        any::<i8>(),
-                        any::<i8>(),
-                        any::<i8>(),
-                        scale(),
-                        scale(),
-                        scale(),
-                    )
-                })
-                .prop_map(|((m, k, n), a, b, a0, b0, c0, a_scale, b_scale, c_scale)| {
-                    QMatMulUnaryProblem {
-                        a: Array2::from_shape_vec((m, k), a).unwrap(),
-                        b: Array2::from_shape_vec((k, n), b).unwrap(),
-                        bias: tensor0(0i32),
-                        a0,
-                        b0,
-                        c0,
-                        a_scale,
-                        b_scale,
-                        c_scale,
-                    }
-                })
-                .boxed()
+    macro_rules! impl_qmmup {
+        ($name:ident, $a:ty, $b:ty, $c:ty $(,)?) => {
+            #[derive(Debug)]
+            struct $name {
+                a: Array2<$a>,
+                b: Array2<$b>,
+                bias: Tensor,
+                a0: $a,
+                b0: $b,
+                c0: $c,
+                a_scale: f32,
+                b_scale: f32,
+                c_scale: f32,
+            }
+
+            impl $name {
+                fn check(&self) {
+                    let check_with = |r: &Array2<$c>, opt: bool, qp: bool| {
+                        let t = self.tract(opt, qp);
+                        assert!(
+                            r.iter().zip(t.iter()).all(|(r, t)| r.max(t) - r.min(t) <= 1),
+                            "mismatch! optimized plan: {}, dynamic qparams: {}, reference: {:?}, tract: {:?}",
+                            opt,
+                            qp,
+                            r,
+                            t,
+                        );
+                    };
+
+                    let r = self.reference();
+                    check_with(&r, false, false);
+                    check_with(&r, false, true);
+                    check_with(&r, true, false);
+                    check_with(&r, true, true);
+                }
+
+                fn reference(&self) -> Array2<$c> {
+                    let a = self.a.map(|&x| (x as f32 - self.a0 as f32) * self.a_scale);
+                    let b = self.b.map(|&x| (x as f32 - self.b0 as f32) * self.b_scale);
+                    let c = a.dot(&b);
+                    let c = c.map(|&x| round_ties_to_right(x / self.c_scale) + self.c0 as i32);
+                    c.map(|&x| x.max(<$c>::MIN as i32).min(<$c>::MAX as i32) as $c)
+                }
+
+                fn tract(&self, opt: bool, qp: bool) -> Array2<$c> {
+                    let mut model = TypedModel::default();
+                    let mut inputs = tvec![];
+                    inputs.push(
+                        model
+                            .add_source(
+                                "b",
+                                TypedFact::dt_shape(
+                                    <$b>::datum_type(),
+                                    &[self.b.nrows(), self.b.ncols()],
+                                ),
+                            )
+                            .unwrap(),
+                    );
+                    let qparams = if qp {
+                        inputs.push(model.add_source("a0", TypedFact::scalar::<$a>()).unwrap());
+                        inputs.push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
+                        inputs.push(model.add_source("b0", TypedFact::scalar::<$b>()).unwrap());
+                        inputs.push(model.add_source("b_scale", TypedFact::scalar::<f32>()).unwrap());
+                        inputs.push(model.add_source("c0", TypedFact::scalar::<$c>()).unwrap());
+                        inputs.push(model.add_source("c_scale", TypedFact::scalar::<f32>()).unwrap());
+                        MatMulQParams::all_dynamic(1)
+                    } else {
+                        MatMulQParams {
+                            a0: AttrOrInput::Attr(rctensor0::<$a>(self.a0)),
+                            a_scale: AttrOrInput::Attr(rctensor0::<f32>(self.a_scale)),
+                            b0: AttrOrInput::Attr(rctensor0::<$b>(self.b0)),
+                            b_scale: AttrOrInput::Attr(rctensor0::<f32>(self.b_scale)),
+                            c0: AttrOrInput::Attr(rctensor0::<$c>(self.c0)),
+                            c_scale: AttrOrInput::Attr(rctensor0::<f32>(self.c_scale)),
+                        }
+                    };
+                    let result = model
+                        .wire_node(
+                            "qmmu",
+                            QMatMulUnary::new(
+                                self.a.clone().into_arc_tensor(),
+                                Some(self.bias.clone().into_arc_tensor()),
+                                false,
+                                false,
+                                false,
+                                <$c>::datum_type(),
+                                qparams,
+                            ),
+                            &inputs,
+                        )
+                        .unwrap();
+                    model.set_output_outlets(&result).unwrap();
+
+                    let inputs = if qp {
+                        tvec![
+                            self.b.clone().into_tensor(),
+                            self.a0.into(),
+                            self.a_scale.into(),
+                            self.b0.into(),
+                            self.b_scale.into(),
+                            self.c0.into(),
+                            self.c_scale.into(),
+                        ]
+                    } else {
+                        tvec![self.b.clone().into_tensor()]
+                    };
+                    let mut outputs = if opt { model.into_optimized().unwrap() } else { model }
+                        .into_runnable()
+                        .unwrap()
+                        .run(inputs)
+                        .unwrap();
+                    outputs
+                        .remove(0)
+                        .into_tensor()
+                        .into_array::<$c>()
+                        .unwrap()
+                        .into_dimensionality()
+                        .unwrap()
+                }
+            }
+
+            impl Arbitrary for $name {
+                type Parameters = ();
+                type Strategy = BoxedStrategy<$name>;
+                fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+                    (1usize..=4, 1usize..=4, 1usize..=4)
+                        .prop_flat_map(|(m, k, n)| {
+                            (
+                                Just((m, k, n)),
+                                vec(any::<$a>(), m * k..=m * k),
+                                vec(any::<$b>(), k * n..=k * n),
+                                any::<$a>(),
+                                any::<$b>(),
+                                any::<$c>(),
+                                scale(),
+                                scale(),
+                                scale(),
+                            )
+                        })
+                        .prop_map(|((m, k, n), a, b, a0, b0, c0, a_scale, b_scale, c_scale)| {
+                            $name {
+                                a: Array2::from_shape_vec((m, k), a).unwrap(),
+                                b: Array2::from_shape_vec((k, n), b).unwrap(),
+                                bias: tensor0(0i32),
+                                a0,
+                                b0,
+                                c0,
+                                a_scale,
+                                b_scale,
+                                c_scale,
+                            }
+                        })
+                        .boxed()
+                }
+            }
+        };
+    }
+
+    impl_qmmup! { QMatMulUnaryProblemI8I8I8, i8, i8, i8 }
+    impl_qmmup! { QMatMulUnaryProblemI8I8U8, i8, i8, u8 }
+    impl_qmmup! { QMatMulUnaryProblemI8U8I8, i8, u8, i8 }
+    impl_qmmup! { QMatMulUnaryProblemU8I8I8, u8, i8, i8 }
+    impl_qmmup! { QMatMulUnaryProblemI8U8U8, i8, u8, u8 }
+    impl_qmmup! { QMatMulUnaryProblemU8I8U8, u8, i8, u8 }
+    impl_qmmup! { QMatMulUnaryProblemU8U8I8, u8, u8, i8 }
+    impl_qmmup! { QMatMulUnaryProblemU8U8U8, u8, u8, u8 }
+
+    #[test]
+    fn test_qmmup_i8_i8_i8() {
+        QMatMulUnaryProblemI8I8I8 {
+            a: arr2(&[[76, 76, 76], [127, -127, 102]]),
+            b: arr2(&[[25, 51, 76, 102, 127], [-51, -25, 0, 25, 51], [-25, -51, -76, -102, -127]]),
+            bias: tensor0(0i32),
+            a0: 51,
+            b0: 0,
+            c0: -31,
+            a_scale: 0.039215688,
+            b_scale: 0.039215688,
+            c_scale: 0.09411765,
         }
+        .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
+    }
+
+    #[test]
+    fn test_qmmup_i8_i8_u8() {
+        QMatMulUnaryProblemI8I8U8 {
+            a: arr2(&[[76, 76, 76], [127, -127, 102]]),
+            b: arr2(&[[25, 51, 76, 102, 127], [-51, -25, 0, 25, 51], [-25, -51, -76, -102, -127]]),
+            bias: tensor0(0i32),
+            a0: 51,
+            b0: 0,
+            c0: 96,
+            a_scale: 0.039215688,
+            b_scale: 0.039215688,
+            c_scale: 0.09411765,
+        }
+        .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
+    }
+
+    #[test]
+    fn test_qmmup_i8_u8_i8() {
+        QMatMulUnaryProblemI8U8I8 {
+            a: arr2(&[[76, 76, 76], [127, -127, 102]]),
+            b: arr2(&[[152, 178, 203, 229, 254], [76, 102, 127, 152, 178], [102, 76, 51, 25, 0]]),
+            bias: tensor0(0i32),
+            a0: 51,
+            b0: 127,
+            c0: -31,
+            a_scale: 0.039215688,
+            b_scale: 0.039215688,
+            c_scale: 0.09411765,
+        }
+        .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
+    }
+
+    #[test]
+    fn test_qmmup_u8_i8_i8() {
+        QMatMulUnaryProblemU8I8I8 {
+            a: arr2(&[[204, 204, 204], [255, 1, 230]]),
+            b: arr2(&[[25, 51, 76, 102, 127], [-51, -25, 0, 25, 51], [-25, -51, -76, -102, -127]]),
+            bias: tensor0(0i32),
+            a0: 179,
+            b0: 0,
+            c0: -31,
+            a_scale: 0.039215688,
+            b_scale: 0.039215688,
+            c_scale: 0.09411765,
+        }
+        .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
+    }
+
+    #[test]
+    fn test_qmmup_i8_u8_u8() {
+        QMatMulUnaryProblemI8U8U8 {
+            a: arr2(&[[76, 76, 76], [127, -127, 102]]),
+            b: arr2(&[[152, 178, 203, 229, 254], [76, 102, 127, 152, 178], [102, 76, 51, 25, 0]]),
+            bias: tensor0(0i32),
+            a0: 51,
+            b0: 127,
+            c0: 96,
+            a_scale: 0.039215688,
+            b_scale: 0.039215688,
+            c_scale: 0.09411765,
+        }
+        .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
+    }
+
+    #[test]
+    fn test_qmmup_u8_i8_u8() {
+        QMatMulUnaryProblemU8I8U8 {
+            a: arr2(&[[204, 204, 204], [255, 1, 230]]),
+            b: arr2(&[[25, 51, 76, 102, 127], [-51, -25, 0, 25, 51], [-25, -51, -76, -102, -127]]),
+            bias: tensor0(0i32),
+            a0: 179,
+            b0: 0,
+            c0: 96,
+            a_scale: 0.039215688,
+            b_scale: 0.039215688,
+            c_scale: 0.09411765,
+        }
+        .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
+    }
+
+    #[test]
+    fn test_qmmup_u8_u8_i8() {
+        QMatMulUnaryProblemU8U8I8 {
+            a: arr2(&[[204, 204, 204], [255, 1, 230]]),
+            b: arr2(&[[152, 178, 203, 229, 254], [76, 102, 127, 152, 178], [102, 76, 51, 25, 0]]),
+            bias: tensor0(0i32),
+            a0: 179,
+            b0: 127,
+            c0: -31,
+            a_scale: 0.039215688,
+            b_scale: 0.039215688,
+            c_scale: 0.09411765,
+        }
+        .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
+    }
+
+    #[test]
+    fn test_qmmup_u8_u8_u8() {
+        QMatMulUnaryProblemU8U8U8 {
+            a: arr2(&[[204, 204, 204], [255, 1, 230]]),
+            b: arr2(&[[152, 178, 203, 229, 254], [76, 102, 127, 152, 178], [102, 76, 51, 25, 0]]),
+            bias: tensor0(0i32),
+            a0: 179,
+            b0: 127,
+            c0: 96,
+            a_scale: 0.039215688,
+            b_scale: 0.039215688,
+            c_scale: 0.09411765,
+        }
+        .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
     }
 }
