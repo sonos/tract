@@ -162,7 +162,15 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
             let mut socket = TcpStream::connect((gr.host.clone(), gr.port))?;
             let ts = &vars["TIMESTAMP"];
             for line in std::fs::read_to_string(metrics_files)?.lines() {
-                writeln!(socket, "{}.{} {}", prefix, line, ts)?;
+                let mut tokens = line.split_whitespace();
+                writeln!(
+                    socket,
+                    "{}.{} {} {}",
+                    prefix,
+                    tokens.next().unwrap().replace("-", "_"),
+                    tokens.next().unwrap(),
+                    ts
+                )?;
             }
         }
     }
