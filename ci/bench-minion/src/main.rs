@@ -20,6 +20,7 @@ struct Config {
     workdir: PathBuf,
     #[serde(default = "default_region", deserialize_with = "deser_region")]
     region: Region,
+    aws_credentials: Option<AwsCredentials>,
     #[serde(default = "default_bucket")]
     s3_bucket: String,
     #[serde(default = "default_tasks")]
@@ -37,6 +38,18 @@ struct Graphite {
     host: String,
     port: u16,
     prefix: String,
+}
+
+#[derive(Deserialize)]
+struct AwsCredentials {
+    access_key: String,
+    secret_key: String,
+}
+
+impl std::fmt::Debug for AwsCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AwsCredentials {{ access_key: {}, secret_key: <...> }}", self.access_key)
+    }
 }
 
 fn default_workdir() -> PathBuf {
@@ -144,7 +157,8 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
             let prefix = format!(
                 "{}.{}.{}.{}",
                 gr.prefix, config.platform, config.id, vars["TRAVIS_BRANCH_SANE"]
-            ).replace("-", "_");
+            )
+            .replace("-", "_");
             let mut socket = TcpStream::connect((gr.host.clone(), gr.port))?;
             let ts = &vars["TIMESTAMP"];
             for line in std::fs::read_to_string(metrics_files)?.lines() {
@@ -178,7 +192,14 @@ fn consider_task(config: &Config, bucket: &Bucket, task: &Object) -> Result<bool
 
 fn run(config: &Config) -> Result<bool> {
     std::thread::sleep(Duration::from_secs(10));
-    let credentials = Credentials::default().unwrap();
+    let credentials = Credentials::new(
+        config.aws_credentials.as_ref().map(|cred| &*cred.access_key),
+        config.aws_credentials.as_ref().map(|cred| &*cred.secret_key),
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     let bucket = Bucket::new(&config.s3_bucket, config.region.clone(), credentials)?;
     let tasks_prefix = std::path::PathBuf::from(&config.s3_tasks).join(&config.platform).join("");
     let objects_parts =
