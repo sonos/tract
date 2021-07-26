@@ -120,6 +120,8 @@ impl ConvUnary {
         &self,
         model: &mut TypedModel,
         name: &str,
+        a_dt: DatumType,
+        b_dt: DatumType,
         wires: &[OutletId],
     ) -> TractResult<OutletId> {
         use crate::ops::matmul::mir_quant as qmm;
@@ -134,14 +136,7 @@ impl ConvUnary {
             .as_ref()
             .unwrap()
             .1
-            .iter()
-            .map(|(par_name, qp)| match qp {
-                AttrOrInput::Input(o) => Ok(wires[*o]),
-                AttrOrInput::Attr(t) => {
-                    model.add_const(format!("{}_{}", name, par_name), t.clone())
-                }
-            })
-            .collect::<TractResult<Vec<OutletId>>>()?;
+            .as_outlet_id(model, name, &wires, a_dt, b_dt, c_dt)?;
 
         let a0 = params[0];
         let a_scale = params[1];
@@ -645,7 +640,13 @@ impl EvalOp for ConvUnary {
             .collect::<TractResult<_>>()?;
         let wire = unsafe {
             if self.q_params.is_some() {
-                self.wire_as_quant_im2col(&mut model, "im2col-adhoc", &*wires)?
+                self.wire_as_quant_im2col(
+                    &mut model,
+                    "im2col-adhoc",
+                    self.kernel.datum_type(),
+                    inputs[0].datum_type(),
+                    &*wires,
+                )?
             } else {
                 self.wire_as_im2col_pair(&mut model, "im2col-adhoc", wires[0])?
             }
@@ -888,7 +889,13 @@ impl TypedOp for ConvUnary {
                     .iter()
                     .map(|w| patch.tap_model(model, *w))
                     .collect::<TractResult<TVec<_>>>()?;
-                let wire = self.wire_as_quant_im2col(&mut patch, &node.name, &inputs)?;
+                let wire = self.wire_as_quant_im2col(
+                    &mut patch,
+                    &node.name,
+                    self.kernel.datum_type(),
+                    model.node_input_facts(node.id)?[0].datum_type,
+                    &inputs,
+                )?;
                 patch.shunt_outside(model, node.id.into(), wire)?;
                 return Ok(Some(patch));
             } else if kernel_spatial_shape.iter().product::<usize>() == 1

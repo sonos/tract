@@ -4,6 +4,7 @@ use crate::deser::CoerceFrom;
 use crate::deser::Value;
 use crate::internal::*;
 use crate::ser::*;
+use tract_core::ops::matmul::mir_quant::ParamType;
 use tract_core::ops::matmul::mir_quant_unary::QMatMulUnary;
 use tract_core::ops::matmul::MatMulQParams;
 use tract_core::ops::matmul::QMatMul;
@@ -41,14 +42,15 @@ pub fn qparams_to_rvalues(
     params: &MatMulQParams,
     node_inputs: &[OutletId],
     ast_mapping: &HashMap<OutletId, Arc<RValue>>,
-) -> TractResult<[RValue; 6]> {
+) -> TractResult<[Option<RValue>; 6]> {
     macro_rules! attr_to_rvalue {
         ($a:ident, $typ:ty) => {
             match &params.$a {
-                AttrOrInput::Attr(t) => {
-                    numeric(t.cast_to_dt(<$typ>::datum_type())?.to_scalar::<$typ>()?)
+                ParamType::Attr(t) => {
+                    Some(numeric(t.cast_to_dt(<$typ>::datum_type())?.to_scalar::<$typ>()?))
                 }
-                AttrOrInput::Input(i) => (*ast_mapping[&node_inputs[*i]]).clone(),
+                ParamType::FromInput(i) => Some((*ast_mapping[&node_inputs[*i]]).clone()),
+                ParamType::FromQType => None,
             }
         };
     }
@@ -74,26 +76,29 @@ fn qmatmul_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<R
 
     let [a0, a_scale, b0, b_scale, c0, c_scale] =
         qparams_to_rvalues(&op.params, &node.inputs, &ast.mapping)?;
-
-    Ok(Some(invocation(
-        "tract_core_qmatmul",
-        &[],
-        &[
-            ("A", (*a).clone()),
-            ("B", (*b).clone()),
-            ("bias", (*bias).clone()),
-            ("transposeA", logical(op.a_trans)),
-            ("transposeB", logical(op.b_trans)),
-            ("transposeC", logical(op.c_trans)),
-            ("a0", a0),
-            ("a_scale", a_scale),
-            ("b0", b0),
-            ("b_scale", b_scale),
-            ("c0", c0),
-            ("c_scale", c_scale),
-            ("output_type", string(format!("{:?}", op.output_type))),
-        ],
-    )))
+    let mut named_args = vec![
+        ("A", (*a).clone()),
+        ("B", (*b).clone()),
+        ("bias", (*bias).clone()),
+        ("transposeA", logical(op.a_trans)),
+        ("transposeB", logical(op.b_trans)),
+        ("transposeC", logical(op.c_trans)),
+        ("output_type", string(format!("{:?}", op.output_type))),
+    ];
+    macro_rules! push {
+        ($a: ident) => {
+            if let Some($a) = $a {
+                named_args.push((stringify!($a), $a))
+            }
+        };
+    }
+    push!(a0);
+    push!(a_scale);
+    push!(b0);
+    push!(b_scale);
+    push!(c0);
+    push!(c_scale);
+    Ok(Some(invocation("tract_core_qmatmul", &[], &named_args)))
 }
 
 fn qmatmul_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
@@ -104,48 +109,59 @@ fn qmatmul_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option
     let [a0, a_scale, b0, b_scale, c0, c_scale] =
         qparams_to_rvalues(&op.params, &node.inputs, &ast.mapping)?;
 
-    let mut args = vec![
+    let mut named_args = vec![
         ("A", (*a).clone()),
         ("B", (*b).clone()),
         ("transposeA", logical(op.a_trans)),
         ("transposeB", logical(op.b_trans)),
         ("transposeC", logical(op.c_trans)),
-        ("a0", a0),
-        ("a_scale", a_scale),
-        ("b0", b0),
-        ("b_scale", b_scale),
-        ("c0", c0),
-        ("c_scale", c_scale),
         ("output_type", string(format!("{:?}", op.output_type))),
     ];
-
+    macro_rules! push {
+        ($a: ident) => {
+            if let Some($a) = $a {
+                named_args.push((stringify!($a), $a))
+            }
+        };
+    }
+    push!(a0);
+    push!(a_scale);
+    push!(b0);
+    push!(b_scale);
+    push!(c0);
+    push!(c_scale);
     if let Some(bias) = &op.bias {
-        args.push(("bias", (&*ast.konst_variable(format!("{}.bias", node.name), bias)?).clone()));
+        named_args
+            .push(("bias", (&*ast.konst_variable(format!("{}.bias", node.name), bias)?).clone()));
     }
 
-    Ok(Some(invocation("tract_core_qmatmul", &[], &*args)))
+    Ok(Some(invocation("tract_core_qmatmul", &[], &*named_args)))
 }
 
 pub fn values_to_qparams(
-    a0: Value,
-    a_scale: Value,
-    b0: Value,
-    b_scale: Value,
-    c0: Value,
-    c_scale: Value,
+    a0: Option<Value>,
+    a_scale: Option<Value>,
+    b0: Option<Value>,
+    b_scale: Option<Value>,
+    c0: Option<Value>,
+    c_scale: Option<Value>,
     inputs: &mut Vec<OutletId>,
     builder: &mut ModelBuilder,
 ) -> TractResult<MatMulQParams> {
     macro_rules! value_to_attr {
         ($a:ident, $typ:ty) => {
-            if let Ok(t) = Arc::<Tensor>::coerce(builder, &$a) {
-                AttrOrInput::Attr(
-                    t.cast_to_dt(<$typ>::datum_type())?.into_owned().into_arc_tensor(),
-                )
+            if let Some($a) = $a {
+                if let Ok(t) = Arc::<Tensor>::coerce(builder, &$a) {
+                    ParamType::Attr(
+                        t.cast_to_dt(<$typ>::datum_type())?.into_owned().into_arc_tensor(),
+                    )
+                } else {
+                    let outlet_id = OutletId::coerce(builder, &$a)?;
+                    inputs.push(outlet_id);
+                    ParamType::FromInput(inputs.len() - 1)
+                }
             } else {
-                let outlet_id = OutletId::coerce(builder, &$a)?;
-                inputs.push(outlet_id);
-                AttrOrInput::Input(inputs.len() - 1)
+                ParamType::FromQType
             }
         };
     }
@@ -169,12 +185,12 @@ fn qmatmul_load(
     let a_trans: bool = invocation.named_arg_as(builder, "transposeA")?;
     let b_trans: bool = invocation.named_arg_as(builder, "transposeB")?;
     let c_trans: bool = invocation.named_arg_as(builder, "transposeC")?;
-    let a0: Value = invocation.named_arg_as(builder, "a0")?;
-    let a_scale: Value = invocation.named_arg_as(builder, "a_scale")?;
-    let b0: Value = invocation.named_arg_as(builder, "b0")?;
-    let b_scale: Value = invocation.named_arg_as(builder, "b_scale")?;
-    let c0: Value = invocation.named_arg_as(builder, "c0")?;
-    let c_scale: Value = invocation.named_arg_as(builder, "c_scale")?;
+    let a0: Option<Value> = invocation.named_arg_as(builder, "a0").ok();
+    let a_scale: Option<Value> = invocation.named_arg_as(builder, "a_scale").ok();
+    let b0: Option<Value> = invocation.named_arg_as(builder, "b0").ok();
+    let b_scale: Option<Value> = invocation.named_arg_as(builder, "b_scale").ok();
+    let c0: Option<Value> = invocation.named_arg_as(builder, "c0").ok();
+    let c_scale: Option<Value> = invocation.named_arg_as(builder, "c_scale").ok();
     let output_type =
         DatumType::from_str(&*invocation.named_arg_as::<String>(builder, "output_type")?)?;
     let mut inputs = vec![a, b, bias];

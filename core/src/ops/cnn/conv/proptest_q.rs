@@ -23,12 +23,12 @@ pub fn qtensor(shape: Vec<usize>) -> BoxedStrategy<ArrayD<i8>> {
 pub fn q_params() -> BoxedStrategy<MatMulQParams> {
     (-10i32..10, -10i32..10, -10i32..10, -3..3i32, -3..3i32, -3..3i32)
         .prop_map(|(a0, b0, c0, a_scale, b_scale, c_scale)| MatMulQParams {
-            a0: AttrOrInput::Attr(rctensor0(a0)),
-            b0: AttrOrInput::Attr(rctensor0(b0)),
-            c0: AttrOrInput::Attr(rctensor0(c0)),
-            a_scale: AttrOrInput::Attr(rctensor0(2f32.powi(a_scale))),
-            b_scale: AttrOrInput::Attr(rctensor0(2f32.powi(b_scale))),
-            c_scale: AttrOrInput::Attr(rctensor0(2f32.powi(c_scale))),
+            a0: tensor0(a0).into(),
+            b0: tensor0(b0).into(),
+            c0: tensor0(c0).into(),
+            a_scale: tensor0(2f32.powi(a_scale)).into(),
+            b_scale: tensor0(2f32.powi(b_scale)).into(),
+            c_scale: tensor0(2f32.powi(c_scale)).into(),
         })
         .boxed()
 }
@@ -329,7 +329,7 @@ fn a0_0() {
 #[test]
 fn scale_0() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.c_scale = AttrOrInput::Attr(rctensor0(9.274534f32));
+    qp.c_scale = tensor0(9.274534f32).into();
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
         shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
@@ -348,7 +348,7 @@ fn scale_0() {
 #[test]
 fn scale_1() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.c_scale = AttrOrInput::Attr(rctensor0(1.1400417f32));
+    qp.c_scale = tensor0(1.1400417f32).into();
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
         shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
@@ -367,7 +367,7 @@ fn scale_1() {
 #[test]
 fn scale_2() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.b_scale = AttrOrInput::Attr(rctensor0(0.5f32));
+    qp.b_scale = tensor0(0.5f32).into();
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
         shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
@@ -386,8 +386,8 @@ fn scale_2() {
 #[test]
 fn scale_3() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.b_scale = AttrOrInput::Attr(rctensor0(0.5f32));
-    qp.c_scale = AttrOrInput::Attr(rctensor0(2f32));
+    qp.b_scale = tensor0(0.5f32).into();
+    qp.c_scale = tensor0(2f32).into();
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
         shape_out: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
@@ -423,7 +423,7 @@ fn group_0() {
 #[test]
 fn group_1() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.b0 = AttrOrInput::Attr(rctensor0(1i32));
+    qp.b0 = tensor0(1i32).into();
     QConvProblem {
         shape_in: NCHW.from_n_c_hw(1, 2, &[1]).unwrap(),
         shape_out: NCHW.from_n_c_hw(1, 2, &[1]).unwrap(),
@@ -442,7 +442,7 @@ fn group_1() {
 #[test]
 fn group_2() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.b0 = AttrOrInput::Attr(rctensor0(1i32));
+    qp.b0 = tensor0(1i32).into();
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
         shape_out: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),
@@ -461,7 +461,7 @@ fn group_2() {
 #[test]
 fn rounding_on_arm() {
     let mut qp = MatMulQParams::noop_static(i8::datum_type());
-    qp.c_scale = AttrOrInput::Attr(rctensor0(1.3759452f32));
+    qp.c_scale = tensor0(1.3759452f32).into();
     QConvProblem {
         shape_in: HWC.from_n_c_hw(1, 1, &[1]).unwrap(),
         shape_out: HWC.from_n_c_hw(1, 2, &[1]).unwrap(),

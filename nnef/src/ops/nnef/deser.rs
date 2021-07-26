@@ -329,24 +329,8 @@ pub fn conv_or_deconv(
     let quantized = input_fact.datum_type.is_quantized()
         || kernel.datum_type().is_quantized()
         || output_dt.is_quantized();
-    let (b0, b_scale) = input_fact.datum_type.zp_scale();
-    let (a0, a_scale) = kernel.datum_type().zp_scale();
-    let (c0, c_scale) = output_dt.qparams().map(|q| q.zp_scale()).unwrap_or((b0, b_scale));
-    let qparams = if quantized {
-        Some((
-            output_dt,
-            MatMulQParams {
-                a0: AttrOrInput::Attr(Arc::new(a0.into())),
-                a_scale: AttrOrInput::Attr(Arc::new(a_scale.into())),
-                b0: AttrOrInput::Attr(Arc::new(b0.into())),
-                b_scale: AttrOrInput::Attr(Arc::new(b_scale.into())),
-                c0: AttrOrInput::Attr(Arc::new(c0.into())),
-                c_scale: AttrOrInput::Attr(Arc::new(c_scale.into())),
-            },
-        ))
-    } else {
-        None
-    };
+
+    let qparams = if quantized { Some((output_dt, MatMulQParams::all_from_qtype())) } else { None };
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
 
     let bias: Option<Arc<Tensor>> =
@@ -533,12 +517,6 @@ pub fn matmul(
     let b_trans = invocation.named_arg_as(builder, "transposeB")?;
     if let Some(Some(dt)) = &invocation.dt_from_quant_file.get(0) {
         if let Some(qparams) = dt.qparams() {
-            let (a0, a_scale) =
-                builder.model.node(a.node).outputs[a.slot].fact.datum_type.zp_scale();
-            let (b0, b_scale) =
-                builder.model.node(b.node).outputs[b.slot].fact.datum_type.zp_scale();
-
-            let (c0, c_scale) = qparams.zp_scale();
             //FIXME: bias is not specified in the nnef format, but whether the bias is a bias or an add later changes the quantized behaviour
             let bias = builder.model.add_const(
                 format!("{}.bias", invocation.invocation.id),
@@ -552,14 +530,7 @@ pub fn matmul(
                     b_trans,
                     c_trans: false,
                     output_type: DatumType::QI8(qparams),
-                    params: MatMulQParams {
-                        a0: AttrOrInput::Attr(Arc::new(a0.into())),
-                        a_scale: AttrOrInput::Attr(Arc::new(a_scale.into())),
-                        b0: AttrOrInput::Attr(Arc::new(b0.into())),
-                        b_scale: AttrOrInput::Attr(Arc::new(b_scale.into())),
-                        c0: AttrOrInput::Attr(Arc::new(c0.into())),
-                        c_scale: AttrOrInput::Attr(Arc::new(c_scale.into())),
-                    },
+                    params: MatMulQParams::all_from_qtype(),
                 },
                 &[a, b, bias],
             );

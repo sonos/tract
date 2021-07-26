@@ -4,6 +4,7 @@ use crate::internal::*;
 use tract_core::ops::cnn::conv::ConvUnary;
 use tract_core::ops::cnn::conv::KernelFormat;
 use tract_core::ops::cnn::{PaddingSpec, PoolSpec};
+use tract_core::ops::matmul::mir_quant::ParamType;
 use tract_core::ops::nn::DataFormat;
 
 #[derive(Debug, Clone, Default, Hash)]
@@ -231,8 +232,8 @@ impl Expansion for Conv {
         let q_params = if quantized {
             use tract_core::ops::matmul::MatMulQParams;
 
-            let zero: AttrOrInput = Tensor::zero_scalar_dt(input.datum_type)?.into();
-            let one: AttrOrInput = tensor0(1f32).into();
+            let zero: ParamType = Tensor::zero_scalar_dt(input.datum_type)?.into();
+            let one: ParamType = tensor0(1f32).into();
             let a0 = if let Some(o) = self.k_zero_point_input { o.into() } else { zero.clone() };
             let a_scale = if let Some(o) = self.k_scale_input { o.into() } else { one.clone() };
 
