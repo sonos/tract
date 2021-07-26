@@ -327,36 +327,10 @@ impl AttrOrInput {
         }
     }
 
-    fn remove_input(&mut self, ix: usize) {
-        if let AttrOrInput::Input(slot) = self {
-            *slot = *slot - (*slot > ix) as usize;
-        }
-    }
-
-    fn insert_input(&mut self, ix: usize) {
-        if let AttrOrInput::Input(slot) = self {
-            *slot = *slot + (*slot >= ix) as usize;
-        }
-    }
-
     pub fn as_static(&self) -> Option<&Arc<Tensor>> {
         match self {
             AttrOrInput::Attr(t) => Some(t),
             AttrOrInput::Input(_) => None,
-        }
-    }
-
-    fn offset_u8_as_i8(&self, model: &TypedModel, inputs: &[OutletId]) -> TractResult<Self> {
-        let tensor = match self {
-            AttrOrInput::Attr(t) => t,
-            AttrOrInput::Input(i) => model.outlet_fact(inputs[*i])?.konst.as_ref().unwrap(),
-        };
-        if let DatumType::U8 = tensor.datum_type().unquantized() {
-            Ok(AttrOrInput::Attr(
-                tensor.to_array_view()?.mapv(quant::offset_u8_as_i8_elementwise).into_arc_tensor(),
-            ))
-        } else {
-            Ok(self.clone())
         }
     }
 }

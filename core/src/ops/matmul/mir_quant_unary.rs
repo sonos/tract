@@ -62,13 +62,22 @@ impl EvalOp for QMatMulUnary {
             None
         };
 
-        let mut params = self
-            .params
-            .iter()
-            .map(|(name, qp)| {
-                model.add_const(format!("source_{}", name), qp.tensor(&inputs).clone())
-            })
-            .collect::<TractResult<Vec<_>>>()?;
+        let mut input_outlets = tvec![a, b];
+        if let Some(bias) = bias {
+            input_outlets.push(bias)
+        }
+        for (i, t) in inputs.iter().enumerate().skip(input_outlets.len()) {
+            input_outlets.push(model.add_const(format!("source_{}", i), t.clone())?)
+        }
+
+        let mut params = self.params.as_outlet_id(
+            &mut model,
+            "qmatmul_unary",
+            &input_outlets,
+            inputs[0].datum_type(),
+            inputs[1].datum_type(),
+            self.output_type,
+        )?;
 
         let a = wire_offset_u8_as_i8(&mut model, "adhoc", a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut model, "adhoc", b, "b", &mut params[2], "b0")?;
@@ -135,7 +144,13 @@ impl TypedOp for QMatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        super::mir_unary::mir_unary_invariants(&inputs[0], &outputs[0], &self.a, self.b_trans, self.c_trans)
+        super::mir_unary::mir_unary_invariants(
+            &inputs[0],
+            &outputs[0],
+            &self.a,
+            self.b_trans,
+            self.c_trans,
+        )
     }
 
     fn change_axes(
@@ -256,29 +271,29 @@ impl TypedOp for QMatMulUnary {
                 params_for_split.b_scale = tensor0(1.0f32).into();
                 params_for_split.c_scale = tensor0(1.0f32).into();
                 params_for_split.c0 = tensor0(0i32).into();
-                let mut params_outlets = tvec!();
-                for k in &[
-                    &self.params.a_scale,
-                    &self.params.b_scale,
-                    &self.params.c_scale,
-                    &self.params.c0,
-                ] {
-                    let outlet = match k {
-                        &AttrOrInput::Attr(t) => {
-                            patch.add_const(format!("{}.a_scale", node.name), t.clone())?
-                        }
-                        &AttrOrInput::Input(i) => patch.tap_model(model, node.inputs[*i])?,
-                    };
-                    params_outlets.push(outlet);
-                }
+                let input_outlets = node
+                    .inputs
+                    .iter()
+                    .skip(1)
+                    .map(|o| patch.tap_model(model, *o))
+                    .collect::<TractResult<TVec<_>>>()?;
+                let params_outlets = self.params.as_outlet_id(
+                    &mut patch,
+                    &*node.name,
+                    &input_outlets,
+                    self.a.datum_type(),
+                    model.node_input_facts(node.id)?[0].datum_type,
+                    self.output_type,
+                )?;
+
                 let scale = combine_scales(
                     &mut patch,
                     &node.name,
-                    params_outlets[0],
                     params_outlets[1],
                     params_outlets[2],
+                    params_outlets[5],
                 )?;
-                let c0 = params_outlets[3];
+                let c0 = params_outlets[4];
 
                 for (ix, slice) in concat.slices.iter().enumerate() {
                     let wire = match slice {
@@ -367,17 +382,21 @@ impl TypedOp for QMatMulUnary {
         } else {
             None
         };
-
-        let mut params = self
-            .params
-            .iter()
-            .map(|(name, qp)| match qp {
-                AttrOrInput::Input(o) => patch.tap_model(model, node.inputs[*o]),
-                AttrOrInput::Attr(t) => {
-                    patch.add_const(format!("{}_{}", node.name, name), t.clone())
-                }
-            })
-            .collect::<TractResult<Vec<OutletId>>>()?;
+        let mut input_outlets = tvec![a, b];
+        if let Some(bias) = bias {
+            input_outlets.push(bias)
+        }
+        for i in node.inputs.iter().skip(input_outlets.len()) {
+            input_outlets.push(patch.tap_model(model, *i)?)
+        }
+        let mut params = self.params.as_outlet_id(
+            &mut patch,
+            &*node.name,
+            &input_outlets,
+            self.a.datum_type(),
+            model.node_input_facts(node.id)?[0].datum_type,
+            self.output_type,
+        )?;
 
         let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut params[2], "b0")?;
@@ -415,7 +434,6 @@ mod test {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_ndarray::prelude::*;
-
     proptest! {
         #[test]
         fn prop_i8_i8_i8(pb in any::<QMatMulUnaryProblemI8I8I8>()) {
@@ -662,12 +680,12 @@ mod test {
                         MatMulQParams::all_dynamic(1)
                     } else {
                         MatMulQParams {
-                            a0: AttrOrInput::Attr(rctensor0::<$a>(self.a0)),
-                            a_scale: AttrOrInput::Attr(rctensor0::<f32>(self.a_scale)),
-                            b0: AttrOrInput::Attr(rctensor0::<$b>(self.b0)),
-                            b_scale: AttrOrInput::Attr(rctensor0::<f32>(self.b_scale)),
-                            c0: AttrOrInput::Attr(rctensor0::<$c>(self.c0)),
-                            c_scale: AttrOrInput::Attr(rctensor0::<f32>(self.c_scale)),
+                            a0: tensor0::<$a>(self.a0).into(),
+                            a_scale: tensor0::<f32>(self.a_scale).into(),
+                            b0: tensor0::<$b>(self.b0).into(),
+                            b_scale: tensor0::<f32>(self.b_scale).into(),
+                            c0: tensor0::<$c>(self.c0).into(),
+                            c_scale: tensor0::<f32>(self.c_scale).into(),
                         }
                     };
                     let result = model

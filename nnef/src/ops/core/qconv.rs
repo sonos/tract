@@ -41,12 +41,19 @@ fn qconv_unary_dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<A
 
     let [a0, a_scale, b0, b_scale, c0, c_scale] =
         qparams_to_rvalues(&op.q_params.as_ref().unwrap().1, &node.inputs, &ast.mapping)?;
-    named_args.push(("a0", a0));
-    named_args.push(("a_scale", a_scale));
-    named_args.push(("b0", b0));
-    named_args.push(("b_scale", b_scale));
-    named_args.push(("c0", c0));
-    named_args.push(("c_scale", c_scale));
+    macro_rules! push {
+        ($a: ident) => {
+            if let Some($a) = $a {
+                named_args.push((stringify!($a), $a));
+            }
+        };
+    }
+    push!(a0);
+    push!(a_scale);
+    push!(b0);
+    push!(b_scale);
+    push!(c0);
+    push!(c_scale);
 
     let ci = op
         .pool_spec
@@ -93,12 +100,12 @@ fn qconv_load(
     let (group, pool_spec) =
         read_conv_parameters(builder, invocation, kernel.shape(), &input_fact)?;
 
-    let a0: Value = invocation.named_arg_as(builder, "a0")?;
-    let a_scale: Value = invocation.named_arg_as(builder, "a_scale")?;
-    let b0: Value = invocation.named_arg_as(builder, "b0")?;
-    let b_scale: Value = invocation.named_arg_as(builder, "b_scale")?;
-    let c0: Value = invocation.named_arg_as(builder, "c0")?;
-    let c_scale: Value = invocation.named_arg_as(builder, "c_scale")?;
+    let a0: Option<Value> = invocation.named_arg_as(builder, "a0").ok();
+    let a_scale: Option<Value> = invocation.named_arg_as(builder, "a_scale").ok();
+    let b0: Option<Value> = invocation.named_arg_as(builder, "b0").ok();
+    let b_scale: Option<Value> = invocation.named_arg_as(builder, "b_scale").ok();
+    let c0: Option<Value> = invocation.named_arg_as(builder, "c0").ok();
+    let c_scale: Option<Value> = invocation.named_arg_as(builder, "c_scale").ok();
     let mut inputs = vec![input];
     let qparams = values_to_qparams(a0, a_scale, b0, b_scale, c0, c_scale, &mut inputs, builder)?;
     let bias: Arc<Tensor> = invocation.named_arg_as(builder, "bias")?;
