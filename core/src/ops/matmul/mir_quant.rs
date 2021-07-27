@@ -454,15 +454,18 @@ impl TypedOp for QMatMul {
         let b = patch.tap_model(model, node.inputs[1])?;
         let bias = patch.tap_model(model, node.inputs[2])?;
 
-        let mut params = self
-            .params
-            .iter()
-            .map(|(name, qp)| match qp {
-                ParamType::FromInput(o) => patch.tap_model(model, node.inputs[*o]),
-                ParamType::Attr(t) => patch.add_const(format!("{}_{}", node.name, name), t.clone()),
-                ParamType::FromQType => todo!(),
-            })
-            .collect::<TractResult<Vec<OutletId>>>()?;
+        let mut input_outlets = tvec![a, b, bias];
+        for i in node.inputs.iter().skip(3) {
+            input_outlets.push(patch.tap_model(model, *i)?)
+        }
+        let mut params = self.params.as_outlet_id(
+            &mut patch,
+            &*node.name,
+            &input_outlets,
+            model.node_input_facts(node.id)?[0].datum_type,
+            model.node_input_facts(node.id)?[1].datum_type,
+            self.output_type,
+        )?;
 
         let a = wire_offset_u8_as_i8(&mut patch, &node.name, a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut patch, &node.name, b, "b", &mut params[2], "b0")?;

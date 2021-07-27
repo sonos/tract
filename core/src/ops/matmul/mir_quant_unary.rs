@@ -62,11 +62,8 @@ impl EvalOp for QMatMulUnary {
             None
         };
 
-        let mut input_outlets = tvec![a, b];
-        if let Some(bias) = bias {
-            input_outlets.push(bias)
-        }
-        for (i, t) in inputs.iter().enumerate().skip(input_outlets.len()) {
+        let mut input_outlets = tvec![a];
+        for (i, t) in inputs.iter().enumerate().skip(1) {
             input_outlets.push(model.add_const(format!("source_{}", i), t.clone())?)
         }
 
@@ -74,8 +71,8 @@ impl EvalOp for QMatMulUnary {
             &mut model,
             "qmatmul_unary",
             &input_outlets,
+            self.a.datum_type(),
             inputs[0].datum_type(),
-            inputs[1].datum_type(),
             self.output_type,
         )?;
 
@@ -290,7 +287,7 @@ impl TypedOp for QMatMulUnary {
                     &mut patch,
                     &node.name,
                     params_outlets[1],
-                    params_outlets[2],
+                    params_outlets[3],
                     params_outlets[5],
                 )?;
                 let c0 = params_outlets[4];
@@ -382,11 +379,8 @@ impl TypedOp for QMatMulUnary {
         } else {
             None
         };
-        let mut input_outlets = tvec![a, b];
-        if let Some(bias) = bias {
-            input_outlets.push(bias)
-        }
-        for i in node.inputs.iter().skip(input_outlets.len()) {
+        let mut input_outlets = tvec![a];
+        for i in node.inputs.iter().skip(1) {
             input_outlets.push(patch.tap_model(model, *i)?)
         }
         let mut params = self.params.as_outlet_id(
