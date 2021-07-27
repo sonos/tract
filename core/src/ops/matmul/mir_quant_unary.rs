@@ -67,7 +67,7 @@ impl EvalOp for QMatMulUnary {
             input_outlets.push(model.add_const(format!("source_{}", i), t.clone())?)
         }
 
-        let mut params = self.params.as_outlet_id(
+        let mut params = self.params.as_outlet_ids(
             &mut model,
             "qmatmul_unary",
             &input_outlets,
@@ -274,7 +274,7 @@ impl TypedOp for QMatMulUnary {
                     .skip(1)
                     .map(|o| patch.tap_model(model, *o))
                     .collect::<TractResult<TVec<_>>>()?;
-                let params_outlets = self.params.as_outlet_id(
+                let params_outlets = self.params.as_outlet_ids(
                     &mut patch,
                     &*node.name,
                     &input_outlets,
@@ -383,7 +383,7 @@ impl TypedOp for QMatMulUnary {
         for i in node.inputs.iter().skip(1) {
             input_outlets.push(patch.tap_model(model, *i)?)
         }
-        let mut params = self.params.as_outlet_id(
+        let mut params = self.params.as_outlet_ids(
             &mut patch,
             &*node.name,
             &input_outlets,
