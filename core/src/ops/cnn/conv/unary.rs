@@ -136,7 +136,7 @@ impl ConvUnary {
             .as_ref()
             .unwrap()
             .1
-            .as_outlet_id(model, name, &wires, a_dt, b_dt, c_dt)?;
+            .as_outlet_ids(model, name, &wires, a_dt, b_dt, c_dt)?;
 
         let a0 = params[0];
         let a_scale = params[1];

@@ -9,41 +9,41 @@ use crate::ops::quant::offset_u8_as_i8_elementwise;
 use super::mir_quant_unary::QMatMulUnary;
 
 #[derive(Debug, Clone, Hash, PartialEq)]
-pub enum ParamType {
+pub enum QParamKind {
     Attr(Arc<Tensor>),
     FromInput(usize),
     FromQType,
 }
 
-impl ParamType {
+impl QParamKind {
     fn remove_input(&mut self, ix: usize) {
-        if let ParamType::FromInput(slot) = self {
+        if let QParamKind::FromInput(slot) = self {
             *slot = *slot - (*slot > ix) as usize;
         }
     }
 
     fn insert_input(&mut self, ix: usize) {
-        if let ParamType::FromInput(slot) = self {
+        if let QParamKind::FromInput(slot) = self {
             *slot = *slot + (*slot >= ix) as usize;
         }
     }
 
     pub fn as_static(&self) -> Option<&Arc<Tensor>> {
         match self {
-            ParamType::Attr(t) => Some(t),
-            ParamType::FromInput(_) => None,
-            ParamType::FromQType => None,
+            QParamKind::Attr(t) => Some(t),
+            QParamKind::FromInput(_) => None,
+            QParamKind::FromQType => None,
         }
     }
 
     pub fn offset_u8_as_i8(&self, model: &TypedModel, inputs: &[OutletId]) -> TractResult<Self> {
         let tensor = match self {
-            ParamType::Attr(t) => t,
-            ParamType::FromInput(i) => model.outlet_fact(inputs[*i])?.konst.as_ref().unwrap(),
-            ParamType::FromQType => return Ok(ParamType::FromQType),
+            QParamKind::Attr(t) => t,
+            QParamKind::FromInput(i) => model.outlet_fact(inputs[*i])?.konst.as_ref().unwrap(),
+            QParamKind::FromQType => return Ok(QParamKind::FromQType),
         };
         if let DatumType::U8 = tensor.datum_type().unquantized() {
-            Ok(ParamType::Attr(
+            Ok(QParamKind::Attr(
                 tensor.to_array_view()?.mapv(offset_u8_as_i8_elementwise).into_arc_tensor(),
             ))
         } else {
@@ -52,72 +52,72 @@ impl ParamType {
     }
 }
 
-impl From<Tensor> for ParamType {
+impl From<Tensor> for QParamKind {
     fn from(t: Tensor) -> Self {
-        ParamType::Attr(t.into_arc_tensor())
+        QParamKind::Attr(t.into_arc_tensor())
     }
 }
 
-impl From<usize> for ParamType {
+impl From<usize> for QParamKind {
     fn from(o: usize) -> Self {
-        ParamType::FromInput(o)
+        QParamKind::FromInput(o)
     }
 }
 
-impl From<AttrOrInput> for ParamType {
+impl From<AttrOrInput> for QParamKind {
     fn from(at: AttrOrInput) -> Self {
         match at {
-            AttrOrInput::Attr(t) => ParamType::Attr(t),
-            AttrOrInput::Input(o) => ParamType::FromInput(o),
+            AttrOrInput::Attr(t) => QParamKind::Attr(t),
+            AttrOrInput::Input(o) => QParamKind::FromInput(o),
         }
     }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq)]
 pub struct MatMulQParams {
-    pub a0: ParamType,
-    pub a_scale: ParamType,
-    pub b0: ParamType,
-    pub b_scale: ParamType,
-    pub c0: ParamType,
-    pub c_scale: ParamType,
+    pub a0: QParamKind,
+    pub a_scale: QParamKind,
+    pub b0: QParamKind,
+    pub b_scale: QParamKind,
+    pub c0: QParamKind,
+    pub c_scale: QParamKind,
 }
 
 impl MatMulQParams {
     pub fn noop_static(dt: DatumType) -> MatMulQParams {
         MatMulQParams {
-            a0: ParamType::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
-            a_scale: ParamType::Attr(rctensor0(1f32)),
-            b0: ParamType::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
-            b_scale: ParamType::Attr(rctensor0(1f32)),
-            c0: ParamType::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
-            c_scale: ParamType::Attr(rctensor0(1f32)),
+            a0: QParamKind::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            a_scale: QParamKind::Attr(rctensor0(1f32)),
+            b0: QParamKind::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            b_scale: QParamKind::Attr(rctensor0(1f32)),
+            c0: QParamKind::Attr(Tensor::zero_scalar_dt(dt).unwrap().into_arc_tensor()),
+            c_scale: QParamKind::Attr(rctensor0(1f32)),
         }
     }
 
     pub fn all_dynamic(offset: usize) -> MatMulQParams {
         MatMulQParams {
-            a0: ParamType::FromInput(offset),
-            a_scale: ParamType::FromInput(offset + 1),
-            b0: ParamType::FromInput(offset + 2),
-            b_scale: ParamType::FromInput(offset + 3),
-            c0: ParamType::FromInput(offset + 4),
-            c_scale: ParamType::FromInput(offset + 5),
+            a0: QParamKind::FromInput(offset),
+            a_scale: QParamKind::FromInput(offset + 1),
+            b0: QParamKind::FromInput(offset + 2),
+            b_scale: QParamKind::FromInput(offset + 3),
+            c0: QParamKind::FromInput(offset + 4),
+            c_scale: QParamKind::FromInput(offset + 5),
         }
     }
 
     pub fn all_from_qtype() -> MatMulQParams {
         MatMulQParams {
-            a0: ParamType::FromQType,
-            a_scale: ParamType::FromQType,
-            b0: ParamType::FromQType,
-            b_scale: ParamType::FromQType,
-            c0: ParamType::FromQType,
-            c_scale: ParamType::FromQType,
+            a0: QParamKind::FromQType,
+            a_scale: QParamKind::FromQType,
+            b0: QParamKind::FromQType,
+            b_scale: QParamKind::FromQType,
+            c0: QParamKind::FromQType,
+            c_scale: QParamKind::FromQType,
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &ParamType)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &QParamKind)> {
         vec![
             ("a0", &self.a0),
             ("a_scale", &self.a_scale),
@@ -129,7 +129,7 @@ impl MatMulQParams {
         .into_iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&str, &mut ParamType)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&str, &mut QParamKind)> {
         vec![
             ("a0", &mut self.a0),
             ("a_scale", &mut self.a_scale),
@@ -150,10 +150,10 @@ impl MatMulQParams {
         let mut inputs = vec![];
         for (ix, input) in node.inputs.iter().enumerate() {
             if let (Some(position), Some(k)) = (
-                self.iter().position(|qp| &ParamType::FromInput(ix) == qp.1),
+                self.iter().position(|qp| &QParamKind::FromInput(ix) == qp.1),
                 model.outlet_fact(*input)?.konst.as_ref(),
             ) {
-                *new.iter_mut().nth(position).unwrap().1 = ParamType::Attr(k.clone());
+                *new.iter_mut().nth(position).unwrap().1 = QParamKind::Attr(k.clone());
                 new.remove_input(inputs.len());
             } else {
                 inputs.push(*input)
@@ -175,10 +175,10 @@ impl MatMulQParams {
     }
 
     pub fn input_count(&self) -> usize {
-        self.iter().filter(|qp| matches!(qp.1, ParamType::FromInput(_))).count()
+        self.iter().filter(|qp| matches!(qp.1, QParamKind::FromInput(_))).count()
     }
 
-    pub fn as_outlet_id(
+    pub fn as_outlet_ids(
         &self,
         model: &mut TypedModel,
         node_name: &str,
@@ -193,7 +193,7 @@ impl MatMulQParams {
                 let (x0_name, x0) = params.next().unwrap();
                 let (x_scale_name, x_scale) = params.next().unwrap();
                 ensure!(
-                    matches!(x0, ParamType::FromQType) && matches!(x_scale, ParamType::FromQType),
+                    matches!(x0, QParamKind::FromQType) && matches!(x_scale, QParamKind::FromQType),
                     "Quantization cannot be specified both in the type and in params"
                 );
                 let (zp, scale) = qp.zp_scale();
@@ -206,11 +206,11 @@ impl MatMulQParams {
             } else {
                 for (param_name, param) in params {
                     match param {
-                        ParamType::Attr(t) => params_outlets.push(
+                        QParamKind::Attr(t) => params_outlets.push(
                             model.add_const(format!("{}.{}", node_name, param_name), t.clone())?,
                         ),
-                        ParamType::FromInput(i) => params_outlets.push(inputs_wires[*i]),
-                        ParamType::FromQType => {
+                        QParamKind::FromInput(i) => params_outlets.push(inputs_wires[*i]),
+                        QParamKind::FromQType => {
                             bail!("Param {} has no quantization parameters", param_name)
                         }
                     }
@@ -275,7 +275,7 @@ impl EvalOp for QMatMul {
             input_outlets.push(model.add_const(format!("source_{}", i), t.clone())?)
         }
 
-        let mut params = self.params.as_outlet_id(
+        let mut params = self.params.as_outlet_ids(
             &mut model,
             "qmatmul_unary",
             &input_outlets,
@@ -384,7 +384,7 @@ impl TypedOp for QMatMul {
             let mut qp = self.params.clone();
             //compensate for the removed parameter
             for (_, a) in qp.iter_mut() {
-                if let ParamType::FromInput(i) = a {
+                if let QParamKind::FromInput(i) = a {
                     *i -= 2
                 }
             }
@@ -458,7 +458,7 @@ impl TypedOp for QMatMul {
         for i in node.inputs.iter().skip(3) {
             input_outlets.push(patch.tap_model(model, *i)?)
         }
-        let mut params = self.params.as_outlet_id(
+        let mut params = self.params.as_outlet_ids(
             &mut patch,
             &*node.name,
             &input_outlets,
@@ -1031,12 +1031,12 @@ mod test {
                         MatMulQParams::all_dynamic(3)
                     } else {
                         MatMulQParams {
-                            a0: ParamType::Attr(rctensor0::<$a>(self.a0)),
-                            a_scale: ParamType::Attr(rctensor0::<f32>(self.a_scale)),
-                            b0: ParamType::Attr(rctensor0::<$b>(self.b0)),
-                            b_scale: ParamType::Attr(rctensor0::<f32>(self.b_scale)),
-                            c0: ParamType::Attr(rctensor0::<$c>(self.c0)),
-                            c_scale: ParamType::Attr(rctensor0::<f32>(self.c_scale)),
+                            a0: QParamKind::Attr(rctensor0::<$a>(self.a0)),
+                            a_scale: QParamKind::Attr(rctensor0::<f32>(self.a_scale)),
+                            b0: QParamKind::Attr(rctensor0::<$b>(self.b0)),
+                            b_scale: QParamKind::Attr(rctensor0::<f32>(self.b_scale)),
+                            c0: QParamKind::Attr(rctensor0::<$c>(self.c0)),
+                            c_scale: QParamKind::Attr(rctensor0::<f32>(self.c_scale)),
                         }
                     };
                     let result = model
@@ -1276,12 +1276,12 @@ mod test {
             .map(|(idx, _)| idx + 3)
             .collect::<Vec<_>>();
         let qparams = MatMulQParams {
-            a0: ParamType::FromInput(indices[0]),
-            a_scale: ParamType::FromInput(indices[1]),
-            b0: ParamType::FromInput(indices[2]),
-            b_scale: ParamType::FromInput(indices[3]),
-            c0: ParamType::FromInput(indices[4]),
-            c_scale: ParamType::FromInput(indices[5]),
+            a0: QParamKind::FromInput(indices[0]),
+            a_scale: QParamKind::FromInput(indices[1]),
+            b0: QParamKind::FromInput(indices[2]),
+            b_scale: QParamKind::FromInput(indices[3]),
+            c0: QParamKind::FromInput(indices[4]),
+            c_scale: QParamKind::FromInput(indices[5]),
         };
         let op = QMatMul {
             a_trans: false,
@@ -1320,12 +1320,12 @@ mod test {
         assert!(matches!(
             new_qparams,
             MatMulQParams {
-                a0: ParamType::Attr(_),
-                a_scale: ParamType::Attr(_),
-                b0: ParamType::FromInput(3),
-                b_scale: ParamType::FromInput(4),
-                c0: ParamType::Attr(_),
-                c_scale: ParamType::Attr(_),
+                a0: QParamKind::Attr(_),
+                a_scale: QParamKind::Attr(_),
+                b0: QParamKind::FromInput(3),
+                b_scale: QParamKind::FromInput(4),
+                c0: QParamKind::Attr(_),
+                c_scale: QParamKind::Attr(_),
             },
         ));
     }
@@ -1339,12 +1339,12 @@ mod test {
         assert!(matches!(
             new_qparams,
             MatMulQParams {
-                a0: ParamType::Attr(_),
-                a_scale: ParamType::Attr(_),
-                b0: ParamType::FromInput(4),
-                b_scale: ParamType::FromInput(3),
-                c0: ParamType::Attr(_),
-                c_scale: ParamType::Attr(_),
+                a0: QParamKind::Attr(_),
+                a_scale: QParamKind::Attr(_),
+                b0: QParamKind::FromInput(4),
+                b_scale: QParamKind::FromInput(3),
+                c0: QParamKind::Attr(_),
+                c_scale: QParamKind::Attr(_),
             },
         ));
     }
@@ -1358,12 +1358,12 @@ mod test {
         assert!(matches!(
             new_qparams,
             MatMulQParams {
-                a0: ParamType::Attr(_),
-                a_scale: ParamType::Attr(_),
-                b0: ParamType::FromInput(3),
-                b_scale: ParamType::FromInput(4),
-                c0: ParamType::Attr(_),
-                c_scale: ParamType::Attr(_),
+                a0: QParamKind::Attr(_),
+                a_scale: QParamKind::Attr(_),
+                b0: QParamKind::FromInput(3),
+                b_scale: QParamKind::FromInput(4),
+                c0: QParamKind::Attr(_),
+                c_scale: QParamKind::Attr(_),
             },
         ));
     }

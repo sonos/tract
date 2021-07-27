@@ -4,7 +4,7 @@ use crate::deser::CoerceFrom;
 use crate::deser::Value;
 use crate::internal::*;
 use crate::ser::*;
-use tract_core::ops::matmul::mir_quant::ParamType;
+use tract_core::ops::matmul::mir_quant::QParamKind;
 use tract_core::ops::matmul::mir_quant_unary::QMatMulUnary;
 use tract_core::ops::matmul::MatMulQParams;
 use tract_core::ops::matmul::QMatMul;
@@ -46,11 +46,11 @@ pub fn qparams_to_rvalues(
     macro_rules! attr_to_rvalue {
         ($a:ident, $typ:ty) => {
             match &params.$a {
-                ParamType::Attr(t) => {
+                QParamKind::Attr(t) => {
                     Some(numeric(t.cast_to_dt(<$typ>::datum_type())?.to_scalar::<$typ>()?))
                 }
-                ParamType::FromInput(i) => Some((*ast_mapping[&node_inputs[*i]]).clone()),
-                ParamType::FromQType => None,
+                QParamKind::FromInput(i) => Some((*ast_mapping[&node_inputs[*i]]).clone()),
+                QParamKind::FromQType => None,
             }
         };
     }
@@ -152,16 +152,16 @@ pub fn values_to_qparams(
         ($a:ident, $typ:ty) => {
             if let Some($a) = $a {
                 if let Ok(t) = Arc::<Tensor>::coerce(builder, &$a) {
-                    ParamType::Attr(
+                    QParamKind::Attr(
                         t.cast_to_dt(<$typ>::datum_type())?.into_owned().into_arc_tensor(),
                     )
                 } else {
                     let outlet_id = OutletId::coerce(builder, &$a)?;
                     inputs.push(outlet_id);
-                    ParamType::FromInput(inputs.len() - 1)
+                    QParamKind::FromInput(inputs.len() - 1)
                 }
             } else {
-                ParamType::FromQType
+                QParamKind::FromQType
             }
         };
     }
