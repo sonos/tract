@@ -106,24 +106,37 @@ impl ConvUnary {
                     .as_ref()
                     .map(|(dt, qp)| -> TractResult<_> {
                         let a0 = match &qp.a0 {
-                            QParamKind::Attr(t) => QParamKind::Attr(t.offset_u8_as_i8()),
+                            QParamKind::Attr(_) | QParamKind::FromQType => {
+                                qp.a0.offset_u8_as_i8(&model, &[])?
+                            }
                             QParamKind::FromInput(i) => {
-                                if let DatumType::U8 =
-                                    model.outlet_fact(inputs[*i])?.datum_type.unquantized()
-                                {
-                                    inputs[*i] = model.wire_node(
-                                        format!(
-                                            "{}.offset_{}_as_i8",
-                                            model.node(inputs[*i].node).name,
-                                            "a0"
-                                        ),
-                                        ops::quant::offset_u8_as_i8(),
-                                        &[inputs[*i]],
-                                    )?[0];
+                                match model.outlet_fact(inputs[*i])?.datum_type.unquantized() {
+                                    DatumType::U8 => {
+                                        inputs[*i] = model.wire_node(
+                                            format!(
+                                                "{}.offset_{}_as_i8",
+                                                model.node(inputs[*i].node).name,
+                                                "a0"
+                                            ),
+                                            ops::quant::offset_u8_as_i8(),
+                                            &[inputs[*i]],
+                                        )?[0];
+                                    }
+                                    DatumType::I32 => {
+                                        inputs[*i] = model.wire_node(
+                                            format!(
+                                                "{}.offset_{}_as_i8",
+                                                model.node(inputs[*i].node).name,
+                                                "a0"
+                                            ),
+                                            ops::math::add::unary(rctensor0(-128i32)),
+                                            &[inputs[*i]],
+                                        )?[0];
+                                    }
+                                    _ => (),
                                 }
                                 QParamKind::FromInput(*i)
                             }
-                            QParamKind::FromQType => QParamKind::FromQType,
                         };
                         Ok((*dt, MatMulQParams { a0, ..qp.clone() }))
                     })
