@@ -46,12 +46,14 @@ impl QParamKind {
                 .ok_or(format_err!("Expected static quantization parameter"))?,
             QParamKind::FromQType => return Ok(QParamKind::FromQType),
         };
-        if let DatumType::U8 = tensor.datum_type().unquantized() {
-            Ok(QParamKind::Attr(
+        match tensor.datum_type().unquantized() {
+            DatumType::U8 => Ok(QParamKind::Attr(
                 tensor.to_array_view()?.mapv(offset_u8_as_i8_elementwise).into_arc_tensor(),
-            ))
-        } else {
-            Ok(self.clone())
+            )),
+            DatumType::I32 => Ok(QParamKind::Attr(
+                tensor.to_array_view()?.mapv(|i: i32| i - 128).into_arc_tensor(),
+            )),
+            _ => Ok(self.clone()),
         }
     }
 }
@@ -506,14 +508,24 @@ pub(crate) fn wire_offset_u8_as_i8(
     zero_point: &mut OutletId,
     zero_point_name: &str,
 ) -> TractResult<OutletId> {
-    if let DatumType::U8 = model.outlet_fact(*zero_point)?.datum_type.unquantized() {
-        *zero_point = model.wire_node(
-            format!("{}.offset_{}_as_i8", model_name, zero_point_name),
-            ops::quant::offset_u8_as_i8(),
-            &[*zero_point],
-        )?[0];
-    }
     if let DatumType::U8 = model.outlet_fact(matrix)?.datum_type.unquantized() {
+        match model.outlet_fact(*zero_point)?.datum_type.unquantized() {
+            DatumType::U8 => {
+                *zero_point = model.wire_node(
+                    format!("{}.offset_{}_as_i8", model_name, zero_point_name),
+                    ops::quant::offset_u8_as_i8(),
+                    &[*zero_point],
+                )?[0];
+            }
+            DatumType::I32 => {
+                *zero_point = model.wire_node(
+                    format!("{}.offset_{}_as_i8", model_name, zero_point_name),
+                    ops::math::add::unary(rctensor0(-128i32)),
+                    &[*zero_point],
+                )?[0];
+            }
+            _ => (),
+        }
         let ret = Ok(model.wire_node(
             format!("{}.offset_{}_as_i8", model_name, matrix_name),
             ops::quant::offset_u8_as_i8(),
