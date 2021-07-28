@@ -452,12 +452,38 @@ pub(crate) fn offset_u8_as_i8_elementwise(x: u8) -> i8 {
     x.wrapping_sub(128) as i8
 }
 
-element_wise_oop!(
-    /// Offsets nodes of u8 type to i8 type elementwise.
-    offset_u8_as_i8,
-    OffsetU8asI8,
-    [u8] => i8 |_, xs, ys| {
-        xs.iter().zip(ys.iter_mut()).for_each(|(x, y)| *y = offset_u8_as_i8_elementwise(*x));
-        Ok(())
+#[derive(Debug, Clone, Educe)]
+#[educe(Hash)]
+pub struct OffsetU8asI8 {}
+impl_dyn_hash!(OffsetU8asI8);
+impl ElementWiseMiniOp for OffsetU8asI8 {
+    fn name(&self) -> String {
+        format!("{}{}", self.prefix(), stringify!(OffsetU8asI8))
     }
-);
+    fn output_type(&self, input_type: DatumType) -> Option<DatumType> {
+        Some(if let DatumType::QU8(qp) = input_type {
+            let (zp, scale) = qp.zp_scale();
+            DatumType::QI8(QParams::ZpScale { zero_point: zp - 128, scale })
+        } else if input_type == DatumType::U8 {
+            DatumType::I8
+        } else {
+            input_type
+        })
+    }
+    fn eval_out_of_place(&self, t: &Tensor) -> TractResult<Tensor> {
+        let output_type = self.output_type(t.datum_type()).unwrap();
+        let mut dst = unsafe { Tensor::uninitialized_dt(output_type, &t.shape())? };
+        if t.datum_type().unquantized() == u8::datum_type() {
+            t.as_slice::<u8>()?
+                .iter()
+                .zip(dst.as_slice_mut::<i8>()?.iter_mut())
+                .for_each(|(x, y)| *y = offset_u8_as_i8_elementwise(*x));
+            return Ok(dst);
+        }
+
+        bail!("{} does not support {:?}", self.name(), t.datum_type());
+    }
+}
+pub fn offset_u8_as_i8() -> ElementWiseOp {
+    ElementWiseOp(Box::new(OffsetU8asI8 {}))
+}

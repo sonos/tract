@@ -2,6 +2,9 @@ use ndarray::*;
 
 use crate::internal::*;
 use crate::model::*;
+use crate::ops;
+use crate::ops::matmul::mir_quant::wire_offset_u8_as_i8;
+use crate::ops::matmul::mir_quant::QParamKind;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
@@ -90,6 +93,49 @@ impl ConvUnary {
         }
     }
 
+    fn kernel_offset_u8_as_i8(
+        &self,
+        inputs: &mut [OutletId],
+        model: &mut TypedModel,
+    ) -> TractResult<Option<Self>> {
+        if let DatumType::U8 = self.kernel.datum_type().unquantized() {
+            let new_op = Self {
+                kernel: self.kernel.offset_u8_as_i8(),
+                q_params: self
+                    .q_params
+                    .as_ref()
+                    .map(|(dt, qp)| -> TractResult<_> {
+                        let a0 = match &qp.a0 {
+                            QParamKind::Attr(t) => QParamKind::Attr(t.offset_u8_as_i8()),
+                            QParamKind::FromInput(i) => {
+                                if let DatumType::U8 =
+                                    model.outlet_fact(inputs[*i])?.datum_type.unquantized()
+                                {
+                                    inputs[*i] = model.wire_node(
+                                        format!(
+                                            "{}.offset_{}_as_i8",
+                                            model.node(inputs[*i].node).name,
+                                            "a0"
+                                        ),
+                                        ops::quant::offset_u8_as_i8(),
+                                        &[inputs[*i]],
+                                    )?[0];
+                                }
+                                QParamKind::FromInput(*i)
+                            }
+                            QParamKind::FromQType => QParamKind::FromQType,
+                        };
+                        Ok((*dt, MatMulQParams { a0, ..qp.clone() }))
+                    })
+                    .transpose()?,
+                ..self.clone()
+            };
+            return Ok(Some(new_op));
+        } else {
+            Ok(None)
+        }
+    }
+
     fn bias_as_non_linear<T>(&self) -> TractResult<ArrayD<Vec<ProtoFusedSpec>>>
     where
         T: Datum + Copy,
@@ -120,37 +166,45 @@ impl ConvUnary {
         &self,
         model: &mut TypedModel,
         name: &str,
-        a_dt: DatumType,
         b_dt: DatumType,
         wires: &[OutletId],
     ) -> TractResult<OutletId> {
         use crate::ops::matmul::mir_quant as qmm;
+
         let c_dt = self.q_params.as_ref().unwrap().0;
-        let b_fact = model.outlet_fact(wires[0])?.clone();
-
-        let (_, m, k, n, mmm) = self.compute_geo(&b_fact)?;
-        let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
-
-        let params = self
-            .q_params
-            .as_ref()
-            .unwrap()
-            .1
-            .as_outlet_ids(model, name, &wires, a_dt, b_dt, c_dt)?;
+        let b_dt = if let DatumType::QU8(qp) = b_dt {
+            let (zp, scale) = qp.zp_scale();
+            DatumType::QI8(QParams::ZpScale { zero_point: zp - 128, scale })
+        } else {
+            b_dt
+        };
+        let params = self.q_params.as_ref().unwrap().1.as_outlet_ids(
+            model,
+            name,
+            &wires,
+            self.kernel.datum_type(),
+            b_dt,
+            c_dt,
+        )?;
 
         let a0 = params[0];
         let a_scale = params[1];
-        let b0 = params[2];
+        let mut b0 = params[2];
         let b_scale = params[3];
         let c0 = params[4];
         let c_scale = params[5];
+
+        let b = wire_offset_u8_as_i8(model, name, wires[0], "b", &mut b0, "b0")?;
+        let b_fact = model.outlet_fact(b)?.clone();
+        let (_, m, k, n, mmm) = self.compute_geo(&b_fact)?;
+        let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
         let abc_scale = qmm::combine_scales(model, name, a_scale, b_scale, c_scale)?;
 
         let im2col = model.wire_node(
             format!("{}.im2col", name),
             Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
-            &[wires[0], b0],
+            &[b, b0],
         )?[0];
 
         let a = self.kernel_as_group_o_ihw()?.into_tensor();
@@ -181,7 +235,7 @@ impl ConvUnary {
             )?[0];
         }
 
-        let b_dt = model.outlet_fact(wires[0])?.datum_type;
+        let b_dt = model.outlet_fact(b)?.datum_type;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
         let mut geometry = MatMulGeometry::from(SymbolicMatMulGeometry {
             b_datum_type: b_dt,
@@ -628,7 +682,8 @@ impl EvalOp for ConvUnary {
 
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut model = TypedModel::default();
-        let wires: TVec<OutletId> = inputs
+
+        let mut wires: TVec<OutletId> = inputs
             .iter()
             .enumerate()
             .map(|(ix, v)| {
@@ -638,12 +693,13 @@ impl EvalOp for ConvUnary {
                 )
             })
             .collect::<TractResult<_>>()?;
+        let new_op = self.kernel_offset_u8_as_i8(&mut wires, &mut model)?;
         let wire = unsafe {
             if self.q_params.is_some() {
-                self.wire_as_quant_im2col(
+                let op_ref = if let Some(op) = new_op.as_ref() { op } else { self };
+                op_ref.wire_as_quant_im2col(
                     &mut model,
                     "im2col-adhoc",
-                    self.kernel.datum_type(),
                     inputs[0].datum_type(),
                     &*wires,
                 )?
@@ -875,6 +931,19 @@ impl TypedOp for ConvUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if let DatumType::U8 = self.kernel.datum_type().unquantized() {
+            let mut patch = TypedModelPatch::default();
+            let mut inputs = node
+                .inputs
+                .iter()
+                .map(|w| patch.tap_model(model, *w))
+                .collect::<TractResult<TVec<_>>>()?;
+            let new_op = self.kernel_offset_u8_as_i8(&mut inputs, &mut patch)?.unwrap();
+            let wire = patch.wire_node(&node.name, new_op, &inputs)?;
+            patch.shunt_outside(model, node.id.into(), wire[0])?;
+            return Ok(Some(patch));
+        }
+
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let input_shape = self.pool_spec.data_format.shape(&full_input_shape)?;
@@ -892,7 +961,6 @@ impl TypedOp for ConvUnary {
                 let wire = self.wire_as_quant_im2col(
                     &mut patch,
                     &node.name,
-                    self.kernel.datum_type(),
                     model.node_input_facts(node.id)?[0].datum_type,
                     &inputs,
                 )?;
