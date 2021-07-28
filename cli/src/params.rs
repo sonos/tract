@@ -2,6 +2,7 @@ use reqwest::Url;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tract_core::anyhow::ensure;
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
 
@@ -485,11 +486,26 @@ impl Parameters {
                             name.to_string()
                         };
                         let npy_name = format!("{}.npy", filename);
-                        if let Ok(t) = tensor::for_npz(&mut npz, &filename)
+                        if let Ok(mut t) = tensor::for_npz(&mut npz, &filename)
                             .or_else(|_| tensor::for_npz(&mut npz, &npy_name))
                         {
                             let shape = t.shape().to_vec();
-                            let fact = InferenceFact::dt_shape(t.datum_type(), shape);
+                            let dt = raw_model
+                                .input_fact(ix)
+                                .map(|f| f.to_typed_fact().map(|t| t.datum_type).ok())
+                                .ok()
+                                .flatten()
+                                .unwrap_or(t.datum_type());
+                            ensure!(
+                                dt.unquantized() == t.datum_type().unquantized(),
+                                "Input is {:?}, model expect {:?} which is incompatible",
+                                t.datum_type(),
+                                dt
+                            );
+                            unsafe {
+                                t.set_datum_type(dt);
+                            }
+                            let fact = InferenceFact::dt_shape(dt, shape);
                             raw_model.set_input_fact(ix, (&fact).try_into().unwrap())?;
                             values.push(t.into_arc_tensor());
                         }

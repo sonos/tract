@@ -712,6 +712,7 @@ mod test {
                     } else {
                         tvec![self.b.clone().into_tensor()]
                     };
+                    let model = if opt { model.into_optimized().unwrap() } else { model };
                     let mut outputs = if opt { model.into_optimized().unwrap() } else { model }
                         .into_runnable()
                         .unwrap()
@@ -897,6 +898,22 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+        }
+        .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
+    }
+
+    #[test]
+    fn test_qmmup_u8_u8_u8_2() {
+        QMatMulUnaryProblemU8U8U8 {
+            a: arr2(&[[129, 129], [129, 128]]),
+            b: arr2(&[[129, 0], [0, 129]]),
+            bias: tensor0(0i32),
+            a0: 128,
+            b0: 128,
+            c0: 0,
+            a_scale: 1.,
+            b_scale: 1.,
+            c_scale: 1.,
         }
         .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
     }

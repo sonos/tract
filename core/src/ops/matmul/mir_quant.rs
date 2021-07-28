@@ -39,7 +39,11 @@ impl QParamKind {
     pub fn offset_u8_as_i8(&self, model: &TypedModel, inputs: &[OutletId]) -> TractResult<Self> {
         let tensor = match self {
             QParamKind::Attr(t) => t,
-            QParamKind::FromInput(i) => model.outlet_fact(inputs[*i])?.konst.as_ref().unwrap(),
+            QParamKind::FromInput(i) => model
+                .outlet_fact(inputs[*i])?
+                .konst
+                .as_ref()
+                .ok_or(format_err!("Expected static quantization parameter"))?,
             QParamKind::FromQType => return Ok(QParamKind::FromQType),
         };
         if let DatumType::U8 = tensor.datum_type().unquantized() {
@@ -369,8 +373,7 @@ impl TypedOp for QMatMul {
         let flip = konst_ix == 1;
         let t_konst = [self.a_trans, self.b_trans][konst_ix] ^ flip;
         let t_var = [self.b_trans, self.a_trans][konst_ix] ^ flip;
-        let konst =
-            model.outlet_fact(node.inputs[konst_ix])?.konst.as_ref().unwrap().offset_u8_as_i8();
+        let konst = model.outlet_fact(node.inputs[konst_ix])?.konst.as_ref().unwrap();
         let bias = model.outlet_fact(node.inputs[2])?.konst.clone().unwrap();
 
         let inputs: Vec<_> = node
@@ -390,14 +393,14 @@ impl TypedOp for QMatMul {
             }
             if flip {
                 MatMulQParams {
-                    a0: qp.b0.offset_u8_as_i8(model, &node.inputs)?,
+                    a0: qp.b0,
                     a_scale: qp.b_scale,
                     b0: qp.a0,
                     b_scale: qp.a_scale,
                     ..qp
                 }
             } else {
-                MatMulQParams { a0: qp.a0.offset_u8_as_i8(model, &node.inputs)?, ..qp }
+                qp
             }
         };
 
@@ -406,7 +409,7 @@ impl TypedOp for QMatMul {
             node,
             &inputs,
             QMatMulUnary::new(
-                konst,
+                konst.clone(),
                 // if bias is uniformly zero, it can be discarded
                 Some(bias).filter(|b| {
                     b.as_uniform()
@@ -511,11 +514,12 @@ pub(crate) fn wire_offset_u8_as_i8(
         )?[0];
     }
     if let DatumType::U8 = model.outlet_fact(matrix)?.datum_type.unquantized() {
-        Ok(model.wire_node(
+        let ret = Ok(model.wire_node(
             format!("{}.offset_{}_as_i8", model_name, matrix_name),
             ops::quant::offset_u8_as_i8(),
             &[matrix],
-        )?[0])
+        )?[0]);
+        ret
     } else {
         Ok(matrix)
     }
