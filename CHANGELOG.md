@@ -1,5 +1,8 @@
 # Unreleased
 
+# 0.15.3 - 2021-07-29
+* optimise i8*u8, u8*i8 and u8*u8 matrix products (and convo)
+
 # 0.15.2 - 2021-07-09
 * bump prost dep
 
