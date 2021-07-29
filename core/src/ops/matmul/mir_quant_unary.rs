@@ -54,7 +54,7 @@ impl EvalOp for QMatMulUnary {
 
         let mut model = TypedModel::default();
         let t_a = self.a.offset_u8_as_i8();
-        let a = model.add_const("source_a", t_a.clone())?;
+        let a = model.add_const("source_a", self.a.clone())?;
         let b = model.add_const("source_b", inputs[0].clone())?;
         let bias = if let Some(bias) = self.bias.clone() {
             Some(model.add_const("source_bias", bias)?)
@@ -75,7 +75,6 @@ impl EvalOp for QMatMulUnary {
             inputs[0].datum_type(),
             self.output_type,
         )?;
-
         let a = wire_offset_u8_as_i8(&mut model, "adhoc", a, "a", &mut params[0], "a0")?;
         let b = wire_offset_u8_as_i8(&mut model, "adhoc", b, "b", &mut params[2], "b0")?;
 
@@ -370,7 +369,7 @@ impl TypedOp for QMatMulUnary {
 
         let a = patch.wire_node(
             format!("{}.a_const", &node.name),
-            ops::konst::Const(t_a.clone()),
+            ops::konst::Const(self.a.clone()),
             &[],
         )?[0];
         let b = patch.tap_model(model, node.inputs[0])?;
@@ -712,7 +711,6 @@ mod test {
                     } else {
                         tvec![self.b.clone().into_tensor()]
                     };
-                    let model = if opt { model.into_optimized().unwrap() } else { model };
                     let mut outputs = if opt { model.into_optimized().unwrap() } else { model }
                         .into_runnable()
                         .unwrap()
