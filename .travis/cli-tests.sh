@@ -36,6 +36,8 @@ export CACHEDIR
 cargo -q build -q -p tract --release
 
 ./.travis/cache_file.sh \
+    inceptionv1_quant.io.npz \
+    inceptionv1_quant.nnef.tar.gz \
     ARM-ML-KWS-CNN-M.pb \
     GRU128KeywordSpotter-v2-10epochs.onnx \
     hey_snips_v4_model17.pb \
@@ -121,6 +123,12 @@ cd $CACHEDIR
     --input-bundle $CACHEDIR/en_libri_real/io.npz \
     run \
     --assert-output-bundle $CACHEDIR/en_libri_real/io.npz
+
+./target/release/tract $CACHEDIR/inceptionv1_quant.nnef.tar.gz \
+    --nnef-tract-core \
+    --input-bundle $CACHEDIR/inceptionv1_quant.io.npz \
+    run \
+    --assert-output-bundle $CACHEDIR/inceptionv1_quant.io.npz \
 
 for t in harness/pre-optimized-graphes/*
 do
