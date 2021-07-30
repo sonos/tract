@@ -371,6 +371,8 @@ pub fn random(sizes: &[usize], datum_type: DatumType) -> Tensor {
         F16 => make::<f32>(sizes).cast_to::<f16>().unwrap().into_owned(),
         F32 => make::<f32>(sizes),
         F64 => make::<f64>(sizes),
+        QU8(_) => make::<u8>(sizes),
+        QI8(_) => make::<i8>(sizes),
         _ => panic!("Can generate random tensor for {:?}", datum_type),
     }
 }

@@ -82,6 +82,7 @@ net_bench hey_snips_v4_model17_nnef pulse8 --nnef-tract-pulse $CACHEDIR/hey_snip
 net_bench mobilenet_v1_1 pass $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb -i 1,224,224,3,f32
 net_bench mobilenet_v2_1 pass $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb -i 1,224,224,3,f32
 
+net_bench inceptionv1q pass $CACHEDIR/inceptionv1_quant.nnef.tar.gz --nnef-tract-core
 net_bench inceptionv3 pass $CACHEDIR/inception_v3_2016_08_28_frozen.pb -i 1,299,299,3,f32
 
 net_bench kaldi_librispeech_clean_tdnn_lstm_1e_256 2600ms \
