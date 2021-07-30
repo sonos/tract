@@ -152,7 +152,7 @@ impl<'a> ParsingContext<'a> {
         }
         let mut outputs = vec![];
         for output in graph.output.iter() {
-            let fact = if let Some(fact) = output.r#type.as_ref().unwrap().value.as_ref() {
+            let fact = if let Some(fact) = output.r#type.as_ref().and_then(|t| t.value.as_ref()) {
                 let pb::type_proto::Value::TensorType(fact) = fact;
                 fact.try_into()?
             } else {
@@ -206,7 +206,8 @@ impl Onnx {
             .find(|import| import.domain == "" || import.domain == "ai.onnx")
             .map(|op| op.version)
             .unwrap_or(0);
-        let graph = proto.graph.as_ref().ok_or_else(|| anyhow!("model proto does not contain a graph"))?;
+        let graph =
+            proto.graph.as_ref().ok_or_else(|| anyhow!("model proto does not contain a graph"))?;
         debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
         if onnx_operator_set_version != 0
             && (onnx_operator_set_version < 9 || onnx_operator_set_version > 14)
