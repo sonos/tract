@@ -10,6 +10,10 @@ pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> C
 
     for (ix, (got, exp)) in got.iter().zip(expected.iter()).enumerate() {
         if let Some(exp) = exp {
+            if exp.datum_type().unquantized() != got.datum_type().unquantized() {
+                bail!("Checking output {} (expected {:?}, got {:?}", ix, exp, got)
+            }
+            let exp = exp.cast_to_dt(got.datum_type())?;
             exp.close_enough(got, true).with_context(|| {
                 format!("Checking output {} (expected {:?}, got {:?}", ix, exp, got)
             })?;

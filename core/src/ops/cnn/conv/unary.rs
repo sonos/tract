@@ -185,12 +185,7 @@ impl ConvUnary {
         use crate::ops::matmul::mir_quant as qmm;
 
         let c_dt = self.q_params.as_ref().unwrap().0;
-        let b_dt = if let DatumType::QU8(qp) = b_dt {
-            let (zp, scale) = qp.zp_scale();
-            DatumType::QI8(QParams::ZpScale { zero_point: zp - 128, scale })
-        } else {
-            b_dt
-        };
+
         let params = self.q_params.as_ref().unwrap().1.as_outlet_ids(
             model,
             name,
