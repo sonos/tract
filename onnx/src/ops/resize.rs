@@ -11,6 +11,7 @@ pub fn resize(
         match node.get_attr_opt("coordinate_transformation_mode")?.unwrap_or("half_pixel") {
             "align_corners" => CoordTransformer::AlignCorners,
             "half_pixel" => CoordTransformer::HalfPixel,
+            "pytorch_half_pixel" => CoordTransformer::HalfPixel,
             s => todo!("coordinate_transformation_mode: {}", s),
         };
     let interpolator = match node.get_attr("mode")? {
