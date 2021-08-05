@@ -10,7 +10,9 @@ pub fn resize(
     let coord_transformer =
         match node.get_attr_opt("coordinate_transformation_mode")?.unwrap_or("half_pixel") {
             "align_corners" => CoordTransformer::AlignCorners,
+            "asymmetric" => CoordTransformer::Asymmetric,
             "half_pixel" => CoordTransformer::HalfPixel,
+            "pytorch_half_pixel" => CoordTransformer::PytorchHalfPixel,
             s => todo!("coordinate_transformation_mode: {}", s),
         };
     let interpolator = match node.get_attr("mode")? {
@@ -38,13 +40,23 @@ pub fn resize(
 #[derive(Clone, Debug, Hash)]
 enum CoordTransformer {
     HalfPixel,
+    PytorchHalfPixel,
     AlignCorners,
+    Asymmetric,
 }
 
 impl CoordTransformer {
     fn transform(&self, x_out: usize, scale: f32, len_in: usize, len_out: usize) -> f32 {
         match self {
+            CoordTransformer::Asymmetric => x_out as f32 * scale,
             CoordTransformer::HalfPixel => (x_out as f32 + 0.5) * scale - 0.5,
+            CoordTransformer::PytorchHalfPixel => {
+                if len_out > 0 {
+                    (x_out as f32 + 0.5) * scale - 0.5
+                } else {
+                    0.0
+                }
+            }
             CoordTransformer::AlignCorners => {
                 (x_out as f32 * (len_in as f32 - 1.0)) / (len_out as f32 - 1.0)
             }
@@ -157,6 +169,8 @@ impl EvalOp for Resize {
                     let x_frac = x_in - x_left as f32;
                     self.interpolator.interpolate(y_left, y_right, x_frac)
                 })
+            } else {
+                bail!("Downsampling not implemented");
             }
         }
         Ok(tvec!(data.into_arc_tensor()))
@@ -173,9 +187,9 @@ impl InferenceRulesOp for Resize {
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        if inputs.len() == 3 && self.optional_scales_input == Some(2) {
+        if self.optional_scales_input.is_some() {
             rules_with_scales(self, s, inputs, outputs)
-        } else if inputs.len() == 3 && self.optional_sizes_input == Some(2) {
+        } else if self.optional_sizes_input.is_some() {
             rules_with_sizes(self, s, inputs, outputs)
         } else {
             // bogus 4 inputs case
