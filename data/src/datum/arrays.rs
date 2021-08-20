@@ -85,6 +85,7 @@ impl_stack_views_by_copy!(i8);
 impl_stack_views_by_copy!(i16);
 impl_stack_views_by_copy!(i32);
 impl_stack_views_by_copy!(i64);
+impl_stack_views_by_copy!(Complex<i16>);
 impl_stack_views_by_copy!(Complex<i32>);
 impl_stack_views_by_copy!(Complex<i64>);
 

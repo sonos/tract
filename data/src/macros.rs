@@ -40,8 +40,10 @@ macro_rules! dispatch_datum {
             DatumType::String => $($path)::*::<String>($($args),*),
             DatumType::QI8(_) => $($path)::*::<i8>($($args),*),
             DatumType::QU8(_) => $($path)::*::<u8>($($args),*),
+            DatumType::ComplexI16 => $($path)::*::<Complex<i16>>($($args),*),
             DatumType::ComplexI32 => $($path)::*::<Complex<i32>>($($args),*),
             DatumType::ComplexI64 => $($path)::*::<Complex<i64>>($($args),*),
+            DatumType::ComplexF16 => $($path)::*::<Complex<f16>>($($args),*),
             DatumType::ComplexF32 => $($path)::*::<Complex<f32>>($($args),*),
             DatumType::ComplexF64 => $($path)::*::<Complex<f64>>($($args),*),
         }
@@ -70,8 +72,10 @@ macro_rules! dispatch_datum_by_size {
             DatumType::String => $($path)::*::<String>($($args),*),
             DatumType::QI8(_)   => $($path)::*::<i8>($($args),*),
             DatumType::QU8(_)   => $($path)::*::<u8>($($args),*),
+            DatumType::ComplexI16 => $($path)::*::<Complex<i16>>($($args),*),
             DatumType::ComplexI32 => $($path)::*::<Complex<i32>>($($args),*),
             DatumType::ComplexI64 => $($path)::*::<Complex<i64>>($($args),*),
+            DatumType::ComplexF16 => $($path)::*::<Complex<f16>>($($args),*),
             DatumType::ComplexF32 => $($path)::*::<Complex<f32>>($($args),*),
             DatumType::ComplexF64 => $($path)::*::<Complex<f64>>($($args),*),
         }
@@ -97,8 +101,10 @@ macro_rules! dispatch_copy {
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             DatumType::QI8(_)  => $($path)::*::<i8>($($args),*),
             DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
+            DatumType::ComplexI16 => $($path)::*::<Complex<i16>>($($args),*),
             DatumType::ComplexI32 => $($path)::*::<Complex<i32>>($($args),*),
             DatumType::ComplexI64 => $($path)::*::<Complex<i64>>($($args),*),
+            DatumType::ComplexF16 => $($path)::*::<Complex<f16>>($($args),*),
             DatumType::ComplexF32 => $($path)::*::<Complex<f32>>($($args),*),
             DatumType::ComplexF64 => $($path)::*::<Complex<f64>>($($args),*),
             _ => panic!("{:?} is not Copy", $dt)
@@ -127,6 +133,7 @@ macro_rules! dispatch_copy_by_size {
             DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
             DatumType::ComplexI32 => $($path)::*::<Complex<i32>>($($args),*),
             DatumType::ComplexI64 => $($path)::*::<Complex<i64>>($($args),*),
+            DatumType::ComplexF16 => $($path)::*::<Complex<f16>>($($args),*),
             DatumType::ComplexF32 => $($path)::*::<Complex<f32>>($($args),*),
             DatumType::ComplexF64 => $($path)::*::<Complex<f64>>($($args),*),
             _ => panic!("{:?} is not Copy", $dt)
@@ -152,10 +159,6 @@ macro_rules! dispatch_numbers {
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             DatumType::QI8(_)  => $($path)::*::<i8>($($args),*),
             DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
-            DatumType::ComplexI32 => $($path)::*::<Complex<i32>>($($args),*),
-            DatumType::ComplexI64 => $($path)::*::<Complex<i64>>($($args),*),
-            DatumType::ComplexF32 => $($path)::*::<Complex<f32>>($($args),*),
-            DatumType::ComplexF64 => $($path)::*::<Complex<f64>>($($args),*),
             _ => $crate::anyhow::bail!("{:?} is not a number", $dt)
         }
     } }
@@ -209,6 +212,7 @@ macro_rules! dispatch_hash {
             DatumType::Blob => $($path)::*::<Blob>($($args),*),
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
             DatumType::String => $($path)::*::<String>($($args),*),
+            DatumType::ComplexI16 => $($path)::*::<Complex<i16>>($($args),*),
             DatumType::ComplexI32 => $($path)::*::<Complex<i32>>($($args),*),
             DatumType::ComplexI64 => $($path)::*::<Complex<i64>>($($args),*),
             _ => $crate::anyhow::bail!("{:?} is not Hash", $dt)

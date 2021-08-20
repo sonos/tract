@@ -98,8 +98,10 @@ pub enum DatumType {
     String,
     QI8(QParams),
     QU8(QParams),
+    ComplexI16,
     ComplexI32,
     ComplexI64,
+    ComplexF16,
     ComplexF32,
     ComplexF64,
 }
@@ -111,9 +113,9 @@ impl DatumType {
         {
             tvec!(*self)
         } else if self.is_complex_float() {
-            [ComplexF32, ComplexF64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
+            [ComplexF16, ComplexF32, ComplexF64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_complex_signed() {
-            [ComplexI32, ComplexI64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
+            [ComplexI16, ComplexI32, ComplexI64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_float() {
             [F16, F32, F64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_signed() {
@@ -301,6 +303,12 @@ impl std::str::FromStr for DatumType {
             "Blob" | "blob" => Ok(DatumType::Blob),
             "String" | "string" => Ok(DatumType::String),
             "TDim" | "tdim" => Ok(DatumType::TDim),
+            "ComplexI16" | "complexi16" => Ok(DatumType::ComplexI16),
+            "ComplexI32" | "complexi32"  => Ok(DatumType::ComplexI32),
+            "ComplexI64" | "complexi64"  => Ok(DatumType::ComplexI64),
+            "ComplexF16" | "complexf16"  => Ok(DatumType::ComplexF16),
+            "ComplexF32" | "complexf32"  => Ok(DatumType::ComplexF32),
+            "ComplexF64" | "complexf64"  => Ok(DatumType::ComplexF64),
             _ => anyhow::bail!("Unknown type {}", s),
         }
     }
@@ -390,8 +398,10 @@ datum!(u64, U64);
 datum!(TDim, TDim);
 datum!(String, String);
 datum!(Blob, Blob);
+datum!(Complex<i16>, ComplexI16);
 datum!(Complex<i32>, ComplexI32);
 datum!(Complex<i64>, ComplexI64);
+datum!(Complex<f16>, ComplexF16);
 datum!(Complex<f32>, ComplexF32);
 datum!(Complex<f64>, ComplexF64);
 

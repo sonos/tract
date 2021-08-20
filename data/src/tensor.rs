@@ -56,8 +56,10 @@ impl Hash for Tensor {
                 Blob => self.as_slice_unchecked::<crate::datum::Blob>().hash(state),
                 QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
                 QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
+                ComplexI16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
                 ComplexI32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
                 ComplexI64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
+                ComplexF16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
                 ComplexF32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
                 ComplexF64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
             }
@@ -193,8 +195,10 @@ impl Tensor {
                 DatumType::String => String::stack_tensors(axis, &tensors),
                 DatumType::QI8(_) => i8::stack_tensors(axis, &tensors),
                 DatumType::QU8(_) => i8::stack_tensors(axis, &tensors),
+                DatumType::ComplexI16 => Complex::<i16>::stack_tensors(axis, &tensors),
                 DatumType::ComplexI32 => Complex::<i32>::stack_tensors(axis, &tensors),
                 DatumType::ComplexI64 => Complex::<i64>::stack_tensors(axis, &tensors),
+                DatumType::ComplexF16 => Complex::<i16>::stack_tensors(axis, &tensors),
                 DatumType::ComplexF32 => Complex::<i32>::stack_tensors(axis, &tensors),
                 DatumType::ComplexF64 => Complex::<i64>::stack_tensors(axis, &tensors),
             }
