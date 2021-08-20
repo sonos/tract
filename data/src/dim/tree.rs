@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use num::traits::{AsPrimitive, PrimInt, Zero};
+use num_traits::{AsPrimitive, PrimInt, Zero};
 use std::collections::HashMap;
 use std::{fmt, ops};
 
@@ -204,7 +204,7 @@ impl TDim {
 
     pub fn simplify(self) -> TDim {
         use self::TDim::*;
-        use num::integer::Integer;
+        use num_integer::Integer;
         match self {
             Add(mut terms) => {
                 let mut reduced: HashMap<TDim, i64> = HashMap::new();
@@ -369,7 +369,7 @@ impl TDim {
 
     fn gcd(&self) -> u64 {
         use self::TDim::*;
-        use num::integer::Integer;
+        use num_integer::Integer;
         match self {
             Val(v) => v.abs() as u64,
             Sym(_) => 1,
@@ -391,7 +391,7 @@ impl TDim {
 
     fn div(&self, d: u64) -> TDim {
         use self::TDim::*;
-        use num::integer::Integer;
+        use num_integer::Integer;
         if d == 1 {
             return self.clone();
         }
@@ -458,7 +458,7 @@ impl TDim {
 }
 
 pub(super) fn reduce_ratio(mut p: i64, mut q: i64) -> (i64, u64) {
-    use num::integer::Integer;
+    use num_integer::Integer;
     let gcd = p.abs().gcd(&q.abs());
     if gcd > 1 {
         p /= gcd;

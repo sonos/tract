@@ -5,7 +5,7 @@ use crate::f16::f16;
 use crate::TVec;
 use itertools::Itertools;
 use ndarray::prelude::*;
-use num::complex::Complex;
+use num_complex::Complex;
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
 use std::alloc;
@@ -207,11 +207,11 @@ impl Tensor {
         Ok(tensor)
     }
 
-    pub unsafe fn clear<T: Datum + num::traits::Zero>(&mut self) {
+    pub unsafe fn clear<T: Datum + num_traits::Zero>(&mut self) {
         self.as_slice_mut_unchecked::<T>().iter_mut().for_each(|item| *item = T::zero());
     }
     //FIXME : zero for quantised dt ?
-    pub fn zero<T: Datum + num::traits::Zero>(shape: &[usize]) -> anyhow::Result<Tensor> {
+    pub fn zero<T: Datum + num_traits::Zero>(shape: &[usize]) -> anyhow::Result<Tensor> {
         unsafe {
             let mut t = Tensor::uninitialized::<T>(shape)?;
             t.clear::<T>();
@@ -219,7 +219,7 @@ impl Tensor {
         }
     }
 
-    pub fn zero_scalar<T: Datum + num::traits::Zero>() -> anyhow::Result<Tensor> {
+    pub fn zero_scalar<T: Datum + num_traits::Zero>() -> anyhow::Result<Tensor> {
         Tensor::zero::<T>(&[])
     }
 
@@ -239,7 +239,7 @@ impl Tensor {
         dispatch_numbers!(Self::zero_aligned(dt)(shape, alignment))
     }
 
-    pub fn zero_aligned<T: Datum + num::traits::Zero>(
+    pub fn zero_aligned<T: Datum + num_traits::Zero>(
         shape: &[usize],
         alignment: usize,
     ) -> anyhow::Result<Tensor> {
@@ -734,7 +734,7 @@ impl Tensor {
     }
 
     unsafe fn natural_cast<
-        Source: Datum + num::traits::AsPrimitive<Target>,
+        Source: Datum + num_traits::AsPrimitive<Target>,
         Target: Datum + Copy,
     >(
         &self,
@@ -746,7 +746,7 @@ impl Tensor {
             .for_each(|(s, d)| *d = s.as_());
     }
 
-    unsafe fn cast_number_to_bool<Source: Datum + num::traits::Zero>(&self, other: &mut Tensor) {
+    unsafe fn cast_number_to_bool<Source: Datum + num_traits::Zero>(&self, other: &mut Tensor) {
         self.as_slice_unchecked::<Source>()
             .iter()
             .zip(other.as_slice_mut_unchecked::<bool>().iter_mut())

@@ -4,13 +4,13 @@ use crate::f16::f16;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TVec;
-use num::complex::Complex;
+use num_complex::Complex;
 use std::hash::Hash;
 use std::{fmt, ops};
 
 mod arrays;
 pub use arrays::ArrayDatum;
-use num::traits::AsPrimitive;
+use num_traits::AsPrimitive;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Educe)]
 #[educe(Hash)]
@@ -353,9 +353,9 @@ pub trait ClampCast: PartialOrd + Copy + 'static {
     fn clamp_cast<O>(self) -> O
     where
         Self: AsPrimitive<O>,
-        O: AsPrimitive<Self> + num::traits::Bounded,
+        O: AsPrimitive<Self> + num_traits::Bounded,
     {
-        num::traits::clamp(self, O::min_value().as_(), O::max_value().as_()).as_()
+        num_traits::clamp(self, O::min_value().as_(), O::max_value().as_()).as_()
     }
 }
 impl<T: PartialOrd + Copy + 'static> ClampCast for T {}
