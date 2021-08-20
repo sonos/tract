@@ -4,12 +4,13 @@ use crate::f16::f16;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TVec;
+use num::complex::Complex;
 use std::hash::Hash;
 use std::{fmt, ops};
 
 mod arrays;
 pub use arrays::ArrayDatum;
-use num_traits::AsPrimitive;
+use num::traits::AsPrimitive;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Educe)]
 #[educe(Hash)]
@@ -97,6 +98,10 @@ pub enum DatumType {
     String,
     QI8(QParams),
     QU8(QParams),
+    ComplexI32,
+    ComplexI64,
+    ComplexF32,
+    ComplexF64,
 }
 
 impl DatumType {
@@ -105,6 +110,10 @@ impl DatumType {
         if *self == String || *self == TDim || *self == Blob || *self == Bool || self.is_quantized()
         {
             tvec!(*self)
+        } else if self.is_complex_float() {
+            [ComplexF32, ComplexF64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
+        } else if self.is_complex_signed() {
+            [ComplexI32, ComplexI64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_float() {
             [F16, F32, F64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_signed() {
@@ -147,24 +156,23 @@ impl DatumType {
     }
 
     pub fn is_unsigned(&self) -> bool {
-        match self.unquantized() {
-            DatumType::U8 | DatumType::U16 | DatumType::U32 | DatumType::U64 => true,
-            _ => false,
-        }
+        matches!(self.unquantized(), DatumType::U8 | DatumType::U16 | DatumType::U32 | DatumType::U64)
     }
 
     pub fn is_signed(&self) -> bool {
-        match self.unquantized() {
-            DatumType::I8 | DatumType::I16 | DatumType::I32 | DatumType::I64 => true,
-            _ => false,
-        }
+        matches!(self.unquantized(), DatumType::I8 | DatumType::I16 | DatumType::I32 | DatumType::I64)
     }
 
     pub fn is_float(&self) -> bool {
-        match self {
-            DatumType::F16 | DatumType::F32 | DatumType::F64 => true,
-            _ => false,
-        }
+        matches!(self, DatumType::F16 | DatumType::F32 | DatumType::F64)
+    }
+
+    pub fn is_complex_float(&self) -> bool {
+        matches!(self, DatumType::ComplexF32 | DatumType::ComplexF64)
+    }
+
+    pub fn is_complex_signed(&self) -> bool {
+        matches!(self, DatumType::ComplexI32 | DatumType::ComplexI64)
     }
 
     pub fn is_copy(&self) -> bool {
@@ -333,9 +341,9 @@ pub trait ClampCast: PartialOrd + Copy + 'static {
     fn clamp_cast<O>(self) -> O
     where
         Self: AsPrimitive<O>,
-        O: AsPrimitive<Self> + num_traits::Bounded,
+        O: AsPrimitive<Self> + num::traits::Bounded,
     {
-        num_traits::clamp(self, O::min_value().as_(), O::max_value().as_()).as_()
+        num::traits::clamp(self, O::min_value().as_(), O::max_value().as_()).as_()
     }
 }
 impl<T: PartialOrd + Copy + 'static> ClampCast for T {}
@@ -382,6 +390,10 @@ datum!(u64, U64);
 datum!(TDim, TDim);
 datum!(String, String);
 datum!(Blob, Blob);
+datum!(Complex<i32>, ComplexI32);
+datum!(Complex<i64>, ComplexI64);
+datum!(Complex<f32>, ComplexF32);
+datum!(Complex<f64>, ComplexF64);
 
 #[cfg(test)]
 mod tests {

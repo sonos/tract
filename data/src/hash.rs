@@ -69,6 +69,10 @@ pub fn hash_opt_f32<H: Hasher>(s: &Option<f32>, state: &mut H) {
     }
 }
 
+pub fn hash_complex_f32<H: Hasher>(s: &Complex<f32>, state: &mut H) {
+    Hash::hash(&s.to_bits(), state)
+}
+
 struct WrappedHasher<'a>(&'a mut dyn Hasher);
 
 impl<'a> Hasher for WrappedHasher<'a> {

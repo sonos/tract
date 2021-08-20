@@ -37,7 +37,7 @@ macro_rules! const_f16 {
 }
 
 #[allow(deprecated)]
-impl num_traits::Float for f16 {
+impl num::traits::Float for f16 {
     unary_as_f32!(floor);
     unary_as_f32!(ceil);
     unary_as_f32!(round);
@@ -105,14 +105,14 @@ impl num_traits::Float for f16 {
     }
 }
 
-impl num_traits::Num for f16 {
-    type FromStrRadixErr = <f32 as num_traits::Num>::FromStrRadixErr;
+impl num::traits::Num for f16 {
+    type FromStrRadixErr = <f32 as num::traits::Num>::FromStrRadixErr;
     fn from_str_radix(str: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
         f32::from_str_radix(str, radix).map(|it| it.into())
     }
 }
 
-impl num_traits::Zero for f16 {
+impl num::traits::Zero for f16 {
     fn is_zero(&self) -> bool {
         f32::from(self.0).is_zero()
     }
@@ -121,13 +121,13 @@ impl num_traits::Zero for f16 {
     }
 }
 
-impl num_traits::One for f16 {
+impl num::traits::One for f16 {
     fn one() -> f16 {
         1.0f32.into()
     }
 }
 
-impl num_traits::ToPrimitive for f16 {
+impl num::traits::ToPrimitive for f16 {
     fn to_i64(&self) -> Option<i64> {
         f32::from(self.0).to_i64()
     }
@@ -136,37 +136,37 @@ impl num_traits::ToPrimitive for f16 {
     }
 }
 
-impl num_traits::AsPrimitive<f32> for f16 {
+impl num::traits::AsPrimitive<f32> for f16 {
     fn as_(self) -> f32 {
         self.0.to_f32()
     }
 }
 
-impl num_traits::AsPrimitive<f16> for f32 {
+impl num::traits::AsPrimitive<f16> for f32 {
     fn as_(self) -> f16 {
         f16(half::f16::from_f32(self))
     }
 }
 
-impl num_traits::AsPrimitive<f64> for f16 {
+impl num::traits::AsPrimitive<f64> for f16 {
     fn as_(self) -> f64 {
         self.0.to_f64()
     }
 }
 
-impl num_traits::AsPrimitive<f16> for f64 {
+impl num::traits::AsPrimitive<f16> for f64 {
     fn as_(self) -> f16 {
         f16(half::f16::from_f64(self))
     }
 }
 
-impl num_traits::NumCast for f16 {
-    fn from<T: num_traits::ToPrimitive>(n: T) -> Option<Self> {
+impl num::traits::NumCast for f16 {
+    fn from<T: num::traits::ToPrimitive>(n: T) -> Option<Self> {
         n.to_f32().map(|f| f16(half::f16::from_f32(f)))
     }
 }
 
-impl num_traits::Bounded for f16 {
+impl num::traits::Bounded for f16 {
     fn min_value() -> f16 {
         f16(half::f16::MIN)
     }
@@ -182,7 +182,7 @@ impl ops::Neg for f16 {
     }
 }
 
-impl num_traits::Signed for f16 {
+impl num::traits::Signed for f16 {
     fn abs(&self) -> Self {
         use std::ops::Neg;
         if self.is_negative() {
@@ -221,7 +221,7 @@ impl fmt::Display for f16 {
     }
 }
 
-impl num_traits::AsPrimitive<f16> for f16 {
+impl num::traits::AsPrimitive<f16> for f16 {
     fn as_(self) -> f16 {
         self
     }
@@ -229,12 +229,12 @@ impl num_traits::AsPrimitive<f16> for f16 {
 
 macro_rules! as_prim {
     ($t: ty) => {
-        impl num_traits::AsPrimitive<f16> for $t {
+        impl num::traits::AsPrimitive<f16> for $t {
             fn as_(self) -> f16 {
                 f16(half::f16::from_f64(self as f64))
             }
         }
-        impl num_traits::AsPrimitive<$t> for f16 {
+        impl num::traits::AsPrimitive<$t> for f16 {
             fn as_(self) -> $t {
                 self.0.to_f64() as _
             }

@@ -1,5 +1,5 @@
 //! Extended dimension support
-use num_traits::Zero;
+use num::traits::Zero;
 use std::fmt;
 use std::ops;
 
@@ -21,7 +21,7 @@ pub trait DimLike:
     + PartialEq
     + From<usize>
     + for<'a> std::convert::TryFrom<&'a TDim, Error = TractError>
-    + ::num_traits::Zero
+    + ::num::traits::Zero
     + fmt::Debug
     + fmt::Display
     + std::hash::Hash
@@ -65,7 +65,7 @@ pub trait DimLike:
         self.to_i64().map(|d| d as i32)
     }
 
-    /// do not use num_traits::Mul as it implies a regular Mul
+    /// do not use num::traits::Mul as it implies a regular Mul
     fn one() -> Self;
 
     fn eval(&self, values: &SymbolValues) -> Self;
@@ -100,7 +100,7 @@ impl DimLike for TDim {
                 anyhow::bail!("Can't divide {} by {}", self, other)
             }
         }
-        use num_integer::Integer;
+        use num::integer::Integer;
         if denum_int < 0 {
             num_int *= -1;
             denum_int *= -1;
@@ -133,7 +133,7 @@ impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
 
 impl DimLike for usize {
     fn maybe_div(&self, other: &Self) -> TractResult<(Self, u64)> {
-        use num_integer::Integer;
+        use num::integer::Integer;
         let gcd = self.gcd(other);
         Ok((self / gcd, (other / gcd) as u64))
     }
