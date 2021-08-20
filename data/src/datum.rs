@@ -169,6 +169,10 @@ impl DatumType {
         matches!(self, DatumType::F16 | DatumType::F32 | DatumType::F64)
     }
 
+    pub fn is_complex(&self) -> bool {
+        self.is_complex_float() || self.is_complex_signed()
+    }
+
     pub fn is_complex_float(&self) -> bool {
         matches!(self, DatumType::ComplexF16 | DatumType::ComplexF32 | DatumType::ComplexF64)
     }
