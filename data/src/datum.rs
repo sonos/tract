@@ -170,11 +170,11 @@ impl DatumType {
     }
 
     pub fn is_complex_float(&self) -> bool {
-        matches!(self, DatumType::ComplexF32 | DatumType::ComplexF64)
+        matches!(self, DatumType::ComplexF16 | DatumType::ComplexF32 | DatumType::ComplexF64)
     }
 
     pub fn is_complex_signed(&self) -> bool {
-        matches!(self, DatumType::ComplexI32 | DatumType::ComplexI64)
+        matches!(self, DatumType::ComplexI16 | DatumType::ComplexI32 | DatumType::ComplexI64)
     }
 
     pub fn is_copy(&self) -> bool {
