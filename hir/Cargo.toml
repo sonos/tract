@@ -14,10 +14,10 @@ edition = "2018"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-derive-new = "0.5"
-educe = "0.4"
-log = "0.4"
+derive-new = "0.5.9"
+educe = "0.4.18"
+log = "0.4.14"
 tract-core = { path = "../core" }
 
 [dev-dependencies]
-env_logger = "0.8"
+env_logger = "0.9.0"

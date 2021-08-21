@@ -14,20 +14,20 @@ edition = "2018"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-bit-set="0.5"
-derive-new = "0.5"
-downcast-rs = "1.0"
-educe = "0.4"
-anyhow = "1"
-half = "1.3"
-lazy_static = "1"
-log = "0.4"
-maplit = "1"
-ndarray = "0.15"
-num-integer = "0.1"
-num-traits = "0.2"
-dyn-clone = "1"
-smallvec = "1"
+bit-set= "0.5.2"
+derive-new = "0.5.9"
+downcast-rs = "1.2.0"
+educe = "0.4.18"
+anyhow = "1.0.43"
+half = "1.7.1"
+lazy_static = "1.4.0"
+log = "0.4.14"
+maplit = "1.0.2"
+ndarray = "0.15.3"
+num-integer = "0.1.44"
+num-traits = "0.2.14"
+dyn-clone = "1.0.4"
+smallvec = "1.6.1"
 tract-data = { path = "../data" }
 tract-linalg = { path = "../linalg" }
 
@@ -36,10 +36,10 @@ default = [ ]
 paranoid_assertions = []
 
 [dev-dependencies]
-criterion = "0.3"
-env_logger = "0.8"
-lazy_static = "1"
-proptest = "1.0"
+criterion = "0.3.5"
+env_logger = "0.9.0"
+lazy_static = "1.4.0"
+proptest = "1.0.0"
 
 [[bench]]
 name = "conv_direct_vs_im2col"

@@ -15,4 +15,4 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 tract-nnef = { path = "../nnef" }
-educe = "0.4"
+educe = "0.4.18"
