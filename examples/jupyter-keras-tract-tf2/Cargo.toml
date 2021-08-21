@@ -9,6 +9,6 @@ edition = "2018"
 
 [dependencies]
 
-rand = "*"
+rand = "0.8.4"
 tract-core = { path="../../core" }
 tract-onnx = { path = "../../onnx" }

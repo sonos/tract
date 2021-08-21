@@ -15,19 +15,19 @@ exclude = [ "test_cases" ]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-bytes = "1"
-derive-new = "0.5"
-educe = "0.4"
-log = "0.4"
-num-integer = "0.1"
-prost = "0.8"
-smallvec = "1"
+bytes = "1.0.1"
+derive-new = "0.5.9"
+educe = "0.4.18"
+log = "0.4.14"
+num-integer = "0.1.44"
+prost = "0.8.0"
+smallvec = "1.6.1"
 tract-hir = { path = "../hir" }
 tract-nnef = { path = "../nnef" }
 tract-onnx-opl = { path = "../onnx-opl" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-mapr = "0.8"
+mapr = "0.8.0"
 
 [build-dependencies]
-prost-build = "0.8"
+prost-build = "0.8.0"
