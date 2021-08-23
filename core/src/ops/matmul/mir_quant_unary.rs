@@ -5,6 +5,7 @@ use crate::ops;
 use crate::ops::matmul::mir_quant::{combine_scales, requant, wire_offset_u8_as_i8};
 use crate::ops::matmul::*;
 use mir_quant::MatMulQParams;
+use mir_quant::QParamKind;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct QMatMulUnary {
@@ -140,13 +141,25 @@ impl TypedOp for QMatMulUnary {
     }
 
     fn invariants(&self, inputs: &[&TypedFact], outputs: &[&TypedFact]) -> TractResult<Invariants> {
-        super::mir_unary::mir_unary_invariants(
-            &inputs[0],
-            &outputs[0],
-            &self.a,
-            self.b_trans,
-            self.c_trans,
-        )
+        if self.params.iter().any(|qp| match &qp.1 {
+            &QParamKind::Attr(t) => t.rank() > 0,
+            &QParamKind::FromInput(ix) => inputs[*ix].rank() > 0,
+            &QParamKind::FromQType => false,
+        }) {
+            Ok(Invariants::none())
+        } else {
+            let mut invs = super::mir_unary::mir_unary_invariants(
+                &inputs[0],
+                &outputs[0],
+                &self.a,
+                self.b_trans,
+                self.c_trans,
+            )?;
+            for axis in &mut invs.axes {
+                axis.inputs.extend(std::iter::repeat(None).take(inputs.len() - 1));
+            }
+            Ok(invs)
+        }
     }
 
     fn change_axes(
