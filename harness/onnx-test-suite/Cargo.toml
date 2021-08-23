@@ -6,10 +6,10 @@ license = "MIT/Apache-2.0"
 edition = "2018"
 
 [dependencies]
-bytes = "1"
-fs2 = "0.4"
-log = "0.4.6"
-prost = "0.8"
+bytes = "1.0.1"
+fs2 = "0.4.3"
+log = "0.4.14"
+prost = "0.8.0"
 tract-core = { path = "../../core", features = [ "paranoid_assertions" ] }
 tract-nnef = { path = "../../nnef" }
 tract-onnx = { path = "../../onnx" }
@@ -24,7 +24,7 @@ onnx_1_9_0 = []
 default = [ "onnx_1_9_0" ]
 
 [dev-dependencies]
-env_logger = "0.8"
+env_logger = "0.9.0"
 
 [build-dependencies]
-fs2 = "0.4"
+fs2 = "0.4.3"
