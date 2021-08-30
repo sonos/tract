@@ -494,6 +494,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 1.0,
             c_scale: 1.0,
+            opt: true,
+            dyn_qp: true,
         }
         .check();
     }
@@ -510,6 +512,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 2.0,
             c_scale: 1.0,
+            opt: true,
+            dyn_qp: true,
         }
         .check();
     }
@@ -526,6 +530,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 0.05,
             c_scale: 0.25,
+            opt: true,
+            dyn_qp: true,
         }
         .check();
     }
@@ -542,6 +548,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 0.05,
             c_scale: 1.0,
+            opt: true,
+            dyn_qp: true,
         }
         .check();
     }
@@ -558,6 +566,8 @@ mod test {
             a_scale: 0.1,
             b_scale: 1.0,
             c_scale: 1.0,
+            opt: true,
+            dyn_qp: true,
         }
         .check();
     }
@@ -574,6 +584,8 @@ mod test {
             a_scale: 0.1,
             b_scale: 1.0,
             c_scale: 0.6,
+            opt: true,
+            dyn_qp: true,
         }
         .check();
     }
@@ -590,6 +602,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 0.15,
             c_scale: 0.6,
+            opt: true,
+            dyn_qp: true,
         }
         .check();
     }
@@ -606,6 +620,8 @@ mod test {
             a_scale: 1.0,
             b_scale: 1.0,
             c_scale: 1.0,
+            opt: true,
+            dyn_qp: true,
         }
         .check();
     }
@@ -631,150 +647,152 @@ mod test {
                 a_scale: f32,
                 b_scale: f32,
                 c_scale: f32,
+                opt: bool,
+                dyn_qp: bool,
             }
 
             impl $name {
                 fn check(&self) {
-                    let check_with = |r: &Array2<$c>, opt: bool, qp: bool| {
-                        let t = self.tract(opt, qp);
-                        assert!(
-                            r.iter().zip(t.iter()).all(|(r, t)| r.max(t) - r.min(t) <= 1),
-                            "mismatch! optimized plan: {}, dynamic qparams: {}, reference: {:?}, tract: {:?}",
-                            opt,
-                            qp,
-                            r,
-                            t,
+                    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
+                let r = self.reference();
+                    let t = self.tract();
+                    assert!(
+                        r.iter().zip(t.iter()).all(|(r, t)| r.max(t) - r.min(t) <= 1),
+                        "mismatch! optimized plan: {}, dynamic qparams: {}, reference: {:?}, tract: {:?}",
+                        self.opt,
+                        self.dyn_qp,
+                        r,
+                        t,
                         );
-                    };
 
-                    let r = self.reference();
-                    check_with(&r, false, false);
-                    check_with(&r, false, true);
-                    check_with(&r, true, false);
-                    check_with(&r, true, true);
-                }
+            }
 
-                fn reference(&self) -> Array2<$c> {
-                    let a = self.a.map(|&x| (x as f32 - self.a0 as f32) * self.a_scale);
-                    let b = self.b.map(|&x| (x as f32 - self.b0 as f32) * self.b_scale);
-                    let c = a.dot(&b);
-                    let c = c.map(|&x| round_ties_to_right(x / self.c_scale) + self.c0 as i32);
-                    c.map(|&x| x.max(<$c>::MIN as i32).min(<$c>::MAX as i32) as $c)
-                }
+            fn reference(&self) -> Array2<$c> {
+                let a = self.a.map(|&x| (x as f32 - self.a0 as f32) * self.a_scale);
+                let b = self.b.map(|&x| (x as f32 - self.b0 as f32) * self.b_scale);
+                let c = a.dot(&b);
+                let c = c.map(|&x| round_ties_to_right(x / self.c_scale) + self.c0 as i32);
+                c.map(|&x| x.max(<$c>::MIN as i32).min(<$c>::MAX as i32) as $c)
+            }
 
-                fn tract(&self, opt: bool, qp: bool) -> Array2<$c> {
-                    let mut model = TypedModel::default();
-                    let mut inputs = tvec![];
-                    inputs.push(
-                        model
-                            .add_source(
-                                "b",
-                                TypedFact::dt_shape(
-                                    <$b>::datum_type(),
-                                    &[self.b.nrows(), self.b.ncols()],
-                                ),
+            fn tract(&self) -> Array2<$c> {
+                let mut model = TypedModel::default();
+                let mut inputs = tvec![];
+                inputs.push(
+                    model
+                    .add_source(
+                        "b",
+                        TypedFact::dt_shape(
+                            <$b>::datum_type(),
+                            &[self.b.nrows(), self.b.ncols()],
+                            ),
                             )
-                            .unwrap(),
+                    .unwrap(),
                     );
-                    let qparams = if qp {
-                        inputs.push(model.add_source("a0", TypedFact::scalar::<$a>()).unwrap());
-                        inputs.push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
-                        inputs.push(model.add_source("b0", TypedFact::scalar::<$b>()).unwrap());
-                        inputs.push(model.add_source("b_scale", TypedFact::scalar::<f32>()).unwrap());
-                        inputs.push(model.add_source("c0", TypedFact::scalar::<$c>()).unwrap());
-                        inputs.push(model.add_source("c_scale", TypedFact::scalar::<f32>()).unwrap());
-                        MatMulQParams::all_dynamic(1)
-                    } else {
-                        MatMulQParams {
-                            a0: tensor0::<$a>(self.a0).into(),
-                            a_scale: tensor0::<f32>(self.a_scale).into(),
-                            b0: tensor0::<$b>(self.b0).into(),
-                            b_scale: tensor0::<f32>(self.b_scale).into(),
-                            c0: tensor0::<$c>(self.c0).into(),
-                            c_scale: tensor0::<f32>(self.c_scale).into(),
-                        }
-                    };
-                    let result = model
-                        .wire_node(
-                            "qmmu",
-                            QMatMulUnary::new(
-                                self.a.clone().into_arc_tensor(),
-                                Some(self.bias.clone().into_arc_tensor()),
-                                false,
-                                false,
-                                false,
-                                <$c>::datum_type(),
-                                qparams,
+                let qparams = if self.dyn_qp {
+                    inputs.push(model.add_source("a0", TypedFact::scalar::<$a>()).unwrap());
+                    inputs.push(model.add_source("a_scale", TypedFact::scalar::<f32>()).unwrap());
+                    inputs.push(model.add_source("b0", TypedFact::scalar::<$b>()).unwrap());
+                    inputs.push(model.add_source("b_scale", TypedFact::scalar::<f32>()).unwrap());
+                    inputs.push(model.add_source("c0", TypedFact::scalar::<$c>()).unwrap());
+                    inputs.push(model.add_source("c_scale", TypedFact::scalar::<f32>()).unwrap());
+                    MatMulQParams::all_dynamic(1)
+                } else {
+                    MatMulQParams {
+                        a0: tensor0::<$a>(self.a0).into(),
+                        a_scale: tensor0::<f32>(self.a_scale).into(),
+                        b0: tensor0::<$b>(self.b0).into(),
+                        b_scale: tensor0::<f32>(self.b_scale).into(),
+                        c0: tensor0::<$c>(self.c0).into(),
+                        c_scale: tensor0::<f32>(self.c_scale).into(),
+                    }
+                };
+                let result = model
+                    .wire_node(
+                        "qmmu",
+                        QMatMulUnary::new(
+                            self.a.clone().into_arc_tensor(),
+                            Some(self.bias.clone().into_arc_tensor()),
+                            false,
+                            false,
+                            false,
+                            <$c>::datum_type(),
+                            qparams,
                             ),
                             &inputs,
-                        )
-                        .unwrap();
-                    model.set_output_outlets(&result).unwrap();
-
-                    let inputs = if qp {
-                        tvec![
-                            self.b.clone().into_tensor(),
-                            self.a0.into(),
-                            self.a_scale.into(),
-                            self.b0.into(),
-                            self.b_scale.into(),
-                            self.c0.into(),
-                            self.c_scale.into(),
-                        ]
-                    } else {
-                        tvec![self.b.clone().into_tensor()]
-                    };
-                    let mut outputs = if opt { model.into_optimized().unwrap() } else { model }
-                        .into_runnable()
-                        .unwrap()
-                        .run(inputs)
-                        .unwrap();
-                    outputs
-                        .remove(0)
-                        .into_tensor()
-                        .into_array::<$c>()
-                        .unwrap()
-                        .into_dimensionality()
-                        .unwrap()
-                }
-            }
-
-            impl Arbitrary for $name {
-                type Parameters = ();
-                type Strategy = BoxedStrategy<$name>;
-                fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-                    (1usize..=4, 1usize..=4, 1usize..=4)
-                        .prop_flat_map(|(m, k, n)| {
-                            (
-                                Just((m, k, n)),
-                                vec(any::<$a>(), m * k..=m * k),
-                                vec(any::<$b>(), k * n..=k * n),
-                                any::<$a>(),
-                                any::<$b>(),
-                                any::<$c>(),
-                                scale(),
-                                scale(),
-                                scale(),
                             )
-                        })
-                        .prop_map(|((m, k, n), a, b, a0, b0, c0, a_scale, b_scale, c_scale)| {
-                            $name {
-                                a: Array2::from_shape_vec((m, k), a).unwrap(),
-                                b: Array2::from_shape_vec((k, n), b).unwrap(),
-                                bias: tensor0(0i32),
-                                a0,
-                                b0,
-                                c0,
-                                a_scale,
-                                b_scale,
-                                c_scale,
-                            }
-                        })
-                        .boxed()
-                }
+                    .unwrap();
+                model.set_output_outlets(&result).unwrap();
+
+                let inputs = if self.dyn_qp {
+                    tvec![
+                        self.b.clone().into_tensor(),
+                        self.a0.into(),
+                        self.a_scale.into(),
+                        self.b0.into(),
+                        self.b_scale.into(),
+                        self.c0.into(),
+                        self.c_scale.into(),
+                    ]
+                } else {
+                    tvec![self.b.clone().into_tensor()]
+                };
+                let model = if self.opt { model.into_optimized().unwrap() } else { model };
+                let mut outputs = model
+                    .into_runnable()
+                    .unwrap()
+                    .run(inputs)
+                    .unwrap();
+                outputs
+                    .remove(0)
+                    .into_tensor()
+                    .into_array::<$c>()
+                    .unwrap()
+                    .into_dimensionality()
+                    .unwrap()
             }
-        };
-    }
+        }
+
+        impl Arbitrary for $name {
+            type Parameters = ();
+            type Strategy = BoxedStrategy<$name>;
+            fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+                (1usize..=4, 1usize..=4, 1usize..=4)
+                    .prop_flat_map(|(m, k, n)| {
+                        (
+                            Just((m, k, n)),
+                            vec(any::<$a>(), m * k..=m * k),
+                            vec(any::<$b>(), k * n..=k * n),
+                            any::<$a>(),
+                            any::<$b>(),
+                            any::<$c>(),
+                            scale(),
+                            scale(),
+                            scale(),
+                            any::<bool>(),
+                            any::<bool>(),
+                            )
+                    })
+                .prop_map(|((m, k, n), a, b, a0, b0, c0, a_scale, b_scale, c_scale, opt, dyn_qp)| {
+                    $name {
+                        a: Array2::from_shape_vec((m, k), a).unwrap(),
+                        b: Array2::from_shape_vec((k, n), b).unwrap(),
+                        bias: tensor0(0i32),
+                        a0,
+                        b0,
+                        c0,
+                        a_scale,
+                        b_scale,
+                        c_scale,
+                        opt,
+                        dyn_qp
+                    }
+                })
+                .boxed()
+            }
+        }
+    };
+}
 
     impl_qmmup! { QMatMulUnaryProblemI8I8I8, i8, i8, i8 }
     impl_qmmup! { QMatMulUnaryProblemI8I8U8, i8, i8, u8 }
@@ -797,6 +815,8 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+            opt: true,
+            dyn_qp: true,
         }
         .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
     }
@@ -813,6 +833,8 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+            opt: true,
+            dyn_qp: true,
         }
         .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
     }
@@ -829,6 +851,8 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+            opt: true,
+            dyn_qp: true,
         }
         .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
     }
@@ -845,6 +869,8 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+            opt: true,
+            dyn_qp: true,
         }
         .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
     }
@@ -861,6 +887,8 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+            opt: true,
+            dyn_qp: true,
         }
         .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
     }
@@ -877,6 +905,8 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+            opt: true,
+            dyn_qp: true,
         }
         .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
     }
@@ -893,6 +923,8 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+            opt: true,
+            dyn_qp: true,
         }
         .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
     }
@@ -909,6 +941,8 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+            opt: true,
+            dyn_qp: true,
         }
         .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
     }
@@ -925,7 +959,27 @@ mod test {
             a_scale: 1.,
             b_scale: 1.,
             c_scale: 1.,
+            opt: true,
+            dyn_qp: true,
         }
         .check(); // c: [[75, 86, 96, 106, 117], [255, 191, 127, 65, 1]]
+    }
+
+    #[test]
+    fn test_qmmup_u8_u8_u8_3() {
+        QMatMulUnaryProblemU8U8U8 {
+            a: arr2(&[[60, 196], [114, 142]]),
+            b: arr2(&[[0, 0, 0], [0, 0, 0]]),
+            bias: tensor0(0i32),
+            a0: 0,
+            b0: 0,
+            c0: 0,
+            a_scale: 1.,
+            b_scale: 1.,
+            c_scale: 1.,
+            opt: true,
+            dyn_qp: true,
+        }
+        .check();
     }
 }
