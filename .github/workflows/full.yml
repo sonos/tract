@@ -41,3 +41,11 @@ jobs:
     - uses: actions/checkout@v1
     - name: With assertions
       run: cargo -q test -q -p onnx-test-suite -- --skip real_
+
+  core-paranoid:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Core test with paraoid assertions
+      run: cargo test -p tract-core --features paranoid_assertions
