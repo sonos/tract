@@ -1,14 +1,14 @@
 use super::binary::*;
 use crate::internal::*;
-use tract_data::internal::ClampCast;
-use tract_linalg::ScaleShiftAndRound;
-use tract_linalg::mmm::RoundingPolicy;
 use crate::ops::quant::scale_by;
 use num_traits::bounds::Bounded;
 use num_traits::int::PrimInt;
 use num_traits::{Float, Zero};
-use tract_num_traits::AsPrimitive;
+use tract_data::internal::ClampCast;
 pub use tract_data::prelude::round_ties_to_even;
+use tract_linalg::mmm::RoundingPolicy;
+use tract_linalg::ScaleShiftAndRound;
+use tract_num_traits::AsPrimitive;
 
 bin_to_super_type!(add, Add,
     declutter_unary: declutter_unary_add,
@@ -18,12 +18,12 @@ bin_to_super_type!(add, Add,
     [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
 
 fn add_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
-    where
-        T: PrimInt + Bounded + AsPrimitive<i16>,
-        i16: AsPrimitive<T>,
-    {
-        *c = (a.as_() + b.as_() - zp as i16).clamp_cast()
-    }
+where
+    T: PrimInt + Bounded + AsPrimitive<i16>,
+    i16: AsPrimitive<T>,
+{
+    *c = (a.as_() + b.as_() - zp as i16).clamp_cast()
+}
 
 fn declutter_unary_add(
     _op: &Add,
@@ -44,14 +44,13 @@ bin_to_super_type!(sub, Sub,
     q: [i8, u8] => sub_quant;
     [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
-
 fn sub_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
-    where
-        T: PrimInt + Bounded + AsPrimitive<i16>,
-        i16: AsPrimitive<T>,
-    {
-        *c = (a.as_() - b.as_() + zp as i16).clamp_cast()
-    }
+where
+    T: PrimInt + Bounded + AsPrimitive<i16>,
+    i16: AsPrimitive<T>,
+{
+    *c = (a.as_() - b.as_() + zp as i16).clamp_cast()
+}
 fn declutter_unary_sub(
     _op: &Sub,
     model: &TypedModel,
@@ -84,7 +83,7 @@ bin_to_super_type!(mul, Mul,
              let c = c.to_array_view_mut::<TDim>()?;
              crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() * *b);
              Ok(true)
-         } 
+         }
          else {
              match c.datum_type() {
                  DatumType::QI8(params) => {
@@ -262,7 +261,11 @@ fn declutter_unary_mul_magic_values(
         let fact = model.outlet_fact(node.inputs[0])?;
         let zero = Tensor::zero_dt(fact.datum_type, &[])?;
         let zero = patch.add_const(format!("{}.zero", node.name), zero)?;
-        let broadcast = crate::ops::array::MultiBroadcastTo::new(fact.shape.clone());
+        let shape = crate::broadcast::multi_broadcast(&[
+            fact.shape.to_vec(),
+            a.shape().iter().map(|d| d.to_dim()).collect(),
+        ]).with_context(|| format!("Can not broadcast {:?} and {:?}", fact.shape, a))?;
+        let broadcast = crate::ops::array::MultiBroadcastTo::new(shape.into());
         let broadcast = patch.wire_node(&node.name, broadcast, &[zero])?;
         patch.shunt_outside(model, node.id.into(), broadcast[0])?;
         Ok(Some(patch))
@@ -345,18 +348,22 @@ fn declutter_unary_flipped_pow(
     if let Some(a) = a.as_uniform() {
         let a = a.cast_to_scalar::<f32>()?;
         if a == 1.0 {
-            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
         } else if a == 2.0 {
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, square())?))
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                square(),
+            )?));
         } else if a == 3.0 {
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, cube())?))
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, cube())?));
         } else if a == 0.5 {
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, sqrt())?))
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, sqrt())?));
         }
     }
     Ok(None)
 }
-
 
 element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, i32] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.abs());
@@ -395,7 +402,6 @@ element_wise!(cube, Cube, [f16, f32, f64] => |_, xs| {
 q: [i8, u8] => |f : f32| f.powi(3);
 validation: Validation::Rounding
 );
-
 
 element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sqrt());
@@ -463,9 +469,6 @@ element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
     Ok(())
 };
 q: [i8, u8] => f32::round);
-
-
-
 
 element_wise!(q_scale, QScale {mult: i32, policy: RoundingPolicy, shift: usize},[i32] => |op, xs| {
     xs.iter_mut().for_each(|x| *x = x.q_scale(op.mult, op.shift, op.policy));

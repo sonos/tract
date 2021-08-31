@@ -460,7 +460,9 @@ impl TypedOp for UnaryOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        self.mini_op.declutter_unary(model, node, &self.a)
+        self.mini_op
+            .declutter_unary(model, node, &self.a)
+            .with_context(|| format!("In specific declutter_unary for bin mini op {}", self.mini_op.name()))
     }
 
     fn change_axes(
