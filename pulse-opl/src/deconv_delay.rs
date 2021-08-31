@@ -89,38 +89,26 @@ impl DeconvDelayState {
         op: &DeconvDelay,
         input: &mut Tensor,
     ) -> TractResult<()> {
-        dbg!(&self);
         let buffer = self.buffer.as_mut().unwrap();
         let mut buffer = buffer.to_array_view_mut::<T>()?;
         let mut input = input.to_array_view_mut::<T>()?;
         let input_pulse = input.shape()[op.axis];
-        dbg!(&input);
-        dbg!(&buffer);
-        dbg!(&op.overlap);
         let output_pulse = input_pulse - op.overlap;
-        dbg!(&output_pulse);
         self.valid_inputed += output_pulse as isize;
         if let Ok(input_dim) = op.input_dim.eval(&session.resolved_symbols).to_isize() {
-            dbg!(input_dim);
-            dbg!(self.valid_inputed);
             if self.valid_inputed > input_dim {
                 let to_be_zeroed = ((self.valid_inputed - input_dim) as usize).min(input_pulse);
-                dbg!(to_be_zeroed);
                 let mut zeroed =
                     input.slice_axis_mut(Axis(op.axis), (input_pulse - to_be_zeroed..).into());
                 zeroed.fill(T::zero());
-                dbg!(&input);
             }
         }
-        dbg!(&input);
         {
             let mut input_view = input.slice_axis_mut(Axis(op.axis), (0..op.overlap).into());
             input_view += &buffer;
         }
         buffer.assign(&input.slice_axis(Axis(op.axis), (output_pulse..).into()));
 
-        dbg!(&input);
-        dbg!("-----------");
         Ok(())
     }
 }

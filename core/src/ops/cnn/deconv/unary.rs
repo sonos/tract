@@ -151,7 +151,7 @@ impl EvalOp for DeconvUnary {
 
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        dbg!(&input);
+        // dbg!(&input);
         let mut model = TypedModel::default();
         let source =
             model.add_source("source", TypedFact::dt_shape(input.datum_type(), input.shape()))?;
@@ -159,7 +159,7 @@ impl EvalOp for DeconvUnary {
         model.set_output_outlets(&*output)?;
         let output =
             model.into_runnable()?.run(tvec!(input.into_tensor()))?.remove(0).into_arc_tensor();
-        dbg!(&output);
+        // dbg!(&output);
         Ok(tvec!(output))
     }
 }
