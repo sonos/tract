@@ -60,7 +60,9 @@ fn proptest_regular_against_pulse(
     let mut got: ArrayD<f32> = ArrayD::zeros(&*initial_output_shape);
     let mut output_len = None;
 
+    dbg!(model);
     debug!("Run pulsing model");
+    dbg!(pulsed_plan.model());
     let mut written = 0;
     loop {
         let to_write_in_chunk = pulse.min(input_array.shape()[axis].saturating_sub(written));

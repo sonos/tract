@@ -99,7 +99,10 @@ impl EvalOp for DeconvSum {
                         {
                             let ocoord = ocoord.iter().map(|x| *x as usize).collect::<TVec<_>>();
                             let ocoord = self.pool_spec.data_format.from_n_c_hw(n, o, ocoord)?;
-                            output[&*ocoord.shape] += n_o_hkwk_hw[(n, o, kix, gix)];
+                            let value = n_o_hkwk_hw[(n, o, kix, gix)];
+                            if !value.is_nan() {
+                                output[&*ocoord.shape] += value
+                            }
                         }
                     }
                 }

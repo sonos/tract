@@ -11,6 +11,8 @@ pub struct DeconvDelay {
     pub axis: usize,
     pub overlap: usize,
     pub delay: usize,
+    pub stride: usize,
+    pub pulse: usize,
     pub input_dim: TDim,
 }
 
@@ -39,7 +41,7 @@ impl EvalOp for DeconvDelay {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(DeconvDelayState { inputed: -(self.delay as isize), buffer: None })))
+        Ok(Some(Box::new(DeconvDelayState { valid_inputed: -(self.delay as isize), buffer: None })))
     }
 }
 
@@ -56,7 +58,7 @@ impl TypedOp for DeconvDelay {
 
 #[derive(Debug, Clone, PartialEq, Hash, Default)]
 pub struct DeconvDelayState {
-    inputed: isize,
+    valid_inputed: isize,
     buffer: Option<Tensor>,
 }
 
@@ -70,7 +72,7 @@ impl OpState for DeconvDelayState {
         let op = op.downcast_ref::<DeconvDelay>().context("Wrong op")?;
         if self.buffer.is_none() {
             let mut buffer_size: TVec<usize> = inputs[0].shape().into();
-            buffer_size[op.axis] = op.overlap;
+            buffer_size[op.axis] = op.overlap; //+ (op.stride - 1) * (op.pulse - 1);
             self.buffer = Some(Tensor::zero_dt(inputs[0].datum_type(), &*buffer_size)?);
         }
         let mut input = inputs[0].clone().into_tensor();
@@ -94,14 +96,20 @@ impl DeconvDelayState {
         let input_pulse = input.shape()[op.axis];
         dbg!(&input);
         dbg!(&buffer);
+        dbg!(&op.overlap);
         let output_pulse = input_pulse - op.overlap;
-        self.inputed += output_pulse as isize;
+        dbg!(&output_pulse);
+        self.valid_inputed += output_pulse as isize;
         if let Ok(input_dim) = op.input_dim.eval(&session.resolved_symbols).to_isize() {
-            if self.inputed > input_dim {
-                let to_be_zeroed = ((self.inputed - input_dim) as usize).min(input_pulse);
+            dbg!(input_dim);
+            dbg!(self.valid_inputed);
+            if self.valid_inputed > input_dim {
+                let to_be_zeroed = ((self.valid_inputed - input_dim) as usize).min(input_pulse);
+                dbg!(to_be_zeroed);
                 let mut zeroed =
-                    input.slice_axis_mut(Axis(op.axis), (output_pulse - to_be_zeroed..).into());
+                    input.slice_axis_mut(Axis(op.axis), (input_pulse - to_be_zeroed..).into());
                 zeroed.fill(T::zero());
+                dbg!(&input);
             }
         }
         dbg!(&input);
