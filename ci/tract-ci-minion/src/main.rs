@@ -33,6 +33,8 @@ struct Config {
     graphite: Option<Graphite>,
     #[serde(default = "default_idle_sleep_secs")]
     idle_sleep_secs: usize,
+    #[serde(default)]
+    env: HashMap<String, String>
 }
 
 #[derive(Deserialize, Debug)]
@@ -128,7 +130,7 @@ fn run_task(task_name: &str) -> Result<()> {
     tar::Archive::new(uncompressed).unpack(task_dir_2)?;
     let vars_file = task_dir.join(task_name).join("vars");
     log::info!("Reading vars...");
-    let mut vars: HashMap<String, String> = HashMap::default();
+    let mut vars: HashMap<String, String> = config.env.clone();
     for line in std::fs::read_to_string(vars_file)?.lines() {
         if line.starts_with("export ") {
             let mut pair = line.split_whitespace().nth(1).unwrap().split("=");
