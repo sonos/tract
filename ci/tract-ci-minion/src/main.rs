@@ -87,9 +87,13 @@ where
 }
 
 fn config_path() -> PathBuf {
-    std::env::var("TRACT_MINION_CONFIG").map(|s| PathBuf::from(s)).unwrap_or_else(|_| {
+    if let Ok(c) = std::env::var("TRACT_MINION_CONFIG") {
+        PathBuf::from(c)
+    } else if std::path::Path::new("minion.toml").exists() {
+        PathBuf::from("minion.toml")
+    } else {
         dirs::home_dir().context("HOME does not exist").unwrap().join(".minion.toml")
-    })
+    }
 }
 
 fn read_config(path: impl AsRef<Path>) -> Result<Config> {
@@ -288,7 +292,10 @@ fn main_loop() -> Result<()> {
 }
 
 fn main() {
-    env_logger::init_from_env("TRACT_MINION_LOG");
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Info)
+        .parse_env("TRACT_MINION_LOG")
+        .init();
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(|s| &**s) == Some("run-task") {
         let task_id = &args[2];
