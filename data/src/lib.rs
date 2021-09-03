@@ -24,6 +24,7 @@ pub mod prelude {
         dispatch_copy, dispatch_copy_by_size, dispatch_datum, dispatch_datum_by_size,
         dispatch_floatlike, dispatch_hash, dispatch_numbers, dispatch_signed,
     };
+    pub use ::num_complex::Complex;
     pub use itertools as tract_itertools;
 }
 
