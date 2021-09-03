@@ -12,6 +12,7 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use wait_timeout::ChildExt;
 
 #[derive(Deserialize, Debug)]
 struct Config {
@@ -99,8 +100,14 @@ fn read_config(path: impl AsRef<Path>) -> Result<Config> {
     Ok(config)
 }
 
-fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> Result<()> {
-    log::info!("Retrieving task {}", task.key);
+fn run_task(task_name: &str) -> Result<()> {
+    let config = config()?;
+    let bucket = bucket(&config)?;
+    let task_url = std::path::PathBuf::from(&config.s3_tasks)
+        .join(&config.platform)
+        .join(task_name)
+        .with_extension("tgz");
+    log::info!("Retrieving task {}", task_name);
     let task_dir = config.workdir.join("current");
     if task_dir.exists() {
         std::fs::remove_dir_all(&task_dir)?;
@@ -108,23 +115,12 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
     std::fs::create_dir_all(&task_dir)?;
     let (reader, mut writer) = pipe::pipe_buffered();
     let task_dir_2 = task_dir.clone();
-    let (watchdog_send, watchdog_recv) = std::sync::mpsc::channel::<()>();
+    let bucket_2 = bucket.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(60));
-        if watchdog_recv.try_recv() != Ok(()) {
-            log::error!("S3/TLS timeout, take a red pill.");
-            std::process::exit(12);
-        }
+        bucket_2.get_object_stream_blocking(task_url.to_str().unwrap(), &mut writer).unwrap();
     });
-    let thr = std::thread::spawn(move || {
-        let uncompressed = flate2::read::GzDecoder::new(reader);
-        tar::Archive::new(uncompressed).unpack(task_dir_2)
-    });
-    bucket.get_object_stream_blocking(&task.key, &mut writer)?;
-    if thr.join().is_err() {
-        anyhow::bail!("Failed to untar")
-    }
-    watchdog_send.send(())?;
+    let uncompressed = flate2::read::GzDecoder::new(reader);
+    tar::Archive::new(uncompressed).unpack(task_dir_2)?;
     let vars_file = task_dir.join(task_name).join("vars");
     log::info!("Reading vars...");
     let mut vars: HashMap<String, String> = HashMap::default();
@@ -186,7 +182,7 @@ fn do_task(config: &Config, bucket: &Bucket, task: &Object, task_name: &str) -> 
     Ok(())
 }
 
-fn consider_task(config: &Config, bucket: &Bucket, task: &Object) -> Result<bool> {
+fn consider_task(config: &Config, task: &Object) -> Result<bool> {
     let task_path = Path::new(&task.key);
     let task_name = task_path
         .file_stem()
@@ -198,17 +194,57 @@ fn consider_task(config: &Config, bucket: &Bucket, task: &Object) -> Result<bool
     if done_file.exists() {
         return Ok(false);
     }
-    if let Err(e) = do_task(config, bucket, task, &task_name)
-        .with_context(|| format!("Running task {}", task.key))
-    {
-        eprintln!("{:?}", e);
+    for attempt in 0..5 {
+        let mut process = std::process::Command::new(std::env::args().next().unwrap())
+            .arg("run-task")
+            .arg(&task_name)
+            .spawn()?;
+        let timeout = std::time::Duration::from_secs(1800);
+        match process.wait_timeout(timeout)? {
+            Some(status) => {
+                log::info!("Task {} return status {}", task_name, status);
+                std::fs::File::create(&done_file)?;
+                break;
+            }
+            None => {
+                log::warn!(
+                    "Task {} timeout after {:?} (attempt #{})",
+                    task_name,
+                    timeout,
+                    attempt + 1
+                );
+                process.kill()?;
+                process.wait()?;
+            }
+        }
     }
-    std::fs::File::create(done_file)?;
     Ok(true)
 }
 
 fn run(config: &Config) -> Result<bool> {
     std::thread::sleep(Duration::from_secs(10));
+    let bucket = bucket(config)?;
+    let tasks_prefix = std::path::PathBuf::from(&config.s3_tasks).join(&config.platform).join("");
+    let objects_parts =
+        bucket.list_blocking(tasks_prefix.to_str().unwrap().to_string(), Some("/".to_string()))?;
+    let mut done_anything = false;
+    for parts in objects_parts {
+        for item in parts.0.contents {
+            done_anything = consider_task(config, &item)? || done_anything;
+        }
+    }
+    Ok(done_anything)
+}
+
+fn config() -> Result<Config> {
+    let cf_path = config_path();
+    log::info!("Reading config from {:?}", cf_path);
+    let config = read_config(cf_path)?;
+    log::debug!("{:?}", config);
+    Ok(config)
+}
+
+fn bucket(config: &Config) -> Result<Bucket> {
     let credentials = Credentials::new(
         config.aws_credentials.as_ref().map(|cred| &*cred.access_key),
         config.aws_credentials.as_ref().map(|cred| &*cred.secret_key),
@@ -218,23 +254,11 @@ fn run(config: &Config) -> Result<bool> {
     )
     .unwrap();
     let bucket = Bucket::new(&config.s3_bucket, config.region.clone(), credentials)?;
-    let tasks_prefix = std::path::PathBuf::from(&config.s3_tasks).join(&config.platform).join("");
-    let objects_parts =
-        bucket.list_blocking(tasks_prefix.to_str().unwrap().to_string(), Some("/".to_string()))?;
-    let mut done_anything = false;
-    for parts in objects_parts {
-        for item in parts.0.contents {
-            done_anything = consider_task(config, &bucket, &item)? || done_anything;
-        }
-    }
-    Ok(done_anything)
+    Ok(bucket)
 }
 
 fn main_loop() -> Result<()> {
-    let cf_path = config_path();
-    log::info!("Reading config from {:?}", cf_path);
-    let config = read_config(cf_path)?;
-    log::debug!("{:?}", config);
+    let config = config()?;
     let lock = config.workdir.join("lock");
     log::info!("Locking {:?}", lock);
     std::fs::create_dir_all(&config.workdir)?;
@@ -265,8 +289,18 @@ fn main_loop() -> Result<()> {
 
 fn main() {
     env_logger::init_from_env("TRACT_MINION_LOG");
-    if let Err(e) = main_loop() {
-        eprintln!("{:?}", e);
-        std::process::exit(1);
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(|s| &**s) == Some("run-task") {
+        let task_id = &args[2];
+        log::info!("Worker starting on {}", task_id);
+        if let Err(e) = run_task(task_id) {
+            eprintln!("{:?}", e);
+            std::process::exit(1);
+        }
+    } else {
+        if let Err(e) = main_loop() {
+            eprintln!("{:?}", e);
+            std::process::exit(1);
+        }
     }
 }
