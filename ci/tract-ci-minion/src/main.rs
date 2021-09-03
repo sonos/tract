@@ -8,6 +8,7 @@ use s3::Bucket;
 use s3::Region;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::Write;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
@@ -301,6 +302,23 @@ fn main() {
         let task_id = &args[2];
         log::info!("Worker starting on {}", task_id);
         if let Err(e) = run_task(task_id) {
+            eprintln!("{:?}", e);
+            std::process::exit(1);
+        }
+    } else if args.get(1).map(|s| &**s) == Some("-d") {
+        let _config = config().unwrap();
+
+        log::info!("Deamonizing");
+        let stdout = File::create("tract-ci-minion.out").unwrap();
+        let stderr = File::create("tract-ci-minion.err").unwrap();
+
+        let daemonize = daemonize::Daemonize::new()
+            .working_directory(std::env::current_dir().unwrap())
+            .pid_file("tract-ci-minion.pid")
+            .stdout(stdout)
+            .stderr(stderr);
+        daemonize.start().unwrap();
+        if let Err(e) = main_loop() {
             eprintln!("{:?}", e);
             std::process::exit(1);
         }
