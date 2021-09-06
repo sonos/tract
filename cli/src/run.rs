@@ -76,22 +76,24 @@ fn run_regular(
         {
             results = state.run_plan_with_eval(inputs, |session_state, state, node, input| {
                 if steps {
-                    for i in &input {
+                    for (ix, i) in input.iter().enumerate() {
                         eprintln!(
-                            "{}{}{:?}",
+                            "{} {}{}{:?}",
                             White.bold().paint(node.to_string()),
-                            Blue.bold().paint(" << "),
+                            ix,
+                            Blue.bold().paint("<< "),
                             i
                         );
                     }
                 }
                 let r = tract_core::plan::eval(session_state, state, node, input)?;
                 if steps {
-                    for o in &r {
+                    for (ix, o) in r.iter().enumerate() {
                         eprintln!(
-                            "{}{}{:?}",
+                            "{} {}{}{:?}",
                             White.bold().paint(node.to_string()),
-                            Yellow.bold().paint(" >> "),
+                            ix,
+                            Yellow.bold().paint(">> "),
                             o
                         );
                     }

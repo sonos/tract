@@ -345,7 +345,7 @@ pub fn for_model(model: &TypedModel) -> TractResult<Invariants> {
             let inputs =
                 model.input_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
             let outputs =
-                model.input_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
+                model.output_outlets()?.iter().map(|i| tracking.outlets.get(i).cloned()).collect();
             Ok(AxisInfo { inputs, outputs, disposable: tracking.disposable, period: 1 })
         })
         .collect()

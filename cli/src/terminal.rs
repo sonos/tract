@@ -222,46 +222,41 @@ fn render_node_prefixed(
                 model.outlet_fact_format(*i),
             );
         }
-        for ix in 0..model.node_output_count(node_id) {
-            let star = if ix == 0 { '*' } else { ' ' };
-            let io = if let Some(id) =
-                model.input_outlets().iter().position(|n| n.node == node_id && n.slot == ix)
+        for slot in 0..model.node_output_count(node_id) {
+            let star = if slot == 0 { '*' } else { ' ' };
+            let outlet = OutletId::new(node_id, slot);
+            let mut model_io = vec![];
+            for (ix, _) in model.input_outlets().iter().enumerate().filter(|(_, o)| **o == outlet) {
+                model_io.push(Cyan.bold().paint(format!("MODEL INPUT #{}", ix)).to_string());
+            }
+            if let Some(t) = &tags.model_input {
+                model_io.push(t.to_string());
+            }
+            for (ix, _) in model.output_outlets().iter().enumerate().filter(|(_, o)| **o == outlet)
             {
-                format!(
-                    "{} {}",
-                    Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string(),
-                    tags.model_input.as_ref().map(|s| &**s).unwrap_or("")
-                )
-            } else if let Some(id) =
-                model.output_outlets().iter().position(|n| n.node == node_id && n.slot == ix)
-            {
-                format!(
-                    "{} {}",
-                    Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string(),
-                    tags.model_output.as_ref().map(|s| &**s).unwrap_or("")
-                )
-            } else {
-                "".to_string()
-            };
-            let outlet = OutletId::new(node_id, ix);
+                model_io.push(Yellow.bold().paint(format!("MODEL OUTPUT #{}", ix)).to_string());
+            }
+            if let Some(t) = &tags.model_output {
+                model_io.push(t.to_string());
+            }
             let successors = model.outlet_successors(outlet);
             prefix!();
             println!(
                 "  {} output fact #{}: {} {} {} {}",
                 star,
-                ix,
+                slot,
                 model.outlet_fact_format(outlet),
                 White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
-                io,
+                model_io.join(", "),
                 White.italic().paint(
                     tags.outlet_labels
-                        .get(ix)
+                        .get(slot)
                         .map(|s| s.join(","))
                         .unwrap_or_else(|| "".to_string())
                 )
             );
             if options.outlet_labels {
-                if let Some(label) = model.outlet_label(OutletId::new(node_id, ix)) {
+                if let Some(label) = model.outlet_label(OutletId::new(node_id, slot)) {
                     prefix!();
                     println!("            {} ", White.italic().paint(label));
                 }

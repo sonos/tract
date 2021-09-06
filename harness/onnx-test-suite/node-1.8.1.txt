@@ -143,6 +143,13 @@ test_cos
 test_cos_example
 test_cosh
 test_cosh_example
+test_cumsum_1d not-nnef input:x
+test_cumsum_1d_exclusive not-nnef input:x
+test_cumsum_1d_reverse not-nnef input:x
+test_cumsum_1d_reverse_exclusive not-nnef input:x
+test_cumsum_2d_axis_0 not-nnef input:x
+test_cumsum_2d_axis_1 not-nnef input:x
+test_cumsum_2d_negative_axis not-nnef input:x
 test_dequantizelinear                                                               input:x not-nnef
 test_div
 test_div_bcast
