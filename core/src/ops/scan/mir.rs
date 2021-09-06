@@ -706,14 +706,14 @@ impl TypedOp for Scan {
     ) -> TractResult<Invariants> {
         let mut invariants = tvec!();
         let body_invs = self.body.invariants().with_context(|| "Computing body invariants")?;
-        for axis in body_invs.axes {
+        for body_axis in body_invs.axes {
             let mut info = AxisInfo::default().with_period(1);
             for (ix, input_mapping) in self.input_mapping.iter().enumerate() {
                 if let Some(slot) = input_mapping.slot() {
                     while info.inputs.len() <= slot {
                         info.inputs.push(None);
                     }
-                    info.inputs[slot] = axis.inputs[ix].clone();
+                    info.inputs[slot] = body_axis.inputs[ix].clone();
                 }
             }
             for (ix, output_mapping) in self.output_mapping.iter().enumerate() {
@@ -728,11 +728,11 @@ impl TypedOp for Scan {
                     while info.outputs.len() <= slot {
                         info.outputs.push(None);
                     }
-                    info.outputs[slot] = axis.outputs[ix].clone();
+                    info.outputs[slot] = body_axis.outputs[ix].clone();
                 }
             }
             if info.inputs.iter().any(|i| i.is_some()) || info.outputs.iter().any(|i| i.is_some()) {
-                info.disposable = axis.disposable;
+                info.disposable = body_axis.disposable;
                 invariants.push(info);
             }
         }
