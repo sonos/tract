@@ -43,27 +43,12 @@ pub struct Ops {
             + Sync,
     >,
     qmmv_i8_i32: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
-    qmmm_u8_i32: Box<
-        dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-            + Send
-            + Sync,
-    >,
-    qmmm_u8_u8: Box<
-        dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-            + Send
-            + Sync,
-    >,
     qmmm_i8_i8: Box<
         dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
             + Send
             + Sync,
     >,
     qmmv_i8_i8: Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>,
-    qmmm_i8_u8_i32: Box<
-        dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul>
-            + Send
-            + Sync,
-    >,
     pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub tanh_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
@@ -90,14 +75,11 @@ impl Ops {
             } else {
                 (self.qmmm_i8_i32)(m, k, n)
             }),
-            (U8, U8, I32) => Some((self.qmmm_u8_i32)(m, k, n)),
             (I8, I8, I8) => Some(if n == Some(1) {
                 (self.qmmv_i8_i8)(m, k)
             } else {
                 (self.qmmm_i8_i8)(m, k, n)
             }),
-            (U8, U8, U8) => Some((self.qmmm_u8_u8)(m, k, n)),
-            (I8, U8, I32) => Some((self.qmmm_i8_u8_i32)(m, k, n)),
             _ => None,
         }
     }
@@ -116,15 +98,6 @@ pub fn generic() -> Ops {
         }),
         qmmv_i8_i32: Box::new(|_, _| {
             Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x1<i8, i8, i32, i32>, i32>::new())
-        }),
-        qmmm_i8_u8_i32: Box::new(|_, _, _| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, u8, i32, i32>, i32>::new())
-        }),
-        qmmm_u8_i32: Box::new(|_, _, _| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<u8, u8, i32, i32>, i32>::new())
-        }),
-        qmmm_u8_u8: Box::new(|_, _, _| {
-            Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<u8, u8, u8, i32>, i32>::new())
         }),
         qmmm_i8_i8: Box::new(|_, _, _| {
             Box::new(mmm::MatMatMulImpl::<generic::GenericMmm4x4<i8, i8, i8, i32>, i32>::new())
