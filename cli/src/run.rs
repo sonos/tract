@@ -165,7 +165,7 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     let pulse = input_fact.pulse();
     let mut result = tract_ndarray::ArrayD::<f32>::default(&*output_shape);
     let input = input.to_array_view::<f32>()?;
-    for ix in 0..input_dim.div_ceil(pulse) {
+    for ix in 0..input_dim.divceil(pulse) {
         let chunk =
             input.slice_axis(tract_ndarray::Axis(axis), (ix * pulse..(ix + 1) * pulse).into());
         let input = if chunk.shape()[input_fact.axis] < pulse {

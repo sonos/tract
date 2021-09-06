@@ -29,7 +29,7 @@ impl Packer {
     }
 
     pub fn len<D: DimLike>(&self, n: D) -> D {
-        (n.div_ceil(self.r) * (self.k + self.end_padding_record)) * self.r
+        (n.divceil(self.r) * (self.k + self.end_padding_record)) * self.r
     }
 
     unsafe fn pack_t<'p, 'i, T: Datum + Copy>(
@@ -269,7 +269,7 @@ mod test {
         }
 
         fn reference(&self) -> Vec<u32> {
-            let panels = self.mn.div_ceil(self.r);
+            let panels = self.mn.divceil(self.r);
             let len = panels * self.k * self.r;
             let mut vec = vec![0; len];
             for panel in 0..panels {

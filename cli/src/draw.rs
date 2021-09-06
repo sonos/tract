@@ -198,8 +198,12 @@ impl DrawingState {
                 self.next_color()
             };
             match (inputs.len(), node_output_count) {
-                (0, 1) => p!("{}", self.latest_node_color.paint(DOWN_RIGHT)),
-                (1, 0) => p!("{}", self.latest_node_color.paint("╹")),
+                (0, 1) => {
+                    p!("{}", self.latest_node_color.paint(DOWN_RIGHT));
+                }
+                (1, 0) => {
+                    p!("{}", self.latest_node_color.paint("╹"));
+                }
                 (u, d) => {
                     p!("{}", self.latest_node_color.paint(VERTICAL_RIGHT));
                     for _ in 1..u.min(d) {

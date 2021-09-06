@@ -156,7 +156,7 @@ pub fn pulsify(
     let misalignment = fact.delay % pulse;
 
     if overlap > 0 || misalignment > 0 {
-        let align_to = (overlap + fact.delay).div_ceil(stride) * stride;
+        let align_to = (overlap + fact.delay).divceil(stride) * stride;
         let delay = align_to - overlap - fact.delay;
         wire = target.wire_node(
             format!("{}.delay", node.name),

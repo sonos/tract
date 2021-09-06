@@ -28,7 +28,7 @@ impl Lrn {
             let c = coords[1];
             let x = input[&coords];
             let c_min = c.saturating_sub((self.size - 1) / 2);
-            let c_max = (c + ((self.size - 1).div_ceil(2))).min(channels - 1);
+            let c_max = (c + ((self.size - 1).divceil(2))).min(channels - 1);
             let square_sum: T = (c_min..=c_max)
                 .map(|c| {
                     coords[1] = c;

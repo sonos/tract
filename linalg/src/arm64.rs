@@ -72,8 +72,8 @@ fn best_of(
         let ker = kernels
             .iter()
             .min_by_key(|ker| {
-                let rows = m.div_ceil(ker.mr());
-                let cols = n.div_ceil(ker.nr());
+                let rows = m.divceil(ker.mr());
+                let cols = n.divceil(ker.nr());
                 let tiles = rows * cols;
                 let cost = if a53 {
                     match (ker.kernel_name(), ker.mr(), ker.nr()) {

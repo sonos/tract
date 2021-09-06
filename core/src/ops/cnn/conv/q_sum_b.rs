@@ -97,7 +97,7 @@ impl QSumB {
                 output.index_axis_inplace(Axis(0), *d);
             }
             let panel = panel.as_slice().unwrap();
-            for p in 0..(n.div_ceil(self.r)) {
+            for p in 0..(n.divceil(self.r)) {
                 let mut vec = vec![0i32; self.r];
                 for k in 0..self.k {
                     for r in 0..self.r {
