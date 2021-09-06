@@ -82,7 +82,7 @@ pub fn pull_downsample_over_scan(
                 if *chunk > 0 && *chunk as usize % down_op.stride as usize != 0 {
                     return Ok(None);
                 }
-                *chunk = (chunk.abs() as usize).div_ceil(down_op.stride as usize) as isize
+                *chunk = (chunk.abs() as usize).divceil(down_op.stride as usize) as isize
                     * chunk.signum()
             }
             _ => (),
@@ -93,7 +93,7 @@ pub fn pull_downsample_over_scan(
             return Ok(None);
         }
         output.full_dim_hint.as_mut().map(|d| *d = down_op.transform_dim(d));
-        output.chunk = (output.chunk.abs() as usize).div_ceil(down_op.stride as usize) as isize
+        output.chunk = (output.chunk.abs() as usize).divceil(down_op.stride as usize) as isize
             * output.chunk.signum()
     }
 

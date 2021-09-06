@@ -26,7 +26,7 @@ impl PatchAxis {
         if field > self.input_dim {
             return None;
         }
-        let min = self.pad_before.div_ceil(self.stride);
+        let min = self.pad_before.divceil(self.stride);
         let max = (self.input_dim + self.pad_before).saturating_sub(field) / self.stride;
         if max >= min {
             Some(min..(max + 1))
@@ -37,13 +37,13 @@ impl PatchAxis {
 
     fn invalid_at_left(&self, pos: usize) -> usize {
         let center_pos = pos * self.stride;
-        self.pad_before.saturating_sub(center_pos).div_ceil(self.dilation)
+        self.pad_before.saturating_sub(center_pos).divceil(self.dilation)
     }
 
     fn invalid_at_right(&self, pos: usize) -> usize {
         let center_pos = pos * self.stride;
         let last_valid = self.input_dim + self.pad_before;
-        let valid = (last_valid - center_pos).div_ceil(self.dilation);
+        let valid = (last_valid - center_pos).divceil(self.dilation);
         self.kernel_dim.saturating_sub(valid)
     }
 

@@ -179,7 +179,7 @@ impl OpState for State {
                 })
                 .next()
                 .unwrap();
-            inputs[outside_slot].shape()[axis].div_ceil(chunk.abs() as usize)
+            inputs[outside_slot].shape()[axis].divceil(chunk.abs() as usize)
         };
 
         let mut outputs = tvec!();

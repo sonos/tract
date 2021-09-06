@@ -331,7 +331,7 @@ impl TDim {
                         let offset = if v >= q as i64 {
                             Some(v / q as i64)
                         } else if v < 0 {
-                            Some(-(-v).div_ceil(&(q as i64)))
+                            Some(-Integer::div_ceil(&-v, &(q as i64)))
                         } else {
                             None
                         };

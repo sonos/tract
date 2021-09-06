@@ -46,7 +46,7 @@ pub trait DimLike:
     fn maybe_div(&self, other: &Self) -> TractResult<(Self, u64)>;
 
     /// Integer divise, rounding up to next integer.
-    fn div_ceil(&self, other: usize) -> Self {
+    fn divceil(&self, other: usize) -> Self {
         (self.clone() + other - 1) / other
     }
 
