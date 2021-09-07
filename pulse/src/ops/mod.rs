@@ -9,6 +9,7 @@ pub mod dummy;
 pub mod matmul;
 pub mod qmatmul;
 pub mod scan;
+pub mod slice;
 pub mod source;
 
 pub(crate) fn sync_inputs(

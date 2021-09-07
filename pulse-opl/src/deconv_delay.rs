@@ -14,6 +14,7 @@ pub struct DeconvDelay {
     pub stride: usize,
     pub pulse: usize,
     pub input_dim: TDim,
+    pub output_dim: TDim,
 }
 
 impl_dyn_hash!(DeconvDelay);

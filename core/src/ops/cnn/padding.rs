@@ -71,7 +71,7 @@ impl PaddingSpec {
         dilations: &[usize],
         strides: &[usize],
         adjustments: &[usize],
-    ) -> TVec<ComputedPaddedDim<D>> {
+    ) -> TractResult<TVec<ComputedPaddedDim<D>>> {
         (0..conv_spatial_shape.len())
             .map(|d| {
                 self.compute_one_for_deconv(
@@ -112,7 +112,7 @@ impl PaddingSpec {
         dilation: usize,
         stride: usize,
         adjustment: usize,
-    ) -> ComputedPaddedDim<D> {
+    ) -> TractResult<ComputedPaddedDim<D>> {
         match self {
             PaddingSpec::Valid => {
                 Self::valid_for_deconv(input, kernel, dilation, stride, adjustment)
@@ -150,10 +150,10 @@ impl PaddingSpec {
         dilation: usize,
         stride: usize,
         adjustment: usize,
-    ) -> ComputedPaddedDim<D> {
+    ) -> TractResult<ComputedPaddedDim<D>> {
         let kernel_field = (kernel - 1) * dilation + 1;
         let deconvoluted = (convoluted.clone() - 1) * stride + kernel_field + adjustment;
-        ComputedPaddedDim::new(deconvoluted, convoluted.clone(), 0.into(), 0.into())
+        Ok(ComputedPaddedDim::new(deconvoluted, convoluted.clone(), 0.into(), 0.into()))
     }
 
     fn explicit<D: DimLike>(
@@ -183,11 +183,11 @@ impl PaddingSpec {
         bef: usize,
         aft: usize,
         adjustment: usize,
-    ) -> ComputedPaddedDim<D> {
+    ) -> TractResult<ComputedPaddedDim<D>> {
         let kernel_field = (kernel - 1) * dilation + 1;
         let deconvoluted =
             (convoluted.clone() - 1) * stride + kernel_field - bef - aft + adjustment;
-        ComputedPaddedDim::new(deconvoluted.clone(), convoluted.clone(), bef.into(), aft.into())
+        Ok(ComputedPaddedDim::new(deconvoluted.clone(), convoluted.clone(), bef.into(), aft.into()))
     }
 
     fn same<D: DimLike>(
@@ -219,20 +219,23 @@ impl PaddingSpec {
         stride: usize,
         adjustment: usize,
         upper: bool,
-    ) -> ComputedPaddedDim<D> {
+    ) -> TractResult<ComputedPaddedDim<D>> {
+        if (kernel - 1) * dilation <= stride - 1 {
+            bail!("Invalid axis geometry for SAME padding: expect (kernel_len - 1) * dilation > stride - 1");
+        }
         let kernel_field = (kernel - 1) * dilation + 1;
-        let crop = kernel_field - stride + adjustment;
+        let crop = kernel_field + adjustment - stride;
         let lower_crop = crop.clone() / 2;
         let higher_crop = crop - &lower_crop;
         let (before, after) =
             if upper { (lower_crop, higher_crop) } else { (higher_crop, lower_crop) };
         let deconvoluted = (convoluted.clone() - 1) * stride + kernel_field - before - after;
-        ComputedPaddedDim::new(
+        Ok(ComputedPaddedDim::new(
             deconvoluted.clone(),
             convoluted.clone(),
             before.into(),
             after.into(),
-        )
+        ))
     }
 }
 

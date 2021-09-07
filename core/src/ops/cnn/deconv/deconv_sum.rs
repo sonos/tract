@@ -53,7 +53,7 @@ impl EvalOp for DeconvSum {
             &self.pool_spec.dilations(),
             &self.pool_spec.strides(),
             &self.adjustments,
-        );
+        )?;
         let mut tensor = Tensor::zero::<f32>(&*output_shape.shape)?;
         let mut output = tensor.to_array_view_mut::<f32>()?;
         if let Some(b) = &self.bias {

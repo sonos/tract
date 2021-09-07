@@ -21,7 +21,7 @@ pub fn output_shape<D: DimLike>(
         &pool_spec.dilations(),
         &pool_spec.strides(),
         &adjustments,
-    );
+    )?;
     let deconv_shape: TVec<D> =
         spatial_output_details.iter().map(|comp| comp.deconvoluted.clone()).collect();
     let co = pool_spec.output_channel_override.unwrap();
