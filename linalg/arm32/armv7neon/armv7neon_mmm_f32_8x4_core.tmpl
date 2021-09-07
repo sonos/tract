@@ -175,85 +175,24 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     bne .packed_packed_loop_1
     b   .non_linear
 
-.non_linear:
-
-    ldr     r1, [r0, #16]
-    cmp     r1, #0
-    bne     .non_linear_loop_entry
-
-.store:
-    ldr     r3, [r0, #8]
-    ldm     r3, { r4, r5, r6, r7 } // ptr, rsc, csc, size
-
-    // r5,r6,r7 are c,src,csc
-    {% for col in (0..3) %}
-        mov         r8, r4
-        {% for reg in (0..3) %}
-            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[0], [ r8 ], r5
-            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[1], [ r8 ], r5
-        {% endfor %}
-        {% if col < 3 %}
-            add r4, r4, r6
-        {% endif %}
-    {% endfor %}
-
-    mov         r0,     #0
-    b           .return
-
-.return:
-    vpop        { q4-q7 }
-    pop         { r4-r12 }
-
-    bx          lr
-
-.non_linear_loop_entry:
-    sub     r1, #20
-
-.non_linear_loop:
-    add     r1, #20
-    ldr     r2, [r1]
-    cmp     r2, #0
-    beq     .store
-    cmp     r2, #1
-    beq     .min
-    cmp     r2, #2
-    beq     .max
-    cmp     r2, #3
-    beq     .add_unicast
-    cmp     r2, #4
-    beq     .per_row_mul
-    cmp     r2, #5
-    beq     .per_row_add
-    cmp     r2, #6
-    beq     .per_col_mul
-    cmp     r2, #7
-    beq     .per_col_add
-    cmp     r2, #8
-    beq     .add_row_col_product
-    cmp     r2, #9
-    beq     .scalar_mul
-    cmp     r2, #10
-    beq     .scalar_add
-
-    b .unsupported
+{% include "dispatcher.tmpliq" %}
 
 .add_unicast:
-
-    ldm     r1, { r3, r4, r5, r6, r7 } // (disc), ptr, rsc, csc, size
+    // r3, r4, r5 <- ptr, rsc, csc
     {% for col in (0..3) %}
-        mov         r3, r4
+        mov         r2, r3
         {% for reg in (0..3) %}
-            vld1.f32    d0[0], [ r3 ], r5
-            vld1.f32    d0[1], [ r3 ], r5
+            vld1.f32    d0[0], [ r2 ], r4
+            vld1.f32    d0[1], [ r2 ], r4
             vadd.f32    d{{col | times: 4 | plus: reg | plus : 16}}, d0
         {% endfor %}
-        add r4, r4, r6
+        add r3, r3, r5
     {% endfor %}
 
     b .non_linear_loop
 
 .max:
-    vldr            s0, [r1, #4]
+    vmov            s0, r3
     vdup.32         q0, d0[0]
     {% for reg in (8..15) %}
         vmax.f32    q{{reg}}, q{{reg}}, q0
@@ -262,7 +201,7 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .min:
-    vldr            s0, [r1, #4]
+    vmov            s0, r3
     vdup.32         q0, d0[0]
     {% for reg in (8..15) %}
         vmin.f32    q{{reg}}, q{{reg}}, q0
@@ -270,8 +209,7 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .per_row_add:
-    ldr     r2, [r1, #4]
-    vldmia  r2!, { q0, q1 }
+    vldm  r3, { q0, q1 }
     {% for col in (0..3) %}
         vadd.f32 q{{col|times:2|plus:8}}, q{{col|times:2|plus:8}}, q0
         vadd.f32 q{{col|times:2|plus:9}}, q{{col|times:2|plus:9}}, q1
@@ -280,8 +218,7 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .per_row_mul:
-    ldr     r2, [r1, #4]
-    vldmia  r2!, { q0, q1 }
+    vldm  r3, { q0, q1 }
     {% for col in (0..3) %}
         vmul.f32 q{{col|times:2|plus:8}}, q{{col|times:2|plus:8}}, q0
         vmul.f32 q{{col|times:2|plus:9}}, q{{col|times:2|plus:9}}, q1
@@ -290,8 +227,7 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .per_col_add:
-    ldr         r2, [r1, #4]
-    vldm        r2, { q0 }
+    vldm        r3, { q0 }
     vdup.f32    q3, d1[1]
     vdup.f32    q2, d1[0]
     vdup.f32    q1, d0[1]
@@ -304,8 +240,7 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .per_col_mul:
-    ldr         r2, [r1, #4]
-    vldm        r2, { q0 }
+    vldm        r3, { q0 }
     vdup.f32    q3, d1[1]
     vdup.f32    q2, d1[0]
     vdup.f32    q1, d0[1]
@@ -318,11 +253,8 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .add_row_col_product:
-    ldr     r2, [r1, #4]
-    ldr     r3, [r1, #8]
-
-    vldmia          r2!, { q0, q1 }
-    vldmia          r3!, { q4 }
+    vldmia          r3!, { q0, q1 }
+    vldmia          r4!, { q4 }
 
     vmla.f32        q8, q0, d8[0]
     vmla.f32        q9, q1, d8[0]
@@ -339,7 +271,7 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .scalar_mul:
-    vldr        s0, [r1, #4]
+    vmov            s0, r3
     vdup.f32    q0, d0[0]
 
     {% for q in (8..15) %}
@@ -349,7 +281,7 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     b .non_linear_loop
 
 .scalar_add:
-    vldr        s0, [r1, #4]
+    vmov            s0, r3
     vdup.f32    q0, d0[0]
 
     {% for q in (8..15) %}
@@ -358,7 +290,26 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
 
     b .non_linear_loop
 
-.unsupported:
-    mov         r0,     #1
-    b           .return
+.store:
+    // r3,r4,r5 are c,rsc,csc
+    {% for col in (0..3) %}
+        mov         r8, r3
+        {% for reg in (0..3) %}
+            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[0], [ r8 ], r4
+            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[1], [ r8 ], r4
+        {% endfor %}
+        {% if col < 3 %}
+            add r3, r3, r5
+        {% endif %}
+    {% endfor %}
+    b .non_linear_loop
+
+.q_scale:
+    b .unsupported
+
+.return:
+    vpop        { q4-q7 }
+    pop         { r4-r12 }
+
+    bx          lr
 

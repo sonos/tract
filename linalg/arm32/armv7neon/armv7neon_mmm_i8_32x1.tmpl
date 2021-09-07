@@ -113,95 +113,17 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     bne .packed_packed_loop_1
     b   .non_linear
 
-.non_linear:
-
-    ldr     r1, [r0, #16]
-    cmp     r1, #0
-    bne     .non_linear_loop_entry
-
-.store:
-    ldr     r3, [r0, #8]
-    ldm     r3, { r4, r5, r6, r7 } // ptr, rsc, csc, item_size
-
-.store_strides:
-    cmp     r7, #4
-    beq     .store_strides_i32
-
-    {% for reg in (8..15) %}
-        vmovn.s32 d{{reg | times: 2}}, q{{reg}}
-        vmovn.s16 d{{reg | times: 2}}, q{{reg}}
-    {% endfor %}
-    {% for reg in (8..15) %}
-        {%capture d%}{{reg | times: 2 }}{%endcapture%}
-        vst1.s8     d{{d}}[0], [ r4 ], r5
-        vst1.s8     d{{d}}[1], [ r4 ], r5
-        vst1.s8     d{{d}}[2], [ r4 ], r5
-        vst1.s8     d{{d}}[3], [ r4 ], r5
-    {% endfor %}
-
-    mov         r0,     #0
-    b           .return
-
-.store_strides_i32:
-    {% for reg in (8..15) %}
-        {%capture d%}{{reg | times: 2}}{%endcapture%}
-        vst1.s32    d{{d}}[0], [ r4 ], r5
-        vst1.s32    d{{d}}[1], [ r4 ], r5
-        vst1.s32    d{{d|plus:1}}[0], [ r4 ], r5
-        vst1.s32    d{{d|plus:1}}[1], [ r4 ], r5
-    {% endfor %}
-
-    mov         r0,     #0
-    b           .return
-
-.return:
-    vpop        { q4-q7 }
-    pop         { r4-r12 }
-
-    bx          lr
-
-.non_linear_loop_entry:
-    sub     r1, #20
-
-.non_linear_loop:
-    add     r1, #20
-    ldr     r2, [r1]
-    cmp     r2, #0
-    beq     .store
-    cmp     r2, #1
-    beq     .min
-    cmp     r2, #2
-    beq     .max
-    cmp     r2, #3
-    beq     .add_unicast
-    cmp     r2, #4
-    beq     .per_row_mul
-    cmp     r2, #5
-    beq     .per_row_add
-    cmp     r2, #6
-    beq     .per_col_mul
-    cmp     r2, #7
-    beq     .per_col_add
-    cmp     r2, #8
-    beq     .add_row_col_product
-    cmp     r2, #9
-    beq     .scalar_mul
-    cmp     r2, #10
-    beq     .scalar_add
-    cmp     r2, #11
-    beq     .q_scale
-
-    b .unsupported
+{% include "dispatcher.tmpliq" %}
 
 .add_unicast:
-    ldm         r1, { r3, r4, r5, r6, r7 } 
+    // r3, r4, r5, r6 <- ptr, rsc, csc, size
 
-    cmp     r7, #4
+    cmp     r6, #4
     beq     .non_linear_addc_i32
 
     {% for reg in (16..31) %}
-        vld1.s8     d0[0], [ r4 ], r5
-        vld1.s8     d0[1], [ r4 ], r5
+        vld1.s8     d0[0], [ r3 ], r4
+        vld1.s8     d0[1], [ r3 ], r4
         vmovl.s8    q0, d0
         vmovl.s16   q0, d0
         vadd.i32    d{{reg}}, d0
@@ -211,14 +133,14 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
 
 .non_linear_addc_i32:
     {% for reg in (16..31) %}
-        vld1.s32    d0[0], [ r4 ], r5
-        vld1.s32    d0[1], [ r4 ], r5
+        vld1.s32    d0[0], [ r3 ], r4
+        vld1.s32    d0[1], [ r3 ], r4
         vadd.i32    d{{reg}}, d0
     {% endfor %}
     b .non_linear_loop
 
 .max:
-    vldr            s0, [r1, #4]
+    vmov            s0, r3
     vdup.32         q0, d0[0]
     {% for reg in (8..15) %}
         vmax.s32    q{{reg}}, q{{reg}}, q0
@@ -227,7 +149,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b .non_linear_loop
 
 .min:
-    vldr            s0, [r1, #4]
+    vmov            s0, r3
     vdup.32         q0, d0[0]
     {% for reg in (8..15) %}
         vmin.s32    q{{reg}}, q{{reg}}, q0
@@ -235,9 +157,8 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b .non_linear_loop
 
 .per_row_add:
-    ldr     r2, [r1, #4]
-    vldmia  r2!, { q0-q3 }
-    vldmia  r2!, { q4-q7 }
+    vldmia  r3!, { q0-q3 }
+    vldmia  r3!, { q4-q7 }
 
     {% for reg in (0..7) %}
         vadd.s32 q{{reg|plus:8}}, q{{reg|plus:8}}, q{{reg}}
@@ -246,9 +167,8 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b .non_linear_loop
 
 .per_row_mul:
-    ldr     r2, [r1, #4]
-    vldmia  r2!, { q0-q3 }
-    vldmia  r2!, { q4-q7 }
+    vldmia  r3!, { q0-q3 }
+    vldmia  r3!, { q4-q7 }
 
     {% for reg in (0..7) %}
         vmul.s32 q{{reg|plus:8}}, q{{reg|plus:8}}, q{{reg}}
@@ -257,8 +177,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b .non_linear_loop
 
 .per_col_add:
-    ldr         r2, [r1, #4]
-    vldm        r2, { s0 }
+    vldm        r3, { s0 }
     vdup.s32    q0, d0[0]
     {% for reg in (8..15) %}
         vadd.s32 q{{reg}}, q{{reg}}, q0
@@ -267,8 +186,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b .non_linear_loop
 
 .per_col_mul:
-    ldr         r2, [r1, #4]
-    vldm        r2, { s0 }
+    vldm        r3, { s0 }
     vdup.s32    q0, d0[0]
     {% for reg in (8..15) %}
         vmul.s32 q{{reg}}, q{{reg}}, q0
@@ -277,7 +195,6 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b .non_linear_loop
 
 .add_row_col_product:
-    ldm     	r1, { r2, r3, r4 }
     vldm    	r3, { s0 }
 
     vldmia          r4!, { q4-q7 }
@@ -299,7 +216,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b .non_linear_loop
 
 .scalar_mul:
-    vldr        s0, [r1, #4]
+    vmov            s0, r3
     vdup.s32    q0, d0[0]
 
     {% for q in (8..15) %}
@@ -309,7 +226,7 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
     b .non_linear_loop
 
 .scalar_add:
-    vldr        s0, [r1, #4]
+    vmov            s0, r3
     vdup.s32    q0, d0[0]
 
     {% for q in (8..15) %}
@@ -320,7 +237,39 @@ armv7neon_mmm_i8_32x1_{{suffix}}:
 
     {% include "armv7neon_mmm_i8_scale_q8_q15.tmpliq" %}
 
-.unsupported:
-    mov         r0,     #1
-    b           .return
+.store:
+    // r3, r4, r5, r6 <- ptr, rsc, csc, size
+    cmp     r6, #4
+    beq     .store_strides_i32
+
+    {% for reg in (8..15) %}
+        vmovn.s32 d{{reg | times: 2}}, q{{reg}}
+        vmovn.s16 d{{reg | times: 2}}, q{{reg}}
+    {% endfor %}
+    {% for reg in (8..15) %}
+        {%capture d%}{{reg | times: 2 }}{%endcapture%}
+        vst1.s8     d{{d}}[0], [ r3 ], r4
+        vst1.s8     d{{d}}[1], [ r3 ], r4
+        vst1.s8     d{{d}}[2], [ r3 ], r4
+        vst1.s8     d{{d}}[3], [ r3 ], r4
+    {% endfor %}
+
+    b .non_linear_loop
+
+.store_strides_i32:
+    {% for reg in (8..15) %}
+        {%capture d%}{{reg | times: 2}}{%endcapture%}
+        vst1.s32    d{{d}}[0], [ r3 ], r4
+        vst1.s32    d{{d}}[1], [ r3 ], r4
+        vst1.s32    d{{d|plus:1}}[0], [ r3 ], r4
+        vst1.s32    d{{d|plus:1}}[1], [ r3 ], r4
+    {% endfor %}
+
+    b .non_linear_loop
+
+.return:
+    vpop        { q4-q7 }
+    pop         { r4-r12 }
+
+    bx          lr
 
