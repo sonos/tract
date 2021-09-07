@@ -143,87 +143,7 @@
 
     b .non_linear
 
-.non_linear:
-    ldr         x1, [x0, #32]
-    cmp         x1, #0
-    bne         .non_linear_loop_entry
-
-.store:
-    ldr         x3, [x0, #16]
-    ldp         x5, x6, [x3]                // c base ptr, rsc
-    ldp         x7, x8, [x3, #16]           // csc, item_size
-
-    cmp         x6, #4
-    bne         .store_strides_generic
-
-    {% for col in (0..7) %}
-        str q{{col | times:3 | plus: 8 }}, [ x5 ]
-        str q{{col | times:3 | plus: 9}}, [ x5, #16 ]
-        str q{{col | times:3 | plus: 10}}, [ x5, #32 ]
-        add x5, x5, x7
-    {% endfor %}
-
-    mov         x0, #0
-    b           .return
-
-.store_strides_generic:
-    {% for col in (0..7) %}
-        mov x4, x5
-        {% for reg in (0..2) %}
-            {% for lane in (0..3) %}
-                st1 { v{{col | times:3 | plus: 8 | plus: reg}}.s }[{{lane}}], [ x4 ], x6
-            {% endfor %}
-        {% endfor %}
-        add x5, x5, x7
-    {% endfor %}
-
-    mov         x0, #0
-    b           .return
-
-.return:
-    ldp         d14, d15, [sp], #16
-    ldp         d12, d13, [sp], #16
-    ldp         d10, d11, [sp], #16
-    ldp         d8, d9, [sp], #16
-
-    ldp         x26, x27, [sp], #16
-    ldp         x24, x25, [sp], #16
-    ldp         x22, x23, [sp], #16
-    ldp         x20, x21, [sp], #16
-
-    ret
-
-.non_linear_loop_entry:
-    sub         x1, x1, 40
-
-.non_linear_loop:
-    add         x1, x1, 40
-    ldr         x2, [x1]
-    cmp         x2, #0
-    beq         .store
-    cmp         x2, #1
-    beq         .min
-    cmp         x2, #2
-    beq         .max
-    cmp         x2, #3
-    beq         .add_unicast
-    cmp         x2, #4
-    beq         .per_row_mul
-    cmp         x2, #5
-    beq         .per_row_add
-    cmp         x2, #6
-    beq         .per_col_mul
-    cmp         x2, #7
-    beq         .per_col_add
-    cmp         x2, #8
-    beq         .add_row_col_product
-    cmp         x2, #9
-    beq         .scalar_mul
-    cmp         x2, #10
-    beq         .scalar_add
-
-    add         x0, x2, #4000
-    b           .return
+{% include "dispatcher.tmpliq" %}
 
 .min:
     add         x2, x1, #8
@@ -352,6 +272,48 @@
 
     b           .non_linear_loop
 
-.unsupported:
-    mov         x0, #1
-    b           .return
+.store:
+    ldp         x5, x6, [x1, #8]            // c base ptr, rsc
+    ldp         x7, x8, [x1, #24]           // csc, item_size
+
+    cmp         x6, #4
+    bne         .store_strides_generic
+
+    {% for col in (0..7) %}
+        str q{{col | times:3 | plus: 8 }}, [ x5 ]
+        str q{{col | times:3 | plus: 9}}, [ x5, #16 ]
+        str q{{col | times:3 | plus: 10}}, [ x5, #32 ]
+        add x5, x5, x7
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.store_strides_generic:
+    {% for col in (0..7) %}
+        mov x4, x5
+        {% for reg in (0..2) %}
+            {% for lane in (0..3) %}
+                st1 { v{{col | times:3 | plus: 8 | plus: reg}}.s }[{{lane}}], [ x4 ], x6
+            {% endfor %}
+        {% endfor %}
+        add x5, x5, x7
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.q_scale:
+    b           .unsupported
+    
+.return:
+    ldp         d14, d15, [sp], #16
+    ldp         d12, d13, [sp], #16
+    ldp         d10, d11, [sp], #16
+    ldp         d8, d9, [sp], #16
+
+    ldp         x26, x27, [sp], #16
+    ldp         x24, x25, [sp], #16
+    ldp         x22, x23, [sp], #16
+    ldp         x20, x21, [sp], #16
+
+    ret
+
