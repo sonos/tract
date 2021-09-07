@@ -55,30 +55,13 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
         unsafe { std::slice::from_raw_parts_mut(buf, len) }
     }
 
-    #[inline]
     pub unsafe fn for_tile<K: MatMatMulKer<TI>>(
         &mut self,
         specs: &[FusedSpec],
         down: usize,
         right: usize,
         c_store: &MatrixStore,
-    ) -> *const FusedKerSpec<TI>
-    where
-        TI: Datum + Copy + Debug + Zero,
-    {
-        if specs.is_empty() {
-            std::ptr::null()
-        } else {
-            self.fused_for_tile::<K>(specs, down, right, c_store)
-        }
-    }
-
-    unsafe fn fused_for_tile<K: MatMatMulKer<TI>>(
-        &mut self,
-        specs: &[FusedSpec],
-        down: usize,
-        right: usize,
-        c_store: &MatrixStore,
+        valid: bool,
     ) -> *const FusedKerSpec<TI>
     where
         TI: Datum + Copy + Debug + Zero,
@@ -154,9 +137,14 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                         + csc * right as isize * K::nr() as isize;
                     let tile_ptr: *const TI = tensor.as_ptr_unchecked::<TI>().offset(tile_offset);
 
-                    let max_inner_offset =
-                        (K::mr() - 1) as isize * rsc + (K::nr() - 1) as isize * csc;
-                    if max_inner_offset + tile_offset > item_count as isize {
+                    if valid {
+                        FusedKerSpec::AddUnicast(Tile {
+                            ptr: tile_ptr as _,
+                            row_byte_stride: (rsc as usize * std::mem::size_of::<TI>()) as isize,
+                            col_byte_stride: (csc as usize * std::mem::size_of::<TI>()) as isize,
+                            item_size: std::mem::size_of::<TI>(),
+                        })
+                    } else {
                         let tmp_d_tile = self.get_temp_slice::<TI>(K::mr() * K::nr());
                         for r in 0..K::mr() as isize {
                             for c in 0..K::nr() as isize {
@@ -173,16 +161,17 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
                             col_byte_stride: (std::mem::size_of::<TI>() * K::mr()) as isize,
                             item_size: std::mem::size_of::<TI>(),
                         })
-                    } else {
-                        FusedKerSpec::AddUnicast(Tile {
-                            ptr: tile_ptr as _,
-                            row_byte_stride: (rsc as usize * std::mem::size_of::<TI>()) as isize,
-                            col_byte_stride: (csc as usize * std::mem::size_of::<TI>()) as isize,
-                            item_size: std::mem::size_of::<TI>(),
-                        })
                     }
                 }
                 FusedSpec::QScale(s, rp, m) => FusedKerSpec::QScale(*s, *rp, *m),
+                FusedSpec::Store => {
+                    if valid {
+                        FusedKerSpec::Store(c_store.tile_c(down, right))
+                    } else {
+                        let tmpc = self.tmp_tile_c(c_store.item_size(), K::mr(), K::nr());
+                        FusedKerSpec::Store(tmpc)
+                    }
+                }
             };
             self.uspecs.push(s);
         }
@@ -198,6 +187,26 @@ impl<TI: Copy> ScratchSpaceFusedNonLinear<TI> {
             item_size,
             row_byte_stride: item_size as isize,
             col_byte_stride: (item_size * mr) as isize,
+        }
+    }
+
+    pub unsafe fn postprocess_tile<K: MatMatMulKer<TI>>(
+        &mut self,
+        specs: &[FusedSpec],
+        ker_specs: *const FusedKerSpec<TI>,
+        down: usize,
+        right: usize,
+        c_store: &mut MatrixStore,
+        m_remnant: usize,
+        n_remnant: usize
+    ) where
+        TI: Datum + Copy + Debug + Zero,
+    {
+        for (i, spec) in specs.iter().enumerate() {
+            let ker_spec = ker_specs.offset(i as isize);
+            if let (FusedSpec::Store, FusedKerSpec::Store(tmp)) = (spec, ker_spec.as_ref().unwrap()) {
+                c_store.set_from_tile(down, right, m_remnant, n_remnant, &tmp)
+            }
         }
     }
 }
