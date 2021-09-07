@@ -260,56 +260,6 @@ fma_mmm_i8_8x8_{{suffix}} proc
     test    rcx,    rcx
     jnz     {{L}}non_linear_loop_enter
 
-{{L}}store:
-    mov     rcx,    [rdi + 16]
-
-    mov     r8,     [rcx]               // c ptr
-    mov     rsi,    [rcx + 8]           // row stride
-    mov     rdx,    [rcx + 16]          // col stride
-    mov     rdi,    [rcx + 24]          // item size
-
-    cmp     rdi,    4
-    je      {{L}}store_strides_i32
-
-    {% for col in (0..7) %}
-        mov r10, r8
-        {% for row in (0..3) %}
-            extractps   ebx, xmm{{col}}, {{row}}
-            mov         byte ptr [r10], bl
-            add         r10, rsi
-        {% endfor %}
-        vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
-        {% for row in (0..3) %}
-            extractps   ebx, xmm{{col}}, {{row}}
-            mov         byte ptr [r10], bl
-            add         r10, rsi
-        {% endfor %}
-        add r8, rdx
-    {% endfor %}
-
-    mov     rax,    0
-    jmp     {{L}}return
-
-{{L}}store_strides_i32:
-    {% for col in (0..7) %}
-        mov r10,    r8
-        {% for row in (0..3) %}
-            extractps   ebx, xmm{{col}}, {{row}}
-            mov         dword ptr [r10], ebx
-            add         r10, rsi
-        {% endfor %}
-        vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
-        {% for row in (0..3) %}
-            extractps   ebx, xmm{{col}}, {{row}}
-            mov         dword ptr [r10], ebx
-            add         r10, rsi
-        {% endfor %}
-        add r8, rdx
-    {% endfor %}
-
-    mov     rax,    0
-    jmp     {{L}}return
-
 {{L}}return:
     ldmxcsr     [rsp + 4]
     add         rsp, 8
@@ -353,7 +303,7 @@ fma_mmm_i8_8x8_{{suffix}} proc
     mov     rax,    [rcx]
 
     cmp     rax,    0
-    je      {{L}}store
+    je      {{L}}done
 
     cmp     rax,    1
     je      {{L}}min
@@ -388,7 +338,14 @@ fma_mmm_i8_8x8_{{suffix}} proc
     cmp     rax,    11
     je      {{L}}q_scale
 
+    cmp     rax,    12
+    je      {{L}}store
+
     jmp     {{L}}unimplemented
+
+{{L}}done:
+    mov     rax, 0
+    jmp     {{L}}return
 
 // NON LINEAR / ADDC
 
@@ -786,6 +743,51 @@ i128_shuffle dd              0, 4
 
     jmp    {{L}}non_linear_loop
 
+{{L}}store:
+    mov     r8,     [rcx + 8]           // c ptr
+    mov     rsi,    [rcx + 16]          // row stride
+    mov     rdx,    [rcx + 24]          // col stride
+    mov     rdi,    [rcx + 32]          // item size
+
+    cmp     rdi,    4
+    je      {{L}}store_strides_i32
+
+    {% for col in (0..7) %}
+        mov r10, r8
+        {% for row in (0..3) %}
+            extractps   ebx, xmm{{col}}, {{row}}
+            mov         byte ptr [r10], bl
+            add         r10, rsi
+        {% endfor %}
+        vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
+        {% for row in (0..3) %}
+            extractps   ebx, xmm{{col}}, {{row}}
+            mov         byte ptr [r10], bl
+            add         r10, rsi
+        {% endfor %}
+        add r8, rdx
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
+
+{{L}}store_strides_i32:
+    {% for col in (0..7) %}
+        mov r10,    r8
+        {% for row in (0..3) %}
+            extractps   ebx, xmm{{col}}, {{row}}
+            mov         dword ptr [r10], ebx
+            add         r10, rsi
+        {% endfor %}
+        vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
+        {% for row in (0..3) %}
+            extractps   ebx, xmm{{col}}, {{row}}
+            mov         dword ptr [r10], ebx
+            add         r10, rsi
+        {% endfor %}
+        add r8, rdx
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
 
 {{L}}one_32bit:
 {% if msvc %}
