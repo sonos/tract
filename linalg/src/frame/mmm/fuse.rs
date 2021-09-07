@@ -28,6 +28,7 @@ pub enum FusedSpec<'t> {
     ScalarAdd(&'t Tensor),
     AddUnicast(TensorView<'t>),
     QScale(usize, RoundingPolicy, i32),
+    Store,
 }
 
 #[repr(C, usize)]
@@ -45,6 +46,7 @@ pub enum FusedKerSpec<TI: Copy> {
     ScalarMul(TI),
     ScalarAdd(TI),
     QScale(usize, RoundingPolicy, i32),
+    Store(Tile),
 }
 
 #[cfg(test)]
@@ -311,12 +313,13 @@ pub mod test {
     {
         let mut v = vec![TC::max_value(); K::mr() * K::nr()];
         let mut c = mmm_stride_storage(&mut v, K::nr());
+        let non_linear = tvec![FusedKerSpec::Store(c), FusedKerSpec::Done];
         let err = K::kernel(&MatMatMulKerSpec {
             a: &null_packed_storage(),
             b: &null_packed_storage(),
             c: &mut c,
             linear: &LinearSpec::k(0),
-            non_linear: std::ptr::null(),
+            non_linear: non_linear.as_ptr(),
         });
         assert_eq!(err, 0);
         let expected = vec![TC::zero(); v.len()];
@@ -335,6 +338,7 @@ pub mod test {
         let mut c = mmm_stride_storage(&mut v, K::nr());
         let mut ops = ops.to_vec();
         ops.insert(0, FusedKerSpec::AddUnicast(c));
+        ops.push(FusedKerSpec::Store(c));
         ops.push(FusedKerSpec::Done);
         let err = K::kernel(&MatMatMulKerSpec {
             a: &null_packed_storage(),

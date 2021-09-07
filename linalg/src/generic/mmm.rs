@@ -262,31 +262,10 @@ where
                             }
                         }
                     }
+                    FusedKerSpec::Store(tile) => store(&tile, &ab),
                 };
                 pnl = pnl.add(1);
             }
-            let Tile { ptr: c, row_byte_stride, col_byte_stride, .. } = spec.c;
-            let c = *c as *mut TC;
-            let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
-            let csc = *col_byte_stride as usize / std::mem::size_of::<TC>();
-            let c = c as *mut TC;
-            let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
-            c[0 * csc + 0 * rsc] = ab[0][0].as_();
-            c[1 * csc + 0 * rsc] = ab[0][1].as_();
-            c[2 * csc + 0 * rsc] = ab[0][2].as_();
-            c[3 * csc + 0 * rsc] = ab[0][3].as_();
-            c[0 * csc + 1 * rsc] = ab[1][0].as_();
-            c[1 * csc + 1 * rsc] = ab[1][1].as_();
-            c[2 * csc + 1 * rsc] = ab[1][2].as_();
-            c[3 * csc + 1 * rsc] = ab[1][3].as_();
-            c[0 * csc + 2 * rsc] = ab[2][0].as_();
-            c[1 * csc + 2 * rsc] = ab[2][1].as_();
-            c[2 * csc + 2 * rsc] = ab[2][2].as_();
-            c[3 * csc + 2 * rsc] = ab[2][3].as_();
-            c[0 * csc + 3 * rsc] = ab[3][0].as_();
-            c[1 * csc + 3 * rsc] = ab[3][1].as_();
-            c[2 * csc + 3 * rsc] = ab[3][2].as_();
-            c[3 * csc + 3 * rsc] = ab[3][3].as_();
         }
         return 0;
     }
@@ -500,17 +479,18 @@ where
                             ab[i] = ab[i].q_scale(mult, shift, rp);
                         }
                     }
+                    FusedKerSpec::Store(tile) => store(
+                        &tile,
+                        &[
+                            std::slice::from_raw_parts(ab.as_ptr().offset(0) as _, 1),
+                            std::slice::from_raw_parts(ab.as_ptr().offset(1) as _, 1),
+                            std::slice::from_raw_parts(ab.as_ptr().offset(2) as _, 1),
+                            std::slice::from_raw_parts(ab.as_ptr().offset(3) as _, 1),
+                        ],
+                    ),
                 }
                 pnl = pnl.add(1);
             }
-            let Tile { ptr: c, row_byte_stride, .. } = spec.c;
-            let c = *c as *mut TC;
-            let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
-            let c = std::slice::from_raw_parts_mut(c, 1 + 3 * rsc);
-            c[0 * rsc] = ab[0].as_();
-            c[1 * rsc] = ab[1].as_();
-            c[2 * rsc] = ab[2].as_();
-            c[3 * rsc] = ab[3].as_();
         }
         return 0;
     }
@@ -738,22 +718,40 @@ where
                             }
                         }
                     }
+                    FusedKerSpec::Store(tile) => store(&tile, &ab),
                 }
                 pnl = pnl.add(1);
             }
-            let Tile { ptr: c, row_byte_stride, col_byte_stride, .. } = spec.c;
-            let c = *c as *mut TC;
-            let rsc = *row_byte_stride as usize / std::mem::size_of::<TC>();
-            let csc = *col_byte_stride as usize / std::mem::size_of::<TC>();
-            let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
-            c[0 * csc + 0 * rsc] = ab[0][0].as_();
-            c[1 * csc + 0 * rsc] = ab[0][1].as_();
-            c[0 * csc + 1 * rsc] = ab[1][0].as_();
-            c[1 * csc + 1 * rsc] = ab[1][1].as_();
-            c[0 * csc + 2 * rsc] = ab[2][0].as_();
-            c[1 * csc + 2 * rsc] = ab[2][1].as_();
         }
         return 0;
+    }
+}
+
+unsafe fn store_t<TC, TI, AB>(tile: &Tile, ab: &[AB])
+where
+    TC: Copy,
+    AB: AsRef<[TI]> + fmt::Debug,
+{
+    for i in 0usize..ab.len() {
+        for j in 0usize..ab[0].as_ref().len() {
+            let loc: *mut TC = tile
+                .ptr
+                .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
+                as _;
+            let val: *const TC = (&ab[i].as_ref()[j]) as *const TI as _;
+            *loc = *val
+        }
+    }
+}
+
+unsafe fn store<TI, AB>(tile: &Tile, ab: &[AB])
+where
+    AB: AsRef<[TI]> + fmt::Debug,
+{
+    match tile.item_size {
+        1 => store_t::<u8, _, _>(tile, ab),
+        4 => store_t::<u32, _, _>(tile, ab),
+        _ => unimplemented!(),
     }
 }
 

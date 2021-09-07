@@ -371,15 +371,19 @@ pub mod test {
                 } else {
                     mmm_stride_storage(&mut v, K::nr(), 1)
                 };
-                let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
-                let non_linear =
-                    if self.add_one { non_linear_ops.as_ptr() } else { std::ptr::null() };
+
+                let mut non_linear_ops = tvec!();
+                if self.add_one {
+                    non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
+                }
+                non_linear_ops.push(FusedKerSpec::Store(c));
+                non_linear_ops.push(FusedKerSpec::Done);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: &PanelStore::Packed { ptr: pa.as_ptr_unchecked::<TA>() as _ },
                     b: &PanelStore::Packed { ptr: pb.as_ptr_unchecked::<TB>() as _ },
                     c: &mut c,
                     linear: &LinearSpec::k(self.k),
-                    non_linear,
+                    non_linear: non_linear_ops.as_ptr(),
                 });
                 assert_eq!(err, 0);
                 v
@@ -492,8 +496,12 @@ pub mod test {
             };
             let mut v = vec![TC::zero(); K::mr() * K::nr()];
             let mut c = mmm_stride_storage(&mut v, K::nr(), 1);
-            let non_linear_ops = [FusedKerSpec::ScalarAdd(TI::one()), FusedKerSpec::Done];
-            let non_linear = if self.add_one { non_linear_ops.as_ptr() } else { std::ptr::null() };
+            let mut non_linear_ops = tvec!();
+            if self.add_one {
+                non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
+            }
+            non_linear_ops.push(FusedKerSpec::Store(c));
+            non_linear_ops.push(FusedKerSpec::Done);
             let err = K::kernel(&MatMatMulKerSpec {
                 a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
                 b: &PanelStore::OffsetsAndPtrs {
@@ -502,7 +510,7 @@ pub mod test {
                 },
                 c: &mut c,
                 linear: &LinearSpec::k(self.rows_offsets.len()),
-                non_linear,
+                non_linear: non_linear_ops.as_ptr(),
             });
             assert_eq!(err, 0);
             v
@@ -559,6 +567,9 @@ pub mod test {
         let col_ptrs = (0..K::nr()).map(|i| (&b[i]) as *const TB as _).collect::<Vec<_>>();
         let row_byte_offsets =
             (0..k).map(|i| (i * std::mem::size_of::<TB>() * t) as isize).collect::<Vec<_>>();
+        let mut non_linear_ops = tvec!();
+        non_linear_ops.push(FusedKerSpec::Store(c));
+        non_linear_ops.push(FusedKerSpec::Done);
         let err = K::kernel(&MatMatMulKerSpec {
             a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
             b: &PanelStore::OffsetsAndPtrs {
@@ -567,7 +578,7 @@ pub mod test {
             },
             c: &mut c,
             linear: &LinearSpec::k(k),
-            non_linear: std::ptr::null(),
+            non_linear: non_linear_ops.as_ptr()
         });
         assert_eq!(err, 0);
         let expected: Vec<TC> = (0..v.len())
@@ -602,7 +613,11 @@ pub mod test {
             .unwrap()
         };
         let b = vec![TB::one(); (k + 1) * K::nr()];
-        let c: Vec<TC> = vec![TC::zero(); K::mr() * K::nr()];
+        let mut c: Vec<TC> = vec![TC::zero(); K::mr() * K::nr()];
+        let mut non_linear_ops = tvec!();
+        let tile = mmm_stride_storage(&mut c, 1, 0);
+        non_linear_ops.push(FusedKerSpec::Store(tile));
+        non_linear_ops.push(FusedKerSpec::Done);
         let err = K::kernel(&MatMatMulKerSpec {
             a: &PanelStore::Packed { ptr: unsafe { pa.as_ptr_unchecked::<TA>() as _ } },
             b: &PanelStore::Packed { ptr: b.as_ptr() as _ },
@@ -613,7 +628,7 @@ pub mod test {
                 item_size: std::mem::size_of::<TC>(),
             },
             linear: &LinearSpec::k(k),
-            non_linear: std::ptr::null(),
+            non_linear: non_linear_ops.as_ptr(),
         });
         assert_eq!(err, 0);
         let expected = vec![k.as_(); K::mr()];
